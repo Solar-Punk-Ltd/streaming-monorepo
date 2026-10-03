@@ -9,11 +9,13 @@
  * to be stored, a value the manager would refuse named under its field, Test
  * connection, an address on another origin that asks for the token again, and
  * clearing the stored token. The new-deployment wizard's Web2 admin group: on
- * from the manager's link, a move to a typed token when the address leaves the
- * stored token's origin, the two keys of Advanced settings pointed at it, a
- * deployment created linked with the manager's token copied in, one created
- * with a token typed there, and one created with the link off, which stores an
- * empty address. And a deployment's Stack settings card: a save that moves the
+ * from the manager's link with a token of the deployment's own, a move to a
+ * typed token when the address leaves the link's origin, the two keys of
+ * Advanced settings pointed at it, a deployment created linked with the address
+ * alone, since its first deploy generates the token, a typed token held at the
+ * link's own admin, which takes only a token of its own from an uploader, one
+ * created with a token typed for another admin, and one created with the link
+ * off, which stores an empty address. And a deployment's Stack settings card: a save that moves the
  * address and leaves the token refused, and Test connection right after the
  * two keys, with every outcome's sentence for what the next deploy would give
  * the uploader.
@@ -32,10 +34,10 @@ import { fileURLToPath } from 'node:url';
 
 import { createServer } from 'vite';
 
-import { ADMIN_LINK_TEST_OUTCOMES } from '@streaming-infra-manager/common';
+import { ADMIN_LINK_TEST_OUTCOMES, PLAIN_HTTP_ADMIN_LINK_REFUSED } from '@streaming-infra-manager/common';
 
 import { DEV_PASSWORD, DEV_USERNAME } from '../dev/mock-auth.mjs';
-import { adminLinkTestText } from '../src/adminLink/adminLinkText.ts';
+import { adminLinkTestText, TYPED_TOKEN_AT_LINK } from '../src/adminLink/adminLinkText.ts';
 import {
   buttonWithText,
   clickWhenEnabled,
@@ -62,6 +64,8 @@ const frontend = fileURLToPath(new URL('../', import.meta.url));
 /** Synthetic, and never expected on any page once typed. */
 const TOKEN = 'offline-admin-link-token-0123456789abcdef';
 const ADMIN_URL = 'https://admin.offline.example';
+/** Another web2 admin than the manager's own, where an uploader presents a token typed for it. */
+const OTHER_ADMIN_URL = 'https://other.admin2.offline.example';
 
 const SENTENCES = {
   'token-accepted': 'The web2 admin answered and took the token.',
@@ -192,6 +196,17 @@ test(
         assert.equal(await noSidewaysScroll(), true);
       },
     );
+
+    await t.test('refuses to save a plain http address to another host, and says why', async () => {
+      await fillWhenPresent(evaluate, urlField, 'http://admin.offline.example', 'the address field');
+      await fillWhenPresent(evaluate, tokenField, TOKEN, 'the token field');
+      await click(inCard('Save'), 'the Save button');
+      await waitFor(cardText, (text) => text.includes(PLAIN_HTTP_ADMIN_LINK_REFUSED), 'the plain http refusal');
+      assert.match(await cardText(), /No token is stored\./);
+      assert.equal(await noSidewaysScroll(), true);
+      await screenshot('manager-link-plain-http-phone.png');
+      await fillWhenPresent(evaluate, urlField, ADMIN_URL, 'the address field');
+    });
 
     await t.test('tests the typed address and token before they are saved', async () => {
       await fillWhenPresent(evaluate, tokenField, TOKEN, 'the token field');
@@ -326,9 +341,7 @@ test(
         ADMIN_URL,
       );
       assert.equal(
-        await evaluate(
-          `(${group}).querySelector('input[type=radio][aria-label="The manager\\'s stored token"]').checked`,
-        ),
+        await evaluate(`(${group}).querySelector('input[type=radio][aria-label="A token of its own"]').checked`),
         true,
       );
       assert.match(await groupText(), /The test runs from where the manager runs/);
@@ -337,71 +350,69 @@ test(
         `[...(${group}).querySelectorAll('button')].find(button => button.textContent.trim() === 'Test connection')`,
         'the group Test connection button',
       );
+      // A token of its own does not exist before the first deploy, so the test presents the manager's stored
+      // token, which belongs to no stage, and compares no owner: the admin learns the stage's at that deploy.
       await waitFor(
         groupText,
-        (text) =>
-          text.includes(
-            "Linked: the web2 admin took the token and signs its catalog with this deployment's stream address.",
-          ),
-        'the linked sentence',
+        (text) => text.includes(adminLinkTestText('token-accepted')),
+        'the token-accepted sentence',
+      );
+      assert.equal(
+        (await groupText()).includes(adminLinkTestText('linked')),
+        false,
+        'a token of its own read as linked before its stage has an owner at the admin',
       );
       assert.equal(await dialogFits(), true, 'the dialog scrolls sideways');
       await evaluate(`(${group}).scrollIntoView({ block: 'start' })`);
       await screenshot('wizard-group-on-phone.png');
     });
 
-    await t.test(
-      "asks for a typed token once the address leaves the origin the manager's token was saved for",
-      async () => {
-        const address = `(${group})?.querySelector('input[aria-label="Web2 admin address"]')`;
-        const typedChoice = `(${group}).querySelector('input[type=radio][aria-label="A token typed here"]')`;
-        await fillWhenPresent(evaluate, address, 'https://moved.admin2.offline.example', 'the group address');
-        await waitFor(
-          groupText,
-          (text) =>
-            text.includes(
-              "The manager's stored token was saved for another address, and the manager sends it only there. Type the token for this address.",
-            ),
-          'the sentence on the stored token',
-        );
-        assert.match(
-          await body(),
-          /Web2 admin: the manager's stored token was saved for another address, so type the token for this one/,
-        );
-        assert.equal(
-          await evaluate(
-            `[...(${group}).querySelectorAll('button')].find(button => button.textContent.trim() === 'Test connection').disabled`,
+    await t.test("asks for a typed token once the address leaves the origin of the manager's link", async () => {
+      const address = `(${group})?.querySelector('input[aria-label="Web2 admin address"]')`;
+      const typedChoice = `(${group}).querySelector('input[type=radio][aria-label="A token typed here"]')`;
+      await fillWhenPresent(evaluate, address, 'https://moved.admin2.offline.example', 'the group address');
+      await waitFor(
+        groupText,
+        (text) =>
+          text.includes(
+            'A token of its own is registered only with the web2 admin on Manager settings, and this address is another one. Type the token for this address.',
           ),
-          true,
-        );
-        assert.equal(await dialogFits(), true, 'the dialog scrolls sideways');
+        'the sentence on a token of its own',
+      );
+      assert.match(
+        await body(),
+        /Web2 admin: a token of its own is registered only with the manager's own web2 admin, so type the token for this address/,
+      );
+      assert.equal(
+        await evaluate(
+          `[...(${group}).querySelectorAll('button')].find(button => button.textContent.trim() === 'Test connection').disabled`,
+        ),
+        true,
+      );
+      assert.equal(await dialogFits(), true, 'the dialog scrolls sideways');
 
-        await click(
-          `[...(${group}).querySelectorAll('button')].find(button => button.textContent.trim() === 'Type a token for this address')`,
-          'the button that moves to a typed token',
-        );
-        await waitFor(
-          () => evaluate(`document.activeElement?.getAttribute('aria-label')`),
-          (label) => label === 'Web2 admin token',
-          'focus on the token field',
-        );
-        assert.equal(await evaluate(`${typedChoice}.checked`), true);
+      await click(
+        `[...(${group}).querySelectorAll('button')].find(button => button.textContent.trim() === 'Type a token for this address')`,
+        'the button that moves to a typed token',
+      );
+      await waitFor(
+        () => evaluate(`document.activeElement?.getAttribute('aria-label')`),
+        (label) => label === 'Web2 admin token',
+        'focus on the token field',
+      );
+      assert.equal(await evaluate(`${typedChoice}.checked`), true);
 
-        await fillWhenPresent(evaluate, address, ADMIN_URL, 'the group address');
-        await click(
-          `(${group}).querySelector('input[type=radio][aria-label="The manager\\'s stored token"]')`,
-          'the stored token choice',
-        );
-        await waitFor(
-          () =>
-            evaluate(
-              `(${group}).querySelector('input[type=radio][aria-label="The manager\\'s stored token"]').checked`,
-            ),
-          Boolean,
-          'the stored token chosen again',
-        );
-      },
-    );
+      await fillWhenPresent(evaluate, address, ADMIN_URL, 'the group address');
+      await click(
+        `(${group}).querySelector('input[type=radio][aria-label="A token of its own"]')`,
+        'the choice of a token of its own',
+      );
+      await waitFor(
+        () => evaluate(`(${group}).querySelector('input[type=radio][aria-label="A token of its own"]').checked`),
+        Boolean,
+        'a token of its own chosen again',
+      );
+    });
 
     await t.test('points the two keys of Advanced settings at the group rather than editing them twice', async () => {
       const foldButton = `[...document.querySelectorAll('button[aria-expanded]')].find(button => button.textContent.includes('Advanced settings'))`;
@@ -427,12 +438,14 @@ test(
       await click(foldButton, 'the Advanced settings fold');
     });
 
-    await t.test("creates the deployment linked, with the manager's token copied in and never shown", async () => {
+    await t.test('creates the deployment linked, with the address alone and no token stored', async () => {
       await click(buttonWithText('Continue'), 'the Continue button');
       await waitFor(body, (text) => text.includes('Check it, then deploy.'), 'the review');
       assert.match(
         await body(),
-        new RegExp(`Web2 admin\\s+Linked to ${ADMIN_URL.replace(/\./g, '\\.')}, with the manager's stored token\\.`),
+        new RegExp(
+          `Web2 admin\\s+Linked to ${ADMIN_URL.replace(/\./g, '\\.')}, with a token of its own, generated at its first deploy\\.`,
+        ),
       );
 
       await click(buttonWithText('Deploy'), 'the Deploy button');
@@ -442,11 +455,12 @@ test(
         'the linked-stream page with its settings card',
       );
       await searchCard('ADMIN_API');
-      await waitFor(
+      const tokenRow = await waitFor(
         () => cardRowText('ADMIN_API_TOKEN'),
-        (text) => text.includes('A value is stored for this deployment. It is never shown.'),
-        'the copied token',
+        (text) => text.length > 0,
+        'the token row',
       );
+      assert.doesNotMatch(tokenRow, /A value is stored for this deployment/, 'no token was copied in');
       assert.match(await cardRowText('ADMIN_API_URL'), /set here/);
       assert.equal(await evaluate(`document.getElementById('deployment-setting-ADMIN_API_URL').value`), ADMIN_URL);
       await tokenNowhereInSight();
@@ -462,6 +476,33 @@ test(
       assert.equal(await readWhenPresent(evaluate, typedField, 'type', 'the typed token field'), 'password');
       assert.equal(await evaluate(`${typedField}.getAttribute('autocomplete')`), 'new-password');
       await fillWhenPresent(evaluate, typedField, TOKEN, 'the typed token field');
+
+      // At the manager's own admin, which takes only a token of its own from an uploader, a typed one is held.
+      await waitFor(
+        groupText,
+        (text) => text.includes(TYPED_TOKEN_AT_LINK),
+        'the sentence on a typed token at the manager’s own admin',
+      );
+      assert.match(
+        await body(),
+        /Web2 admin: the manager's own web2 admin takes only a token of its own from an uploader, so choose A token of its own/,
+      );
+      assert.equal(
+        await evaluate(
+          `[...(${group}).querySelectorAll('button')].find(button => button.textContent.trim() === 'Test connection').disabled`,
+        ),
+        true,
+      );
+      assert.equal(await dialogFits(), true, 'the dialog scrolls sideways');
+
+      // Another admin, which the manager does not register stages with, takes the token typed for it.
+      await fillWhenPresent(
+        evaluate,
+        `(${group})?.querySelector('input[aria-label="Web2 admin address"]')`,
+        OTHER_ADMIN_URL,
+        'the group address',
+      );
+      await waitFor(groupText, (text) => !text.includes(TYPED_TOKEN_AT_LINK), 'the sentence gone at another admin');
       await click(
         `[...(${group}).querySelectorAll('button')].find(button => button.textContent.trim() === 'Test connection')`,
         'the group Test connection button',
@@ -477,7 +518,7 @@ test(
       await waitFor(body, (text) => text.includes('Check it, then deploy.'), 'the review');
       assert.match(
         await body(),
-        new RegExp(`Web2 admin\\s+Linked to ${ADMIN_URL.replace(/\./g, '\\.')}, with a token typed here\\.`),
+        new RegExp(`Web2 admin\\s+Linked to ${OTHER_ADMIN_URL.replace(/\./g, '\\.')}, with a token typed here\\.`),
       );
       await tokenNowhereInSight();
       await click(buttonWithText('Deploy'), 'the Deploy button');
@@ -563,7 +604,7 @@ test(
     });
 
     await t.test(
-      'refuses a card save that moves the address to another origin and leaves the stored token, saying why',
+      'refuses a card save that moves the address away from the token of its own and types none, saying why',
       async () => {
         await fillWhenPresent(
           evaluate,
@@ -575,8 +616,9 @@ test(
         await waitFor(
           stackCardText,
           (text) =>
+            // The token of its own goes to the manager's link alone, so another address needs one typed.
             text.includes(
-              'ADMIN_API_URL moves to another address than the one ADMIN_API_TOKEN was stored with, and the manager sends a stored token only to the address it was stored with. Type ADMIN_API_TOKEN again for the new address, or clear it.',
+              'ADMIN_API_URL is set and ADMIN_API_TOKEN is not, and the stream uploader refuses to start that way. Set ADMIN_API_TOKEN, or leave ADMIN_API_URL empty.',
             ),
           'the refusal on the card',
         );

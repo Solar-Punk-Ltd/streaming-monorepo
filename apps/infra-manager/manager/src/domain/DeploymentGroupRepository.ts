@@ -8,7 +8,6 @@ import type {
 import { Pool, PoolClient } from 'pg';
 import { DeploymentGroup, Profile } from '../types/interfaces.js';
 import { ProfileKind } from '../types/types.js';
-import { copyManagerAdminToken } from './adminLink/adminTokenCopy.js';
 import { AllSlotsUsedError } from './errors/index.js';
 import type { InitialStackSettings } from './ProfileRepository.js';
 import { reserveSlotFor } from './ports/reservationSql.js';
@@ -265,8 +264,6 @@ export class DeploymentGroupRepository {
         shared.stack_settings.adminTokenOrigin ?? null,
       ],
     );
-    if (shared.stack_settings.copyManagerAdminToken)
-      await copyManagerAdminToken(client, name, shared.stack_settings.copyManagerAdminToken);
     return r.rows[0]!;
   }
 

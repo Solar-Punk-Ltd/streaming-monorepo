@@ -2,12 +2,13 @@ import { useEffect, useState } from 'react';
 import { Accordion, AccordionDetails, AccordionSummary, Alert, Button, Stack, Typography } from '@mui/material';
 import ExpandMoreIcon from '@mui/icons-material/ExpandMore';
 import {
+  buildChecklist,
   chequebookHealthFromPayload,
+  firstBlocker,
   type LadderRungState,
   sameBatchId,
   stampHealthFrom,
 } from '@streaming-infra-manager/common';
-import { buildChecklist, firstBlocker } from '../../../deployments/checklist';
 import { useBeePublishers } from '../../../groups/useBeePublishers';
 import { beeReadinessView } from '../../../uploaders/beeReadiness';
 import { useBeeUtils } from '../../../uploaders/useBeeUtils';

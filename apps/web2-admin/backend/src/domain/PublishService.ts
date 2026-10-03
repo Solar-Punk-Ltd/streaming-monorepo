@@ -1,6 +1,8 @@
+import { sameFeedOwner } from '@streaming-monorepo/contracts';
 import type { FeedStreamEntry, Rendition, StreamStatus } from '@streaming-monorepo/web2-admin-common';
 
 import {
+  ON_FEED_STATUSES,
   PUBLISHABLE_STATUSES,
   UNPUBLISHABLE_STATUSES,
   type StreamRenditionRow,
@@ -11,35 +13,69 @@ import { getErrorMessage } from '../utils/errorUtils.js';
 
 import { describeActor, describeStream, type Actor } from './actor.js';
 import { recordAudit, type AuditLog } from './AuditLog.js';
+import type { CatalogueBatchService } from './CatalogueBatch.js';
+import { withoutCatalogueNode } from './catalogueNodeText.js';
 import {
+  CatalogueStampUnavailableError,
   FeedOwnerMismatchError,
   PublishFailedError,
+  StageRequiredError,
+  StageUnavailableError,
   StreamBusyError,
   StreamLiveError,
   StreamNotFoundError,
 } from './errors/index.js';
-import { buildFeedEntry, ladderOnFeed, planReconcile, removeEntry, upsertEntry } from './feedEntries.js';
-import type { FeedGateway, FeedSnapshot } from './FeedGateway.js';
+import {
+  buildFeedEntry,
+  carriesEntry,
+  ladderOnFeed,
+  planReconcile,
+  removeEntry,
+  upsertEntry,
+  withoutTopicUnderOtherOwners,
+} from './feedEntries.js';
+import { encodeFeedPayload, type CatalogueTarget, type FeedGateway, type FeedSnapshot } from './FeedGateway.js';
 import type { FeedIdentity } from './feedIdentity.js';
+import type { FeedWriteRecord } from './FeedWriteRepository.js';
 import { Logger } from './Logger.js';
 import { Mutex } from './Mutex.js';
 import { toRendition } from './renditions.js';
 import { publishedStatusFor, type PublishedStatus } from './streamState.js';
+import { stageUnavailability, type StreamStageLookup } from './StreamService.js';
 import { hasPendingThumbnail } from './unpublishedEdits.js';
 
 const logger = Logger.getInstance();
+
+/**
+ * How publishing reads the stages: one stage, for the checks a draft passes
+ * before it goes on the catalogue, and the owner of every stage the admin
+ * holds, retired ones included, for what a reconcile counts as ours.
+ * StageRepository; a fake stands in.
+ */
+export interface PublishStageLookup extends StreamStageLookup {
+  listOwners(): Promise<string[]>;
+}
 
 /** The slice of StreamRepository publishing needs; a fake stands in for tests. */
 export interface PublishStreamStore {
   findById(id: string): Promise<StreamRow | null>;
   findThumbnail(id: string): Promise<ThumbnailRow | null>;
-  recordThumbnailRef(id: string, thumbnailRef: string): Promise<void>;
-  claimForPublish(id: string, allowedFrom: readonly StreamStatus[]): Promise<StreamRow | null>;
+  /** `batchId` is the batch the image was uploaded under, or null when it went with no catalogue stamp. */
+  recordThumbnailRef(id: string, thumbnailRef: string, batchId: string | null): Promise<void>;
   /**
-   * `entryContentEditedAt` here and on `recordRepublish` is the
-   * `content_edited_at` of the row the entry was built from: which edit the
-   * catalogue now carries, not when the write finished. `status` is the one
-   * the entry was built with.
+   * Null as well, with `draftNeedsStage`, for a draft that has no stage. A
+   * draft that holds no recording takes its stage's owner in the same step.
+   */
+  claimForPublish(
+    id: string,
+    allowedFrom: readonly StreamStatus[],
+    draftNeedsStage?: boolean,
+  ): Promise<StreamRow | null>;
+  /**
+   * `entryContentEditedAt` here, on `recordRepublish` and on
+   * `finishWithoutWrite` is the `content_edited_at` of the row the entry was
+   * built from: which edit the catalogue now carries, not when the write
+   * finished. `status` is the one the entry was built with.
    */
   finishPublish(
     id: string,
@@ -47,6 +83,18 @@ export interface PublishStreamStore {
     thumbnailRef: string | null,
     entryContentEditedAt: Date | null,
     status: PublishedStatus,
+  ): Promise<StreamRow | null>;
+  /**
+   * A publish, or a hand republish when `status` is null, that wrote nothing:
+   * `finishPublish` or `recordRepublish` without `published_at` and
+   * `published_feed_index`, which stay with the write that last carried the
+   * stream's entry.
+   */
+  finishWithoutWrite(
+    id: string,
+    thumbnailRef: string | null,
+    entryContentEditedAt: Date | null,
+    status: PublishedStatus | null,
   ): Promise<StreamRow | null>;
   /**
    * Back to `draft` and off the catalogue, keeping the recording and its rungs
@@ -60,10 +108,11 @@ export interface PublishStreamStore {
     entryContentEditedAt: Date | null,
   ): Promise<StreamRow | null>;
   /**
-   * Records which edit a stream's entry carries after a write that rebuilt it
-   * without being a publish of that stream: a reconcile. Touches nothing else.
+   * Records a write that rebuilt a stream's entry without being a publish of
+   * that stream, a reconcile: the index it wrote the entry at, and which edit
+   * the entry carries. Touches nothing else.
    */
-  recordEntryRebuilt(id: string, entryContentEditedAt: Date | null): Promise<void>;
+  recordEntryRebuilt(id: string, feedIndex: number, entryContentEditedAt: Date | null): Promise<void>;
   /**
    * Releases a `publishing` claim back to `previousStatus` with the reason. For
    * the first publish and the unpublish, which took the claim; nothing else.
@@ -99,16 +148,12 @@ export interface PublishRenditionStore {
  * to lag its own writes — the authority on where the next write goes.
  */
 export interface FeedWriteLog {
-  record(
-    owner: string,
-    topic: string,
-    feedIndex: number,
-    entryCount: number,
-    payload: unknown[],
-    reference: string | null,
-  ): Promise<void>;
+  record(write: FeedWriteRecord): Promise<void>;
   lastWrite(owner: string, topic: string): Promise<{ index: number; entries: unknown[] } | null>;
 }
+
+/** The slice of CatalogueBatchService publishing needs: where a write goes, and where the boot check reads. */
+export type CatalogueTargets = Pick<CatalogueBatchService, 'forWrite' | 'forRead'>;
 
 /** A recording as a `vod` entry lists it: its final manifest's feed index, and how long it runs. */
 export interface EntryRecording {
@@ -138,9 +183,16 @@ export interface PublishOutcome {
     owner: string;
     topic: string;
     topicHex: string;
+    /** The index this call wrote at, or, when `written` is false, the one the feed already stands at. */
     index: number;
     entryCount: number;
   };
+  /**
+   * Whether this call wrote the feed. False for a republish by hand whose entry
+   * the head already carries (`headCarrying`), and for an unpublish of a stream
+   * that was not on the feed: neither spends a slot.
+   */
+  written: boolean;
   /**
    * The ladder the entry was written with, ascending by height. Read inside
    * the mutex, in the same step as the write, so a rendition report answers
@@ -177,6 +229,11 @@ export interface FeedBootCheck {
   adopted: boolean;
   /** Topics on the feed under our owner with no row behind them. */
   ghosts: string[];
+  /**
+   * Why the check did not run, or null when it did: with no catalogue batch designated there is no node to read the
+   * head through, and the check waits for the manager to designate one.
+   */
+  skipped: string | null;
 }
 
 /**
@@ -186,6 +243,26 @@ export interface FeedBootCheck {
  */
 function hasReportedState(stream: StreamRow): boolean {
   return stream.status === 'live' || stream.status === 'vod';
+}
+
+/**
+ * The head's index when a republish by hand has nothing to write, or null
+ * when it has. Nothing to write means: `row` is on the catalogue already, its
+ * last publish did not fail, and the head carries `entry` exactly as it would
+ * be written, apart from its `timestamp` (`carriesEntry`). A write then would
+ * spend a slot on the catalogue batch, and lengthen the history a viewer
+ * walks, on a list that says what the head says.
+ *
+ * `row` is the row as the call read it, before any claim, so a draft always
+ * writes, a stream published again after an unpublish among them. So does a
+ * row whose last attempt failed, which may have left the catalogue other than
+ * the log says. That is also the only case in which a publish takes entries
+ * off before it writes (`withoutTopicUnderOtherOwners`), so here the list the
+ * write would start from is the head's own.
+ */
+function headCarrying(row: StreamRow, snapshot: FeedSnapshot, entry: FeedStreamEntry): number | null {
+  if (!ON_FEED_STATUSES.includes(row.status) || row.publish_error !== null || snapshot.index === null) return null;
+  return carriesEntry(snapshot.entries, entry) ? snapshot.index : null;
 }
 
 /**
@@ -203,12 +280,7 @@ interface WrittenAt {
   index: number | null;
 }
 
-/** Feed owners are hex addresses; case has never been load-bearing. */
-function sameOwner(left: string, right: string): boolean {
-  return left.toLowerCase() === right.toLowerCase();
-}
-
-const THUMBNAIL_FILE_EXTENSIONS: Record<string, string> = {
+export const THUMBNAIL_FILE_EXTENSIONS: Record<string, string> = {
   'image/png': 'png',
   'image/jpeg': 'jpg',
   'image/webp': 'webp',
@@ -228,6 +300,11 @@ const THUMBNAIL_FILE_EXTENSIONS: Record<string, string> = {
  * against it once at boot (`checkFeedOnBoot`) and is the fallback only when
  * there is no recorded write at all.
  *
+ * Every write goes through the node and batch of the catalogue stamp the
+ * manager pushed, read on every write by `catalogue` (CatalogueBatchService).
+ * A publish, an unpublish or a reconcile with no usable stamp is refused
+ * before it touches a row or the feed.
+ *
  * That makes "exactly one backend process writes a given feed key" an
  * invariant rather than a convention. Do not hand FEED_PRIVATE_KEY to a
  * running swarm-hls-stream uploader — it caches the feed's next index — and do
@@ -238,8 +315,11 @@ export class PublishService {
   constructor(
     private readonly streams: PublishStreamStore,
     private readonly renditions: PublishRenditionStore,
+    /** How a draft's stage is checked before it goes on the catalogue, and whose entries are ours. */
+    private readonly stages: PublishStageLookup,
     private readonly feedWrites: FeedWriteLog,
     private readonly gateway: FeedGateway,
+    private readonly catalogue: CatalogueTargets,
     private readonly feed: FeedIdentity,
     private readonly audit: AuditLog,
     /** Every feed write in this process goes through this one mutex. */
@@ -279,7 +359,7 @@ export class PublishService {
    * later report's than the caller's. `actor` is only for the log line.
    */
   async republishWithState(actor: Actor, stream: StreamRow): Promise<PublishOutcome> {
-    return this.mutex.run(async () => this.doRepublishWithState(actor, await this.read(stream.id)));
+    return this.mutex.run(async () => this.doRepublishWithState(actor, await this.read(stream.id), false));
   }
 
   /**
@@ -290,8 +370,10 @@ export class PublishService {
    *
    * The operator repair for what the stale feed read left on the live feed —
    * an entry whose stream was unpublished, then deleted, so no request could
-   * ever name it again. Nothing here touches a row: the database is the truth
-   * this rewrites *towards*.
+   * ever name it again. Nothing here changes what a row says about its
+   * stream: the database is the truth this rewrites *towards*. A row whose
+   * entry it rewrote or added is told only where that entry now is and which
+   * edit it carries.
    *
    * Writes only when something changed, so running it on a clean catalogue
    * costs nothing. A failure is left as it is rather than dressed as a publish
@@ -301,9 +383,16 @@ export class PublishService {
    */
   async reconcile(actor: Actor): Promise<ReconcileOutcome> {
     return this.mutex.run(async () => {
-      const base = await this.baseSnapshot();
+      const target = await this.catalogue.forWrite(actor);
+      const base = await this.baseSnapshot(target);
       const rows = await this.streams.listOnFeed();
-      const plan = planReconcile(base.entries, rows, this.feed.owner, Date.now(), await this.laddersOf(rows));
+      const plan = planReconcile(
+        base.entries,
+        rows,
+        await this.ourOwners(rows),
+        Date.now(),
+        await this.laddersOf(rows),
+      );
 
       if (!plan.changed) {
         logger.info(
@@ -318,11 +407,11 @@ export class PublishService {
         };
       }
 
-      const index = await this.writeFeed(plan.entries, base.index);
+      const index = await this.writeFeed(plan.entries, base.index, target);
       logger.warn(
         `[Reconcile] ${describeActor(actor)} rewrote the catalogue at feed index ${index} (${plan.entries.length} entries): removed [${plan.removed.join(', ')}], added [${plan.added.join(', ')}], updated [${plan.updated.join(', ')}]`,
       );
-      await this.recordRebuiltEntries(rows, [...plan.updated, ...plan.added]);
+      await this.recordRebuiltEntries(rows, [...plan.updated, ...plan.added], index);
       await recordAudit(this.audit, {
         actor,
         action: 'feed.reconcile',
@@ -356,15 +445,23 @@ export class PublishService {
    * because no automatic repair can tell those two apart.
    *
    * Bee being unreachable is not fatal here: the check is a cross-check, and
-   * the backend has everything it needs without it.
+   * the backend has everything it needs without it. The head is read through
+   * the catalogue node; with no catalogue batch designated there is none, and
+   * the check is skipped with its reason, for the caller to run again once the
+   * manager designates one.
    */
   async checkFeedOnBoot(): Promise<FeedBootCheck> {
     return this.mutex.run(async () => {
       const last = await this.feedWrites.lastWrite(this.feed.owner, this.feed.topicHex);
 
+      const read = await this.catalogue.forRead();
+      if ('skipped' in read) {
+        return { recorded: last?.index ?? null, network: null, adopted: false, ghosts: [], skipped: read.skipped };
+      }
+
       let network: FeedSnapshot | null = null;
       try {
-        network = await this.gateway.readLatest();
+        network = await this.gateway.readLatest(read.target);
       } catch (error) {
         logger.warn(`[Boot] could not read the feed head to cross-check it: ${getErrorMessage(error)}`);
       }
@@ -383,14 +480,18 @@ export class PublishService {
           logger.warn(
             `[Boot] feed head ${network.index} is AHEAD of the last write this backend recorded (${last.index}) — another writer under this key? Adopting the network head as the base, so the next write goes after it.`,
           );
-          await this.feedWrites.record(
-            this.feed.owner,
-            this.feed.topicHex,
-            network.index,
-            network.entries.length,
-            network.entries,
-            null,
-          );
+          // Not a write of ours, so no reference and no batch: the admin does not
+          // know what stamped it. The bytes are kept when the node said them.
+          await this.feedWrites.record({
+            owner: this.feed.owner,
+            topic: this.feed.topicHex,
+            feedIndex: network.index,
+            entryCount: network.entries.length,
+            payload: network.entries,
+            payloadText: network.payloadText ?? null,
+            reference: null,
+            batchId: null,
+          });
           base = network;
           adopted = true;
         }
@@ -400,7 +501,13 @@ export class PublishService {
       // entry is invisible in the console (its row is gone) and only shows up
       // as a viewer seeing a stream that does not exist.
       const rows = await this.streams.listOnFeed();
-      const plan = planReconcile(base.entries, rows, this.feed.owner, Date.now(), await this.laddersOf(rows));
+      const plan = planReconcile(
+        base.entries,
+        rows,
+        await this.ourOwners(rows),
+        Date.now(),
+        await this.laddersOf(rows),
+      );
       if (plan.removed.length > 0) {
         logger.warn(
           `[Boot] ${plan.removed.length} catalogue entr${plan.removed.length === 1 ? 'y has' : 'ies have'} no stream row behind ${plan.removed.length === 1 ? 'it' : 'them'}: ${plan.removed.join(', ')} — POST /api/feed/reconcile removes ${plan.removed.length === 1 ? 'it' : 'them'}`,
@@ -412,43 +519,81 @@ export class PublishService {
         network: network?.index ?? null,
         adopted,
         ghosts: plan.removed,
+        skipped: null,
       };
     });
   }
 
   private async doPublish(actor: Actor, before: StreamRow): Promise<PublishOutcome> {
     const id = before.id;
-    // The entry carries the row's `owner`, while the gateway signs with the
-    // configured key. If those have drifted apart — the feed key was rotated
-    // after this stream was created — the entry would advertise an owner the
-    // feed is not published under, so refuse instead of writing a lie.
-    if (!sameOwner(before.owner, this.feed.owner)) {
-      throw new FeedOwnerMismatchError(id, before.owner, this.feed.owner);
+    // A draft goes on the catalogue only once it says which stage it is
+    // broadcast on. A stream that is on the catalogue already is republished
+    // as it is: one published before stages existed has none, and cannot be
+    // given one until it is unpublished.
+    if (before.status === 'draft' && before.stage_id === null) throw new StageRequiredError(id);
+    // A draft goes on the catalogue only on a stage that still takes streams:
+    // the manager may have retired it since it was picked. A draft that holds
+    // a recording is listed as that recording, which needs no broadcast, and
+    // keeps the stage it was made on, so it is published whatever became of
+    // the stage.
+    if (before.status === 'draft' && before.stage_id !== null && before.manifest_index === null) {
+      const reason = stageUnavailability(await this.stages.findSummary(before.stage_id));
+      if (reason) throw new StageUnavailableError(before.stage_id, reason);
     }
+    // The entry carries the row's `owner`, which is its stage's: the stage's
+    // uploader signs every feed of the stream, and the brand key signs only
+    // the catalogue. The claim below gives a draft with no recording the
+    // stage's owner as it stands now, and refuses one that holds a recording
+    // when its stage now signs as another than the owner it was recorded
+    // under, since its feeds resolve under that alone: the manager rotated the
+    // stage's key since. `claim` turns that refusal into its sentence.
+    // Before the claim: a publish with no catalogue batch to write with is
+    // refused with the row as it was, and nothing to put back.
+    const target = await this.catalogue.forWrite(actor);
 
-    const { claimed, previousStatus } = await this.claim(before);
+    const { claimed, previousStatus } = await this.claim(before, PUBLISHABLE_STATUSES, true);
     // The uploader's reports are refused while the row is claimed, so the
     // recording this reads cannot change before the row is finished.
     const status = publishedStatusFor(claimed);
     const written: WrittenAt = { index: null };
 
     try {
-      const thumbnailRef = await this.ensureThumbnailUploaded(claimed);
+      const thumbnailRef = await this.ensureThumbnailUploaded(claimed, target);
       const { entry, renditions } = await this.entryFor({ ...claimed, status }, thumbnailRef);
-      const snapshot = await this.baseSnapshot();
+      const snapshot = await this.baseSnapshot(target);
       const previous = ladderOnFeed(snapshot.entries, entry.owner, entry.topic);
-      const entries = upsertEntry(snapshot.entries, entry);
-      const index = await this.writeFeed(entries, snapshot.index, written);
+      // A publish that failed may have put the entry on the catalogue after
+      // all, under the owner the row had then, and the claim may have given
+      // the row its stage's new owner since. Any entry of ours for this topic
+      // under another owner is that one, and goes, so the stream is listed
+      // once.
+      const base =
+        before.publish_error !== null
+          ? withoutTopicUnderOtherOwners(snapshot.entries, entry, await this.ourOwners([before, claimed]))
+          : snapshot.entries;
+      const entries = upsertEntry(base, entry);
+      // Nothing is written for a stream whose entry the head already carries
+      // (`headCarrying`). The publish is finished all the same, which releases
+      // the claim and records which edit the entry carries, with the image the
+      // entry names; `published_at` and `published_feed_index` stay with the
+      // write that last carried this stream's entry.
+      const carriedAt = headCarrying(before, snapshot, entry);
+      const wrote = carriedAt === null;
+      const index = carriedAt ?? (await this.writeFeed(entries, snapshot.index, target, written));
 
       // The claim refuses every edit until this returns, so `claimed` still
       // holds the edit the entry was built from.
-      const stream = await this.streams.finishPublish(id, index, thumbnailRef, claimed.content_edited_at, status);
+      const stream = wrote
+        ? await this.streams.finishPublish(id, index, thumbnailRef, claimed.content_edited_at, status)
+        : await this.streams.finishWithoutWrite(id, thumbnailRef, claimed.content_edited_at, status);
       if (!stream) throw new StreamNotFoundError(id);
 
       logger.info(
         `[Publish] ${describeActor(actor)} published ${describeStream(claimed)}: ${previousStatus} → ${status}${
           status === 'vod' ? ' (its recording)' : ''
-        } at feed index ${index} (${entries.length} entries)`,
+        }${
+          wrote ? ` at feed index ${index}` : `, nothing written: the entry at feed index ${index} already says this`
+        } (${entries.length} entries)`,
       );
       await recordAudit(this.audit, {
         actor,
@@ -457,11 +602,11 @@ export class PublishService {
         topic: claimed.topic,
         statusBefore: previousStatus,
         statusAfter: stream.status,
-        details: { feedIndex: index, entryCount: entries.length },
+        details: { feedIndex: index, entryCount: entries.length, written: wrote },
       });
-      return this.outcome(stream, { status, entry }, index, entries.length, renditions, previous);
+      return this.outcome(stream, { status, entry }, index, entries.length, renditions, previous, wrote);
     } catch (error) {
-      throw await this.fail(actor, 'stream.publish.failed', claimed, previousStatus, written, error);
+      throw await this.fail(actor, 'stream.publish.failed', claimed, previousStatus, written, error, target);
     }
   }
 
@@ -472,11 +617,15 @@ export class PublishService {
     // A recording can come off the catalogue; a live broadcast cannot, because
     // nothing here can stop the encoder that is still pushing to it.
     if (before.status === 'live') throw new StreamLiveError(id);
+    // Before the claim, as for a publish. Refused even when the entry turns out
+    // not to be on the feed: whether it is comes from the write log, and the
+    // refusal should not depend on it.
+    const target = await this.catalogue.forWrite(actor);
     const { claimed, previousStatus } = await this.claim(before, UNPUBLISHABLE_STATUSES);
     const written: WrittenAt = { index: null };
 
     try {
-      const snapshot = await this.baseSnapshot();
+      const snapshot = await this.baseSnapshot(target);
       const previous = ladderOnFeed(snapshot.entries, claimed.owner, claimed.topic);
       const { entries, removed } = removeEntry(snapshot.entries, claimed.owner, claimed.topic);
 
@@ -490,7 +639,7 @@ export class PublishService {
       // up" and the entry stayed on the catalogue with the row back in
       // `draft`. The base is now the payload this backend last wrote, so the
       // absence is real.
-      const index = removed ? await this.writeFeed(entries, snapshot.index, written) : (snapshot.index ?? 0);
+      const index = removed ? await this.writeFeed(entries, snapshot.index, target, written) : (snapshot.index ?? 0);
 
       const stream = await this.streams.finishUnpublish(id);
       if (!stream) throw new StreamNotFoundError(id);
@@ -509,23 +658,24 @@ export class PublishService {
         statusAfter: stream.status,
         details: { feedIndex: removed ? index : null, wasOnFeed: removed },
       });
-      return this.outcome(stream, null, index, entries.length, [], previous);
+      return this.outcome(stream, null, index, entries.length, [], previous, removed);
     } catch (error) {
-      throw await this.fail(actor, 'stream.unpublish.failed', claimed, previousStatus, written, error);
+      throw await this.fail(actor, 'stream.unpublish.failed', claimed, previousStatus, written, error, target);
     }
   }
 
   /**
    * An operator republishing a stream that is live or recorded: the write is
    * the uploader's path, the audit entry is this one's. A failure is recorded
-   * as a failed publish, with the status it stayed in on both sides.
+   * as a failed publish, with the status it stayed in on both sides. One the
+   * head already carries writes nothing, as a publish does (`headCarrying`).
    */
   private async republishByHand(actor: Actor, current: StreamRow): Promise<PublishOutcome> {
     let outcome: PublishOutcome;
     try {
-      outcome = await this.doRepublishWithState(actor, current);
+      outcome = await this.doRepublishWithState(actor, current, true);
     } catch (error) {
-      if (error instanceof PublishFailedError) {
+      if (error instanceof PublishFailedError || error instanceof CatalogueStampUnavailableError) {
         await recordAudit(this.audit, {
           actor,
           action: 'stream.publish.failed',
@@ -533,7 +683,7 @@ export class PublishService {
           topic: current.topic,
           statusBefore: current.status,
           statusAfter: current.status,
-          details: { error: error.reason, republish: true },
+          details: { error: error instanceof PublishFailedError ? error.reason : error.message, republish: true },
         });
       }
       throw error;
@@ -549,7 +699,7 @@ export class PublishService {
       topic: current.topic,
       statusBefore: current.status,
       statusAfter: current.status,
-      details: { feedIndex: outcome.feed.index, entryCount: outcome.feed.entryCount },
+      details: { feedIndex: outcome.feed.index, entryCount: outcome.feed.entryCount, written: outcome.written },
     });
     return outcome;
   }
@@ -562,39 +712,75 @@ export class PublishService {
    * the feed write, which is what the claim protected on the feed's side.
    *
    * `current` is the row as it was read inside this mutex, and everything here
-   * — the owner check, the entry, the log line, what a failure records — is
-   * about that row, never about whatever the caller read before queueing.
+   * — the entry, the log line, what a failure records — is about that row,
+   * never about whatever the caller read before queueing. Its owner is the
+   * one its broadcast was signed as, which publishing fixed, so it is written
+   * as it is.
+   *
+   * `byHand` is an operator's republish, which writes nothing when the head
+   * already carries the entry (`headCarrying`), and leaves the row's status
+   * as it is either way. A report always writes, as its answer names the
+   * write it caused.
    */
-  private async doRepublishWithState(actor: Actor, current: StreamRow): Promise<PublishOutcome> {
+  private async doRepublishWithState(actor: Actor, current: StreamRow, byHand: boolean): Promise<PublishOutcome> {
     const { id } = current;
-    if (!sameOwner(current.owner, this.feed.owner)) {
-      throw new FeedOwnerMismatchError(id, current.owner, this.feed.owner);
-    }
 
+    let target: CatalogueTarget | null = null;
     try {
-      const thumbnailRef = await this.ensureThumbnailUploaded(current);
+      // Inside the try, unlike a publish: the uploader's report has already
+      // moved the row, so a refusal here is recorded on it like any failed
+      // write, and the console says why the catalogue did not follow.
+      target = await this.catalogue.forWrite(actor);
+      const thumbnailRef = await this.ensureThumbnailUploaded(current, target);
       const { entry, renditions } = await this.entryFor(current, thumbnailRef);
-      const snapshot = await this.baseSnapshot();
+      const snapshot = await this.baseSnapshot(target);
       const previous = ladderOnFeed(snapshot.entries, entry.owner, entry.topic);
       const entries = upsertEntry(snapshot.entries, entry);
-      const index = await this.writeFeed(entries, snapshot.index);
+      const carriedAt = byHand ? headCarrying(current, snapshot, entry) : null;
+      const wrote = carriedAt === null;
+      const index = carriedAt ?? (await this.writeFeed(entries, snapshot.index, target));
 
       // `current`'s edit, not whatever the row holds now: no claim is taken
       // here, so the console can save an edit while this write is on its way,
-      // and that edit is not on the entry.
-      const updated = await this.streams.recordRepublish(id, index, thumbnailRef, current.content_edited_at);
+      // and that edit is not on the entry. A republish that wrote nothing
+      // leaves the status, `published_at` and `published_feed_index` alone.
+      const updated = wrote
+        ? await this.streams.recordRepublish(id, index, thumbnailRef, current.content_edited_at)
+        : await this.streams.finishWithoutWrite(id, thumbnailRef, current.content_edited_at, null);
       if (!updated) throw new StreamNotFoundError(id);
 
       logger.info(
-        `[Publish] ${describeActor(actor)} republished ${describeStream(current)} at feed index ${index} (${entries.length} entries): stays ${current.status}`,
+        `[Publish] ${describeActor(actor)} republished ${describeStream(current)}${
+          wrote ? ` at feed index ${index}` : `, nothing written: the entry at feed index ${index} already says this`
+        } (${entries.length} entries): stays ${current.status}`,
       );
-      return this.outcome(updated, { status: current.status, entry }, index, entries.length, renditions, previous);
+      return this.outcome(
+        updated,
+        { status: current.status, entry },
+        index,
+        entries.length,
+        renditions,
+        previous,
+        wrote,
+      );
     } catch (error) {
       // No claim was taken, so there is no status to put back — and none may
       // be: the row's status is the uploader's last report, which can be newer
       // than anything this call has seen. Only the reason is recorded.
-      throw await this.failRepublish(actor, current, error);
+      throw await this.failRepublish(actor, current, error, target);
     }
+  }
+
+  /**
+   * Whose entries on the catalogue are this admin's: the brand key's, which
+   * the entries older than stages carry; every stage's the admin holds,
+   * retired ones included, since a retired stage's streams and old entries
+   * still name it; and the owner of each of `rows`, which keeps a stream
+   * published under a key its stage signed with before the manager rotated it
+   * counted as ours, so its entry can still be rebuilt or added again.
+   */
+  private async ourOwners(rows: readonly StreamRow[] = []): Promise<string[]> {
+    return [this.feed.owner, ...(await this.stages.listOwners()), ...rows.map((row) => row.owner)];
   }
 
   private async read(id: string): Promise<StreamRow> {
@@ -622,20 +808,35 @@ export class PublishService {
   }
 
   /**
-   * Tells each row whose entry a reconcile rewrote or added which edit that
-   * entry now carries, as a publish does for its one row. `topics` are the
-   * ones the plan rewrote or added, and each of those entries was built from
-   * its row in `rows`, read inside this same mutex, so that row's
-   * `content_edited_at` is the edit the entry carries.
+   * Tells each row whose entry a reconcile rewrote or added the index that
+   * entry was written at, and which edit it now carries, as a publish does
+   * for its one row. `topics` are the ones the plan rewrote or added, and each
+   * of those entries was built from its row in `rows`, read inside this same
+   * mutex, so that row's `content_edited_at` is the edit the entry carries.
    *
-   * A row with an image waiting to be uploaded is left out. A reconcile
-   * uploads nothing, so its entry went out without that image, and the
-   * console has to keep asking for the republish that uploads it.
+   * A row with an image waiting to be uploaded keeps the edit it was counted
+   * as carrying. A reconcile uploads nothing, so its entry went out without
+   * that image, and the console has to keep asking for the republish that
+   * uploads it. Its index moves all the same, since the entry was written
+   * there. Only this service writes `entry_content_edited_at`, under this
+   * mutex, so the one read with the row is still the row's.
    */
-  private async recordRebuiltEntries(rows: readonly StreamRow[], topics: readonly string[]): Promise<void> {
+  private async recordRebuiltEntries(
+    rows: readonly StreamRow[],
+    topics: readonly string[],
+    feedIndex: number,
+  ): Promise<void> {
     const rebuilt = new Set(topics.map((topic) => topic.toLowerCase()));
-    const recorded = rows.filter((row) => rebuilt.has(row.topic.toLowerCase()) && !hasPendingThumbnail(row));
-    await Promise.all(recorded.map((row) => this.streams.recordEntryRebuilt(row.id, row.content_edited_at)));
+    const recorded = rows.filter((row) => rebuilt.has(row.topic.toLowerCase()));
+    await Promise.all(
+      recorded.map((row) =>
+        this.streams.recordEntryRebuilt(
+          row.id,
+          feedIndex,
+          hasPendingThumbnail(row) ? row.entry_content_edited_at : row.content_edited_at,
+        ),
+      ),
+    );
   }
 
   /**
@@ -667,13 +868,31 @@ export class PublishService {
   private async claim(
     before: StreamRow,
     allowedFrom: readonly StreamStatus[] = PUBLISHABLE_STATUSES,
+    draftNeedsStage = false,
   ): Promise<{ claimed: StreamRow; previousStatus: StreamStatus }> {
-    const claimed = await this.streams.claimForPublish(before.id, allowedFrom);
+    const claimed = await this.streams.claimForPublish(before.id, allowedFrom, draftNeedsStage);
     if (!claimed) {
       // Re-read rather than trusting `before`: the row may have been deleted
-      // between the two statements, which is a 404, not a 409.
+      // between the two statements, which is a 404, not a 409, and an edit
+      // may have taken its stage away.
       const current = await this.streams.findById(before.id);
       if (!current) throw new StreamNotFoundError(before.id);
+      if (draftNeedsStage && current.status === 'draft' && current.stage_id === null) {
+        throw new StageRequiredError(before.id);
+      }
+      // The claim takes a draft that holds a recording only while its stage
+      // signs as the owner the recording was made under.
+      if (
+        draftNeedsStage &&
+        current.status === 'draft' &&
+        current.stage_id !== null &&
+        current.manifest_index !== null
+      ) {
+        const stage = await this.stages.findSummary(current.stage_id);
+        if (stage && !sameFeedOwner(current.owner, stage.owner)) {
+          throw new FeedOwnerMismatchError(current.id, current.owner, current.stage_id, stage.owner);
+        }
+      }
       throw new StreamBusyError(before.id, current.status);
     }
 
@@ -688,14 +907,26 @@ export class PublishService {
    *
    * That check is not paranoia. A stored reference outlives the gateway that
    * produced it: one written under FEED_GATEWAY=fake is a fabrication, and
-   * BEE_URL can be repointed at a node that never saw the chunks. Carrying
+   * the catalogue stamp can name a node that never saw the chunks. Carrying
    * such a reference onto the feed gives every viewer a 404. A gateway that
    * cannot answer throws instead, and the publish fails rather than paying to
    * re-upload an image that is probably fine.
+   *
+   * Asked of, and uploaded through, the catalogue node, stamped with the
+   * catalogue's batch: an image the catalogue names lives as long as the
+   * catalogue does.
    */
-  private async ensureThumbnailUploaded(stream: StreamRow): Promise<string | null> {
+  private async ensureThumbnailUploaded(stream: StreamRow, target: CatalogueTarget | null): Promise<string | null> {
     if (!stream.has_thumbnail) return stream.thumbnail_ref;
-    if (stream.thumbnail_ref && (await this.gateway.hasReference(stream.thumbnail_ref))) {
+    // Reused only when it was uploaded under the batch this write goes with: an image only an older batch holds
+    // lapses with it. The same bytes upload to the same reference, so another batch costs a stamp and changes
+    // nothing the entry says.
+    const batchId = target?.batchId ?? null;
+    if (
+      stream.thumbnail_ref &&
+      stream.thumbnail_batch_id === batchId &&
+      (await this.gateway.hasReference(stream.thumbnail_ref, target))
+    ) {
       return stream.thumbnail_ref;
     }
 
@@ -703,16 +934,25 @@ export class PublishService {
     if (!stored) return null;
 
     if (stream.thumbnail_ref) {
-      logger.warn(`[Publish] ${stream.topic} thumbnail ${stream.thumbnail_ref} is not on the gateway; re-uploading`);
+      logger.warn(
+        stream.thumbnail_batch_id === batchId
+          ? `[Publish] ${stream.topic} thumbnail ${stream.thumbnail_ref} is not on the gateway; re-uploading`
+          : `[Publish] ${stream.topic} thumbnail ${stream.thumbnail_ref} was uploaded under another batch than the catalogue's; re-uploading`,
+      );
     }
 
     const mime = stored.thumbnail_mime ?? 'image/png';
     const extension = THUMBNAIL_FILE_EXTENSIONS[mime] ?? 'bin';
-    const reference = await this.gateway.uploadThumbnail(stored.thumbnail, `${stream.topic}.${extension}`, mime);
+    const reference = await this.gateway.uploadThumbnail(
+      stored.thumbnail,
+      `${stream.topic}.${extension}`,
+      mime,
+      target,
+    );
     // Written now, not with the rest of the publish: the chunk is paid for
     // already, and a feed write that fails after this must not make the next
     // attempt upload the same image again.
-    await this.streams.recordThumbnailRef(stream.id, reference);
+    await this.streams.recordThumbnailRef(stream.id, reference, batchId);
     return reference;
   }
 
@@ -724,11 +964,11 @@ export class PublishService {
    * install, or a database whose rows all predate migration 003 — and that is
    * logged, because it is the one moment the old failure mode can still bite.
    */
-  private async baseSnapshot(): Promise<FeedSnapshot> {
+  private async baseSnapshot(target: CatalogueTarget | null): Promise<FeedSnapshot> {
     const last = await this.feedWrites.lastWrite(this.feed.owner, this.feed.topicHex);
     if (last) return { index: last.index, entries: last.entries };
 
-    const snapshot = await this.gateway.readLatest();
+    const snapshot = await this.gateway.readLatest(target);
     logger.info(
       `[Publish] no recorded write for feed ${this.feed.owner}/${this.feed.topicHex}; falling back to the network head (${snapshot.index ?? 'none'})`,
     );
@@ -739,12 +979,32 @@ export class PublishService {
    * Writes at the index after the base; index 0 when the feed is empty.
    * `written`, when given, learns the index the moment the gateway has taken
    * the write, so a failure after that point can say the catalogue carries it.
+   *
+   * The payload is encoded once, here, and the same string goes to the
+   * gateway and into `feed_writes.payload_text`, with the batch that stamped
+   * it: the exact bytes are what moving the catalogue to another batch
+   * uploads again.
    */
-  private async writeFeed(entries: unknown[], head: number | null, written?: WrittenAt): Promise<number> {
+  private async writeFeed(
+    entries: unknown[],
+    head: number | null,
+    target: CatalogueTarget | null,
+    written?: WrittenAt,
+  ): Promise<number> {
     const index = head === null ? 0 : head + 1;
-    const reference = await this.gateway.write(entries, index);
+    const payloadText = encodeFeedPayload(entries);
+    const reference = await this.gateway.write(payloadText, index, target);
     if (written) written.index = index;
-    await this.feedWrites.record(this.feed.owner, this.feed.topicHex, index, entries.length, entries, reference);
+    await this.feedWrites.record({
+      owner: this.feed.owner,
+      topic: this.feed.topicHex,
+      feedIndex: index,
+      entryCount: entries.length,
+      payload: entries,
+      payloadText,
+      reference,
+      batchId: target?.batchId ?? null,
+    });
     return index;
   }
 
@@ -763,9 +1023,10 @@ export class PublishService {
     previousStatus: StreamStatus,
     written: WrittenAt,
     error: unknown,
+    target: CatalogueTarget | null,
   ): Promise<PublishFailedError> {
     const verb = action === 'stream.publish.failed' ? 'publish' : 'unpublish';
-    const { failure, released } = await this.failed(actor, verb, claimed, error, (message) =>
+    const { failure, released } = await this.failed(actor, verb, claimed, error, target, (message) =>
       this.streams.failPublish(claimed.id, previousStatus, message),
     );
     await recordAudit(this.audit, {
@@ -780,22 +1041,37 @@ export class PublishService {
     return failure;
   }
 
-  /** A republish failed: there is no claim to release, so only record why. */
-  private async failRepublish(actor: Actor, current: StreamRow, error: unknown): Promise<PublishFailedError> {
-    const { failure } = await this.failed(actor, 'republish', current, error, (message) =>
+  /**
+   * A republish failed: there is no claim to release, so only record why. A
+   * refusal for want of a catalogue batch keeps its own type, so the caller
+   * can tell it from a write that was tried and failed.
+   */
+  private async failRepublish(
+    actor: Actor,
+    current: StreamRow,
+    error: unknown,
+    target: CatalogueTarget | null,
+  ): Promise<PublishFailedError | CatalogueStampUnavailableError> {
+    const { failure } = await this.failed(actor, 'republish', current, error, target, (message) =>
       this.streams.recordPublishError(current.id, message),
     );
-    return failure;
+    return error instanceof CatalogueStampUnavailableError ? error : failure;
   }
 
+  /**
+   * Records and answers the reason without the catalogue node's address, which bee-js and Node print in their errors
+   * and the console is never told (`withoutCatalogueNode`). The log line keeps the error as it was.
+   */
   private async failed(
     actor: Actor,
     verb: string,
     stream: StreamRow,
     error: unknown,
+    target: CatalogueTarget | null,
     record: (message: string) => Promise<void>,
   ): Promise<{ failure: PublishFailedError; released: boolean }> {
-    const message = getErrorMessage(error);
+    const raw = getErrorMessage(error);
+    const message = withoutCatalogueNode(raw, target);
     const who = describeActor(actor);
     let released = true;
     try {
@@ -809,26 +1085,28 @@ export class PublishService {
         `[Publish] ${who} could not record the failed ${verb} of ${describeStream(stream)}: ${getErrorMessage(recordError)}`,
       );
     }
-    logger.error(`[Publish] ${who} could not ${verb} ${describeStream(stream)}: ${message}`);
+    logger.error(`[Publish] ${who} could not ${verb} ${describeStream(stream)}: ${raw}`);
     return { failure: new PublishFailedError(stream.id, message), released };
   }
 
   /**
-   * `written` is the entry the write put on the feed and the status it was
-   * built with, or null for an unpublish, which took the entry off.
+   * `listed` is the entry the feed carries for the stream after this call and
+   * the status it was built with, or null for an unpublish, which took the
+   * entry off. `written` is whether this call wrote the feed to get there.
    */
   private outcome(
     stream: StreamRow,
-    written: { status: StreamStatus; entry: FeedStreamEntry } | null,
+    listed: { status: StreamStatus; entry: FeedStreamEntry } | null,
     index: number,
     entryCount: number,
     renditions: Rendition[],
     previousRenditions: Rendition[],
+    written: boolean,
   ): PublishOutcome {
     return {
       stream,
-      entryStatus: written?.status ?? null,
-      entryRecording: written ? recordingOn(written.entry) : null,
+      entryStatus: listed?.status ?? null,
+      entryRecording: listed ? recordingOn(listed.entry) : null,
       feed: {
         owner: this.feed.owner,
         topic: this.feed.topic,
@@ -836,6 +1114,7 @@ export class PublishService {
         index,
         entryCount,
       },
+      written,
       renditions,
       previousRenditions,
     };

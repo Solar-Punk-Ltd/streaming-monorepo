@@ -1,6 +1,7 @@
 import {
   ABR_LADDER_SIZE,
   type BeePublishersResult,
+  CHEQUEBOOK_EMPTY,
   drainedChequebooks,
   hasStampId,
   isDeadStampState,
@@ -8,9 +9,9 @@ import {
   isLadderKind,
   type LadderRungState,
   PUBLISHABLE_RUNG_STATUS,
+  type Readiness,
 } from '@streaming-infra-manager/common';
 
-import { CHEQUEBOOK_EMPTY, type Readiness } from '../deployments/readiness';
 import { isRunning, isTransitional } from '../deployments/shape';
 import type { DeploymentGroup, Profile } from '../types';
 import type { ChequebookHealths } from '../uploaders/useChequebookHealths';

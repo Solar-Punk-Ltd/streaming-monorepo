@@ -41,8 +41,9 @@ a browser: login, create, edit with tags, publish (feed index 0), republish
 with thumbnail (index 1, reference recorded), rotate key, unpublish (index 2,
 empty list), password change signing out other sessions, logout. The Bee
 gateway ran in `fake` mode; the bee-js integration test is skipped until
-`BEE_URL` and `POSTAGE_BATCH_ID` point at a real node. Docker image builds are
-unverified on this machine (no registry access).
+`BEE_URL` and `POSTAGE_BATCH_ID` (`ITEST_BEE_URL` and `ITEST_BATCH_ID` since
+phase 7 of stages) point at a real node. Docker image builds are unverified on
+this machine (no registry access).
 
 Real-Swarm test, same day: a colleague pointed the backend at their Bee node,
 published two streams with thumbnails, and deployed a viewer built for the feed
@@ -255,14 +256,137 @@ removed user's streams kept with `user_id` set to null. Migrations 007 and 008
 also applied cleanly by hand over a database at 006 seeded with users, a
 session and draft, published and live streams.
 
-## Checkpoint 3: manager integration
+## Stages from the manager (decided 2026-09-28, built on `feat/stages`)
+
+Spec: [stages.md](architecture/stages.md). Decided with the owner: the admin
+stops carrying one stage in its env file and learns every stage from the
+manager.
+
+- The manager pushes a record per stage into the admin over the admin link it
+  already holds. The admin never calls the manager, so the manager grows no
+  machine login, and the admin keeps what it was told in its own database.
+- One catalogue per brand, signed by the brand key. A stream's stage is picked
+  per stream and fixed at publish.
+- Every stage signs with its own key and presents its own token. The admin
+  answers a token only about its own stage's streams.
+- The catalogue has a batch of its own, immutable, on a dedicated catalogue
+  node, pinned by id. It never shares a batch a rung stamps segments with.
+- The admin reads stamps and chequebooks; spending stays in the manager.
+
+Built in nine phases, each a pull request into `feat/stages`: phases 1 to 8
+merged there on 2026-09-28, and the fix and phase 9 below opened for review on
+2026-09-29. Nothing has been deployed; the feature branch goes to `main` once
+the owner has tried it whole.
+
+- Phase 1, the brief and the records (#56, 2026-09-28): the spec, this entry,
+  and the stage and catalogue stamp records as zod schemas in
+  `packages/contracts`.
+- Phase 2, the admin takes stage records (#57, 2026-09-28): the manager's
+  routes under `/api/internal` on the registrar token, the ordering by the
+  manager's `observedAt`, retirements and their tombstones, and a Stages page
+  in the console.
+- Phase 3, the manager pushes stage records (#58, 2026-09-28): the stage
+  publisher, on a change, every 30 seconds and before a deploy starts its
+  uploader, with the manager's readiness verdict, and a public ingest address
+  per deployment.
+- Phase 4, a stage per stream (#59, 2026-09-28): a stream's stage is picked in
+  the stream form from the stages that are not retired and run SRS, fixed at
+  publish and kept by a stream that holds a recording, and a draft with none
+  is refused at publish. My Streams has a Stage column and filter, the OBS
+  panel is built from the stage, and `INGEST_HOST`, the ingest ports,
+  `INGEST_RTMP_PUBLIC`, `INGEST_SRT_PASSPHRASE` and `INGEST_KEY_VERIFIED`
+  leave the admin's env: every uploader that takes streams from the admin
+  verifies the per-stream `key=`, so the console no longer warns that it
+  might not.
+- Phase 5, a token per uploader (#60, 2026-09-28): the manager generates an
+  `ADMIN_API_TOKEN` of its own for every uploader linked to its admin and
+  pushes its sha256, and the admin answers that token only about its stage's
+  streams. The shared token was still taken while the stages moved over.
+- Phase 6, a key per stage (#62, 2026-09-28): a stream's owner is its stage's,
+  read again at the publish claim of a draft with no recording, and a
+  recording keeps the owner it was made under. The brand key signs the
+  catalogue alone. The uploader's boot check and the manager's Test
+  connection compare with the owner the admin knows for the token's stage.
+- Phase 7, the catalogue node (#61, 2026-09-28): the manager designates a
+  Bee-only deployment and an immutable batch on it as the brand's catalogue
+  stamp and guards both; the admin writes the catalogue through them, pins
+  the batch of its first write and records the exact bytes of every write.
+  `BEE_URL` and `POSTAGE_BATCH_ID` leave the admin's env.
+- Phase 8, moving the catalogue to another batch (#63, 2026-09-28): the
+  manager designates another batch as a move and keeps guarding the previous
+  one until the operator releases it; the admin stamps every slot again under
+  the new batch, byte for byte, then every stored thumbnail, then writes with
+  it. Decided: `CATALOGUE_MOVE_ENABLED` stays off on every installation until
+  the owner has tried the move on a real node, by the procedure in the spec.
+- A fix between them (#64, 2026-09-29): the manager's admin-link browser test
+  follows the per-stage owner wording phase 6 gave Test connection.
+- Phase 9, the shared token stops (#65, 2026-09-29): the admin's uploader
+  routes take a stage's own token alone, so `INTERNAL_API_TOKEN` is the
+  registrar credential only and a stage still on another token is refused
+  until it is rotated in the manager. `GET /api/internal/registrar` proves the
+  manager's stored token, and its Manager settings Test connection uses it.
+  `use_manager_admin_token` is gone, and these pages close checkpoint 3.
+- Review of the pull request into `main` (#74, 2026-10-02): three reviews and
+  a review table, answered in #76 to #81 on `fix/stages--review-fixes`.
+  Decided: the admin's deploy script refuses the sample brand key and
+  registrar token unless it is given `--allow-sample-secrets`; a new
+  catalogue batch must be depth 18 or more, the batch already pinned and a
+  move back to it excepted, and warnings for a shallow batch come later; a
+  deploy on the manager's own Linux host binds every empty Bee API bind to the
+  Docker bridge address, and the catalogue node card warns when Docker shows
+  the node's API on every address; the manager sends the web2 admin plain
+  http only on its own host, unless `ADMIN_LINK_ALLOW_PLAIN_HTTP=true`; a
+  removed stage's retirement waits in the table migration 049 adds,
+  `pending_stage_retirements`, and is sent again until the admin answers it.
+
+Left open after the nine phases:
+
+- **The catalogue move** is built and off until the owner's trial on a real
+  node, whose date goes here.
+- **The upgrade, scripted.** The rollout below is six manual steps in a fixed
+  order; a script with a check after each step comes before the QA control
+  host or the pilot is upgraded.
+- **Pending retirements** show only in the manager's log; the Stages page
+  could count them.
+- **Top-ups from the admin.** The admin reads every rung's stamp and
+  chequebook and the catalogue batch; buying, topping up and funding stay in
+  the manager's console until this is decided.
+- **Brand separation** inside one admin, and a second admin link per manager
+  for a second brand, among the open decisions below.
+- **Rollout**, decided 2026-09-29, for a host that runs the admin and
+  manager from before stages: the catalogue node created; the manager that
+  pushes stage records (phase 9), with the node designated at once; the
+  intermediate admin, the phase 8 state of `feat/stages` (commit `d29616851`;
+  tag it `web2-admin/stages-intermediate` before `feat/stages` is merged to
+  `main`, because a squash or rebase merge leaves that commit unreachable);
+  every scheduled stream unpublished, given a stage and published again, and
+  every draft given a stage; every stage rotated and redeployed until the
+  admin's Stages page reads "Its own token" for all; the admin that refuses
+  the shared token (phase 9); then a `STREAM_KEY` of its own for each stage.
+  Until the catalogue is moved, the batch from before stages holds every slot
+  written before the intermediate admin: it stays topped up and alive, is
+  never diluted, replaced or put in a pool string, and the move runs first
+  after the real-node trial. That is the one remaining way the catalogue can
+  go dark. "Upgrading" in `docs/self-hosting.md` has each step. A fresh
+  installation needs none of this.
+
+## Checkpoint 3: manager integration (built on `feat/stages`, 2026-09-29)
 
 - Manager deploys swarm-hls-stream from `main-v3`.
 - Derive ingest host and ports from a manager profile (`10001 + slot*10`
-  etc.) instead of env; provision and stop through the Manager API.
-- Stamp top-up and cheque balance read-through.
+  etc.) instead of env; provision and stop through the Manager API. Done as
+  [stages](architecture/stages.md): the manager pushes each stage's public
+  ingest address, ports and passphrase, the admin's env carries no stage, and
+  a stream's OBS panel comes from its stage. Nothing is provisioned from the
+  admin: deployments are made and stopped in the manager's console.
+- Stamp top-up and cheque balance read-through. The read-through is done:
+  every stage record carries its rungs' stamps and chequebooks and the
+  manager's readiness verdict, and the catalogue stamp record the catalogue
+  batch's. Top-ups from the admin are not built and stay an open decision.
 - Decide how the admin layer authenticates to the manager once they are on
-  different hosts.
+  different hosts. Decided 2026-09-28: it does not, because the manager
+  pushes, on the admin's registrar token, and every uploader presents a token
+  of its own (done in phases 5 and 9).
 
 ## Checkpoint 4: brand console
 
@@ -278,4 +402,7 @@ session and draft, published and live streams.
 
 - Authentication and ownership: OIDC, wallet signature, or magic link.
 - Manager API authentication and per-brand attribution.
+- Brand separation inside one admin: which brand a stage and a stream belong
+  to, and a second admin link per manager. Top-ups from the admin, which
+  today reads stamps and chequebooks and leaves spending to the manager.
 - Chat placement (SPA question; only lands here if a websocket wins).

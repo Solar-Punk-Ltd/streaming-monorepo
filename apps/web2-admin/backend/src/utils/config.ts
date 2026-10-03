@@ -27,18 +27,11 @@ function optionalNumber(name: string, fallback: number): number {
   return value;
 }
 
-function optionalBoolean(name: string, fallback: boolean): boolean {
-  const raw = optional(name, String(fallback)).trim().toLowerCase();
-  if (raw === 'true' || raw === '1' || raw === 'yes') return true;
-  if (raw === 'false' || raw === '0' || raw === 'no') return false;
-  throw new Error(`Env var ${name} must be true or false, got: ${raw}`);
-}
-
 /**
- * The internal API is the uploader's only way in, and it can flip a stream to
- * live and rewrite its catalogue entry. A short token would be brute-forceable
- * over a LAN, so the length is enforced here rather than trusted to whoever
- * wrote the .env.
+ * The registrar token is the manager's only way into the internal API, and it
+ * can register a stage and designate the catalogue's batch. A short token would
+ * be brute-forceable over a LAN, so the length is enforced here rather than
+ * trusted to whoever wrote the .env.
  */
 export const INTERNAL_API_TOKEN_MIN_LENGTH = ADMIN_API_TOKEN_MIN_LENGTH;
 
@@ -56,34 +49,31 @@ export type FeedGatewayKind = 'bee' | 'fake';
 
 const FEED_GATEWAY_KINDS: readonly FeedGatewayKind[] = ['bee', 'fake'];
 
-export interface IngestConfig {
-  host: string;
-  srtPort: number;
-  rtmpPort: number;
-  /**
-   * Whether RTMP ingest is open to encoders on this deployment, and so shown
-   * to the operator. Off by default: ingest is SRT only, the deployments
-   * close RTMP's port, and RTMP carries no passphrase.
-   */
-  rtmpPublic: boolean;
-  /** One value for the whole SRS server, or null when SRT is unencrypted. */
-  srtPassphrase: string | null;
-  keyVerified: boolean;
-}
-
 export interface AppConfig {
   port: number;
   host: string;
   databaseUrl: string;
   feedGateway: FeedGatewayKind;
-  beeUrl: string;
-  postageBatchId: string;
   feedPrivateKey: string;
   feedTopic: string;
   viewerBaseUrl: string;
-  /** Bearer token the uploader presents on /api/internal. */
+  /**
+   * The registrar token the manager pushes stages with on /api/internal. No uploader is given it, and the uploader's
+   * routes refuse it.
+   */
   internalApiToken: string;
-  ingest: IngestConfig;
+  /**
+   * `CATALOGUE_MOVE_ENABLED`: whether an operator may move the catalogue's history onto another batch from the
+   * Stages page. Off unless set, until the move has been tried on a real node (docs/architecture/stages.md).
+   */
+  catalogueMoveEnabled: boolean;
+}
+
+function optionalFlag(name: string): boolean {
+  const raw = optional(name, 'false').trim().toLowerCase();
+  if (raw === 'true' || raw === '1') return true;
+  if (raw === 'false' || raw === '0') return false;
+  throw new Error(`Env var ${name} must be true or false, got: ${raw}`);
 }
 
 function feedGateway(): FeedGatewayKind {
@@ -119,18 +109,9 @@ export const config: AppConfig = {
   host: optional('WEB2_ADMIN_HOST', '0.0.0.0'),
   databaseUrl: required('DATABASE_URL'),
   feedGateway: feedGateway(),
-  beeUrl: required('BEE_URL'),
-  postageBatchId: required('POSTAGE_BATCH_ID'),
   feedPrivateKey: feedPrivateKey(),
   feedTopic: optional('FEED_TOPIC', 'swarm-stream'),
   viewerBaseUrl: optional('VIEWER_BASE_URL', ''),
   internalApiToken: requiredSecret('INTERNAL_API_TOKEN', INTERNAL_API_TOKEN_MIN_LENGTH),
-  ingest: {
-    host: required('INGEST_HOST'),
-    srtPort: optionalNumber('INGEST_SRT_PORT', 10061),
-    rtmpPort: optionalNumber('INGEST_RTMP_PORT', 10062),
-    rtmpPublic: optionalBoolean('INGEST_RTMP_PUBLIC', false),
-    srtPassphrase: optional('INGEST_SRT_PASSPHRASE', '') || null,
-    keyVerified: optionalBoolean('INGEST_KEY_VERIFIED', false),
-  },
+  catalogueMoveEnabled: optionalFlag('CATALOGUE_MOVE_ENABLED'),
 };

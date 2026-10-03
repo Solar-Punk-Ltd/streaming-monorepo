@@ -6,6 +6,7 @@ import {
   OBS_SRT_PASSPHRASE_FIELD_HELP,
   type IngestDetails,
   type IngestRtmpDetails,
+  type IngestSrtDetails,
 } from '@streaming-monorepo/web2-admin-common';
 
 import * as api from '../api';
@@ -15,10 +16,12 @@ import { ConfirmDialog } from './ConfirmDialog';
 import { useSnackbar } from './Snackbar';
 import { ValueField } from './ValueField';
 
-/** Verbatim from the checkpoint-2 spec; do not paraphrase. */
-export const KEY_UNVERIFIED_NOTE =
-  'The ingest does not verify this key yet. Anyone with the SRT passphrase ' +
-  'can publish under this name until the uploader is upgraded.';
+/** What the panel says while the stream has no stage, so there is nowhere to send it yet. */
+export const NO_STAGE_NOTE = 'Pick the stage this stream is broadcast on, in its edit form, to see where OBS sends it.';
+
+/** What the panel says under the details of a stage the manager retired. */
+export const RETIRED_STAGE_NOTE =
+  'The manager retired this stage. These are the details it last pushed, and they may no longer answer.';
 
 /**
  * The SRT Server line carries `key=<publishKey>` and, where it can ride there,
@@ -49,7 +52,7 @@ function ProtocolSection({ title, children }: { title: string; children: ReactNo
  * Stream Key box empty, and the Use authentication Password when the
  * passphrase cannot ride on that line.
  */
-function SrtSettings({ srt }: { srt: IngestDetails['srt'] }) {
+function SrtSettings({ srt }: { srt: IngestSrtDetails }) {
   const { server, passphraseRoute } = buildObsSrtServer(srt.url, srt.passphrase);
   return (
     <ProtocolSection title="SRT">
@@ -71,7 +74,7 @@ function SrtSettings({ srt }: { srt: IngestDetails['srt'] }) {
         <ValueField label="SRT Password" value={srt.passphrase} secret helperText={OBS_SRT_PASSPHRASE_FIELD_HELP} />
       ) : null}
       {passphraseRoute === 'none' ? (
-        <Alert severity="info">No SRT passphrase is configured on this ingest server.</Alert>
+        <Alert severity="info">No SRT passphrase is configured on this stage.</Alert>
       ) : null}
     </ProtocolSection>
   );
@@ -135,19 +138,25 @@ export function IngestPanel({
           </Button>
         </Stack>
 
-        {!details.keyVerified ? <Alert severity="warning">{KEY_UNVERIFIED_NOTE}</Alert> : null}
+        {details.stage && details.srt ? (
+          <>
+            <Typography variant="body2">
+              On stage <strong>{details.stage.name}</strong>. In OBS, open Settings, then Stream, and set Service to
+              Custom.{' '}
+              {details.rtmp
+                ? 'Then pick one of the two protocols below and copy its values into OBS.'
+                : 'Then copy the SRT values below into OBS.'}{' '}
+              Each field says which box it goes in.
+            </Typography>
+            {details.stage.retiredAt ? <Alert severity="warning">{RETIRED_STAGE_NOTE}</Alert> : null}
 
-        <Typography variant="body2">
-          In OBS, open Settings, then Stream, and set Service to Custom.{' '}
-          {details.rtmp
-            ? 'Then pick one of the two protocols below and copy its values into OBS.'
-            : 'Then copy the SRT values below into OBS.'}{' '}
-          Each field says which box it goes in.
-        </Typography>
-
-        <SrtSettings srt={details.srt} />
-        {/* Sent only where the deployment opens RTMP ingest. Elsewhere its port refuses encoders. */}
-        {details.rtmp ? <RtmpSettings rtmp={details.rtmp} /> : null}
+            <SrtSettings srt={details.srt} />
+            {/* Sent only where the stage opens RTMP ingest. Elsewhere its port refuses encoders. */}
+            {details.rtmp ? <RtmpSettings rtmp={details.rtmp} /> : null}
+          </>
+        ) : (
+          <Alert severity="info">{NO_STAGE_NOTE}</Alert>
+        )}
 
         <Typography variant="caption" sx={{ color: 'text.secondary' }}>
           Ingest stream id {details.streamId}

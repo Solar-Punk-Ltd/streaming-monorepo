@@ -18,9 +18,21 @@ import {
   adminLinkProblem,
   sameAdminOrigin,
   storedTokenMoveProblem,
+  TYPED_TOKEN_AT_LINK,
 } from './adminLink.js';
-import { ADMIN_LINK_TEST_OUTCOMES, adminLinkTestProblems } from './adminLinkTest.js';
-import { adminTokenProblem, managerAdminLinkProblems } from './managerAdminLink.js';
+import {
+  ADMIN_LINK_TEST_OUTCOMES,
+  ADMIN_LINK_TOKEN_HOLDERS,
+  adminLinkTestProblems,
+  STORED_TOKEN_NOT_AN_UPLOADER,
+} from './adminLinkTest.js';
+import {
+  ADMIN_LINK_ALLOW_PLAIN_HTTP_KEY,
+  adminTokenProblem,
+  managerAdminLinkProblems,
+  PLAIN_HTTP_ADMIN_LINK_REFUSED,
+  plainHttpAdminLinkHost,
+} from './managerAdminLink.js';
 
 const ADMIN_URL = 'https://admin.example.com';
 
@@ -99,6 +111,36 @@ describe('the two keys once edits land', () => {
       token: { current: true, afterReset: true },
     };
     assert.equal(adminLinkAfterEdits([{ key: ADMIN_API_TOKEN_KEY, value: '' }], before).hasToken, false);
+  });
+
+  it("counts the token of the deployment's own for the manager's link address alone", () => {
+    const generated: AdminLinkBefore = {
+      url: { current: '', afterReset: '' },
+      token: { current: false, afterReset: false, generatedFor: ADMIN_URL },
+    };
+    assert.equal(
+      adminLinkAfterEdits([{ key: ADMIN_API_URL_KEY, value: `${ADMIN_URL}/some/path` }], generated).hasToken,
+      true,
+    );
+    assert.equal(
+      adminLinkAfterEdits([{ key: ADMIN_API_URL_KEY, value: 'https://elsewhere.example.org' }], generated).hasToken,
+      false,
+    );
+    assert.equal(adminLinkAfterEdits([{ key: ADMIN_API_URL_KEY, value: '' }], generated).hasToken, false);
+    assert.match(
+      adminLinkEditProblem([{ key: ADMIN_API_URL_KEY, value: 'https://elsewhere.example.org' }], generated) ?? '',
+      /ADMIN_API_URL is set and ADMIN_API_TOKEN is not/,
+    );
+    assert.equal(adminLinkEditProblem([{ key: ADMIN_API_URL_KEY, value: ADMIN_URL }], generated), null);
+  });
+
+  it('counts it after a reset of the token too, and never over an empty token typed in its place', () => {
+    const generated: AdminLinkBefore = {
+      url: { current: ADMIN_URL, afterReset: ADMIN_URL },
+      token: { current: true, afterReset: false, generatedFor: ADMIN_URL },
+    };
+    assert.equal(adminLinkAfterEdits([{ key: ADMIN_API_TOKEN_KEY, value: null }], generated).hasToken, true);
+    assert.equal(adminLinkAfterEdits([{ key: ADMIN_API_TOKEN_KEY, value: '' }], generated).hasToken, false);
   });
 
   it('judges only edits that name either key', () => {
@@ -244,6 +286,87 @@ describe("a save of the manager's own web2 admin link", () => {
   });
 });
 
+describe("a plain http address for the manager's own web2 admin link", () => {
+  it('leaves the manager a host to judge for any plain http host its text cannot place on the manager’s own', () => {
+    for (const [url, host] of [
+      ['http://admin.example.org', 'admin.example.org'],
+      ['http://admin.example:3000', 'admin.example'],
+      ['http://203.0.113.7:9877', '203.0.113.7'],
+      ['HTTP://Admin.Example.org/api', 'admin.example.org'],
+      [' http://[2001:db8::1]:80 ', '2001:db8::1'],
+      // A Docker service name on the manager's host: only what it resolves to tells, which the manager reads.
+      ['http://web2-admin-backend:3000', 'web2-admin-backend'],
+    ]) {
+      assert.equal(plainHttpAdminLinkHost(url!), host, url);
+    }
+  });
+
+  it('leaves none for https, a loopback host, the Docker host gateway or what is no address at all', () => {
+    for (const url of [
+      'https://admin.example.org',
+      'http://localhost:9877',
+      'http://127.0.0.1:9877',
+      'http://[::1]:9877',
+      'http://0.0.0.0:9877',
+      'http://host.docker.internal:3000',
+      '',
+      'admin.example.org',
+    ]) {
+      assert.equal(plainHttpAdminLinkHost(url), null, url);
+    }
+  });
+
+  it('refuses a save the manager judged to go to another host, and only then', () => {
+    const save = { expectedRevision: 0, url: 'http://admin.example:3000', token: 'synthetic-token-0123456789abcdef' };
+    assert.deepEqual(managerAdminLinkProblems(save, undefined, 'refused'), [PLAIN_HTTP_ADMIN_LINK_REFUSED]);
+    assert.deepEqual(managerAdminLinkProblems(save, undefined, 'allowed'), []);
+    assert.deepEqual(managerAdminLinkProblems(save, undefined, 'allowed-by-setting'), []);
+    assert.deepEqual(
+      managerAdminLinkProblems(save, undefined, 'unresolved'),
+      [],
+      'a name that does not resolve yet, a stopped service among them, is judged when it is sent to',
+    );
+    assert.deepEqual(
+      managerAdminLinkProblems(save),
+      [],
+      'the text alone refuses nothing: a page cannot resolve the host',
+    );
+  });
+
+  it('names the setting that allows it, and no address and no token', () => {
+    assert.equal(ADMIN_LINK_ALLOW_PLAIN_HTTP_KEY, 'ADMIN_LINK_ALLOW_PLAIN_HTTP');
+    assert.ok(PLAIN_HTTP_ADMIN_LINK_REFUSED.includes(`${ADMIN_LINK_ALLOW_PLAIN_HTTP_KEY}=true`));
+    assert.doesNotMatch(PLAIN_HTTP_ADMIN_LINK_REFUSED, /example|:\/\//);
+  });
+});
+
+describe("a stored token at the manager's link address", () => {
+  const LINK = 'https://admin.example.com';
+  const before = (stored: boolean, generatedFor: string | null = LINK) => ({
+    url: { current: LINK, afterReset: '' },
+    token: { current: stored, afterReset: false, generatedFor, stored },
+  });
+  const TYPED = { key: 'ADMIN_API_TOKEN', value: 'synthetic-typed-admin-token-0123456789abcdef' };
+
+  it('is refused while the link stores a token, typed now or left stored by a save of the address', () => {
+    assert.equal(adminLinkEditProblem([TYPED], before(false)), TYPED_TOKEN_AT_LINK);
+    assert.equal(
+      adminLinkEditProblem([{ key: 'ADMIN_API_URL', value: `${LINK}/v2` }], before(true)),
+      TYPED_TOKEN_AT_LINK,
+    );
+  });
+
+  it('is taken out by a reset, and not held at another address or with no link token', () => {
+    assert.equal(adminLinkEditProblem([{ key: 'ADMIN_API_TOKEN', value: null }], before(true)), null);
+    assert.equal(
+      adminLinkEditProblem([{ key: 'ADMIN_API_URL', value: 'https://admin2.example.com' }, TYPED], before(false)),
+      null,
+    );
+    assert.equal(adminLinkEditProblem([TYPED], before(false, null)), null);
+    assert.equal(adminLinkEditProblem([{ key: 'LOG_LEVEL', value: 'debug' }], before(true)), null);
+  });
+});
+
 describe('a request to test a web2 admin link typed on a page', () => {
   const TOKEN = 'synthetic-admin-token-0123456789abcdef';
 
@@ -269,6 +392,17 @@ describe('a request to test a web2 admin link typed on a page', () => {
     );
   });
 
+  it("says whose token it is, and refuses the stored one as an uploader's, since it is the registrar's", () => {
+    const typed = { source: 'typed' as const, value: TOKEN };
+    assert.deepEqual(adminLinkTestProblems({ url: ADMIN_URL, token: typed, tokenFor: 'uploader' }), []);
+    assert.deepEqual(adminLinkTestProblems({ url: ADMIN_URL, token: typed, tokenFor: 'registrar' }), []);
+    assert.deepEqual(adminLinkTestProblems({ url: ADMIN_URL, token: { source: 'stored' }, tokenFor: 'registrar' }), []);
+    assert.deepEqual(adminLinkTestProblems({ url: ADMIN_URL, token: { source: 'stored' }, tokenFor: 'uploader' }), [
+      STORED_TOKEN_NOT_AN_UPLOADER,
+    ]);
+    assert.deepEqual([...ADMIN_LINK_TOKEN_HOLDERS], ['registrar', 'uploader']);
+  });
+
   it('knows every outcome the page has a sentence for', () => {
     assert.deepEqual([...ADMIN_LINK_TEST_OUTCOMES].sort(), [
       'invalid-address',
@@ -278,9 +412,12 @@ describe('a request to test a web2 admin link typed on a page', () => {
       'not-linked',
       'owner-mismatch',
       'owner-unconfirmed',
+      'plain-http-refused',
       'redirected',
       'stored-token-elsewhere',
       'token-accepted',
+      'token-not-own',
+      'token-not-registered',
       'token-refused',
       'unreachable',
     ]);

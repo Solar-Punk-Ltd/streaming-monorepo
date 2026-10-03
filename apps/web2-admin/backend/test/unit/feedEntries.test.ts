@@ -14,7 +14,7 @@ import { describe, it } from 'node:test';
 import { viewerCatalogEntrySchema } from '@streaming-monorepo/contracts';
 import type { StreamStatus } from '@streaming-monorepo/web2-admin-common';
 
-import { buildFeedEntry, feedEntryState } from '../../src/domain/feedEntries.js';
+import { buildFeedEntry, carriesEntry, feedEntryState } from '../../src/domain/feedEntries.js';
 
 import { streamRow, TEST_OWNER } from './support/fakes.js';
 
@@ -159,6 +159,39 @@ describe('buildFeedEntry', () => {
 
     assert.equal(entry.index, 9, 'the master, not the rung');
     assert.equal(entry.renditions?.[0]?.index, 42);
+  });
+});
+
+describe('carriesEntry', () => {
+  // What a republish would write, built later than what the list holds.
+  const row = streamRow({ status: 'published' });
+  const written = buildFeedEntry(row, null, 1_700_000_000_000);
+  const next = buildFeedEntry(row, null, 1_700_000_060_000);
+
+  it('says the list carries an entry that differs only in when it was written', () => {
+    assert.equal(carriesEntry([written], next), true);
+  });
+
+  it('reads an element field by field, whatever order its keys were stored in', () => {
+    // Postgres hands `feed_writes.payload` back as jsonb, which keeps no key order.
+    const reordered = Object.fromEntries(Object.entries(written).reverse());
+    assert.equal(carriesEntry(['not an entry', reordered], next), true);
+  });
+
+  it('does not count an entry with a field that changed', () => {
+    assert.equal(carriesEntry([written], { ...next, title: 'Closing keynote' }), false);
+    assert.equal(carriesEntry([written], buildFeedEntry({ ...row, status: 'live' }, null, 1_700_000_060_000)), false);
+  });
+
+  it('does not count an element with a field the entry has not, or without a timestamp', () => {
+    assert.equal(carriesEntry([{ ...written, extra: true }], next), false);
+    const { timestamp: _timestamp, ...untimed } = written;
+    assert.equal(carriesEntry([untimed], next), false);
+  });
+
+  it('does not count a list without the entry, or with it under another owner', () => {
+    assert.equal(carriesEntry([], next), false);
+    assert.equal(carriesEntry([{ ...written, owner: 'f'.repeat(40) }], next), false);
   });
 });
 

@@ -1,5 +1,5 @@
-import type { AdminLinkTokenChoice } from '@streaming-infra-manager/common';
-import { InferType, mixed, number, object, string } from 'yup';
+import { ADMIN_LINK_TOKEN_HOLDERS, type AdminLinkTokenChoice } from '@streaming-infra-manager/common';
+import { boolean, InferType, mixed, number, object, string } from 'yup';
 
 /** Far past any real address or token, while keeping a save a small request. */
 const MAX_TEXT_LENGTH = 8192;
@@ -44,6 +44,8 @@ const TOKEN_CHOICE_MESSAGE =
   'token is either the stored one, { "source": "stored" }, or one typed, { "source": "typed", "value": "..." }';
 const FEED_OWNER_MESSAGE = 'feedOwner is a stream address, 40 hex characters with or without 0x';
 const FEED_OWNER_RE = /^(0x)?[0-9a-fA-F]{40}$/;
+const TOKEN_FOR_MESSAGE =
+  'tokenFor is "registrar" for the web2 admin\'s registrar token, or "uploader" for an uploader\'s';
 
 /** Exactly one of the two token choices, with no other key, whose typed value is text. */
 function isTokenChoice(value: unknown): value is AdminLinkTokenChoice {
@@ -56,9 +58,9 @@ function isTokenChoice(value: unknown): value is AdminLinkTokenChoice {
 
 /**
  * What `POST /manager-settings/admin-link/test` takes: an address typed on a
- * page, the token to present, and the stream address to compare the admin's
- * owner with, where the page has one. Only the shape here, with messages that
- * name no value.
+ * page, the token to present, whose token it is, and the stream address to
+ * compare the admin's owner with, where the page has one. Only the shape here,
+ * with messages that name no value.
  */
 export const testAdminLinkSchema = object({
   url: mixed<string>()
@@ -73,7 +75,54 @@ export const testAdminLinkSchema = object({
       LENGTH_MESSAGE,
       (value) => !isTokenChoice(value) || value.source === 'stored' || withinLength(value.value),
     ),
+  tokenFor: string()
+    .typeError(TOKEN_FOR_MESSAGE)
+    .strict()
+    .notRequired()
+    .oneOf(ADMIN_LINK_TOKEN_HOLDERS, TOKEN_FOR_MESSAGE),
   feedOwner: string().typeError(FEED_OWNER_MESSAGE).nullable().notRequired().matches(FEED_OWNER_RE, FEED_OWNER_MESSAGE),
 }).noUnknown(true);
 
 export type TestAdminLinkBody = InferType<typeof testAdminLinkSchema>;
+
+const CATALOGUE_REVISION_MESSAGE = 'expectedRevision is the revision the page read, a whole number';
+const CATALOGUE_PROFILE_MESSAGE = 'profileName is the name of the deployment whose Bee node holds the batch';
+const CATALOGUE_BATCH_MESSAGE = 'batchId is a batch id, 64 hex digits with or without 0x';
+const CATALOGUE_MOVE_MESSAGE = 'move is true to move the catalogue to this batch, false or left out otherwise';
+
+const catalogueRevision = number()
+  .typeError(CATALOGUE_REVISION_MESSAGE)
+  .required(CATALOGUE_REVISION_MESSAGE)
+  .integer(CATALOGUE_REVISION_MESSAGE)
+  .min(0, CATALOGUE_REVISION_MESSAGE);
+
+/**
+ * What `PUT /manager-settings/catalogue-node` takes: the deployment and the batch its node holds, at the revision the
+ * page read, and `move: true` when the page confirmed moving the catalogue to that batch. Only the shape here: whether
+ * that node and that batch can hold the catalogue is the service's to answer.
+ */
+export const saveCatalogueNodeSchema = object({
+  expectedRevision: catalogueRevision,
+  profileName: string()
+    .typeError(CATALOGUE_PROFILE_MESSAGE)
+    .required(CATALOGUE_PROFILE_MESSAGE)
+    .max(128, CATALOGUE_PROFILE_MESSAGE),
+  batchId: string()
+    .typeError(CATALOGUE_BATCH_MESSAGE)
+    .required(CATALOGUE_BATCH_MESSAGE)
+    .matches(/^(0x)?[0-9a-fA-F]{64}$/, CATALOGUE_BATCH_MESSAGE),
+  // strict: yup would otherwise read the text "true" as the boolean, and a move is confirmed by the page alone.
+  move: boolean().strict().typeError(CATALOGUE_MOVE_MESSAGE).notRequired(),
+}).noUnknown(true);
+
+export type SaveCatalogueNodeBody = InferType<typeof saveCatalogueNodeSchema>;
+
+/** What `DELETE /manager-settings/catalogue-node` takes: the revision the page read. */
+export const clearCatalogueNodeSchema = object({ expectedRevision: catalogueRevision }).noUnknown(true);
+
+export type ClearCatalogueNodeBody = InferType<typeof clearCatalogueNodeSchema>;
+
+/** What `POST /manager-settings/catalogue-node/release` takes: the revision the page read. */
+export const releaseCatalogueNodeSchema = object({ expectedRevision: catalogueRevision }).noUnknown(true);
+
+export type ReleaseCatalogueNodeBody = InferType<typeof releaseCatalogueNodeSchema>;

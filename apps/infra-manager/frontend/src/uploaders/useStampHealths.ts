@@ -1,8 +1,7 @@
 import { useEffect, useState } from 'react';
 
-import { type StampHealth, stampHealthFrom } from '@streaming-infra-manager/common';
+import { ownsBeeNode, type StampHealth, stampHealthFrom } from '@streaming-infra-manager/common';
 
-import { ownsBeeNode } from '../deployments/readiness';
 import { isRunning } from '../deployments/shape';
 import type { Profile } from '../types';
 import { fetchStamps } from './stampApi';

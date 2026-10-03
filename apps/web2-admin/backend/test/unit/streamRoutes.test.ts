@@ -7,13 +7,19 @@
  * handed. What is pinned here is that the route hands them the user of the
  * session the request came with, and nobody else — not whoever drafted the
  * stream, and not a name the request body could carry. And that a publish or
- * unpublish of a stream that does not exist still answers 404.
+ * unpublish of a stream that does not exist still answers 404. And that the
+ * stage rules reach the console as their own 409s, with a sentence each.
  */
 import http from 'node:http';
 import assert from 'node:assert/strict';
 import { after, before, describe, it } from 'node:test';
 
-import { SESSION_COOKIE_NAME, type Stream } from '@streaming-monorepo/web2-admin-common';
+import {
+  SESSION_COOKIE_NAME,
+  type IngestDetails,
+  type PublishResult,
+  type Stream,
+} from '@streaming-monorepo/web2-admin-common';
 import express from 'express';
 
 import { errorHandler } from '../../src/api/middleware/errorHandler.js';
@@ -25,6 +31,7 @@ import { FakeFeedGateway } from '../../src/domain/FakeFeedGateway.js';
 import type { FeedIdentity } from '../../src/domain/feedIdentity.js';
 import { IngestService } from '../../src/domain/IngestService.js';
 import { PublishService } from '../../src/domain/PublishService.js';
+import { splitStageRecord } from '../../src/domain/StageService.js';
 import { StreamService } from '../../src/domain/StreamService.js';
 
 import {
@@ -38,8 +45,10 @@ import {
   FakeRenditionStore,
   FakeStreamStore,
   InMemoryAuditLog,
+  noCatalogueStamp,
   TEST_OWNER,
 } from './support/fakes.js';
+import { FakeStageStore, STAGE_ID, stageRecord } from './support/stageFakes.js';
 
 const PASSWORD = 'a-long-enough-password';
 
@@ -58,7 +67,12 @@ const FORM = {
   tags: ['swarm'],
   mediaType: 'video',
   scheduledStartTime: '2026-10-01T09:00:00.000Z',
+  stageId: STAGE_ID,
 };
+
+/** A stage the manager retired, and one on an engine the admin takes no streams on. */
+const RETIRED_STAGE = '6a1d3b9f-2c3d-4e4f-9a51-1b2c3d4e5f60';
+const OME_STAGE = '7b2e4c0a-3d4e-4f50-8b62-2c3d4e5f6071';
 
 let server: http.Server;
 let url: string;
@@ -80,11 +94,18 @@ before(async () => {
 
   const renditions = new FakeRenditionStore();
   store = new FakeStreamStore(renditions);
+  const stages = new FakeStageStore();
+  await stages.upsert(splitStageRecord(stageRecord()));
+  await stages.upsert(splitStageRecord(stageRecord({ stageId: RETIRED_STAGE, name: 'Old stage' })));
+  await stages.retire(RETIRED_STAGE, '2026-09-28T11:00:00.000Z');
+  await stages.upsert(splitStageRecord(stageRecord({ stageId: OME_STAGE, name: 'OME stage', engine: 'ome' })));
   const publishService = new PublishService(
     store,
     renditions,
+    stages,
     new FakeFeedWriteLog(),
     new FakeFeedGateway(),
+    noCatalogueStamp(),
     feed,
     audit,
   );
@@ -96,20 +117,9 @@ before(async () => {
   app.use(
     '/api/streams',
     createStreamsRouter({
-      streamService: new StreamService(store, feed, audit),
+      streamService: new StreamService(store, stages, feed, audit),
       publishService,
-      ingestService: new IngestService(
-        store,
-        {
-          host: 'ingest.example.com',
-          srtPort: 10061,
-          rtmpPort: 10062,
-          rtmpPublic: false,
-          srtPassphrase: null,
-          keyVerified: true,
-        },
-        audit,
-      ),
+      ingestService: new IngestService(store, stages, audit),
       requireAuth,
     }),
   );
@@ -175,6 +185,21 @@ describe('the stream routes', () => {
     assert.equal(store.get(created.id).user_id, userIds.get('ann'), 'the drafter is still recorded');
   });
 
+  it('answer a republish the catalogue already carries with written: false, at the index the feed stands at', async () => {
+    const created = (await (await send('ann', 'POST', '/api/streams', FORM)).json()) as Stream;
+
+    const first = (await (await send('ann', 'POST', `/api/streams/${created.id}/publish`)).json()) as PublishResult;
+    const res = await send('ann', 'POST', `/api/streams/${created.id}/publish`);
+
+    assert.equal(res.status, 200);
+    const again = (await res.json()) as PublishResult;
+    assert.equal(first.written, true);
+    assert.equal(again.written, false);
+    assert.equal(again.feed.index, first.feed.index);
+    assert.equal(again.stream.status, 'published');
+    assert.equal(again.stream.hasUnpublishedEdits, false);
+  });
+
   it('pass the signed-in user as the actor of POST /api/feed/reconcile', async () => {
     // A published row with no entry behind it, so the reconcile has
     // something to write and therefore something to record.
@@ -196,5 +221,91 @@ describe('the stream routes', () => {
       assert.equal(res.status, 404, path);
       assert.deepEqual(await res.json(), { error: 'stream_not_found', id: UNKNOWN_STREAM }, path);
     }
+  });
+});
+
+describe('the stream routes, on stages', () => {
+  it('create a stream on the stage the form names, and answer it', async () => {
+    const res = await send('ann', 'POST', '/api/streams', { ...FORM, stageId: STAGE_ID.toUpperCase() });
+
+    assert.equal(res.status, 201);
+    const created = (await res.json()) as Stream;
+    assert.equal(created.stageId, STAGE_ID, 'kept in lower case');
+    assert.equal(store.get(created.id).stage_id, STAGE_ID);
+  });
+
+  it('create a stream with no stage when the form names none', async () => {
+    const res = await send('ann', 'POST', '/api/streams', { ...FORM, stageId: null });
+
+    assert.equal(res.status, 201);
+    assert.equal(((await res.json()) as Stream).stageId, null);
+  });
+
+  it('refuse a retired, an unsupported or an unknown stage with 409 stage_unavailable', async () => {
+    const unknown = 'ffffffff-ffff-4fff-8fff-fffffffffff0';
+    for (const [stageId, reason] of [
+      [RETIRED_STAGE, 'retired'],
+      [OME_STAGE, 'unsupported'],
+      [unknown, 'unknown'],
+    ] as const) {
+      const res = await send('ann', 'POST', '/api/streams', { ...FORM, stageId });
+
+      assert.equal(res.status, 409, reason);
+      const body = (await res.json()) as { error: string; stageId: string; reason: string; message: string };
+      assert.equal(body.error, 'stage_unavailable', reason);
+      assert.equal(body.stageId, stageId, reason);
+      assert.equal(body.reason, reason);
+      assert.ok(body.message.length > 0, reason);
+    }
+  });
+
+  it('refuse a stageId that is not a UUID with a validation error', async () => {
+    const res = await send('ann', 'POST', '/api/streams', { ...FORM, stageId: 'main-stage' });
+
+    assert.equal(res.status, 400);
+    assert.deepEqual(await res.json(), { error: 'validation_error', errors: ['stageId must be a UUID'] });
+  });
+
+  it('refuse to move a published stream to another stage with 409 stage_locked', async () => {
+    const created = (await (await send('ann', 'POST', '/api/streams', { ...FORM, stageId: null })).json()) as Stream;
+    store.add({ ...store.get(created.id), status: 'published', published_feed_index: 3 });
+
+    const res = await send('ann', 'PUT', `/api/streams/${created.id}`, { ...FORM, stageId: STAGE_ID });
+
+    assert.equal(res.status, 409);
+    assert.deepEqual(await res.json(), {
+      error: 'stage_locked',
+      id: created.id,
+      reason: 'published',
+      message: 'Unpublish the stream to change its stage; publishing fixed it.',
+    });
+  });
+
+  it('refuse to publish a draft with no stage with 409 stage_required', async () => {
+    const created = (await (await send('ann', 'POST', '/api/streams', { ...FORM, stageId: null })).json()) as Stream;
+
+    const res = await send('ann', 'POST', `/api/streams/${created.id}/publish`);
+
+    assert.equal(res.status, 409);
+    assert.deepEqual(await res.json(), {
+      error: 'stage_required',
+      id: created.id,
+      message: 'Pick the stage this stream is broadcast on before publishing.',
+    });
+    assert.equal(store.get(created.id).status, 'draft');
+  });
+
+  it('answer the ingest details of a stream from its stage, and none without one', async () => {
+    const onStage = (await (await send('ann', 'POST', '/api/streams', FORM)).json()) as Stream;
+    const without = (await (await send('ann', 'POST', '/api/streams', { ...FORM, stageId: null })).json()) as Stream;
+
+    const details = (await (await send('ann', 'GET', `/api/streams/${onStage.id}/ingest`)).json()) as IngestDetails;
+    const none = (await (await send('ann', 'GET', `/api/streams/${without.id}/ingest`)).json()) as IngestDetails;
+
+    assert.equal(details.stage?.name, 'Main stage');
+    assert.ok(details.srt?.url.startsWith('srt://ingest.example.org:10061?'));
+    assert.equal(none.stage, null);
+    assert.equal(none.srt, null);
+    assert.equal(none.publishKey.length, 32);
   });
 });

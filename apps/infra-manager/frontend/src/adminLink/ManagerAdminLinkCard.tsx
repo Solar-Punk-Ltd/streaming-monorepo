@@ -98,6 +98,9 @@ function LinkEditor({
   const testRequest = problems.length === 0 ? managerAdminLinkTestOf(link, draft) : null;
   const urlProblem = problems.find((problem) => problem.startsWith('ADMIN_API_URL')) ?? null;
   const tokenProblem = problems.find((problem) => !problem.startsWith('ADMIN_API_URL')) ?? null;
+  // Plain http to another host than the manager's own is judged by the manager, from what the address resolves to
+  // there, so a save of one is refused with the sentence and Test connection answers it: the page cannot tell a
+  // Docker service name on the manager's host from another host's name.
 
   const edit = (next: ManagerAdminLinkDraft) => {
     setDraft(next);

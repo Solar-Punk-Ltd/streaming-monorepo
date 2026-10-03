@@ -1,31 +1,37 @@
 import {
-  ABR_UPLOADER_KIND,
   BEE_GATEWAY_SERVICE,
   BEE_UPLOADER_SERVICE,
   CLIENT_SERVICE,
   DEFAULT_RPC_ENDPOINT_SOURCE,
-  defaultServicesFor,
+  type DeploymentShape,
   type EngineName,
   engineOfServices,
-  isBeeNodeOnly,
+  hasService,
+  isRunning,
   OME_SERVICE,
   type RpcEndpointSource,
+  servicesOf,
+  shapeOf,
   SRS_SERVICE,
   STREAM_UPLOADER_SERVICE,
-  usesNodePool,
 } from '@streaming-infra-manager/common';
 
 import type { Profile } from '../types';
 
-/**
- * What a deployment is, in the words the operator uses.
- *
- * Read from the services it runs rather than from `kind`, because `kind` is a
- * creation-time label: a `custom` that happens to run an engine and an uploader
- * is a stream in every way that matters on screen, and a `streamer` whose
- * components were narrowed is not.
- */
-export type DeploymentShape = 'stream' | 'viewer' | 'bee-node' | 'abr-uploader' | 'custom';
+// What a deployment is and where it stands is declared in the common package
+// with the readiness composition, which reads it, so the manager works a
+// stage's readiness out the same way. It is passed on here so every page keeps
+// importing it from one place.
+export {
+  type DeploymentShape,
+  hasService,
+  isRunning,
+  isStreamLike,
+  isTransitional,
+  servicesOf,
+  shapeOf,
+  statusLabelOf,
+} from '@streaming-infra-manager/common';
 
 export const SHAPE_LABEL: Record<DeploymentShape, string> = {
   stream: 'Stream',
@@ -54,14 +60,6 @@ export const SERVICE_DESCRIPTIONS: Record<string, string> = {
   [BEE_GATEWAY_SERVICE]: 'Swarm gateway for the player',
 };
 
-export function servicesOf(profile: Profile): string[] {
-  return defaultServicesFor(profile);
-}
-
-export function hasService(profile: Profile, service: string): boolean {
-  return servicesOf(profile).includes(service);
-}
-
 /** A deployment that runs a Bee node of any kind, an uploader or a gateway. */
 export function ownsAnyBeeNode(profile: Profile): boolean {
   return hasService(profile, BEE_UPLOADER_SERVICE) || hasService(profile, BEE_GATEWAY_SERVICE);
@@ -82,31 +80,11 @@ export function engineOf(profile: Profile): EngineName | null {
   return engineOfServices(servicesOf(profile));
 }
 
-export function shapeOf(profile: Profile): DeploymentShape {
-  // Before the stream test: an ABR uploader runs an engine and an uploader too,
-  // and it is the pool behind it, not its own node, that decides what it needs.
-  if (profile.kind === ABR_UPLOADER_KIND) return 'abr-uploader';
-
-  const services = servicesOf(profile);
-  if (services.includes(STREAM_UPLOADER_SERVICE) && engineOfServices(services) !== null) {
-    return 'stream';
-  }
-  if (services.includes(CLIENT_SERVICE)) return 'viewer';
-  if (isBeeNodeOnly(profile)) return 'bee-node';
-  return 'custom';
-}
-
 /** Everything on this manager that signs a feed, so a viewer can follow it. */
 export function streamersOf(profiles: Profile[]): Profile[] {
   return profiles.filter(
     (profile) => Boolean(profile.public_key) && ['stream', 'abr-uploader'].includes(shapeOf(profile)),
   );
-}
-
-const TRANSITIONAL_STATUSES: readonly string[] = ['DEPLOYING', 'STOPPING', 'REMOVING'];
-
-export function isRunning(profile: Profile): boolean {
-  return profile.status === 'RUNNING';
 }
 
 /**
@@ -120,36 +98,5 @@ export function readsSrtIngest(profile: Profile): boolean {
     isRunning(profile) &&
     engineOf(profile) === SRS_SERVICE &&
     profile.containers.some((container) => container.service === SRS_SERVICE)
-  );
-}
-
-export function isTransitional(profile: Profile): boolean {
-  return TRANSITIONAL_STATUSES.includes(profile.status);
-}
-
-interface StatusLabel {
-  label: string;
-  tone: 'ok' | 'warn' | 'err' | 'info' | 'gray';
-}
-
-const STATUS_LABELS: Record<string, StatusLabel> = {
-  RUNNING: { label: 'Running', tone: 'ok' },
-  DEPLOYING: { label: 'Deploying', tone: 'info' },
-  STOPPING: { label: 'Stopping', tone: 'warn' },
-  STOPPED: { label: 'Stopped', tone: 'gray' },
-  REMOVING: { label: 'Removing', tone: 'warn' },
-  ERROR: { label: 'Error', tone: 'err' },
-};
-
-export function statusLabelOf(profile: Profile): StatusLabel {
-  if (profile.status === 'DEPLOYING' && profile.deployment_phase) {
-    return { label: profile.deployment_phase === 'starting' ? 'Starting' : 'Restarting', tone: 'info' };
-  }
-  return STATUS_LABELS[profile.status] ?? { label: profile.status, tone: 'gray' };
-}
-
-export function isStreamLike(profile: Profile, shape = shapeOf(profile)): boolean {
-  return (
-    shape === 'stream' || (shape === 'custom' && hasService(profile, STREAM_UPLOADER_SERVICE) && !usesNodePool(profile))
   );
 }

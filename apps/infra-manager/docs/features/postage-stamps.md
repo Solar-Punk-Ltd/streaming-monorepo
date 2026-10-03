@@ -178,6 +178,29 @@ depth 24".
 Diluting leaves less life, so a batch diluted with little time left warns as
 ending soon, and a top-up buys that life back.
 
+## The catalogue node's pinned batch
+
+The brand's catalogue node is a Bee-only deployment designated on the Manager
+settings page, with one immutable batch its node holds pinned for the
+catalogue ([stages.md](stages.md#the-catalogue-node)). On that node's page the
+pinned batch carries a **catalogue** chip in the stamps table, and the Storage
+and funding card says so: buying a batch there, or using another one, changes
+the batch the deployment records, `stamp_id`, and leaves the catalogue on the
+pinned one, because the designation pins the batch by id in a table of its own.
+Moving the catalogue to another batch is its own action: the Manager settings
+card designates the new batch as a move, the web2 admin stamps the catalogue
+again under it, and the card releases the old one once the admin reports the
+move done ([stages.md](stages.md#moving-the-catalogue)). Until then the node
+of the batch moved from is not removed either. **Top up** stays offered on the pinned batch and keeps it alive, and
+the manager pushes the batch's new life to the admin within ten seconds.
+**Dilute** keeps the batch too, with half the life per step.
+
+The designation refuses a mutable batch: once a bucket fills, a mutable batch
+overwrites its oldest chunks, and the catalogue's oldest slots are the ones a
+viewer walks first. It refuses one whose kind the node does not report as well,
+since the kind that fails is the one it might be. **Buy** on the catalogue node
+should buy an immutable batch.
+
 ## After Bee answers
 
 Bee sends a top-up or a dilute from the node's own wallet and answers once the
@@ -246,7 +269,7 @@ whole list of stamp routes is in [manager/README.md](../../manager/README.md#pos
 | `manager/src/api/routes/stamp.ts`, `manager/src/schemas/stamp.ts`                                                           | The two routes and their bodies.                                                                                                                                                                                                       |
 | `frontend/src/uploaders/StampTable.tsx`, `stampRowActions.ts`, `bucketFill.ts`                                              | The table's Used column and each batch's actions, with Use unavailable on a full immutable batch.                                                                                                                                      |
 | `frontend/src/uploaders/TopUpStampDialog.tsx`, `topUpView.ts`, `DiluteStampDialog.tsx`, `diluteView.ts`, `BatchSummary.tsx` | The two dialogs and what they show before the operator confirms.                                                                                                                                                                       |
-| `frontend/src/deployments/StorageCard.tsx`                                                                                  | Opens the dialogs, sends the change, reads the node again and says what was sent.                                                                                                                                                      |
+| `frontend/src/deployments/StorageCard.tsx`                                                                                  | Opens the dialogs, sends the change, reads the node again and says what was sent. On the catalogue node it marks the pinned batch and says what Buy and Use leave it on.                                                               |
 | `frontend/dev/mock-stamps.mjs`                                                                                              | The offline mock's two routes, with the manager's schemas and refusals, and the change landing on its batch two seconds later. The mock seeds the pool's 720p rung with a full immutable batch.                                        |
 | `frontend/test/stamp-changes-browser.test.mjs`                                                                              | A headless Chrome against the mock tops up and dilutes that batch from the Storage card.                                                                                                                                               |
 

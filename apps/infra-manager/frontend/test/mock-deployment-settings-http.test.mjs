@@ -609,7 +609,7 @@ describe(
 );
 
 describe(
-  "the mock's create with the manager's stored web2 admin token",
+  "the mock's create at the manager's web2 admin address, with a token of its own",
   { concurrency: false, timeout: 60_000 },
   () => {
     const ADMIN_URL = 'https://admin.offline.example';
@@ -619,7 +619,7 @@ describe(
       return call('/manager-settings/admin-link', 'PUT', { expectedRevision: current.revision, ...body });
     }
 
-    it('refuses the stored token when the manager stores none, and creates nothing', async () => {
+    it('refuses the address with no token when the manager has no link to register one of its own with', async () => {
       await managerLink({ url: '' });
       const name = `mock-linked-${nextProfile++}`;
 
@@ -629,15 +629,14 @@ describe(
         components: ['srs', 'stream-uploader'],
         stack_version_id: 2,
         stack_settings: [{ key: 'ADMIN_API_URL', value: ADMIN_URL }],
-        use_manager_admin_token: true,
       });
 
-      assert.equal(refused.status, 409);
-      assert.equal(refused.body.error, 'admin_token_missing');
+      assert.equal(refused.status, 400);
+      assert.match(refused.body.errors.join(' '), /ADMIN_API_URL is set and ADMIN_API_TOKEN is not/);
       assert.equal((await call(`/profiles/${name}`)).status, 404);
     });
 
-    it("stores the manager's token for a create that asks, and never answers it", async () => {
+    it('stores the address alone and copies no token', async () => {
       const token = 'offline-mock-manager-token-0123456789abcdef';
       assert.equal((await managerLink({ url: ADMIN_URL, token })).status, 200);
       const name = `mock-linked-${nextProfile++}`;
@@ -649,18 +648,16 @@ describe(
         stack_version_id: 2,
         stamp_id: 'ab'.repeat(32),
         stack_settings: [{ key: 'ADMIN_API_URL', value: ADMIN_URL }],
-        use_manager_admin_token: true,
       });
       const catalog = await settingsOf(name);
 
       assert.equal(created.status, 202, JSON.stringify(created.body));
-      assert.equal('use_manager_admin_token' in created.body, false, 'the request is kept off the row');
-      assert.equal(entryOf(catalog, 'ADMIN_API_TOKEN').stored, true);
+      assert.equal(entryOf(catalog, 'ADMIN_API_TOKEN').stored, false);
       assert.equal(entryOf(catalog, 'ADMIN_API_URL').storedValue, ADMIN_URL);
       assert.equal(JSON.stringify(catalog).includes(token), false);
     });
 
-    it("refuses the stored token for an address on another origin than the manager's, and creates nothing", async () => {
+    it("refuses an address on another origin than the manager's with no token, and creates nothing", async () => {
       const name = `mock-linked-${nextProfile++}`;
 
       const refused = await call('/profiles', 'POST', {
@@ -669,11 +666,10 @@ describe(
         components: ['srs', 'stream-uploader'],
         stack_version_id: 2,
         stack_settings: [{ key: 'ADMIN_API_URL', value: 'https://elsewhere.offline.example' }],
-        use_manager_admin_token: true,
       });
 
-      assert.equal(refused.status, 409);
-      assert.equal(refused.body.error, 'admin_token_elsewhere');
+      assert.equal(refused.status, 400);
+      assert.match(refused.body.errors.join(' '), /ADMIN_API_URL is set and ADMIN_API_TOKEN is not/);
       assert.equal((await call(`/profiles/${name}`)).status, 404);
     });
 
@@ -691,7 +687,7 @@ describe(
 
       assert.equal(created.status, 202, JSON.stringify(created.body));
       assert.equal(entryOf(catalog, 'ADMIN_API_URL').storedValue, ADMIN_URL);
-      assert.equal(entryOf(catalog, 'ADMIN_API_TOKEN').stored, true);
+      assert.equal(entryOf(catalog, 'ADMIN_API_TOKEN').stored, false);
     });
   },
 );

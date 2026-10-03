@@ -12,14 +12,23 @@
  * and the real catalogue and which this suite would publish through.
  */
 import assert from 'node:assert/strict';
+import { createHash } from 'node:crypto';
 
+import { stageRecordPath } from '@streaming-monorepo/contracts';
 import { REQUESTED_WITH_HEADER, REQUESTED_WITH_VALUE } from '@streaming-monorepo/web2-admin-common';
+
+import { STAGE_ID, stageRecord } from '../unit/support/stageFakes.js';
 
 import { ITEST_INTERNAL_TOKEN, ITEST_PASSWORD, ITEST_USERNAME, startInstance, type Instance } from './instance.js';
 
 export const ADMIN_USERNAME = ITEST_USERNAME;
 export const ADMIN_PASSWORD = ITEST_PASSWORD;
 export const INTERNAL_API_TOKEN = ITEST_INTERNAL_TOKEN;
+/**
+ * The own token of `STAGE_ID`'s uploader, for a suite that registers that stage with it: 64 hex characters, as the
+ * manager generates one. The uploader's routes take nothing else, the registrar token included.
+ */
+export const UPLOADER_TOKEN = '3c'.repeat(32);
 
 let instance: Instance | null = null;
 
@@ -42,10 +51,11 @@ export function stack(): Instance {
 }
 
 /**
- * Headers for an internal call: the bearer token, and `anonymous` so the
- * session cookie the rest of the suite holds is not sent with it. The internal
- * routes must answer on the token alone — and, since they sit ahead of the
- * cross-site check, without the header a browser would have to send.
+ * Headers for an internal call: the bearer token, the registrar token unless
+ * another is named, and `anonymous` so the session cookie the rest of the
+ * suite holds is not sent with it. The internal routes must answer on the
+ * token alone — and, since they sit ahead of the cross-site check, without the
+ * header a browser would have to send.
  */
 export function internalCall(token = INTERNAL_API_TOKEN): RequestOptions {
   return {
@@ -53,6 +63,11 @@ export function internalCall(token = INTERNAL_API_TOKEN): RequestOptions {
     crossSiteHeader: false,
     headers: { authorization: `Bearer ${token}` },
   };
+}
+
+/** An internal call as a stage's uploader makes it: on its own token, `UPLOADER_TOKEN` unless another is named. */
+export function uploaderCall(token = UPLOADER_TOKEN): RequestOptions {
+  return internalCall(token);
 }
 
 /** A 1x1 transparent PNG: the smallest real image to upload. */
@@ -165,4 +180,27 @@ export async function cleanup(streamIds: Iterable<string>): Promise<void> {
     await raw('POST', `/api/streams/${id}/unpublish`);
     await raw('DELETE', `/api/streams/${id}`);
   }
+}
+
+/**
+ * Registers a stage the way the manager does, on the registrar token, so a
+ * stream can be put on it and published: a draft with no stage is refused at
+ * publish. Answers its id, `STAGE_ID` unless the record says otherwise.
+ *
+ * With `ownToken`, the record names that token, by its sha256, as the one the
+ * stage's uploader presents, of its `own`, so an uploader call on it is
+ * attributed to the stage. Without, the record's `adminToken` is what `over`
+ * says, or the fixture's.
+ */
+export async function registerStage(over: Parameters<typeof stageRecord>[0] = {}, ownToken?: string): Promise<string> {
+  const record = stageRecord({
+    stageId: STAGE_ID,
+    ...over,
+    ...(ownToken === undefined
+      ? {}
+      : { adminToken: { sha256: createHash('sha256').update(ownToken, 'utf8').digest('hex'), kind: 'own' as const } }),
+  });
+  const stored = await raw('PUT', stageRecordPath(record.stageId), { ...internalCall(), body: record });
+  assert.equal(stored.status, 200, stored.text);
+  return record.stageId;
 }

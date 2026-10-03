@@ -13,6 +13,8 @@ import { ValidationError as YupValidationError } from 'yup';
 import {
   AdminLinkInputError,
   AdminRequiredError,
+  CatalogueNodeInputError,
+  CatalogueNodeRemovalError,
   AllSlotsUsedError,
   PortReservedError,
   ReservationInventoryPendingError,
@@ -44,8 +46,6 @@ import {
   InvalidUsernameError,
   LadderGroupError,
   LockedOutError,
-  ManagerAdminTokenElsewhereError,
-  ManagerAdminTokenMissingError,
   ManagerSettingsChangedError,
   NotSignedInError,
   NotesConflictError,
@@ -174,20 +174,16 @@ export function errorHandler(
     res.status(400).json({ error: 'validation_error', errors: err.errors.map(withoutQuotedValue) });
     return;
   }
-  if (err instanceof AdminLinkInputError) {
+  if (err instanceof AdminLinkInputError || err instanceof CatalogueNodeInputError) {
     res.status(400).json({ error: 'validation_error', errors: err.reasons });
+    return;
+  }
+  if (err instanceof CatalogueNodeRemovalError) {
+    res.status(409).json({ error: 'catalogue_node_designated', message: err.message });
     return;
   }
   if (err instanceof ManagerSettingsChangedError) {
     res.status(409).json({ error: 'manager_settings_changed', message: err.message });
-    return;
-  }
-  if (err instanceof ManagerAdminTokenMissingError) {
-    res.status(409).json({ error: 'admin_token_missing', message: err.message });
-    return;
-  }
-  if (err instanceof ManagerAdminTokenElsewhereError) {
-    res.status(409).json({ error: 'admin_token_elsewhere', message: err.message });
     return;
   }
   if (isPayloadTooLarge(err)) {

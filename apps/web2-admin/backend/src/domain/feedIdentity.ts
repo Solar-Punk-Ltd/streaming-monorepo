@@ -21,3 +21,12 @@ export function feedIdentityFrom(feedPrivateKey: string, feedTopic: string): Fee
     topicHex: Topic.fromString(feedTopic).toString(),
   };
 }
+
+/**
+ * An address in the form a stream's `owner` is kept in: lower case and without `0x`, as `feedIdentityFrom` writes
+ * the brand key's. A stage record carries its owner with `0x`, and a stream on that stage takes it in this form, so
+ * every entry on the catalogue names its owner one way.
+ */
+export function asFeedOwner(address: string): string {
+  return address.trim().toLowerCase().replace(/^0x/, '');
+}

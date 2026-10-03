@@ -8,10 +8,10 @@
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 
-import { type ChequebookHealth, DEFAULT_ABR_RUNGS, type UploaderHealthReading } from '@streaming-infra-manager/common';
-
 import {
   CHEQUEBOOK_EMPTY,
+  type ChequebookHealth,
+  DEFAULT_ABR_RUNGS,
   NEEDS_A_STAMP,
   STAMP_ENDS_SOON,
   STAMP_EXPIRED,
@@ -21,7 +21,9 @@ import {
   UPLOADER_REPORTS_A_PROBLEM,
   UPLOADER_WAITING_FOR_NODE,
   UPLOADER_WARNED,
-} from '../deployments/readiness';
+  type UploaderHealthReading,
+} from '@streaming-infra-manager/common';
+
 import type { Profile } from '../types';
 import { attentionText } from './attentionText';
 

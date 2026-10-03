@@ -11,19 +11,34 @@
  * its next write, which is how the tests prove a failed audit write never
  * fails the operation it describes.
  */
+import { sameFeedOwner } from '@streaming-monorepo/contracts';
 import type { Rendition, StreamStatus } from '@streaming-monorepo/web2-admin-common';
 
 import type { OperatorActor } from '../../../src/domain/actor.js';
 import type { AuditAction, AuditEntry, AuditLog } from '../../../src/domain/AuditLog.js';
+import { asFeedOwner } from '../../../src/domain/feedIdentity.js';
 import type { IngestStreamStore } from '../../../src/domain/IngestService.js';
 import type { LadderRenditionStore, LadderStreamStore } from '../../../src/domain/LadderService.js';
-import type { FeedWriteLog, PublishRenditionStore, PublishStreamStore } from '../../../src/domain/PublishService.js';
+import type { FeedWriteRecord } from '../../../src/domain/FeedWriteRepository.js';
+import type {
+  CatalogueTargets,
+  FeedWriteLog,
+  PublishRenditionStore,
+  PublishStreamStore,
+} from '../../../src/domain/PublishService.js';
 import type { OrphanedPublishingStore } from '../../../src/domain/resetOrphanedPublishing.js';
-import type { ClearedThumbnail, StreamInsertData, StreamUpdateData } from '../../../src/domain/StreamRepository.js';
+import type {
+  ClearedThumbnail,
+  StoredThumbnail,
+  StreamInsertData,
+  StreamUpdateData,
+} from '../../../src/domain/StreamRepository.js';
 import type { StreamServiceStore } from '../../../src/domain/StreamService.js';
 import type { StateStreamStore } from '../../../src/domain/StreamStateService.js';
 import type { PublishedStatus } from '../../../src/domain/streamState.js';
 import type { StreamRenditionRow, StreamRow, ThumbnailRow } from '../../../src/types/index.js';
+
+import { STAGE_ID } from './stageFakes.js';
 
 export const TEST_OWNER = '19e7e376e7c213b7e7e7e46cc70a5dd086daff2a';
 export const TEST_USER_ID = '00000000-0000-4000-8000-000000000001';
@@ -72,6 +87,7 @@ export function streamRow(over: Partial<StreamRow> = {}): StreamRow {
     has_thumbnail: false,
     thumbnail_mime: null,
     thumbnail_ref: null,
+    thumbnail_batch_id: null,
     status: 'draft',
     published_at: null,
     published_feed_index: null,
@@ -84,6 +100,9 @@ export function streamRow(over: Partial<StreamRow> = {}): StreamRow {
     ended_at: null,
     content_edited_at: null,
     entry_content_edited_at: null,
+    // On the stage `stageFakes` pushes, as every stream picked in the form now
+    // is. A test about a stream without one says so.
+    stage_id: STAGE_ID,
     created_at: at,
     updated_at: at,
     ...over,
@@ -153,6 +172,12 @@ export class FakeStreamStore
   /** Set to make the status write fail, as a lost connection would. */
   failNextFailPublish: Error | null = null;
 
+  /**
+   * The stages the move branch of `update` checks a new stage against, as the
+   * SQL checks the stages table. Unset, every stage takes streams.
+   */
+  stages: { takesStreams(stageId: string): boolean; ownerOf(stageId: string): string | null } | null = null;
+
   /** Linked so `markLive` un-finishes the ladder, as the real SQL does. */
   constructor(private readonly renditions?: FakeRenditionStore) {}
 
@@ -179,11 +204,23 @@ export class FakeStreamStore
 
   /**
    * Conditional on `allowedFrom`, and `content_edited_at` moves only when a
-   * value changes, as the SQL has it.
+   * value changes, as the SQL has it. A stage change is refused as the SQL
+   * refuses it: unless the row is a draft that does not hold both a
+   * recording and a stage, and the new stage, if any, takes streams.
    */
   async update(id: string, data: StreamUpdateData, allowedFrom: readonly StreamStatus[]): Promise<StreamRow | null> {
     const row = this.rows.get(id);
     if (!row || !allowedFrom.includes(row.status)) return null;
+    const stageMoves = data.stage_id !== undefined && data.stage_id !== row.stage_id;
+    if (stageMoves && !(row.status === 'draft' && (row.manifest_index === null || row.stage_id === null))) {
+      return null;
+    }
+    if (stageMoves && data.stage_id && this.stages && !this.stages.takesStreams(data.stage_id)) return null;
+    // A row that holds a recording takes only a stage that signs as its owner.
+    if (stageMoves && data.stage_id && this.stages && row.manifest_index !== null) {
+      const stageOwner = this.stages.ownerOf(data.stage_id);
+      if (stageOwner === null || !sameFeedOwner(stageOwner, row.owner)) return null;
+    }
     const scheduled = toDate(data.scheduled_start_time);
     const changed =
       row.title !== data.title ||
@@ -198,6 +235,8 @@ export class FakeStreamStore
       media_type: data.media_type,
       scheduled_start_time: scheduled,
       ...(changed ? { content_edited_at: new Date('2026-09-11T11:00:00.000Z') } : {}),
+      ...(data.stage_id !== undefined ? { stage_id: data.stage_id } : {}),
+      ...(data.owner !== undefined && row.manifest_index === null ? { owner: data.owner } : {}),
     });
   }
 
@@ -222,6 +261,7 @@ export class FakeStreamStore
       has_thumbnail: true,
       thumbnail_mime: mime,
       thumbnail_ref: null,
+      thumbnail_batch_id: null,
       content_edited_at: new Date('2026-09-11T11:00:00.000Z'),
     });
   }
@@ -235,6 +275,7 @@ export class FakeStreamStore
       has_thumbnail: false,
       thumbnail_mime: null,
       thumbnail_ref: null,
+      thumbnail_batch_id: null,
       ...(row.has_thumbnail ? { content_edited_at: new Date('2026-09-11T11:00:00.000Z') } : {}),
     });
     return { stream, removed: row.has_thumbnail };
@@ -326,15 +367,60 @@ export class FakeStreamStore
     return this.thumbnails.get(id) ?? null;
   }
 
-  async recordThumbnailRef(id: string, thumbnailRef: string): Promise<void> {
+  async recordThumbnailRef(id: string, thumbnailRef: string, batchId: string | null = null): Promise<void> {
     if (!(await this.findById(id))) return;
-    this.patch(id, { thumbnail_ref: thumbnailRef });
+    this.patch(id, { thumbnail_ref: thumbnailRef, thumbnail_batch_id: batchId });
   }
 
-  async claimForPublish(id: string, allowedFrom: readonly StreamStatus[]): Promise<StreamRow | null> {
+  /** As the SQL is: every stream's named thumbnail, once per reference, with its bytes while the row holds them. */
+  async listStoredThumbnails(): Promise<StoredThumbnail[]> {
+    const seen = new Map<string, StoredThumbnail>();
+    for (const row of this.rows.values()) {
+      if (!row.thumbnail_ref) continue;
+      const stored = this.thumbnails.get(row.id);
+      const candidate = {
+        reference: row.thumbnail_ref,
+        thumbnail: stored?.thumbnail ?? null,
+        thumbnail_mime: stored?.thumbnail_mime ?? row.thumbnail_mime,
+        topic: row.topic,
+      };
+      if (!seen.get(row.thumbnail_ref)?.thumbnail) seen.set(row.thumbnail_ref, candidate);
+    }
+    return [...seen.values()];
+  }
+
+  async recordThumbnailBatch(reference: string, batchId: string): Promise<void> {
+    for (const row of this.rows.values()) {
+      if (row.thumbnail_ref === reference) this.patch(row.id, { thumbnail_batch_id: batchId });
+    }
+  }
+
+  /** The SQL's `CASE WHEN thumbnail_ref IS DISTINCT FROM $3 THEN NULL ELSE thumbnail_batch_id END`. */
+  private thumbnailBatchAfter(id: string, thumbnailRef: string | null): { thumbnail_batch_id?: null } {
+    return this.rows.get(id)?.thumbnail_ref === thumbnailRef ? {} : { thumbnail_batch_id: null };
+  }
+
+  /** As the SQL is: with `draftNeedsStage`, a draft with no stage is not claimed either. */
+  async claimForPublish(
+    id: string,
+    allowedFrom: readonly StreamStatus[],
+    draftNeedsStage = false,
+  ): Promise<StreamRow | null> {
     const row = this.rows.get(id);
     if (!row || !allowedFrom.includes(row.status)) return null;
-    return this.patch(id, { status: 'publishing' });
+    if (draftNeedsStage && row.status === 'draft' && row.stage_id === null) return null;
+    // A recorded draft is claimed only while its stage signs as its owner.
+    if (draftNeedsStage && row.status === 'draft' && row.manifest_index !== null && row.stage_id !== null) {
+      const stageOwner = this.stages?.ownerOf(row.stage_id) ?? null;
+      if (stageOwner !== null && !sameFeedOwner(stageOwner, row.owner)) return null;
+    }
+    // A draft with no recording takes its stage's owner as the stages table
+    // holds it now, as the SQL does in the same statement.
+    const stageOwner =
+      draftNeedsStage && row.status === 'draft' && row.manifest_index === null && row.stage_id !== null
+        ? (this.stages?.ownerOf(row.stage_id) ?? null)
+        : null;
+    return this.patch(id, { status: 'publishing', ...(stageOwner !== null ? { owner: asFeedOwner(stageOwner) } : {}) });
   }
 
   async finishPublish(
@@ -350,6 +436,24 @@ export class FakeStreamStore
       published_at: new Date('2026-09-11T11:00:00.000Z'),
       published_feed_index: feedIndex,
       publish_error: null,
+      ...this.thumbnailBatchAfter(id, thumbnailRef),
+      thumbnail_ref: thumbnailRef,
+      entry_content_edited_at: entryContentEditedAt,
+    });
+  }
+
+  /** As the SQL is: `published_at` and `published_feed_index` stay, and a null status leaves the row's. */
+  async finishWithoutWrite(
+    id: string,
+    thumbnailRef: string | null,
+    entryContentEditedAt: Date | null,
+    status: PublishedStatus | null,
+  ): Promise<StreamRow | null> {
+    if (!(await this.findById(id))) return null;
+    return this.patch(id, {
+      ...(status !== null ? { status } : {}),
+      publish_error: null,
+      ...this.thumbnailBatchAfter(id, thumbnailRef),
       thumbnail_ref: thumbnailRef,
       entry_content_edited_at: entryContentEditedAt,
     });
@@ -381,15 +485,16 @@ export class FakeStreamStore
     return this.patch(id, {
       published_feed_index: feedIndex,
       publish_error: null,
+      ...this.thumbnailBatchAfter(id, thumbnailRef),
       thumbnail_ref: thumbnailRef,
       entry_content_edited_at: entryContentEditedAt,
     });
   }
 
-  /** Only which edit the entry carries, as the SQL is. */
-  async recordEntryRebuilt(id: string, entryContentEditedAt: Date | null): Promise<void> {
+  /** Only where the entry is and which edit it carries, as the SQL is. */
+  async recordEntryRebuilt(id: string, feedIndex: number, entryContentEditedAt: Date | null): Promise<void> {
     if (!this.rows.has(id)) return;
-    this.patch(id, { entry_content_edited_at: entryContentEditedAt });
+    this.patch(id, { published_feed_index: feedIndex, entry_content_edited_at: entryContentEditedAt });
   }
 
   async failPublish(id: string, previousStatus: StreamStatus, message: string): Promise<void> {
@@ -423,39 +528,16 @@ function toDate(value: string | null): Date | null {
   return value === null ? null : new Date(value);
 }
 
-interface FakeFeedWriteRecord {
-  owner: string;
-  topic: string;
-  feedIndex: number;
-  entryCount: number;
-  payload: unknown[];
-  reference: string | null;
-}
-
 /**
  * The log, and — as in production since migration 003 — the authority on the
  * next index. Keyed by `(owner, topic)` exactly as the partial unique index
  * is, so a test that rotates the feed key gets its own sequence.
  */
 export class FakeFeedWriteLog implements FeedWriteLog {
-  readonly records: FakeFeedWriteRecord[] = [];
+  readonly records: FeedWriteRecord[] = [];
 
-  async record(
-    owner: string,
-    topic: string,
-    feedIndex: number,
-    entryCount: number,
-    payload: unknown[],
-    reference: string | null,
-  ): Promise<void> {
-    this.records.push({
-      owner,
-      topic,
-      feedIndex,
-      entryCount,
-      payload,
-      reference,
-    });
+  async record(write: FeedWriteRecord): Promise<void> {
+    this.records.push(structuredClone(write));
   }
 
   async lastWrite(owner: string, topic: string): Promise<{ index: number; entries: unknown[] } | null> {
@@ -464,4 +546,19 @@ export class FakeFeedWriteLog implements FeedWriteLog {
     const last = mine.reduce((a, b) => (b.feedIndex > a.feedIndex ? b : a));
     return { index: last.feedIndex, entries: last.payload };
   }
+
+  async countUnrecordedBatch(owner: string, topic: string): Promise<number> {
+    return this.records.filter((r) => r.owner === owner && r.topic === topic && r.batchId === null).length;
+  }
+}
+
+/**
+ * No catalogue stamp, and none needed: what the in-memory gateway gets in a local run with no manager. The suites
+ * about publishing itself use it; the catalogue batch rules have suites of their own over CatalogueBatchService.
+ */
+export function noCatalogueStamp(): CatalogueTargets {
+  return {
+    forWrite: async () => null,
+    forRead: async () => ({ target: null }),
+  };
 }

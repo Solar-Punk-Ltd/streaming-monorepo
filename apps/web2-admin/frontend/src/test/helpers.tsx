@@ -5,7 +5,7 @@ import { render, type RenderResult } from '@testing-library/react';
 import { MemoryRouter } from 'react-router';
 import { vi } from 'vitest';
 import type { ReactNode } from 'react';
-import type { IngestDetails, Stream, User, UserSummary } from '@streaming-monorepo/web2-admin-common';
+import type { IngestDetails, StageSummary, Stream, User, UserSummary } from '@streaming-monorepo/web2-admin-common';
 
 import { AuthProvider } from '../auth';
 import { SnackbarProvider } from '../components/Snackbar';
@@ -157,6 +157,7 @@ export function makeStream(overrides: Partial<Stream> = {}): Stream {
     publishedFeedIndex: null,
     publishError: null,
     hasUnpublishedEdits: false,
+    stageId: null,
     createdAt: now,
     updatedAt: now,
     ...overrides,
@@ -182,7 +183,49 @@ export function makeIngest(overrides: Partial<IngestDetails> = {}): IngestDetail
       passphrase: 'server-wide-passphrase',
     },
     rtmp: null,
-    keyVerified: false,
+    stage: { stageId: MAIN_STAGE_ID, name: 'Main stage', retiredAt: null },
+    ...overrides,
+  };
+}
+
+export const MAIN_STAGE_ID = '5f0c2a8e-1b2c-4d3e-8f40-0a1b2c3d4e5f';
+
+/** A moment `minutes` before now, as the API writes one. */
+export const minutesAgo = (minutes: number) => new Date(Date.now() - minutes * 60_000).toISOString();
+
+/** A ready SRS stage the manager confirmed five minutes ago. */
+export function makeStage(overrides: Partial<StageSummary> = {}): StageSummary {
+  return {
+    stageId: MAIN_STAGE_ID,
+    name: 'Main stage',
+    kind: 'abr-uploader',
+    engine: 'srs',
+    supported: true,
+    stackVersion: '1.4.0',
+    status: 'running',
+    owner: '0x3f1a9c2b4d5e6f708192a3b4c5d6e7f809a1b2c3',
+    ingest: { host: 'ingest.example.org', srtPort: 10061, rtmpPort: 10062, rtmpPublic: false, hasSrtPassphrase: true },
+    rungs: [
+      {
+        name: '720p',
+        stamp: {
+          batchId: 'b1'.repeat(32),
+          state: 'active',
+          ttlSeconds: 5 * 86_400,
+          remainingSeconds: 5 * 86_400,
+          expiredByClock: false,
+          fillRatio: 0.25,
+          immutable: false,
+        },
+        chequebook: { health: 'ok', availableBzz: '12.5' },
+      },
+    ],
+    uploader: { state: 'ready', reasons: [] },
+    readiness: { tone: 'ready', reasons: [] },
+    adminTokenKind: 'own',
+    observedAt: minutesAgo(5),
+    receivedAt: minutesAgo(5),
+    retiredAt: null,
     ...overrides,
   };
 }

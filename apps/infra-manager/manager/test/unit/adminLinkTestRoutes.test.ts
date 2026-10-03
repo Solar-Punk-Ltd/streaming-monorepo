@@ -21,12 +21,14 @@ import express from 'express';
 import {
   type AdminLinkTestOutcome,
   REQUESTED_WITH_HEADER,
+  STORED_TOKEN_NOT_AN_UPLOADER,
   REQUESTED_WITH_VALUE,
   SESSION_COOKIE_NAME,
 } from '@streaming-infra-manager/common';
 
 import type { AdminLinkProbe } from '../../src/domain/adminLink/adminLinkProbe.js';
 import type { AuthService } from '../../src/domain/auth/AuthService.js';
+import { Logger } from '../../src/domain/Logger.js';
 import { makeProfile } from '../support/profileFixtures.js';
 import { throwawayRoot } from '../support/throwawayRoot.js';
 import { InMemoryManagerAdminLink } from '../support/InMemoryManagerAdminLink.js';
@@ -67,6 +69,7 @@ const session = {
 interface Probed {
   url: string;
   token: string;
+  check: 'registrar' | 'uploader';
   feedOwner: string | null;
 }
 
@@ -136,17 +139,28 @@ async function testApi(options: TestApiOptions = {}) {
   };
 }
 
-/** Every line the manager logs while the test runs, from each level. */
+/**
+ * Every line the manager logs while the test runs, from each level. The logger
+ * writes at trace meanwhile, so a debug line the default level drops is read too.
+ */
 function capturedLogs(t: TestContext): string[] {
   const lines: string[] = [];
   for (const level of ['log', 'info', 'warn', 'error', 'debug'] as const) {
     t.mock.method(console, level, (...args: unknown[]) => lines.push(args.map(String).join(' ')));
   }
+  const previous = Logger.getInstance().setLevel('trace');
+  t.after(() => Logger.getInstance().setLevel(previous));
   return lines;
 }
 
 /** A web2 admin on loopback that takes `token`, names `owner` in its public config, and records each request line and its headers. */
-async function fakeAdmin(t: TestContext, token: string, owner: string): Promise<{ url: string; received: string[] }> {
+async function fakeAdmin(
+  t: TestContext,
+  token: string,
+  owner: string,
+  /** The owner the admin knows for the token's stage; unset, the token belongs to no stage. */
+  stageOwner?: string,
+): Promise<{ url: string; received: string[] }> {
   const received: string[] = [];
   const server = http.createServer((request, response) => {
     const path = request.url ?? '';
@@ -157,6 +171,11 @@ async function fakeAdmin(t: TestContext, token: string, owner: string): Promise<
     };
     if (path.startsWith('/api/internal/')) {
       if (request.headers.authorization !== `Bearer ${token}`) return reply(401, { error: 'unauthenticated' });
+      if (path === '/api/internal/stages/self') {
+        return stageOwner
+          ? reply(200, { stageId: '5f0c2a8e-1b2c-4d3e-8f40-0a1b2c3d4e5f', owner: stageOwner })
+          : reply(404, { error: 'not_found' });
+      }
       return reply(404, { error: 'stream_not_found' });
     }
     if (path === '/api/config') return reply(200, { feed: { owner, topic: 'catalog' }, viewerBaseUrl: null });
@@ -186,20 +205,21 @@ function refusalOf(answer: { status: number; body: unknown }): string[] {
 }
 
 describe('POST /manager-settings/admin-link/test', () => {
-  it('tests a typed address with a typed token and the stream address, and answers the outcome alone', async (t) => {
+  it("tests a typed uploader's token with the stream address, and answers the outcome alone", async (t) => {
     const logs = capturedLogs(t);
     const api = await testApi({ outcome: 'owner-mismatch' });
     try {
       const answer = await api.testTyped({
         url: ADMIN_URL,
         token: { source: 'typed', value: TOKEN },
+        tokenFor: 'uploader',
         feedOwner: OWNER,
       });
 
       assert.equal(answer.status, 200, answer.text);
       assert.deepEqual(answer.body, { outcome: 'owner-mismatch' });
       assert.equal(answer.cache, 'no-store');
-      assert.deepEqual(api.probed, [{ url: ADMIN_URL, token: TOKEN, feedOwner: OWNER }]);
+      assert.deepEqual(api.probed, [{ url: ADMIN_URL, token: TOKEN, check: 'uploader', feedOwner: OWNER }]);
       assert.ok(
         logs.some((line) => line.includes('owner-mismatch')),
         logs.join('\n'),
@@ -210,14 +230,48 @@ describe('POST /manager-settings/admin-link/test', () => {
     }
   });
 
-  it("presents the manager's stored token, which never reaches the answer", async () => {
+  it("proves the manager's stored token on the registrar check, and it never reaches the answer", async () => {
+    const api = await testApi({ storedToken: STORED_TOKEN, outcome: 'token-accepted' });
+    try {
+      // The wizard's test of a token of its own sends a stream address too; the registrar's token compares none.
+      const answer = await api.testTyped({ url: `${ADMIN_URL}/v2`, token: { source: 'stored' }, feedOwner: OWNER });
+
+      assert.deepEqual(answer.body, { outcome: 'token-accepted' });
+      assert.deepEqual(api.probed, [
+        { url: `${ADMIN_URL}/v2`, token: STORED_TOKEN, check: 'registrar', feedOwner: null },
+      ]);
+      assert.equal(answer.text.includes(STORED_TOKEN), false);
+    } finally {
+      await api.close();
+    }
+  });
+
+  it("proves a token typed on the Manager settings card as the registrar's, comparing no owner", async () => {
+    const api = await testApi({ outcome: 'token-accepted' });
+    try {
+      for (const body of [
+        { url: ADMIN_URL, token: { source: 'typed', value: TOKEN } },
+        { url: ADMIN_URL, token: { source: 'typed', value: TOKEN }, tokenFor: 'registrar', feedOwner: OWNER },
+      ]) {
+        assert.deepEqual((await api.testTyped(body)).body, { outcome: 'token-accepted' });
+      }
+      assert.deepEqual(api.probed, [
+        { url: ADMIN_URL, token: TOKEN, check: 'registrar', feedOwner: null },
+        { url: ADMIN_URL, token: TOKEN, check: 'registrar', feedOwner: null },
+      ]);
+    } finally {
+      await api.close();
+    }
+  });
+
+  it("refuses the stored token as an uploader's, since it is the registrar's, and asks nothing", async () => {
     const api = await testApi({ storedToken: STORED_TOKEN });
     try {
-      const answer = await api.testTyped({ url: `${ADMIN_URL}/v2`, token: { source: 'stored' } });
-
-      assert.deepEqual(answer.body, { outcome: 'linked' });
-      assert.deepEqual(api.probed, [{ url: `${ADMIN_URL}/v2`, token: STORED_TOKEN, feedOwner: null }]);
-      assert.equal(answer.text.includes(STORED_TOKEN), false);
+      const refused = refusalOf(
+        await api.testTyped({ url: ADMIN_URL, token: { source: 'stored' }, tokenFor: 'uploader' }),
+      );
+      assert.deepEqual(refused, [STORED_TOKEN_NOT_AN_UPLOADER]);
+      assert.equal(api.probed.length, 0);
     } finally {
       await api.close();
     }
@@ -239,9 +293,12 @@ describe('POST /manager-settings/admin-link/test', () => {
       const typed = await api.testTyped({
         url: 'https://admin2.example.com',
         token: { source: 'typed', value: TOKEN },
+        tokenFor: 'uploader',
       });
       assert.deepEqual(typed.body, { outcome: 'linked' });
-      assert.deepEqual(api.probed, [{ url: 'https://admin2.example.com', token: TOKEN, feedOwner: null }]);
+      assert.deepEqual(api.probed, [
+        { url: 'https://admin2.example.com', token: TOKEN, check: 'uploader', feedOwner: null },
+      ]);
     } finally {
       await api.close();
     }
@@ -290,6 +347,8 @@ describe('POST /manager-settings/admin-link/test', () => {
         { url: ADMIN_URL, token: { source: 'typed' } },
         { url: ADMIN_URL, token: { source: 'elsewhere', value: TOKEN } },
         { url: ADMIN_URL, token: { source: 'stored' }, feedOwner: 'not-an-address' },
+        { url: ADMIN_URL, token: { source: 'typed', value: TOKEN }, tokenFor: 'manager' },
+        { url: ADMIN_URL, token: { source: 'typed', value: TOKEN }, tokenFor: true },
         { url: ADMIN_URL, token: { source: 'stored' }, extra: TOKEN },
       ]) {
         const refused = await api.testTyped(body);
@@ -326,7 +385,9 @@ describe('POST /profiles/:name/settings/admin-link/test', () => {
 
       assert.equal(answer.status, 200, answer.text);
       assert.deepEqual(answer.body, { outcome: 'linked' });
-      assert.deepEqual(api.probed, [{ url: ADMIN_URL, token: TOKEN, feedOwner: FAKE_STREAM_ADDRESS }]);
+      assert.deepEqual(api.probed, [
+        { url: ADMIN_URL, token: TOKEN, check: 'uploader', feedOwner: FAKE_STREAM_ADDRESS },
+      ]);
       assert.equal(answer.text.includes(TOKEN), false);
     } finally {
       await api.close();
@@ -349,7 +410,7 @@ describe('POST /profiles/:name/settings/admin-link/test', () => {
         assert.deepEqual(answer.body, { outcome });
         assert.equal(api.probed[0]?.feedOwner, FAKE_STREAM_ADDRESS);
         assert.equal(carriesKey(answer.text, FAKE_STREAM_KEY), false);
-        assert.equal(admin.received.length, 2);
+        assert.equal(admin.received.length, 3, 'the lookup, the stage the token belongs to, and the config');
         assert.equal(
           admin.received.some((request) => carriesKey(request, FAKE_STREAM_KEY)),
           false,
@@ -363,6 +424,30 @@ describe('POST /profiles/:name/settings/admin-link/test', () => {
       logs.some((line) => carriesKey(line, FAKE_STREAM_KEY)),
       false,
     );
+  });
+
+  it("compares a deployment on a token of its own with the owner the admin knows for its stage, not the catalog's", async (t) => {
+    // The catalog is signed by the brand key, OWNER, and this stage signs with a key of its own.
+    for (const [stageOwner, outcome] of [
+      [FAKE_STREAM_ADDRESS, 'linked'],
+      [OWNER, 'owner-mismatch'],
+    ] as const) {
+      const admin = await fakeAdmin(t, TOKEN, OWNER, stageOwner);
+      const api = await testApi({ baseEnv: `STREAM_KEY=${FAKE_STREAM_KEY}\n`, probe: probeAdminLink });
+      try {
+        api.harness.profiles.stackSettings.set('stage', { ADMIN_API_URL: admin.url, ADMIN_API_TOKEN: TOKEN });
+        const answer = await api.testDeployment();
+
+        assert.deepEqual(answer.body, { outcome }, stageOwner);
+        assert.deepEqual(
+          admin.received.map((request) => request.split(' ')[1]),
+          ['/api/internal/streams/by-ingest/video/00000000-0000-0000-0000-000000000000', '/api/internal/stages/self'],
+          'the catalog owner is not asked once the stage is known',
+        );
+      } finally {
+        await api.close();
+      }
+    }
   });
 
   it("answers without the owner, and without repeating the value, for a version's stream key no address derives from", async (t) => {

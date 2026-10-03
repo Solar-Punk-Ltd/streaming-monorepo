@@ -14,7 +14,7 @@ import {
   Typography,
 } from '@mui/material';
 
-import { isLadderKind } from '@streaming-infra-manager/common';
+import { isLadderKind, needsAttention } from '@streaming-infra-manager/common';
 
 import { useEditors } from '../app/EditorsContext';
 import { useDeployments } from '../app/useDeploymentsStore';
@@ -26,7 +26,6 @@ import { useChequebookHealths } from '../uploaders/useChequebookHealths';
 import { useStampHealths } from '../uploaders/useStampHealths';
 import { DeploymentRow } from './DeploymentRow';
 import { GroupBlockRows } from './GroupBlockRows';
-import { needsAttention } from './readiness';
 import { SHAPE_LABEL, shapeOf } from './shape';
 import { useUploaderHealths } from './useUploaderHealths';
 

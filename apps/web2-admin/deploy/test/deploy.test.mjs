@@ -217,3 +217,127 @@ describe('deploy.sh names files by paths that work from the repository root', ()
     assert.match(deployed.stdout, /first user.*from the repository root/);
   });
 });
+
+describe('deploy.sh and the INGEST_* keys the stream stage replaced', () => {
+  it('deploys an env file with none of them, since the admin needs no stage to start', () => {
+    const sandbox = makeSandbox({ checkout: { [ENV_FILES.qa.now]: fakeAdminEnv('no-ingest') } });
+
+    const deployed = sandbox.runScript(DEPLOY, LOCAL_QA);
+
+    assert.equal(deployed.status, 0, deployed.stderr);
+    assert.doesNotMatch(deployed.stderr, /INGEST_/);
+  });
+
+  it('deploys an env file that still sets them, and names each one it sets as no longer read', () => {
+    const stale = `${fakeAdminEnv('stale-ingest')}INGEST_HOST=ingest.fixture.invalid\nINGEST_KEY_VERIFIED=maybe\n`;
+    const sandbox = makeSandbox({ checkout: { [ENV_FILES.qa.now]: stale } });
+
+    const deployed = sandbox.runScript(DEPLOY, LOCAL_QA);
+
+    assert.equal(deployed.status, 0, deployed.stderr);
+    assert.match(deployed.stderr, /WARNING: INGEST_HOST is no longer read/);
+    assert.match(deployed.stderr, /WARNING: INGEST_KEY_VERIFIED is no longer read/);
+    assert.doesNotMatch(deployed.stderr, /INGEST_SRT_PORT/);
+  });
+});
+
+describe('deploy.sh and the keys the catalogue stamp replaced', () => {
+  it('deploys an env file with no Bee node and no batch in it', () => {
+    const sandbox = makeSandbox({ checkout: { [ENV_FILES.qa.now]: fakeAdminEnv('no-bee') } });
+
+    const deployed = sandbox.runScript(DEPLOY, LOCAL_QA);
+
+    assert.equal(deployed.status, 0, deployed.stderr);
+    assert.doesNotMatch(deployed.stderr, /BEE_URL|POSTAGE_BATCH_ID/);
+  });
+
+  it('deploys an env file that still sets BEE_URL and POSTAGE_BATCH_ID, checks neither, and names each as no longer read', () => {
+    const stale = `${fakeAdminEnv('stale')}BEE_URL=not-a-url\nPOSTAGE_BATCH_ID=not-a-batch\n`;
+    const sandbox = makeSandbox({ checkout: { [ENV_FILES.qa.now]: stale } });
+
+    const deployed = sandbox.runScript(DEPLOY, LOCAL_QA);
+
+    assert.equal(deployed.status, 0, deployed.stderr);
+    assert.match(deployed.stderr, /WARNING: BEE_URL is no longer read/);
+    assert.match(deployed.stderr, /WARNING: POSTAGE_BATCH_ID is no longer read/);
+    assert.doesNotMatch(deployed.stderr, /must be|missing or empty/);
+  });
+});
+
+describe('deploy.sh and the public values a fresh copy of .env.sample carries', () => {
+  const SAMPLE_KEY = '0xac0974bec39a17e36ba4a6b4d238ff944bacb478cbed5efcae784d7bf4f2ff80';
+  const SAMPLE_TOKEN = 'change-me-to-32-or-more-random-characters';
+
+  const withSampleKey = (env) =>
+    env.replace(/^FEED_PRIVATE_KEY=.*$/m, `FEED_PRIVATE_KEY=${SAMPLE_KEY.toUpperCase().replace('0X', '0x')}`);
+  const withSampleToken = (env) => env.replace(/^INTERNAL_API_TOKEN=.*$/m, `INTERNAL_API_TOKEN=${SAMPLE_TOKEN}`);
+
+  it('refuses the sample FEED_PRIVATE_KEY, in either case, and runs nothing', () => {
+    const sandbox = makeSandbox({ checkout: { [ENV_FILES.qa.now]: withSampleKey(fakeAdminEnv('sample-key')) } });
+
+    const refused = sandbox.runScript(DEPLOY, LOCAL_QA);
+
+    assert.equal(refused.status, 1, refused.stderr);
+    assert.match(refused.stderr, /ERROR: \S+: FEED_PRIVATE_KEY is the public Hardhat test key from \.env\.sample/);
+    assert.match(refused.stderr, /1 problem\(s\) in \S+\. Nothing was deployed\./);
+    assert.deepEqual(refused.calls, [], 'a tool ran before the refusal');
+  });
+
+  it('refuses the sample INTERNAL_API_TOKEN and runs nothing', () => {
+    const sandbox = makeSandbox({ checkout: { [ENV_FILES.qa.now]: withSampleToken(fakeAdminEnv('sample-token')) } });
+
+    const refused = sandbox.runScript(DEPLOY, LOCAL_QA);
+
+    assert.equal(refused.status, 1, refused.stderr);
+    assert.match(refused.stderr, /ERROR: \S+: INTERNAL_API_TOKEN is the placeholder from \.env\.sample/);
+    assert.deepEqual(refused.calls, [], 'a tool ran before the refusal');
+  });
+
+  it('names both in one run, and the option that lets a test install through', () => {
+    const sandbox = makeSandbox({
+      checkout: { [ENV_FILES.qa.now]: withSampleToken(withSampleKey(fakeAdminEnv('sample-both'))) },
+    });
+
+    const refused = sandbox.runScript(DEPLOY, LOCAL_QA);
+
+    assert.equal(refused.status, 1, refused.stderr);
+    assert.match(refused.stderr, /FEED_PRIVATE_KEY is the public Hardhat test key/);
+    assert.match(refused.stderr, /INTERNAL_API_TOKEN is the placeholder/);
+    assert.match(refused.stderr, /2 problem\(s\) in /);
+    assert.match(refused.stderr, /--allow-sample-secrets/);
+  });
+
+  it('deploys them with --allow-sample-secrets, and warns about each', () => {
+    const sandbox = makeSandbox({
+      checkout: { [ENV_FILES.qa.now]: withSampleToken(withSampleKey(fakeAdminEnv('sample-allowed'))) },
+    });
+
+    const deployed = sandbox.runScript(DEPLOY, [...LOCAL_QA, '--allow-sample-secrets']);
+
+    assert.equal(deployed.status, 0, deployed.stderr);
+    assert.match(deployed.stderr, /WARNING: FEED_PRIVATE_KEY is the public Hardhat test key/);
+    assert.match(deployed.stderr, /WARNING: INTERNAL_API_TOKEN is the placeholder/);
+    assert.doesNotMatch(deployed.stderr, /ERROR/);
+  });
+
+  it('says nothing about either with values of your own, with or without the option', () => {
+    for (const args of [LOCAL_QA, [...LOCAL_QA, '--allow-sample-secrets']]) {
+      const sandbox = makeSandbox({ checkout: { [ENV_FILES.qa.now]: fakeAdminEnv('own-values') } });
+
+      const deployed = sandbox.runScript(DEPLOY, args);
+
+      assert.equal(deployed.status, 0, deployed.stderr);
+      assert.doesNotMatch(deployed.stderr, /Hardhat|placeholder/);
+    }
+  });
+
+  it('names the option in --help', () => {
+    const sandbox = makeSandbox();
+
+    const help = sandbox.runScript(DEPLOY, ['--help']);
+
+    assert.equal(help.status, 0, help.stderr);
+    assert.match(help.stdout, /^\s+--allow-sample-secrets\s+\S/m);
+    assert.match(help.stdout, /^Usage: deploy\.sh .*\[--allow-sample-secrets\]/m);
+  });
+});

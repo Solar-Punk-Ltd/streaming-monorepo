@@ -75,16 +75,12 @@ function childEnvironment(databaseUrl: string, port: number): NodeJS.ProcessEnv 
     FEED_GATEWAY: 'fake',
     FEED_PRIVATE_KEY,
     FEED_TOPIC: 'web2-admin-integration',
-    BEE_URL: 'http://127.0.0.1:1633',
-    POSTAGE_BATCH_ID: '0000000000000000000000000000000000000000000000000000000000000000',
     VIEWER_BASE_URL: '',
     INTERNAL_API_TOKEN: ITEST_INTERNAL_TOKEN,
+    // No longer read: each stream's OBS details come from its stage. Set
+    // anyway, so every suite also shows that an env file which still carries
+    // it starts as it did.
     INGEST_HOST: 'ingest.itest.invalid',
-    INGEST_SRT_PASSPHRASE: '',
-    // Empty rather than absent, so an `.env` beside the package cannot turn
-    // RTMP on: dotenv never overrides a variable that is already set, and the
-    // API reads an empty one as unset, which is SRT only.
-    INGEST_RTMP_PUBLIC: '',
   };
 }
 

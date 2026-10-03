@@ -3,6 +3,8 @@ import { Box, Button, CircularProgress, Stack, Table, TableBody, TableCell, Tabl
 import {
   type ChequebookHealth,
   isLadderKind,
+  needsAttention,
+  readinessOf,
   type StampHealth,
   type UploaderHealthReading,
 } from '@streaming-infra-manager/common';
@@ -14,7 +16,6 @@ import { EmptyState } from '../components/EmptyState';
 import { ReadinessPill } from '../components/ReadinessPill';
 import { SectionCard } from '../components/SectionCard';
 import { StatusDot } from '../components/StatusDot';
-import { needsAttention, readinessOf } from '../deployments/readiness';
 import { isRunning, SHAPE_LABEL, shapeOf, statusLabelOf } from '../deployments/shape';
 import { mergedStampHealths, poolStampHealths } from '../groups/rungStampHealth';
 import { usePoolResults } from '../groups/useBeePublishers';

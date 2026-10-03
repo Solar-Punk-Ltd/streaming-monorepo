@@ -6,8 +6,9 @@
  * Unit test, no browser. `pnpm test` in frontend/. The group itself is driven
  * in Chrome by `frontend/test/admin-link-browser.test.mjs`.
  *
- * The manager's stored token never reaches the page, so the create only says
- * to use it. Switched off, the deployment stores an empty ADMIN_API_URL, so its
+ * At the manager's own address the deployment gets a token of its own, which
+ * its first deploy generates, so the create sends the address alone and no
+ * token reaches the page. Switched off, the deployment stores an empty ADMIN_API_URL, so its
  * uploader runs standalone whatever its version sets.
  */
 import assert from 'node:assert/strict';
@@ -28,7 +29,8 @@ import {
   adminLinkTestOf,
   asksAdminLink,
   chosenAdminLink,
-  storedTokenElsewhere,
+  ownTokenElsewhere,
+  typedTokenAtLink,
   withAdminLinkPointed,
 } from './adminLinkChoice';
 import { initialWizardState, type WizardContext, type WizardGoal, type WizardState } from './wizardState';
@@ -111,11 +113,11 @@ describe('which deployments the Web2 admin group asks about', () => {
 });
 
 describe('where the group starts', () => {
-  it("starts on, at the manager's address and with its stored token, when the manager has a link", () => {
+  it("starts on, at the manager's address and with a token of its own, when the manager has a link", () => {
     assert.deepEqual(chosenAdminLink(stateFor('stream'), contextWith(DEFAULT)), {
       on: true,
       url: ADMIN_URL,
-      tokenSource: 'stored',
+      tokenSource: 'own',
       token: '',
     });
   });
@@ -135,7 +137,7 @@ describe('where the group starts', () => {
   });
 
   it("keeps the operator's own choice once they touched the group", () => {
-    const own = { on: false, url: ADMIN_URL, tokenSource: 'stored' as const, token: '' };
+    const own = { on: false, url: ADMIN_URL, tokenSource: 'own' as const, token: '' };
     assert.deepEqual(chosenAdminLink(stateFor('stream', { adminLink: own }), contextWith(DEFAULT)), own);
   });
 });
@@ -170,34 +172,31 @@ describe('what stops Continue and Deploy', () => {
     );
     assert.equal(
       adminLinkError(stateFor('stream', { adminLink: { ...on, url: ADMIN_URL, token: '' } }), contextWith(NONE)),
-      "Web2 admin: type the token, or use the manager's stored one",
+      'Web2 admin: type the token, or give the deployment a token of its own',
     );
     assert.equal(
       adminLinkError(
-        stateFor('stream', { adminLink: { ...on, url: ADMIN_URL, tokenSource: 'stored' } }),
+        stateFor('stream', { adminLink: { ...on, url: ADMIN_URL, tokenSource: 'own' } }),
         contextWith(ADDRESS_ONLY),
       ),
-      'Web2 admin: the manager stores no token, so type one here',
+      'Web2 admin: the manager has no web2 admin link with a token to register a token of its own, so type one here',
     );
   });
 
-  it("asks for a typed token when the address leaves the origin the manager's token was saved for", () => {
-    const moved = { on: true, url: 'https://admin2.example.com', tokenSource: 'stored' as const, token: '' };
+  it("asks for a typed token when the address leaves the origin of the manager's link", () => {
+    const moved = { on: true, url: 'https://admin2.example.com', tokenSource: 'own' as const, token: '' };
     assert.equal(
       adminLinkError(stateFor('stream', { adminLink: moved }), contextWith(DEFAULT)),
-      "Web2 admin: the manager's stored token was saved for another address, so type the token for this one",
+      "Web2 admin: a token of its own is registered only with the manager's own web2 admin, so type the token for this address",
     );
-    assert.equal(storedTokenElsewhere(stateFor('stream', { adminLink: moved }), contextWith(DEFAULT)), true);
+    assert.equal(ownTokenElsewhere(stateFor('stream', { adminLink: moved }), contextWith(DEFAULT)), true);
     assert.equal(adminLinkTestOf(stateFor('stream', { adminLink: moved }), contextWith(DEFAULT)), null);
     assert.equal(
       adminLinkError(stateFor('stream', { adminLink: { ...moved, url: `${ADMIN_URL}/v2` } }), contextWith(DEFAULT)),
       null,
     );
     assert.equal(
-      storedTokenElsewhere(
-        stateFor('stream', { adminLink: { ...moved, url: `${ADMIN_URL}/v2` } }),
-        contextWith(DEFAULT),
-      ),
+      ownTokenElsewhere(stateFor('stream', { adminLink: { ...moved, url: `${ADMIN_URL}/v2` } }), contextWith(DEFAULT)),
       false,
     );
     assert.equal(
@@ -210,11 +209,33 @@ describe('what stops Continue and Deploy', () => {
   });
 });
 
+describe("a token typed here at the manager's own web2 admin", () => {
+  const typed = { on: true, url: `${ADMIN_URL}/v2`, tokenSource: 'typed' as const, token: TOKEN };
+
+  it('holds Continue and the test, since that admin takes only a token of its own from an uploader', () => {
+    const state = stateFor('stream', { adminLink: typed });
+    assert.equal(
+      adminLinkError(state, contextWith(DEFAULT)),
+      "Web2 admin: the manager's own web2 admin takes only a token of its own from an uploader, so choose A token of its own",
+    );
+    assert.equal(typedTokenAtLink(state, contextWith(DEFAULT)), true);
+    assert.equal(adminLinkTestOf(state, contextWith(DEFAULT)), null);
+  });
+
+  it('holds nothing at another address, nor where the link has no token to register one of its own with', () => {
+    const elsewhere = stateFor('stream', { adminLink: { ...typed, url: 'https://admin2.example.com' } });
+    assert.equal(adminLinkError(elsewhere, contextWith(DEFAULT)), null);
+    assert.equal(typedTokenAtLink(elsewhere, contextWith(DEFAULT)), false);
+    const addressOnly = stateFor('stream', { adminLink: typed });
+    assert.equal(adminLinkError(addressOnly, contextWith(ADDRESS_ONLY)), null);
+    assert.equal(typedTokenAtLink(addressOnly, contextWith(ADDRESS_ONLY)), false);
+  });
+});
+
 describe('what the create sends', () => {
-  it("sends the address and asks for the manager's stored token, which it never holds", () => {
+  it('sends the address alone for a token of its own, which the first deploy generates', () => {
     assert.deepEqual(adminLinkBody(stateFor('stream'), contextWith(DEFAULT)), {
       settings: [{ key: 'ADMIN_API_URL', value: ADMIN_URL }],
-      useManagerToken: true,
     });
   });
 
@@ -225,32 +246,48 @@ describe('what the create sends', () => {
         { key: 'ADMIN_API_URL', value: ADMIN_URL },
         { key: 'ADMIN_API_TOKEN', value: TOKEN },
       ],
-      useManagerToken: false,
     });
   });
 
   it('sends an empty address when switched off, so the uploader runs standalone whatever the version sets', () => {
     assert.deepEqual(adminLinkBody(stateFor('stream'), contextWith(NONE)), {
       settings: [{ key: 'ADMIN_API_URL', value: '' }],
-      useManagerToken: false,
     });
   });
 
   it('sends nothing for a goal that runs no uploader, or a version that takes no link', () => {
-    const nothing = { settings: [], useManagerToken: false };
+    const nothing = { settings: [] };
     assert.deepEqual(adminLinkBody(stateFor('viewer'), contextWith(DEFAULT)), nothing);
     assert.deepEqual(adminLinkBody(stateFor('stream'), contextWith(DEFAULT, loaded(WITH_ADMIN.slice(0, 1)))), nothing);
   });
 });
 
 describe('what Test connection asks from the group', () => {
-  it("tests the address with the manager's stored token, and the stream key's address as the owner to compare", () => {
+  it("tests a token of its own with the manager's stored token, and compares no owner, since the stage's key is its own", () => {
     const state = stateFor('stream');
     assert.deepEqual(adminLinkTestOf(state, contextWith(DEFAULT)), {
       url: ADMIN_URL,
       token: { source: 'stored' },
+      feedOwner: null,
+    });
+  });
+
+  it("says a typed token is an uploader's, so the manager proves it as the uploader will", () => {
+    const typed = { on: true, url: 'https://admin2.example.com', tokenSource: 'typed' as const, token: TOKEN };
+    const state = stateFor('stream', { adminLink: typed });
+    assert.deepEqual(adminLinkTestOf(state, contextWith(DEFAULT)), {
+      url: 'https://admin2.example.com',
+      token: { source: 'typed', value: TOKEN },
+      tokenFor: 'uploader',
       feedOwner: addressOfStreamKey(state.generatedKey),
     });
+  });
+
+  it("compares a typed token with the stream key's address, as the uploader will at boot", () => {
+    const typed = { on: true, url: ADMIN_URL, tokenSource: 'typed' as const, token: TOKEN };
+    const state = stateFor('stream', { adminLink: typed });
+    assert.equal(adminLinkTestOf(state, contextWith(NONE))?.feedOwner, addressOfStreamKey(state.generatedKey));
+    assert.ok(adminLinkTestOf(state, contextWith(NONE))?.feedOwner, 'an address, not null');
   });
 
   it('tests a typed token, and nothing until the address and the token are usable', () => {
@@ -272,7 +309,7 @@ describe('what the review says', () => {
   it('names the address and where the token comes from, never the token', () => {
     assert.equal(
       adminLinkSummary(stateFor('stream'), contextWith(DEFAULT)),
-      `Linked to ${ADMIN_URL}, with the manager's stored token.`,
+      `Linked to ${ADMIN_URL}, with a token of its own, generated at its first deploy.`,
     );
     const typed = { on: true, url: ADMIN_URL, tokenSource: 'typed' as const, token: TOKEN };
     assert.equal(
@@ -317,7 +354,7 @@ describe("while the manager's own link is read, and when it could not be", () =>
 
   it('leaves the link to the manager when the read failed, so the create sends neither key and the manager adds its own', () => {
     assert.equal(adminLinkError(stateFor('stream'), failed), null);
-    assert.deepEqual(adminLinkBody(stateFor('stream'), failed), { settings: [], useManagerToken: false });
+    assert.deepEqual(adminLinkBody(stateFor('stream'), failed), { settings: [] });
     assert.equal(
       adminLinkSummary(stateFor('stream'), failed),
       "The manager's link could not be read here, so the manager links this deployment itself where it has a link.",
@@ -329,22 +366,19 @@ describe("while the manager's own link is read, and when it could not be", () =>
     assert.equal(adminLinkError(stateFor('stream', { adminLink: own }), reading), null);
     assert.deepEqual(adminLinkBody(stateFor('stream', { adminLink: own }), failed), {
       settings: [{ key: 'ADMIN_API_URL', value: '' }],
-      useManagerToken: false,
     });
   });
 });
 
-describe('what the create sends when the group was switched or moved to the stored token', () => {
-  it('drops a typed token once the link is switched off, and once the stored token is chosen again', () => {
+describe('what the create sends when the group was switched or moved to a token of its own', () => {
+  it('drops a typed token once the link is switched off, and once a token of its own is chosen again', () => {
     const typedThenOff = { on: false, url: ADMIN_URL, tokenSource: 'typed' as const, token: TOKEN };
     assert.deepEqual(adminLinkBody(stateFor('stream', { adminLink: typedThenOff }), contextWith(DEFAULT)), {
       settings: [{ key: 'ADMIN_API_URL', value: '' }],
-      useManagerToken: false,
     });
-    const typedThenStored = { on: true, url: ADMIN_URL, tokenSource: 'stored' as const, token: TOKEN };
+    const typedThenStored = { on: true, url: ADMIN_URL, tokenSource: 'own' as const, token: TOKEN };
     assert.deepEqual(adminLinkBody(stateFor('stream', { adminLink: typedThenStored }), contextWith(DEFAULT)), {
       settings: [{ key: 'ADMIN_API_URL', value: ADMIN_URL }],
-      useManagerToken: true,
     });
     assert.deepEqual(adminLinkTestOf(stateFor('stream', { adminLink: typedThenStored }), contextWith(DEFAULT))?.token, {
       source: 'stored',

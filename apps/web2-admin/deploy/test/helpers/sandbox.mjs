@@ -179,9 +179,6 @@ export function fakeAdminEnv(marker) {
     `POSTGRES_PASSWORD=${marker}-fixture-password`,
     `FEED_PRIVATE_KEY=0x${'1'.repeat(64)}`,
     'INTERNAL_API_TOKEN=fixture-token-of-more-than-thirty-two-characters',
-    'BEE_URL=http://bee.fixture.invalid:1633',
-    `POSTAGE_BATCH_ID=${'2'.repeat(64)}`,
-    'INGEST_HOST=ingest.fixture.invalid',
     '',
   ].join('\n');
 }

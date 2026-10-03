@@ -11,6 +11,7 @@ const logger = Logger.getInstance();
 export type AuditAction =
   | 'stream.create'
   | 'stream.update'
+  | 'stream.stage'
   | 'stream.delete'
   | 'stream.thumbnail.set'
   | 'stream.thumbnail.clear'
@@ -28,15 +29,27 @@ export type AuditAction =
   | 'user.add'
   | 'user.remove'
   | 'user.sessions.revoke'
-  | 'user.password.change';
+  | 'user.password.change'
+  | 'stage.register'
+  | 'stage.change'
+  | 'stage.retire'
+  | 'stage.unretire'
+  | 'catalogue.stamp.set'
+  | 'catalogue.stamp.change'
+  | 'catalogue.stamp.clear'
+  | 'catalogue.batch.pin'
+  | 'catalogue.move.start'
+  | 'catalogue.move.done'
+  | 'catalogue.move.failed';
 
 /**
  * One row of `audit_log`: who did what to which stream, and what it moved.
  *
  * `details` is whatever the action has to say beyond that — the fields an
  * edit changed, the feed index a write landed at and what it published, the
- * error a publish failed with, the user a user action was done to. Never a
- * secret: no publish key, no password or hash, no session token.
+ * error a publish failed with, the user a user action was done to, the stage
+ * a stage action was about. Never a secret: no publish key, no password or
+ * hash, no session token, no SRT passphrase and no uploader token or its hash.
  */
 export interface AuditEntry {
   actor: Actor;

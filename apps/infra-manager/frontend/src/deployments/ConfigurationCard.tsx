@@ -7,6 +7,7 @@ import {
   type ConfiguredBeeRpcEndpoint,
   CUSTOM_RPC_ENDPOINT_SOURCE,
   effectiveNodeMode,
+  isStreamLike,
   MANAGER_RPC_ENDPOINT_SOURCE,
   parseBeePublishers,
   SRS_SERVICE,
@@ -25,7 +26,6 @@ import type { Profile } from '../types';
 import { fetchSrtPassphrase } from '../data';
 import { beeApiUrl, hostFor } from '../urls';
 import { nodeModeLabel, rpcEndpointLabel } from './nodeText';
-import { isStreamLike } from './readiness';
 import { endpointSourceOf, hasService, ownsAnyBeeNode, servicesOf, SHAPE_LABEL, shapeOf } from './shape';
 
 const HIDDEN = '••••••••';

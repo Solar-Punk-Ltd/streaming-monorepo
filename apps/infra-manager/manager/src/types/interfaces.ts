@@ -104,6 +104,12 @@ export interface Profile {
   group_id: number | null;
   /** Which version of the streaming stack this deployment runs. Migration 010. */
   stack_version_id: number;
+  /**
+   * The public ingest address encoders dial, or null for the host the manager
+   * resolved for the deployment. Migration 046, and `resolvedIngestHost` in the
+   * common package. Nothing a container reads.
+   */
+  ingest_host: string | null;
 }
 
 export interface DeploymentGroup {
