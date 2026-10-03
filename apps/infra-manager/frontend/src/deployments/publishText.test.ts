@@ -30,7 +30,7 @@ describe('the Publish card beside RTMP', () => {
 
   it('carries no em dash and no semicolon', () => {
     for (const text of [RTMP_UNENCRYPTED_WARNING, RTMP_BOXES_NOTE]) {
-      assert.ok(!text.includes('—'), `an em dash in: ${text}`);
+      assert.ok(!text.includes('\u2014'), `an em dash in: ${text}`);
       assert.ok(!text.includes(';'), `a semicolon in: ${text}`);
     }
   });
