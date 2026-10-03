@@ -3,12 +3,15 @@ import http from 'node:http';
 import express from 'express';
 
 import { AuthService } from '../domain/auth/AuthService.js';
+import type { CatalogueBatchService } from '../domain/CatalogueBatch.js';
+import type { CatalogueMoveService } from '../domain/CatalogueMove.js';
 import { Database } from '../domain/Database.js';
 import type { FeedIdentity } from '../domain/feedIdentity.js';
 import { IngestService } from '../domain/IngestService.js';
 import { LadderService } from '../domain/LadderService.js';
 import { Logger } from '../domain/Logger.js';
 import { PublishService } from '../domain/PublishService.js';
+import { StageService } from '../domain/StageService.js';
 import { StreamService } from '../domain/StreamService.js';
 import { StreamStateService } from '../domain/StreamStateService.js';
 
@@ -16,6 +19,7 @@ import { errorHandler } from './middleware/errorHandler.js';
 import { notFound } from './middleware/notFound.js';
 import { createRequireAuth } from './middleware/requireAuth.js';
 import { createRequireInternalToken } from './middleware/requireInternalToken.js';
+import { createRequireUploaderToken, type UploaderTokenStore } from './middleware/requireUploaderToken.js';
 import { requireSameSite } from './middleware/requireSameSite.js';
 import { requestLogger } from './middleware/requestLogger.js';
 import { createAuthRouter } from './routes/auth.js';
@@ -23,6 +27,7 @@ import { createConfigRouter } from './routes/config.js';
 import { createFeedRouter } from './routes/feed.js';
 import { createHealthRouter } from './routes/health.js';
 import { createInternalRouter } from './routes/internal.js';
+import { createCatalogueStampRouter, createStagesRouter } from './routes/stages.js';
 import { createStreamsRouter } from './routes/streams.js';
 
 const logger = Logger.getInstance();
@@ -37,8 +42,17 @@ export interface ApiDeps {
   ladderService: LadderService;
   publishService: PublishService;
   ingestService: IngestService;
-  /** Bearer token for /api/internal; never accepted anywhere else. */
+  stageService: StageService;
+  catalogueBatch: CatalogueBatchService;
+  /** Moving the catalogue's history onto another batch, started from the Stages page. */
+  catalogueMove: CatalogueMoveService;
+  /**
+   * The registrar token: the only one the manager's routes under /api/internal take. An uploader's routes refuse it.
+   * Never accepted anywhere else.
+   */
   internalApiToken: string;
+  /** Where an uploader's own token is looked up by its sha256: the stages the manager pushed. */
+  uploaderTokens: UploaderTokenStore;
   feed: FeedIdentity;
   viewerBaseUrl: string;
 }
@@ -56,12 +70,14 @@ export function startApiServer(deps: ApiDeps, port: number, host: string): ApiSe
   // streams router. Everything else is small JSON.
   const json = express.json({ limit: '256kb' });
 
-  // The uploader's routes, mounted ahead of the cross-site check and with a
-  // body parser of their own.
+  // The uploader's and the manager's routes, mounted ahead of the cross-site
+  // check and with a body parser of their own.
   //
-  // /api/internal is a machine caller: swarm-hls-stream posts from a server
-  // with no Origin, no Sec-Fetch-Site and no custom header, and it authenticates
-  // with a bearer token that no browser holds. Putting it behind requireSameSite
+  // /api/internal is for machine callers: swarm-hls-stream posts from a server,
+  // and the manager pushes stage records from one, with no Origin, no
+  // Sec-Fetch-Site and no custom header, and each authenticates
+  // with a bearer token that no browser holds: the manager with the registrar
+  // token, an uploader with its stage's own token. Putting it behind requireSameSite
   // would refuse every report it makes and break the live streaming loop, while
   // buying nothing: a cross-site page cannot forge the token either, and the
   // session cookie is never accepted here. Mounted first so the check that
@@ -72,7 +88,12 @@ export function startApiServer(deps: ApiDeps, port: number, host: string): ApiSe
     createInternalRouter({
       streamStateService: deps.streamStateService,
       ladderService: deps.ladderService,
-      requireInternalToken: createRequireInternalToken(deps.internalApiToken),
+      stageService: deps.stageService,
+      requireRegistrarToken: createRequireInternalToken(deps.internalApiToken),
+      requireUploaderToken: createRequireUploaderToken({
+        registrarToken: deps.internalApiToken,
+        stages: deps.uploaderTokens,
+      }),
     }),
   );
 
@@ -99,6 +120,16 @@ export function startApiServer(deps: ApiDeps, port: number, host: string): ApiSe
       streamService: deps.streamService,
       publishService: deps.publishService,
       ingestService: deps.ingestService,
+      requireAuth,
+    }),
+  );
+  app.use('/api/stages', createStagesRouter({ stageService: deps.stageService, requireAuth }));
+  app.use(
+    '/api/catalogue-stamp',
+    createCatalogueStampRouter({
+      stageService: deps.stageService,
+      catalogueBatch: deps.catalogueBatch,
+      catalogueMove: deps.catalogueMove,
       requireAuth,
     }),
   );

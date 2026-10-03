@@ -98,6 +98,15 @@ const UNPUBLISH_PROMPTS = {
   },
 } as const;
 
+/** Beside a Publish that is disabled because the draft has no stage. The API's `stage_required` sentence. */
+export const NEEDS_STAGE_HINT = 'Pick the stage this stream is broadcast on before publishing.';
+
+/** Beside a Republish that is disabled because the catalogue entry already carries every edit. */
+export const UP_TO_DATE_HINT = 'Nothing to republish: the catalogue already has the latest edit.';
+
+/** The statuses whose stream has an entry on the catalogue, as the API counts them. */
+const ON_CATALOGUE: readonly StreamStatus[] = ['published', 'live', 'vod'];
+
 type UnpublishPrompt = (typeof UNPUBLISH_PROMPTS)[keyof typeof UNPUBLISH_PROMPTS];
 
 /**
@@ -180,9 +189,11 @@ export function StreamDetailsPage() {
       setStream(result.stream);
       setLastResult(result);
       snackbar.success(
-        action === 'publish'
-          ? `Published at feed index ${result.feed.index}.`
-          : `Unpublished. Feed is at index ${result.feed.index}.`,
+        action === 'unpublish'
+          ? `Unpublished. Feed is at index ${result.feed.index}.`
+          : result.written
+            ? `Published at feed index ${result.feed.index}.`
+            : `Nothing to write: the catalogue already has this edit, at feed index ${result.feed.index}.`,
       );
       return true;
     } catch (e) {
@@ -237,7 +248,14 @@ export function StreamDetailsPage() {
   // A live or recorded stream can be republished — that is how an edit made
   // mid-broadcast reaches viewers — and it keeps the state it is in. Only a
   // live one cannot be taken off the feed: nothing here can stop the encoder.
-  const canPublish = stream.status !== 'publishing';
+  // A draft goes on the catalogue only once it has a stage; the API refuses
+  // it with stage_required otherwise, and the button says so first. A stream
+  // on the catalogue has something to republish only while the console holds
+  // an edit its entry lacks, or after a failed attempt, which may have left the
+  // catalogue behind the row: otherwise the API writes nothing.
+  const needsStage = stream.status === 'draft' && stream.stageId === null;
+  const upToDate = ON_CATALOGUE.includes(stream.status) && !stream.hasUnpublishedEdits && !stream.publishError;
+  const canPublish = stream.status !== 'publishing' && !needsStage && !upToDate;
   // `publishing` keeps saying Publish: a first publish is in flight, and the
   // button is disabled anyway.
   const publishLabel = stream.status === 'draft' || stream.status === 'publishing' ? 'Publish' : 'Republish';
@@ -344,6 +362,14 @@ export function StreamDetailsPage() {
                 <Grid size={{ xs: 6, sm: 4 }}>
                   <Field label="Media type">
                     <Typography variant="body2">{MEDIA_TYPE_LABEL[stream.mediaType]}</Typography>
+                  </Field>
+                </Grid>
+                <Grid size={{ xs: 6, sm: 4 }}>
+                  <Field label="Stage">
+                    {/* Named by the OBS details, which are read from the stage. */}
+                    <Typography variant="body2">
+                      {ingest?.stage ? ingest.stage.name : stream.stageId ? '—' : 'No stage'}
+                    </Typography>
                   </Field>
                 </Grid>
                 <Grid size={{ xs: 6, sm: 4 }}>
@@ -456,6 +482,19 @@ export function StreamDetailsPage() {
             </Link>
           ) : null}
         </Stack>
+        {needsStage ? (
+          <Typography variant="caption" sx={{ color: 'text.secondary', display: 'block', mt: 1 }}>
+            {NEEDS_STAGE_HINT}{' '}
+            <Link component={RouterLink} to={`/edit/${stream.id}`}>
+              Edit the stream
+            </Link>
+          </Typography>
+        ) : null}
+        {upToDate ? (
+          <Typography variant="caption" sx={{ color: 'text.secondary', display: 'block', mt: 1 }}>
+            {UP_TO_DATE_HINT}
+          </Typography>
+        ) : null}
 
         <Stack direction="row" spacing={0.5} useFlexGap sx={{ alignItems: 'center', flexWrap: 'wrap', mt: 1 }}>
           <Typography variant="caption" sx={{ color: 'text.secondary' }}>
@@ -469,9 +508,9 @@ export function StreamDetailsPage() {
 
         {lastResult ? (
           <Alert severity="info" sx={{ mt: 2 }}>
-            Feed index {lastResult.feed.index} · {lastResult.feed.entryCount}{' '}
-            {lastResult.feed.entryCount === 1 ? 'entry' : 'entries'} · owner {shortHex(lastResult.feed.owner, 10, 8)} ·
-            topic {lastResult.feed.topic}
+            Catalogue feed index {lastResult.feed.index} · {lastResult.feed.entryCount}{' '}
+            {lastResult.feed.entryCount === 1 ? 'entry' : 'entries'} · catalogue owner{' '}
+            {shortHex(lastResult.feed.owner, 10, 8)} · catalogue topic {lastResult.feed.topic}
           </Alert>
         ) : null}
       </Paper>

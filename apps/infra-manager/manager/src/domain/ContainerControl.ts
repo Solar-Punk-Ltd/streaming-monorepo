@@ -15,11 +15,12 @@ import {
 } from './errors/index.js';
 import { completeLines, demultiplexDockerStream, readBounded, type StreamBounds } from './dockerStream.js';
 import { EventBus } from './EventBus.js';
-import { LOCAL_PUBLISHED_HOST } from './localHost.js';
+import { bridgeGatewayOf, LOCAL_PUBLISHED_HOST } from './localHost.js';
 import { Logger } from './Logger.js';
 import type { LogWindow } from './logWindow.js';
 import { collectPublishedPorts } from './ports/publishedPorts.js';
 import type { PublishedPortsSnapshot } from './ports/PublishedPortsProbe.js';
+import type { BeeApiInspect } from './stages/beeApiExposure.js';
 
 const logger = Logger.getInstance();
 
@@ -136,7 +137,7 @@ export interface ContainerHandle {
  * `State` no longer compiles.
  */
 export type InspectedContainer = Pick<Docker.ContainerInspectInfo, 'Id' | 'RestartCount'> & {
-  Config?: { Labels?: Record<string, string> };
+  Config?: { Labels?: Record<string, string>; Cmd?: unknown };
   Mounts?: Array<{ Type?: string; Source?: string; Destination?: string }>;
   NetworkSettings?: { Ports?: unknown };
   HostConfig?: { NetworkMode?: string };
@@ -169,6 +170,8 @@ export interface DockerEngine {
   info(): Promise<unknown>;
   listContainers(options: Docker.ContainerListOptions): Promise<ListedContainer[]>;
   getContainer(id: string): ContainerHandle;
+  /** `docker network inspect`, for the bridge's gateway. Optional, since only `bridgeGateway` reads it. */
+  getNetwork?(id: string): { inspect(): Promise<unknown> };
 }
 
 /**
@@ -328,6 +331,28 @@ export class ContainerControl {
         };
       },
     };
+  }
+
+  /**
+   * The fields of a deployment's running Bee node's inspect that say where its API is published, for
+   * `beeApiOnEveryAddress`, or null when the deployment runs no Bee node here. The command is read, never answered.
+   */
+  async beeApiInspect(project: string): Promise<BeeApiInspect | null> {
+    let handle: ContainerHandle;
+    try {
+      handle = await this.find(project, 'bee-uploader');
+    } catch (err) {
+      if (err instanceof ContainerNotRunningError) return null;
+      throw err;
+    }
+    const info = await this.withinLimit(handle.inspect());
+    return { ports: info.NetworkSettings?.Ports, networkMode: info.HostConfig?.NetworkMode, cmd: info.Config?.Cmd };
+  }
+
+  /** The local daemon's default bridge gateway, which a Linux engine maps host.docker.internal to, or null. */
+  async bridgeGateway(): Promise<string | null> {
+    if (!this.docker.getNetwork) return null;
+    return bridgeGatewayOf(await this.withinLimit(this.docker.getNetwork('bridge').inspect()));
   }
 
   async publishedPorts(): Promise<Omit<PublishedPortsSnapshot, 'daemonId'>> {

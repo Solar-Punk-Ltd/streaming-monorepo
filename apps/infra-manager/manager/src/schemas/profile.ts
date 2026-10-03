@@ -9,6 +9,7 @@ import {
   engineForComponents,
   hasConflictingEngines,
   impliedRpcEndpointSource,
+  ingestHostProblem,
   LADDER_GROUP_NAME_MAX,
   type NodeMode,
   NODE_MODES,
@@ -24,7 +25,7 @@ import { array, boolean, number, object, string, InferType } from 'yup';
 
 import { ALL_SERVICES, PROFILE_KINDS } from '../types/index.js';
 
-import { managerAdminTokenField, newDeploymentSettingsField } from './deploymentSettings.js';
+import { newDeploymentSettingsField } from './deploymentSettings.js';
 import { ENGINE_SETTING_VALUE_FIELDS } from './engineSettingValues.js';
 
 const ONE_ENGINE_MESSAGE = 'components may include at most one engine (srs or ome, not both)';
@@ -323,7 +324,6 @@ export const createProfileSchema = object({
   stack_version_id: stackVersionIdField(),
   engine_settings: engineSettingsField(),
   stack_settings: newDeploymentSettingsField(),
-  use_manager_admin_token: managerAdminTokenField(),
 }).noUnknown(true);
 
 export type CreateProfileInput = InferType<typeof createProfileSchema>;
@@ -402,6 +402,22 @@ export const updateNotesSchema = object({
 
 export type UpdateNotesInput = InferType<typeof updateNotesSchema>;
 
+/** `PATCH /profiles/:name/ingest-host`: the public ingest address, or null or empty for none. */
+export const updateIngestHostSchema = object({
+  ingest_host: string()
+    .nullable()
+    .defined()
+    .test('ingest-host', 'invalid ingest_host', function (value) {
+      if (value === null || value === undefined || value === '') return true;
+      const problem = ingestHostProblem(value);
+      return problem ? this.createError({ message: `ingest_host: ${problem}` }) : true;
+    }),
+})
+  .noUnknown(true)
+  .strict();
+
+export type UpdateIngestHostInput = InferType<typeof updateIngestHostSchema>;
+
 export const createGroupSchema = object({
   group_name: string()
     .required()
@@ -456,8 +472,6 @@ export const createGroupSchema = object({
   engine_settings: engineSettingsField(),
   // One list for every member, as the engine settings are.
   stack_settings: newDeploymentSettingsField(),
-  // Each member gets its own copy of the one stored token.
-  use_manager_admin_token: managerAdminTokenField(),
 }).noUnknown(true);
 
 export type CreateGroupInput = InferType<typeof createGroupSchema>;

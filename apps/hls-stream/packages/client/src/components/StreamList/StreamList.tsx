@@ -6,8 +6,6 @@ import { STREAM_STATUS_LIVE } from '@/types/stream';
 
 import './StreamList.scss';
 
-const MAX_DISPLAYED_STREAMS = 10;
-
 /**
  * Live first, then newest first, and that is all this ever tests for.
  *
@@ -39,9 +37,12 @@ function compareStreams(a: { state?: string; timestamp?: number; index?: number 
 export function StreamList() {
   const { streamList } = useAppContext();
 
-  const recentStreams = useMemo(() => streamList.slice(-MAX_DISPLAYED_STREAMS), [streamList]);
-
-  const displayedStreams = useMemo(() => [...recentStreams].sort(compareStreams), [recentStreams]);
+  /**
+   * Every entry on the feed, sorted. ⛔ Not cut to the last few: the admin appends each new stream at
+   * the end of the catalog, so a cut taken there drops the oldest entries, the recordings at the
+   * front, while they are still on the feed. One catalog serves every stage of a brand.
+   */
+  const displayedStreams = useMemo(() => [...streamList].sort(compareStreams), [streamList]);
 
   return (
     <div className="stream-list">

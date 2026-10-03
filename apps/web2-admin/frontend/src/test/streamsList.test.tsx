@@ -1,10 +1,12 @@
 import { screen } from '@testing-library/react';
+import type { CatalogueBatchReading, CatalogueWriteStatus } from '@streaming-monorepo/web2-admin-common';
 import { describe, expect, it } from 'vitest';
 
 import { StreamsPage } from '../pages/StreamsPage';
-import { jsonError, jsonOk, makeStream, mockFetch, pendingFetch, renderWithProviders } from './helpers';
+import { jsonError, jsonOk, makeStream, minutesAgo, mockFetch, pendingFetch, renderWithProviders } from './helpers';
 
 const STREAMS = '/api/streams';
+const STAMP = '/api/catalogue-stamp';
 
 describe('StreamsPage', () => {
   it('shows a spinner while the list is loading', () => {
@@ -84,5 +86,154 @@ describe('StreamsPage', () => {
     const image = await screen.findByAltText('With image thumbnail');
     expect(image.getAttribute('src')).toContain('/thumbnail?v=');
     expect(screen.queryByAltText('Without image thumbnail')).not.toBeInTheDocument();
+  });
+
+  it('clamps a long description to two lines, and keeps the whole of it to hover', async () => {
+    // The form takes 500 characters, which printed whole made a row about
+    // twenty lines tall.
+    const description = 'A long talk about the keynote, told at length. '.repeat(11).slice(0, 500);
+    mockFetch([{ path: STREAMS, respond: () => jsonOk({ streams: [makeStream({ title: 'Wordy', description })] }) }]);
+
+    renderWithProviders(<StreamsPage />);
+
+    await screen.findByText('Wordy');
+    const shown = screen.getByText(description);
+    expect(shown).toHaveStyle({ display: '-webkit-box', overflow: 'hidden' });
+    // Read one by one: `toHaveStyle` drops a property it cannot parse, and
+    // would pass on these whatever the page set.
+    const style = getComputedStyle(shown);
+    expect(style.getPropertyValue('-webkit-line-clamp')).toBe('2');
+    expect(style.getPropertyValue('-webkit-box-orient')).toBe('vertical');
+    expect(shown).toHaveAttribute('title', description);
+  });
+});
+
+function batch(overrides: Partial<CatalogueBatchReading> = {}): CatalogueBatchReading {
+  return {
+    batchId: 'c2'.repeat(32),
+    nodeName: 'catalogue-node',
+    state: 'active',
+    ttlSeconds: 30 * 86_400,
+    remainingSeconds: 30 * 86_400 - 180,
+    expiredByClock: false,
+    fillRatio: 0.01,
+    observedAt: new Date(Date.now() - 3 * 60_000).toISOString(),
+    ...overrides,
+  };
+}
+
+function serveWith(catalogueWrite: CatalogueWriteStatus) {
+  mockFetch([
+    { path: STREAMS, respond: () => jsonOk({ streams: [makeStream({ title: 'Draft one' })] }) },
+    { path: STAMP, respond: () => jsonOk({ catalogueStamp: null, catalogueWrite }) },
+  ]);
+  renderWithProviders(<StreamsPage />);
+}
+
+describe('StreamsPage catalogue banner', () => {
+  it('says why the admin refuses to write the catalogue, in the sentence it refuses with', async () => {
+    const message =
+      'The manager has not designated a catalogue batch yet. Nothing is written to the catalogue until it does.';
+    serveWith({ batch: null, refusal: { problem: 'none', message }, moveWaitingTo: null, unrecordedHistory: null });
+
+    expect(await screen.findByText(message)).toBeInTheDocument();
+    expect(screen.getByText('Draft one')).toBeInTheDocument();
+  });
+
+  it('warns when the batch has less than 48 hours left as of now, whatever time to live the manager last read', async () => {
+    // Three days to live when the manager read it, 47 hours of them left now: a pinned batch's reading only ages.
+    serveWith({
+      batch: batch({ ttlSeconds: 3 * 86_400, remainingSeconds: 47 * 3600, observedAt: minutesAgo(25 * 60) }),
+      refusal: null,
+      moveWaitingTo: null,
+      unrecordedHistory: null,
+    });
+
+    expect(
+      await screen.findByText('The catalogue batch c2c2c2c2… has less than 48 hours left. Top it up in the manager.'),
+    ).toBeInTheDocument();
+  });
+
+  it('warns when the batch is 90% full, and not below', async () => {
+    serveWith({ batch: batch({ fillRatio: 0.9 }), refusal: null, moveWaitingTo: null, unrecordedHistory: null });
+
+    expect(await screen.findByText(/^The catalogue batch c2c2c2c2… is 90% full\./)).toBeInTheDocument();
+  });
+
+  it('says nothing while the batch is fine', async () => {
+    serveWith({ batch: batch({ fillRatio: 0.89 }), refusal: null, moveWaitingTo: null, unrecordedHistory: null });
+
+    expect(await screen.findByText('Draft one')).toBeInTheDocument();
+    expect(screen.queryByRole('alert')).not.toBeInTheDocument();
+  });
+
+  it('says a move to the designated batch is waiting, and which batch the catalogue is still written with', async () => {
+    serveWith({ batch: batch(), refusal: null, moveWaitingTo: 'd3'.repeat(32), unrecordedHistory: null });
+
+    expect(
+      await screen.findByText(
+        'A move to batch d3d3d3d3… is waiting. Until it runs, the catalogue is written with batch c2c2c2c2…, as the manager last read it 3 minutes ago.',
+      ),
+    ).toBeInTheDocument();
+  });
+
+  it('says earlier writes are under a batch the admin did not record, and that moving them is waiting', async () => {
+    serveWith({ batch: batch(), refusal: null, moveWaitingTo: null, unrecordedHistory: { writes: 12 } });
+
+    expect(
+      await screen.findByText(
+        '12 earlier catalogue writes are under a batch this admin did not record, from before the catalogue stamp. A move to the catalogue batch is waiting, and it has to run before that batch expires: the viewer stops at the first slot it cannot read.',
+      ),
+    ).toBeInTheDocument();
+  });
+
+  it('says it of a single earlier write in the singular', async () => {
+    serveWith({ batch: batch(), refusal: null, moveWaitingTo: null, unrecordedHistory: { writes: 1 } });
+
+    expect(await screen.findByText(/^1 earlier catalogue write is under a batch/)).toBeInTheDocument();
+  });
+
+  it('shows the refusal and the unrecorded writes together, since a refused write moves nothing', async () => {
+    const message = 'The catalogue batch c2c2c2c2… is expired. Nothing can be written to the catalogue with it.';
+    serveWith({
+      batch: batch({ state: 'expired' }),
+      refusal: { problem: 'expired', message },
+      moveWaitingTo: null,
+      unrecordedHistory: { writes: 3 },
+    });
+
+    expect(await screen.findByText(message)).toBeInTheDocument();
+    expect(screen.getByText(/^3 earlier catalogue writes are under a batch/)).toBeInTheDocument();
+  });
+
+  it('shows the refusal of a batch expired by the clock, and no warning about its time left', async () => {
+    const message = 'The catalogue batch c2c2c2c2… is expired. Nothing can be written to the catalogue with it.';
+    serveWith({
+      batch: batch({
+        state: 'expired',
+        ttlSeconds: 3600,
+        remainingSeconds: 0,
+        expiredByClock: true,
+        observedAt: minutesAgo(18 * 60),
+      }),
+      refusal: { problem: 'expired', message },
+      moveWaitingTo: null,
+      unrecordedHistory: null,
+    });
+
+    expect(await screen.findByText(message)).toBeInTheDocument();
+    expect(screen.getAllByRole('alert')).toHaveLength(1);
+    expect(screen.queryByText(/less than 48 hours/)).not.toBeInTheDocument();
+  });
+
+  it('still lists the streams when the catalogue status cannot be read', async () => {
+    mockFetch([
+      { path: STREAMS, respond: () => jsonOk({ streams: [makeStream({ title: 'Draft one' })] }) },
+      { path: STAMP, respond: () => jsonError(500, { error: 'internal_error' }) },
+    ]);
+    renderWithProviders(<StreamsPage />);
+
+    expect(await screen.findByText('Draft one')).toBeInTheDocument();
+    expect(screen.queryByRole('alert')).not.toBeInTheDocument();
   });
 });

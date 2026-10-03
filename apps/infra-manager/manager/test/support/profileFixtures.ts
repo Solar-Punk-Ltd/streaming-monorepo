@@ -5,11 +5,9 @@ import {
   type EngineSettings,
   isPendingStamp,
   isSecretSettingKey,
-  sameAdminOrigin,
 } from '@streaming-infra-manager/common';
 
 import { ContainerSnapshot } from '../../src/domain/containerKeysSpec.js';
-import { ManagerAdminTokenElsewhereError, ManagerAdminTokenMissingError } from '../../src/domain/errors/index.js';
 import { portPlanFor } from '../../src/domain/ports/portReservations.js';
 import type { StackSecrets } from '../../src/domain/versions/stackSecrets.js';
 import type { ExpectedDeployOwner } from '../../src/domain/versions/buildLedger.js';
@@ -70,6 +68,7 @@ export function makeProfile(over: Partial<ProfileFixture> = {}): ProfileFixture 
     has_engine_config: false,
     engine_config_error: null,
     stack_version_id: 1,
+    ingest_host: null,
     status: 'RUNNING',
     last_error: null,
     last_error_at: null,
@@ -140,7 +139,7 @@ export class InMemoryProfiles {
   /** Each deployment's `settings_revision`, 0 until its first save. */
   readonly settingsRevisions = new Map<string, number>();
 
-  /** The manager's own web2 admin link, whose token an insert that asks for it copies. */
+  /** The manager's own web2 admin link, whose address a token of a deployment's own is generated for. */
   readonly managerAdminLink = new InMemoryManagerAdminLink();
 
   onDeleted?: (name: string) => void;
@@ -241,18 +240,9 @@ export class InMemoryProfiles {
     return row;
   }
 
-  /**
-   * What a create stores in both columns, with the manager's token copied in
-   * when it asks, as the insert's own SQL copies it. Refuses as that does when
-   * none is stored or when it was saved for another origin.
-   */
+  /** What a create stores in both columns. No token is copied in from the manager's link. */
   initialValuesOf(stackSettings: InitialStackSettings): Record<string, string> {
-    const values = { ...stackSettings.plain, ...stackSettings.secret };
-    if (!stackSettings.copyManagerAdminToken) return values;
-    if (this.managerAdminLink.token === null) throw new ManagerAdminTokenMissingError();
-    if (!sameAdminOrigin(stackSettings.copyManagerAdminToken.url, this.managerAdminLink.url ?? ''))
-      throw new ManagerAdminTokenElsewhereError();
-    return { ...values, [ADMIN_API_TOKEN_KEY]: this.managerAdminLink.token };
+    return { ...stackSettings.plain, ...stackSettings.secret };
   }
 
   /** Both columns as one set, the way `stackSettings` keeps them, and nothing for a create that named none. */
@@ -460,6 +450,11 @@ export class InMemoryProfiles {
     return this.write(name, { notes, notes_revision: row.notes_revision + 1 });
   }
 
+  async updateIngestHost(name: string, ingestHost: string | null): Promise<Profile | null> {
+    if (!this.rows.has(name)) return null;
+    return this.write(name, { ingest_host: ingestHost });
+  }
+
   async updateEngineSettings(
     name: string,
     settings: EngineSettings,
@@ -580,6 +575,23 @@ export class InMemoryProfiles {
 
   async storeStackSecrets(name: string, secrets: StackSecrets): Promise<void> {
     this.secrets.set(name, { ...(this.secrets.get(name) ?? {}), ...secrets });
+  }
+
+  /** As the real UPDATE: both tokens out, the origin and a revision with a stored one, for the instance read. */
+  async clearAdminToken(name: string, instanceId: string): Promise<Profile | null> {
+    const row = this.rows.get(name);
+    if (!row || row.instance_id !== instanceId || TRANSITIONAL_STATUSES.includes(row.status)) return null;
+    const generated = { ...(this.secrets.get(name) ?? {}) };
+    delete generated[ADMIN_API_TOKEN_KEY];
+    this.secrets.set(name, generated);
+    const settings = { ...(this.stackSettings.get(name) ?? {}) };
+    if (ADMIN_API_TOKEN_KEY in settings) {
+      delete settings[ADMIN_API_TOKEN_KEY];
+      this.stackSettings.set(name, settings);
+      this.adminTokenOrigins.delete(name);
+      this.settingsRevisions.set(name, (this.settingsRevisions.get(name) ?? 0) + 1);
+    }
+    return this.write(name, {});
   }
 
   /** Unconditional, as the real UPDATE is: whoever writes last is what the row records. */

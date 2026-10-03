@@ -1,10 +1,17 @@
 import type {
   AddUserRequest,
+  CatalogueMoveRequest,
+  CatalogueMoveStatus,
+  CatalogueStampResponse,
+  CatalogueStampSummary,
+  CatalogueWriteStatus,
   ChangePasswordRequest,
   IngestDetails,
   MeResponse,
   PublicConfig,
   PublishResult,
+  StageListResponse,
+  StageSummary,
   Stream,
   StreamInput,
   StreamListResponse,
@@ -240,6 +247,37 @@ export function fetchIngest(id: string): Promise<IngestDetails> {
 
 export function rotateIngestKey(id: string): Promise<IngestDetails> {
   return sendJson<IngestDetails>('POST', `${API}/streams/${encodeURIComponent(id)}/ingest/rotate-key`);
+}
+
+// --- stages -----------------------------------------------------------------
+
+export async function fetchStages(): Promise<StageSummary[]> {
+  const body = await getJson<StageListResponse>(`${API}/stages`);
+  return body.stages;
+}
+
+/**
+ * The catalogue batch and the move of its history, as the Stages page shows them. An answer without the move (an
+ * admin older than it) reads as no move to show.
+ */
+export async function fetchCatalogueState(): Promise<{
+  stamp: CatalogueStampSummary | null;
+  move: CatalogueMoveStatus | null;
+}> {
+  const body = await getJson<Partial<CatalogueStampResponse>>(`${API}/catalogue-stamp`);
+  return { stamp: body.catalogueStamp ?? null, move: body.catalogueMove ?? null };
+}
+
+/** Starts the move of the catalogue's history to the batch the page named, or retries a failed one. */
+export function startCatalogueMove(targetBatchId: string): Promise<CatalogueMoveStatus> {
+  const body: CatalogueMoveRequest = { targetBatchId };
+  return sendJson<CatalogueMoveStatus>('POST', `${API}/catalogue-stamp/move`, body);
+}
+
+/** What the next catalogue write does: the batch it goes through, why it is refused, and a move that is waiting. */
+export async function fetchCatalogueWrite(): Promise<CatalogueWriteStatus> {
+  const body = await getJson<CatalogueStampResponse>(`${API}/catalogue-stamp`);
+  return body.catalogueWrite;
 }
 
 // --- public config ----------------------------------------------------------

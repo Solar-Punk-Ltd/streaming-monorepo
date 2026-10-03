@@ -29,6 +29,7 @@ import { after, before, describe, it } from 'node:test';
 import { Database } from '../../src/domain/Database.js';
 import type { FeedIdentity } from '../../src/domain/feedIdentity.js';
 import { PostgresAuditLog } from '../../src/domain/PostgresAuditLog.js';
+import { StageRepository } from '../../src/domain/StageRepository.js';
 import { newPublishKey, StreamService } from '../../src/domain/StreamService.js';
 import { StreamRenditionRepository } from '../../src/domain/StreamRenditionRepository.js';
 import { StreamRepository, type StreamUpdateData } from '../../src/domain/StreamRepository.js';
@@ -89,6 +90,7 @@ async function claimedStream(publishedFeedIndex: number | null): Promise<string>
     media_type: 'video',
     scheduled_start_time: null,
     publish_key: newPublishKey(),
+    stage_id: null,
   });
   // What a crash between the claim and finishPublish leaves behind.
   await database.pool.query(
@@ -158,6 +160,7 @@ async function recordedLadder(): Promise<string> {
     media_type: 'video',
     scheduled_start_time: null,
     publish_key: newPublishKey(),
+    stage_id: null,
   });
   await streams.finishPublish(row.id, 1, null, row.content_edited_at, 'published');
   await renditions.upsert(row.id, {
@@ -280,6 +283,38 @@ describe('an unpublish keeps the recording for the next publish', () => {
   });
 });
 
+describe('a publish that wrote nothing', () => {
+  it('releases the claim and records the edit, leaving when and where the entry was published', async () => {
+    const published = await publishedStream();
+    const claimed = await streams.claimForPublish(published.id, ['published']);
+    assert.equal(claimed?.status, 'publishing');
+    await setEditStamp(published.id, '2026-09-24T10:05:00.000Z');
+    const reread = await streams.findById(published.id);
+    assert.ok(reread?.content_edited_at);
+
+    const finished = await streams.finishWithoutWrite(published.id, null, reread.content_edited_at, 'published');
+
+    assert.ok(finished);
+    assert.equal(finished.status, 'published', 'the claim released');
+    assert.equal(finished.publish_error, null);
+    assert.equal(finished.published_feed_index, 1, 'still the write that last carried its entry');
+    assert.equal(finished.published_at?.getTime(), published.published_at?.getTime(), 'still its first announcement');
+    assert.equal(hasUnpublishedEdits(finished), false, 'the edit its entry carries is recorded');
+  });
+
+  it('leaves the status the uploader reported when a republish by hand wrote nothing', async () => {
+    const published = await publishedStream();
+    const live = await streams.markLive(published.id, ['published']);
+    assert.equal(live?.status, 'live');
+
+    const finished = await streams.finishWithoutWrite(published.id, null, published.content_edited_at, null);
+
+    assert.equal(finished?.status, 'live');
+    assert.equal(finished?.published_feed_index, 1);
+    assert.equal(finished?.published_at?.getTime(), published.published_at?.getTime());
+  });
+});
+
 /** A published stream nobody has edited, as a first publish leaves it. */
 async function publishedStream(scheduledStartTime: string | null = null): Promise<StreamRow> {
   const row = await streams.insert({
@@ -292,6 +327,7 @@ async function publishedStream(scheduledStartTime: string | null = null): Promis
     media_type: 'video',
     scheduled_start_time: scheduledStartTime,
     publish_key: newPublishKey(),
+    stage_id: null,
   });
   const published = await streams.finishPublish(row.id, 1, null, row.content_edited_at, 'published');
   assert.ok(published);
@@ -416,11 +452,13 @@ describe('which writes count as a console edit (migration 006)', () => {
     );
     assert.ok(edited?.content_edited_at);
 
-    await streams.recordEntryRebuilt(row.id, edited.content_edited_at);
+    await streams.recordEntryRebuilt(row.id, 4, edited.content_edited_at);
 
     const reread = await streams.findById(row.id);
     assert.ok(reread);
     assert.equal(hasUnpublishedEdits(reread), false);
+    assert.equal(reread.published_feed_index, 4, 'the index the reconcile wrote the entry at');
+    assert.equal(reread.published_at?.getTime(), row.published_at?.getTime(), 'published_at left alone');
   });
 });
 
@@ -510,6 +548,7 @@ async function draftedBy(user: string): Promise<StreamRow> {
     media_type: 'video',
     scheduled_start_time: null,
     publish_key: newPublishKey(),
+    stage_id: null,
   });
 }
 
@@ -541,7 +580,12 @@ describe('a stream belongs to the installation, not to who drafted it', () => {
   });
 
   it('records who drafted a stream when it is created', async () => {
-    const service = new StreamService(streams, FEED, new PostgresAuditLog(database.pool));
+    const service = new StreamService(
+      streams,
+      new StageRepository(database.pool),
+      FEED,
+      new PostgresAuditLog(database.pool),
+    );
     const created = await service.create(
       { kind: 'operator', userId: secondUserId, username: secondUsername },
       {

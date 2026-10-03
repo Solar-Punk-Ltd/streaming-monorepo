@@ -8,23 +8,26 @@
  * What only the database can show: that the table holds one row and never a
  * second, that a read never selects the token, that a save lands only at the
  * revision it read, and that the rules the columns carry refuse a token with
- * no address even from a write that skipped the service. And that a new
- * deployment, or every member of a new group, that asks for the stored token
- * gets it in its secret settings inside the insert's own transaction, or is
- * not created at all, and only for an address on the origin it was saved for.
- * And that migration 042 records the origin a deployment's own token is for,
+ * no address even from a write that skipped the service. That no insert
+ * copies the stored token into a new deployment any more, and that Rotate the
+ * uploader's admin token takes both kinds of token out in one statement. And
+ * that migration 042 records the origin a deployment's own token is for,
  * which a save moves only when it stores or takes out the token.
  */
 import assert from 'node:assert/strict';
 import { randomBytes } from 'node:crypto';
-import { readFile, readdir } from 'node:fs/promises';
+import { mkdtemp, readFile, readdir } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import { afterEach, beforeEach, describe, it } from 'node:test';
 import pg, { type Pool } from 'pg';
 
 import { STANDARD_GROUP_KIND } from '@streaming-infra-manager/common';
 
-import { copyManagerAdminToken } from '../../src/domain/adminLink/adminTokenCopy.js';
+import { AdminTokenRotation } from '../../src/domain/adminLink/AdminTokenRotation.js';
 import { ManagerAdminLinkRepository } from '../../src/domain/adminLink/ManagerAdminLinkRepository.js';
+import type { NextDeployEnv } from '../../src/domain/DeploymentOrchestrator.js';
+import { ProfileBusyError } from '../../src/domain/errors/index.js';
 import { DeploymentGroupRepository, type SharedProfileParams } from '../../src/domain/DeploymentGroupRepository.js';
 import { type InitialStackSettings, ProfileRepository } from '../../src/domain/ProfileRepository.js';
 
@@ -140,23 +143,16 @@ describe(
       await assert.rejects(pool.query(`UPDATE manager_admin_link SET url = ''`), /check constraint/i);
     });
 
-    describe("a new deployment's copy of the stored token", () => {
+    describe("a new deployment and the manager's stored token", () => {
       /** The bundled version the migrations insert first, on a daemon of its own with no ports to reserve. */
       const PLACEMENT = { stackVersionId: 1, slotCap: 99, daemonId: 'synthetic-daemon', table: [] };
-      const LINKED: InitialStackSettings = {
-        plain: { ADMIN_API_URL: ADMIN_URL },
-        secret: {},
-        copyManagerAdminToken: { url: ADMIN_URL },
-      };
-      const ELSEWHERE: InitialStackSettings = {
-        plain: { ADMIN_API_URL: 'https://elsewhere.example.net' },
-        secret: {},
-        copyManagerAdminToken: { url: 'https://elsewhere.example.net' },
-      };
+      const LINKED: InitialStackSettings = { plain: { ADMIN_API_URL: ADMIN_URL }, secret: {} };
 
       async function secretsOf(name: string): Promise<unknown> {
-        const row = await pool.query('SELECT stack_settings_secret FROM profiles WHERE name = $1', [name]);
-        return row.rows[0]?.stack_settings_secret;
+        const row = await pool.query('SELECT stack_settings_secret, stack_secrets FROM profiles WHERE name = $1', [
+          name,
+        ]);
+        return row.rows[0];
       }
 
       function groupParams(stackSettings: InitialStackSettings): SharedProfileParams {
@@ -183,10 +179,10 @@ describe(
         };
       }
 
-      it('puts the stored token in the secret settings at the insert, and the row answered carries none', async () => {
+      it('is copied into no deployment at the insert: its first deploy generates a token of its own', async () => {
         await link.write({ url: ADMIN_URL, token: TOKEN }, 0, 'operator');
 
-        const row = await new ProfileRepository(pool).insertWithFreeSlot(
+        await new ProfileRepository(pool).insertWithFreeSlot(
           'linked',
           'streamer',
           'DEPLOYING',
@@ -195,132 +191,168 @@ describe(
           {},
           LINKED,
         );
-
-        assert.deepEqual(await secretsOf('linked'), { ADMIN_API_TOKEN: TOKEN });
-        assert.deepEqual(await new ProfileRepository(pool).stackSettingsForDeploy('linked'), {
-          ADMIN_API_URL: ADMIN_URL,
-          ADMIN_API_TOKEN: TOKEN,
-        });
-        assert.doesNotMatch(JSON.stringify(row), new RegExp(TOKEN));
-      });
-
-      it('refuses an insert that asks for the token when none is stored, and leaves no deployment behind', async () => {
-        await link.write({ url: ADMIN_URL }, 0, 'operator');
-
-        await assert.rejects(
-          new ProfileRepository(pool).insertWithFreeSlot('orphan', 'streamer', 'DEPLOYING', {}, PLACEMENT, {}, LINKED),
-          (error: Error) => error.name === 'ManagerAdminTokenMissingError',
-        );
-        const rows = await pool.query(`SELECT name FROM profiles WHERE name = 'orphan'`);
-        assert.equal(rows.rowCount, 0);
-      });
-
-      it('refuses an insert whose address has another origin than the stored link, and leaves no deployment behind', async () => {
-        await link.write({ url: ADMIN_URL, token: TOKEN }, 0, 'operator');
-
-        await assert.rejects(
-          new ProfileRepository(pool).insertWithFreeSlot(
-            'elsewhere',
-            'streamer',
-            'DEPLOYING',
-            {},
-            PLACEMENT,
-            {},
-            ELSEWHERE,
-          ),
-          (error: Error) => error.name === 'ManagerAdminTokenElsewhereError' && !error.message.includes(TOKEN),
-        );
-        await assert.rejects(
-          new DeploymentGroupRepository(pool).createGroupWithMembers(
-            'far',
-            STANDARD_GROUP_KIND,
-            [{ name: 'far-1' }],
-            groupParams(ELSEWHERE),
-          ),
-          (error: Error) => error.name === 'ManagerAdminTokenElsewhereError',
-        );
-        const rows = await pool.query(`SELECT name FROM profiles WHERE name IN ('elsewhere', 'far-1')`);
-        assert.equal(rows.rowCount, 0);
-      });
-
-      it('holds the stored link still until the insert commits, so a save cannot swap it in between', async () => {
-        await link.write({ url: ADMIN_URL, token: TOKEN }, 0, 'operator');
-        await new ProfileRepository(pool).insertWithFreeSlot(
-          'held',
-          'streamer',
-          'DEPLOYING',
-          {},
-          PLACEMENT,
-          {},
-          {
-            plain: { ADMIN_API_URL: ADMIN_URL },
-            secret: {},
-          },
-        );
-        const client = await pool.connect();
-        try {
-          await client.query('BEGIN');
-          await copyManagerAdminToken(client, 'held', { url: ADMIN_URL });
-          const moved = link.write({ url: 'https://elsewhere.example.net', token: null }, 1, 'operator');
-          const settled = await Promise.race([
-            moved.then(() => 'moved'),
-            new Promise((resolve) => setTimeout(() => resolve('waiting'), 300)),
-          ]);
-          assert.equal(settled, 'waiting');
-          await client.query('COMMIT');
-          await moved;
-          assert.deepEqual(await secretsOf('held'), { ADMIN_API_TOKEN: TOKEN });
-        } finally {
-          client.release();
-        }
-      });
-
-      it('puts the stored token in every member of a new group at the insert', async () => {
-        await link.write({ url: ADMIN_URL, token: TOKEN }, 0, 'operator');
-
-        const { profiles: members } = await new DeploymentGroupRepository(pool).createGroupWithMembers(
+        await new DeploymentGroupRepository(pool).createGroupWithMembers(
           'fleet',
           STANDARD_GROUP_KIND,
           [{ name: 'fleet-1' }, { name: 'fleet-2' }],
           groupParams(LINKED),
         );
 
-        for (const name of ['fleet-1', 'fleet-2'])
-          assert.deepEqual(await secretsOf(name), { ADMIN_API_TOKEN: TOKEN }, name);
-        assert.doesNotMatch(JSON.stringify(members), new RegExp(TOKEN));
+        for (const name of ['linked', 'fleet-1', 'fleet-2']) {
+          assert.deepEqual(await secretsOf(name), { stack_settings_secret: {}, stack_secrets: {} }, name);
+          assert.deepEqual(await new ProfileRepository(pool).stackSettingsForDeploy(name), {
+            ADMIN_API_URL: ADMIN_URL,
+          });
+        }
       });
+    });
 
-      it('refuses a whole group when none is stored, and leaves no member behind', async () => {
-        await assert.rejects(
-          new DeploymentGroupRepository(pool).createGroupWithMembers(
-            'bare',
-            STANDARD_GROUP_KIND,
-            [{ name: 'bare-1' }],
-            groupParams(LINKED),
-          ),
-          (error: Error) => error.name === 'ManagerAdminTokenMissingError',
+    describe("Rotate the uploader's admin token", () => {
+      const PLACEMENT = { stackVersionId: 1, slotCap: 99, daemonId: 'synthetic-daemon', table: [] };
+      const OTHER = 'synthetic-other-generated-token-0000000000000000';
+
+      async function rowOf(name: string) {
+        const row = await pool.query(
+          `SELECT stack_secrets, stack_settings_secret, admin_token_origin, settings_revision
+             FROM profiles WHERE name = $1`,
+          [name],
         );
-        const rows = await pool.query(`SELECT name FROM profiles WHERE name = 'bare-1'`);
-        assert.equal(rows.rowCount, 0);
-      });
+        return row.rows[0];
+      }
 
-      it('copies nothing into an insert that does not ask, even with a token stored', async () => {
-        await link.write({ url: ADMIN_URL, token: TOKEN }, 0, 'operator');
-
-        await new ProfileRepository(pool).insertWithFreeSlot(
-          'plain',
+      it('takes out the generated token and a stored one, with its origin, and moves the revision', async () => {
+        const profiles = new ProfileRepository(pool);
+        const row = await profiles.insertWithFreeSlot(
+          'copied',
           'streamer',
-          'DEPLOYING',
+          'STOPPED',
           {},
           PLACEMENT,
           {},
           {
-            plain: { ADMIN_API_URL: '' },
-            secret: {},
+            plain: { ADMIN_API_URL: ADMIN_URL },
+            secret: { ADMIN_API_TOKEN: TOKEN, SRT_PASSPHRASE_EXTRA: 'kept-secret-value-000' },
+            adminTokenOrigin: ADMIN_URL,
           },
         );
+        assert.ok(row);
+        await profiles.storeStackSecrets('copied', { ADMIN_API_TOKEN: OTHER, API_AUTH_TOKEN: 'b'.repeat(64) });
 
-        assert.deepEqual(await secretsOf('plain'), {});
+        const cleared = await profiles.clearAdminToken('copied', row.instance_id);
+
+        assert.equal(cleared?.name, 'copied');
+        assert.doesNotMatch(JSON.stringify(cleared), new RegExp(`${TOKEN}|${OTHER}`));
+        assert.deepEqual(await rowOf('copied'), {
+          stack_secrets: { API_AUTH_TOKEN: 'b'.repeat(64) },
+          stack_settings_secret: { SRT_PASSPHRASE_EXTRA: 'kept-secret-value-000' },
+          admin_token_origin: null,
+          settings_revision: 1,
+        });
+      });
+
+      it('moves no revision and keeps the origin when only a generated token was there', async () => {
+        const profiles = new ProfileRepository(pool);
+        const row = await profiles.insertWithFreeSlot(
+          'own',
+          'streamer',
+          'STOPPED',
+          {},
+          PLACEMENT,
+          {},
+          { plain: { ADMIN_API_URL: ADMIN_URL }, secret: {} },
+        );
+        assert.ok(row);
+        await profiles.storeStackSecrets('own', { ADMIN_API_TOKEN: OTHER });
+
+        assert.ok(await profiles.clearAdminToken('own', row.instance_id));
+
+        assert.deepEqual(await rowOf('own'), {
+          stack_secrets: {},
+          stack_settings_secret: {},
+          admin_token_origin: null,
+          settings_revision: 0,
+        });
+      });
+
+      it('changes nothing for another instance of the name', async () => {
+        const profiles = new ProfileRepository(pool);
+        const row = await profiles.insertWithFreeSlot(
+          'moved',
+          'streamer',
+          'STOPPED',
+          {},
+          PLACEMENT,
+          {},
+          { plain: {}, secret: {} },
+        );
+        assert.ok(row);
+        await profiles.storeStackSecrets('moved', { ADMIN_API_TOKEN: OTHER });
+
+        assert.equal(await profiles.clearAdminToken('moved', '00000000-0000-4000-8000-000000000000'), null);
+        assert.deepEqual((await rowOf('moved')).stack_secrets, { ADMIN_API_TOKEN: OTHER });
+      });
+
+      it('takes nothing out of a deployment in the middle of a deploy, stop or removal', async () => {
+        const profiles = new ProfileRepository(pool);
+        const row = await profiles.insertWithFreeSlot(
+          'busy',
+          'streamer',
+          'STOPPED',
+          {},
+          PLACEMENT,
+          {},
+          { plain: { ADMIN_API_URL: ADMIN_URL }, secret: { ADMIN_API_TOKEN: TOKEN }, adminTokenOrigin: ADMIN_URL },
+        );
+        assert.ok(row);
+        await profiles.storeStackSecrets('busy', { ADMIN_API_TOKEN: OTHER });
+
+        for (const status of ['DEPLOYING', 'STOPPING', 'REMOVING']) {
+          await pool.query('UPDATE profiles SET status = $2 WHERE name = $1', ['busy', status]);
+          assert.equal(await profiles.clearAdminToken('busy', row.instance_id), null, status);
+        }
+        assert.deepEqual(await rowOf('busy'), {
+          stack_secrets: { ADMIN_API_TOKEN: OTHER },
+          stack_settings_secret: { ADMIN_API_TOKEN: TOKEN },
+          admin_token_origin: ADMIN_URL,
+          settings_revision: 0,
+        });
+      });
+
+      it("is refused as busy when a deploy starts between the rotation's read and its clear", async () => {
+        const profiles = new ProfileRepository(pool);
+        const row = await profiles.insertWithFreeSlot(
+          'raced',
+          'streamer',
+          'RUNNING',
+          {},
+          PLACEMENT,
+          {},
+          { plain: { ADMIN_API_URL: ADMIN_URL }, secret: {} },
+        );
+        assert.ok(row);
+        await profiles.storeStackSecrets('raced', { ADMIN_API_TOKEN: OTHER });
+        await link.write({ url: ADMIN_URL, token: TOKEN }, 0, 'operator');
+        const root = await mkdtemp(join(tmpdir(), 'rotate-race-'));
+
+        const rotation = new AdminTokenRotation(
+          profiles,
+          {
+            // The rotation reads the row, then the next deploy's environment: a deploy claims the row in between.
+            nextEnvFor: async () => {
+              await pool.query(`UPDATE profiles SET status = 'DEPLOYING' WHERE name = 'raced'`);
+              return { env: { ADMIN_API_URL: ADMIN_URL }, root } as unknown as NextDeployEnv;
+            },
+          },
+          link,
+          { withContainers: async (profile) => ({ ...profile, containers: [] }) as never },
+          { publish: () => undefined },
+        );
+
+        await assert.rejects(
+          rotation.rotate('raced', 'operator'),
+          (error: Error) => error instanceof ProfileBusyError && error.currentStatus === 'DEPLOYING',
+        );
+        assert.deepEqual((await rowOf('raced')).stack_secrets, { ADMIN_API_TOKEN: OTHER }, 'nothing taken out');
       });
     });
 
@@ -332,7 +364,7 @@ describe(
         return row.rows[0]?.admin_token_origin;
       }
 
-      it('is recorded at the insert, for a typed token and for the copied one, and null where none is stored', async () => {
+      it('is recorded at the insert for a typed token, and null where none is stored', async () => {
         await link.write({ url: ADMIN_URL, token: TOKEN }, 0, 'operator');
         const profiles = new ProfileRepository(pool);
 
@@ -350,20 +382,6 @@ describe(
           },
         );
         await profiles.insertWithFreeSlot(
-          'copied',
-          'streamer',
-          'DEPLOYING',
-          {},
-          PLACEMENT,
-          {},
-          {
-            plain: { ADMIN_API_URL: ADMIN_URL },
-            secret: {},
-            copyManagerAdminToken: { url: ADMIN_URL },
-            adminTokenOrigin: ADMIN_URL,
-          },
-        );
-        await profiles.insertWithFreeSlot(
           'bare',
           'streamer',
           'DEPLOYING',
@@ -374,7 +392,6 @@ describe(
         );
 
         assert.equal(await originOf('typed'), ADMIN_URL);
-        assert.equal(await originOf('copied'), ADMIN_URL);
         assert.equal(await originOf('bare'), null);
         assert.equal((await profiles.stackSettingsOf('typed'))?.adminTokenOrigin, ADMIN_URL);
       });

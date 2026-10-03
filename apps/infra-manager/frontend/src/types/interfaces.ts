@@ -99,6 +99,12 @@ export interface Profile {
   pendingStamp?: boolean;
   /** Which version of the streaming stack this deployment runs. */
   stack_version_id?: number | null;
+  /**
+   * The public ingest address encoders dial, or null for the host the manager
+   * resolved for the deployment. The stage record the manager pushes into the
+   * web2 admin carries it. See `resolvedIngestHost`.
+   */
+  ingest_host?: string | null;
 }
 
 export interface DeploymentGroup {
@@ -146,9 +152,4 @@ export interface CreateProfileBody {
    * only: a deployment's page saves them afterwards.
    */
   stack_settings?: NewDeploymentSetting[];
-  /**
-   * True has the manager copy its stored web2 admin token into the deployment
-   * as it is inserted. The token never travels on the request.
-   */
-  use_manager_admin_token?: boolean;
 }

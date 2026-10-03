@@ -6,4 +6,5 @@ export * from './catalogState.js';
 export * from './ingest.js';
 export * from './mediaType.js';
 export * from './qualityLadder.js';
+export * from './stage.js';
 export * from './uploaderHealth.js';

@@ -3,8 +3,12 @@ import { Box, Button, Stack, Typography } from '@mui/material';
 import { CopyBox } from '../components/CopyBox';
 import { SectionCard } from '../components/SectionCard';
 import { toneBannerStyles, toneMainColor, type Tone } from '../components/tone';
-import type { ChecklistStep, StepAction, StepState } from './checklist';
-import type { ReadySummary } from './readySummary';
+import {
+  type ChecklistStep,
+  type ReadySummary,
+  type StepAction,
+  type StepState,
+} from '@streaming-infra-manager/common';
 
 const STEP_TONE: Record<StepState, Tone> = {
   ok: 'ok',

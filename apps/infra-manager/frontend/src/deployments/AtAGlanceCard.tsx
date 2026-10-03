@@ -14,8 +14,8 @@ import { hostFor } from '../urls';
 import { describeRunning, describeVersion } from '../versions/versionText';
 import type { EngineOverview } from './engineApi';
 import { ENGINE_LABEL, engineSummary } from './engineText';
-import type { Readiness } from './readiness';
 import { engineOf } from './shape';
+import { type Readiness } from '@streaming-infra-manager/common';
 
 export function AtAGlanceCard({
   profile,

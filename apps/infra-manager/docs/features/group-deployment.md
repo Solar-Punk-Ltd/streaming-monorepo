@@ -78,8 +78,10 @@ All form fields filled in group mode are applied verbatim to every member:
 - `engine_settings`, so every member cuts the same segments
 - `stack_settings`, so every member starts with the same stack settings, a node pool's rungs
   included
-- `use_manager_admin_token`, which copies the manager's stored web2 admin token into every
-  member as it is inserted
+- no web2 admin token: each uploader linked to the manager's admin gets a token of its own at
+  its first deploy (`web2-admin-link.md`). `use_manager_admin_token`, with which a manager from
+  before stages copied the link's token into every member, is gone, and a create drops it as any
+  key it does not name
 
 Members differ in `name` and in their port slot, which each takes for itself as it is inserted:
 the lowest free slot, with the ports that slot reserves (`insertMemberWithFreeSlot` in

@@ -23,13 +23,23 @@ import { ProfileRepository } from './domain/ProfileRepository.js';
 import { ProfileService } from './domain/ProfileService.js';
 import { ScriptRunner } from './domain/ScriptRunner.js';
 import { SrtIngestHealthService } from './domain/srtIngest/SrtIngestHealthService.js';
-import { StampService } from './domain/StampService.js';
+import { readManagerId } from './domain/stages/managerIdentity.js';
+import { StagePublisher } from './domain/stages/StagePublisher.js';
+import { StageRetirementRepository } from './domain/stages/StageRetirementRepository.js';
+import { StageRecordBuilder } from './domain/stages/StageRecordBuilder.js';
+import { beeApiUrlFor, beePublisherUrlFor, StampService } from './domain/StampService.js';
+import { localBeeApiBindReader, localPublisherHost } from './domain/localHost.js';
+import { CatalogueDesignationRepository } from './domain/stages/CatalogueDesignationRepository.js';
+import { CatalogueDesignationService } from './domain/stages/CatalogueDesignationService.js';
+import { beeApiOnEveryAddress } from './domain/stages/beeApiExposure.js';
+import { CataloguePublisher } from './domain/stages/CataloguePublisher.js';
 import { UploaderHealthService } from './domain/UploaderHealthService.js';
 import { UploaderStartGate } from './domain/UploaderStartGate.js';
 import { readBundledCommit } from './domain/versions/bundledCommit.js';
 import { EngineConfigChecker } from './domain/engineConfig/engineConfigCheck.js';
 import { EngineConfigService } from './domain/engineConfig/EngineConfigService.js';
 import { DeploymentSettingsService } from './domain/settings/DeploymentSettingsService.js';
+import { AdminTokenRotation } from './domain/adminLink/AdminTokenRotation.js';
 import { AdminLinkTester } from './domain/adminLink/AdminLinkTester.js';
 import { ManagerAdminLinkRepository } from './domain/adminLink/ManagerAdminLinkRepository.js';
 import { ManagerAdminLinkService } from './domain/adminLink/ManagerAdminLinkService.js';
@@ -90,6 +100,8 @@ let metricsCollector: MetricsCollector | undefined;
 let sessionSweep: SessionSweep | undefined;
 let streamRevalidation: StreamRevalidation | undefined;
 let chequebookOperations: ReturnType<typeof createChequebookOperationsService> | undefined;
+let stagePublisher: StagePublisher | undefined;
+let cataloguePublisher: CataloguePublisher | undefined;
 let isShuttingDown = false;
 
 async function gracefulShutdown(signal: string): Promise<void> {
@@ -112,6 +124,14 @@ async function gracefulShutdown(signal: string): Promise<void> {
     if (metricsCollector) {
       metricsCollector.stop();
       metricsCollector = undefined;
+    }
+    if (stagePublisher) {
+      stagePublisher.stop();
+      stagePublisher = undefined;
+    }
+    if (cataloguePublisher) {
+      cataloguePublisher.stop();
+      cataloguePublisher = undefined;
     }
     const [apiClosed, transferCleanup] = await Promise.allSettled([
       apiServer?.close(),
@@ -143,6 +163,8 @@ async function gracefulShutdown(signal: string): Promise<void> {
 }
 
 async function main(): Promise<void> {
+  // Before the first line, so nothing below the configured level is written.
+  logger.setLevel(config.logLevel);
   logStartupConfig();
 
   database = new Database(config.databaseUrl);
@@ -341,6 +363,11 @@ async function main(): Promise<void> {
     logger.warn(`[Boot] the interrupted deployments were not judged: ${getErrorMessage(err)}. They stay as they are.`);
   }
   const managerAdminLink = new ManagerAdminLinkRepository(database.pool);
+  // A deploy gives an uploader linked to this admin a token of its own. adminLink/ownAdminToken.ts.
+  orchestrator.setManagerAdminLink(managerAdminLink);
+  orchestrator.setLocalBeeApiBind(
+    localBeeApiBindReader({ publisherHost: localPublisherHost, bridgeGateway: () => containerControl.bridgeGateway() }),
+  );
   const profileService = new ProfileService(
     profileRepository,
     containerRepository,
@@ -357,6 +384,70 @@ async function main(): Promise<void> {
     managerAdminLink,
   );
   const deployService = new DeployService(profileService, orchestrator);
+
+  // The stage records every uploader deployment pushes into the web2 admin its
+  // link names, under the manager's own id. docs/features/stages.md.
+  const managerId = await readManagerId(database.pool);
+  logger.info(`[Boot]   manager id: ${managerId}`);
+  const stageBuilder = new StageRecordBuilder(
+    {
+      nextEnvFor: (profile) => orchestrator.nextEnvFor(profile),
+      listProfiles: () => profileRepository.list(),
+      stampHealthFor: (profile, stampId) => stampService.stampHealthFor(profile, stampId),
+      chequebookSummary: (name) => chequebookService.summary(name),
+      uploaderHealth: (name) => uploaderHealthService.read(name),
+    },
+    // Never the localhost fallback the component links use: a stage with no public address is not pushed.
+    { managerId, publicHost: config.publicHost },
+  );
+  stagePublisher = new StagePublisher({
+    profiles: {
+      list: () => profileService.list(),
+      find: async (name) => {
+        const row = await profileRepository.findByName(name);
+        return row ? containerRepository.withContainers(row) : null;
+      },
+    },
+    builder: stageBuilder,
+    link: managerAdminLink,
+    retirements: new StageRetirementRepository(database.pool),
+    events: eventBus,
+  });
+  const publisher = stagePublisher;
+  orchestrator.setBeforeUploaderStart((profile) => publisher.beforeUploaderStart(profile));
+  publisher.start();
+
+  // The brand's catalogue node and its pinned batch, whose record goes to the same link. docs/features/stages.md.
+  const catalogueDesignation = new CatalogueDesignationRepository(database.pool);
+  cataloguePublisher = new CataloguePublisher({
+    designation: catalogueDesignation,
+    profiles: profileRepository,
+    reading: (profile, batchId) => stampService.batchReadingFor(profile, batchId),
+    beeApiUrl: beeApiUrlFor,
+    link: managerAdminLink,
+    events: eventBus,
+    managerId,
+  });
+  const catalogue = cataloguePublisher;
+  const catalogueService = new CatalogueDesignationService({
+    store: catalogueDesignation,
+    profiles: profileRepository,
+    groupKindOf: async (id) => (await deploymentGroupRepository.findById(id))?.kind ?? null,
+    heldBatch: (name, batchId) => stampService.heldBatch(name, batchId),
+    status: () => catalogue.status(),
+    changed: () => void catalogue.pushNow(),
+    nodeUrls: async (profile) => [beeApiUrlFor(profile), beePublisherUrlFor(profile, await localPublisherHost())],
+    // Docker's own record of where the node's API is published, on the daemon the node runs on.
+    apiOnEveryAddress: async (profile) =>
+      beeApiOnEveryAddress(
+        await targetDocker.beeApiInspect(profile.name, profile.host ?? 'localhost'),
+        Number(new URL(beeApiUrlFor(profile)).port),
+      ),
+  });
+  profileService.setPoolStringGuard((beePublishers) => catalogueService.segmentBatchProblem(beePublishers));
+  // The pinned batch's node, and while a move is pending the node of the batch it moved from.
+  orchestrator.setRemovalGuard((name) => catalogueService.assertRemovable(name));
+  catalogue.start();
 
   const engineConfigService = new EngineConfigService(
     profileRepository,
@@ -396,9 +487,19 @@ async function main(): Promise<void> {
         containerRepository,
         orchestrator,
         stackVersionRepository,
+        managerAdminLink,
       ),
       managerAdminLinkService: new ManagerAdminLinkService(managerAdminLink),
-      adminLinkTester: new AdminLinkTester(managerAdminLink, profileRepository, orchestrator),
+      adminLinkTester: new AdminLinkTester(managerAdminLink, profileRepository, orchestrator, undefined, publisher),
+      adminTokenRotation: new AdminTokenRotation(
+        profileRepository,
+        orchestrator,
+        managerAdminLink,
+        containerRepository,
+        eventBus,
+      ),
+      stagePublisher: publisher,
+      catalogueService,
       stackVersionService,
       orchestrator,
       deployTargets,

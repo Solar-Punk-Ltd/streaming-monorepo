@@ -16,17 +16,20 @@ broadcaster's.
 
 ## The parts
 
-| Part          | Folder                                            | What it does                                                                                                                                                      |
-| ------------- | ------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Ingest engine | `apps/hls-stream/engines`                         | SRS (the default) or OvenMediaEngine. Takes SRT or RTMP from the encoder and cuts it into HLS segments. With the ABR ladder on, it transcodes every quality rung. |
-| Uploader      | `apps/hls-stream/packages/stream-uploader`        | Hears about every closed segment from the engine, stamps it and uploads it to Swarm, and keeps the playlists and feeds that tell a viewer where each segment is.  |
-| Bee nodes     | `apps/hls-stream/nodes`, `apps/hls-stream/deploy` | Swarm nodes. One uploader node per quality rung publishes that rung's segments, each with its own postage batch and chequebook. A gateway node serves viewers.    |
-| Feeds         | written by the uploader                           | Swarm feeds are mutable pointers signed by one key. Each rung has a feed of its playlist, and a master feed names the rungs. A viewer follows a feed, not a host. |
-| Catalog       | written by the web2 admin                         | A feed signed with the admin's own key that lists the streams a brand offers, with their titles and thumbnails.                                                   |
-| Viewer        | `apps/hls-stream/packages/client`                 | A browser player built on hls.js. Reads the feeds and fetches segments from a gateway or from an in-tab Swarm node.                                               |
-| Manager       | `apps/infra-manager`                              | A console and an API that deploy stack versions onto hosts over ssh, hand out port slots, buy postage and fund chequebooks.                                       |
-| Web2 admin    | `apps/web2-admin`                                 | The brand console: streams, branding and users. Publishes the catalog and asks the manager for anything that touches a host or a wallet.                          |
-| Edge          | `infra/edge`                                      | One Caddy container per control host. Holds ports 80 and 443, gets the HTTPS certificates, and sends each domain to the console behind it.                        |
+| Part          | Folder                                            | What it does                                                                                                                                                                                                                         |
+| ------------- | ------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| Ingest engine | `apps/hls-stream/engines`                         | SRS (the default) or OvenMediaEngine. Takes SRT or RTMP from the encoder and cuts it into HLS segments. With the ABR ladder on, it transcodes every quality rung.                                                                    |
+| Uploader      | `apps/hls-stream/packages/stream-uploader`        | Hears about every closed segment from the engine, stamps it and uploads it to Swarm, and keeps the playlists and feeds that tell a viewer where each segment is. Asks the web2 admin which stream an encoder publishes to.           |
+| Bee nodes     | `apps/hls-stream/nodes`, `apps/hls-stream/deploy` | Swarm nodes. One uploader node per quality rung publishes that rung's segments, each with its own postage batch and chequebook. A gateway node serves viewers. A catalogue node holds the catalogue's batch alone.                   |
+| Feeds         | written by the uploader                           | Swarm feeds are mutable pointers signed by one key. Each rung has a feed of its playlist, and a master feed names the rungs. Every stage signs its feeds with a key of its own. A viewer follows a feed, not a host.                 |
+| Catalog       | written by the web2 admin                         | A feed signed with the brand key, which only the admin holds, that lists the streams of every stage, with their titles and thumbnails. Written through the dedicated catalogue node's immutable batch, which the manager designates. |
+| Viewer        | `apps/hls-stream/packages/client`                 | A browser player built on hls.js. Reads the catalog and the feeds and fetches segments from a gateway or from an in-tab Swarm node.                                                                                                  |
+| Manager       | `apps/infra-manager`                              | A console and an API that deploy stack versions onto hosts over ssh, hand out port slots, buy postage and fund chequebooks. Pushes every stage it runs, and the catalogue's batch, into the web2 admin.                              |
+| Web2 admin    | `apps/web2-admin`                                 | The brand console: streams, the stage each goes live on, and users. Publishes the catalog. Learns its stages from the manager's pushes and never calls the manager, a host or a wallet.                                              |
+| Edge          | `infra/edge`                                      | One Caddy container per control host. Holds ports 80 and 443, gets the HTTPS certificates, and sends each domain to the console behind it.                                                                                           |
+
+A stage is a manager deployment that runs a stream uploader, with the node pool behind it.
+[stages.md](stages.md) says what the manager pushes about each one and how the admin uses it.
 
 ## How a stream travels
 
@@ -59,7 +62,8 @@ machines of its own.
 - **Stage host**: stack deployments, one per profile and port slot: the ingest engine, the uploader,
   the viewer page and a gateway node.
 - **Bee host**: the Bee nodes of an ABR node pool, one per quality rung, which the uploaders on stage
-  hosts publish through.
+  hosts publish through, and the brand's catalogue node, which the web2 admin on the control host
+  writes the catalog through.
 
 [The self-hosting guide](../self-hosting.md) says how to set up each one.
 

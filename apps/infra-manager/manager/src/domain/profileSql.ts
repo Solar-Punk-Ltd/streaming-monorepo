@@ -46,7 +46,7 @@ export const PROFILE_COLUMNS = `
   (engine_config IS NOT NULL) AS has_engine_config, engine_config_error, engine_config_state,
   instance_id, engine_config_revision, intent_revision,
   status, deployment_phase, last_error, last_error_at, last_full_deploy_commit,
-  created_at, updated_at, group_id, stack_version_id
+  created_at, updated_at, group_id, stack_version_id, ingest_host
 `;
 
 /** Advisory-lock key guarding port-slot allocation. ASCII "prof". */

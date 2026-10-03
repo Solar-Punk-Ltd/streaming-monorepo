@@ -1,9 +1,13 @@
 /**
  * The real BeeFeedGateway against a real Bee node. Skipped unless both
- * BEE_URL and POSTAGE_BATCH_ID are in the environment:
+ * ITEST_BEE_URL and ITEST_BATCH_ID are in the environment:
  *
- *   BEE_URL=http://localhost:1633 POSTAGE_BATCH_ID=<usable batch> \
+ *   ITEST_BEE_URL=http://localhost:1633 ITEST_BATCH_ID=<usable batch> \
  *     pnpm test:integration
+ *
+ * They are this suite's own. The backend reads neither: it writes through the
+ * catalogue stamp the manager pushes, which the suite stands in for by
+ * handing the gateway the same target on every call.
  *
  * Everything the unit tests assert about publishing is against the in-memory
  * gateway, so this is the one place the bee-js calls themselves are exercised:
@@ -23,14 +27,13 @@ import { Bee } from '@ethersphere/bee-js';
 
 import { BeeFeedGateway } from '../../src/domain/BeeFeedGateway.js';
 
-const beeUrl = process.env.BEE_URL;
-const postageBatchId = process.env.POSTAGE_BATCH_ID;
-const configured = Boolean(beeUrl && postageBatchId);
+const beeUrl = process.env.ITEST_BEE_URL;
+const batchId = process.env.ITEST_BATCH_ID;
+const configured = Boolean(beeUrl && batchId);
+const target = configured ? { beeApiUrl: beeUrl!, batchId: batchId! } : null;
 
 const gateway = configured
   ? new BeeFeedGateway({
-      beeUrl: beeUrl!,
-      postageBatchId: postageBatchId!,
       feedPrivateKey: `0x${randomBytes(32).toString('hex')}`,
       feedTopic: `web2-admin-itest-${randomUUID()}`,
     })
@@ -50,33 +53,35 @@ const entry = {
   timestamp: Date.now(),
 };
 
-describe('BeeFeedGateway', { skip: configured ? false : 'BEE_URL / POSTAGE_BATCH_ID not set' }, () => {
+describe('BeeFeedGateway', { skip: configured ? false : 'ITEST_BEE_URL / ITEST_BATCH_ID not set' }, () => {
   it('reads a never-written feed as an empty list with no index', async () => {
-    const snapshot = await gateway!.readLatest();
+    const snapshot = await gateway!.readLatest(target);
     assert.equal(snapshot.index, null);
     assert.deepEqual(snapshot.entries, []);
   });
 
-  it('writes at index 0 and reads the same payload back', async () => {
-    const reference = await gateway!.write([foreign, entry], 0);
+  it('writes at index 0 and reads the same payload back, byte for byte', async () => {
+    const payloadText = JSON.stringify([foreign, entry]);
+    const reference = await gateway!.write(payloadText, 0, target);
     assert.match(reference, /^[0-9a-f]{64}$/);
 
-    const snapshot = await gateway!.readLatest();
+    const snapshot = await gateway!.readLatest(target);
     assert.equal(snapshot.index, 0);
     assert.deepEqual(snapshot.entries, [foreign, entry]);
+    assert.equal(snapshot.payloadText, payloadText);
   });
 
   it('advances the head on the next write', async () => {
-    await gateway!.write([entry], 1);
+    await gateway!.write(JSON.stringify([entry]), 1, target);
 
-    const snapshot = await gateway!.readLatest();
+    const snapshot = await gateway!.readLatest(target);
     assert.equal(snapshot.index, 1);
     assert.deepEqual(snapshot.entries, [entry]);
   });
 
   it('uploads a thumbnail that downloads byte-identical', async () => {
     const bytes = randomBytes(64);
-    const reference = await gateway!.uploadThumbnail(bytes, 'thumbnail.png', 'image/png');
+    const reference = await gateway!.uploadThumbnail(bytes, 'thumbnail.png', 'image/png', target);
     assert.match(reference, /^[0-9a-f]{64}$/);
 
     const downloaded = await new Bee(beeUrl!).file.download(reference);

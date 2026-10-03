@@ -1,7 +1,7 @@
 import { fireEvent, screen, within } from '@testing-library/react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
-import { IngestPanel, KEY_UNVERIFIED_NOTE } from '../components/IngestPanel';
+import { IngestPanel, NO_STAGE_NOTE, RETIRED_STAGE_NOTE } from '../components/IngestPanel';
 import { RTMP_OFFERED, makeIngest, mockFetch, renderWithProviders } from './helpers';
 
 const renderPanel = (details = makeIngest()) =>
@@ -17,33 +17,45 @@ afterEach(() => {
 });
 
 describe('IngestPanel', () => {
-  it('warns that the key is not verified yet', () => {
+  it('says which stage the details are from, and carries no note about the key', () => {
     mockFetch([]);
-    const details = makeIngest({ keyVerified: false });
 
-    renderWithProviders(<IngestPanel streamId="stream-1" details={details} onRotated={vi.fn()} />);
+    renderPanel();
 
-    expect(screen.getByText(KEY_UNVERIFIED_NOTE)).toBeInTheDocument();
-    // The note is the spec's copy, verbatim.
-    expect(KEY_UNVERIFIED_NOTE).toBe(
-      'The ingest does not verify this key yet. Anyone with the SRT passphrase can publish under this name until the uploader is upgraded.',
-    );
+    expect(screen.getByText('Main stage')).toBeInTheDocument();
+    expect(screen.getByText(/On stage/)).toBeInTheDocument();
+    // Every uploader that takes streams from the admin verifies `key=`.
+    expect(screen.queryByText(/does not verify this key/)).not.toBeInTheDocument();
+    expect(screen.queryByText(RETIRED_STAGE_NOTE)).not.toBeInTheDocument();
   });
 
-  it('drops the warning once the ingest verifies the key', () => {
+  it('says to pick a stage while the stream has none, and still offers the key rotation', () => {
     mockFetch([]);
 
-    renderWithProviders(
-      <IngestPanel streamId="stream-1" details={makeIngest({ keyVerified: true })} onRotated={vi.fn()} />,
+    renderPanel(makeIngest({ stage: null, srt: null, rtmp: null }));
+
+    expect(screen.getByText(NO_STAGE_NOTE)).toBeInTheDocument();
+    expect(screen.queryByRole('region', { name: 'SRT' })).not.toBeInTheDocument();
+    expect(screen.queryByText(/set Service to Custom/)).not.toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /Rotate key/ })).toBeInTheDocument();
+    expect(screen.getByText(/Ingest stream id video\//)).toBeInTheDocument();
+  });
+
+  it('keeps the details of a stage the manager retired, with a warning', () => {
+    mockFetch([]);
+
+    renderPanel(
+      makeIngest({ stage: { stageId: 'retired-stage', name: 'Old stage', retiredAt: '2026-09-28T11:00:00.000Z' } }),
     );
 
-    expect(screen.queryByText(KEY_UNVERIFIED_NOTE)).not.toBeInTheDocument();
+    expect(screen.getByText(RETIRED_STAGE_NOTE)).toBeInTheDocument();
+    expect(screen.getByRole('region', { name: 'SRT' })).toBeInTheDocument();
   });
 
   it('says what goes in the OBS Server and Stream Key boxes for SRT', () => {
     mockFetch([]);
     const details = makeIngest();
-    const server = `${details.srt.url}&passphrase=${details.srt.passphrase}`;
+    const server = `${details.srt!.url}&passphrase=${details.srt!.passphrase}`;
 
     renderPanel(details);
 
@@ -57,7 +69,7 @@ describe('IngestPanel', () => {
     expect(shown).toContain('key=••••••••');
     expect(shown).toContain('passphrase=••••••••');
     expect(shown).not.toContain(details.publishKey);
-    expect(shown).not.toContain(details.srt.passphrase!);
+    expect(shown).not.toContain(details.srt!.passphrase!);
 
     fireEvent.click(srt.getByLabelText('show srt server'));
     expect(srt.getByLabelText('SRT Server')).toHaveValue(server);
@@ -116,21 +128,21 @@ describe('IngestPanel', () => {
     fireEvent.click(screen.getByLabelText('copy srt server'));
 
     expect(await screen.findByText('SRT Server copied to your clipboard.')).toBeInTheDocument();
-    expect(writeText).toHaveBeenCalledWith(`${details.srt.url}&passphrase=${details.srt.passphrase}`);
+    expect(writeText).toHaveBeenCalledWith(`${details.srt!.url}&passphrase=${details.srt!.passphrase}`);
   });
 
   it('sends a passphrase the Server line cannot carry to Use authentication', () => {
     mockFetch([]);
     const passphrase = 'has+plus&and0123';
     const details = makeIngest({
-      srt: { url: makeIngest().srt.url, passphrase },
+      srt: { url: makeIngest().srt!.url, passphrase },
     });
 
     renderPanel(details);
     const srt = section('SRT');
 
     fireEvent.click(srt.getByLabelText('show srt server'));
-    expect(srt.getByLabelText('SRT Server')).toHaveValue(details.srt.url);
+    expect(srt.getByLabelText('SRT Server')).toHaveValue(details.srt!.url);
 
     expect(srt.getByLabelText('SRT Password')).not.toHaveValue(passphrase);
     expect(srt.getByText(/tick Use authentication/)).toBeInTheDocument();
@@ -138,14 +150,14 @@ describe('IngestPanel', () => {
     expect(srt.getByLabelText('SRT Password')).toHaveValue(passphrase);
   });
 
-  it('says so when the server has no SRT passphrase', () => {
+  it('says so when the stage has no SRT passphrase', () => {
     mockFetch([]);
     const url = 'srt://host:10061?streamid=x';
 
     renderPanel(makeIngest({ srt: { url, passphrase: null } }));
     const srt = section('SRT');
 
-    expect(srt.getByText('No SRT passphrase is configured on this ingest server.')).toBeInTheDocument();
+    expect(srt.getByText('No SRT passphrase is configured on this stage.')).toBeInTheDocument();
     fireEvent.click(srt.getByLabelText('show srt server'));
     expect(srt.getByLabelText('SRT Server')).toHaveValue(url);
     expect(srt.queryByLabelText('SRT Password')).not.toBeInTheDocument();

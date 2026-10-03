@@ -6,6 +6,7 @@ import {
   hasStampId,
   isDeadStampState,
   type LadderRungState,
+  readinessOf,
 } from '@streaming-infra-manager/common';
 
 import { useEditors } from '../app/EditorsContext';
@@ -16,7 +17,6 @@ import { ReadinessPill } from '../components/ReadinessPill';
 import { RowMenu } from '../components/RowMenu';
 import { StatusDot } from '../components/StatusDot';
 import { PrimaryAction } from '../deployments/PrimaryAction';
-import { readinessOf } from '../deployments/readiness';
 import { isRunning, isTransitional, statusLabelOf } from '../deployments/shape';
 import { rungStampHealth } from './rungStampHealth';
 import { BZZ_DECIMALS, formatTokenBalance, formatTtl, NO_VALUE, XDAI_DECIMALS } from '../format';

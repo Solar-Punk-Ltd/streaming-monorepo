@@ -14,6 +14,7 @@ import {
   TableContainer,
   TableHead,
   TableRow,
+  TextField,
   Tooltip,
   Typography,
 } from '@mui/material';
@@ -23,7 +24,7 @@ import EditIcon from '@mui/icons-material/Edit';
 import InfoOutlinedIcon from '@mui/icons-material/InfoOutlined';
 import ImageNotSupportedOutlinedIcon from '@mui/icons-material/ImageNotSupportedOutlined';
 import RefreshIcon from '@mui/icons-material/Refresh';
-import type { Stream } from '@streaming-monorepo/web2-admin-common';
+import type { CatalogueWriteStatus, StageSummary, Stream } from '@streaming-monorepo/web2-admin-common';
 
 import * as api from '../api';
 import { errorMessage } from '../errors';
@@ -31,6 +32,33 @@ import { formatDateTime } from '../dateUtil';
 import { ConfirmDialog } from '../components/ConfirmDialog';
 import { MediaTypeChip, StatusChip } from '../components/StatusChip';
 import { useSnackbar } from '../components/Snackbar';
+import { CatalogueWriteBanner } from '../components/stages/CatalogueWriteBanner';
+import { unknownStageLabel } from '../components/stages/StageField';
+
+/** The filter's two values that are not a stage id. */
+const ALL_STAGES = 'all';
+const NO_STAGE = 'none';
+
+/** A stage's name, and that it was retired when it was. */
+function stageLabel(stage: StageSummary): string {
+  return stage.retiredAt ? `${stage.name} (retired)` : stage.name;
+}
+
+function StageName({ stageId, stages }: { stageId: string | null; stages: ReadonlyMap<string, StageSummary> }) {
+  if (!stageId) {
+    return (
+      <Typography variant="body2" sx={{ color: 'text.secondary' }}>
+        No stage
+      </Typography>
+    );
+  }
+  const stage = stages.get(stageId);
+  return (
+    <Typography variant="body2" sx={stage?.retiredAt ? { color: 'text.secondary' } : undefined}>
+      {stage ? stageLabel(stage) : unknownStageLabel(stageId)}
+    </Typography>
+  );
+}
 
 function Thumbnail({ stream }: { stream: Stream }) {
   if (!stream.hasThumbnail) {
@@ -68,6 +96,10 @@ export function StreamsPage() {
   const [error, setError] = useState<string | null>(null);
   const [toDelete, setToDelete] = useState<Stream | null>(null);
   const [deleting, setDeleting] = useState(false);
+  const [stages, setStages] = useState<ReadonlyMap<string, StageSummary>>(new Map());
+  const [stageFilter, setStageFilter] = useState(ALL_STAGES);
+  const [catalogueWrite, setCatalogueWrite] = useState<CatalogueWriteStatus | null>(null);
+  const [now, setNow] = useState(() => Date.now());
 
   const load = useCallback(() => {
     setError(null);
@@ -75,7 +107,36 @@ export function StreamsPage() {
       .fetchStreams()
       .then(setStreams)
       .catch((e: unknown) => setError(errorMessage(e, 'Failed to load streams')));
+    // Only for the names in the Stage column and the filter. The list stands
+    // without them, and names each stage by its id instead.
+    api
+      .fetchStages()
+      .then((list) => setStages(new Map(list.map((stage) => [stage.stageId, stage]))))
+      .catch(() => undefined);
+    // Apart from the list: a banner that cannot be read is no reason not to show the streams, and a publish that is
+    // refused still says why in its own answer.
+    api
+      .fetchCatalogueWrite()
+      .then((status) => {
+        setCatalogueWrite(status);
+        setNow(Date.now());
+      })
+      .catch(() => setCatalogueWrite(null));
   }, []);
+
+  // Every stage the manager pushed, retired ones included, and any stage a
+  // stream names that the list does not hold, so no stream is out of reach.
+  const filterOptions = [...stages.values()].map((stage) => ({ value: stage.stageId, label: stageLabel(stage) }));
+  for (const stream of streams ?? []) {
+    const { stageId } = stream;
+    if (stageId && !stages.has(stageId) && !filterOptions.some((option) => option.value === stageId)) {
+      filterOptions.push({ value: stageId, label: unknownStageLabel(stageId) });
+    }
+  }
+  const shown =
+    streams?.filter((stream) =>
+      stageFilter === ALL_STAGES ? true : stageFilter === NO_STAGE ? !stream.stageId : stream.stageId === stageFilter,
+    ) ?? null;
 
   useEffect(load, [load]);
 
@@ -111,6 +172,8 @@ export function StreamsPage() {
         </Button>
       </Stack>
 
+      <CatalogueWriteBanner status={catalogueWrite} now={now} />
+
       {error ? (
         <Alert
           severity="error"
@@ -142,12 +205,42 @@ export function StreamsPage() {
       ) : null}
 
       {streams && streams.length > 0 ? (
+        <TextField
+          id="streams-stage-filter"
+          label="Stage"
+          select
+          size="small"
+          value={stageFilter}
+          onChange={(e) => setStageFilter(e.target.value)}
+          sx={{ alignSelf: 'flex-start', minWidth: 220, maxWidth: '100%' }}
+          slotProps={{ select: { native: true }, inputLabel: { shrink: true } }}
+        >
+          <option value={ALL_STAGES}>All stages</option>
+          {filterOptions.map((option) => (
+            <option key={option.value} value={option.value}>
+              {option.label}
+            </option>
+          ))}
+          <option value={NO_STAGE}>No stage</option>
+        </TextField>
+      ) : null}
+
+      {shown && streams && streams.length > 0 && shown.length === 0 ? (
+        <Paper variant="outlined" sx={{ p: 4, textAlign: 'center' }}>
+          <Typography variant="body2" sx={{ color: 'text.secondary' }}>
+            {stageFilter === NO_STAGE ? 'No streams without a stage.' : 'No streams on this stage.'}
+          </Typography>
+        </Paper>
+      ) : null}
+
+      {shown && shown.length > 0 ? (
         <TableContainer component={Paper} variant="outlined">
           <Table size="small">
             <TableHead>
               <TableRow>
                 <TableCell />
                 <TableCell>Title</TableCell>
+                <TableCell>Stage</TableCell>
                 <TableCell>Media type</TableCell>
                 <TableCell>Status</TableCell>
                 <TableCell>Scheduled start</TableCell>
@@ -155,16 +248,36 @@ export function StreamsPage() {
               </TableRow>
             </TableHead>
             <TableBody>
-              {streams.map((stream) => (
+              {shown.map((stream) => (
                 <TableRow key={stream.id} hover>
                   <TableCell sx={{ width: 112 }}>
                     <Thumbnail stream={stream} />
                   </TableCell>
                   <TableCell>
                     <Typography variant="body2">{stream.title}</Typography>
-                    <Typography variant="caption" sx={{ color: 'text.secondary' }}>
+                    {/*
+                      Two lines at most: a description may run to 500
+                      characters, and printed whole it made the row about
+                      twenty lines tall. The whole of it is on hover, and on
+                      the details page.
+                    */}
+                    <Typography
+                      variant="caption"
+                      title={stream.description}
+                      sx={{
+                        color: 'text.secondary',
+                        display: '-webkit-box',
+                        WebkitLineClamp: 2,
+                        WebkitBoxOrient: 'vertical',
+                        overflow: 'hidden',
+                        overflowWrap: 'anywhere',
+                      }}
+                    >
                       {stream.description}
                     </Typography>
+                  </TableCell>
+                  <TableCell>
+                    <StageName stageId={stream.stageId} stages={stages} />
                   </TableCell>
                   <TableCell>
                     <MediaTypeChip mediaType={stream.mediaType} />

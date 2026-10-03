@@ -147,6 +147,7 @@ All command endpoints stream output as Server-Sent Events
 | DELETE | `/profiles/:name`                 | none                        | Releases the slot.                                                                                                                                                                                                                                                                                                    |
 | PUT    | `/profiles/:name`                 | the editable fields         | Full edit. 202 and the profile.                                                                                                                                                                                                                                                                                       |
 | PATCH  | `/profiles/:name/notes`           | `{ notes, notes_revision }` | Notes alone, without a redeploy.                                                                                                                                                                                                                                                                                      |
+| PATCH  | `/profiles/:name/ingest-host`     | `{ ingest_host }`           | The public ingest address alone, null or empty for the resolved host, without a redeploy. See [Stages](#stages-the-records-pushed-into-the-web2-admin).                                                                                                                                                               |
 | GET    | `/profiles/:name/srt-passphrase`  | none                        | `{ srt_passphrase }`, `no-store`. The deployment's own SRT passphrase, which the row no longer carries. Every read is logged with the signed-in user's name.                                                                                                                                                          |
 | GET    | `/profiles/:name/uploader-health` | none                        | `{ state, reasons, waitingSince?, node?, startGateWarnings? }`. What this deployment's own `stream-uploader` says about itself, read off its API port. `state` is one of `ok`, `waiting_for_node`, `warned`, `unhealthy`, `unreachable` or `not_deployed`.                                                            |
 | GET    | `/profiles/:name/srt-ingest`      | none                        | `{ state, windowSeconds, reports?, connections?, counts?, percent?, verdict? }`. SRS's own count of the SRT link's packets over the last minute, read out of the engine's log. `state` is one of `measured`, `no_reports`, `not_running`, `unreadable` or `not_srs`, and `verdict` is `healthy`, `degraded` or `bad`. |
@@ -156,8 +157,9 @@ or `abr-uploader`, with `custom` when `kind` is left out. Everything else is
 optional: `components`, `host`, `notes`,
 `stack_version_id`, `feed_owner`, `feed_topic`, `private_key`, `public_key`,
 `stamp_id`, `srt_passphrase`, `bee_url`, `bee_publishers`, `rpc_endpoint`,
-`rpc_endpoint_source`, `node_mode`, `engine_settings`, `stack_settings` and
-`use_manager_admin_token`, which [Linking uploaders to the web2
+`rpc_endpoint_source`, `node_mode`, `engine_settings` and `stack_settings`.
+A key the schema does not name is dropped, `use_manager_admin_token` included,
+which [Linking uploaders to the web2
 admin](#linking-uploaders-to-the-web2-admin) describes. `abr_ladder` belongs
 to `POST /groups`, where it makes the group an ABR node pool, and a create body
 carrying it is refused. `manager/src/schemas/profile.ts` is the whole contract
@@ -578,15 +580,67 @@ this repository deploys to).
   The manager takes an http or https address with a host, and no user name,
   password or `#` part, because the uploader adds its own paths after it.
 - **`ADMIN_API_TOKEN`** is the bearer token the uploader presents on the
-  admin's internal routes, the admin's own `INTERNAL_API_TOKEN`. It is at least
-  32 characters, the uploader's own floor, and it is a secret: no answer carries
-  it, only whether one is stored.
+  admin's internal routes. It is at least 32 characters, the uploader's own
+  floor, and it is a secret: no answer carries it, only whether one is stored.
+  An uploader linked to the manager's own web2 admin gets a token of its own,
+  which the admin knows by the sha256 the stage record carries, and that admin
+  takes no other token from an uploader. An uploader linked to another admin
+  is given a token typed for it, its `INTERNAL_API_TOKEN`, which only an older
+  admin, the intermediate one or one from before stages, takes from it.
+
+**A token of its own.** A deploy of a deployment that runs a stream uploader,
+whose uploader is given an address on the origin of the manager's link while
+the link stores a token, and which stores no `ADMIN_API_TOKEN` and whose version
+sets none, generates one: 64 hex characters, kept with the deployment's other
+generated secrets and written into its env file like them. A stored value is
+never replaced. The stage record carries its sha256 as `own`, the one kind
+decided by where the token came from (every other token is `shared`), and the push
+before the uploader starts registers it, so the uploader's first call finds it
+known. Only an address on the link's origin is given it; an address moved
+elsewhere needs a token typed for it. A create never copies the manager's
+stored token: the wizard and a create through the API store the address alone.
+A deployment created by a manager from before stages keeps the token it was
+created with, the link's, which the record reports as `shared`, as it does a
+typed token. The intermediate admin of the upgrade below still takes a copy of
+the link's token as an unattributed caller, while an admin that takes only a
+stage's own token refuses every `shared` token, and the deployment's Test
+connection answers `token-not-own` until the token is rotated.
+
+**Rotate the uploader's admin token**, on the deployment page's Web2 admin
+stage card, takes the token out: the one the manager generated, and one stored
+in the settings, typed or copied, with the origin recorded for it. Nothing that
+runs changes. The next deploy generates a new one and registers it before the
+uploader starts; until then the admin stops taking the old one once the
+manager next pushes the stage, whose record then carries no token. It is the
+one way back for an uploader on a `shared` token. The rotation is refused for a
+deployment that runs no stream uploader, one in the middle of a deploy, stop or
+removal, checked again by the statement that takes the token out, one whose
+uploader is given another address than the link's, a link with no token, and a
+version whose env files set the token.
+
+**Rolling it out.** An admin from before stages refuses a token of its own, so a
+host that runs the admin and manager from before stages is upgraded in this
+order: the catalogue node created, then the manager that pushes stage records
+with the node designated, then the intermediate admin, which takes both the
+shared token and a stage's own (commit `d29616851` of `feat/stages`; tag it
+`web2-admin/stages-intermediate` before `feat/stages` is merged to `main`,
+because a squash or rebase merge leaves that commit unreachable), then every
+scheduled stream and every draft given a stage, then every stage rotated and
+redeployed until the admin's Stages page says "Its own token" for all, then the
+admin that refuses the shared token. Skipping the middle steps means every
+running uploader gets 401 until its stage is rotated and redeployed. "Upgrading"
+in the repository's `docs/self-hosting.md` has each step. A fresh installation
+needs none of this.
 
 In admin mode the uploader refuses to start without a token, so a save of a
 deployment's settings, or a create, that names either key and leaves an address
-with no token anywhere is refused with both keys named. A token counts when the
-deployment stores one, when its version sets one, or when the manager generates
-one because the version requires it. A save of other keys is not held to this.
+with no token anywhere is refused with both keys named. One that leaves a
+stored `ADMIN_API_TOKEN` at an address on the origin of the manager's link,
+while the link stores a token, is refused as well, with the wizard's sentence:
+that admin takes only a token of the deployment's own from an uploader. A token counts when the
+deployment stores one, when its version sets one, when the manager generates
+one because the version requires it, or, at an address on the manager's link
+origin, the token of its own. A save of other keys is not held to this.
 
 **Where a stored token goes.** A token the manager stores, its own or a
 deployment's, goes only to the origin, meaning the scheme, host and port, of
@@ -599,21 +653,28 @@ another origin, because the version's own address moved under it, is refused
 the same way. A token stored before that migration is recorded by its next
 deploy. A token the version's base `.env` sets is not held to this.
 
-**The owner rule.** The admin signs its catalog with its `FEED_PRIVATE_KEY`,
-and the uploader signs every feed it writes with the deployment's stream key,
-`STREAM_KEY`. The two have to derive one address. The uploader reads the admin's
-public `/api/config` when it starts and refuses to start when the admin's
-`feed.owner` is another address, because every viewer would then resolve a feed
-nobody writes. Give the deployment the stream key whose address the admin signs
-with, or point it at the admin that signs with its own.
+**The owner rule.** Every stage signs the feeds it writes with a key of its
+own, the deployment's `STREAM_KEY`, which the wizard generates; the admin signs
+its catalog with a key no deployment holds. The stage record the manager pushes
+names the stage's address as its `owner`, and the admin writes that owner into
+the catalog entry of every stream on the stage. When it starts, the uploader
+asks the admin `GET /api/internal/stages/self` with its own token and refuses
+to start when the owner the admin names is another address than its stream
+key's, because every viewer would then resolve a feed nobody writes. On an
+admin older than stages, which answers that route 404, it compares the catalog
+owner of the admin's public `/api/config` instead. Fix a
+mismatch in the deployment's stream key, or deploy so the stage is pushed with
+the key it has.
 
 **The manager-wide default.** The Manager settings page in the navigation has
 one card, Web2 admin link for new deployments: the address, and a token field
 that starts empty under a line saying whether a token is stored. Typing
 replaces the stored token, Clear takes it out, and leaving the field empty
-keeps it. Every new uploader deployment starts with this link, a create through
-the API that names neither key included, where the manager stores both an
-address and a token and the version lets a create set both keys. It reaches only
+keeps it. Every new uploader deployment starts with this link's address, a
+create through the API that names neither key included, where the manager
+stores both an address and a token and the version lets a create set both keys.
+Its first deploy generates a token of its own; the stored token registers it,
+and is never copied into a deployment. It reaches only
 deployments created after it is set, because a deployment keeps what it was
 created with in its own settings. The address is stored in clear and the token
 the way a deployment's own secrets are, in a single-row table, migration 041,
@@ -622,14 +683,17 @@ whose token column no answer selects.
 **The new-deployment wizard.** For every goal that deploys a stream uploader,
 the settings step has a Web2 admin group: a switch, Link this deployment to the
 web2 admin, on when the manager has a link of its own and off otherwise, the
-address prefilled from it and editable, and either the manager's stored token
-or one typed there. The stored token never reaches the browser: the create
-sends `use_manager_admin_token` and the manager copies the token into the new
-deployment's secret settings inside the insert's own transaction. It refuses
-the whole create with 409 `admin_token_missing` when it stores none by then,
-and with 409 `admin_token_elsewhere` when the new deployment's address is on
-another origin than the one the token was saved for, or empty. The group says
-so before that, and offers to type a token for the address instead. The group
+address prefilled from it and editable, and either A token of its own or one
+typed there. With a token of its own the create sends the address alone, and
+the first deploy generates the token. That choice is offered only while the
+manager's link stores a token, and only for an address on the link's origin:
+elsewhere the group says so and offers to type a token for the address
+instead, and the manager refuses the create by the rule above. Test connection
+there presents the manager's stored token, since the deployment's own does not
+exist yet. A token typed there is for another admin: at the link's address,
+while the link stores a token, the group holds it with a sentence and a button
+back to a token of its own, since that admin takes no typed token from an
+uploader. The group
 waits for the manager's link before Continue, and when that link cannot be
 read and the operator leaves the group alone, the create sends neither key, so
 the manager adds its own. Switched off, the deployment stores an empty
@@ -641,11 +705,22 @@ token hidden.
 
 **Test connection.** On the Manager settings card, in the wizard's group, and on
 a deployment's Stack settings card right after the two keys. The manager asks
-the admin what the uploader would ask it, from where the manager runs: the
-internal lookup of a stream nobody declared, `GET
+the admin, from where the manager runs, what the holder of the token would ask
+it. The manager's own token, on the Manager settings card and for the wizard's
+token of its own, is the admin's registrar token, proved on its registrar
+check, `GET <address>/api/internal/registrar`, which answers 204; an admin
+older than the check answers its own 404 there, and only then is the lookup
+below asked. An uploader's token, a deployment's or one typed in the wizard,
+is proved as the uploader asks: the internal lookup of a stream nobody
+declared, `GET
 <address>/api/internal/streams/by-ingest/video/00000000-0000-0000-0000-000000000000`
-with the token, and where there is a stream address to compare, the admin's
-public `GET <address>/api/config` without it. The card's test uses what the
+with the token, and where there is a stream address to compare, `GET
+<address>/api/internal/stages/self` with the token, for the owner the admin
+knows for the token's stage, and only on its 404, an admin older than stages,
+the admin's public `GET <address>/api/config` without it. The wizard's test
+compares the chosen stream key's address with a token typed for another admin,
+as the uploader will, and no owner with a token of its own, which does not
+exist before the first deploy. The card's test uses what the
 deployment's next deploy would give its uploader, the saved values, and the
 address of the stream key that deploy gives it, the deployment's own or the one
 its version's base `.env` sets, derived in memory and never sent, answered or
@@ -653,25 +728,29 @@ logged. A stored token is presented only to the origin it
 was stored for. It answers one of these, and the page says one sentence for
 each:
 
-| Outcome                  | What it means                                                                                                                                                                     |
-| ------------------------ | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `linked`                 | The admin took the token, and signs its catalog with the deployment's stream address.                                                                                             |
-| `token-accepted`         | The admin took the token. There was no stream address to compare.                                                                                                                 |
-| `owner-unconfirmed`      | The admin took the token but its config did not say which address it signs with, so the stream address was not compared. The uploader starts and checks each declaration instead. |
-| `owner-mismatch`         | The admin took the token but signs with another address. The uploader will refuse to start.                                                                                       |
-| `token-refused`          | The admin answered its own 401: the token is wrong.                                                                                                                               |
-| `not-admin`              | Something answered, but not the way a web2 admin does: another status, another server's 404, a body that is not the admin's JSON, or one past the bound.                          |
-| `redirected`             | The address answered with a redirect, which the test does not follow. Give the address the admin itself answers on.                                                               |
-| `unreachable`            | Nothing answered from where the manager runs, within five seconds a request, the uploader's own lookup timeout.                                                                   |
-| `invalid-address`        | The address is not an http or https one the uploader can use.                                                                                                                     |
-| `not-linked`             | The deployment has no address, so its uploader runs standalone.                                                                                                                   |
-| `no-token`               | There is an address and no token to test with.                                                                                                                                    |
-| `stored-token-elsewhere` | A stored token, the manager's or the deployment's own, was saved for another origin, so nothing was asked. Type the token again for this address where it is set.                 |
+| Outcome                  | What it means                                                                                                                                                                                                                                                                                           |
+| ------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `linked`                 | The admin took the token, and knows the deployment's stream address as its stage's owner, or on a token of no stage as its catalog's.                                                                                                                                                                   |
+| `token-accepted`         | The admin took the token: the registrar check answered, or there was no stream address to compare.                                                                                                                                                                                                      |
+| `owner-unconfirmed`      | The admin took the token but did not say which owner it knows for it, so the stream address was not compared. The uploader starts and checks each declaration instead.                                                                                                                                  |
+| `owner-mismatch`         | The admin took the token but knows another owner for it: its stage's, or on a token of no stage its catalog's. The uploader will refuse to start.                                                                                                                                                       |
+| `token-refused`          | The admin answered its own 401: the token is wrong.                                                                                                                                                                                                                                                     |
+| `token-not-own`          | At the link's address, the deployment's token is not one the manager generated: typed, copied from the link, or the version's. An admin that takes only a stage's own token refuses it, and an older one still takes it. Rotate it and redeploy; a version's token is taken out of the version instead. |
+| `token-not-registered`   | The admin answered its own 401 to the deployment's own token while no push of the stage has been stored there, so the admin does not know the token yet. A deploy registers it.                                                                                                                         |
+| `not-admin`              | Something answered, but not the way a web2 admin does: another status, another server's 404, a body that is not the admin's JSON, or one past the bound.                                                                                                                                                |
+| `redirected`             | The address answered with a redirect, which the test does not follow. Give the address the admin itself answers on.                                                                                                                                                                                     |
+| `unreachable`            | Nothing answered from where the manager runs, within five seconds a request, the uploader's own lookup timeout.                                                                                                                                                                                         |
+| `invalid-address`        | The address is not an http or https one the uploader can use.                                                                                                                                                                                                                                           |
+| `plain-http-refused`     | The address is plain http to another host than the manager's own, so the manager's token was not sent there and nothing was asked. Give the https address the admin is served on, or set `ADMIN_LINK_ALLOW_PLAIN_HTTP=true` on the manager for a test setup.                                            |
+| `not-linked`             | The deployment has no address, so its uploader runs standalone.                                                                                                                                                                                                                                         |
+| `no-token`               | There is an address and no token to test with.                                                                                                                                                                                                                                                          |
+| `stored-token-elsewhere` | A stored token, the manager's or the deployment's own, was saved for another origin, so nothing was asked. Type the token again for this address where it is set.                                                                                                                                       |
 
-The admin's own 404 for that lookup is `{ "error": "stream_not_found" }` and its
-401 is `{ "error": "unauthenticated" }`, and the test reads those codes rather
-than the status alone, so a web server that answers 404 to everything is not
-taken for an admin. An answer is the outcome code and nothing the admin said,
+The admin's own 404 for that lookup is `{ "error": "stream_not_found" }`, its
+404 for a path it does not know `{ "error": "not_found" }`, and its 401
+`{ "error": "unauthenticated" }`, and the test reads those codes rather than the
+status alone, so a web server that answers 404 to everything is not taken for
+an admin. An answer is the outcome code and nothing the admin said,
 and the log names who tested and the outcome, never the address or a token.
 
 The test runs from where the manager runs, so an address only the deployment's
@@ -679,22 +758,80 @@ own network can reach reads as unreachable here. It reaches whatever the
 manager's host can reach, loopback and private addresses included, as the
 uploader reaches whatever its host can. It takes http and https alone, follows
 no redirect, gives up after five seconds a request, and reads at most 64 KiB of
-an answer. It sends the token to the internal lookup alone. Every route that
+an answer. It sends the token to the admin's internal routes alone. Every route that
 tests or edits the link needs a session.
 
-| Method | Path                                       | Body                                                                                                                       | Answer                                                                                                                                                                                                                                              |
-| ------ | ------------------------------------------ | -------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| GET    | `/manager-settings/admin-link`             | none                                                                                                                       | `{ url, tokenStored, revision }`, `no-store`. `url` null is no default                                                                                                                                                                              |
-| PUT    | `/manager-settings/admin-link`             | `{ expectedRevision, url, token? }`, `url` empty for no default, `token` left out to keep the stored one, null to clear it | The link as it stands after. 400 `validation_error` for an address or a token the uploader would refuse, a token with no address, or an address on another origin that keeps the stored token, 409 `manager_settings_changed` for an older revision |
-| POST   | `/manager-settings/admin-link/test`        | `{ url, token: { source: 'stored' } or { source: 'typed', value }, feedOwner? }`                                           | `{ outcome }`, `no-store`. `no-token` when the manager stores no token, `stored-token-elsewhere` for the stored token and an address on another origin. 400 `validation_error` for an address or a typed token the uploader would refuse            |
-| POST   | `/profiles/:name/settings/admin-link/test` | none                                                                                                                       | `{ outcome }` for what the deployment's next deploy would give its uploader                                                                                                                                                                         |
+| Method | Path                                       | Body                                                                                                                                         | Answer                                                                                                                                                                                                                                                                              |
+| ------ | ------------------------------------------ | -------------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| GET    | `/manager-settings/admin-link`             | none                                                                                                                                         | `{ url, tokenStored, revision }`, `no-store`. `url` null is no default                                                                                                                                                                                                              |
+| PUT    | `/manager-settings/admin-link`             | `{ expectedRevision, url, token? }`, `url` empty for no default, `token` left out to keep the stored one, null to clear it                   | The link as it stands after. 400 `validation_error` for an address or a token the uploader would refuse, a token with no address, or an address on another origin that keeps the stored token, 409 `manager_settings_changed` for an older revision                                 |
+| POST   | `/manager-settings/admin-link/test`        | `{ url, token: { source: 'stored' } or { source: 'typed', value }, tokenFor?, feedOwner? }`, `tokenFor` `registrar` (left out) or `uploader` | `{ outcome }`, `no-store`. `no-token` when the manager stores no token, `stored-token-elsewhere` for the stored token and an address on another origin. 400 `validation_error` for an address or a typed token the uploader would refuse, and for the stored token as an uploader's |
+| POST   | `/profiles/:name/settings/admin-link/test` | none                                                                                                                                         | `{ outcome }` for what the deployment's next deploy would give its uploader                                                                                                                                                                                                         |
+| POST   | `/profiles/:name/admin-token/rotate`       | none                                                                                                                                         | `{ message }`, `no-store`: the token is taken out and the next deploy generates a new one. 400 `validation_error` with a sentence where it would generate none, 409 `profile_busy` during a deploy, stop or removal, 404 for no such deployment                                     |
 
-`POST /profiles` and `POST /groups` take `use_manager_admin_token: true` beside
-`stack_settings`. It is refused beside a typed `ADMIN_API_TOKEN`, for a version
-that gives the operator no `ADMIN_API_TOKEN` to set, and with 409
-`admin_token_elsewhere` for an address on another origin than the stored
-link's. The design and its limits are in
+`POST /profiles` and `POST /groups` on a manager from before stages took
+`use_manager_admin_token` to copy the link's token into the deployment. It is
+gone: a create drops it as any key it does not name, so nothing is copied and
+an older script is not refused. The 409s
+`admin_token_missing` and `admin_token_elsewhere` are gone. The design and its
+limits are in
 [docs/features/web2-admin-link.md](../docs/features/web2-admin-link.md).
+
+### Stages: the records pushed into the web2 admin
+
+Every deployment of kind `abr-uploader` or `streamer` is a stage of the web2
+admin. The manager builds its stage record, `stageRecordSchema` in
+`packages/contracts`, and pushes it with the link's stored token to
+`PUT <link>/api/internal/stages/<instance_id>`, for each one whose effective
+`ADMIN_API_URL` is on the link's origin: when the deployment changes, every 30
+seconds while it runs, and before a deploy starts its uploader, which never
+holds the deploy. A removed deployment is retired with `DELETE` at the same
+path; the retirement is written with the deletion (migration 049) and sent again
+every 30 seconds and at start until the admin answers it. The record carries the ingest encoders dial, the owner the stage signs
+as, its rungs' stamps and chequebooks, the uploader's reading, the readiness the
+console shows and the sha256 of the uploader's admin token, and never a key, a
+token, an RPC endpoint or a node address. Each push comes to one outcome code,
+kept in memory with its time and logged when it changes, never with what the
+admin said, its address or a token.
+
+The public ingest address is the address encoders dial. It is the deployment's
+own `ingest_host` (migration 046), else the host the manager resolved for it,
+else `PUBLIC_HOST` for a deployment on this host. A loopback address is never
+given: a stage on this host with no address of its own while `PUBLIC_HOST` is
+unset is not pushed. The manager's own id, which
+every record carries, is generated by migration 045.
+
+| Method | Path                          | Body              | Notes                                                                                                  |
+| ------ | ----------------------------- | ----------------- | ------------------------------------------------------------------------------------------------------ |
+| PATCH  | `/profiles/:name/ingest-host` | `{ ingest_host }` | 200 and the profile. Held to the record's rule: a host name, an IPv4 address or a bracketed IPv6 one.  |
+| GET    | `/stages`                     | none              | `{ stages: [{ name, record, problem, lastPush }] }`, `no-store`. Built afresh, without the passphrase. |
+| GET    | `/stages/:name/registration`  | none              | `{ registration: { outcome, at } or null }`, `no-store`. The deployment page's line, from memory.      |
+
+The console's Stages page reads `GET /stages` when it opens and every 30
+seconds after. What is pushed, when, to whom, every outcome and the limits are
+in [docs/features/stages.md](../docs/features/stages.md).
+
+The brand's catalogue node is a deployment of this manager that is nothing but
+a Bee node, with one immutable batch its node holds pinned by id (migration
+047). The manager pushes its catalogue stamp record, `catalogueStampRecordSchema`
+in `packages/contracts`, to `PUT <link>/api/internal/catalogue-stamp` with the
+link's stored token: when the designation changes, when the pinned batch's
+readings change, which it reads every ten seconds, and every 30 seconds. A
+designation taken out is cleared there with `DELETE` and `{ observedAt }`, the
+moment it was taken out. The deployment and the batch stay recorded after a
+clear: that batch can be designated again, another one only as a move
+(`move: true`, migration 048), which records the pinned batch as the one moved
+from until a release takes it out, and a third batch is refused while a move is
+pending. The pinned deployment, and while a move is pending the one moved from,
+are not removed (409 `catalogue_node_designated`), and a create or update whose
+`bee_publishers` names either batch or node is refused.
+
+| Method | Path                                       | Body                                                | Answer                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                  |
+| ------ | ------------------------------------------ | --------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| GET    | `/manager-settings/catalogue-node`         | none                                                | `{ designation, pinned, movingFrom, lastRelease, revision, reading, lastPush, apiOnEveryAddress }`, `no-store`. `designation` null is none, `pinned` the node and batch recorded, cleared or not, `movingFrom` the batch a pending move went off (`profileName`, `batchId`, `startedAt`, `startedBy`, `reading`) or null, `lastRelease` `{ at, by }` of the last release or null, `reading` the last reading of the pinned batch and `lastPush` the last push or clear, the readings and the push from memory. `apiOnEveryAddress` is true when Docker reports the pinned node's Bee API published on every address of its host, false when it is bound to one, and null when nothing is pinned or Docker could not be read, read at most once a minute |
+| PUT    | `/manager-settings/catalogue-node`         | `{ expectedRevision, profileName, batchId, move? }` | The answer as it stands after. 400 `validation_error`, one sentence each, for a deployment that is more than a Bee node or a pool's rung, and for a batch the node does not hold, calls mutable, does not report the kind of, calls expired, or an ABR uploader stamps with, for another batch than the pinned one without `move: true`, for a third batch while a move is pending, and for a new batch shallower than `MIN_CATALOGUE_DEPTH`, 18, the pinned batch designated again and a move back to the batch moved from excepted; 409 `manager_settings_changed` for an older revision. `move: true` for the pinned batch, or before any designation, changes nothing                                                                               |
+| DELETE | `/manager-settings/catalogue-node`         | `{ expectedRevision }`                              | The answer as it stands after. A pending move stays. 400 `validation_error` when nothing is designated, 409 `manager_settings_changed` for an older revision                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                            |
+| POST   | `/manager-settings/catalogue-node/release` | `{ expectedRevision }`                              | The answer as it stands after, with `movingFrom` null and `lastRelease` set: the batch moved from and its node are kept no more. 400 `validation_error` when no move is pending, 409 `manager_settings_changed` for an older revision                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                   |
 
 ### Engine control
 
@@ -1166,22 +1303,31 @@ default is, are in "Funding a chequebook on a new host" above. An endpoint can
 carry a key, so route the value into the process rather than writing it in a
 committed file.
 
+**`PUBLIC_HOST`**, in the sample, is the address clients reach this host's
+deployments on. It is also the public ingest address a stage record carries
+for a deployment on this host that sets none of its own, so it has to be one
+encoders can dial. See [Stages](#stages-the-records-pushed-into-the-web2-admin).
+
 The keys that decide where the streaming stack lives, the ssh identity the
 manager deploys to other hosts with, the chain endpoint it offers the Bee nodes
-it creates, the Docker it talks to on its own host, the address the API binds
-and where it reads the host's own numbers:
+it creates, the host it reaches locally published ports on, the Docker it talks
+to on its own host, the address the API binds, where it reads the host's own
+numbers and how much it logs:
 
-| Variable              | Default                                           | What it points at                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                           |
-| --------------------- | ------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `MANAGER_ROOT`        | `/opt/streaming/streaming-infra-manager`          | The manager's own folder on the host, where `deploy/deploy.sh` sends this checkout and where `docker-compose.yml` mounts it at the same path. Read by the deploy script and the compose file, not by the manager's code. The three roots below default to folders beside it.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                |
-| `SHLS_ROOT`           | `apps/hls-stream` beside the manager              | The legacy bundled checkout, read once to carry its settings over and still mounted by engines that were deployed from it. Set by `docker-compose.yml` to the host bind mount.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                              |
-| `STACK_VERSIONS_ROOT` | `/opt/streaming/streaming-infra-manager-versions` | Where every version lives, the bundled one included: a clone, its builds and its settings files.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                            |
-| `MANAGER_SSH_DIR`     | `/opt/streaming/manager-ssh`                      | The ssh identity the manager deploys to other hosts with: the deploy key, `known_hosts`, and an `ssh_config` with a `Host` block per target alias. Mounted at `/root/.ssh` in the api container, whose image links `/etc/ssh/ssh_config` to the `ssh_config` in it. `deploy.sh` creates the directory, empty, so it is only filled when a deployment's host is not `localhost`. See [deploy/README.md](../deploy/README.md).                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                |
-| `BEE_RPC_ENDPOINT`    | none                                              | The chain endpoint every Bee node created here is offered first, which is what `rpc_endpoint_source: manager` writes into a deployment's env file. Optional, and a malformed value stops the manager at startup rather than reverting to the stack's public RPC. Such a URL can carry an API key: `GET /config` answers only its host, the container logs this manager serves and the deploy output it stores have it taken out of them, and the manager's own boot line prints its host. The Bee node prints the whole address into its own container log on the host it runs on, which no manager code can prevent, so the safe shape is an address carrying no key, such as a proxy on the host that holds it. Removing the variable from a manager that has deployments on it refuses their next edit and their next deploy with it named, which is the alternative to moving them onto the public endpoint in silence. |
-| `DOCKER_HOST`         | unset, which means `/var/run/docker.sock`         | The Docker the manager talks to on its own host. `docker-compose.yml` leaves it unset and mounts the host's socket at that path. A chequebook transfer to a `localhost` deployment connects to the same socket, a `unix://` value moves both, and any other value leaves such a transfer without a Docker connection until `CHEQUEBOOK_DOCKER_TRANSPORTS` names one for `localhost`.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                        |
-| `MANAGER_HOST`        | `0.0.0.0`                                         | The address the API binds. Every interface by default, which is what the `web` container needs to reach the `api` container. Narrow it to `127.0.0.1` when the manager runs on the host and the port should answer nothing but the loopback.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                |
-| `HOST_PROC`           | `/host/proc`, then `/proc`                        | Where the resource monitor reads the host's CPU, memory, disk I/O and init process network view. `docker-compose.yml` bind-mounts the host's `/proc` there read-only, and the fallback is the current machine's `/proc`, so a manager run outside Docker reports its own box.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                               |
-| `HOST_ROOTFS`         | `/host/rootfs`, then `/`                          | Where the resource monitor reads the host's disk, mounted read-only the same way, with the same fallback.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                   |
+| Variable                      | Default                                           | What it points at                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                           |
+| ----------------------------- | ------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `MANAGER_ROOT`                | `/opt/streaming/streaming-infra-manager`          | The manager's own folder on the host, where `deploy/deploy.sh` sends this checkout and where `docker-compose.yml` mounts it at the same path. Read by the deploy script and the compose file, not by the manager's code. The three roots below default to folders beside it.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                |
+| `SHLS_ROOT`                   | `apps/hls-stream` beside the manager              | The legacy bundled checkout, read once to carry its settings over and still mounted by engines that were deployed from it. Set by `docker-compose.yml` to the host bind mount.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                              |
+| `STACK_VERSIONS_ROOT`         | `/opt/streaming/streaming-infra-manager-versions` | Where every version lives, the bundled one included: a clone, its builds and its settings files.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                            |
+| `MANAGER_SSH_DIR`             | `/opt/streaming/manager-ssh`                      | The ssh identity the manager deploys to other hosts with: the deploy key, `known_hosts`, and an `ssh_config` with a `Host` block per target alias. Mounted at `/root/.ssh` in the api container, whose image links `/etc/ssh/ssh_config` to the `ssh_config` in it. `deploy.sh` creates the directory, empty, so it is only filled when a deployment's host is not `localhost`. See [deploy/README.md](../deploy/README.md).                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                |
+| `BEE_RPC_ENDPOINT`            | none                                              | The chain endpoint every Bee node created here is offered first, which is what `rpc_endpoint_source: manager` writes into a deployment's env file. Optional, and a malformed value stops the manager at startup rather than reverting to the stack's public RPC. Such a URL can carry an API key: `GET /config` answers only its host, the container logs this manager serves and the deploy output it stores have it taken out of them, and the manager's own boot line prints its host. The Bee node prints the whole address into its own container log on the host it runs on, which no manager code can prevent, so the safe shape is an address carrying no key, such as a proxy on the host that holds it. Removing the variable from a manager that has deployments on it refuses their next edit and their next deploy with it named, which is the alternative to moving them onto the public endpoint in silence. |
+| `BEE_LOCAL_HOST`              | `host.docker.internal`, or `127.0.0.1` natively   | The host the manager reaches the ports a local deployment publishes on: a local uploader's health, a local Bee node's API, and OME's HLS port, probed after an engine config rollout. Unset, that is `host.docker.internal` inside the api container and `127.0.0.1` in a manager run outside it. It is also the host every local ABR pool string carries, whose default [abr-ladder.md](../docs/features/abr-ladder.md) describes. Set it to the stack's `*_API_BIND` address when that is not the bridge, see [deploy/README.md](../deploy/README.md). A host name or an IPv4 address and nothing more: no scheme, no path, no port, no spaces, and no IPv6 address yet, which those addresses would carry without brackets. A value of any other shape stops the manager at startup, naming the variable, rather than going into all of them and reading as a node that does not answer.                                 |
+| `DOCKER_HOST`                 | unset, which means `/var/run/docker.sock`         | The Docker the manager talks to on its own host. `docker-compose.yml` leaves it unset and mounts the host's socket at that path. A chequebook transfer to a `localhost` deployment connects to the same socket, a `unix://` value moves both, and any other value leaves such a transfer without a Docker connection until `CHEQUEBOOK_DOCKER_TRANSPORTS` names one for `localhost`.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                        |
+| `MANAGER_HOST`                | `0.0.0.0`                                         | The address the API binds. Every interface by default, which is what the `web` container needs to reach the `api` container. Narrow it to `127.0.0.1` when the manager runs on the host and the port should answer nothing but the loopback.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                |
+| `HOST_PROC`                   | `/host/proc`, then `/proc`                        | Where the resource monitor reads the host's CPU, memory, disk I/O and init process network view. `docker-compose.yml` bind-mounts the host's `/proc` there read-only, and the fallback is the current machine's `/proc`, so a manager run outside Docker reports its own box.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                               |
+| `HOST_ROOTFS`                 | `/host/rootfs`, then `/`                          | Where the resource monitor reads the host's disk, mounted read-only the same way, with the same fallback.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                   |
+| `LOG_LEVEL`                   | `info`                                            | How much the api writes to its console, applied from startup. One of `trace`, `debug`, `info`, `warn` or `error`, in either case, and each writes its own lines and those of every level after it. `error` is failures alone, `warn` adds what an operator should look at, `info` adds what the manager did, such as its boot lines, deploys and pushes, and `debug` adds each read that failed and was answered for anyway, a host or container metric, a disk usage, an uploader health address, an SRS log or an ssh alias, which repeat on every poll. `trace` writes what `debug` does, since nothing logs below it. Any other value stops the manager at startup. The command line, `node dist/cli.js`, writes at `info` whatever this says.                                                                                                                                                                          |
+| `ADMIN_LINK_ALLOW_PLAIN_HTTP` | `false`                                           | Whether the web2 admin link may be plain http to another host than the manager's own. Off, the manager takes plain http only to a loopback address, `host.docker.internal` or the bridge address it resolves to, or a name that resolves into a Docker network of the api container, and refuses to save anything else or to send to it: a link saved before this rule says `refused-plain-http` until it is given https or this is `true`. Set it only for a test setup: every push carries the registrar token and each stage's SRT passphrase. Any value but `true` or `false` stops the manager at startup.                                                                                                                                                                                                                                                                                                             |
 
 The first two are bind-mounted into the api container at the same absolute path
 they have on the host, because the docker daemon runs on the host and reads

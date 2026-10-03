@@ -1,6 +1,6 @@
 import { EventEmitter } from 'node:events';
 
-import { ProfileWithContainers } from '../types/index.js';
+import type { ProfileKind, ProfileWithContainers } from '../types/index.js';
 
 /** How loud a notice is, in the three levels the UI already renders. */
 export type NoticeTone = 'info' | 'warn' | 'err';
@@ -13,7 +13,11 @@ export type NoticeTone = 'info' | 'warn' | 'err';
  */
 export type ManagerEvent =
   | { type: 'profile.changed'; profile: ProfileWithContainers }
-  | { type: 'profile.deleted'; name: string }
+  /**
+   * A deployment's row was deleted. `instanceId` and `kind` are what the row said, and `deletedAt` the moment it was
+   * deleted (ISO 8601), so a stage deleted before the stage publisher ever pushed it can still be retired by its id.
+   */
+  | { type: 'profile.deleted'; name: string; instanceId: string; kind: ProfileKind; deletedAt: string }
   /**
    * Something that happened to a deployment which changes nothing about it, and
    * which an operator would otherwise only find by reading the manager's log.
