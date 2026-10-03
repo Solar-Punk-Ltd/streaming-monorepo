@@ -44,7 +44,7 @@ export interface CatalogueStampStore {
   clear(observedAt: string): Promise<RetireOutcome<CatalogueStampRow>>;
 }
 
-/** The engines the admin takes streams on in this round. An OvenMediaEngine stage is listed and takes none. */
+/** The engines the admin takes streams on: SRS only. An OvenMediaEngine stage is listed and takes none. */
 export const SUPPORTED_STAGE_ENGINES: readonly StageEngine[] = ['srs'];
 
 /** Whether a stage on this engine can take streams. */
@@ -122,17 +122,6 @@ export function stageChanges(previous: StageSecretsRow, write: StageWrite): Stag
   return { details, phrases };
 }
 
-/**
- * The stages the manager pushes into the admin, and the brand's catalogue stamp. The manager is the only caller, on
- * the registrar token, so the service names it as the actor itself, the way the uploader's services do.
- *
- * A push arrives every 30 seconds per stage and almost always says what the last one said, so only what matters is
- * audited and logged at info: a stage registered, retired or brought back, and a change to its owner, its ingest
- * details or its token. Everything else is logged at debug.
- *
- * Every write runs under one mutex, so the read that decides what a push changed and the write that stores it are
- * not interleaved with another push. The admin is one process; the SQL holds the ordering rule as well.
- */
 /** Why a stage record is refused that names the registrar token as a stage's own. Names neither token nor hash. */
 export const REGISTRAR_TOKEN_AS_OWN =
   "adminToken names the admin's registrar token, INTERNAL_API_TOKEN, as the stage's own token. The registrar token is the manager's alone: give the stage a token of its own.";
@@ -146,6 +135,17 @@ export interface StageServiceOptions {
   registrarToken?: string;
 }
 
+/**
+ * The stages the manager pushes into the admin, and the brand's catalogue stamp. The manager is the only caller, on
+ * the registrar token, so the service names it as the actor itself, the way the uploader's services do.
+ *
+ * A push arrives every 30 seconds per stage and almost always says what the last one said, so only what matters is
+ * audited and logged at info: a stage registered, retired or brought back, and a change to its owner, its manager,
+ * its ingest details or its token. Everything else is logged at debug.
+ *
+ * Every write runs under one mutex, so the read that decides what a push changed and the write that stores it are
+ * not interleaved with another push. The admin is one process; the SQL holds the ordering rule as well.
+ */
 export class StageService {
   private catalogueStampStored: (() => void) | null = null;
   private readonly mutex: Mutex;

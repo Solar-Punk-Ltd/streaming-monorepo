@@ -24,7 +24,7 @@ without `BEE_URL`, `POSTAGE_BATCH_ID` and `INGEST_HOST`.
 | Keys            | Every stage signs its feeds with its own key. The brand key signs the catalogue alone and never leaves the admin.                                                                            |
 | Catalogue stamp | A batch of its own, immutable and deep, on a dedicated catalogue node the manager runs, pinned by id. Never a batch a rung stamps segments with.                                             |
 | Scope           | The admin reads. Top-ups, purchases and chequebooks stay in the manager's console.                                                                                                           |
-| Engines         | SRS stages only in this round. An OvenMediaEngine stage is listed and marked as not supported.                                                                                               |
+| Engines         | SRS stages only. An OvenMediaEngine stage is listed and marked as not supported.                                                                                                             |
 
 ## Why these
 
@@ -62,7 +62,7 @@ that receives them.
 | ---------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------- |
 | `schemaVersion`                          | 1                                                                                                                                       |
 | `stageId`                                | the deployment's `instance_id`                                                                                                          |
-| `managerId`                              | the manager's own generated id, so two managers linked to one admin cannot collide                                                      |
+| `managerId`                              | the manager's own generated id, which names the manager a record came from                                                              |
 | `name`, `kind`, `engine`, `stackVersion` | for display; `kind` is `abr-uploader` or `streamer`, `engine` `srs` or `ome`                                                            |
 | `status`                                 | the deployment's status as the manager reports it                                                                                       |
 | `observedAt`                             | when the manager read what the record says; an older record never replaces a newer one                                                  |
@@ -146,9 +146,10 @@ records only when something arrived. So the two hosts' clocks never need to agre
 - The `PUT`s answer `{ stored }`. The `DELETE`s answer `{ retired }` and `{ cleared }`
   (`stageRetireAnswerSchema`, `catalogueStampClearAnswerSchema`), true only when the call
   retired or cleared something the admin held, and false otherwise, a kept tombstone included.
-- The last manager to push a stage wins. A stage record's `managerId` replaces the stored one, so
-  a manager reinstalled with a new id takes its stages back. The move is audited as a
-  `stage.change`.
+- The newest record of a stage wins, whichever manager pushed it: the admin replaces the stored
+  stage only when the record's `observedAt` is not older than the one it holds. Its `managerId`
+  then replaces the stored one, so a manager reinstalled with a new id takes its stages back, and
+  the change is audited as a `stage.change`.
 
 The console gets `GET /api/stages`: every stage with its readiness and stamp readings and when
 the manager last confirmed them, without the passphrase or the token hash, and
@@ -224,12 +225,17 @@ In `apps/web2-admin/backend/src/domain/CatalogueBatch.ts`:
   it runs, and before a deploy starts its uploader, so the uploader's first call finds its token
   known. A deleted deployment is retired the same way, by the `instance_id` and the moment its
   `profile.deleted` event carries, at the current link with its token, whether or not the manager
-  pushed it since it started. The client is bounded like the Test connection probe: http and https
+  pushed it since it started. The retirement is written into the manager's database with the
+  deletion and kept until the admin answers it, `retired` or `not-retired`: it is sent again every
+  30 seconds and when the manager starts. The client is bounded like the Test connection probe: http and https
   alone, no redirects, five seconds, a small answer read, and an outcome code, never what the far
   end said, in the log and on the deployment page. In production the link is https, which the edge
   provides: every push carries the registrar token, each stage's SRT passphrase and its token
-  hash. The Manager settings card warns under a plain http address to another host than the
-  manager's own, and a save of one is logged as a warning. A pool's rungs
+  hash. So the manager takes plain http only to its own host: a loopback address,
+  `host.docker.internal` or the bridge address it resolves to, or a name that resolves into a Docker
+  network of its container. It refuses to save any other plain http address, and sends nothing to
+  one saved before that rule, which comes to `refused-plain-http`, unless the manager's
+  `ADMIN_LINK_ALLOW_PLAIN_HTTP=true`, for a test setup, lets it. A pool's rungs
   are read on the deployments of this manager that stamp with each rung's batch, and a rung under
   another manager has no reading. `apps/infra-manager/docs/features/stages.md` is the page.
 - **The moments it stamps.** The admin orders everything by these, so they must be true:
@@ -251,12 +257,15 @@ In `apps/web2-admin/backend/src/domain/CatalogueBatch.ts`:
   record carries its sha256.
 - **The catalogue node.** A Bee-only deployment designated as the brand's catalogue node on the
   Manager settings page, next to the admin link, with its batch pinned by id. The manager refuses
-  a mutable batch or one whose kind the node did not report. Buying or using another batch on that
-  node leaves the catalogue on the pinned one, and the page says so; moving the catalogue is its
-  own action. Once a batch has been designated, the manager takes another only as a move, through
-  a clear as well, and the same batch can be designated again. A clear keeps the node and the
-  batch recorded; that node is not removed, and a pool string that names its batch or its Bee API
-  is refused on create and update. A move keeps the previous batch guarded until it is released
+  a mutable batch or one whose kind the node did not report, and a new batch shallower than depth
+  18: an immutable batch refuses a chunk whose bucket is full and a slot is written again at the
+  same address, so the first slot refused freezes the catalogue for every stage. Buying or using
+  another batch on that node leaves the catalogue on the pinned one, and the page says so; moving
+  the catalogue is its own action. Once a batch has been designated, the manager takes another
+  only as a move, through a clear as well, and the same batch can be designated again. A clear
+  keeps the node and the batch recorded; that node is not removed, and a pool string that names
+  its batch or its Bee API is refused on create and update. A move keeps the previous batch
+  guarded until it is released
   ([Moving the catalogue to another batch](#moving-the-catalogue-to-another-batch)).
 - **A read of the stages** for the manager's own console, `GET /stages`, behind the session like
   every other route, and `GET /stages/:name/registration`, the last push of one deployment, which
@@ -355,13 +364,14 @@ self-hosting guide, has each step in full:
    from before stages has no `/api/internal/stages` route, so every push comes to `not-admin`
    until step 2, which is harmless. Create no stage and rotate nothing yet.
 2. **Deploy the intermediate admin**, which takes stage records and still accepts the shared
-   token on an uploader's routes: commit `d29616851` of `feat/stages` (tag it, e.g.
-   `web2-admin/stages-intermediate`, before `feat/stages` is merged to `main`, because a squash
+   token on an uploader's routes: commit `d29616851` of `feat/stages` (tag it
+   `web2-admin/stages-intermediate` before `feat/stages` is merged to `main`, because a squash
    or rebase merge leaves that commit unreachable). It refuses every catalogue write, `503`, until
    it holds a catalogue stamp, which the manager pushes within ten seconds of its start.
 3. **Give every stream a stage** before any rotation: unpublish every scheduled stream, pick its
-   stage, publish it again. A stage on its own token is answered only about its own streams, and a
-   stream live at rotation keeps its live state until an operator unpublishes it.
+   stage, publish it again, and pick a stage for every draft. A stage on its own token is answered
+   only about its own streams, and a stream live at rotation keeps its live state until an operator
+   unpublishes it.
 4. **Rotate and redeploy every stage** until the admin's Stages page reads "Its own token" for all.
 5. **Deploy the admin that refuses the shared token**, the one this page describes.
 
@@ -379,14 +389,14 @@ from its first deploy, and its catalogue starts on the catalogue node.
 
 A top-up keeps the batch id and extends the life of every chunk it stamped, the history
 included; nothing changes in the admin but the readings. Moving to another batch means stamping
-the history again: the admin rewrites every slot of the feed, in order, with the exact bytes
-it recorded, under the new batch, re-uploads the thumbnails the latest entry names, then writes
-with the new batch. bee-js puts a payload straight into the feed's chunk with no timestamp, so
-the same bytes make the same chunks at the same addresses. The job is resumable and runs while
-the old batch still has days of life.
+the history again: the admin rewrites every slot of the feed, in order, with the exact bytes it
+recorded, under the new batch, then every thumbnail a stream names, published or not, and every
+one the latest entry names, and then the admin writes with the new batch. bee-js puts a payload
+straight into the feed's chunk with no timestamp, so the same bytes make the same chunks at the
+same addresses. The job is resumable and runs while the old batch still has days of life.
 
 **The move is off by default.** `CATALOGUE_MOVE_ENABLED` in the admin's env file turns it on,
-and it stays off on every installation until the owner has tried it on a real node, by
+and it stays off on every installation until the move has been tried on a real node, by
 [Trying the move on a real node](#trying-the-move-on-a-real-node) below. Until then the Stages
 page says the move is not yet enabled on this installation. The manager's move and release work
 with the admin's move off: they change which batch is designated and which is guarded, and while
@@ -454,13 +464,14 @@ migration 014; the admin backend's README has the detail):
 
 ### Trying the move on a real node
 
-For the owner, once, before `CATALOGUE_MOVE_ENABLED` is turned on anywhere. Nothing in the
-repository runs this; every unit and integration test uses a fake Bee.
+Once, before `CATALOGUE_MOVE_ENABLED` is turned on anywhere. Nothing in the repository runs
+this; every unit and integration test uses a fake Bee.
 
 1. **Set up a scratch installation.** A testnet or scratch Bee node as a Bee-only deployment of
    a scratch manager, and a scratch admin with its own `FEED_PRIVATE_KEY` and `FEED_TOPIC`, so no
-   brand's catalogue is touched. Buy two small immutable batches on the node, A and B (depth 17
-   or 18 is plenty: a catalogue slot is one chunk, or a few for a long list). Link the admin
+   brand's catalogue is touched. Buy two small immutable batches on the node, A and B (depth 18
+   or more, the shallowest a designation takes: a catalogue slot is one chunk, or a few for a long
+   list). Link the admin
    and designate the node with batch A.
 2. **Make history.** Create a few streams, give some a thumbnail, publish and unpublish them
    until the feed has a dozen slots or more. Make at least one catalogue longer than 4096 bytes

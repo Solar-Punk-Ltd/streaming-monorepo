@@ -74,11 +74,10 @@ function stageIdOf(req: Request): string {
  * The swarm-hls-stream uploader has four routes: the one that turns an
  * ingest address into the draft an encoder is publishing to, the one that
  * reports what happened to it, the one that reports a rung of its ABR
- * ladder, and the one that says which stage its token is on. The split with the console's routes is the whole point of the
- * checkpoint. The uploader owns each stream's manifest feeds and never writes
- * the catalogue; the admin API owns the catalogue and never touches a
- * manifest. `POST /state` and `POST /renditions` are how the one tells the
- * other what to say.
+ * ladder, and the one that says which stage its token is on. The uploader
+ * owns each stream's manifest feeds and never writes the catalogue; the
+ * admin API owns the catalogue and never touches a manifest. `POST /state`
+ * and `POST /renditions` are how the one tells the other what to say.
  *
  * The manager has five: it pushes each stage's record and the brand's
  * catalogue stamp record, takes them back (docs/architecture/stages.md), and
@@ -87,13 +86,12 @@ function stageIdOf(req: Request): string {
  * Each route names its door. The manager's take the registrar token,
  * `INTERNAL_API_TOKEN`, and nothing else: a stage's own token is refused
  * there. The uploader's take a stage's own token alone, and are then answered
- * only about that stage's streams. Since phase 9 of the stages brief the
- * registrar token is refused on them with the same 401 as any other token, so
- * a stage whose uploader presents no token of its own is told so plainly; its
- * token is rotated in the manager. `GET /registrar` is the manager's proof
- * that its stored token is the registrar's. A path or method no route names
- * answers 401 without either token and 404 with one, as it did when one token
- * opened the whole router.
+ * only about that stage's streams. The registrar token is refused on them
+ * with the same 401 as any other token, so a stage whose uploader presents no
+ * token of its own is told so plainly; its token is rotated in the manager.
+ * `GET /registrar` is the manager's proof that its stored token is the
+ * registrar's. A path or method no route names answers 401 without either
+ * token and 404 with one, as it did when one token opened the whole router.
  */
 export function createInternalRouter(deps: InternalRoutesDeps): Router {
   const { streamStateService, ladderService, stageService, requireRegistrarToken, requireUploaderToken } = deps;

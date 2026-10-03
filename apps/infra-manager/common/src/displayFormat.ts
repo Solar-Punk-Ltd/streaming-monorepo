@@ -1,9 +1,8 @@
 /**
  * The few ways a number, a moment or a long hex value is written in the
- * readiness sentences. They lived in the console's `format.ts` until the
- * readiness composition moved here, on 2026-09-28, so that the manager can
- * work out a stage's readiness in the words the console shows it with. The
- * console's `format.ts` passes these on unchanged.
+ * readiness sentences. They sit here with the readiness composition, so that
+ * the manager can work out a stage's readiness in the words the console shows
+ * it with. The console's `format.ts` passes these on unchanged.
  */
 
 /** Shown where a number is not known. Never an em dash, which reads as prose. */

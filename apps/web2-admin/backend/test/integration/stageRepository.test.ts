@@ -238,7 +238,7 @@ describe('StageRepository', () => {
     assert.deepEqual(await stages.findActiveByOwnTokenSha256(own), []);
   });
 
-  it('reads the lookup through a partial index on own-kind, active rows (migration 012)', async () => {
+  it('defines the lookup’s index: partial to own-kind active rows, not unique (migration 012)', async () => {
     const index = await database.pool.query<{ indexdef: string }>(
       `SELECT indexdef FROM pg_indexes WHERE tablename = 'stages' AND indexname = 'stages_own_admin_token_idx'`,
     );

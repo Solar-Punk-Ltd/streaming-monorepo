@@ -470,7 +470,7 @@ a node on, from `resolveLocalPublisherHost` in `src/domain/localHost.ts`:
 
 - `BEE_LOCAL_HOST` when the operator set it, taken as given. The one exception is
   the bare name `host.docker.internal`, which is resolved the way the next case
-  resolves it. Since 2026-10-01 the manager's config checks the value once at
+  resolves it. The manager's config checks the value once at
   startup, and a value that is not a host name or an IPv4 address, such as a
   path, a URL, a host with a port or, for now, an IPv6 address, stops the
   manager there rather than reaching a pool string.

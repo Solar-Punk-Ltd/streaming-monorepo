@@ -1,7 +1,7 @@
 /**
- * A token per uploader (docs/architecture/stages.md, phases 5 and 9). Unit test: the real internal router, both
- * doors and the real services on a random port, mounted the way `src/api/server.ts` mounts them, with the stores, the
- * feed log and the audit log in memory. `pnpm test`.
+ * A token per uploader (docs/architecture/stages.md). Unit test: the real internal router, both doors and the real
+ * services on a random port, mounted the way `src/api/server.ts` mounts them, with the stores, the feed log and the
+ * audit log in memory. `pnpm test`.
  *
  * Pinned here:
  * - the manager's routes and `GET /registrar` take the registrar token alone, and refuse a stage's own token;
@@ -477,21 +477,30 @@ describe('the registrar token as a stage’s own', () => {
 });
 
 describe('requireUploaderToken on its own', () => {
-  function run(store: { findActiveByOwnTokenSha256(sha256: string): Promise<never[]> }): Promise<unknown> {
+  /**
+   * Every value the door hands `next`, read once the lookup has settled: a macrotask runs only after every promise
+   * callback the lookup queued, so a second call would be in the list by then.
+   */
+  async function run(store: { findActiveByOwnTokenSha256(sha256: string): Promise<never[]> }): Promise<unknown[]> {
     const door = createRequireUploaderToken({ registrarToken: REGISTRAR, stages: store });
     const req = {
       get: (name: string) => (name.toLowerCase() === 'authorization' ? `Bearer ${MAIN_TOKEN}` : undefined),
     } as unknown as Request;
-    return new Promise((resolve) => door(req, {} as Response, ((err?: unknown) => resolve(err ?? null)) as never));
+    const handed: unknown[] = [];
+    door(req, {} as Response, ((err?: unknown) => handed.push(err ?? null)) as never);
+    await new Promise((resolve) => setImmediate(resolve));
+    return handed;
   }
 
   it('hands a failed lookup to the error handler, once', async () => {
     const failure = new Error('connection lost');
-    assert.equal(await run({ findActiveByOwnTokenSha256: () => Promise.reject(failure) }), failure);
+    assert.deepEqual(await run({ findActiveByOwnTokenSha256: () => Promise.reject(failure) }), [failure]);
   });
 
   it('refuses a token no stage names as unauthenticated', async () => {
-    assert.ok((await run({ findActiveByOwnTokenSha256: async () => [] })) instanceof UnauthenticatedError);
+    const handed = await run({ findActiveByOwnTokenSha256: async () => [] });
+    assert.equal(handed.length, 1);
+    assert.ok(handed[0] instanceof UnauthenticatedError);
   });
 
   it('asks the database only for a token of 64 hex characters, and refuses anything else without a query', async () => {

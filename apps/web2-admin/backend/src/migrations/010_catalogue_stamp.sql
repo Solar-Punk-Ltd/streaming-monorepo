@@ -4,19 +4,19 @@
 -- catalogue node the manager runs (docs/architecture/stages.md). The manager
 -- pushes one record for it, `catalogueStampRecordSchema` in
 -- packages/contracts, into `PUT /api/internal/catalogue-stamp`, and clears it
--- with `DELETE`. Nothing writes the catalogue through it yet: until a later
--- phase of the stages work does, the admin keeps writing with `BEE_URL` and
--- `POSTAGE_BATCH_ID`.
+-- with `DELETE`. Every catalogue write goes through it, read on every write
+-- (migration 013); `BEE_URL` and `POSTAGE_BATCH_ID` are no longer read.
 --
 -- One brand, one catalogue, one row: `id` can only be true. The moments it is
 -- ordered by are the manager's, as in migration 009.
 --
 --   manager_id, batch_id, record
 --                the record as it arrived, the Bee API address included,
---                since that is where the catalogue will be written, with the
---                manager's id and the pinned batch copied out of it. The
---                console is never shown the address. All three are null only
---                on a row that a clear made when no record had arrived yet.
+--                since the admin writes the catalogue through the node a
+--                record names, with the manager's id and the designated batch
+--                copied out of it. The console is never shown the address.
+--                All three are null only on a row that a clear made when no
+--                record had arrived yet.
 --   observed_at  when the manager read what the record says, or, on a row a
 --                clear made, the moment of that clear. A record observed
 --                before it never replaces the row.

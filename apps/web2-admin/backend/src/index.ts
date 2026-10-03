@@ -70,9 +70,7 @@ function logStartupConfig(owner: string, topicHex: string): void {
   logger.info(`[Boot]   feed: owner ${owner} topic "${config.feedTopic}" (${topicHex})`);
   logger.info(`[Boot]   viewer: ${config.viewerBaseUrl || '(unset → no player links)'}`);
   logger.info(`[Boot]   internal API token: ${redactSecret(config.internalApiToken)}`);
-  logger.info(
-    `[Boot]   catalogue move: ${config.catalogueMoveEnabled ? 'enabled' : 'off (CATALOGUE_MOVE_ENABLED is not set)'}`,
-  );
+  logger.info(`[Boot]   catalogue move: ${config.catalogueMoveEnabled ? 'enabled' : 'off'}`);
   logger.info("[Boot]   ingest: from each stream's stage, as the manager pushed it");
   const retired = retiredEnvKeysSet();
   if (retired.length > 0) {

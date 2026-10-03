@@ -178,8 +178,9 @@ export interface RenditionReportResponse {
  * What the admin says about the stage this service's token belongs to.
  *
  * - `stage`: it named the stage and the owner that stage signs as.
- * - `no-stage`: it answered 404. The token is the shared one, which belongs to no stage, or the admin
- *   is older than the route; the two answer alike, and both are compared with the public config.
+ * - `no-stage`: it answered 404: an admin from before stages, which has no such route, or the
+ *   intermediate admin answering the shared token. The two answer alike, and both are compared with
+ *   the public config.
  * - `unconfirmed`: it could not be read: no answer, another status, or a body that is not the answer.
  *   `reason` says which, for the log.
  */
@@ -286,13 +287,13 @@ export class AdminApiClient {
    * The address the admin signs its catalog feed with, read off its public config, or null when it
    * could not be read.
    *
-   * Boot asks this when `fetchStageSelf` names no stage: a caller on the shared token, or an admin
-   * older than stages, where both services still sign as one owner. The admin's catalog entry points
-   * a viewer at `owner/topic`, and the master this service writes at that topic resolves only under
-   * the key it was signed with. Nothing on the wire carries a key, so the address is the one thing that
-   * can be compared, and a deployment where the two differ answers 200 to every report while every
-   * viewer resolves a feed nobody wrote. `resolveAdminPublish` runs the per-declaration half of the
-   * same check on every publish.
+   * Boot asks this when `fetchStageSelf` names no stage: an admin from before stages, or the
+   * intermediate admin answering the shared token, where both services still sign as one
+   * owner. The admin's catalog entry points a viewer at `owner/topic`, and the master this service
+   * writes at that topic resolves only under the key it was signed with. Nothing on the wire carries a
+   * key, so the address is the one thing that can be compared, and a deployment where the two differ
+   * answers 200 to every report while every viewer resolves a feed nobody wrote. `resolveAdminPublish`
+   * runs the per-declaration half of the same check on every publish.
    *
    * Never throws, and null is deliberately not a refusal: an admin that is down while this service
    * boots is a deploy ordering rather than a misconfiguration, and the publish gate compares each

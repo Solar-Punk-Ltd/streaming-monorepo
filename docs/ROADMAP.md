@@ -41,8 +41,9 @@ a browser: login, create, edit with tags, publish (feed index 0), republish
 with thumbnail (index 1, reference recorded), rotate key, unpublish (index 2,
 empty list), password change signing out other sessions, logout. The Bee
 gateway ran in `fake` mode; the bee-js integration test is skipped until
-`BEE_URL` and `POSTAGE_BATCH_ID` point at a real node. Docker image builds are
-unverified on this machine (no registry access).
+`BEE_URL` and `POSTAGE_BATCH_ID` (`ITEST_BEE_URL` and `ITEST_BATCH_ID` since
+phase 7 of stages) point at a real node. Docker image builds are unverified on
+this machine (no registry access).
 
 Real-Swarm test, same day: a colleague pointed the backend at their Bee node,
 published two streams with thumbnails, and deployed a viewer built for the feed
@@ -325,32 +326,49 @@ the owner has tried it whole.
   until it is rotated in the manager. `GET /api/internal/registrar` proves the
   manager's stored token, and its Manager settings Test connection uses it.
   `use_manager_admin_token` is gone, and these pages close checkpoint 3.
+- Review of the pull request into `main` (#74, 2026-10-02): three reviews and
+  a review table, answered in #76 to #81 on `fix/stages--review-fixes`.
+  Decided: the admin's deploy script refuses the sample brand key and
+  registrar token unless it is given `--allow-sample-secrets`; a new
+  catalogue batch must be depth 18 or more, the batch already pinned and a
+  move back to it excepted, and warnings for a shallow batch come later; a
+  deploy on the manager's own Linux host binds every empty Bee API bind to the
+  Docker bridge address, and the catalogue node card warns when Docker shows
+  the node's API on every address; the manager sends the web2 admin plain
+  http only on its own host, unless `ADMIN_LINK_ALLOW_PLAIN_HTTP=true`; a
+  removed stage's retirement waits in the table migration 049 adds,
+  `pending_stage_retirements`, and is sent again until the admin answers it.
 
 Left open after the nine phases:
 
 - **The catalogue move** is built and off until the owner's trial on a real
   node, whose date goes here.
+- **The upgrade, scripted.** The rollout below is six manual steps in a fixed
+  order; a script with a check after each step comes before the QA control
+  host or the pilot is upgraded.
+- **Pending retirements** show only in the manager's log; the Stages page
+  could count them.
 - **Top-ups from the admin.** The admin reads every rung's stamp and
   chequebook and the catalogue batch; buying, topping up and funding stay in
   the manager's console until this is decided.
 - **Brand separation** inside one admin, and a second admin link per manager
   for a second brand, among the open decisions below.
-- **Rollout**, decided 2026-09-29 and corrected by the final review, for a
-  host that runs the admin and manager from before stages, and only with the
-  owner's word: the catalogue node created; the phase 9 manager, with the node
-  designated at once; the phase 8 admin, the phase 8 state of `feat/stages`
-  (commit `d29616851`; tag it, e.g. `web2-admin/stages-phase-8`, before
-  `feat/stages` is merged to `main`, because a squash or rebase merge leaves
-  that commit unreachable); every scheduled stream unpublished, given a stage
-  and published again; every stage rotated and redeployed until the admin's
-  Stages page reads "Its own token" for all; the phase 9 admin; then a
-  `STREAM_KEY` of its own for each stage. Until the catalogue is moved, the
-  batch from before stages holds every slot written before the phase 8 admin:
-  it stays topped up and alive, is never diluted, replaced or put in a pool
-  string, and the move runs first after the real-node trial. That is the one
-  remaining way the catalogue can go dark. "Upgrading" in
-  `docs/self-hosting.md` has each step. A fresh installation needs none of
-  this.
+- **Rollout**, decided 2026-09-29, for a host that runs the admin and
+  manager from before stages: the catalogue node created; the manager that
+  pushes stage records (phase 9), with the node designated at once; the
+  intermediate admin, the phase 8 state of `feat/stages` (commit `d29616851`;
+  tag it `web2-admin/stages-intermediate` before `feat/stages` is merged to
+  `main`, because a squash or rebase merge leaves that commit unreachable);
+  every scheduled stream unpublished, given a stage and published again, and
+  every draft given a stage; every stage rotated and redeployed until the
+  admin's Stages page reads "Its own token" for all; the admin that refuses
+  the shared token (phase 9); then a `STREAM_KEY` of its own for each stage.
+  Until the catalogue is moved, the batch from before stages holds every slot
+  written before the intermediate admin: it stays topped up and alive, is
+  never diluted, replaced or put in a pool string, and the move runs first
+  after the real-node trial. That is the one remaining way the catalogue can
+  go dark. "Upgrading" in `docs/self-hosting.md` has each step. A fresh
+  installation needs none of this.
 
 ## Checkpoint 3: manager integration (built on `feat/stages`, 2026-09-29)
 

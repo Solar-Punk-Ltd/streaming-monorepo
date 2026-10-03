@@ -8,13 +8,14 @@ link names. The admin never calls the manager. The design is `docs/architecture/
 at the repository root; the record's shape is `stageRecordSchema` in
 `packages/contracts/src/stage.ts`.
 
-Status, 2026-09-29. Phase 3 of the brief, phase 5, which gives every
-uploader linked to the manager's admin a token of its own, phase 6, where every
-stage signs with a key of its own, phases 7 and 8, the catalogue node and its
-move, and phase 9, where the admin stops taking any other token from an
-uploader. Not deployed. A deployment created before phase 5 still presents the
-link's own token, reported as `shared`, which the admin refuses since phase 9:
-its token has to be rotated.
+Status, 2026-10-01, checked against the code at `372d1ff01`: built. The manager
+pushes every stage's record, every uploader it links to its admin gets a token
+of its own, every stage signs with a key of its own, the brand's catalogue is
+written through a node and a batch of its own and can move to another batch,
+the admin takes no other token from an uploader, and the console lists every
+stage on a Stages page. A deployment created by a manager from before stages
+still presents the link's own token, reported as `shared`, which the admin
+refuses: its token has to be rotated.
 
 **A key per stage.** Every stage's `STREAM_KEY` is its own, generated in the
 new-deployment wizard, and nothing asks for the admin's brand key: the admin
@@ -59,7 +60,7 @@ them reaches the JSON that is sent.
 
 ### The uploader's token
 
-Since phase 5 a deploy gives an uploader linked to the manager's admin a token
+A deploy gives an uploader linked to the manager's admin a token
 of its own, generated the first time, kept with the deployment's generated
 secrets and never replaced (`manager/src/domain/adminLink/ownAdminToken.ts`;
 [web2-admin-link.md](web2-admin-link.md) has the rule). The admin knows it by
@@ -73,15 +74,15 @@ deployment's Test connection answers `token-not-registered` rather than
 The next push carries no token, so the admin stops taking the old one; the
 next deploy generates a new one and its pre-start push registers it. A
 deployment on any token the manager did not generate, `shared`, which the admin
-refuses since phase 9, gets one of its own this way and no other: its Test
+refuses, gets one of its own this way and no other: its Test
 connection answers `token-not-own` until it has. The link's token is the
 registrar token these pushes present, and no uploader is given it.
 
 ### Readiness
 
 `common/src/readiness.ts` holds the readiness composition the console shows on
-every row and page, moved out of the console on 2026-09-28 with its checklist,
-so the manager works it out the same way. The record carries its verdict in the
+every row and page, with its checklist, in the common package so the manager
+works it out the same way. The record carries its verdict in the
 admin's four words, and the problem of every step that is not ok as a reason,
 in the list's order, so the first reason is the console's own label:
 
@@ -139,10 +140,22 @@ taken as the deployment's row is deleted, with the deployment's `instance_id`
 and kind. A push in flight is waited for first, since it may be the stage's
 first.
 
+A retirement is kept until the admin answers it. The removal writes it into the
+manager's database in the transaction that deletes the deployment's row
+(`pending_stage_retirements`, migration 049), and the publisher sends it, then
+sends it again every 30 seconds and when the manager starts, until the admin
+answers `retired` or `not-retired`. Then the row is deleted. A retirement that
+keeps failing is logged once, with its outcome, and again only when the outcome
+changes. One the manager stopped before sending, between the deletion and the
+event, is sent when it starts again, as of that moment.
+
 Every moment the admin orders by is the manager's own: a record's `observedAt`
 is taken as its deployment's row is read, before the node and uploader
 readings, and a retirement's as the row is deleted, so a 30-second pass that
-starts before a removal and ends after it still carries the earlier moment.
+starts before a removal and ends after it still carries the earlier moment. A
+retirement sent again carries the same moment. One found at start with no
+moment takes the moment it is found, which is later than every record of the
+stage, since none is read once the row is gone.
 
 ## To whom
 
@@ -155,13 +168,20 @@ linked to another admin, one not linked at all, or any while the link stores no
 token, is skipped with an outcome saying which.
 
 A retirement goes to the link its records went to, and only while the link is
-still on that origin. A deployment removed before its first push since the
+still on that origin: one whose link has moved to another origin since is
+dropped, and the log says so. While the link stores no address or no token, a
+retirement waits for one. A deployment removed before its first push since the
 manager started is retired at the current link as well, by the `instance_id`
 the removal event carries, and with the link's token: one whose push was not
 made yet, and one this manager pushed before a restart and not since. The admin
 retires the stage it holds, or keeps a tombstone of one it never stored, so a
 retirement it did not need changes nothing there. A deployment the manager
-skipped since it started, linked to another admin or to none, is not retired.
+skipped since it started, linked to another admin or to none, is not retired,
+and its row is deleted. A deployment whose pushes stopped at the manager's own
+link is retired all the same, since the admin may hold its stage from before: a
+link in plain http to another host (`refused-plain-http`), or one with no token,
+as while a token is cleared to rotate it (`skipped-no-link`). Its retirement
+waits until the link takes it.
 
 ## Outcomes
 
@@ -181,12 +201,13 @@ say, never what the admin answered, its address or a token.
 | `redirected`           | a redirect, which is not followed                                                                          |
 | `not-admin`            | any other answer, or one that is not the admin's JSON                                                      |
 | `skipped-no-link`      | the manager's link has no address or no token                                                              |
+| `refused-plain-http`   | the link is plain http to another host than the manager's own: nothing is sent                             |
 | `skipped-not-linked`   | the deployment's next deploy gives its uploader no `ADMIN_API_URL`                                         |
 | `skipped-other-origin` | its `ADMIN_API_URL` is on another origin than the link's                                                   |
 | `skipped-no-record`    | the record could not be put together: no stream key, no port, no environment yet, no public ingest address |
 
-The client is bounded like Test connection: http and https alone, no redirect
-followed, five seconds a call, at most 64 KiB of an answer read. The last
+The client is bounded like Test connection: http and https alone, plain http
+only to the manager's own host (`web2-admin-link.md`), no redirect followed, five seconds a call, at most 64 KiB of an answer read. The last
 outcome of each deployment and its time are kept in memory; the log says a
 deployment's outcome when it changes, and why its record could not be put
 together once.
@@ -199,8 +220,8 @@ together once.
   "Web2 admin registration: <outcome> <N> s ago", read every ten seconds from
   `GET /stages/:name/registration`, and Rotate the uploader's admin token,
   `POST /profiles/:name/admin-token/rotate`, asked for first.
-- **The Stages page**, `#/stages`, in the navigation under Deployments. Built
-  2026-10-01, not deployed. One row per stage, by name, from `GET /stages`,
+- **The Stages page**, `#/stages`, in the navigation under Deployments. One
+  row per stage, by name, from `GET /stages`,
   read when the page opens and every 30 seconds after, the cadence a running
   stage is pushed on, and again on Refresh. Each row shows:
   - the stage's name, which opens its deployment page, with its kind, its
@@ -240,10 +261,6 @@ card in Chrome; no browser suite drives the Stages page yet.
 
 ## The catalogue node
 
-Built on `stages/p7-catalogue-node`, phase 7 of the brief, 2026-09-28, and
-moving the catalogue to another batch on `stages/p8-catalogue-move`, phase 8,
-2026-09-28. Neither is deployed.
-
 The web2 admin writes the brand's catalogue through one Bee node and one batch
 of their own, so that no stage's segments fill the batch the catalogue's slots
 live in (`docs/architecture/stages.md`, "Why these"). The operator designates
@@ -271,12 +288,19 @@ save does. `CatalogueDesignationService` refuses, with one sentence each
 | a mutable batch                                                        | once a bucket fills it overwrites its oldest chunks, which are the catalogue's first slots |
 | a batch whose kind the node does not report                            | the kind that fails is the one it might be                                                 |
 | an expired batch                                                       | nothing written with it stays                                                              |
+| a new batch shallower than `MIN_CATALOGUE_DEPTH`, 18                   | its buckets fill soon, and the first slot refused freezes the catalogue                    |
 | a batch an ABR uploader of this manager names in its `BEE_PUBLISHERS`  | segments would fill it                                                                     |
 | another batch than the pinned one, without `move: true`                | the catalogue's slots are stamped by the pinned batch, and moving them is its own action   |
 | a third batch while a move is pending, `move: true` or not             | the batch moved from still holds the history until the admin reports the move done         |
 
 The node is asked about the batch fresh, `GET /stamps/{id}` on its own Bee API,
 when the designation is saved.
+
+The minimum depth holds a new batch alone, `catalogueShallowBatchRefusal`: the
+pinned batch designated again after a clear, and a move back to the batch moved
+from, are taken at the depth they have, so a designation made before the
+minimum keeps working. The card does not mark a shallow batch in its list; the
+save says why it is refused.
 
 Once a batch has been designated, the catalogue stays on it. The same batch can
 be designated again after a clear, which puts it in force once more. Another
@@ -317,10 +341,11 @@ there is no previous batch to release." when none is. The operator presses it
 once the admin reports the move done; the manager cannot tell that itself.
 
 There is no audit table. A designation, a move, a move back, a clear and a
-release are each logged with the user, the batches shortened, as in
+release are each logged with the user: a designation with its whole batch id,
+a move, a move back and a release with the batches shortened, as in
 `[Catalogue] operator released batch abababab…ababab on catalogue-node after
-the move to cdcdcdcd…cdcdcd`, and the row records who made the last of each and
-when.
+the move to cdcdcdcd…cdcdcd`, and a clear with none. The row records who made
+the last of each and when.
 
 ### What the manager keeps
 
@@ -376,7 +401,8 @@ changes.
 
 To the manager's web2 admin link, `PUT <link>/api/internal/catalogue-stamp`,
 with the link's stored token, the registrar's, on the stage client's bounds:
-http and https alone, no redirect followed, five seconds, 64 KiB of an answer
+http and https alone, plain http only to the manager's own host, no redirect
+followed, five seconds, 64 KiB of an answer
 read. It is pushed:
 
 - **when the designation changes**, at once after the save;
@@ -399,7 +425,8 @@ one more after it, so a clear never overtakes the push before it.
 
 Each call comes to one of `CATALOGUE_PUSH_OUTCOMES`: `stored`, `older-ignored`,
 `cleared`, `not-cleared`, `refused-token`, `refused-record`, `unreachable`,
-`redirected`, `not-admin`, `skipped-no-link`, `skipped-no-node` (the designated
+`redirected`, `not-admin`, `skipped-no-link`, `refused-plain-http` (a link in
+plain http to another host, sent nothing), `skipped-no-node` (the designated
 deployment is gone) and `skipped-no-record` (a record the contract refuses, no
 depth known, or a loopback Bee API address). The card shows the last one, "Web2 admin: stored 12 s ago",
 and the log says it when it changes.
@@ -413,6 +440,21 @@ would refuse. Designated, it shows the node, the batch, its last reading and
 the last push, with Move to another batch and Clear the designation. Cleared,
 it says which batch and node the catalogue stays pinned to, and offers
 Designate again for that batch.
+
+The card warns when Docker publishes the pinned node's Bee API on every address
+of its host, since that API asks for no password and the catalogue's batch is
+behind it. `GET /manager-settings/catalogue-node` answers it as
+`apiOnEveryAddress`, read from Docker's own record of the node's container on
+the daemon it runs on, local or over ssh (`stages/beeApiExposure.ts`), at most
+once a minute: true when a binding of the API port is `0.0.0.0` or `::`, or,
+under host networking, when the node's `--api-addr` names no address; false
+when it is bound to one; null when nothing is pinned or Docker could not be
+read. It is not a probe of the host's public address, which hairpin NAT answers
+from inside and a provider firewall hides. A node on this host is bound to the
+Docker bridge at its next deploy where the manager confirmed the bridge, and
+otherwise takes `BEE_UPLOADER_API_BIND`, or `BEE_UPLOADER_API_LISTEN` under host
+networking (`deploy/README.md`, step 2 of opening the manager); a node on another host has to answer the control host, so there the
+warning means its firewall must admit the control host alone.
 
 Once a batch is pinned, choosing another one on a Bee-only node turns the
 button into **Move the catalogue to batch …**, which asks first: the web2 admin
@@ -442,6 +484,9 @@ in Chrome through all three.
 ## Limits
 
 - One admin link per manager: a stage on another admin's origin is not pushed.
+- A deployment whose record could not be put together since the manager
+  started (`skipped-no-record`) is not retired when it is removed, so a stage
+  the admin stored from a push before a restart stays active there.
 - The catalogue stamp record goes to the link as it is now. A link moved to
   another admin leaves the old one holding the last record it was sent.
 - The last catalogue reading and push are in memory, and a restarted manager
@@ -451,7 +496,9 @@ in Chrome through all three.
   deployment that is gone and was never pushed or seen is dropped from memory.
 - The outcomes are in memory. A restarted manager says "not pushed yet" until
   its first push. A running stage is pushed within 30 seconds of the start, and
-  one removed before that is retired at the current link by its id.
+  one removed before that is retired at the current link by its id. A
+  retirement is not in memory: it is kept in the database until the admin
+  answers it, and a restarted manager sends it at start.
 - A deployment whose `ADMIN_API_URL` moves to another origin is no longer
   pushed, and the stage it was stays at the admin it left until that admin
   retires it.

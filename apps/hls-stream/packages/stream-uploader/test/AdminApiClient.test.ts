@@ -534,8 +534,9 @@ describe('the admin API client, reading the feed owner', () => {
 
 /**
  * The boot-time read of the stage this service's token belongs to. Each stage signs with a key of its
- * own, so the owner the admin names here is the one to compare with. A 404 is the shared token or an
- * admin older than stages, which the caller tells from a read that failed.
+ * own, so the owner the admin names here is the one to compare with. A 404 is an admin from before
+ * stages, which has no such route, or the intermediate admin answering the shared token. The caller
+ * tells it from a read that failed.
  */
 describe('the admin API client, reading its own stage', () => {
   const SELF = { stageId: '5f0c2a8e-1b2c-4d3e-8f40-0a1b2c3d4e5f', owner: '0x3f1a9c2b4d5e6f708192a3b4c5d6e7f809a1b2c3' };
@@ -549,7 +550,7 @@ describe('the admin API client, reading its own stage', () => {
     });
   });
 
-  it('answers no stage on a 404, the shared token or an admin older than stages', async () => {
+  it('answers no stage on a 404, from an admin before stages or the intermediate admin', async () => {
     await withAdmin(always(404, { error: 'not_found' }), async ({ client }) => {
       assert.deepEqual(await client.fetchStageSelf(), { kind: 'no-stage' });
     });

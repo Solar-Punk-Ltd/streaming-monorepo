@@ -10,12 +10,13 @@ import {
 } from '@streaming-infra-manager/common';
 import type { StageRecord } from '@streaming-monorepo/contracts';
 
-import type { Profile, ProfileWithContainers } from '../../types/index.js';
+import type { Profile, ProfileKind, ProfileWithContainers } from '../../types/index.js';
 import type { StoredAdminLinkSecret } from '../adminLink/ManagerAdminLinkRepository.js';
 import type { ManagerEvent } from '../EventBus.js';
 import { Logger } from '../Logger.js';
 
 import type { BuiltStage, StageRecordBuilder } from './StageRecordBuilder.js';
+import type { DecidedRetirement, PendingRetirement, StageRetirementStore } from './StageRetirementRepository.js';
 import { sendStageRequest, type StageSender } from './stageRequest.js';
 
 const logger = Logger.getInstance();
@@ -61,6 +62,8 @@ export interface StagePublisherDeps {
   builder: Pick<StageRecordBuilder, 'build'>;
   /** The manager's web2 admin link and its token, the registrar's. */
   link: { storedLink(): Promise<StoredAdminLinkSecret> };
+  /** The retirements the admin has not answered yet, kept in the database so a restart does not lose them. */
+  retirements: StageRetirementStore;
   events: { subscribe(listener: (event: ManagerEvent) => void): () => void };
   send?: StageSender;
   clock?: StageClock;
@@ -83,6 +86,13 @@ interface StageEntry {
   loggedProblem: string | null;
 }
 
+/**
+ * Outcomes where the manager's own link kept the push from going, so the admin may hold the stage from before: one
+ * pushed before a restart, or before the token was cleared. A removed stage whose pushes came to one of these is
+ * retired all the same, once the link takes it.
+ */
+const RETIRED_THOUGH_UNPUSHED: readonly StagePushOutcome[] = ['refused-plain-http', 'skipped-no-link'];
+
 /** Outcomes where the admin was asked, so a later retirement has somewhere to go. */
 const ASKED: readonly StagePushOutcome[] = [
   'stored',
@@ -98,13 +108,18 @@ const ASKED: readonly StagePushOutcome[] = [
  * The stage publisher: for every deployment that runs a stream uploader and whose effective `ADMIN_API_URL` is on
  * the origin of the manager's web2 admin link, it pushes the deployment's stage record to that link with the link's
  * stored token. It pushes when the deployment changes, gathered per deployment, every 30 seconds while it runs, and
- * before a deploy starts its uploader. A deleted deployment's stage is retired the same way.
+ * before a deploy starts its uploader. A deleted deployment's stage is retired the same way, and the retirement is
+ * sent again every 30 seconds and at start until the admin answers it.
  *
  * Each push comes to one outcome code, kept in memory with its time for the deployment page. The log says a
  * deployment's outcome when it changes, and never what the admin answered, its address or a token.
  */
 export class StagePublisher {
   private readonly entries = new Map<string, StageEntry>();
+  /** The stage ids whose retirement is being decided or sent, so a removal and the cadence never send one twice. */
+  private readonly retiring = new Set<string>();
+  /** The outcome last logged of each retirement still pending, so one that keeps failing says so once. */
+  private readonly retireLogged = new Map<string, StagePushOutcome>();
   private readonly send: StageSender;
   private readonly clock: StageClock;
   private readonly debounceMs: number;
@@ -124,7 +139,11 @@ export class StagePublisher {
   start(): void {
     if (this.unsubscribe || this.stopped) return;
     this.unsubscribe = this.deps.events.subscribe((event) => this.onEvent(event));
-    this.interval = this.clock.setInterval(() => void this.pushRunning(), this.intervalMs);
+    this.interval = this.clock.setInterval(() => {
+      void this.pushRunning();
+      void this.retirePending();
+    }, this.intervalMs);
+    void this.retirePending();
   }
 
   stop(): void {
@@ -213,6 +232,21 @@ export class StagePublisher {
     );
   }
 
+  /** Sends every retirement still pending that is not being sent already: one that failed, or one from before a restart. */
+  async retirePending(): Promise<void> {
+    if (this.stopped) return;
+    let pending: PendingRetirement[];
+    try {
+      pending = await this.deps.retirements.pending();
+    } catch (err) {
+      logger.warn(`[Stages] the pending stage retirements could not be read: ${getErrorMessage(err)}`);
+      return;
+    }
+    await Promise.all(
+      pending.map((retirement) => this.whileRetiring(retirement.stageId, () => this.retireKept(retirement))),
+    );
+  }
+
   /**
    * Pushes one deployment's record now. A push already in flight is not doubled: `skip` leaves it to answer, and
    * `follow` waits for it and then pushes once more with what has changed since.
@@ -246,7 +280,7 @@ export class StagePublisher {
       this.entryOf(event.profile.name).seenStageId = event.profile.instance_id;
       this.schedule(event.profile.name);
     } else if (event.type === 'profile.deleted') {
-      void this.retire(event);
+      void this.whileRetiring(event.instanceId, () => this.retire(event));
     }
   }
 
@@ -304,49 +338,139 @@ export class StagePublisher {
     return this.record(entry, name, outcome);
   }
 
+  /** Runs one stage's retirement unless one is running already, which then answers for it. */
+  private async whileRetiring(stageId: string, retire: () => Promise<void>): Promise<void> {
+    if (this.retiring.has(stageId)) return;
+    this.retiring.add(stageId);
+    try {
+      await retire();
+    } finally {
+      this.retiring.delete(stageId);
+    }
+  }
+
   /**
    * Retires a deleted deployment's stage at the link its records went to, with the moment its row was deleted, so a
    * record read before that and arriving after it cannot bring the stage back. One removed before its first push is
    * retired at the current link too, by the instance id the removal carries, whether or not this manager has seen it
    * since it started: the admin keeps a retirement of a stage it never stored as a tombstone, and may hold one pushed
-   * before a restart. One it skipped since it started, or one whose link has moved to another origin since its last
-   * push, is left as it is, and the last of these says so in the log.
+   * before a restart. One it skipped since it started is left as it is.
+   *
+   * The retirement is kept in the database until the admin answers it, `retired` or `not-retired`, and sent again
+   * every 30 seconds and at start until then. One whose link has moved to another origin since its last push is
+   * dropped, and the log says so.
    */
   private async retire(gone: Extract<ManagerEvent, { type: 'profile.deleted' }>): Promise<void> {
     const { name } = gone;
-    const entry = this.entries.get(name);
-    if (entry?.timer !== undefined) this.clock.clearTimeout(entry.timer);
-    if (entry) entry.again = false;
-    this.entries.delete(name);
-    if (!entry && !isStageKind(gone.kind)) return;
     try {
-      // A push in flight may be the first to reach the admin, so its answer decides whether there is a stage to retire.
-      await entry?.inFlight;
-      // One removed before its first push is retired all the same, which the admin keeps as a tombstone, so a
-      // record of it that arrives late does not register a deployment that is gone.
-      const stageId = entry
-        ? (entry.pushed?.stageId ?? (entry.last === null ? (entry.seenStageId ?? gone.instanceId) : null))
-        : gone.instanceId;
-      if (!stageId) return;
-      const link = await this.deps.link.storedLink();
-      if (!link.url || !link.token) return;
-      if (entry?.pushed && adminOriginOf(link.url) !== entry.pushed.origin) {
-        logger.warn(`[Stages] ${name}: removed, and its stage was not retired: the web2 admin link has changed since`);
+      const decided = await this.decide(name, gone.instanceId, gone.kind);
+      if (decided === 'no-stage') return;
+      if (decided === 'skipped') {
+        await this.deps.retirements.remove(gone.instanceId);
         return;
       }
-      const outcome = await this.send({
-        kind: 'retire',
-        baseUrl: link.url,
-        token: link.token,
-        stageId,
-        observedAt: gone.deletedAt,
+      const kept = await this.deps.retirements.keep({
+        stageId: gone.instanceId,
+        name,
+        deletedAt: gone.deletedAt,
+        origin: decided.origin,
       });
-      const line = `[Stages] ${name}: removed, and retiring its stage came to ${outcome}`;
-      if (outcome === 'retired' || outcome === 'not-retired') logger.info(line);
-      else logger.warn(line);
+      await this.sendRetirement(kept);
     } catch (err) {
-      logger.warn(`[Stages] ${name}: removed, and its stage was not retired (${getErrorMessage(err)})`);
+      logger.warn(`[Stages] ${name}: removed, and retiring its stage failed (${getErrorMessage(err)})`);
     }
+  }
+
+  /**
+   * Sends a retirement kept in the database. One the removal wrote and nothing decided, because the manager stopped
+   * between them, is decided now, as of this moment: no record of the stage can be read after its row was deleted.
+   */
+  private async retireKept(retirement: PendingRetirement): Promise<void> {
+    try {
+      let kept: DecidedRetirement;
+      if (retirement.deletedAt === null) {
+        const decided = await this.decide(retirement.name, retirement.stageId, null);
+        if (decided === 'skipped' || decided === 'no-stage') {
+          await this.deps.retirements.remove(retirement.stageId);
+          return;
+        }
+        kept = await this.deps.retirements.keep({
+          ...retirement,
+          deletedAt: new Date(this.clock.now()).toISOString(),
+          origin: decided.origin,
+        });
+      } else {
+        kept = { ...retirement, deletedAt: retirement.deletedAt };
+      }
+      await this.sendRetirement(kept);
+    } catch (err) {
+      logger.warn(`[Stages] ${retirement.name}: removed, and retiring its stage failed (${getErrorMessage(err)})`);
+    }
+  }
+
+  /**
+   * What this publisher kept of a removed deployment decides its retirement, and is dropped: `skipped` for one it
+   * skipped since it started, else the origin its records went to, or null for one it never pushed, or whose pushes
+   * the manager's own link stopped: the plain http rule, or no token. `no-stage` for a
+   * kind that runs no uploader. An entry that names another stage, a later deployment of the same name, is not this
+   * one's and stays.
+   */
+  private async decide(
+    name: string,
+    stageId: string,
+    kind: ProfileKind | null,
+  ): Promise<{ origin: string | null } | 'skipped' | 'no-stage'> {
+    let entry = this.entries.get(name);
+    const named = entry?.pushed?.stageId ?? entry?.seenStageId ?? null;
+    if (named !== null && named !== stageId) entry = undefined;
+    if (entry) {
+      if (entry.timer !== undefined) this.clock.clearTimeout(entry.timer);
+      entry.again = false;
+      this.entries.delete(name);
+    }
+    if (!entry) return kind === null || isStageKind(kind) ? { origin: null } : 'no-stage';
+    // A push in flight may be the first to reach the admin, so its answer decides whether there is a stage to retire.
+    await entry.inFlight;
+    if (entry.pushed) return { origin: entry.pushed.origin };
+    // One removed before its first push is retired all the same, which the admin keeps as a tombstone, so a record of
+    // it that arrives late does not register a deployment that is gone. So is one whose pushes stopped at the
+    // manager's own link, which the admin may hold from before: the plain http rule, or a token cleared to rotate it.
+    // It waits for the link to take it.
+    return entry.last === null || RETIRED_THOUGH_UNPUSHED.includes(entry.last.outcome) ? { origin: null } : 'skipped';
+  }
+
+  /** Sends one retirement, and takes it out once the admin answered it or its link moved to another origin. */
+  private async sendRetirement(kept: DecidedRetirement): Promise<void> {
+    const link = await this.deps.link.storedLink();
+    // Kept until the link has an address and a token again.
+    if (!link.url || !link.token) return;
+    if (kept.origin !== null && adminOriginOf(link.url) !== kept.origin) {
+      logger.warn(
+        `[Stages] ${kept.name}: removed, and its stage was not retired: the web2 admin link has changed since`,
+      );
+      await this.forget(kept.stageId);
+      return;
+    }
+    const outcome = await this.send({
+      kind: 'retire',
+      baseUrl: link.url,
+      token: link.token,
+      stageId: kept.stageId,
+      observedAt: kept.deletedAt,
+    });
+    const line = `[Stages] ${kept.name}: removed, and retiring its stage came to ${outcome}`;
+    if (outcome === 'retired' || outcome === 'not-retired') {
+      logger.info(line);
+      await this.forget(kept.stageId);
+    } else if (this.retireLogged.get(kept.stageId) !== outcome) {
+      logger.warn(`${line}; it is sent again every 30 seconds until the admin answers`);
+      this.retireLogged.set(kept.stageId, outcome);
+    }
+  }
+
+  private async forget(stageId: string): Promise<void> {
+    this.retireLogged.delete(stageId);
+    await this.deps.retirements.remove(stageId);
   }
 
   private async buildQuietly(profile: ProfileWithContainers, readAt: Date): Promise<BuiltStage> {

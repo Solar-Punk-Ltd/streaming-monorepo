@@ -29,8 +29,8 @@
 --   restamped_slots, skipped_slots
 --                slots uploaded again, and slots left as they were because
 --                they were already under the target batch.
---   thumbnails   thumbnails uploaded again for the latest entry, in the run
---                that finished.
+--   thumbnails   the thumbnails the run that finished went through, every one
+--                a stream or the latest entry names.
 --   error        why a failed move stopped, in the sentence the console shows.
 --   started_by   who started the move, as the audit log describes an actor.
 --   started_at, updated_at, finished_at

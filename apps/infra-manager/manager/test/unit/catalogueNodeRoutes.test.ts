@@ -26,6 +26,8 @@ import {
   CATALOGUE_UNREACHABLE_REFUSAL,
   catalogueMoveRefusal,
   catalogueReleaseFirstRefusal,
+  catalogueShallowBatchRefusal,
+  MIN_CATALOGUE_DEPTH,
   REQUESTED_WITH_HEADER,
   REQUESTED_WITH_VALUE,
   SESSION_COOKIE_NAME,
@@ -92,6 +94,10 @@ interface Setup {
   profiles?: Profile[];
   /** What the node answers for a batch, or throws. */
   held?: (name: string, batchId: string) => Promise<BeeStamp>;
+  /** Whether Docker publishes the node's Bee API on every address, or throws. */
+  apiOnEveryAddress?: (profile: Profile) => Promise<boolean | null>;
+  /** The service's clock, the designation's moment unless a test moves it. */
+  now?: () => number;
 }
 
 async function testApi(t: TestContext, setup: Setup = {}) {
@@ -129,7 +135,8 @@ async function testApi(t: TestContext, setup: Setup = {}) {
       lastPush: { kind: 'store', outcome: 'stored', at: new Date(DESIGNATED_AT).toISOString() },
     }),
     changed: () => void (changes += 1),
-    now: () => DESIGNATED_AT,
+    apiOnEveryAddress: setup.apiOnEveryAddress,
+    now: setup.now ?? (() => DESIGNATED_AT),
   });
 
   const app = express();
@@ -196,12 +203,86 @@ describe('GET /manager-settings/catalogue-node', () => {
       revision: 0,
       reading: null,
       lastPush: { kind: 'store', outcome: 'stored', at: new Date(DESIGNATED_AT).toISOString() },
+      apiOnEveryAddress: null,
     });
   });
 
   it('is behind the session', async (t) => {
     const api = await testApi(t);
     assert.equal((await api.read({ authenticated: false })).status, 401);
+  });
+});
+
+/** Lets a reading started in the background by a GET come back. */
+const settled = () => new Promise<void>((resolve) => setImmediate(resolve));
+
+describe('whether the pinned node’s Bee API answers on every address', () => {
+  it('answers what Docker reports for the pinned node, read in the background once a minute at most', async (t) => {
+    const asked: string[] = [];
+    let now = DESIGNATED_AT;
+    const api = await testApi(t, {
+      now: () => now,
+      apiOnEveryAddress: async (profile) => {
+        asked.push(profile.name);
+        return true;
+      },
+    });
+    assert.equal((await api.read()).body?.apiOnEveryAddress, null, 'nothing pinned, nothing read');
+    await api.save({ expectedRevision: 0, profileName: 'catalogue', batchId: BATCH });
+    assert.equal((await api.read()).body?.apiOnEveryAddress, null, 'the first GET starts the reading');
+    await settled();
+    assert.equal((await api.read()).body?.apiOnEveryAddress, true);
+    assert.deepEqual(asked, ['catalogue']);
+    now += 61_000;
+    await api.read();
+    await settled();
+    assert.deepEqual(asked, ['catalogue', 'catalogue'], 'read again after a minute');
+  });
+
+  it('answers at once while a reading is pending, and two GETs start one reading', async (t) => {
+    let calls = 0;
+    let answer: (value: boolean) => void = () => undefined;
+    const api = await testApi(t, {
+      apiOnEveryAddress: () => {
+        calls += 1;
+        return new Promise<boolean>((resolve) => (answer = resolve));
+      },
+    });
+    await api.save({ expectedRevision: 0, profileName: 'catalogue', batchId: BATCH });
+    const [first, second] = await Promise.all([api.read(), api.read()]);
+    assert.equal(first.status, 200);
+    assert.equal(first.body?.apiOnEveryAddress, null);
+    assert.equal(second.body?.apiOnEveryAddress, null);
+    assert.equal(calls, 1);
+    answer(true);
+    await settled();
+    assert.equal((await api.read()).body?.apiOnEveryAddress, true);
+    assert.equal(calls, 1);
+  });
+
+  it('answers null when Docker could not be read, warning once for the node and then at debug', async (t) => {
+    const warnings: string[] = [];
+    t.mock.method(Logger.prototype, 'warn', (...args: unknown[]) => void warnings.push(args.map(String).join(' ')));
+    t.mock.method(Logger.prototype, 'debug', () => undefined);
+    let now = DESIGNATED_AT;
+    const failing = await testApi(t, {
+      now: () => now,
+      apiOnEveryAddress: async () => {
+        throw new Error('Docker target probe failed');
+      },
+    });
+    await failing.save({ expectedRevision: 0, profileName: 'catalogue', batchId: BATCH });
+    for (let round = 0; round < 3; round++) {
+      await failing.read();
+      await settled();
+      assert.equal((await failing.read()).body?.apiOnEveryAddress, null);
+      now += 61_000;
+    }
+    assert.equal(warnings.length, 1, warnings.join('\n'));
+    assert.match(warnings[0]!, /catalogue/);
+    const none = await testApi(t);
+    await none.save({ expectedRevision: 0, profileName: 'catalogue', batchId: BATCH });
+    assert.equal((await none.read()).body?.apiOnEveryAddress, null);
   });
 });
 
@@ -229,7 +310,7 @@ describe('PUT /manager-settings/catalogue-node', () => {
     assert.deepEqual((await api.read()).body?.designation, saved.body?.designation);
   });
 
-  it('answers no reading for a batch other than the one designated', async (t) => {
+  it('answers no reading while the last reading is of another batch than the one designated', async (t) => {
     const api = await testApi(t);
     const saved = await api.save({ expectedRevision: 0, profileName: 'catalogue', batchId: OTHER_BATCH });
     assert.equal(saved.status, 200);
@@ -276,6 +357,37 @@ describe('PUT /manager-settings/catalogue-node', () => {
       assert.equal(api.changes(), 0);
     });
   }
+
+  it('refuses a new batch shallower than the catalogue’s minimum depth, saying so, and stores nothing', async (t) => {
+    assert.equal(MIN_CATALOGUE_DEPTH, 18);
+    const api = await testApi(t, { held: async (_n, id) => stampOf({ batchID: id, depth: 17 }) });
+    const answer = await api.save({ expectedRevision: 0, profileName: 'catalogue', batchId: BATCH });
+    assert.deepEqual(refusalOf(answer), [catalogueShallowBatchRefusal(17)]);
+    assert.match(catalogueShallowBatchRefusal(17), /depth 17/);
+    assert.match(catalogueShallowBatchRefusal(17), /depth 18 or more/);
+    assert.equal(api.store.row.revision, 0);
+    assert.equal(api.changes(), 0);
+  });
+
+  it('takes a batch of the minimum depth', async (t) => {
+    const api = await testApi(t, { held: async (_n, id) => stampOf({ batchID: id, depth: MIN_CATALOGUE_DEPTH }) });
+    const answer = await api.save({ expectedRevision: 0, profileName: 'catalogue', batchId: BATCH });
+    assert.equal(answer.status, 200, JSON.stringify(answer.body));
+    assert.equal(api.store.row.batchDepth, MIN_CATALOGUE_DEPTH);
+  });
+
+  it('designates a shallower batch pinned before the minimum again after a clear', async (t) => {
+    const api = await testApi(t, { held: async (_n, id) => stampOf({ batchID: id, depth: 17 }) });
+    await api.store.designate(
+      { profileName: 'catalogue', batchId: BATCH, batchDepth: 17, at: new Date(DESIGNATED_AT) },
+      0,
+      'operator',
+    );
+    await api.clear({ expectedRevision: 1 });
+    const again = await api.save({ expectedRevision: 2, profileName: 'catalogue', batchId: BATCH });
+    assert.equal(again.status, 200, JSON.stringify(again.body));
+    assert.equal(api.store.row.clearedAt, null);
+  });
 
   it('says a mutable batch overwrites the catalogue’s oldest slots', () => {
     assert.match(CATALOGUE_MUTABLE_REFUSAL, /mutable/);
@@ -478,6 +590,30 @@ describe('another batch than the pinned one is a move, saved only when confirmed
       'the last reading was of another batch',
     );
     assert.deepEqual(await api.service.guardedNodes(), ['catalogue', 'catalogue-two']);
+  });
+
+  it('refuses a move to a batch shallower than the minimum, and takes a move back to one pinned before it', async (t) => {
+    const api = await testApi(t, {
+      held: async (_n, id) => stampOf({ batchID: id, depth: id === OTHER_BATCH ? 20 : 17 }),
+    });
+    await api.store.designate(
+      { profileName: 'catalogue', batchId: BATCH, batchDepth: 17, at: new Date(DESIGNATED_AT) },
+      0,
+      'operator',
+    );
+    const shallow = await api.save({ expectedRevision: 1, profileName: 'catalogue', batchId: THIRD_BATCH, move: true });
+    assert.deepEqual(refusalOf(shallow), [catalogueShallowBatchRefusal(17)]);
+    const moved = await api.save({
+      expectedRevision: 1,
+      profileName: 'catalogue-two',
+      batchId: OTHER_BATCH,
+      move: true,
+    });
+    assert.equal(moved.status, 200, JSON.stringify(moved.body));
+    const back = await api.save({ expectedRevision: 2, profileName: 'catalogue', batchId: BATCH, move: true });
+    assert.equal(back.status, 200, JSON.stringify(back.body));
+    assert.equal(api.store.row.batchId, BATCH);
+    assert.equal(api.store.row.movingFromBatchId, OTHER_BATCH);
   });
 
   it('refuses a third batch while a move is pending, confirmed or not, naming the batch moved from', async (t) => {

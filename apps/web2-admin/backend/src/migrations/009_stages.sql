@@ -31,8 +31,9 @@
 --   admin_token_sha256, admin_token_kind
 --                       the sha256 of the token the stage's uploader presents
 --                       to the admin, and whether it is the deployment's
---                       `own` or the admin link's `shared` one. Both or
---                       neither. Nothing reads them yet.
+--                       `own`, which the manager generated, or `shared`, any
+--                       other. Both or neither. An uploader's call is
+--                       attributed by them (migration 012).
 --   observed_at         when the manager read what the record says. A record
 --                       observed before the stored one never replaces it.
 --   received_at         when the admin last stored a record for the stage.

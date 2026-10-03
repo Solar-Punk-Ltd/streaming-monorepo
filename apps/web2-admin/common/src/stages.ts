@@ -72,7 +72,7 @@ export interface StageSummary {
   name: string;
   kind: StageKind;
   engine: StageEngine;
-  /** Whether the admin takes streams on this stage's engine: SRS only, in this round. */
+  /** Whether the admin takes streams on this stage's engine: SRS only. */
   supported: boolean;
   stackVersion: string | null;
   /** The deployment's status in the manager's words. */
@@ -94,8 +94,8 @@ export interface StageSummary {
   readiness: { tone: StageReadinessTone; reasons: string[] };
   /**
    * Which token the stage's uploader presents to the admin: a token of its `own`, which the admin answers only about
-   * the stage's streams, or the `shared` `INTERNAL_API_TOKEN`, still taken while the stages move over. Null when the
-   * manager pushed no token. Never the token or its hash.
+   * the stage's streams, or `shared`, any token the manager did not generate for it, which the uploader's routes
+   * refuse until the stage's token is rotated. Null when the manager pushed no token. Never the token or its hash.
    */
   adminTokenKind: AdminTokenKind | null;
   /** When the manager read what this says. */
@@ -210,7 +210,7 @@ export interface CatalogueMoveSummary {
   /** Slots uploaded again, and slots already under the target batch. */
   restamped: number;
   skipped: number;
-  /** Thumbnails uploaded again: every one a stream or the latest entry names, once the move is done. */
+  /** The thumbnails the move went through: every one a stream or the latest entry names, once the move is done. */
   thumbnails: number;
   /** Why a failed move stopped. */
   error: string | null;

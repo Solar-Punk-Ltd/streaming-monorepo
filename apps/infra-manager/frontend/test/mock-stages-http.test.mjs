@@ -129,11 +129,13 @@ describe('the mock stage routes', { concurrency: false, timeout: 60_000 }, () =>
     assert.equal(cleared.ingest_host, null);
   });
 
-  it('answers a stage’s last push, and null for a deployment that is no stage', async () => {
+  it('answers a stage’s last push, and null for a deployment that is no stage and for a name with no deployment', async () => {
     await runningStreamer('mock-stage-2');
     const { registration } = await request('/stages/mock-stage-2/registration');
     assert.ok(STAGE_PUSH_OUTCOMES.includes(registration.outcome));
     assert.ok(Date.parse(registration.at) <= Date.now());
+    assert.equal((await request('/profiles/viewer-eu')).kind, 'viewer');
+    assert.deepEqual(await request('/stages/viewer-eu/registration'), { registration: null });
     assert.deepEqual(await request('/stages/nobody/registration'), { registration: null });
   });
 

@@ -164,6 +164,8 @@ const PUSH_TONE: Readonly<Record<StagePushOutcome, Tone>> = {
   redirected: 'err',
   'not-admin': 'err',
   'skipped-no-link': 'warn',
+  // The link was saved before the plain http rule: nothing reaches the admin until it is given https.
+  'refused-plain-http': 'err',
   'skipped-not-linked': 'gray',
   'skipped-other-origin': 'gray',
   'skipped-no-record': 'warn',

@@ -38,7 +38,7 @@ export function catalogueMoveRefusal(
   const target = detail.targetBatchId ? shortBatch(detail.targetBatchId) : '';
   switch (problem) {
     case 'disabled':
-      return 'Moving the catalogue to another batch is not yet enabled on this installation. It is turned on with CATALOGUE_MOVE_ENABLED once the move has been tried on a real node.';
+      return 'Moving the catalogue to another batch is not yet enabled on this installation. It is turned on with CATALOGUE_MOVE_ENABLED=true; try the move on a scratch node first.';
     case 'none':
       return 'The manager has not designated a catalogue batch, so there is no batch to move the catalogue to.';
     case 'cleared':

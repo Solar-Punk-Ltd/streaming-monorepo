@@ -3,9 +3,9 @@
  * `src/libs/AdminOwnerCheck.ts`.
  *
  * Every stage signs with a key of its own, so the owner compared is the one the admin names for this
- * service's token at `/api/internal/stages/self`. A 404 there, the shared token or an admin older
- * than stages, falls back to the catalog owner the public config names. A read that fails is a
- * warning, and the publish gate compares each declaration's owner anyway.
+ * service's token at `/api/internal/stages/self`. A 404 there, an admin from before stages or the
+ * intermediate admin answering the shared token, falls back to the catalog owner the public config
+ * names. A read that fails is a warning, and the publish gate compares each declaration's owner anyway.
  */
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
@@ -91,7 +91,7 @@ describe('the boot check on a token the admin ties to no stage', () => {
     assert.equal(lines[0]!.level, 'info');
   });
 
-  it('refuses to start when the catalog owner is another address, naming both', async () => {
+  it('refuses to start when the catalog owner is another address, naming both, and the STREAM_KEY fix first', async () => {
     const { source } = admin({ kind: 'no-stage' }, OTHER);
 
     await assert.rejects(
@@ -100,7 +100,9 @@ describe('the boot check on a token the admin ties to no stage', () => {
         error instanceof Error &&
         error.message.includes(OTHER) &&
         error.message.includes(SIGNER) &&
-        /token of its own/.test(error.message),
+        /Fix this deployment's STREAM_KEY in the manager.*, or, on the intermediate admin, give it a token of its own/.test(
+          error.message,
+        ),
     );
   });
 

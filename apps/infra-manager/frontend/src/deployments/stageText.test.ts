@@ -52,7 +52,7 @@ describe('the public ingest address on the card', () => {
     assert.match(view.source, /does not push the stage/);
   });
 
-  it('says what the field is for in the one sentence the brief gives it', () => {
+  it('says what the field is for in one sentence', () => {
     assert.equal(INGEST_HOST_HELP, 'The address encoders dial. The address ssh uses can be a private one.');
   });
 });

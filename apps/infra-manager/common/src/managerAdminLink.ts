@@ -60,20 +60,32 @@ export function adminUrlProblem(url: string): string | null {
   return keyValueProblem(ADMIN_API_URL_KEY, url);
 }
 
-/**
- * What the Manager settings card says under an admin link address in plain http to another host than the manager's
- * own. The manager takes it, since a test setup may need it, but every push to it carries the registrar token and
- * each stage's SRT passphrase and token hash in clear.
- */
-export const PLAIN_HTTP_ADMIN_LINK_WARNING =
-  "This address is plain http. Every push to it carries the stored token and each stage's SRT passphrase in clear, so in production give the https address the edge serves the web2 admin on.";
+/** The name Docker maps to the host's gateway inside a container, which manager/docker-compose.yml sets for the api. */
+export const DOCKER_HOST_GATEWAY_NAME = 'host.docker.internal';
+
+/** The manager setting that lets its link take plain http to any host, for a test setup. Off unless it is `true`. */
+export const ADMIN_LINK_ALLOW_PLAIN_HTTP_KEY = 'ADMIN_LINK_ALLOW_PLAIN_HTTP';
 
 /**
- * The warning for a link address in plain http to a host that is not the manager's own (`localhost`, `127.0.0.0/8`,
- * `0.0.0.0`, `[::1]`), or null: for https, for a loopback host, and for an address that is no URL, which the
- * address rules refuse on their own.
+ * What the manager judged of a link address: `allowed` for https and plain http to the manager's own host or its
+ * Docker networks, `allowed-by-setting` for plain http elsewhere while `ADMIN_LINK_ALLOW_PLAIN_HTTP` is on,
+ * `refused` for plain http elsewhere, which the manager neither saves nor sends to, and `unresolved` for a name that
+ * does not resolve from the manager now. Docker's own DNS answers no address for a service whose container is not
+ * running, so such a name is saved, and nothing is sent to it until it resolves and is judged.
  */
-export function plainHttpAdminLinkWarning(url: string): string | null {
+export type PlainHttpAdminLinkVerdict = 'allowed' | 'allowed-by-setting' | 'refused' | 'unresolved';
+
+/** Why a save of an address in plain http to another host than the manager's own is refused. Names no address. */
+export const PLAIN_HTTP_ADMIN_LINK_REFUSED = `This address is plain http to another host than the manager's own. Every push to it would carry the stored token and each stage's SRT passphrase in clear, so give the https address the edge serves the web2 admin on. Plain http is taken only to the manager's own host or a Docker network of its container, or to any host once ${ADMIN_LINK_ALLOW_PLAIN_HTTP_KEY}=true is set on the manager, for a test setup.`;
+
+/**
+ * The host of a link address in plain http whose text does not place it on the manager's own host, which the manager
+ * then judges by what it resolves to, or null: for https, for a loopback host (`localhost`, `127.0.0.0/8`, `0.0.0.0`,
+ * `[::1]`), for `host.docker.internal`, and for an address that is no URL, which the address rules refuse on their own.
+ * The text alone cannot tell a Docker service name on the manager's host from another host's name, so a page never
+ * judges one. An IPv6 host comes without its brackets.
+ */
+export function plainHttpAdminLinkHost(url: string): string | null {
   let parsed: URL;
   try {
     parsed = new URL(url.trim());
@@ -81,7 +93,8 @@ export function plainHttpAdminLinkWarning(url: string): string | null {
     return null;
   }
   if (parsed.protocol !== 'http:' || isLoopbackIngestHost(parsed.host)) return null;
-  return PLAIN_HTTP_ADMIN_LINK_WARNING;
+  const host = parsed.hostname.replace(/^\[(.*)\]$/, '$1');
+  return host === DOCKER_HOST_GATEWAY_NAME ? null : host;
 }
 
 /** Why a new deployment's `ADMIN_API_TOKEN` could not be this token, or null. */
@@ -99,15 +112,18 @@ export type StoredManagerAdminLink = Pick<ManagerAdminLink, 'url' | 'tokenStored
  * deployment gets them, and no sentence repeats either. An address on
  * another origin than the stored link's has to come with a new token or a
  * cleared one, because the stored token goes only to the address it was saved
- * with.
+ * with. An address in plain http is refused where the manager judged it to go to
+ * another host than its own, which only the manager can judge.
  */
 export function managerAdminLinkProblems(
   { url, token }: ManagerAdminLinkSave,
   stored?: StoredManagerAdminLink,
+  plainHttp: PlainHttpAdminLinkVerdict = 'allowed',
 ): string[] {
   const problems: string[] = [];
   const urlProblem = url === '' ? null : adminUrlProblem(url);
   if (urlProblem) problems.push(urlProblem);
+  else if (url !== '' && plainHttp === 'refused') problems.push(PLAIN_HTTP_ADMIN_LINK_REFUSED);
   if (stored?.tokenStored && url !== '' && token === undefined && !sameAdminOrigin(url, stored.url ?? '')) {
     problems.push(
       'The address moves to another one than the stored token was saved with, and the manager sends its stored token only to the address it was saved with. Type the token again for the new address, or clear it.',

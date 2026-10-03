@@ -18,10 +18,10 @@ import {
 
 import type { Profile } from '../types';
 
-// What a deployment is and where it stands moved into the common package on
-// 2026-09-28 with the readiness composition, which reads them, so the manager
-// works a stage's readiness out the same way. They are passed on here so every
-// page keeps importing them from one place.
+// What a deployment is and where it stands is declared in the common package
+// with the readiness composition, which reads it, so the manager works a
+// stage's readiness out the same way. It is passed on here so every page keeps
+// importing it from one place.
 export {
   type DeploymentShape,
   hasService,

@@ -25,11 +25,13 @@ import { ScriptRunner } from './domain/ScriptRunner.js';
 import { SrtIngestHealthService } from './domain/srtIngest/SrtIngestHealthService.js';
 import { readManagerId } from './domain/stages/managerIdentity.js';
 import { StagePublisher } from './domain/stages/StagePublisher.js';
+import { StageRetirementRepository } from './domain/stages/StageRetirementRepository.js';
 import { StageRecordBuilder } from './domain/stages/StageRecordBuilder.js';
 import { beeApiUrlFor, beePublisherUrlFor, StampService } from './domain/StampService.js';
-import { localPublisherHost } from './domain/localHost.js';
+import { localBeeApiBindReader, localPublisherHost } from './domain/localHost.js';
 import { CatalogueDesignationRepository } from './domain/stages/CatalogueDesignationRepository.js';
 import { CatalogueDesignationService } from './domain/stages/CatalogueDesignationService.js';
+import { beeApiOnEveryAddress } from './domain/stages/beeApiExposure.js';
 import { CataloguePublisher } from './domain/stages/CataloguePublisher.js';
 import { UploaderHealthService } from './domain/UploaderHealthService.js';
 import { UploaderStartGate } from './domain/UploaderStartGate.js';
@@ -363,6 +365,9 @@ async function main(): Promise<void> {
   const managerAdminLink = new ManagerAdminLinkRepository(database.pool);
   // A deploy gives an uploader linked to this admin a token of its own. adminLink/ownAdminToken.ts.
   orchestrator.setManagerAdminLink(managerAdminLink);
+  orchestrator.setLocalBeeApiBind(
+    localBeeApiBindReader({ publisherHost: localPublisherHost, bridgeGateway: () => containerControl.bridgeGateway() }),
+  );
   const profileService = new ProfileService(
     profileRepository,
     containerRepository,
@@ -405,6 +410,7 @@ async function main(): Promise<void> {
     },
     builder: stageBuilder,
     link: managerAdminLink,
+    retirements: new StageRetirementRepository(database.pool),
     events: eventBus,
   });
   const publisher = stagePublisher;
@@ -431,6 +437,12 @@ async function main(): Promise<void> {
     status: () => catalogue.status(),
     changed: () => void catalogue.pushNow(),
     nodeUrls: async (profile) => [beeApiUrlFor(profile), beePublisherUrlFor(profile, await localPublisherHost())],
+    // Docker's own record of where the node's API is published, on the daemon the node runs on.
+    apiOnEveryAddress: async (profile) =>
+      beeApiOnEveryAddress(
+        await targetDocker.beeApiInspect(profile.name, profile.host ?? 'localhost'),
+        Number(new URL(beeApiUrlFor(profile)).port),
+      ),
   });
   profileService.setPoolStringGuard((beePublishers) => catalogueService.segmentBatchProblem(beePublishers));
   // The pinned batch's node, and while a move is pending the node of the batch it moved from.

@@ -392,7 +392,7 @@ describe("Test connection with the deployment's own token", () => {
 
   it("says a refused token the manager did not generate has to be rotated, at the link's address alone", async () => {
     // A copy of the link's token, which an older manager put into the deployment, and a token typed there: the admin
-    // takes neither from an uploader since stages phase 9.
+    // takes neither from an uploader.
     for (const token of [COPIED_TOKEN, 'synthetic-typed-admin-token-0123456789abcdef']) {
       const app = await appFor({
         settings: { ADMIN_API_URL: ADMIN_URL, ADMIN_API_TOKEN: token },
@@ -419,7 +419,7 @@ describe("Test connection with the deployment's own token", () => {
   });
 
   it('names a token the manager did not generate token-not-own even where an older admin still takes it', async () => {
-    // A phase 8 admin in front of a phase 9 manager, the rollout's second step: the stage still has to be rotated.
+    // The intermediate admin in front of this manager, the upgrade's second step: the stage still has to be rotated.
     const app = await appFor({ settings: { ADMIN_API_URL: ADMIN_URL, ADMIN_API_TOKEN: COPIED_TOKEN } });
     try {
       assert.deepEqual(await app.test(), { outcome: 'token-not-own' });

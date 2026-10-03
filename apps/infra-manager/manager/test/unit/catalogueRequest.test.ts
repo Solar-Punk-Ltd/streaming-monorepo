@@ -155,3 +155,25 @@ describe('clearing the catalogue stamp', () => {
     );
   });
 });
+
+describe('an admin link in plain http to another host', () => {
+  it('is sent nothing, and the call answers refused-plain-http', async (t) => {
+    const fetched = t.mock.method(globalThis, 'fetch', async () => {
+      throw new Error('no request may leave');
+    });
+    const refused = async () => 'refused' as const;
+    const baseUrl = 'http://admin.example:3000';
+    assert.equal(
+      await sendCatalogueRequest({ kind: 'store', baseUrl, token: TOKEN, record }, { plainHttp: refused }),
+      'refused-plain-http',
+    );
+    assert.equal(
+      await sendCatalogueRequest(
+        { kind: 'clear', baseUrl, token: TOKEN, observedAt: OBSERVED_AT },
+        { plainHttp: refused },
+      ),
+      'refused-plain-http',
+    );
+    assert.equal(fetched.mock.callCount(), 0);
+  });
+});

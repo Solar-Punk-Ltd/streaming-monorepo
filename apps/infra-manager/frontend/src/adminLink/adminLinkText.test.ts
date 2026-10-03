@@ -12,6 +12,7 @@ import {
   ADMIN_LINK_TEST_REACH,
   adminLinkTestSeverity,
   adminLinkTestText,
+  MANAGER_LINK_LEAD,
   OWN_TOKEN_TITLE,
   ownTokenDetail,
 } from './adminLinkText';
@@ -34,9 +35,13 @@ describe('the sentence for each Test connection outcome', () => {
     assert.equal(adminLinkTestText('token-refused'), 'The web2 admin answered but refused the token.');
     assert.equal(
       adminLinkTestText('token-not-own'),
-      "This deployment's token is not one the manager generated for it, and the web2 admin on Manager settings takes no other from an uploader since stages phase 9, so rotate the uploader's admin token on the deployment page and redeploy.",
+      "This deployment's token is not one the manager generated for it, and the web2 admin on Manager settings takes no other from an uploader, so rotate the uploader's admin token on the deployment page and redeploy.",
     );
     assert.equal(adminLinkTestText('unreachable'), 'The web2 admin did not answer from where the manager runs.');
+    assert.equal(
+      adminLinkTestText('plain-http-refused'),
+      "This address is plain http to another host than the manager's own, so the manager's token was not sent there: give the https address the web2 admin is served on, or set ADMIN_LINK_ALLOW_PLAIN_HTTP=true on the manager for a test setup.",
+    );
     assert.equal(
       adminLinkTestText('stored-token-elsewhere'),
       'The stored token was saved for another address, so it was not sent here, and the token has to be typed again for this address.',
@@ -61,6 +66,7 @@ describe('the sentence for each Test connection outcome', () => {
       'redirected',
       'unreachable',
       'invalid-address',
+      'plain-http-refused',
       'no-token',
       'stored-token-elsewhere',
     ] as const) {
@@ -88,6 +94,13 @@ describe('the sentence for each Test connection outcome', () => {
     assert.equal(
       ADMIN_LINK_TEST_REACH,
       "The test runs from where the manager runs, so an address only the deployment's own network can reach reads as unreachable here.",
+    );
+  });
+
+  it('says on Manager settings what a change of the link does to the deployments that exist', () => {
+    assert.equal(
+      MANAGER_LINK_LEAD,
+      'New uploader deployments start linked to this web2 admin, with the switch on in the new-deployment wizard. The manager pushes the stage of every deployment linked to this admin to this address with this token, so a new token is used at the next push. A deployment keeps the address it was created with, so an address of another admin here stops its pushes.',
     );
   });
 });

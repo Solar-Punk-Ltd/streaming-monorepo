@@ -21,6 +21,11 @@ import {
   consoleRecordOf,
   type StageClock,
 } from '../../src/domain/stages/StagePublisher.js';
+import type {
+  DecidedRetirement,
+  PendingRetirement,
+  StageRetirementStore,
+} from '../../src/domain/stages/StageRetirementRepository.js';
 import type { StageRequest } from '../../src/domain/stages/stageRequest.js';
 import type { ProfileKind, ProfileWithContainers } from '../../src/types/index.js';
 import { makeProfile } from '../support/profileFixtures.js';
@@ -117,8 +122,23 @@ function recordOf(profile: ProfileWithContainers, readAt = new Date(0)): StageRe
   };
 }
 
+/** The pending retirements as the database keeps them, which outlive a publisher as they outlive a restart. */
+class FakeRetirements implements StageRetirementStore {
+  readonly rows = new Map<string, PendingRetirement>();
+
+  pending = async () => [...this.rows.values()].map((row) => ({ ...row }));
+  keep = async (retirement: DecidedRetirement) => {
+    const kept = this.rows.get(retirement.stageId);
+    if (kept?.deletedAt) return { ...kept, deletedAt: kept.deletedAt };
+    this.rows.set(retirement.stageId, { ...retirement });
+    return { ...retirement };
+  };
+  remove = async (stageId: string) => void this.rows.delete(stageId);
+}
+
 interface Setup {
   profiles?: ProfileWithContainers[];
+  retirements?: FakeRetirements;
   link?: { url: string | null; token: string | null };
   /** The address each deployment's uploader is given, by name, the link's own when left out. */
   adminUrls?: Record<string, string>;
@@ -136,6 +156,7 @@ function publisherFor(setup: Setup = {}) {
   const link = { ...(setup.link ?? { url: LINK_URL, token: LINK_TOKEN }) };
   const sent: StageRequest[] = [];
   const builds: string[] = [];
+  const retirements = setup.retirements ?? new FakeRetirements();
   const publisher = new StagePublisher({
     profiles: {
       list: async () => [...profiles.values()],
@@ -155,6 +176,7 @@ function publisherFor(setup: Setup = {}) {
       },
     },
     link: { storedLink: async () => link },
+    retirements,
     events,
     clock,
     send: async (request) => {
@@ -162,7 +184,7 @@ function publisherFor(setup: Setup = {}) {
       return setup.answer ? setup.answer(request) : request.kind === 'store' ? 'stored' : 'retired';
     },
   });
-  return { publisher, clock, events, profiles, sent, builds, link };
+  return { publisher, clock, events, profiles, sent, builds, link, retirements };
 }
 
 function changed(events: EventBus, profile: ProfileWithContainers): void {
@@ -387,7 +409,11 @@ describe('a deployment that goes', () => {
 
   it('retires nothing it skipped, and nothing it never saw', async (t) => {
     logLines(t);
-    const { publisher, events, sent } = publisherFor({ adminUrls: { 'stage-one': 'https://other.example.org' } });
+    const { publisher, events, sent, retirements } = publisherFor({
+      adminUrls: { 'stage-one': 'https://other.example.org' },
+    });
+    // The row the deletion leaves for every stage, which the publisher's decision takes out again.
+    retirements.rows.set(idOf(1), { stageId: idOf(1), name: 'stage-one', deletedAt: null, origin: null });
     publisher.start();
     t.after(() => publisher.stop());
     await publisher.pushNow('stage-one');
@@ -395,6 +421,7 @@ describe('a deployment that goes', () => {
     events.publish(removal('never-a-stage', 2, undefined, 'custom'));
     await settle();
     assert.equal(sent.length, 0);
+    assert.equal(retirements.rows.size, 0, 'nothing left pending');
   });
 
   it('retires a stage removed before this manager pushed it since it started, by the id the removal carries', async (t) => {
@@ -593,6 +620,223 @@ describe('a retirement after the link moved', () => {
   });
 });
 
+describe('a retirement the admin has not answered', () => {
+  /** A deployment pushed once and then removed, whose first retirement comes to `first`. */
+  async function removedAfterOnePush(t: TestContext, first: StagePushOutcome, retirements?: FakeRetirements) {
+    const lines = logLines(t);
+    const answers: StagePushOutcome[] = [first];
+    const setup = publisherFor({
+      retirements,
+      answer: (request) => (request.kind === 'store' ? 'stored' : (answers.shift() ?? 'retired')),
+    });
+    setup.publisher.start();
+    t.after(() => setup.publisher.stop());
+    await setup.publisher.pushNow('stage-one');
+    setup.profiles.delete('stage-one');
+    setup.events.publish(removal('stage-one', 1, setup.clock));
+    await settle();
+    const retires = () => setup.sent.filter((request) => request.kind === 'retire');
+    return { ...setup, lines, retires, deletedAt: new Date(setup.clock.time).toISOString() };
+  }
+
+  it('is sent again on the next tick, with the same moment, and forgotten once the admin answers', async (t) => {
+    const { clock, retires, retirements, deletedAt } = await removedAfterOnePush(t, 'unreachable');
+    assert.equal(retires().length, 1);
+    assert.deepEqual(
+      [...retirements.rows.values()],
+      [{ stageId: idOf(1), name: 'stage-one', deletedAt, origin: 'https://admin.example.org' }],
+    );
+
+    await clock.advance(STAGE_PUSH_INTERVAL_MS);
+    assert.equal(retires().length, 2);
+    assert.deepEqual(retires()[1], {
+      kind: 'retire',
+      baseUrl: LINK_URL,
+      token: LINK_TOKEN,
+      stageId: idOf(1),
+      observedAt: deletedAt,
+    });
+    assert.equal(retirements.rows.size, 0, 'answered, so nothing is left pending');
+
+    await clock.advance(STAGE_PUSH_INTERVAL_MS * 2);
+    assert.equal(retires().length, 2, 'never sent again');
+  });
+
+  it('is forgotten when the admin answers that it held no such stage', async (t) => {
+    const { retires, retirements } = await removedAfterOnePush(t, 'not-retired');
+    assert.equal(retires().length, 1);
+    assert.equal(retirements.rows.size, 0);
+  });
+
+  it('says once that it keeps failing, not every 30 seconds', async (t) => {
+    const lines = logLines(t);
+    const { publisher, clock, events, profiles, sent } = publisherFor({
+      answer: (request) => (request.kind === 'store' ? 'stored' : 'unreachable'),
+    });
+    publisher.start();
+    t.after(() => publisher.stop());
+    await publisher.pushNow('stage-one');
+    profiles.delete('stage-one');
+    events.publish(removal('stage-one', 1, clock));
+    await settle();
+    await clock.advance(STAGE_PUSH_INTERVAL_MS * 3);
+    assert.equal(sent.filter((request) => request.kind === 'retire').length, 4);
+    assert.equal(
+      lines.filter((line) => /stage-one: removed, and retiring its stage came to unreachable/.test(line)).length,
+      1,
+    );
+  });
+
+  it('survives a restart: the next publisher sends it at start, as of the moment the first saw it gone', async (t) => {
+    const retirements = new FakeRetirements();
+    const first = await removedAfterOnePush(t, 'unreachable', retirements);
+    first.publisher.stop();
+
+    logLines(t);
+    const next = publisherFor({ profiles: [], retirements });
+    next.publisher.start();
+    t.after(() => next.publisher.stop());
+    await settle();
+    assert.deepEqual(next.sent, [
+      { kind: 'retire', baseUrl: LINK_URL, token: LINK_TOKEN, stageId: idOf(1), observedAt: first.deletedAt },
+    ]);
+    assert.equal(retirements.rows.size, 0);
+  });
+
+  it('retires one the deletion left before any decision, by its id at the current link, as of when it is found', async (t) => {
+    logLines(t);
+    const retirements = new FakeRetirements();
+    retirements.rows.set(idOf(3), { stageId: idOf(3), name: 'stage-three', deletedAt: null, origin: null });
+    const { publisher, clock, sent } = publisherFor({ profiles: [], retirements });
+    publisher.start();
+    t.after(() => publisher.stop());
+    await settle();
+    assert.deepEqual(sent, [
+      {
+        kind: 'retire',
+        baseUrl: LINK_URL,
+        token: LINK_TOKEN,
+        stageId: idOf(3),
+        observedAt: new Date(clock.time).toISOString(),
+      },
+    ]);
+    assert.equal(retirements.rows.size, 0);
+  });
+
+  it('drops one whose link has moved to another origin since, and says so', async (t) => {
+    const lines = logLines(t);
+    const retirements = new FakeRetirements();
+    const deletedAt = '2026-09-28T09:00:00.000Z';
+    retirements.rows.set(idOf(4), {
+      stageId: idOf(4),
+      name: 'stage-four',
+      deletedAt,
+      origin: 'https://old-admin.example.org',
+    });
+    const { publisher, sent } = publisherFor({ profiles: [], retirements });
+    publisher.start();
+    t.after(() => publisher.stop());
+    await settle();
+    assert.equal(sent.length, 0);
+    assert.equal(retirements.rows.size, 0);
+    assert.ok(lines.some((line) => /stage-four.*not retired.*link has changed/.test(line)));
+  });
+
+  it('waits while the link has no token, and is sent once it has one', async (t) => {
+    logLines(t);
+    const retirements = new FakeRetirements();
+    const deletedAt = '2026-09-28T09:00:00.000Z';
+    retirements.rows.set(idOf(5), {
+      stageId: idOf(5),
+      name: 'stage-five',
+      deletedAt,
+      origin: 'https://admin.example.org',
+    });
+    const { publisher, clock, sent, link } = publisherFor({
+      profiles: [],
+      retirements,
+      link: { url: LINK_URL, token: null },
+    });
+    publisher.start();
+    t.after(() => publisher.stop());
+    await clock.advance(STAGE_PUSH_INTERVAL_MS);
+    assert.equal(sent.length, 0);
+    assert.equal(retirements.rows.size, 1, 'still pending');
+
+    link.token = LINK_TOKEN;
+    await clock.advance(STAGE_PUSH_INTERVAL_MS);
+    assert.deepEqual(sent, [
+      { kind: 'retire', baseUrl: LINK_URL, token: LINK_TOKEN, stageId: idOf(5), observedAt: deletedAt },
+    ]);
+    assert.equal(retirements.rows.size, 0);
+  });
+
+  it('is kept for one whose pushes the plain http rule stopped, which the admin may hold from before it', async (t) => {
+    logLines(t);
+    let plainHttp = true;
+    const { publisher, clock, events, profiles, sent, retirements } = publisherFor({
+      answer: (request) => (plainHttp ? 'refused-plain-http' : request.kind === 'store' ? 'stored' : 'retired'),
+    });
+    publisher.start();
+    t.after(() => publisher.stop());
+    assert.equal(await publisher.pushNow('stage-one'), 'refused-plain-http');
+    profiles.delete('stage-one');
+    events.publish(removal('stage-one', 1, clock));
+    await settle();
+    assert.equal(sent.filter((request) => request.kind === 'retire').length, 1);
+    assert.equal(retirements.rows.size, 1, 'kept until the link can take it');
+
+    plainHttp = false;
+    await clock.advance(STAGE_PUSH_INTERVAL_MS);
+    assert.equal(sent.filter((request) => request.kind === 'retire').length, 2);
+    assert.equal(retirements.rows.size, 0);
+  });
+
+  it('is kept for one pushed while the link had no token, cleared to rotate it, and sent once it has one', async (t) => {
+    logLines(t);
+    const { publisher, clock, events, profiles, sent, retirements, link } = publisherFor({
+      link: { url: LINK_URL, token: null },
+    });
+    publisher.start();
+    t.after(() => publisher.stop());
+    assert.equal(await publisher.pushNow('stage-one'), 'skipped-no-link');
+    profiles.delete('stage-one');
+    events.publish(removal('stage-one', 1, clock));
+    await settle();
+    assert.equal(sent.length, 0);
+    assert.deepEqual(
+      [...retirements.rows.values()],
+      [{ stageId: idOf(1), name: 'stage-one', deletedAt: new Date(clock.time).toISOString(), origin: null }],
+    );
+
+    link.token = LINK_TOKEN;
+    await clock.advance(STAGE_PUSH_INTERVAL_MS);
+    assert.deepEqual(
+      sent.map((request) => [request.kind, request.kind === 'retire' ? request.stageId : '']),
+      [['retire', idOf(1)]],
+    );
+    assert.equal(retirements.rows.size, 0);
+  });
+
+  it('is not doubled while one is in flight', async (t) => {
+    logLines(t);
+    const gate = deferred<StagePushOutcome>();
+    const { publisher, clock, events, profiles, sent, retirements } = publisherFor({
+      answer: (request) => (request.kind === 'store' ? 'stored' : gate.promise),
+    });
+    publisher.start();
+    t.after(() => publisher.stop());
+    await publisher.pushNow('stage-one');
+    profiles.delete('stage-one');
+    events.publish(removal('stage-one', 1, clock));
+    await clock.advance(STAGE_PUSH_INTERVAL_MS * 2);
+    assert.equal(sent.filter((request) => request.kind === 'retire').length, 1);
+    gate.resolve('retired');
+    await settle();
+    assert.equal(retirements.rows.size, 0);
+  });
+});
+
 describe('after stop', () => {
   it('starts no push: not a change, not the cadence, not a follow-up, not the pre-start hook', async (t) => {
     logLines(t);
@@ -628,15 +872,24 @@ describe('what the publisher keeps', () => {
 
   it('keeps one it pushed, and one a change event named, until its removal retires it', async (t) => {
     logLines(t);
-    const { publisher, events, profiles } = publisherFor();
+    const { publisher, clock, events, profiles } = publisherFor({
+      profiles: [stage('stage-one', 1), stage('stage-two', 2)],
+    });
     publisher.start();
     t.after(() => publisher.stop());
     await publisher.pushNow('stage-one');
+    // stage-two is never pushed: it is gone by the time the push its change event gathered runs.
+    changed(events, profiles.get('stage-two')!);
     profiles.delete('stage-one');
+    profiles.delete('stage-two');
     assert.equal(await publisher.pushNow('stage-one'), null);
+    await clock.advance(STAGE_PUSH_DEBOUNCE_MS);
     assert.equal(publisher.keeps('stage-one'), true, 'kept for its retirement');
+    assert.equal(publisher.keeps('stage-two'), true, 'kept for its retirement');
     events.publish(removal('stage-one', 1));
+    events.publish(removal('stage-two', 2));
     await settle();
     assert.equal(publisher.keeps('stage-one'), false);
+    assert.equal(publisher.keeps('stage-two'), false);
   });
 });

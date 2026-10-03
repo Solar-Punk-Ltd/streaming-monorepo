@@ -3,9 +3,9 @@
  * Unit test, with the stores and the audit log in memory. `pnpm test`.
  *
  * A push arrives every 30 seconds per stage and almost always repeats the last one, so what is pinned here is that
- * only a registration, a retirement, a return and a change to the owner, the ingest details or the token is audited,
- * that an older record never replaces a newer one, and that neither the passphrase nor the token hash reaches an audit
- * row or a log line.
+ * only a registration, a retirement, a return and a change to the owner, the manager, the ingest details or the token
+ * is audited, that an older record never replaces a newer one, and that neither the passphrase nor the token hash
+ * reaches an audit row or a log line.
  */
 import assert from 'node:assert/strict';
 import { createHash } from 'node:crypto';

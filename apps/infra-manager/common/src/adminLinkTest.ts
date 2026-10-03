@@ -29,8 +29,8 @@ export const ADMIN_LINK_TEST_OUTCOMES = [
   'token-refused',
   /**
    * A deployment's token at the address of the manager's link is not one the manager generated for the deployment:
-   * typed, copied from the link by an older manager, or set by the version. An admin of stages phase 9 refuses it,
-   * and one older still takes it while a rollout runs; either way the token has to be rotated.
+   * typed, copied from the link by an older manager, or set by the version. An admin that takes only a stage's own
+   * token refuses it, and an older one still takes it while an upgrade runs; either way the token has to be rotated.
    */
   'token-not-own',
   /**
@@ -46,6 +46,11 @@ export const ADMIN_LINK_TEST_OUTCOMES = [
   'unreachable',
   /** The address is not an http or https one the uploader could use. */
   'invalid-address',
+  /**
+   * The address is plain http to another host than the manager's own, which the manager sends its token to only while
+   * `ADMIN_LINK_ALLOW_PLAIN_HTTP` is on, so nothing was asked.
+   */
+  'plain-http-refused',
   /** There is no address, so the uploader runs standalone. */
   'not-linked',
   /** There is an address and no token, which the uploader refuses to start with. */

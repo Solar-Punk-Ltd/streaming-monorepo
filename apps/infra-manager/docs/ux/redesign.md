@@ -307,9 +307,9 @@ waiting state the Resources tab shows today.
 A MUI `Dialog` (maxWidth `md`) with a step rail on the left (What to set up, Basics, Settings,
 Review) and Back / Continue / Deploy in the footer. Continue is disabled while the current step
 has a validation error, and the error is written next to it in plain words. The close button in
-the title and Escape close it, and so does an accepted deploy. Since 2026-09-30 a click on the
-backdrop does not, because closing forgets every choice made so far and a stray click outside
-used to cost the whole draft (`frontend/test/wizard-close-browser.test.mjs`). Opening it with a
+the title and Escape close it, and so does an accepted deploy. A click on the backdrop does not,
+because closing forgets every choice made so far, and a stray click outside would cost the whole
+draft (`frontend/test/wizard-close-browser.test.mjs`). Opening it with a
 prefill (`{ goal: 'viewer', feedStreamer: 'main-stage' }` or `{ goal: 'abr-uploader', poolId: 2 }`)
 starts at step 2 with the name suggested (`<stream>-viewer`, `<pool>-uploader`).
 

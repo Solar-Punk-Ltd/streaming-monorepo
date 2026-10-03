@@ -121,7 +121,7 @@ function kindOf(immutable: boolean | null | undefined): string {
   return 'kind not reported';
 }
 
-/** A fill as the card prints it, or a dash when the node did not say enough. */
+/** A fill as the card prints it, or "fill unknown" when the node did not say enough. */
 function fillOf(fillRatio: number | null): string {
   return fillRatio === null ? 'fill unknown' : `${formatFillPercent(fillRatio)} full`;
 }
@@ -160,6 +160,18 @@ export function catalogueReadingLine(reading: CatalogueReading | null): string {
         ? 'no life left'
         : `${formatTtl(reading.ttlSeconds)} left`;
   return `${reading.state} · ${depth} · ${ttl} · ${fillOf(reading.fillRatio)} · ${kindOf(reading.immutable)}`;
+}
+
+/**
+ * What the card says when Docker reports the pinned node's Bee API published on every address of its host. The API
+ * asks for no password, and the catalogue's batch is behind it.
+ */
+export const CATALOGUE_API_EVERY_ADDRESS_WARNING =
+  'Docker publishes this node’s Bee API on every address of its host, and the API asks for no password: whoever reaches the port can spend the node’s funds or fill the catalogue’s batch. On the manager’s own host a redeploy binds it to the Docker bridge where the manager confirmed the bridge, and the manager’s log says where it could not; there, set BEE_UPLOADER_API_BIND in the node’s settings, or BEE_UPLOADER_API_LISTEN under host networking. On another host, its firewall must admit the control host alone.';
+
+/** The warning about the pinned node's Bee API, or null when Docker reports it bound to one address or was not read. */
+export function catalogueApiWarning(answer: { apiOnEveryAddress?: boolean | null }): string | null {
+  return answer.apiOnEveryAddress === true ? CATALOGUE_API_EVERY_ADDRESS_WARNING : null;
 }
 
 /** What the deployment page says on the catalogue node's Storage and funding card. */

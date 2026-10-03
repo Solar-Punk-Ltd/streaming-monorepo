@@ -242,10 +242,6 @@ export function updateProfile(name: string, body: UpdateProfileBody): Promise<Pr
   return sendJson<Profile>('PUT', `/profiles/${encodeURIComponent(name)}`, body);
 }
 
-/**
- * Saves the notes alone: no claim on the deployment, no deploy. A note saved
- * elsewhere since `loadedRevision` was read is answered with 409.
- */
 /** Saves the public ingest address alone, or clears it with null. Deploys nothing. */
 export function updateIngestHost(name: string, ingestHost: string | null): Promise<Profile> {
   return sendJson<Profile>('PATCH', `/profiles/${encodeURIComponent(name)}/ingest-host`, { ingest_host: ingestHost });
@@ -272,6 +268,10 @@ export function rotateAdminToken(name: string): Promise<AdminTokenRotateAnswer> 
   return sendJson<AdminTokenRotateAnswer>('POST', `/profiles/${encodeURIComponent(name)}/admin-token/rotate`, {});
 }
 
+/**
+ * Saves the notes alone: no claim on the deployment, no deploy. A note saved
+ * elsewhere since `loadedRevision` was read is answered with 409.
+ */
 export function updateNotes(name: string, notes: string | null, loadedRevision: number): Promise<Profile> {
   return sendJson<Profile>('PATCH', `/profiles/${encodeURIComponent(name)}/notes`, {
     notes,

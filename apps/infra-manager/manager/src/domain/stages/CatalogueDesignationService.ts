@@ -15,6 +15,9 @@ import {
   catalogueMoveRefusal,
   catalogueNodeProblem,
   catalogueReleaseFirstRefusal,
+  catalogueShallowBatchRefusal,
+  getErrorMessage,
+  MIN_CATALOGUE_DEPTH,
   parseBeePublishers,
   shortHex,
 } from '@streaming-infra-manager/common';
@@ -78,8 +81,16 @@ export interface CatalogueDesignationDeps {
    * and the one a container on this host does. Without it only the batch id is matched.
    */
   nodeUrls?(profile: Profile): Promise<string[]>;
+  /**
+   * Whether Docker publishes the deployment's Bee API on every address of its host (`beeApiOnEveryAddress`), read on
+   * its daemon, local or over ssh. Without it the answer says null.
+   */
+  apiOnEveryAddress?(profile: Profile): Promise<boolean | null>;
   now?: () => number;
 }
+
+/** How long a reading of the pinned node's API binding stands: the card asks every ten seconds, ssh is slower. */
+const API_BINDING_READ_MS = 60_000;
 
 /** The designation a row holds in force, or null when it holds none or it was cleared. */
 export function designationOf(row: CatalogueDesignationRow): CatalogueDesignation | null {
@@ -108,8 +119,9 @@ function moveOf(row: CatalogueDesignationRow, reading: CatalogueReading | null):
  * The brand's catalogue node, which the Manager settings page designates: a Bee-only deployment of this manager and
  * one immutable batch its node holds, pinned by id. A designation is refused, with a sentence saying why, for a
  * deployment that is more than a Bee node or a rung of a node pool, and for a batch the node does not hold, one it
- * calls mutable, one whose kind it does not report, one that has expired, and one an ABR uploader stamps segments
- * with. A save, a clear and a release name the revision they read, as the admin link's do.
+ * calls mutable, one whose kind it does not report, one that has expired, one an ABR uploader stamps segments
+ * with, and a new one shallower than `MIN_CATALOGUE_DEPTH`. A save, a clear and a release name the revision they
+ * read, as the admin link's do.
  *
  * Once a batch has been designated it stays the catalogue's, through a clear as well: its slots are stamped by it, so
  * another batch is a move, saved only when the page confirms it as one, and the same batch can be designated again.
@@ -124,13 +136,55 @@ function moveOf(row: CatalogueDesignationRow, reading: CatalogueReading | null):
  */
 export class CatalogueDesignationService {
   private readonly now: () => number;
+  /** The last reading of the pinned node's API binding, by deployment and when it was read. */
+  private apiBinding: { profileName: string; onEveryAddress: boolean | null; at: number } | null = null;
+  /** The reading under way, at most one: a GET answers the last one meanwhile. */
+  private apiBindingRead: Promise<void> | null = null;
+  /** The deployments whose failed reading has been logged as a warning, after which a failure is logged at debug. */
+  private readonly apiBindingWarned = new Set<string>();
 
   constructor(private readonly deps: CatalogueDesignationDeps) {
     this.now = deps.now ?? (() => Date.now());
   }
 
   async read(): Promise<CatalogueNodeAnswer> {
-    return this.answerOf(await this.deps.store.read());
+    const row = await this.deps.store.read();
+    this.refreshApiBinding(row.profileName);
+    return this.answerOf(row);
+  }
+
+  /**
+   * Starts reading the pinned node's API binding again once the last reading is a minute old, in the background: a
+   * node on an unreachable host holds ssh for seconds, and the card asks every ten. At most one reading runs at a time.
+   */
+  private refreshApiBinding(profileName: string | null): void {
+    if (!profileName || !this.deps.apiOnEveryAddress || this.apiBindingRead) return;
+    const at = this.now();
+    const last = this.apiBinding;
+    if (last && last.profileName === profileName && at - last.at < API_BINDING_READ_MS) return;
+    this.apiBindingRead = this.readApiBinding(profileName, at).finally(() => {
+      this.apiBindingRead = null;
+    });
+  }
+
+  /**
+   * One reading, which never throws. A failure answers null, and is a warning the first time for a deployment, since
+   * the card then shows nothing about an API that may be open, and a debug line after.
+   */
+  private async readApiBinding(profileName: string, at: number): Promise<void> {
+    let onEveryAddress: boolean | null = null;
+    try {
+      const profile = await this.deps.profiles.findByName(profileName);
+      onEveryAddress = profile && this.deps.apiOnEveryAddress ? await this.deps.apiOnEveryAddress(profile) : null;
+    } catch (err) {
+      const message = `[Catalogue] could not read how ${profileName}'s Bee API is published, so the card cannot say whether it answers on every address: ${getErrorMessage(err)}`;
+      if (this.apiBindingWarned.has(profileName)) logger.debug(message);
+      else {
+        this.apiBindingWarned.add(profileName);
+        logger.warn(message);
+      }
+    }
+    this.apiBinding = { profileName, onEveryAddress, at };
   }
 
   async designate(save: CatalogueNodeSave, username: string): Promise<CatalogueNodeAnswer> {
@@ -174,6 +228,12 @@ export class CatalogueDesignationService {
     if (batchProblem) throw new CatalogueNodeInputError([batchProblem]);
     if (!Number.isInteger(stamp.depth) || stamp.depth < 17 || stamp.depth > 64) {
       throw new CatalogueNodeInputError(['The node reported no depth for this batch that a batch can have.']);
+    }
+    // The minimum holds a new batch alone: the pinned one, designated again, and the one a move goes back to were
+    // designated before it, and their slots are already stamped there.
+    const known = batchId === pinnedBatchId || batchId === stored.movingFromBatchId;
+    if (!known && stamp.depth < MIN_CATALOGUE_DEPTH) {
+      throw new CatalogueNodeInputError([catalogueShallowBatchRefusal(stamp.depth)]);
     }
 
     const write = { profileName: profile.name, batchId, batchDepth: stamp.depth, at: new Date(this.now()) };
@@ -277,6 +337,8 @@ export class CatalogueDesignationService {
       revision: row.revision,
       reading: current,
       lastPush,
+      apiOnEveryAddress:
+        row.profileName && this.apiBinding?.profileName === row.profileName ? this.apiBinding.onEveryAddress : null,
     };
   }
 }

@@ -11,10 +11,11 @@
 -- profile_name names the deployment and batch_id the batch on its node, 64 hex
 -- digits in lower case with no 0x, as Bee prints one and the record carries
 -- it. They are set together on the first designation and stay after a clear:
--- the catalogue's slots are stamped by that batch, so a designation of another
--- batch is refused until moving the catalogue exists, and the same batch can be
--- designated again. The batch is pinned by id: buying or using another batch
--- on that node changes the deployment's stamp_id and never this row.
+-- the catalogue's slots are stamped by that batch, so another batch is saved
+-- only when confirmed as a move, which migration 048 records, and the same
+-- batch can be designated again. The batch is pinned by id: buying or using
+-- another batch on that node changes the deployment's stamp_id and never this
+-- row.
 -- batch_depth is the depth the node reported at designation, which a record
 -- carries while the node does not answer.
 --

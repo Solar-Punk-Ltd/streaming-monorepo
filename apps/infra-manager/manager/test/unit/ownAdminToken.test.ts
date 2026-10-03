@@ -226,7 +226,7 @@ describe('the kind of token the stage record names, by where the token came from
   });
 
   it('is shared for an old copy of the link token once the link token changed, never own', async () => {
-    // Created by a manager older than phase 5: the link's token was copied into the settings.
+    // Created by a manager from before stages: the link's token was copied into the settings.
     const harness = await harnessFor({
       settings: { [ADMIN_API_URL_KEY]: ADMIN_URL, [ADMIN_API_TOKEN_KEY]: COPIED_TOKEN },
       link: { url: ADMIN_URL, token: COPIED_TOKEN },

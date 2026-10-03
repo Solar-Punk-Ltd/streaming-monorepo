@@ -907,18 +907,18 @@ nobody wrote, while every report answers 200 and nothing says so. Nothing on the
 the address is what is compared, once at boot and again on every publish, against the declaration's
 `owner`. At boot:
 
-| The admin answers `GET /api/internal/stages/self`, with `ADMIN_API_TOKEN`                          | The uploader                                                                           |
-| -------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------- |
-| 200 with `{ stageId, owner }`                                                                      | Compares `owner` with its signer. A mismatch refuses to start, naming both addresses   |
-| 404: an admin before stages, or one of stages phases 5 to 8 on the admin's shared token            | Compares the catalog owner of the public `/api/config`, as before stages, the same way |
-| 401: an admin of stages phase 9 or later on any token but the stage's own, the shared one included | Warns and starts, and every lookup and report it makes is refused the same way         |
-| Anything else, or nothing                                                                          | Warns and starts. The publish gate compares each declaration's owner                   |
+| The admin answers `GET /api/internal/stages/self`, with `ADMIN_API_TOKEN`                                       | The uploader                                                                           |
+| --------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------- |
+| 200 with `{ stageId, owner }`                                                                                   | Compares `owner` with its signer. A mismatch refuses to start, naming both addresses   |
+| 404: an admin from before stages, which has no such route, or the intermediate admin answering the shared token | Compares the catalog owner of the public `/api/config`, as before stages, the same way |
+| 401: an admin that takes only a stage's own token, on any other token, the shared one included                  | Warns and starts, and every lookup and report it makes is refused the same way         |
+| Anything else, or nothing                                                                                       | Warns and starts. The publish gate compares each declaration's owner                   |
 
 A refusal says to fix the deployment's `STREAM_KEY` in the manager, or the stage the admin holds for
-it. On the shared token it says to give the deployment a token of its own, so the admin can name its
-stage. An admin of stages phase 9 or later takes only a stage's own token, which the manager
-generates for a deployment linked to that admin and tells the admin about: an uploader the manager
-did not deploy linked to the admin cannot report to it.
+it. After a 404 it says to fix `STREAM_KEY` first and, on the intermediate admin, to give the
+deployment a token of its own, so the admin can name its stage. An admin that takes only a stage's own
+token takes the one the manager generates for a deployment linked to that admin and tells the admin
+about: an uploader the manager did not deploy linked to the admin cannot report to it.
 
 | Variable          | Description                                                                                                                     |
 | ----------------- | ------------------------------------------------------------------------------------------------------------------------------- |

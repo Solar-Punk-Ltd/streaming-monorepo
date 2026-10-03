@@ -7,9 +7,8 @@ per host set up with `infra/edge/edge.sh`, serves it over HTTPS under its own
 name, and an SSH tunnel is the way in without it.
 
 `deploy.sh` is written so streaming-infra-manager can run it the way it runs
-swarm-hls-stream's: same flags, standard input closed, output streamed. That
-integration is the next step and is not done here; see "What the manager will
-call" below.
+swarm-hls-stream's: same flags, standard input closed, output streamed. The
+manager does not run it yet; see "Running it from the manager" below.
 
 ## One-time host setup
 
@@ -62,9 +61,12 @@ ones: see "Upgrading from before the move into apps/web2-admin" below.
 The script refuses to deploy, before anything leaves your machine, when a key
 the API cannot start without is missing or malformed: `POSTGRES_PASSWORD`,
 `FEED_PRIVATE_KEY` and `INTERNAL_API_TOKEN` (32 characters or more), plus the
-optional keys the API refuses when they are set wrong. It warns, and carries
-on, when a value is still the sample's: the public Hardhat key, the placeholder
-token.
+optional keys the API refuses when they are set wrong. It also refuses a
+`FEED_PRIVATE_KEY` or an `INTERNAL_API_TOKEN` that is still the sample's: the
+public Hardhat key, the placeholder token. Anyone could write the stream list
+with the one and register stages with the other. A test install can keep them
+with `--allow-sample-secrets`, and the script then warns about each one and
+deploys.
 
 No Bee node or batch is set here either: the catalogue is written through the
 catalogue node and batch the manager designates and pushes. An env file that
@@ -108,7 +110,7 @@ From `apps/web2-admin`:
 The full grammar:
 
 ```
-deploy.sh --host=<ssh-target> [--profile=<name>] [--portSlot=<N>] [--remote-path=<dir>] [service...]
+deploy.sh --host=<ssh-target> [--profile=<name>] [--portSlot=<N>] [--remote-path=<dir>] [--allow-sample-secrets] [service...]
 ```
 
 - `--host` is required, and there is no default host. It is an ssh alias,
@@ -121,9 +123,12 @@ deploy.sh --host=<ssh-target> [--profile=<name>] [--portSlot=<N>] [--remote-path
 - `--remote-path` is an absolute path on the host, default
   `/opt/streaming/streaming-monorepo`. It is not accepted with
   `--host=localhost`.
+- `--allow-sample-secrets` deploys an env file whose `FEED_PRIVATE_KEY` or
+  `INTERNAL_API_TOKEN` is still the sample's, with a warning for each. It is
+  for a test install only. Without it, either value refuses the deploy.
 - Services are `postgres`, `api` and `web`. None named means all three. Compose
   starts whatever a named service depends on.
-- Each flag also takes its value as the next word (`--host admin-host`), as
+- Each flag with a value also takes it as the next word (`--host admin-host`), as
   swarm-hls-stream's do. An empty value (`--portSlot=`) is an error, never the
   default. Anything else starting with a dash is refused.
 - `HEALTH_TIMEOUT` in the environment sets how long the host waits for the
@@ -524,10 +529,11 @@ The Caddyfile disables Caddy's admin API. On the host's network it would
 listen on the host's `127.0.0.1:2019`, where any local user could rewrite the
 routes, and a new Caddyfile takes effect by recreating the container anyway.
 
-## What the manager will call
+## Running it from the manager
 
-The manager runs a stack's `deploy.sh` with `bash`, standard input from
-`/dev/null`, and each line of output streamed to the console:
+The manager does not run this script yet. It runs a stack's `deploy.sh` with
+`bash`, standard input from `/dev/null`, and each line of output streamed to
+the console:
 
 ```
 deploy.sh --profile=<name> --portSlot=<N> --host=<target> [service...]
@@ -567,15 +573,15 @@ node --test 'apps/web2-admin/deploy/test/*.test.mjs'
 ## Deliberately not here
 
 - **Manager integration.** See the section above.
-- **The uploader reaching `/api/internal`.** swarm-hls-stream's uploader calls
-  the admin's internal API. Without the edge nothing outside the host reaches
-  it. With the edge, nginx passes all of `/api/` through, so
+- **A filter on `/api/internal` at the edge.** swarm-hls-stream's uploader
+  calls the admin's internal API. Without the edge nothing outside the host
+  reaches it. With the edge, nginx passes all of `/api/` through, so
   `https://<ADMIN_DOMAIN>/api/internal` answers from anywhere, guarded by a
   bearer token alone: `INTERNAL_API_TOKEN` (32 characters or more, compared in
   constant time) on the manager's routes, and on the uploader's a stage's own
-  token, known by its sha256, and nothing else: since stages phase 9 the
-  uploader's routes refuse `INTERNAL_API_TOKEN`. Whether the uploader should use
-  that route, or the edge should refuse it, belongs with the manager
-  integration.
+  token, known by its sha256, and nothing else: the uploader's routes refuse
+  `INTERNAL_API_TOKEN`. The edge passes it through on purpose: an uploader on a
+  stage host reaches the admin there, at the link's address, on its stage's own
+  token.
 - **Stop, health and clean scripts, and database backups.** Use compose by hand
   (above) until they exist. `down -v` deletes the profile's database.

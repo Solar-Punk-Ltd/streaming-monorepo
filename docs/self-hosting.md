@@ -98,6 +98,14 @@ with the admin. [architecture/stages.md](architecture/stages.md) is the design.
    sign-in page while `ssh control-1` is open. The first deploy takes a while, because the host
    builds the stack version the manager bundles.
 
+   Every Bee node the manager deploys on this host has its API bound to the Docker bridge address,
+   where neither the stack's `.env` nor the deployment names a bind, since the API asks for no
+   password ("Bind the node and engine APIs off the public interface" in
+   `apps/infra-manager/deploy/README.md`; the engine ports are still yours to bind). On a host
+   upgraded to this manager, a node is narrowed at its next deploy: one that something on another
+   host reaches by this host's public address needs `BEE_UPLOADER_API_BIND=0.0.0.0` in its own
+   settings, and the firewall to close the port.
+
 4. **The manager's first user**, on the host. It asks for the password twice.
 
    ```sh
@@ -112,12 +120,13 @@ with the admin. [architecture/stages.md](architecture/stages.md) is the design.
 6. **The web2 admin.** From `apps/web2-admin`, make the profile's env file from the sample and fill
    in what it asks for: `POSTGRES_PASSWORD`, `FEED_PRIVATE_KEY`, the brand key the catalog is
    signed with, and `INTERNAL_API_TOKEN`, the registrar token the manager pushes with. Generate
-   your own key and token. The sample's values are public and the deploy script refuses them. The
-   admin takes no stage settings: no ingest address, port or passphrase, no Bee node and no batch.
-   It learns each stage from the manager and writes the catalogue through the catalogue node the
-   manager designates, refusing to publish, saying why, until the manager has. The `INGEST_*`
-   keys, `BEE_URL` and `POSTAGE_BATCH_ID` an older env file carries are no longer read, and the
-   deploy names each one it finds.
+   your own key and token. The sample's values are public and the deploy script refuses them,
+   unless `--allow-sample-secrets` is given for a test install. The admin takes no stage settings:
+   no ingest address, port or passphrase, no Bee node and no batch. It learns each stage from the
+   manager and writes the catalogue through the catalogue node the manager designates, refusing to
+   publish, saying why, until the manager has. The `INGEST_*` keys, `BEE_URL` and
+   `POSTAGE_BATCH_ID` an older env file carries are no longer read, and the deploy names each one
+   it finds.
 
    ```sh
    cp backend/.env.sample backend/.env.brand-a
@@ -153,7 +162,8 @@ with the admin. [architecture/stages.md](architecture/stages.md) is the design.
    It worked when it says "The web2 admin answered and took the token." The manager pushes every
    stage and the catalogue stamp with this token, and gives it to no uploader. The address is the
    edge's https one: every push carries this token and each stage's SRT passphrase and token hash,
-   and the card warns under a plain http address to another host.
+   and the manager refuses a plain http address to another host than its own unless its
+   `ADMIN_LINK_ALLOW_PLAIN_HTTP=true` is set, for a test setup.
    `apps/infra-manager/docs/features/web2-admin-link.md` has the details.
 
 9. **The Bee host and the catalogue node**, by the Bee host recipe below: the ABR node pool, and a
@@ -174,21 +184,20 @@ with the admin. [architecture/stages.md](architecture/stages.md) is the design.
     and publish. The OBS panel shows that stage's ingest details.
 
 **Upgrading a host that runs the admin and manager from before stages.** A fresh installation
-needs none of this. On a running one, in this order, and only with the owner's word:
+needs none of this. On a running one, in this order:
 
 0. **Create the catalogue node**, by step 6 of the Bee host recipe below: a Bee-only deployment,
-   funded, with one immutable batch bought on it. It must be ready before step 2.
-1. **Deploy the manager that pushes stage records**, and designate the catalogue node and its
-   batch on **Manager settings** at once. The admin from before stages has no
-   `/api/internal/stages` or
+   funded, with one immutable batch of depth 18 or more bought on it. It must be ready before step 2.
+1. **Deploy the manager that pushes stage records**, and designate the catalogue node and its batch
+   on **Manager settings** at once. The admin from before stages has no `/api/internal/stages` or
    `/api/internal/catalogue-stamp` route, so every stage's push and the catalogue stamp come to
    `not-admin` ("not a web2 admin") until step 2. That is harmless: that admin stores nothing and
    keeps writing with its env file's batch, and Test connection on Manager settings still takes the
-   token there. Create no stage and rotate nothing until step 2 is done: an admin from before
-   stages refuses a token of its own.
+   token there. Create no stage and rotate nothing until step 2 is done: an admin from before stages
+   refuses a token of its own.
 2. **Deploy the intermediate admin**, which takes stage records and still accepts the shared
-   token on an uploader's routes: commit `d29616851` of `feat/stages` (tag it, e.g.
-   `web2-admin/stages-intermediate`, before `feat/stages` is merged to `main`, because a squash or
+   token on an uploader's routes: commit `d29616851` of `feat/stages` (tag it
+   `web2-admin/stages-intermediate` before `feat/stages` is merged to `main`, because a squash or
    rebase merge leaves that commit unreachable). It takes both the shared token and a stage's own.
    It refuses every catalogue write, `503`, until it holds a catalogue stamp, so publishing and the
    uploaders' state reports (which retry) wait from its start until the manager's next push, at
@@ -318,7 +327,8 @@ stage hosts publish through. It is prepared like a stage host.
    deployment on a stage host.
 
 6. **The catalogue node.** **New deployment**, a Bee-only deployment with `bee-1` as the host, fund it
-   and buy one immutable batch on it, below, deep enough for the catalogue's history. It holds the
+   and buy one immutable batch on it, below, of depth 18 or more: the manager refuses a shallower one
+   for the catalogue, since its buckets fill after a few thousand writes. It holds the
    brand's catalogue alone: no pool string may name its batch or its Bee API, and the manager
    refuses a pool that does. Open its Bee API to the control host alone, where the admin writes
    through it, and designate it on **Manager settings**.

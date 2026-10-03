@@ -2,7 +2,8 @@
  * The stage record the manager pushes into the web2 admin for one deployment
  * that runs a stream uploader: every field as the contract takes it, the owner
  * derived from the stream key and never the key, the admin token by its sha256
- * and its kind, and nothing secret anywhere in it.
+ * and its kind, the SRT passphrase as the one secret the admin needs for the
+ * OBS panel, and no key and no token anywhere in it.
  *
  * Unit test, no database, no network. `pnpm test` in manager/.
  */
@@ -160,6 +161,15 @@ async function built(options: FakeReadingsOptions = {}, profile = stage()) {
   const result = await builder(options).build(profile);
   assert.ok(result.ok, result.ok ? '' : result.problem);
   return result;
+}
+
+/** Every value a record holds, nested ones included, by its path, such as `ingest.srtPort` or `rungs.0.batchId`. */
+function leavesOf(value: unknown, path: readonly string[] = []): Array<[string, string]> {
+  if (typeof value === 'string' || typeof value === 'number' || typeof value === 'boolean') {
+    return [[path.join('.'), String(value)]];
+  }
+  if (value === null || typeof value !== 'object') return [];
+  return Object.entries(value).flatMap(([key, inner]) => leavesOf(inner, [...path, key]));
 }
 
 describe('a stage record, field by field', () => {
@@ -360,8 +370,24 @@ describe('what a record never carries', () => {
     assert.equal(result.adminApiUrl, 'https://admin.example.org');
   });
 
-  it('keeps the passphrase, which the admin shows on the OBS panel, and nothing else of the env', async () => {
-    const { record } = await built();
+  it('keeps the passphrase, which the admin shows on the OBS panel, and no other value of the env but the slot’s ports', async () => {
+    // Two of the stack's own secrets, which the builder never reads, beside the ones it does.
+    const env = baseEnv({
+      API_AUTH_TOKEN: 'synthetic-api-auth-token-0123456789abcdef',
+      PUBLISH_KEY_SECRET: 'synthetic-publish-key-secret-0123456789ab',
+    });
+    const { record } = await built({ env });
+    const holding = (value: string) =>
+      leavesOf(record)
+        .filter(([, leaf]) => leaf.includes(value))
+        .map(([path]) => path);
+    assert.deepEqual(holding(PASSPHRASE), ['ingest.srtPassphrase']);
+    assert.deepEqual(holding('10012'), ['ingest.srtPort']);
+    assert.deepEqual(holding('10013'), ['ingest.rtmpPort']);
+    for (const [key, value] of Object.entries(env)) {
+      if (key === 'SRT_PASSPHRASE' || key === 'SRS_SRT_PORT' || key === 'SRS_RTMP_PORT') continue;
+      assert.deepEqual(holding(value), [], `the record carries ${key}`);
+    }
     const keys = new Set(Object.keys(record));
     assert.deepEqual([...keys].sort(), [
       'adminToken',

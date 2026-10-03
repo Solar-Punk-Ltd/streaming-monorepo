@@ -61,6 +61,11 @@ export const CATALOGUE_PUSH_OUTCOMES = [
   'not-admin',
   /** The manager has no web2 admin link, or its link stores no token. */
   'skipped-no-link',
+  /**
+   * The link is plain http to another host than the manager's own, which the manager sends nothing to unless
+   * `ADMIN_LINK_ALLOW_PLAIN_HTTP` is on: a link saved before that rule, until it is given https.
+   */
+  'refused-plain-http',
   /** The designated deployment is not there any more. */
   'skipped-no-node',
   /** The record could not be put together, for the reason the log gives. */
@@ -80,6 +85,7 @@ export const CATALOGUE_PUSH_OUTCOME_TEXT: Readonly<Record<CataloguePushOutcome, 
   redirected: 'redirected, not followed',
   'not-admin': 'not a web2 admin',
   'skipped-no-link': 'not sent (the manager has no admin link with a token)',
+  'refused-plain-http': 'not sent (the admin link is plain http to another host)',
   'skipped-no-node': 'not sent (the designated deployment is gone)',
   'skipped-no-record': 'not sent (the record is incomplete)',
 };
@@ -130,6 +136,11 @@ export interface CatalogueNodeAnswer {
   reading: CatalogueReading | null;
   /** The last push or clear, or null before any since the manager started. */
   lastPush: CataloguePushState | null;
+  /**
+   * Whether Docker reports the pinned node's Bee API published on every address of its host: true, which the card
+   * warns about, false for an API bound to one address, null when nothing is pinned or Docker could not be read.
+   */
+  apiOnEveryAddress?: boolean | null;
 }
 
 /** What `PUT /manager-settings/catalogue-node` takes. */
@@ -171,6 +182,21 @@ export const CATALOGUE_NOT_HELD_REFUSAL =
   'The node does not hold this batch. Designate one of the batches its Storage and funding card lists.';
 export const CATALOGUE_UNREACHABLE_REFUSAL =
   'The node did not answer, so whether this batch is immutable could not be checked. Try again once the node answers.';
+/**
+ * The shallowest batch a designation takes. An immutable batch refuses a chunk whose bucket is full, and a catalogue
+ * slot is written again at the same address, so the first slot refused freezes the catalogue for every stage until
+ * the batch is diluted. At depth 17 that comes after about 2,600 chunks, at depth 18 after about 18,000.
+ */
+export const MIN_CATALOGUE_DEPTH = 18;
+
+/**
+ * Why a new batch shallower than {@link MIN_CATALOGUE_DEPTH} cannot be the catalogue's. The batch already pinned is
+ * not held to it, nor a move back to the batch moved from, so a designation made before the minimum keeps working.
+ */
+export function catalogueShallowBatchRefusal(depth: number): string {
+  return `This batch has depth ${depth}. Its buckets are small enough that the catalogue would stop taking new slots after a few thousand writes, for every stage. Designate a batch of depth ${MIN_CATALOGUE_DEPTH} or more.`;
+}
+
 /**
  * Why a batch cannot both hold the catalogue and stamp an ABR uploader's segments, which a designation and a pool
  * string are both refused with: segments fill the batch the catalogue's slots live in.

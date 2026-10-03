@@ -29,6 +29,11 @@ export const STAGE_PUSH_OUTCOMES = [
   'not-admin',
   /** The manager has no web2 admin link, or its link stores no token. */
   'skipped-no-link',
+  /**
+   * The link is plain http to another host than the manager's own, which the manager sends nothing to unless
+   * `ADMIN_LINK_ALLOW_PLAIN_HTTP` is on: a link saved before that rule, until it is given https.
+   */
+  'refused-plain-http',
   /** The deployment gives its uploader no web2 admin address. */
   'skipped-not-linked',
   /** The deployment's uploader reports to an admin on another origin than the manager's link. */
@@ -50,6 +55,7 @@ export const STAGE_PUSH_OUTCOME_TEXT: Readonly<Record<StagePushOutcome, string>>
   redirected: 'redirected, not followed',
   'not-admin': 'not a web2 admin',
   'skipped-no-link': 'not pushed (the manager has no admin link with a token)',
+  'refused-plain-http': 'not pushed (the admin link is plain http to another host)',
   'skipped-not-linked': 'not pushed (not linked to a web2 admin)',
   'skipped-other-origin': 'not pushed (linked to another admin than the manager’s)',
   'skipped-no-record': 'not pushed (the record is incomplete)',

@@ -196,7 +196,7 @@ into the admin (`docs/architecture/stages.md` at the repository root).
 `null` for none, or absent to leave the stream's as it is.
 
 - **Which stages take a stream.** One the admin holds, that the manager has not
-  retired, on an engine the admin takes streams on (SRS in this round). Any
+  retired, on an engine the admin takes streams on (SRS only). Any
   other is `409 stage_unavailable` with `reason` `unknown`, `retired` or
   `unsupported`. A stream already on a stage the manager retires later keeps
   it, and a save naming the stage it has is not a change.
@@ -353,11 +353,11 @@ id and needs nothing here. Another batch means stamping every slot again under
 it before the old one lapses: `src/domain/CatalogueMove.ts`, with its progress
 in `catalogue_moves` (migration `014`).
 
-**Off by default.** `CATALOGUE_MOVE_ENABLED=true` turns it on. Until the owner
-has tried it on a real node (`docs/architecture/stages.md`, "Trying the move on
-a real node"), the Stages page says the move is not yet enabled on this
-installation, and a start is refused with `problem: disabled` before anything
-else, a move left running included.
+**Off by default.** `CATALOGUE_MOVE_ENABLED=true` turns it on. Try it on a
+scratch node first (`docs/architecture/stages.md`, "Trying the move on a real
+node"). While it is off, the Stages page says the move is not yet enabled on
+this installation, and a start is refused with `problem: disabled` before
+anything else, a move left running included.
 
 **When a move waits.** When the feed has history and the pinned batch is not the
 designated one (another designated, `moveWaitingTo`, or a move back to one that
@@ -515,7 +515,8 @@ on the row.
 
 **Do not give `FEED_PRIVATE_KEY` to a running swarm-hls-stream uploader.** It
 caches the feed's next index; two writers at one index fork the feed.
-Checkpoint 3 turns this around and has the uploader report into this API.
+The uploader reports into this API instead (`POST /streams/:id/state` and
+`/renditions`).
 
 ## The internal API
 
@@ -559,12 +560,12 @@ stages.
 
 **The registrar token on an uploader's route** is `401 unauthenticated`, like
 any other token that is not a stage's own, on the lookup, both reports and
-`GET /stages/self`, and nothing is written for it. From stages phase 5 to phase
-8 it was still taken there, as an unattributed caller answered about every
-stream; phase 9 stopped that. A stage whose uploader still presents it, or any
-other `shared` token, is refused until its token is rotated in the manager
-(**Rotate the uploader's admin token**) and the stage redeployed, and the
-Stages page says so.
+`GET /stages/self`, and nothing is written for it. An admin from before stages
+and the upgrade's intermediate admin (`docs/self-hosting.md`) still take it
+there, as an unattributed caller answered about every stream. A stage whose
+uploader still presents it, or any other `shared` token, is refused until its
+token is rotated in the manager (**Rotate the uploader's admin token**) and the
+stage redeployed, and the Stages page says so.
 
 Neither token nor its hash is logged at any level, audited or answered.
 
@@ -794,11 +795,13 @@ curl -sS -X DELETE http://127.0.0.1:9877/api/internal/stages/5f0c2a8e-1b2c-4d3e-
 ## Migrations
 
 `src/migrations/NNN_name.sql`, applied in order inside a transaction at every
-boot and recorded in `_migrations` (`src/domain/Database.ts`). Add a file, never
-edit an applied one; `001_init.sql` carries the rationale for each table in its
+boot and recorded in `_migrations` (`src/domain/Database.ts`) by file name
+alone, so a database that already applied a file never runs it again. Add a
+file for a change, and never change an applied one's SQL; a corrected comment
+is harmless. `001_init.sql` carries the rationale for each table in its
 header. `pnpm build` copies the directory into `dist`. `007_audit_log.sql` is
 the audit log below, and `008_streams_user_id_set_null.sql` stops removing a
-user from deleting the streams they drafted. The latest five are
+user from deleting the streams they drafted. The latest six are
 `009_stages.sql`, the `stages` table (the record without the passphrase and
 the token, the passphrase and the token hash in columns of their own, when the
 record was observed and received, and the retirement's moment and arrival) and
@@ -807,9 +810,12 @@ audit log name the manager, `010_catalogue_stamp.sql`, the single-row
 `catalogue_stamp`, `011_streams_stage.sql`, `streams.stage_id`, the stage
 a stream is broadcast on, with a foreign key to `stages` and an index,
 `012_stages_admin_token_index.sql`, the partial index an uploader's own token
-is looked up by, and `013_catalogue_writes.sql`, the batch the catalogue is
+is looked up by, `013_catalogue_writes.sql`, the batch the catalogue is
 written with on `catalogue_stamp` and the exact bytes and batch of every write
-on `feed_writes` ([Where the catalogue is written](#where-the-catalogue-is-written)).
+on `feed_writes` ([Where the catalogue is written](#where-the-catalogue-is-written)),
+and `014_catalogue_moves.sql`, a move's progress in `catalogue_moves` and the
+batch each write and each thumbnail was last uploaded under
+([Moving the catalogue to another batch](#moving-the-catalogue-to-another-batch)).
 
 ## Audit log
 
@@ -900,7 +906,7 @@ the mutation it describes, which has already happened by then; the failure is
 logged as `[Audit] could not record …` and the request answers as it would
 have.
 
-Nothing in the API reads it yet. With `psql`:
+Nothing in the API reads it. With `psql`:
 
 ```sql
 -- the last fifty things anyone did
@@ -921,7 +927,7 @@ SELECT at, action, details FROM audit_log
  WHERE actor_kind = 'manager' AND details ->> 'stageId' = '<stage id>' ORDER BY at;
 ```
 
-## Limitations (intentional, checkpoint 3 step 1)
+## Limitations (intentional)
 
 - **A stream belongs to the installation.** Every signed-in user sees and can
   edit, publish, unpublish and delete every stream. `streams.user_id` records

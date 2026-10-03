@@ -21,8 +21,8 @@ export function ManagerSettingsPage() {
           color: 'text.secondary',
         }}
       >
-        What this manager gives the deployments it creates. A deployment that exists keeps its own settings, on its own
-        page.
+        What this manager gives the deployments it creates, and the node the brand's catalogue is written through. A
+        deployment that exists keeps its own settings, on its own page.
       </Typography>
       <ManagerAdminLinkCard load={load} />
       <CatalogueNodeCard load={catalogue} />
