@@ -47,8 +47,12 @@ export function beeApiUrl(profile: Profile, serverHost: string): string | null {
   return componentUrl(hostFor(profile, serverHost), port);
 }
 
-const SRT_DEFAULT_APP_STREAM = 'live/stream';
+/** The application and stream a publish address names until the operator gives their own. */
+const DEFAULT_APP = 'live';
+const DEFAULT_STREAM = 'stream';
+const SRT_DEFAULT_APP_STREAM = `${DEFAULT_APP}/${DEFAULT_STREAM}`;
 const SRS_SRT_BASE_PORT = 10001;
+const SRS_RTMP_BASE_PORT = 10002;
 const OME_SRT_BASE_PORT = 10001;
 const OME_DEFAULT_APP_STREAM = 'video/stream';
 
@@ -100,4 +104,28 @@ export function srtPublishSettings(
 /** The line a publisher points OBS or FFmpeg at, carrying the passphrase only where it can. */
 export function srtPublishUrl(profile: Profile, serverHost: string, passphrase?: string | null): string | null {
   return srtPublishSettings(profile, serverHost, passphrase)?.server ?? null;
+}
+
+/** OBS's two RTMP boxes for a deployment. */
+export interface RtmpPublishSettings {
+  /** What goes in OBS's Server box. */
+  server: string;
+  /** What goes in OBS's Stream Key box, which OBS publishes as the RTMP stream name. */
+  streamKey: string;
+}
+
+/**
+ * OBS's RTMP boxes for an SRS deployment, naming the same application and
+ * stream as its SRT line. RTMP has no passphrase, so nothing secret is read or
+ * carried. OvenMediaEngine takes SRT alone, so it has none.
+ */
+export function rtmpPublishSettings(profile: Profile, serverHost: string): RtmpPublishSettings | null {
+  const services = defaultServicesFor(profile);
+  // OvenMediaEngine first, as srtPublishSettings decides it, so a record left from SRS offers nothing.
+  if (profile.containers.some((c) => c.service === OME_SERVICE) || services.includes(OME_SERVICE)) return null;
+  const srs = profile.containers.find((c) => c.service === SRS_SERVICE);
+  if (!srs && !services.includes(SRS_SERVICE)) return null;
+  const port = srs?.ports.SRS_RTMP_PORT ?? (profile.port_slot > 0 ? SRS_RTMP_BASE_PORT + profile.port_slot * 10 : null);
+  if (!port) return null;
+  return { server: `rtmp://${hostFor(profile, serverHost)}:${port}/${DEFAULT_APP}`, streamKey: DEFAULT_STREAM };
 }

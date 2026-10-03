@@ -15,10 +15,10 @@
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 
-import { SRS_SERVICE } from '@streaming-infra-manager/common';
+import { OME_SERVICE, SRS_SERVICE } from '@streaming-infra-manager/common';
 
 import type { Profile } from './types';
-import { hostFor, srtPublishSettings, srtPublishUrl } from './urls';
+import { hostFor, rtmpPublishSettings, srtPublishSettings, srtPublishUrl } from './urls';
 
 const SERVER_HOST = 'manager.example';
 
@@ -108,5 +108,73 @@ describe('the SRT line a broadcaster points at an SRS deployment', () => {
       server: 'srt://stream.example:10011?streamid=#!::r=live/stream,m=publish',
       passphraseRoute: 'none',
     });
+  });
+});
+
+describe('the RTMP server and stream key a broadcaster gives OBS for an SRS deployment', () => {
+  const containersOf = (ports: Record<string, number>, service = SRS_SERVICE) =>
+    [{ service, ports }] as unknown as Profile['containers'];
+
+  it('names the same application and stream as the SRT line, and carries no key and no passphrase', () => {
+    const srs = profile({
+      host: 'stream.example',
+      port_slot: 6,
+      has_srt_passphrase: true,
+      containers: containersOf({ SRS_SRT_PORT: 10061, SRS_RTMP_PORT: 10062 }),
+    });
+
+    assert.deepEqual(rtmpPublishSettings(srs, SERVER_HOST), {
+      server: 'rtmp://stream.example:10062/live',
+      streamKey: 'stream',
+    });
+  });
+
+  it("takes the slot's RTMP port while the container's record does not carry one yet", () => {
+    const recordedBefore = profile({
+      host: 'stream.example',
+      port_slot: 6,
+      containers: containersOf({ SRS_SRT_PORT: 10061 }),
+    });
+
+    assert.equal(rtmpPublishSettings(recordedBefore, SERVER_HOST)?.server, 'rtmp://stream.example:10062/live');
+  });
+
+  it('offers no RTMP at slot 0 with no recorded port, rather than guess one', () => {
+    const unslotted = profile({
+      host: 'stream.example',
+      port_slot: 0,
+      containers: containersOf({ SRS_SRT_PORT: 10080 }),
+    });
+
+    assert.equal(rtmpPublishSettings(unslotted, SERVER_HOST), null);
+  });
+
+  it('offers no RTMP for OvenMediaEngine, which takes SRT alone, or for a deployment with no media server', () => {
+    const ome = profile({
+      host: 'stream.example',
+      components: [OME_SERVICE, 'stream-uploader'],
+      containers: containersOf({ OME_SRT_PORT: 10061 }, OME_SERVICE),
+    });
+    const viewer = profile({
+      host: 'stream.example',
+      kind: 'viewer',
+      containers: [] as unknown as Profile['containers'],
+    });
+
+    assert.equal(rtmpPublishSettings(ome, SERVER_HOST), null);
+    assert.equal(rtmpPublishSettings(viewer, SERVER_HOST), null);
+  });
+
+  it('offers no RTMP once a deployment runs OvenMediaEngine, though a record of its SRS is left', () => {
+    const switched = profile({
+      host: 'stream.example',
+      components: [OME_SERVICE, 'stream-uploader'],
+      containers: [
+        { service: SRS_SERVICE, ports: { SRS_RTMP_PORT: 10062 } },
+        { service: OME_SERVICE, ports: { OME_SRT_PORT: 10061 } },
+      ] as unknown as Profile['containers'],
+    });
+
+    assert.equal(rtmpPublishSettings(switched, SERVER_HOST), null);
   });
 });
