@@ -314,7 +314,7 @@ test('the ingest card says how the broadcast is coming in, and how to fix it', {
     await reload();
     await shows('the stopped deployment page', 'Readiness');
     // By the card's own sub-line, since the containers card still names the srs
-    // container "media server (SRT and RTMP ingest)".
+    // container "media server (SRT ingest)".
     assert.ok(!(await body()).includes(CARD_SUB), 'the ingest card is on a stopped deployment');
     assert.equal(ingestReads, before, 'the card asked a stopped deployment for a reading');
   });

@@ -4,7 +4,6 @@ import { rmSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { after, describe, it } from 'node:test';
 import { fileURLToPath } from 'node:url';
-import { PORT_POLICY_VERSION } from '@streaming-infra-manager/common';
 import { throwawayRoot } from '../support/throwawayRoot.js';
 import type { FirewallInventory } from '../../src/domain/ports/firewallInventoryTypes.js';
 
@@ -15,7 +14,7 @@ const runOptions = { encoding: 'utf8', timeout: 10_000 } as const;
 function evidence(): FirewallInventory {
   return {
     schemaVersion: 1,
-    policyVersion: PORT_POLICY_VERSION,
+    policyVersion: 1,
     daemonId: 'fixture-daemon',
     capturedAt: '2026-09-08T00:00:00.000Z',
     fingerprint: 'a'.repeat(64),
@@ -229,36 +228,17 @@ describe('firewall rules from shared policy and complete inventory', () => {
       assert.equal(portSets.get('bee_p2p')!.length, maxSlot * 2);
       assert.equal(portSets.get('viewer')!.length, maxSlot);
       assert.equal(portSets.get('srt_ingest')!.length, maxSlot);
-      assert.equal(portSets.get('rtmp_ingest')!.length, maxSlot);
       assert.equal(portSets.has('rung_p2p'), false);
-      assert.deepEqual([...portSets.keys()].sort(), ['bee_p2p', 'rtmp_ingest', 'srt_ingest', 'viewer']);
+      assert.deepEqual([...portSets.keys()].sort(), ['bee_p2p', 'srt_ingest', 'viewer']);
     });
   }
   for (const family of ['ipv4', 'ipv6'] as const) {
-    it("opens every slot's RTMP ingest over TCP and keeps its number closed over UDP on " + family, () => {
-      const text = rules();
-      for (let slot = 1; slot <= 100; slot++) {
-        const port = 10002 + slot * 10;
-        for (const hook of ['input', 'forward'] as const) {
-          for (const [protocol, expected] of [
-            ['tcp', 'accept'],
-            ['udp', 'drop'],
-          ] as const) {
-            assert.equal(
-              verdict(text, hook, { family, protocol, originalPort: port, destinationPort: port, dnat: true }),
-              expected,
-              hook + ' ' + protocol.toUpperCase() + '/' + port,
-            );
-          }
-        }
-      }
-    });
-
-    it('leaves every supported API and private engine endpoint closed on ' + family, () => {
+    it('leaves every supported RTMP and API endpoint closed on ' + family, () => {
       const text = rules();
       for (let slot = 1; slot <= 100; slot++) {
         const bases = [
           10000,
+          10002,
           10003,
           10005,
           10007,
@@ -281,7 +261,7 @@ describe('firewall rules from shared policy and complete inventory', () => {
     it('evaluates the complete ' + family + ' policy for TCP and UDP after DNAT', () => {
       const text = rules();
       for (const protocol of ['tcp', 'udp'] as const) {
-        for (const port of [10000, 10010, 10013, 10015, 10017, 10019, 11991, 19999]) {
+        for (const port of [10000, 10010, 10012, 10013, 10015, 10017, 10019, 11991, 19999]) {
           const packet = { family, protocol, originalPort: port, destinationPort: 1633, dnat: true };
           assert.equal(verdict(text, 'forward', packet), 'drop', protocol + '/' + port);
           assert.equal(verdict(text, 'input', { ...packet, destinationPort: port }), 'drop');
@@ -388,20 +368,6 @@ describe('firewall rules from shared policy and complete inventory', () => {
     assert.equal(result.stdout, '');
     assert.match(result.stderr, /10016.*public|public.*10016/);
   });
-
-  it('refuses any other endpoint parked on an RTMP ingest tuple', () => {
-    const value = peerInventory();
-    value.claims[0]!.port = 10012;
-    value.claims[0]!.portVar = 'API_PORT';
-    value.claims[0]!.service = 'stream-uploader';
-    value.reservations[0]!.port = 10012;
-    value.reservations[0]!.heldServices = ['stream-uploader'];
-    value.bindings = [{ project: 'a', service: 'stream-uploader', port: 10012, protocol: 'tcp' }];
-    const result = run(value);
-    assert.equal(result.status, 2);
-    assert.equal(result.stdout, '');
-    assert.match(result.stderr, /10012 is a public rtmp_ingest port/);
-  });
   for (const missing of ['owner', 'claim', 'reservation', 'binding', 'daemon', 'version', 'shape'] as const) {
     it('refuses inconsistent ' + missing + ' evidence with no partial output', () => {
       const value = peerInventory();
@@ -418,17 +384,6 @@ describe('firewall rules from shared policy and complete inventory', () => {
       assert.match(result.stderr, /inventory|evidence|policy/i);
     });
   }
-  it('refuses an export checked under policy 1, before the RTMP ingest band opened, and says what to do', () => {
-    // A manager of that release let any owner sit on an RTMP tuple and told the
-    // admin to offer no RTMP, so a draft from its export would answer for bands
-    // it never checked.
-    const result = run({ ...evidence(), policyVersion: 1 });
-    assert.equal(result.status, 2);
-    assert.equal(result.stdout, '');
-    assert.match(result.stderr, new RegExp('port policy ' + PORT_POLICY_VERSION));
-    assert.match(result.stderr, /Export again from a manager of the same release as this checkout/);
-  });
-
   it('opens no Bee API port to anyone unless sources are named', () => {
     const text = rules();
     assert.doesNotMatch(text, /saddr|bee_api/);
@@ -477,7 +432,7 @@ describe('firewall rules from shared policy and complete inventory', () => {
 
     it('opens nothing else to them, the gateway API and the other private ports included', () => {
       const text = rules(named);
-      for (const port of [10010, 10011, 10013, 10017, 10019]) {
+      for (const port of [10010, 10012, 10013, 10017, 10019]) {
         for (const hook of ['input', 'forward'] as const) {
           assert.equal(bee(text, hook, port, '203.0.113.7'), 'drop', hook + ' ' + port);
         }
@@ -499,9 +454,7 @@ describe('firewall rules from shared policy and complete inventory', () => {
     it('keeps the public bands exactly as they were', () => {
       const plain = sets(rules());
       const opened = sets(rules(named));
-      for (const band of ['bee_p2p', 'rtmp_ingest', 'srt_ingest', 'viewer']) {
-        assert.deepEqual(opened.get(band), plain.get(band), band);
-      }
+      for (const band of ['bee_p2p', 'srt_ingest', 'viewer']) assert.deepEqual(opened.get(band), plain.get(band), band);
     });
 
     it('stops at --max-slot like every other band', () => {

@@ -15,7 +15,7 @@
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 
-import { OME_SERVICE, SRS_SERVICE } from '@streaming-infra-manager/common';
+import { OME_SERVICE, PUBLIC_PORT_ROLES, SRS_SERVICE } from '@streaming-infra-manager/common';
 
 import type { Profile } from './types';
 import { hostFor, rtmpPublishSettings, srtPublishSettings, srtPublishUrl } from './urls';
@@ -114,6 +114,25 @@ describe('the SRT line a broadcaster points at an SRS deployment', () => {
 describe('the RTMP server and stream key a broadcaster gives OBS for an SRS deployment', () => {
   const containersOf = (ports: Record<string, number>, service = SRS_SERVICE) =>
     [{ service, ports }] as unknown as Profile['containers'];
+  // The shared policy keeps RTMP closed, so the values are read under one that would open it.
+  const RTMP_OPENED = [
+    ...PUBLIC_PORT_ROLES,
+    { group: 'rtmp_ingest', protocol: 'tcp', base: 10002, maxSlot: 100, portVar: 'SRS_RTMP_PORT', service: 'srs' },
+  ] as const;
+
+  it('offers none while the firewall policy keeps RTMP closed, which it does on every deployment today', () => {
+    const srs = profile({
+      host: 'stream.example',
+      port_slot: 6,
+      containers: containersOf({ SRS_SRT_PORT: 10061, SRS_RTMP_PORT: 10062 }),
+    });
+
+    assert.equal(
+      PUBLIC_PORT_ROLES.some((role) => role.portVar === 'SRS_RTMP_PORT'),
+      false,
+    );
+    assert.equal(rtmpPublishSettings(srs, SERVER_HOST), null);
+  });
 
   it('names the same application and stream as the SRT line, and carries no key and no passphrase', () => {
     const srs = profile({
@@ -123,7 +142,7 @@ describe('the RTMP server and stream key a broadcaster gives OBS for an SRS depl
       containers: containersOf({ SRS_SRT_PORT: 10061, SRS_RTMP_PORT: 10062 }),
     });
 
-    assert.deepEqual(rtmpPublishSettings(srs, SERVER_HOST), {
+    assert.deepEqual(rtmpPublishSettings(srs, SERVER_HOST, RTMP_OPENED), {
       server: 'rtmp://stream.example:10062/live',
       streamKey: 'stream',
     });
@@ -136,7 +155,10 @@ describe('the RTMP server and stream key a broadcaster gives OBS for an SRS depl
       containers: containersOf({ SRS_SRT_PORT: 10061 }),
     });
 
-    assert.equal(rtmpPublishSettings(recordedBefore, SERVER_HOST)?.server, 'rtmp://stream.example:10062/live');
+    assert.equal(
+      rtmpPublishSettings(recordedBefore, SERVER_HOST, RTMP_OPENED)?.server,
+      'rtmp://stream.example:10062/live',
+    );
   });
 
   it('offers no RTMP at slot 0 with no recorded port, rather than guess one', () => {
@@ -146,7 +168,7 @@ describe('the RTMP server and stream key a broadcaster gives OBS for an SRS depl
       containers: containersOf({ SRS_SRT_PORT: 10080 }),
     });
 
-    assert.equal(rtmpPublishSettings(unslotted, SERVER_HOST), null);
+    assert.equal(rtmpPublishSettings(unslotted, SERVER_HOST, RTMP_OPENED), null);
   });
 
   it('offers no RTMP for OvenMediaEngine, which takes SRT alone, or for a deployment with no media server', () => {
@@ -161,8 +183,8 @@ describe('the RTMP server and stream key a broadcaster gives OBS for an SRS depl
       containers: [] as unknown as Profile['containers'],
     });
 
-    assert.equal(rtmpPublishSettings(ome, SERVER_HOST), null);
-    assert.equal(rtmpPublishSettings(viewer, SERVER_HOST), null);
+    assert.equal(rtmpPublishSettings(ome, SERVER_HOST, RTMP_OPENED), null);
+    assert.equal(rtmpPublishSettings(viewer, SERVER_HOST, RTMP_OPENED), null);
   });
 
   it('offers no RTMP once a deployment runs OvenMediaEngine, though a record of its SRS is left', () => {
@@ -175,6 +197,6 @@ describe('the RTMP server and stream key a broadcaster gives OBS for an SRS depl
       ] as unknown as Profile['containers'],
     });
 
-    assert.equal(rtmpPublishSettings(switched, SERVER_HOST), null);
+    assert.equal(rtmpPublishSettings(switched, SERVER_HOST, RTMP_OPENED), null);
   });
 });

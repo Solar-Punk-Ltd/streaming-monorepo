@@ -3,12 +3,7 @@ export const MANAGER_SLOT_CAP = 100;
 export const PORT_SLOT_STRIDE = 10;
 export const PROTECTED_PORT_MIN = 10000;
 export const PROTECTED_PORT_MAX = 19999;
-/**
- * The bands an inventory export was checked against. The generator refuses an
- * export of another version, because a manager of another release checked
- * other owners on other tuples. Version 2 opened the RTMP ingest band.
- */
-export const PORT_POLICY_VERSION = 2;
+export const PORT_POLICY_VERSION = 1;
 export const OME_PORT_SOURCES = Object.freeze({ OME_SRT_PORT: 'SRS_SRT_PORT', OME_HLS_PORT: 'SRS_HTTP_PORT' });
 
 /** Public roles supported by the bundled and main-v3 layouts. Private endpoints cannot reuse these tuples.
@@ -53,15 +48,6 @@ export const PUBLIC_PORT_ROLES = Object.freeze([
     portVar: 'SRS_SRT_PORT',
     service: 'srs',
     aliases: [{ portVar: 'OME_SRT_PORT', service: 'ome' }],
-  },
-  // No OME alias: OvenMediaEngine takes SRT alone in this stack and publishes no RTMP port.
-  {
-    group: 'rtmp_ingest',
-    protocol: 'tcp',
-    base: 10002,
-    maxSlot: MANAGER_SLOT_CAP,
-    portVar: 'SRS_RTMP_PORT',
-    service: 'srs',
   },
 ]);
 

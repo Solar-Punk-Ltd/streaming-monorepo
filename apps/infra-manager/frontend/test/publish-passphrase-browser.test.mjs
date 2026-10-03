@@ -1,14 +1,14 @@
 /**
- * Where a deployment page puts the SRT passphrase for OBS, and the RTMP server
- * and stream key it offers beside the SRT line.
+ * Where a deployment page puts the SRT passphrase for OBS, and that it offers
+ * no RTMP beside the SRT line while RTMP is closed to the outside.
  *
  * OBS reads its Server line with FFmpeg, which ends a value at `&`, turns `+`
  * into a space and never percent-decodes. A passphrase made only of letters,
  * digits and `. _ ~ -` rides on the line. Any other goes in OBS's own
  * passphrase field, with the same words the admin console uses, because a line
- * carrying it would connect with the wrong passphrase or not at all. RTMP has
- * no passphrase, so its server and stream key carry none, the passphrase is on
- * the page in no new place, and the card warns that RTMP is unencrypted.
+ * carrying it would connect with the wrong passphrase or not at all. The
+ * firewall policy keeps RTMP closed on every deployment, so SRT is the one
+ * ingest offered and Copy publish URL copies the SRT line alone.
  *
  * A real headless Chrome over a real Vite, with an offline fixture in place of
  * the manager. Runs through `pnpm --filter @streaming-infra-manager/frontend-prototype test:browser`.
@@ -128,14 +128,9 @@ test('a deployment page puts an SRT passphrase on the line only when the line ca
       `the line carries the passphrase, got ${JSON.stringify(values)}`,
     );
     assert.ok(!text.includes(OBS_FIELD_WORDS), 'nothing asks for the passphrase field');
-    assert.ok(
-      values.includes('rtmp://offline.example:10012/live'),
-      `the RTMP server is offered, got ${JSON.stringify(values)}`,
-    );
-    assert.ok(values.includes('stream'), 'the RTMP stream key is offered');
-    assert.ok(text.includes(RTMP_WARNING_START), 'RTMP comes with its warning');
-    assert.ok(text.includes('Stream Key'), "the stream key is labelled with OBS's box name");
-    assert.ok(!values.some((value) => value.startsWith('rtmp://') && value.includes('passphrase')));
+    assert.ok(!values.some((value) => value.startsWith('rtmp://')), `no RTMP server, got ${JSON.stringify(values)}`);
+    assert.ok(!text.includes(RTMP_WARNING_START), 'no RTMP warning without RTMP');
+    assert.ok(!text.includes('Stream Key'), 'no RTMP stream key box');
     assert.equal(
       occurrences(text, passphrases['plain-stage']),
       1,
@@ -158,10 +153,7 @@ test('a deployment page puts an SRT passphrase on the line only when the line ca
     assert.ok(values.includes('p&ss word#1'), 'the passphrase itself is offered to copy into that field');
     assert.ok(!values.some((value) => value.includes('passphrase=')), 'no line carries a cut passphrase');
     assert.ok(!text.includes('already in the URL'), 'the page does not claim the line carries it');
-    assert.ok(
-      values.includes('rtmp://offline.example:10022/live'),
-      `the RTMP server is offered, got ${JSON.stringify(values)}`,
-    );
+    assert.ok(!values.some((value) => value.startsWith('rtmp://')), `no RTMP server, got ${JSON.stringify(values)}`);
     assert.equal(
       occurrences(text, passphrases['awkward-stage']),
       1,
@@ -205,14 +197,10 @@ test('a deployment page puts an SRT passphrase on the line only when the line ca
         Boolean,
         'the copied plain stage line',
       );
-      // An SRS deployment takes RTMP too, so its server and stream key follow the SRT line.
+      // RTMP is closed to the outside, so the SRT line is all that is copied.
       assert.equal(
         copied,
-        [
-          'SRT: srt://offline.example:10011?streamid=#!::r=live/stream,m=publish&passphrase=plain.pass_word~-1',
-          'RTMP Server: rtmp://offline.example:10012/live',
-          'RTMP Stream Key: stream',
-        ].join('\n'),
+        'srt://offline.example:10011?streamid=#!::r=live/stream,m=publish&passphrase=plain.pass_word~-1',
       );
       assert.equal(await evaluate('location.hash'), hash);
     });

@@ -28,35 +28,6 @@ describe('shared port exposure policy', () => {
     assert.equal(portExposureProblem({ port: 11012, protocol: 'tcp', portVar: 'SRS_RTMP_PORT', service: 'srs' }), null);
   });
 
-  it('opens RTMP ingest over TCP in every slot, as SRT ingest is opened over UDP', () => {
-    for (const slot of [1, 6, 100]) {
-      const port = 10002 + slot * PORT_SLOT_STRIDE;
-      const rtmp = { port, protocol: 'tcp', portVar: 'SRS_RTMP_PORT', service: 'srs' };
-      assert.equal(publicPortRole(rtmp)?.group, 'rtmp_ingest', 'slot ' + slot);
-      assert.equal(portExposureProblem(rtmp), null, 'slot ' + slot);
-    }
-    assert.equal(publicPortRole({ port: 10002, protocol: 'tcp' }), null, 'slot 0 has no band');
-    assert.equal(publicPortRole({ port: 11012, protocol: 'tcp' }), null, 'slot 101 is past the cap');
-  });
-
-  it('lets nothing but SRS hold an RTMP ingest tuple, OvenMediaEngine included', () => {
-    const tuple = { port: 10062, protocol: 'tcp' };
-    assert.match(
-      portExposureProblem({ ...tuple, portVar: 'API_PORT', service: 'stream-uploader' })!,
-      /10062.*public rtmp_ingest/,
-    );
-    // OvenMediaEngine takes SRT alone in this stack, so RTMP has no alias the way SRT has OME_SRT_PORT.
-    assert.match(portExposureProblem({ ...tuple, portVar: 'SRS_RTMP_PORT', service: 'ome' })!, /public rtmp_ingest/);
-  });
-
-  it('opens the RTMP number over TCP only, so the same number over UDP stays private', () => {
-    assert.equal(publicPortRole({ port: 10062, protocol: 'udp' }), null);
-    assert.equal(
-      portExposureProblem({ port: 10062, protocol: 'udp', portVar: 'API_PORT', service: 'stream-uploader' }),
-      null,
-    );
-  });
-
   it('keeps TCP and UDP permissions distinct', () => {
     assert.equal(
       portExposureProblem({ port: 10011, protocol: 'tcp', portVar: 'API_PORT', service: 'stream-uploader' }),

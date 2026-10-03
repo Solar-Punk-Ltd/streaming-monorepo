@@ -78,8 +78,9 @@ as `createXRouter(deps)` factories, manual constructor injection in
 
 > The six `INGEST_*` keys are retired and the admin no longer reads them. Each
 > stream's OBS details come from the record of the stage it is broadcast on, as
-> [stages.md](stages.md) describes, and the record's `rtmpPublic`, which the
-> manager sets on every SRS stage, decides whether RTMP is offered.
+> [stages.md](stages.md) describes, and the record's `rtmpPublic` decides whether
+> RTMP is offered. The manager says it on no stage, because RTMP is closed to
+> the outside on every stage for now.
 
 Startup: `import 'dotenv/config'`, log config with the private key, batch id
 and passphrase redacted, migrate, seed the admin user, listen. SIGTERM and

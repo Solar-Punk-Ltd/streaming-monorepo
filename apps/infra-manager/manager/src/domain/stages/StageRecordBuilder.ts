@@ -106,7 +106,12 @@ function portIsPublic(portVar: string): boolean {
   );
 }
 
-/** Whether broadcasters reach the stage over RTMP. SRS takes it, and OvenMediaEngine takes SRT alone. */
+/**
+ * Whether broadcasters reach the stage over RTMP: only where SRS runs and the
+ * port policy opens its RTMP port. The policy opens none, so this is false on
+ * every stage and SRT is the ingest broadcasters use. OvenMediaEngine takes SRT
+ * alone.
+ */
 function takesPublicRtmp(engine: EngineName): boolean {
   return engine === SRS_SERVICE && portIsPublic(RTMP_PORT_KEY);
 }

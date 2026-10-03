@@ -52,7 +52,7 @@ export const SERVICE_LABEL: Record<string, string> = {
 };
 
 export const SERVICE_DESCRIPTIONS: Record<string, string> = {
-  [SRS_SERVICE]: 'media server (SRT and RTMP ingest)',
+  [SRS_SERVICE]: 'media server (SRT ingest)',
   [OME_SERVICE]: 'media server (OvenMediaEngine)',
   [STREAM_UPLOADER_SERVICE]: 'uploads segments to Swarm',
   [BEE_UPLOADER_SERVICE]: 'own Bee node',

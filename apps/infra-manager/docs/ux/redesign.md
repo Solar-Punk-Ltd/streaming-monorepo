@@ -239,11 +239,12 @@ Main column:
   passphrase source ("Encrypted with this deployment's own passphrase" or "with the host-wide
   passphrase", both already in the URL, or for OME "Its SRT listener takes no passphrase"),
   and a warning note when readiness is not ok: "Ingest is up, but nothing reaches Swarm until
-  the checklist above is complete." On an SRS deployment an RTMP part follows, from
-  `rtmpPublishSettings`: OBS's Server and Stream Key values with Copy, which carry no
-  passphrase because RTMP has none, under the warning the web2 admin's OBS panel gives, that
-  RTMP is unencrypted, what a stream key read off the network lets its reader do, and to use
-  SRT with a passphrase on a network the broadcaster does not trust.
+  the checklist above is complete." No RTMP part follows while the firewall policy keeps
+  RTMP closed to the outside, which it does on every deployment for now, so
+  `rtmpPublishSettings` answers null and Copy publish URL copies the SRT line alone. Where a
+  policy opened it, an SRS deployment would get OBS's Server and Stream Key values with Copy,
+  which carry no passphrase because RTMP has none, under the warning the web2 admin's OBS
+  panel gives.
 - **Watch** card when `clientUrl` is not null: the link with Copy and the streamer it follows.
 - **Storage and funding** card for shapes `stream` and `bee-node`, `id="storage"`: reuse
   `NodeFunding`, `StampTable` (Use sets the stamp through `setStamp`) and `BuyStampForm`
@@ -425,7 +426,7 @@ typography, components })`. Mode switching with `useColorScheme()` from
 - `frontend/src/components/`: `StatusDot`, `ReadinessPill`, `ShapePill`, `ServiceChip`,
   `CopyBox` (value plus Copy), `ConfirmDialog`, `RowMenu`, `EmptyState`, `SegmentedBar`
   (wraps today's `UsageBar` with the two-segment convention), `KeyValueList`.
-- `SERVICE_DESCRIPTIONS`: `srs` "media server (SRT and RTMP ingest)", `ome` "media server
+- `SERVICE_DESCRIPTIONS`: `srs` "media server (SRT ingest)", `ome` "media server
   (OvenMediaEngine)", `stream-uploader` "uploads segments to Swarm", `bee-uploader` "own Bee
   node", `client` "web player", `bee-gateway` "Swarm gateway for the player".
 

@@ -17,8 +17,9 @@ types from [`../common`](../common/).
 | `#/account`              | Change password.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                          |
 
 The OBS panel is built from the stream's stage, as the manager pushed it. It
-offers SRT, and RTMP as well on a stage whose record says `rtmpPublic`, which
-the manager sets on every SRS stage. Beside RTMP it warns that RTMP is not
+offers SRT, and RTMP as well only on a stage whose record says `rtmpPublic`.
+The manager says it on no stage, because RTMP is closed to the outside on
+every stage for now, so the panel offers SRT alone. Beside RTMP it warns that RTMP is not
 encrypted: the stream key crosses the network as readable text, anyone who
 reads it there can publish to the stream with it, and on a stage that lets a
 reconnecting encoder replace one whose connection dropped they can replace a
@@ -72,7 +73,7 @@ honours a few env vars:
 | `MOCK_API_PORT`       | `9877`                   | listen port                                                                                                                                  |
 | `SEED_ADMIN_USERNAME` | `admin`                  | the seeded user                                                                                                                              |
 | `SEED_ADMIN_PASSWORD` | `admin1234`              | its password (changeable through the UI)                                                                                                     |
-| `MOCK_RTMP_PUBLIC`    | `true`                   | set `false` to see the OBS panel of a stage that takes SRT alone, as an OvenMediaEngine one does                                             |
+| `MOCK_RTMP_PUBLIC`    | `false`                  | set `true` to see the OBS panel of a stage whose record opens RTMP, which no stage the manager pushes does today                             |
 | `MOCK_NO_STAGES`      | unset                    | set `true` to start with no stages: the Stages page's empty state, and a stage picker with nothing to pick                                   |
 | `VIEWER_BASE_URL`     | `http://localhost:10074` | drives the "open player catalogue" link. It must be a viewer built for this backend's feed                                                   |
 | `MOCK_NO_USERS`       | unset                    | set `true` to start with no users, the only way to see the console's "no users yet" screen                                                   |

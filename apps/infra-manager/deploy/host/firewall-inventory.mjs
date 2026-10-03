@@ -10,12 +10,9 @@ const tuple = (row) =>
 
 /** Checks the exported snapshot's internal coverage. This does not authenticate a file or query the current host. */
 export function validateInventory(value) {
-  requireEvidence(value && value.schemaVersion === 1, 'unsupported inventory version.');
   requireEvidence(
-    value.policyVersion === PORT_POLICY_VERSION,
-    'this checkout applies port policy ' +
-      PORT_POLICY_VERSION +
-      ' and the export was checked against another. Export again from a manager of the same release as this checkout.',
+    value && value.schemaVersion === 1 && value.policyVersion === PORT_POLICY_VERSION,
+    'unsupported inventory or policy version.',
   );
   requireEvidence(
     text(value.daemonId) &&

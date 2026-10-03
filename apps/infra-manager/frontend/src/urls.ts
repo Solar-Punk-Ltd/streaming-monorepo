@@ -5,10 +5,13 @@ import {
   CLIENT_SERVICE,
   defaultServicesFor,
   OME_SERVICE,
+  PUBLIC_PORT_ROLES,
+  type PublicPortRole,
   SRS_SERVICE,
   type ObsSrtServer,
 } from '@streaming-infra-manager/common';
 
+import { endpointKindOf } from './deployments/endpoints';
 import type { Profile } from './types';
 
 const LOCAL_HOSTS = new Set(['', 'localhost', '0.0.0.0', '127.0.0.1', 'native']);
@@ -53,6 +56,7 @@ const DEFAULT_STREAM = 'stream';
 const SRT_DEFAULT_APP_STREAM = `${DEFAULT_APP}/${DEFAULT_STREAM}`;
 const SRS_SRT_BASE_PORT = 10001;
 const SRS_RTMP_BASE_PORT = 10002;
+const SRS_RTMP_PORT_KEY = 'SRS_RTMP_PORT';
 const OME_SRT_BASE_PORT = 10001;
 const OME_DEFAULT_APP_STREAM = 'video/stream';
 
@@ -116,16 +120,25 @@ export interface RtmpPublishSettings {
 
 /**
  * OBS's RTMP boxes for an SRS deployment, naming the same application and
- * stream as its SRT line. RTMP has no passphrase, so nothing secret is read or
- * carried. OvenMediaEngine takes SRT alone, so it has none.
+ * stream as its SRT line, or null wherever the firewall policy keeps RTMP
+ * closed to the outside. It opens no RTMP band, so today that is every
+ * deployment and SRT is the one ingest offered. RTMP has no passphrase, so
+ * nothing secret is read or carried. OvenMediaEngine takes SRT alone, so it
+ * has none either way.
  */
-export function rtmpPublishSettings(profile: Profile, serverHost: string): RtmpPublishSettings | null {
+export function rtmpPublishSettings(
+  profile: Profile,
+  serverHost: string,
+  publicRoles: readonly PublicPortRole[] = PUBLIC_PORT_ROLES,
+): RtmpPublishSettings | null {
+  if (!endpointKindOf(SRS_RTMP_PORT_KEY, publicRoles).offersAddress) return null;
   const services = defaultServicesFor(profile);
   // OvenMediaEngine first, as srtPublishSettings decides it, so a record left from SRS offers nothing.
   if (profile.containers.some((c) => c.service === OME_SERVICE) || services.includes(OME_SERVICE)) return null;
   const srs = profile.containers.find((c) => c.service === SRS_SERVICE);
   if (!srs && !services.includes(SRS_SERVICE)) return null;
-  const port = srs?.ports.SRS_RTMP_PORT ?? (profile.port_slot > 0 ? SRS_RTMP_BASE_PORT + profile.port_slot * 10 : null);
+  const port =
+    srs?.ports[SRS_RTMP_PORT_KEY] ?? (profile.port_slot > 0 ? SRS_RTMP_BASE_PORT + profile.port_slot * 10 : null);
   if (!port) return null;
   return { server: `rtmp://${hostFor(profile, serverHost)}:${port}/${DEFAULT_APP}`, streamKey: DEFAULT_STREAM };
 }
