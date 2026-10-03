@@ -17,8 +17,13 @@ types from [`../common`](../common/).
 | `#/account`              | Change password.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                          |
 
 The OBS panel is built from the stream's stage, as the manager pushed it. It
-offers SRT only, unless the stage opens RTMP ingest, in which case it also
-shows the RTMP server and stream key. The SRT Server line carries the same per-stream `key=` as that
+offers SRT, and RTMP as well on a stage whose record says `rtmpPublic`, which
+the manager sets on every SRS stage. Beside RTMP it warns that RTMP is not
+encrypted: the stream key crosses the network as readable text, anyone who
+reads it there can publish to the stream with it, and on a stage that lets a
+reconnecting encoder replace one whose connection dropped they can replace a
+live broadcast too, so SRT with a passphrase is the one to use on a network
+the broadcaster does not trust. The SRT Server line carries the same per-stream `key=` as the RTMP
 stream key, and the SRT passphrase wherever OBS can read it there, so the console hides
 those values, and the SRT Password field when there is one, until the operator
 reveals them. The host, port and stream id stay readable, and Copy always

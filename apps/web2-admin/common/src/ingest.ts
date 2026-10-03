@@ -53,10 +53,11 @@ export interface IngestDetails {
   stage: IngestStage | null;
   srt: IngestSrtDetails | null;
   /**
-   * Null unless the stage opens RTMP ingest to encoders on purpose
-   * (`rtmpPublic` on its record). Ingest is SRT only by default: RTMP carries
-   * no passphrase, and the deployments close its port, so an RTMP address
-   * would point the streamer at a port that refuses them.
+   * Null unless the stage's record says `rtmpPublic`. The manager sets it on
+   * every SRS stage and on no OvenMediaEngine one, which takes SRT alone, so
+   * an RTMP address there would point the streamer at a port nothing listens
+   * on. RTMP carries no passphrase, so this stream key crosses the network as
+   * readable text.
    */
   rtmp: IngestRtmpDetails | null;
 }
