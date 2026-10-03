@@ -604,6 +604,24 @@ describe('ScheduleField', () => {
     expect(timeField()).toHaveValue('18:30');
   });
 
+  it.each([
+    ['with the menu still open', () => undefined],
+    ['after the mouse crossed the menu', () => fireEvent.mouseMove(screen.getByRole('option', { name: '20:00' }))],
+    ['after Escape closed the menu', () => fireEvent.keyDown(timeField(), { key: 'Escape' })],
+  ])('shows the stored time again when the emptied box is left %s', (_how, beforeLeaving) => {
+    // Leaving an empty box chooses nothing, so the form keeps its time, and
+    // the caption reads that time back. The box has to say it too.
+    renderField({ initial: '2026-09-14T18:30' });
+
+    fireEvent.focus(timeField());
+    typeTime('');
+    beforeLeaving();
+    fireEvent.blur(timeField());
+
+    expect(screen.getByText('14/09/2026 18:30 · in 4 hours')).toBeInTheDocument();
+    expect(timeField()).toHaveValue('18:30');
+  });
+
   it('keeps an off-grid time it was given, in the field and in the menu', () => {
     renderField({ initial: '2026-09-14T18:07' });
 

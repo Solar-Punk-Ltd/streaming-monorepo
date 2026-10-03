@@ -139,6 +139,11 @@ export function ScheduleField({ value, onChange, error = false, disabled = false
           onChange={(_event, next) => handleTime(next)}
           disabled={disabled}
           disableClearable
+          // An emptied box left without a choice, after Escape or with the
+          // mouse resting on the menu, would show nothing while the form keeps
+          // its time. This puts the stored time's text back on blur. Typed
+          // text is still committed first, by autoSelect.
+          clearOnBlur
           autoHighlight
           openOnFocus
           autoSelect
