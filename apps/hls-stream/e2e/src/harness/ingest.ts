@@ -6,7 +6,7 @@
  * under `pnpm test`, which no suite under `suites/` is.
  */
 
-import { segmentUploadedPattern } from '@swarm-hls-stream/shared';
+import { encoderReturnedPattern, segmentUploadedPattern } from '@swarm-hls-stream/shared';
 
 import type { E2EConfig } from '../config.js';
 
@@ -30,6 +30,25 @@ export function streamsPerBroadcast(cfg: E2EConfig): number {
 export function everyStreamDelivered(logText: string, streams: number, perStream: number): boolean {
   const delivered = [...segmentIndicesByStream(logText).values()].filter((indices) => indices.length >= perStream);
   return delivered.length >= streams;
+}
+
+/**
+ * Whether each of `streams` streams placed its seam for a return and then uploaded `perStream` segments after the last
+ * seam, which are the returning publisher's.
+ *
+ * Uploads after the return alone would not show it. An upload line is written when Swarm has the segment, so the old
+ * connection's last segments can still be uploading seconds after the new connection started. The uploader places
+ * every one of them before the seam, so nothing after the last seam can be theirs.
+ *
+ * @param sinceDrop the log from the moment the encoder dropped, so no earlier return's seam is in it
+ */
+export function deliveredAfterReturn(sinceDrop: string, streams: number, perStream: number): boolean {
+  const seams = [...sinceDrop.matchAll(encoderReturnedPattern('g'))];
+  const last = seams.at(-1);
+  if (last === undefined || seams.length < streams) {
+    return false;
+  }
+  return everyStreamDelivered(sinceDrop.slice(last.index + last[0].length), streams, perStream);
 }
 
 /** How many of a publisher's last stderr lines a refusal quotes. */
@@ -95,15 +114,33 @@ export function continuationRefusal(
 }
 
 /**
- * Seconds from `sinceIso` to the first segment upload in `logText`, or null when there is none.
+ * Seconds from `sinceIso` to the first line in `logText` that `pattern` matches, or null when there is none.
  *
  * Both instants are the deployment host's clock: `sinceIso` comes from `Host.nowIso` and the line's stamp from the
  * uploader's own log, so no clock skew between this machine and the host enters it. `nowIso` has a resolution of a
  * second, so this is a reading to the second and is printed as an observation, never asserted.
  */
-export function secondsToFirstSegment(logText: string, sinceIso: string): number | null {
-  const first = timestampedMessages(logText).find((line) => segmentUploadedPattern().test(line.message));
+function secondsToFirst(logText: string, sinceIso: string, pattern: RegExp): number | null {
+  const first = timestampedMessages(logText).find((line) => pattern.test(line.message));
   return first === undefined ? null : (first.atMs - Date.parse(sinceIso)) / 1_000;
+}
+
+/** Seconds from `sinceIso` to the first segment upload in `logText`. See {@link secondsToFirst}. */
+export function secondsToFirstSegment(logText: string, sinceIso: string): number | null {
+  return secondsToFirst(logText, sinceIso, segmentUploadedPattern());
+}
+
+/**
+ * Seconds from `sinceIso` to the first seam a return placed in `logText`, which is the returning publisher's first
+ * segment reaching the playlist. See {@link secondsToFirst}.
+ */
+export function secondsToFirstSeam(logText: string, sinceIso: string): number | null {
+  return secondsToFirst(logText, sinceIso, encoderReturnedPattern());
+}
+
+/** A reading of {@link secondsToFirst} as an observation prints it. */
+export function secondsReading(seconds: number | null): string {
+  return seconds === null ? 'no reading' : `${seconds.toFixed(0)}s, read to the second`;
 }
 
 /** Prints what a suite measured, under the heading every e2e suite files its unasserted readings under. */

@@ -7,6 +7,7 @@ import {
   everyStreamDelivered,
   printObservations,
   requirePublishing,
+  secondsReading,
   secondsToFirstSegment,
   streamsPerBroadcast,
 } from '../../src/harness/ingest.js';
@@ -131,8 +132,7 @@ describe(
 
       const firstAfterS = secondsToFirstSegment(text, startedAt);
       printObservations('rtmp-publish', [
-        `the first segment was uploaded ${firstAfterS === null ? 'at no reading' : `${firstAfterS.toFixed(0)}s`} ` +
-          'after the RTMP publisher started, to the second',
+        `from the RTMP publisher's start to its first segment uploaded: ${secondsReading(firstAfterS)}`,
       ]);
     });
 

@@ -6,13 +6,16 @@ import { SRS_OLD_CONNECTION_LEFT_AFTER_A_NEWER } from '../../src/harness/engine.
 import { makeHost, waitForIdle } from '../../src/harness/host.js';
 import {
   continuationRefusal,
+  deliveredAfterReturn,
   everyStreamDelivered,
   printObservations,
   publisherEnding,
   requirePublishing,
+  secondsReading,
+  secondsToFirstSeam,
   streamsPerBroadcast,
 } from '../../src/harness/ingest.js';
-import { announcedSessionTopics, encoderReturnCount } from '../../src/harness/logwatch.js';
+import { announcedSessionTopics } from '../../src/harness/logwatch.js';
 import { type Publisher, startPublisher } from '../../src/harness/publisher.js';
 import { readStageTakeovers } from '../../src/harness/stage.js';
 import { requireStageStamps } from '../../src/harness/stageStamps.js';
@@ -39,11 +42,14 @@ import { type TakeoverUnusable, takeoverUnusable } from '../../src/stageTakeover
  */
 
 const WARMUP_SEGMENTS = 3;
-/** More than the one segment the old connection may still flush, so at least two are the new connection's. */
+/**
+ * Segments each stream uploads after its seam, every one of them the new publisher's, so the new publisher is shown
+ * carrying the broadcast rather than landing a single segment.
+ */
 const RESUMED_SEGMENTS = 3;
 const SEGMENT_WAIT_MS = 180_000;
 const PUSHED_OFF_WAIT_MS = 60_000;
-const SEAM_WAIT_MS = 120_000;
+const TAKEOVER_ORDER_WAIT_MS = 120_000;
 const MIN_STAMP_TTL_S = 600;
 
 const cfg = loadConfig();
@@ -119,27 +125,22 @@ function describeSwitch(from: IngestProtocol, to: IngestProtocol): void {
         await waitFor(
           async () => {
             requirePublishing(replacement, `the ${toLabel} publisher that took the stream over`);
-            return everyStreamDelivered(await host.logsSince(uploader, switchedAt), streams, RESUMED_SEGMENTS);
+            return deliveredAfterReturn(await host.logsSince(uploader, switchedAt), streams, RESUMED_SEGMENTS);
           },
           {
             timeoutMs: SEGMENT_WAIT_MS,
             intervalMs: 2_000,
-            label: `each of ${streams} stream(s) uploads from the ${toLabel} publisher`,
+            label: `each of ${streams} stream(s) places its seam and uploads ${RESUMED_SEGMENTS} segments over ${toLabel}`,
           },
         );
         await waitFor(
           async () => SRS_OLD_CONNECTION_LEFT_AFTER_A_NEWER.test(await host.logsSince(uploader, switchedAt)),
           {
-            timeoutMs: SEAM_WAIT_MS,
+            timeoutMs: TAKEOVER_ORDER_WAIT_MS,
             intervalMs: 2_000,
             label: `the ${fromLabel} connection leaves after the ${toLabel} one was accepted, the order a takeover makes`,
           },
         );
-        await waitFor(async () => encoderReturnCount(await host.logsSince(uploader, switchedAt)) >= streams, {
-          timeoutMs: SEAM_WAIT_MS,
-          intervalMs: 2_000,
-          label: `each of ${streams} stream(s) places one seam for the switch`,
-        });
 
         const refusal = continuationRefusal(
           await log(),
@@ -149,9 +150,11 @@ function describeSwitch(from: IngestProtocol, to: IngestProtocol): void {
         );
         assert.equal(refusal, null, refusal ?? '');
 
+        const firstAfterS = secondsToFirstSeam(await host.logsSince(uploader, switchedAt), switchedAt);
         printObservations(`protocol-switch, ${fromLabel} to ${toLabel}`, [
           `the ${fromLabel} publisher ended ${pushedOffAfterS.toFixed(0)}s after the ${toLabel} one started, read ` +
             `once a second, and ${publisherEnding(old)}`,
+          `from the ${toLabel} publisher's start to its first segment in the playlist: ${secondsReading(firstAfterS)}`,
         ]);
       });
     },

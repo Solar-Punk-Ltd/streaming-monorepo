@@ -6,12 +6,14 @@ import { getEngine, rungStreamsIn, SRS_RUNG_PUBLISHED, SRS_RUNG_UNPUBLISHED } fr
 import { makeHost, waitForIdle } from '../../src/harness/host.js';
 import {
   continuationRefusal,
+  deliveredAfterReturn,
   everyStreamDelivered,
   printObservations,
   requirePublishing,
-  secondsToFirstSegment,
+  secondsReading,
+  secondsToFirstSeam,
 } from '../../src/harness/ingest.js';
-import { announcedSessionTopics, encoderReturnCount } from '../../src/harness/logwatch.js';
+import { announcedSessionTopics } from '../../src/harness/logwatch.js';
 import { type Publisher, startPublisher } from '../../src/harness/publisher.js';
 import { requireStageStamps } from '../../src/harness/stageStamps.js';
 import { sleep, waitFor } from '../../src/harness/wait.js';
@@ -37,11 +39,13 @@ import { INGEST_RTMP, unsupportedIngestReason } from '../../src/ingestProtocol.j
  */
 
 const WARMUP_SEGMENTS = 3;
-/** More than the one segment a rung may close as the source drops, so at least two are the return's. */
+/**
+ * Segments each rung uploads after its seam, every one of them made from the returned source, so the held encoders
+ * are shown carrying the broadcast rather than landing a single segment.
+ */
 const RESUMED_SEGMENTS = 3;
 const SEGMENT_WAIT_MS = 180_000;
 const DISCONNECT_WAIT_MS = 60_000;
-const SEAM_WAIT_MS = 120_000;
 /** When the broadcaster comes back: well inside the 12 second default hold. A scenario input and not a reading. */
 const RETURN_AFTER_DROP_MS = 2_000;
 /** The hold plus SRS's 3 second check, the encoders' own stop and the rung hooks, with room. */
@@ -122,19 +126,14 @@ describe('ingest: a ladder keeps its encoders through a short drop of its RTMP s
     await waitFor(
       async () => {
         requirePublishing(second, 'the returning RTMP source publisher');
-        return everyStreamDelivered(await host.logsSince(uploader, returnedAt), rungs, RESUMED_SEGMENTS);
+        return deliveredAfterReturn(await host.logsSince(uploader, droppedAt), rungs, RESUMED_SEGMENTS);
       },
       {
         timeoutMs: SEGMENT_WAIT_MS,
         intervalMs: 2_000,
-        label: `each of ${rungs} rungs uploads again after the source came back`,
+        label: `each of ${rungs} rungs places its seam and uploads ${RESUMED_SEGMENTS} segments after it`,
       },
     );
-    await waitFor(async () => encoderReturnCount(await host.logsSince(uploader, droppedAt)) >= rungs, {
-      timeoutMs: SEAM_WAIT_MS,
-      intervalMs: 2_000,
-      label: `each of ${rungs} rungs places the seam for the source's return`,
-    });
 
     const sinceDrop = await host.logsSince(uploader, droppedAt);
     assert.deepEqual(
@@ -150,9 +149,9 @@ describe('ingest: a ladder keeps its encoders through a short drop of its RTMP s
     const refusal = continuationRefusal(await log(), sinceDrop, topicsBefore, rungs);
     assert.equal(refusal, null, refusal ?? '');
 
-    const backAfterS = secondsToFirstSegment(await host.logsSince(uploader, returnedAt), returnedAt);
+    const backAfterS = secondsToFirstSeam(await host.logsSince(uploader, returnedAt), returnedAt);
     printObservations('rtmp-ladder-hold', [
-      `the first rung segment after the source came back was uploaded ${backAfterS === null ? 'at no reading' : `${backAfterS.toFixed(0)}s`} after it, to the second`,
+      `from the source's return to the first rung segment in a playlist: ${secondsReading(backAfterS)}`,
     ]);
   });
 

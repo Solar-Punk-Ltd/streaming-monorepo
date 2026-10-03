@@ -6,13 +6,15 @@ import { getEngine, SRS_OLD_CONNECTION_LEFT_AFTER_A_NEWER } from '../../src/harn
 import { makeHost, waitForIdle } from '../../src/harness/host.js';
 import {
   continuationRefusal,
+  deliveredAfterReturn,
   everyStreamDelivered,
   printObservations,
   requirePublishing,
-  secondsToFirstSegment,
+  secondsReading,
+  secondsToFirstSeam,
   streamsPerBroadcast,
 } from '../../src/harness/ingest.js';
-import { announcedSessionTopics, encoderReturnCount } from '../../src/harness/logwatch.js';
+import { announcedSessionTopics } from '../../src/harness/logwatch.js';
 import { type Publisher, startPublisher } from '../../src/harness/publisher.js';
 import { readStageTakeovers } from '../../src/harness/stage.js';
 import { requireStageStamps } from '../../src/harness/stageStamps.js';
@@ -39,11 +41,14 @@ import { type TakeoverUnusable, takeoverUnusable } from '../../src/stageTakeover
  */
 
 const WARMUP_SEGMENTS = 3;
-/** More than the one segment the old connection may still flush, so at least two are the new connection's. */
+/**
+ * Segments each stream uploads after its seam, every one of them the reconnect's, so the reconnect is shown carrying
+ * the broadcast rather than landing a single segment.
+ */
 const RESUMED_SEGMENTS = 3;
 const SEGMENT_WAIT_MS = 180_000;
 const DISCONNECT_WAIT_MS = 60_000;
-const SEAM_WAIT_MS = 120_000;
+const TAKEOVER_ORDER_WAIT_MS = 120_000;
 /** When the broadcaster comes back after a clean drop: well inside the uploader's 60 second reconnect window. */
 const RETURN_AFTER_CLEAN_DROP_MS = 3_000;
 /**
@@ -114,19 +119,14 @@ describe(
       await waitFor(
         async () => {
           requirePublishing(second, 'the reconnecting RTMP publisher');
-          return everyStreamDelivered(await host.logsSince(uploader, returnedAt), streams, RESUMED_SEGMENTS);
+          return deliveredAfterReturn(await host.logsSince(uploader, droppedAt), streams, RESUMED_SEGMENTS);
         },
         {
           timeoutMs: SEGMENT_WAIT_MS,
           intervalMs: 2_000,
-          label: `each of ${streams} stream(s) uploads again after the reconnect`,
+          label: `each of ${streams} stream(s) places its seam and uploads ${RESUMED_SEGMENTS} segments after it`,
         },
       );
-      await waitFor(async () => encoderReturnCount(await host.logsSince(uploader, droppedAt)) >= streams, {
-        timeoutMs: SEAM_WAIT_MS,
-        intervalMs: 2_000,
-        label: `each of ${streams} stream(s) places the seam for the encoder's return`,
-      });
 
       const refusal = continuationRefusal(
         await log(),
@@ -136,9 +136,9 @@ describe(
       );
       assert.equal(refusal, null, refusal ?? '');
 
-      const backAfterS = secondsToFirstSegment(await host.logsSince(uploader, returnedAt), returnedAt);
+      const backAfterS = secondsToFirstSeam(await host.logsSince(uploader, returnedAt), returnedAt);
       printObservations('rtmp-reconnect, clean drop', [
-        `the first segment after the reconnect was uploaded ${backAfterS === null ? 'at no reading' : `${backAfterS.toFixed(0)}s`} after it, to the second`,
+        `from the reconnect to its first segment in the playlist: ${secondsReading(backAfterS)}`,
       ]);
     });
   },
@@ -204,28 +204,22 @@ describe(
       const returning = startPublisher(cfg, { protocol: INGEST_RTMP });
       publishers.push(returning);
 
-      // The silent publisher sends nothing from the freeze on, so media after the reconnect is the reconnect's, and a
-      // reconnect SRS refused as busy ends its own publisher, which stops this wait with what it said.
+      // A reconnect SRS refused as busy ends its own publisher, which stops this wait with what it said.
       await waitFor(
         async () => {
           requirePublishing(returning, 'the reconnecting RTMP publisher, refused while SRS still held the silent one,');
-          return everyStreamDelivered(await host.logsSince(uploader, returnedAt), streams, RESUMED_SEGMENTS);
+          return deliveredAfterReturn(await host.logsSince(uploader, droppedAt), streams, RESUMED_SEGMENTS);
         },
         {
           timeoutMs: SEGMENT_WAIT_MS,
           intervalMs: 2_000,
-          label: `each of ${streams} stream(s) uploads from the reconnect`,
+          label: `each of ${streams} stream(s) places its seam and uploads ${RESUMED_SEGMENTS} segments from the reconnect`,
         },
       );
       await waitFor(async () => SRS_OLD_CONNECTION_LEFT_AFTER_A_NEWER.test(await host.logsSince(uploader, droppedAt)), {
-        timeoutMs: SEAM_WAIT_MS,
+        timeoutMs: TAKEOVER_ORDER_WAIT_MS,
         intervalMs: 2_000,
         label: 'the silent connection leaves after the reconnect was accepted, which is the order a takeover makes',
-      });
-      await waitFor(async () => encoderReturnCount(await host.logsSince(uploader, droppedAt)) >= streams, {
-        timeoutMs: SEAM_WAIT_MS,
-        intervalMs: 2_000,
-        label: `each of ${streams} stream(s) places the seam for the encoder's return`,
       });
 
       const refusal = continuationRefusal(
@@ -237,9 +231,9 @@ describe(
       assert.equal(refusal, null, refusal ?? '');
       assert.equal(returning.exit(), null, 'the reconnect is still the stream’s publisher');
 
-      const backAfterS = secondsToFirstSegment(await host.logsSince(uploader, returnedAt), returnedAt);
+      const backAfterS = secondsToFirstSeam(await host.logsSince(uploader, returnedAt), returnedAt);
       printObservations('rtmp-reconnect, unclean drop', [
-        `the first segment after the reconnect was uploaded ${backAfterS === null ? 'at no reading' : `${backAfterS.toFixed(0)}s`} after it, to the second`,
+        `from the reconnect to its first segment in the playlist: ${secondsReading(backAfterS)}`,
       ]);
     });
   },

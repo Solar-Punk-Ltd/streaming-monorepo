@@ -11,9 +11,12 @@ import { describe, it } from 'node:test';
 
 import {
   continuationRefusal,
+  deliveredAfterReturn,
   everyStreamDelivered,
   publisherEnding,
   requirePublishing,
+  secondsReading,
+  secondsToFirstSeam,
   secondsToFirstSegment,
 } from '../src/harness/ingest.js';
 import { StopWaiting } from '../src/harness/wait.js';
@@ -63,6 +66,44 @@ describe('whether every stream of a broadcast has delivered', () => {
   });
 });
 
+/**
+ * The old connection's last segments can still be uploading after the new connection started, so a reconnect suite
+ * reads the returning publisher's media from the last seam on, which the uploader places after every one of them.
+ */
+describe('whether the returning publisher has delivered', () => {
+  it('counts nothing uploaded before the seam, however much of it arrives after the reconnect started', () => {
+    const backlogThenSeam = log(
+      UPLOADED('live/stream', 7),
+      UPLOADED('live/stream', 8),
+      UPLOADED('live/stream', 9),
+      RETURNED(10),
+    );
+
+    assert.equal(deliveredAfterReturn(backlogThenSeam, 1, 2), false);
+  });
+
+  it('counts what each stream uploaded after the last seam', () => {
+    const returned = log(
+      UPLOADED('live/stream_360p', 7),
+      RETURNED(8),
+      UPLOADED('live/stream_360p', 8),
+      RETURNED(8),
+      UPLOADED('live/stream_720p', 8),
+      UPLOADED('live/stream_360p', 9),
+      UPLOADED('live/stream_720p', 9),
+    );
+
+    assert.equal(deliveredAfterReturn(returned, 2, 2), false, 'the 360p upload before the last seam is not counted');
+    assert.equal(deliveredAfterReturn(returned, 2, 1), true);
+  });
+
+  it('waits for every stream’s seam before counting anything', () => {
+    const oneOfTwo = log(RETURNED(8), UPLOADED('live/stream_360p', 8), UPLOADED('live/stream_720p', 8));
+
+    assert.equal(deliveredAfterReturn(oneOfTwo, 2, 1), false);
+  });
+});
+
 describe('how long the first segment took, read off the host’s own clock', () => {
   const stamped = (iso: string, message: string) => `[${iso}] [LOG] - ${message}`;
 
@@ -76,11 +117,25 @@ describe('how long the first segment took, read off the host’s own clock', () 
     assert.equal(secondsToFirstSegment(text, '2026-10-03T09:14:05Z'), 4.25);
   });
 
+  it('reads a return from its first seam rather than from the old connection’s late uploads', () => {
+    const text = [
+      stamped('2026-10-03T09:14:06.000Z', UPLOADED('live/stream', 7)),
+      stamped('2026-10-03T09:14:08.500Z', RETURNED(8)),
+    ].join('\n');
+
+    assert.equal(secondsToFirstSeam(text, '2026-10-03T09:14:05Z'), 3.5);
+  });
+
   it('has no reading when nothing was uploaded', () => {
     assert.equal(
       secondsToFirstSegment(stamped('2026-10-03T09:14:07.500Z', 'Some other line'), '2026-10-03T09:14:05Z'),
       null,
     );
+  });
+
+  it('prints a reading to the second, and says so when there is none', () => {
+    assert.equal(secondsReading(4.25), '4s, read to the second');
+    assert.equal(secondsReading(null), 'no reading');
   });
 });
 
