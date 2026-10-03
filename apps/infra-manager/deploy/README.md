@@ -517,32 +517,36 @@ Both new allocation and the generator use a maximum of 100 slots. Allocation
 also honors a lower stack limit. Existing deployments keep their slots and
 reservations.
 
-Five public bands are opened, one per role: the SRT ingest on UDP, the RTMP
-ingest on TCP, the viewer page, and the two Bee peer ports. Each covers 100
-slots. The three per-rung Bee peer ports were bands here until 2026-09-16 and
-are not any more, because this manager starts no rung service, so 297 ports
-that never carried a listener are now closed like any other private port. The
-slot algebra still reserves them, which costs nothing and keeps the numbering
-free for a version that does run them.
+Four public bands are opened, one per role: the SRT ingest on UDP, the viewer
+page, and the two Bee peer ports. Each covers 100 slots. The three per-rung Bee
+peer ports were bands here until 2026-09-16 and are not any more, because this
+manager starts no rung service, so 297 ports that never carried a listener are
+now closed like any other private port. The slot algebra still reserves them,
+which costs nothing and keeps the numbering free for a version that does run
+them.
 
-RTMP ingest, `10002 + 10 × slot` over TCP, is plain RTMP and is not
-encrypted. A broadcaster's stream key crosses the network as readable text,
-and anyone who reads it there can publish to that stream with it. Wherever
-keys are checked the stack lets a new RTMP publisher take over a live stream,
-so they can also replace a live broadcast, whichever protocol it came in over.
-While RTMP is open, the SRT passphrase keeps the picture private but not the
-key: SRT sends its stream id, key included, before encryption starts, so a key
-read off either protocol publishes over RTMP.
+**RTMP stays closed.** RTMP is closed to the outside on every stage for now,
+and SRT is the ingest broadcasters use. No band opens `10002 + 10 × slot`, so
+the draft drops it like any other private port, stage records say
+`rtmpPublic: false`, and neither the manager nor the web2 admin offers RTMP to
+a broadcaster. SRS keeps its RTMP listener, because the ABR ladder republishes
+every rung to it over loopback. Upgrading a manager needs no new firewall draft
+for this: the port policy is still version 1.
 
-**Upgrading to RTMP ingest.** The RTMP band came with version 2 of the port
-policy. A draft applied before it keeps every slot's RTMP port closed, while
-the upgraded manager tells the web2 admin to offer RTMP for every SRS stage,
-so a broadcaster who picks RTMP is turned away until the host's table is
-replaced. Export the inventory again from the upgraded manager, generate a
-draft from a checkout of the same release, review it, and apply it. The
-generator refuses an export checked against another policy version and says
-which one it applies, so a manager and a checkout of different releases
-cannot draft together.
+Opening RTMP on a stage later needs three things first, and none of them is a
+firewall change alone. The stage must run a stack whose SRS allows play from
+loopback only, on image `6.0-r2-swarm.3`. RTMP needs a key of its own,
+separate from the key the SRT line carries. And the manager needs a per-stage
+switch that opens RTMP on that stage alone.
+
+RTMP is plain RTMP and is not encrypted. Wherever it is open, a broadcaster's
+stream key crosses the network as readable text, and anyone who reads it
+there can publish to that stream with it. Wherever keys are checked the stack
+lets a new RTMP publisher take over a live stream, so they can also replace a
+live broadcast, whichever protocol it came in over. While RTMP is open, the SRT
+passphrase keeps the picture private but not the key: SRT sends its stream id,
+key included, before encryption starts, so a key read off either protocol
+publishes over RTMP.
 
 A Bee host whose rungs serve uploaders on other hosts needs one more door, and
 it is opened only on request. `--bee-api-source <address>/32`, repeated once

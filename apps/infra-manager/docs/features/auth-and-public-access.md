@@ -353,17 +353,20 @@ moved and are marked where they do.
    current wording, and a port the deployment page calls public has to be one of those four bands,
    which a test holds.
 
-   **RTMP ingest opened since.** The step above lists RTMP (2) among the ports that fall to the
-   drop policy. The policy now has an RTMP ingest band, TCP on the ports ending in 2, for 100 slots,
-   so five bands stay open: SRT ingest on UDP, RTMP ingest on TCP, the viewer page and the two Bee
-   peer ports, and a port the deployment page calls public has to be one of those five. RTMP is
-   plain RTMP and not encrypted. A broadcaster's stream key crosses the network as readable text,
-   anyone who reads it there can publish to that stream with it, and wherever keys are checked the
-   stack lets a new RTMP publisher take over a live stream, so they can replace a live broadcast
-   too, whichever protocol it came in over. While RTMP is open the SRT passphrase keeps the picture
-   private but not the key, because SRT sends the key before encryption starts. A draft
-   applied before the band opened keeps RTMP closed until the host's table is replaced, and
-   `deploy/README.md` step 3 says how.
+   **RTMP stays closed (2026-10-03).** The step above lists RTMP (2) among the ports that fall to
+   the drop policy, and that still holds. RTMP is closed to the outside on every stage for now, and
+   SRT is the ingest broadcasters use. The policy has no RTMP band, so the four bands above are the
+   whole of what opens, stage records say `rtmpPublic: false`, and neither the manager nor the web2
+   admin offers RTMP. SRS keeps its RTMP listener because the ABR ladder republishes every rung to
+   it over loopback. Opening RTMP on a stage later is not a firewall change alone: the stage must
+   first run a stack whose SRS allows play from loopback only, on image `6.0-r2-swarm.3`, RTMP
+   needs a key of its own, separate from the SRT one, and the manager needs a per-stage switch.
+   RTMP is plain RTMP and not encrypted. Wherever it is open, a broadcaster's stream key crosses
+   the network as readable text, anyone who reads it there can publish to that stream with it, and
+   wherever keys are checked the stack lets a new RTMP publisher take over a live stream, so they
+   can replace a live broadcast too, whichever protocol it came in over. While RTMP is open the SRT
+   passphrase keeps the picture private but not the key, because SRT sends the key before
+   encryption starts.
 
 4. Point a DNS A record at the host, set `MANAGER_DOMAIN` in `manager/.env`, deploy PR 2.
    `deploy.sh` reads that name, adds `--profile public` so the edge starts, and says which of the
