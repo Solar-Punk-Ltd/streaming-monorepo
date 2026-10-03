@@ -100,13 +100,13 @@ services:
       # Empty on purpose: the entrypoint defaults it to the resolved SRS_RTMP_PORT, the RTMP listener
       # the transcode republish dials. Pinning a fixed port here would re-break the ladder under --portSlot.
       ABR_RTMP_PORT: ${ABR_RTMP_PORT:-}
-    # Asks whether a broadcaster could reach this engine, not whether the process is alive. See
-    # OBS-20 and the reasoning in `healthcheck.sh`: SRS ran 44 minutes with a dead SRT listener while
-    # every signal the deployment had said it was fine.
+    # Asks whether a broadcaster could reach this engine over SRT and over RTMP, not whether the process
+    # is alive. See OBS-20 and the reasoning in `healthcheck.sh`: SRS ran 44 minutes with a dead SRT
+    # listener while every signal the deployment had said it was fine.
     #
     # `start_period` covers the entrypoint templating the config and SRS binding, which is under a
-    # second in practice. `retries: 2` because a UDP listener does not come and go: either the socket
-    # is held or it is not, and a check that needs three tries to believe that is delaying the answer
+    # second in practice. `retries: 2` because a listener does not come and go: either the socket is
+    # held or it is not, and a check that needs three tries to believe that is delaying the answer
     # rather than avoiding a false one.
     healthcheck:
       test: ['CMD', 'bash', '/usr/local/srs/conf/healthcheck.sh']

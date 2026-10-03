@@ -440,8 +440,8 @@ services:
       - ../engines/srs/healthcheck.sh:/usr/local/srs/conf/healthcheck.sh:ro
       - srs-media:/usr/local/srs/objs/nginx/html
     entrypoint: ['/bin/bash', '/usr/local/srs/conf/entrypoint.sh']
-    # Asks whether a broadcaster could reach this engine, not whether the process is alive. See
-    # OBS-20 and the reasoning in `engines/srs/healthcheck.sh`.
+    # Asks whether a broadcaster could reach this engine over SRT and over RTMP, not whether the
+    # process is alive. See OBS-20 and the reasoning in `engines/srs/healthcheck.sh`.
     healthcheck:
       test: ['CMD', 'bash', '/usr/local/srs/conf/healthcheck.sh']
       interval: 15s
