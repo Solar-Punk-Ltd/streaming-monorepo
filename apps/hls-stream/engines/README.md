@@ -99,6 +99,12 @@ other.
 | SRT           | `takeover` in the `srt` section     | `SRT_TAKEOVER`  | `6.0-r2-swarm.2`         |
 | RTMP          | `takeover` in the `publish` section | `RTMP_TAKEOVER` | `6.0-r2-swarm.3`         |
 
+`6.0-r2-swarm.3` also ends the RTMP publisher's periodic statistics line, the `<- CPB time=...` line SRS prints for
+each RTMP publisher about every ten seconds, with `, vhost=<vhost>`. That is the vhost SRS resolved for the publisher,
+not the host it dialled, so a broadcaster that dialled a host no vhost names is logged as `__defaultVhost__`, and a
+ladder rung as the ABR vhost. Older images end the line at `pnt=`. The manager reads RTMP ingest health from this
+line, so on an older image it shows RTMP as not measured.
+
 The fork leaves both off by default, because with no `on_publish` hook every publisher is accepted and could replace a
 live one. The stack turns both on by itself wherever the uploader refuses a wrong publish key, which is when
 `PUBLISH_KEY_SECRET` or admin mode (`ADMIN_API_URL`) is configured, and leaves them off otherwise, because the uploader
