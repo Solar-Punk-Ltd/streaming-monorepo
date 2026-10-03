@@ -200,6 +200,32 @@ resent roughly equal to dropped means the resends are arriving but after the win
 window. ⛔ Grep for that line rather than reading the log whole: SRS writes its webhook URL,
 secret token included, into every hook line, and each broadcaster's publish key into every connect.
 
+### RTMP: the second way in, and what it leaves open
+
+SRS takes a broadcast over RTMP as well as over SRT, on `SRS_RTMP_PORT`, which is TCP, 1935 with no
+slot and `10002 + 10 * slot` with one. The uploader treats the two alike: one publish key per
+stream, one reconnect window, one ladder. A broadcaster gets two OBS fields for it, Server
+`rtmp://<host>:<port>/<app>` and Stream Key `<stream>?key=<key>`. ffmpeg takes the two joined into
+one URL, `rtmp://<host>:<port>/<app>/<stream>?key=<key>`, sent with `-f flv`.
+
+The SRT section above does not apply to RTMP. TCP resends a lost packet until it arrives, so a lossy
+or slow uplink shows as a stream that falls behind, or as frames the encoder drops before sending,
+rather than as holes in the picture, and there is no latency window to set.
+
+⛔ **RTMP is not encrypted.** The stream key crosses the network readable, and RTMP has no
+passphrase as SRT has. Anyone who reads a key off the network can publish to that stream, and while
+the takeover is on, which it is wherever keys are checked, they can also take a live broadcast over.
+SRT with a passphrase stays the ingest to recommend on a network the broadcaster does not trust: its
+picture is encrypted, and a publisher without the passphrase is refused. SRT does not hide the key
+itself, though, because it sends its stream id before encryption starts, so while the RTMP port is
+open a key read off an SRT connection works on RTMP too. There is no RTMPS: SRS 6 has no TLS on its
+RTMP listener, and offering it would take a TLS terminator in front.
+
+The RTMP listener also carries the ladder's rung republishes, which SRS's own encoders send back to
+it over loopback, so the engine's health check proves it beside the SRT one. A reconnecting RTMP
+broadcaster takes its stream over from a connection SRS still holds, as an SRT one does: see the
+takeover in [engines/README.md](../engines/README.md).
+
 ## Scripts
 
 ### deploy.sh
@@ -418,15 +444,15 @@ Safe to run: skips bee node init if already initialized, `docker compose up` is 
 ## Architecture
 
 ```
-OBS/FFmpeg ──SRT──> SRS (port 10080)
-                      |
-                      +-- writes .ts segments to shared volume (srs-media)
-                      +-- sends webhooks to stream-uploader
-                            |
-                            +-- on_publish   -> start stream session
-                            +-- on_hls      -> read segment, upload to Swarm
-                            +-- on_unpublish -> note a disconnect, the recording ends as a VOD if
-                                                no media returns within ORPHAN_REAP_MS (60s by default)
+OBS/FFmpeg ──SRT or RTMP──> SRS (SRT on port 10080/udp, RTMP on port 1935/tcp)
+                              |
+                              +-- writes .ts segments to shared volume (srs-media)
+                              +-- sends webhooks to stream-uploader
+                                    |
+                                    +-- on_publish   -> start stream session
+                                    +-- on_hls      -> read segment, upload to Swarm
+                                    +-- on_unpublish -> note a disconnect, the recording ends as a VOD if
+                                                        no media returns within ORPHAN_REAP_MS (60s by default)
 ```
 
 ## Services

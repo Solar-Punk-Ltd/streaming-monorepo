@@ -867,6 +867,20 @@ The key travels as a `key` query parameter, which was measured on `ossrs/srs:6` 
 | SRS, SRT     | `srt://<host>:<SRS_SRT_PORT>?streamid=#!::r=video/demo?key=<key>,m=publish` |
 | OME, SRT     | `srt://<host>:<OME_SRT_PORT>?streamid=<percent-encoded publish url>`        |
 
+The RTMP form is the one a broadcaster gets from the admin as two OBS fields, Server
+`rtmp://<host>:<SRS_RTMP_PORT>/video` and Stream Key `demo?key=<key>`. Either way SRS reports the key
+in the hook's `param`, with its leading `?` over RTMP and without it over SRT, and the engine reads
+both spellings the same, so a broadcaster may use either protocol, or switch between them in the
+middle of a broadcast, under one key.
+
+⚠️ **The RTMP form carries the key in the clear.** RTMP is not encrypted and has no passphrase, so
+the key crosses the network readable. Anyone who reads it there can publish to that stream, and
+while the engine's takeover is on, which it is wherever a key is checked, take a live broadcast
+over. SRT with a passphrase is the form to hand a broadcaster on a network they do not trust. The
+SRT streamid crosses readable as well, so the passphrase is what protects that form: while the RTMP
+port is open, a key read off either protocol works over RTMP. See the takeover section of
+[engines/README.md](../../engines/README.md).
+
 **Take the ports from `publish-key.sh` rather than from here.** At slot 0 SRS uses the stock 1935
 (RTMP) and 10080 (SRT), but `--portSlot N` shifts every host port into a per-slot band in the
 10000-19999 range instead of using those, and `engines/ome/.env.sample` sets `OME_SRT_PORT=10081` so

@@ -194,9 +194,9 @@ drifts, and always before the catalog entry referring to it — the other order 
 entry whose topic resolves to nothing.
 
 ```
-                     transcode (4x ffmpeg)         republish, RTMP 127.0.0.1
-SRT ingest ──▶ __defaultVhost__ ──────────────▶ vhost abr ──▶ HLS + webhooks ──▶ uploader
-               hls: off                         no transcode
+                             transcode (4x ffmpeg)         republish, RTMP 127.0.0.1
+SRT or RTMP ingest ──▶ __defaultVhost__ ──────────────▶ vhost abr ──▶ HLS + webhooks ──▶ uploader
+                       hls: off                         no transcode
 ```
 
 Two things about this shape are load-bearing:
@@ -239,7 +239,8 @@ production answer and is left as a TODO.
 ## What SRS logs
 
 The template leaves SRS at its default level, trace, on the console `docker logs` reads. At trace
-every SRT connect logs its stream id, which carries the broadcaster's publish key, and every hook
+every SRT connect logs its stream id and every RTMP publish logs its `param` in a `client identified`
+line, both of which carry the broadcaster's publish key, and every hook
 SRS calls logs its URL, which carries `SRS_WEBHOOK_TOKEN`, with a request naming the key again. The
 uploader redacts its own copies of both. Measured 2026-10-01 on the pinned image: 49 such lines in a
 25 second publish.

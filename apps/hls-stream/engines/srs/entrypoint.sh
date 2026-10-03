@@ -308,8 +308,8 @@ if abr_enabled; then
   # The transcode republish dials SRS's own RTMP listener over loopback, so this has to be the port
   # SRS actually bound, which is SRS_RTMP_PORT and shifts with --portSlot. Default to it rather than
   # a fixed 1935, or the ladder produces no segments the moment the RTMP port is slotted. Deliberately
-  # not SRS's `[port]` macro, which resolves to the port the source arrived on: this deployment
-  # ingests over SRT on 10080, so `[port]` would aim the republish at the SRT listener. See ossrs/srs#4496.
+  # not SRS's `[port]` macro, which resolves to the port the source arrived on: a source that came in
+  # over SRT arrived on 10080, so `[port]` would aim its republish at the SRT listener. See ossrs/srs#4496.
   ABR_RTMP_PORT="${ABR_RTMP_PORT:-${SRS_RTMP_PORT:-1935}}"
   ABR_FPS="${ABR_FPS:-30}"
   ABR_PRESET="${ABR_PRESET:-veryfast}"
@@ -489,13 +489,15 @@ sed -i "s/SRT_PORT_PLACEHOLDER/${SRS_SRT_PORT:-10080}/g" "$CONF"
 # on purpose: this is a demo stack and the loop check the API exists for has to be reachable.
 sed -i "s/HTTP_API_PORT_PLACEHOLDER/${SRS_HTTP_API_PORT:-1985}/g" "$CONF"
 
-# The ladder's ffmpeg INPUT is built by SRS itself, and an SRT-bridged source carries no RTMP port,
-# so the input always dials 127.0.0.1:1935 whatever `listen` says: the input-side twin of the
-# `[port]` trap on the republish above (ossrs/srs#4496). A slotted deployment listens elsewhere, so
-# the loop's first hop gets `Connection refused` and every rung dies while SRS and the uploader
-# both look healthy. Listen on loopback 1935 as well: loopback so nothing new faces the network,
-# only under a ladder because only the ladder loops back, and only when the slot moved RTMP off
-# 1935 so an unslotted deployment does not bind it twice.
+# The ladder's ffmpeg INPUT is built by SRS itself from the port the source arrived on, and an
+# SRT-bridged source carries no RTMP port, so its input dials 127.0.0.1:1935 whatever `listen` says:
+# the input-side twin of the `[port]` trap on the republish above (ossrs/srs#4496). A slotted
+# deployment listens elsewhere, so the loop's first hop gets `Connection refused` and every rung dies
+# while SRS and the uploader both look healthy. Listen on loopback 1935 as well: loopback so nothing
+# new faces the network, only under a ladder because only the ladder loops back, and only when the
+# slot moved RTMP off 1935 so an unslotted deployment does not bind it twice. An RTMP source's input
+# dials the port in the broadcaster's own server URL, which is SRS_RTMP_PORT for a broadcaster who
+# dials the stage directly, and a port nothing listens on behind a forward that changes the port.
 if abr_enabled && [ "${SRS_RTMP_PORT:-1935}" != "1935" ]; then
   sed -i "s/^\(listen[[:space:]][^;]*\);/\1 127.0.0.1:1935;/" "$CONF"
 fi
