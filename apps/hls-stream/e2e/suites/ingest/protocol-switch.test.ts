@@ -27,7 +27,7 @@ import {
 import { type TakeoverUnusable, takeoverUnusable } from '../../src/stageTakeover.js';
 
 /**
- * Ingest — a broadcaster moves from one protocol to the other in the middle of a broadcast, and it stays one broadcast.
+ * Ingest: a broadcaster moves from one protocol to the other in the middle of a broadcast, and it stays one broadcast.
  *
  * The broadcaster starts publishing over the second protocol while the first is still live, with the same key, which
  * is what an operator does to move an encoder from SRT to RTMP or back without ending the show. SRS handles it as a
@@ -53,7 +53,7 @@ function describeSwitch(from: IngestProtocol, to: IngestProtocol): void {
   const [fromLabel, toLabel] = [PROTOCOL_LABEL[from], PROTOCOL_LABEL[to]];
 
   describe(
-    `ingest — a broadcaster switching from ${fromLabel} to ${toLabel} mid-broadcast continues the same broadcast`,
+    `ingest: a broadcaster switching from ${fromLabel} to ${toLabel} mid-broadcast continues the same broadcast`,
     { skip: rtmpUnsupported },
     () => {
       const host = makeHost(cfg);

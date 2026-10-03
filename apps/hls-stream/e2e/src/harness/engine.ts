@@ -55,7 +55,7 @@ type IngestUrlBuilder = (cfg: E2EConfig, streamPath: string, presented?: Present
 
 interface EngineProfile {
   name: EngineName;
-  /** The container fronting ingest — restarted mid-stream by the engine-restart scenario. */
+  /** The container fronting ingest, restarted mid-stream by the engine-restart scenario. */
   mediaContainer(cfg: E2EConfig): string;
   /** SRT ingest URL the publisher (ffmpeg/OBS stand-in) dials for `streamPath`. */
   srtIngestUrl: IngestUrlBuilder;

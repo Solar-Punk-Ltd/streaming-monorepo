@@ -25,7 +25,7 @@ import { waitFor } from '../../src/harness/wait.js';
 import { INGEST_RTMP, unsupportedIngestReason } from '../../src/ingestProtocol.js';
 
 /**
- * Ingest — a broadcast sent over RTMP publishes as one sent over SRT does, and a viewer can fetch it.
+ * Ingest: a broadcast sent over RTMP publishes as one sent over SRT does, and a viewer can fetch it.
  *
  * Every other suite publishes over SRT unless the run sets `E2E_INGEST_PROTOCOL=rtmp`, so until RTMP became a public
  * ingest nothing sent RTMP through a real SRS. This is `service/happy-path` over RTMP, run in every full sitting. The
@@ -51,7 +51,7 @@ const MIN_STAMP_TTL_S = 600;
 const cfg = loadConfig();
 
 describe(
-  'ingest — an RTMP broadcast publishes gapless, and a viewer can fetch what it published',
+  'ingest: an RTMP broadcast publishes gapless, and a viewer can fetch what it published',
   { skip: unsupportedIngestReason(cfg.engine, INGEST_RTMP) ?? false },
   () => {
     const host = makeHost(cfg);

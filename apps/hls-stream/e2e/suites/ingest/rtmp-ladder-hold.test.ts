@@ -18,7 +18,7 @@ import { sleep, waitFor } from '../../src/harness/wait.js';
 import { INGEST_RTMP, unsupportedIngestReason } from '../../src/ingestProtocol.js';
 
 /**
- * Ingest — a ladder whose RTMP source drops and comes back within the encoder hold keeps the same encoders.
+ * Ingest: a ladder whose RTMP source drops and comes back within the encoder hold keeps the same encoders.
  *
  * With the ABR ladder on, SRS runs one encoder per rung, each republishing its rung over loopback RTMP. The fork's
  * encoder hold keeps those encoders running for `ABR_UNPUBLISH_HOLD` seconds after the source drops, 12 by default, so
@@ -63,7 +63,7 @@ function namesEveryRung(streamIds: readonly string[]): boolean {
   return cfg.abrRungs.every((rung) => streamIds.some((id) => id.endsWith(`_${rung}`)));
 }
 
-describe('ingest — a ladder keeps its encoders through a short drop of its RTMP source', { skip: skipReason() }, () => {
+describe('ingest: a ladder keeps its encoders through a short drop of its RTMP source', { skip: skipReason() }, () => {
   const host = makeHost(cfg);
   const engine = getEngine(cfg);
   const uploader = containerName(cfg, 'stream-uploader');

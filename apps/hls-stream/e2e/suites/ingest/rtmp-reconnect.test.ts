@@ -21,7 +21,7 @@ import { INGEST_RTMP, unsupportedIngestReason } from '../../src/ingestProtocol.j
 import { type TakeoverUnusable, takeoverUnusable } from '../../src/stageTakeover.js';
 
 /**
- * Ingest — an RTMP broadcaster that drops and reconnects continues the same broadcast, whichever way it dropped.
+ * Ingest: an RTMP broadcaster that drops and reconnects continues the same broadcast, whichever way it dropped.
  *
  * **A clean drop** closes the connection, SRS tells the uploader the broadcaster left, and the uploader holds the
  * session for its reconnect window. The reconnect arrives as an ordinary publish and joins that session.
@@ -57,7 +57,7 @@ const cfg = loadConfig();
 const rtmpUnsupported = unsupportedIngestReason(cfg.engine, INGEST_RTMP) ?? false;
 
 describe(
-  'ingest — an RTMP broadcaster that drops cleanly and reconnects continues the same broadcast',
+  'ingest: an RTMP broadcaster that drops cleanly and reconnects continues the same broadcast',
   { skip: rtmpUnsupported },
   () => {
     const host = makeHost(cfg);
@@ -145,7 +145,7 @@ describe(
 );
 
 describe(
-  'ingest — an RTMP broadcaster whose network dies without closing takes its own stream back',
+  'ingest: an RTMP broadcaster whose network dies without closing takes its own stream back',
   { skip: rtmpUnsupported },
   () => {
     const host = makeHost(cfg);

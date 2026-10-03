@@ -21,7 +21,7 @@ import { sleep, waitFor } from '../../src/harness/wait.js';
 import { INGEST_RTMP, unsupportedIngestReason } from '../../src/ingestProtocol.js';
 
 /**
- * Ingest — an RTMP publish presenting a wrong key is refused, and never takes a live broadcast over.
+ * Ingest: an RTMP publish presenting a wrong key is refused, and never takes a live broadcast over.
  *
  * RTMP carries the stream key in the clear and has no passphrase, so once the RTMP port is open the key is the whole
  * of what stands between a stranger and a stream. The key presented here is a real one, issued for another stream,
@@ -64,7 +64,7 @@ function skipReason(): string | false {
 }
 
 describe(
-  'ingest — an RTMP publish with a wrong key is refused, and never takes a live broadcast over',
+  'ingest: an RTMP publish with a wrong key is refused, and never takes a live broadcast over',
   { skip: skipReason() },
   () => {
     const host = makeHost(cfg);
