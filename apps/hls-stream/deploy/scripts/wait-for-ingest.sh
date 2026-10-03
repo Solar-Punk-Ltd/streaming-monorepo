@@ -1,6 +1,8 @@
 #!/bin/bash
 #
-# Block until the media engine's SRT ingest is actually listening, or give up loudly.
+# Block until SRS's two ingest listeners are actually there, SRT on its UDP port and RTMP on its TCP
+# port, or give up loudly naming the one that is missing. The RTMP listener matters beyond RTMP
+# broadcasters: the ladder's rungs republish over it.
 #
 # ## Why a separate check, when the container is already reported healthy
 #
@@ -17,12 +19,15 @@
 # `ss` answers the question directly and is the one thing that cannot be satisfied by a process that
 # merely started.
 #
-# ## Why it is a UDP listener and what that costs
+# ## What each probe proves and what that costs
 #
 # SRT is UDP, so a bound socket is `UNCONN` rather than `LISTEN` and there is no handshake to observe
-# from here. This proves the port is claimed by something in the host's network namespace, which is
-# what the failure above destroys, and it does not prove the engine behind it will accept a publish.
-# A deeper probe would have to publish, which spends money and takes a stream id.
+# from here. RTMP is TCP, and `-l` keeps its probe to a socket in `LISTEN`, so a broadcaster's open
+# connection to the port cannot stand in for the listener it was accepted on. Either probe proves the
+# port is claimed by something in the host's network namespace, which is what the failure above
+# destroys. Neither proves that SRS is what holds it, which the container's own health check proves
+# from inside, nor that the engine behind it will accept a publish. A deeper probe would have to
+# publish, which spends money and takes a stream id.
 #
 # Usage:
 #   deploy/scripts/wait-for-ingest.sh [--profile=<name>] [--portSlot=<N>] [--timeout=<seconds>]
@@ -47,11 +52,12 @@ parse_profile_args ${REMAINING_ARGS[@]+"${REMAINING_ARGS[@]}"}
 
 load_env
 load_engine_envs
-# The port is read through the same slot arithmetic the deploy used rather than passed in, so this
+# The ports are read through the same slot arithmetic the deploy used rather than passed in, so this
 # cannot end up watching a port no one was asked to bind.
 apply_port_slot
 
-PORT="${SRS_SRT_PORT:?SRS_SRT_PORT is unset after apply_port_slot, so there is no ingest port to wait on}"
+SRT_PORT="${SRS_SRT_PORT:?SRS_SRT_PORT is unset after apply_port_slot, so there is no SRT port to wait on}"
+RTMP_PORT="${SRS_RTMP_PORT:?SRS_RTMP_PORT is unset after apply_port_slot, so there is no RTMP port to wait on}"
 TARGET="$(get_target srs)"
 
 if ! is_enabled "${TARGET}"; then
@@ -61,26 +67,40 @@ fi
 
 # `-H` drops the header so an empty result is an empty string, and the filter is applied by `ss`
 # rather than by grep, which would also match a port that merely contains these digits.
-probe='ss -H -lun "sport = :'"${PORT}"'"'
+srt_probe='ss -H -lun "sport = :'"${SRT_PORT}"'"'
+rtmp_probe='ss -H -ltn "sport = :'"${RTMP_PORT}"'"'
 
-log_info "waiting up to ${TIMEOUT_S}s for the SRT ingest on UDP ${PORT} (${TARGET})"
+probe() {
+  if [ "${TARGET}" = "localhost" ]; then
+    bash -c "$1" 2>/dev/null
+  else
+    ssh "${TARGET}" "$1" 2>/dev/null
+  fi
+}
 
+log_info "waiting up to ${TIMEOUT_S}s for SRS to listen for SRT on UDP ${SRT_PORT} and RTMP on TCP ${RTMP_PORT} (${TARGET})"
+
+srt_bound=""
+rtmp_bound=""
 deadline=$((SECONDS + TIMEOUT_S))
 while [ "${SECONDS}" -lt "${deadline}" ]; do
-  if [ "${TARGET}" = "localhost" ]; then
-    bound="$(bash -c "${probe}" 2>/dev/null)"
-  else
-    bound="$(ssh "${TARGET}" "${probe}" 2>/dev/null)"
-  fi
+  srt_bound="$(probe "${srt_probe}")"
+  rtmp_bound="$(probe "${rtmp_probe}")"
 
-  if [ -n "${bound}" ]; then
-    log_ok "SRT ingest bound on UDP ${PORT}"
+  if [ -n "${srt_bound}" ] && [ -n "${rtmp_bound}" ]; then
+    log_ok "SRS ingest bound: SRT on UDP ${SRT_PORT}, RTMP on TCP ${RTMP_PORT}"
     exit 0
   fi
   sleep 2
 done
 
-log_error "no listener on UDP ${PORT} after ${TIMEOUT_S}s. The engine container can be running and"
-log_error "reported healthy in this state (OBS-20): check whether another container already holds"
-log_error "the port, with 'ss -lunp | grep ${PORT}' on ${TARGET}."
+if [ -z "${srt_bound}" ]; then
+  log_error "no listener on UDP ${SRT_PORT} (SRT) after ${TIMEOUT_S}s, so no SRT broadcaster can reach SRS."
+fi
+if [ -z "${rtmp_bound}" ]; then
+  log_error "no listener on TCP ${RTMP_PORT} (RTMP) after ${TIMEOUT_S}s, so no RTMP broadcaster can reach SRS"
+  log_error "and no ladder rung can republish."
+fi
+log_error "SRS can be running in this state (OBS-20): check whether another container held the port when it"
+log_error "started, with 'ss -lunp | grep ${SRT_PORT}' or 'ss -ltnp | grep ${RTMP_PORT}' on ${TARGET}."
 exit 1

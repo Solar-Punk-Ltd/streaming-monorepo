@@ -4,7 +4,12 @@ import { createServer, type Server } from 'node:http';
 import { afterEach, describe, it } from 'node:test';
 
 import { DROPPED_SEGMENTS_METRIC, METRICS_PREFIX, RUNG_LABEL } from '../src/harness/batchDrain.js';
-import { rungCountersOf, uploaderMetricsCommand, uploaderMetricsScript } from '../src/harness/uploaderMetrics.js';
+import {
+  counterOf,
+  rungCountersOf,
+  uploaderMetricsCommand,
+  uploaderMetricsScript,
+} from '../src/harness/uploaderMetrics.js';
 
 /**
  * Reading one per-rung counter off the uploader's Prometheus text, and doing it without ever holding
@@ -45,6 +50,41 @@ const SCRAPE = [
   `${DROPPED_SEGMENTS_METRIC}{rung="1080p"} 82`,
   '',
 ].join('\n');
+
+/**
+ * One unlabelled counter, which is how the uploader reports a credential it refused: a publish with a wrong key is a
+ * refusal the engine answers inside a 200, so this counter is the only place the uploader says it happened.
+ */
+describe('counterOf', () => {
+  const REFUSALS = `${METRICS_PREFIX}_auth_rejections_total`;
+
+  it('reads the unlabelled sample of the family it was asked for', () => {
+    assert.equal(counterOf(`${SCRAPE}${REFUSALS} 3\n`, REFUSALS), 3);
+  });
+
+  it('keeps an explicit zero, which is a deployment that refused nothing', () => {
+    assert.equal(counterOf(`${REFUSALS} 0\n`, REFUSALS), 0);
+  });
+
+  /** A scrape that did not carry the family is not a deployment that refused nothing, so the two must differ. */
+  it('is null for a family the scrape does not carry, rather than zero', () => {
+    assert.equal(counterOf(SCRAPE, REFUSALS), null);
+  });
+
+  it('ignores the HELP line that names the family, and a labelled sample of it', () => {
+    const noSample = [
+      `# HELP ${REFUSALS} Requests refused by a credential gate.`,
+      `${REFUSALS}{gate="srs"} 9`,
+      '',
+    ].join('\n');
+
+    assert.equal(counterOf(noSample, REFUSALS), null);
+  });
+
+  it('does not read a family whose name merely starts with the one asked for', () => {
+    assert.equal(counterOf(`${REFUSALS}_by_stream 7\n`, REFUSALS), null);
+  });
+});
 
 describe('rungCountersOf', () => {
   it('reads the labelled samples of the family it was asked for', () => {

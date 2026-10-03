@@ -8,6 +8,7 @@ import {
   chequebookHealthFromPayload,
   type ChequebookSummary,
   engineForComponents,
+  type EngineName,
   getErrorMessage,
   isLoopbackIngestHost,
   isStageKind,
@@ -19,6 +20,7 @@ import {
   readinessInputOf,
   resolvedIngestHost,
   rungOrder,
+  SRS_SERVICE,
   stageReadinessOf,
   type StampHealth,
   type UploaderHealthReading,
@@ -97,11 +99,21 @@ function portOf(value: string | undefined): number | null {
   return port >= 1 && port <= 65535 ? port : null;
 }
 
-/** Whether the port policy opens this port variable to the internet. It opens no RTMP band today. */
+/** Whether the port policy opens this port variable to the internet. */
 function portIsPublic(portVar: string): boolean {
   return PUBLIC_PORT_ROLES.some(
     (role) => role.portVar === portVar || (role.aliases ?? []).some((alias) => alias.portVar === portVar),
   );
+}
+
+/**
+ * Whether broadcasters reach the stage over RTMP: only where SRS runs and the
+ * port policy opens its RTMP port. The policy opens none, so this is false on
+ * every stage and SRT is the ingest broadcasters use. OvenMediaEngine takes SRT
+ * alone.
+ */
+function takesPublicRtmp(engine: EngineName): boolean {
+  return engine === SRS_SERVICE && portIsPublic(RTMP_PORT_KEY);
 }
 
 function stageStampOf(stampId: string, health: StampHealth | null): StageStamp | null {
@@ -217,7 +229,7 @@ export class StageRecordBuilder {
         host: ingestHost,
         srtPort,
         rtmpPort,
-        rtmpPublic: portIsPublic(RTMP_PORT_KEY),
+        rtmpPublic: takesPublicRtmp(engine),
         srtPassphrase: env[SRT_PASSPHRASE_KEY] || null,
       },
       owner,

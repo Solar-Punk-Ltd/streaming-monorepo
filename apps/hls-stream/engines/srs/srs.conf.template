@@ -36,6 +36,24 @@ vhost __defaultVhost__ {
         takeover    SRT_TAKEOVER_PLACEHOLDER;
     }
 
+    # The RTMP publisher's settings, where the fork keeps RTMP's takeover. See entrypoint.sh.
+    publish {
+        takeover    RTMP_TAKEOVER_PLACEHOLDER;
+    }
+
+    # Play from this container only, over RTMP and SRT and for an HLS playlist from the file server. The one
+    # player here is the ladder's transcode input on loopback, and a viewer reads the broadcast from Swarm.
+    # Publish stays open to every address, because the on_publish hook is what checks a key. Once any allow
+    # rule exists SRS refuses whatever no allow rule matches, so publish needs its own. The ABR vhost in
+    # entrypoint.sh carries the same rules.
+    security {
+        enabled     on;
+        allow       publish     all;
+        allow       play        127.0.0.1;
+        allow       play        ::1;
+        allow       play        ::ffff:127.0.0.1;
+    }
+
     hls {
         enabled         INGEST_HLS_PLACEHOLDER;
         hls_path        ./objs/nginx/html;

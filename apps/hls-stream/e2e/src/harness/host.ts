@@ -9,6 +9,7 @@ import type { E2EConfig } from '../config.js';
 
 import type { PublisherRoute } from './publishers.js';
 import { vodFinalizeWaitMs } from './recording.js';
+import { shellQuoted } from './shellQuote.js';
 import { sleep, waitFor } from './wait.js';
 
 const execFileAsync = promisify(execFile);
@@ -298,6 +299,23 @@ export class Host {
   async localText(port: number, path: string, timeoutS: number = 5): Promise<string> {
     const { stdout } = await this.curl(port, path, timeoutS);
     return stdout;
+  }
+
+  /**
+   * The HTTP status a GET of a service port answers with, and how many bytes its body held.
+   *
+   * For a route whose body is media, such as a segment through the gateway's `/bytes/`. Whether a viewer could have
+   * it is the status and the size, and the bytes themselves have no business in this process.
+   */
+  async localStatus(port: number, path: string, timeoutS: number = 5): Promise<{ status: number; bytes: number }> {
+    const runTimeoutMs = Math.max(DEFAULT_RUN_TIMEOUT_MS, (timeoutS + 5) * 1_000);
+    const url = shellQuoted(`http://${this.serviceAddress}:${port}${path}`);
+    const { stdout } = await this.run(
+      `curl -s -o /dev/null -w '%{http_code} %{size_download}' --max-time ${timeoutS} ${url}`,
+      runTimeoutMs,
+    );
+    const [status, bytes] = stdout.trim().split(/\s+/).map(Number);
+    return { status, bytes };
   }
 
   private async curlJson<T>(port: number, path: string, timeoutS: number): Promise<T> {

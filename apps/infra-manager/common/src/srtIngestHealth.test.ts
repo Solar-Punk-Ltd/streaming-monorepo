@@ -85,7 +85,6 @@ describe('srtLinkPercentages', () => {
 describe('measuredSrtIngest', () => {
   it('carries the counts with the shares and the verdict worked out from them', () => {
     const reading = measuredSrtIngest({
-      windowSeconds: 60,
       reports: 2,
       connections: 1,
       counts: { received: 12_957, lost: 761, retransmitted: 731, dropped: 763 },
@@ -95,13 +94,11 @@ describe('measuredSrtIngest', () => {
     assert.equal(reading.verdict, SRT_LINK_BAD);
     assert.equal(reading.reports, 2);
     assert.equal(reading.connections, 1);
-    assert.equal(reading.windowSeconds, 60);
     assert.ok(Math.abs((reading.percent.dropped ?? 0) - 5.8887) < 0.001);
   });
 
   it('keeps a reading of zero packets free of anything that is not a number', () => {
     const reading = measuredSrtIngest({
-      windowSeconds: 60,
       reports: 1,
       connections: 1,
       counts: counts({ received: 0 }),

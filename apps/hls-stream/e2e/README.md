@@ -29,11 +29,12 @@ E2E_PROFILE=streamer1 E2E_PORT_SLOT=2 … pnpm e2e:smoke                        
 | var                    | default                            | what it is                                                                                 |
 | ---------------------- | ---------------------------------- | ------------------------------------------------------------------------------------------ |
 | `E2E_SSH_TARGET`       | `localhost`                        | ssh target for container control and curl. Must work non-interactively.                    |
-| `E2E_PUBLIC_HOST`      | `127.0.0.1`                        | address the SRT publisher and viewer reach the deployment on.                              |
+| `E2E_PUBLIC_HOST`      | `127.0.0.1`                        | address the publisher and viewer reach the deployment on.                                  |
 | `E2E_PROFILE`          | `default`                          | the deploy's `--profile`: the compose project, so containers are `<profile>-<service>-1`.  |
 | `E2E_PORT_SLOT`        | `0`                                | the deploy's `--portSlot`. `0` means no slot, and the env files decide the ports.          |
 | `E2E_ENGINE`           | the deployment's `ENGINE`          | `srs` or `ome`. Overrides what the root env says.                                          |
 | `E2E_STREAM_PATH`      | per engine                         | `live/stream` for SRS, `video/stream` for OME.                                             |
+| `E2E_INGEST_PROTOCOL`  | `srt`                              | `srt` or `rtmp`, what a suite publishes over when it names neither. OME takes SRT only.    |
 | `E2E_OME_SRT_PORT`     | `OME_SRT_PORT` from the engine env | only for a standalone OME that no profile deployed.                                        |
 | `E2E_OME_CONTAINER`    | `<profile>-ome-1`                  | same.                                                                                      |
 | `E2E_EXPECT_ABR`       | undeclared                         | what this run covers: `true` a ladder, `false` single-rendition. See below.                |
@@ -201,7 +202,7 @@ The full suite. Publishes real streams, stops real containers, spends real posta
 each one waits for `activeStreams=0` before starting so a previous stream draining cannot collide
 with it.
 
-Order is `preflight → scenarios → service`, and the preflight half runs as its own `tsx --test`
+Order is `preflight → scenarios → service → viewer → ingest`, and the preflight half runs as its own `tsx --test`
 invocation chained with `&&`. That `&&` is what makes the preflights gates rather than warnings:
 `node --test` runs every file it was given even after one fails, so in a single invocation a
 preflight could refuse and the scenarios would spend anyway. Split, a refusal exits non-zero before
@@ -346,6 +347,27 @@ Service coverage, no faults:
 | `service/multi-stream-concurrent`  | two concurrent streams, distinct topics, each finalizing to its own VOD   |
 | `service/abr-ladder`               | every configured rung publishes, under one ladder, gapless                |
 | `service/master-offers-every-rung` | the ladder's master offers every rung the broadcast announced             |
+
+Ingest over RTMP. Every other suite publishes over SRT unless the run sets `E2E_INGEST_PROTOCOL=rtmp`, so these are
+what sends RTMP through a real SRS in every full sitting. The publisher dials the server and stream key the admin hands
+a broadcaster for OBS. None of these opens a browser on the broadcast: `ingest/rtmp-publish` proves the gateway serves
+the newest segment it uploaded. Playback in a browser over RTMP comes from a browser run (`E2E_EXPECT_BROWSER=true`)
+that also sets `E2E_INGEST_PROTOCOL=rtmp`, where the viewer suites publish over RTMP like every suite that names no
+protocol. `pnpm e2e:rtmp` runs the gates and these alone:
+
+| file                      | proves                                                                                                                                                                                                                          |
+| ------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `ingest/rtmp-publish`     | an RTMP broadcast uploads gapless with every manifest advancing, publishes playlists that hold to the manifest contract, and the gateway serves the newest segment it uploaded                                                  |
+| `ingest/rtmp-wrong-key`   | an RTMP publish presenting a key issued for another stream is refused and counted, and the same wrong key never takes a live RTMP broadcast over. Skipped where the stage checks no publish key                                 |
+| `ingest/rtmp-reconnect`   | an RTMP broadcaster back after a clean drop rejoins its session, and one whose network died without closing takes its own stream back through the takeover, each with one seam per stream, no new session and nothing finalized |
+| `ingest/protocol-switch`  | a broadcaster moving from SRT to RTMP, and from RTMP to SRT, in the middle of a broadcast is taken over by its new connection, and it stays one broadcast                                                                       |
+| `ingest/rtmp-ladder-hold` | a ladder whose RTMP source drops for two seconds keeps every rung on the encoders it had: no rung publish ends or starts, and each rung places one seam. Skipped without a ladder                                               |
+
+⛔ The unclean reconnect and both switches need the takeover for the protocol the new publisher comes over. Each reads
+it off the running SRS config before it publishes. A stage that turns it off skips them and says why, and a stage
+whose SRS predates the RTMP takeover fails them as a stale deployment, because there its RTMP reconnect is refused as
+busy. The unclean drop is made by freezing the publisher rather than stopping it, which keeps its connection open and
+silent, and the reconnect starts a second later, before SRS would drop the silent connection on its own.
 
 Viewer coverage, in a real browser. These are the only suites here that open a player, so they are
 the only ones that can say what a viewer got rather than what one could have fetched. They need the

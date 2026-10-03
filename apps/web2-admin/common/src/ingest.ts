@@ -53,10 +53,11 @@ export interface IngestDetails {
   stage: IngestStage | null;
   srt: IngestSrtDetails | null;
   /**
-   * Null unless the stage opens RTMP ingest to encoders on purpose
-   * (`rtmpPublic` on its record). Ingest is SRT only by default: RTMP carries
-   * no passphrase, and the deployments close its port, so an RTMP address
-   * would point the streamer at a port that refuses them.
+   * Null unless the stage's record says `rtmpPublic`. The manager says it on
+   * no stage: RTMP is closed to the outside on every stage, so an RTMP address
+   * would point the streamer at a port that refuses them, and SRT is the
+   * ingest broadcasters use. RTMP carries no passphrase, so where a record
+   * does say it, this stream key crosses the network as readable text.
    */
   rtmp: IngestRtmpDetails | null;
 }
@@ -69,5 +70,6 @@ export {
   buildSrtPublishUrl,
   OBS_SRT_PASSPHRASE_FIELD_HELP,
   type ObsSrtServer,
+  rtmpUnencryptedWarning,
   type SrtPassphraseRoute,
 } from '@streaming-monorepo/contracts';

@@ -1,6 +1,6 @@
 services:
   srs:
-    image: ghcr.io/solar-punk-ltd/swarm-srs:6.0-r2-swarm.2@sha256:11c0c3e13042e03c133eeebf29df6b04a8096fd62f18a5498e505998fbaf8327
+    image: ghcr.io/solar-punk-ltd/swarm-srs:6.0-r2-swarm.3@sha256:a59b2b86268f148b5d84eae86a028a0bff544bda9c5386f59109a98be0955035
     container_name: srs
     restart: unless-stopped
     entrypoint: ['/bin/bash', '/usr/local/srs/conf/entrypoint.sh']
@@ -77,11 +77,12 @@ services:
       HLS_AOF_RATIO: ${HLS_AOF_RATIO:-}
       HLS_WINDOW: ${HLS_WINDOW:-15}
       SRT_LATENCY: ${SRT_LATENCY:-2000}
-      # A reconnecting SRT broadcaster replaces a publisher SRS still holds. See engines/README.md. Unset, it is
-      # on only where the uploader refuses a wrong publish key, which the two lines below tell SRS without
-      # handing it the secret or the admin address, only whether each is set (SEC-28). This file's `.env`
-      # carries neither, so here it stays off unless SRT_TAKEOVER says otherwise.
+      # A reconnecting SRT or RTMP broadcaster replaces a publisher SRS still holds. See engines/README.md. Unset,
+      # each is on only where the uploader refuses a wrong publish key, which the two lines below tell SRS
+      # without handing it the secret or the admin address, only whether each is set (SEC-28). This file's
+      # `.env` carries neither, so here both stay off unless SRT_TAKEOVER or RTMP_TAKEOVER says otherwise.
       SRT_TAKEOVER: ${SRT_TAKEOVER:-}
+      RTMP_TAKEOVER: ${RTMP_TAKEOVER:-}
       UPLOADER_PUBLISH_KEYS: ${PUBLISH_KEY_SECRET:+yes}
       UPLOADER_ADMIN_MODE: ${ADMIN_API_URL:+yes}
       # The ABR ladder, read by this entrypoint. Off by default.
@@ -99,13 +100,13 @@ services:
       # Empty on purpose: the entrypoint defaults it to the resolved SRS_RTMP_PORT, the RTMP listener
       # the transcode republish dials. Pinning a fixed port here would re-break the ladder under --portSlot.
       ABR_RTMP_PORT: ${ABR_RTMP_PORT:-}
-    # Asks whether a broadcaster could reach this engine, not whether the process is alive. See
-    # OBS-20 and the reasoning in `healthcheck.sh`: SRS ran 44 minutes with a dead SRT listener while
-    # every signal the deployment had said it was fine.
+    # Asks whether a broadcaster could reach this engine over SRT and over RTMP, not whether the process
+    # is alive. See OBS-20 and the reasoning in `healthcheck.sh`: SRS ran 44 minutes with a dead SRT
+    # listener while every signal the deployment had said it was fine.
     #
     # `start_period` covers the entrypoint templating the config and SRS binding, which is under a
-    # second in practice. `retries: 2` because a UDP listener does not come and go: either the socket
-    # is held or it is not, and a check that needs three tries to believe that is delaying the answer
+    # second in practice. `retries: 2` because a listener does not come and go: either the socket is
+    # held or it is not, and a check that needs three tries to believe that is delaying the answer
     # rather than avoiding a false one.
     healthcheck:
       test: ['CMD', 'bash', '/usr/local/srs/conf/healthcheck.sh']

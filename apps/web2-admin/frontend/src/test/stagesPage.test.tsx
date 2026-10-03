@@ -123,6 +123,33 @@ describe('StagesPage', () => {
     expect(screen.queryByText('Retired')).not.toBeInTheDocument();
   });
 
+  it('names the RTMP port as unencrypted where a stage offers RTMP, and no RTMP where it does not', async () => {
+    serve(
+      [
+        makeStage(),
+        makeStage({
+          stageId: '7b2e4c0a-3d4e-4f60-9b62-2c3d4e5f6071',
+          name: 'OME stage',
+          engine: 'ome',
+          supported: false,
+          ingest: {
+            host: 'ome.example.org',
+            srtPort: 10071,
+            rtmpPort: 10072,
+            rtmpPublic: false,
+            hasSrtPassphrase: false,
+          },
+        }),
+      ],
+      makeStamp(),
+    );
+    renderWithProviders(<StagesPage />);
+
+    expect(await screen.findByText('SRT, with a passphrase · RTMP on 10062, unencrypted')).toBeInTheDocument();
+    expect(screen.getByText('SRT, no passphrase')).toBeInTheDocument();
+    expect(screen.queryByText(/10072/)).not.toBeInTheDocument();
+  });
+
   it('marks a retired stage and an OvenMediaEngine one', async () => {
     serve(
       [

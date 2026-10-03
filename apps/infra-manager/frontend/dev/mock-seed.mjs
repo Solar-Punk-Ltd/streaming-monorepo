@@ -52,6 +52,7 @@ const batchId = () => hex(32);
 export const PORT_BASES = {
   API_PORT: 10000,
   SRS_SRT_PORT: 10001,
+  SRS_RTMP_PORT: 10002,
   OME_SRT_PORT: 10001,
   OME_HLS_PORT: 10003,
   CLIENT_PORT: 10004,
@@ -62,7 +63,7 @@ export const PORT_BASES = {
 };
 
 const SERVICE_PORTS = {
-  srs: ['SRS_SRT_PORT'],
+  srs: ['SRS_SRT_PORT', 'SRS_RTMP_PORT'],
   ome: ['OME_SRT_PORT', 'OME_HLS_PORT'],
   'stream-uploader': ['API_PORT'],
   'bee-uploader': ['BEE_UPLOADER_API_PORT', 'BEE_UPLOADER_P2P_PORT'],

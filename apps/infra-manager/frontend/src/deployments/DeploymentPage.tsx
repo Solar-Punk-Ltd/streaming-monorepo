@@ -30,7 +30,7 @@ import { useMetrics } from '../useMetrics';
 import { beeReadinessView } from '../uploaders/beeReadiness';
 import { useBeeUtils, type BeeUtils } from '../uploaders/useBeeUtils';
 import type { Profile } from '../types';
-import { clientUrl } from '../urls';
+import { clientUrl, rtmpPublishSettings } from '../urls';
 import { attemptHolding } from '../versions/attemptHold';
 import { ReleaseAttemptDialog } from '../versions/ReleaseAttemptDialog';
 import { useAttemptRelease } from '../versions/useAttemptRelease';
@@ -41,7 +41,7 @@ import { DeploymentHeader } from './DeploymentHeader';
 import { DeploymentSettingsCard } from './DeploymentSettingsCard';
 import { EngineCard } from './EngineCard';
 import { usePublishUrl } from './usePublishUrl';
-import { useSrtIngestHealth } from './useSrtIngestHealth';
+import { useIngestHealth } from './useIngestHealth';
 import { useUploaderHealth } from './useUploaderHealth';
 import { useEngineOverview } from './useEngineOverview';
 import { HeldAttemptCard } from './HeldAttemptCard';
@@ -54,12 +54,12 @@ import { ReadinessCard } from './ReadinessCard';
 import { RemoveCard } from './RemoveCard';
 import type { SettingReveal } from './settings/SettingsList';
 import { useDeploymentSettings } from './settings/useDeploymentSettings';
-import { SrtIngestCard } from './SrtIngestCard';
+import { IngestHealthCard } from './IngestHealthCard';
 import { StageCard } from './StageCard';
 import { isStage } from './stageText';
 import { offersLatencySetting, SRT_LATENCY_SETTING_KEY } from './srtIngestText';
 import { StorageCard } from './StorageCard';
-import { engineOf, isRunning, readsSrtIngest, shapeOf, streamersOf } from './shape';
+import { engineOf, isRunning, readsIngestHealth, shapeOf, streamersOf } from './shape';
 import { WatchCard } from './WatchCard';
 
 const STORAGE_ANCHOR = 'storage';
@@ -120,7 +120,7 @@ function DeploymentBody({ profile, focus, bee }: { profile: Profile; focus: Depl
   const release = useAttemptRelease();
   const { openEditDeployment } = useEditors();
   const { snapshot, stale, staleSeconds } = useMetrics();
-  // The Engine card and the SRT ingest card lead to a setting in the Stack
+  // The Engine card and the Ingest card lead to a setting in the Stack
   // settings card rather than editing it themselves: one list of settings for
   // the whole deployment.
   const [settingsReveal, setSettingsReveal] = useState<SettingReveal | null>(null);
@@ -153,8 +153,8 @@ function DeploymentBody({ profile, focus, bee }: { profile: Profile; focus: Depl
   // that never answered, which nothing on the container says.
   const uploaderDeployed = profile.containers.some((container) => container.service === STREAM_UPLOADER_SERVICE);
   const uploaderHealth = useUploaderHealth(uploaderDeployed ? profile : null);
-  const srtIngestShown = readsSrtIngest(profile);
-  const srtIngest = useSrtIngestHealth(srtIngestShown ? profile : null);
+  const ingestHealthShown = readsIngestHealth(profile);
+  const ingestHealth = useIngestHealth(ingestHealthShown ? profile : null);
   const group = groups.find((entry) => entry.id === profile.group_id) ?? null;
   const version = versions?.find((entry) => entry.id === profile.stack_version_id) ?? null;
   const rung = group ? rungFromMemberName(group.name, profile.name) : null;
@@ -237,7 +237,7 @@ function DeploymentBody({ profile, focus, bee }: { profile: Profile; focus: Depl
         serverHost={serverHost}
         group={group}
         rung={rung}
-        publishUrl={publishUrl}
+        publishCopyText={publish.copyText}
         publishUrlReady={readiness.tone === 'ok'}
       />
 
@@ -256,9 +256,9 @@ function DeploymentBody({ profile, focus, bee }: { profile: Profile; focus: Depl
 
           <ReadinessCard steps={steps} summary={summary} onAction={runStepAction} />
 
-          {srtIngestShown && (
-            <SrtIngestCard
-              load={srtIngest}
+          {ingestHealthShown && (
+            <IngestHealthCard
+              load={ingestHealth}
               latencySettingOffered={offersLatencySetting(engineLoad.overview?.fields)}
               onRaiseLatency={() => revealSetting(SRT_LATENCY_SETTING_KEY)}
             />
@@ -272,6 +272,7 @@ function DeploymentBody({ profile, focus, bee }: { profile: Profile; focus: Depl
               ready={readiness.tone === 'ok'}
               passphrasePending={publish.pending}
               fieldPassphrase={publish.fieldPassphrase}
+              rtmp={rtmpPublishSettings(profile, serverHost)}
             />
           )}
 

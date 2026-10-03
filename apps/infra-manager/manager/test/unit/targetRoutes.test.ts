@@ -1,6 +1,8 @@
 import assert from 'node:assert/strict';
 import { afterEach, describe, it } from 'node:test';
 
+import { PORT_POLICY_VERSION } from '@streaming-infra-manager/common';
+
 import { createTargetsRouter } from '../../src/api/routes/targets.js';
 import { VerifiedDeployTargets } from '../../src/domain/ports/VerifiedDeployTargets.js';
 import { InMemoryDeployTargets } from '../support/InMemoryDeployTargets.js';
@@ -21,7 +23,7 @@ describe('deploy targets API', () => {
     const aliases: string[] = [];
     const evidence = {
       schemaVersion: 1 as const,
-      policyVersion: 1,
+      policyVersion: PORT_POLICY_VERSION,
       daemonId: 'remote',
       capturedAt: '2026-09-08T00:00:00Z',
       fingerprint: 'a'.repeat(64),

@@ -227,9 +227,12 @@ into the admin (`docs/architecture/stages.md` at the repository root).
   keeps working, with no stage until it is unpublished.
 - **The OBS details are the stage's.** `GET /streams/:id/ingest` builds the SRT
   line from the stage's public ingest address and SRT port, adds the RTMP
-  server and stream key only where the stage opens RTMP, and answers the
-  stage's SRT passphrase, read from the `stages` table's own column for this
-  one answer. It names the stage (`stage: { stageId, name, retiredAt }`). With
+  server and stream key only where the stage's record says `rtmpPublic`,
+  which the manager says on no stage while RTMP is closed to the outside on
+  every stage, and answers
+  the stage's SRT passphrase, read from the `stages` table's own column for
+  this one answer. RTMP has no passphrase, so its stream key crosses the
+  network as readable text, and the console's OBS panel says so beside it. It names the stage (`stage: { stageId, name, retiredAt }`). With
   no stage, `stage`, `srt` and `rtmp` are null and only the stream id and key
   are answered. Every uploader that takes streams from this admin verifies the
   `key=` they carry, so the answer no longer says whether it does.
@@ -776,7 +779,7 @@ curl -sS -X PUT http://127.0.0.1:9877/api/internal/stages/5f0c2a8e-1b2c-4d3e-8f4
     "stackVersion": null,
     "status": "running",
     "observedAt": "2026-09-28T10:00:00.000Z",
-    "ingest": { "host": "ingest.example.org", "srtPort": 10061, "rtmpPort": 10062, "rtmpPublic": false, "srtPassphrase": null },
+    "ingest": { "host": "ingest.example.org", "srtPort": 10061, "rtmpPort": 10062, "rtmpPublic": true, "srtPassphrase": null },
     "owner": "0x3f1a9c2b4d5e6f708192a3b4c5d6e7f809a1b2c3",
     "rungs": [],
     "uploader": null,

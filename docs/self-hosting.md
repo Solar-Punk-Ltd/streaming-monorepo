@@ -298,6 +298,21 @@ images on the host itself.
    this. It worked when an encoder reaches the SRT port, a browser opens the viewer page, and a port
    ending in 5 or 7 does not answer from outside.
 
+   RTMP is closed to the outside on every stage for now, and SRT is the ingest broadcasters use. The
+   generated table keeps the RTMP port, the one ending in 2, closed, and neither console offers
+   RTMP. SRS keeps its RTMP listener, because the ABR ladder republishes every rung to it over
+   loopback. Opening RTMP on a stage later is not a firewall change alone. The stage must first run
+   a stack whose SRS allows play from loopback only, on image `6.0-r2-swarm.3`. RTMP needs a key of
+   its own, separate from the SRT one. And the manager needs a per-stage switch that opens it on that
+   stage alone.
+
+   RTMP is plain RTMP and is not encrypted. Wherever it is open, a broadcaster's stream key crosses
+   the network as readable text, and anyone who reads it there can publish to that stream with it.
+   Wherever keys are checked the stack lets a new RTMP publisher take over a live stream, so they
+   can also replace a live broadcast, whichever protocol it came in over. While RTMP is open, the
+   SRT passphrase keeps the picture private but not the key: SRT sends its stream id, key included,
+   before encryption starts, so a key read off either protocol publishes over RTMP.
+
 The engine's `docker logs` on a stage host are as sensitive as its env files. SRS logs every
 broadcaster's publish key when they connect and the webhook token on every hook it calls, and a
 publish the uploader refuses logs both at error, whatever the level. The detail, and why the

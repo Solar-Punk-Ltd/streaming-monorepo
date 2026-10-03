@@ -1,13 +1,14 @@
 import {
   defaultServicesFor,
   engineOfServices,
+  INGEST_NOT_RUNNING,
+  INGEST_NOT_SRS,
+  INGEST_READ,
+  INGEST_UNREADABLE,
+  type IngestHealthNotRead,
+  type IngestHealthReading,
+  type IngestNotReadState,
   SRS_SERVICE,
-  SRT_INGEST_NOT_RUNNING,
-  SRT_INGEST_NOT_SRS,
-  SRT_INGEST_UNREADABLE,
-  type SrtIngestReading,
-  type SrtIngestUnmeasured,
-  type SrtIngestUnmeasuredState,
 } from '@streaming-infra-manager/common';
 
 import { ContainerNotRunningError, ProfileNotFoundError } from '../errors/index.js';
@@ -15,13 +16,11 @@ import { Logger } from '../Logger.js';
 import type { LogWindow } from '../logWindow.js';
 import type { TargetDocker } from '../ports/TargetDocker.js';
 import type { ProfileRepository } from '../ProfileRepository.js';
-import { ingestReadingFrom } from './ingestReading.js';
 import type { MarkedLines } from '../ports/remoteLogLines.js';
-import {
-  parseTransportStatsLines,
-  TRANSPORT_STATS_HOST_PATTERN,
-  TRANSPORT_STATS_MARKER,
-} from './transportStatsLine.js';
+import { rtmpIngestReadingFrom } from './rtmpIngestReading.js';
+import { parseRtmpPublishReports, RTMP_PUBLISH_HOST_PATTERN } from './rtmpPublishReport.js';
+import { srtIngestReadingFrom } from './srtIngestReading.js';
+import { parseTransportStatsLines, TRANSPORT_STATS_HOST_PATTERN } from './transportStatsLine.js';
 
 const logger = Logger.getInstance();
 
@@ -34,19 +33,23 @@ const logger = Logger.getInstance();
  * dropped about forty a second, some 2,400 lines a minute, so the cap holds
  * several minutes of that before it cuts into the window.
  */
-export const SRT_INGEST_LOG_WINDOW: LogWindow = { sinceSeconds: 60, tailLines: 20_000 };
+export const INGEST_LOG_WINDOW: LogWindow = { sinceSeconds: 60, tailLines: 20_000 };
 
-/** SRS's statistics lines, held to their whole shape on a remote host. */
-export const SRT_INGEST_LOG_LINES: MarkedLines = {
-  marker: TRANSPORT_STATS_MARKER,
-  hostPattern: TRANSPORT_STATS_HOST_PATTERN,
+/**
+ * SRS's report lines for SRT and RTMP publishers, each held to its whole shape
+ * on a remote host. The marker is the tag SRS gives a publisher's report in
+ * both, `SRT_CPB` and `CPB`, with the space after it.
+ */
+export const INGEST_LOG_LINES: MarkedLines = {
+  marker: 'CPB ',
+  hostPattern: `${TRANSPORT_STATS_HOST_PATTERN}|${RTMP_PUBLISH_HOST_PATTERN}`,
 };
 
 /** The part of `TargetDocker` this reads through. */
 export type MarkedLogLines = Pick<TargetDocker, 'logLinesContaining'>;
 
 /**
- * What SRS's own statistics say about a deployment's SRT ingest over the last
+ * What SRS's own statistics say about a deployment's ingest over the last
  * minute.
  *
  * Observational only. Nothing reads this to gate a deploy, a start or a health
@@ -54,17 +57,17 @@ export type MarkedLogLines = Pick<TargetDocker, 'logLinesContaining'>;
  * and an engine that is still coming up is an answer rather than an error. An
  * unknown deployment still throws, because that is about the request.
  */
-export class SrtIngestHealthService {
+export class IngestHealthService {
   constructor(
     private readonly profiles: ProfileRepository,
     private readonly logs: MarkedLogLines,
   ) {}
 
-  async read(name: string): Promise<SrtIngestReading> {
+  async read(name: string): Promise<IngestHealthReading> {
     const profile = await this.profiles.findByName(name);
     if (!profile) throw new ProfileNotFoundError(name);
     if (engineOfServices(defaultServicesFor(profile)) !== SRS_SERVICE) {
-      return unmeasured(SRT_INGEST_NOT_SRS);
+      return notRead(INGEST_NOT_SRS);
     }
 
     let lines: string[];
@@ -72,24 +75,29 @@ export class SrtIngestHealthService {
       lines = await this.logs.logLinesContaining(
         profile.name,
         SRS_SERVICE,
-        SRT_INGEST_LOG_LINES,
-        SRT_INGEST_LOG_WINDOW,
+        INGEST_LOG_LINES,
+        INGEST_LOG_WINDOW,
         profile.host,
       );
     } catch (err) {
-      if (err instanceof ContainerNotRunningError) return unmeasured(SRT_INGEST_NOT_RUNNING);
+      if (err instanceof ContainerNotRunningError) return notRead(INGEST_NOT_RUNNING);
       // The kind of failure and none of its text, which a stream error could
       // have filled with anything, a line of this log included.
-      logger.debug(`[SrtIngestHealth] ${profile.name}: the SRS log could not be read (${failureKind(err)})`);
-      return unmeasured(SRT_INGEST_UNREADABLE);
+      logger.debug(`[IngestHealth] ${profile.name}: the SRS log could not be read (${failureKind(err)})`);
+      return notRead(INGEST_UNREADABLE);
     }
 
-    return ingestReadingFrom(parseTransportStatsLines(lines), SRT_INGEST_LOG_WINDOW.sinceSeconds);
+    return {
+      state: INGEST_READ,
+      windowSeconds: INGEST_LOG_WINDOW.sinceSeconds,
+      srt: srtIngestReadingFrom(parseTransportStatsLines(lines)),
+      rtmp: rtmpIngestReadingFrom(parseRtmpPublishReports(lines)),
+    };
   }
 }
 
-function unmeasured(state: SrtIngestUnmeasuredState): SrtIngestUnmeasured {
-  return { state, windowSeconds: SRT_INGEST_LOG_WINDOW.sinceSeconds };
+function notRead(state: IngestNotReadState): IngestHealthNotRead {
+  return { state, windowSeconds: INGEST_LOG_WINDOW.sinceSeconds };
 }
 
 /** A system error's code, such as `ENOENT`, or the error's class name. */

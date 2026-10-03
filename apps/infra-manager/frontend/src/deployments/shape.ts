@@ -88,12 +88,12 @@ export function streamersOf(profiles: Profile[]): Profile[] {
 }
 
 /**
- * Whether the page asks this deployment how its SRT link is holding up. Only
- * SRS prints SRT statistics, and only a running deployment has a link to read.
- * The container records alone are not enough, because the manager keeps them
- * after a deployment stops.
+ * Whether the page asks this deployment how its ingest is holding up. Only
+ * SRS prints the statistics the card reads, and only a running deployment has
+ * a broadcast coming in. The container records alone are not enough, because
+ * the manager keeps them after a deployment stops.
  */
-export function readsSrtIngest(profile: Profile): boolean {
+export function readsIngestHealth(profile: Profile): boolean {
   return (
     isRunning(profile) &&
     engineOf(profile) === SRS_SERVICE &&

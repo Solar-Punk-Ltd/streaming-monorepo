@@ -29,6 +29,12 @@ export interface FfmpegProcess {
    * object to a caller that cannot ask, and the caller is normally inside a wait measured in minutes.
    */
   exit(): FfmpegExit | null;
+  /**
+   * Stop the process where it stands without closing anything, which is how an encoder whose network died looks to
+   * the engine: its connection stays open and nothing more arrives on it. A clean stop and a kill both close the
+   * connection, so neither can stand in for this. `stop` still ends a frozen process.
+   */
+  freeze(): void;
   /** Interrupt, then kill if it does not exit. Safe to call after the process has already gone. */
   stop(): Promise<void>;
 }
@@ -44,6 +50,7 @@ export function startFfmpeg(args: readonly string[], options: FfmpegOptions = {}
 
   let stderr = '';
   let ended: FfmpegExit | null = null;
+  let frozen = false;
   const proc: ChildProcess = spawnFn('ffmpeg', [...args], { stdio: ['ignore', 'ignore', 'pipe'] });
   proc.stderr?.on('data', (chunk: Buffer) => {
     stderr += chunk.toString();
@@ -62,11 +69,22 @@ export function startFfmpeg(args: readonly string[], options: FfmpegOptions = {}
   return {
     stderr: () => stderr,
     exit: () => ended,
+    freeze() {
+      if (ended !== null) {
+        return;
+      }
+      proc.kill('SIGSTOP');
+      frozen = true;
+    },
     async stop() {
       if (ended !== null) {
         return;
       }
       proc.kill('SIGINT');
+      // A stopped process holds the interrupt until it runs again.
+      if (frozen) {
+        proc.kill('SIGCONT');
+      }
       await new Promise<void>((resolve) => {
         const killTimer = setTimeout(() => {
           proc.kill('SIGKILL');

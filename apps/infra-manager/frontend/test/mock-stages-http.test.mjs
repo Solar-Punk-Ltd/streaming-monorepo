@@ -139,6 +139,20 @@ describe('the mock stage routes', { concurrency: false, timeout: 60_000 }, () =>
     assert.deepEqual(await request('/stages/nobody/registration'), { registration: null });
   });
 
+  it('gives a stage its slot’s own SRT and RTMP ports, as the stack publishes them, and keeps RTMP closed', async () => {
+    const profile = await runningStreamer('mock-stage-3');
+    const { stages } = await request('/stages');
+    const { record } = stages.find((stage) => stage.name === 'mock-stage-3');
+    assert.equal(record.ingest.srtPort, 10001 + profile.port_slot * 10);
+    assert.equal(record.ingest.rtmpPort, 10002 + profile.port_slot * 10);
+    assert.equal(record.ingest.rtmpPublic, false);
+    const srs = profile.containers.find((container) => container.service === 'srs');
+    assert.deepEqual(srs.ports, {
+      SRS_SRT_PORT: record.ingest.srtPort,
+      SRS_RTMP_PORT: record.ingest.rtmpPort,
+    });
+  });
+
   it('lists every stage without its passphrase', async () => {
     const { stages } = await request('/stages');
     assert.ok(stages.length > 0);

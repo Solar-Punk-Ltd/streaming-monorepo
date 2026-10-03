@@ -41,7 +41,7 @@ One record per stage, checked against `stageRecordSchema` before it leaves:
 | `observedAt`                        | the moment the manager read the deployment's row, before the slower readings of nodes and the uploader                                                                                                                                                             |
 | `ingest.host`                       | the deployment's public ingest address, below                                                                                                                                                                                                                      |
 | `ingest.srtPort`, `ingest.rtmpPort` | `SRS_SRT_PORT` and `SRS_RTMP_PORT` of the environment the next deploy gives, which is the version's port table shifted by the slot; an OME stage takes `OME_SRT_PORT`                                                                                              |
-| `ingest.rtmpPublic`                 | whether the port policy in `common/src/portPolicy.js` opens `SRS_RTMP_PORT`. It opens no RTMP band, so this is false, and no deployment setting says otherwise                                                                                                     |
+| `ingest.rtmpPublic`                 | false on every stage, because the port policy in `common/src/portPolicy.js` opens no RTMP port, so RTMP is closed to the outside and SRT is the ingest broadcasters use. Never true on an OME stage, which takes SRT alone                                         |
 | `ingest.srtPassphrase`              | `SRT_PASSPHRASE` of that environment: the deployment's own passphrase, else the version's host-wide one, else null                                                                                                                                                 |
 | `owner`                             | `addressOfStreamKey` of the `STREAM_KEY` the next deploy gives the uploader. The key goes nowhere                                                                                                                                                                  |
 | `rungs[]`                           | a pool's rungs from its `BEE_PUBLISHERS`, lowest first, each read on the deployment of this manager whose `stamp_id` is that rung's batch: its stamp health and its chequebook. A stage with a node of its own has one rung, `source`, read there. No node address |
@@ -233,7 +233,8 @@ together once.
     console's own label;
   - the owner, shortened, with a copy button for the whole address;
   - the public ingest host, with the SRT port and whether a passphrase goes
-    with it, and the RTMP port and whether it is public;
+    with it, and the RTMP port marked unencrypted, or "RTMP not offered" on a
+    stage that takes no RTMP;
   - the uploader's token: Own, None, or Shared, which is red and says to rotate
     the uploader's admin token on the deployment page and redeploy, since the
     admin refuses it;

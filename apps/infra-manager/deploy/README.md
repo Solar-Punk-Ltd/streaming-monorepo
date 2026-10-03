@@ -525,6 +525,29 @@ now closed like any other private port. The slot algebra still reserves them,
 which costs nothing and keeps the numbering free for a version that does run
 them.
 
+**RTMP stays closed.** RTMP is closed to the outside on every stage for now,
+and SRT is the ingest broadcasters use. No band opens `10002 + 10 × slot`, so
+the draft drops it like any other private port, stage records say
+`rtmpPublic: false`, and neither the manager nor the web2 admin offers RTMP to
+a broadcaster. SRS keeps its RTMP listener, because the ABR ladder republishes
+every rung to it over loopback. Upgrading a manager needs no new firewall draft
+for this: the port policy is still version 1.
+
+Opening RTMP on a stage later needs three things first, and none of them is a
+firewall change alone. The stage must run a stack whose SRS allows play from
+loopback only, on image `6.0-r2-swarm.3`. RTMP needs a key of its own,
+separate from the key the SRT line carries. And the manager needs a per-stage
+switch that opens RTMP on that stage alone.
+
+RTMP is plain RTMP and is not encrypted. Wherever it is open, a broadcaster's
+stream key crosses the network as readable text, and anyone who reads it
+there can publish to that stream with it. Wherever keys are checked the stack
+lets a new RTMP publisher take over a live stream, so they can also replace a
+live broadcast, whichever protocol it came in over. While RTMP is open, the SRT
+passphrase keeps the picture private but not the key: SRT sends its stream id,
+key included, before encryption starts, so a key read off either protocol
+publishes over RTMP.
+
 A Bee host whose rungs serve uploaders on other hosts needs one more door, and
 it is opened only on request. `--bee-api-source <address>/32`, repeated once
 per uploader host and once for the manager's host, opens each slot's Bee API

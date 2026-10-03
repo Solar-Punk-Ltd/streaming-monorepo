@@ -1,6 +1,7 @@
 /**
- * How the SRT link from a broadcaster into SRS is holding up, in the one shape
- * the manager answers and the deployment page renders.
+ * How the SRT link from a broadcaster into SRS is holding up, as the SRT part
+ * of the ingest reading the manager answers and the deployment page renders
+ * (`ingestHealth.ts`).
  *
  * SRS prints a statistics line for each SRT publisher about every ten seconds,
  * counting that interval only, and its HTTP API does not expose the same
@@ -46,25 +47,11 @@ export const SRT_BAD_DROP_PERCENT = 1;
 
 /** SRS printed at least one report in the window, and the reading carries its numbers. */
 export const SRT_INGEST_MEASURED = 'measured' as const;
-/** SRS is running and printed no report in the window. */
+/** SRS printed no SRT report in the window. */
 export const SRT_INGEST_NO_REPORTS = 'no_reports' as const;
-/** No SRS container is running for the deployment, so there is no link to read. */
-export const SRT_INGEST_NOT_RUNNING = 'not_running' as const;
-/** The engine's log could not be read. Says nothing about the link. */
-export const SRT_INGEST_UNREADABLE = 'unreadable' as const;
-/** The deployment's media server is not SRS, so there is no such log. */
-export const SRT_INGEST_NOT_SRS = 'not_srs' as const;
-
-export type SrtIngestUnmeasuredState =
-  | typeof SRT_INGEST_NO_REPORTS
-  | typeof SRT_INGEST_NOT_RUNNING
-  | typeof SRT_INGEST_UNREADABLE
-  | typeof SRT_INGEST_NOT_SRS;
 
 export interface SrtIngestMeasured {
   state: typeof SRT_INGEST_MEASURED;
-  /** How far back the manager read the log. */
-  windowSeconds: number;
   /** How many statistics lines the counts are summed from. */
   reports: number;
   /** How many SRT connections printed them. A publisher that reconnected counts twice. */
@@ -74,13 +61,12 @@ export interface SrtIngestMeasured {
   verdict: SrtLinkVerdict;
 }
 
-export interface SrtIngestUnmeasured {
-  state: SrtIngestUnmeasuredState;
-  windowSeconds: number;
+export interface SrtIngestNoReports {
+  state: typeof SRT_INGEST_NO_REPORTS;
 }
 
-/** One manager read of one deployment's SRT ingest. */
-export type SrtIngestReading = SrtIngestMeasured | SrtIngestUnmeasured;
+/** What one read of SRS's log says about SRT ingest. */
+export type SrtIngestReading = SrtIngestMeasured | SrtIngestNoReports;
 
 export function srtLinkVerdict(counts: SrtLinkCounts): SrtLinkVerdict {
   if (counts.dropped === 0) return SRT_LINK_HEALTHY;
@@ -104,7 +90,6 @@ export function srtLinkPercentages(counts: SrtLinkCounts): SrtLinkPercentages {
 }
 
 export interface SrtIngestMeasurement {
-  windowSeconds: number;
   reports: number;
   connections: number;
   counts: SrtLinkCounts;

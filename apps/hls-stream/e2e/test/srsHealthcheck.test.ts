@@ -9,8 +9,15 @@ import { ROOT_DIR } from '../src/config.js';
 
 const HEALTHCHECK = join(ROOT_DIR, 'engines', 'srs', 'healthcheck.sh');
 
-/** The inode `/proc/net/udp` reports for a socket, which is the only thing tying it to an owner. */
-const SRS_SOCKET_INODE = '3744450441';
+/** The ingest ports of a stage at slot 7, and how the kernel spells each in an address field. */
+const SRT_PORT = '10071';
+const SRT_HEX_PORT = '2757';
+const RTMP_PORT = '10072';
+const RTMP_HEX_PORT = '2758';
+
+/** The inode the kernel reports for a socket, which is the only thing tying it to an owner. */
+const SRS_SRT_INODE = '3744450441';
+const SRS_RTMP_INODE = '3744450442';
 const STRANGER_SOCKET_INODE = '9999999999';
 
 /**
@@ -37,9 +44,51 @@ function udp6Line(hexPort: string, inode: string): string {
 const UDP_HEADER =
   '  sl  local_address rem_address   st tx_queue rx_queue tr tm->when retrnsmt   uid  timeout inode ref pointer drops';
 
+/**
+ * `/proc/net/tcp` and `tcp6` lines, in the kernel's column order.
+ *
+ * Copied from the real files of a Linux container listening on TCP, with only the port, the inode and the kernel's
+ * socket pointer replaced, for the same reason the UDP lines are. TCP adds one trap UDP does not have: a connection
+ * SRS accepted shares the listener's local port, so the state column (`0A` is listening) is part of what is read.
+ */
+function tcpListenerLine(hexPort: string, inode: string): string {
+  return (
+    `   0: 00000000:${hexPort} 00000000:0000 0A 00000000:00000000 00:00000000 00000000` +
+    `     0        0 ${inode} 1 0000000000000000 100 0 0 10 0`
+  );
+}
+
+function tcp6ListenerLine(hexPort: string, inode: string): string {
+  return (
+    `   0: 00000000000000000000000000000000:${hexPort} 00000000000000000000000000000000:0000 0A ` +
+    `00000000:00000000 00:00000000 00000000     0        0 ${inode} 1 0000000000000000 100 0 0 10 0`
+  );
+}
+
+/** A connection the listener on `hexPort` accepted, captured closing (`05`), so a socket on the port but no listener. */
+function tcpAcceptedLine(hexPort: string, inode: string): string {
+  return (
+    `   1: 0100007F:${hexPort} 0100007F:A15B 05 00000000:00000000 00:00000000 00000000` +
+    `     0        0 ${inode} 1 0000000000000000 20 0 0 10 -1`
+  );
+}
+
+const TCP_HEADER = '  sl  local_address rem_address   st tx_queue rx_queue tr tm->when retrnsmt   uid  timeout inode';
+const TCP6_HEADER =
+  '  sl  local_address                         remote_address                        st tx_queue rx_queue tr tm->when ' +
+  'retrnsmt   uid  timeout inode';
+
 interface FakeProc {
   /** What the script is given as its `/proc`. */
   root: string;
+}
+
+interface ProcContents {
+  udp?: string[];
+  udp6?: string[];
+  tcp?: string[];
+  tcp6?: string[];
+  ownedInodes?: string[];
 }
 
 /**
@@ -49,11 +98,15 @@ interface FakeProc {
  * Built as real files and real symlinks rather than stubbed at a seam inside the script, so what the
  * test drives is the same `readlink` and the same `awk` a container runs.
  */
-function fakeProc(options: { udp?: string[]; udp6?: string[]; ownedInodes?: string[] }): FakeProc {
+function fakeProc(options: ProcContents): FakeProc {
   const root = mkdtempSync(join(tmpdir(), 'srs-healthcheck-'));
   mkdirSync(join(root, 'net'), { recursive: true });
-  writeFileSync(join(root, 'net', 'udp'), [UDP_HEADER, ...(options.udp ?? [])].join('\n') + '\n');
-  writeFileSync(join(root, 'net', 'udp6'), [UDP_HEADER, ...(options.udp6 ?? [])].join('\n') + '\n');
+  const write = (file: string, header: string, lines: string[] | undefined): void =>
+    writeFileSync(join(root, 'net', file), [header, ...(lines ?? [])].join('\n') + '\n');
+  write('udp', UDP_HEADER, options.udp);
+  write('udp6', UDP_HEADER, options.udp6);
+  write('tcp', TCP_HEADER, options.tcp);
+  write('tcp6', TCP6_HEADER, options.tcp6);
 
   const fdDir = join(root, '1', 'fd');
   mkdirSync(fdDir, { recursive: true });
@@ -63,14 +116,29 @@ function fakeProc(options: { udp?: string[]; udp6?: string[]; ownedInodes?: stri
   return { root };
 }
 
+/** Both listeners, each held by SRS: a container that can take a broadcast over either protocol. */
+const BOTH_HELD: ProcContents = {
+  udp: [udpLine(SRT_HEX_PORT, SRS_SRT_INODE)],
+  tcp: [tcpListenerLine(RTMP_HEX_PORT, SRS_RTMP_INODE)],
+  ownedInodes: [SRS_SRT_INODE, SRS_RTMP_INODE],
+};
+
 interface Outcome {
   status: number;
   output: string;
 }
 
-function runHealthcheck(port: string, proc: FakeProc): Outcome {
+/**
+ * Runs the script with nothing of this machine's environment but `PATH`, so an `SRS_*_PORT` set in the shell
+ * that runs the tests cannot decide a case.
+ */
+function runScript(args: string[], env: Record<string, string> = {}): Outcome {
   try {
-    const output = execFileSync('bash', [HEALTHCHECK, port, proc.root], { encoding: 'utf8', stdio: 'pipe' });
+    const output = execFileSync('bash', [HEALTHCHECK, ...args], {
+      encoding: 'utf8',
+      stdio: 'pipe',
+      env: { PATH: process.env.PATH ?? '', ...env },
+    });
     return { status: 0, output };
   } catch (error) {
     const failure = error as { status?: number; stdout?: string; stderr?: string };
@@ -78,9 +146,14 @@ function runHealthcheck(port: string, proc: FakeProc): Outcome {
   }
 }
 
+/** The ports given as arguments, the way a person runs it by hand. */
+function runHealthcheck(proc: FakeProc, ports: { srt?: string; rtmp?: string } = {}): Outcome {
+  return runScript([ports.srt ?? SRT_PORT, proc.root, ports.rtmp ?? RTMP_PORT]);
+}
+
 const created: FakeProc[] = [];
 
-function procFor(options: Parameters<typeof fakeProc>[0]): FakeProc {
+function procFor(options: ProcContents): FakeProc {
   const proc = fakeProc(options);
   created.push(proc);
   return proc;
@@ -97,7 +170,10 @@ function procFor(options: Parameters<typeof fakeProc>[0]): FakeProc {
  * **The port being bound is not the question**, and a check that asked only that would have passed
  * throughout the outage: the port was bound, by the wrong process. What separates the two states is
  * ownership, so the check has to tie the listening socket back to a process in this container, which
- * is what the inode in `/proc/net/udp` is for.
+ * is what the inode in `/proc/net/udp` and `/proc/net/tcp` is for.
+ *
+ * Both ingest listeners are checked and both must pass: SRT on UDP, and RTMP on TCP, which is a public
+ * ingest too and also carries the ladder's rung republishes.
  */
 describe('the SRS ingest healthcheck', () => {
   after(() => {
@@ -106,10 +182,8 @@ describe('the SRS ingest healthcheck', () => {
     }
   });
 
-  it('passes when SRS itself holds the SRT port', () => {
-    const proc = procFor({ udp: [udpLine('2757', SRS_SOCKET_INODE)], ownedInodes: [SRS_SOCKET_INODE] });
-
-    assert.equal(runHealthcheck('10071', proc).status, 0);
+  it('passes when SRS itself holds both the SRT and the RTMP port', () => {
+    assert.equal(runHealthcheck(procFor(BOTH_HELD)).status, 0);
   });
 
   /**
@@ -117,28 +191,28 @@ describe('the SRS ingest healthcheck', () => {
    * exactly what `docker ps`, the uploader's `/health` and the old process-liveness healthcheck all
    * reported as fine.
    */
-  it('fails when the port is bound by a process outside this container', () => {
-    const proc = procFor({ udp: [udpLine('2757', STRANGER_SOCKET_INODE)], ownedInodes: [SRS_SOCKET_INODE] });
+  it('fails when the SRT port is bound by a process outside this container', () => {
+    const proc = procFor({ ...BOTH_HELD, udp: [udpLine(SRT_HEX_PORT, STRANGER_SOCKET_INODE)] });
 
-    const outcome = runHealthcheck('10071', proc);
-
-    assert.notEqual(outcome.status, 0);
-    assert.match(outcome.output, /bound by a process outside this container/);
-  });
-
-  it('fails, differently, when nothing is bound to the port at all', () => {
-    const proc = procFor({ udp: [], ownedInodes: [SRS_SOCKET_INODE] });
-
-    const outcome = runHealthcheck('10071', proc);
+    const outcome = runHealthcheck(proc);
 
     assert.notEqual(outcome.status, 0);
-    assert.match(outcome.output, /nothing is listening/);
+    assert.match(outcome.output, /UDP 10071 \(SRT\) is bound by a process outside this container/);
   });
 
-  it('accepts a listener bound on IPv6 rather than IPv4', () => {
-    const proc = procFor({ udp6: [udp6Line('2757', SRS_SOCKET_INODE)], ownedInodes: [SRS_SOCKET_INODE] });
+  it('fails, differently, when nothing is bound to the SRT port at all', () => {
+    const proc = procFor({ ...BOTH_HELD, udp: [] });
 
-    assert.equal(runHealthcheck('10071', proc).status, 0);
+    const outcome = runHealthcheck(proc);
+
+    assert.notEqual(outcome.status, 0);
+    assert.match(outcome.output, /nothing is listening on UDP 10071 \(SRT\)/);
+  });
+
+  it('accepts an SRT listener bound on IPv6 rather than IPv4', () => {
+    const proc = procFor({ ...BOTH_HELD, udp: [], udp6: [udp6Line(SRT_HEX_PORT, SRS_SRT_INODE)] });
+
+    assert.equal(runHealthcheck(proc).status, 0);
   });
 
   /**
@@ -149,20 +223,85 @@ describe('the SRS ingest healthcheck', () => {
    */
   it('does not accept a listener on a different port whose hex looks similar', () => {
     const proc = procFor({
-      udp: [udpLine('12757', SRS_SOCKET_INODE), udpLine('275', SRS_SOCKET_INODE)],
-      ownedInodes: [SRS_SOCKET_INODE],
+      ...BOTH_HELD,
+      udp: [udpLine(`1${SRT_HEX_PORT}`, SRS_SRT_INODE), udpLine(SRT_HEX_PORT.slice(0, 3), SRS_SRT_INODE)],
     });
 
-    assert.notEqual(runHealthcheck('10071', proc).status, 0);
+    assert.notEqual(runHealthcheck(proc).status, 0);
   });
 
-  it('refuses a port that is not a number, rather than probing for hex garbage', () => {
-    const proc = procFor({ udp: [udpLine('2757', SRS_SOCKET_INODE)], ownedInodes: [SRS_SOCKET_INODE] });
+  it('fails when nothing listens on the RTMP port, naming the protocol and the port', () => {
+    const proc = procFor({ ...BOTH_HELD, tcp: [] });
 
-    const outcome = runHealthcheck('not-a-port', proc);
+    const outcome = runHealthcheck(proc);
+
+    assert.notEqual(outcome.status, 0, 'an engine with a live SRT listener is still unhealthy without its RTMP one');
+    assert.match(outcome.output, /nothing is listening on TCP 10072 \(RTMP\)/);
+  });
+
+  it('fails when the RTMP port is bound by a process outside this container', () => {
+    const proc = procFor({ ...BOTH_HELD, tcp: [tcpListenerLine(RTMP_HEX_PORT, STRANGER_SOCKET_INODE)] });
+
+    const outcome = runHealthcheck(proc);
 
     assert.notEqual(outcome.status, 0);
-    assert.match(outcome.output, /must be a port number/);
+    assert.match(outcome.output, /TCP 10072 \(RTMP\) is bound by a process outside this container/);
+  });
+
+  /**
+   * A connection SRS accepted on the RTMP port carries that port as its local address and is held by SRS, so a
+   * check that read every socket on the port would pass on it after the listener itself had gone.
+   */
+  it('counts only a listening socket on the RTMP port, not a connection SRS accepted on it', () => {
+    const proc = procFor({ ...BOTH_HELD, tcp: [tcpAcceptedLine(RTMP_HEX_PORT, SRS_RTMP_INODE)] });
+
+    const outcome = runHealthcheck(proc);
+
+    assert.notEqual(outcome.status, 0);
+    assert.match(outcome.output, /nothing is listening on TCP 10072 \(RTMP\)/);
+  });
+
+  it('accepts an RTMP listener bound on IPv6 rather than IPv4', () => {
+    const proc = procFor({ ...BOTH_HELD, tcp: [], tcp6: [tcp6ListenerLine(RTMP_HEX_PORT, SRS_RTMP_INODE)] });
+
+    assert.equal(runHealthcheck(proc).status, 0);
+  });
+
+  for (const [which, ports] of [
+    ['SRT', { srt: 'not-a-port' }],
+    ['RTMP', { rtmp: 'not-a-port' }],
+  ] as const) {
+    it(`refuses an ${which} port that is not a number, rather than probing for hex garbage`, () => {
+      const outcome = runHealthcheck(procFor(BOTH_HELD), ports);
+
+      assert.notEqual(outcome.status, 0);
+      assert.match(outcome.output, /must be a port number/);
+    });
+  }
+
+  /**
+   * How compose runs it: with no arguments, reading the two ports from the variables both compose files put into
+   * the container's environment, which are the ones the entrypoint wrote SRS's `listen` lines from. The SRT port is
+   * given as empty here only so the fake `/proc` can be passed after it, and an empty argument reads the variable.
+   */
+  it('reads both ports from the environment compose gives the container', () => {
+    const proc = procFor(BOTH_HELD);
+
+    assert.equal(runScript(['', proc.root], { SRS_SRT_PORT: SRT_PORT, SRS_RTMP_PORT: RTMP_PORT }).status, 0);
+
+    const elsewhere = runScript(['', proc.root], { SRS_SRT_PORT: SRT_PORT, SRS_RTMP_PORT: '10082' });
+    assert.notEqual(elsewhere.status, 0, 'an RTMP port the environment names is the one that is checked');
+    assert.match(elsewhere.output, /TCP 10082 \(RTMP\)/);
+  });
+
+  it('checks RTMP on 1935 and SRT on 10080 when nothing names either port', () => {
+    const proc = procFor({
+      udp: [udpLine('2760', SRS_SRT_INODE)],
+      tcp: [tcpListenerLine('078F', SRS_RTMP_INODE)],
+      ownedInodes: [SRS_SRT_INODE, SRS_RTMP_INODE],
+    });
+
+    assert.equal(runScript(['', proc.root]).status, 0);
   });
 });
 
@@ -183,6 +322,13 @@ describe('the SRS ingest healthcheck', () => {
 describe('the healthcheck reaches the container on both paths', () => {
   const read = (...parts: string[]): string => readFileSync(join(ROOT_DIR, ...parts), 'utf8');
 
+  /** The `srs` service of a compose file, so a variable another service sets cannot pass for one SRS gets. */
+  const srsService = (compose: string): string => {
+    const start = compose.indexOf('\n  srs:');
+    const next = compose.slice(start + 1).search(/\n {2}[a-z][a-z0-9-]*:\n/);
+    return next === -1 ? compose.slice(start) : compose.slice(start, start + 1 + next);
+  };
+
   for (const composePath of [
     ['engines', 'srs', 'docker-compose.yml'],
     ['deploy', 'docker-compose.yml'],
@@ -192,6 +338,13 @@ describe('the healthcheck reaches the container on both paths', () => {
 
       assert.match(compose, /healthcheck\.sh:\/usr\/local\/srs\/conf\/healthcheck\.sh:ro/);
       assert.match(compose, /test: \['CMD', 'bash', '\/usr\/local\/srs\/conf\/healthcheck\.sh'\]/);
+    });
+
+    it(`hands the script both ports it checks, in ${composePath.join('/')}`, () => {
+      const srs = srsService(read(...composePath));
+
+      assert.match(srs, /^\s*SRS_SRT_PORT:\s*\$\{SRS_SRT_PORT:-10080\}\s*$/m);
+      assert.match(srs, /^\s*SRS_RTMP_PORT:\s*\$\{SRS_RTMP_PORT:-1935\}\s*$/m);
     });
   }
 

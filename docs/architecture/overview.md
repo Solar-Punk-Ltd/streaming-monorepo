@@ -18,7 +18,7 @@ broadcaster's.
 
 | Part          | Folder                                            | What it does                                                                                                                                                                                                                         |
 | ------------- | ------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| Ingest engine | `apps/hls-stream/engines`                         | SRS (the default) or OvenMediaEngine. Takes SRT or RTMP from the encoder and cuts it into HLS segments. With the ABR ladder on, it transcodes every quality rung.                                                                    |
+| Ingest engine | `apps/hls-stream/engines`                         | SRS (the default) or OvenMediaEngine. Takes SRT from the encoder and cuts it into HLS segments. With the ABR ladder on, it transcodes every quality rung.                                                                            |
 | Uploader      | `apps/hls-stream/packages/stream-uploader`        | Hears about every closed segment from the engine, stamps it and uploads it to Swarm, and keeps the playlists and feeds that tell a viewer where each segment is. Asks the web2 admin which stream an encoder publishes to.           |
 | Bee nodes     | `apps/hls-stream/nodes`, `apps/hls-stream/deploy` | Swarm nodes. One uploader node per quality rung publishes that rung's segments, each with its own postage batch and chequebook. A gateway node serves viewers. A catalogue node holds the catalogue's batch alone.                   |
 | Feeds         | written by the uploader                           | Swarm feeds are mutable pointers signed by one key. Each rung has a feed of its playlist, and a master feed names the rungs. Every stage signs its feeds with a key of its own. A viewer follows a feed, not a host.                 |
@@ -33,7 +33,7 @@ A stage is a manager deployment that runs a stream uploader, with the node pool 
 
 ## How a stream travels
 
-1. The encoder sends SRT, or RTMP, to the ingest engine on a stage host.
+1. The encoder sends SRT to the ingest engine on a stage host.
 2. The engine writes each closed segment to a media volume it shares with the uploader and calls the
    uploader's webhook. With the ladder on, it writes one segment per rung.
 3. The uploader stamps each segment with its rung's postage batch and uploads it through that rung's
@@ -47,7 +47,7 @@ The manager and the web2 admin are not on this path. A running broadcast carries
 them is down. They decide what runs where and who owns which stream.
 
 ```
-encoder --SRT/RTMP--> ingest engine --webhook--> uploader --HTTP--> one Bee node per rung --> Swarm
+encoder --SRT--> ingest engine --webhook--> uploader --HTTP--> one Bee node per rung --> Swarm
 
 viewer <--HTTP-- Bee gateway <-- Swarm
 viewer <--light node in the tab-- Swarm
@@ -74,18 +74,27 @@ machines of its own.
 Every stack deployment the manager creates takes a port slot `s`, from 1 to 99, and each of its
 ports is `10000 + 10 × s` plus a fixed last digit, so two deployments on one host never collide.
 
-| Port             | Protocol | What it is                                   | Reachable from                                   |
-| ---------------- | -------- | -------------------------------------------- | ------------------------------------------------ |
-| `10000 + 10 × s` | tcp      | the uploader's API and the engine's webhooks | the host itself only                             |
-| `10001 + 10 × s` | udp      | SRT ingest                                   | the internet, so encoders can reach it           |
-| `10002 + 10 × s` | tcp      | RTMP ingest                                  | the internet when RTMP is used, otherwise closed |
-| `10003 + 10 × s` | tcp      | the engine's HLS output                      | the host itself only                             |
-| `10004 + 10 × s` | tcp      | the viewer page                              | the internet                                     |
-| `10005 + 10 × s` | tcp      | the uploader Bee node's API                  | **never the internet**, see below                |
-| `10006 + 10 × s` | tcp      | the uploader Bee node's peer port            | the internet, so Swarm peers can dial it         |
-| `10007 + 10 × s` | tcp      | the gateway Bee node's API                   | **never the internet** without a proxy in front  |
-| `10008 + 10 × s` | tcp      | the gateway Bee node's peer port             | the internet                                     |
-| `10009 + 10 × s` | tcp      | the engine's own HTTP API                    | the host itself only                             |
+| Port             | Protocol | What it is                                   | Reachable from                                  |
+| ---------------- | -------- | -------------------------------------------- | ----------------------------------------------- |
+| `10000 + 10 × s` | tcp      | the uploader's API and the engine's webhooks | the host itself only                            |
+| `10001 + 10 × s` | udp      | SRT ingest                                   | the internet, so encoders can reach it          |
+| `10002 + 10 × s` | tcp      | SRS's RTMP listener                          | closed to the outside, see below                |
+| `10003 + 10 × s` | tcp      | the engine's HLS output                      | the host itself only                            |
+| `10004 + 10 × s` | tcp      | the viewer page                              | the internet                                    |
+| `10005 + 10 × s` | tcp      | the uploader Bee node's API                  | **never the internet**, see below               |
+| `10006 + 10 × s` | tcp      | the uploader Bee node's peer port            | the internet, so Swarm peers can dial it        |
+| `10007 + 10 × s` | tcp      | the gateway Bee node's API                   | **never the internet** without a proxy in front |
+| `10008 + 10 × s` | tcp      | the gateway Bee node's peer port             | the internet                                    |
+| `10009 + 10 × s` | tcp      | the engine's own HTTP API                    | the host itself only                            |
+
+RTMP is closed to the outside on every stage for now, and SRT is the ingest broadcasters use. SRS
+keeps its RTMP listener because the ABR ladder republishes every rung to it over loopback. Where RTMP
+is opened on a stage later, it is plain RTMP and is not encrypted. A broadcaster's stream key crosses
+the network as readable text, and anyone who reads it there can publish to that stream with it.
+Wherever keys are checked the stack lets a new RTMP publisher take over a live stream, so they can
+also replace a live broadcast, whichever protocol it came in over. While RTMP is open, the SRT
+passphrase keeps the picture private but not the key: SRT sends its stream id, key included, before
+encryption starts, so a key read off either protocol publishes over RTMP.
 
 The per-rung Bee nodes of an ABR ladder take a second block, from `11001 + 10 × s`, with the same
 rule: each peer port is public and each API is not.

@@ -3,11 +3,12 @@
  * connection was still publishing the same stream.
  *
  * SRS asks the publish hook before it decides anything else, so an accepted hook does not yet mean
- * the connection will publish. SRS then either takes the stream over, sending the older connection's
- * `on_unpublish` within milliseconds (11 to 45 ms in 30 of 30 takeovers measured on the fork), or
- * refuses the newcomer as busy, which SRT reports with the newcomer's own `on_unpublish` and RTMP
- * reports with nothing at all. A connection still unsettled after this long is therefore a refused
- * RTMP reconnect, and it is forgotten rather than left to hold the stream open.
+ * the connection will publish. SRS then either takes the stream over, over SRT or RTMP alike, sending
+ * the older connection's `on_unpublish` once it has gone (11 to 45 ms in 30 of 30 SRT takeovers
+ * measured on the fork, and never later than the fork's five second wait for it), or refuses the
+ * newcomer as busy, which SRT reports with the newcomer's own `on_unpublish` and RTMP reports with
+ * nothing at all. A connection still unsettled after this long is therefore a refused RTMP
+ * reconnect, and it is forgotten rather than left to hold the stream open.
  */
 export const TAKEOVER_SETTLE_MS = 10_000;
 

@@ -111,3 +111,55 @@ describe('supervising the encoder', () => {
     assert.deepEqual(fake.signals, []);
   });
 });
+
+/**
+ * An encoder whose network died without closing its connection, which is what the engine's takeover exists for.
+ *
+ * Stopping the process where it stands is the one way to make that from this side: the socket stays open, so the
+ * engine sees a publisher that went silent rather than one that left. A clean `stop` closes the connection and a
+ * kill closes it too, so neither can stand in for it.
+ */
+describe('freezing the encoder', () => {
+  it('stops the process without ending it', () => {
+    const fake = new FakeFfmpeg();
+    const proc = startWith(fake);
+
+    proc.freeze();
+
+    assert.deepEqual(fake.signals, ['SIGSTOP']);
+    assert.equal(proc.exit(), null, 'a frozen encoder is still there, holding its connection open');
+  });
+
+  /** A stopped process holds an interrupt until it runs again, so the interrupt is followed by a continue. */
+  it('lets the interrupt land when a frozen process is stopped', async () => {
+    const fake = new FakeFfmpeg();
+    const proc = startWith(fake);
+    proc.freeze();
+
+    const stopped = proc.stop();
+    fake.emit('exit', 255, null);
+    await stopped;
+
+    assert.deepEqual(fake.signals, ['SIGSTOP', 'SIGINT', 'SIGCONT']);
+  });
+
+  it('still kills a frozen process that does not go', async () => {
+    const fake = new FakeFfmpeg();
+    const proc = startWith(fake, 5);
+    proc.freeze();
+
+    await proc.stop();
+
+    assert.deepEqual(fake.signals, ['SIGSTOP', 'SIGINT', 'SIGCONT', 'SIGKILL']);
+  });
+
+  it('signals nothing when the process it would freeze has already gone', () => {
+    const fake = new FakeFfmpeg();
+    const proc = startWith(fake);
+    fake.emit('exit', 1, null);
+
+    proc.freeze();
+
+    assert.deepEqual(fake.signals, []);
+  });
+});

@@ -15,6 +15,7 @@ import {
   announcedLiveTopics,
   announcedVodFinalizeCount,
   catalogContinuedEmpty,
+  encoderReturnCount,
   isContiguous,
   manifestIndicesByStream,
   messageText,
@@ -348,6 +349,18 @@ describe('every path that loses a segment or declares a break is counted', () =>
 
   it('counts an encoder coming back inside the reconnect window', () => {
     assert.equal(parseUploaderLog(textLine('info', ENCODER_BACK(42))).discontinuitiesArmed, 1);
+  });
+
+  /** The reconnect suites ask about the return alone, and a restarted counter is not one. */
+  it('counts the returns on their own, apart from the counter restart beside them', () => {
+    const log = [
+      textLine('info', ENCODER_BACK(42)),
+      textLine('info', REANCHORED(43)),
+      textLine('info', ENCODER_BACK(44)),
+    ].join('\n');
+
+    assert.equal(encoderReturnCount(log), 2);
+    assert.equal(encoderReturnCount(textLine('info', REANCHORED(42))), 0);
   });
 
   it('counts the returning encoder and the counter restart as two, never as one or four', () => {

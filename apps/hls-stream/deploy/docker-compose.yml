@@ -411,7 +411,7 @@ services:
   # --- SRS Media Server ---
 
   srs:
-    image: ghcr.io/solar-punk-ltd/swarm-srs:6.0-r2-swarm.2@sha256:11c0c3e13042e03c133eeebf29df6b04a8096fd62f18a5498e505998fbaf8327
+    image: ghcr.io/solar-punk-ltd/swarm-srs:6.0-r2-swarm.3@sha256:a59b2b86268f148b5d84eae86a028a0bff544bda9c5386f59109a98be0955035
     profiles: ['srs']
     restart: unless-stopped
     logging: *default-logging
@@ -424,9 +424,10 @@ services:
     # API has no authentication of any kind, and `/api/v1/streams` names every live stream as
     # `app/stream`, which is the id an ingest URL and a publish key are built from, while
     # `/api/v1/clients` names every publisher's and every viewer's address. The file server serves the
-    # segment directory itself, so a broadcast is watchable straight off this host. Both default to
-    # every interface, which is what they have always done, and every documented use of the API is a
-    # curl run on the host. See the paragraph in `.env.sample` beside the Bee binds.
+    # segment directory itself: play is loopback only, so it refuses a playlist to anyone outside the
+    # container, but it still serves a segment asked for by its name. Both default to every interface,
+    # which is what they have always done, and every documented use of the API is a curl run on the
+    # host. See the paragraph in `.env.sample` beside the Bee binds.
     ports:
       - '${SRS_SRT_PORT:-10080}:${SRS_SRT_PORT:-10080}/udp'
       - '${SRS_RTMP_PORT:-1935}:${SRS_RTMP_PORT:-1935}'
@@ -440,8 +441,8 @@ services:
       - ../engines/srs/healthcheck.sh:/usr/local/srs/conf/healthcheck.sh:ro
       - srs-media:/usr/local/srs/objs/nginx/html
     entrypoint: ['/bin/bash', '/usr/local/srs/conf/entrypoint.sh']
-    # Asks whether a broadcaster could reach this engine, not whether the process is alive. See
-    # OBS-20 and the reasoning in `engines/srs/healthcheck.sh`.
+    # Asks whether a broadcaster could reach this engine over SRT and over RTMP, not whether the
+    # process is alive. See OBS-20 and the reasoning in `engines/srs/healthcheck.sh`.
     healthcheck:
       test: ['CMD', 'bash', '/usr/local/srs/conf/healthcheck.sh']
       interval: 15s
@@ -485,10 +486,11 @@ services:
       HLS_AOF_RATIO: ${HLS_AOF_RATIO:-}
       HLS_WINDOW: ${HLS_WINDOW:-15}
       SRT_LATENCY: ${SRT_LATENCY:-2000}
-      # A reconnecting SRT broadcaster replaces a publisher SRS still holds. See engines/README.md. Unset, it is
-      # on only where the uploader refuses a wrong publish key, which the two lines below tell SRS without
-      # handing it the secret or the admin address, only whether each is set (SEC-28).
+      # A reconnecting SRT or RTMP broadcaster replaces a publisher SRS still holds. See engines/README.md. Unset,
+      # each is on only where the uploader refuses a wrong publish key, which the two lines below tell SRS
+      # without handing it the secret or the admin address, only whether each is set (SEC-28).
       SRT_TAKEOVER: ${SRT_TAKEOVER:-}
+      RTMP_TAKEOVER: ${RTMP_TAKEOVER:-}
       UPLOADER_PUBLISH_KEYS: ${PUBLISH_KEY_SECRET:+yes}
       UPLOADER_ADMIN_MODE: ${ADMIN_API_URL:+yes}
       # The ABR ladder, read by the SRS entrypoint. Off by default.

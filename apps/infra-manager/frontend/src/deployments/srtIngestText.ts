@@ -1,46 +1,20 @@
 import {
   SRT_BAD_DROP_PERCENT,
-  SRT_INGEST_MEASURED,
-  SRT_INGEST_NO_REPORTS,
-  SRT_INGEST_NOT_RUNNING,
-  SRT_INGEST_NOT_SRS,
-  SRT_INGEST_UNREADABLE,
   SRT_LINK_BAD,
   SRT_LINK_DEGRADED,
   SRT_LINK_HEALTHY,
   type SrtIngestMeasured,
-  type SrtIngestReading,
-  type SrtIngestUnmeasured,
-  type SrtIngestUnmeasuredState,
   type SrtLinkVerdict,
 } from '@streaming-infra-manager/common';
 
-import type { Tone } from '../components/tone';
 import { formatScaledPercent } from '../format';
+import { countOf, formatCount, type IngestPill, type IngestRow } from './ingestCardText';
 
 /**
- * The words the SRT ingest card says about a reading: a verdict on a pill, a
- * sentence on what the numbers are or why there are none, the counts, and the
- * fix when the link is dropping packets.
+ * The words the ingest card's SRT part says about a measured minute: a
+ * sentence on what the numbers are, the counts, a verdict, and the fix when
+ * the link is dropping packets.
  */
-
-/** What the page holds: the last answer, or why there is none. */
-export interface SrtIngestLoad {
-  reading: SrtIngestReading | null;
-  loadError: string | null;
-}
-
-export interface SrtIngestViewOptions {
-  /** Whether this deployment's engine settings have an SRT latency field. */
-  latencySettingOffered: boolean;
-}
-
-export interface SrtIngestRow {
-  label: string;
-  value: string;
-  /** What the count means, in words. */
-  detail: string;
-}
 
 /**
  * The one step of the remedy the card can take the operator to: the SRT
@@ -62,11 +36,10 @@ export interface SrtIngestRemedy {
   steps: SrtIngestRemedyStep[];
 }
 
-export interface SrtIngestView {
-  pill: { label: string; tone: Tone };
+export interface SrtIngestSection {
   summary: string;
-  rows: SrtIngestRow[];
-  verdict: string | null;
+  rows: IngestRow[];
+  verdict: string;
   remedy: SrtIngestRemedy | null;
 }
 
@@ -89,65 +62,30 @@ const SUGGESTED_LATENCY_MS = 2 * DEPLOYMENT_DEFAULT_LATENCY_MS;
 /** OBS takes the SRT latency in microseconds. */
 const OBS_SUGGESTED_LATENCY = SUGGESTED_LATENCY_MS * 1_000;
 
-const VERDICT_PILL: Record<SrtLinkVerdict, SrtIngestView['pill']> = {
+/** The pill of a measured SRT link, which leads the card while SRT is measured. */
+export const SRT_VERDICT_PILL: Record<SrtLinkVerdict, IngestPill> = {
   [SRT_LINK_HEALTHY]: { label: 'Healthy', tone: 'ok' },
   [SRT_LINK_DEGRADED]: { label: 'Degraded', tone: 'warn' },
   [SRT_LINK_BAD]: { label: 'Bad', tone: 'err' },
 };
 
-const UNMEASURED_PILL: Record<SrtIngestUnmeasuredState, SrtIngestView['pill']> = {
-  [SRT_INGEST_NO_REPORTS]: { label: 'No SRT publisher', tone: 'gray' },
-  [SRT_INGEST_NOT_RUNNING]: { label: 'SRS not running', tone: 'gray' },
-  [SRT_INGEST_UNREADABLE]: { label: 'Not read', tone: 'gray' },
-  [SRT_INGEST_NOT_SRS]: { label: 'Not SRS', tone: 'gray' },
-};
-
-const NOT_READ_PILL: SrtIngestView['pill'] = { label: 'Not read', tone: 'gray' };
-const READING_PILL: SrtIngestView['pill'] = { label: 'Reading', tone: 'info' };
-
 export function offersLatencySetting(fields: readonly { key: string }[] | null | undefined): boolean {
   return fields?.some((field) => field.key === SRT_LATENCY_SETTING_KEY) ?? false;
 }
 
-export function srtIngestView(load: SrtIngestLoad, options: SrtIngestViewOptions): SrtIngestView {
-  const { reading, loadError } = load;
-  if (!reading) {
-    return nothingToShow(
-      loadError ? NOT_READ_PILL : READING_PILL,
-      loadError ? `Could not ask the manager. ${loadError}` : "Reading SRS's SRT statistics.",
-    );
-  }
-  if (reading.state === SRT_INGEST_MEASURED) return measuredView(reading, options);
-  return nothingToShow(UNMEASURED_PILL[reading.state], unmeasuredSummary(reading));
-}
-
-function nothingToShow(pill: SrtIngestView['pill'], summary: string): SrtIngestView {
-  return { pill, summary, rows: [], verdict: null, remedy: null };
-}
-
-function unmeasuredSummary(reading: SrtIngestUnmeasured): string {
-  switch (reading.state) {
-    case SRT_INGEST_NO_REPORTS:
-      return (
-        `SRS printed no SRT statistics in the last ${reading.windowSeconds} seconds. ` +
-        'It prints them about every ten seconds while a publisher sends over SRT, so nobody is ' +
-        'publishing over SRT, or a publisher connected moments ago. A broadcast over RTMP is not counted here.'
-      );
-    case SRT_INGEST_NOT_RUNNING:
-      return 'SRS is not running, so there is no link to read.';
-    case SRT_INGEST_UNREADABLE:
-      return "The manager could not read SRS's log just now. The page asks again in a few seconds.";
-    case SRT_INGEST_NOT_SRS:
-      return 'This deployment does not run SRS, and only SRS reports these statistics.';
-  }
-}
-
-function measuredView(reading: SrtIngestMeasured, options: SrtIngestViewOptions): SrtIngestView {
+/**
+ * @param latencySettingOffered whether this deployment's engine settings have
+ *   an SRT latency field, which the remedy's first step then leads to.
+ */
+export function srtIngestSection(
+  reading: SrtIngestMeasured,
+  windowSeconds: number,
+  latencySettingOffered: boolean,
+): SrtIngestSection {
   const { counts, percent } = reading;
   return {
-    pill: VERDICT_PILL[reading.verdict],
     summary:
-      `From the ${countOf(reading.reports, 'report')} SRS printed in the last ${reading.windowSeconds} seconds, ` +
+      `From the ${countOf(reading.reports, 'report')} SRS printed in the last ${windowSeconds} seconds, ` +
       `over ${countOf(reading.connections, 'SRT connection')}.`,
     rows: [
       { label: 'Packets received', value: formatCount(counts.received), detail: 'Data packets that reached SRS.' },
@@ -168,7 +106,7 @@ function measuredView(reading: SrtIngestMeasured, options: SrtIngestViewOptions)
       },
     ],
     verdict: verdictText(reading),
-    remedy: reading.verdict === SRT_LINK_HEALTHY ? null : remedyFor(reading.verdict, options),
+    remedy: reading.verdict === SRT_LINK_HEALTHY ? null : remedyFor(reading.verdict, latencySettingOffered),
   };
 }
 
@@ -189,7 +127,7 @@ function verdictText(reading: SrtIngestMeasured): string {
 
 function remedyFor(
   verdict: typeof SRT_LINK_DEGRADED | typeof SRT_LINK_BAD,
-  { latencySettingOffered }: SrtIngestViewOptions,
+  latencySettingOffered: boolean,
 ): SrtIngestRemedy {
   const raiseLatency = `Raise the SRT latency of this deployment, to ${SUGGESTED_LATENCY_MS} ms for example`;
   return {
@@ -220,12 +158,4 @@ function shareText(count: number, share: number | null): string {
   if (count === 0) return 'none';
   const packets = countOf(count, 'packet');
   return share === null ? packets : `${formatScaledPercent(share)} · ${packets}`;
-}
-
-function countOf(count: number, noun: string): string {
-  return `${formatCount(count)} ${noun}${count === 1 ? '' : 's'}`;
-}
-
-function formatCount(count: number): string {
-  return count.toLocaleString('en-US');
 }

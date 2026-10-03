@@ -15,7 +15,9 @@ import type { StackSettingField } from './deploymentSettings.js';
  * line in the uploader's log, and a mistyped format falls back to text
  * without a word. The web2 admin address refuses a user name and a # part the
  * uploader would take, because it builds every request by adding a path after
- * the address, and either one then sends the request somewhere else.
+ * the address, and either one then sends the request somewhere else. The two
+ * takeover keys take on or off because SRS's entrypoint refuses to start on
+ * anything else, and empty leaves the stack's own rule.
  */
 export const STACK_SETTING_FIELDS: Readonly<Record<string, StackSettingField>> = {
   UPLOADER_START_GATES: { kind: 'choice', choices: ['chequebook-warn', 'warn', 'refuse'] },
@@ -34,6 +36,8 @@ export const STACK_SETTING_FIELDS: Readonly<Record<string, StackSettingField>> =
   BEE_RUNG_FULL_NODE: { kind: 'boolean' },
   BEE_GATEWAY_CACHE_RETRIEVAL: { kind: 'boolean' },
   OME_ADMISSION_FAIL_OPEN: { kind: 'boolean' },
+  RTMP_TAKEOVER: { kind: 'choice', choices: ['', 'on', 'off'] },
+  SRT_TAKEOVER: { kind: 'choice', choices: ['', 'on', 'off'] },
   [ADMIN_API_URL_KEY]: { kind: 'url' },
   [ADMIN_API_TOKEN_KEY]: { kind: 'text', minLength: ADMIN_API_TOKEN_MIN_LENGTH },
 };

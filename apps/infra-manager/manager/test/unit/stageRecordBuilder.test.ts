@@ -213,6 +213,14 @@ describe('a stage record, field by field', () => {
     });
   });
 
+  it('offers no RTMP on an OME stage, because OvenMediaEngine takes SRT alone', async () => {
+    const { record } = await built(
+      { env: baseEnv({ OME_SRT_PORT: '10022' }) },
+      stage({ components: ['ome', 'stream-uploader', 'bee-uploader'] }),
+    );
+    assert.equal(record.ingest.rtmpPublic, false);
+  });
+
   it('takes the deployment’s own ingest address, and the manager’s public one for a local deployment', async () => {
     assert.equal(
       (await built({}, stage({ ingest_host: 'ingest.example.org' }))).record.ingest.host,

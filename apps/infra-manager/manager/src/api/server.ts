@@ -18,7 +18,7 @@ import { EventBus } from '../domain/EventBus.js';
 import { Logger } from '../domain/Logger.js';
 import { MetricsCollector } from '../domain/MetricsCollector.js';
 import { ProfileService } from '../domain/ProfileService.js';
-import { SrtIngestHealthService } from '../domain/srtIngest/SrtIngestHealthService.js';
+import { IngestHealthService } from '../domain/ingestHealth/IngestHealthService.js';
 import { StampService } from '../domain/StampService.js';
 import { UploaderHealthService } from '../domain/UploaderHealthService.js';
 import { StackVersionService } from '../domain/versions/StackVersionService.js';
@@ -49,7 +49,7 @@ import { createHealthRouter } from './routes/health.js';
 import { createManagerSettingsRouter } from './routes/managerSettings.js';
 import { createMetricsRouter } from './routes/metrics.js';
 import { createProfilesRouter } from './routes/profiles.js';
-import { createSrtIngestRouter } from './routes/srtIngest.js';
+import { createIngestHealthRouter } from './routes/ingestHealth.js';
 import { createSrtPassphraseRouter } from './routes/srtPassphrase.js';
 import { createStagesRouter } from './routes/stages.js';
 import { createCatalogueNodeRouter } from './routes/catalogueNode.js';
@@ -74,7 +74,7 @@ export interface ApiDeps {
   chequebookService: ChequebookService;
   chequebookOperations: ChequebookOperationsService;
   uploaderHealthService: UploaderHealthService;
-  srtIngestHealthService: SrtIngestHealthService;
+  ingestHealthService: IngestHealthService;
   containerControl: ContainerControl;
   engineConfigService: EngineConfigService;
   deploymentSettingsService: DeploymentSettingsService;
@@ -144,7 +144,7 @@ export function startApiServer(deps: ApiDeps, port: number, host: string): ApiSe
     createProfilesRouter(deps.profileService, deps.uploaderHealthService, deps.beeRpcEndpoint !== null),
   );
   app.use('/profiles', createSrtPassphraseRouter(deps.profileService));
-  app.use('/profiles', createSrtIngestRouter(deps.srtIngestHealthService));
+  app.use('/profiles', createIngestHealthRouter(deps.ingestHealthService));
   app.use(
     '/targets',
     createTargetsRouter(deps.deployTargets, deps.portReservations, deps.portInventory, deps.firewallInventory),

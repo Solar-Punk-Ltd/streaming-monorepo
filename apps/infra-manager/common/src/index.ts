@@ -24,6 +24,7 @@ export * from './engineSettingObservation.js';
 export * from './engines.js';
 export * from './envSafeValue.js';
 export * from './errorUtils.js';
+export * from './ingestHealth.js';
 export * from './ingestHost.js';
 export * from './managerAdminLink.js';
 export * from './metrics.js';
@@ -37,6 +38,7 @@ export * from './readinessChecklist.js';
 export * from './readySummary.js';
 export * from './redactEndpoints.js';
 export * from './rpcEndpointSource.js';
+export * from './rtmpIngestHealth.js';
 export * from './runningCommit.js';
 export * from './settingValues.js';
 export * from './srtIngestHealth.js';
@@ -64,10 +66,11 @@ export {
 } from './portPolicy.js';
 export type { PublicPortRole } from './portPolicy.js';
 export { addressOfStreamKey } from './streamKey.js';
-// The SRT line a broadcaster sends to, built as every app builds it.
+// The SRT line a broadcaster sends to, and what every console says beside RTMP, as every app has them.
 export {
   buildObsSrtServer,
   buildSrtPublishUrl,
   OBS_SRT_PASSPHRASE_FIELD_HELP,
   type ObsSrtServer,
+  rtmpUnencryptedWarning,
 } from '@streaming-monorepo/contracts';

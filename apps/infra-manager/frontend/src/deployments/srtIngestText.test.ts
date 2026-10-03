@@ -1,26 +1,44 @@
 /**
- * The words the SRT ingest card turns a reading into.
+ * The words the ingest card's SRT part turns a reading into.
  *
  * Unit test, no DOM. `pnpm test` in frontend/.
  *
  * The card exists because a tester's broadcast broke up for five hours on
  * 2026-09-22 and nothing on any screen said so, while SRS was counting six
  * percent of the packets dropped. So a bad link has to read as bad, with the
- * fix beside it, and a minute with no reports has to say so rather than show
- * a row of zeros that reads as a healthy link.
+ * fix beside it. A minute with no reports is the card's as a whole, and
+ * `ingestHealthText.test.ts` covers it.
  */
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 
-import { measuredSrtIngest, type SrtIngestReading, type SrtLinkCounts } from '@streaming-infra-manager/common';
+import {
+  INGEST_READ,
+  measuredSrtIngest,
+  RTMP_INGEST_NO_REPORTS,
+  type SrtLinkCounts,
+} from '@streaming-infra-manager/common';
 
-import { offersLatencySetting, RAISE_LATENCY_ACTION, srtIngestView, type SrtIngestView } from './srtIngestText';
+import { type IngestHealthView, ingestHealthView } from './ingestHealthText';
+import { offersLatencySetting, RAISE_LATENCY_ACTION, type SrtIngestSection } from './srtIngestText';
 
-const measured = (counts: SrtLinkCounts, reports = 6, connections = 1): SrtIngestReading =>
-  measuredSrtIngest({ windowSeconds: 60, reports, connections, counts });
+const measured = (counts: SrtLinkCounts, reports = 6, connections = 1) => ({
+  state: INGEST_READ,
+  windowSeconds: 60,
+  srt: measuredSrtIngest({ reports, connections, counts }),
+  rtmp: { state: RTMP_INGEST_NO_REPORTS },
+});
 
-const read = (reading: SrtIngestReading, latencySettingOffered = false): SrtIngestView =>
-  srtIngestView({ reading, loadError: null }, { latencySettingOffered });
+/** The whole card for a minute of SRT reports. */
+const card = (reading: ReturnType<typeof measured>, latencySettingOffered = false): IngestHealthView =>
+  ingestHealthView({ reading, loadError: null }, { latencySettingOffered });
+
+/** The card's SRT part, which a measured minute always has. */
+function read(reading: ReturnType<typeof measured>, latencySettingOffered = false): SrtIngestSection {
+  const { srt } = card(reading, latencySettingOffered);
+  assert.ok(srt, 'the card shows an SRT part');
+  return srt;
+}
 
 const BROKEN_UP = measured({ received: 12_957, lost: 761, retransmitted: 731, dropped: 763 }, 2);
 const ONE_DROP = measured({ received: 38_000, lost: 40, retransmitted: 39, dropped: 3 });
@@ -28,14 +46,13 @@ const RECOVERED = measured({ received: 39_000, lost: 120, retransmitted: 120, dr
 const CLEAN = measured({ received: 39_000, lost: 0, retransmitted: 0, dropped: 0 });
 const CLEAN_COUNTS: SrtLinkCounts = { received: 9_000, lost: 0, retransmitted: 0, dropped: 0 };
 
-function allText(view: SrtIngestView): string[] {
+function allText(section: SrtIngestSection): string[] {
   return [
-    view.pill.label,
-    view.summary,
-    view.verdict ?? '',
-    ...view.rows.flatMap((row) => [row.label, row.value, row.detail]),
-    view.remedy?.title ?? '',
-    ...(view.remedy?.steps.map((step) => step.text) ?? []),
+    section.summary,
+    section.verdict,
+    ...section.rows.flatMap((row) => [row.label, row.value, row.detail]),
+    section.remedy?.title ?? '',
+    ...(section.remedy?.steps.map((step) => step.text) ?? []),
   ];
 }
 
@@ -43,7 +60,7 @@ describe('a measured SRT link on the card', () => {
   it('calls the broadcast that broke up bad, and says why in plain words', () => {
     const view = read(BROKEN_UP);
 
-    assert.deepEqual(view.pill, { label: 'Bad', tone: 'err' });
+    assert.deepEqual(card(BROKEN_UP).pill, { label: 'Bad', tone: 'err' });
     assert.equal(view.summary, 'From the 2 reports SRS printed in the last 60 seconds, over 1 SRT connection.');
     assert.equal(view.verdict, '1% or more of the packets were dropped, so the picture is breaking up.');
     assert.deepEqual(
@@ -79,7 +96,7 @@ describe('a measured SRT link on the card', () => {
   it('calls a link with a few dropped packets degraded, with the same remedy as a warning', () => {
     const view = read(ONE_DROP);
 
-    assert.deepEqual(view.pill, { label: 'Degraded', tone: 'warn' });
+    assert.deepEqual(card(ONE_DROP).pill, { label: 'Degraded', tone: 'warn' });
     assert.equal(
       view.verdict,
       'Some packets arrived too late to use and were dropped, so the picture can break up in places.',
@@ -92,7 +109,7 @@ describe('a measured SRT link on the card', () => {
   it('calls a link that recovered everything it lost healthy, and offers no remedy', () => {
     const view = read(RECOVERED);
 
-    assert.deepEqual(view.pill, { label: 'Healthy', tone: 'ok' });
+    assert.deepEqual(card(RECOVERED).pill, { label: 'Healthy', tone: 'ok' });
     assert.equal(
       view.verdict,
       'Nothing was dropped. Every packet that went missing was sent again in time, so the picture is whole.',
@@ -119,13 +136,13 @@ describe('a measured SRT link on the card', () => {
   });
 
   it('gives counts without a share when no packet arrived', () => {
-    const view = read(measured({ received: 0, lost: 0, retransmitted: 0, dropped: 4 }, 1));
+    const nothingReceived = measured({ received: 0, lost: 0, retransmitted: 0, dropped: 4 }, 1);
 
     assert.deepEqual(
-      view.rows.map((row) => row.value),
+      read(nothingReceived).rows.map((row) => row.value),
       ['0', 'none', 'none', '4 packets'],
     );
-    assert.deepEqual(view.pill, { label: 'Bad', tone: 'err' });
+    assert.deepEqual(card(nothingReceived).pill, { label: 'Bad', tone: 'err' });
   });
 
   // With nothing received there is no share to quote, so the verdict cannot
@@ -198,71 +215,11 @@ describe('the SRT latency step of the remedy', () => {
   });
 });
 
-describe('an SRT link the card has no numbers for', () => {
-  it('says there were no reports rather than showing zeros', () => {
-    const view = read({ state: 'no_reports', windowSeconds: 60 });
-
-    assert.deepEqual(view.pill, { label: 'No SRT publisher', tone: 'gray' });
-    assert.equal(
-      view.summary,
-      'SRS printed no SRT statistics in the last 60 seconds. It prints them about every ten seconds while a publisher sends over SRT, so nobody is publishing over SRT, or a publisher connected moments ago. A broadcast over RTMP is not counted here.',
-    );
-    assert.deepEqual(view.rows, []);
-    assert.equal(view.verdict, null);
-    assert.equal(view.remedy, null);
-  });
-
-  it('says SRS is not running', () => {
-    const view = read({ state: 'not_running', windowSeconds: 60 });
-
-    assert.deepEqual(view.pill, { label: 'SRS not running', tone: 'gray' });
-    assert.equal(view.summary, 'SRS is not running, so there is no link to read.');
-    assert.deepEqual(view.rows, []);
-  });
-
-  it('says the log could not be read, and that the page will ask again', () => {
-    const view = read({ state: 'unreadable', windowSeconds: 60 });
-
-    assert.deepEqual(view.pill, { label: 'Not read', tone: 'gray' });
-    assert.equal(view.summary, "The manager could not read SRS's log just now. The page asks again in a few seconds.");
-  });
-
-  it('says only SRS reports these, for a deployment on another engine', () => {
-    const view = read({ state: 'not_srs', windowSeconds: 60 });
-
-    assert.equal(view.summary, 'This deployment does not run SRS, and only SRS reports these statistics.');
-  });
-
-  it('says it is reading until the first answer arrives', () => {
-    const view = srtIngestView({ reading: null, loadError: null }, { latencySettingOffered: false });
-
-    assert.deepEqual(view.pill, { label: 'Reading', tone: 'info' });
-    assert.equal(view.summary, "Reading SRS's SRT statistics.");
-  });
-
-  it('says the manager could not be asked, with its reason', () => {
-    const view = srtIngestView({ reading: null, loadError: 'request failed (502)' }, { latencySettingOffered: false });
-
-    assert.deepEqual(view.pill, { label: 'Not read', tone: 'gray' });
-    assert.equal(view.summary, 'Could not ask the manager. request failed (502)');
-  });
-});
-
-describe('the words on the card', () => {
+describe("the words on the card's SRT part", () => {
   it('carry no em dash and no semicolon, in any state', () => {
-    const views = [
-      read(BROKEN_UP, true),
-      read(BROKEN_UP, false),
-      read(ONE_DROP),
-      read(RECOVERED),
-      read(CLEAN),
-      ...(['no_reports', 'not_running', 'unreadable', 'not_srs'] as const).map((state) =>
-        read({ state, windowSeconds: 60 }),
-      ),
-      srtIngestView({ reading: null, loadError: null }, { latencySettingOffered: false }),
-    ];
+    const sections = [read(BROKEN_UP, true), read(BROKEN_UP, false), read(ONE_DROP), read(RECOVERED), read(CLEAN)];
 
-    for (const text of views.flatMap(allText)) {
+    for (const text of sections.flatMap(allText)) {
       assert.ok(!text.includes('\u2014'), `an em dash in: ${text}`);
       assert.ok(!text.includes(';'), `a semicolon in: ${text}`);
     }

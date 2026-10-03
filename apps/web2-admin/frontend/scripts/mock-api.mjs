@@ -36,8 +36,9 @@ const COOKIE = 'web2_admin_session';
 const SEED_USERNAME = process.env.SEED_ADMIN_USERNAME ?? 'admin';
 let seedPassword = process.env.SEED_ADMIN_PASSWORD ?? 'admin1234';
 
-// Flip to true to see the OBS panel of a stage that opened RTMP ingest. Off,
-// as on a stage the manager pushes by default, the panel offers SRT only.
+// Flip to true to see the OBS panel of a stage whose record opens RTMP. Off, as
+// on every stage the manager pushes, since RTMP is closed to the outside, the
+// panel offers SRT only.
 const RTMP_PUBLIC = process.env.MOCK_RTMP_PUBLIC === 'true';
 
 const MOCK_STAGE_ID = '5f0c2a8e-1b2c-4d3e-8f40-0a1b2c3d4e5f';

@@ -237,7 +237,7 @@ describe('driftNotice', () => {
     );
   });
 
-  // The SRT ingest card sends an operator here during a live broadcast that is losing packets.
+  // The Ingest card sends an operator here during a live SRT broadcast that is losing packets.
   it('warns that recreating the engine disconnects a live publisher, and says nothing of one otherwise', () => {
     const srs = driftNotice(catalogWith({ keys: ['SRT_LATENCY'], services: ['srs'], fullRedeploy: false }, true));
     const ome = driftNotice(

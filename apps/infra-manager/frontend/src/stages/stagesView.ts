@@ -106,7 +106,7 @@ export interface IngestView {
 /** Where encoders send the stage's streams: the host, then each port and what goes with it. */
 export function ingestView(ingest: ConsoleStageIngest): IngestView {
   const srt = `SRT ${ingest.srtPort}, ${ingest.hasSrtPassphrase ? 'with a passphrase' : 'no passphrase'}`;
-  const rtmp = `RTMP ${ingest.rtmpPort}${ingest.rtmpPublic ? '' : ', not public'}`;
+  const rtmp = ingest.rtmpPublic ? `RTMP ${ingest.rtmpPort}, unencrypted` : 'RTMP not offered';
   return { host: ingest.host, ports: `${srt} · ${rtmp}` };
 }
 

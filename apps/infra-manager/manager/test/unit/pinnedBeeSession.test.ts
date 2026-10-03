@@ -243,14 +243,16 @@ describe('one-connection Bee transfer session', () => {
 
   it('applies the same monotonic pre-POST deadline to URL sessions', async (t) => {
     const bee = await beeServer();
-    const session = new PinnedBeeSession(bee.url, { preflightTimeoutMs: 60 });
+    // Long enough for the identity read to finish first. On a loaded machine 60 ms ran out during it.
+    const preflightTimeoutMs = 1000;
+    const session = new PinnedBeeSession(bee.url, { preflightTimeoutMs });
+    const until = performance.now() + preflightTimeoutMs;
     t.after(async () => {
       session.dispose();
       await bee.close();
     });
     await session.getAddresses();
-    const until = performance.now() + 70;
-    while (performance.now() < until) {
+    while (performance.now() <= until) {
       /* Prevent the expiry timer from running before POST. */
     }
     await assert.rejects(session.depositChequebook(1n), /Bee connection/i);

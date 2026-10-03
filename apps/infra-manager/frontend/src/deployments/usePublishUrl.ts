@@ -7,8 +7,9 @@ import { useDeployments } from '../app/useDeploymentsStore';
 import { fetchSrtPassphrase } from '../data';
 import { useServerHost } from '../ServerHostContext';
 import type { Profile } from '../types';
-import { srtPublishSettings } from '../urls';
+import { rtmpPublishSettings, srtPublishSettings } from '../urls';
 import { publishPassphrase } from './publishPassphrase';
+import { publishCopyText } from './publishText';
 import { engineOf } from './shape';
 
 export interface PublishUrl {
@@ -17,6 +18,11 @@ export interface PublishUrl {
    * has been revealed, which is the whole URL for a deployment needing none.
    */
   url: string | null;
+  /**
+   * What Copy publish URL puts on the clipboard for the URL above: that line,
+   * with the RTMP server and stream key beside it where RTMP is open.
+   */
+  copyText: string | null;
   /** Whether this revision still needs its own passphrase before it is complete. */
   pending: boolean;
   /**
@@ -25,7 +31,7 @@ export interface PublishUrl {
    */
   fieldPassphrase: string | null;
   /**
-   * Puts the whole URL on the clipboard, asking for the passphrase first. A
+   * Puts the whole URL, with RTMP's values where RTMP is open, on the clipboard, asking for the passphrase first. A
    * passphrase the URL cannot carry opens the deployment page instead, where
    * OBS's own passphrase field is shown, since the URL alone would be refused.
    */
@@ -119,9 +125,11 @@ export function usePublishUrl(profile: Profile, shown = false): PublishUrl {
   const passphrase = revealed?.generation === generation ? revealed.passphrase : null;
 
   const settings = srtPublishSettings(profile, serverHost, passphrase);
+  const rtmp = rtmpPublishSettings(profile, serverHost);
 
   return {
     url: settings?.server ?? null,
+    copyText: settings ? publishCopyText(settings.server, rtmp) : null,
     fieldPassphrase: settings?.passphraseRoute === 'authentication' ? (passphrase?.trim() ?? null) : null,
     pending: publishUrlNeedsReveal(profile) && revealed?.generation !== generation,
     copy: async () => {
@@ -133,7 +141,7 @@ export function usePublishUrl(profile: Profile, shown = false): PublishUrl {
         navigate(routes.deployment(name));
         return;
       }
-      await navigator.clipboard.writeText(whole.server).catch(() => undefined);
+      await navigator.clipboard.writeText(publishCopyText(whole.server, rtmp)).catch(() => undefined);
     },
   };
 }

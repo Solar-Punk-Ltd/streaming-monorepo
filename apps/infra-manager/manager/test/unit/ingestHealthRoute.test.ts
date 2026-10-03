@@ -1,5 +1,5 @@
 /**
- * `GET /profiles/:name/srt-ingest`, the route the deployment page reads.
+ * `GET /profiles/:name/ingest-health`, the route the deployment page reads.
  *
  * Unit test, no database and no Docker. `pnpm test` in manager/.
  *
@@ -13,27 +13,32 @@ import { describe, it } from 'node:test';
 import express from 'express';
 
 import {
+  INGEST_READ,
+  type IngestHealthReading,
   measuredSrtIngest,
   REQUESTED_WITH_HEADER,
   REQUESTED_WITH_VALUE,
   SESSION_COOKIE_NAME,
-  type SrtIngestReading,
 } from '@streaming-infra-manager/common';
 
 import { errorHandler } from '../../src/api/middleware/errorHandler.js';
 import { createRequireSession } from '../../src/api/middleware/requireSession.js';
 import { requireSameSite } from '../../src/api/middleware/requireSameSite.js';
-import { createSrtIngestRouter } from '../../src/api/routes/srtIngest.js';
+import { createIngestHealthRouter } from '../../src/api/routes/ingestHealth.js';
 import type { AuthService } from '../../src/domain/auth/AuthService.js';
 import { ProfileNotFoundError } from '../../src/domain/errors/index.js';
-import type { SrtIngestHealthService } from '../../src/domain/srtIngest/SrtIngestHealthService.js';
+import type { IngestHealthService } from '../../src/domain/ingestHealth/IngestHealthService.js';
 
-const BROKEN_UP: SrtIngestReading = measuredSrtIngest({
+const BROKEN_UP: IngestHealthReading = {
+  state: INGEST_READ,
   windowSeconds: 60,
-  reports: 2,
-  connections: 1,
-  counts: { received: 12_957, lost: 761, retransmitted: 731, dropped: 763 },
-});
+  srt: measuredSrtIngest({
+    reports: 2,
+    connections: 1,
+    counts: { received: 12_957, lost: 761, retransmitted: 731, dropped: 763 },
+  }),
+  rtmp: { state: 'measured', reports: 6, connections: 1, incomingKbps: 4812 },
+};
 
 const session = {
   async sessionFor(token: string) {
@@ -47,21 +52,21 @@ const session = {
   },
 } as unknown as AuthService;
 
-async function testApi(reading: SrtIngestReading = BROKEN_UP) {
+async function testApi(reading: IngestHealthReading = BROKEN_UP) {
   const asked: string[] = [];
-  const srtIngest = {
-    async read(name: string): Promise<SrtIngestReading> {
+  const ingestHealth = {
+    async read(name: string): Promise<IngestHealthReading> {
       asked.push(name);
       if (name === 'missing') throw new ProfileNotFoundError(name);
       return reading;
     },
-  } as unknown as SrtIngestHealthService;
+  } as unknown as IngestHealthService;
 
   const app = express();
   app.use(requireSameSite);
   app.use(express.json());
   app.use(createRequireSession(session));
-  app.use('/profiles', createSrtIngestRouter(srtIngest));
+  app.use('/profiles', createIngestHealthRouter(ingestHealth));
   app.use(errorHandler);
 
   const server = http.createServer(app);
@@ -87,12 +92,12 @@ async function testApi(reading: SrtIngestReading = BROKEN_UP) {
   };
 }
 
-describe('the SRT ingest route', () => {
+describe('the ingest health route', () => {
   it('answers the whole reading to a signed-in caller', async (t) => {
     const api = await testApi();
     t.after(() => api.close());
 
-    const response = await api.get('/profiles/stage/srt-ingest');
+    const response = await api.get('/profiles/stage/ingest-health');
 
     assert.equal(response.status, 200);
     assert.deepEqual(await response.json(), BROKEN_UP);
@@ -100,19 +105,29 @@ describe('the SRT ingest route', () => {
   });
 
   it('answers a minute with no reports in it as that, with no numbers on it', async (t) => {
-    const api = await testApi({ state: 'no_reports', windowSeconds: 60 });
+    const api = await testApi({
+      state: 'read',
+      windowSeconds: 60,
+      srt: { state: 'no_reports' },
+      rtmp: { state: 'no_reports' },
+    });
     t.after(() => api.close());
 
-    const response = await api.get('/profiles/stage/srt-ingest');
+    const response = await api.get('/profiles/stage/ingest-health');
 
-    assert.deepEqual(await response.json(), { state: 'no_reports', windowSeconds: 60 });
+    assert.deepEqual(await response.json(), {
+      state: 'read',
+      windowSeconds: 60,
+      srt: { state: 'no_reports' },
+      rtmp: { state: 'no_reports' },
+    });
   });
 
   it('needs a session, and asks nothing without one', async (t) => {
     const api = await testApi();
     t.after(() => api.close());
 
-    const response = await api.get('/profiles/stage/srt-ingest', false);
+    const response = await api.get('/profiles/stage/ingest-health', false);
 
     assert.equal(response.status, 401);
     assert.deepEqual(api.asked, []);
@@ -122,7 +137,7 @@ describe('the SRT ingest route', () => {
     const api = await testApi();
     t.after(() => api.close());
 
-    const response = await api.get('/profiles/Not%20A%20Name/srt-ingest');
+    const response = await api.get('/profiles/Not%20A%20Name/ingest-health');
 
     assert.equal(response.status, 400);
     assert.deepEqual(api.asked, []);
@@ -132,7 +147,7 @@ describe('the SRT ingest route', () => {
     const api = await testApi();
     t.after(() => api.close());
 
-    const response = await api.get('/profiles/missing/srt-ingest');
+    const response = await api.get('/profiles/missing/ingest-health');
 
     assert.equal(response.status, 404);
     assert.deepEqual(await response.json(), { error: 'profile_not_found', name: 'missing' });

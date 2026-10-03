@@ -1,11 +1,14 @@
 /**
- * Where a deployment page puts the SRT passphrase for OBS.
+ * Where a deployment page puts the SRT passphrase for OBS, and that it offers
+ * no RTMP beside the SRT line while RTMP is closed to the outside.
  *
  * OBS reads its Server line with FFmpeg, which ends a value at `&`, turns `+`
  * into a space and never percent-decodes. A passphrase made only of letters,
  * digits and `. _ ~ -` rides on the line. Any other goes in OBS's own
  * passphrase field, with the same words the admin console uses, because a line
- * carrying it would connect with the wrong passphrase or not at all.
+ * carrying it would connect with the wrong passphrase or not at all. The
+ * firewall policy keeps RTMP closed on every deployment, so SRT is the one
+ * ingest offered and Copy publish URL copies the SRT line alone.
  *
  * A real headless Chrome over a real Vite, with an offline fixture in place of
  * the manager. Runs through `pnpm --filter @streaming-infra-manager/frontend-prototype test:browser`.
@@ -51,7 +54,20 @@ function stage(name, portSlot) {
 }
 
 const passphrases = { 'plain-stage': 'plain.pass_word~-1', 'awkward-stage': 'p&ss word#1' };
-const profiles = [stage('plain-stage', 1), stage('awkward-stage', 2)];
+
+/** An OvenMediaEngine deployment, whose ingest takes SRT alone. */
+const omeStage = {
+  ...stage('ome-stage', 3),
+  has_srt_passphrase: false,
+  components: ['ome'],
+  containers: [{ service: 'ome', ports: { OME_SRT_PORT: 10031 } }],
+};
+const profiles = [stage('plain-stage', 1), stage('awkward-stage', 2), omeStage];
+
+const RTMP_WARNING_START = 'RTMP is not encrypted.';
+
+/** How many times a value appears in a text. */
+const occurrences = (text, value) => text.split(value).length - 1;
 
 test('a deployment page puts an SRT passphrase on the line only when the line can carry it', async (t) => {
   const server = await createServer({
@@ -112,6 +128,14 @@ test('a deployment page puts an SRT passphrase on the line only when the line ca
       `the line carries the passphrase, got ${JSON.stringify(values)}`,
     );
     assert.ok(!text.includes(OBS_FIELD_WORDS), 'nothing asks for the passphrase field');
+    assert.ok(!values.some((value) => value.startsWith('rtmp://')), `no RTMP server, got ${JSON.stringify(values)}`);
+    assert.ok(!text.includes(RTMP_WARNING_START), 'no RTMP warning without RTMP');
+    assert.ok(!text.includes('Stream Key'), 'no RTMP stream key box');
+    assert.equal(
+      occurrences(text, passphrases['plain-stage']),
+      1,
+      'the passphrase is on the page in the SRT line alone',
+    );
   });
 
   await t.test("any other passphrase goes in OBS's own field, in the admin's words", async () => {
@@ -129,6 +153,28 @@ test('a deployment page puts an SRT passphrase on the line only when the line ca
     assert.ok(values.includes('p&ss word#1'), 'the passphrase itself is offered to copy into that field');
     assert.ok(!values.some((value) => value.includes('passphrase=')), 'no line carries a cut passphrase');
     assert.ok(!text.includes('already in the URL'), 'the page does not claim the line carries it');
+    assert.ok(!values.some((value) => value.startsWith('rtmp://')), `no RTMP server, got ${JSON.stringify(values)}`);
+    assert.equal(
+      occurrences(text, passphrases['awkward-stage']),
+      1,
+      "the passphrase is on the page in OBS's field alone",
+    );
+  });
+
+  await t.test('an OvenMediaEngine deployment offers SRT alone, with no RTMP and no warning', async () => {
+    await call('Page.navigate', { url: `${origin}/#/deployments/ome-stage` });
+    const text = await waitFor(
+      () => evaluate(PAGE_TEXT),
+      (body) => body.includes('Publish') && body.includes('OvenMediaEngine ingest'),
+      'the OvenMediaEngine publish card',
+    );
+    const values = await evaluate(copyBoxValues);
+    assert.ok(
+      values.some((value) => value.startsWith('srt://offline.example:10031')),
+      JSON.stringify(values),
+    );
+    assert.ok(!values.some((value) => value.startsWith('rtmp://')), `no RTMP server, got ${JSON.stringify(values)}`);
+    assert.ok(!text.includes(RTMP_WARNING_START), 'no RTMP warning without RTMP');
   });
 
   // The list's Copy button asks for the passphrase on the click. A line copied
@@ -151,6 +197,7 @@ test('a deployment page puts an SRT passphrase on the line only when the line ca
         Boolean,
         'the copied plain stage line',
       );
+      // RTMP is closed to the outside, so the SRT line is all that is copied.
       assert.equal(
         copied,
         'srt://offline.example:10011?streamid=#!::r=live/stream,m=publish&passphrase=plain.pass_word~-1',

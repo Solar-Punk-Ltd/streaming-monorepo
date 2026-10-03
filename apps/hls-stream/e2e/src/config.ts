@@ -19,6 +19,12 @@ import { fileURLToPath } from 'node:url';
 import { DEFAULT_LOCAL_HOST_ADDRESS } from './harness/host.js';
 import { type AbrExpectation, readAbrExpectation } from './abrCoverage.js';
 import { type EnvBag, layerEnv, processEnv, readEnvFile } from './envFile.js';
+import {
+  DEFAULT_INGEST_PROTOCOL,
+  type IngestProtocol,
+  readIngestProtocol,
+  unsupportedIngestReason,
+} from './ingestProtocol.js';
 import { type OmePortVar, type PortVar, requireValidPortSlot, resolveOmePort, resolvePort } from './ports.js';
 import { applyRunProfile, type RunProfile } from './profiles.js';
 import { readSegmentExpectation, type SegmentExpectation } from './segmentLength.js';
@@ -88,6 +94,11 @@ export interface E2EConfig {
   mode: Mode;
   /** Media engine the target runs; selects the SRT streamid form, log markers and `/health.engines`. */
   engine: EngineName;
+  /**
+   * The protocol a suite's publisher sends a broadcast over when the suite names none, out of `E2E_INGEST_PROTOCOL`.
+   * SRT unless the run asks otherwise. See `src/ingestProtocol.ts`.
+   */
+  ingestProtocol: IngestProtocol;
   /** ssh target from ~/.ssh/config used for attach-mode transport and fault injection. */
   sshTarget: string;
   /** Public host or IP the SRT publisher and viewer reach from wherever the tests run. */
@@ -358,6 +369,12 @@ export function loadConfig({ env: source = process.env, rootDir = ROOT_DIR }: Lo
   requireNotSetInFile(engineEnv, enginePath);
   const resolved = layerEnv(withRoot, engineEnv);
 
+  const ingestProtocol = readIngestProtocol(env(resolved, 'E2E_INGEST_PROTOCOL', DEFAULT_INGEST_PROTOCOL));
+  const unsupportedIngest = unsupportedIngestReason(engine, ingestProtocol);
+  if (unsupportedIngest !== null) {
+    throw new Error(`E2E_INGEST_PROTOCOL=${ingestProtocol} cannot run against this deployment. ${unsupportedIngest}`);
+  }
+
   const ports = Object.fromEntries(
     Object.entries(PORT_SOURCES).map(([key, name]) => [key, resolvePort(name, portSlot, resolved)]),
   ) as Ports;
@@ -365,6 +382,7 @@ export function loadConfig({ env: source = process.env, rootDir = ROOT_DIR }: Lo
   return {
     mode,
     engine,
+    ingestProtocol,
     sshTarget: requireMatch(
       'E2E_SSH_TARGET',
       env(resolved, 'E2E_SSH_TARGET', 'localhost'),

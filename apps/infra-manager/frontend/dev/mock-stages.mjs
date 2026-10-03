@@ -25,6 +25,8 @@ import {
   stageReadinessOf,
 } from '@streaming-infra-manager/common';
 
+import { PORT_BASES } from './mock-seed.mjs';
+
 const INTERVAL_MS = 30_000;
 
 /** The last push of one stage, as the manager keeps it in memory. */
@@ -43,6 +45,7 @@ function adminTokenOf(profile) {
 
 /** The record `GET /stages` answers for one stage, without its passphrase, as the manager would build it. */
 function consoleStageOf(profile, publicHost, managerId) {
+  const engine = (profile.components ?? []).includes('ome') ? 'ome' : 'srs';
   return {
     name: profile.name,
     record: {
@@ -51,14 +54,14 @@ function consoleStageOf(profile, publicHost, managerId) {
       managerId,
       name: profile.name,
       kind: profile.kind,
-      engine: (profile.components ?? []).includes('ome') ? 'ome' : 'srs',
+      engine,
       stackVersion: null,
       status: profile.status,
       observedAt: new Date().toISOString(),
       ingest: {
         host: resolvedIngestHost(profile, publicHost),
-        srtPort: 10002 + profile.port_slot * 10,
-        rtmpPort: 10003 + profile.port_slot * 10,
+        srtPort: PORT_BASES.SRS_SRT_PORT + profile.port_slot * 10,
+        rtmpPort: PORT_BASES.SRS_RTMP_PORT + profile.port_slot * 10,
         rtmpPublic: false,
         hasSrtPassphrase: profile.has_srt_passphrase,
       },

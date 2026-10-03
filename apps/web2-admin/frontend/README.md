@@ -17,8 +17,18 @@ types from [`../common`](../common/).
 | `#/account`              | Change password.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                          |
 
 The OBS panel is built from the stream's stage, as the manager pushed it. It
-offers SRT only, unless the stage opens RTMP ingest, in which case it also
-shows the RTMP server and stream key. The SRT Server line carries the same per-stream `key=` as that
+offers SRT, and RTMP as well only on a stage whose record says `rtmpPublic`.
+The manager says it on no stage, because RTMP is closed to the outside on
+every stage for now, so the panel offers SRT alone. Where a record does say
+it, the panel warns beside RTMP that RTMP is not encrypted: the stream key
+crosses the network as readable text, anyone who reads it there can publish to
+the stream with it, and since the stage lets a new RTMP publisher with the key
+take over a live stream, they can replace a live broadcast too, whichever
+protocol it came in over. It says that SRT with the stage's passphrase keeps
+the picture private but not the key, because SRT sends the key before
+encryption starts and a key read off either protocol publishes over RTMP while
+RTMP is open. On a stage with no SRT passphrase it says so instead of
+recommending one. The SRT Server line carries the same per-stream `key=` as the RTMP
 stream key, and the SRT passphrase wherever OBS can read it there, so the console hides
 those values, and the SRT Password field when there is one, until the operator
 reveals them. The host, port and stream id stay readable, and Copy always
@@ -67,7 +77,7 @@ honours a few env vars:
 | `MOCK_API_PORT`       | `9877`                   | listen port                                                                                                                                  |
 | `SEED_ADMIN_USERNAME` | `admin`                  | the seeded user                                                                                                                              |
 | `SEED_ADMIN_PASSWORD` | `admin1234`              | its password (changeable through the UI)                                                                                                     |
-| `MOCK_RTMP_PUBLIC`    | `false`                  | set `true` to see the OBS panel of a stage that offers RTMP ingest as well as SRT                                                            |
+| `MOCK_RTMP_PUBLIC`    | `false`                  | set `true` to see the OBS panel of a stage whose record opens RTMP, which no stage the manager pushes does today                             |
 | `MOCK_NO_STAGES`      | unset                    | set `true` to start with no stages: the Stages page's empty state, and a stage picker with nothing to pick                                   |
 | `VIEWER_BASE_URL`     | `http://localhost:10074` | drives the "open player catalogue" link. It must be a viewer built for this backend's feed                                                   |
 | `MOCK_NO_USERS`       | unset                    | set `true` to start with no users, the only way to see the console's "no users yet" screen                                                   |

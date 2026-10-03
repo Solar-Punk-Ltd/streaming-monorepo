@@ -1,14 +1,16 @@
 /**
- * The SRT ingest card on a real deployment page, in a real Chrome.
+ * The ingest card on a real deployment page, in a real Chrome.
  *
  * On 2026-09-22 a tester's SRT broadcast broke up for five hours and nothing on
  * any screen said so, while SRS counted about six percent of its packets
  * dropped. The card is the page saying so. This drives it through the states
- * an operator meets: a link that is breaking up with the fix beside it, one
- * that recovered what it lost, a minute with no reports, the latency step
- * leading to the SRT latency in the deployment's Stack settings card once the
- * version offers that field, and a deployment with no SRS running, which shows
- * no card and asks nothing.
+ * an operator meets: an SRT link that is breaking up with the fix beside it,
+ * one that recovered what it lost, a broadcast over RTMP, which must never
+ * read as a missing SRT link, an SRS that does not say which RTMP publisher is
+ * the broadcaster, a minute with no publisher, the latency step leading to the
+ * SRT latency in the deployment's Stack settings card once the version offers
+ * that field, and a deployment with no SRS running, which shows no card and
+ * asks nothing.
  *
  * A real headless Chrome over a real Vite, with an offline fixture in place of
  * the manager. Runs through `pnpm --filter @streaming-infra-manager/frontend-prototype test:browser`.
@@ -79,20 +81,33 @@ const base = {
   containers: RUNNING_SRS,
 };
 
+/** A minute of SRS's log read whole, with what it said about SRT and RTMP. */
+const readWith = (srt, rtmp = { state: 'no_reports' }) => ({ state: 'read', windowSeconds: 60, srt, rtmp });
+
 /** The two reports SRS printed for the tester's broadcast of 2026-09-22. */
-const BROKEN_UP = measuredSrtIngest({
-  windowSeconds: 60,
-  reports: 2,
-  connections: 1,
-  counts: { received: 12_957, lost: 761, retransmitted: 731, dropped: 763 },
-});
-const RECOVERED = measuredSrtIngest({
-  windowSeconds: 60,
-  reports: 6,
-  connections: 1,
-  counts: { received: 39_000, lost: 118, retransmitted: 118, dropped: 0 },
-});
-const NO_REPORTS = { state: 'no_reports', windowSeconds: 60 };
+const BROKEN_UP = readWith(
+  measuredSrtIngest({
+    reports: 2,
+    connections: 1,
+    counts: { received: 12_957, lost: 761, retransmitted: 731, dropped: 763 },
+  }),
+);
+const RECOVERED = readWith(
+  measuredSrtIngest({
+    reports: 6,
+    connections: 1,
+    counts: { received: 39_000, lost: 118, retransmitted: 118, dropped: 0 },
+  }),
+);
+const NO_REPORTS = readWith({ state: 'no_reports' });
+const RTMP_ONLY = readWith(
+  { state: 'no_reports' },
+  { state: 'measured', reports: 6, connections: 1, incomingKbps: 4_812 },
+);
+const RTMP_UNATTRIBUTED = readWith({ state: 'no_reports' }, { state: 'unattributed' });
+
+/** The card's own line under its title, which nothing else on the page says. */
+const CARD_SUB = 'the broadcast coming into SRS';
 
 /** The engine setting the card's latency step leads to in the Stack settings card. */
 const SRT_LATENCY_KEY = 'SRT_LATENCY';
@@ -117,7 +132,7 @@ async function freePort() {
   return port;
 }
 
-test('the SRT ingest card says how the link is holding up, and how to fix it', { timeout: 150_000 }, async (t) => {
+test('the ingest card says how the broadcast is coming in, and how to fix it', { timeout: 150_000 }, async (t) => {
   let profile = structuredClone(base);
   let reading = BROKEN_UP;
   let offersLatency = false;
@@ -125,13 +140,13 @@ test('the SRT ingest card says how the link is holding up, and how to fix it', {
   const server = await createServer({
     root: frontend,
     configFile: false,
-    cacheDir: viteCacheFor('srt-ingest'),
+    cacheDir: viteCacheFor('ingest-health'),
     resolve: { alias: { '@streaming-infra-manager/common': common } },
     server: { host: '127.0.0.1', port: await freePort(), strictPort: true },
     plugins: [
       react(),
       {
-        name: 'srt-ingest-fixture',
+        name: 'ingest-health-fixture',
         configureServer(vite) {
           vite.middlewares.use((req, res, next) => {
             const path = req.url?.split('?')[0];
@@ -154,7 +169,7 @@ test('the SRT ingest card says how the link is holding up, and how to fix it', {
               res.write(': offline fixture\n\n');
               return;
             }
-            if (path === '/profiles/ingest-stage/srt-ingest') {
+            if (path === '/profiles/ingest-stage/ingest-health') {
               ingestReads += 1;
               return json(reading);
             }
@@ -176,7 +191,7 @@ test('the SRT ingest card says how the link is holding up, and how to fix it', {
   const origin = `http://127.0.0.1:${server.httpServer.address().port}`;
   const browser = await launchChrome(t, origin);
   const { call, evaluate } = browser;
-  const evidence = await evidenceDirectory('srt-ingest-browser-');
+  const evidence = await evidenceDirectory('ingest-health-browser-');
   const body = () => evaluate(PAGE_TEXT);
   const shows = (description, ...texts) =>
     waitFor(body, (text) => texts.every((part) => text.includes(part)), description);
@@ -189,7 +204,7 @@ test('the SRT ingest card says how the link is holding up, and how to fix it', {
   await t.test('a link that is breaking up reads as bad, with the fix beside it', async () => {
     await shows(
       'the bad link and its remedy',
-      'SRT ingest',
+      CARD_SUB,
       'Bad',
       '12,957',
       "The broadcaster's connection is losing packets",
@@ -225,11 +240,28 @@ test('the SRT ingest card says how the link is holding up, and how to fix it', {
     assert.doesNotMatch(await body(), /losing packets/);
   });
 
-  await t.test('a minute with no reports says so rather than showing zeros', async () => {
+  await t.test('a broadcast over RTMP reads as one, never as a missing SRT link', async () => {
+    reading = RTMP_ONLY;
+    await reload();
+    await shows('the RTMP broadcast', 'Receiving over RTMP', '4,812 kbps', 'over 1 RTMP connection');
+    const text = await body();
+    assert.doesNotMatch(text, /No SRT publisher|printed no SRT statistics|Packets received|No publisher/);
+    const { data } = await call('Page.captureScreenshot', { captureBeyondViewport: true });
+    await writeFile(join(evidence, 'rtmp-broadcast.png'), Buffer.from(data, 'base64'));
+  });
+
+  await t.test('an SRS that does not name the vhost says RTMP is not measured on it', async () => {
+    reading = RTMP_UNATTRIBUTED;
+    await reload();
+    await shows('the unattributed RTMP', 'RTMP not measured', 'not measured on this engine version');
+    assert.doesNotMatch(await body(), /kbps|No publisher/);
+  });
+
+  await t.test('a minute with no publisher says so rather than showing zeros', async () => {
     reading = NO_REPORTS;
     await reload();
-    await shows('the minute with no reports', 'No SRT publisher', 'printed no SRT statistics');
-    assert.doesNotMatch(await body(), /Packets received/);
+    await shows('the minute with no publisher', 'No publisher', 'reported no publisher');
+    assert.doesNotMatch(await body(), /Packets received|Incoming bitrate/);
   });
 
   await t.test(
@@ -271,7 +303,7 @@ test('the SRT ingest card says how the link is holding up, and how to fix it', {
     const before = ingestReads;
     await reload();
     await shows('the deployment page without SRS', 'Readiness');
-    assert.doesNotMatch(await body(), /SRT ingest/);
+    assert.ok(!(await body()).includes(CARD_SUB), 'the ingest card is on a page with no SRS');
     assert.equal(ingestReads, before, 'the card asked for a reading it does not show');
   });
 
@@ -281,9 +313,9 @@ test('the SRT ingest card says how the link is holding up, and how to fix it', {
     const before = ingestReads;
     await reload();
     await shows('the stopped deployment page', 'Readiness');
-    // The card's title on a line of its own. The containers card still names the
-    // srs container "media server (SRT ingest)".
-    assert.doesNotMatch(await body(), /^SRT ingest$/m);
+    // By the card's own sub-line, since the containers card still names the srs
+    // container "media server (SRT ingest)".
+    assert.ok(!(await body()).includes(CARD_SUB), 'the ingest card is on a stopped deployment');
     assert.equal(ingestReads, before, 'the card asked a stopped deployment for a reading');
   });
 
