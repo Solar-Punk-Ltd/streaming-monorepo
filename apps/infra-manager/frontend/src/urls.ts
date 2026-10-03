@@ -4,6 +4,7 @@ import {
   buildSrtPublishUrl,
   CLIENT_SERVICE,
   defaultServicesFor,
+  isPublicPortVar,
   OME_SERVICE,
   SRS_SERVICE,
   type ObsSrtServer,
@@ -116,10 +117,20 @@ export interface RtmpPublishSettings {
 
 /**
  * OBS's RTMP boxes for an SRS deployment, naming the same application and
- * stream as its SRT line. RTMP has no passphrase, so nothing secret is read or
- * carried. OvenMediaEngine takes SRT alone, so it has none.
+ * stream as its SRT line, or null where the deployment takes no RTMP. RTMP has
+ * no passphrase, so nothing secret is read or carried. OvenMediaEngine takes
+ * SRT alone, so it has none, and SRS offers RTMP only where the port policy
+ * opens its port, which it does not by default: an address the firewall turns
+ * away is not offered.
+ *
+ * @param rtmpOpen whether the port policy opens SRS's RTMP port, read from the policy unless a test says otherwise
  */
-export function rtmpPublishSettings(profile: Profile, serverHost: string): RtmpPublishSettings | null {
+export function rtmpPublishSettings(
+  profile: Profile,
+  serverHost: string,
+  rtmpOpen: boolean = isPublicPortVar('SRS_RTMP_PORT'),
+): RtmpPublishSettings | null {
+  if (!rtmpOpen) return null;
   const services = defaultServicesFor(profile);
   // OvenMediaEngine first, as srtPublishSettings decides it, so a record left from SRS offers nothing.
   if (profile.containers.some((c) => c.service === OME_SERVICE) || services.includes(OME_SERVICE)) return null;

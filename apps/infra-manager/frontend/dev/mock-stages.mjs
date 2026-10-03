@@ -19,6 +19,7 @@
 import {
   ADMIN_TOKEN_ROTATED_MESSAGE,
   ingestHostProblem,
+  isPublicPortVar,
   isStageKind,
   readinessInputOf,
   resolvedIngestHost,
@@ -62,7 +63,8 @@ function consoleStageOf(profile, publicHost, managerId) {
         host: resolvedIngestHost(profile, publicHost),
         srtPort: PORT_BASES.SRS_SRT_PORT + profile.port_slot * 10,
         rtmpPort: PORT_BASES.SRS_RTMP_PORT + profile.port_slot * 10,
-        rtmpPublic: engine === 'srs',
+        // As the manager decides it: SRS only, and only where the port policy opens RTMP, which it does not by default.
+        rtmpPublic: engine === 'srs' && isPublicPortVar('SRS_RTMP_PORT'),
         hasSrtPassphrase: profile.has_srt_passphrase,
       },
       owner: profile.public_key ?? `0x${'0'.repeat(40)}`,

@@ -11,12 +11,12 @@ import {
   type EngineName,
   getErrorMessage,
   isLoopbackIngestHost,
+  isPublicPortVar,
   isStageKind,
   NO_PUBLIC_INGEST_HOST,
   ownsBeeNode,
   parseBeePublishers,
   plurToBzzExact,
-  PUBLIC_PORT_ROLES,
   readinessInputOf,
   resolvedIngestHost,
   rungOrder,
@@ -99,16 +99,14 @@ function portOf(value: string | undefined): number | null {
   return port >= 1 && port <= 65535 ? port : null;
 }
 
-/** Whether the port policy opens this port variable to the internet. */
-function portIsPublic(portVar: string): boolean {
-  return PUBLIC_PORT_ROLES.some(
-    (role) => role.portVar === portVar || (role.aliases ?? []).some((alias) => alias.portVar === portVar),
-  );
-}
-
-/** Whether broadcasters reach the stage over RTMP. SRS takes it, and OvenMediaEngine takes SRT alone. */
+/**
+ * Whether broadcasters reach the stage over RTMP: only SRS takes it, and only
+ * where the port policy opens its port. The policy keeps RTMP closed by
+ * default, so this is false for every stage today and the admin offers SRT
+ * alone. OvenMediaEngine takes SRT alone.
+ */
 function takesPublicRtmp(engine: EngineName): boolean {
-  return engine === SRS_SERVICE && portIsPublic(RTMP_PORT_KEY);
+  return engine === SRS_SERVICE && isPublicPortVar(RTMP_PORT_KEY);
 }
 
 function stageStampOf(stampId: string, health: StampHealth | null): StageStamp | null {

@@ -202,13 +202,14 @@ describe('a stage record, field by field', () => {
     assert.equal(record.ingest.srtPort, 10022);
   });
 
-  it('carries the ingest encoders dial: the address, the slot’s ports, RTMP open and the passphrase', async () => {
+  it('carries the ingest encoders dial: the address, the slot’s ports, RTMP closed and the passphrase', async () => {
     const { record } = await built();
     assert.deepEqual(record.ingest, {
       host: '192.0.2.10',
       srtPort: 10012,
       rtmpPort: 10013,
-      rtmpPublic: true,
+      // The port policy keeps RTMP closed by default, so not even an SRS stage offers it.
+      rtmpPublic: false,
       srtPassphrase: PASSPHRASE,
     });
   });

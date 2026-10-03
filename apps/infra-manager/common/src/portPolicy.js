@@ -6,9 +6,11 @@ export const PROTECTED_PORT_MAX = 19999;
 /**
  * The bands an inventory export was checked against. The generator refuses an
  * export of another version, because a manager of another release checked
- * other owners on other tuples. Version 2 opened the RTMP ingest band.
+ * other owners on other tuples. Version 2 opened an RTMP ingest band, and
+ * version 3 closed it again: RTMP is off by default, so SRT is the one public
+ * ingest, and a draft from a version 2 export would open every slot's RTMP port.
  */
-export const PORT_POLICY_VERSION = 2;
+export const PORT_POLICY_VERSION = 3;
 export const OME_PORT_SOURCES = Object.freeze({ OME_SRT_PORT: 'SRS_SRT_PORT', OME_HLS_PORT: 'SRS_HTTP_PORT' });
 
 /** Public roles supported by the bundled and main-v3 layouts. Private endpoints cannot reuse these tuples.
@@ -54,16 +56,20 @@ export const PUBLIC_PORT_ROLES = Object.freeze([
     service: 'srs',
     aliases: [{ portVar: 'OME_SRT_PORT', service: 'ome' }],
   },
-  // No OME alias: OvenMediaEngine takes SRT alone in this stack and publishes no RTMP port.
-  {
-    group: 'rtmp_ingest',
-    protocol: 'tcp',
-    base: 10002,
-    maxSlot: MANAGER_SLOT_CAP,
-    portVar: 'SRS_RTMP_PORT',
-    service: 'srs',
-  },
 ]);
+
+/**
+ * Whether the policy opens this port variable to the internet, as itself or as
+ * an alias of a role. SRS_RTMP_PORT is not opened: RTMP ingest is off by
+ * default, because while it is open a stream key read off the network, an SRT
+ * connection's included, publishes without the SRT passphrase.
+ * @param {string} portVar
+ */
+export function isPublicPortVar(portVar) {
+  return PUBLIC_PORT_ROLES.some(
+    (role) => role.portVar === portVar || (role.aliases ?? []).some((alias) => alias.portVar === portVar),
+  );
+}
 
 /**
  * A Bee node's API, opened by the firewall generator only to the addresses an

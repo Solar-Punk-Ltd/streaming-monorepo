@@ -63,6 +63,7 @@ export {
   OME_PORT_SOURCES,
   publicPortRole,
   portExposureProblem,
+  isPublicPortVar,
 } from './portPolicy.js';
 export type { PublicPortRole } from './portPolicy.js';
 export { addressOfStreamKey } from './streamKey.js';
