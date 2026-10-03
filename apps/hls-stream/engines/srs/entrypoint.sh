@@ -423,9 +423,18 @@ if abr_enabled; then
 
   echo "    }" >> "$TRANSCODE_FRAGMENT"
 
-  # The vhost the rungs land on. It has no transcode block, and must not grow one.
+  # The vhost the rungs land on. It has no transcode block, and must not grow one. Its security rules are
+  # the ingest vhost's in the template: a rung is published from loopback and never played from outside.
   cat > "$ABR_VHOST_FRAGMENT" <<EOF
 vhost ${ABR_VHOST} {
+    security {
+        enabled     on;
+        allow       publish     all;
+        allow       play        127.0.0.1;
+        allow       play        ::1;
+        allow       play        ::ffff:127.0.0.1;
+    }
+
     hls {
         enabled         on;
         hls_path        ./objs/nginx/html;

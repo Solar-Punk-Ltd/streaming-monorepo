@@ -212,6 +212,64 @@ describe('the generated transcode block', () => {
   });
 });
 
+/**
+ * Who may play a stream out of SRS, and who may publish one into it.
+ *
+ * Once RTMP is a public ingest, its port is open to everyone, and SRS lets anyone who reaches it PLAY any stream it
+ * holds: the source on the ingest vhost, an SRT broadcast through SRS's SRT to RTMP bridge, and every rung on the
+ * ladder vhost. A viewer reads the broadcast from Swarm, and the one thing in the stack that plays from SRS is the
+ * ladder's own transcode input, which dials loopback inside this container. So play is allowed from loopback alone.
+ * Publish stays open to every address, because the on_publish hook is what checks a broadcaster's key.
+ *
+ * SRS's `security` section checks deny rules first, then allow rules, and once any allow rule exists a request no
+ * allow rule matches is refused (`srs_app_security.cpp`). So publish needs an allow rule of its own, and a missing one
+ * would refuse every broadcaster.
+ */
+describe('who may play from SRS and who may publish to it', () => {
+  /** The rules of one vhost's `security` section, as `<allow|deny> <play|publish> <who>`, and whether it is on. */
+  function securityOf(block) {
+    const section = /^\s*security\s*\{([^}]*)\}/m.exec(block)?.[1];
+    assert.ok(section !== undefined, 'the vhost has no security section, so anyone who reaches SRS may play from it');
+    return {
+      enabled: /^\s*enabled\s+on;/m.test(section),
+      rules: [...section.matchAll(/^\s*(allow|deny)\s+(\S+)\s+(\S+);/gm)].map((m) => `${m[1]} ${m[2]} ${m[3]}`),
+    };
+  }
+
+  const LOOPBACK = ['127.0.0.1', '::1', '::ffff:127.0.0.1'];
+
+  function assertLoopbackPlayOpenPublish(block, which) {
+    const { enabled, rules } = securityOf(block);
+
+    assert.equal(enabled, true, `${which}: the rules are written but not on`);
+    assert.ok(rules.includes('allow publish all'), `${which}: publishing would be refused to every broadcaster`);
+    assert.deepEqual(
+      rules.filter((rule) => rule.startsWith('allow play ')).map((rule) => rule.slice('allow play '.length)),
+      LOOPBACK,
+      `${which}: play is allowed from somewhere other than this container's own loopback`,
+    );
+    assert.deepEqual(
+      rules.filter((rule) => !rule.startsWith('allow play ') && rule !== 'allow publish all'),
+      [],
+      `${which}: a rule beyond loopback play and open publish`,
+    );
+  }
+
+  it('lets every address publish to the ingest vhost, and only this container play from it', () => {
+    assertLoopbackPlayOpenPublish(vhostBlock(renderLadderConf({ ...VALID }), INGEST_VHOST), 'the ingest vhost');
+  });
+
+  it('holds the ladder vhost to the same, so no rung can be played from outside', () => {
+    assertLoopbackPlayOpenPublish(vhostBlock(renderLadderConf({ ...VALID }), LADDER_VHOST), 'the ladder vhost');
+  });
+
+  it('holds a single-rendition deployment’s ingest vhost to the same', () => {
+    const conf = renderLadderConf({ SRS_WEBHOOK_TOKEN: VALID.SRS_WEBHOOK_TOKEN, ABR_ENABLED: 'false' });
+
+    assertLoopbackPlayOpenPublish(vhostBlock(conf, INGEST_VHOST), 'the single-rendition ingest vhost');
+  });
+});
+
 describe('the listen line the ladder input dials', () => {
   /**
    * SRS builds the transcode INPUT itself, and an SRT-bridged source carries no RTMP port, so the

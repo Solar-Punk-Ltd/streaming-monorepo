@@ -255,6 +255,32 @@ with the hook URL, the token and the key the broadcaster presented.
 The engine's `docker logs` on a stage host are therefore as sensitive as its env file. SRS cannot
 send the token other than in the URL, so this is the cost of that design rather than a setting.
 
+## Play is loopback only
+
+SRS lets anyone who reaches one of its listeners play any stream it holds, unless a vhost's `security` section says
+otherwise, and the publish key guards publishing only. With RTMP a public ingest, that would let anyone play a
+broadcaster's source over RTMP, an SRT broadcast as well through SRS's bridge from SRT to RTMP or over SRT itself, and
+every rung of the ladder by adding `?vhost=abr`, all without a key. Nothing in the stack needs that: a viewer reads the
+broadcast from Swarm, and the one thing that plays from SRS is the ladder's own transcode input, which SRS starts
+inside its container and which dials loopback. So both vhosts, the ingest vhost in the template and the ladder vhost
+the entrypoint writes, allow play from loopback alone (`127.0.0.1`, `::1` and `::ffff:127.0.0.1`), and publish from
+everywhere, because the `on_publish` hook is what checks a broadcaster's key.
+
+SRS checks deny rules first and allow rules after, and once a vhost has any allow rule it refuses whatever no allow
+rule matches (`srs_app_security.cpp`). That is why publish carries its own `allow publish all`: without it, every
+broadcaster would be refused. RTMP and SRT go through the same check, for play and for publish. So does a playlist
+asked of SRS's file server, while a segment asked for by its name is not checked, which leaves `SRS_HTTP_BIND` as
+what keeps the file server off the network.
+
+Checked on 2026-10-03 against stock SRS 6.0-r2 running the stack's rendered config, slotted and unslotted, on a
+private docker network: a client in another container was refused RTMP play of a source, RTMP play of a rung, SRT
+play of an SRT source and the rung's HLS playlist, while RTMP and SRT broadcasters in that container kept publishing
+and the ladder produced every rung for both, which is the transcode input playing from loopback. Without the rules
+every one of those plays succeeded.
+
+Under host networking loopback is the host's, so any process on that host can still play. A config file of your own
+that drops the `security` sections opens play to everyone again.
+
 ## Your own config file
 
 Everything an engine can do beyond the knobs above is a matter of editing its config file, and both

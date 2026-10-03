@@ -221,6 +221,12 @@ itself, though, because it sends its stream id before encryption starts, so whil
 open a key read off an SRT connection works on RTMP too. There is no RTMPS: SRS 6 has no TLS on its
 RTMP listener, and offering it would take a TLS terminator in front.
 
+An open RTMP port is not an open stream. SRS allows play from its own loopback only, on the ingest
+vhost and on the ladder's, over RTMP and SRT alike, because the one thing that plays from it is the
+ladder's transcode input inside the container, and a viewer reads the broadcast from Swarm. Without
+that, anyone reaching the port could play any broadcast with no key at all. See "Play is loopback
+only" in [engines/README.md](../engines/README.md).
+
 The RTMP listener also carries the ladder's rung republishes, which SRS's own encoders send back to
 it over loopback, so the engine's health check proves it beside the SRT one. A reconnecting RTMP
 broadcaster takes its stream over from a connection SRS still holds, as an SRT one does: see the

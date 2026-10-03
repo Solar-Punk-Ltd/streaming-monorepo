@@ -424,9 +424,10 @@ services:
     # API has no authentication of any kind, and `/api/v1/streams` names every live stream as
     # `app/stream`, which is the id an ingest URL and a publish key are built from, while
     # `/api/v1/clients` names every publisher's and every viewer's address. The file server serves the
-    # segment directory itself, so a broadcast is watchable straight off this host. Both default to
-    # every interface, which is what they have always done, and every documented use of the API is a
-    # curl run on the host. See the paragraph in `.env.sample` beside the Bee binds.
+    # segment directory itself: play is loopback only, so it refuses a playlist to anyone outside the
+    # container, but it still serves a segment asked for by its name. Both default to every interface,
+    # which is what they have always done, and every documented use of the API is a curl run on the
+    # host. See the paragraph in `.env.sample` beside the Bee binds.
     ports:
       - '${SRS_SRT_PORT:-10080}:${SRS_SRT_PORT:-10080}/udp'
       - '${SRS_RTMP_PORT:-1935}:${SRS_RTMP_PORT:-1935}'
