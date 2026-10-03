@@ -51,7 +51,7 @@ function record(over: Partial<ConsoleStageRecord> = {}): ConsoleStageRecord {
     stackVersion: 'v3.4',
     status: 'RUNNING',
     observedAt: AT,
-    ingest: { host: 'ingest.example.org', srtPort: 10012, rtmpPort: 10013, rtmpPublic: false, hasSrtPassphrase: true },
+    ingest: { host: 'ingest.example.org', srtPort: 10012, rtmpPort: 10013, rtmpPublic: true, hasSrtPassphrase: true },
     owner: OWNER,
     rungs: [],
     uploader: null,
@@ -115,14 +115,21 @@ describe('the owner', () => {
 });
 
 describe('the ingest', () => {
-  it('names the host, the SRT port with whether a passphrase goes with it, and the RTMP port', () => {
+  it('names the host, the SRT port with whether a passphrase goes with it, and the RTMP port as unencrypted', () => {
     assert.deepEqual(ingestView(record().ingest), {
       host: 'ingest.example.org',
-      ports: 'SRT 10012, with a passphrase · RTMP 10013, not public',
+      ports: 'SRT 10012, with a passphrase · RTMP 10013, unencrypted',
     });
     assert.equal(
-      ingestView({ ...record().ingest, hasSrtPassphrase: false, rtmpPublic: true }).ports,
-      'SRT 10012, no passphrase · RTMP 10013',
+      ingestView({ ...record().ingest, hasSrtPassphrase: false }).ports,
+      'SRT 10012, no passphrase · RTMP 10013, unencrypted',
+    );
+  });
+
+  it('says a stage that takes no RTMP, such as an OvenMediaEngine one, offers none', () => {
+    assert.equal(
+      ingestView({ ...record().ingest, rtmpPublic: false }).ports,
+      'SRT 10012, with a passphrase · RTMP not offered',
     );
   });
 });
@@ -213,7 +220,7 @@ describe('a stage’s row', () => {
       status: { label: 'Running', tone: 'ok', pulsing: false },
       readiness: { label: 'Ready', tone: 'ok', reasons: [] },
       owner: { address: OWNER, short: shortHex(OWNER) },
-      ingest: { host: 'ingest.example.org', ports: 'SRT 10012, with a passphrase · RTMP 10013, not public' },
+      ingest: { host: 'ingest.example.org', ports: 'SRT 10012, with a passphrase · RTMP 10013, unencrypted' },
       token: { label: 'Own', tone: 'ok', note: null },
     });
     assert.equal(row.lastPush.ago, '3 s ago');

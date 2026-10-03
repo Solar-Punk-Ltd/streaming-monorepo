@@ -282,7 +282,7 @@ test('the SRT ingest card says how the link is holding up, and how to fix it', {
     await reload();
     await shows('the stopped deployment page', 'Readiness');
     // The card's title on a line of its own. The containers card still names the
-    // srs container "media server (SRT ingest)".
+    // srs container "media server (SRT and RTMP ingest)".
     assert.doesNotMatch(await body(), /^SRT ingest$/m);
     assert.equal(ingestReads, before, 'the card asked a stopped deployment for a reading');
   });
