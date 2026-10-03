@@ -113,6 +113,41 @@ fi
 APP="${STREAM_ID%%/*}"
 STREAM="${STREAM_ID#*/}"
 
+# SRS's SRT line, in the shape the admin's OBS panel hands a broadcaster (`buildSrtPublishUrl` and
+# `buildObsSrtServer` in packages/contracts/src/ingest.ts). The key rides inside the `r=` value, which
+# is where SRS reads a query from, and OBS takes the whole line as its Server with Stream Key empty.
+SRS_SRT_SERVER="srt://<host>:${SRS_SRT_PORT:-10080}?streamid=#!::r=$APP/$STREAM?key=$KEY,m=publish"
+
+# ⛔ The SRT passphrase is never printed. The one secret this script prints is the per-stream key,
+# which is safe to hand to that stream's broadcaster, and the passphrase is one value for every
+# stream on the listener. So the line carries a placeholder and the note names the file the value
+# lives in. The value is read only to choose where OBS takes it, the same choice `buildObsSrtServer`
+# makes: OBS ends a Server line value at `&`, turns `+` into a space and decodes nothing, so a
+# passphrase with any other character goes in its Use authentication Password instead.
+readonly SERVER_LINE_SAFE_PASSPHRASE='^[A-Za-z0-9._~-]+$'
+SRS_ENV_FILE="$(engine_env_file "$SVC_SRS")"
+SRS_ENV_NAME="${SRS_ENV_FILE#"$ROOT_DIR"/}"
+
+print_srs_srt() {
+  if [ -z "${SRT_PASSPHRASE:-}" ]; then
+    echo "SRS  (SRT):  $SRS_SRT_SERVER"
+    if [ -f "$SRS_ENV_FILE" ]; then
+      echo "             (SRT_PASSPHRASE in $SRS_ENV_NAME is empty, so this SRT link is not encrypted)"
+    else
+      echo "             ($SRS_ENV_NAME is not on this machine, so whether SRS asks for a passphrase is"
+      echo "              unknown here. If its SRT_PASSPHRASE is set, add &passphrase= and that value)"
+    fi
+  elif [[ "$SRT_PASSPHRASE" =~ $SERVER_LINE_SAFE_PASSPHRASE ]]; then
+    echo "SRS  (SRT):  $SRS_SRT_SERVER&passphrase=<SRT_PASSPHRASE>"
+    echo "             (the passphrase is not printed: put SRT_PASSPHRASE from $SRS_ENV_NAME in its place)"
+  else
+    echo "SRS  (SRT):  $SRS_SRT_SERVER"
+    echo "             (SRT_PASSPHRASE in $SRS_ENV_NAME has characters this line cannot carry. In OBS,"
+    echo "              tick Use authentication, leave Username empty and paste the passphrase into Password)"
+  fi
+  echo "             (in OBS the whole line goes in Server, and Stream Key stays empty)"
+}
+
 # OME takes the whole publish URL as an SRT `streamid`, so the key sits inside a value that is itself
 # inside a query. The inner `?` and `/` have to be percent-encoded or the publisher's own URL parser
 # eats them: with the plain spelling ffmpeg sends a streamid OME cannot resolve. Encoded by hand
@@ -122,6 +157,7 @@ ENCODED_STREAMID="srt%3A%2F%2F<host>%2F$APP%2F$STREAM%3Fkey%3D$KEY"
 echo "Stream:      $STREAM_ID"
 echo "Publish key: $KEY"
 echo
+print_srs_srt
 echo "SRS  (RTMP): rtmp://<host>:${SRS_RTMP_PORT:-1935}/$APP/$STREAM?key=$KEY"
 echo "OME  (SRT):  srt://<host>:${OME_SRT_PORT:-10080}?streamid=$ENCODED_STREAMID"
 echo "             (the streamid is percent-encoded on purpose: unencoded, the publisher's own URL"

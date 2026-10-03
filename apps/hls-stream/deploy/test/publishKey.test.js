@@ -226,6 +226,21 @@ describe('the publish URLs publish-key.sh hands an operator', () => {
 });
 
 /**
+ * A remote target's layout: what deploy.sh ships, and nothing it does not.
+ *
+ * The copy is recursive because `deploy/scripts` is not flat. Python leaves a `__pycache__` there
+ * the moment anything imports one of its modules from the repository root, and the test below
+ * takes `scriptsDir` to prove this survives one.
+ */
+function targetTree(scriptsDir = path.join(here, '..', 'scripts')) {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'publish-key-target-'));
+  fs.mkdirSync(path.join(root, 'deploy'), { recursive: true });
+  fs.cpSync(scriptsDir, path.join(root, 'deploy', 'scripts'), { recursive: true });
+  fs.writeFileSync(path.join(root, '.env'), 'API_PORT=3000\n');
+  return root;
+}
+
+/**
  * OPS-29 and TEST-54. Two LOW rows filed by the per-stream publish key change's config lens, both about this script being run
  * somewhere other than a developer's checkout.
  *
@@ -237,21 +252,6 @@ describe('the publish URLs publish-key.sh hands an operator', () => {
  * check, because the check was not the defect: needing it was.
  */
 describe('publish-key.sh where an operator actually runs it', () => {
-  /**
-   * A remote target's layout: what deploy.sh ships, and nothing it does not.
-   *
-   * The copy is recursive because `deploy/scripts` is not flat. Python leaves a `__pycache__` there
-   * the moment anything imports one of its modules from the repository root, and the test below
-   * takes `scriptsDir` to prove this survives one.
-   */
-  function targetTree(scriptsDir = path.join(here, '..', 'scripts')) {
-    const root = fs.mkdtempSync(path.join(os.tmpdir(), 'publish-key-target-'));
-    fs.mkdirSync(path.join(root, 'deploy'), { recursive: true });
-    fs.cpSync(scriptsDir, path.join(root, 'deploy', 'scripts'), { recursive: true });
-    fs.writeFileSync(path.join(root, '.env'), 'API_PORT=3000\n');
-    return root;
-  }
-
   it('issues a key on a target that has no config.json, which is every target', () => {
     const root = targetTree();
     try {
@@ -326,5 +326,97 @@ describe('publish-key.sh where an operator actually runs it', () => {
     for (const flag of new Set(consumed)) {
       assert.ok(usage.stdout.includes(flag), `${flag} is consumed but never mentioned in the usage text`);
     }
+  });
+});
+
+/**
+ * SRS over SRT, the protocol to hand a broadcaster on a network they do not trust. The script used to
+ * print SRS's RTMP address and an SRT address in OME's form only, so an operator issuing a key for SRS
+ * handed out the one protocol that is never encrypted.
+ *
+ * The line is the one the admin's OBS panel gives a broadcaster, from `buildSrtPublishUrl` and
+ * `buildObsSrtServer` in `packages/contracts/src/ingest.ts`, with this script's `<host>` placeholder.
+ *
+ * ⛔ The SRT passphrase is never printed. The one secret this script prints is the per-stream key,
+ * which is safe to hand to that stream's broadcaster, and the passphrase is one value for every
+ * stream on the listener. Every case runs against a target tree whose SRS env file is a fixture, in an
+ * environment carrying nothing but `PATH` and the key secret, so no real env file or variable decides it.
+ */
+describe('the SRS SRT address publish-key.sh hands a broadcaster', () => {
+  const GOLDEN_KEY = GOLDEN[0].key;
+  /** Letters and digits only, which the Server line carries as typed. A fixture, not a passphrase anyone uses. */
+  const SERVER_LINE_PASSPHRASE = 'fixture0srt0passphrase0abcdef';
+  /** Carries `+`, which OBS turns into a space on the Server line, so it has to go in the Password box. */
+  const PASSWORD_BOX_PASSPHRASE = 'fixture+srt+passphrase+abcdef';
+
+  function srsSrtLine(port) {
+    return `SRS  (SRT):  srt://<host>:${port}?streamid=#!::r=video/demo?key=${GOLDEN_KEY},m=publish`;
+  }
+
+  /** Issues the key for `video/demo` on a fresh target tree, whose SRS env file is `srsEnv` when one is given. */
+  function issueOnTarget({ srsEnv, envFile = '.env', args = [] } = {}) {
+    const root = targetTree();
+    try {
+      if (srsEnv !== undefined) {
+        fs.mkdirSync(path.join(root, 'engines', 'srs'), { recursive: true });
+        fs.writeFileSync(path.join(root, 'engines', 'srs', envFile), srsEnv);
+      }
+      const script = path.join(root, 'deploy', 'scripts', 'publish-key.sh');
+      const result = spawnSync('bash', [script, ...args, 'video/demo'], {
+        encoding: 'utf-8',
+        timeout: DERIVE_TIMEOUT_MS,
+        env: { PATH: process.env.PATH, PUBLISH_KEY_SECRET: SECRET },
+      });
+      assert.equal(result.status, 0, `${result.stdout}${result.stderr}`);
+      return { lines: result.stdout.split('\n'), printed: result.stdout + result.stderr };
+    } finally {
+      fs.rmSync(root, { recursive: true, force: true });
+    }
+  }
+
+  it('prints the line the admin’s OBS panel gives, on the port SRS listens on', () => {
+    const { lines } = issueOnTarget({ srsEnv: 'SRS_SRT_PORT=10071\nSRT_PASSPHRASE=\n' });
+
+    assert.ok(lines.includes(srsSrtLine(10071)), lines.join('\n'));
+  });
+
+  it('says the link is not encrypted when SRS has no passphrase', () => {
+    const { printed } = issueOnTarget({ srsEnv: 'SRT_PASSPHRASE=\n' });
+
+    assert.match(printed, /SRT_PASSPHRASE in engines\/srs\/\.env is empty, so this SRT link is not encrypted/);
+  });
+
+  it('puts a placeholder where the passphrase goes, names where it lives, and never prints it', () => {
+    const { lines, printed } = issueOnTarget({ srsEnv: `SRT_PASSPHRASE=${SERVER_LINE_PASSPHRASE}\n` });
+
+    assert.ok(lines.includes(`${srsSrtLine(10080)}&passphrase=<SRT_PASSPHRASE>`), lines.join('\n'));
+    assert.match(printed, /put SRT_PASSPHRASE from engines\/srs\/\.env in its place/);
+    assert.equal(printed.includes(SERVER_LINE_PASSPHRASE), false, 'the passphrase was printed');
+  });
+
+  it('sends a passphrase the Server line cannot carry to the Password box, and never prints it', () => {
+    const { lines, printed } = issueOnTarget({ srsEnv: `SRT_PASSPHRASE=${PASSWORD_BOX_PASSPHRASE}\n` });
+
+    assert.ok(lines.includes(srsSrtLine(10080)), lines.join('\n'));
+    assert.match(printed, /tick Use authentication, leave Username empty and paste the passphrase into Password/);
+    assert.equal(printed.includes(PASSWORD_BOX_PASSPHRASE), false, 'the passphrase was printed');
+  });
+
+  it('says it cannot tell whether SRS asks for a passphrase when SRS’s env file is not on this machine', () => {
+    const { lines, printed } = issueOnTarget();
+
+    assert.ok(lines.includes(srsSrtLine(10080)), lines.join('\n'));
+    assert.match(printed, /engines\/srs\/\.env is not on this machine/);
+  });
+
+  it('names the env file of the profile it was asked for', () => {
+    const { printed } = issueOnTarget({
+      srsEnv: `SRT_PASSPHRASE=${SERVER_LINE_PASSPHRASE}\n`,
+      envFile: '.env.live',
+      args: ['--profile=live'],
+    });
+
+    assert.match(printed, /put SRT_PASSPHRASE from engines\/srs\/\.env\.live in its place/);
+    assert.equal(printed.includes(SERVER_LINE_PASSPHRASE), false, 'the passphrase was printed');
   });
 });

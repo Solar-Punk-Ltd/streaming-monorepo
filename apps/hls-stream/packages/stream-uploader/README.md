@@ -849,7 +849,8 @@ compromised broadcast rather than the run of the deployment.
 # Generate the secret once, put it in the root .env, and redeploy the stream-uploader.
 openssl rand -hex 32
 
-# Then issue a key per stream. It prints the publish URL for both engines.
+# Then issue a key per stream. It prints SRS's SRT and RTMP addresses and OME's SRT address,
+# and names the file the SRT passphrase lives in rather than printing it.
 ./deploy/scripts/publish-key.sh video/demo
 ```
 
