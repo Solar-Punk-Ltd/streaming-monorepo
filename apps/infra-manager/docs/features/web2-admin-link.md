@@ -163,12 +163,29 @@ test setup, and a save of one then logs a warning.
 On upgrading to a manager with this rule, a link already saved in plain http to
 another host stops pushing: the stages and the catalogue stamp say
 `refused-plain-http` until the link is given its https address or the manager
-is given `ADMIN_LINK_ALLOW_PLAIN_HTTP=true`. A link on the manager's own host,
-https or plain, goes on as before. Moving the same admin from http to https
-changes the link's origin, and a retirement still pending for the old origin is
-then dropped, with a log line, so the stage behind it stays active at the
-admin. Switch the link once the pending retirements have gone through: the log
-names each retirement as the admin answers it.
+is given `ADMIN_LINK_ALLOW_PLAIN_HTTP=true`. A link the rule refuses sends
+nothing at all, so give it its https address at once. A retirement waiting on
+it was never sent and carries no address of its own, so it goes to the https
+address.
+
+"This host" is what the rule counts as the manager's own: a loopback address,
+`host.docker.internal` and the bridge address it resolves to, and, while the
+manager runs in its container, any address on a Docker network that container
+is on, such as the admin's compose service name when the two share a network.
+Every address a name resolves to has to be one of those. So plain http that
+names the manager's own machine by its public address, its LAN address or a
+public name is refused like any other host. Plain http counts as safe on a
+Docker network only when that network is a bridge, which stays on the machine:
+an overlay, macvlan or host network can carry the traffic off it, so a link
+reached over one of those needs https.
+
+A plain http link the rule takes does push: one on this host, or one to another
+host let through by `ADMIN_LINK_ALLOW_PLAIN_HTTP`. Only such a link has anything
+to wait for. Moving it to https changes the link's origin, and a retirement
+still pending for the old origin is then dropped, with a log line, so the stage
+behind it stays active at the admin. Switch it once the pending retirements have
+gone through, and where the setting is what lets the link through, keep it on
+until then: the log names each retirement as the admin answers it.
 
 **A token the version sets cannot be rotated.** A deployment whose version's
 env files set `ADMIN_API_TOKEN` is given that value at every deploy, in place of
