@@ -3,7 +3,12 @@ export const MANAGER_SLOT_CAP = 100;
 export const PORT_SLOT_STRIDE = 10;
 export const PROTECTED_PORT_MIN = 10000;
 export const PROTECTED_PORT_MAX = 19999;
-export const PORT_POLICY_VERSION = 1;
+/**
+ * The bands an inventory export was checked against. The generator refuses an
+ * export of another version, because a manager of another release checked
+ * other owners on other tuples. Version 2 opened the RTMP ingest band.
+ */
+export const PORT_POLICY_VERSION = 2;
 export const OME_PORT_SOURCES = Object.freeze({ OME_SRT_PORT: 'SRS_SRT_PORT', OME_HLS_PORT: 'SRS_HTTP_PORT' });
 
 /** Public roles supported by the bundled and main-v3 layouts. Private endpoints cannot reuse these tuples.

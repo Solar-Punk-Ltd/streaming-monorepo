@@ -4,6 +4,7 @@ import { rmSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { after, describe, it } from 'node:test';
 import { fileURLToPath } from 'node:url';
+import { PORT_POLICY_VERSION } from '@streaming-infra-manager/common';
 import { throwawayRoot } from '../support/throwawayRoot.js';
 import type { FirewallInventory } from '../../src/domain/ports/firewallInventoryTypes.js';
 
@@ -14,7 +15,7 @@ const runOptions = { encoding: 'utf8', timeout: 10_000 } as const;
 function evidence(): FirewallInventory {
   return {
     schemaVersion: 1,
-    policyVersion: 1,
+    policyVersion: PORT_POLICY_VERSION,
     daemonId: 'fixture-daemon',
     capturedAt: '2026-09-08T00:00:00.000Z',
     fingerprint: 'a'.repeat(64),
@@ -417,6 +418,17 @@ describe('firewall rules from shared policy and complete inventory', () => {
       assert.match(result.stderr, /inventory|evidence|policy/i);
     });
   }
+  it('refuses an export checked under policy 1, before the RTMP ingest band opened, and says what to do', () => {
+    // A manager of that release let any owner sit on an RTMP tuple and told the
+    // admin to offer no RTMP, so a draft from its export would answer for bands
+    // it never checked.
+    const result = run({ ...evidence(), policyVersion: 1 });
+    assert.equal(result.status, 2);
+    assert.equal(result.stdout, '');
+    assert.match(result.stderr, new RegExp('port policy ' + PORT_POLICY_VERSION));
+    assert.match(result.stderr, /Export again from a manager of the same release as this checkout/);
+  });
+
   it('opens no Bee API port to anyone unless sources are named', () => {
     const text = rules();
     assert.doesNotMatch(text, /saddr|bee_api/);
