@@ -9,7 +9,7 @@
 
 export const INGEST_SRT = 'srt';
 export const INGEST_RTMP = 'rtmp';
-export const INGEST_PROTOCOLS = [INGEST_SRT, INGEST_RTMP] as const;
+const INGEST_PROTOCOLS = [INGEST_SRT, INGEST_RTMP] as const;
 export type IngestProtocol = (typeof INGEST_PROTOCOLS)[number];
 
 /** What a run that names no protocol publishes over. */

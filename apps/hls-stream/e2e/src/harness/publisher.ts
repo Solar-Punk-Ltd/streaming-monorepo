@@ -31,7 +31,7 @@ export interface Publisher extends FfmpegProcess {
   readonly protocol: IngestProtocol;
 }
 
-export interface PublisherOptions {
+interface PublisherOptions {
   fps?: number;
   streamPath?: string;
   /** The protocol to publish over. The run's `E2E_INGEST_PROTOCOL` when the suite names none. */

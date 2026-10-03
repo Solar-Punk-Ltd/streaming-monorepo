@@ -15,7 +15,7 @@ export const TAKEOVER_ON = 'on';
 export const TAKEOVER_OFF = 'off';
 /** The ingest vhost carries no such directive, which is a stack from before the takeover existed. */
 export const TAKEOVER_ABSENT = 'absent';
-export type TakeoverSetting = typeof TAKEOVER_ON | typeof TAKEOVER_OFF | typeof TAKEOVER_ABSENT;
+type TakeoverSetting = typeof TAKEOVER_ON | typeof TAKEOVER_OFF | typeof TAKEOVER_ABSENT;
 
 export type StageTakeovers = Record<IngestProtocol, TakeoverSetting>;
 
