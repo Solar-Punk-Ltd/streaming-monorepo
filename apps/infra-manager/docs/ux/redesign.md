@@ -421,7 +421,7 @@ typography, components })`. Mode switching with `useColorScheme()` from
 - `frontend/src/components/`: `StatusDot`, `ReadinessPill`, `ShapePill`, `ServiceChip`,
   `CopyBox` (value plus Copy), `ConfirmDialog`, `RowMenu`, `EmptyState`, `SegmentedBar`
   (wraps today's `UsageBar` with the two-segment convention), `KeyValueList`.
-- `SERVICE_DESCRIPTIONS`: `srs` "media server (SRT ingest)", `ome` "media server
+- `SERVICE_DESCRIPTIONS`: `srs` "media server (SRT and RTMP ingest)", `ome` "media server
   (OvenMediaEngine)", `stream-uploader` "uploads segments to Swarm", `bee-uploader` "own Bee
   node", `client` "web player", `bee-gateway` "Swarm gateway for the player".
 
