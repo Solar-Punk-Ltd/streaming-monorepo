@@ -484,6 +484,8 @@ describe('the admin publish gate with the ABR ladder on', () => {
     disconnects: string[];
     /** How many refusals reached `/health` through `recordAuthRejection`. See OBS-15. */
     authRejections: number;
+    /** Every ladder source whose held rungs the engine asked to resume. */
+    resumes: string[];
   }
 
   interface SrsBody {
@@ -493,13 +495,14 @@ describe('the admin publish gate with the ABR ladder on', () => {
     vhost: string;
     ip?: string;
     param?: string;
+    client_id?: string;
   }
 
   async function withSrsLadder(
     lookup: LookupAnswer,
     drive: (harness: { calls: LadderCalls; post: (body: SrsBody) => Promise<number> }) => Promise<void>,
   ): Promise<void> {
-    const calls: LadderCalls = { starts: [], stops: [], disconnects: [], authRejections: 0 };
+    const calls: LadderCalls = { starts: [], stops: [], disconnects: [], authRejections: 0, resumes: [] };
     const orchestrator = makeFakeOrchestrator({
       startStream: (streamId: string, _mediatype: unknown, _claimant: unknown, admin?: AdminSession) => {
         calls.starts.push({ streamId, admin });
@@ -510,6 +513,9 @@ describe('the admin publish gate with the ABR ladder on', () => {
       },
       noteDisconnect: (streamId: string) => {
         calls.disconnects.push(streamId);
+      },
+      resumeHeldRungs: (baseStreamId: string) => {
+        calls.resumes.push(baseStreamId);
       },
       recordAuthRejection: () => {
         calls.authRejections += 1;
@@ -570,6 +576,24 @@ describe('the admin publish gate with the ABR ladder on', () => {
     });
   });
 
+  it('asks the held rungs of a source that resolved to resume', async () => {
+    await withSrsLadder(answersDraft(), async ({ calls, post }) => {
+      assert.equal(await post(source({ param: `?key=${DECLARED_KEY}` })), 0);
+      assert.deepEqual(calls.resumes, [STREAM_ID]);
+    });
+  });
+
+  it('asks nothing of a source refused for its key, or one the admin could not resolve', async () => {
+    await withSrsLadder(answersDraft(), async ({ calls, post }) => {
+      assert.equal(await post(source({ param: '?key=not-the-declared-key' })), 1);
+      assert.deepEqual(calls.resumes, [], 'a refused publish changes nothing about the broadcast');
+    });
+    await withSrsLadder(refusesTheConnection, async ({ calls, post }) => {
+      assert.equal(await post(source({ param: `?key=${DECLARED_KEY}` })), 1);
+      assert.deepEqual(calls.resumes, [], 'and neither does one the admin lookup failed for');
+    });
+  });
+
   it('refuses a source whose key is not the declaration′s, and records the refusal', async () => {
     await withSrsLadder(answersDraft(), async ({ calls, post }) => {
       assert.equal(await post(source({ param: '?key=not-the-declared-key' })), 1);
@@ -617,6 +641,43 @@ describe('the admin publish gate with the ABR ladder on', () => {
       assert.equal(await post(rung({ ip: STRANGER })), 1, 'origin trust must not extend off the host');
       assert.deepEqual(calls.starts, []);
       assert.equal(calls.authRejections, 1);
+    });
+  });
+
+  /**
+   * ⛔ A publish takeover: the new connection authenticates, then the old one's unpublish arrives.
+   * That late unpublish names a connection that no longer holds the base, so it must leave the
+   * declaration the new connection resolved in place for the rungs that follow.
+   */
+  it('keeps the declaration a takeover resolved when the old connection unpublishes late', async () => {
+    await withSrsLadder(answersDraft(), async ({ calls, post }) => {
+      const key = `?key=${DECLARED_KEY}`;
+      assert.equal(await post(source({ param: key, client_id: 'old-connection' })), 0);
+      assert.equal(await post(source({ param: key, client_id: 'new-connection' })), 0);
+      assert.equal(await post(source({ action: 'on_unpublish', param: key, client_id: 'old-connection' })), 0);
+
+      assert.equal(await post(rung()), 0, 'a rung of the new connection is admitted');
+      assert.deepEqual(
+        calls.starts.map((start) => start.admin?.id),
+        [DRAFT.id],
+        'under the declaration the new connection resolved',
+      );
+    });
+  });
+
+  /**
+   * ⛔ A reconnect SRT refused as busy after the hook accepted it, whose own unpublish then arrives.
+   * The broadcaster that was live still is, so its declaration stays for its rungs.
+   */
+  it('keeps the declaration when SRT refuses a reconnect while the source is live', async () => {
+    await withSrsLadder(answersDraft(), async ({ calls, post }) => {
+      const key = `?key=${DECLARED_KEY}`;
+      assert.equal(await post(source({ param: key, client_id: 'live-connection' })), 0);
+      assert.equal(await post(source({ param: key, client_id: 'refused-connection' })), 0);
+      assert.equal(await post(source({ action: 'on_unpublish', param: key, client_id: 'refused-connection' })), 0);
+
+      assert.equal(await post(rung()), 0, 'a rung of the live source is admitted');
+      assert.deepEqual(calls.resumes, [STREAM_ID], 'and the refused reconnect resumed nothing');
     });
   });
 

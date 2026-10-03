@@ -13,6 +13,13 @@ import { assertUsablePublishKeySecret, hasValidPublishKey, publishKeyFromParam }
 import { isUsableStreamId } from '../utils/streamId.js';
 import { redactUrlSecrets } from '../utils/urlSecrets.js';
 
+import {
+  DEFERRAL_DROPPED,
+  DEFERRAL_FIRES,
+  PublisherConnections,
+  RESUME_DEFERRED,
+  RESUME_NOW,
+} from './srs/publisherConnections.js';
 import { assertUsableWebhookToken, hasValidWebhookToken } from './srs/webhookToken.js';
 import { ADMIN_PUBLISH_ALLOWED, isAuthRefusal, resolveAdminPublish } from './adminGate.js';
 import { EngineFactoryDeps, EnginePlugin } from './types.js';
@@ -52,6 +59,11 @@ export interface SrsEngineOptions {
    * declaration owned by another feed key. See {@link EngineFactoryDeps.signerOwner}.
    */
   signerOwner?: string;
+  /**
+   * A monotonic clock in milliseconds, which tells how long a connection has gone unsettled. See
+   * `TAKEOVER_SETTLE_MS`. Injected by tests only.
+   */
+  clock?: () => number;
 }
 
 // SRS webhook response codes
@@ -93,6 +105,12 @@ interface SrsStreamPayload {
    * Optional for the same reason `ip` is: a build that omits it has to mean "presented nothing".
    */
   param?: string;
+  /**
+   * SRS's id for the connection the hook is about, the same on a connection's `on_publish` and its
+   * `on_unpublish`. Optional for the same reason `ip` is: a build that omits it has to mean "no
+   * evidence", which is never read as a different connection. See `PublisherConnections`.
+   */
+  client_id?: string;
 }
 
 interface SrsHlsPayload {
@@ -176,6 +194,7 @@ export function createSrsEngine(mediaRootPath: string, options: SrsEngineOptions
   const webhookToken = options.webhookToken ?? '';
   const adminApi = options.adminApi;
   const signerOwner = options.signerOwner;
+  const clock = options.clock ?? (() => performance.now());
   // Blanked rather than read alongside, so no later change can accidentally consult both. The two
   // modes answer the same question — is this publisher the owner of this stream — from two different
   // sources of truth, and a deployment in which they disagree has no right answer.
@@ -236,9 +255,14 @@ export function createSrsEngine(mediaRootPath: string, options: SrsEngineOptions
       // publish under: the source is what presents the key and is resolved against the admin, and the
       // rungs that follow it inherit that session without a lookup of their own. `null` is the
       // standalone deployment, where membership alone is the whole of what the base proved. Reading a
-      // base as "present" therefore still means exactly what it meant, which is what keeps SEC-28's
-      // rule — a rung is admitted only because its base authenticated — unchanged.
+      // base as "present" therefore still means exactly what it meant, which keeps SEC-28's rule, that
+      // a rung is admitted only because its base authenticated, unchanged. An entry is cleared only when
+      // the last connection the source's hook accepted has left. See `PublisherConnections`.
       const authenticatedBases = new Map<string, AdminSession | null>();
+      const connections: SrsConnections = {
+        sources: new PublisherConnections(clock),
+        singles: new PublisherConnections(clock),
+      };
 
       router.use(createWebhookGate(webhookToken));
 
@@ -254,6 +278,7 @@ export function createSrsEngine(mediaRootPath: string, options: SrsEngineOptions
           { publishKeySecret, adminApi, signerOwner },
           abr,
           authenticatedBases,
+          connections,
         );
       });
 
@@ -387,6 +412,14 @@ function reasonToRefuseRung(
   return null;
 }
 
+/** Per stream, the connections the publish hook accepted that have not unpublished yet. */
+interface SrsConnections {
+  /** Ladder sources, whose last departure clears the base and whose returns resume the held rungs. */
+  sources: PublisherConnections;
+  /** Single streams, whose last departure notes the disconnect. */
+  singles: PublisherConnections;
+}
+
 /**
  * What a publish has to prove, in whichever of the two mutually exclusive ways this deployment uses.
  *
@@ -410,6 +443,10 @@ async function handleStreams(
   gate: SrsPublishGate,
   abr?: AbrGuard,
   authenticatedBases: Map<string, AdminSession | null> = new Map(),
+  connections: SrsConnections = {
+    sources: new PublisherConnections(() => performance.now()),
+    singles: new PublisherConnections(() => performance.now()),
+  },
 ): Promise<void> {
   const { publishKeySecret, adminApi, signerOwner } = gate;
   // Read before the try, so the catch below can tell a publish from anything else. A handler error on
@@ -495,6 +532,18 @@ async function handleStreams(
       }
 
       if (role.kind === 'source') {
+        const departure = connections.sources.leave(streamId, payload.client_id);
+        if (departure.deferral === DEFERRAL_FIRES) {
+          // The connection a takeover replaced has left, so the source is back. See `PublisherConnections`.
+          streamOrchestrator.resumeHeldRungs(streamId);
+        }
+        if (!departure.lastLeft) {
+          logger.info(
+            `[SRS] Ladder source ${streamId}: a connection unpublished while another the hook accepted is still ` +
+              'there, so the base stays',
+          );
+          return;
+        }
         // Its rungs must not outlive their base. Only after the key check, so a forged unpublish
         // cannot evict a live broadcaster's base and take the whole ladder down with it.
         authenticatedBases.delete(streamId);
@@ -502,6 +551,20 @@ async function handleStreams(
         return;
       }
 
+      const departure = connections.singles.leave(streamId, payload.client_id);
+      if (departure.deferral === DEFERRAL_FIRES) {
+        // The connection a takeover replaced has delivered its last segment and left. See `PublisherConnections`.
+        streamOrchestrator.resumeDeferredReturn(streamId);
+      } else if (departure.deferral === DEFERRAL_DROPPED) {
+        streamOrchestrator.dropDeferredReturn(streamId);
+      }
+      if (!departure.lastLeft) {
+        logger.info(
+          `[SRS] Stream ${streamId}: a connection unpublished while another the hook accepted is still there, ` +
+            'so nothing is disconnected',
+        );
+        return;
+      }
       logger.info(`[SRS] Stream unpublished: ${streamId}`);
       streamOrchestrator.noteDisconnect(streamId);
       return;
@@ -602,6 +665,7 @@ async function handleStreams(
         // they belong to can be established. SRS_ACCEPT lets SRS go on to transcode it.
         authenticatedBases.set(streamId, verdict.session);
         logger.info(`[SRS] Ladder source authenticated: ${streamId}, declared as admin stream ${verdict.session.id}`);
+        resumeHeldRungsOnReturn(streamOrchestrator, connections.sources, streamId, payload);
         srsResponse(res, SRS_ACCEPT);
         return;
       }
@@ -614,7 +678,11 @@ async function handleStreams(
         // apply exactly as they do for a derived key. See SEC-26 and SEC-28.
         { address: publisherAddress(payload), isAuthenticated: true },
         verdict.session,
+        { deferResume: connections.singles.timingFor(streamId, payload.client_id) === RESUME_DEFERRED },
       );
+      if (admitted) {
+        connections.singles.accept(streamId, payload.client_id);
+      }
       srsResponse(res, admitted ? SRS_ACCEPT : SRS_REJECT);
       return;
     }
@@ -642,6 +710,7 @@ async function handleStreams(
       // this map is the whole of what the base proved.
       authenticatedBases.set(streamId, null);
       logger.info(`[SRS] Ladder source authenticated: ${streamId}`);
+      resumeHeldRungsOnReturn(streamOrchestrator, connections.sources, streamId, payload);
       srsResponse(res, SRS_ACCEPT);
       return;
     }
@@ -649,10 +718,16 @@ async function handleStreams(
     const mediatype = resolveMediaType(payload.app);
     logger.info(`[SRS] Stream published: ${streamId} (${mediatype})`);
 
-    const accepted = streamOrchestrator.startStream(streamId, mediatype, {
-      address: publisherAddress(payload),
-      isAuthenticated,
-    });
+    const accepted = streamOrchestrator.startStream(
+      streamId,
+      mediatype,
+      { address: publisherAddress(payload), isAuthenticated },
+      undefined,
+      { deferResume: connections.singles.timingFor(streamId, payload.client_id) === RESUME_DEFERRED },
+    );
+    if (accepted) {
+      connections.singles.accept(streamId, payload.client_id);
+    }
     srsResponse(res, accepted ? SRS_ACCEPT : SRS_REJECT);
   } catch (error) {
     const msg = getErrorMessage(error);
@@ -672,6 +747,23 @@ async function handleStreams(
       return;
     }
     srsResponse(res, SRS_ACCEPT);
+  }
+}
+
+/**
+ * Rungs SRS held through a drop of this source send nothing of their own, so the source's return is
+ * the only word of it they get. See `StreamOrchestrator.resumeHeldRungs`. A return that takes the
+ * source over from a connection SRS still holds resumes when that connection leaves, and the
+ * unpublish handler does that. See `PublisherConnections`.
+ */
+function resumeHeldRungsOnReturn(
+  streamOrchestrator: StreamOrchestrator,
+  sources: PublisherConnections,
+  streamId: string,
+  payload: SrsStreamPayload,
+): void {
+  if (sources.accept(streamId, payload.client_id) === RESUME_NOW) {
+    streamOrchestrator.resumeHeldRungs(streamId);
   }
 }
 
