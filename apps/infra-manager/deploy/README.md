@@ -361,18 +361,34 @@ writes the Docker bridge address into each Bee `*_API_BIND` that neither the
 base `.env` nor the deployment's own settings name: the address
 `host.docker.internal` resolves to inside the manager's `api` container, and
 only when the daemon reports that address as its own bridge gateway, which is
-the case on a Linux engine. Where it is not, the manager logs a warning naming
-both addresses at the first deploy and binds nothing, and the Bee lines below
-are yours to set. A deployment on another host is never bound this way: the
-control host reaches its API there, and that host's firewall closes it. The
-three engine ports are not bound by the manager and stay yours to set.
+the case on a Linux engine. Each deploy that writes a bind logs one line naming
+every key it wrote and the address it wrote there. Where the address is not the
+bridge, the manager logs a warning naming both addresses at the first deploy and
+binds nothing, and the Bee lines below are yours to set. A deployment on another
+host is never bound this way: the control host reaches its API there, and that
+host's firewall closes it. The three engine ports are not bound by the manager
+and stay yours to set.
 
 **Upgrading.** A deployment already running keeps its binding until its next
-deploy, which narrows its Bee APIs to the bridge. Anything on another host that
-reaches such a node by this host's public address, an uploader on a pool rung
-here or a `BEE_URL` naming it, stops reaching it then. Give that deployment
-`BEE_UPLOADER_API_BIND=0.0.0.0` in its own settings, which the deploy leaves
-standing, and close the port with the firewall of step 3 instead.
+deploy, which narrows its Bee APIs to the bridge. From then on each of those
+nodes answers on the bridge address alone, so three kinds of client stop
+reaching it:
+
+- anything on another host that reaches it by this host's public address, such
+  as an uploader on a pool rung here or a `BEE_URL` naming it
+- anything on this host that dials `localhost` or `127.0.0.1`, such as the
+  stack's own `health.sh`, `spend-ledger.sh`, `node-metrics.sh` and
+  `bench-on-host.sh`, and the reads the stack's e2e suite runs on this host over
+  ssh
+- a container on this host that dials the host's public or LAN address
+
+To keep a node open to them, set its key to `0.0.0.0` in the deployment's own
+settings, which the deploy leaves standing, and close the port with the firewall
+of step 3 instead. There is one key per Bee node of the stack:
+`BEE_UPLOADER_API_BIND` for the deployment's own node, which is the node a pool
+rung runs, `BEE_GATEWAY_API_BIND` for its gateway, and
+`BEE_RUNG_480P_API_BIND`, `BEE_RUNG_720P_API_BIND` and `BEE_RUNG_1080P_API_BIND`
+for the stack's own per-rung nodes.
 
 **A firewall is no substitute for this**: Docker publishes a container port by
 rewriting the packet's destination and forwarding it, so a firewall's input

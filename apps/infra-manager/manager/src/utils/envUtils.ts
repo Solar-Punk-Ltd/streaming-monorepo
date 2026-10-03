@@ -613,6 +613,18 @@ export function renderProfileEnv(
   stored: Readonly<Record<string, string>> = {},
   fallbacks: ManagedEnvLines = {},
 ): string {
+  let contents = withStoredValues(baseText, stored);
+  for (const [key, value] of Object.entries(fallbacksLeftUnnamed(contents, fallbacks))) {
+    contents = upsertEnvLine(contents, key, value);
+  }
+  for (const [key, value] of Object.entries(managed)) {
+    contents = upsertEnvLine(contents, key, value);
+  }
+  return contents;
+}
+
+/** The base text with the operator's stored values written over it, each checked as `renderProfileEnv` says. */
+function withStoredValues(baseText: string, stored: Readonly<Record<string, string>>): string {
   let contents = baseText;
   for (const [key, value] of Object.entries(stored)) {
     const problem = settingValueProblem(key, value);
@@ -621,14 +633,26 @@ export function renderProfileEnv(
     }
     contents = upsertEnvLine(contents, key, value);
   }
-  const named = parseEnvText(contents);
-  for (const [key, value] of Object.entries(fallbacks)) {
-    if (!named[key]) contents = upsertEnvLine(contents, key, value);
-  }
-  for (const [key, value] of Object.entries(managed)) {
-    contents = upsertEnvLine(contents, key, value);
-  }
   return contents;
+}
+
+/** The fallbacks whose key `text` leaves empty or does not name, which are the ones a render writes. */
+function fallbacksLeftUnnamed(text: string, fallbacks: ManagedEnvLines): ManagedEnvLines {
+  const named = parseEnvText(text);
+  return Object.fromEntries(Object.entries(fallbacks).filter(([key]) => !named[key]));
+}
+
+/**
+ * The Bee API binds a deploy writes into the deployment's env file over this
+ * base text and these stored values: each of {@link beeApiBindLines} whose key
+ * neither names, with the address it is given. Empty where it writes none.
+ */
+export function beeApiBindsWritten(
+  values: ProfileEnvValues,
+  baseText: string,
+  stored: Readonly<Record<string, string>> = {},
+): ManagedEnvLines {
+  return fallbacksLeftUnnamed(withStoredValues(baseText, stored), beeApiBindLines(values));
 }
 
 // deploy.sh switches ENV_FILE to .env.<profile> when present and uses it as

@@ -24,11 +24,13 @@ import { Profile, ProfileStatus } from '../types/index.js';
 import {
   baseEnvPath,
   beeApiBindLines,
+  beeApiBindsWritten,
   bootstrapStackDefaults,
   deleteProfileEnv,
   engineEnvPath,
   engineSettingsLinesOf,
   managedEnvLines,
+  type ManagedEnvLines,
   parseEnvText,
   profileEnvPath,
   type ProfileEnvValues,
@@ -178,6 +180,21 @@ function adminUrlFor(stored: Readonly<Record<string, string>>, root: string, eng
 
 function withoutKeys<T extends Record<string, string>>(record: T, keys: readonly string[]): T {
   return Object.fromEntries(Object.entries(record).filter(([key]) => !keys.includes(key))) as T;
+}
+
+/**
+ * The line a deploy logs for the Bee API binds it wrote into the deployment's
+ * env file, each key with its address, or null when it wrote none. A node bound
+ * this way stops answering anything that dials it on another address of the
+ * host, so the operator has to be able to read where it went.
+ */
+function beeApiBindsLogLine(profileName: string, binds: ManagedEnvLines): string | null {
+  const written = Object.entries(binds).map(([key, address]) => `${key}=${address}`);
+  if (written.length === 0) return null;
+  return (
+    `[Orchestrator] ${profileName}: wrote the Docker bridge address into each Bee API bind that neither ` +
+    `the base .env nor the deployment's settings name: ${written.join(', ')}`
+  );
 }
 
 function stripDockerWarnings(text: string): string {
@@ -1435,19 +1452,20 @@ export class DeploymentOrchestrator {
       };
       const stored = await this.operatorSettingsFor(profile, version, reservation.host);
       await this.assertAdminTokenStaysHome(profile, stored, paths.root, engine);
-      const written = writeProfileEnv(
-        paths.root,
-        profile.name,
-        this.profileEnvValuesOf(profile, version, engine, {
-          secrets,
-          stackSecrets: await this.stackSecretsFor(profile, version, paths.root, engine, stored),
-          engineConfigFile,
-          stored,
-          localBeeApiBind: await this.localBeeApiBindFor(reservation.host ?? profile.host),
-        }),
+      const values = this.profileEnvValuesOf(profile, version, engine, {
+        secrets,
+        stackSecrets: await this.stackSecretsFor(profile, version, paths.root, engine, stored),
+        engineConfigFile,
         stored,
-      );
+        localBeeApiBind: await this.localBeeApiBindFor(reservation.host ?? profile.host),
+      });
+      const written = writeProfileEnv(paths.root, profile.name, values, stored);
       logger.info(`[Orchestrator] ${profile.name}: wrote profile env ${written} (engine=${engine})`);
+      const bound = beeApiBindsLogLine(
+        profile.name,
+        beeApiBindsWritten(values, readIfPresent(baseEnvPath(paths.root)), stored),
+      );
+      if (bound) logger.info(bound);
 
       const services = [...reservation.services];
       // After the env file is written, so the record carries the token the uploader is about to be given.

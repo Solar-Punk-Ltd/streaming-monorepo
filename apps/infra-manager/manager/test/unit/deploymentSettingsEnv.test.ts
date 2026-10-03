@@ -16,7 +16,7 @@ import assert from 'node:assert/strict';
 import { mkdirSync, mkdtempSync, readFileSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { describe, it } from 'node:test';
+import { describe, it, type TestContext } from 'node:test';
 
 import type { StackContract } from '@streaming-infra-manager/common';
 
@@ -24,6 +24,7 @@ import { makeProfile } from '../support/profileFixtures.js';
 import { ALLOCATION_CONTRACT } from '../support/allocationContract.js';
 import type { OrchestratorHarness } from '../support/orchestratorHarness.js';
 import { SWARM_HLS_STREAM_SOURCE } from '../../src/domain/versions/stackSources.js';
+import type { Profile } from '../../src/types/index.js';
 
 const root = join(mkdtempSync(join(tmpdir(), 'deployment-settings-')), 'stack');
 mkdirSync(root);
@@ -46,6 +47,20 @@ function envLine(name: string, key: string): string | undefined {
   return readFileSync(join(root, `.env.${name}`), 'utf8')
     .split('\n')
     .find((line) => line.startsWith(`${key}=`));
+}
+
+/** Every line the logger writes at `level` for the rest of the test. */
+function loggedAt(t: TestContext, level: 'info' | 'warn'): string[] {
+  const lines: string[] = [];
+  t.mock.method(console, level, (...args: unknown[]) => void lines.push(args.map(String).join(' ')));
+  return lines;
+}
+
+/** A deploy of every service of the deployment, through the script's end to the row being RUNNING again. */
+async function deployThrough(harness: OrchestratorHarness, profile: Profile): Promise<void> {
+  await harness.orchestrator.startDeploy(profile, undefined);
+  harness.runner.finish(0);
+  await untilRunning(harness.profiles, profile.name);
 }
 
 describe('a stored value in the rendered env file', () => {
@@ -267,5 +282,74 @@ describe('what a finished deploy records against each service', () => {
     const uploader = harness.containers.snapshots.find((snapshot) => snapshot.service === 'stream-uploader');
     assert.ok(uploader, 'the uploader has a record');
     assert.equal(uploader.envDigests.COMPOSE_NETWORK, settingDigest(uploader.envSalt, 'COMPOSE_NETWORK', 'host'));
+  });
+});
+
+describe('the Bee API binds a deploy writes', () => {
+  // A deploy on the manager's own host writes the Docker bridge address into
+  // each Bee *_API_BIND that neither the base .env nor the deployment's settings
+  // name. A node bound there no longer answers on the host's loopback or on its
+  // public address, so the deploy names in its log what it bound.
+  const BRIDGE = '172.17.0.1';
+  const BINDS = [
+    'BEE_UPLOADER_API_BIND',
+    'BEE_GATEWAY_API_BIND',
+    'BEE_RUNG_480P_API_BIND',
+    'BEE_RUNG_720P_API_BIND',
+    'BEE_RUNG_1080P_API_BIND',
+  ];
+
+  function bindLines(info: readonly string[]): string[] {
+    return info.filter((line) => line.includes('_API_BIND'));
+  }
+
+  it('writes the bridge address into every bind nothing names, and names each in one info line', async (t) => {
+    writeFileSync(join(root, '.env'), 'ENGINE=srs\nBEE_UPLOADER_API_BIND=\n', 'utf8');
+    const stored = makeProfile({ name: 'stage', stamp_id: STAMP });
+    const harness = orchestratorHarness([stored]);
+    harness.orchestrator.setLocalBeeApiBind(async () => BRIDGE);
+    const info = loggedAt(t, 'info');
+
+    await deployThrough(harness, stored);
+
+    for (const key of BINDS) assert.equal(envLine('stage', key), `${key}=${BRIDGE}`);
+    const lines = bindLines(info);
+    assert.equal(lines.length, 1, `one line names the binds, got ${JSON.stringify(lines)}`);
+    for (const key of BINDS) assert.ok(lines[0]!.includes(`${key}=${BRIDGE}`), `${key} in ${lines[0]}`);
+  });
+
+  it('leaves a bind the base env or the deployment names out of the line', async (t) => {
+    writeFileSync(join(root, '.env'), 'ENGINE=srs\nBEE_GATEWAY_API_BIND=192.0.2.10\n', 'utf8');
+    const stored = makeProfile({ name: 'stage', stamp_id: STAMP });
+    const harness = orchestratorHarness([stored]);
+    harness.orchestrator.setLocalBeeApiBind(async () => BRIDGE);
+    harness.profiles.stackSettings.set('stage', { BEE_UPLOADER_API_BIND: '0.0.0.0' });
+    const info = loggedAt(t, 'info');
+
+    await deployThrough(harness, stored);
+
+    assert.equal(envLine('stage', 'BEE_UPLOADER_API_BIND'), 'BEE_UPLOADER_API_BIND=0.0.0.0');
+    assert.equal(envLine('stage', 'BEE_GATEWAY_API_BIND'), 'BEE_GATEWAY_API_BIND=192.0.2.10');
+    const lines = bindLines(info);
+    assert.equal(lines.length, 1, `one line names the binds, got ${JSON.stringify(lines)}`);
+    for (const key of BINDS.slice(2)) assert.ok(lines[0]!.includes(`${key}=${BRIDGE}`), `${key} in ${lines[0]}`);
+    for (const key of BINDS.slice(0, 2)) assert.ok(!lines[0]!.includes(key), `no ${key} in ${lines[0]}`);
+  });
+
+  it('says nothing of a bind where it wrote none', async (t) => {
+    const everyBindNamed = BINDS.map((key) => `${key}=0.0.0.0`).join('\n');
+    const info = loggedAt(t, 'info');
+    for (const bridge of [BRIDGE, null]) {
+      writeFileSync(join(root, '.env'), `ENGINE=srs\n${bridge === null ? '' : everyBindNamed}\n`, 'utf8');
+      const stored = makeProfile({ name: 'stage', stamp_id: STAMP });
+      const harness = orchestratorHarness([stored]);
+      // null is a bridge the manager could not confirm, on Docker Desktop or running natively.
+      harness.orchestrator.setLocalBeeApiBind(async () => bridge);
+      const before = info.length;
+
+      await deployThrough(harness, stored);
+
+      assert.deepEqual(bindLines(info.slice(before)), [], `bridge ${bridge}`);
+    }
   });
 });
