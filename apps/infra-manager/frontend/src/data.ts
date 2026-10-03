@@ -1,16 +1,16 @@
 import {
+  type AdminTokenRotateAnswer,
   type BeePublishersResult,
   type ConfiguredBeeRpcEndpoint,
+  type ConsoleStage,
+  type ConsoleStagesAnswer,
   DEFAULT_CHEQUEBOOK_FLOOR_BZZ,
-  defaultServicesFor,
   type EngineSettings,
-  hasBeePublishers,
   type NewDeploymentSetting,
-  hasStampId,
   type NodeMode,
   type RpcEndpointSource,
-  servicesNeedStamp,
-  STREAM_UPLOADER_SERVICE,
+  type StagePushState,
+  type StageRegistrationAnswer,
 } from '@streaming-infra-manager/common';
 
 import { ACTION_TIMEOUT_MS, actionTimedOutMessage } from './deployments/actionLimit';
@@ -85,20 +85,6 @@ export async function fetchProfiles(): Promise<Profile[]> {
 export async function fetchSrtPassphrase(name: string): Promise<string | null> {
   const body = await getJson<{ srt_passphrase: string | null }>(`/profiles/${encodeURIComponent(name)}/srt-passphrase`);
   return body.srt_passphrase;
-}
-
-function uploaderDeployed(profile: Profile): boolean {
-  return profile.containers.some((c) => c.service === STREAM_UPLOADER_SERVICE);
-}
-
-// A pool-backed uploader carries the pool's batches in BEE_PUBLISHERS, so it
-// needs no stamp of its own to be deployable.
-export function canDeployUploader(profile: Profile): boolean {
-  return (
-    servicesNeedStamp(defaultServicesFor(profile)) &&
-    (hasStampId(profile) || hasBeePublishers(profile)) &&
-    !uploaderDeployed(profile)
-  );
 }
 
 type ProfileAction = 'deploy' | 'stop' | 'deploy-uploader';
@@ -197,8 +183,6 @@ export interface CreateGroupBody {
   engine_settings?: EngineSettings;
   /** The stack settings every member is created with. Absent keeps the version's values. */
   stack_settings?: NewDeploymentSetting[];
-  /** True has the manager copy its stored web2 admin token into every member as it is inserted. */
-  use_manager_admin_token?: boolean;
 }
 
 export function createDeploymentGroup(body: CreateGroupBody, signal?: AbortSignal): Promise<GroupWithMembers> {
@@ -256,6 +240,32 @@ export async function fetchGroups(): Promise<DeploymentGroup[]> {
 
 export function updateProfile(name: string, body: UpdateProfileBody): Promise<Profile> {
   return sendJson<Profile>('PUT', `/profiles/${encodeURIComponent(name)}`, body);
+}
+
+/** Saves the public ingest address alone, or clears it with null. Deploys nothing. */
+export function updateIngestHost(name: string, ingestHost: string | null): Promise<Profile> {
+  return sendJson<Profile>('PATCH', `/profiles/${encodeURIComponent(name)}/ingest-host`, { ingest_host: ingestHost });
+}
+
+/**
+ * Every stage of this manager, for the Stages page: the record the manager would push into the web2 admin now, built
+ * afresh, without the SRT passphrase and with the admin token by its kind alone, and how its last push went.
+ */
+export async function fetchConsoleStages(signal?: AbortSignal): Promise<ConsoleStage[]> {
+  return (await getJson<ConsoleStagesAnswer>('/stages', { signal })).stages;
+}
+
+/** How the manager's last push of this deployment's stage record into the web2 admin went, or null before any. */
+export async function fetchStageRegistration(name: string, signal?: AbortSignal): Promise<StagePushState | null> {
+  const answer = await getJson<StageRegistrationAnswer>(`/stages/${encodeURIComponent(name)}/registration`, {
+    signal,
+  });
+  return answer.registration;
+}
+
+/** Takes the deployment's web2 admin token out so its next deploy generates a new one, and answers what to say. */
+export function rotateAdminToken(name: string): Promise<AdminTokenRotateAnswer> {
+  return sendJson<AdminTokenRotateAnswer>('POST', `/profiles/${encodeURIComponent(name)}/admin-token/rotate`, {});
 }
 
 /**

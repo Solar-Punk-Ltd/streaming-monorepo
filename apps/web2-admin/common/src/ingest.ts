@@ -8,16 +8,40 @@ export interface IngestRtmpDetails {
   streamKey: string;
 }
 
+/** OBS's SRT settings for one stream on its stage. */
+export interface IngestSrtDetails {
+  /**
+   * The SRT publish URL without the passphrase. What OBS's "Server" box
+   * takes is `buildObsSrtServer(url, passphrase).server`.
+   */
+  url: string;
+  passphrase: string | null;
+}
+
+/** The stage a stream's ingest details come from, as far as the OBS panel names it. */
+export interface IngestStage {
+  stageId: string;
+  name: string;
+  /** When the manager retired the stage, or null. A stream on it keeps its details. */
+  retiredAt: string | null;
+}
+
 /**
- * OBS / encoder connection details for one stream.
+ * OBS / encoder connection details for one stream, from the stage it is
+ * broadcast on.
  *
  * The ingest stream id is `<app>/<stream>`: `app` is the media type because
  * swarm-hls-stream maps app 'audio' to audio and anything else to video, and
  * `stream` is the stream's topic UUID so the uploader can find the draft by
- * name later. The per-stream key rides in the `key=` query parameter, the
- * shape swarm-hls-stream's publisher-auth branch verifies. The SRT passphrase
- * is one value for the whole SRS server and comes as its own field, which
- * `buildObsSrtServer` puts on the Server line wherever OBS can read it there.
+ * name later. The per-stream key rides in the `key=` query parameter, which
+ * every uploader that takes streams from this admin verifies. The SRT
+ * passphrase is one value for the stage's whole ingest server and comes as
+ * its own field, which `buildObsSrtServer` puts on the Server line wherever
+ * OBS can read it there.
+ *
+ * `stage`, `srt` and `rtmp` are null while the stream has no stage: there is
+ * nowhere to send it yet, and the console says to pick one. The stream id and
+ * the key are the stream's own and are always there.
  */
 export interface IngestDetails {
   streamId: string;
@@ -26,36 +50,15 @@ export interface IngestDetails {
   /** 32 hex chars, rotatable. */
   publishKey: string;
   publishKeyRotatedAt: string | null;
-  srt: {
-    /**
-     * The SRT publish URL without the passphrase. What OBS's "Server" box
-     * takes is `buildObsSrtServer(url, passphrase).server`.
-     */
-    url: string;
-    passphrase: string | null;
-  };
+  stage: IngestStage | null;
+  srt: IngestSrtDetails | null;
   /**
-   * Null unless the deployment opens RTMP ingest to encoders on purpose
-   * (`INGEST_RTMP_PUBLIC` on the API). Ingest is SRT only by default: RTMP
-   * carries no passphrase, and the deployments close its port, so an RTMP
-   * address would point the streamer at a port that refuses them.
+   * Null unless the stage opens RTMP ingest to encoders on purpose
+   * (`rtmpPublic` on its record). Ingest is SRT only by default: RTMP carries
+   * no passphrase, and the deployments close its port, so an RTMP address
+   * would point the streamer at a port that refuses them.
    */
   rtmp: IngestRtmpDetails | null;
-  /**
-   * Whether the ingest currently verifies `key=`. False until the deployed
-   * uploader carries publisher auth; the UI shows a note when false.
-   */
-  keyVerified: boolean;
-}
-
-export interface IngestEndpoint {
-  host: string;
-  srtPort: number;
-  rtmpPort: number;
-  /** Whether RTMP ingest is open to encoders, and so offered to the operator. */
-  rtmpPublic: boolean;
-  srtPassphrase: string | null;
-  keyVerified: boolean;
 }
 
 export {

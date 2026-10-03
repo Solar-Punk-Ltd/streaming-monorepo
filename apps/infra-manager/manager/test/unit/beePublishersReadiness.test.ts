@@ -90,6 +90,7 @@ function member(rung: string, index: number): Profile {
     updated_at: new Date(0),
     group_id: GROUP.id,
     stack_version_id: 1,
+    ingest_host: null,
   };
 }
 

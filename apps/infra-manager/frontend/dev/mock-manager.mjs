@@ -40,6 +40,7 @@ import {
 import { authRoutes, DEV_PASSWORD, DEV_USERNAME, refuseRequest, seedAuth, userFor } from './mock-auth.mjs';
 import { attemptRefusal, attemptRoutes, openAttempt, resolveAttempt, seedAttempts } from './mock-attempts.mjs';
 import { adminLinkRoutes } from './mock-admin-link.mjs';
+import { catalogueNodeRoutes, catalogueRemovalRefusal } from './mock-catalogue-node.mjs';
 import {
   copyStoredSettings,
   createdSettingsRefusal,
@@ -56,6 +57,7 @@ import { closeRollout, engineConfigRoutes, forgetEngineConfig } from './mock-eng
 import { readBody, send as sendRaw, sendScriptRun } from './mock-http.mjs';
 import { metricsClients, metricsSnapshot } from './mock-metrics.mjs';
 import { srtIngestRoutes } from './mock-srt-ingest.mjs';
+import { stageRoutes } from './mock-stages.mjs';
 import { MOCK_CURRENT_PRICE, stampChangeRoutes } from './mock-stamps.mjs';
 import { defaultVersionId, newDeploymentVersionProblem, seedVersions, versionRoutes } from './mock-versions.mjs';
 import {
@@ -195,7 +197,13 @@ function remove(profile) {
     state.profiles = state.profiles.filter((entry) => entry.name !== profile.name);
     state.nodes.delete(profile.name);
     state.srtPassphrases.delete(profile.name);
-    publish({ type: 'profile.deleted', name: profile.name });
+    publish({
+      type: 'profile.deleted',
+      name: profile.name,
+      instanceId: profile.instance_id,
+      kind: profile.kind,
+      deletedAt: new Date().toISOString(),
+    });
     if (profile.group_id != null && membersOf(profile.group_id).length === 0) {
       state.groups = state.groups.filter((group) => group.id !== profile.group_id);
     }
@@ -613,24 +621,13 @@ const ROUTES = [
       const { problem } = nodeChoicesFor(body);
       if (problem) return refuse(res, problem);
       // Kept off the profile, which every page and event carries.
-      const { stack_settings: namedSettings, use_manager_admin_token: askedToken, ...profileBody } = body;
+      const { stack_settings: namedSettings, ...profileBody } = body;
       const shape = { kind: body.kind ?? 'custom', components: body.components ?? null, host: body.host ?? null };
-      const { stackSettings, useManagerToken } = withManagerLink(
-        namedSettings,
-        askedToken === true,
-        versionForCreate(body),
-        shape,
-      );
-      const refusal = await createdSettingsRefusal(
-        stackSettings,
-        versionForCreate(body),
-        shape,
-        body.name,
-        useManagerToken === true,
-      );
+      const stackSettings = withManagerLink(namedSettings, versionForCreate(body), shape);
+      const refusal = await createdSettingsRefusal(stackSettings, versionForCreate(body), shape, body.name);
       if (refusal) return send(res, refusal.status, refusal.body);
       const profile = createFromBody(profileBody);
-      storeCreatedSettings(profile, stackSettings, useManagerToken === true);
+      storeCreatedSettings(profile, stackSettings);
       send(res, 202, profile);
     },
   ],
@@ -692,6 +689,8 @@ const ROUTES = [
     'DELETE',
     /^\/profiles\/([^/]+)$/,
     withProfile((_req, res, profile) => {
+      const refusal = catalogueRemovalRefusal(profile.name);
+      if (refusal) return send(res, 409, refusal);
       remove(profile);
       send(res, 202, profile);
     }),
@@ -802,24 +801,18 @@ const ROUTES = [
       const memberShape = isPool ? { kind: 'custom', components: ['bee-uploader'] } : {};
       const { problem } = nodeChoicesFor(body, memberShape);
       if (problem) return refuse(res, problem);
-      const { stack_settings: namedSettings, use_manager_admin_token: askedToken, ...groupBody } = body;
+      const { stack_settings: namedSettings, ...groupBody } = body;
       const settingsShape = {
         kind: memberShape.kind ?? body.kind ?? 'custom',
         components: memberShape.components ?? body.components ?? null,
         host: body.host ?? null,
       };
-      const { stackSettings, useManagerToken } = withManagerLink(
-        namedSettings,
-        askedToken === true,
-        versionForCreate(body),
-        settingsShape,
-      );
+      const stackSettings = withManagerLink(namedSettings, versionForCreate(body), settingsShape);
       const refusal = await createdSettingsRefusal(
         stackSettings,
         versionForCreate(body),
         settingsShape,
         body.group_name,
-        useManagerToken === true,
       );
       if (refusal) return send(res, refusal.status, refusal.body);
       const group = {
@@ -841,7 +834,7 @@ const ROUTES = [
         : Array.from({ length: group.size }, (_value, index) =>
             createFromBody({ ...groupBody, name: `${group.name}-profile-${index + 1}` }, { group_id: group.id }),
           );
-      for (const profile of profiles) storeCreatedSettings(profile, stackSettings, useManagerToken === true);
+      for (const profile of profiles) storeCreatedSettings(profile, stackSettings);
 
       send(res, 202, { group, profiles });
     },
@@ -907,10 +900,18 @@ const ROUTES = [
   ],
   ...attemptRoutes(readBody, publish),
   ...adminLinkRoutes({ readBody }),
+  ...catalogueNodeRoutes({
+    readBody,
+    profiles: () => state.profiles,
+    groups: () => state.groups,
+    stamps: (name) => node(name).stamps,
+    userFor,
+  }),
   ...createTargetRoutes(readBody),
   ...engineRoutes({ readBody, withProfile, findProfile, deploy, publish, settingsSaved: engineSettingsSaved }),
   ...engineConfigRoutes({ readBody, withProfile, deploy, publish }),
   ...srtIngestRoutes({ withProfile }),
+  ...stageRoutes({ readBody, withProfile, profiles: () => state.profiles, changed, publicHost: PUBLIC_HOST, send }),
   ...deploymentSettingsRoutes({ readBody, withProfile, deploy }),
   ...versionRoutes(readBody, publish),
   ['GET', /^\/events$/, (_req, res) => openStream(res, eventClients)],

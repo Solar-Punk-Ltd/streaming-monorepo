@@ -111,18 +111,14 @@ function feedOwnerOf(state: WizardState, context: WizardContext): string | undef
 
 /**
  * The stack settings a create sends: the ones typed under Advanced settings,
- * then the Web2 admin group's keys, and whether the manager copies its stored
- * token in, which the page never holds.
+ * then the Web2 admin group's keys. A token of the deployment's own is the
+ * manager's to generate, so none is sent for it.
  */
-function stackSettingsBody(
-  state: WizardState,
-  context: WizardContext,
-): Pick<CreateProfileBody, 'stack_settings' | 'use_manager_admin_token'> {
+function stackSettingsBody(state: WizardState, context: WizardContext): Pick<CreateProfileBody, 'stack_settings'> {
   const adminLink = adminLinkBody(state, context);
   const settings = [...(advancedSettingsBody(state, context) ?? []), ...adminLink.settings];
   return {
     stack_settings: settings.length > 0 ? settings : undefined,
-    ...(adminLink.useManagerToken ? { use_manager_admin_token: true } : {}),
   };
 }
 

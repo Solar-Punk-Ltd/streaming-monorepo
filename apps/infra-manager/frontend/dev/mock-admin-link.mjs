@@ -12,15 +12,25 @@
  * label of the address, so every sentence the page has for one can be seen
  * offline: `https://unreachable.admin.offline.example` answers `unreachable`,
  * `https://owner-mismatch.admin.offline.example` answers `owner-mismatch`, and
- * so on for each outcome. Any other address takes the token, and is linked
- * when there is a stream address to compare with the admin's owner. The stored
- * token is not presented at an address on another origin than the link's, as
- * the manager does not present it there.
+ * so on for each outcome. Any other address takes the token. The manager's own
+ * token, stored or typed on the Manager settings card, is the registrar's, so
+ * it compares no owner and is `token-accepted`, as the admin's registrar check
+ * answers; an uploader's token typed in the wizard is linked when there is a
+ * stream address to compare with the admin's owner. The stored token is not
+ * presented at an address on another origin than the link's, as the manager
+ * does not present it there, and never as an uploader's.
+ *
+ * The manager judges plain http by what a name resolves to, which the mock
+ * cannot, so here a plain http host with a dot in it, such as
+ * `http://admin.offline.example`, is another host and its save is refused with
+ * the manager's sentence, and one without, such as a compose service name, is
+ * on the manager's host.
  */
 import {
   ADMIN_LINK_TEST_OUTCOMES,
   adminLinkTestProblems,
   managerAdminLinkProblems,
+  plainHttpAdminLinkHost,
   sameAdminOrigin,
 } from '@streaming-infra-manager/common';
 
@@ -72,7 +82,8 @@ async function save(req, res, readBody) {
       message: "The manager's settings changed after the page read them. Reload them and make the change again.",
     });
   }
-  const problems = managerAdminLinkProblems(body, managerAdminLink);
+  const plainHttp = plainHttpAdminLinkHost(body.url)?.includes('.') ? 'refused' : 'allowed';
+  const problems = managerAdminLinkProblems(body, managerAdminLink, plainHttp);
   if (problems.length > 0) return send(res, 400, { error: 'validation_error', errors: problems });
   managerAdminLink.url = body.url === '' ? null : body.url;
   if (managerAdminLink.url === null) managerAdminLink.tokenStored = false;
@@ -94,10 +105,12 @@ async function test(req, res, readBody) {
     return send(res, 200, { outcome: 'stored-token-elsewhere' }, { 'cache-control': 'no-store' });
   }
   const hasToken = body.token.source === 'typed' || managerAdminLink.tokenStored;
+  // Only a typed token can be an uploader's; the registrar's compares no owner.
+  const uploader = body.token.source === 'typed' && body.tokenFor === 'uploader';
   return send(
     res,
     200,
-    { outcome: mockTestOutcome({ url: body.url, hasToken, feedOwner: body.feedOwner ?? null }) },
+    { outcome: mockTestOutcome({ url: body.url, hasToken, feedOwner: uploader ? (body.feedOwner ?? null) : null }) },
     { 'cache-control': 'no-store' },
   );
 }

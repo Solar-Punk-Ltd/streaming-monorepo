@@ -18,6 +18,7 @@
  * response cannot show that.
  */
 import assert from 'node:assert/strict';
+import { createHash } from 'node:crypto';
 import { after, before, describe, it } from 'node:test';
 
 import type {
@@ -31,7 +32,22 @@ import type {
 } from '@streaming-monorepo/web2-admin-common';
 import pg from 'pg';
 
-import { api, internalCall, login, raw, releaseStack, requireStack, stack, type RawResponse } from './helpers.js';
+import { STAGE_ID, stageRecord } from '../unit/support/stageFakes.js';
+
+import {
+  api,
+  INTERNAL_API_TOKEN,
+  internalCall,
+  login,
+  raw,
+  registerStage,
+  releaseStack,
+  requireStack,
+  stack,
+  type RawResponse,
+  UPLOADER_TOKEN,
+  uploaderCall,
+} from './helpers.js';
 
 const draft = {
   title: 'itest internal',
@@ -39,6 +55,8 @@ const draft = {
   tags: ['itest'],
   mediaType: 'video' as const,
   scheduledStartTime: '2026-10-01T09:00:00.000Z',
+  // Registered in `before`: a draft with no stage is refused at publish.
+  stageId: STAGE_ID,
 };
 
 const created = new Set<string>();
@@ -46,6 +64,8 @@ let pool: pg.Pool;
 
 before(async () => {
   await requireStack();
+  // With the token its uploader presents, of its own: the uploader's routes take no other.
+  await registerStage({}, UPLOADER_TOKEN);
   await login();
   pool = new pg.Pool({ connectionString: stack().databaseUrl, max: 2 });
 });
@@ -77,22 +97,26 @@ async function publishedStream(overrides: Partial<typeof draft> = {}): Promise<S
 
 function reportState(id: string, body: unknown): Promise<RawResponse> {
   return raw('POST', `/api/internal/streams/${id}/state`, {
-    ...internalCall(),
+    ...uploaderCall(),
     body,
   });
 }
 
 function reportRendition(id: string, body: unknown): Promise<RawResponse> {
   return raw('POST', `/api/internal/streams/${id}/renditions`, {
-    ...internalCall(),
+    ...uploaderCall(),
     body,
   });
 }
 
-/** The entry for this topic in the newest feed write that contains it. */
+/**
+ * The entry for this topic in the newest feed write that contains it. Every such row also carries the exact string
+ * the gateway was handed (migration 013), which must read back as the payload, and no batch: this instance runs the
+ * in-memory gateway with no catalogue stamp.
+ */
 async function catalogueEntry(topic: string): Promise<FeedStreamEntry> {
-  const result = await pool.query<{ payload: unknown[] }>(
-    `SELECT payload FROM feed_writes
+  const result = await pool.query<{ payload: unknown[]; payload_text: string | null; batch_id: string | null }>(
+    `SELECT payload, payload_text, batch_id FROM feed_writes
       WHERE payload @> $1::jsonb
       ORDER BY id DESC
       LIMIT 1`,
@@ -100,6 +124,8 @@ async function catalogueEntry(topic: string): Promise<FeedStreamEntry> {
   );
   const payload = result.rows[0]?.payload;
   assert.ok(payload, `no feed write contains topic ${topic}`);
+  assert.deepEqual(JSON.parse(result.rows[0]!.payload_text ?? 'null'), payload, 'payload_text is not the payload');
+  assert.equal(result.rows[0]!.batch_id, null);
   const entry = payload.find((e) => (e as FeedStreamEntry | null)?.topic === topic);
   assert.ok(entry, `topic ${topic} not in the payload`);
   return entry as FeedStreamEntry;
@@ -117,7 +143,7 @@ async function isOnCatalogue(topic: string): Promise<boolean> {
 }
 
 describe('internal API authentication', () => {
-  it('refuses every internal route without the token', async () => {
+  it('refuses every uploader route without a stage’s own token', async () => {
     const id = '1867808f-7b1c-4e46-b437-f7423b466b39';
     const calls: [string, string][] = [
       ['GET', `/api/internal/streams/by-ingest/video/${id}`],
@@ -144,6 +170,88 @@ describe('internal API authentication', () => {
   });
 });
 
+describe('the registrar token', () => {
+  // A stage still on a copy of the registrar token, which an older manager copied into its deployment: the record
+  // says `shared`, and the stage has to rotate its token in the manager.
+  const COPIED_STAGE = 'bf628a4e-7182-43a4-9fa6-60718293a4b5';
+  let stream: Stream;
+
+  before(async () => {
+    await registerStage({
+      stageId: COPIED_STAGE,
+      name: 'Copied stage',
+      adminToken: { sha256: createHash('sha256').update(INTERNAL_API_TOKEN, 'utf8').digest('hex'), kind: 'shared' },
+    });
+    stream = await publishedStream({ title: 'itest on a stage still on the registrar token', stageId: COPIED_STAGE });
+  });
+
+  it('is refused on every uploader route, plainly, and writes nothing', async () => {
+    const writes = await pool.query<{ count: string }>('SELECT count(*) AS count FROM feed_writes');
+    const calls: [string, string, unknown][] = [
+      ['GET', `/api/internal/streams/by-ingest/video/${stream.topic}`, undefined],
+      ['POST', `/api/internal/streams/${stream.id}/state`, { state: 'live' }],
+      [
+        'POST',
+        `/api/internal/streams/${stream.id}/renditions`,
+        {
+          name: '720p',
+          width: 1280,
+          height: 720,
+          topic: 'bbbbbbbb-0000-4000-8000-000000000720',
+          bandwidth: 2_880_000,
+          avgBandwidth: 2_160_000,
+        },
+      ],
+      ['GET', '/api/internal/stages/self', undefined],
+    ];
+    for (const [method, path, body] of calls) {
+      const answer = await raw(method, path, { ...internalCall(), body });
+      assert.equal(answer.status, 401, `${method} ${path} took the registrar token`);
+      assert.deepEqual(answer.body, { error: 'unauthenticated' });
+    }
+    const after = await pool.query<{ count: string }>('SELECT count(*) AS count FROM feed_writes');
+    assert.equal(after.rows[0]?.count, writes.rows[0]?.count, 'a refused call wrote to the feed');
+    assert.equal((await api<Stream>('GET', `/api/streams/${stream.id}`)).status, 'published');
+  });
+
+  it('is never stored as a stage’s own token: the push is refused and registers nothing', async () => {
+    const stageId = 'd1840c6a-93a4-45c6-9b17-8293a4b5c6d7';
+    const pushed = await raw('PUT', `/api/internal/stages/${stageId}`, {
+      ...internalCall(),
+      body: stageRecord({
+        stageId,
+        name: 'Pushed with the registrar token',
+        adminToken: { sha256: createHash('sha256').update(INTERNAL_API_TOKEN, 'utf8').digest('hex'), kind: 'own' },
+      }),
+    });
+    assert.equal(pushed.status, 400, pushed.text);
+    const rows = await pool.query('SELECT 1 FROM stages WHERE stage_id = $1', [stageId]);
+    assert.equal(rows.rowCount, 0);
+  });
+
+  it('passes the registrar check, which answers 204 and takes no uploader’s token', async () => {
+    const checked = await raw('GET', '/api/internal/registrar', internalCall());
+    assert.equal(checked.status, 204);
+    assert.equal(checked.text, '');
+
+    for (const options of [uploaderCall(), { anonymous: true, crossSiteHeader: false }]) {
+      const refused = await raw('GET', '/api/internal/registrar', options);
+      assert.equal(refused.status, 401);
+      assert.deepEqual(refused.body, { error: 'unauthenticated' });
+    }
+  });
+
+  it('reads an unknown internal path as a 404, as a stage’s own token does, and no token as a 401', async () => {
+    for (const options of [internalCall(), uploaderCall()]) {
+      const answer = await raw('GET', '/api/internal/nothing-here', options);
+      assert.equal(answer.status, 404);
+      assert.equal((answer.body as { error: string }).error, 'not_found');
+    }
+    const anonymous = await raw('GET', '/api/internal/nothing-here', { anonymous: true, crossSiteHeader: false });
+    assert.equal(anonymous.status, 401);
+  });
+});
+
 describe('internal lookup by ingest stream id', () => {
   let stream: Stream;
 
@@ -155,7 +263,7 @@ describe('internal lookup by ingest stream id', () => {
     const found = await api<IngestLookupResponse>(
       'GET',
       `/api/internal/streams/by-ingest/video/${stream.topic}`,
-      internalCall(),
+      uploaderCall(),
     );
 
     assert.equal(found.id, stream.id);
@@ -173,7 +281,7 @@ describe('internal lookup by ingest stream id', () => {
     });
     created.add(unpublished.id);
 
-    const response = await raw('GET', `/api/internal/streams/by-ingest/video/${unpublished.topic}`, internalCall());
+    const response = await raw('GET', `/api/internal/streams/by-ingest/video/${unpublished.topic}`, uploaderCall());
     assert.equal(response.status, 404);
     assert.equal((response.body as { error: string }).error, 'stream_not_found');
   });
@@ -181,7 +289,7 @@ describe('internal lookup by ingest stream id', () => {
   it('refuses the right topic under the wrong app', async () => {
     // `<mediaType>/<topic>` is the whole ingest address; half of it matching
     // is not a match.
-    const response = await raw('GET', `/api/internal/streams/by-ingest/audio/${stream.topic}`, internalCall());
+    const response = await raw('GET', `/api/internal/streams/by-ingest/audio/${stream.topic}`, uploaderCall());
     assert.equal(response.status, 404);
     assert.equal((response.body as { error: string }).error, 'stream_not_found');
   });
@@ -190,11 +298,11 @@ describe('internal lookup by ingest stream id', () => {
     const unknown = await raw(
       'GET',
       '/api/internal/streams/by-ingest/video/1867808f-7b1c-4e46-b437-f7423b466b39',
-      internalCall(),
+      uploaderCall(),
     );
     assert.equal(unknown.status, 404);
 
-    const malformed = await raw('GET', '/api/internal/streams/by-ingest/video/not-a-uuid', internalCall());
+    const malformed = await raw('GET', '/api/internal/streams/by-ingest/video/not-a-uuid', uploaderCall());
     assert.equal(malformed.status, 400);
     assert.equal((malformed.body as { error: string }).error, 'validation_error');
   });
@@ -236,7 +344,7 @@ describe('internal state reports', () => {
 
   it('goes live: the row, and the catalogue entry a viewer reads', async () => {
     const result = await api<StreamStateResponse>('POST', `/api/internal/streams/${stream.id}/state`, {
-      ...internalCall(),
+      ...uploaderCall(),
       body: { state: 'live' },
     });
 
@@ -255,7 +363,7 @@ describe('internal state reports', () => {
   it('takes a repeated live report as a no-op', async () => {
     const first = await api<Stream>('GET', `/api/streams/${stream.id}`);
     const again = await api<StreamStateResponse>('POST', `/api/internal/streams/${stream.id}/state`, {
-      ...internalCall(),
+      ...uploaderCall(),
       body: { state: 'live' },
     });
 
@@ -316,7 +424,7 @@ describe('internal state reports', () => {
 
   it('ends: the entry carries the manifest index and the duration', async () => {
     const result = await api<StreamStateResponse>('POST', `/api/internal/streams/${stream.id}/state`, {
-      ...internalCall(),
+      ...uploaderCall(),
       body: { state: 'vod', index: 412, duration: 3725.5 },
     });
 
@@ -343,7 +451,7 @@ describe('internal state reports', () => {
     // not keep is the previous recording: the entry would point a viewer at a
     // finished manifest while a new session writes over its head.
     const result = await api<StreamStateResponse>('POST', `/api/internal/streams/${stream.id}/state`, {
-      ...internalCall(),
+      ...uploaderCall(),
       body: { state: 'live' },
     });
 
@@ -361,7 +469,7 @@ describe('internal state reports', () => {
     // And back to a recording, which is the state the rest of this sequence
     // starts from.
     const ended = await api<StreamStateResponse>('POST', `/api/internal/streams/${stream.id}/state`, {
-      ...internalCall(),
+      ...uploaderCall(),
       body: { state: 'vod', index: 412, duration: 3725.5 },
     });
     assert.equal(ended.stream.status, 'vod');
@@ -409,7 +517,7 @@ describe('internal rendition reports', () => {
   });
 
   const report = (body: Rendition): Promise<RenditionReportResponse> =>
-    api<RenditionReportResponse>('POST', `/api/internal/streams/${stream.id}/renditions`, { ...internalCall(), body });
+    api<RenditionReportResponse>('POST', `/api/internal/streams/${stream.id}/renditions`, { ...uploaderCall(), body });
 
   before(async () => {
     stream = await publishedStream({ title: 'itest internal ladder' });
@@ -554,7 +662,7 @@ describe('internal rendition reports', () => {
 
   it('carries the ladder through a state report and a hand republish', async () => {
     const ended = await api<StreamStateResponse>('POST', `/api/internal/streams/${stream.id}/state`, {
-      ...internalCall(),
+      ...uploaderCall(),
       body: { state: 'vod', index: 9, duration: 61.2 },
     });
     assert.equal(ended.stream.status, 'vod');
@@ -574,7 +682,7 @@ describe('internal rendition reports', () => {
     // the resume — but not the indexes, which address the recording that just
     // ended. They come back one final report at a time.
     const live = await api<StreamStateResponse>('POST', `/api/internal/streams/${stream.id}/state`, {
-      ...internalCall(),
+      ...uploaderCall(),
       body: { state: 'live' },
     });
     assert.equal(live.stream.status, 'live');
@@ -605,7 +713,7 @@ describe('internal rendition reports', () => {
 
     // Back to a recording for the unpublish that follows.
     await api<StreamStateResponse>('POST', `/api/internal/streams/${stream.id}/state`, {
-      ...internalCall(),
+      ...uploaderCall(),
       body: { state: 'vod', index: 9, duration: 61.2 },
     });
   });
@@ -626,5 +734,114 @@ describe('internal rendition reports', () => {
     assert.equal(entry.index, 9, 'the master, as before');
     assert.equal(entry.group, stream.topic);
     assert.equal(entry.renditions?.length, 2);
+  });
+});
+
+describe('an uploader on a token of its own', () => {
+  // A second stage, registered with the token its uploader presents, of its own. `STAGE_ID`'s uploader is on
+  // `UPLOADER_TOKEN`.
+  const OWN_STAGE = '6a1d3b9f-2c3d-4e5f-8a51-1b2c3d4e5f60';
+  const OWN_OWNER = '0x' + '5c'.repeat(20);
+  // 64 hex characters, as the manager generates a stage's own token; the admin asks for no other shape.
+  const OWN_TOKEN = '7e'.repeat(32);
+  let mine: Stream;
+  let theirs: Stream;
+
+  before(async () => {
+    await registerStage({ stageId: OWN_STAGE, name: 'Own stage', owner: OWN_OWNER }, OWN_TOKEN);
+    mine = await publishedStream({ title: 'itest on its own stage', stageId: OWN_STAGE });
+    theirs = await publishedStream({ title: 'itest on the main stage' });
+  });
+
+  async function feedWriteCount(): Promise<number> {
+    const result = await pool.query<{ count: string }>('SELECT count(*) AS count FROM feed_writes');
+    return Number(result.rows[0]?.count);
+  }
+
+  it('names its stage and the owner that stage signs as', async () => {
+    const self = await raw('GET', '/api/internal/stages/self', uploaderCall(OWN_TOKEN));
+    assert.equal(self.status, 200, self.text);
+    assert.deepEqual(self.body, { stageId: OWN_STAGE, owner: OWN_OWNER });
+
+    const main = await raw('GET', '/api/internal/stages/self', uploaderCall());
+    assert.equal(main.status, 200, main.text);
+    assert.equal((main.body as { stageId: string }).stageId, STAGE_ID);
+  });
+
+  it('finds its own stage’s stream, and not another stage’s', async () => {
+    const found = await api<IngestLookupResponse>(
+      'GET',
+      `/api/internal/streams/by-ingest/video/${mine.topic}`,
+      uploaderCall(OWN_TOKEN),
+    );
+    assert.equal(found.id, mine.id);
+
+    const other = await raw('GET', `/api/internal/streams/by-ingest/video/${theirs.topic}`, uploaderCall(OWN_TOKEN));
+    assert.equal(other.status, 404);
+    assert.equal((other.body as { error: string }).error, 'stream_not_found');
+
+    const main = await api<IngestLookupResponse>(
+      'GET',
+      `/api/internal/streams/by-ingest/video/${theirs.topic}`,
+      uploaderCall(),
+    );
+    assert.equal(main.id, theirs.id, 'the main stage’s own token finds its own stream');
+  });
+
+  it('reports nothing for another stage’s stream, and writes nothing', async () => {
+    const writes = await feedWriteCount();
+
+    const state = await raw('POST', `/api/internal/streams/${theirs.id}/state`, {
+      ...uploaderCall(OWN_TOKEN),
+      body: { state: 'live' },
+    });
+    assert.equal(state.status, 404);
+    assert.equal((state.body as { error: string }).error, 'stream_not_found');
+
+    const rung = await raw('POST', `/api/internal/streams/${theirs.id}/renditions`, {
+      ...uploaderCall(OWN_TOKEN),
+      body: {
+        name: '720p',
+        width: 1280,
+        height: 720,
+        topic: 'bbbbbbbb-0000-4000-8000-000000000720',
+        bandwidth: 2_880_000,
+        avgBandwidth: 2_160_000,
+      },
+    });
+    assert.equal(rung.status, 404);
+
+    assert.equal(await feedWriteCount(), writes, 'no feed write');
+    const rungs = await pool.query('SELECT 1 FROM stream_renditions WHERE stream_id = $1', [theirs.id]);
+    assert.equal(rungs.rowCount, 0, 'no rung stored');
+    assert.equal((await api<Stream>('GET', `/api/streams/${theirs.id}`)).status, 'published');
+  });
+
+  it('reports for its own stage’s stream', async () => {
+    const live = await api<StreamStateResponse>('POST', `/api/internal/streams/${mine.id}/state`, {
+      ...uploaderCall(OWN_TOKEN),
+      body: { state: 'live' },
+    });
+    assert.equal(live.stream.status, 'live');
+    assert.equal((await catalogueEntry(mine.topic)).state, 'live');
+  });
+
+  it('is refused on the manager’s routes, and everywhere once its stage is retired', async () => {
+    const push = await raw('PUT', `/api/internal/stages/${OWN_STAGE}`, {
+      ...uploaderCall(OWN_TOKEN),
+      body: stageRecord({ stageId: OWN_STAGE, name: 'Own stage', owner: OWN_OWNER }),
+    });
+    assert.equal(push.status, 401);
+
+    const retired = await raw('DELETE', `/api/internal/stages/${OWN_STAGE}`, {
+      ...internalCall(),
+      body: { observedAt: '2026-09-28T10:05:00.000Z' },
+    });
+    assert.deepEqual(retired.body, { retired: true });
+
+    for (const path of ['/api/internal/stages/self', `/api/internal/streams/by-ingest/video/${mine.topic}`]) {
+      const answer = await raw('GET', path, uploaderCall(OWN_TOKEN));
+      assert.equal(answer.status, 401, path);
+    }
   });
 });

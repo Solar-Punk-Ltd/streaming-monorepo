@@ -38,6 +38,20 @@ const scheduledStartTimeField = () =>
       (value) => typeof value === 'string' && !Number.isNaN(Date.parse(value)),
     );
 
+/**
+ * The stage the stream is broadcast on: a UUID, kept in lower case as the
+ * stages table keeps it, or null for none. Absent leaves the stream's stage as
+ * it is, so a client that does not know about stages cannot clear one. Whether
+ * the stage takes streams, and whether this stream may change stage, is the
+ * service's to say.
+ */
+const stageIdField = () =>
+  string()
+    .nullable()
+    .optional()
+    .transform((value: unknown) => (typeof value === 'string' ? value.toLowerCase() : value))
+    .matches(UUID_RE, { message: 'stageId must be a UUID', excludeEmptyString: false });
+
 export const streamInputSchema = object({
   title: string()
     .required()
@@ -54,6 +68,7 @@ export const streamInputSchema = object({
     .required()
     .oneOf([...MEDIA_TYPES], `mediaType must be one of ${MEDIA_TYPES.join(', ')}`),
   scheduledStartTime: scheduledStartTimeField(),
+  stageId: stageIdField(),
 }).noUnknown(true);
 
 export type StreamInputBody = InferType<typeof streamInputSchema>;

@@ -14,6 +14,7 @@ import {
 } from '@streaming-infra-manager/common';
 
 import { useDeployments } from '../app/useDeploymentsStore';
+import { pinnedBatchNote } from '../catalogueNode/catalogueNodeView';
 import { SectionCard } from '../components/SectionCard';
 import { formatTtl, shortHex } from '../format';
 import type { Profile } from '../types';
@@ -51,6 +52,7 @@ export function StorageCard({
   chequebookHealth,
   defaultDepth,
   rung,
+  catalogueBatchId = null,
   onChanged,
 }: {
   profile: Profile;
@@ -61,6 +63,8 @@ export function StorageCard({
   defaultDepth?: number;
   /** The ABR rung this node publishes, when it is a pool member. */
   rung?: string | null;
+  /** The batch pinned for the brand's catalogue, when this node is the catalogue node. */
+  catalogueBatchId?: string | null;
   onChanged: () => void;
 }) {
   const { chequebookFloorBzz } = useDeployments();
@@ -142,6 +146,11 @@ export function StorageCard({
       }
     >
       <Stack spacing={2}>
+        {catalogueBatchId && (
+          <Alert severity="info" data-catalogue-note>
+            {pinnedBatchNote(catalogueBatchId)}
+          </Alert>
+        )}
         {bee.loadError && <Alert severity="warning">{bee.loadError}</Alert>}
         {actionError && (
           <Alert severity="error" onClose={() => setActionError(null)}>
@@ -209,6 +218,7 @@ export function StorageCard({
           stamps={bee.stamps}
           loading={bee.loading}
           currentStampId={profile.stamp_id}
+          pinnedBatchId={catalogueBatchId}
           busy={busy}
           onUse={(batchID) => void handleUse(batchID)}
           onTopUp={(stamp) => openChange('top-up', stamp)}

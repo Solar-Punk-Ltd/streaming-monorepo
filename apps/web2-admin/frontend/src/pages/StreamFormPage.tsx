@@ -1,10 +1,16 @@
 import { useEffect, useState, type FormEvent } from 'react';
 import { useNavigate, useParams } from 'react-router';
 import { Alert, Box, Button, CircularProgress, Divider, Grid, Paper, Stack, Typography } from '@mui/material';
-import { STREAM_LIMITS, type MediaType, type Stream, type StreamInput } from '@streaming-monorepo/web2-admin-common';
+import {
+  STREAM_LIMITS,
+  type MediaType,
+  type StageSummary,
+  type Stream,
+  type StreamInput,
+} from '@streaming-monorepo/web2-admin-common';
 
 import * as api from '../api';
-import { errorMessage, MEDIA_TYPE_LOCKED, SCHEDULE_LOCKED, UNSUPPORTED_IMAGE_TYPE } from '../errors';
+import { errorMessage, MEDIA_TYPE_LOCKED, SCHEDULE_LOCKED, STAGE_LOCKED, UNSUPPORTED_IMAGE_TYPE } from '../errors';
 import { dateTimeLocalValueToIso, isoToDateTimeLocalValue } from '../dateUtil';
 import {
   DescriptionField,
@@ -15,7 +21,9 @@ import {
   ThumbnailField,
 } from '../components/StreamFormFields';
 import { ScheduleField } from '../components/schedule/ScheduleField';
+import { assignableStages, StageField, StageReadinessWarning } from '../components/stages/StageField';
 import { nextFullHourValue } from '../components/schedule/scheduleTime';
+import { ConfirmDialog } from '../components/ConfirmDialog';
 import { useSnackbar } from '../components/Snackbar';
 
 /** msrs-client's messages, so the two consoles fail the same way. */
@@ -57,6 +65,8 @@ interface FormState {
   mediaType: MediaType;
   /** A `datetime-local` value, i.e. local wall-clock time, or ''. */
   scheduledStartTime: string;
+  /** The stage's id, or '' for none. */
+  stageId: string;
 }
 
 const EMPTY: FormState = {
@@ -65,6 +75,7 @@ const EMPTY: FormState = {
   tags: [],
   mediaType: 'video',
   scheduledStartTime: '',
+  stageId: '',
 };
 
 /**
@@ -90,7 +101,28 @@ function toInput(form: FormState): StreamInput | null {
     tags: form.tags,
     mediaType: form.mediaType,
     scheduledStartTime,
+    stageId: form.stageId || null,
   };
+}
+
+/**
+ * Said beside the stage of a draft from before stages that holds a recording,
+ * and again before its first stage is saved.
+ */
+export const FIRST_STAGE_IS_FINAL =
+  'This stream holds a recording made before stages. The first stage you give it is final, and only a stage that signs as the recording’s owner is offered.';
+
+/**
+ * Why the stream's stage can no longer change, as the API would say it, or
+ * null while it can. Publishing fixes it, and a stream that holds a recording
+ * keeps the stage the recording was made on; one from before stages, which
+ * holds a recording and no stage, may still be given its first.
+ */
+function stageLockOf(stream: Stream | null): string | null {
+  if (!stream) return null;
+  if (stream.status !== 'draft') return STAGE_LOCKED.published;
+  if (stream.manifestIndex != null && stream.stageId !== null) return STAGE_LOCKED.recording;
+  return null;
 }
 
 export function StreamFormPage() {
@@ -109,6 +141,13 @@ export function StreamFormPage() {
   // operator just picked, and whether they asked for the stored one to go.
   const [picked, setPicked] = useState<File | null>(null);
   const [removeStored, setRemoveStored] = useState(false);
+
+  // The stages the manager pushed, for the picker. Loaded once: a stage that
+  // appears meanwhile shows on the next visit to the form.
+  const [stages, setStages] = useState<StageSummary[] | null>(null);
+  const [stagesError, setStagesError] = useState<string | null>(null);
+  // The save waiting on the operator's word that the first stage is final.
+  const [confirmFirstStage, setConfirmFirstStage] = useState<StreamInput | null>(null);
 
   const set = <K extends keyof FormState>(key: K, value: FormState[K]) => {
     const next = { ...form, [key]: value };
@@ -148,6 +187,7 @@ export function StreamFormPage() {
           tags: stream.tags,
           mediaType: stream.mediaType,
           scheduledStartTime: isoToDateTimeLocalValue(stream.scheduledStartTime),
+          stageId: stream.stageId ?? '',
         });
       })
       .catch((e: unknown) => {
@@ -160,6 +200,33 @@ export function StreamFormPage() {
       cancelled = true;
     };
   }, [id]);
+
+  useEffect(() => {
+    let cancelled = false;
+    api
+      .fetchStages()
+      .then((list) => {
+        if (!cancelled) setStages(list);
+      })
+      .catch((e: unknown) => {
+        if (cancelled) return;
+        setStages([]);
+        setStagesError(errorMessage(e, 'Could not load the stages'));
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  // A new stream starts on the one stage it could go on, when there is only
+  // one. Only on create: an edit shows the stage the stream has, and a save
+  // must not move it anywhere the operator did not pick.
+  useEffect(() => {
+    if (isEdit || !stages) return;
+    const offered = assignableStages(stages);
+    if (offered.length !== 1) return;
+    setForm((current) => (current.stageId === '' ? { ...current, stageId: offered[0]!.stageId } : current));
+  }, [isEdit, stages, id]);
 
   // The object URL is created in an effect, not in a memo, so its revoke is
   // tied to the same lifecycle that created it. jsdom has no object URLs and
@@ -188,6 +255,12 @@ export function StreamFormPage() {
   const hasGoneLive = loaded?.status === 'live' || loaded?.status === 'vod';
   const mediaTypeLocked = loaded?.status === 'published' || hasGoneLive;
   const scheduleLocked = hasGoneLive && loaded?.scheduledStartTime !== null;
+
+  const stageLock = stageLockOf(loaded);
+  // A draft from before stages that holds a recording may be given a stage
+  // once, and then keeps it: the recording lives under that stage's owner.
+  const firstStageIsFinal = loaded?.status === 'draft' && loaded.manifestIndex != null && loaded.stageId === null;
+  const chosenStage = stages?.find((stage) => stage.stageId === form.stageId) ?? null;
 
   const storedThumbnail = loaded?.hasThumbnail && !removeStored && !picked ? api.thumbnailUrl(loaded) : null;
 
@@ -227,6 +300,17 @@ export function StreamFormPage() {
       return;
     }
     setError(null);
+    // The first stage of a recording from before stages cannot be taken back,
+    // so it is asked for once more before it is sent.
+    if (firstStageIsFinal && input.stageId) {
+      setConfirmFirstStage(input);
+      return;
+    }
+    await save(input);
+  };
+
+  // Catches every failure into the form's error line, like `submit`.
+  const save = async (input: StreamInput) => {
     setSaving(true);
 
     let saved: Stream;
@@ -322,6 +406,29 @@ export function StreamFormPage() {
               disabled={saving || mediaTypeLocked}
               helperText={mediaTypeLocked ? MEDIA_TYPE_LOCKED : undefined}
             />
+            {/*
+              Where the encoder sends the stream, and which stage's details the
+              OBS panel shows. The API refuses a move once the stream is
+              published, and a publish of a draft with none.
+            */}
+            <Stack spacing={1}>
+              <StageField
+                value={form.stageId}
+                onChange={(v) => set('stageId', v)}
+                stages={stages}
+                loadError={stagesError}
+                disabled={saving || stageLock !== null}
+                helperText={stageLock ?? undefined}
+                recordingOwner={firstStageIsFinal ? (loaded?.owner ?? null) : null}
+              />
+              {firstStageIsFinal ? <Alert severity="warning">{FIRST_STAGE_IS_FINAL}</Alert> : null}
+              {/*
+                Readiness is worth a word only while the operator can still
+                pick another stage. Once publishing or a recording has fixed
+                it, nothing on this form can act on it.
+              */}
+              {chosenStage && stageLock === null ? <StageReadinessWarning stage={chosenStage} /> : null}
+            </Stack>
 
             <Divider />
 
@@ -350,6 +457,19 @@ export function StreamFormPage() {
           </Stack>
         </Box>
       </Paper>
+
+      <ConfirmDialog
+        open={confirmFirstStage !== null}
+        title="Give the recording its stage"
+        message={`${FIRST_STAGE_IS_FINAL} Save with ${chosenStage?.name ?? 'this stage'}?`}
+        confirmText="Save"
+        onConfirm={() => {
+          const input = confirmFirstStage;
+          setConfirmFirstStage(null);
+          if (input) void save(input);
+        }}
+        onCancel={() => setConfirmFirstStage(null)}
+      />
     </Stack>
   );
 }

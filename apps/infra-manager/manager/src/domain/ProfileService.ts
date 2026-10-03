@@ -1,5 +1,6 @@
 import {
   slotCapFor,
+  ingestHostProblem,
   ABR_NODE_POOL_GROUP_KIND,
   ABR_RUNG_COMPONENTS,
   assembleEngineSettingObservations,
@@ -47,7 +48,11 @@ import { DeploymentGroup, Profile, ProfileKind, ProfileWithContainers, TRANSITIO
 import { portTableForEngine } from './versions/enginePortTable.js';
 
 import { ContainerRepository } from './ContainerRepository.js';
-import { SHARED_ENGINE_SETTING_KEYS, UPLOADER_ENGINE_SETTING_KEYS } from './containerKeysSpec.js';
+import {
+  COMPOSED_ENGINE_SETTING_KEYS,
+  SHARED_ENGINE_SETTING_KEYS,
+  UPLOADER_ENGINE_SETTING_KEYS,
+} from './containerKeysSpec.js';
 import { DeploymentOrchestrator, DeployReservation } from './DeploymentOrchestrator.js';
 import { NodeReadLog, readLogKey, spellSuffix, spellText } from './nodeReadLog.js';
 import {
@@ -84,6 +89,7 @@ import {
   type NewDeploymentShape,
 } from './settings/newDeploymentSettings.js';
 import type { ManagerAdminLinkStore } from './adminLink/ManagerAdminLinkRepository.js';
+import { ownAdminTokenFor, runsStreamUploader } from './adminLink/ownAdminToken.js';
 import { beePublisherUrlFor } from './StampService.js';
 import { isPendingStamp } from './stampLogic.js';
 import { stackRootOf } from './versions/stackPaths.js';
@@ -178,18 +184,11 @@ function adminTokenOriginOf(stored: StoredStackSettings | null): Pick<InitialSta
   return origin === null ? {} : { adminTokenOrigin: origin };
 }
 
-/** Whether a deployment of this shape runs a stream uploader, which is what reports to the web2 admin. */
-function runsStreamUploader({ kind, components }: NewDeploymentShape): boolean {
-  return defaultServicesFor({ kind, components: components ? [...components] : null }).includes(
-    STREAM_UPLOADER_SERVICE,
-  );
-}
-
 /** What the create log says of the stack settings a deployment was given: their keys, never a value. */
 function stackSettingsNote(settings: InitialStackSettings): string {
   const keys = [...Object.keys(settings.plain), ...Object.keys(settings.secret)];
   const named = keys.length > 0 ? ` with stack settings ${keys.join(', ')}` : '';
-  return settings.copyManagerAdminToken ? `${named} and the manager's web2 admin token` : named;
+  return named;
 }
 
 /**
@@ -197,7 +196,8 @@ function stackSettingsNote(settings: InitialStackSettings): string {
  *
  * The engine always, and the uploader as well when a key the uploader also
  * reads has a different value than before. That is the keys compose hands to
- * the uploader rather than to the engine, and the keys it hands to BOTH.
+ * the uploader rather than to the engine, the keys it hands to BOTH, and the
+ * rung settings the manager composes into `ABR_LADDER`, which both read.
  *
  * ⛔ The second half was missing until 2026-09-15: only the first list was
  * consulted, so changing the segment length recreated the engine and left the
@@ -205,15 +205,24 @@ function stackSettingsNote(settings: InitialStackSettings): string {
  * right. The list it read was the wrong list.
  */
 function servicesToRecreate(engine: EngineName, before: EngineSettings, after: EngineSettings): string[] {
-  const uploaderChanged = [...UPLOADER_ENGINE_SETTING_KEYS, ...SHARED_ENGINE_SETTING_KEYS].some(
-    (key) => before[key] !== after[key],
-  );
+  const uploaderChanged = [
+    ...UPLOADER_ENGINE_SETTING_KEYS,
+    ...SHARED_ENGINE_SETTING_KEYS,
+    ...COMPOSED_ENGINE_SETTING_KEYS,
+  ].some((key) => before[key] !== after[key]);
   return uploaderChanged ? [engine, STREAM_UPLOADER_SERVICE] : [engine];
 }
+
+/**
+ * Why a pool string cannot be stored, or null. The catalogue node's guard refuses an entry that names the brand's
+ * catalogue batch or node, whose batch must not fill with a stream's segments.
+ */
+export type PoolStringGuard = (beePublishers: string) => Promise<string | null>;
 
 export class ProfileService {
   /** One spell per probe, so a node that stays down says so once, not per read. */
   private readonly readLog = new NodeReadLog();
+  private poolStringGuard: PoolStringGuard | null = null;
 
   constructor(
     private readonly repo: ProfileRepository,
@@ -239,25 +248,37 @@ export class ProfileService {
     private readonly managerAdminLink?: Pick<ManagerAdminLinkStore, 'read'>,
   ) {}
 
+  /** Sets what a create or an update asks of a pool string, a setter because the catalogue service reads profiles. */
+  setPoolStringGuard(guard: PoolStringGuard | null): void {
+    this.poolStringGuard = guard;
+  }
+
+  /** Refuses a pool string the guard refuses, with its sentence, as a rejected body. */
+  private async assertPoolStringHolds(name: string, beePublishers: string | null | undefined): Promise<void> {
+    if (!beePublishers?.trim() || !this.poolStringGuard) return;
+    const problem = await this.poolStringGuard(beePublishers);
+    if (problem) throw new ProfileConfigError(name, problem);
+  }
+
   /**
    * What a create is given of its stack settings: what it names, and the
-   * manager's own web2 admin link for a deployment that runs a stream
-   * uploader when the create names neither key and asks for no token, with the
-   * stored token copied in for that address.
+   * manager's own web2 admin address for a deployment that runs a stream
+   * uploader when the create names neither key. A token is never copied in:
+   * the first deploy of a deployment linked to the manager's admin generates
+   * one of its own (`adminLink/ownAdminToken.ts`), which the web2 admin rule
+   * counts for that address.
    */
   private async createdStackSettings(
     name: string,
     version: StackVersionRecord,
     shape: NewDeploymentShape,
-    input: { stack_settings?: readonly NewDeploymentSetting[] | null; use_manager_admin_token?: boolean | null },
+    input: { stack_settings?: readonly NewDeploymentSetting[] | null },
   ): Promise<InitialStackSettings> {
     const named = input.stack_settings ?? [];
-    const asked = input.use_manager_admin_token === true;
-    const linked =
-      this.managerAdminLink && leavesAdminLinkToManager(named, asked) && runsStreamUploader(shape)
-        ? managerLinkSettingsFor(await this.managerAdminLink.read(), version, shape)
-        : [];
-    return initialStackSettingsFor(name, version, shape, [...named, ...linked], asked || linked.length > 0);
+    const uploader = runsStreamUploader(shape);
+    const link = this.managerAdminLink && uploader ? await this.managerAdminLink.read() : null;
+    const linked = link && leavesAdminLinkToManager(named) ? managerLinkSettingsFor(link, version, shape) : [];
+    return initialStackSettingsFor(name, version, shape, [...named, ...linked], ownAdminTokenFor(link, shape));
   }
 
   /**
@@ -374,8 +395,6 @@ export class ProfileService {
     engine_settings?: EngineSettings | null;
     /** Absent stores none, so the version's values stand. Checked against the list its version gives this deployment. */
     stack_settings?: readonly NewDeploymentSetting[] | null;
-    /** True copies the manager's stored web2 admin token into the deployment at its insert. */
-    use_manager_admin_token?: boolean | null;
   }): Promise<ProfileWithContainers> {
     const existing = await this.repo.findByName(input.name);
     if (existing) {
@@ -396,6 +415,7 @@ export class ProfileService {
     if (configProblem) {
       throw new ProfileConfigError(input.name, configProblem);
     }
+    await this.assertPoolStringHolds(input.name, input.bee_publishers);
 
     // A body that names no source takes the manager's endpoint when there is
     // one and this node runs a chain at all, and an address with no source is
@@ -620,6 +640,7 @@ export class ProfileService {
     if (configProblem) {
       throw new ProfileConfigError(name, configProblem);
     }
+    await this.assertPoolStringHolds(name, proposed.bee_publishers);
 
     // Turning the ladder off in this same write leaves the rung settings behind,
     // where nothing reads them and the settings page offers them only a reset.
@@ -688,6 +709,26 @@ export class ProfileService {
     }
     const withContainers = await this.containers.withContainers(row);
     this.publishChanged(withContainers);
+    return withContainers;
+  }
+
+  /**
+   * Saves the public ingest address alone, or clears it with null: no claim,
+   * no gate, no deploy, because no container reads it. Only the stage record
+   * the manager pushes into the web2 admin carries it, and the change event
+   * this publishes is what pushes that record again.
+   */
+  async updateIngestHost(name: string, ingestHost: string | null): Promise<ProfileWithContainers> {
+    const value = ingestHost === null || ingestHost.trim() === '' ? null : ingestHost;
+    const problem = value === null ? null : ingestHostProblem(value);
+    if (problem) throw new ProfileConfigError(name, problem);
+    const row = await this.repo.updateIngestHost(name, value);
+    if (!row) throw new ProfileNotFoundError(name);
+    const withContainers = await this.containers.withContainers(row);
+    this.publishChanged(withContainers);
+    logger.info(
+      `[ProfileService] ${name}: ${value === null ? 'cleared its ingest address' : 'set its ingest address'}`,
+    );
     return withContainers;
   }
 
@@ -809,9 +850,10 @@ export class ProfileService {
    * are left running because taking them down would interrupt an upload that
    * has nothing to do with the change. The exceptions are the keys the uploader
    * reads too: `OME_HLS_POLL_INTERVAL_MS`, which compose puts in the uploader's
-   * environment alone, and `HLS_FRAGMENT`, which both containers read. A change
-   * to either recreates the uploader as well, or the new value never reaches
-   * the process that reads it.
+   * environment alone, `HLS_FRAGMENT`, which both containers read, and the rung
+   * settings, which the manager composes into `ABR_LADDER`, which both read too.
+   * A change to any of them recreates the uploader as well, or the new value
+   * never reaches the process that reads it.
    *
    * The stored settings are read first, with the revision a deployment's
    * settings page saves under, and the write is refused once a page save has
@@ -969,8 +1011,6 @@ export class ProfileService {
     engine_settings?: EngineSettings | null;
     /** What every member is created with, checked against the list its version gives such a member. Absent stores none. */
     stack_settings?: readonly NewDeploymentSetting[] | null;
-    /** True copies the manager's stored web2 admin token into every member at its insert. */
-    use_manager_admin_token?: boolean | null;
   }): Promise<{ group: DeploymentGroup; profiles: ProfileWithContainers[] }> {
     // The same invariant updateGroupConfig enforces, at the other door. A pool's
     // rungs each pay with their own batch, sized for that rung's bitrate, so one

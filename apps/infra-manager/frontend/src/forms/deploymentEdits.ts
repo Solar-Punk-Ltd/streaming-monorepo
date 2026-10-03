@@ -9,15 +9,15 @@ import {
   DEFAULT_RPC_ENDPOINT_SOURCE,
   defaultServicesFor,
   effectiveNodeMode,
+  isStreamLike,
   LIGHT_NODE_MODE,
   parseBeePublishers,
-  type RpcEndpointSource,
   rpcEndpointChoiceProblem,
+  type RpcEndpointSource,
   SRS_SERVICE,
   STREAM_UPLOADER_SERVICE,
 } from '@streaming-infra-manager/common';
 
-import { isStreamLike } from '../deployments/readiness';
 import { endpointSourceOf, hasService, ownsAnyBeeNode, shapeOf } from '../deployments/shape';
 import type { UpdateProfileBody } from '../data';
 import type { Profile } from '../types';

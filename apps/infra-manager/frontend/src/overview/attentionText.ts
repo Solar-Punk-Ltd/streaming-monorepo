@@ -1,13 +1,8 @@
 import {
-  type ChequebookHealth,
-  chequebookStateReason,
-  type UploaderHealthReading,
-} from '@streaming-infra-manager/common';
-
-import { uploaderHealthDetail } from '../deployments/checklist';
-import {
   CHEQUEBOOK_EMPTY,
   CHEQUEBOOK_LOW,
+  type ChequebookHealth,
+  chequebookStateReason,
   NEEDS_A_STAMP,
   POOL_STRING_INVALID,
   STAMP_ENDS_SOON,
@@ -19,7 +14,10 @@ import {
   UPLOADER_REPORTS_A_PROBLEM,
   UPLOADER_WAITING_FOR_NODE,
   UPLOADER_WARNED,
-} from '../deployments/readiness';
+  uploaderHealthDetail,
+  type UploaderHealthReading,
+} from '@streaming-infra-manager/common';
+
 import { shapeOf } from '../deployments/shape';
 import type { Profile } from '../types';
 

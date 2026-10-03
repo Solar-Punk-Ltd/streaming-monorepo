@@ -2,17 +2,25 @@ import { useCallback, useEffect, useState } from 'react';
 import { Box, Button, CircularProgress, Paper, Stack } from '@mui/material';
 
 import {
+  buildChecklist,
+  type ChecklistInput,
   type ChequebookHealth,
   chequebookHealthFromPayload,
   engineSettingsFields,
+  ownsBeeNode,
+  readinessFor,
+  readySummary,
   rungFromMemberName,
   sameBatchId,
   stampHealthFrom,
+  type StepAction,
   STREAM_UPLOADER_SERVICE,
+  streamerFor,
   suggestedRungDepth,
 } from '@streaming-infra-manager/common';
 
 import { useEditors } from '../app/EditorsContext';
+import { useCatalogueNode } from '../catalogueNode/useCatalogueNode';
 import { navigate, routes, type DeploymentFocus } from '../app/router';
 import { useActions } from '../app/useDeploymentActions';
 import { useDeployments } from '../app/useDeploymentsStore';
@@ -27,8 +35,6 @@ import { attemptHolding } from '../versions/attemptHold';
 import { ReleaseAttemptDialog } from '../versions/ReleaseAttemptDialog';
 import { useAttemptRelease } from '../versions/useAttemptRelease';
 import { AtAGlanceCard } from './AtAGlanceCard';
-import { buildChecklist, streamerFor, type ChecklistInput, type StepAction } from './checklist';
-import { readySummary } from './readySummary';
 import { ConfigurationCard } from './ConfigurationCard';
 import { ContainersCard } from './ContainersCard';
 import { DeploymentHeader } from './DeploymentHeader';
@@ -46,10 +52,11 @@ import { PoolTargetCard } from './PoolTargetCard';
 import { PublishCard } from './PublishCard';
 import { ReadinessCard } from './ReadinessCard';
 import { RemoveCard } from './RemoveCard';
-import { ownsBeeNode, readinessFor } from './readiness';
 import type { SettingReveal } from './settings/SettingsList';
 import { useDeploymentSettings } from './settings/useDeploymentSettings';
 import { SrtIngestCard } from './SrtIngestCard';
+import { StageCard } from './StageCard';
+import { isStage } from './stageText';
 import { offersLatencySetting, SRT_LATENCY_SETTING_KEY } from './srtIngestText';
 import { StorageCard } from './StorageCard';
 import { engineOf, isRunning, readsSrtIngest, shapeOf, streamersOf } from './shape';
@@ -151,6 +158,8 @@ function DeploymentBody({ profile, focus, bee }: { profile: Profile; focus: Depl
   const group = groups.find((entry) => entry.id === profile.group_id) ?? null;
   const version = versions?.find((entry) => entry.id === profile.stack_version_id) ?? null;
   const rung = group ? rungFromMemberName(group.name, profile.name) : null;
+  // Only a node that could be the catalogue's asks whether it is.
+  const catalogue = useCatalogueNode({ enabled: shape === 'bee-node' });
   const stampHealth = stampHealthFrom(profile.stamp_id, bee?.stamps ?? null, bee?.stampsFailure);
   const chequebookHealth: ChequebookHealth | null = bee?.chequebook
     ? chequebookHealthFromPayload(bee.chequebook.health)
@@ -291,6 +300,11 @@ function DeploymentBody({ profile, focus, bee }: { profile: Profile; focus: Depl
               chequebookHealth={chequebookHealth}
               defaultDepth={rung ? suggestedRungDepth(rung) : undefined}
               rung={rung}
+              catalogueBatchId={
+                catalogue.answer?.designation?.profileName === profile.name
+                  ? catalogue.answer.designation.batchId
+                  : null
+              }
               onChanged={reload}
             />
           )}
@@ -325,6 +339,7 @@ function DeploymentBody({ profile, focus, bee }: { profile: Profile; focus: Depl
             engineLoadError={engineLoad.loadError}
             savedNotApplied={savedNotApplied}
           />
+          {isStage(profile) && <StageCard profile={profile} serverHost={serverHost} />}
           {shape === 'stream' && isRunning(profile) && <NextStepsCard streamName={profile.name} />}
           <NotesCard name={profile.name} notes={profile.notes} notesRevision={profile.notes_revision} />
         </Stack>

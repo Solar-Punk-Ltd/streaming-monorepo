@@ -353,8 +353,27 @@ and click around. Nothing below is worth doing until the gate is real.
 ### 2. Bind the node and engine APIs off the public interface
 
 Each deployment publishes the API of every Bee node it runs, on the ports
-ending 5 and 7 for its slot, and the three HTTP ports its engines serve, all by
-default on every interface. Set them to the Docker bridge address instead.
+ending 5 and 7 for its slot, and the three HTTP ports its engines serve, and the
+stack's own default for each is every interface.
+
+Since 2026-10-02 the manager binds the Bee APIs itself. A deploy on this host
+writes the Docker bridge address into each Bee `*_API_BIND` that neither the
+base `.env` nor the deployment's own settings name: the address
+`host.docker.internal` resolves to inside the manager's `api` container, and
+only when the daemon reports that address as its own bridge gateway, which is
+the case on a Linux engine. Where it is not, the manager logs a warning naming
+both addresses at the first deploy and binds nothing, and the Bee lines below
+are yours to set. A deployment on another host is never bound this way: the
+control host reaches its API there, and that host's firewall closes it. The
+three engine ports are not bound by the manager and stay yours to set.
+
+**Upgrading.** A deployment already running keeps its binding until its next
+deploy, which narrows its Bee APIs to the bridge. Anything on another host that
+reaches such a node by this host's public address, an uploader on a pool rung
+here or a `BEE_URL` naming it, stops reaching it then. Give that deployment
+`BEE_UPLOADER_API_BIND=0.0.0.0` in its own settings, which the deploy leaves
+standing, and close the port with the firewall of step 3 instead.
+
 **A firewall is no substitute for this**: Docker publishes a container port by
 rewriting the packet's destination and forwarding it, so a firewall's input
 rules never see it at all, and the forward rules of step 3 filter it one way in
@@ -364,7 +383,9 @@ The five settings live on the server, in
 `/opt/streaming/streaming-infra-manager-versions/bundled/.env`, and no deploy reads or writes
 that file. Edit it there with the editing script, as under "Where the streaming
 stack's settings live" above. Find the bridge address with
-`ip -4 addr show docker0` on the server, usually `172.17.0.1`:
+`ip -4 addr show docker0` on the server, usually `172.17.0.1`. For the two Bee
+lines, leave them empty and the deploy writes the bridge address, or set them to
+name another address:
 
 ```env
 BEE_UPLOADER_API_BIND=172.17.0.1
@@ -397,11 +418,13 @@ container has no route to does the same without saying so: stamp reads, postage
 buys and chequebook operations stop for every deployment on this host and no
 message names the cause. If the address
 has to be something other than the bridge, set `BEE_LOCAL_HOST` in
-`manager/.env` to that same address. That is the one override the manager reads
-for it, and the stack file's own comments, which suggest a private interface
-here, are only safe with it set. The two SRS ports are the exception: the
-manager never reaches them, so they can go to `127.0.0.1` wherever every use of
-them is a curl run on the server itself.
+`manager/.env` to that same address, written bare as a host name or an IPv4
+address: no scheme, no port, no path. A value of any other shape, an IPv6
+address included for now, stops the manager at startup with the variable named.
+That is the one override the manager reads for it, and the stack file's own
+comments, which suggest a private interface here, are only safe with it set.
+The two SRS ports are the exception: the manager never reaches them, so they can
+go to `127.0.0.1` wherever every use of them is a curl run on the server itself.
 
 OME's port is worth one more line. After an engine config rollout the manager
 probes it on that same address to see whether OME came back up, so a binding it

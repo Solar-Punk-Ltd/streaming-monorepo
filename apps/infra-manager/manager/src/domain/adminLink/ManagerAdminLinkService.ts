@@ -1,4 +1,5 @@
 import {
+  ADMIN_LINK_ALLOW_PLAIN_HTTP_KEY,
   type ManagerAdminLink,
   type ManagerAdminLinkSave,
   managerAdminLinkProblems,
@@ -8,6 +9,7 @@ import { AdminLinkInputError, ManagerSettingsChangedError } from '../errors/inde
 import { Logger } from '../Logger.js';
 
 import type { ManagerAdminLinkStore, ManagerAdminLinkWrite } from './ManagerAdminLinkRepository.js';
+import { judgePlainHttpAdminLink, type PlainHttpJudge } from './plainHttpAdminLink.js';
 
 const logger = Logger.getInstance();
 
@@ -31,7 +33,11 @@ function describeSave(save: ManagerAdminLinkSave): string {
  * whether one is stored.
  */
 export class ManagerAdminLinkService {
-  constructor(private readonly store: ManagerAdminLinkStore) {}
+  constructor(
+    private readonly store: ManagerAdminLinkStore,
+    /** The rule for plain http to another host than the manager's own, which a save is refused under. */
+    private readonly plainHttp: PlainHttpJudge = judgePlainHttpAdminLink,
+  ) {}
 
   read(): Promise<ManagerAdminLink> {
     return this.store.read();
@@ -40,16 +46,26 @@ export class ManagerAdminLinkService {
   /**
    * Stores one save, or refuses all of it, and answers the link as it stands
    * after. The save is judged against the link it names the revision of, and
-   * the write lands only while the row is still at that revision.
+   * the write lands only while the row is still at that revision. An address in
+   * plain http to another host than the manager's own is refused, unless
+   * ADMIN_LINK_ALLOW_PLAIN_HTTP is on, which the log then says. One to a name
+   * that does not resolve yet, an admin service not started, is taken, and
+   * every send judges it once it resolves.
    */
   async save(save: ManagerAdminLinkSave, username: string): Promise<ManagerAdminLink> {
     const stored = await this.store.read();
     if (stored.revision !== save.expectedRevision) throw new ManagerSettingsChangedError();
-    const problems = managerAdminLinkProblems(save, stored);
+    const plainHttp = save.url === '' ? 'allowed' : await this.plainHttp(save.url);
+    const problems = managerAdminLinkProblems(save, stored, plainHttp);
     if (problems.length > 0) throw new AdminLinkInputError(problems);
     const saved = await this.store.write(writeOf(save), save.expectedRevision, username);
     if (!saved) throw new ManagerSettingsChangedError();
     logger.info(`[AdminLink] ${username} ${describeSave(save)}, now at revision ${saved.revision}`);
+    if (plainHttp === 'allowed-by-setting') {
+      logger.warn(
+        `[AdminLink] the web2 admin link is plain http to another host, taken because ${ADMIN_LINK_ALLOW_PLAIN_HTTP_KEY} is on: every push to it carries the stored token and each stage’s SRT passphrase in clear, so give it the https address the edge serves in production`,
+      );
+    }
     return saved;
   }
 }

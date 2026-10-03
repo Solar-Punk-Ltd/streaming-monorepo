@@ -10,6 +10,7 @@ import { InvalidStateTransitionError, PublishFailedError, StreamNotFoundError } 
 import { Logger } from './Logger.js';
 import type { PublishOutcome, PublishService } from './PublishService.js';
 import { allowedFromFor, isStateTransitionAllowed } from './streamState.js';
+import { inScope, type UploaderScope } from './uploaderScope.js';
 
 const logger = Logger.getInstance();
 
@@ -30,11 +31,16 @@ export interface StateStreamStore {
  * The uploader's half of the contract: resolve the draft an encoder just
  * connected to, and take its state reports.
  *
- * No user scope anywhere here. The internal API is authenticated by one shared
+ * No user scope anywhere here. The internal API is authenticated by a bearer
  * token rather than a session, and the uploader knows a stream by its ingest
  * address, not by who drafted it. Nor is there one on the session side: a
  * stream belongs to the installation, and ownership is which brand a call may
  * act for.
+ *
+ * There is a stage scope. Every uploader calls on a token of its own and is
+ * answered only about the streams on its stage (`UploaderScope`): any other
+ * stream, a stream with no stage included, is the same 404 as a stream that
+ * does not exist, and nothing is written for it.
  *
  * Every report is the uploader's, so this service names it as the actor
  * itself: the internal route has no session to name anyone else by, and is
@@ -56,12 +62,14 @@ export class StreamStateService {
    *
    * Every refusal is the same 404, deliberately: the caller is the uploader,
    * which either starts the session or does not, and a token holder that
-   * probes ingest addresses learns nothing from the difference.
+   * probes ingest addresses learns nothing from the difference. A stream on
+   * another stage than the caller's is one more of them.
    */
-  async lookupByIngest(app: MediaType, topic: string): Promise<StreamRow> {
+  async lookupByIngest(app: MediaType, topic: string, scope: UploaderScope): Promise<StreamRow> {
     const notFound = () => new StreamNotFoundError(`${app}/${topic}`);
     const stream = await this.streams.findByTopic(topic);
     if (!stream) throw notFound();
+    if (!inScope(stream, scope)) throw notFound();
     if (stream.media_type !== app) throw notFound();
     if (stream.status === 'draft' || stream.status === 'publishing') {
       throw notFound();
@@ -86,10 +94,13 @@ export class StreamStateService {
    * publishes, as it should be. The audit entry records that as
    * `entryStatus` and `entryRecording`, the status and the recording the
    * write published, rather than passing the write off as this report's own.
+   *
+   * A stream outside the caller's scope is refused as not found before
+   * anything is written: no status, no feed write, no audit row.
    */
-  async report(id: string, report: StreamStateReport): Promise<PublishOutcome> {
+  async report(id: string, report: StreamStateReport, scope: UploaderScope): Promise<PublishOutcome> {
     const existing = await this.streams.findById(id);
-    if (!existing) throw new StreamNotFoundError(id);
+    if (!existing || !inScope(existing, scope)) throw new StreamNotFoundError(id);
     if (!isStateTransitionAllowed(existing.status, report.state)) {
       throw new InvalidStateTransitionError(id, existing.status, report.state);
     }
@@ -99,7 +110,7 @@ export class StreamStateService {
       // The conditional UPDATE matched nothing: something moved the row
       // between the read and the write. Re-read to say which of the two it is.
       const current = await this.streams.findById(id);
-      if (!current) throw new StreamNotFoundError(id);
+      if (!current || !inScope(current, scope)) throw new StreamNotFoundError(id);
       throw new InvalidStateTransitionError(id, current.status, report.state);
     }
 

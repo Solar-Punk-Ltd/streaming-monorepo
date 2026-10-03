@@ -1,7 +1,14 @@
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 
-import type { BeePublishersResult, LadderRungState } from '@streaming-infra-manager/common';
+import {
+  type BeePublishersResult,
+  type ChequebookHealth,
+  type LadderRungState,
+  needsAttention,
+  readinessOf,
+  STAMP_FULL,
+} from '@streaming-infra-manager/common';
 
 import type { Profile } from '../types';
 import { mergedStampHealths, poolStampHealths, rungStampHealth } from './rungStampHealth';
@@ -165,5 +172,24 @@ describe('two sources of the same reading', () => {
     const merged = mergedStampHealths(new Map(), new Map([['abr-pool-1-360p', expired]]));
 
     assert.equal(merged.get('abr-pool-1-360p')?.state, 'expired');
+  });
+});
+
+describe('the overview’s Needs attention, from the reading a pool result gives', () => {
+  // The node's own reading of the same batch is judged in common/src/readiness.test.ts.
+  it('lists a rung whose batch the pool assembly read as full', () => {
+    const paying: ChequebookHealth = {
+      state: 'ok',
+      availablePlur: 10_000_000_000_000_000n,
+      floorPlur: 5_000_000_000_000_000n,
+    };
+    const fromPool = rungStampHealth(
+      rung({ rung: '1080p', stampState: 'full', stampTtl: 184_320, stampFillRatio: 1, stampImmutable: true }),
+      BATCH,
+    );
+    const profile = member('abr-pool-1-1080p');
+
+    assert.equal(readinessOf(profile, fromPool, paying).label, STAMP_FULL);
+    assert.equal(needsAttention(profile, fromPool, paying), true);
   });
 });

@@ -6,6 +6,7 @@ import pg, { type Pool, type PoolClient } from 'pg';
 
 import { ProfileRepository, type ProfileRemovalClaim } from '../../src/domain/ProfileRepository.js';
 import { PostgresPortReservationRepository } from '../../src/domain/ports/PostgresPortReservationRepository.js';
+import { StageRetirementRepository } from '../../src/domain/stages/StageRetirementRepository.js';
 import type { Profile } from '../../src/types/index.js';
 
 const port = Number(process.env.PROFILE_REMOVAL_TEST_PG_PORT);
@@ -218,5 +219,50 @@ describe('instance-owned removal in isolated PostgreSQL', { skip: !Number.isInte
     );
     assert.equal(cleaned, false);
     assert.equal((await reservations.listByProfile('owned')).length, 1);
+  });
+
+  it('writes a removed stage’s pending retirement with the deletion, and nothing for a deployment that is no stage', async () => {
+    const retirements = new StageRetirementRepository(pool);
+    const viewer = await insert();
+    await profiles.completeRemoval((await profiles.claimRemoval('owned', viewer.instance_id))!, async () => {});
+    assert.deepEqual(await retirements.pending(), []);
+
+    const streamer = (await profiles.insertWithFreeSlot('owned', 'streamer', 'RUNNING', {}, placement))!;
+    await profiles.completeRemoval((await profiles.claimRemoval('owned', streamer.instance_id))!, async () => {});
+    assert.equal(await profiles.findByName('owned'), null);
+    assert.deepEqual(await retirements.pending(), [
+      { stageId: streamer.instance_id, name: 'owned', deletedAt: null, origin: null },
+    ]);
+  });
+
+  it('writes no pending retirement when the deletion rolls back', async () => {
+    const streamer = (await profiles.insertWithFreeSlot('owned', 'streamer', 'RUNNING', {}, placement))!;
+    const claim = (await profiles.claimRemoval('owned', streamer.instance_id))!;
+    await assert.rejects(
+      profiles.completeRemoval(claim, async () => {
+        throw new Error('synthetic file failure');
+      }),
+      /synthetic file failure/,
+    );
+    assert.deepEqual(await new StageRetirementRepository(pool).pending(), []);
+  });
+
+  it('keeps a pending retirement’s first decision, and removes it once answered', async () => {
+    const retirements = new StageRetirementRepository(pool);
+    const stageId = randomUUID();
+    await pool.query("INSERT INTO pending_stage_retirements (stage_id, profile_name) VALUES ($1, 'owned')", [stageId]);
+    const first = { stageId, name: 'owned', deletedAt: '2026-09-28T10:00:00.000Z', origin: 'https://admin.example' };
+    assert.deepEqual(await retirements.keep(first), first);
+    assert.deepEqual(
+      await retirements.keep({ ...first, deletedAt: '2026-09-28T11:00:00.000Z', origin: null }),
+      first,
+      'a later decision changes nothing',
+    );
+    const unwritten = { stageId: randomUUID(), name: 'other', deletedAt: '2026-09-28T12:00:00.000Z', origin: null };
+    assert.deepEqual(await retirements.keep(unwritten), unwritten, 'one the removal left no row for is written');
+    assert.deepEqual((await retirements.pending()).length, 2);
+    await retirements.remove(stageId);
+    await retirements.remove(unwritten.stageId);
+    assert.deepEqual(await retirements.pending(), []);
   });
 });

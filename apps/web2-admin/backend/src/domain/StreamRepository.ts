@@ -3,8 +3,9 @@ import { Pool } from 'pg';
 
 import type { StreamRow, ThumbnailRow } from '../types/index.js';
 
+import { SUPPORTED_STAGE_ENGINES } from './StageService.js';
 import type { PublishedStatus } from './streamState.js';
-import { CONTENT_EDITED_NOW, STREAM_COLUMNS } from './streamSql.js';
+import { CONTENT_EDITED_NOW, FEED_OWNER_SQL, SAME_OWNER_SQL, STREAM_COLUMNS } from './streamSql.js';
 
 export interface StreamInsertData {
   /**
@@ -23,6 +24,8 @@ export interface StreamInsertData {
   /** ISO 8601, or null. Postgres casts it to TIMESTAMPTZ. */
   scheduled_start_time: string | null;
   publish_key: string;
+  /** The stage picked in the form, or null. The service has checked it takes streams. */
+  stage_id: string | null;
 }
 
 export interface StreamUpdateData {
@@ -31,6 +34,25 @@ export interface StreamUpdateData {
   tags: string[];
   media_type: MediaType;
   scheduled_start_time: string | null;
+  /**
+   * The stage to set, null to clear it, or absent to leave it as it is. A
+   * change is written only while the row may take one; see `update`.
+   */
+  stage_id?: string | null;
+  /**
+   * The owner the stream takes with its new stage, or absent to leave it. Set
+   * only with a stage change, and written only while the row holds no
+   * recording, since a recording is signed as the owner it was made under.
+   */
+  owner?: string;
+}
+
+/** A thumbnail a stream names, as moving the catalogue uploads it again: its bytes are null once the row lost them. */
+export interface StoredThumbnail {
+  reference: string;
+  thumbnail: Buffer | null;
+  thumbnail_mime: string | null;
+  topic: string;
 }
 
 /** What a thumbnail clear left on the row, and whether it removed an image. */
@@ -90,9 +112,9 @@ export class StreamRepository {
     const result = await this.pool.query<StreamRow>(
       `INSERT INTO streams (
          user_id, topic, owner, title, description, tags, media_type,
-         scheduled_start_time, publish_key
+         scheduled_start_time, publish_key, stage_id
        )
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
        RETURNING ${STREAM_COLUMNS}`,
       [
         data.user_id,
@@ -104,6 +126,7 @@ export class StreamRepository {
         data.media_type,
         data.scheduled_start_time,
         data.publish_key,
+        data.stage_id,
       ],
     );
     return result.rows[0]!;
@@ -115,7 +138,20 @@ export class StreamRepository {
    * `content_edited_at` moves only when a value actually changes. The console
    * PUTs the whole form back on every save, so a save that changed nothing
    * would otherwise ask the operator to republish an entry that is already
-   * right. The comparisons read the row as it was, before this SET.
+   * right. The comparisons read the row as it was, before this SET. A stage
+   * is not on the catalogue entry, so it never moves `content_edited_at`.
+   *
+   * A stage change is refused here as well as in the service, so an edit and
+   * a publish racing cannot leave a published stream on another stage: the
+   * row takes one only while it is a draft, and never while it holds both a
+   * recording and a stage, and only a stage that can take streams: one the
+   * stages table holds, not retired, on a supported engine. A save that leaves
+   * the stage alone, or names the one it has, is not a change. A row that
+   * holds a recording and no stage, one older than stages, takes only a stage
+   * that signs as the row's owner, since its recording is signed as that.
+   *
+   * `owner` is written with the stage, and never on a row that holds a
+   * recording.
    */
   async update(id: string, data: StreamUpdateData, allowedFrom: readonly StreamStatus[]): Promise<StreamRow | null> {
     const result = await this.pool.query<StreamRow>(
@@ -134,10 +170,48 @@ export class StreamRepository {
                 THEN ${CONTENT_EDITED_NOW}
                 ELSE content_edited_at
               END,
+              stage_id = CASE WHEN $9 THEN $8::uuid ELSE stage_id END,
+              owner = CASE
+                WHEN $11::text IS NOT NULL AND manifest_index IS NULL THEN $11::text
+                ELSE owner
+              END,
               updated_at = NOW()
         WHERE id = $1 AND status = ANY($2::text[])
+          AND (
+            NOT $9
+            OR stage_id IS NOT DISTINCT FROM $8::uuid
+            OR (
+              status = 'draft'
+              AND (manifest_index IS NULL OR stage_id IS NULL)
+              AND (
+                $8::uuid IS NULL
+                OR EXISTS (
+                  SELECT 1 FROM stages
+                   WHERE stages.stage_id = $8::uuid
+                     AND stages.retired_observed_at IS NULL
+                     AND stages.engine = ANY($10::text[])
+                     AND (
+                       streams.manifest_index IS NULL
+                       OR ${SAME_OWNER_SQL('stages.owner', 'streams.owner')}
+                     )
+                )
+              )
+            )
+          )
         RETURNING ${STREAM_COLUMNS}`,
-      [id, allowedFrom, data.title, data.description, data.tags, data.media_type, data.scheduled_start_time],
+      [
+        id,
+        allowedFrom,
+        data.title,
+        data.description,
+        data.tags,
+        data.media_type,
+        data.scheduled_start_time,
+        data.stage_id ?? null,
+        data.stage_id !== undefined,
+        SUPPORTED_STAGE_ENGINES,
+        data.owner ?? null,
+      ],
     );
     return this.one(result.rows, result.rowCount);
   }
@@ -162,6 +236,26 @@ export class StreamRepository {
   }
 
   /**
+   * Every thumbnail a stream names by its upload reference, published or not, with the stored bytes when the row
+   * still holds them and the topic its file was named by: moving the catalogue uploads each again under the new
+   * batch. A row whose image changed since has cleared its reference, so it never answers for the old one.
+   */
+  async listStoredThumbnails(): Promise<StoredThumbnail[]> {
+    const result = await this.pool.query<StoredThumbnail>(
+      `SELECT DISTINCT ON (thumbnail_ref) thumbnail_ref AS reference, thumbnail, thumbnail_mime, topic
+         FROM streams
+        WHERE thumbnail_ref IS NOT NULL
+        ORDER BY thumbnail_ref, (thumbnail IS NOT NULL) DESC, updated_at DESC`,
+    );
+    return result.rows;
+  }
+
+  /** Records that the thumbnail `reference` names is under `batchId` now, on every stream that names it. */
+  async recordThumbnailBatch(reference: string, batchId: string): Promise<void> {
+    await this.pool.query(`UPDATE streams SET thumbnail_batch_id = $2 WHERE thumbnail_ref = $1`, [reference, batchId]);
+  }
+
+  /**
    * Stores new image bytes and clears `thumbnail_ref`: the reference now
    * belongs to a different image, and a null ref is what tells the next
    * publish to upload the new one. Always an edit, for the same reason: the
@@ -178,6 +272,7 @@ export class StreamRepository {
           SET thumbnail = $3,
               thumbnail_mime = $4,
               thumbnail_ref = NULL,
+              thumbnail_batch_id = NULL,
               content_edited_at = ${CONTENT_EDITED_NOW},
               updated_at = NOW()
         WHERE id = $1 AND status = ANY($2::text[])
@@ -212,6 +307,7 @@ export class StreamRepository {
           SET thumbnail = NULL,
               thumbnail_mime = NULL,
               thumbnail_ref = NULL,
+              thumbnail_batch_id = NULL,
               content_edited_at = CASE
                 WHEN locked.had_thumbnail THEN ${CONTENT_EDITED_NOW}
                 ELSE content_edited_at
@@ -233,13 +329,14 @@ export class StreamRepository {
    * upload is paid for the moment it succeeds, so it must survive a publish
    * that fails afterwards instead of being uploaded again next time.
    */
-  async recordThumbnailRef(id: string, thumbnailRef: string): Promise<void> {
+  async recordThumbnailRef(id: string, thumbnailRef: string, batchId: string | null = null): Promise<void> {
     await this.pool.query(
       `UPDATE streams
           SET thumbnail_ref = $2,
+              thumbnail_batch_id = $3,
               updated_at = NOW()
         WHERE id = $1`,
-      [id, thumbnailRef],
+      [id, thumbnailRef, batchId],
     );
   }
 
@@ -367,6 +464,7 @@ export class StreamRepository {
       `UPDATE streams
           SET published_feed_index = $2,
               publish_error = NULL,
+              thumbnail_batch_id = CASE WHEN thumbnail_ref IS DISTINCT FROM $3 THEN NULL ELSE thumbnail_batch_id END,
               thumbnail_ref = $3,
               entry_content_edited_at = $4,
               updated_at = NOW()
@@ -378,31 +476,66 @@ export class StreamRepository {
   }
 
   /**
-   * A reconcile rebuilt this stream's entry from the row: record which edit it
-   * carries now.
+   * A reconcile rebuilt this stream's entry from the row and wrote it at
+   * `feedIndex`: record where the entry is now and which edit it carries.
+   * `published_at` is left alone, as on `recordRepublish`.
    */
-  async recordEntryRebuilt(id: string, entryContentEditedAt: Date | null): Promise<void> {
+  async recordEntryRebuilt(id: string, feedIndex: number, entryContentEditedAt: Date | null): Promise<void> {
     await this.pool.query(
       `UPDATE streams
-          SET entry_content_edited_at = $2,
+          SET published_feed_index = $2,
+              entry_content_edited_at = $3,
               updated_at = NOW()
         WHERE id = $1`,
-      [id, entryContentEditedAt],
+      [id, feedIndex, entryContentEditedAt],
     );
   }
 
   /**
    * Takes the stream into `publishing`, which is the lock the whole publish
-   * runs under. Null means someone else holds it (or the row is gone).
+   * runs under. Null means someone else holds it, the row is gone, or, with
+   * `draftNeedsStage`, it is a draft with no stage: a publish checks that
+   * before it claims, and this holds it against an edit that clears the stage
+   * in between.
+   *
+   * A publish's claim, the one with `draftNeedsStage`, gives a draft that
+   * holds no recording its stage's owner, read in the same statement: the
+   * manager may have rotated the stage's key since the stage was picked, and
+   * the entry this publish writes names the owner the stage signs as now. A
+   * row that holds a recording keeps its owner, and a publish's claim takes
+   * it only while its stage signs as that owner, since its feeds resolve under
+   * it alone; null then too. It keeps its owner, and so does every row that is
+   * not a draft, since publishing fixed it, and every row an unpublish
+   * claims, which takes an entry off by the owner it was written with.
    */
-  async claimForPublish(id: string, allowedFrom: readonly StreamStatus[]): Promise<StreamRow | null> {
+  async claimForPublish(
+    id: string,
+    allowedFrom: readonly StreamStatus[],
+    draftNeedsStage = false,
+  ): Promise<StreamRow | null> {
     const result = await this.pool.query<StreamRow>(
       `UPDATE streams
           SET status = 'publishing',
+              owner = CASE
+                WHEN $3 AND status = 'draft' AND manifest_index IS NULL THEN COALESCE(
+                  (SELECT ${FEED_OWNER_SQL('stages.owner')} FROM stages WHERE stages.stage_id = streams.stage_id),
+                  owner
+                )
+                ELSE owner
+              END,
               updated_at = NOW()
         WHERE id = $1 AND status = ANY($2::text[])
+          AND (NOT $3 OR status <> 'draft' OR stage_id IS NOT NULL)
+          AND (
+            NOT $3 OR status <> 'draft' OR manifest_index IS NULL OR stage_id IS NULL
+            OR EXISTS (
+              SELECT 1 FROM stages
+               WHERE stages.stage_id = streams.stage_id
+                 AND ${SAME_OWNER_SQL('stages.owner', 'streams.owner')}
+            )
+          )
         RETURNING ${STREAM_COLUMNS}`,
-      [id, allowedFrom],
+      [id, allowedFrom, draftNeedsStage],
     );
     return this.one(result.rows, result.rowCount);
   }
@@ -425,12 +558,43 @@ export class StreamRepository {
               published_at = NOW(),
               published_feed_index = $2,
               publish_error = NULL,
+              thumbnail_batch_id = CASE WHEN thumbnail_ref IS DISTINCT FROM $3 THEN NULL ELSE thumbnail_batch_id END,
               thumbnail_ref = $3,
               entry_content_edited_at = $4,
               updated_at = NOW()
         WHERE id = $1
         RETURNING ${STREAM_COLUMNS}`,
       [id, feedIndex, thumbnailRef, entryContentEditedAt, status],
+    );
+    return this.one(result.rows, result.rowCount);
+  }
+
+  /**
+   * A publish or a hand republish that found its entry on the catalogue head
+   * already and wrote nothing: what `finishPublish` or `recordRepublish` would
+   * record, except `published_at` and `published_feed_index`. Nothing was
+   * published, so neither the stream's first announcement nor the write that
+   * last carried its entry moved. `status` releases a publish's claim; null,
+   * for a stream that is live or recorded, leaves the one the uploader last
+   * reported, as `recordRepublish` does.
+   */
+  async finishWithoutWrite(
+    id: string,
+    thumbnailRef: string | null,
+    entryContentEditedAt: Date | null,
+    status: PublishedStatus | null,
+  ): Promise<StreamRow | null> {
+    const result = await this.pool.query<StreamRow>(
+      `UPDATE streams
+          SET status = COALESCE($4::text, status),
+              publish_error = NULL,
+              thumbnail_batch_id = CASE WHEN thumbnail_ref IS DISTINCT FROM $2 THEN NULL ELSE thumbnail_batch_id END,
+              thumbnail_ref = $2,
+              entry_content_edited_at = $3,
+              updated_at = NOW()
+        WHERE id = $1
+        RETURNING ${STREAM_COLUMNS}`,
+      [id, thumbnailRef, entryContentEditedAt, status],
     );
     return this.one(result.rows, result.rowCount);
   }

@@ -62,9 +62,10 @@ own archive names the Compose plugin `docker-compose-v2` and Docker's apt reposi
 
 The control host runs the manager, the web2 admin and the edge. Each is brought up by its own script,
 run from a checkout of this repository on your own machine, in this order: the manager first,
-because it puts the stack and the Bee nodes on the other hosts, then the admin, which needs a Bee
-node and an ingest address from them, and the edge last, because it checks that each console answers
-before it serves it.
+because it puts the stack and the Bee nodes on the other hosts, then the admin, which needs no
+stage, no Bee node and no batch to start, and the edge last, because it checks that each console
+answers before it serves it. The stages come after, from the manager, and each registers itself
+with the admin. [architecture/stages.md](architecture/stages.md) is the design.
 
 1. **An ssh alias on your machine**, in `~/.ssh/config`. The forward is the way into the manager
    before the edge serves it, and stays the way in when the edge is down.
@@ -97,6 +98,14 @@ before it serves it.
    sign-in page while `ssh control-1` is open. The first deploy takes a while, because the host
    builds the stack version the manager bundles.
 
+   Every Bee node the manager deploys on this host has its API bound to the Docker bridge address,
+   where neither the stack's `.env` nor the deployment names a bind, since the API asks for no
+   password ("Bind the node and engine APIs off the public interface" in
+   `apps/infra-manager/deploy/README.md`; the engine ports are still yours to bind). On a host
+   upgraded to this manager, a node is narrowed at its next deploy: one that something on another
+   host reaches by this host's public address needs `BEE_UPLOADER_API_BIND=0.0.0.0` in its own
+   settings, and the firewall to close the port.
+
 4. **The manager's first user**, on the host. It asks for the password twice.
 
    ```sh
@@ -108,14 +117,16 @@ before it serves it.
    a `known_hosts`. "Deploying Bee nodes to other hosts" in `apps/infra-manager/deploy/README.md`
    shows how to make it. The one line of `deploy_key.pub` is what the stage and Bee hosts authorize.
 
-6. **The stage and Bee hosts**, by their recipes below, as far as a running ABR Uploader
-   deployment. The admin needs its ingest address and a Bee node with a usable postage batch.
-
-7. **The web2 admin.** From `apps/web2-admin`, make the profile's env file from the sample and fill
-   in what it asks for: `POSTGRES_PASSWORD`, `FEED_PRIVATE_KEY`, `INTERNAL_API_TOKEN`, `BEE_URL` and
-   `POSTAGE_BATCH_ID` of the Bee node it writes through, and `INGEST_HOST`, the stage host encoders
-   send to. Generate your own feed key and token. The sample's values are public and the deploy
-   script refuses them.
+6. **The web2 admin.** From `apps/web2-admin`, make the profile's env file from the sample and fill
+   in what it asks for: `POSTGRES_PASSWORD`, `FEED_PRIVATE_KEY`, the brand key the catalog is
+   signed with, and `INTERNAL_API_TOKEN`, the registrar token the manager pushes with. Generate
+   your own key and token. The sample's values are public and the deploy script refuses them,
+   unless `--allow-sample-secrets` is given for a test install. The admin takes no stage settings:
+   no ingest address, port or passphrase, no Bee node and no batch. It learns each stage from the
+   manager and writes the catalogue through the catalogue node the manager designates, refusing to
+   publish, saying why, until the manager has. The `INGEST_*` keys, `BEE_URL` and
+   `POSTAGE_BATCH_ID` an older env file carries are no longer read, and the deploy names each one
+   it finds.
 
    ```sh
    cp backend/.env.sample backend/.env.brand-a
@@ -130,7 +141,7 @@ before it serves it.
    first user. Run that command once. `--remote-path` puts the checkout somewhere other than
    `/opt/streaming/streaming-monorepo`.
 
-8. **The edge.** Point an A record for each name at the host first. A name that does not resolve
+7. **The edge.** Point an A record for each name at the host first. A name that does not resolve
    turns every certificate attempt into a failure, and Let's Encrypt limits those. Then, from the
    repository root, make the edge's env file and set `MANAGER_DOMAIN` and `ADMIN_DOMAIN`:
 
@@ -145,10 +156,83 @@ before it serves it.
    It worked when `https://manager.example.org` and `https://admin.example.org` show the two sign-in
    pages. A host that runs the manager alone leaves `ADMIN_DOMAIN` empty.
 
-9. **Link the uploader to the admin.** In the ABR Uploader deployment's settings in the manager, set
-   `ADMIN_API_URL` to `https://admin.example.org` and `ADMIN_API_TOKEN` to the admin's
-   `INTERNAL_API_TOKEN`, then press **Test connection**.
+8. **The admin link.** In the manager, **Manager settings**, the card **Web2 admin link for new
+   deployments**: the address `https://admin.example.org` and the admin's `INTERNAL_API_TOKEN`,
+   then **Test connection** and **Save**. The test proves the token on the admin's registrar check.
+   It worked when it says "The web2 admin answered and took the token." The manager pushes every
+   stage and the catalogue stamp with this token, and gives it to no uploader. The address is the
+   edge's https one: every push carries this token and each stage's SRT passphrase and token hash,
+   and the manager refuses a plain http address to another host than its own unless its
+   `ADMIN_LINK_ALLOW_PLAIN_HTTP=true` is set, for a test setup.
    `apps/infra-manager/docs/features/web2-admin-link.md` has the details.
+
+9. **The Bee host and the catalogue node**, by the Bee host recipe below: the ABR node pool, and a
+   Bee-only deployment of its own for the catalogue, both funded from outside with an immutable
+   batch bought on the catalogue node. Then, on **Manager settings**, designate that node and its
+   batch as the brand's catalogue node. The manager pushes it to the admin, whose Stages page then
+   shows the catalogue batch. The Bee host's firewall admits the control host to that node's API.
+
+10. **The stage**, by the stage host recipe below: an **ABR Uploader** deployment with the pool's
+    string and a stream key of its own, which the wizard generates. Its Web2 admin group starts on,
+    from the manager's link, with **A token of its own**. The first deploy generates that token and
+    registers the stage with the admin before the uploader starts. It worked when the admin's
+    **Stages** page lists the stage, ready, with "Its own token".
+
+11. **The viewer and the first stream.** Build a viewer for the brand's catalog owner and topic,
+    the address and topic the admin's `/api/config` names, and put its address in the admin's
+    `VIEWER_BASE_URL`. Then in the admin, **My Streams**: create a stream, pick its stage, schedule
+    and publish. The OBS panel shows that stage's ingest details.
+
+**Upgrading a host that runs the admin and manager from before stages.** A fresh installation
+needs none of this. On a running one, in this order:
+
+0. **Create the catalogue node**, by step 6 of the Bee host recipe below: a Bee-only deployment,
+   funded, with one immutable batch of depth 18 or more bought on it. It must be ready before step 2.
+1. **Deploy the manager that pushes stage records**, and designate the catalogue node and its batch
+   on **Manager settings** at once. The admin from before stages has no `/api/internal/stages` or
+   `/api/internal/catalogue-stamp` route, so every stage's push and the catalogue stamp come to
+   `not-admin` ("not a web2 admin") until step 2. That is harmless: that admin stores nothing and
+   keeps writing with its env file's batch, and Test connection on Manager settings still takes the
+   token there. Create no stage and rotate nothing until step 2 is done: an admin from before stages
+   refuses a token of its own.
+2. **Deploy the intermediate admin**, which takes stage records and still accepts the shared
+   token on an uploader's routes: commit `d29616851` of `feat/stages` (tag it
+   `web2-admin/stages-intermediate` before `feat/stages` is merged to `main`, because a squash or
+   rebase merge leaves that commit unreachable). It takes both the shared token and a stage's own.
+   It refuses every catalogue write, `503`, until it holds a catalogue stamp, so publishing and the
+   uploaders' state reports (which retry) wait from its start until the manager's next push, at
+   most ten seconds after it answers. Note the env file's `POSTAGE_BATCH_ID` and `BEE_URL` before
+   they go: the batch is needed, below.
+3. **Before any rotation, give every stream a stage.** Unpublish every scheduled stream, pick its
+   stage and publish it again, and pick a stage for every draft. A stage on a token of its own is
+   answered only about its own streams, so a stream with no stage is reached by no uploader once
+   its stage is rotated. A stream live at rotation keeps its live state on the catalogue until an
+   operator unpublishes it.
+4. **Rotate and redeploy every stage** (**Rotate the uploader's admin token** on its deployment
+   page, then deploy) until the admin's Stages page reads "Its own token" for all of them.
+5. **Deploy the admin that refuses the shared token.**
+
+Skipping steps 2 to 4 means every running uploader gets 401 from the admin that refuses the shared
+token until its stage is rotated and redeployed. A fresh installation needs none of this: every stage it creates has a
+token of its own from its first deploy.
+
+After the upgrade, give each stage a `STREAM_KEY` of its own in the manager and redeploy it right
+after. A stage from before stages signs with the brand key, which its `STREAM_KEY` had to equal, so
+until then a compromised stage host leaks the brand key. A scheduled stream keeps the owner it was
+published with and is refused at the gate until it is unpublished and published again; a recording
+keeps the key it was made under.
+
+**Until the catalogue is moved, keep the batch from before stages.** On an upgraded host every
+catalogue slot written before step 2 is stamped by the env file's `POSTAGE_BATCH_ID` batch, which
+the admin records as `batch_id NULL`, and the viewer stops at the first slot it cannot find. Until
+the move has been tried on a real node
+([architecture/stages.md](architecture/stages.md#trying-the-move-on-a-real-node)) and run here:
+keep that batch topped up and its node running; never dilute it, replace it or name it in a pool
+string, since the manager does not know it and guards only the catalogue node's batches; and run
+the move as the first thing after the trial. This is the one remaining way the catalogue can go
+dark.
+
+[architecture/stages.md](architecture/stages.md) has the reasons.
 
 ## A stage host
 
@@ -204,6 +288,11 @@ images on the host itself.
    this. It worked when an encoder reaches the SRT port, a browser opens the viewer page, and a port
    ending in 5 or 7 does not answer from outside.
 
+The engine's `docker logs` on a stage host are as sensitive as its env files. SRS logs every
+broadcaster's publish key when they connect and the webhook token on every hook it calls, and a
+publish the uploader refuses logs both at error, whatever the level. The detail, and why the
+level stays at trace, is in `apps/hls-stream/engines/README.md`, "What SRS logs".
+
 ## A Bee host
 
 A Bee host carries the Bee nodes of ABR node pools, one node per quality rung, which the uploaders on
@@ -236,6 +325,13 @@ stage hosts publish through. It is prepared like a stage host.
 
 5. **Hand the pool to an uploader.** Copy the pool string from the pool card into an **ABR Uploader**
    deployment on a stage host.
+
+6. **The catalogue node.** **New deployment**, a Bee-only deployment with `bee-1` as the host, fund it
+   and buy one immutable batch on it, below, of depth 18 or more: the manager refuses a shallower one
+   for the catalogue, since its buckets fill after a few thousand writes. It holds the
+   brand's catalogue alone: no pool string may name its batch or its Bee API, and the manager
+   refuses a pool that does. Open its Bee API to the control host alone, where the admin writes
+   through it, and designate it on **Manager settings**.
 
 ## Funding and stamping your Bee nodes
 

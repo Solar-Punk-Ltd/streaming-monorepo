@@ -198,7 +198,7 @@ docker logs <deployment>-srs-1 2>&1 | grep 'Transport Stats' | tail -6
 what was given up on**. A non-zero `pktRcvDrop` is damage in the picture. Lost roughly equal to
 resent roughly equal to dropped means the resends are arriving but after the window, so raise the
 window. ⛔ Grep for that line rather than reading the log whole: SRS writes its webhook URL,
-secret token included, into every hook line.
+secret token included, into every hook line, and each broadcaster's publish key into every connect.
 
 ## Scripts
 

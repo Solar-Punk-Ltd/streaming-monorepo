@@ -85,37 +85,19 @@ export function newDeploymentSettingsCatalogFor(
   return catalogOf(version, shape, sourcesOf(version, shape));
 }
 
-/**
- * Why the manager's stored web2 admin token cannot be copied into a
- * deployment created with these settings, or null: the create types a token
- * of its own too, or the version gives the operator no `ADMIN_API_TOKEN` to set.
- */
-function managerTokenProblem(
-  settings: readonly NewDeploymentSetting[],
-  entries: readonly DeploymentSettingEntry[],
-): string | null {
-  if (settings.some(({ key }) => key === ADMIN_API_TOKEN_KEY)) {
-    return `${ADMIN_API_TOKEN_KEY} is typed for this deployment and also asked for from the manager's stored token. Send one of the two.`;
-  }
-  const entry = entries.find(({ key }) => key === ADMIN_API_TOKEN_KEY);
-  if (!entry?.declared)
-    return `${ADMIN_API_TOKEN_KEY} is not a setting this deployment's version declares, so the manager's stored token has nowhere to go.`;
-  if (entry.owner !== null)
-    return `${ADMIN_API_TOKEN_KEY} is not one this deployment sets, so the manager's stored token has nowhere to go.`;
-  return null;
-}
-
 function settable(entries: readonly DeploymentSettingEntry[], key: string): boolean {
   return entries.some((entry) => entry.key === key && entry.declared && entry.owner === null);
 }
 
 /**
  * The manager's own web2 admin link as the settings of a create that names
- * neither key and asks for no token, for a deployment that runs a stream
- * uploader, so every new uploader deployment starts with it.
- * Only a link with both an address and a stored token, and only for a version
- * that lets a create set both keys, so the default never leaves an address
- * the uploader would refuse to start with or a create refused over it.
+ * neither key, for a deployment that runs a stream uploader, so every new
+ * uploader deployment starts with it. Its address alone: the deployment's
+ * first deploy generates a token of its own for it (`adminLink/ownAdminToken.ts`).
+ * Only a link with both an address and a stored token, which is what registers
+ * the deployment's stage and so its token with the admin, and only for a
+ * version that lets a create set both keys, so the default never leaves an
+ * address the uploader would refuse to start with or a create refused over it.
  */
 export function managerLinkSettingsFor(
   link: ManagerAdminLink | null,
@@ -128,12 +110,9 @@ export function managerLinkSettingsFor(
   return [{ key: ADMIN_API_URL_KEY, value: link.url }];
 }
 
-/** Whether a create leaves the web2 admin link to the manager's default: it names neither key and asks for no token. */
-export function leavesAdminLinkToManager(
-  settings: readonly NewDeploymentSetting[],
-  copyManagerAdminToken: boolean,
-): boolean {
-  return !copyManagerAdminToken && !editsAdminLink(settings);
+/** Whether a create leaves the web2 admin link to the manager's default: it names neither key. */
+export function leavesAdminLinkToManager(settings: readonly NewDeploymentSetting[]): boolean {
+  return !editsAdminLink(settings);
 }
 
 /**
@@ -141,45 +120,40 @@ export function leavesAdminLinkToManager(
  * save of its settings page is held to, against the list its version gives a
  * deployment of this shape, and split the way the two columns hold them. That
  * includes the web2 admin rule, judged on what the version gives the two keys
- * and what the create sets for them, the manager's stored token counted when
- * the create asks for it. Refused whole, each key named and no secret
- * repeated. A create that names none and asks for nothing reads nothing, so
- * it is never refused over a version's files. A token the create stores,
- * typed or copied, is recorded for the origin of the address the deployment
- * starts with.
+ * and what the create sets for them, the token of the deployment's own counted
+ * for the manager's link address. Refused whole, each key named and no secret
+ * repeated. A create that names none reads nothing, so it is never refused
+ * over a version's files. A token the create types is recorded for the origin
+ * of the address the deployment starts with.
  *
- * @param copyManagerAdminToken whether the insert copies the manager's stored
- *   web2 admin token into the deployment, which never passes through here.
+ * @param ownTokenFor the address the deployment's first deploy generates a
+ *   token of its own for, `ownAdminTokenFor`, or null for none.
  */
 export function initialStackSettingsFor(
   name: string,
   version: StackVersionRecord,
   shape: NewDeploymentShape,
   settings: readonly NewDeploymentSetting[],
-  copyManagerAdminToken = false,
+  ownTokenFor: string | null = null,
 ): InitialStackSettings {
-  if (settings.length === 0 && !copyManagerAdminToken) return NO_STACK_SETTINGS;
+  if (settings.length === 0) return NO_STACK_SETTINGS;
   const sources = sourcesOf(version, shape);
   const { entries } = catalogOf(version, shape, sources);
   const problems = settingEditProblems(settings, entries);
-  const tokenProblem = copyManagerAdminToken ? managerTokenProblem(settings, entries) : null;
-  if (tokenProblem) problems.push(tokenProblem);
   if (problems.length > 0) throw new ProfileConfigError(name, problems.join(' '));
   const versionValues = versionValuesOf(sources.files);
   const before = adminLinkBeforeOf({
     current: versionValues,
     version: versionValues,
     requiredSecrets: sources.required,
+    ownTokenFor,
   });
-  const token = copyManagerAdminToken ? { current: true, afterReset: true } : before.token;
-  const adminProblem = adminLinkEditProblem(settings, { ...before, token });
+  const adminProblem = adminLinkEditProblem(settings, before);
   if (adminProblem) throw new ProfileConfigError(name, adminProblem);
   const values = Object.fromEntries(settings.map(({ key, value }) => [key, value]));
   const initial = initialStackSettingsOf(values);
   const url = values[ADMIN_API_URL_KEY] ?? versionValues[ADMIN_API_URL_KEY] ?? '';
-  const adminTokenOrigin = adminOriginOf(url) ?? '';
-  if (copyManagerAdminToken) return { ...initial, copyManagerAdminToken: { url }, adminTokenOrigin };
-  return values[ADMIN_API_TOKEN_KEY] ? { ...initial, adminTokenOrigin } : initial;
+  return values[ADMIN_API_TOKEN_KEY] ? { ...initial, adminTokenOrigin: adminOriginOf(url) ?? '' } : initial;
 }
 
 /** Values by key, split the way the two columns hold them: a secret apart from the rest. */

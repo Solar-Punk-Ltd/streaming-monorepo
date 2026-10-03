@@ -58,10 +58,12 @@ function capitalized(text: string): string {
 
 /**
  * Why a key has no field of its own here: one of the deployment's controls
- * decides it, or it is an engine setting this deployment does not read.
+ * decides it, it is put together from settings in the same list, or it is an
+ * engine setting this deployment does not read.
  */
 export function ownerSentence(owner: SettingOwner): string {
   if (isNotReadOwner(owner)) return `${capitalized(SETTING_OWNER_LABELS[owner])}, so it cannot be set here.`;
+  if (owner === 'abr-rungs') return `Put together from ${SETTING_OWNER_LABELS[owner]}. Change those to change it.`;
   return `Decided by ${SETTING_OWNER_LABELS[owner]}. It cannot be set here.`;
 }
 

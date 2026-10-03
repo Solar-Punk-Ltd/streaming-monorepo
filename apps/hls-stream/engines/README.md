@@ -212,6 +212,24 @@ Audio is muxed into each rung rather than split into an `EXT-X-MEDIA` rendition 
 `ABR_ACODEC=copy` the four copies are bit-identical and cost no CPU. Splitting it is the right
 production answer and is left as a TODO.
 
+## What SRS logs
+
+The template leaves SRS at its default level, trace, on the console `docker logs` reads. At trace
+every SRT connect logs its stream id, which carries the broadcaster's publish key, and every hook
+SRS calls logs its URL, which carries `SRS_WEBHOOK_TOKEN`, with a request naming the key again. The
+uploader redacts its own copies of both. Measured 2026-10-01 on the pinned image: 49 such lines in a
+25 second publish.
+
+The level stays at trace on purpose. Warn, which drops those lines, also drops the per-publisher
+`Transport Stats` line, the only place SRS reports SRT loss. The manager's SRT ingest card reads that
+line, and so does "Reading the loss" in `deploy/README.md`. SRS has one level for its whole log, and
+its HTTP API does not carry the counters, so no setting keeps the one and drops the others. Nor would
+a higher level close the leak: a publish the uploader refuses is logged at error, whatever the level,
+with the hook URL, the token and the key the broadcaster presented.
+
+The engine's `docker logs` on a stage host are therefore as sensitive as its env file. SRS cannot
+send the token other than in the URL, so this is the cost of that design rather than a setting.
+
 ## Your own config file
 
 Everything an engine can do beyond the knobs above is a matter of editing its config file, and both

@@ -114,6 +114,69 @@ describe('writeProfileEnv — BEE_PUBLISHERS', () => {
   });
 });
 
+describe('writeProfileEnv, ABR_LADDER from the rung settings', () => {
+  const rungLines = (path: string) => lines(path).filter((line) => line.startsWith('ABR_RUNG_'));
+
+  it('composes the rungs the deployment stores over the shipped ones, highest first', () => {
+    const path = writeProfileEnv(root, 'stage-rungs', {
+      engine: 'srs',
+      beePublishers: PUBLISHERS,
+      engineSettings: {
+        ABR_RUNG_1080P_WIDTH: '2560',
+        ABR_RUNG_1080P_HEIGHT: '1440',
+        ABR_RUNG_1080P_KBPS: '8000',
+        ABR_RUNG_360P_KBPS: '600',
+      },
+    });
+    assert.equal(
+      lineFor(path, 'ABR_LADDER'),
+      'ABR_LADDER=1080p:2560:1440:8000 720p:1280:720:2800 480p:854:480:1200 360p:640:360:600',
+    );
+    assert.equal(lineFor(path, 'BEE_PUBLISHERS'), `BEE_PUBLISHERS=${PUBLISHERS}`);
+  });
+
+  it('writes no rung setting as a line of its own', () => {
+    const path = writeProfileEnv(root, 'stage-rung-lines', {
+      engine: 'srs',
+      beePublishers: PUBLISHERS,
+      engineSettings: { ABR_RUNG_720P_WIDTH: '1024', ABR_RUNG_720P_HEIGHT: '576', ABR_FPS: '30' },
+    });
+    assert.deepEqual(rungLines(path), []);
+    assert.equal(lineFor(path, 'ABR_FPS'), 'ABR_FPS=30');
+  });
+
+  it('writes the shipped ladder over whatever the base env says', () => {
+    writeBaseEnv(`${BASE_ENV}ABR_LADDER=1080p:1280:720:3000 720p:854:480:1500 480p:640:360:800 360p:426:240:400\n`);
+    const path = writeProfileEnv(root, 'stage-rung-base', { engine: 'srs', beePublishers: PUBLISHERS });
+    assert.equal(
+      lineFor(path, 'ABR_LADDER'),
+      'ABR_LADDER=1080p:1920:1080:5000 720p:1280:720:2800 480p:854:480:1200 360p:640:360:700',
+    );
+  });
+
+  it('writes none of it for a deployment that does not encode the ladder, whatever it stores', () => {
+    const path = writeProfileEnv(root, 'stage-rung-plain', {
+      engine: 'srs',
+      stampId: BATCH('own'),
+      engineSettings: { ABR_RUNG_1080P_WIDTH: '2560' },
+    });
+    assert.equal(lineFor(path, 'ABR_LADDER'), undefined);
+    assert.deepEqual(rungLines(path), []);
+  });
+
+  it('refuses a ladder out of order, naming the rungs', () => {
+    assert.throws(
+      () =>
+        writeProfileEnv(root, 'stage-rung-order', {
+          engine: 'srs',
+          beePublishers: PUBLISHERS,
+          engineSettings: { ABR_RUNG_720P_HEIGHT: '480' },
+        }),
+      /refusing to write the engine settings.*720p rung has to be taller than the 480p rung/,
+    );
+  });
+});
+
 describe('writeProfileEnv — BEE_URL', () => {
   it('writes an explicit external node', () => {
     const path = writeProfileEnv(root, 'ext-a', {
@@ -616,5 +679,73 @@ describe('the keys a Bee gateway put on the chain reads', () => {
         }),
       /BEE_GATEWAY_RPC_ENDPOINT/,
     );
+  });
+});
+
+describe('writeProfileEnv — the Bee API binds', () => {
+  // Bee's API asks for no password, and the stack publishes each node's API on
+  // every address unless its *_API_BIND names one. A local deployment is given
+  // the docker bridge address the manager reaches its nodes on, wherever
+  // nothing else names a bind; a remote one, or a manager that could not
+  // confirm the bridge, is given nothing and keeps the stack's default.
+  const BRIDGE = '10.200.0.1';
+  const BINDS = [
+    'BEE_UPLOADER_API_BIND',
+    'BEE_GATEWAY_API_BIND',
+    'BEE_RUNG_480P_API_BIND',
+    'BEE_RUNG_720P_API_BIND',
+    'BEE_RUNG_1080P_API_BIND',
+  ];
+
+  it('writes the bridge address into every Bee bind the base env leaves empty or does not name', () => {
+    writeBaseEnv('ENGINE=srs\nBEE_UPLOADER_API_BIND=\nBEE_GATEWAY_API_BIND=\n# BEE_RUNG_480P_API_BIND=\n');
+    const path = writeProfileEnv(root, 'bound', { engine: 'srs', localBeeApiBind: BRIDGE });
+
+    for (const key of BINDS) {
+      assert.equal(lineFor(path, key), `${key}=${BRIDGE}`);
+      assert.equal(lines(path).filter((line) => line.startsWith(`${key}=`)).length, 1, `${key} once`);
+    }
+  });
+
+  it('leaves a bind the base env names standing', () => {
+    writeBaseEnv('ENGINE=srs\nBEE_UPLOADER_API_BIND=10.9.0.1\n');
+    const path = writeProfileEnv(root, 'base-bound', { engine: 'srs', localBeeApiBind: BRIDGE });
+
+    assert.equal(lineFor(path, 'BEE_UPLOADER_API_BIND'), 'BEE_UPLOADER_API_BIND=10.9.0.1');
+    assert.equal(lineFor(path, 'BEE_GATEWAY_API_BIND'), `BEE_GATEWAY_API_BIND=${BRIDGE}`);
+  });
+
+  it('leaves a bind the operator stored for the deployment standing, 0.0.0.0 included', () => {
+    writeBaseEnv('ENGINE=srs\nBEE_UPLOADER_API_BIND=\n');
+    const path = writeProfileEnv(
+      root,
+      'stored-bound',
+      { engine: 'srs', localBeeApiBind: BRIDGE },
+      {
+        BEE_UPLOADER_API_BIND: '0.0.0.0',
+      },
+    );
+
+    assert.equal(lineFor(path, 'BEE_UPLOADER_API_BIND'), 'BEE_UPLOADER_API_BIND=0.0.0.0');
+  });
+
+  it('writes no bind when the caller names none, for a remote target or an unconfirmed bridge', () => {
+    for (const none of [undefined, null]) {
+      writeBaseEnv('ENGINE=srs\nBEE_UPLOADER_API_BIND=\n');
+      const path = writeProfileEnv(root, 'unbound', { engine: 'srs', localBeeApiBind: none });
+
+      assert.equal(lineFor(path, 'BEE_UPLOADER_API_BIND'), 'BEE_UPLOADER_API_BIND=');
+      assert.equal(lineFor(path, 'BEE_GATEWAY_API_BIND'), undefined);
+    }
+  });
+
+  it('refuses an address that is not an IPv4 address rather than writing it', () => {
+    writeBaseEnv();
+    for (const bad of ['host.docker.internal', '::1', '10.0.0.1:1633']) {
+      assert.throws(
+        () => writeProfileEnv(root, 'bad-bind', { engine: 'srs', localBeeApiBind: bad }),
+        /BEE_UPLOADER_API_BIND/,
+      );
+    }
   });
 });

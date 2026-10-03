@@ -23,6 +23,7 @@ import {
 import { Profile, ProfileStatus } from '../types/index.js';
 import {
   baseEnvPath,
+  beeApiBindLines,
   bootstrapStackDefaults,
   deleteProfileEnv,
   engineEnvPath,
@@ -110,6 +111,8 @@ import {
 } from './versions/stackPaths.js';
 import type { ExecutionRoots, PreparedExecution } from './versions/ExecutionRootService.js';
 import { missingStackSecrets, type StackSecrets } from './versions/stackSecrets.js';
+import type { ManagerAdminLinkStore } from './adminLink/ManagerAdminLinkRepository.js';
+import { ownAdminTokenFor, takesOwnAdminToken } from './adminLink/ownAdminToken.js';
 import { versionSuppliedSecrets } from './versions/versionSuppliedSecrets.js';
 import type {
   DeployVersionSnapshot,
@@ -159,6 +162,18 @@ function settingOwnerContextFor(
     ports: [...portTableOf(contract), ...(contract?.portAliases ?? [])],
     isLocalTarget: isLocalTarget(targetAlias(host ?? profile.host)),
   };
+}
+
+/**
+ * The web2 admin address the deployment's uploader is given: what the deployment stores, or what its version's
+ * env files set, the engine's under the base one, or empty.
+ */
+function adminUrlFor(stored: Readonly<Record<string, string>>, root: string, engine: EngineName): string {
+  const files = {
+    ...parseEnvText(readIfPresent(engineEnvPath(root, engine))),
+    ...parseEnvText(readIfPresent(baseEnvPath(root))),
+  };
+  return stored[ADMIN_API_URL_KEY] ?? files[ADMIN_API_URL_KEY] ?? '';
 }
 
 function withoutKeys<T extends Record<string, string>>(record: T, keys: readonly string[]): T {
@@ -409,6 +424,12 @@ export interface NextDeployEnv {
   env: Record<string, string>;
   /** Keys whose value is a secret the manager generated for this deployment. */
   generatedKeys: string[];
+  /**
+   * Whether the `ADMIN_API_TOKEN` the uploader is given is the one the manager generated for this deployment, its
+   * token of its own. False for a token the deployment stores, typed or copied from the link, one its version's env
+   * files set, and none. The stage record's `adminToken.kind` is `own` on this alone.
+   */
+  ownAdminToken: boolean;
   /** The build tree the next deploy copies. */
   root: string;
   version: StackVersionRecord;
@@ -428,7 +449,26 @@ interface DeploySecrets {
   rpcEndpoint: string | null;
 }
 
+/**
+ * What runs right before a deploy starts a stream uploader: the stage publisher's push of the deployment's record
+ * into the web2 admin, so the uploader's first call finds its token known. It never throws, and it is bounded.
+ */
+export type BeforeUploaderStart = (profile: Profile) => Promise<void>;
+
+/**
+ * What a removal asks before it claims the deployment: throws to refuse it. The catalogue node's guard refuses the
+ * designated catalogue node, which the web2 admin writes the brand's catalogue through.
+ */
+export type RemovalGuard = (profileName: string) => Promise<void>;
+
 export class DeploymentOrchestrator {
+  private beforeUploaderStart: BeforeUploaderStart | null = null;
+  /** The manager's web2 admin link, whose address a token of a deployment's own is generated for. */
+  private managerAdminLink: Pick<ManagerAdminLinkStore, 'read'> | null = null;
+  private removalGuard: RemovalGuard | null = null;
+  /** The bridge address a local deployment's Bee APIs are bound to where nothing names a bind, or none. */
+  private localBeeApiBind: (() => Promise<string | null>) | null = null;
+
   constructor(
     private readonly profiles: ProfileRepository,
     private readonly containers: ContainerRepository,
@@ -454,6 +494,56 @@ export class DeploymentOrchestrator {
      */
     private readonly managerRpcEndpoint?: string | null,
   ) {}
+
+  /**
+   * Sets what runs before a deploy starts a stream uploader. A setter rather than a constructor argument, because
+   * the stage publisher it calls reads the next deploy's environment through this orchestrator.
+   */
+  setBeforeUploaderStart(hook: BeforeUploaderStart | null): void {
+    this.beforeUploaderStart = hook;
+  }
+
+  /**
+   * Sets the manager's web2 admin link, which a deploy reads to tell whether the deployment's uploader is given a
+   * token of its own (`adminLink/ownAdminToken.ts`). Left unset, none is generated.
+   */
+  setManagerAdminLink(link: Pick<ManagerAdminLinkStore, 'read'> | null): void {
+    this.managerAdminLink = link;
+  }
+
+  /**
+   * Sets what a deploy binds a local deployment's Bee APIs to where neither the version's base env nor the operator
+   * names a bind (`localBeeApiBindReader` in localHost.ts). Left unset, or answering null, the stack's default stands.
+   */
+  setLocalBeeApiBind(reader: (() => Promise<string | null>) | null): void {
+    this.localBeeApiBind = reader;
+  }
+
+  /**
+   * The bind for a deployment on this target: none for another host, whose Bee API has to answer the control host
+   * and whose firewall is what closes it.
+   */
+  private async localBeeApiBindFor(host: string | null): Promise<string | null> {
+    if (!this.localBeeApiBind || !isLocalTarget(targetAlias(host))) return null;
+    return this.localBeeApiBind();
+  }
+
+  /** Sets what a removal asks before it claims the deployment, a setter for the same reason as the one above. */
+  setRemovalGuard(guard: RemovalGuard | null): void {
+    this.removalGuard = guard;
+  }
+
+  /** The hook, where this deploy starts an uploader. A failure is a warning and never holds the deploy. */
+  private async runBeforeUploaderStart(profile: Profile, services: readonly string[]): Promise<void> {
+    if (!this.beforeUploaderStart || !services.includes(STREAM_UPLOADER_SERVICE)) return;
+    try {
+      await this.beforeUploaderStart(profile);
+    } catch (err) {
+      logger.warn(
+        `[Orchestrator] ${profile.name}: the step before the uploader starts failed: ${getErrorMessage(err)}`,
+      );
+    }
+  }
 
   /**
    * Whether a deploy of the profile may start now, asked before the claim
@@ -612,12 +702,35 @@ export class DeploymentOrchestrator {
   }
 
   /**
-   * The secrets this version's containers refuse to start without, generated
-   * the first time the deployment runs on it and kept from then on.
+   * The secrets this deployment's containers refuse to start without: the ones its version requires, and
+   * `ADMIN_API_TOKEN` for an uploader given the address of the manager's web2 admin link and no token the
+   * deployment stores, which is the token of its own (`adminLink/ownAdminToken.ts`).
+   */
+  private async requiredSecretsOf(
+    profile: Profile,
+    version: DeployVersionSnapshot | null,
+    stored: Readonly<Record<string, string>>,
+    root: string,
+    engine: EngineName,
+  ): Promise<string[]> {
+    const required = [...(version?.contract?.requiredSecrets ?? [])];
+    if (required.includes(ADMIN_API_TOKEN_KEY) || ADMIN_API_TOKEN_KEY in stored || !this.managerAdminLink) {
+      return required;
+    }
+    const ownTokenFor = ownAdminTokenFor(await this.managerAdminLink.read(), profile);
+    if (takesOwnAdminToken(adminUrlFor(stored, root, engine), ownTokenFor)) required.push(ADMIN_API_TOKEN_KEY);
+    return required;
+  }
+
+  /**
+   * The secrets this deployment's containers refuse to start without, generated
+   * the first time the deployment runs on its version and kept from then on.
    *
    * Generated at deploy rather than at creation, so a version whose contract
    * grows a secret on Update is covered by the next deploy of every deployment
-   * on it, with nothing to migrate.
+   * on it, with nothing to migrate. The uploader's token of its own is
+   * generated the same way, at the first deploy that links it to the
+   * manager's web2 admin, and only written while it is linked there.
    *
    * A key the version's own settings answer is neither generated nor written,
    * so the version's line stands. A value already stored against this
@@ -629,8 +742,9 @@ export class DeploymentOrchestrator {
     version: DeployVersionSnapshot | null,
     root: string,
     engine: EngineName,
+    operator: Readonly<Record<string, string>>,
   ): Promise<StackSecrets> {
-    const required = version?.contract?.requiredSecrets ?? [];
+    const required = await this.requiredSecretsOf(profile, version, operator, root, engine);
     if (required.length === 0) return {};
 
     const stored = await this.profiles.stackSecretsOf(profile.name);
@@ -660,8 +774,14 @@ export class DeploymentOrchestrator {
    * key the version answers and nothing stored is left to the version, as the
    * deploy leaves it.
    */
-  private async storedStackSecretsFor(profile: Profile, version: DeployVersionSnapshot | null): Promise<StackSecrets> {
-    const required = version?.contract?.requiredSecrets ?? [];
+  private async storedStackSecretsFor(
+    profile: Profile,
+    version: DeployVersionSnapshot | null,
+    operator: Readonly<Record<string, string>>,
+    root: string,
+    engine: EngineName,
+  ): Promise<StackSecrets> {
+    const required = await this.requiredSecretsOf(profile, version, operator, root, engine);
     if (required.length === 0) return {};
     const stored = await this.profiles.stackSecretsOf(profile.name);
     const secrets: StackSecrets = {};
@@ -710,11 +830,7 @@ export class DeploymentOrchestrator {
     engine: EngineName,
   ): Promise<void> {
     if (!stored[ADMIN_API_TOKEN_KEY]) return;
-    const files = {
-      ...parseEnvText(readIfPresent(engineEnvPath(root, engine))),
-      ...parseEnvText(readIfPresent(baseEnvPath(root))),
-    };
-    const url = stored[ADMIN_API_URL_KEY] ?? files[ADMIN_API_URL_KEY] ?? '';
+    const url = adminUrlFor(stored, root, engine);
     const storedWith = (await this.profiles.stackSettingsOf(profile.name))?.adminTokenOrigin ?? null;
     if (storedWith === null) {
       await this.profiles.bindAdminTokenOrigin(profile.name, adminOriginOf(url) ?? '');
@@ -738,6 +854,7 @@ export class DeploymentOrchestrator {
       stackSecrets: StackSecrets;
       engineConfigFile: string | null;
       stored: Record<string, string>;
+      localBeeApiBind?: string | null;
     },
   ): ProfileEnvValues {
     return {
@@ -760,6 +877,7 @@ export class DeploymentOrchestrator {
       stackSecrets: withoutKeys(read.stackSecrets, Object.keys(read.stored)),
       stackEngineDefaults: version?.contract?.engineDefaults,
       engineConfigFile: read.engineConfigFile,
+      localBeeApiBind: read.localBeeApiBind ?? null,
       // From the profile's own components, deliberately not from the reserved
       // services: a held-back uploader is deployed on its own, and deploy.sh
       // must still resolve the local Bee address for it.
@@ -787,7 +905,7 @@ export class DeploymentOrchestrator {
       await this.profiles.stackSettingsForDeploy(profile.name),
       settingOwnerContextFor(profile, version, profile.host),
     );
-    const stackSecrets = await this.storedStackSecretsFor(profile, version);
+    const stackSecrets = await this.storedStackSecretsFor(profile, version, stored, root, engine);
     const values = this.profileEnvValuesOf(profile, version, engine, {
       secrets: {
         streamKey: await this.profiles.privateKeyOf(profile.name),
@@ -797,18 +915,21 @@ export class DeploymentOrchestrator {
       stackSecrets,
       engineConfigFile: await this.engineConfigPathFor(profile, engine, version),
       stored,
+      localBeeApiBind: await this.localBeeApiBindFor(profile.host),
     });
     const managed = managedEnvLines(values, baseText, { keepRefusedEngineSettings: true });
     const env = effectiveEnvOf({
       profile,
       contract: version.contract,
       target: targetAlias(profile.host),
-      rootEnvText: renderProfileEnv(baseText, managed, stored),
+      rootEnvText: renderProfileEnv(baseText, managed, stored, beeApiBindLines(values)),
       engineEnvText: readIfPresent(engineEnvPath(root, engine)),
     });
+    const generatedToken = ADMIN_API_TOKEN_KEY in stored ? '' : (stackSecrets[ADMIN_API_TOKEN_KEY] ?? '');
     return {
       env,
       generatedKeys: Object.keys(withoutKeys(stackSecrets, Object.keys(stored))),
+      ownAdminToken: generatedToken !== '' && env[ADMIN_API_TOKEN_KEY] === generatedToken,
       root,
       version,
       engineSettingsProblem: engineSettingsLinesOf(values, baseText).problem,
@@ -1319,15 +1440,18 @@ export class DeploymentOrchestrator {
         profile.name,
         this.profileEnvValuesOf(profile, version, engine, {
           secrets,
-          stackSecrets: await this.stackSecretsFor(profile, version, paths.root, engine),
+          stackSecrets: await this.stackSecretsFor(profile, version, paths.root, engine, stored),
           engineConfigFile,
           stored,
+          localBeeApiBind: await this.localBeeApiBindFor(reservation.host ?? profile.host),
         }),
         stored,
       );
       logger.info(`[Orchestrator] ${profile.name}: wrote profile env ${written} (engine=${engine})`);
 
       const services = [...reservation.services];
+      // After the env file is written, so the record carries the token the uploader is about to be given.
+      await this.runBeforeUploaderStart(profile, services);
       return await this.runJob({
         profileName: profile.name,
         target: targetAlias(reservation.host ?? profile.host),
@@ -1458,6 +1582,7 @@ export class DeploymentOrchestrator {
     profile: Profile,
     input: { all?: boolean; expectedInstanceId?: string } = {},
   ): Promise<RunHandle & { profile: Profile }> {
+    await this.removalGuard?.(profile.name);
     await this.assertRemovalReady(profile.name);
     await this.targetDaemon(targetAlias(profile.host));
     const expectedInstanceId = input.expectedInstanceId ?? profile.instance_id;
@@ -1489,7 +1614,12 @@ export class DeploymentOrchestrator {
         paths,
         script: paths.clean,
         args,
-        beforeRun: () => this.assertRemovalReady(claimed.name),
+        // The guard again, after the claim: a designation saved between the first check and the claim is caught
+        // here, before the clean script runs. A designation refuses a deployment that is being removed after this.
+        beforeRun: async () => {
+          await this.removalGuard?.(claimed.name);
+          await this.assertRemovalReady(claimed.name);
+        },
         markFailure,
         onSuccess: async () => {
           await this.verifyPortRemoval(claimed);
@@ -1498,9 +1628,17 @@ export class DeploymentOrchestrator {
             deleteProfileEnv(paths.root, claimed.name);
           });
           if (!removed) return;
+          // The moment the row was gone, before anything slower: a stage's retirement is ordered by it.
+          const deletedAt = new Date().toISOString();
           // Nothing runs from them any more and no profile row claims them.
           await this.executions?.retireSuperseded(claimed.name, { keep: 0 });
-          this.eventBus.publish({ type: 'profile.deleted', name: claimed.name });
+          this.eventBus.publish({
+            type: 'profile.deleted',
+            name: claimed.name,
+            instanceId: claimed.instance_id,
+            kind: claimed.kind,
+            deletedAt,
+          });
           logger.info(`[Orchestrator] Removed profile ${claimed.name} (released slot ${removed.port_slot})`);
           await this.cleanupGroup(claimed.group_id);
         },

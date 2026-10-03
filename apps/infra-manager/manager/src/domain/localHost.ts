@@ -1,7 +1,10 @@
 import { lookup } from 'node:dns/promises';
 import { existsSync } from 'node:fs';
+import { isIPv4 } from 'node:net';
 
 import { getErrorMessage } from '@streaming-infra-manager/common';
+
+import { config } from '../utils/config.js';
 
 import { Logger } from './Logger.js';
 
@@ -18,10 +21,11 @@ const DOCKER_HOST_NAME = 'host.docker.internal';
  * gateway. Running natively, in development or the integration suite, that
  * name does not resolve, so the loopback address is used. BEE_LOCAL_HOST
  * overrides both, and keeps its name from when only the Bee API was reached
- * this way.
+ * this way. It is read from the config, which refuses at startup a value that
+ * is not a host name or an address, and which loads manager/.env before this
+ * module reads it.
  */
-export const LOCAL_PUBLISHED_HOST =
-  process.env.BEE_LOCAL_HOST ?? (existsSync('/.dockerenv') ? DOCKER_HOST_NAME : '127.0.0.1');
+export const LOCAL_PUBLISHED_HOST = config.beeLocalHost ?? (existsSync('/.dockerenv') ? DOCKER_HOST_NAME : '127.0.0.1');
 
 /**
  * Every spelling of `profiles.host` that means this machine, after
@@ -40,7 +44,8 @@ export const LOCAL_PUBLISHED_HOST =
 export const LOCAL_DEPLOY_TARGETS: ReadonlySet<string> = new Set(['', 'localhost', '127.0.0.1', '0.0.0.0', 'native']);
 
 export interface LocalPublisherHostDeps {
-  env?: { BEE_LOCAL_HOST?: string | undefined };
+  /** BEE_LOCAL_HOST as the config checked it, null for none. The config's own when left out. */
+  beeLocalHost?: string | null;
   isInContainer?: () => boolean;
   lookupIpv4?: (hostname: string) => Promise<string>;
   warn?: (message: string) => void;
@@ -53,11 +58,12 @@ export type LocalPublisherHostReader = () => Promise<string>;
  * The address a container on this host reaches a node this manager deployed on.
  *
  * This is what an ABR pool string hands an uploader, and the uploader the manager
- * deploys is a container on this same host. The stack binds every local Bee API to the
- * Docker bridge address and to nothing else, so the host's public address answers
- * on those ports from nowhere at all, and the bridge address is the one that
- * works. Inside the api container the bridge is what host.docker.internal
- * resolves to, through the host-gateway mapping in manager/docker-compose.yml.
+ * deploys is a container on this same host. A deploy binds every local Bee API to the
+ * Docker bridge address where nothing else names a bind (`localBeeApiBindReader`
+ * below), so the host's public address answers on those ports from nowhere at
+ * all, and the bridge address is the one that works. Inside the api container
+ * the bridge is what host.docker.internal resolves to, through the host-gateway
+ * mapping in manager/docker-compose.yml.
  *
  * The name itself cannot be handed on. An uploader's compose service carries no
  * extra_hosts, so on Linux that name resolves nowhere inside it, and only a
@@ -96,13 +102,12 @@ interface LocalPublisherHostReading {
 
 async function readLocalPublisherHost(deps: LocalPublisherHostDeps): Promise<LocalPublisherHostReading> {
   const {
-    env = process.env,
+    beeLocalHost: override = config.beeLocalHost,
     isInContainer = () => existsSync('/.dockerenv'),
     lookupIpv4 = async (hostname: string) => (await lookup(hostname, { family: 4 })).address,
     warn = (message: string) => logger.warn(message),
   } = deps;
 
-  const override = env.BEE_LOCAL_HOST?.trim();
   if (override) {
     return override === DOCKER_HOST_NAME
       ? literalAddressOf(override, lookupIpv4, warn)
@@ -147,4 +152,65 @@ function isPrivateIpv4(address: string): boolean {
     first === 127 ||
     (first === 169 && second === 254)
   );
+}
+
+/** Answers the address a local deployment's Bee APIs are bound to where nothing names one, or null for none. */
+export type LocalBeeApiBindReader = () => Promise<string | null>;
+
+export interface LocalBeeApiBindDeps {
+  /** What a container on this host reaches a local node on, {@link localPublisherHost}. */
+  publisherHost: LocalPublisherHostReader;
+  /** The local daemon's default bridge gateway, `ContainerControl.bridgeGateway`, or null when it reports none. */
+  bridgeGateway: () => Promise<string | null>;
+  warn?: (message: string) => void;
+}
+
+/**
+ * The address a deploy binds a local deployment's Bee APIs to where neither the
+ * base .env nor the operator names one (`beeApiBindLines` in envUtils).
+ *
+ * The address the manager itself reaches those nodes on, and only when it is the
+ * bridge gateway the daemon reports as its own. That holds on a Linux engine,
+ * where host.docker.internal maps to the bridge. On Docker Desktop the name
+ * resolves to an address the daemon has no interface on, and a port published
+ * there would answer nowhere; running natively the answer is a name. Both answer
+ * none, which leaves the stack's default of every address. A bridge that could
+ * not be read is no answer and is asked again on the next deploy.
+ */
+export function localBeeApiBindReader(deps: LocalBeeApiBindDeps): LocalBeeApiBindReader {
+  const warn = deps.warn ?? ((message: string) => logger.warn(message));
+  let known: string | null | undefined;
+  let warned = false;
+  return async () => {
+    if (known !== undefined) return known;
+    const host = await deps.publisherHost();
+    if (!isIPv4(host)) return null;
+    let gateway: string | null;
+    try {
+      gateway = await deps.bridgeGateway();
+    } catch {
+      return null;
+    }
+    if (gateway === null) return null;
+    known = gateway === host ? host : null;
+    if (known === null && !warned) {
+      warned = true;
+      warn(
+        `[localHost] ${host}, where the manager reaches a local Bee node, is not the docker bridge gateway ${gateway}, ` +
+          'so a deploy binds no Bee API and each answers on every address unless BEE_UPLOADER_API_BIND and its siblings name one.',
+      );
+    }
+    return known;
+  };
+}
+
+/** The IPv4 gateway of a docker network's inspect, the bridge's for `bridgeGateway`, or null. */
+export function bridgeGatewayOf(inspect: unknown): string | null {
+  const ipam = (inspect as { IPAM?: { Config?: unknown } } | null)?.IPAM;
+  const configs = Array.isArray(ipam?.Config) ? (ipam.Config as unknown[]) : [];
+  for (const entry of configs) {
+    const gateway = (entry as { Gateway?: unknown } | null)?.Gateway;
+    if (typeof gateway === 'string' && isIPv4(gateway)) return gateway;
+  }
+  return null;
 }

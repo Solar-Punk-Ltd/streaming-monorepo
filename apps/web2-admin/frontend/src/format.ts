@@ -23,3 +23,25 @@ export function formatDuration(seconds: number): string {
   const rest = whole % 60;
   return hours > 0 ? `${hours}:${pad(minutes)}:${pad(rest)}` : `${minutes}:${pad(rest)}`;
 }
+
+/**
+ * A batch's time to live as the manager read it: `12 days`, `1 day 4 h`,
+ * `5 h 12 min`, `40 min`. An em dash when the node did not say, or said a
+ * negative number, which is how Bee answers when it cannot work it out.
+ */
+export function formatTimeLeft(seconds: number | null): string {
+  if (seconds === null || !Number.isFinite(seconds) || seconds < 0) return '—';
+  const minutes = Math.floor(seconds / 60);
+  const hours = Math.floor(minutes / 60);
+  const days = Math.floor(hours / 24);
+  if (days >= 7) return `${days} days`;
+  if (days >= 1) return `${days} day${days === 1 ? '' : 's'} ${hours % 24} h`;
+  if (hours >= 1) return `${hours} h ${minutes % 60} min`;
+  return `${minutes} min`;
+}
+
+/** A ratio from 0 to 1 as a whole percentage, or an em dash when there is none. */
+export function formatPercent(ratio: number | null): string {
+  if (ratio === null || !Number.isFinite(ratio)) return '—';
+  return `${Math.round(ratio * 100)}%`;
+}

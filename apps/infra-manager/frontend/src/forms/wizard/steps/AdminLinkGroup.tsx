@@ -1,7 +1,7 @@
 import { useRef } from 'react';
 import { Alert, Box, Button, FormControlLabel, Stack, Switch, TextField, Typography } from '@mui/material';
 
-import { adminTokenProblem, adminUrlProblem } from '@streaming-infra-manager/common';
+import { adminTokenProblem, adminUrlProblem, ownAdminTokenAddressOf } from '@streaming-infra-manager/common';
 
 import { testAdminLink } from '../../../adminLink/adminLinkApi';
 import { AdminLinkTest } from '../../../adminLink/AdminLinkTest';
@@ -13,9 +13,13 @@ import {
   ADMIN_LINK_OFF_NOTE,
   ADMIN_LINK_SWITCH_LABEL,
   ADMIN_LINK_UNREAD,
-  STORED_TOKEN_ELSEWHERE,
-  storedTokenDetail,
+  OWN_TOKEN_ELSEWHERE,
+  OWN_TOKEN_TITLE,
+  ownTokenDetail,
   TYPE_TOKEN_HERE,
+  TYPED_TOKEN_AT_LINK,
+  TYPED_TOKEN_DETAIL,
+  USE_OWN_TOKEN,
 } from '../../../adminLink/adminLinkText';
 import { PLAIN_TEXT_INPUT } from '../../../deployments/settings/SettingValueField';
 import { ChoiceGroup } from '../../ChoiceGroup';
@@ -26,7 +30,8 @@ import {
   asksAdminLink,
   chosenAdminLink,
   managerLinkPending,
-  storedTokenElsewhere,
+  ownTokenElsewhere,
+  typedTokenAtLink,
 } from '../adminLinkChoice';
 import type { WizardStepProps } from '../wizardState';
 
@@ -36,8 +41,8 @@ const NEW_PASSWORD = 'new-password';
 /**
  * The Web2 admin group of the settings step, for every deployment that runs
  * a stream uploader: a switch that links it to the web2 admin, on when the
- * manager has a link of its own, the address prefilled from it, and the
- * manager's stored token or one typed here, with Test connection.
+ * manager has a link of its own, the address prefilled from it, and a token
+ * of the deployment's own or one typed here, with Test connection.
  */
 export function AdminLinkGroup({ state, context, update }: WizardStepProps) {
   const tokenField = useRef<HTMLInputElement | null>(null);
@@ -45,11 +50,12 @@ export function AdminLinkGroup({ state, context, update }: WizardStepProps) {
   const availability = adminLinkAvailability(context);
   const choice = chosenAdminLink(state, context);
   const set = (patch: Partial<AdminLinkChoice>) => update({ adminLink: { ...choice, ...patch } });
-  const tokenStored = Boolean(context.managerAdminLink?.tokenStored);
+  const ownAvailable = ownAdminTokenAddressOf(context.managerAdminLink) !== null;
   const urlProblem = choice.url === '' ? null : adminUrlProblem(choice.url);
   const tokenProblem = choice.token === '' ? null : adminTokenProblem(choice.token);
   const testRequest = adminLinkTestOf(state, context);
-  const elsewhere = storedTokenElsewhere(state, context);
+  const elsewhere = ownTokenElsewhere(state, context);
+  const typedAtLink = typedTokenAtLink(state, context);
   const pending = managerLinkPending(state, context);
   const typeTokenHere = () => {
     set({ tokenSource: 'typed' });
@@ -144,15 +150,15 @@ export function AdminLinkGroup({ state, context, update }: WizardStepProps) {
                 onChange={(tokenSource) => set({ tokenSource })}
                 choices={[
                   {
-                    value: 'stored',
-                    title: "The manager's stored token",
-                    detail: storedTokenDetail(tokenStored),
-                    disabled: !tokenStored,
+                    value: 'own',
+                    title: OWN_TOKEN_TITLE,
+                    detail: ownTokenDetail(ownAvailable),
+                    disabled: !ownAvailable,
                   },
                   {
                     value: 'typed',
                     title: 'A token typed here',
-                    detail: "The web2 admin's INTERNAL_API_TOKEN, at least 32 characters.",
+                    detail: TYPED_TOKEN_DETAIL,
                     extra: (
                       <TextField
                         size="small"
@@ -179,7 +185,7 @@ export function AdminLinkGroup({ state, context, update }: WizardStepProps) {
               {elsewhere && (
                 <Alert
                   severity="warning"
-                  data-stored-token-elsewhere
+                  data-own-token-elsewhere
                   sx={{ '& .MuiAlert-message': { minWidth: 0, overflowWrap: 'anywhere' } }}
                   action={
                     <Button color="inherit" size="small" onClick={typeTokenHere}>
@@ -187,7 +193,21 @@ export function AdminLinkGroup({ state, context, update }: WizardStepProps) {
                     </Button>
                   }
                 >
-                  {STORED_TOKEN_ELSEWHERE}
+                  {OWN_TOKEN_ELSEWHERE}
+                </Alert>
+              )}
+              {typedAtLink && (
+                <Alert
+                  severity="warning"
+                  data-typed-token-at-link
+                  sx={{ '& .MuiAlert-message': { minWidth: 0, overflowWrap: 'anywhere' } }}
+                  action={
+                    <Button color="inherit" size="small" onClick={() => set({ tokenSource: 'own' })}>
+                      {USE_OWN_TOKEN}
+                    </Button>
+                  }
+                >
+                  {TYPED_TOKEN_AT_LINK}
                 </Alert>
               )}
               <AdminLinkTest
@@ -195,7 +215,9 @@ export function AdminLinkGroup({ state, context, update }: WizardStepProps) {
                 blockedReason={
                   elsewhere
                     ? 'Type the token for this address to test it.'
-                    : 'Give the address and a token to test the link.'
+                    : typedAtLink
+                      ? 'Choose A token of its own to test the link.'
+                      : 'Give the address and a token to test the link.'
                 }
                 resetKey={JSON.stringify([
                   choice.url,

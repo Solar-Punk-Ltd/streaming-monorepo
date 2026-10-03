@@ -58,6 +58,7 @@ function profile(over: Partial<Profile> = {}): Profile {
     updated_at: new Date(0),
     group_id: 1,
     stack_version_id: 1,
+    ingest_host: null,
     ...over,
   };
 }

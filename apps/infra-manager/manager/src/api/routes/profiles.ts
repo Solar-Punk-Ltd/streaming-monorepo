@@ -7,11 +7,13 @@ import { UploaderHealthService } from '../../domain/UploaderHealthService.js';
 import { definedSettingValues } from '../../schemas/engineSettingValues.js';
 import {
   CreateProfileInput,
+  UpdateIngestHostInput,
   UpdateNotesInput,
   UpdateProfileInput,
   RemoveProfileInput,
   createProfileSchema,
   profileNameSchema,
+  updateIngestHostSchema,
   updateNotesSchema,
   updateProfileSchema,
   removeProfileSchema,
@@ -58,7 +60,6 @@ export function createProfilesRouter(
         stack_version_id: body.stack_version_id,
         engine_settings: body.engine_settings && definedSettingValues(body.engine_settings),
         stack_settings: body.stack_settings as NewDeploymentSetting[] | undefined,
-        use_manager_admin_token: body.use_manager_admin_token,
       });
       res.status(202).json(profile);
     }),
@@ -126,6 +127,19 @@ export function createProfilesRouter(
     asyncHandler(async (req: Request, res: Response) => {
       const body = req.body as UpdateNotesInput;
       const profile = await profileService.updateNotes(req.params.name as string, body.notes, body.notes_revision);
+      res.json(profile);
+    }),
+  );
+
+  // The public ingest address alone, which no container reads: no claim, no
+  // gate, no deploy, so 200 and not 202. Null or empty clears it.
+  router.patch(
+    '/:name/ingest-host',
+    validateParams(profileNameSchema),
+    validateBody(updateIngestHostSchema),
+    asyncHandler(async (req: Request, res: Response) => {
+      const body = req.body as UpdateIngestHostInput;
+      const profile = await profileService.updateIngestHost(req.params.name as string, body.ingest_host ?? null);
       res.json(profile);
     }),
   );

@@ -899,18 +899,31 @@ when the presented `key=` is not the declaration's, when the declaration is owne
 service does not sign with, or when the ingest `app` and the declared media type disagree. Each
 refusal says which it was in the log.
 
-Both services have to sign as one owner. The admin's catalog entry points a viewer at `owner/topic`,
-and every feed this service writes at that topic is signed with `STREAM_KEY`, so the admin's
-`FEED_PRIVATE_KEY` must derive the same address or the entry resolves a feed nobody wrote — while every
-report answers 200 and nothing says so. Nothing on the wire carries a key, so the address is what is
-compared: once at boot, off the admin's public `/api/config`, where a mismatch refuses to start and an
-admin that cannot be reached yet only warns; and again on every publish, against the declaration's
-`owner`.
+This service has to sign as the owner the admin knows for its stage. Every stage signs with a key of
+its own, `STREAM_KEY`, the manager tells the admin each stage's owner, and the admin's catalog entry
+points a viewer at `owner/topic` with that owner; the catalog itself is signed by the admin's own key,
+which no uploader holds. With `STREAM_KEY` apart from the stage's owner the entry resolves a feed
+nobody wrote, while every report answers 200 and nothing says so. Nothing on the wire carries a key, so
+the address is what is compared, once at boot and again on every publish, against the declaration's
+`owner`. At boot:
 
-| Variable          | Description                                                                        |
-| ----------------- | ---------------------------------------------------------------------------------- |
-| `ADMIN_API_URL`   | Base URL of the admin service. Empty (the default) is the standalone deployment    |
-| `ADMIN_API_TOKEN` | Bearer token for the admin's internal routes. Required when the URL is set, min 32 |
+| The admin answers `GET /api/internal/stages/self`, with `ADMIN_API_TOKEN`                                       | The uploader                                                                           |
+| --------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------- |
+| 200 with `{ stageId, owner }`                                                                                   | Compares `owner` with its signer. A mismatch refuses to start, naming both addresses   |
+| 404: an admin from before stages, which has no such route, or the intermediate admin answering the shared token | Compares the catalog owner of the public `/api/config`, as before stages, the same way |
+| 401: an admin that takes only a stage's own token, on any other token, the shared one included                  | Warns and starts, and every lookup and report it makes is refused the same way         |
+| Anything else, or nothing                                                                                       | Warns and starts. The publish gate compares each declaration's owner                   |
+
+A refusal says to fix the deployment's `STREAM_KEY` in the manager, or the stage the admin holds for
+it. After a 404 it says to fix `STREAM_KEY` first and, on the intermediate admin, to give the
+deployment a token of its own, so the admin can name its stage. An admin that takes only a stage's own
+token takes the one the manager generates for a deployment linked to that admin and tells the admin
+about: an uploader the manager did not deploy linked to the admin cannot report to it.
+
+| Variable          | Description                                                                                                                     |
+| ----------------- | ------------------------------------------------------------------------------------------------------------------------------- |
+| `ADMIN_API_URL`   | Base URL of the admin service. Empty (the default) is the standalone deployment                                                 |
+| `ADMIN_API_TOKEN` | Bearer token for the admin's internal routes, the stage's own token the manager generates. Required when the URL is set, min 32 |
 
 ### The ABR ladder in admin mode
 
@@ -1006,7 +1019,7 @@ STATE_DIR=./state
 ENGINE=srs
 API_PORT=3000
 ADMIN_API_URL=http://localhost:9877
-ADMIN_API_TOKEN=<min 32 chars, the admin's internal token>
+ADMIN_API_TOKEN=<min 32 chars: the stage's own token the manager generates, or an older admin's internal token>
 ```
 
 `SRS_WEBHOOK_TOKEN` is read from `engines/srs/.env`, which the uploader loads because `ENGINE=srs`.

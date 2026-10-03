@@ -621,8 +621,9 @@ export class StreamUploader {
    *
    * What it changes is exactly the two things that are not true across a reconnect. The media either
    * side of the gap is not continuous, so the next segment carries a break. And the encoder's clock
-   * restarted while ours did not, so the dating re-anchors at the sequence the numbering resumes at,
-   * through `ManifestManager.resumeAfterReconnect`. Everything else about the session is untouched:
+   * restarted while ours did not, or, for a rung SRS held through the drop, ran on without the gap in
+   * it, so the dating re-anchors at the sequence the numbering resumes at, through
+   * `ManifestManager.resumeAfterReconnect`. Everything else about the session is untouched:
    * the recording, the feed topic, the SOC index, the admin report, the inherited prefix.
    *
    * ⛔ **One flag rather than two, and `pendingDiscontinuity` is deliberately NOT one of them.** The

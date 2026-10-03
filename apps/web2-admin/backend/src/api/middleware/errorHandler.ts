@@ -5,6 +5,8 @@ import { ValidationError as YupValidationError } from 'yup';
 import {
   AdminRequiredError,
   CannotRemoveUserError,
+  CatalogueMoveRefusedError,
+  CatalogueStampUnavailableError,
   CrossSiteRequestError,
   FeedOwnerMismatchError,
   InvalidCredentialsError,
@@ -15,6 +17,9 @@ import {
   NoUsersError,
   PublishFailedError,
   RequestShapeError,
+  StageLockedError,
+  StageRequiredError,
+  StageUnavailableError,
   StreamBusyError,
   StreamLiveError,
   StreamLockedError,
@@ -168,7 +173,25 @@ export function errorHandler(err: unknown, req: Request, res: Response, next: Ne
     return;
   }
   if (err instanceof FeedOwnerMismatchError) {
-    res.status(409).json({ error: 'feed_owner_mismatch', message: err.message });
+    res
+      .status(409)
+      .json({ error: 'feed_owner_mismatch', id: err.streamId, stageId: err.stageId, message: err.message });
+    return;
+  }
+  if (err instanceof StageLockedError) {
+    res.status(409).json({ error: 'stage_locked', id: err.streamId, reason: err.reason, message: err.message });
+    return;
+  }
+  if (err instanceof StageUnavailableError) {
+    // 409 for all three reasons, an unknown id included: the id is well formed, and whether a stage takes streams
+    // is the admin's state, which the manager changes under the form.
+    res
+      .status(409)
+      .json({ error: 'stage_unavailable', stageId: err.stageId, reason: err.reason, message: err.message });
+    return;
+  }
+  if (err instanceof StageRequiredError) {
+    res.status(409).json({ error: 'stage_required', id: err.streamId, message: err.message });
     return;
   }
   if (err instanceof MediaTypeLockedError) {
@@ -177,6 +200,16 @@ export function errorHandler(err: unknown, req: Request, res: Response, next: Ne
   }
   if (err instanceof UnsupportedMediaTypeError) {
     res.status(415).json({ error: 'unsupported_media_type', message: err.message });
+    return;
+  }
+  if (err instanceof CatalogueMoveRefusedError) {
+    res.status(409).json({ error: 'catalogue_move_refused', problem: err.problem, message: err.message });
+    return;
+  }
+  if (err instanceof CatalogueStampUnavailableError) {
+    // 503: the admin cannot write the catalogue until the manager designates a usable batch, which is a state that
+    // ends, not a request that was wrong. The uploader retries a 5xx, and a state report refused here must be retried.
+    res.status(503).json({ error: 'catalogue_stamp_unavailable', problem: err.problem, message: err.message });
     return;
   }
   if (err instanceof PublishFailedError) {

@@ -72,6 +72,7 @@ const PROFILE: Profile = {
   engine_config_revision: 0,
   intent_revision: 0,
   stack_version_id: 1,
+  ingest_host: null,
   status: 'RUNNING',
   last_error: null,
   last_error_at: null,

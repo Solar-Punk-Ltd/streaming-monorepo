@@ -3,8 +3,11 @@ import { Route, Routes } from 'react-router';
 import { describe, expect, it } from 'vitest';
 import type { Stream } from '@streaming-monorepo/web2-admin-common';
 
-import { StreamDetailsPage } from '../pages/StreamDetailsPage';
+import { NO_STAGE_NOTE } from '../components/IngestPanel';
+import { shortHex } from '../format';
+import { NEEDS_STAGE_HINT, StreamDetailsPage, UP_TO_DATE_HINT } from '../pages/StreamDetailsPage';
 import {
+  MAIN_STAGE_ID,
   jsonError,
   jsonOk,
   makeIngest,
@@ -44,6 +47,164 @@ function renderDetails() {
 }
 
 describe('StreamDetailsPage', () => {
+  it('names the stage the stream is on, from its OBS details', async () => {
+    mockFetch(routesFor(makeStream({ id: ID, stageId: 'stage-1' })));
+
+    renderDetails();
+
+    const field = (await screen.findByText('Stage')).parentElement as HTMLElement;
+    await waitFor(() => expect(within(field).getByText('Main stage')).toBeInTheDocument());
+  });
+
+  it('says a stream has no stage, and the OBS panel says to pick one', async () => {
+    mockFetch([
+      { path: `/api/streams/${ID}/ingest`, respond: () => jsonOk(makeIngest({ stage: null, srt: null })) },
+      ...routesFor(makeStream({ id: ID, stageId: null })),
+    ]);
+
+    renderDetails();
+
+    const field = (await screen.findByText('Stage')).parentElement as HTMLElement;
+    expect(within(field).getByText('No stage')).toBeInTheDocument();
+    expect(await screen.findByText(NO_STAGE_NOTE)).toBeInTheDocument();
+  });
+
+  it('keeps Publish disabled on a draft with no stage, and says why', async () => {
+    mockFetch(routesFor(makeStream({ id: ID, status: 'draft', stageId: null })));
+
+    renderDetails();
+
+    expect(await screen.findByRole('button', { name: 'Publish' })).toBeDisabled();
+    expect(screen.getByText(NEEDS_STAGE_HINT)).toBeInTheDocument();
+    expect(screen.getByRole('link', { name: 'Edit the stream' })).toHaveAttribute('href', `/edit/${ID}`);
+  });
+
+  it('offers Publish on a draft on a stage', async () => {
+    mockFetch(routesFor(makeStream({ id: ID, status: 'draft', stageId: MAIN_STAGE_ID })));
+
+    renderDetails();
+
+    expect(await screen.findByRole('button', { name: 'Publish' })).toBeEnabled();
+    expect(screen.queryByText(NEEDS_STAGE_HINT)).not.toBeInTheDocument();
+  });
+
+  it.each(['published', 'live', 'vod'] as const)(
+    'keeps Republish disabled on a %s stream the catalogue already carries, and says so',
+    async (status) => {
+      mockFetch(
+        routesFor(
+          makeStream({ id: ID, status, publishedFeedIndex: 2, stageId: MAIN_STAGE_ID, hasUnpublishedEdits: false }),
+        ),
+      );
+
+      renderDetails();
+
+      expect(await screen.findByRole('button', { name: 'Republish' })).toBeDisabled();
+      expect(screen.getByText(UP_TO_DATE_HINT)).toBeInTheDocument();
+    },
+  );
+
+  it('offers Republish once the console holds an edit the entry does not carry', async () => {
+    mockFetch(
+      routesFor(
+        makeStream({
+          id: ID,
+          status: 'published',
+          publishedFeedIndex: 2,
+          stageId: MAIN_STAGE_ID,
+          hasUnpublishedEdits: true,
+        }),
+      ),
+    );
+
+    renderDetails();
+
+    expect(await screen.findByRole('button', { name: 'Republish' })).toBeEnabled();
+    expect(screen.queryByText(UP_TO_DATE_HINT)).not.toBeInTheDocument();
+  });
+
+  it('offers Republish after a failed publish attempt, which a retry has to redo', async () => {
+    // A live report whose catalogue write failed: nothing was edited, and the
+    // entry still says the stream has not started.
+    mockFetch(
+      routesFor(
+        makeStream({
+          id: ID,
+          status: 'live',
+          publishedFeedIndex: 2,
+          stageId: MAIN_STAGE_ID,
+          hasUnpublishedEdits: false,
+          publishError: 'bee unreachable',
+        }),
+      ),
+    );
+
+    renderDetails();
+
+    expect(await screen.findByRole('button', { name: 'Republish' })).toBeEnabled();
+    expect(screen.queryByText(UP_TO_DATE_HINT)).not.toBeInTheDocument();
+  });
+
+  it('says so when a republish had nothing to write', async () => {
+    // An edit that left the entry as it was, a title changed and changed back:
+    // the API writes nothing and the notice clears.
+    const edited = makeStream({
+      id: ID,
+      status: 'published',
+      publishedFeedIndex: 4,
+      stageId: MAIN_STAGE_ID,
+      hasUnpublishedEdits: true,
+    });
+    mockFetch(
+      routesFor(edited, [
+        {
+          method: 'POST',
+          path: `/api/streams/${ID}/publish`,
+          respond: () =>
+            jsonOk({
+              stream: { ...edited, hasUnpublishedEdits: false },
+              feed: { owner: 'abc', topic: 'swarm-stream', topicHex: 'ff', index: 4, entryCount: 1 },
+              written: false,
+            }),
+        },
+      ]),
+    );
+
+    renderDetails();
+
+    fireEvent.click(await screen.findByRole('button', { name: 'Republish' }));
+
+    expect(
+      await screen.findByText('Nothing to write: the catalogue already has this edit, at feed index 4.'),
+    ).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Republish' })).toBeDisabled();
+    expect(screen.getByText(UP_TO_DATE_HINT)).toBeInTheDocument();
+  });
+
+  it('says where a publish that wrote landed', async () => {
+    const draft = makeStream({ id: ID, status: 'draft', stageId: MAIN_STAGE_ID });
+    mockFetch(
+      routesFor(draft, [
+        {
+          method: 'POST',
+          path: `/api/streams/${ID}/publish`,
+          respond: () =>
+            jsonOk({
+              stream: { ...draft, status: 'published', publishedFeedIndex: 5 },
+              feed: { owner: 'abc', topic: 'swarm-stream', topicHex: 'ff', index: 5, entryCount: 1 },
+              written: true,
+            }),
+        },
+      ]),
+    );
+
+    renderDetails();
+
+    fireEvent.click(await screen.findByRole('button', { name: 'Publish' }));
+
+    expect(await screen.findByText('Published at feed index 5.')).toBeInTheDocument();
+  });
+
   it('warns when the API reports edits the catalogue entry does not carry', async () => {
     // The timestamps are equal on purpose: the notice is the API's answer, not
     // a comparison the page makes of its own.
@@ -118,10 +279,11 @@ describe('StreamDetailsPage', () => {
     expect(screen.getByText('Manifest index')).toBeInTheDocument();
     expect(screen.getByText('412')).toBeInTheDocument();
 
-    // A recording can be taken off the feed like any published stream, and
-    // republishing it keeps it a recording.
+    // A recording can be taken off the feed like any published stream. Nobody
+    // edited this one, so the catalogue already carries it and there is
+    // nothing to republish.
     expect(screen.getByRole('button', { name: 'Unpublish' })).toBeEnabled();
-    expect(screen.getByRole('button', { name: 'Republish' })).toBeEnabled();
+    expect(screen.getByRole('button', { name: 'Republish' })).toBeDisabled();
   });
 
   it('leaves the reported fields off a stream nobody has streamed yet', async () => {
@@ -135,6 +297,36 @@ describe('StreamDetailsPage', () => {
     expect(screen.queryByText('Live since')).not.toBeInTheDocument();
     expect(screen.queryByText('Duration')).not.toBeInTheDocument();
     expect(screen.queryByText('Manifest index')).not.toBeInTheDocument();
+  });
+
+  it('tells the catalogue’s owner from the stream’s feed owner once it has published', async () => {
+    // The stream's feeds are signed by its stage's key and the catalogue by
+    // the brand key. The line under the buttons named the catalogue's just
+    // "owner", below a "Feed owner" that is the stage's.
+    const catalogueOwner = '5ef3a1b2c3d4e5f60718293a4b5c6d7e8f901234';
+    const draft = makeStream({ id: ID, status: 'draft', stageId: MAIN_STAGE_ID });
+    mockFetch(
+      routesFor(draft, [
+        {
+          method: 'POST',
+          path: `/api/streams/${ID}/publish`,
+          respond: () =>
+            jsonOk({
+              stream: { ...draft, status: 'published', publishedAt: '2026-09-11T10:00:00.000Z', publishedFeedIndex: 7 },
+              feed: { owner: catalogueOwner, topic: 'swarm-stream', topicHex: 'ff', index: 7, entryCount: 3 },
+            }),
+        },
+      ]),
+    );
+
+    renderDetails();
+    fireEvent.click(await screen.findByRole('button', { name: 'Publish' }));
+
+    expect(await screen.findByText(/^Catalogue feed index 7/)).toHaveTextContent(
+      `Catalogue feed index 7 · 3 entries · catalogue owner ${shortHex(catalogueOwner, 10, 8)} · catalogue topic swarm-stream`,
+    );
+    const feedOwner = screen.getByText('Feed owner').parentElement as HTMLElement;
+    expect(feedOwner).toHaveTextContent(shortHex(draft.owner, 10, 8));
   });
 
   it('offers a refresh while publishing leaves both buttons disabled', async () => {
@@ -361,6 +553,7 @@ function recordingStream(): Stream {
     endedAt: '2026-09-11T11:00:00.000Z',
     durationSeconds: 3540,
     manifestIndex: 412,
+    stageId: MAIN_STAGE_ID,
   });
 }
 
@@ -387,6 +580,7 @@ function unpublishRoute(stream: Stream): MockRoute {
           index: 4,
           entryCount: 0,
         },
+        written: true,
       }),
   };
 }

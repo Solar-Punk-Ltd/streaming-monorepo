@@ -4,6 +4,14 @@
  * int8 type parser in Database.ts). The API contract in web2-admin-common is
  * camelCase; src/api/presenters.ts is the only place that converts.
  */
+import type {
+  AdminTokenKind,
+  CatalogueStampRecord,
+  StageEngine,
+  StageIngest,
+  StageKind,
+  StageRecord,
+} from '@streaming-monorepo/contracts';
 import type { MediaType, StreamStatus } from '@streaming-monorepo/web2-admin-common';
 
 export interface UserRow {
@@ -41,6 +49,8 @@ export interface StreamRow {
   has_thumbnail: boolean;
   thumbnail_mime: string | null;
   thumbnail_ref: string | null;
+  /** The batch the thumbnail was last uploaded under (migration 014), or null when unknown. */
+  thumbnail_batch_id: string | null;
   status: StreamStatus;
   published_at: Date | null;
   published_feed_index: number | null;
@@ -64,6 +74,12 @@ export interface StreamRow {
    * does not carry. Migration 006.
    */
   entry_content_edited_at: Date | null;
+  /**
+   * The stage the stream is broadcast on, or null until one is picked
+   * (migration 011). Changes only while the stream is a draft, and never on
+   * a row that holds a recording and a stage.
+   */
+  stage_id: string | null;
   created_at: Date;
   updated_at: Date;
 }
@@ -91,4 +107,79 @@ export interface StreamRenditionRow {
   manifest_index: number | null;
   duration_seconds: number | null;
   updated_at: Date;
+}
+
+/**
+ * A stage record as `stages.record` holds it (migration 009): all of it but the SRT passphrase and the uploader's
+ * token, which have columns of their own.
+ */
+export type StoredStageRecord = Omit<StageRecord, 'adminToken' | 'ingest'> & {
+  ingest: Omit<StageIngest, 'srtPassphrase'>;
+};
+
+/**
+ * A stage as every list reads it: no passphrase and no token hash, only whether there is a passphrase and which
+ * kind of token the uploader presents.
+ */
+export interface StageRow {
+  stage_id: string;
+  manager_id: string;
+  name: string;
+  kind: StageKind;
+  engine: StageEngine;
+  owner: string;
+  record: StoredStageRecord;
+  has_srt_passphrase: boolean;
+  admin_token_kind: AdminTokenKind | null;
+  observed_at: Date;
+  received_at: Date;
+  /** When the manager saw the deployment gone, by its clock, or null while the stage is active. */
+  retired_observed_at: Date | null;
+  /** When that retirement arrived. */
+  retired_at: Date | null;
+}
+
+/** One stage with the two values no list selects, read only for the stage it is about. */
+export interface StageSecretsRow extends StageRow {
+  srt_passphrase: string | null;
+  admin_token_sha256: string | null;
+}
+
+/**
+ * The one row of `catalogue_stamp` (migration 010), cleared or not. The record and the two values copied out of it
+ * are null only on a row a clear made before any record arrived.
+ */
+export interface CatalogueStampRow {
+  manager_id: string | null;
+  batch_id: string | null;
+  record: CatalogueStampRecord | null;
+  observed_at: Date;
+  received_at: Date;
+  /** When the manager saw the designation gone, by its clock, or null while one is designated. */
+  cleared_observed_at: Date | null;
+  /** When that clear arrived. */
+  cleared_at: Date | null;
+  /**
+   * The batch the catalogue is written with (migration 013), or null until a write pins one. It stays what it is when
+   * the manager designates another batch or clears the designation.
+   */
+  active_batch_id: string | null;
+  /** The last record the manager pushed for that batch: its node's Bee API address and its readings. */
+  active_record: CatalogueStampRecord | null;
+  /** When the admin pinned it, by its own clock. */
+  active_pinned_at: Date | null;
+}
+
+/** The row while a catalogue batch is designated: it has a record, and no clear stands. */
+export interface DesignatedCatalogueStamp extends CatalogueStampRow {
+  manager_id: string;
+  batch_id: string;
+  record: CatalogueStampRecord;
+  cleared_observed_at: null;
+  cleared_at: null;
+}
+
+/** Whether the row says a catalogue batch is designated. */
+export function isDesignated(row: CatalogueStampRow | null): row is DesignatedCatalogueStamp {
+  return row !== null && row.record !== null && row.cleared_observed_at === null;
 }

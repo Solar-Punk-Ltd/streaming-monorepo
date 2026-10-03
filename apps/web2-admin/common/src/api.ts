@@ -85,7 +85,10 @@ export interface Stream {
   id: string;
   /** Stream id inside the stream list feed; a UUID minted by the backend. */
   topic: string;
-  /** Feed owner address (hex, no 0x) derived from the backend's feed key. */
+  /**
+   * Feed owner address (hex, no 0x): the address the stream's stage signs as, or the backend's feed key's for a
+   * stream with no stage. A stream that holds a recording keeps the owner it was recorded under.
+   */
   owner: string;
   title: string;
   description: string;
@@ -99,7 +102,11 @@ export interface Stream {
   thumbnailRef: string | null;
   status: StreamStatus;
   publishedAt: string | null;
-  /** Feed index of the last publication that included this stream. */
+  /**
+   * Catalogue feed index this stream's entry was last written at: by its publish, a republish, a state or rendition
+   * report, or a reconcile that rewrote or added it. A write for another stream copies the entry and leaves this.
+   * Null while the stream is off the catalogue.
+   */
   publishedFeedIndex: number | null;
   publishError: string | null;
   /** Feed index of the final manifest, reported by the uploader when the stream ends. */
@@ -129,6 +136,13 @@ export interface Stream {
    * the console's own responses.
    */
   renditions?: Rendition[];
+  /**
+   * The stage the stream is broadcast on (`GET /api/stages` names it), or
+   * null until one is picked. A draft needs one to be published. It changes
+   * only while the stream is a draft, and a stream that holds a recording
+   * keeps the one it has.
+   */
+  stageId: string | null;
   createdAt: string;
   updatedAt: string;
 }
@@ -140,6 +154,14 @@ export interface StreamInput {
   mediaType: MediaType;
   /** Required: a stream is a promise to viewers about when it starts. */
   scheduledStartTime: string;
+  /**
+   * The stage to broadcast on: one that is not retired and is supported, or
+   * null for none. Absent leaves the stream's stage as it is. A change is
+   * refused with 409 `stage_locked` once the stream is not a draft, or while
+   * it holds a recording and a stage, and a stage that cannot take streams
+   * with 409 `stage_unavailable`.
+   */
+  stageId?: string | null;
 }
 
 /** GET /api/streams */
@@ -211,9 +233,16 @@ export interface PublishResult {
     topic: string;
     /** Hex topic as it appears in bee URLs. */
     topicHex: string;
+    /** The index this call wrote at, or, when it wrote nothing, the one the feed already stands at. */
     index: number;
     entryCount: number;
   };
+  /**
+   * Whether this call wrote the catalogue. False for a republish whose entry the head already carries (apart from
+   * its `timestamp`), which spends no slot, and for an unpublish of a stream that was not on the feed. True on every
+   * real write.
+   */
+  written: boolean;
 }
 
 /**
