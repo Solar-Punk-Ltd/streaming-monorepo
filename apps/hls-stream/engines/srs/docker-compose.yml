@@ -77,11 +77,12 @@ services:
       HLS_AOF_RATIO: ${HLS_AOF_RATIO:-}
       HLS_WINDOW: ${HLS_WINDOW:-15}
       SRT_LATENCY: ${SRT_LATENCY:-2000}
-      # A reconnecting SRT broadcaster replaces a publisher SRS still holds. See engines/README.md. Unset, it is
-      # on only where the uploader refuses a wrong publish key, which the two lines below tell SRS without
-      # handing it the secret or the admin address, only whether each is set (SEC-28). This file's `.env`
-      # carries neither, so here it stays off unless SRT_TAKEOVER says otherwise.
+      # A reconnecting SRT or RTMP broadcaster replaces a publisher SRS still holds. See engines/README.md. Unset,
+      # each is on only where the uploader refuses a wrong publish key, which the two lines below tell SRS
+      # without handing it the secret or the admin address, only whether each is set (SEC-28). This file's
+      # `.env` carries neither, so here both stay off unless SRT_TAKEOVER or RTMP_TAKEOVER says otherwise.
       SRT_TAKEOVER: ${SRT_TAKEOVER:-}
+      RTMP_TAKEOVER: ${RTMP_TAKEOVER:-}
       UPLOADER_PUBLISH_KEYS: ${PUBLISH_KEY_SECRET:+yes}
       UPLOADER_ADMIN_MODE: ${ADMIN_API_URL:+yes}
       # The ABR ladder, read by this entrypoint. Off by default.

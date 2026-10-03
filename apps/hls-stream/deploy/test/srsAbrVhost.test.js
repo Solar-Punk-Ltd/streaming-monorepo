@@ -163,6 +163,20 @@ describe('the generated ABR vhost', () => {
     }
   });
 
+  /**
+   * A rung is republished over loopback RTMP with no publish key, so the hook admits it by its loopback origin
+   * and its base, and cannot tell the transcoder from any other publisher that reaches SRS from loopback. A
+   * takeover is only safe where the hook refuses a wrong key, so on this vhost it would let such a publisher
+   * replace a live rung. Both takeovers belong to the ingest vhost, where the broadcaster presents a key.
+   */
+  it('carries no takeover, while the ingest vhost carries both protocols’ takeovers', () => {
+    const conf = renderLadderConf({ ...VALID, UPLOADER_PUBLISH_KEYS: 'yes' });
+    const takeovers = (block) => [...block.matchAll(/^\s*takeover\s+([^;]+);/gm)].map((m) => m[1].trim());
+
+    assert.deepEqual(takeovers(vhostBlock(conf, LADDER_VHOST)), [], 'a rung republish could take another over');
+    assert.deepEqual(takeovers(vhostBlock(conf, INGEST_VHOST)), ['on', 'on'], 'the SRT and the RTMP takeover');
+  });
+
   it('leaves no ladder vhost behind when no ladder is enabled', () => {
     const conf = renderLadderConf({ SRS_WEBHOOK_TOKEN: 'x'.repeat(64), ABR_ENABLED: 'false', HLS_FRAGMENT: '0.5' });
 

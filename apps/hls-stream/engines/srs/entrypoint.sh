@@ -233,6 +233,26 @@ fi
 require_on_off SRT_TAKEOVER "$SRT_TAKEOVER"
 sed -i "s/SRT_TAKEOVER_PLACEHOLDER/${SRT_TAKEOVER}/" "$CONF"
 
+# The same for a reconnecting RTMP broadcaster. Off, SRS refuses the reconnect as busy until its own
+# publish timeout drops the silent publisher. Decided by the same rule as SRT's, so neither port is
+# the one where a stranger can take a broadcast over. It is the `takeover` of the ingest vhost's
+# `publish` section and nowhere else: the ladder's rungs are RTMP publishers that carry no key, and
+# the ABR vhost must never let one replace another.
+# --- rtmp takeover, replayed whole by deploy/test/srsTuning.test.js ---
+RTMP_TAKEOVER="${RTMP_TAKEOVER:-}"
+if [ -z "$RTMP_TAKEOVER" ]; then
+  if [ -n "${UPLOADER_PUBLISH_KEYS:-}${UPLOADER_ADMIN_MODE:-}" ]; then
+    RTMP_TAKEOVER=on
+  else
+    RTMP_TAKEOVER=off
+  fi
+elif [ "$RTMP_TAKEOVER" = on ] && [ -z "${UPLOADER_PUBLISH_KEYS:-}${UPLOADER_ADMIN_MODE:-}" ]; then
+  echo "RTMP_TAKEOVER is on while the uploader checks no publish key, so anyone who reaches the RTMP port can replace a live broadcaster." >&2
+fi
+# --- end rtmp takeover ---
+require_on_off RTMP_TAKEOVER "$RTMP_TAKEOVER"
+sed -i "s/RTMP_TAKEOVER_PLACEHOLDER/${RTMP_TAKEOVER}/" "$CONF"
+
 # The uploader rejects every webhook without this, so an empty value is a misconfiguration worth
 # failing on here rather than at the first publish. SRS cannot sign its callbacks or send a header,
 # so the credential travels in the hook URL.

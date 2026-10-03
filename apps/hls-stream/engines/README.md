@@ -83,28 +83,52 @@ hold and a clean drop, every reconnect was accepted at every gap from 0.3 to 70 
   segment.
 
 **The takeover of a silent publisher.** When a broadcaster's network dies without closing the connection, SRS keeps
-the old SRT publisher until it notices the dead peer, about 7 seconds, and stock SRS refuses every reconnect until
-then. An encoder that gives up after one refusal ends the broadcast there. With the takeover on, a new publisher that
-the `on_publish` hook accepted replaces the old one: SRS disconnects the old publisher, waits up to 5 seconds for it to
-be gone, and accepts the new one, or refuses it as before if the old one does not go. The fork leaves it off by
-default, because with no `on_publish` hook every publisher is accepted and could replace a live one. The stack turns it
-on by itself wherever the uploader refuses a wrong publish key, which is when `PUBLISH_KEY_SECRET` or admin mode
-(`ADMIN_API_URL`) is configured, and leaves it off otherwise, because the uploader then accepts any publisher. Compose
-tells SRS only whether each of the two is set, never its value. `SRT_TAKEOVER=on` or `off` decides it outright. The new
-publisher has to come over SRT, but the one it replaces can be an RTMP publisher.
+the old publisher until it notices. Over SRT that is the dead peer, about 7 seconds. Over RTMP it is SRS's publish
+timeout, `normal_timeout` in a vhost's `publish` section, which the stack does not set. Stock SRS refuses every
+reconnect until then, and an encoder that gives up after one refusal ends the broadcast there. With the takeover on, a
+new publisher that the `on_publish` hook accepted replaces the old one: SRS disconnects the old publisher, waits up to
+5 seconds for it to be gone, and accepts the new one, or refuses it as before if the old one does not go.
 
-Measured on the same rig with the 12 second hold, a publisher killed without closing its connection and a new one
-with the same key 1, 3 or 5 seconds later: all 30 reconnects were accepted, the takeover took 11 to 45 milliseconds,
-the four encoders were kept, and every rung had a new segment 2.2 to 3.6 seconds after the new publish. A publisher
-with a wrong key was refused in 10 tries of 10 and never disturbed the live one. With `SRT_TAKEOVER=off` the
-reconnect is refused as on stock SRS.
+Each protocol has its own setting, kept where SRS keeps that protocol's publisher settings, and the setting that
+applies is the one for the protocol the **new** publisher comes over. The one it replaces can come over either, so a
+broadcaster can switch from SRT to RTMP or back in the middle of a broadcast, and the switch is a takeover like any
+other.
+
+| New publisher | SRS directive, in the ingest vhost  | Stack knob      | In the fork's image from |
+| ------------- | ----------------------------------- | --------------- | ------------------------ |
+| SRT           | `takeover` in the `srt` section     | `SRT_TAKEOVER`  | `6.0-r2-swarm.2`         |
+| RTMP          | `takeover` in the `publish` section | `RTMP_TAKEOVER` | `6.0-r2-swarm.3`         |
+
+The fork leaves both off by default, because with no `on_publish` hook every publisher is accepted and could replace a
+live one. The stack turns both on by itself wherever the uploader refuses a wrong publish key, which is when
+`PUBLISH_KEY_SECRET` or admin mode (`ADMIN_API_URL`) is configured, and leaves them off otherwise, because the uploader
+then accepts any publisher. Compose tells SRS only whether each of the two is set, never its value. `SRT_TAKEOVER` and
+`RTMP_TAKEOVER`, each `on` or `off`, decide one outright. The entrypoint writes both into the ingest vhost and nowhere
+else. The ladder's rungs are RTMP publishers on their own vhost that carry no key, so the hook admits a rung by its
+loopback origin, and a takeover there would let any publisher that reaches SRS from loopback replace a live rung. Set
+the two through these knobs and never through SRS's own `SRS_VHOST_SRT_TAKEOVER` or `SRS_VHOST_PUBLISH_TAKEOVER`,
+because SRS applies such an override to every vhost, the ladder's included.
+
+Measured for SRT on the same rig with the 12 second hold, a publisher killed without closing its connection and a new
+one with the same key 1, 3 or 5 seconds later: all 30 reconnects were accepted, the takeover took 11 to 45
+milliseconds, the four encoders were kept, and every rung had a new segment 2.2 to 3.6 seconds after the new publish.
+A publisher with a wrong key was refused in 10 tries of 10 and never disturbed the live one. With `SRT_TAKEOVER=off`
+the reconnect is refused as on stock SRS.
 
 - **The uploader** sees `on_publish` for the new connection before `on_unpublish` for the old one, and ignores an
-  `on_unpublish` from a connection that is no longer the stream's publisher.
+  `on_unpublish` from a connection that is no longer the stream's publisher. Both protocols send the same hooks, so
+  it handles an RTMP takeover and a switch between protocols the same way.
 - **SRS logs** one serve error line for each publisher it takes a stream from, `code=6003(SrtInterrupt)` for an SRT
   publisher and `code=1070(StThreadInterrupt)` for an RTMP one. It is the old connection being closed, not a fault.
-- **Two encoders publishing with the same key** take the stream from each other in turn, and the picture alternates
-  between them. Closing one of them ends it.
+- **Two encoders publishing with the same key** take the stream from each other in turn, over either protocol, and
+  the picture alternates between them. Closing one of them ends it.
+- **A stream key read off the network.** RTMP is not encrypted. Its stream key crosses the network readable, and
+  RTMP has no passphrase as SRT has. Anyone who reads a key off the network can publish to that stream, and while a
+  takeover is on they can also take a live broadcast over. SRT with a passphrase stays the ingest to recommend on a
+  network the broadcaster does not trust: its picture is encrypted, and a publisher without the passphrase is
+  refused. SRT does not hide the key itself, though. It travels in the SRT stream id, which SRT sends before
+  encryption starts, so while the RTMP port is open a key read off an SRT broadcaster's connection works there too,
+  where no passphrase is asked.
 
 **How the image is built.** A workflow in the fork builds SRS's own root `Dockerfile` for `linux/amd64`, with the
 configure flags of upstream's release (`--sanitizer=off --gb28181=on`), and pushes it to
@@ -262,7 +286,7 @@ down on its next start, so check it first. SRS has a test mode that names the of
 checks values as well as syntax, so a file that still carries the tokens is refused at the first of
 them, which on a copy of the template is the bare `TRANSCODE_PLACEHOLDER` line, and a mistake
 of yours further down is never reached. Fill the tokens with a stand-in and drop the two bare lines
-first. Check the copy with the fork's image, because stock SRS refuses the template's `takeover` line:
+first. Check the copy with the fork's image, because stock SRS refuses the template's `takeover` lines:
 
 ```bash
 sed -E '/^(TRANSCODE|ABR_VHOST)_PLACEHOLDER$/d; s/[A-Z_]+_PLACEHOLDER/1/g' my-srs.conf > my-srs.check.conf

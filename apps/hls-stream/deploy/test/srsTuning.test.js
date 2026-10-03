@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import { execFileSync } from 'node:child_process';
+import { execFileSync, spawnSync } from 'node:child_process';
 import { mkdtempSync, readFileSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join, resolve } from 'node:path';
@@ -48,9 +48,21 @@ function shippedBlock(pattern, what) {
 
 const REQUIRE_NUMBER = /^require_number\(\) \{\n[\s\S]*?\n\}$/m;
 
-/** Where the takeover's default is decided, which a replay of the `sed -i` lines alone would skip. */
+/** Where each takeover's default is decided, which a replay of the `sed -i` lines alone would skip. */
 const SRT_TAKEOVER_DEFAULT =
   /^# --- srt takeover, replayed whole by deploy\/test\/srsTuning\.test\.js ---\n([\s\S]*?)^# --- end srt takeover ---$/m;
+const RTMP_TAKEOVER_DEFAULT =
+  /^# --- rtmp takeover, replayed whole by deploy\/test\/srsTuning\.test\.js ---\n([\s\S]*?)^# --- end rtmp takeover ---$/m;
+
+/**
+ * Both takeovers, each with the knob that decides it and the section of the ingest vhost it lands in. SRT's is the
+ * `takeover` of the `srt` section. RTMP's is the `takeover` of the `publish` section, which is where SRS keeps the
+ * RTMP publisher's own settings.
+ */
+const TAKEOVERS = [
+  { protocol: 'SRT', knob: 'SRT_TAKEOVER', section: 'srt', defaultBlock: SRT_TAKEOVER_DEFAULT },
+  { protocol: 'RTMP', knob: 'RTMP_TAKEOVER', section: 'publish', defaultBlock: RTMP_TAKEOVER_DEFAULT },
+];
 
 /**
  * Where the ceiling is turned into the ratio SRS takes.
@@ -108,7 +120,7 @@ function renderSrsConf(env) {
     shippedBlock(REQUIRE_NUMBER, 'require_number'),
     shippedSecretChecks(2),
     shippedBlock(HLS_TUNING, 'the hls tuning block'),
-    shippedBlock(SRT_TAKEOVER_DEFAULT, 'the srt takeover block'),
+    ...TAKEOVERS.map(({ protocol, defaultBlock }) => shippedBlock(defaultBlock, `the ${protocol} takeover block`)),
     ...localSeds,
   ].join('\n');
 
@@ -325,40 +337,92 @@ describe('the SRS latency knobs', () => {
 });
 
 /**
- * Whether a reconnecting SRT broadcaster replaces a publisher SRS still holds, such as one whose network
- * died without closing. Our SRS fork leaves it off by default, because it is only safe where the
- * on_publish hook refuses a wrong key. The uploader's hook does, so this stack turns it on.
+ * Whether a reconnecting broadcaster replaces a publisher SRS still holds, such as one whose network died
+ * without closing. Our SRS fork leaves each protocol's takeover off by default, because it is only safe
+ * where the on_publish hook refuses a wrong key. The uploader's hook does, so this stack turns both on,
+ * and decides them by the same rule so neither protocol is the one a stranger can use.
  */
-describe('the SRT takeover', () => {
-  const REQUIRE_ON_OFF = /^require_on_off\(\) \{\n[\s\S]*?\n\}$/m;
-  const ingestSrtBlock = (conf) => conf.match(/vhost __defaultVhost__ \{\s*srt \{([^}]*)\}/)?.[1] ?? '';
-  const takeover = (env) => ingestSrtBlock(renderSrsConf({ ...VALID, ...env })).match(/^\s*takeover\s+(\S+);/m)?.[1];
+const REQUIRE_ON_OFF = /^require_on_off\(\) \{\n[\s\S]*?\n\}$/m;
 
-  it('is off where the uploader checks no publish key', () => {
-    assert.equal(takeover({}), 'off');
+/** One section of the ingest vhost, which is the only vhost a render without the ladder holds. */
+function ingestSection(conf, name) {
+  const ingest = conf.slice(conf.indexOf('vhost __defaultVhost__ {'));
+  return ingest.match(new RegExp(`^\\s*${name} \\{([^}]*)\\}`, 'm'))?.[1] ?? '';
+}
+
+for (const { protocol, knob, section, defaultBlock } of TAKEOVERS) {
+  describe(`the ${protocol} takeover`, () => {
+    const takeover = (env) =>
+      ingestSection(renderSrsConf({ ...VALID, ...env }), section).match(/^\s*takeover\s+(\S+);/m)?.[1];
+
+    it('is off where the uploader checks no publish key', () => {
+      assert.equal(takeover({}), 'off');
+    });
+
+    it('is on where the uploader checks publish keys', () => {
+      assert.equal(takeover({ UPLOADER_PUBLISH_KEYS: 'yes' }), 'on');
+    });
+
+    it('is on in admin mode, where every publish is checked against its declaration', () => {
+      assert.equal(takeover({ UPLOADER_ADMIN_MODE: 'yes' }), 'on');
+    });
+
+    it('follows a deployment that decides it either way', () => {
+      assert.equal(takeover({ [knob]: 'off', UPLOADER_PUBLISH_KEYS: 'yes' }), 'off');
+      assert.equal(takeover({ [knob]: 'on' }), 'on');
+    });
+
+    it('is checked by the entrypoint before it reaches the config', () => {
+      assert.match(readFileSync(ENTRYPOINT, 'utf8'), new RegExp(`^require_on_off ${knob} "\\$${knob}"$`, 'm'));
+    });
+
+    /** What the shipped block that decides the default prints on standard error, run with these values alone. */
+    const warningFrom = (env) =>
+      spawnSync('bash', ['-c', shippedBlock(defaultBlock, `the ${protocol} takeover block`)], {
+        env: { PATH: process.env.PATH, ...env },
+        encoding: 'utf8',
+      }).stderr;
+
+    it('warns when it is turned on while the uploader checks no publish key', () => {
+      assert.match(
+        warningFrom({ [knob]: 'on' }),
+        new RegExp(
+          `^${knob} is on while the uploader checks no publish key, so anyone who reaches the ${protocol} port`,
+        ),
+      );
+    });
+
+    it('says nothing when it is turned on where the uploader checks publish keys', () => {
+      assert.equal(warningFrom({ [knob]: 'on', UPLOADER_PUBLISH_KEYS: 'yes' }), '');
+      assert.equal(warningFrom({ [knob]: 'on', UPLOADER_ADMIN_MODE: 'yes' }), '');
+    });
+
+    const runOnOff = (value) =>
+      execFileSync(
+        'bash',
+        ['-c', `${shippedBlock(REQUIRE_ON_OFF, 'require_on_off')}\nrequire_on_off ${knob} "$${knob}"`],
+        { env: { PATH: process.env.PATH, [knob]: value }, stdio: 'pipe' },
+      );
+
+    for (const bad of ['yes', 'true', 'On', 'on;', 'off/x']) {
+      it(`refuses an ${knob} of ${JSON.stringify(bad)}`, () => {
+        assert.throws(() => runOnOff(bad), /must be on or off/);
+      });
+    }
+
+    for (const good of ['on', 'off']) {
+      it(`lets ${good} through`, () => {
+        assert.doesNotThrow(() => runOnOff(good));
+      });
+    }
   });
+}
 
-  it('is on where the uploader checks publish keys', () => {
-    assert.equal(takeover({ UPLOADER_PUBLISH_KEYS: 'yes' }), 'on');
-  });
-
-  it('is on in admin mode, where every publish is checked against its declaration', () => {
-    assert.equal(takeover({ UPLOADER_ADMIN_MODE: 'yes' }), 'on');
-  });
-
-  it('follows a deployment that decides it either way', () => {
-    assert.equal(takeover({ SRT_TAKEOVER: 'off', UPLOADER_PUBLISH_KEYS: 'yes' }), 'off');
-    assert.equal(takeover({ SRT_TAKEOVER: 'on' }), 'on');
-  });
-
-  it('is checked by the entrypoint before it reaches the config', () => {
-    assert.match(readFileSync(ENTRYPOINT, 'utf8'), /^require_on_off SRT_TAKEOVER "\$SRT_TAKEOVER"$/m);
-  });
-
-  /**
-   * SEC-28 keeps the publish key secret out of the SRS container, so what reaches SRS is only whether a key or admin
-   * mode is configured, which compose works out from the variables it already holds.
-   */
+/**
+ * SEC-28 keeps the publish key secret out of the SRS container, so what reaches SRS is only whether a key or admin
+ * mode is configured, which compose works out from the variables it already holds. Both takeovers default from it.
+ */
+describe('what the SRS container learns about the publish key check', () => {
   it('learns whether the uploader checks keys without ever being handed the secret or the admin address', () => {
     const deploy = readFileSync(COMPOSE, 'utf8');
     const services = [
@@ -371,25 +435,6 @@ describe('the SRT takeover', () => {
       assert.doesNotMatch(srs, /^\s*(PUBLISH_KEY_SECRET|ADMIN_API_URL|ADMIN_API_TOKEN):/m, name);
     }
   });
-
-  const runOnOff = (value) =>
-    execFileSync(
-      'bash',
-      ['-c', `${shippedBlock(REQUIRE_ON_OFF, 'require_on_off')}\nrequire_on_off SRT_TAKEOVER "$SRT_TAKEOVER"`],
-      { env: { PATH: process.env.PATH, SRT_TAKEOVER: value }, stdio: 'pipe' },
-    );
-
-  for (const bad of ['yes', 'true', 'On', 'on;', 'off/x']) {
-    it(`refuses an SRT_TAKEOVER of ${JSON.stringify(bad)}`, () => {
-      assert.throws(() => runOnOff(bad), /must be on or off/);
-    });
-  }
-
-  for (const good of ['on', 'off']) {
-    it(`lets ${good} through`, () => {
-      assert.doesNotThrow(() => runOnOff(good));
-    });
-  }
 });
 
 /**
@@ -474,7 +519,7 @@ describe('both SRS compose files carry the same tuning knobs', () => {
    */
   function knobsTheEntrypointReads() {
     const entrypoint = readFileSync(ENTRYPOINT, 'utf8');
-    return [...entrypoint.matchAll(/\$\{(HLS_[A-Z_]+|SRT_[A-Z_]+|ABR_[A-Z_]+):-/g)].map((m) => m[1]);
+    return [...entrypoint.matchAll(/\$\{(HLS_[A-Z_]+|SRT_[A-Z_]+|RTMP_[A-Z_]+|ABR_[A-Z_]+):-/g)].map((m) => m[1]);
   }
 
   for (const composePath of [COMPOSE, STANDALONE]) {

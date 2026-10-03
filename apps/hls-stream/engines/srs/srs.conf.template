@@ -36,6 +36,11 @@ vhost __defaultVhost__ {
         takeover    SRT_TAKEOVER_PLACEHOLDER;
     }
 
+    # The RTMP publisher's settings, where the fork keeps RTMP's takeover. See entrypoint.sh.
+    publish {
+        takeover    RTMP_TAKEOVER_PLACEHOLDER;
+    }
+
     hls {
         enabled         INGEST_HLS_PLACEHOLDER;
         hls_path        ./objs/nginx/html;
