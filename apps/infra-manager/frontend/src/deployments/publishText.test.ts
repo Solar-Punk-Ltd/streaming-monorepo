@@ -19,13 +19,13 @@ import {
 } from './publishText';
 
 describe('the Publish card beside RTMP', () => {
-  it('warns that RTMP is not encrypted, what a key read off the network allows, and to use SRT', () => {
+  it('warns that RTMP is not encrypted, what a key read off the network allows, and that SRT does not hide it', () => {
     assert.match(RTMP_UNENCRYPTED_WARNING, /^RTMP is not encrypted\./);
     assert.match(RTMP_UNENCRYPTED_WARNING, /anyone who reads it there can publish to this stream with it/);
     assert.match(RTMP_UNENCRYPTED_WARNING, /they can also replace your live broadcast with theirs/);
     assert.match(
       RTMP_UNENCRYPTED_WARNING,
-      /On a network you do not trust, broadcast over SRT with a passphrase instead\.$/,
+      /while this deployment takes RTMP, a key read off an SRT connection publishes over RTMP too\.$/,
     );
   });
 

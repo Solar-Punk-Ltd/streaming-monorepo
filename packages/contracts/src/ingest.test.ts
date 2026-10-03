@@ -58,11 +58,13 @@ describe('what a console says beside RTMP', () => {
   it("gives the web2 admin's OBS panel and the manager's Publish card the same warning, each naming its own owner", () => {
     assert.equal(
       rtmpUnencryptedWarning('stage'),
-      'RTMP is not encrypted. Your stream key crosses the network as readable text, and anyone who reads it there can publish to this stream with it. On a stage that lets a reconnecting encoder replace one whose connection dropped, they can also replace your live broadcast with theirs. On a network you do not trust, broadcast over SRT with a passphrase instead.',
+      'RTMP is not encrypted. Your stream key crosses the network as readable text, and anyone who reads it there can publish to this stream with it. On a stage that lets a reconnecting encoder replace one whose connection dropped, they can also replace your live broadcast with theirs. SRT does not hide the key either. Its passphrase keeps your picture private, but while this stage takes RTMP, a key read off an SRT connection publishes over RTMP too.',
     );
     assert.equal(
       rtmpUnencryptedWarning('deployment'),
-      rtmpUnencryptedWarning('stage').replace('On a stage that', 'On a deployment that'),
+      rtmpUnencryptedWarning('stage')
+        .replaceAll('a stage that', 'a deployment that')
+        .replaceAll('this stage', 'this deployment'),
     );
   });
 

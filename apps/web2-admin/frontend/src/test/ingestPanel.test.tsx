@@ -94,7 +94,7 @@ describe('IngestPanel', () => {
     expect(screen.queryByText(RTMP_UNENCRYPTED_NOTE)).not.toBeInTheDocument();
   });
 
-  it('warns beside RTMP that it is not encrypted, what a key read off the network allows, and to use SRT', () => {
+  it('warns beside RTMP that it is not encrypted, what a key read off the network allows, and that SRT does not hide it', () => {
     mockFetch([]);
 
     renderPanel(makeIngest({ rtmp: RTMP_OFFERED }));
@@ -103,7 +103,9 @@ describe('IngestPanel', () => {
     expect(warning).toHaveTextContent(/RTMP is not encrypted/);
     expect(warning).toHaveTextContent(/can publish to this stream/);
     expect(warning).toHaveTextContent(/replace your live broadcast/);
-    expect(warning).toHaveTextContent(/On a network you do not trust, broadcast over SRT with a passphrase/);
+    expect(warning).toHaveTextContent(
+      /while this stage takes RTMP, a key read off an SRT connection publishes over RTMP too/,
+    );
     expect(section('SRT').queryByText(RTMP_UNENCRYPTED_NOTE)).not.toBeInTheDocument();
   });
 

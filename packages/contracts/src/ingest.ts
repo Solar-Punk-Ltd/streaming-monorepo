@@ -69,14 +69,17 @@ export type IngestOwner = 'stage' | 'deployment';
 /**
  * What a console says beside RTMP details, so every console tells a broadcaster the same thing. RTMP has no
  * passphrase, so the stream key crosses the network as readable text, and where a reconnecting encoder may take a
- * stream over, whoever reads the key off the network can take a live broadcast over too.
+ * stream over, whoever reads the key off the network can take a live broadcast over too. SRT is no way round that
+ * while RTMP is open: SRT sends its stream id, key included, before encryption starts, so its passphrase keeps the
+ * picture private but not the key, and a key read off an SRT connection publishes over RTMP.
  */
 export function rtmpUnencryptedWarning(owner: IngestOwner): string {
   return (
     'RTMP is not encrypted. Your stream key crosses the network as readable text, and anyone who reads it there can ' +
     `publish to this stream with it. On a ${owner} that lets a reconnecting encoder replace one whose connection ` +
-    'dropped, they can also replace your live broadcast with theirs. On a network you do not trust, broadcast over ' +
-    'SRT with a passphrase instead.'
+    'dropped, they can also replace your live broadcast with theirs. SRT does not hide the key either. Its ' +
+    `passphrase keeps your picture private, but while this ${owner} takes RTMP, a key read off an SRT connection ` +
+    'publishes over RTMP too.'
   );
 }
 
