@@ -23,7 +23,13 @@ import { createSrsEngine } from '../src/engines/srs.js';
 import { AbrLadder } from '../src/libs/AbrLadder.js';
 import { AdminApiClient, AdminStreamDraft } from '../src/libs/AdminApiClient.js';
 import { StreamOrchestrator } from '../src/libs/StreamOrchestrator.js';
-import { AdminSession, MEDIA_TYPE_AUDIO, MEDIA_TYPE_VIDEO } from '../src/types.js';
+import {
+  AdminSession,
+  MEDIA_TYPE_AUDIO,
+  MEDIA_TYPE_VIDEO,
+  STREAM_LIFECYCLE_LIVE,
+  STREAM_LIFECYCLE_UNKNOWN,
+} from '../src/types.js';
 import { derivePublishKey } from '../src/utils/publishKey.js';
 
 import { makeFakeOrchestrator, makeTestOrchestrator } from './helpers/fakes.js';
@@ -31,8 +37,17 @@ import { listenOnLoopback } from './helpers/loopbackServer.js';
 import { waitFor } from './helpers/waiting.js';
 
 const APP = 'video';
-const STREAM = 'demo';
+/**
+ * The topic the admin minted for this declaration, spelled the way its uuid column prints one: lower
+ * case. It is the `<stream>` of the ingest id too, because the admin files a declaration under
+ * `<mediaType>/<topic>`.
+ */
+const DECLARED_TOPIC = '5f0c7b9e-3a1d-4e8f-9b2c-6d4a1e7f0c3b';
+const STREAM = DECLARED_TOPIC;
 const STREAM_ID = `${APP}/${STREAM}`;
+/** The same topic in other letter cases, which the admin's uuid column resolves to the same declaration. */
+const TOPIC_IN_CAPITALS = DECLARED_TOPIC.toUpperCase();
+const TOPIC_WITH_ONE_CAPITAL = DECLARED_TOPIC.replace(/[a-f]/, (letter) => letter.toUpperCase());
 const BROADCASTER = '203.0.113.10';
 const STRANGER = '198.51.100.7';
 
@@ -62,7 +77,7 @@ const SOMEBODY_ELSES_OWNER = 'ffffffffffffffffffffffffffffffffffffffff';
 
 const DRAFT: AdminStreamDraft = {
   id: 'str_01HZY',
-  topic: 'declared-topic-0001',
+  topic: DECLARED_TOPIC,
   owner: FEED_OWNER,
   mediaType: MEDIA_TYPE_VIDEO,
   title: 'A declared broadcast',
@@ -128,6 +143,8 @@ interface EngineHarness {
   announce: (address: string, query: string) => Promise<boolean>;
   /** One opening for an `app` other than the default, so a media-type disagreement can be sent. */
   announceApp: (app: string, query: string) => Promise<boolean>;
+  /** One opening for a `stream` other than the default, so the declared topic can be spelled another way. */
+  announceStream: (stream: string, query: string) => Promise<boolean>;
   orchestrator: StreamOrchestrator;
 }
 
@@ -137,7 +154,14 @@ type Drive = (harness: EngineHarness) => Promise<void>;
 async function withEngine(
   mount: (adminApi: AdminApiClient) => {
     engine: ReturnType<typeof createSrsEngine>;
-    announce: (baseUrl: string, prefix: string, app: string, address: string, query: string) => Promise<boolean>;
+    announce: (
+      baseUrl: string,
+      prefix: string,
+      app: string,
+      stream: string,
+      address: string,
+      query: string,
+    ) => Promise<boolean>;
   },
   lookup: LookupAnswer,
   drive: Drive,
@@ -160,8 +184,9 @@ async function withEngine(
 
   try {
     await drive({
-      announce: (address, query) => announce(baseUrl, engine.prefix, APP, address, query),
-      announceApp: (ingestApp, query) => announce(baseUrl, engine.prefix, ingestApp, BROADCASTER, query),
+      announce: (address, query) => announce(baseUrl, engine.prefix, APP, STREAM, address, query),
+      announceApp: (ingestApp, query) => announce(baseUrl, engine.prefix, ingestApp, STREAM, BROADCASTER, query),
+      announceStream: (ingestStream, query) => announce(baseUrl, engine.prefix, APP, ingestStream, BROADCASTER, query),
       orchestrator,
     });
   } finally {
@@ -186,14 +211,14 @@ function withSrs(lookup: LookupAnswer, drive: Drive): Promise<void> {
         adminApi,
         signerOwner: DEPLOYMENT_SIGNS_AS,
       }),
-      announce: async (baseUrl, prefix, ingestApp, address, query) => {
+      announce: async (baseUrl, prefix, ingestApp, ingestStream, address, query) => {
         const response = await fetch(`${baseUrl}${prefix}/streams?token=${SRS_TOKEN}`, {
           method: 'POST',
           headers: { 'content-type': 'application/json' },
           body: JSON.stringify({
             action: 'on_publish',
             app: ingestApp,
-            stream: STREAM,
+            stream: ingestStream,
             ip: address,
             ...(query === '' ? {} : { param: query }),
           }),
@@ -215,12 +240,12 @@ function withOme(lookup: LookupAnswer, drive: Drive): Promise<void> {
         adminApi,
         signerOwner: DEPLOYMENT_SIGNS_AS,
       }),
-      announce: async (baseUrl, prefix, ingestApp, address, query) => {
+      announce: async (baseUrl, prefix, ingestApp, ingestStream, address, query) => {
         const reply = await postAdmission(
           baseUrl,
           prefix,
           address,
-          `srt://ingest.example:9999/${ingestApp}/${STREAM}${query}`,
+          `srt://ingest.example:9999/${ingestApp}/${ingestStream}${query}`,
         );
         return reply.allowed;
       },
@@ -353,6 +378,55 @@ for (const [name, withThisEngine] of ENGINES) {
           0,
           'two keys of one deployment disagreeing is nothing the caller did',
         );
+      });
+    });
+
+    /**
+     * ⛔ The admin keeps a topic in a uuid column, so its lookup finds this declaration from the topic
+     * in any letter case, and the fake admin here answers every spelling with it for that reason. The
+     * engine takes another spelling for another stream, outside its busy check and the takeover rules,
+     * so only the exact id the admin gives may publish. Not counted as an authentication rejection,
+     * because the caller proved the key for the declaration it named.
+     */
+    it('refuses the declared topic in capitals or with one capital, and admits the exact id', async () => {
+      await withThisEngine(answersDraft(), async ({ announceStream, orchestrator }) => {
+        for (const spelling of [TOPIC_IN_CAPITALS, TOPIC_WITH_ONE_CAPITAL]) {
+          assert.equal(
+            await announceStream(spelling, `?key=${DECLARED_KEY}`),
+            false,
+            `${APP}/${spelling} was admitted`,
+          );
+        }
+        assert.equal(orchestrator.getActiveStreamCount(), 0);
+        assert.equal(
+          orchestrator.getMetricsSnapshot().authRejectionsTotal,
+          0,
+          'the caller proved the key for the declaration it named, so this is a misspelled id and not an unauthorised caller',
+        );
+
+        assert.equal(
+          await announceStream(DECLARED_TOPIC, `?key=${DECLARED_KEY}`),
+          true,
+          'the exact id still publishes',
+        );
+        await waitFor(() => orchestrator.getActiveStreamCount() === 1, SETTLE_CEILING_MS);
+      });
+    });
+
+    /**
+     * ⛔⛔ The defect itself. With the declared id live, the same topic in capitals with the same key was
+     * a second session on the same declaration: both wrote the same feeds, and the one that ended first
+     * reported a recording shorter than the one the feeds held.
+     */
+    it('starts no second session for another spelling of a live stream', async () => {
+      await withThisEngine(answersDraft(), async ({ announceStream, orchestrator }) => {
+        assert.equal(await announceStream(DECLARED_TOPIC, `?key=${DECLARED_KEY}`), true);
+        await waitFor(() => orchestrator.getActiveStreamCount() === 1, SETTLE_CEILING_MS);
+
+        assert.equal(await announceStream(TOPIC_IN_CAPITALS, `?key=${DECLARED_KEY}`), false);
+        assert.equal(orchestrator.getActiveStreamCount(), 1, 'one declared stream, one session');
+        assert.equal(orchestrator.getStreamStatus(`${APP}/${TOPIC_IN_CAPITALS}`).state, STREAM_LIFECYCLE_UNKNOWN);
+        assert.equal(orchestrator.getStreamStatus(STREAM_ID).state, STREAM_LIFECYCLE_LIVE, 'the live one carries on');
       });
     });
 
@@ -609,6 +683,28 @@ describe('the admin publish gate with the ABR ladder on', () => {
       assert.equal(await post(rung()), 1, 'a rung is admitted only because its base authenticated');
       assert.deepEqual(calls.starts, []);
       assert.equal(calls.authRejections, 2);
+    });
+  });
+
+  /**
+   * ⛔ The source refuses another spelling the way a single stream does, and the rungs follow their
+   * source. A rung presents nothing of its own and is admitted only because its base authenticated, so
+   * a source refused for its spelling leaves every rung named after that spelling nothing to publish
+   * under.
+   */
+  it('refuses another spelling of a live source, and every rung named after it', async () => {
+    await withSrsLadder(answersDraft(), async ({ calls, post }) => {
+      const key = `?key=${DECLARED_KEY}`;
+      assert.equal(await post(source({ param: key })), 0);
+      assert.equal(await post(rung()), 0);
+
+      assert.equal(await post(source({ stream: TOPIC_IN_CAPITALS, param: key })), 1, 'the source in capitals');
+      assert.equal(await post(rung({ stream: `${TOPIC_IN_CAPITALS}_720p` })), 1, 'and a rung of it');
+      assert.deepEqual(
+        calls.starts.map((start) => start.streamId),
+        [RUNG_ID],
+        'one declared ladder, so one session for its rung',
+      );
     });
   });
 

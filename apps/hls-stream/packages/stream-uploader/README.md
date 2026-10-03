@@ -896,8 +896,10 @@ mints the feed topic and the publish key; this service stops deciding either:
 
 A publish is refused when the ingest `app/stream` is not declared, when the admin cannot be reached,
 when the presented `key=` is not the declaration's, when the declaration is owned by a feed key this
-service does not sign with, or when the ingest `app` and the declared media type disagree. Each
-refusal says which it was in the log.
+service does not sign with, when the ingest `app` and the declared media type disagree, or when the
+ingest id is not spelled exactly as the declaration's own `<app>/<topic>`. The admin finds a topic in
+any letter case, so the topic in capitals resolves to the same declaration, and admitting it would run
+a second session on the same feeds. Each refusal says which it was in the log.
 
 This service has to sign as the owner the admin knows for its stage. Every stage signs with a key of
 its own, `STREAM_KEY`, the manager tells the admin each stage's owner, and the admin's catalog entry
