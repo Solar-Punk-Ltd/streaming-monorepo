@@ -350,11 +350,14 @@ Service coverage, no faults:
 
 Ingest over RTMP. Every other suite publishes over SRT unless the run sets `E2E_INGEST_PROTOCOL=rtmp`, so these are
 what sends RTMP through a real SRS in every full sitting. The publisher dials the server and stream key the admin hands
-a broadcaster for OBS. `pnpm e2e:rtmp` runs the gates and these alone:
+a broadcaster for OBS. None of these opens a browser on the broadcast: `ingest/rtmp-publish` proves the gateway serves
+the newest segment it uploaded. Playback in a browser over RTMP comes from a browser run (`E2E_EXPECT_BROWSER=true`)
+that also sets `E2E_INGEST_PROTOCOL=rtmp`, where the viewer suites publish over RTMP like every suite that names no
+protocol. `pnpm e2e:rtmp` runs the gates and these alone:
 
 | file                      | proves                                                                                                                                                                                                                          |
 | ------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `ingest/rtmp-publish`     | an RTMP broadcast uploads gapless with every manifest advancing, publishes playlists that hold to the manifest contract, and the gateway a viewer reads through serves the segments it uploaded                                 |
+| `ingest/rtmp-publish`     | an RTMP broadcast uploads gapless with every manifest advancing, publishes playlists that hold to the manifest contract, and the gateway serves the newest segment it uploaded                                                  |
 | `ingest/rtmp-wrong-key`   | an RTMP publish presenting a key issued for another stream is refused and counted, and the same wrong key never takes a live RTMP broadcast over. Skipped where the stage checks no publish key                                 |
 | `ingest/rtmp-reconnect`   | an RTMP broadcaster back after a clean drop rejoins its session, and one whose network died without closing takes its own stream back through the takeover, each with one seam per stream, no new session and nothing finalized |
 | `ingest/protocol-switch`  | a broadcaster moving from SRT to RTMP, and from RTMP to SRT, in the middle of a broadcast is taken over by its new connection, and it stays one broadcast                                                                       |

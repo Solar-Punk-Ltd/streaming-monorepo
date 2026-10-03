@@ -26,14 +26,18 @@ import { waitFor } from '../../src/harness/wait.js';
 import { INGEST_RTMP, unsupportedIngestReason } from '../../src/ingestProtocol.js';
 
 /**
- * Ingest: a broadcast sent over RTMP publishes as one sent over SRT does, and a viewer can fetch it.
+ * Ingest: a broadcast sent over RTMP publishes as one sent over SRT does, and the gateway serves the newest segment it
+ * uploaded.
  *
  * Every other suite publishes over SRT unless the run sets `E2E_INGEST_PROTOCOL=rtmp`, so until RTMP became a public
  * ingest nothing sent RTMP through a real SRS. This is `service/happy-path` over RTMP, run in every full sitting. The
  * publisher dials the server and stream key a broadcaster is handed for OBS, and the broadcast has to upload gapless,
- * keep each stream's manifest advancing, publish playlists that hold to the manifest contract, and let the gateway a
- * viewer reads through serve the segments it published. The reasoning behind each of those checks is in
+ * keep each stream's manifest advancing, publish playlists that hold to the manifest contract, and have the gateway
+ * serve the newest segment the uploader published. The reasoning behind each of those checks is in
  * `service/happy-path`, which this follows.
+ *
+ * No browser opens this broadcast. Playback in a browser over RTMP comes from a browser run that also sets
+ * `E2E_INGEST_PROTOCOL=rtmp`, where the viewer suites publish over RTMP like every suite that names no protocol.
  *
  * ⛔ Requires a deployed profile and a funded stamp, like every suite under `suites/`. Nothing in CI runs these.
  */
@@ -52,7 +56,7 @@ const MIN_STAMP_TTL_S = 600;
 const cfg = loadConfig();
 
 describe(
-  'ingest: an RTMP broadcast publishes gapless, and a viewer can fetch what it published',
+  'ingest: an RTMP broadcast publishes gapless, and the gateway serves the newest segment it uploaded',
   { skip: unsupportedIngestReason(cfg.engine, INGEST_RTMP) ?? false },
   () => {
     const host = makeHost(cfg);
@@ -136,7 +140,7 @@ describe(
       ]);
     });
 
-    it('publishes playlists a viewer reads, and the gateway serves the newest segment it uploaded', async () => {
+    it('publishes playlists that hold to the manifest contract, and the gateway serves the newest segment', async () => {
       const { owner } = await discoverCatalogFeed(host, cfg);
       const verdict = await checkPublishedTimeline(host, cfg, {
         owner,
@@ -150,7 +154,7 @@ describe(
       assert.equal(verdict.gapsSeen, 0, `a broadcast with no fault in it published ${verdict.gapsSeen} gap entry(s)`);
 
       const newest = segmentUploads(await log()).at(-1);
-      assert.ok(newest, 'no segment upload in this window, so there is nothing for a viewer to fetch');
+      assert.ok(newest, 'no segment upload in this window, so there is nothing for the gateway to serve');
 
       let answer = { status: 0, bytes: 0 };
       await waitFor(
@@ -165,7 +169,7 @@ describe(
         {
           timeoutMs: GATEWAY_FETCH_WAIT_MS,
           intervalMs: 3_000,
-          label: `the viewer's gateway serves segment ${newest.index} of ${newest.streamId}, the newest the uploader published`,
+          label: `the gateway serves segment ${newest.index} of ${newest.streamId}, the newest the uploader published`,
         },
       );
       printObservations('rtmp-publish', [
