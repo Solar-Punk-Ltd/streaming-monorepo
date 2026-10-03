@@ -135,12 +135,13 @@ Packet seqno %861816580 delayed for 4.5 ms`, about forty a second on
   Docker socket the Logs button reads through,
   `ContainerControl.logLinesContaining`. One on another host is read over the
   ssh path `TargetDocker` already takes for its snapshots and published ports,
-  and there `grep -E` holds each line to the report's whole shape, from start to
-  end with colour codes allowed, on the remote host
-  (`TRANSPORT_STATS_HOST_PATTERN` in `manager/src/domain/ingestHealth/transportStatsLine.ts`, the
-  command in `manager/src/domain/ports/remoteLogLines.ts`).
+  and there `grep -E` holds each line to one report's whole shape, SRT's or
+  RTMP's, from start to end with colour codes allowed, on the remote host
+  (`INGEST_LOG_LINES` in `manager/src/domain/ingestHealth/IngestHealthService.ts`,
+  which joins `TRANSPORT_STATS_HOST_PATTERN` and `RTMP_PUBLISH_HOST_PATTERN`, and
+  the command in `manager/src/domain/ports/remoteLogLines.ts`).
   So no other line of the log crosses the connection, not even a hook line
-  whose publisher chose a stream id that quotes the report. A filter on the
+  whose publisher chose a stream id or a stream name that quotes a report. A filter on the
   marker text alone let such a line through, token and all, until Copilot's
   review of PR 45 found it. That command frames its answer, because a pipeline
   into grep reports grep's status alone and would make no container, a quiet
