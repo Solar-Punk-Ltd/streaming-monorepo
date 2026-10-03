@@ -63,6 +63,23 @@ const SERVER_LINE_SAFE_PASSPHRASE = /^[A-Za-z0-9._~-]+$/;
 export const OBS_SRT_PASSPHRASE_FIELD_HELP =
   'This passphrase has characters the Server line cannot carry. In OBS, tick Use authentication, leave Username empty and paste this into Password.';
 
+/** What a console calls the thing whose ingest it shows: a stage in the web2 admin, a deployment in the manager. */
+export type IngestOwner = 'stage' | 'deployment';
+
+/**
+ * What a console says beside RTMP details, so every console tells a broadcaster the same thing. RTMP has no
+ * passphrase, so the stream key crosses the network as readable text, and where a reconnecting encoder may take a
+ * stream over, whoever reads the key off the network can take a live broadcast over too.
+ */
+export function rtmpUnencryptedWarning(owner: IngestOwner): string {
+  return (
+    'RTMP is not encrypted. Your stream key crosses the network as readable text, and anyone who reads it there can ' +
+    `publish to this stream with it. On a ${owner} that lets a reconnecting encoder replace one whose connection ` +
+    'dropped, they can also replace your live broadcast with theirs. On a network you do not trust, broadcast over ' +
+    'SRT with a passphrase instead.'
+  );
+}
+
 /**
  * OBS's Custom service set up for SRT, as OBS 31 reads it: the "Stream Key" box becomes the SRT stream id and a
  * `streamid=` on the Server line replaces it, so that box stays empty. A `passphrase=` on the Server line is read

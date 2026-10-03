@@ -1,11 +1,12 @@
+import { rtmpUnencryptedWarning } from '@streaming-infra-manager/common';
+
 /**
  * What the Publish card says beside RTMP: the warning the web2 admin's OBS
  * panel gives a broadcaster, and which of OBS's boxes each value goes in.
  */
 
-/** RTMP has no passphrase, so its stream key travels in clear text to anyone on the path. */
-export const RTMP_UNENCRYPTED_WARNING =
-  'RTMP is not encrypted. Your stream key crosses the network as readable text, and anyone who reads it there can publish to this stream with it. On a deployment that lets a reconnecting encoder replace one whose connection dropped, they can also replace your live broadcast with theirs. On a network you do not trust, broadcast over SRT with a passphrase instead.';
+/** The warning every console gives beside RTMP, naming a deployment. */
+export const RTMP_UNENCRYPTED_WARNING = rtmpUnencryptedWarning('deployment');
 
 /** OBS's names for its two RTMP boxes, which label the values that go in them. */
 export const OBS_SERVER_BOX = 'Server';

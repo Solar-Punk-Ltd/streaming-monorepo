@@ -4,6 +4,7 @@ import AutorenewIcon from '@mui/icons-material/Autorenew';
 import {
   buildObsSrtServer,
   OBS_SRT_PASSPHRASE_FIELD_HELP,
+  rtmpUnencryptedWarning,
   type IngestDetails,
   type IngestRtmpDetails,
   type IngestSrtDetails,
@@ -23,13 +24,8 @@ export const NO_STAGE_NOTE = 'Pick the stage this stream is broadcast on, in its
 export const RETIRED_STAGE_NOTE =
   'The manager retired this stage. These are the details it last pushed, and they may no longer answer.';
 
-/**
- * What the panel says beside RTMP. RTMP has no passphrase, so its stream key
- * travels in clear text, and a stack that lets a new publisher take over a
- * stream hands a live broadcast to whoever holds the key.
- */
-export const RTMP_UNENCRYPTED_NOTE =
-  'RTMP is not encrypted. Your stream key crosses the network as readable text, and anyone who reads it there can publish to this stream with it. On a stage that lets a reconnecting encoder replace one whose connection dropped, they can also replace your live broadcast with theirs. On a network you do not trust, broadcast over SRT with a passphrase instead.';
+/** What the panel says beside RTMP, in the words every console uses. */
+export const RTMP_UNENCRYPTED_NOTE = rtmpUnencryptedWarning('stage');
 
 /**
  * The SRT Server line carries `key=<publishKey>` and, where it can ride there,

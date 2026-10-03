@@ -8,6 +8,7 @@ import {
   buildRtmpStreamKey,
   buildSrtPublishUrl,
   PUBLISH_KEY_PARAM,
+  rtmpUnencryptedWarning,
 } from './ingest.js';
 
 const endpoint = { host: 'ingest.example.org', srtPort: 10061, rtmpPort: 10062 };
@@ -50,5 +51,26 @@ describe('the OBS server line for SRT', () => {
   it("leaves any other passphrase to OBS's own field, and says when there is none", () => {
     assert.deepEqual(buildObsSrtServer(srtUrl, 'has&amp'), { server: srtUrl, passphraseRoute: 'authentication' });
     assert.deepEqual(buildObsSrtServer(srtUrl, null), { server: srtUrl, passphraseRoute: 'none' });
+  });
+});
+
+describe('what a console says beside RTMP', () => {
+  it("gives the web2 admin's OBS panel and the manager's Publish card the same warning, each naming its own owner", () => {
+    assert.equal(
+      rtmpUnencryptedWarning('stage'),
+      'RTMP is not encrypted. Your stream key crosses the network as readable text, and anyone who reads it there can publish to this stream with it. On a stage that lets a reconnecting encoder replace one whose connection dropped, they can also replace your live broadcast with theirs. On a network you do not trust, broadcast over SRT with a passphrase instead.',
+    );
+    assert.equal(
+      rtmpUnencryptedWarning('deployment'),
+      rtmpUnencryptedWarning('stage').replace('On a stage that', 'On a deployment that'),
+    );
+  });
+
+  it('carries no em dash and no semicolon', () => {
+    for (const owner of ['stage', 'deployment'] as const) {
+      const warning = rtmpUnencryptedWarning(owner);
+      assert.ok(!warning.includes('\u2014'), warning);
+      assert.ok(!warning.includes(';'), warning);
+    }
   });
 });
