@@ -394,7 +394,7 @@ Left open after the nine phases:
 ## RTMP ingest beside SRT (2026-10-03)
 
 **RTMP is closed to the outside on every stage for now, and SRT is the ingest
-broadcasters use.** Decided by Levi, the owner, on 2026-10-03. This reverses
+broadcasters use.** Decided by the owner on 2026-10-03. This reverses
 the decision made earlier the same day to offer RTMP at the same level as SRT.
 It was taken because every stack that runs today lets anyone who reaches its
 RTMP port play any live broadcast with no key, and because an open RTMP port
