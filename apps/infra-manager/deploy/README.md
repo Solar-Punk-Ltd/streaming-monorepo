@@ -395,17 +395,20 @@ rewriting the packet's destination and forwarding it, so a firewall's input
 rules never see it at all, and the forward rules of step 3 filter it one way in
 rather than closing it. The binding is the control.
 
-The five settings live on the server, in
+The eight settings live on the server, in
 `/opt/streaming/streaming-infra-manager-versions/bundled/.env`, and no deploy reads or writes
 that file. Edit it there with the editing script, as under "Where the streaming
 stack's settings live" above. Find the bridge address with
-`ip -4 addr show docker0` on the server, usually `172.17.0.1`. For the two Bee
+`ip -4 addr show docker0` on the server, usually `172.17.0.1`. For the five Bee
 lines, leave them empty and the deploy writes the bridge address, or set them to
 name another address:
 
 ```env
 BEE_UPLOADER_API_BIND=172.17.0.1
 BEE_GATEWAY_API_BIND=172.17.0.1
+BEE_RUNG_480P_API_BIND=172.17.0.1
+BEE_RUNG_720P_API_BIND=172.17.0.1
+BEE_RUNG_1080P_API_BIND=172.17.0.1
 SRS_HTTP_API_BIND=172.17.0.1
 SRS_HTTP_BIND=172.17.0.1
 OME_HTTP_BIND=172.17.0.1
@@ -413,10 +416,12 @@ OME_HTTP_BIND=172.17.0.1
 
 What each one closes:
 
-- **`BEE_UPLOADER_API_BIND`** and **`BEE_GATEWAY_API_BIND`** are the two Bee
-  HTTP APIs, and neither asks for a password, so reaching one is enough to
-  spend the node's postage, upload chunks and write feeds with its wallet
-  behind them.
+- **`BEE_UPLOADER_API_BIND`**, **`BEE_GATEWAY_API_BIND`**,
+  **`BEE_RUNG_480P_API_BIND`**, **`BEE_RUNG_720P_API_BIND`** and
+  **`BEE_RUNG_1080P_API_BIND`** are the Bee HTTP APIs of the deployment's own
+  node, its gateway and the stack's three per-rung nodes, and none asks for a
+  password, so reaching one is enough to spend the node's postage, upload chunks
+  and write feeds with its wallet behind them.
 - **`SRS_HTTP_API_BIND`** is the SRS control API on 1985, which asks for no
   password either and will name every live stream, the same name an ingest URL
   and a publish key are built from, along with every publisher's and every
