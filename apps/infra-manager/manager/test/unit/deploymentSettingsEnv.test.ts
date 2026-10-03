@@ -353,3 +353,80 @@ describe('the Bee API binds a deploy writes', () => {
     }
   });
 });
+
+describe('a local deployment on host networking', () => {
+  // Under COMPOSE_NETWORK=host Docker publishes no port, so no *_API_BIND
+  // narrows anything and each Bee node listens where its own *_API_LISTEN
+  // says, which left empty is every address of the host. The manager does not
+  // fill that key in: a host-networked uploader reaches its node on localhost,
+  // which a listen address on the bridge would cut off. So the deploy warns.
+  const HOST_NETWORKED = 'ENGINE=srs\nCOMPOSE_NETWORK=host\n';
+
+  function listenWarnings(warned: readonly string[]): string[] {
+    return warned.filter((line) => line.includes('_API_LISTEN'));
+  }
+
+  it('is warned that a Bee API with no listen address listens on every address', async (t) => {
+    writeFileSync(
+      join(root, '.env'),
+      `${HOST_NETWORKED}BEE_UPLOADER_API_LISTEN=\nBEE_GATEWAY_API_LISTEN=192.0.2.10\n`,
+      'utf8',
+    );
+    const stored = makeProfile({ name: 'stage', stamp_id: STAMP, components: ['bee-uploader', 'bee-gateway'] });
+    const harness = orchestratorHarness([stored]);
+    const warned = loggedAt(t, 'warn');
+
+    await deployThrough(harness, stored);
+
+    const lines = listenWarnings(warned);
+    assert.equal(lines.length, 1, `one warning, got ${JSON.stringify(lines)}`);
+    assert.match(lines[0]!, /BEE_UPLOADER_API_LISTEN/);
+    assert.match(lines[0]!, /every address/);
+    assert.doesNotMatch(lines[0]!, /BEE_GATEWAY_API_LISTEN/, 'a node that names a listen address is not one');
+    assert.equal(envLine('stage', 'BEE_UPLOADER_API_LISTEN'), 'BEE_UPLOADER_API_LISTEN=', 'the manager writes none');
+  });
+
+  it('reads host networking from the deployment’s own settings as well as from the base env', async (t) => {
+    writeFileSync(join(root, '.env'), 'ENGINE=srs\nCOMPOSE_NETWORK=\n', 'utf8');
+    const stored = makeProfile({ name: 'stage', stamp_id: STAMP });
+    const harness = orchestratorHarness([stored]);
+    harness.profiles.stackSettings.set('stage', { COMPOSE_NETWORK: 'host' });
+    const warned = loggedAt(t, 'warn');
+
+    await deployThrough(harness, stored);
+
+    const lines = listenWarnings(warned);
+    assert.equal(lines.length, 1, `one warning, got ${JSON.stringify(lines)}`);
+    assert.match(lines[0]!, /BEE_UPLOADER_API_LISTEN/);
+  });
+
+  it('is not warned on a bridge, where each Bee node names a listen address, or where it runs none', async (t) => {
+    const warned = loggedAt(t, 'warn');
+    const cases = [
+      { base: 'ENGINE=srs\nCOMPOSE_NETWORK=\n', components: null },
+      { base: `${HOST_NETWORKED}BEE_UPLOADER_API_LISTEN=192.0.2.10\n`, components: null },
+      { base: HOST_NETWORKED, components: ['srs'] },
+    ];
+    for (const { base, components } of cases) {
+      writeFileSync(join(root, '.env'), base, 'utf8');
+      const stored = makeProfile({ name: 'stage', stamp_id: STAMP, components });
+      const harness = orchestratorHarness([stored]);
+      const before = warned.length;
+
+      await deployThrough(harness, stored);
+
+      assert.deepEqual(listenWarnings(warned.slice(before)), [], `${JSON.stringify(base)} ${components}`);
+    }
+  });
+
+  it('is not warned of a deployment on another host, whose own firewall closes it', async (t) => {
+    writeFileSync(join(root, '.env'), HOST_NETWORKED, 'utf8');
+    const stored = makeProfile({ name: 'stage', stamp_id: STAMP, host: 'edge' });
+    const harness = orchestratorHarness([stored]);
+    const warned = loggedAt(t, 'warn');
+
+    await deployThrough(harness, stored);
+
+    assert.deepEqual(listenWarnings(warned), []);
+  });
+});

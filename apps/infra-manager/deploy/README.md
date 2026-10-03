@@ -460,11 +460,19 @@ step 3. An uploader created before
 all. Copy the pool string from the pool page again and paste it into the
 uploader's "Node pool string" field under Edit.
 
-If this host runs the stack with `COMPOSE_NETWORK=host`, the pair that applies
-to the Bee APIs is `BEE_UPLOADER_API_LISTEN` and `BEE_GATEWAY_API_LISTEN`
-instead, and `*_API_BIND` does nothing there at all. The engines have no such
-pair, and their three settings do nothing under host networking either, which
-leaves the host firewall of step 3 to close those ports.
+If this host runs the stack with `COMPOSE_NETWORK=host`, the keys that apply to
+the Bee APIs are the `*_API_LISTEN` ones instead, `BEE_UPLOADER_API_LISTEN` and
+`BEE_GATEWAY_API_LISTEN`, with `BEE_RUNG_480P_API_LISTEN`,
+`BEE_RUNG_720P_API_LISTEN` and `BEE_RUNG_1080P_API_LISTEN` for the stack's own
+per-rung nodes, and `*_API_BIND` does nothing there at all. So a deployment on
+host networking is not bound by the manager: the bind it writes does nothing
+there, and it writes no listen address, because a host-networked uploader
+reaches its own node on `localhost`. A deploy of such a deployment on this host
+logs a warning instead, naming the `*_API_LISTEN` of each of its Bee nodes that
+is left empty, since such a node listens on every address of the host. The
+engines have no such key, and their three settings do nothing under host
+networking either, which leaves the host firewall of step 3 to close those
+ports.
 
 Commit the edit, Update the bundled version from the Versions page so the next
 build captures it, then redeploy the deployments that should pick it up. A node

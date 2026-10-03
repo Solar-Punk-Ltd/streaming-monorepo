@@ -98,10 +98,14 @@ with the admin. [architecture/stages.md](architecture/stages.md) is the design.
    sign-in page while `ssh control-1` is open. The first deploy takes a while, because the host
    builds the stack version the manager bundles.
 
-   Every Bee node the manager deploys on this host has its API bound to the Docker bridge address,
-   where neither the stack's `.env` nor the deployment names a bind, since the API asks for no
-   password. "Bind the node and engine APIs off the public interface" in
-   `apps/infra-manager/deploy/README.md` says how, and the engine ports are still yours to bind.
+   Every Bee node the manager deploys on this host on a bridge network, the stack's default, has
+   its API bound to the Docker bridge address, where neither the stack's `.env` nor the deployment
+   names a bind, since the API asks for no password. "Bind the node and engine APIs off the public
+   interface" in `apps/infra-manager/deploy/README.md` says how, and the engine ports are still
+   yours to bind. A deployment on host networking, `COMPOSE_NETWORK=host`, is not bound: Docker
+   publishes no port there, so each of its Bee APIs listens on every address unless its
+   `*_API_LISTEN` names one, and a deploy logs a warning for each that does not. The
+   `COMPOSE_NETWORK=host` paragraph of that section says what applies there instead.
    Each deploy's log names every bind it wrote. On a host upgraded to this manager, a node is
    narrowed at its next deploy and from then on answers on the bridge address alone. Three kinds of
    client stop reaching it: anything on another host that reaches it by this host's public
