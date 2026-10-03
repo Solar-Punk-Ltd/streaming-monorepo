@@ -165,6 +165,15 @@ It gates nothing and changes nothing. No deploy, start, health check, readiness
 step or "Needs attention" count reads it, and it never touches a setting or a
 broadcast. It reads SRT only, so a publisher on RTMP has no card numbers.
 
+RTMP is a public ingest beside SRT, and the card still leaves it out, because
+SRS's log offers no safe line for it. The line SRS prints every ten seconds for
+each RTMP publisher, `<- CPB` with its bitrates, names no vhost. Every line that
+does name the vhost also carries the stream key or the publisher's address, and
+is printed once, when the publisher connects. The ABR ladder's rungs publish
+over RTMP too, from loopback onto the ABR vhost, so counting `<- CPB` lines
+would count rungs as ingest. A minute with an RTMP broadcast and no SRT one
+reads `No SRT publisher`, never a broken link.
+
 ## Limits
 
 These are P3: rare, with no damage path, recorded once.
