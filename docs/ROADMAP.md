@@ -22,8 +22,8 @@ scope `@streaming-monorepo/`.
   server-wide SRT passphrase shown alongside. The RTMP server and stream key were
   shown only where the deployment opened RTMP ingest (`INGEST_RTMP_PUBLIC`), which
   was off by default, since ingest was SRT only then. That key left the admin's
-  env with phase 4 of the stages work, and RTMP is offered on every SRS stage
-  since RTMP ingest opened beside SRT, below.
+  env with phase 4 of the stages work. RTMP stays closed by default, so the
+  admin offers SRT alone, as the RTMP section below says.
 - A real stream for a draft: the uploader (swarm-hls-stream `main-v3`) resolves
   the draft by ingest stream id through the admin's internal API, checks the
   key, publishes under the draft's topic and reports live and vod; the admin
@@ -390,24 +390,42 @@ Left open after the nine phases:
   pushes, on the admin's registrar token, and every uploader presents a token
   of its own (done in phases 5 and 9).
 
-## RTMP ingest beside SRT (2026-10-03)
+## RTMP ingest, closed by default (2026-10-03)
 
-Decided by the owner: RTMP ingest at the same level as SRT, as plain RTMP. SRS 6
-has no TLS on its RTMP listener, so there is no RTMPS. An RTMP stream key
-crosses the network as readable text, anyone who reads it there can publish to
-that stream with it, and on a stack that lets a reconnecting encoder take over a
-stream they can take over a live broadcast too. SRT with a passphrase stays the
-ingest to recommend on a network the broadcaster does not trust.
+First decided: RTMP ingest at the same level as SRT, as plain RTMP. Reviewed
+the same day and decided again: **RTMP is off by default, and SRT is the
+ingest broadcasters use.** The owner of the first decision should confirm the
+second.
 
-- The manager's port policy opens an RTMP ingest band, TCP on
-  `10002 + 10 × slot` for slots 1 to 100, as its version 2. The firewall draft
-  opens it, and the generator refuses an inventory export checked against
-  version 1, so a host's table is replaced from a manager and a checkout of the
-  same release.
-- A stage record says `rtmpPublic: true` for an SRS stage and false for an
-  OvenMediaEngine one, which takes SRT alone. The manager's console calls the
-  port public ingest, and the admin's OBS panel offers RTMP beside SRT on such a
-  stage and warns what the unencrypted key allows.
+Why it was reversed:
+
+- **Open RTMP lets anyone watch.** SRS lets anyone who reaches its RTMP port
+  play any stream it holds, and the publish key guards publishing only. The
+  stack's rule that allows play from loopback alone is new, and it runs only on
+  SRS image `6.0-r2-swarm.3`, which is not built yet. Every stage that can run
+  today would let anyone play every live broadcast with no key.
+- **Open RTMP makes the SRT passphrase no gate.** SRT sends its stream id, key
+  included, before encryption starts. While RTMP is open, a key read off an SRT
+  connection publishes over RTMP with no passphrase, and with the takeover on,
+  which it is wherever keys are checked, replaces a live broadcast.
+
+What holds now:
+
+- The manager's port policy opens no RTMP band, as its version 3. Version 2
+  opened one, and the generator refuses an inventory export checked against
+  version 1 or 2, so a host's table is replaced from a manager and a checkout
+  of the same release.
+- A stage record says `rtmpPublic: false` for every stage, so neither the
+  admin's OBS panel nor the manager's Publish card offers RTMP.
+- The stack keeps everything it gained for RTMP: SRS's RTMP listener, which the
+  ABR ladder republishes to over loopback, the health check covering it, the
+  RTMP takeover and loopback-only play. Nothing outside reaches it while the
+  firewall keeps the port closed.
+- The shared RTMP warning says that SRT's passphrase keeps the picture private
+  but not the key while RTMP is open, for any stage where it ever is.
+- Before RTMP is opened on any stage, that stage has to run a stack whose SRS
+  allows play from loopback only, on an image that accepts the stack's config.
+  A per-stage way to open RTMP is left for later.
 
 ## Checkpoint 4: brand console
 

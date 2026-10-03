@@ -239,11 +239,12 @@ Main column:
   passphrase source ("Encrypted with this deployment's own passphrase" or "with the host-wide
   passphrase", both already in the URL, or for OME "Its SRT listener takes no passphrase"),
   and a warning note when readiness is not ok: "Ingest is up, but nothing reaches Swarm until
-  the checklist above is complete." On an SRS deployment an RTMP part follows, from
-  `rtmpPublishSettings`: OBS's Server and Stream Key values with Copy, which carry no
-  passphrase because RTMP has none, under the warning the web2 admin's OBS panel gives, that
-  RTMP is unencrypted, what a stream key read off the network lets its reader do, and to use
-  SRT with a passphrase on a network the broadcaster does not trust.
+  the checklist above is complete." Where the port policy opens RTMP, which it does not by
+  default, an RTMP part follows on an SRS deployment, from `rtmpPublishSettings`: OBS's Server
+  and Stream Key values with Copy, which carry no passphrase because RTMP has none, under the
+  warning the web2 admin's OBS panel gives, that RTMP is unencrypted, what a stream key read off
+  the network lets its reader do, and that SRT's passphrase does not hide the key while RTMP is
+  open.
 - **Watch** card when `clientUrl` is not null: the link with Copy and the streamer it follows.
 - **Storage and funding** card for shapes `stream` and `bee-node`, `id="storage"`: reuse
   `NodeFunding`, `StampTable` (Use sets the stamp through `setStamp`) and `BuyStampForm`

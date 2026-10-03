@@ -204,7 +204,9 @@ secret token included, into every hook line, and each broadcaster's publish key 
 
 SRS takes a broadcast over RTMP as well as over SRT, on `SRS_RTMP_PORT`, which is TCP, 1935 with no
 slot and `10002 + 10 * slot` with one. The uploader treats the two alike: one publish key per
-stream, one reconnect window, one ladder. A broadcaster gets two OBS fields for it, Server
+stream, one reconnect window, one ladder. The manager keeps every stage's RTMP port closed in its
+firewall by default, so on a manager's host SRT is the one public ingest and the rest of this
+section applies only where an operator opens RTMP. A broadcaster gets two OBS fields for it, Server
 `rtmp://<host>:<port>/<app>` and Stream Key `<stream>?key=<key>`. ffmpeg takes the two joined into
 one URL, `rtmp://<host>:<port>/<app>/<stream>?key=<key>`, sent with `-f flv`.
 

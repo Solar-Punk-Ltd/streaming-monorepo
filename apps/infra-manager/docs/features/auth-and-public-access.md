@@ -353,16 +353,13 @@ moved and are marked where they do.
    current wording, and a port the deployment page calls public has to be one of those four bands,
    which a test holds.
 
-   **RTMP ingest opened since.** The step above lists RTMP (2) among the ports that fall to the
-   drop policy. The policy now has an RTMP ingest band, TCP on the ports ending in 2, for 100 slots,
-   so five bands stay open: SRT ingest on UDP, RTMP ingest on TCP, the viewer page and the two Bee
-   peer ports, and a port the deployment page calls public has to be one of those five. RTMP is
-   plain RTMP and not encrypted. A broadcaster's stream key crosses the network as readable text,
-   anyone who reads it there can publish to that stream with it, and on a stack that lets a
-   reconnecting encoder take over a stream they can take over a live broadcast too. SRT with a
-   passphrase stays the ingest to recommend on a network the broadcaster does not trust. A draft
-   applied before the band opened keeps RTMP closed until the host's table is replaced, and
-   `deploy/README.md` step 3 says how.
+   **RTMP ingest, opened and closed again.** The step above lists RTMP (2) among the ports that
+   fall to the drop policy, and that holds again. Version 2 of the policy opened an RTMP ingest band,
+   and version 3 closed it, so four bands stay open: SRT ingest on UDP, the viewer page and the two
+   Bee peer ports. An open RTMP port lets anyone play a broadcast on a stack without loopback-only
+   play, and lets a stream key read off the network publish without the SRT passphrase. A host whose
+   table came from a version 2 draft opens RTMP until its table is replaced, and `deploy/README.md`
+   step 3 says how.
 
 4. Point a DNS A record at the host, set `MANAGER_DOMAIN` in `manager/.env`, deploy PR 2.
    `deploy.sh` reads that name, adds `--profile public` so the edge starts, and says which of the

@@ -33,7 +33,8 @@ A stage is a manager deployment that runs a stream uploader, with the node pool 
 
 ## How a stream travels
 
-1. The encoder sends SRT, or RTMP, to the ingest engine on a stage host.
+1. The encoder sends SRT to the ingest engine on a stage host. SRS can take RTMP as well, but the
+   manager keeps RTMP closed by default, as the port table below says.
 2. The engine writes each closed segment to a media volume it shares with the uploader and calls the
    uploader's webhook. With the ladder on, it writes one segment per rung.
 3. The uploader stamps each segment with its rung's postage batch and uploads it through that rung's
@@ -78,7 +79,7 @@ ports is `10000 + 10 × s` plus a fixed last digit, so two deployments on one ho
 | ---------------- | -------- | -------------------------------------------- | ----------------------------------------------- |
 | `10000 + 10 × s` | tcp      | the uploader's API and the engine's webhooks | the host itself only                            |
 | `10001 + 10 × s` | udp      | SRT ingest                                   | the internet, so encoders can reach it          |
-| `10002 + 10 × s` | tcp      | RTMP ingest                                  | the internet, so encoders can reach it          |
+| `10002 + 10 × s` | tcp      | RTMP ingest                                  | closed by default, see below                    |
 | `10003 + 10 × s` | tcp      | the engine's HLS output                      | the host itself only                            |
 | `10004 + 10 × s` | tcp      | the viewer page                              | the internet                                    |
 | `10005 + 10 × s` | tcp      | the uploader Bee node's API                  | **never the internet**, see below               |
@@ -87,11 +88,14 @@ ports is `10000 + 10 × s` plus a fixed last digit, so two deployments on one ho
 | `10008 + 10 × s` | tcp      | the gateway Bee node's peer port             | the internet                                    |
 | `10009 + 10 × s` | tcp      | the engine's own HTTP API                    | the host itself only                            |
 
-RTMP ingest is plain RTMP and is not encrypted. A broadcaster's stream key crosses the network as
-readable text, and anyone who reads it there can publish to that stream with it. On a stack that lets
-a reconnecting encoder take over a stream, they can also take over a live broadcast. RTMP has no
-passphrase, as SRT has, so SRT with a passphrase stays the ingest to recommend on a network the
-broadcaster does not trust.
+RTMP ingest is closed by default, so SRT is the one public ingest. SRS still listens for RTMP, because
+the ABR ladder republishes every rung to that listener over loopback, but the firewall keeps the port
+shut from outside. RTMP is plain RTMP and is not encrypted. While it is open, a broadcaster's stream
+key crosses the network as readable text, anyone who reads it there can publish to that stream, and
+with the takeover on they can replace a live broadcast. SRT does not hide the key either, because it
+sends its stream id before encryption starts, so open RTMP makes the SRT passphrase no gate. And SRS
+lets anyone who reaches its RTMP port play any stream unless the stack's loopback-only play rule runs,
+which needs image `6.0-r2-swarm.3`. See the RTMP section of [ROADMAP.md](../ROADMAP.md).
 
 The per-rung Bee nodes of an ABR ladder take a second block, from `11001 + 10 × s`, with the same
 rule: each peer port is public and each API is not.

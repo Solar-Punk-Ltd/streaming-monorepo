@@ -228,7 +228,7 @@ into the admin (`docs/architecture/stages.md` at the repository root).
 - **The OBS details are the stage's.** `GET /streams/:id/ingest` builds the SRT
   line from the stage's public ingest address and SRT port, adds the RTMP
   server and stream key where the stage's record says `rtmpPublic`, which the
-  manager sets on every SRS stage and on no OvenMediaEngine one, and answers
+  manager sets on no stage while it keeps RTMP closed by default, and answers
   the stage's SRT passphrase, read from the `stages` table's own column for
   this one answer. RTMP has no passphrase, so its stream key crosses the
   network as readable text, and the console's OBS panel says so beside it. It names the stage (`stage: { stageId, name, retiredAt }`). With
@@ -894,9 +894,9 @@ passphrase and the token, never their values), `stage.retire`,
 `stage.unretire` (a retired stage pushed again after its retirement),
 `catalogue.stamp.set`, `catalogue.stamp.change` (another batch, node, Bee API
 address or manager; the address only as `"changed"`) and
-`catalogue.stamp.clear`. A manager upgraded to one that offers RTMP on SRS
-stages sets the RTMP flag on each such stage's next push, so each records one
-`stage.change` from `false` to `true` then. Each is also a line at info (`[Stages] the manager
+`catalogue.stamp.clear`. A stage pushed by a manager that briefly offered RTMP
+on SRS stages, and then by one that keeps RTMP closed, records one
+`stage.change` of the RTMP flag from `true` to `false`. Each is also a line at info (`[Stages] the manager
 registered stage "Main stage" (stage 5f0c…): …`). `stage.retire` and
 `catalogue.stamp.clear` carry the manager's `observedAt`. A push that changes
 nothing else, a record kept out as older and a second retirement or clear log

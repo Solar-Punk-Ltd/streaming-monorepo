@@ -292,17 +292,16 @@ images on the host itself.
 6. **Deploy onto it.** **New deployment**, with `stage-1` as the host. The deployment's port slot
    decides its ports, as [architecture/overview.md](architecture/overview.md#ports) lists.
 
-7. **Open the public ports**, and only those: SRT ingest, RTMP ingest, the viewer page and the two Bee
-   peer ports of each slot. "Opening the manager to the internet" in
-   `apps/infra-manager/deploy/README.md` binds the node and engine APIs off the public interface and
-   generates an nftables table for exactly this. It worked when an encoder reaches the SRT and RTMP
-   ports, a browser opens the viewer page, and a port ending in 5 or 7 does not answer from outside.
+7. **Open the public ports**, and only those: SRT ingest, the viewer page and the two Bee peer ports
+   of each slot. "Opening the manager to the internet" in `apps/infra-manager/deploy/README.md` binds
+   the node and engine APIs off the public interface and generates an nftables table for exactly
+   this. It worked when an encoder reaches the SRT port, a browser opens the viewer page, and a port
+   ending in 2, 5 or 7 does not answer from outside.
 
-   RTMP is plain RTMP and is not encrypted. A broadcaster's stream key crosses the network as
-   readable text, and anyone who reads it there can publish to that stream with it. On a stack that
-   lets a reconnecting encoder take over a stream, they can also take over a live broadcast. RTMP
-   has no passphrase, as SRT has, so tell broadcasters to use SRT with a passphrase on any network
-   they do not trust.
+   RTMP stays closed. SRS listens for it, because the ABR ladder republishes over it inside the
+   container, but an open RTMP port lets anyone play a broadcast on a stack without loopback-only
+   play, and lets a key read off the network publish without the SRT passphrase. See the RTMP
+   section of [ROADMAP.md](ROADMAP.md).
 
 The engine's `docker logs` on a stage host are as sensitive as its env files. SRS logs every
 broadcaster's publish key when they connect and the webhook token on every hook it calls, and a
