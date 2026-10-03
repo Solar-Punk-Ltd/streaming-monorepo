@@ -120,7 +120,7 @@ function DeploymentBody({ profile, focus, bee }: { profile: Profile; focus: Depl
   const release = useAttemptRelease();
   const { openEditDeployment } = useEditors();
   const { snapshot, stale, staleSeconds } = useMetrics();
-  // The Engine card and the SRT ingest card lead to a setting in the Stack
+  // The Engine card and the Ingest card lead to a setting in the Stack
   // settings card rather than editing it themselves: one list of settings for
   // the whole deployment.
   const [settingsReveal, setSettingsReveal] = useState<SettingReveal | null>(null);

@@ -178,7 +178,7 @@ export interface DriftNotice {
 /**
  * The banner over the list, or null when the containers have every saved
  * setting. An Apply that recreates the engine says it drops a live publisher,
- * because the SRT ingest card sends an operator here mid-broadcast.
+ * because the Ingest card's SRT remedy sends an operator here mid-broadcast.
  */
 export function driftNotice(catalog: DeploymentSettingsCatalog): DriftNotice | null {
   const { keys, services, fullRedeploy } = catalog.drift;
