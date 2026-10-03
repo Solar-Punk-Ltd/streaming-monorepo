@@ -719,8 +719,9 @@ leaves on the first read that finds every node holding `CHEQUEBOOK_MIN_BZZ`. See
 `libs/ChequebookRecheck.ts`.
 
 `segment_stall` is measured per stream and reported for the worst one, so a busy stream does not mask a dead
-one. A draining stream and a stream awaiting a post-crash reconnect are both excluded, because neither is
-expected to be sending. The route spreads the whole signal set rather than picking from it, so every
+one. A draining stream, a stream awaiting a post-crash reconnect and a stream whose encoder has disconnected
+and not yet come back are all excluded, because none of them is expected to be sending. The route spreads
+the whole signal set rather than picking from it, so every
 reading a reason above is derived from is on the same body: `activeStreams`, `staleManifestStreams`,
 `maxConsecutiveManifestFailures`, `maxConsecutiveSegmentFailures`, `queuePressure`, `msSinceStreamActivity`,
 `msSinceSegmentLoss`, `msSinceCatalogAnnounceFailed`, `msSinceStatePersistFailed`, `queueBacklogSeconds`,
@@ -728,9 +729,10 @@ reading a reason above is derived from is on the same body: `activeStreams`, `st
 `segmentsNeverNamed`, `quarantinedRecoveryEntries`, `fragmentMismatchStreams`, `publisherGopStreams`,
 `postageRefusedPublishers`, `startGateWarnings`, `publishers`, `refusedPublishers` and `engines`. `disconnectedStreams`
 names every live stream whose encoder has gone and has not come back, and raises no reason of its own:
-a disconnect is held for one reap window on purpose, so flagging it would turn every ten second OBS
-restart into `degraded`, while one that never returns already reaches `segment_stall` on the ordinary
-clock. It is a list rather than a count because on a ladder all four rungs appear together for a
+a disconnect is held for one reap window on purpose, and on SRS that window is how every broadcast ends,
+so flagging it, or counting it toward `segment_stall`, would turn every ten second OBS restart and every
+finished broadcast into `degraded`. One that never returns is finalized as a recording when its window is
+up. It is a list rather than a count because on a ladder all four rungs appear together for a
 whole-encoder outage and one rung alone is a dead transcoder, which is a different fault.
 `queueBacklogSeconds` is the
 only field that says which of `queue_pressure`'s two triggers fired. `msSinceAuthRejection` beside

@@ -434,8 +434,8 @@ export interface HealthSignals {
   /**
    * Age of the least recently active stream that is expected to be producing segments, so the worst
    * stream sets the number rather than the busiest one. `null` when no such stream is registered,
-   * which is how an idle uploader, a draining stream and a stream awaiting recovery all avoid
-   * looking stalled.
+   * which is how an idle uploader, a draining stream, a stream awaiting recovery and a stream whose
+   * encoder has disconnected and not come back all avoid looking stalled.
    */
   msSinceStreamActivity: number | null;
   /**
@@ -506,10 +506,11 @@ export interface HealthSignals {
    *
    * ⛔ **It raises no health reason, deliberately.** A disconnect is an ordinary event with a designed
    * answer: the session is held for one reap window, and an encoder that comes back inside it resumes.
-   * Turning that into `degraded` would flag every ten second OBS restart, and a disconnect that does
-   * NOT come back already reaches `segment_stall` on the ordinary clock and then ends at the window.
-   * What this is for is the moment in between, which was invisible: a session held open with nothing
-   * feeding it looked, from every endpoint, exactly like one whose publisher was merely slow.
+   * Turning that into `degraded` would flag every ten second OBS restart and, on SRS, every finished
+   * broadcast, so a disconnected stream is left out of `segment_stall` as well, and one that does NOT
+   * come back ends as a recording at the window. What this is for is the moment in between, which was
+   * invisible: a session held open with nothing feeding it looked, from every endpoint, exactly like
+   * one whose publisher was merely slow.
    */
   disconnectedStreams: string[];
   /**
