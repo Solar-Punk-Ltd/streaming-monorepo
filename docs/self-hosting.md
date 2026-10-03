@@ -98,13 +98,23 @@ with the admin. [architecture/stages.md](architecture/stages.md) is the design.
    sign-in page while `ssh control-1` is open. The first deploy takes a while, because the host
    builds the stack version the manager bundles.
 
-   Every Bee node the manager deploys on this host has its API bound to the Docker bridge address,
-   where neither the stack's `.env` nor the deployment names a bind, since the API asks for no
-   password ("Bind the node and engine APIs off the public interface" in
-   `apps/infra-manager/deploy/README.md`; the engine ports are still yours to bind). On a host
-   upgraded to this manager, a node is narrowed at its next deploy: one that something on another
-   host reaches by this host's public address needs `BEE_UPLOADER_API_BIND=0.0.0.0` in its own
-   settings, and the firewall to close the port.
+   Every Bee node the manager deploys on this host on a bridge network, the stack's default, has
+   its API bound to the Docker bridge address, where neither the stack's `.env` nor the deployment
+   names a bind, since the API asks for no password. "Bind the node and engine APIs off the public
+   interface" in `apps/infra-manager/deploy/README.md` says how, and the engine ports are still
+   yours to bind. A deployment on host networking, `COMPOSE_NETWORK=host`, is not bound: Docker
+   publishes no port there, so each of its Bee APIs listens on every address unless its
+   `*_API_LISTEN` names one, and a deploy logs a warning for each that does not. The
+   `COMPOSE_NETWORK=host` paragraph of that section says what applies there instead.
+   Each deploy's log names every bind it wrote. On a host upgraded to this manager, a node is
+   narrowed at its next deploy and from then on answers on the bridge address alone. Three kinds of
+   client stop reaching it: anything on another host that reaches it by this host's public
+   address, anything on this host that dials `localhost` or `127.0.0.1`, such as the stack's own
+   scripts and the reads its e2e suite runs here over ssh, and a container on this host that dials
+   the host's public or LAN address. To keep a node open to them, give the deployment `0.0.0.0` in
+   its own settings for that node's key, `BEE_UPLOADER_API_BIND`, `BEE_GATEWAY_API_BIND`,
+   `BEE_RUNG_480P_API_BIND`, `BEE_RUNG_720P_API_BIND` or `BEE_RUNG_1080P_API_BIND`, and let the
+   firewall close the port.
 
 4. **The manager's first user**, on the host. It asks for the password twice.
 

@@ -34,8 +34,8 @@ const submit = () => fireEvent.click(screen.getByRole('button', { name: 'Create 
 
 /**
  * The date picker's label names both its group of day, month and year sections
- * and the input that holds the whole value. A lookup by that label asks for the
- * input.
+ * and the input that holds the whole value, and the time box's label names its
+ * menu too while the menu is open. A lookup by either label asks for the input.
  */
 const FORM_CONTROL = { selector: 'input, textarea' };
 
@@ -496,7 +496,7 @@ describe('ScheduleField', () => {
   };
 
   const dateField = () => screen.getByLabelText<HTMLInputElement>('Scheduled Date *', FORM_CONTROL);
-  const timeField = () => screen.getByLabelText<HTMLInputElement>('Scheduled Time *');
+  const timeField = () => screen.getByLabelText<HTMLInputElement>('Scheduled Time *', FORM_CONTROL);
 
   /** Opens the time menu the way a mouse does, and hands back its options. */
   const openTimeMenu = () => {
@@ -505,6 +505,16 @@ describe('ScheduleField', () => {
   };
 
   const typeTime = (text: string) => fireEvent.change(timeField(), { target: { value: text } });
+
+  /**
+   * One keystroke into a part of the date, as the field takes it: the part is
+   * selected when it gains focus, and the key arrives as that part's own text.
+   */
+  const typeInDate = (part: 'Day' | 'Month', key: string) => {
+    const section = screen.getByRole('spinbutton', { name: part });
+    fireEvent.focus(section);
+    fireEvent.input(section, { target: { textContent: key } });
+  };
 
   it('shows the day and the time in their own fields, and both in the caption', () => {
     renderField();
@@ -564,6 +574,54 @@ describe('ScheduleField', () => {
     expect(onChange).toHaveBeenLastCalledWith('2026-09-14T18:07');
   });
 
+  it.each([
+    ['1830', '18:30'],
+    ['18:30', '18:30'],
+    ['9:05', '09:05'],
+    ['7', '07:00'],
+  ])('takes %s typed into the time box as %s', (typed, stored) => {
+    const onChange = renderField();
+
+    typeTime(typed);
+    fireEvent.blur(timeField());
+
+    expect(onChange).toHaveBeenLastCalledWith(`2026-09-14T${stored}`);
+    expect(timeField()).toHaveValue(stored);
+  });
+
+  it.each([
+    ['leaves the box', () => fireEvent.blur(timeField())],
+    ['presses Enter', () => fireEvent.keyDown(timeField(), { key: 'Enter' })],
+  ])('shows the stored time again when the text is not a time and the operator %s', (_how, finish) => {
+    // The form keeps the time it had, so the box has to say that time too
+    // rather than the text that was refused.
+    const onChange = renderField({ initial: '2026-09-14T18:30' });
+
+    typeTime('25:99');
+    finish();
+
+    expect(onChange).not.toHaveBeenCalled();
+    expect(timeField()).toHaveValue('18:30');
+  });
+
+  it.each([
+    ['with the menu still open', () => undefined],
+    ['after the mouse crossed the menu', () => fireEvent.mouseMove(screen.getByRole('option', { name: '20:00' }))],
+    ['after Escape closed the menu', () => fireEvent.keyDown(timeField(), { key: 'Escape' })],
+  ])('shows the stored time again when the emptied box is left %s', (_how, beforeLeaving) => {
+    // Leaving an empty box chooses nothing, so the form keeps its time, and
+    // the caption reads that time back. The box has to say it too.
+    renderField({ initial: '2026-09-14T18:30' });
+
+    fireEvent.focus(timeField());
+    typeTime('');
+    beforeLeaving();
+    fireEvent.blur(timeField());
+
+    expect(screen.getByText('14/09/2026 18:30 · in 4 hours')).toBeInTheDocument();
+    expect(timeField()).toHaveValue('18:30');
+  });
+
   it('keeps an off-grid time it was given, in the field and in the menu', () => {
     renderField({ initial: '2026-09-14T18:07' });
 
@@ -610,6 +668,32 @@ describe('ScheduleField', () => {
     fireEvent.click(within(calendar).getByRole('gridcell', { name: '20' }));
 
     expect(onChange).toHaveBeenLastCalledWith('2026-09-20T00:00');
+  });
+
+  it('keeps the chosen time when a day that starts with 0 is typed', () => {
+    // A typed 0 makes the day 00, which is no date, so for one keystroke the
+    // form holds no value at all. The time is still the one the operator
+    // chose, not the first slot of whatever day comes out at the end.
+    const onChange = renderField({ initial: '2026-09-14T18:30' });
+
+    typeInDate('Day', '0');
+    expect(onChange).toHaveBeenLastCalledWith('');
+
+    typeInDate('Day', '5');
+    typeInDate('Month', '1');
+    typeInDate('Month', '0');
+
+    expect(onChange).toHaveBeenLastCalledWith('2026-10-05T18:30');
+    expect(timeField()).toHaveValue('18:30');
+  });
+
+  it('shows the chosen time while the date is half typed', () => {
+    renderField({ initial: '2026-09-14T18:30' });
+
+    typeInDate('Day', '0');
+
+    expect(dateField()).toHaveValue('00/09/2026');
+    expect(timeField()).toHaveValue('18:30');
   });
 
   it('can be emptied, which is what makes the field fail validation', () => {

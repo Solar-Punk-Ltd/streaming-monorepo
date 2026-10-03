@@ -361,35 +361,54 @@ writes the Docker bridge address into each Bee `*_API_BIND` that neither the
 base `.env` nor the deployment's own settings name: the address
 `host.docker.internal` resolves to inside the manager's `api` container, and
 only when the daemon reports that address as its own bridge gateway, which is
-the case on a Linux engine. Where it is not, the manager logs a warning naming
-both addresses at the first deploy and binds nothing, and the Bee lines below
-are yours to set. A deployment on another host is never bound this way: the
-control host reaches its API there, and that host's firewall closes it. The
-three engine ports are not bound by the manager and stay yours to set.
+the case on a Linux engine. Each deploy that writes a bind logs one line naming
+every key it wrote and the address it wrote there. Where the address is not the
+bridge, the manager logs a warning naming both addresses at the first deploy and
+binds nothing, and the Bee lines below are yours to set. A deployment on another
+host is never bound this way: the control host reaches its API there, and that
+host's firewall closes it. The three engine ports are not bound by the manager
+and stay yours to set.
 
 **Upgrading.** A deployment already running keeps its binding until its next
-deploy, which narrows its Bee APIs to the bridge. Anything on another host that
-reaches such a node by this host's public address, an uploader on a pool rung
-here or a `BEE_URL` naming it, stops reaching it then. Give that deployment
-`BEE_UPLOADER_API_BIND=0.0.0.0` in its own settings, which the deploy leaves
-standing, and close the port with the firewall of step 3 instead.
+deploy, which narrows its Bee APIs to the bridge. From then on each of those
+nodes answers on the bridge address alone, so three kinds of client stop
+reaching it:
+
+- anything on another host that reaches it by this host's public address, such
+  as an uploader on a pool rung here or a `BEE_URL` naming it
+- anything on this host that dials `localhost` or `127.0.0.1`, such as the
+  stack's own `health.sh`, `spend-ledger.sh`, `node-metrics.sh` and
+  `bench-on-host.sh`, and the reads the stack's e2e suite runs on this host over
+  ssh
+- a container on this host that dials the host's public or LAN address
+
+To keep a node open to them, set its key to `0.0.0.0` in the deployment's own
+settings, which the deploy leaves standing, and close the port with the firewall
+of step 3 instead. There is one key per Bee node of the stack:
+`BEE_UPLOADER_API_BIND` for the deployment's own node, which is the node a pool
+rung runs, `BEE_GATEWAY_API_BIND` for its gateway, and
+`BEE_RUNG_480P_API_BIND`, `BEE_RUNG_720P_API_BIND` and `BEE_RUNG_1080P_API_BIND`
+for the stack's own per-rung nodes.
 
 **A firewall is no substitute for this**: Docker publishes a container port by
 rewriting the packet's destination and forwarding it, so a firewall's input
 rules never see it at all, and the forward rules of step 3 filter it one way in
 rather than closing it. The binding is the control.
 
-The five settings live on the server, in
+The eight settings live on the server, in
 `/opt/streaming/streaming-infra-manager-versions/bundled/.env`, and no deploy reads or writes
 that file. Edit it there with the editing script, as under "Where the streaming
 stack's settings live" above. Find the bridge address with
-`ip -4 addr show docker0` on the server, usually `172.17.0.1`. For the two Bee
+`ip -4 addr show docker0` on the server, usually `172.17.0.1`. For the five Bee
 lines, leave them empty and the deploy writes the bridge address, or set them to
 name another address:
 
 ```env
 BEE_UPLOADER_API_BIND=172.17.0.1
 BEE_GATEWAY_API_BIND=172.17.0.1
+BEE_RUNG_480P_API_BIND=172.17.0.1
+BEE_RUNG_720P_API_BIND=172.17.0.1
+BEE_RUNG_1080P_API_BIND=172.17.0.1
 SRS_HTTP_API_BIND=172.17.0.1
 SRS_HTTP_BIND=172.17.0.1
 OME_HTTP_BIND=172.17.0.1
@@ -397,10 +416,12 @@ OME_HTTP_BIND=172.17.0.1
 
 What each one closes:
 
-- **`BEE_UPLOADER_API_BIND`** and **`BEE_GATEWAY_API_BIND`** are the two Bee
-  HTTP APIs, and neither asks for a password, so reaching one is enough to
-  spend the node's postage, upload chunks and write feeds with its wallet
-  behind them.
+- **`BEE_UPLOADER_API_BIND`**, **`BEE_GATEWAY_API_BIND`**,
+  **`BEE_RUNG_480P_API_BIND`**, **`BEE_RUNG_720P_API_BIND`** and
+  **`BEE_RUNG_1080P_API_BIND`** are the Bee HTTP APIs of the deployment's own
+  node, its gateway and the stack's three per-rung nodes, and none asks for a
+  password, so reaching one is enough to spend the node's postage, upload chunks
+  and write feeds with its wallet behind them.
 - **`SRS_HTTP_API_BIND`** is the SRS control API on 1985, which asks for no
   password either and will name every live stream, the same name an ingest URL
   and a publish key are built from, along with every publisher's and every
@@ -444,11 +465,19 @@ step 3. An uploader created before
 all. Copy the pool string from the pool page again and paste it into the
 uploader's "Node pool string" field under Edit.
 
-If this host runs the stack with `COMPOSE_NETWORK=host`, the pair that applies
-to the Bee APIs is `BEE_UPLOADER_API_LISTEN` and `BEE_GATEWAY_API_LISTEN`
-instead, and `*_API_BIND` does nothing there at all. The engines have no such
-pair, and their three settings do nothing under host networking either, which
-leaves the host firewall of step 3 to close those ports.
+If this host runs the stack with `COMPOSE_NETWORK=host`, the keys that apply to
+the Bee APIs are the `*_API_LISTEN` ones instead, `BEE_UPLOADER_API_LISTEN` and
+`BEE_GATEWAY_API_LISTEN`, with `BEE_RUNG_480P_API_LISTEN`,
+`BEE_RUNG_720P_API_LISTEN` and `BEE_RUNG_1080P_API_LISTEN` for the stack's own
+per-rung nodes, and `*_API_BIND` does nothing there at all. So a deployment on
+host networking is not bound by the manager: the bind it writes does nothing
+there, and it writes no listen address, because a host-networked uploader
+reaches its own node on `localhost`. A deploy of such a deployment on this host
+logs a warning instead, naming the `*_API_LISTEN` of each of its Bee nodes that
+is left empty, since such a node listens on every address of the host. The
+engines have no such key, and their three settings do nothing under host
+networking either, which leaves the host firewall of step 3 to close those
+ports.
 
 Commit the edit, Update the bundled version from the Versions page so the next
 build captures it, then redeploy the deployments that should pick it up. A node

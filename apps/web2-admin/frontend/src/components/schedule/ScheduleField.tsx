@@ -1,3 +1,4 @@
+import { useState } from 'react';
 import { Autocomplete, Chip, Stack, TextField, Typography } from '@mui/material';
 import { DesktopDatePicker } from '@mui/x-date-pickers/DesktopDatePicker';
 import { pickersInputBaseClasses } from '@mui/x-date-pickers/PickersTextField';
@@ -49,6 +50,18 @@ export function ScheduleField({ value, onChange, error = false, disabled = false
   const caption = describeSchedule(value, now);
   const { date, time } = splitDateTimeLocal(value);
 
+  // The form value is one string, so a half-typed date leaves it with no time
+  // either: a day typed as 05 passes through 00, which is no date. The time
+  // the operator chose is held here meanwhile, stays in its box, and goes back
+  // into the value once the date is whole.
+  const [heldTime, setHeldTime] = useState('');
+  const chosenTime = time || heldTime;
+
+  // The text in the time box. Text that is not a time of day changes nothing
+  // in the form, so the box goes back to the chosen time rather than keeping
+  // text the form never took.
+  const [timeText, setTimeText] = useState(chosenTime);
+
   // A stream that already went live is scheduled in the past by definition,
   // and so is any older draft. Flagging that as invalid would paint the field
   // red for a value the operator cannot change anyway, so the floor is only
@@ -63,18 +76,22 @@ export function ScheduleField({ value, onChange, error = false, disabled = false
     // An empty or half-typed date is no date, and the form's required check
     // is what should say so — hence the empty value rather than a silent hold.
     if (!nextDate) {
+      setHeldTime(chosenTime);
       onChange('');
       return;
     }
     // A day on its own is a complete answer to the operator, so it has to be
     // one to the form too: the earliest slot that day still has left.
-    const nextTime = time || firstFreeSlot(nextDate, now) || '00:00';
+    const nextTime = chosenTime || firstFreeSlot(nextDate, now) || '00:00';
     onChange(joinDateTimeLocal(nextDate, nextTime));
   };
 
   const handleTime = (typed: string) => {
     const nextTime = parseTypedTime(typed);
-    if (!nextTime) return;
+    if (!nextTime) {
+      setTimeText(chosenTime);
+      return;
+    }
     onChange(joinDateTimeLocal(date || todayValue(now), nextTime));
   };
 
@@ -115,11 +132,18 @@ export function ScheduleField({ value, onChange, error = false, disabled = false
         />
         <Autocomplete<string, false, true, true>
           id="scheduled-time"
-          options={slotOptions(time)}
-          value={time}
+          options={slotOptions(chosenTime)}
+          value={chosenTime}
+          inputValue={timeText}
+          onInputChange={(_event, text) => setTimeText(text)}
           onChange={(_event, next) => handleTime(next)}
           disabled={disabled}
           disableClearable
+          // An emptied box left without a choice, after Escape or with the
+          // mouse resting on the menu, would show nothing while the form keeps
+          // its time. This puts the stored time's text back on blur. Typed
+          // text is still committed first, by autoSelect.
+          clearOnBlur
           autoHighlight
           openOnFocus
           autoSelect

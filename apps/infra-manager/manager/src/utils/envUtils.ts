@@ -314,6 +314,41 @@ export function beeApiBindLines(values: ProfileEnvValues): ManagedEnvLines {
   return Object.fromEntries(BEE_API_BIND_KEYS.map((key) => [key, bind]));
 }
 
+/** The COMPOSE_NETWORK value that runs the stack on the host's own network, the stack's docker-compose.host.yml. */
+const HOST_NETWORK = 'host';
+
+/**
+ * The key each Bee node of the stack's compose file takes the listen address
+ * of its API from, by service. The node binds that address itself
+ * (`--api-addr`), and empty is every address. Under host networking Docker
+ * publishes no port, so a `*_API_BIND` does nothing there and this is the one
+ * thing that binds the API.
+ */
+export const BEE_API_LISTEN_KEYS: ReadonlyMap<string, string> = new Map([
+  ['bee-uploader', 'BEE_UPLOADER_API_LISTEN'],
+  ['bee-gateway', 'BEE_GATEWAY_API_LISTEN'],
+  ['bee-uploader-480p', 'BEE_RUNG_480P_API_LISTEN'],
+  ['bee-uploader-720p', 'BEE_RUNG_720P_API_LISTEN'],
+  ['bee-uploader-1080p', 'BEE_RUNG_1080P_API_LISTEN'],
+]);
+
+/**
+ * The listen keys of the Bee nodes among `services` whose API this environment
+ * leaves on every address of the host: it runs on host networking and names no
+ * listen address for them. Empty on a bridge, where the published port is what
+ * a `*_API_BIND` narrows.
+ *
+ * Read, never filled in: a host-networked uploader reaches its own node on
+ * localhost, so a listen address the manager chose could cut it off.
+ */
+export function beeApiListenKeysLeftOpen(env: Readonly<Record<string, string>>, services: readonly string[]): string[] {
+  if (env.COMPOSE_NETWORK !== HOST_NETWORK) return [];
+  return services.flatMap((service) => {
+    const key = BEE_API_LISTEN_KEYS.get(service);
+    return key !== undefined && !env[key] ? [key] : [];
+  });
+}
+
 /**
  * The address this deployment's Bee nodes reach the chain through, or null to
  * leave the stack's own value standing.
@@ -613,6 +648,18 @@ export function renderProfileEnv(
   stored: Readonly<Record<string, string>> = {},
   fallbacks: ManagedEnvLines = {},
 ): string {
+  let contents = withStoredValues(baseText, stored);
+  for (const [key, value] of Object.entries(fallbacksLeftUnnamed(contents, fallbacks))) {
+    contents = upsertEnvLine(contents, key, value);
+  }
+  for (const [key, value] of Object.entries(managed)) {
+    contents = upsertEnvLine(contents, key, value);
+  }
+  return contents;
+}
+
+/** The base text with the operator's stored values written over it, each checked as `renderProfileEnv` says. */
+function withStoredValues(baseText: string, stored: Readonly<Record<string, string>>): string {
   let contents = baseText;
   for (const [key, value] of Object.entries(stored)) {
     const problem = settingValueProblem(key, value);
@@ -621,14 +668,26 @@ export function renderProfileEnv(
     }
     contents = upsertEnvLine(contents, key, value);
   }
-  const named = parseEnvText(contents);
-  for (const [key, value] of Object.entries(fallbacks)) {
-    if (!named[key]) contents = upsertEnvLine(contents, key, value);
-  }
-  for (const [key, value] of Object.entries(managed)) {
-    contents = upsertEnvLine(contents, key, value);
-  }
   return contents;
+}
+
+/** The fallbacks whose key `text` leaves empty or does not name, which are the ones a render writes. */
+function fallbacksLeftUnnamed(text: string, fallbacks: ManagedEnvLines): ManagedEnvLines {
+  const named = parseEnvText(text);
+  return Object.fromEntries(Object.entries(fallbacks).filter(([key]) => !named[key]));
+}
+
+/**
+ * The Bee API binds a deploy writes into the deployment's env file over this
+ * base text and these stored values: each of {@link beeApiBindLines} whose key
+ * neither names, with the address it is given. Empty where it writes none.
+ */
+export function beeApiBindsWritten(
+  values: ProfileEnvValues,
+  baseText: string,
+  stored: Readonly<Record<string, string>> = {},
+): ManagedEnvLines {
+  return fallbacksLeftUnnamed(withStoredValues(baseText, stored), beeApiBindLines(values));
 }
 
 // deploy.sh switches ENV_FILE to .env.<profile> when present and uses it as

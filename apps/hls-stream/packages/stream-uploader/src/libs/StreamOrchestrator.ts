@@ -342,8 +342,9 @@ export class StreamOrchestrator {
    * open: see {@link noteDisconnect}. It is cleared by the next accepted segment and by the session
    * being retired. It never decides when a broadcast ends, because the window belongs to the stall
    * reaper, which measures media rather than webhooks. It reports the disconnect through
-   * {@link HealthSignals.disconnectedStreams}, and it tells {@link resumeHeldRungs} which rungs SRS cut
-   * rather than held, so those are left to their own return.
+   * {@link HealthSignals.disconnectedStreams}, it keeps the stream out of the stall measure,
+   * {@link getMsSinceStreamActivity}, while it waits, and it tells {@link resumeHeldRungs} which rungs
+   * SRS cut rather than held, so those are left to their own return.
    */
   private streamDisconnectedAt = new Map<string, number>();
   /**
@@ -2230,6 +2231,13 @@ export class StreamOrchestrator {
    * A draining stream is excluded because a drain legitimately accepts no segments for up to
    * `DRAIN_TIMEOUT_MS`, and a stream awaiting a post-crash reconnect is excluded because its
    * recovery timer is already the control for never coming back.
+   *
+   * A stream whose encoder has disconnected is excluded for the same reason, until the encoder
+   * announces its return or its next segment lands: the stall reaper is the control for an encoder
+   * that never comes back, and it finalizes the recording when the reconnect window is up. On SRS a
+   * disconnect and the window after it are how every broadcast ends, so counted here, one stream
+   * waiting out its window read `segment_stall` for the whole service and the stage read blocked
+   * while every other stream on it was live.
    */
   public getMsSinceStreamActivity(): number | null {
     const now = this.clock.now();
@@ -2240,7 +2248,11 @@ export class StreamOrchestrator {
       // under the id its predecessor's drain is still keyed by, and that replacement is live and has
       // to stay answerable. Excluding by id alone hid a broadcasting stream from this signal for as
       // long as the outgoing finalize took, which is up to `DRAIN_TIMEOUT_MS`.
-      if (this.isDraining(streamId, uploader) || this.recoveryTimers.has(streamId)) {
+      if (
+        this.isDraining(streamId, uploader) ||
+        this.recoveryTimers.has(streamId) ||
+        this.streamDisconnectedAt.has(streamId)
+      ) {
         continue;
       }
       const activityAt = this.streamActivityAt.get(streamId);

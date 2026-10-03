@@ -24,11 +24,14 @@ import { Profile, ProfileStatus } from '../types/index.js';
 import {
   baseEnvPath,
   beeApiBindLines,
+  beeApiBindsWritten,
+  beeApiListenKeysLeftOpen,
   bootstrapStackDefaults,
   deleteProfileEnv,
   engineEnvPath,
   engineSettingsLinesOf,
   managedEnvLines,
+  type ManagedEnvLines,
   parseEnvText,
   profileEnvPath,
   type ProfileEnvValues,
@@ -178,6 +181,37 @@ function adminUrlFor(stored: Readonly<Record<string, string>>, root: string, eng
 
 function withoutKeys<T extends Record<string, string>>(record: T, keys: readonly string[]): T {
   return Object.fromEntries(Object.entries(record).filter(([key]) => !keys.includes(key))) as T;
+}
+
+/**
+ * The line a deploy logs for the Bee API binds it wrote into the deployment's
+ * env file, each key with its address, or null when it wrote none. A node bound
+ * this way stops answering anything that dials it on another address of the
+ * host, so the operator has to be able to read where it went.
+ */
+function beeApiBindsLogLine(profileName: string, binds: ManagedEnvLines): string | null {
+  const written = Object.entries(binds).map(([key, address]) => `${key}=${address}`);
+  if (written.length === 0) return null;
+  return (
+    `[Orchestrator] ${profileName}: wrote the Docker bridge address into each Bee API bind that neither ` +
+    `the base .env nor the deployment's settings name: ${written.join(', ')}`
+  );
+}
+
+/**
+ * The warning a deploy logs for a deployment on this host whose Bee APIs its
+ * next environment leaves on every address of the host, from the listen keys
+ * `beeApiListenKeysLeftOpen` names, or null when it names none.
+ */
+function hostNetworkBeeApiWarning(profileName: string, openListenKeys: readonly string[]): string | null {
+  if (openListenKeys.length === 0) return null;
+  const one = openListenKeys.length === 1;
+  return (
+    `[Orchestrator] ${profileName}: ${one ? 'its Bee API listens' : 'its Bee APIs listen'} on every address of ` +
+    'this host. It runs on host networking, COMPOSE_NETWORK=host, where Docker publishes no port and no ' +
+    `*_API_BIND applies, and ${openListenKeys.join(' and ')} ${one ? 'is' : 'are'} empty. Name an address ` +
+    "there in the deployment's settings, or close the port with the host firewall."
+  );
 }
 
 function stripDockerWarnings(text: string): string {
@@ -526,6 +560,35 @@ export class DeploymentOrchestrator {
   private async localBeeApiBindFor(host: string | null): Promise<string | null> {
     if (!this.localBeeApiBind || !isLocalTarget(targetAlias(host))) return null;
     return this.localBeeApiBind();
+  }
+
+  /**
+   * Warns when a deployment on this host is about to run a Bee node whose API listens on every address of the
+   * host, which host networking with no listen address does whatever the binds say. Read from the environment the
+   * deploy script reads: the env file just written, over the engine's own.
+   */
+  private warnOfBeeApisOnEveryAddress(
+    profile: Profile,
+    host: string | null,
+    version: DeployVersionSnapshot,
+    engine: EngineName,
+    root: string,
+    envFile: string,
+  ): void {
+    const target = targetAlias(host);
+    if (!isLocalTarget(target)) return;
+    const nextEnv = effectiveEnvOf({
+      profile,
+      contract: version.contract,
+      target,
+      rootEnvText: readFileSync(envFile, 'utf8'),
+      engineEnvText: readIfPresent(engineEnvPath(root, engine)),
+    });
+    const warning = hostNetworkBeeApiWarning(
+      profile.name,
+      beeApiListenKeysLeftOpen(nextEnv, defaultServicesFor(profile)),
+    );
+    if (warning) logger.warn(warning);
   }
 
   /** Sets what a removal asks before it claims the deployment, a setter for the same reason as the one above. */
@@ -1435,19 +1498,21 @@ export class DeploymentOrchestrator {
       };
       const stored = await this.operatorSettingsFor(profile, version, reservation.host);
       await this.assertAdminTokenStaysHome(profile, stored, paths.root, engine);
-      const written = writeProfileEnv(
-        paths.root,
-        profile.name,
-        this.profileEnvValuesOf(profile, version, engine, {
-          secrets,
-          stackSecrets: await this.stackSecretsFor(profile, version, paths.root, engine, stored),
-          engineConfigFile,
-          stored,
-          localBeeApiBind: await this.localBeeApiBindFor(reservation.host ?? profile.host),
-        }),
+      const values = this.profileEnvValuesOf(profile, version, engine, {
+        secrets,
+        stackSecrets: await this.stackSecretsFor(profile, version, paths.root, engine, stored),
+        engineConfigFile,
         stored,
-      );
+        localBeeApiBind: await this.localBeeApiBindFor(reservation.host ?? profile.host),
+      });
+      const written = writeProfileEnv(paths.root, profile.name, values, stored);
       logger.info(`[Orchestrator] ${profile.name}: wrote profile env ${written} (engine=${engine})`);
+      const bound = beeApiBindsLogLine(
+        profile.name,
+        beeApiBindsWritten(values, readIfPresent(baseEnvPath(paths.root)), stored),
+      );
+      if (bound) logger.info(bound);
+      this.warnOfBeeApisOnEveryAddress(profile, reservation.host ?? profile.host, version, engine, paths.root, written);
 
       const services = [...reservation.services];
       // After the env file is written, so the record carries the token the uploader is about to be given.

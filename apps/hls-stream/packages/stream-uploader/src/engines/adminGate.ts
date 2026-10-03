@@ -39,6 +39,14 @@ const logger = Logger.getInstance();
  *    rather than reconciled: `app` decides which media the uploader publishes and the draft decides
  *    what the admin will show, and a stream that is audio to one and video to the other is a player
  *    that builds the wrong codec set from the first fragment.
+ * 6. **Misspelled id.** The ingest id names the declaration in a spelling other than its own
+ *    `<mediaType>/<topic>`, the topic in capitals for one. The admin keeps a topic in a uuid column,
+ *    so its lookup finds the declaration from any letter case, while the engine and every map here
+ *    keyed by the ingest id take the two spellings for two streams. Admitted, the second spelling ran
+ *    as a second session beside the live one, out of reach of the engine's busy check and of the
+ *    takeover rules, writing the same feeds, and the session that ended first reported a recording
+ *    shorter than the one the feeds held. Refused rather than normalised, so a declaration only ever
+ *    has the one ingest id, and checked last, so every refusal above keeps the log line it had.
  */
 export const ADMIN_PUBLISH_ALLOWED = 'allowed' as const;
 const ADMIN_PUBLISH_UNANNOUNCED = 'unannounced' as const;
@@ -46,13 +54,15 @@ const ADMIN_PUBLISH_UNREACHABLE = 'unreachable' as const;
 const ADMIN_PUBLISH_BAD_KEY = 'bad-key' as const;
 const ADMIN_PUBLISH_WRONG_OWNER = 'wrong-owner' as const;
 const ADMIN_PUBLISH_WRONG_MEDIA_TYPE = 'wrong-media-type' as const;
+const ADMIN_PUBLISH_MISSPELLED_ID = 'misspelled-id' as const;
 
 type AdminPublishRefusal =
   | typeof ADMIN_PUBLISH_UNANNOUNCED
   | typeof ADMIN_PUBLISH_UNREACHABLE
   | typeof ADMIN_PUBLISH_BAD_KEY
   | typeof ADMIN_PUBLISH_WRONG_OWNER
-  | typeof ADMIN_PUBLISH_WRONG_MEDIA_TYPE;
+  | typeof ADMIN_PUBLISH_WRONG_MEDIA_TYPE
+  | typeof ADMIN_PUBLISH_MISSPELLED_ID;
 
 type AdminPublishVerdict =
   | { kind: typeof ADMIN_PUBLISH_ALLOWED; session: AdminSession }
@@ -66,10 +76,16 @@ type AdminPublishVerdict =
  * caller failing to prove anything, and counting it would make an admin outage read as an attack.
  * `wrong-media-type` does not either: the caller proved the key for the stream it named, so it is a
  * misconfigured publisher rather than an unauthorised one. Nor does `wrong-owner`, which is this
- * deployment's two keys disagreeing and nothing the caller did.
+ * deployment's two keys disagreeing and nothing the caller did. Nor does `misspelled-id`, for the
+ * media type's reason: the caller proved the key for the declaration it named.
  */
 export function isAuthRefusal(refusal: AdminPublishRefusal): boolean {
   return refusal === ADMIN_PUBLISH_UNANNOUNCED || refusal === ADMIN_PUBLISH_BAD_KEY;
+}
+
+/** The ingest id the admin filed this declaration under, spelled exactly as the admin gives it. */
+function declaredIngestId(draft: AdminStreamDraft): string {
+  return `${draft.mediaType}/${draft.topic}`;
 }
 
 /**
@@ -129,6 +145,17 @@ export async function resolveAdminPublish(
       `${tag} refused ${streamId}: the ingest app says ${mediatype} and the announced stream says ${draft.mediaType}`,
     );
     return { kind: ADMIN_PUBLISH_WRONG_MEDIA_TYPE };
+  }
+
+  // Compared exactly and never case-folded, because two spellings admitted are two sessions on one
+  // declaration. See point 6 of the list above.
+  const declaredId = declaredIngestId(draft);
+  if (streamId !== declaredId) {
+    logger.warn(
+      `${tag} refused ${streamId}: the announced stream's own ingest id is ${declaredId}, and only that exact ` +
+        'spelling may publish, so a second spelling cannot run as a second session on the same stream',
+    );
+    return { kind: ADMIN_PUBLISH_MISSPELLED_ID };
   }
 
   logger.info(`${tag} resolved ${streamId} to announced stream ${draft.id} ("${draft.title}") on topic ${draft.topic}`);

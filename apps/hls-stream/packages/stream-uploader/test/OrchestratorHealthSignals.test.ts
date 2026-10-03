@@ -8,6 +8,7 @@ import { LadderGroupStore } from '../src/libs/LadderGroupStore.js';
 import { StreamOrchestrator } from '../src/libs/StreamOrchestrator.js';
 import { StreamUploader } from '../src/libs/StreamUploader.js';
 import {
+  HEALTH_REASON_SEGMENT_STALL,
   HEALTH_REASON_STATE_NOT_PERSISTED,
   MEDIA_TYPE_VIDEO,
   PRESSURE_HIGH,
@@ -300,6 +301,98 @@ describe('StreamOrchestrator stream activity age', () => {
       3_000,
       'one busy stream must not mask a dead sibling, so the worst age wins rather than the first or the last one read',
     );
+  });
+});
+
+/**
+ * ⛔ A disconnect is held for one reconnect window on purpose, and on SRS that window is how every
+ * broadcast ends: the encoder stops, `on_unpublish` notes a disconnect, and the reaper finalizes the
+ * recording once the window is up. Counted as a stall, one stream waiting out its window read
+ * `segment_stall` for the whole service from the stall threshold on, which marked the stage blocked in
+ * both consoles while every other stream on it was live and healthy.
+ */
+describe('a stream waiting out its reconnect window is not a stall', () => {
+  const STALL_MS = 30_000;
+  const REAP_MS = 60_000;
+  /** Past the stall threshold and still inside the reconnect window, which runs from the last segment. */
+  const INSIDE_THE_WINDOW_MS = STALL_MS + 5_000;
+
+  function makeWindowOrchestrator(clock: FakeClock): StreamOrchestrator {
+    return makeTestOrchestrator({ clock, segmentStallMs: STALL_MS, orphanReapMs: REAP_MS });
+  }
+
+  function reportsAStall(orch: StreamOrchestrator): boolean {
+    return deriveHealthStatus(orch.getHealthSignals(), orch.getSegmentStallMs()).reasons.includes(
+      HEALTH_REASON_SEGMENT_STALL,
+    );
+  }
+
+  /** A stream that delivered one segment and whose encoder then left. */
+  function startAndDisconnect(orch: StreamOrchestrator, streamId: string): void {
+    orch.startStream(streamId, MEDIA_TYPE_VIDEO);
+    orch.handleSegment(streamId, 0, SEGMENT_SECONDS, Buffer.from('the last segment before the drop'));
+    orch.noteDisconnect(streamId);
+  }
+
+  /** One segment every `SEGMENT_SECONDS` until the clock reaches `untilMs`, the way a live encoder delivers. */
+  async function deliverUntil(
+    orch: StreamOrchestrator,
+    clock: FakeClock,
+    streamId: string,
+    untilMs: number,
+  ): Promise<void> {
+    for (let index = 1; clock.now() < untilMs; index += 1) {
+      await clock.advance(SEGMENT_SECONDS * 1_000);
+      orch.handleSegment(streamId, index, SEGMENT_SECONDS, Buffer.from(`segment ${index}`));
+    }
+  }
+
+  it('reports no stall for a disconnected stream beside one that is live and producing', async () => {
+    const clock = new FakeClock();
+    const orch = makeWindowOrchestrator(clock);
+    orch.startStream('live/producing', MEDIA_TYPE_VIDEO);
+    orch.handleSegment('live/producing', 0, SEGMENT_SECONDS, Buffer.from('segment 0'));
+    startAndDisconnect(orch, 'live/waiting');
+
+    await deliverUntil(orch, clock, 'live/producing', INSIDE_THE_WINDOW_MS);
+
+    assert.deepEqual(orch.getHealthSignals().disconnectedStreams, ['live/waiting'], 'still held for its encoder');
+    assert.equal(reportsAStall(orch), false, 'one stream waiting out its window marked a healthy service stalled');
+  });
+
+  it('reports no stall when the only stream is waiting out its window', async () => {
+    const clock = new FakeClock();
+    const orch = makeWindowOrchestrator(clock);
+    startAndDisconnect(orch, 'live/waiting');
+
+    await clock.advance(INSIDE_THE_WINDOW_MS);
+
+    assert.deepEqual(orch.getHealthSignals().disconnectedStreams, ['live/waiting'], 'still held for its encoder');
+    assert.equal(reportsAStall(orch), false, 'an encoder that left and may come back is not a stall');
+  });
+
+  it('still reports a stall for a connected stream that has sent nothing past the threshold', async () => {
+    const clock = new FakeClock();
+    const orch = makeWindowOrchestrator(clock);
+    orch.startStream('live/silent', MEDIA_TYPE_VIDEO);
+    orch.handleSegment('live/silent', 0, SEGMENT_SECONDS, Buffer.from('segment 0'));
+
+    await clock.advance(STALL_MS + 1);
+
+    assert.equal(reportsAStall(orch), true, 'nothing said this encoder left, so its silence is a stall');
+  });
+
+  it('measures a stream again once its encoder is back, so a return that delivers nothing still stalls', async () => {
+    const clock = new FakeClock();
+    const orch = makeWindowOrchestrator(clock);
+    startAndDisconnect(orch, 'live/returning');
+    await clock.advance(STALL_MS / 2);
+    assert.equal(orch.startStream('live/returning', MEDIA_TYPE_VIDEO), true, 'the encoder is back inside the window');
+
+    await clock.advance(STALL_MS / 2 + 1);
+
+    assert.deepEqual(orch.getHealthSignals().disconnectedStreams, [], 'the return ended the disconnect');
+    assert.equal(reportsAStall(orch), true, 'a connected encoder that has sent nothing past the threshold');
   });
 });
 
