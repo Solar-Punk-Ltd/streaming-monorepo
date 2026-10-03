@@ -204,7 +204,7 @@ export function makeStage(overrides: Partial<StageSummary> = {}): StageSummary {
     stackVersion: '1.4.0',
     status: 'running',
     owner: '0x3f1a9c2b4d5e6f708192a3b4c5d6e7f809a1b2c3',
-    ingest: { host: 'ingest.example.org', srtPort: 10061, rtmpPort: 10062, rtmpPublic: false, hasSrtPassphrase: true },
+    ingest: { host: 'ingest.example.org', srtPort: 10061, rtmpPort: 10062, rtmpPublic: true, hasSrtPassphrase: true },
     rungs: [
       {
         name: '720p',

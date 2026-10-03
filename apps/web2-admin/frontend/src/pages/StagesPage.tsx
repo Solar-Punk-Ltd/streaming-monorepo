@@ -65,7 +65,7 @@ function Ingest({ stage }: { stage: StageSummary }) {
       </Typography>
       <Typography variant="caption" sx={{ color: 'text.secondary' }}>
         SRT, {ingest.hasSrtPassphrase ? 'with a passphrase' : 'no passphrase'}
-        {ingest.rtmpPublic ? `; RTMP on ${ingest.rtmpPort}` : ''}
+        {ingest.rtmpPublic ? ` · RTMP on ${ingest.rtmpPort}, unencrypted` : ''}
       </Typography>
     </Stack>
   );
