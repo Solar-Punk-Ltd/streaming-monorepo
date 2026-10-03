@@ -261,7 +261,9 @@ describe('fresh pinned transfer preparation', () => {
       }),
       new ChequebookChainRegistry(undefined),
       () => h.session,
-      { timeoutMs: 15 },
+      // Long enough for the target read and the session to finish first, so the bound runs out in the stalled
+      // identity read. On a loaded machine 15 ms ran out before the session existed, leaving nothing to dispose.
+      { timeoutMs: 1000 },
     );
     await assert.rejects(preparation.prepare(transferIntent()), /checked/i);
     assert.equal(h.counts().disposed, 1);

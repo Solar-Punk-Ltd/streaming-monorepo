@@ -279,7 +279,9 @@ describe('bounded lost-response chain scanning', () => {
     const first = await new ChequebookRecoveryInspector(
       async () => f.reader,
       async () => [],
-      { timeoutMs: 15 },
+      // Long enough for block 505 to be read first, so the bound runs out in the stalled read of 504. On a loaded
+      // machine 15 ms could run out before 505, and the scan then never reached the block this test is about.
+      { timeoutMs: 1000 },
     ).inspect(f.operation, { forceScan: true });
     assert.equal(first.observation.kind, 'could_not_check');
     assert.equal(first.observation.scan?.nextBlockNumber, '504');
