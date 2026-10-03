@@ -253,7 +253,8 @@ These are P3: rare, with no damage path, recorded once.
   its SRT stream id and SRS quotes it into its log. An id carrying a newline and
   then a line in the exact report shape would be counted as a report. The cost
   is wrong numbers on an observational card, never a leak or a change, and on a
-  deployment with an SRT passphrase the publisher needs it to connect at all.
+  deployment with an SRT passphrase the publisher needs it to connect at all. An
+  RTMP connection can write the same line with no key, as the last limit says.
   `manager/test/unit/srtTransportStats.test.ts` shows the same text refused
   anywhere but at the start of a line, which is the part the parser can hold.
 - **A read that reaches its byte or time bound keeps the older part of the
@@ -277,11 +278,20 @@ These are P3: rare, with no damage path, recorded once.
   sending at once report in turn, so one that stops is told from one that goes
   on only once its reports leave the window. It takes two RTMP broadcasts on one
   stage at once, and costs a number that is high for under a minute.
-- **A crafted RTMP stream name can put fake numbers on the card**, as a crafted
-  SRT stream id can, by carrying a newline and then a line in the exact report
-  shape, with the vhost of the ingest. The same cost and the same guard apply,
-  and the publisher needs a stream key the uploader accepts before SRS keeps
-  the connection.
+- **A crafted RTMP connection can put fake numbers and a fake state on the card,
+  with no key.** SRS strips line breaks from an RTMP publisher's stream name, but
+  it prints the tcUrl, pageUrl and swfUrl of the connect command, and the
+  `param` that carries the key, as they came, before any hook runs (the "connect
+  app" and "client identified" lines in SRS's `srs_app_rtmp_conn.cpp`, and the
+  "Ignore parse url" warning for a tcUrl it cannot parse). One of them carrying
+  a newline and then a line in the exact report shape is counted as a report,
+  and it is in the log before any key is checked, so one TCP connection to the
+  public RTMP port does it. What it can forge is numbers and states: the RTMP
+  part `measured` with any counts and bitrate, or `unattributed`, and the same
+  carrier can write an SRT report too, so the SRT counts and verdict as well. It
+  can forge no text, and no other line's content reaches the card, because a
+  line is read only when it is one report from start to end. The cost is wrong
+  numbers on an observational card, never a leak or a change.
 
 ## Tests
 
