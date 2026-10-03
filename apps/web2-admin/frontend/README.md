@@ -67,7 +67,7 @@ honours a few env vars:
 | `MOCK_API_PORT`       | `9877`                   | listen port                                                                                                                                  |
 | `SEED_ADMIN_USERNAME` | `admin`                  | the seeded user                                                                                                                              |
 | `SEED_ADMIN_PASSWORD` | `admin1234`              | its password (changeable through the UI)                                                                                                     |
-| `MOCK_RTMP_PUBLIC`    | `false`                  | set `true` to see the OBS panel of a stage that offers RTMP ingest as well as SRT                                                            |
+| `MOCK_RTMP_PUBLIC`    | `true`                   | set `false` to see the OBS panel of a stage that takes SRT alone, as an OvenMediaEngine one does                                             |
 | `MOCK_NO_STAGES`      | unset                    | set `true` to start with no stages: the Stages page's empty state, and a stage picker with nothing to pick                                   |
 | `VIEWER_BASE_URL`     | `http://localhost:10074` | drives the "open player catalogue" link. It must be a viewer built for this backend's feed                                                   |
 | `MOCK_NO_USERS`       | unset                    | set `true` to start with no users, the only way to see the console's "no users yet" screen                                                   |
