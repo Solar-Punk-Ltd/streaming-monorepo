@@ -1,5 +1,6 @@
 import { NodeWaitReport } from '../types.js';
 import { describeFailure, transportCodeOf } from '../utils/transportFailure.js';
+import { stripUrlUserinfo } from '../utils/urlSecrets.js';
 
 import { safeUrl } from './BeePublisherPool.js';
 import { NodeUnreachableError } from './NodeUnreachableError.js';
@@ -127,7 +128,7 @@ export async function waitForNode<T>(init: () => Promise<T>, options: NodeWaitOp
         throw error;
       }
 
-      const lastError = describeFailure(error);
+      const lastError = stripUrlUserinfo(describeFailure(error));
       const failed = nodeUrlOf(error) ?? url;
       onReport({ url: failed, waitingSince, attempts, lastError });
       logger.warn(`[NodeWait] node not available at ${failed}, retrying in ${delayMs / MS_PER_SECOND}s: ${lastError}`);
@@ -163,7 +164,9 @@ export async function assertNodeReachable(node: ReachableNode): Promise<void> {
   try {
     connected = await node.bee.connectivity.isConnected();
   } catch (error) {
-    throw new NodeUnreachableError(`${url} did not answer a liveness check: ${describeFailure(error)}`);
+    throw new NodeUnreachableError(
+      `${url} did not answer a liveness check: ${stripUrlUserinfo(describeFailure(error))}`,
+    );
   }
 
   if (!connected) {

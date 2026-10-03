@@ -365,6 +365,23 @@ describe('what the wait says about the node url', () => {
     }
   });
 
+  // `lastError` is the failure's own message, published beside the url, and a message may quote the
+  // url it was asked to reach as the caller configured it, credential included.
+  it('strips a credential out of a url quoted inside the failure it reports and logs', async () => {
+    const seen = watcher();
+    const quoting = () => new Error(`connect ECONNREFUSED while asking ${CREDENTIALLED}/health`);
+
+    await waitForNode(failingInit(1, quoting).run, { ...seen.options, url: CREDENTIALLED });
+
+    const failed = seen.reports.find((report) => report.lastError !== undefined);
+    assert.ok(failed, 'the failure was reported');
+    assert.doesNotMatch(failed.lastError ?? '', /hunter2|operator/);
+    assert.match(failed.lastError ?? '', /ECONNREFUSED while asking http:\/\/bee-a:1633\/health/);
+    for (const line of seen.warnings) {
+      assert.doesNotMatch(line, /hunter2|operator/);
+    }
+  });
+
   it('leaves a url with nothing to hide as the operator wrote it', async () => {
     const seen = watcher();
 

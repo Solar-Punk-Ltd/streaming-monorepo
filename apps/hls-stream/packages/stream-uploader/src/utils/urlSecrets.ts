@@ -120,3 +120,17 @@ export function redactUrlSecrets(url: string): string {
 
   return `${url.slice(0, queryStart)}?${redacted}${fragment}`;
 }
+
+/** `scheme://user:password@` or `scheme://user@`, wherever it stands in a sentence. */
+const URL_USERINFO = /\b([a-z][a-z0-9+.-]*:\/\/)[^\s/?#@]+@/gi;
+
+/**
+ * Free text with the user and password taken out of every url quoted in it, host and port kept.
+ *
+ * For a failure's own message, which may quote the url it was asked to reach as the caller configured
+ * it. bee takes basic auth in a url's userinfo, so that url can carry a credential, and a message is
+ * published and logged as it stands.
+ */
+export function stripUrlUserinfo(text: string): string {
+  return text.replace(URL_USERINFO, '$1');
+}
