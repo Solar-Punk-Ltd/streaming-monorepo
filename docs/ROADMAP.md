@@ -19,9 +19,11 @@ scope `@streaming-monorepo/`.
 - Stream drafts in Postgres with the msrs-client form fields.
 - Publish a draft to a stream list feed the backend owns (single writer).
 - OBS connection details per stream: SRT URL carrying a per-stream `key=`, the
-  server-wide SRT passphrase shown alongside. The RTMP server and stream key are
-  shown only where the deployment opens RTMP ingest (`INGEST_RTMP_PUBLIC`), which
-  is off by default, since ingest is SRT only for now.
+  server-wide SRT passphrase shown alongside. The RTMP server and stream key were
+  shown only where the deployment opened RTMP ingest (`INGEST_RTMP_PUBLIC`), which
+  was off by default, since ingest was SRT only then. That key left the admin's
+  env with phase 4 of the stages work, and RTMP is offered on every SRS stage
+  since RTMP ingest opened beside SRT, below.
 - A real stream for a draft: the uploader (swarm-hls-stream `main-v3`) resolves
   the draft by ingest stream id through the admin's internal API, checks the
   key, publishes under the draft's topic and reports live and vod; the admin
@@ -387,6 +389,25 @@ Left open after the nine phases:
   different hosts. Decided 2026-09-28: it does not, because the manager
   pushes, on the admin's registrar token, and every uploader presents a token
   of its own (done in phases 5 and 9).
+
+## RTMP ingest beside SRT (2026-10-03)
+
+Decided by the owner: RTMP ingest at the same level as SRT, as plain RTMP. SRS 6
+has no TLS on its RTMP listener, so there is no RTMPS. An RTMP stream key
+crosses the network as readable text, anyone who reads it there can publish to
+that stream with it, and on a stack that lets a reconnecting encoder take over a
+stream they can take over a live broadcast too. SRT with a passphrase stays the
+ingest to recommend on a network the broadcaster does not trust.
+
+- The manager's port policy opens an RTMP ingest band, TCP on
+  `10002 + 10 × slot` for slots 1 to 100, as its version 2. The firewall draft
+  opens it, and the generator refuses an inventory export checked against
+  version 1, so a host's table is replaced from a manager and a checkout of the
+  same release.
+- A stage record says `rtmpPublic: true` for an SRS stage and false for an
+  OvenMediaEngine one, which takes SRT alone. The manager's console calls the
+  port public ingest, and the admin's OBS panel offers RTMP beside SRT on such a
+  stage and warns what the unencrypted key allows.
 
 ## Checkpoint 4: brand console
 

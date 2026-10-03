@@ -76,6 +76,11 @@ as `createXRouter(deps)` factories, manual constructor injection in
 | `INGEST_SRT_PASSPHRASE` | empty          | the server-wide SRT passphrase, shown to the operator                                                                                  |
 | `INGEST_KEY_VERIFIED`   | `false`        | true once the deployed uploader verifies `key=`                                                                                        |
 
+> The six `INGEST_*` keys are retired and the admin no longer reads them. Each
+> stream's OBS details come from the record of the stage it is broadcast on, as
+> [stages.md](stages.md) describes, and the record's `rtmpPublic`, which the
+> manager sets on every SRS stage, decides whether RTMP is offered.
+
 Startup: `import 'dotenv/config'`, log config with the private key, batch id
 and passphrase redacted, migrate, seed the admin user, listen. SIGTERM and
 SIGINT close the server and the pool.
@@ -186,7 +191,8 @@ clone at `scratchpad/repos/swarm-hls-stream/packages/stream-uploader/package.jso
 
 Pure function of the stream row and config, built with the helpers in common:
 `streamId = buildIngestStreamId(mediaType, topic)`, SRT URL, the RTMP server and
-stream key when `INGEST_RTMP_PUBLIC` is on (null otherwise), the server-wide
+stream key when `INGEST_RTMP_PUBLIC` is on (null otherwise, and retired since, as
+the note under the settings table says), the server-wide
 passphrase, `keyVerified` from config. Rotating
 the key writes a fresh 16 random bytes hex and `publish_key_rotated_at`.
 
