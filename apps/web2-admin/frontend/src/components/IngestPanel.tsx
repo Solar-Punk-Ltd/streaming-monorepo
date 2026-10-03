@@ -24,6 +24,14 @@ export const RETIRED_STAGE_NOTE =
   'The manager retired this stage. These are the details it last pushed, and they may no longer answer.';
 
 /**
+ * What the panel says beside RTMP. RTMP has no passphrase, so its stream key
+ * travels in clear text, and a stack that lets a new publisher take over a
+ * stream hands a live broadcast to whoever holds the key.
+ */
+export const RTMP_UNENCRYPTED_NOTE =
+  'RTMP is not encrypted. Your stream key crosses the network as readable text, and anyone who reads it there can publish to this stream with it. On a stage that lets a reconnecting encoder replace one whose connection dropped, they can also replace your live broadcast with theirs. On a network you do not trust, broadcast over SRT with a passphrase instead.';
+
+/**
  * The SRT Server line carries `key=<publishKey>` and, where it can ride there,
  * `passphrase=<passphrase>`. The RTMP stream key, where RTMP is offered, carries
  * the same `key=`. Only those values are hidden: the host, port and stream id
@@ -87,6 +95,7 @@ function SrtSettings({ srt }: { srt: IngestSrtDetails }) {
 function RtmpSettings({ rtmp }: { rtmp: IngestRtmpDetails }) {
   return (
     <ProtocolSection title="RTMP">
+      <Alert severity="warning">{RTMP_UNENCRYPTED_NOTE}</Alert>
       <ValueField label="RTMP Server" value={rtmp.server} helperText="Paste into the Server box." />
       <ValueField
         label="RTMP Stream Key"

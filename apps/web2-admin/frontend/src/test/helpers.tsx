@@ -164,13 +164,13 @@ export function makeStream(overrides: Partial<Stream> = {}): Stream {
   };
 }
 
-/** What a deployment that opened RTMP ingest answers for `makeIngest()`'s stream. */
+/** What an SRS stage answers for `makeIngest()`'s stream, since RTMP ingest is open on every one. */
 export const RTMP_OFFERED: NonNullable<IngestDetails['rtmp']> = {
   server: 'rtmp://ingest.example.test:10062/video',
   streamKey: '00000001-0000-4000-8000-000000000000?key=a1b2c3d4e5f60718293a4b5c6d7e8f90',
 };
 
-/** SRT only, as a deployment answers unless it opened RTMP ingest. */
+/** SRT alone, as a stage that takes no RTMP answers, an OvenMediaEngine one. */
 export function makeIngest(overrides: Partial<IngestDetails> = {}): IngestDetails {
   return {
     streamId: 'video/00000001-0000-4000-8000-000000000000',

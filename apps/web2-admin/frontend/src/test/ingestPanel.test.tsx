@@ -1,7 +1,7 @@
 import { fireEvent, screen, within } from '@testing-library/react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
-import { IngestPanel, NO_STAGE_NOTE, RETIRED_STAGE_NOTE } from '../components/IngestPanel';
+import { IngestPanel, NO_STAGE_NOTE, RETIRED_STAGE_NOTE, RTMP_UNENCRYPTED_NOTE } from '../components/IngestPanel';
 import { RTMP_OFFERED, makeIngest, mockFetch, renderWithProviders } from './helpers';
 
 const renderPanel = (details = makeIngest()) =>
@@ -91,6 +91,20 @@ describe('IngestPanel', () => {
     expect(screen.queryByLabelText('RTMP Stream Key')).not.toBeInTheDocument();
     expect(screen.queryByText(/pick one of the two protocols/)).not.toBeInTheDocument();
     expect(screen.getByText(/copy the SRT values below into OBS/)).toBeInTheDocument();
+    expect(screen.queryByText(RTMP_UNENCRYPTED_NOTE)).not.toBeInTheDocument();
+  });
+
+  it('warns beside RTMP that it is not encrypted, what a key read off the network allows, and to use SRT', () => {
+    mockFetch([]);
+
+    renderPanel(makeIngest({ rtmp: RTMP_OFFERED }));
+
+    const warning = section('RTMP').getByText(RTMP_UNENCRYPTED_NOTE);
+    expect(warning).toHaveTextContent(/RTMP is not encrypted/);
+    expect(warning).toHaveTextContent(/can publish to this stream/);
+    expect(warning).toHaveTextContent(/replace your live broadcast/);
+    expect(warning).toHaveTextContent(/On a network you do not trust, broadcast over SRT with a passphrase/);
+    expect(section('SRT').queryByText(RTMP_UNENCRYPTED_NOTE)).not.toBeInTheDocument();
   });
 
   it('says what goes in the OBS Server and Stream Key boxes for RTMP where the deployment opens it', () => {
