@@ -10,7 +10,13 @@
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 
-import { OBS_SERVER_BOX, OBS_STREAM_KEY_BOX, RTMP_BOXES_NOTE, RTMP_UNENCRYPTED_WARNING } from './publishText';
+import {
+  OBS_SERVER_BOX,
+  OBS_STREAM_KEY_BOX,
+  publishCopyText,
+  RTMP_BOXES_NOTE,
+  RTMP_UNENCRYPTED_WARNING,
+} from './publishText';
 
 describe('the Publish card beside RTMP', () => {
   it('warns that RTMP is not encrypted, what a key read off the network allows, and to use SRT', () => {
@@ -33,5 +39,30 @@ describe('the Publish card beside RTMP', () => {
       assert.ok(!text.includes('\u2014'), `an em dash in: ${text}`);
       assert.ok(!text.includes(';'), `a semicolon in: ${text}`);
     }
+  });
+});
+
+// The deployment header, the deployments list and the overview each copy this text.
+describe('what Copy publish URL puts on the clipboard', () => {
+  const SRT_LINE = 'srt://stream.example:10061?streamid=#!::r=live/stream,m=publish&passphrase=plain.pass_word~-1';
+  const RTMP = { server: 'rtmp://stream.example:10062/live', streamKey: 'stream' };
+
+  it('is the SRT line alone when the deployment has no RTMP', () => {
+    assert.equal(publishCopyText(SRT_LINE, null), SRT_LINE);
+  });
+
+  it('adds the RTMP server and stream key, named by their OBS boxes, when RTMP is open', () => {
+    assert.equal(
+      publishCopyText(SRT_LINE, RTMP),
+      [`SRT: ${SRT_LINE}`, 'RTMP Server: rtmp://stream.example:10062/live', 'RTMP Stream Key: stream'].join('\n'),
+    );
+  });
+
+  it('carries the SRT passphrase exactly where the SRT line does and adds none to RTMP', () => {
+    const lines = publishCopyText(SRT_LINE, RTMP).split('\n');
+    assert.deepEqual(
+      lines.map((line) => line.includes('passphrase=')),
+      [true, false, false],
+    );
   });
 });

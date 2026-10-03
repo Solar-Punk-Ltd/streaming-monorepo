@@ -19,14 +19,15 @@ export function DeploymentHeader({
   serverHost,
   group,
   rung,
-  publishUrl,
+  publishCopyText,
   publishUrlReady,
 }: {
   profile: Profile;
   serverHost: string;
   group: DeploymentGroup | null;
   rung: string | null;
-  publishUrl: string | null;
+  /** What Copy publish URL puts on the clipboard, the SRT line with RTMP's values where RTMP is open. */
+  publishCopyText: string | null;
   publishUrlReady: boolean;
 }) {
   const actions = useActions();
@@ -46,11 +47,11 @@ export function DeploymentHeader({
         }),
     });
   }
-  if (publishUrl && publishUrlReady) {
+  if (publishCopyText && publishUrlReady) {
     menuItems.push({
       label: 'Copy publish URL',
       onSelect: () => {
-        void navigator.clipboard.writeText(publishUrl).catch(() => undefined);
+        void navigator.clipboard.writeText(publishCopyText).catch(() => undefined);
       },
     });
   }

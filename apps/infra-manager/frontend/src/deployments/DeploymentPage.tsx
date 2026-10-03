@@ -237,7 +237,7 @@ function DeploymentBody({ profile, focus, bee }: { profile: Profile; focus: Depl
         serverHost={serverHost}
         group={group}
         rung={rung}
-        publishUrl={publishUrl}
+        publishCopyText={publish.copyText}
         publishUrlReady={readiness.tone === 'ok'}
       />
 

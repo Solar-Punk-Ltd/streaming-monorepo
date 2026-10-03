@@ -205,9 +205,14 @@ test('a deployment page puts an SRT passphrase on the line only when the line ca
         Boolean,
         'the copied plain stage line',
       );
+      // An SRS deployment takes RTMP too, so its server and stream key follow the SRT line.
       assert.equal(
         copied,
-        'srt://offline.example:10011?streamid=#!::r=live/stream,m=publish&passphrase=plain.pass_word~-1',
+        [
+          'SRT: srt://offline.example:10011?streamid=#!::r=live/stream,m=publish&passphrase=plain.pass_word~-1',
+          'RTMP Server: rtmp://offline.example:10012/live',
+          'RTMP Stream Key: stream',
+        ].join('\n'),
       );
       assert.equal(await evaluate('location.hash'), hash);
     });
