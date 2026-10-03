@@ -506,6 +506,16 @@ describe('ScheduleField', () => {
 
   const typeTime = (text: string) => fireEvent.change(timeField(), { target: { value: text } });
 
+  /**
+   * One keystroke into a part of the date, as the field takes it: the part is
+   * selected when it gains focus, and the key arrives as that part's own text.
+   */
+  const typeInDate = (part: 'Day' | 'Month', key: string) => {
+    const section = screen.getByRole('spinbutton', { name: part });
+    fireEvent.focus(section);
+    fireEvent.input(section, { target: { textContent: key } });
+  };
+
   it('shows the day and the time in their own fields, and both in the caption', () => {
     renderField();
 
@@ -610,6 +620,32 @@ describe('ScheduleField', () => {
     fireEvent.click(within(calendar).getByRole('gridcell', { name: '20' }));
 
     expect(onChange).toHaveBeenLastCalledWith('2026-09-20T00:00');
+  });
+
+  it('keeps the chosen time when a day that starts with 0 is typed', () => {
+    // A typed 0 makes the day 00, which is no date, so for one keystroke the
+    // form holds no value at all. The time is still the one the operator
+    // chose, not the first slot of whatever day comes out at the end.
+    const onChange = renderField({ initial: '2026-09-14T18:30' });
+
+    typeInDate('Day', '0');
+    expect(onChange).toHaveBeenLastCalledWith('');
+
+    typeInDate('Day', '5');
+    typeInDate('Month', '1');
+    typeInDate('Month', '0');
+
+    expect(onChange).toHaveBeenLastCalledWith('2026-10-05T18:30');
+    expect(timeField()).toHaveValue('18:30');
+  });
+
+  it('shows the chosen time while the date is half typed', () => {
+    renderField({ initial: '2026-09-14T18:30' });
+
+    typeInDate('Day', '0');
+
+    expect(dateField()).toHaveValue('00/09/2026');
+    expect(timeField()).toHaveValue('18:30');
   });
 
   it('can be emptied, which is what makes the field fail validation', () => {
