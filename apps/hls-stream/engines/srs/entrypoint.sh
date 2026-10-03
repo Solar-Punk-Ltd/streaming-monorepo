@@ -41,6 +41,13 @@ require_int() {
   esac
 }
 
+require_on_off() {
+  case "$2" in
+    on | off) ;;
+    *) echo "$1 must be on or off, got '$2'" >&2; exit 1 ;;
+  esac
+}
+
 # Names reach the generated config as bare tokens and as part of an RTMP URL, so anything
 # outside this set could terminate a directive early or redirect the republish elsewhere.
 require_name() {
@@ -205,6 +212,27 @@ HLS_AOF_RATIO="$(aof_ratio_for "$HLS_FRAGMENT" "$HLS_SEGMENT_MAX" "${HLS_AOF_RAT
 require_number SRT_LATENCY "${SRT_LATENCY:-2000}"
 sed -i "s/SRT_LATENCY_PLACEHOLDER/${SRT_LATENCY:-2000}/" "$CONF"
 
+# Whether a reconnecting SRT broadcaster replaces a publisher SRS still holds, such as one whose network
+# died without closing the connection. Off, SRS refuses the reconnect as busy until it notices the dead
+# peer, about 7 seconds, and an encoder that gives up after one refusal ends the broadcast. It is only
+# safe where the on_publish hook refuses a wrong key, which the uploader does when a publish key secret
+# or admin mode is configured. Compose tells this container only whether either is set, never the
+# values, so left unset the takeover follows that, and SRT_TAKEOVER decides it outright.
+# --- srt takeover, replayed whole by deploy/test/srsTuning.test.js ---
+SRT_TAKEOVER="${SRT_TAKEOVER:-}"
+if [ -z "$SRT_TAKEOVER" ]; then
+  if [ -n "${UPLOADER_PUBLISH_KEYS:-}${UPLOADER_ADMIN_MODE:-}" ]; then
+    SRT_TAKEOVER=on
+  else
+    SRT_TAKEOVER=off
+  fi
+elif [ "$SRT_TAKEOVER" = on ] && [ -z "${UPLOADER_PUBLISH_KEYS:-}${UPLOADER_ADMIN_MODE:-}" ]; then
+  echo "SRT_TAKEOVER is on while the uploader checks no publish key, so anyone who reaches the SRT port can replace a live broadcaster." >&2
+fi
+# --- end srt takeover ---
+require_on_off SRT_TAKEOVER "$SRT_TAKEOVER"
+sed -i "s/SRT_TAKEOVER_PLACEHOLDER/${SRT_TAKEOVER}/" "$CONF"
+
 # The uploader rejects every webhook without this, so an empty value is a misconfiguration worth
 # failing on here rather than at the first publish. SRS cannot sign its callbacks or send a header,
 # so the credential travels in the hook URL.
@@ -270,6 +298,12 @@ if abr_enabled; then
   ABR_ACODEC="${ABR_ACODEC:-copy}"
   ABR_AUDIO_BITRATE="${ABR_AUDIO_BITRATE:-128}"
   ABR_VBV_SECONDS="${ABR_VBV_SECONDS:-1}"
+  # Seconds the rung encoders outlive a dropped broadcaster, the fork's `unpublish_hold`. A
+  # broadcaster back within it keeps the same encoders and its picture returns in about 2s. Kept
+  # short because SRS cuts the idle rung publishes 13 to 17s into a drop (publish.normal_timeout),
+  # and past that a held encoder only fails and restarts, slower than a fresh set. The uploader's
+  # reap window, not this, decides how long a broadcaster may be away.
+  ABR_UNPUBLISH_HOLD="${ABR_UNPUBLISH_HOLD:-12}"
   ABR_LADDER="${ABR_LADDER:-1080p:1920:1080:5000 720p:1280:720:2800 480p:854:480:1200 360p:640:360:700}"
 
   require_name ABR_VHOST "$ABR_VHOST"
@@ -277,6 +311,7 @@ if abr_enabled; then
   require_int ABR_FPS "$ABR_FPS"
   require_int ABR_THREADS "$ABR_THREADS"
   require_int ABR_VBV_SECONDS "$ABR_VBV_SECONDS"
+  require_int ABR_UNPUBLISH_HOLD "$ABR_UNPUBLISH_HOLD"
   require_int ABR_AUDIO_BITRATE "$ABR_AUDIO_BITRATE"
   require_name ABR_PRESET "$ABR_PRESET"
   require_name ABR_PROFILE "$ABR_PROFILE"
@@ -303,6 +338,7 @@ if abr_enabled; then
     echo "    transcode {"
     echo "        enabled     on;"
     echo "        ffmpeg      ./objs/ffmpeg/bin/ffmpeg;"
+    echo "        unpublish_hold ${ABR_UNPUBLISH_HOLD};"
   } > "$TRANSCODE_FRAGMENT"
 
   for rung in $ABR_LADDER; do

@@ -33,6 +33,7 @@ srt_server {
 vhost __defaultVhost__ {
     srt {
         enabled     on;
+        takeover    SRT_TAKEOVER_PLACEHOLDER;
     }
 
     hls {
