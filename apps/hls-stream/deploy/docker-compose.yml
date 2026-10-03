@@ -411,7 +411,7 @@ services:
   # --- SRS Media Server ---
 
   srs:
-    image: ghcr.io/solar-punk-ltd/swarm-srs:6.0-r2-swarm.2@sha256:11c0c3e13042e03c133eeebf29df6b04a8096fd62f18a5498e505998fbaf8327
+    image: ghcr.io/solar-punk-ltd/swarm-srs:6.0-r2-swarm.3@sha256:a59b2b86268f148b5d84eae86a028a0bff544bda9c5386f59109a98be0955035
     profiles: ['srs']
     restart: unless-stopped
     logging: *default-logging
