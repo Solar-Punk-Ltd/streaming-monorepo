@@ -5,8 +5,9 @@ import { join } from 'node:path';
 import { after, describe, it } from 'node:test';
 
 import { type E2EConfig, loadConfig } from '../src/config.js';
-import { srtIngestUrl } from '../src/harness/engine.js';
+import { ingestUrl, srtIngestUrl } from '../src/harness/engine.js';
 import { redactPublishKey } from '../src/harness/redactPublishKey.js';
+import { INGEST_RTMP } from '../src/ingestProtocol.js';
 
 /**
  * The publish key is a live credential and the harness prints the URL carrying it.
@@ -77,6 +78,16 @@ describe('redacting the publish key out of what a run prints', () => {
     assert.equal(printed, url.replace(GOLDEN_KEY, `2d1e${'…REDACTED'}`));
     assert.match(printed, new RegExp(`^srt://203\\.0\\.113\\.10:${cfg.ports.srt}\\?streamid=#!::r=video/demo\\?key=`));
     assert.match(printed, /,m=publish$/);
+  });
+
+  /** RTMP carries the key after the stream name, where a broadcaster's stream key puts it. */
+  it('takes the key out of the SRS ingest URL over RTMP, and keeps the server and the stream', () => {
+    const url = ingestUrl(config({ E2E_ENGINE: 'srs', PUBLISH_KEY_SECRET: GOLDEN_SECRET }), INGEST_RTMP);
+
+    const printed = redactPublishKey(url);
+
+    assert.equal(printed.includes(GOLDEN_KEY), false, `the key survived: ${printed}`);
+    assert.match(printed, /^rtmp:\/\/203\.0\.113\.10:1935\/video\/demo\?key=2d1e…REDACTED$/);
   });
 
   it('leaves a keyless URL exactly as it was, on either engine', () => {

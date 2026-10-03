@@ -1,11 +1,19 @@
 import assert from 'node:assert/strict';
-import { mkdtempSync, rmSync } from 'node:fs';
+import { mkdtempSync, readFileSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { after, describe, it } from 'node:test';
 
-import { type E2EConfig, loadConfig } from '../src/config.js';
-import { getEngine, srtIngestUrl } from '../src/harness/engine.js';
+import { type E2EConfig, loadConfig, ROOT_DIR } from '../src/config.js';
+import {
+  getEngine,
+  ingestUrl,
+  SRS_OLD_CONNECTION_LEFT_AFTER_A_NEWER,
+  SRS_RUNG_PUBLISHED,
+  SRS_RUNG_UNPUBLISHED,
+  srtIngestUrl,
+} from '../src/harness/engine.js';
+import { INGEST_RTMP, INGEST_SRT } from '../src/ingestProtocol.js';
 
 /**
  * The SRT ingest URL is the one thing in the harness that no assertion downstream can catch being
@@ -193,5 +201,105 @@ describe('the publish key in the ingest URL', () => {
    */
   it('refuses a secret too short for the service to have accepted', () => {
     assert.throws(() => config({ E2E_ENGINE: 'srs', PUBLISH_KEY_SECRET: 'too-short' }), /at least 32 characters/);
+  });
+});
+
+/**
+ * The RTMP URL the publisher dials, which has to be exactly what a broadcaster is told to put into OBS.
+ *
+ * The admin hands a broadcaster two fields, a server `rtmp://<host>:<port>/<app>` and a stream key `<stream>?key=<key>`
+ * (`buildRtmpServer` and `buildRtmpStreamKey` in `packages/contracts/src/ingest.ts`). OBS sends the first as the
+ * connection's `tcUrl` and the second as the stream it publishes, and ffmpeg sends the same two out of one URL that
+ * joins them with a slash. Pinned as literals for the reason the SRT shape above is: a URL a later change got wrong
+ * would refuse every publish in the warmup, and read as a broken stack.
+ */
+describe('SRS ingest over RTMP', () => {
+  const GOLDEN_SECRET = 'publish-key-secret-0123456789abcdef';
+  const GOLDEN_KEY = '2d1e344ecb833667c936399866349fbc';
+
+  it('joins the server and the stream key the admin hands a broadcaster', () => {
+    const cfg = config({
+      E2E_ENGINE: 'srs',
+      E2E_PORT_SLOT: '6',
+      E2E_STREAM_PATH: 'video/demo',
+      PUBLISH_KEY_SECRET: GOLDEN_SECRET,
+    });
+
+    assert.equal(ingestUrl(cfg, INGEST_RTMP), `rtmp://203.0.113.10:10062/video/demo?key=${GOLDEN_KEY}`);
+  });
+
+  it('carries no key when the deployment checks none', () => {
+    assert.equal(
+      ingestUrl(config({ E2E_ENGINE: 'srs', E2E_PORT_SLOT: '2' }), INGEST_RTMP),
+      'rtmp://203.0.113.10:10022/live/stream',
+    );
+  });
+
+  it('dials the stock RTMP port when the deployment is unslotted', () => {
+    assert.match(ingestUrl(config({ E2E_ENGINE: 'srs' }), INGEST_RTMP), /^rtmp:\/\/203\.0\.113\.10:1935\//);
+  });
+
+  it('presents a key a suite chose instead of the stream’s own, or none at all', () => {
+    const cfg = config({ E2E_ENGINE: 'srs', E2E_STREAM_PATH: 'video/demo', PUBLISH_KEY_SECRET: GOLDEN_SECRET });
+
+    assert.match(ingestUrl(cfg, INGEST_RTMP, cfg.streamPath, 'not-the-key'), /\/video\/demo\?key=not-the-key$/);
+    assert.match(ingestUrl(cfg, INGEST_RTMP, cfg.streamPath, null), /\/video\/demo$/);
+    assert.match(
+      ingestUrl(cfg, INGEST_SRT, cfg.streamPath, 'not-the-key'),
+      /streamid=#!::r=video\/demo\?key=not-the-key,m=publish$/,
+    );
+  });
+
+  it('is the SRT URL it always was when SRT is asked for', () => {
+    const cfg = config({ E2E_ENGINE: 'srs', E2E_PORT_SLOT: '2' });
+
+    assert.equal(ingestUrl(cfg, INGEST_SRT), srtIngestUrl(cfg));
+  });
+
+  it('refuses RTMP against OME, which takes SRT only in this stack', () => {
+    assert.throws(() => ingestUrl(config({ E2E_ENGINE: 'ome' }), INGEST_RTMP), /OME .* SRT only/);
+  });
+
+  /**
+   * The ladder's rung lines, which the encoder hold suite reads: a rung SRS keeps through a drop sends neither, and a
+   * rung it cut and restarted sends both.
+   */
+  /** The order a takeover produces, on a single stream and on a ladder's source, and never on a clean reconnect. */
+  it('reads the old connection leaving after a newer one was accepted, for a single stream and for a source', () => {
+    const single =
+      '[SRS] Stream live/stream: a connection unpublished while another the hook accepted is still there, so ' +
+      'nothing is disconnected';
+    const source =
+      '[SRS] Ladder source live/stream: a connection unpublished while another the hook accepted is still there, ' +
+      'so the base stays';
+
+    assert.equal(SRS_OLD_CONNECTION_LEFT_AFTER_A_NEWER.exec(single)?.[1], 'live/stream');
+    assert.equal(SRS_OLD_CONNECTION_LEFT_AFTER_A_NEWER.exec(source)?.[1], 'live/stream');
+    assert.equal(SRS_OLD_CONNECTION_LEFT_AFTER_A_NEWER.exec('[SRS] Stream unpublished: live/stream'), null);
+  });
+
+  /**
+   * The uploader writes these lines as plain strings rather than through a shared composer, so this is what notices
+   * a reword. A reader of a line nobody writes any more passes every absence it is asked to confirm.
+   */
+  it('reads lines the uploader’s SRS engine still writes, word for word', () => {
+    const source = readFileSync(join(ROOT_DIR, 'packages', 'stream-uploader', 'src', 'engines', 'srs.ts'), 'utf8');
+
+    for (const literal of [
+      '[SRS] Rung published: ',
+      '[SRS] Rung unpublished: ',
+      '[SRS] Ladder source ',
+      '[SRS] Stream ',
+      ': a connection unpublished while another the hook accepted is still there',
+    ]) {
+      assert.ok(source.includes(literal), `the uploader's SRS engine no longer writes "${literal}"`);
+    }
+  });
+
+  it('reads a rung’s published and unpublished lines, and not the source’s', () => {
+    assert.equal(SRS_RUNG_PUBLISHED.exec('[SRS] Rung published: live/stream_720p')?.[1], 'live/stream_720p');
+    assert.equal(SRS_RUNG_UNPUBLISHED.exec('[SRS] Rung unpublished: live/stream_360p')?.[1], 'live/stream_360p');
+    assert.equal(SRS_RUNG_PUBLISHED.exec('[SRS] Ladder source authenticated: live/stream'), null);
+    assert.equal(SRS_RUNG_UNPUBLISHED.exec('[SRS] Ladder source unpublished: live/stream'), null);
   });
 });

@@ -102,6 +102,26 @@ export function rungCountersOf(body: string, family: string, labelName: string):
 }
 
 /**
+ * The value of the unlabelled sample of `family`, or null when the scrape carries none.
+ *
+ * Null rather than zero for an absent sample, for the reason {@link rungCountersOf} keeps an absent family apart from
+ * a zero one: zero is a deployment that counted nothing, and an absent sample is a scrape that cannot say. Anchored
+ * like the labelled reader, and requiring whitespace straight after the name, so neither a HELP line, a labelled
+ * sample nor a longer family that starts with the same name is read as this one.
+ */
+export function counterOf(body: string, family: string): number | null {
+  const pattern = new RegExp(`^${escapedForRegExp(family)}\\s+(\\S+)$`);
+  for (const line of body.split('\n')) {
+    const match = pattern.exec(line.trim());
+    if (match !== null) {
+      const value = Number(match[1]);
+      return Number.isFinite(value) ? value : null;
+    }
+  }
+  return null;
+}
+
+/**
  * The program that scrapes `/metrics`, as `node -e` runs it inside the uploader container.
  *
  * Its own export rather than a string built inside {@link uploaderMetricsCommand}, because it is a

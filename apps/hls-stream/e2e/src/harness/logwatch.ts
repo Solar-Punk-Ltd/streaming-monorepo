@@ -522,6 +522,17 @@ export function sessionEnds(text: string): string[] {
  * are mode-exclusive (a ladder never writes `Adding stream to list`, a single rendition never
  * announces a rung), so presence decides and no caller carries a mode flag.
  */
+/**
+ * How many seams the uploader placed for an encoder that came back inside the reconnect window, which is one per
+ * stream per return: a single stream's own, or each rung's on a ladder.
+ *
+ * Its own count rather than {@link UploaderEvents.discontinuitiesArmed}, which sums this family with six that report
+ * a fault, so a reconnect suite reading that would pass on a lost segment standing in for the return it asked about.
+ */
+export function encoderReturnCount(text: string): number {
+  return countMatches(messageText(text), encoderReturnedPattern('g'));
+}
+
 export function announcedSessionTopics(text: string): string[] {
   const single = announcedLiveTopics(text);
   return single.length > 0 ? single : announcedRungs(text).map((announce) => announce.topic);

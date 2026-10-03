@@ -1,5 +1,6 @@
 import { containerName, type E2EConfig } from '../config.js';
 import { parseStageSegmenting, type StageSegmenting } from '../segmentLength.js';
+import { parseStageTakeovers, type StageTakeovers } from '../stageTakeover.js';
 
 import type { Host } from './host.js';
 import { PUBLISHER_GOP_SECONDS } from './publisher.js';
@@ -57,4 +58,9 @@ export async function readStageConf(host: Host, cfg: E2EConfig): Promise<string>
   const { stdout } = await host.run(`docker exec ${container} cat ${SRS_CONF_PATH}`);
 
   return stdout;
+}
+
+/** Whether the running stage takes a stream over, per protocol. See `src/stageTakeover.ts`. */
+export async function readStageTakeovers(host: Host, cfg: E2EConfig): Promise<StageTakeovers> {
+  return parseStageTakeovers(await readStageConf(host, cfg));
 }

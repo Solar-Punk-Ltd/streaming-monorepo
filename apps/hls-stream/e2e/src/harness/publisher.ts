@@ -1,6 +1,7 @@
 import type { E2EConfig } from '../config.js';
+import { INGEST_RTMP, INGEST_SRT, type IngestProtocol } from '../ingestProtocol.js';
 
-import { srtIngestUrl } from './engine.js';
+import { ingestUrl, type PresentedKey } from './engine.js';
 import { type FfmpegProcess, startFfmpeg } from './ffmpegProcess.js';
 
 const DEFAULT_FPS = 30;
@@ -15,15 +16,36 @@ const DEFAULT_FPS = 30;
  */
 export const PUBLISHER_GOP_SECONDS = 2;
 
+/**
+ * The container each protocol carries, as ffmpeg names its muxer: SRS takes MPEG-TS inside SRT and FLV inside RTMP.
+ * FLV's muxer seeks back to write the duration and size when it closes, which a live connection cannot do, so it is
+ * told not to try.
+ */
+const OUTPUT_FORMAT: Record<IngestProtocol, readonly string[]> = {
+  [INGEST_SRT]: ['-f', 'mpegts'],
+  [INGEST_RTMP]: ['-f', 'flv', '-flvflags', 'no_duration_filesize'],
+};
+
 export interface Publisher extends FfmpegProcess {
   readonly url: string;
+  readonly protocol: IngestProtocol;
 }
 
-/** Start an ffmpeg test-pattern (video+audio) publish over SRT to the configured engine's ingest. */
-export function startPublisher(cfg: E2EConfig, opts: { fps?: number; streamPath?: string } = {}): Publisher {
-  const fps = opts.fps ?? DEFAULT_FPS;
-  const url = srtIngestUrl(cfg, opts.streamPath ?? cfg.streamPath);
-  const args = [
+export interface PublisherOptions {
+  fps?: number;
+  streamPath?: string;
+  /** The protocol to publish over. The run's `E2E_INGEST_PROTOCOL` when the suite names none. */
+  protocol?: IngestProtocol;
+  /** The key to present instead of the stream's own, or null for none. See `PresentedKey`. */
+  publishKey?: PresentedKey;
+}
+
+/**
+ * The ffmpeg arguments for one publish: a video and audio test pattern encoded the same way over either protocol, so
+ * the protocol is the only thing a suite run over RTMP changes, then the container that protocol carries.
+ */
+export function publisherArgs(url: string, protocol: IngestProtocol, fps: number): string[] {
+  return [
     '-hide_banner',
     '-loglevel',
     'error',
@@ -52,10 +74,15 @@ export function startPublisher(cfg: E2EConfig, opts: { fps?: number; streamPath?
     '48000',
     '-b:a',
     '128k',
-    '-f',
-    'mpegts',
+    ...OUTPUT_FORMAT[protocol],
     url,
   ];
+}
 
-  return { url, ...startFfmpeg(args) };
+/** Start an ffmpeg test-pattern (video+audio) publish to the configured engine's ingest. */
+export function startPublisher(cfg: E2EConfig, opts: PublisherOptions = {}): Publisher {
+  const protocol = opts.protocol ?? cfg.ingestProtocol;
+  const url = ingestUrl(cfg, protocol, opts.streamPath ?? cfg.streamPath, opts.publishKey);
+
+  return { url, protocol, ...startFfmpeg(publisherArgs(url, protocol, opts.fps ?? DEFAULT_FPS)) };
 }
