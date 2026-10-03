@@ -55,7 +55,7 @@ export function endpointKindOf(
     };
   }
   if (key.includes('RTMP')) {
-    // Ingest is SRT only unless the policy opens RTMP, and an address the
+    // RTMP is public ingest exactly when the policy opens it, and an address the
     // firewall turns away is not offered, as the admin console does not offer it.
     const opened = isOpened(key, publicRoles);
     return {

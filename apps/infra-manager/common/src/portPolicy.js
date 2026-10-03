@@ -49,6 +49,15 @@ export const PUBLIC_PORT_ROLES = Object.freeze([
     service: 'srs',
     aliases: [{ portVar: 'OME_SRT_PORT', service: 'ome' }],
   },
+  // No OME alias: OvenMediaEngine takes SRT alone in this stack and publishes no RTMP port.
+  {
+    group: 'rtmp_ingest',
+    protocol: 'tcp',
+    base: 10002,
+    maxSlot: MANAGER_SLOT_CAP,
+    portVar: 'SRS_RTMP_PORT',
+    service: 'srs',
+  },
 ]);
 
 /**

@@ -3,9 +3,9 @@
  *
  * Two lists decide that and neither reads the other. `endpointKindOf` in the
  * frontend reads a port's audience off its key, and `PUBLIC_PORT_ROLES` in the
- * shared policy is what the generated nftables draft opens. RTMP was in the
- * first and never in the second, so the card offered an ingest address the
- * firewall drops, which is the one thing an operator cannot check from the
+ * shared policy is what the generated nftables draft opens. RTMP was once in the
+ * first and not in the second, so the card offered an ingest address the
+ * firewall dropped, which is the one thing an operator cannot check from the
  * screen. It is a manager test because the shared policy and the manager's own
  * port table both live on this side.
  *
@@ -62,12 +62,13 @@ describe('what the port cell calls public', () => {
       'BEE_UPLOADER_P2P_PORT',
       'CLIENT_PORT',
       'OME_SRT_PORT',
+      'SRS_RTMP_PORT',
       'SRS_SRT_PORT',
     ]);
   });
 
-  it('was written for the RTMP port, which no role names at all', () => {
-    assert.equal(openedPortVars().has('SRS_RTMP_PORT'), false);
-    assert.notEqual(endpointKindOf('SRS_RTMP_PORT').audience, 'public');
+  it('calls the RTMP port public because the RTMP ingest band opens it', () => {
+    assert.equal(openedPortVars().has('SRS_RTMP_PORT'), true);
+    assert.equal(endpointKindOf('SRS_RTMP_PORT').audience, 'public');
   });
 });

@@ -202,15 +202,23 @@ describe('a stage record, field by field', () => {
     assert.equal(record.ingest.srtPort, 10022);
   });
 
-  it('carries the ingest encoders dial: the address, the slot’s ports, RTMP closed and the passphrase', async () => {
+  it('carries the ingest encoders dial: the address, the slot’s ports, RTMP open and the passphrase', async () => {
     const { record } = await built();
     assert.deepEqual(record.ingest, {
       host: '192.0.2.10',
       srtPort: 10012,
       rtmpPort: 10013,
-      rtmpPublic: false,
+      rtmpPublic: true,
       srtPassphrase: PASSPHRASE,
     });
+  });
+
+  it('offers no RTMP on an OME stage, because OvenMediaEngine takes SRT alone', async () => {
+    const { record } = await built(
+      { env: baseEnv({ OME_SRT_PORT: '10022' }) },
+      stage({ components: ['ome', 'stream-uploader', 'bee-uploader'] }),
+    );
+    assert.equal(record.ingest.rtmpPublic, false);
   });
 
   it('takes the deployment’s own ingest address, and the manager’s public one for a local deployment', async () => {

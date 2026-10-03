@@ -325,7 +325,8 @@ describe('readStackContract and the protocol of each port', () => {
 
     assert.ok(contract.ports.every((port) => port.protocol === 'tcp'));
     assert.match(contract.allocationProblem ?? '', /No port slot from 1 to 99/);
-    assert.match(contract.allocationProblem ?? '', /CLIENT_PORT/);
+    // The first public port of the table, RTMP ingest, whose owner the unread compose file cannot name.
+    assert.match(contract.allocationProblem ?? '', /SRS_RTMP_PORT/);
     assert.match(contract.allocationProblem ?? '', /could not read which service publishes/);
   });
 

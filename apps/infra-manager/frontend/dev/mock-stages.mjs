@@ -43,6 +43,7 @@ function adminTokenOf(profile) {
 
 /** The record `GET /stages` answers for one stage, without its passphrase, as the manager would build it. */
 function consoleStageOf(profile, publicHost, managerId) {
+  const engine = (profile.components ?? []).includes('ome') ? 'ome' : 'srs';
   return {
     name: profile.name,
     record: {
@@ -51,7 +52,7 @@ function consoleStageOf(profile, publicHost, managerId) {
       managerId,
       name: profile.name,
       kind: profile.kind,
-      engine: (profile.components ?? []).includes('ome') ? 'ome' : 'srs',
+      engine,
       stackVersion: null,
       status: profile.status,
       observedAt: new Date().toISOString(),
@@ -59,7 +60,7 @@ function consoleStageOf(profile, publicHost, managerId) {
         host: resolvedIngestHost(profile, publicHost),
         srtPort: 10002 + profile.port_slot * 10,
         rtmpPort: 10003 + profile.port_slot * 10,
-        rtmpPublic: false,
+        rtmpPublic: engine === 'srs',
         hasSrtPassphrase: profile.has_srt_passphrase,
       },
       owner: profile.public_key ?? `0x${'0'.repeat(40)}`,
