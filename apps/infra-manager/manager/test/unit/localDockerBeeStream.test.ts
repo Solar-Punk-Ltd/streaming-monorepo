@@ -108,7 +108,8 @@ describe('local owned Docker connection', { timeout: 5000 }, () => {
         assert.equal(alias, syntheticTarget.alias);
         return locator();
       },
-      limits,
+      // Long enough for the connection and the handshake to finish first. On a loaded machine 200 ms ran out during them.
+      { ...limits, acquisitionTimeoutMs: 1000 },
       qualified,
       undefined,
       h.connect,
