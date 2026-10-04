@@ -46,12 +46,12 @@ function makeGuardedPlayer(rateAlreadyOnTheElement = 1) {
 }
 
 /**
- * The half of LAT-2 that enabling catch-up creates. hls.js adapts the rate inside one branch, and
+ * The half of the live catch-up setting that enabling catch-up creates. hls.js adapts the rate inside one branch, and
  * the else half of that branch writes the rate back to 1 whenever the drift is not worth nudging.
  * The component turns on the browser's native controls, so a viewer choosing 1.5x is put back to 1x
  * within a second, silently, on every live stream. Catch-up is only worth having with this in place.
  */
-describe('the live catch-up does not take the viewer speed control away (LAT-2)', () => {
+describe('the live catch-up does not take the viewer speed control away', () => {
   for (const [name, rate] of [
     ['faster than the catch-up could ever go', 1.5],
     ['at the top of the browser menu', 2],

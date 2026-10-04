@@ -212,7 +212,7 @@ const WRITER_BEE_PAUSE: FaultScenario = {
  * The writer's bee node taken away for longer than the uploader can retry.
  *
  * ⭐ **The first time a viewer plays through a hole in the timeline.** Past the fifteen second window
- * the uploader gives up on the segment in flight, and since the owner's ruling of 2026-09-06 the
+ * the uploader gives up on the segment in flight, and since 2026-09-06 the
  * playlist lists that sequence as an `#EXT-X-GAP` entry rather than leaving it out, so the numbering
  * behind the hole never moves. `suites/scenarios/bee-outage-long.test.ts` proves the uploader does
  * this correctly and stops there. Whether hls.js then plays on past the entries it was told to skip,

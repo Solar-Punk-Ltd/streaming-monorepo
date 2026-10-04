@@ -22,7 +22,7 @@ import { stageRegistrationLine } from './stagePush.js';
 
 const BATCH = 'a'.repeat(64);
 const POOL = ['360p', '480p', '720p', '1080p']
-  .map((rung, index) => `${rung}@http://10.200.0.1:${10015 + index * 10}<${String(index + 1).repeat(64)}>`)
+  .map((rung, index) => `${rung}@http://192.0.2.1:${10015 + index * 10}<${String(index + 1).repeat(64)}>`)
   .join(' ');
 
 const abrUploader: ReadinessProfile = {

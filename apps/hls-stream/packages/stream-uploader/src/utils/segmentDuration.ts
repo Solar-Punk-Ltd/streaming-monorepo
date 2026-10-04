@@ -78,7 +78,7 @@ function audioWithoutVideoIn(segment: Uint8Array): number | null {
  * `#EXT-X-TARGETDURATION`, and hls.js positions a live viewer `liveSyncDuration` seconds back along
  * a timeline built out of it. See the `a-recording-played-back-2026-08-06` measurement (kept outside the repository).
  *
- * The arithmetic is `measureSpanTicks`, which the bench has used since LAT-9 for exactly this reason.
+ * The arithmetic is `measureSpanTicks`, which the bench uses for exactly this reason.
  *
  * @param declared what the engine said, kept for a segment this cannot read. **Neither shipped
  *   engine should reach it.** OME is pulled from `ts:playlist.m3u8`, its MPEG-TS playlist rather

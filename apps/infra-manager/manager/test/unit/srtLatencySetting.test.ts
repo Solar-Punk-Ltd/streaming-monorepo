@@ -11,7 +11,7 @@
  * the stack asked for 200. Until 2026-09-23 the manager showed the stack's
  * number and let nobody change it.
  * Since then it is a setting, and a deployment that stores none gets the
- * owner's 2000 unless the host sets a value of its own.
+ * manager's 2000 unless the host sets a value of its own.
  */
 import assert from 'node:assert/strict';
 import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';

@@ -13,7 +13,7 @@ const STANDALONE = join(ROOT, 'engines/ome/docker-compose.yml');
 const ENTRYPOINT = join(ROOT, 'engines/ome/entrypoint.sh');
 
 /**
- * That OME binds the ports the operator configured. See OPS-30.
+ * That OME binds the ports the operator configured.
  *
  * `OME_SRT_PORT` and `OME_HLS_PORT` used to exist **only** as compose publish mappings, against a
  * `Server.xml.template` that hardcoded 10080 and 8081. On the bridge that difference is invisible,
@@ -91,7 +91,7 @@ function renderServerXml(env) {
   return rendered;
 }
 
-describe('the ports OME binds (OPS-30)', () => {
+describe('the ports OME binds', () => {
   it('binds what the operator configured', () => {
     const xml = renderServerXml({ OME_SRT_PORT: '10071', OME_HLS_PORT: '10092', OME_ADMISSION_SECRET: 'x'.repeat(64) });
 
@@ -120,7 +120,7 @@ describe('the ports OME binds (OPS-30)', () => {
    * The container half, over both compose files. The entrypoint cannot bind what compose never hands
    * it, and that was the actual defect: the variables were in `ports:` and nowhere else. This checked
    * only deploy/docker-compose.yml, so the standalone engines/ome file kept the fixed container ports
-   * and the missing pass-through that OPS-30 was about, unseen on the `pnpm ome:host` path.
+   * and the missing pass-through, unseen on the `pnpm ome:host` path.
    */
   for (const composePath of [COMPOSE, STANDALONE]) {
     const where = composePath.slice(ROOT.length + 1);
@@ -208,4 +208,31 @@ describe('the admission secret the entrypoint splices into Server.xml', () => {
 
     assert.match(xml, new RegExp(`<SecretKey>${secret}</SecretKey>`));
   });
+});
+
+/**
+ * The STUN server OME names in its config, a setting with Google's public server as its documented
+ * default, so a deployment that must not reach a third party can name its own.
+ */
+describe('the STUN server the entrypoint writes into Server.xml', () => {
+  it('writes Google public STUN server when OME_STUN_SERVER is unset', () => {
+    const xml = renderServerXml({ OME_ADMISSION_SECRET: 'x'.repeat(64) });
+
+    assert.match(xml, /<StunServer>stun\.l\.google\.com:19302<\/StunServer>/);
+  });
+
+  it('writes the server OME_STUN_SERVER names', () => {
+    const xml = renderServerXml({ OME_STUN_SERVER: 'stun.example.com:3478', OME_ADMISSION_SECRET: 'x'.repeat(64) });
+
+    assert.match(xml, /<StunServer>stun\.example\.com:3478<\/StunServer>/);
+  });
+
+  for (const composePath of [COMPOSE, STANDALONE]) {
+    it(`passes OME_STUN_SERVER into the container from ${composePath.slice(ROOT.length + 1)}`, () => {
+      const compose = readFileSync(composePath, 'utf8');
+      const ome = compose.slice(compose.indexOf('\n  ome:'));
+
+      assert.match(ome, /OME_STUN_SERVER:\s*\$\{OME_STUN_SERVER:-\}/);
+    });
+  }
 });

@@ -1,9 +1,9 @@
 #!/usr/bin/env bash
 #
 # Answer whether this container can actually receive a broadcast, which is a different question from
-# whether its process is running. This is OBS-20.
+# whether its process is running.
 #
-# On 2026-08-03 `latbench-srs-1` ran 44 minutes with its SRT listener dead. SRS had failed to bind
+# On 2026-08-03 an SRS container ran 44 minutes with its SRT listener dead. SRS had failed to bind
 # with `errno=98` because another container still held the port under host networking, and it wrote
 # nothing about that to its log until it was stopped. Throughout, `docker ps` said `Up`, the
 # uploader's `/health` said `ok` with `activeStreams: 0`, and the container healthcheck was satisfied.
@@ -100,7 +100,7 @@ require_held() {
       fi
     done
   done
-  echo "srs healthcheck: ${listener} is bound by a process outside this container, so ${stolen} See OBS-20." >&2
+  echo "srs healthcheck: ${listener} is bound by a process outside this container, so ${stolen}" >&2
   exit 1
 }
 

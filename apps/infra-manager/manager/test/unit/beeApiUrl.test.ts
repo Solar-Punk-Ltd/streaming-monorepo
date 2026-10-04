@@ -68,7 +68,7 @@ function profile(over: Partial<Profile> = {}): Profile {
  * resolver in localHost.ts answers and what a pool string carries. Injected here,
  * so composing a URL needs no Docker and no dns.
  */
-const LOCAL_PUBLISHER_HOST = '10.200.0.1';
+const LOCAL_PUBLISHER_HOST = '192.0.2.1';
 
 const publisherUrl = (over: Partial<Profile> = {}): string => beePublisherUrlFor(profile(over), LOCAL_PUBLISHER_HOST);
 
@@ -93,7 +93,7 @@ describe('beePublisherUrlFor', () => {
     // Not the public host. The manager binds every local bee API to the docker bridge, so
     // the public address answers on those ports from nowhere, and the uploader
     // handed this string is a container beside the manager.
-    assert.equal(publisherUrl({ host: 'localhost' }), 'http://10.200.0.1:10055');
+    assert.equal(publisherUrl({ host: 'localhost' }), 'http://192.0.2.1:10055');
   });
 
   it('resolves a stripped local target the same as a bare one', () => {

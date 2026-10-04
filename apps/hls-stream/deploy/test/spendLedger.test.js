@@ -16,7 +16,7 @@ function run(args) {
 }
 
 /**
- * The script that writes the owner's spend authorisation: a ceiling they set, and one chequebook
+ * The script that writes the operator's spend authorisation: a ceiling they set, and one chequebook
  * baseline per node that can spend, read off the nodes themselves.
  *
  * Only what can be checked without a deployment. Everything past the amount check dials the uploader
@@ -24,15 +24,15 @@ function run(args) {
  */
 describe('the spend ledger writer', () => {
   /**
-   * ⛔⛔⛔ The rule this script exists inside: the ceiling is the owner's number. A default would be
+   * ⛔⛔⛔ The rule this script exists inside: the ceiling is the operator's number. A default would be
    * an authorisation nobody gave, so there is none, and the refusal says why rather than just how.
    */
   it('refuses to write anything without an explicit authorisation', () => {
-    const { code, out } = run(['--profile=latbench', '--portSlot=7']);
+    const { code, out } = run(['--profile=bench-stage', '--portSlot=7']);
 
     assert.equal(code, 2);
     assert.match(out, /no --authorise/);
-    assert.match(out, /owner's to set/);
+    assert.match(out, /operator's to set/);
   });
 
   /**
@@ -42,7 +42,7 @@ describe('the spend ledger writer', () => {
    * profile flags are the only arguments.
    */
   it('gets past argument parsing when the profile flags are the only arguments', () => {
-    const { out } = run(['--profile=latbench', '--portSlot=7']);
+    const { out } = run(['--profile=bench-stage', '--portSlot=7']);
 
     assert.doesNotMatch(out, /unbound variable/, 'the script died on its own argument handling');
   });
@@ -80,7 +80,7 @@ describe('the spend ledger writer', () => {
   });
 
   /**
-   * ⛔⛔⛔ The owner rule this cannot be allowed to drift across: the agent never moves money. This
+   * ⛔⛔⛔ The rule this cannot be allowed to drift across: nothing here ever moves money. This
    * script reads balances and writes a file. A buy, a top-up or a dilute is a `POST` or a `PATCH`, so
    * the absence of either against a node is what makes "it cannot spend" checkable rather than stated.
    */

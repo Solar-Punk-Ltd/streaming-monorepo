@@ -25,9 +25,8 @@ import { GateCollector, GateFinding } from './StartGates.js';
  *
  * ## What happens to that refusal, 2026-09-17
  *
- * It became something a deployment asks for, and this gate is the one the ruling was about. The owner
- * ruled that day that "the uploader and engine should be able to start no matter what the status of
- * the chequebook is", after this read timed out
+ * It became something a deployment asks for, and this gate is the one that rule is about. The uploader and the engine start no matter what the status of
+ * the chequebook is, because this read timed out
  * on the live host against a pool address that had no node behind it: the refusal was the loudest
  * line in the log, it was about a chequebook nothing was wrong with, and docker restarted the
  * container into it until the deploy gave up. So by default the reading below still happens on every

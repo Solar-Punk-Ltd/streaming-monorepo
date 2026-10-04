@@ -23,7 +23,7 @@ function uploaderSource(...path: readonly string[]): string {
 /**
  * What `pnpm make:recording` counts, held against a log rather than against the driver.
  *
- * ⛔⛔ **Found live on 2026-09-02 on the latbench stage, a four rung ladder.** The driver asked for
+ * ⛔⛔ **Found live on 2026-09-02 on a four rung ladder.** The driver asked for
  * 60 segments before its outage and 60 after and produced 32 per rung, because it counted the
  * uploader's merged upload lines and a ladder writes one per rung. A recording is watched one rung
  * at a time, so the number an operator sets has to mean segments of the rung a player rides, and on

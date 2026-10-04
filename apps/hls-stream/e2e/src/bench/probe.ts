@@ -9,7 +9,7 @@
  * exit 0. Every shape below was captured from the real tool, not written from the documentation.
  *
  * The span is measured here rather than read from the manifest's `#EXTINF` because the manifest is
- * the engine's claim about the segment and the packets are the segment. See LAT-9, and
+ * the engine's claim about the segment and the packets are the segment. See
  * `segmentSpan.ts` for the two ways the arithmetic over those packets goes quietly wrong.
  */
 

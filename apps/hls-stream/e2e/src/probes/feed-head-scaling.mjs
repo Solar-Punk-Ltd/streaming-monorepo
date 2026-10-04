@@ -1,13 +1,13 @@
 /**
  * Does bee's feed head lookup get slower as a feed gets longer?
  *
- * WHY THIS EXISTS. LAT-10 measured `GET /feeds/{owner}/{topic}` against a feed advancing once a
+ * WHY THIS EXISTS. The feed head freeze work measured `GET /feeds/{owner}/{topic}` against a feed advancing once a
  * second and found it 50 to 57% frozen. The player survives that because it resolves the head once
  * and then walks slot addresses, but the **catalog does not**: `App.tsx` polls `/feeds/` every five
  * seconds through SWR, and every `StreamPreview` thumbnail makes one more, serialised behind a
  * concurrency-1 queue. That is a shipped path on every page load.
  *
- * The catalog's feed is nothing like the one LAT-10 measured, though. It advances when a broadcast
+ * The catalog's feed is nothing like the one that work measured, though. It advances when a broadcast
  * starts or stops, so it is idle nearly all the time, and a lookup against an idle feed may well be
  * fast. What it does do is **grow forever**, one slot per lifecycle event, for as long as the
  * deployment lives. So the question that decides whether the catalog needs fixing is not how fast the
@@ -32,7 +32,7 @@
  * RUN IT FROM `e2e`, one of the three workspace packages that declare `cafe-utility` and the one
  * this file lives in (`packages/shared` and `packages/stream-uploader` declare it too):
  *
- *   docker run --rm --network host -w /repo/e2e -e STAMP=... swarm-hls-bench:latest \
+ *   docker run --rm --network host -w /repo/e2e -e STAMP=... -e PORT_SLOT=<slot> swarm-hls-bench:latest \
  *     node src/probes/feed-head-scaling.mjs
  */
 import { Bee, FeedIndex, Identifier, PrivateKey, Topic } from '@ethersphere/bee-js';
@@ -40,8 +40,10 @@ import { Binary } from 'cafe-utility';
 import { randomBytes } from 'node:crypto';
 import { writeFileSync } from 'node:fs';
 
-const WRITE_URL = process.env.WRITE_URL ?? 'http://127.0.0.1:10075';
-const READ_URL = process.env.READ_URL ?? 'http://127.0.0.1:10077';
+import { probeReadUrl, probeWriteUrl } from './bee-urls.mjs';
+
+const WRITE_URL = probeWriteUrl();
+const READ_URL = probeReadUrl();
 const STAMP = process.env.STAMP;
 const REQUEST_TIMEOUT_MS = Number(process.env.REQUEST_TIMEOUT_MS ?? 15000);
 const ROUNDS = Number(process.env.ROUNDS ?? 30);

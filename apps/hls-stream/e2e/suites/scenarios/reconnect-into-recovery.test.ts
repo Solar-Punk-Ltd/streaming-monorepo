@@ -125,7 +125,7 @@ import { sleep, waitFor } from '../../src/harness/wait.js';
  *   `ManifestManager.placeInBroadcast` re-anchors a restarted counter forwards with a break, and
  *   there are no `#EXT-X-GAP` entries, because the forgotten accounting index must not turn that
  *   counter restart into a hole the broadcast never had. A restart is one of the only two things
- *   that still arm a break since the owner's ruling of 2026-09-06, the other being the origin
+ *   that still arm a break since 2026-09-06, the other being the origin
  *   declaring one, and a lost segment is now said with gap entries instead.
  *
  * ⛔ The uploader writes `Resumed recovering stream` when it takes the branch, but that line is not

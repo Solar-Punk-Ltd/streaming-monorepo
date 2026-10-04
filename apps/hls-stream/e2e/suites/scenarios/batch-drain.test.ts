@@ -66,7 +66,7 @@ import { waitFor } from '../../src/harness/wait.js';
  * every master playlist and the recording announce at the end of a broadcast. Draining it stops the
  * master being rewritten for all four rungs at once, which is the one case the dead-rung rule does
  * not handle and which nothing in this repo implements a failover for. `drainRung` refuses it by
- * name. Decision 2 of `docs/e2e-batch-drain-plan.md` files that as a known product gap.
+ * name. That is a known product gap.
  *
  * ## ⛔⛔⛔ A batch that runs out RAMPS, and this suite waits the ramp out
  *
@@ -94,7 +94,7 @@ import { waitFor } from '../../src/harness/wait.js';
  *
  * ## What this does not assert
  *
- * ⛔ No timing, per the owner ruling of 2026-08-29. How long the batch took to fill, what the ramp
+ * ⛔ No timing, by design. How long the batch took to fill, what the ramp
  * landed and lost in each ten seconds after the first refusal, and how long the master took to be
  * rewritten are measured, printed under a heading saying so, and filed.
  *
@@ -106,7 +106,7 @@ import { waitFor } from '../../src/harness/wait.js';
  *
  * ⛔ Requires a deployed profile, funded stamps and an ARMED stage, unlike every other suite here.
  * Nothing in CI runs these, and this one is deliberately absent from `test:e2e`, because the
- * ordinary full suite must never depend on a stage somebody broke on purpose. Decision 6 of the plan.
+ * ordinary full suite must never depend on a stage somebody broke on purpose, so the drain arms only on an explicit opt-in.
  */
 
 /** Segments each rung must publish before the drain is expected, so a four-rung ladder is established. */

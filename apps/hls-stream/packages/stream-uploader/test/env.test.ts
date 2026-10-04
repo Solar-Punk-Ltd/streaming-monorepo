@@ -68,7 +68,7 @@ describe('required', () => {
   });
 });
 
-describe('optionalInt (OBS-12)', () => {
+describe('optionalInt', () => {
   const INT_VAR = 'TEST_OPTIONAL_INT_VAR';
   let saved: string | undefined;
 

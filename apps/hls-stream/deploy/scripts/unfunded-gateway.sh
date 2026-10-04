@@ -20,7 +20,7 @@
 #
 # ## Why it is standalone rather than a compose service, and that is a safety property
 #
-# ⛔⛔ This host runs the live latbench stack plus forty other bee nodes and eight unrelated stacks.
+# ⛔⛔ A bench host can run a live stack beside many other bee nodes and unrelated stacks.
 # A compose change can recreate services that were never meant to move, and the funded gateway losing
 # its warm peer set mid-sitting would quietly become the cold-join penalty rather than the funded arm.
 # Nothing here touches the compose project at all.
@@ -39,8 +39,8 @@ set -u
 # Exact, and used for every lookup and the removal. Nothing here ever filters on a prefix.
 CONTAINER="${UNFUNDED_CONTAINER:-swarm-hls-unfunded-gateway}"
 
-# 10087/10088 are free: 10020-10038, 10060-10066 and 10070-10078 are taken on this host, and the
-# funded gateway is 10077. Checked again at start, because a shared host does not stay still.
+# Two host ports outside every port slot in use on the bench host. Set both when the defaults are
+# taken there. Checked again at start, because a shared host does not stay still.
 API_PORT="${UNFUNDED_API_PORT:-10087}"
 P2P_PORT="${UNFUNDED_P2P_PORT:-10088}"
 
@@ -60,7 +60,7 @@ IMAGE="${UNFUNDED_IMAGE:-ethersphere/bee:2.8.2@sha256:c0c951f0795e813be6b865213e
 UNFUNDED_RPC_ENDPOINT="${UNFUNDED_RPC_ENDPOINT-}"
 
 # ⛔⛔⛔ EVERY FLAG THE FUNDED GATEWAY CARRIES, so the two arms differ in the chain backend, and in the
-# chequebook that rides on it, and in NOTHING ELSE. Read off `docker inspect latbench-bee-gateway-1`
+# chequebook that rides on it, and in NOTHING ELSE. Read off `docker inspect <profile>-bee-gateway-1`
 # rather than copied from the compose file, because the compose file is a template and the running
 # container is what the funded arm actually is.
 #
@@ -93,7 +93,8 @@ DATA_DIR="${UNFUNDED_DATA_DIR:-${HOME}/unfunded-gateway/data}"
 # one this node is reachable only outbound, which changes how many peers keep it, and peer count is a
 # variable this comparison has to hold still. The host part is read off the funded gateway rather than
 # hardcoded, so a machine move cannot leave a stale address here.
-NAT_HOST="${UNFUNDED_NAT_HOST:-$(docker inspect "${FUNDED_CONTAINER:-latbench-bee-gateway-1}" \
+FUNDED_CONTAINER="${FUNDED_CONTAINER:-${PROFILE:?set PROFILE or FUNDED_CONTAINER, the stage whose funded gateway this copies}-bee-gateway-1}"
+NAT_HOST="${UNFUNDED_NAT_HOST:-$(docker inspect "${FUNDED_CONTAINER}" \
   --format '{{range .Config.Env}}{{println .}}{{end}}' 2>/dev/null |
   sed -n 's/^BEE_NAT_ADDR=\([^:]*\):.*/\1/p' | head -1)}"
 NAT_ADDR="${NAT_HOST}:${P2P_PORT}"
@@ -221,7 +222,7 @@ report_status() {
   # ⛔⛔⛔ Non-zero, because this exit code is what a sitting gates its arms on. A missing node is
   # emphatically not "an unfunded gateway", and answering zero here would be a gate stuck OPEN: the
   # driver would clear a condition that does not exist, then run arms against a port nothing is
-  # listening on. That is the same shape as the phase06 filter that matched no batch, and the
+  # listening on. That is the same shape as the light against ultra-light filter that matched no batch, and the
   # dangerous way round, since a gate stuck closed at least refuses.
   if ! exists; then
     say "${CONTAINER} is not running, so there is no unfunded arm to measure"

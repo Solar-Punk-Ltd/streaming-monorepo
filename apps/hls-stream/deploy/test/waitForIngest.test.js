@@ -8,8 +8,7 @@ import { ALL_REMOTE, makeSandbox, removeSandboxes, runScript, runScriptOk } from
 after(removeSandboxes);
 
 /**
- * `wait-for-ingest.sh`, the wait after SRS is recreated and before anything publishes to it. See OBS-20
- * in the hardening audit: an engine can run while a port it should listen on is bound by nothing.
+ * `wait-for-ingest.sh`, the wait after SRS is recreated and before anything publishes to it. An engine can run while a port it should listen on is bound by nothing.
  *
  * SRS takes broadcasters on two listeners, SRT on a UDP port and RTMP on a TCP port, and the ladder's
  * rungs republish over the RTMP one, so the wait holds until both are there.

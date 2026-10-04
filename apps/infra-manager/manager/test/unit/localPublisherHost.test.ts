@@ -17,7 +17,7 @@ import { describe, it } from 'node:test';
 import { localPublisherHostReader, resolveLocalPublisherHost } from '../../src/domain/localHost.js';
 import { config } from '../../src/utils/config.js';
 
-const BRIDGE = '10.200.0.1';
+const BRIDGE = '172.17.0.1';
 const DOCKER_HOST_NAME = 'host.docker.internal';
 
 function spies() {

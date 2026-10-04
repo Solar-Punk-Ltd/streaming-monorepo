@@ -8,7 +8,7 @@
  * finished only once every rung carried an index, and 1080p never would, so the catalog entry said
  * `live` with no index for good. Viewers were shown a dead live broadcast and never a recording.
  *
- * Owner ruling: the broadcast is listed as finished with the rungs that did finish, and a rung that
+ * The rule: the broadcast is listed as finished with the rungs that did finish, and a rung that
  * finishes later is added then.
  *
  * Driven through the orchestrator, because the failure is a property of the whole chain: a rung's

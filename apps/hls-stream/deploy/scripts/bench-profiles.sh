@@ -23,14 +23,14 @@
 # broadcaster on a real network and this instrument is the wrong one for it.
 #
 # Usage:
-#   deploy/scripts/bench-profiles.sh --target <host> [--runs 5] [--profile latbench] [--portSlot 7] [--only NAME]
+#   deploy/scripts/bench-profiles.sh --target <host> [--runs 5] --profile <profile> --portSlot <slot> [--only NAME]
 set -euo pipefail
 
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 
 RUNS=5
-PROFILE="latbench"
-PORT_SLOT="7"
+PROFILE=""
+PORT_SLOT=""
 ONLY=""
 TARGET=""
 
@@ -47,6 +47,10 @@ done
 
 if [ -z "${TARGET}" ]; then
   echo "bench-profiles: --target <host> is required, the bench host every run goes to" >&2
+  exit 2
+fi
+if [ -z "${PROFILE}" ] || [ -z "${PORT_SLOT}" ]; then
+  echo "bench-profiles: --profile <profile> and --portSlot <slot> are required, the stage every run publishes into" >&2
   exit 2
 fi
 
@@ -133,7 +137,7 @@ for row in "${PROFILES[@]}"; do
 
   # A recreated container is reported running before its SRT socket is bound, and the first run after
   # a redeploy publishes into nothing and times out. That cost a run of `hd-half` on 2026-08-03, and
-  # it is the same gap as OBS-20 seen from the other side.
+  # it is the same gap as an engine running with an unbound ingest socket, seen from the other side.
   if ! "${REPO_ROOT}/deploy/scripts/wait-for-ingest.sh" \
     --profile="${PROFILE}" --portSlot="${PORT_SLOT}" --timeout=90 >> "${SWEEP_LOG}" 2>&1; then
     echo "    ingest never came up for ${name}, skipping the profile" | tee -a "${SWEEP_LOG}"

@@ -81,7 +81,7 @@ describe('resolvePort mirrors apply_port_slot', () => {
   });
 
   /**
-   * OPS-27. The stock fallback and the slot origin were one number, so a deploy with no slot and no
+   * The stock fallback and the slot origin were one number, so a deploy with no slot and no
    * env value resolved SRS's RTMP port to 10002 while `engines/srs/docker-compose.yml` falls back to
    * 1935, and since d6394a3 fed these into SRS's own config that is the port SRS bound. Consistent
    * end to end and not what the port is documented as, so an operator opening 1935 for a broadcaster

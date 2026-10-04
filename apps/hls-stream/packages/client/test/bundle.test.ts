@@ -83,7 +83,7 @@ function readEmittedAssets(outDir: string): EmittedAssets {
  * `pnpm build` and a stale `dist/` would pass while saying nothing about the tree under test.
  *
  * Syntax only, which is the limit worth knowing: an API newer than the target, such as
- * `AbortSignal.timeout` against safari14, parses cleanly and is invisible here. See OBS-2.
+ * `AbortSignal.timeout` against safari14, parses cleanly and is invisible here.
  */
 describe('the emitted bundle honours the declared browser target (TEST-22)', () => {
   // Undefined until the temp directory exists, because `force` does not cover an undefined path:

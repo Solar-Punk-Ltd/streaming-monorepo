@@ -11,7 +11,7 @@
 # says how many streams are active, which is zero both when nobody is publishing and when nobody can.
 # None of them asks whether the ingest socket is bound.
 #
-# That gap is OBS-20, observed on `latbench` on 2026-08-03: SRS failed to bind its SRT listener with
+# That gap was observed on a bench stage on 2026-08-03: SRS failed to bind its SRT listener with
 # `errno=98` because a container from a previous stack still held the UDP port under host networking,
 # and it ran 44 minutes reporting healthy and accepting nothing. The bind error was not written to the
 # log until the container was stopped, so there was nothing to grep for while it mattered.
@@ -101,6 +101,6 @@ if [ -z "${rtmp_bound}" ]; then
   log_error "no listener on TCP ${RTMP_PORT} (RTMP) after ${TIMEOUT_S}s, so no RTMP broadcaster can reach SRS"
   log_error "and no ladder rung can republish."
 fi
-log_error "SRS can be running in this state (OBS-20): check whether another container held the port when it"
+log_error "SRS can be running in this state: check whether another container held the port when it"
 log_error "started, with 'ss -lunp | grep ${SRT_PORT}' or 'ss -ltnp | grep ${RTMP_PORT}' on ${TARGET}."
 exit 1

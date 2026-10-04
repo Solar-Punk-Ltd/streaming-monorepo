@@ -4,7 +4,7 @@
  *
  * ## ⚠️ What this used to make, and what it makes now
  *
- * Until the owner's ruling of 2026-09-06 a writer-bee outage armed an `#EXT-X-DISCONTINUITY`, and this
+ * Until 2026-09-06 a writer-bee outage armed an `#EXT-X-DISCONTINUITY`, and this
  * driver existed to put one in the middle of a long recording. A lost segment no longer arms one: the
  * playlist lists every sequence it lost as an `#EXT-X-GAP` entry instead, so the media behind the hole
  * keeps the numbers it was published with. **So this can no longer make a recording with a
@@ -44,7 +44,7 @@
  *
  * Usage, from the repo root against a deployed profile:
  *
- *     E2E_PROFILE=latbench E2E_PORT_SLOT=7 pnpm make:recording
+ *     E2E_PROFILE=<profile> E2E_PORT_SLOT=<slot> pnpm make:recording
  *
  * It prints `BROWSER_VOD_OWNER` and `BROWSER_VOD_TOPIC` for the playback run, and where in the
  * recording the hole landed so a report can say which seeks crossed it.
@@ -72,7 +72,7 @@ import { stageSegmentSeconds } from '../src/segmentLength.js';
  * reader has to hold that arithmetic.
  *
  * ⛔⛔ **Per rung, and it was not until 2026-09-05.** The uploader writes one upload line per rung,
- * so on the four rung latbench stage a target of 60 before and 60 after produced 32 segments per
+ * so on a four rung stage a target of 60 before and 60 after produced 32 segments per
  * rung: a quarter of what was asked, and a quarter of the recording a player sees, because a player
  * rides one rung. `harness/recording.ts` holds the counting and `test/recording.test.ts` covers it.
  *
@@ -115,7 +115,7 @@ async function main(): Promise<void> {
   const after = envNumber('RECORDING_AFTER_SEGMENTS', AFTER_SEGMENTS);
 
   // ⛔ The same three gates the benches run, because this publishes for minutes and pays for every
-  // segment exactly as they do: the owner's authorisation in the spend ledger, every publisher's
+  // segment exactly as they do: the authorisation in the spend ledger, every publisher's
   // chequebook, and every publisher's postage TTL. Until 2026-09-16 this read postage alone, and
   // before that it read the COORDINATOR's stamp alone and called the answer the stage's, which since
   // the per-rung split speaks for one node of four: an expired batch on the 1080p node cleared it

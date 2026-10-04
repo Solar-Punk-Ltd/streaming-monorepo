@@ -9,7 +9,7 @@
  * twenty seconds, and served the next one in 2.5 s the moment the cap lifted. That is a collapse of
  * more than thirty times, not an overhead.
  *
- * ⛔ The owner ruled on 2026-09-02 that the answer is **not** a gateway fallback of any kind. The fix
+ * ⛔ The answer is **not** a gateway fallback of any kind (settled 2026-09-02). The fix
  * lives in the in-tab retrieval path itself, and this probe is the measurement that has to come
  * before any such fix, because the mechanism has so far only been reasoned about.
  *

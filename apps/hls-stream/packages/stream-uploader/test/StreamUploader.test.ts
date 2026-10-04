@@ -171,7 +171,7 @@ function uploaderSaving(saved: StreamState[], bee: Bee): StreamUploader {
 /**
  * What a lost segment does to the playlist, and what it deliberately does not do.
  *
- * ⛔ Owner ruling of 2026-09-06. A lost segment leaves a hole, and the hole is said by the gap
+ * ⛔ A lost segment leaves a hole, and the hole is said by the gap
  * entries `ManifestManager` writes for every missing sequence. It is not a break: nothing restarted
  * the encoder's clock, so the media after the hole is a continuation and saying otherwise would tell
  * a player to flush what it had buffered. `#EXT-X-DISCONTINUITY` is left for the two things that
@@ -454,7 +454,7 @@ describe('StreamUploader discontinuity lifecycle', () => {
  *
  * The manifest SOC is the announcement. Deferring that one means the publish reports success while
  * the chunk is still only in the writer's local store, so a viewer's gateway is told about a
- * segment it cannot yet resolve. LAT-10: two 30-minute broadcasts with the synchronous write put
+ * segment it cannot yet resolve. Over two 30-minute broadcasts the synchronous write put
  * the worst capture-to-fetchable at 9.04s and 9.27s against 14.04s and 14.53s deferred, and the
  * buffer a player needs at 7.08s against 12.08s. The synchronous push itself costs about 300ms.
  */
@@ -840,7 +840,7 @@ describe('StreamUploader names the postage batch bee refused', () => {
   });
 });
 
-describe('StreamUploader finalization (CON-25)', () => {
+describe('StreamUploader finalization', () => {
   const ENDLIST_TAG = '#EXT-X-ENDLIST';
   const PLAYLIST_TYPE_VOD_TAG = '#EXT-X-PLAYLIST-TYPE:VOD';
 
@@ -983,7 +983,7 @@ describe('StreamUploader finalization (CON-25)', () => {
   });
 });
 
-describe('StreamUploader catalog announce backoff (CON-3)', () => {
+describe('StreamUploader catalog announce backoff', () => {
   function makeCatalog(attempts: unknown[], shouldFail: () => boolean): StreamCatalog {
     return makeFakeCatalog({
       addStream: async (entry: unknown) => {
@@ -1134,7 +1134,7 @@ describe('StreamUploader catalog announce backoff (CON-3)', () => {
   });
 });
 
-describe('StreamUploader recovery persist failures (OBS-4)', () => {
+describe('StreamUploader recovery persist failures', () => {
   function newUploaderWithStore(recoveryStore: RecoveryStore): StreamUploader {
     return new StreamUploader({
       anchor: TEST_ANCHOR,
@@ -1416,7 +1416,7 @@ describe('segments the live window outran before anything published them', () =>
    * watching it.** Turning `if (this.ladder)` to false left every test in this package green, and
    * that call is how the catalog learns a rung is still delivering. Without it no rung ever looks
    * alive, so the master is never rewritten: a rung that goes quiet is never dropped from it, and a
-   * rung that comes back is never restored. Both drain suites and V3 read the master for their
+   * rung that comes back is never restored. Both drain suites and the viewer arm read the master for their
    * verdict, so a paid broadcast would report the product on a live line nobody made.
    *
    * ⭐ A single-rendition stream deliberately records nothing, because a stream with no ladder has no

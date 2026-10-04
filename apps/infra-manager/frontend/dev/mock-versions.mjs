@@ -1,8 +1,8 @@
 /**
  * Stack versions, for the mock manager.
  *
- * Two are seeded, `bundled` and `main-v3`, with the contracts the real reader
- * pulls out of those two branches. Adding or updating one plays a build: a
+ * Two are seeded, `bundled` and `with-secrets`, with the contracts the real
+ * reader pulls out of an older stack and of one that requires generated secrets. Adding or updating one plays a build: a
  * dozen lines over a few seconds, streamed as Server-Sent Events exactly as the
  * manager streams them, then the row lands ready. Removing is refused for a
  * version any deployment runs, so that refusal can be seen without a database.
@@ -81,7 +81,7 @@ const BUNDLED_CONTRACT = {
   maxSlot: 999,
   requiredSecrets: [],
   // What the submodule this manager ships actually falls back to, which is
-  // main-v3's half second and not the 1.5 and 22.5 main-v2 had. The mock is
+  // the current stack's half second and not the 1.5 and 22.5 an older one had. The mock is
   // where the Stack settings card's "the version's own" default is read
   // without a stack, so a number here that no branch cuts is a number nobody
   // can check.
@@ -208,8 +208,8 @@ export function seedVersions() {
       source: { url: SWARM_HLS_STREAM_URL, folder: '.' },
     }),
     makeVersion({
-      name: 'main-v3',
-      gitRef: 'main-v3',
+      name: 'with-secrets',
+      gitRef: 'main',
       commitSha: 'be440d65e0e82bcf9000a8a0dde905dc215255d6',
       builtAt: '2026-09-05T21:05:00Z',
       contract: V3_CONTRACT,
@@ -220,9 +220,9 @@ export function seedVersions() {
 
   // Every seeded deployment runs the bundled version, which is what the
   // migration does to the rows that existed before the table did. One stream
-  // is put on main-v3 so what only that version offers, the published SRS API
+  // is put on with-secrets so what only that version offers, the published SRS API
   // port and a config file of the deployment's own, can be seen offline.
-  const v3 = state.versions.find((version) => version.name === 'main-v3');
+  const v3 = state.versions.find((version) => version.name === 'with-secrets');
   for (const profile of state.profiles) {
     profile.stack_version_id = profile.name === 'backup-stage' && v3 ? v3.id : defaultVersionId();
     // The containers were built before the version was known: what they

@@ -8,8 +8,8 @@
  * page that names the stack's value there, and a keyframe rule computed with
  * it, both describe a deployment nobody is running.
  *
- * The stack's own value is the version's, too: main-v3 cuts 0.5 second
- * segments where main-v2 cuts 1.5. A version's contract names what its
+ * The stack's own value is the version's, too: one stack version cuts 0.5
+ * second segments where an older one cuts 1.5. A version's contract names what its
  * entrypoints fall back to and that wins over the field, so the number on the
  * field is what answers only for a version whose contract was not read.
  *

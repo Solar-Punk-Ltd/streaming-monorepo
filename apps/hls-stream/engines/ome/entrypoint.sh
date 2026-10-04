@@ -96,6 +96,14 @@ sed -i "s|OME_ADMISSION_SECRET_PLACEHOLDER|${OME_ADMISSION_SECRET:-}|g" "$CONF"
 sed -i "s/OME_SRT_PORT_PLACEHOLDER/${OME_SRT_PORT:-10080}/g" "$CONF"
 sed -i "s/OME_HLS_PORT_PLACEHOLDER/${OME_HLS_PORT:-8081}/g" "$CONF"
 
+# The STUN server OME names to WebRTC peers, host:port. Google's public one unless OME_STUN_SERVER names
+# another, for a deployment that runs its own or must not reach a third party. Held to the characters
+# of a host and a port, because the value lands in a sed expression as the ones above do.
+case "${OME_STUN_SERVER:-}" in
+  *[!A-Za-z0-9.:-]*) echo "OME_STUN_SERVER must be host:port, got '${OME_STUN_SERVER}'" >&2; exit 1 ;;
+esac
+sed -i "s/OME_STUN_SERVER_PLACEHOLDER/${OME_STUN_SERVER:-stun.l.google.com:19302}/g" "$CONF"
+
 echo "Server.xml generated from $CONF_SOURCE"
 
 exec /opt/ovenmediaengine/bin/OvenMediaEngine -c "$CONF_DIR"

@@ -29,7 +29,7 @@ const WITH_PROFILE = {
   '.env.streamer1': 'STAMP=stamp1\nSTREAM_KEY=key1\nAPI_PORT=10010\n',
 };
 
-describe('unknown --profile (OPS-4)', () => {
+describe('unknown --profile', () => {
   // A profile whose env file does not exist used to leave ENV_FILE pointing at the default `.env`,
   // so `--profile=streamr1` deployed a second copy of the stack reading the first one's ports and
   // secrets. `require_env` has carried the right message for this the whole time and could never
@@ -51,7 +51,7 @@ describe('unknown --profile (OPS-4)', () => {
     assert.deepEqual(sandbox.calls(), [], `docker was called despite the refusal: ${sandbox.calls().join(' | ')}`);
   });
 
-  // Deploying without the profile's settings is the harm OPS-4 named. Stopping, cleaning and
+  // Deploying without the profile's settings is the harm a missing profile file causes. Stopping, cleaning and
   // health-checking are not: those containers are identified by the compose project name, and an
   // earlier version of this fix refused there too, which stranded a running stack whose env file had
   // been deleted with no way to tear it down.
@@ -252,7 +252,7 @@ async function sourcedValue(sandbox, name) {
  * everything after it became commands on the host.
  *
  * The flags exist for the deployment manager, which is an admin surface, so the values are likelier
- * to come from a form than from the owner's own keyboard. Checked here as a shape refused up front,
+ * to come from a form than from the operator's own keyboard. Checked here as a shape refused up front,
  * and quoted in `parameter_overrides_text` as well, because neither layer is written to lean on the
  * other: quoting cannot undo a newline that ends a heredoc, and a shape check is only as good as the
  * shape somebody wrote down.

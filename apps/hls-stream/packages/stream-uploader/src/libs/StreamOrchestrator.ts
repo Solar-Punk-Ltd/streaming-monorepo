@@ -386,7 +386,7 @@ export class StreamOrchestrator {
    * that can name them. See {@link tokenForThisReturn} and {@link BroadcastEpoch.returnToken}.
    */
   private returnsInProgress = new Map<string, { token: string; resumedRungs: Set<string> }>();
-  /** What became of each recently stopped stream, so a caller answered 202 can find out. See OBS-3. */
+  /** What became of each recently stopped stream, so a caller answered 202 can find out. */
   private stopOutcomes = new Map<string, RetainedStopOutcome>();
   /** Actual pending writes for topics shared across sessions, independently of bounded stop reports. */
   private sharedFeedWrites = new Map<string, Promise<void>>();
@@ -428,7 +428,7 @@ export class StreamOrchestrator {
 
   /**
    * @param claimant who is announcing, so a takeover of a live id can be judged. Defaults to naming
-   * nobody, which fails open: an engine that does not pass one loses SEC-26's protection rather than
+   * nobody, which fails open: an engine that does not pass one loses the address-based takeover protection rather than
    * refusing its broadcasters.
    * @param admin the declaration this ingest session resolved to, in admin mode. Required there and
    * meaningless without it — see the refusal at the top of the body.
@@ -554,7 +554,7 @@ export class StreamOrchestrator {
       // already seen were absorbed by the duplicate filter and reported as accepted, and indexes
       // above its high-water were published into the outgoing session's manifest. Neither reached
       // `handleSegmentLoss`, and a draining stream is excluded from the stall signal, so the whole
-      // window was silent. See CON-16.
+      // window was silent.
       this.logger.info(
         this.isDrainingId(streamId)
           ? `[StreamOrchestrator] Stream ${streamId} re-announced while its stop was still finalizing; ` +
@@ -729,12 +729,12 @@ export class StreamOrchestrator {
    * segments comes back `{ accepted: true }` with nothing uploaded, the engine never retries because
    * it was told the segment landed, and the resumed run's opening is simply gone. Accepted-as-
    * duplicate is indistinguishable from accepted-and-published to everything upstream, which is why
-   * CON-16 went unseen.
+   * it went unseen.
    *
    * The accounting index is deleted rather than reset, which is hygiene rather than a fix:
    * {@link accountForTakenSegment} already infers no loss from an index that goes backwards. Deleting
    * it keeps this from being the one place a counter from a finished publish session is measured
-   * against a new one, which is OBS-19's reasoning one map along.
+   * against a new one, which is the reasoning of the segment-loss timestamp, one map along.
    */
   private restartSegmentAccounting(streamId: string): void {
     this.processedSegments.set(streamId, this.newDuplicateFilter());
@@ -814,8 +814,8 @@ export class StreamOrchestrator {
    *
    * ⛔ **The cap is the whole safety of it.** `min(now + grace, lastMedia + window + grace)` means an
    * announce arriving early in the window buys nothing at all, one arriving late moves the deadline
-   * by at most the grace, and a hundred of them move it by exactly the same amount as one. So the
-   * owner's case 5 — an encoder reconnecting over and over and never sending a frame — still ends,
+   * by at most the grace, and a hundred of them move it by exactly the same amount as one. So an
+   * encoder reconnecting over and over and never sending a frame still ends,
    * one grace later than it would have, rather than being held open for as long as it keeps trying.
    *
    * ⭐ **The grace is `segmentStallMs` because it is the same question.** That value answers "how
@@ -861,7 +861,7 @@ export class StreamOrchestrator {
    * ⛔ **`streamIngestAt` and `streamActivityAt` are deliberately not touched.** Only media may move
    * them. An encoder that announces, sends nothing, drops and announces again would otherwise re-arm
    * the window on every attempt and hold a recording with no media in it open for ever, which is the
-   * owner's case 5. What the returning encoder does get is a bounded grace for its first segment to
+   * case of an encoder that never sends a frame. What the returning encoder does get is a bounded grace for its first segment to
    * arrive, which is {@link holdTheReaperForAFirstSegment}.
    *
    * Every other per-session latch `retireSession` clears — the fragment watch, the opening-video
@@ -906,7 +906,7 @@ export class StreamOrchestrator {
    *
    * - **Both proved the key.** The strongest, and the one every deployment that matters takes: in
    *   admin mode and under `PUBLISH_KEY_SECRET` every publish proves a key, so an encoder that
-   *   stopped and came back always lands here whatever its address did. The owner's cases 1 and 2.
+   *   stopped and came back always lands here whatever its address did.
    * - **The incumbent is unknown and the claimant proved the key.** No record means a session this
    *   process restored after its own restart, which can never acquire a claimant. A key is the only
    *   evidence available about such a session's owner, and it is evidence for rather than against.
@@ -934,7 +934,6 @@ export class StreamOrchestrator {
 
   /**
    * Why `claimant` may not take a stream id that a live session already holds, or null to allow it.
-   * See SEC-26.
    *
    * Refuses only what it can prove: two addresses, both known and different, over a stream that is
    * still being fed. Everything else is allowed, which is the same rule the OME closing path applies
@@ -968,8 +967,7 @@ export class StreamOrchestrator {
    * fallback for when nobody proved anything.** Who may _stop_ one is screened too, but not here.
    * `stopStream` still takes a stream id and no claimant, because it does not need one: a configured
    * secret means every publish either engine accepted had proved a key, so each engine screens its
-   * own close webhook against the value it is already holding. See SEC-29, and SEC-28 for the
-   * derivation. That is what retires the two residuals
+   * own close webhook against the value it is already holding. The key's derivation is in the shared package. That is what retires the two residuals
    * this used to end on. An attacker sharing the victim's address is no longer indistinguishable from
    * them, because the address is no longer what is being asked. And a squatter who claimed an id
    * first is evicted by the owner rather than by an operator, because the symmetry that protected
@@ -982,7 +980,7 @@ export class StreamOrchestrator {
    * What it still does not stop: an attacker holding the key. That is the credential's own security,
    * and the answer to a leak is to rotate the secret, since nothing here can revoke one stream on its
    * own. Nor does any of this apply when no secret is configured, where no announce is ever
-   * authenticated, both branches below are dead and the behaviour is exactly SEC-26's.
+   * authenticated, both branches below are dead and the behaviour is exactly that of the address rule.
    */
   private reasonToRefuseTakeover(streamId: string, claimant: StreamClaimant): TakeoverRefusal | null {
     if (claimant.isAuthenticated) {
@@ -1064,14 +1062,14 @@ export class StreamOrchestrator {
   private retireSession(streamId: string): void {
     this.activeStreams.delete(streamId);
     this.processedSegments.delete(streamId);
-    // OBS-19's hazard, one map along. The engine's counter is a fact about the session producing it,
+    // The same hazard as the segment-loss timestamp below, one map along. The engine's counter is a fact about the session producing it,
     // and the id can be handed straight to another engine: kept, the first segment of the next
     // broadcast on this id would read as a gap the distance between two unrelated counters.
     this.lastAccountedIndex.delete(streamId);
     this.streamActivityAt.delete(streamId);
     this.streamIngestAt.delete(streamId);
     this.streamClaimants.delete(streamId);
-    // OBS-19. Written on a loss and deleted nowhere, so it survived its own session. Invisible while
+    // The segment-loss timestamp. Written on a loss and deleted nowhere, so it survived its own session. Invisible while
     // the id was gone, because `getMsSinceSegmentLoss` only reads ids in `activeStreams`, and back
     // the moment a broadcaster reconnected under the same id: `/health` then answered `degraded` with
     // `segment_loss` for a broadcast that had lost nothing.
@@ -1091,7 +1089,7 @@ export class StreamOrchestrator {
     // is about the media one session produced, the next session on this id is a fresh measurement,
     // and a redeploy between the two is the whole remedy the fault names.
     this.fragmentWatches.delete(streamId);
-    // Same reasoning as the line above, and the same hazard OBS-19 was: whether a broadcast has shown
+    // Same reasoning as the line above, and the same hazard as the segment-loss timestamp: whether a broadcast has shown
     // a frame is a fact about the session, and the id can be handed straight to another one.
     this.withheldOpeningSeconds.delete(streamId);
     // Nothing can reach this session by id any more, so a pending reap would either find no ingest
@@ -1134,10 +1132,10 @@ export class StreamOrchestrator {
   }
 
   /**
-   * Registers the stream before returning, which is the whole of CON-1's fix.
+   * Registers the stream before returning, which is the whole of the fix.
    *
    * This used to defer its body into a concurrency-1 `PQueue`, and the race that opened is not the one
-   * CON-1 describes. p-queue 8 runs a synchronous job inside `add()` when a slot is free, so a first
+   * first described. p-queue 8 runs a synchronous job inside `add()` when a slot is free, so a first
    * announce did register before returning and a second one did see it. What it could not do is run a
    * *second* job synchronously: the slot is only released a microtask later. So the window opened on
    * the re-announce path, which retires the live session and then queues its replacement. Between
@@ -1362,8 +1360,8 @@ export class StreamOrchestrator {
     // Media is the answer to a disconnect, whatever a webhook said and in whatever order it arrived.
     // An `on_unpublish` for a publish session that has already been replaced lands after the
     // reconnect — it is a race between two webhooks and this service cannot order them — and cleared
-    // here it costs nothing at all: it opened a window, and this segment closed it. The owner's case
-    // 11, mitigated at the layer that cannot be wrong about it. Naming the publish session on the
+    // here it costs nothing at all: it opened a window, and this segment closed it. That race is
+    // mitigated at the layer that cannot be wrong about it. Naming the publish session on the
     // webhook is the proper answer and is a separate step.
     this.streamDisconnectedAt.delete(streamId);
     // The segment a returning encoder was being held open for. From here the ordinary window applies,
@@ -1688,7 +1686,7 @@ export class StreamOrchestrator {
    * one is being waited on too. A pull-based engine restarts its puller immediately and then retries a
    * silent origin for its own patience window, 60s by default, which is the same 60s this timer runs
    * on. An OME restart slower than that finalized a broadcast whose publisher never went away, with
-   * the puller mid-retry when it happened. See CON-10.
+   * the puller mid-retry when it happened.
    *
    * Each call buys one more `recoveryTimeout`, and nothing renews it but the engine, so the total
    * deferral is bounded by how long the engine keeps trying. When it gives up it stops the stream
@@ -1721,7 +1719,7 @@ export class StreamOrchestrator {
 
     // The broadcast is ending on this path, so the watchdog for it ending on no path has nothing left
     // to do. A reap that fired afterwards would commit a second VOD manifest over the one this stop
-    // published, which is the same waste CON-22 describes for a doubled drain.
+    // published, which is the same waste a doubled drain causes.
     this.stallReapers.get(streamId)?.cancel();
     this.stallReapers.delete(streamId);
 
@@ -1729,7 +1727,7 @@ export class StreamOrchestrator {
     // Every caller in the engines fires and forgets, and two of them sit next to each other: a puller
     // that halts calls this, and the closing that follows calls it again. A second drain of one
     // uploader finalizes it twice, committing a second VOD manifest and rewriting the feed entry the
-    // first one published, which is postage spent for nothing. See CON-22.
+    // first one published, which is postage spent for nothing.
     //
     // Matched on the uploader rather than the id, because those stop being the same thing the moment a
     // reconnect registers a replacement under that id, and stay different for as long as the outgoing
@@ -1998,7 +1996,7 @@ export class StreamOrchestrator {
    * *reporting* threshold at half this value, and ending a broadcast on it would kill streams that
    * recover: a twenty second write outage is survivable and measured, and a pull engine retries a
    * silent origin for its own patience window, 60s by default, which is what `recoveryTimeout` was
-   * already chosen against in CON-10. Reusing it keeps one number governing "how long do we wait for
+   * already chosen against. Reusing it keeps one number governing "how long do we wait for
    * an engine that might come back" instead of two that can drift apart.
    *
    * Rearms itself rather than being reset per segment, so a stream feeding at four segments a second
@@ -2018,7 +2016,7 @@ export class StreamOrchestrator {
    * later however long the stream has already been silent. Calling it on an encoder's return would
    * hand every reconnect a fresh sixty seconds, and an encoder that reconnects every few seconds and
    * never sends a frame would hold a recording with no media in it open for as long as it kept
-   * trying — the owner's case 5. The already-armed timer needs no help: it re-derives the deadline
+   * trying. The already-armed timer needs no help: it re-derives the deadline
    * from `streamIngestAt` when it wakes, so it either reaps or sleeps exactly the remainder.
    *
    * The arm is for the state that should not occur: a live session with no watchdog is the unreaped
@@ -2391,7 +2389,7 @@ export class StreamOrchestrator {
   /**
    * A segment the OME handover floor discarded on purpose, counted once per playlist index by the
    * puller. Not routed through `handleSegmentLoss`: nothing was lost, and a stream that has already
-   * left `activeStreams` still skipped what it skipped. See OBS-16.
+   * left `activeStreams` still skipped what it skipped.
    */
   public recordSegmentsSkipped(count: number): void {
     this.metrics.recordSegmentsSkipped(count);

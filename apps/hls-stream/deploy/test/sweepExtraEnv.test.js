@@ -136,6 +136,8 @@ async function runSweep(extraEnv) {
 
   const env = {
     ...process.env,
+    PROFILE: 'bench-stage',
+    PORT_SLOT: '7',
     PATH: `${bin}:${process.env.PATH}`,
     OUT_DIR: out,
     SPEND_LEDGER: writeLedger(out, port, plur),

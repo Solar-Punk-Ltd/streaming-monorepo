@@ -23,14 +23,14 @@
 # and a half minutes a run.
 #
 # Usage:
-#   deploy/scripts/bench-sweep.sh --target <host> [--runs 5] [--profile latbench] [--portSlot 7]
+#   deploy/scripts/bench-sweep.sh --target <host> [--runs 5] --profile <profile> --portSlot <slot>
 set -euo pipefail
 
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 
 RUNS=5
-PROFILE="latbench"
-PORT_SLOT="7"
+PROFILE=""
+PORT_SLOT=""
 TARGET=""
 
 while [ $# -gt 0 ]; do
@@ -45,6 +45,10 @@ done
 
 if [ -z "${TARGET}" ]; then
   echo "bench-sweep: --target <host> is required, the bench host every run goes to" >&2
+  exit 2
+fi
+if [ -z "${PROFILE}" ] || [ -z "${PORT_SLOT}" ]; then
+  echo "bench-sweep: --profile <profile> and --portSlot <slot> are required, the stage every run publishes into" >&2
   exit 2
 fi
 

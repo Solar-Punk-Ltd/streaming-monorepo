@@ -173,7 +173,7 @@ export interface BroadcastAnchor {
 /**
  * One re-anchoring of a broadcast's dating, which an engine restart inside the broadcast produces.
  *
- * ⛔ Owner decision of 2026-09-03. The dating used to be a single instant, so the media after a
+ * ⛔ The dating used to be a single instant, so the media after a
  * restart carried a time behind real time by the whole length of the gap, without bound over a long
  * broadcast. It is a list of epochs now: the media before the restart keeps the dates it was
  * published with, and the media after it is dated from the wall clock the engine came back at.
@@ -287,7 +287,7 @@ export interface StreamClaimant {
    */
   address: string | null;
   /**
-   * Whether the announce presented the publish key for the stream it named. See SEC-28.
+   * Whether the announce presented the publish key for the stream it named.
    *
    * **Two states, unlike `address`, and that is why this one is optional where that one is not.** An
    * address distinguishes "no evidence" from "this address", so it needs a null and a value. A key is
@@ -296,8 +296,8 @@ export interface StreamClaimant {
    * reading for an absent field to carry.
    *
    * Absent therefore means `false`, and that is the safe direction in both roles it appears in. A
-   * newcomer without it is judged by SEC-26's address rule, and an incumbent without it is protected
-   * by SEC-26's address rule. A caller that forgets the field loses SEC-28 and keeps SEC-26, which is
+   * newcomer without it is judged by the publisher address rule, and an incumbent without it is protected
+   * by the address rule. A caller that forgets the field loses the publish-key check and keeps the address rule, which is
    * the same fail-open bargain the `claimant` parameter's own default makes, for the same reason:
    * this must not take a broadcaster off the air over a field nobody filled in.
    */
@@ -473,7 +473,7 @@ export interface HealthSignals {
    *
    * `queuePressure` is a ratio against `MAX_QUEUE_SIZE`, and that ceiling has no relationship to how
    * stale a playlist a viewer will tolerate: a 39 deep backlog reported `low` at roughly 78 seconds
-   * behind live. This is the number the policy can actually judge. See OBS-9.
+   * behind live. This is the number the policy can actually judge.
    */
   queueBacklogSeconds: number;
   /**
@@ -492,7 +492,7 @@ export interface HealthSignals {
    * status as a failure to retry. The observer therefore cannot see them. On a live deployment on
    * 2026-08-03 a keyless publish was correctly refused and logged while this stayed `null`, so the
    * one credential separating a broadcaster from anyone who knows the stream name could be probed
-   * with no signal at all. See OBS-15 and SEC-28.
+   * with no signal at all.
    */
   msSinceAuthRejection: number | null;
   /**
@@ -523,11 +523,11 @@ export interface HealthSignals {
    */
   hasIngestedMedia: boolean;
   /**
-   * Segments discarded on purpose by the CON-20 handover floor, for this process's lifetime.
+   * Segments discarded on purpose by the handover floor, for this process's lifetime.
    *
    * Carries no threshold and raises no reason, because a skip during a handover is the floor working.
    * It is here so that a floor matching zero segments and a floor holding correctly stop being
-   * indistinguishable from outside, which is the whole of OBS-16.
+   * indistinguishable from outside.
    */
   segmentsSkipped: number;
   /**

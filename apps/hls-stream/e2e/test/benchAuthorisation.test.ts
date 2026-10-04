@@ -15,7 +15,7 @@ import type { PublisherRoute } from '../src/harness/publishers.js';
  * authorised, on a stage that cannot pay for it or cannot stamp it.
  *
  * Both scripts publish through the deployment's own Bee nodes and spend real postage and bandwidth,
- * and until 2026-09-16 neither read the owner's ledger, either chequebook or any publisher's postage
+ * and until 2026-09-16 neither read the operator's ledger, either chequebook or any publisher's postage
  * TTL. `deploy/scripts/bench-on-host.sh` prepends the preflight suites to a bench launched through
  * it, which is an instruction rather than a control: the README documented a bare `pnpm bench:latency`
  * and that path was ungated.
@@ -124,13 +124,13 @@ function stageHost({ balances = {}, ttlS = {} }: Stage = {}): { host: Host; aske
   return { host, asked };
 }
 
-/** The authorisation as the owner writes it, with a baseline for every node that can spend. */
+/** The authorisation as the operator writes it, with a baseline for every node that can spend. */
 function ledger({ ceilingPlur = bzzMilli(2_400n), starts = {} as Record<number, bigint> } = {}): string {
   const path = join(tempDir(), '.spend-ledger.env');
   writeFileSync(
     path,
     [
-      '# a bench sitting, authorised by the owner',
+      '# a bench sitting, authorised by the operator',
       'authorised_at=2026-09-16T09:00:00Z',
       `ceiling_plur=${ceilingPlur}`,
       ...SPENDING_PORTS.map((port) => `node_${port}_start_plur=${starts[port] ?? FUNDED_PLUR}`),
@@ -157,7 +157,7 @@ describe('requireBenchAuthorised', () => {
 
   /**
    * ⛔ The whole point of the ledger, and the reason a missing one is not "no limit recorded". Nothing
-   * is authorised to spend until the owner has written what it may spend.
+   * is authorised to spend until the operator has written what it may spend.
    *
    * The deployment is proved untouched rather than assumed, because the refusal says in as many words
    * that nothing on it was, and a gate that had already read three nodes would be printing a sentence
@@ -170,12 +170,12 @@ describe('requireBenchAuthorised', () => {
     assert.deepEqual(asked, []);
   });
 
-  it('refuses a run that would spend past the ceiling the owner authorised', async () => {
+  it('refuses a run that would spend past the ceiling the operator authorised', async () => {
     const { host } = stageHost({ balances: { [LOW_RUNG_PORT]: bzzMilli(2_000n) } });
 
     await assert.rejects(
       requireBenchAuthorised(host, cfg, { ledgerPath: ledger() }),
-      /would spend past what the owner authorised. 3\.000 BZZ spent of 2\.400 authorised/,
+      /would spend past what the operator authorised. 3\.000 BZZ spent of 2\.400 authorised/,
     );
   });
 

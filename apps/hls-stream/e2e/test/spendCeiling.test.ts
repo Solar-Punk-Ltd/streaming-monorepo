@@ -15,7 +15,7 @@ import {
 } from '../src/harness/spendCeiling.js';
 
 /**
- * The gate that stops `pnpm e2e:run` spending past what the owner authorised.
+ * The gate that stops `pnpm e2e:run` spending past what the operator authorised.
  *
  * Every run against the deployed stack costs real BZZ in postage and bandwidth, and until this
  * existed the only thing holding a run to its authorisation was an operator remembering the number.
@@ -45,12 +45,12 @@ const FULL_LEDGER: Record<string, string> = {
   [`node_${GATEWAY_PORT}_start_plur`]: String(bzzMilli(1000n)),
 };
 
-/** The ledger as the owner writes it. An override of `undefined` means that line is absent. */
+/** The ledger as the operator writes it. An override of `undefined` means that line is absent. */
 function ledgerText(overrides: Record<string, string | undefined> = {}): string {
   const lines = Object.entries({ ...FULL_LEDGER, ...overrides })
     .filter((entry): entry is [string, string] => entry[1] !== undefined)
     .map(([key, value]) => `${key}=${value}`);
-  return ['# the night of 2026-08-28, authorised by the owner', ...lines, ''].join('\n');
+  return ['# the night of 2026-08-28, authorised by the operator', ...lines, ''].join('\n');
 }
 
 const LEDGER = parseSpendLedger(ledgerText())!;
@@ -69,7 +69,7 @@ function readings(uploaderPlur: bigint, gatewayPlur: bigint) {
   ];
 }
 
-describe('reading the owner authorisation out of the ledger', () => {
+describe('reading the operator authorisation out of the ledger', () => {
   it('reads the ceiling, the time and one baseline per node', () => {
     const ledger = parseSpendLedger(ledgerText());
 
@@ -102,7 +102,7 @@ describe('reading the owner authorisation out of the ledger', () => {
     assert.equal(five?.startsByPort.get('11073'), bzzMilli(5000n));
   });
 
-  it('skips comment and blank lines, which is how the owner annotates the night', () => {
+  it('skips comment and blank lines, which is how the operator annotates the night', () => {
     const annotated = `\n# 2.4 BZZ for the ladder sitting\n\n${ledgerText()}\n# nothing after this\n`;
 
     assert.equal(parseSpendLedger(annotated)?.ceilingPlur, bzzMilli(2400n));
@@ -194,8 +194,8 @@ describe('the refusal an unledgered run gets', () => {
     }
   });
 
-  it('says the owner is the one who authorises a run by writing it', () => {
-    assert.match(ledgerRefusal(PATH, null), /owner/i);
+  it('says the operator is the one who authorises a run by writing it', () => {
+    assert.match(ledgerRefusal(PATH, null), /operator/i);
   });
 
   /**
@@ -468,12 +468,12 @@ describe('why a run is refused, or is not', () => {
      * on 2026-08-28. Telling the operator to raise a ceiling here would be wrong advice: the ceiling
      * is not what refused.
      */
-    it('tells the owner to re-authorise with a fresh ledger and new start balances', () => {
+    it('tells the operator to re-authorise with a fresh ledger and new start balances', () => {
       const refusal = String(refusalFor(bzzMilli(2500n), bzzMilli(13000n)));
 
       assert.match(refusal, /\/repo\/\.spend-ledger\.env/);
       assert.match(refusal, /fresh/i);
-      assert.match(refusal, /owner/i);
+      assert.match(refusal, /operator/i);
     });
 
     /**
@@ -642,7 +642,7 @@ describe('finding the ledger on disk', () => {
     return dir;
   }
 
-  it('reads the ledger the owner wrote', () => {
+  it('reads the ledger the operator wrote', () => {
     const path = join(tempRoot(), '.spend-ledger.env');
     writeFileSync(path, ledgerText());
 
@@ -653,7 +653,7 @@ describe('finding the ledger on disk', () => {
    * Null rather than an empty string, and never a thrown ENOENT. A missing ledger is the case this
    * gate exists for, so it has to arrive at the refusal as itself: an empty string would be read as
    * a ledger naming no keys, and a raw ENOENT would fail the run with a stack trace instead of the
-   * sentence telling the owner what to write.
+   * sentence telling the operator what to write.
    */
   it('reads a ledger that is not there as null, not as an empty one', () => {
     assert.equal(readSpendLedger(join(tempRoot(), '.spend-ledger.env')), null);

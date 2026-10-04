@@ -28,7 +28,7 @@ export type PresentedKey = string | null | undefined;
 
 /**
  * The key to put in the URL, or null for none. The stream's own is derived when the deployment authenticates
- * publishers, and there is none when it does not. See SEC-28.
+ * publishers, and there is none when it does not.
  *
  * Keyed on `streamPath` because that is the stream id verbatim: the uploader derives against
  * `buildStreamId(app, stream)`, which is the same `<app>/<name>` string this suite dials. A scenario

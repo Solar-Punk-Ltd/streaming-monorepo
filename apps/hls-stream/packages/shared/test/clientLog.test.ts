@@ -205,7 +205,7 @@ describe('the fragment settle message', () => {
  * On the in-tab path `retrieveBytes` takes no abort signal, so a fragment hls.js walked away from keeps
  * costing the node until it answers, and the settle line stamps that answer `aborted` whichever way it
  * went. Whether the bytes ARRIVED under a cap and arrived too late, or never arrived at all, is the
- * single most informative bit left open by V2, and `aborted` covers both.
+ * single most informative bit left open by the in-tab viewer arm, and `aborted` covers both.
  *
  * ⛔ Additive. The settle line beside it is unchanged, so every parser and every archived artifact
  * reads exactly as it did.

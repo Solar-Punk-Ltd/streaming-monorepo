@@ -981,7 +981,7 @@ describe('FeedHealthTracker on a gateway that is slow rather than absent', () =>
 /**
  * The ladder splits one broadcast across five feeds, and the overlay watches none of them.
  *
- * ⛔ **This is the fault V6 caught live on 2026-08-29.** A viewer's gateway was taken away for
+ * ⛔ **This is the fault the gateway outage arm caught live on 2026-08-29.** A viewer's gateway was taken away for
  * twenty-odd seconds. Every rung recorded its failures, the picture froze for 26.6s, and the client
  * rendered nothing at all, which is how it says the feed is live. The viewer was told everything was
  * fine while looking at a frozen frame.
@@ -1160,7 +1160,7 @@ describe('FeedHealthTracker on a ladder, where the faults land on rungs and the 
 /**
  * ⛔⛔⛔ **`stalled` was unreachable on a ladder, and the threshold was the smaller half of why.**
  *
- * Two faults, found together on 2026-08-29 after V6 fixed the sibling one:
+ * Two faults, found together on 2026-08-29 after the gateway outage arm fixed the sibling one:
  *
  * 1. `LadderFeedPoller` never called {@link FeedHealthTracker.recordUnservedSlot} at all, so on a
  *    ladder the counter behind this state was permanently zero and the state was dead code.
@@ -1300,7 +1300,7 @@ describe('FeedHealthTracker judging the rung a viewer is actually watching', () 
   });
 
   /**
-   * ⛔ The constraint the owner attached to this fix. A rung failing to reach a gateway its siblings
+   * ⛔ The constraint attached to this fix. A rung failing to reach a gateway its siblings
    * are reaching is that rung's own flake, and raising the overlay on it is what the agreement rule
    * exists to prevent. Watching the rung must not change that.
    */
@@ -1381,8 +1381,8 @@ describe('FeedHealthTracker judging the rung a viewer is actually watching', () 
  * it. The client already counted the unserved run per rung. Nothing read it.
  *
  * ⛔⛔⛔ **Telling that apart from a broadcast that stopped is the whole of the difficulty, and four
- * attempts to do it by a clock produced three live regressions.** A gateway outage (V6), an uploader
- * crash (V7) and the ordinary gap between two segments (V3) each made a healthy rung look silent,
+ * attempts to do it by a clock produced three live regressions.** A gateway outage, an uploader
+ * crash and the ordinary gap between two segments each made a healthy rung look silent,
  * because a clock runs during every one of them. `RUNG_DEATH_LAG_SEGMENTS` replaced the clock with a
  * count of segments the ladder actually delivered, which cannot move while nothing is being
  * delivered, and the three cases below are kept as the regression tests they were bought with.
@@ -1504,7 +1504,7 @@ describe('FeedHealthTracker telling a rung that stopped being produced from a br
   });
 
   /**
-   * ⛔⛔⛔ **The regression V6 caught live on 2026-08-30, and it cost a viewer their picture.**
+   * ⛔⛔⛔ **The regression the gateway outage arm caught live on 2026-08-30, and it cost a viewer their picture.**
    *
    * A gateway was taken away for 20.5 seconds under a watching viewer and given back. The client then
    * dropped 480p from the ladder, and the uploader log shows 480p publishing 24 segments across the
@@ -1541,7 +1541,7 @@ describe('FeedHealthTracker telling a rung that stopped being produced from a br
   });
 
   /**
-   * ⛔⛔⛔ **The SECOND regression, V7 live on 2026-08-30, which the gateway fix did not cover.**
+   * ⛔⛔⛔ **The SECOND regression, caught by the uploader crash arm live on 2026-08-30, which the gateway fix did not cover.**
    *
    * An uploader crash stops every rung at once, but unlike a gateway outage the gateway keeps
    * ANSWERING throughout, so the rungs record unserved slots rather than failures and nothing clears
@@ -1571,12 +1571,12 @@ describe('FeedHealthTracker telling a rung that stopped being produced from a br
   });
 
   /**
-   * ⛔⛔⛔ **The THIRD regression, V3 live on 2026-08-31, and it disabled the feature outright.**
+   * ⛔⛔⛔ **The THIRD regression, caught by the rung outage arm live on 2026-08-31, and it disabled the feature outright.**
    *
-   * The recovery re-arm added for V7 fired during ORDINARY operation. All four rungs of a ladder are
+   * The recovery re-arm added for the uploader crash fired during ORDINARY operation. All four rungs of a ladder are
    * written at about the same moment, so between segments every rung is unserved at once, which is
    * indistinguishable from "the whole ladder went quiet" if you are looking at unserved runs. The
-   * dead rung's clock was re-armed every couple of seconds and never reached the window. V3 went
+   * dead rung's clock was re-armed every couple of seconds and never reached the window. The rung outage arm went
    * straight back to its pre-fix numbers: 0 level changes, advance 0.099, froze 87.5s, overlay
    * `live`.
    *

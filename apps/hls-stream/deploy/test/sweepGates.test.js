@@ -134,6 +134,8 @@ async function runSweep({
 
   const env = {
     ...process.env,
+    PROFILE: 'bench-stage',
+    PORT_SLOT: '7',
     PATH: `${stubs.bin}:${process.env.PATH}`,
     OUT_DIR: out,
     REPO_DIR: out,
@@ -241,6 +243,8 @@ if (process.argv[2] === 'run') {
       await run('bash', [SCRIPT], {
         env: {
           ...process.env,
+          PROFILE: 'bench-stage',
+          PORT_SLOT: '7',
           PATH: `${stubs.bin}:${process.env.PATH}`,
           OUT_DIR: out,
           REPO_DIR: out,
@@ -275,15 +279,15 @@ if (process.argv[2] === 'run') {
  * Its whole money check was `funds_cover_minutes`, which asks whether the nodes hold enough to pay.
  * That stays true right down to an empty chequebook, so it authorises the entire balance, and it
  * cannot see what an earlier sitting the same night already spent, so two sweeps that each pass it
- * land past the owner's total together. Every other publishing driver has called `within_ceiling`
+ * land past the operator's total together. Every other publishing driver has called `within_ceiling`
  * since the capacity gate fix and this one was left out, which is the same shape as the postage gap the tests
  * above were written for, one gate over.
  *
  * ⭐ `SKIP_FUNDS_CHECK` does not reach it, and that is the point of the last case here. That switch
  * exists because a chequebook can be topped up between rounds, which is a fact about the nodes. The
- * authorisation is a fact about what the owner said, and no environment variable overrides it.
+ * authorisation is a fact about what the operator said, and no environment variable overrides it.
  */
-describe('a sweep proves the owner authorised what it would spend', () => {
+describe('a sweep proves the operator authorised what it would spend', () => {
   it('refuses a sweep past the authorisation, and publishes nothing', async () => {
     const { code, log, published } = await runSweep({ ceilingPlur: 1n });
 
@@ -302,6 +306,8 @@ describe('a sweep proves the owner authorised what it would spend', () => {
       await run('bash', [SCRIPT], {
         env: {
           ...process.env,
+          PROFILE: 'bench-stage',
+          PORT_SLOT: '7',
           PATH: `${stubs.bin}:${process.env.PATH}`,
           OUT_DIR: out,
           REPO_DIR: out,
@@ -389,6 +395,8 @@ if (process.argv[2] === 'run') {
       await run('bash', [SCRIPT], {
         env: {
           ...process.env,
+          PROFILE: 'bench-stage',
+          PORT_SLOT: '7',
           PATH: `${stubs.bin}:${process.env.PATH}`,
           OUT_DIR: out,
           REPO_DIR: out,
@@ -426,6 +434,8 @@ if (process.argv[2] === 'run') {
       await run('bash', [SCRIPT], {
         env: {
           ...process.env,
+          PROFILE: 'bench-stage',
+          PORT_SLOT: '7',
           PATH: `${stubs.bin}:${process.env.PATH}`,
           OUT_DIR: out,
           REPO_DIR: out,

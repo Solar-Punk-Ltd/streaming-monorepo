@@ -794,7 +794,7 @@ function whatRanSection(run: InTabProbeRun): string[] {
     '',
     `The node joined the network in ${secondsLabel(run.joinedInMs)} s. Owner \`${run.owner}\`.`,
     '',
-    // Which cap held the link down leads, because the owner's correction of 2026-09-02 made the
+    // Which cap held the link down leads, because a correction of 2026-09-02 made the
     // emulation itself a suspect. A figure here means something different depending on this line.
     run.capSource === 'external'
       ? `**The cap is a real shaped link, not Chrome's emulation.** A \`tc\` ingress policer at ` +

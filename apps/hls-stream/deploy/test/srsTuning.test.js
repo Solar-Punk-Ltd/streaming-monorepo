@@ -17,8 +17,8 @@ const ENTRYPOINT = join(ROOT, 'engines/srs/entrypoint.sh');
  * `HLS_FRAGMENT` and `HLS_WINDOW` were configurable on `main` and this branch hard-coded them back
  * into the template at 1.5 and 22.5. Nothing failed: the entrypoint kept substituting into
  * placeholders that were no longer there, compose kept not passing them, and the only symptom was
- * that setting either in an env file did nothing at all. That is the same shape as OPS-30, where two
- * port variables existed as publish mappings and never reached the container.
+ * that setting either in an env file did nothing at all. That is the same shape as the OME port variables, which
+ * existed as publish mappings and never reached the container.
  *
  * `HLS_FRAGMENT` matters more than the rest put together. The segment is the single largest hop in
  * the measured split, at 2000ms of a 5000ms total on the deployment host, and a viewer waits a whole
@@ -419,7 +419,7 @@ for (const { protocol, knob, section, defaultBlock } of TAKEOVERS) {
 }
 
 /**
- * SEC-28 keeps the publish key secret out of the SRS container, so what reaches SRS is only whether a key or admin
+ * The publish key secret is kept out of the SRS container, so what reaches SRS is only whether a key or admin
  * mode is configured, which compose works out from the variables it already holds. Both takeovers default from it.
  */
 describe('what the SRS container learns about the publish key check', () => {
@@ -499,11 +499,11 @@ describe('the credentials the entrypoint splices into its config', () => {
  *
  * There are two of them and they enumerate rather than inherit, which is deliberate: `env_file`
  * would hand `PUBLISH_KEY_SECRET` to the publisher-facing engine image, and that secret has no
- * per-stream revocation. See SEC-28. The cost of enumerating is that a variable added to one list is
+ * per-stream revocation. The cost of enumerating is that a variable added to one list is
  * silently missing from the other, and a variable the container never sees falls back to a default
  * with nothing reporting a problem.
  *
- * It has now happened twice over the same two files. OBS-20's healthcheck went into
+ * It has now happened twice over the same two files. The SRT listener healthcheck went into
  * `deploy/docker-compose.yml` and not `engines/srs/docker-compose.yml`, and the four latency knobs
  * did the same, so on the `pnpm srs:host` and `pnpm srs:local` path setting `HLS_FRAGMENT=0.5`
  * produced 1.0s segments. This compares the two lists instead of trusting whoever edits one of them.

@@ -18,16 +18,16 @@ import { GateRefusalError } from './GateRefusalError.js';
  * it forced was still the wrong one, because a refusal is the loudest thing in a log and it was
  * standing in front of the address that was actually wrong.
  *
- * ## What the owner ruled, 2026-09-17
+ * ## The uploader starts whatever the chequebook says
  *
- * "The uploader and engine should be able to start no matter what the status of the chequebook is."
+ * The uploader and the engine start no matter what the status of the chequebook is.
  * So the readings stay, on every boot, and by default a gate that cannot clear its node writes its
  * whole refusal as a warning and the service starts. `UPLOADER_START_GATES=refuse` is how a
  * deployment asks for the old behaviour, unchanged: same gates, same order, same messages.
  *
- * ## What the owner ruled next, 2026-09-17: the postage gate refuses only what the node answered
+ * ## The postage gate refuses only what the node answered
  *
- * "PostageGate refuses only a batch the node answered about and warns on an unreadable one." The
+ * The postage gate refuses only a batch the node answered about and warns on an unreadable one. The
  * postage gate kept refusing under the shipped mode, and a batch that could not be read at all was
  * refused on the same footing as one the node had reported full or expired. That is the 2026-09-16
  * failure again with the other gate's name on it: a rung whose node is not talking says nothing
@@ -53,12 +53,11 @@ import { GateRefusalError } from './GateRefusalError.js';
 const START_GATE_MODE_ENV = 'UPLOADER_START_GATES';
 
 /**
- * The chequebook gate warns and the postage gate refuses. The shipped mode, on the owner's ruling of
- * 2026-09-17.
+ * The chequebook gate warns and the postage gate refuses. The shipped mode.
  *
  * ⛔ The two are not the same risk, which is why one value covers both rather than one meaning each.
  * A chequebook under its floor is a node that publishes slowly and noisily, and not starting over it
- * is what the first half of that day's ruling removed. An immutable batch that is full, or any batch
+ * is what the first half of that rule removes. An immutable batch that is full, or any batch
  * that has expired, fails every write while the broadcast looks live to the room, the viewer and the
  * catalog, and the recording it was meant to buy is never kept, so that one still stops the boot.
  */
@@ -79,7 +78,7 @@ export const START_GATE_REFUSE = 'refuse';
 /**
  * What a deployment sets, as `parseStartGateMode` answers with it and `gatePolicyFor` reads it.
  *
- * Not something {@link runStartGates} is told any more: since the two gates were ruled apart, the
+ * Not something {@link runStartGates} is told any more: since the two gates are treated apart, the
  * runner asks each gate whether it refuses and never sees the mode itself.
  */
 export type StartGateMode = typeof START_GATE_CHEQUEBOOK_WARN | typeof START_GATE_WARN | typeof START_GATE_REFUSE;
@@ -87,7 +86,7 @@ export type StartGateMode = typeof START_GATE_CHEQUEBOOK_WARN | typeof START_GAT
 /**
  * How much of what a gate finds stops the boot.
  *
- * `answered` is the middle the owner ruled on 2026-09-17: the node said something the gate will not
+ * `answered` is the middle: the node said something the gate will not
  * accept, so every upload on that rung would fail the same way, while a rung nothing could be read
  * from is a warning and a start. See {@link GateReading} for the two facts it sorts.
  */
@@ -196,9 +195,9 @@ type StartGateWarningSink = (warnings: readonly StartGateWarning[]) => void;
 /**
  * The mode a deployment asked for, or a refusal naming both of them.
  *
- * A value that is neither is refused rather than read as the default. Starting anyway is the owner's
- * ruling, and a deployment that asked for `refuse` and mistyped it would otherwise be handed that
- * ruling silently, running the opposite of what its own env file says.
+ * A value that is neither is refused rather than read as the default. Starting anyway is the default,
+ * and a deployment that asked for `refuse` and mistyped it would otherwise be handed that
+ * default silently, running the opposite of what its own env file says.
  */
 export function parseStartGateMode(written: string): StartGateMode {
   const mode = written.trim().toLowerCase();

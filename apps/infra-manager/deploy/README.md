@@ -632,8 +632,9 @@ docker compose down -v            # nuke postgres data too, so be sure
   test checks the two lists against each other.
 - **`api`** has no published port at all. The `web` proxy on the internal
   compose network is the only thing that reaches it.
-- **`postgres`** is bound to `127.0.0.1:5432` so a host-side `pnpm dev`
-  (during local iteration) can connect, but it's never reachable off-host.
+- **`postgres`** has no published port. The api reaches it by service name,
+  and a host-side `pnpm dev` gets a loopback port from `docker-compose.dev.yml`
+  through `pnpm database:start`, at `MANAGER_DEV_PG_PORT` (5432 unless set).
 - The whole repo is bind-mounted into the `api` container at the same
   absolute path it has on the host (`/opt/streaming/streaming-infra-manager`).
   This is so compose files under `manager/swarm-hls-stream/` resolve volume

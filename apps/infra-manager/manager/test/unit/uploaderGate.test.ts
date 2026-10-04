@@ -8,8 +8,8 @@
  * all recreated the uploader without asking the node anything. An uploader
  * started on an expired batch reports RUNNING and fails every upload, which is
  * the failure the stamp check exists to prevent, so the checks belong where
- * every route passes. A drained chequebook is read and warned about, on the
- * ruling of 2026-09-17, and the uploader starts.
+ * every route passes. A drained chequebook is read and warned about, and
+ * the uploader starts.
  */
 import assert from 'node:assert/strict';
 import { existsSync, writeFileSync } from 'node:fs';
@@ -147,7 +147,7 @@ describe('UploaderStartGate', () => {
   };
 
   /**
-   * The chequebook check never refuses, on the owner's ruling of 2026-09-17, so
+   * The chequebook check never refuses, since 2026-09-17, so
    * this fake has no refusing shape to offer. It records that it was asked,
    * which is the whole of what the gate owes it: the reading reaches the log
    * and the start goes on whatever it says.

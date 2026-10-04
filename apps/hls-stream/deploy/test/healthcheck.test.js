@@ -53,7 +53,7 @@ async function serveHealth(status) {
   return { port: server.address().port, close: () => new Promise((resolve) => server.close(resolve)) };
 }
 
-describe('stream-uploader healthcheck (OBS-17)', () => {
+describe('stream-uploader healthcheck', () => {
   it('is declared on the service at all', () => {
     const compose = fs.readFileSync(COMPOSE_PATH, 'utf-8');
     const service = compose.slice(compose.indexOf('\n  stream-uploader:'), compose.indexOf('\n  client:'));
@@ -90,7 +90,7 @@ describe('stream-uploader healthcheck (OBS-17)', () => {
       // `docker compose config` parses a file and does not talk to the daemon, verified by running
       // it with DOCKER_HOST pointed at a socket that does not exist. So there is no legitimate slow
       // path here, and without this bound one unresponsive docker holds the whole suite: on
-      // 2026-08-03 it ran 742 seconds against a nominal 12.8. See OPS-28.
+      // 2026-08-03 it ran 742 seconds against a nominal 12.8.
       timeout: COMPOSE_CONFIG_TIMEOUT_MS,
     });
 

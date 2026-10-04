@@ -6,7 +6,7 @@ export const PROTECTED_PORT_MAX = 19999;
 export const PORT_POLICY_VERSION = 1;
 export const OME_PORT_SOURCES = Object.freeze({ OME_SRT_PORT: 'SRS_SRT_PORT', OME_HLS_PORT: 'SRS_HTTP_PORT' });
 
-/** Public roles supported by the bundled and main-v3 layouts. Private endpoints cannot reuse these tuples.
+/** Public roles of every stack layout this manager deploys, whole tree or monorepo folder. Private endpoints cannot reuse these tuples.
  *
  * Every service named here is one this manager starts, which is what keeps the
  * list to ports a deployment actually binds. Three per-rung peer roles were

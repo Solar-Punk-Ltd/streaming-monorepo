@@ -127,7 +127,7 @@ export function deriveHealthStatus(
   // `start_gate_warned` above both fire there too, and both are about the boot rather than about a
   // stream: a credential wrong from startup means no
   // `on_publish` ever succeeds, so `activeStreams` stays 0, every counter stays 0, and no threshold
-  // below can reach. See OBS-15.
+  // below can reach.
   //
   // Latched rather than aged out, and cleared by the first segment rather than by time. A refusal on
   // a service that has never ingested anything is indistinguishable from a secret this deployment

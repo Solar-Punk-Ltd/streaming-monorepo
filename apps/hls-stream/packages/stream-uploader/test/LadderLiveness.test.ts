@@ -162,9 +162,9 @@ describe('the reference is a middle rung, never the leader', () => {
 
 describe('the whole broadcast stopping', () => {
   /**
-   * ⛔⛔⛔ **THIS ASSERTS A DEFECT, ON PURPOSE, AND THE OWNER HAS NOT YET RULED ON THE FIX.**
+   * ⛔⛔⛔ **THIS ASSERTS A DEFECT, ON PURPOSE.**
    *
-   * Observed live 2026-09-01 in V7, the first sitting after the rung failover was armed. The
+   * Observed live 2026-09-01, the first sitting after the rung failover was armed. The
    * uploader was killed, so every rung stopped. The client dropped **three of the four** — "Rung
    * 360p ... 480p ... 1080p has stopped being produced (4 segments behind the ladder)" — hls.js
    * raised a fatal `levelSwitchError`, and the player destroyed and restarted itself. This case
@@ -201,7 +201,7 @@ describe('the whole broadcast stopping', () => {
     assert.deepEqual(
       liveness.liveRungs().sort(),
       [...LADDER].sort(),
-      'a broadcast that ended cost the ladder its rungs. Owner ruling 2026-09-01: past ' +
+      'a broadcast that ended cost the ladder its rungs. Past ' +
         `${MAX_RUNGS_DROPPED_AT_ONCE} the right conclusion is that the source went away`,
     );
     assert.deepEqual(
@@ -214,7 +214,7 @@ describe('the whole broadcast stopping', () => {
     );
   });
 
-  /** ⛔ The one rung case must still work, or the ruling has disabled the feature it was about. */
+  /** ⛔ The one rung case must still work, or the limit has disabled the feature it was about. */
   it('still drops a single rung that stops while the others carry on', () => {
     const liveness = new LadderLiveness();
     everyRungDelivers(liveness);
@@ -237,7 +237,7 @@ describe('the whole broadcast stopping', () => {
   });
 
   /** The floor that stopped it being all four, and the only reason playback had anywhere to go. */
-  it('never condemns the last rung standing, which is what kept V7 playable at all', () => {
+  it('never condemns the last rung standing, which is what kept the stage playable at all', () => {
     const liveness = new LadderLiveness();
     liveness.recordDelivered('720p');
     for (let segment = 0; segment < 50; segment++) {
@@ -531,7 +531,7 @@ describe('a rung whose uploads are being refused', () => {
     );
   });
 
-  /** Held out is still stopped, so the owner's limit of 2026-09-01 counts it like any other. */
+  /** Held out is still stopped, so the limit counts it like any other. */
   it('counts toward the limit, so two rungs held out together are both kept', () => {
     const liveness = new LadderLiveness();
     everyRungDelivers(liveness);

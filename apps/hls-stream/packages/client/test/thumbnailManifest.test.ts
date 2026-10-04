@@ -72,7 +72,7 @@ describe('thumbnailManifestUrl', () => {
  *
  * The rooted case is the one that used to be passed through untouched, and `MANIFEST_ACCESS_URL` set
  * to a path rather than a full URL is what produces it. No env file in the repo does that today,
- * which is why it went unnoticed: `.env.latbench` sets a full URL and `.env.sample` leaves it empty.
+ * which is why it went unnoticed: one bench profile's env file sets a full URL and `.env.sample` leaves it empty.
  */
 describe('previewSegmentUrl', () => {
   const PAGE_ORIGIN = 'http://viewer.example:10064';

@@ -123,7 +123,7 @@ export function parseMediaPlaylist(text: string): PlaylistEntry[] {
       // It would reach `#EXTINF` in the manifest we publish verbatim, which makes that playlist
       // unplayable, and poison the total the VOD catalog entry advertises. Dropping the position
       // leaves a hole the puller reports as a loss, and the uploader publishes that sequence as a gap
-      // entry so the media behind it keeps its own numbers. See CON-7.
+      // entry so the media behind it keeps its own numbers.
       skipped.push(seq);
       // The dropped media occupied real time, so what follows it is not a continuation of what came
       // before it. Recording that is what stops the backward walk in `datePrecedingSegments` dating
@@ -220,11 +220,11 @@ export function parseStreamId(streamId: string): AppStream {
  * pointed at `/video/victim/ts:playlist.m3u8`, and mirrored another broadcaster's live segments into
  * Swarm on the operator's postage under a second catalog entry, without stopping. It also could not
  * be stopped by hand, because `streamIdSchema` refuses that id, so the operator's own control path
- * could not name the stream the engine had created. See SEC-25.
+ * could not name the stream the engine had created.
  */
 export function parseAppStream(url: string): AppStream {
   // Redacted once, at the top, because every failure path below names the url and a publish key rides
-  // in its query. See SEC-28.
+  // in its query.
   const safeUrl = redactUrlSecrets(url);
   let parts: string[] = [];
 

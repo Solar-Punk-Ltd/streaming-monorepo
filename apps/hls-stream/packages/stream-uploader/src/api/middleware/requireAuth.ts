@@ -56,7 +56,6 @@ function matches(presented: string, expected: string): boolean {
  * covered without whoever adds it remembering. It covers the prefix it is mounted on and nothing
  * else: `/health` is outside it deliberately, and the engine webhook routes under `/engines` carry
  * their own credential, an HMAC over the body for OME and a shared secret in the hook URL for SRS.
- * See SEC-1 and S1.2.
  *
  * The rejection carries nothing back about what was wrong or what was asked for.
  */

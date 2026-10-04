@@ -11,7 +11,7 @@
  * memory.
  *
  * It works on the pool's 720p rung, which the mock seeds with a full immutable
- * batch that has days left, the shape of the tester's 1080p rung on
+ * batch that has days left, the shape of a four-rung pool's 1080p rung on
  * 2026-09-24. Topping it up buys it a day and diluting it one step leaves it
  * half full with half its life.
  */

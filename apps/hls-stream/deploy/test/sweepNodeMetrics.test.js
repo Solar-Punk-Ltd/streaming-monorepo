@@ -141,6 +141,8 @@ async function runSweep({ rounds = 1, configs = 'a:1280x720:2500:0.5 b:1280x720:
     await run('bash', [SCRIPT], {
       env: {
         ...process.env,
+        PROFILE: 'bench-stage',
+        PORT_SLOT: '7',
         PATH: `${stubs.bin}:${process.env.PATH}`,
         OUT_DIR: stubs.out,
         REPO_DIR: stubs.out,

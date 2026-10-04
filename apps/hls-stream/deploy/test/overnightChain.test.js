@@ -110,6 +110,8 @@ async function runChain(
 
   const env = {
     ...process.env,
+    PROFILE: 'bench-stage',
+    PORT_SLOT: '7',
     CHAIN_DIR: join(dir, 'chain'),
     CHAIN_RECORD: record,
     LOADAVG_FILE: loadavgFile,

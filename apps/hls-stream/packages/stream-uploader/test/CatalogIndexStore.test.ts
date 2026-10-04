@@ -45,7 +45,7 @@ function capturingErrors<T>(run: () => T): { result: T; lines: string[] } {
   }
 }
 
-describe('CatalogIndexStore save failures (OBS-5)', () => {
+describe('CatalogIndexStore save failures', () => {
   after(() => {
     for (const root of tempRoots) {
       fs.rmSync(root, { recursive: true, force: true });

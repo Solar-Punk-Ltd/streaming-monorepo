@@ -328,7 +328,7 @@ async function collectSamples(
       // A poll that failed is a poll that found nothing, and recording it is the whole point of
       // `feedPolls`. Throwing here instead discarded every sample the run had already paid a real
       // broadcast for, and it was triggered by the effect under study: a feed poll slow enough to
-      // exceed the timeout is the strongest sample of LAT-10 there is. See `isFeedBlackout`.
+      // exceed the timeout is the strongest sample of the feed head freeze there is. See `isFeedBlackout`.
       feedPolls.push({ atMs: Date.now(), newestRef: null, resolvedIndex: null });
       if (isFeedBlackout(Date.now() - lastFeedSuccessAtMs)) {
         throw new Error(

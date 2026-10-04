@@ -236,6 +236,8 @@ exit 0
 
   const env = {
     ...process.env,
+    PROFILE: 'bench-stage',
+    PORT_SLOT: '7',
     PATH: `${bin}:${process.env.PATH}`,
     OUT_DIR: out,
     SPEND_LEDGER: ledger,
@@ -348,7 +350,7 @@ describe('a viewer sitting runs its arms in an order that cannot fake a result',
 
     assert.equal(gops.length, 4);
     assert.equal(restarts.length, 2, 'a cold arm per round, and no more');
-    assert.deepEqual(new Set(restarts), new Set(['latbench-bee-gateway-1']));
+    assert.deepEqual(new Set(restarts), new Set(['bench-stage-bee-gateway-1']));
   });
 
   it('restarts nothing when no arm is named cold', async () => {
@@ -594,7 +596,7 @@ describe('a sitting refuses what it cannot finish, and records what the nodes di
  * `can_afford` asks whether the nodes hold enough to pay, which stays true right down to an empty
  * chequebook, so a driver carrying only that authorises the entire balance. It also cannot see what
  * an earlier sitting the same night already spent, so two runs that each pass it land past the
- * owner's total together. This driver publishes and had nothing of the sort in front of it.
+ * authorised total together. This driver publishes and had nothing of the sort in front of it.
  */
 describe('the spend ceiling, which this driver did not have', () => {
   const ARMS = 'obs-default:2.0 shipped:0.5';
@@ -623,7 +625,7 @@ describe('the spend ceiling, which this driver did not have', () => {
  * then false for every balance there can be, and the log read `uploader has 0.500 BZZ, needs -9.219
  * BZZ for 720 min, ok` on a node that could pay for none of it.
  *
- * ⭐ The length of the sitting is the whole likelihood, and the owner's standing rule is to size a
+ * ⭐ The length of the sitting is the whole likelihood, and the rule is to size a
  * sitting from the question rather than from the balance, so long sittings are the encouraged shape.
  * Four sibling drivers already divided first. These two cases are the same driver either side of the
  * ceiling, so a number that wraps again is caught by the pair rather than by reading the arithmetic.

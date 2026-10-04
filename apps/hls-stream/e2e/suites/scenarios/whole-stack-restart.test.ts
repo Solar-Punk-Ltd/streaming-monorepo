@@ -40,7 +40,7 @@ import { waitFor } from '../../src/harness/wait.js';
  * the usual one, so a green here is evidence about the shutdown finalize far more often than about
  * the recovery timer. A scenario that has to reach the recovery branch cannot use a graceful stop at
  * all, which is why `reconnect-into-recovery` (M) kills the uploader with SIGKILL the way
- * `uploader-crash-recovery` (F) does. Owner ruling of 2026-09-07: the scenario stays as it is and
+ * `uploader-crash-recovery` (F) does. The scenario stays as it is and
  * this docblock says what it proves.
  *
  * ⭐ The failure either path would produce is the expensive kind: the broadcast is over, the

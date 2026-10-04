@@ -76,7 +76,7 @@ function serviceEnvironment(compose, service) {
  * That every knob the uploader reads can actually be set on a deployment.
  *
  * `deploy/docker-compose.yml` enumerates the uploader's environment rather than inheriting it, which
- * is deliberate and is the same SEC-28 reasoning the engine files carry: `env_file` would hand every
+ * is deliberate and is the same reasoning the engine files carry, keeping the publish key secret out of containers that do not need it: `env_file` would hand every
  * root variable to every container. The cost is that a variable absent from that block is one the
  * container never sees, so it silently keeps its compiled default however carefully an operator sets
  * it, and nothing anywhere reports a problem.

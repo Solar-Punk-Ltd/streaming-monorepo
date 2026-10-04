@@ -49,7 +49,7 @@ function answering(text: string, headers: Record<string, string> = {}): typeof f
     }) as unknown as Response) as unknown as typeof fetch;
 }
 
-describe('fetchWithTimeout (OBS-2, client half)', () => {
+describe('fetchWithTimeout (client half)', () => {
   it('gives up on a gateway that never answers', async () => {
     const started = Date.now();
 
@@ -239,10 +239,10 @@ function sourceFiles(dir: string): string[] {
  */
 const UNBOUNDED_CALL = /(^|[^.\w])fetch\s*\(|\b(?:window|globalThis|self)\s*\.\s*fetch\s*\(/;
 
-// The uploader half of OBS-2 was closed by routing every call through one helper so a new call site
+// The uploader half of the request timeout work was closed by routing every call through one helper so a new call site
 // could not forget the window. The client has no such chokepoint, since any component can reach for
 // the global, so the equivalent guarantee has to be asserted rather than designed in.
-describe('the client makes no unbounded requests (OBS-2)', () => {
+describe('the client makes no unbounded requests', () => {
   it('has no call to the global fetch left in src', () => {
     const offenders = sourceFiles(SRC_DIR)
       .filter((path) => !path.endsWith(join('utils', 'fetchWithTimeout.ts')))

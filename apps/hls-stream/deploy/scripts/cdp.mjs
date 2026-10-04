@@ -39,9 +39,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
 import { sampleChromeCpu } from './chrome-cpu.mjs';
-
-/** macOS default. Overridable so a host that keeps Chrome elsewhere can run this. */
-export const CHROME_PATH = process.env.CHROME_PATH ?? '/Applications/Google Chrome.app/Contents/MacOS/Google Chrome';
+import { chromePath } from './chrome-path.mjs';
 
 const PORT_RANGE_START = 9333;
 const ENDPOINT_ATTEMPTS = 40;
@@ -200,9 +198,10 @@ export async function clickPage(client) {
 export async function withPage(url, body, { idleMs = 0 } = {}) {
   const port = PORT_RANGE_START + Math.floor(process.pid % 100);
   const profile = mkdtempSync(join(tmpdir(), 'cdp-'));
-  const chrome = spawn(CHROME_PATH, chromeArgs(port, profile), { stdio: 'ignore' });
+  const browser = chromePath();
+  const chrome = spawn(browser, chromeArgs(port, profile), { stdio: 'ignore' });
   chrome.on('error', (error) => {
-    throw new Error(`Chrome failed to start at ${CHROME_PATH}: ${error.message}`);
+    throw new Error(`Chrome failed to start at ${browser}: ${error.message}`);
   });
   let client;
   try {

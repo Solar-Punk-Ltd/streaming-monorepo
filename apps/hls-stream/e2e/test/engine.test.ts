@@ -128,7 +128,7 @@ describe('a custom stream path reaches the URL', () => {
 });
 
 /**
- * That the URL this suite dials carries the credential the deployment demands. See SEC-28 and SEC-29.
+ * That the URL this suite dials carries the credential the deployment demands.
  *
  * Every scenario here published with no key at all until 2026-08-03, so against a deployment with
  * `PUBLISH_KEY_SECRET` set, all of them failed at the first admission. That failure is the expensive
@@ -171,7 +171,7 @@ describe('the publish key in the ingest URL', () => {
   });
 
   /**
-   * The property SEC-28 rests on, asserted where it can actually be got wrong. Deriving against the
+   * The property publisher authentication rests on, asserted where it can actually be got wrong. Deriving against the
    * secret alone, or against a constant, would authenticate every scenario against every stream, and
    * the multi-stream scenario is the only place that shows.
    */

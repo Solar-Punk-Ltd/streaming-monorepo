@@ -3,7 +3,7 @@
  *
  * Unit test, no Docker and no database. `pnpm test` in manager/.
  *
- * On 2026-09-22 an outside tester's SRT broadcast came out with broken blocks
+ * On 2026-09-22 an outside SRT broadcast came out with broken blocks
  * of picture for five hours and nothing on any screen said so. SRS had been
  * printing the reason every ten seconds: about six percent of the packets
  * dropped. This is the read of those lines, and of SRS's line for each RTMP

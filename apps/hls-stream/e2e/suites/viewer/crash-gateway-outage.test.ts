@@ -22,7 +22,7 @@ import { waitFor } from '../../src/harness/wait.js';
 import { requireByteSource, viewerGate } from '../../src/viewerCoverage.js';
 
 /**
- * V6 — the gateway a viewer reads through is taken away under them, and given back.
+ * The gateway outage arm: the gateway a viewer reads through is taken away under them, and given back.
  *
  * ## What this promotes
  *
@@ -49,7 +49,7 @@ import { requireByteSource, viewerGate } from '../../src/viewerCoverage.js';
  *
  * ## ⛔ What it does not assert
  *
- * **No timing.** Owner ruling of 2026-08-29: an e2e suite checks feature correctness and stability,
+ * **No timing.** An e2e suite checks feature correctness and stability,
  * and performance is a separate kind of test. This once held the freeze between 10 and 60 seconds,
  * required 3s of buffer in front of it and required the resume inside 30s, all from the 2026-08-27
  * matrix, which was a single-rendition 720p broadcast. Every one of those figures is still measured,
@@ -98,7 +98,7 @@ const backend = byteSourceFromEnv(process.env.BROWSER_FETCH_BACKEND);
 // Module scope, so an undeclared run fails the file during import rather than skipping into silence.
 const skip = viewerGate(cfg.viewerExpectation, backend, cfg.browserRepoDir);
 
-describe('V6 — a viewer whose gateway is taken away, and given back', { skip }, () => {
+describe('a viewer whose gateway is taken away, and given back', { skip }, () => {
   const host = makeHost(cfg);
   const uploader = containerName(cfg, 'stream-uploader');
   const broken = containerName(cfg, SCENARIO.service);

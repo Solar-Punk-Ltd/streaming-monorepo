@@ -5,8 +5,8 @@
     <IP>*</IP>
     <PrivacyProtection>false</PrivacyProtection>
 
-    <!-- TODO check default settings for OME -->
-    <StunServer>stun.l.google.com:19302</StunServer>
+    <!-- OME_STUN_SERVER, Google's public server unless it names another. See entrypoint.sh. -->
+    <StunServer>OME_STUN_SERVER_PLACEHOLDER</StunServer>
 
     <Bind>
         <Providers>

@@ -37,10 +37,10 @@
 # shell, and the broadcast that follows is launched through `bench-on-host.sh`, behind that gate.
 #
 # Usage:
-#   deploy/scripts/drain-stage.sh --profile=latbench --portSlot=7 --rung=1080p print-buy [--days=2] [--depth=17]
-#   deploy/scripts/drain-stage.sh --profile=latbench --portSlot=7 --rung=1080p arm --batch=<64 hex> [--depth=17]
-#   deploy/scripts/drain-stage.sh --profile=latbench --portSlot=7 --rung=1080p restore
-#   deploy/scripts/drain-stage.sh --profile=latbench --portSlot=7 --rung=1080p status
+#   deploy/scripts/drain-stage.sh --profile=<profile> --portSlot=<slot> --rung=1080p print-buy [--days=2] [--depth=17]
+#   deploy/scripts/drain-stage.sh --profile=<profile> --portSlot=<slot> --rung=1080p arm --batch=<64 hex> [--depth=17]
+#   deploy/scripts/drain-stage.sh --profile=<profile> --portSlot=<slot> --rung=1080p restore
+#   deploy/scripts/drain-stage.sh --profile=<profile> --portSlot=<slot> --rung=1080p status
 #
 # `print-buy` reads the chain price off the rung's node and prints one purchase command, the cost in
 # BZZ, and how much the batch holds before it starts refusing uploads.

@@ -2,7 +2,7 @@
  * What diluting or topping up a batch leaves it with, worked out before anybody
  * pays for either.
  *
- * The host's numbers are the 1080p rung of the tester's pool on 2026-09-24: an
+ * The host's numbers are the 1080p rung of a four-rung pool on 2026-09-24: an
  * immutable batch of depth 23 over 16 bucket bits, which is 128 chunks a
  * bucket, whose fullest bucket held all 128, with two days and three hours
  * left. bee refused every upload that landed in that bucket.

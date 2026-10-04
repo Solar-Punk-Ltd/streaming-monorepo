@@ -99,7 +99,7 @@ function startStream(api: ApiTestServer): Promise<{ status: number; body: unknow
  * A deploy watching for a service to come up saw a restart count climbing and refused, correctly by
  * its own rule and about the wrong thing: the uploader was fine and its node was not there yet.
  *
- * Since the owner's ruling of 2026-09-17 the listener comes first. `/health` answers from the first
+ * The listener comes first. `/health` answers from the first
  * second, saying `waiting_for_node` with the node it is waiting for and since when, which is what a
  * deploy page can show a person. The routes that need the node behind them refuse cleanly with 503
  * instead of reaching an orchestrator whose catalog has never been read.

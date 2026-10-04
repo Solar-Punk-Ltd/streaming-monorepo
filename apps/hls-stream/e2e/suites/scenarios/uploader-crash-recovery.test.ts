@@ -30,7 +30,7 @@ import { sleep, waitFor } from '../../src/harness/wait.js';
  * ⭐ **The hole the crash leaves is what this scenario is really about.** SRS posts each closed
  * segment to the webhook once and never retries, so the segments it closed while the uploader was
  * dead are gone and nothing reports them. The uploader infers that hole from the index it is handed
- * being above the last it accounted for, and since the owner's ruling of 2026-09-06 it says the hole
+ * being above the last it accounted for, and since 2026-09-06 it says the hole
  * out loud: every missing sequence is published as an `#EXT-X-GAP` entry. So the playlist a viewer is
  * already reading has to hold two things at once, a media sequence that never moved backwards and an
  * entry for every sequence the crash cost, because a playlist that simply left them out would

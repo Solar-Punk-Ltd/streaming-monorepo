@@ -1,6 +1,6 @@
 /**
  * What a `spawnSync` result actually says, as one of four answers rather than as a status code and
- * an `error` field a caller has to know the rules for. This is OPS-28.
+ * an `error` field a caller has to know the rules for.
  *
  * `deploy/test/healthcheck.test.js` shells out to `docker compose config` to prove the compose file
  * is one compose will load, which is the only check there that a unit test of the probe cannot do.

@@ -13,7 +13,7 @@
  *
  * ## ⛔ No timing is judged
  *
- * Owner ruling of 2026-08-29. Whether the recording played, offered its whole ladder and covered the
+ * Whether the recording played, offered its whole ladder and covered the
  * broadcast is correctness. How long a seek took to land is measured, printed and filed.
  *
  * ## Why the rules live here rather than in the suite

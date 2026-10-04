@@ -968,7 +968,7 @@ describe('LadderFeedPoller feed health', () => {
 });
 
 /**
- * ⛔ **The half of the overlay a ladder could not reach.** V6, live, 2026-08-29: a viewer's gateway
+ * ⛔ **The half of the overlay a ladder could not reach.** The gateway outage arm, live, 2026-08-29: a viewer's gateway
  * was taken away, the picture froze for 26.6 seconds, and the client rendered nothing at all, which
  * is how it says the feed is live. The viewer was told everything was fine over a frozen frame.
  *
@@ -1133,7 +1133,7 @@ describe('LadderFeedPoller telling the viewer the publisher has gone quiet', () 
  * ⛔⛔⛔ **The layer every unit test of this rule skips, and the one the live run failed in.**
  *
  * `feedState.test.ts` drives `FeedHealthTracker` by hand and its whole failover block is green.
- * V3 went red anyway on 2026-08-31 against the deployed client, with three healthy rungs served 5.4
+ * The rung outage arm went red anyway on 2026-08-31 against the deployed client, with three healthy rungs served 5.4
  * times a second beside a dead one for 90.4 seconds and zero level changes. A rule that is right and
  * a rule that is reached are different claims, and only the poller can settle the second one: it is
  * what calls `recordGatewayResponse`, and nothing below it had ever been exercised end to end.

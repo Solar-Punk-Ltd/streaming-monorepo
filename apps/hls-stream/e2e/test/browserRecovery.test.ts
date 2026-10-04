@@ -271,7 +271,7 @@ describe('reporting a fault that is supposed to end the broadcast', () => {
     chromeVersion: 'Chrome 151',
     gopSeconds: 0.25,
     scenario,
-    container: 'latbench-srs-1',
+    container: 'bench-stage-srs-1',
     fault,
     summary: summarize(samples),
     recovery: judgeRecovery(samples, fault),

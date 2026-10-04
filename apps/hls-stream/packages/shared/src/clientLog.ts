@@ -181,8 +181,8 @@ export type FragmentAnswer = typeof FRAGMENT_ANSWER_RESOLVED | typeof FRAGMENT_A
  * On the in-tab path `retrieveBytes` takes no abort signal, so a fragment hls.js abandoned keeps
  * costing the node until it answers, and the settle line records that answer as `aborted` whichever way
  * it went. Whether the bytes eventually ARRIVED or the node gave up is the difference between a viewer
- * whose retrieval was merely too slow and one whose retrieval was never going to complete, and V2's
- * open question is exactly that: did the bytes ever arrive under the cap.
+ * whose retrieval was merely too slow and one whose retrieval was never going to complete, and the in-tab
+ * viewer arm's open question is exactly that: did the bytes ever arrive under the cap.
  *
  * `byteLength` is the payload as a gateway would have served it, span already stripped, or
  * {@link CLIENT_LOG_UNKNOWN} where there were no bytes to count. ⛔ A word rather than a zero, because

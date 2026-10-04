@@ -1,6 +1,6 @@
 #!/bin/bash
 #
-# Phase 0.6: a viewer's gateway, funded against unfunded, measured in a browser.
+# A viewer's gateway, funded against unfunded, measured in a browser.
 #
 # ## The question
 #
@@ -22,8 +22,8 @@
 # watching and wrong for a sitting that has to outlive the laptop closing. This is the same shape as
 # `sweep-interleaved.sh`: started detached on the host, it holds no session open and reports to disk.
 #
-#   scp phase06-light-vs-ultralight.sh <host>:~/phase06/
-#   ssh <host> 'setsid nohup bash ~/phase06/phase06-light-vs-ultralight.sh >/dev/null 2>&1 &'
+#   scp light-vs-ultralight-browser.sh <host>:~/light-vs-ultralight/
+#   ssh <host> 'PROFILE=<profile> PORT_SLOT=<slot> setsid nohup bash ~/light-vs-ultralight/light-vs-ultralight-browser.sh >/dev/null 2>&1 &'
 #
 # ## Why it proves itself before it spends the sitting
 #
@@ -63,21 +63,22 @@
 # running out is a clean stop with a named reason rather than a slide into measuring starvation.
 set -u
 
-OUT_DIR="${OUT_DIR:-${HOME}/phase06}"
+OUT_DIR="${OUT_DIR:-${HOME}/light-vs-ultralight}"
 # Deliberately outside both rsync targets. `~/swarm-hls-bench` is synced with `--delete` by
-# `bench-on-host.sh` and `~/swarm-hls-stream-latbench` is owned by `deploy.sh`, so anything written in
+# `bench-on-host.sh` and `~/swarm-hls-stream-<profile>` is owned by `deploy.sh`, so anything written in
 # either is removed the next time a laptop syncs, which is exactly when someone would be checking on a
 # sitting still running.
 BENCH_REPO="${BENCH_REPO:-${HOME}/swarm-hls-bench}"
-STACK_DIR="${STACK_DIR:-${HOME}/swarm-hls-stream-latbench}"
-COMPOSE_DIR="${STACK_DIR}/deploy"
-ENV_FILE="${STACK_DIR}/.env"
-COMPOSE_PROJECT="${COMPOSE_PROJECT:-latbench}"
-GATEWAY_CONTAINER="${GATEWAY_CONTAINER:-latbench-bee-gateway-1}"
 BROWSER_IMAGE="${BROWSER_IMAGE:-swarm-hls-browser}"
 
-PROFILE="${PROFILE:-latbench}"
-PORT_SLOT="${PORT_SLOT:-7}"
+PROFILE="${PROFILE:?set PROFILE to the deploy profile of the stage this drives}"
+PORT_SLOT="${PORT_SLOT:?set PORT_SLOT to the port slot of the stage this drives}"
+# The stack deploy.sh keeps for this profile, its compose project and its gateway container.
+STACK_DIR="${STACK_DIR:-${HOME}/swarm-hls-stream-${PROFILE}}"
+COMPOSE_DIR="${STACK_DIR}/deploy"
+ENV_FILE="${STACK_DIR}/.env"
+COMPOSE_PROJECT="${COMPOSE_PROJECT:-${PROFILE}}"
+GATEWAY_CONTAINER="${GATEWAY_CONTAINER:-${COMPOSE_PROJECT}-bee-gateway-1}"
 # Origins from `apply_port_slot` in `_lib.sh`, resolved here because this script never sources it.
 UPLOADER_BEE_PORT="${UPLOADER_BEE_PORT:-$((10005 + PORT_SLOT * 10))}"
 GATEWAY_BEE_PORT="${GATEWAY_BEE_PORT:-$((10007 + PORT_SLOT * 10))}"
@@ -124,8 +125,8 @@ RATES="$(dirname "${BASH_SOURCE[0]}")/burn-rates.sh"
 }
 
 mkdir -p "${OUT_DIR}"
-LOG="${OUT_DIR}/phase06.log"
-STATE="${OUT_DIR}/phase06-state.tsv"
+LOG="${OUT_DIR}/light-vs-ultralight.log"
+STATE="${OUT_DIR}/light-vs-ultralight-state.tsv"
 REPORTS="${OUT_DIR}/reports"
 mkdir -p "${REPORTS}"
 
@@ -715,7 +716,7 @@ if ! has_capacity "${TOTAL_MINUTES}"; then
   exit 1
 fi
 # ⛔ Distinct from funds_cover_minutes above, which asks whether the nodes CAN pay and so authorises
-# the whole balance. This asks whether the owner said they may, and it is the only one of the two
+# the whole balance. This asks whether the operator said they may, and it is the only one of the two
 # that can see what an earlier sitting tonight already spent.
 if ! within_ceiling "${TOTAL_MINUTES}"; then
   say "REFUSING TO START: this sitting would spend past the authorisation in ${SPEND_LEDGER}"

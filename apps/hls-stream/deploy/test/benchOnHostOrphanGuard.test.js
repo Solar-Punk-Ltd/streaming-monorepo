@@ -4,7 +4,7 @@ import { chmodSync, copyFileSync, existsSync, mkdirSync, readFileSync, writeFile
 import { join } from 'node:path';
 import { after, describe, it } from 'node:test';
 
-import { BENCH_TARGET, makeSandbox, removeSandboxes, runScript } from './helpers/sandbox.js';
+import { BENCH_STAGE, BENCH_TARGET, makeSandbox, removeSandboxes, runScript } from './helpers/sandbox.js';
 
 after(removeSandboxes);
 
@@ -31,7 +31,7 @@ const SPEND_LEDGER = '.spend-ledger.env';
 const OWNER_LEDGER = 'authorised_at=2026-09-03T09:32:45Z\n';
 
 /** What the script's own defaults name, so a test asserting on the name does not restate the flags. */
-const DEFAULT_CONTAINER = 'latbench-harness-slot7';
+const DEFAULT_CONTAINER = 'bench-stage-harness-slot7';
 
 /**
  * How long the stubbed container holds the run open. Long enough that the signal lands while it is
@@ -232,11 +232,15 @@ async function interruptedRun(
   const marker = join(sandbox.root, 'container-started');
   dockerRunBlocks(sandbox, { marker, stopExitCode, holdsSeconds });
 
-  const child = spawn('bash', [sandbox.scriptPath('bench-on-host.sh'), '--target', BENCH_TARGET, ...args], {
-    detached: true,
-    env: { ...process.env, ...env, PATH: `${sandbox.binDir}:${process.env.PATH ?? ''}` },
-    stdio: ['ignore', 'pipe', 'pipe'],
-  });
+  const child = spawn(
+    'bash',
+    [sandbox.scriptPath('bench-on-host.sh'), '--target', BENCH_TARGET, ...BENCH_STAGE, ...args],
+    {
+      detached: true,
+      env: { ...process.env, ...env, PATH: `${sandbox.binDir}:${process.env.PATH ?? ''}` },
+      stdio: ['ignore', 'pipe', 'pipe'],
+    },
+  );
   let stdout = '';
   let stderr = '';
   child.stdout.on('data', (chunk) => {
@@ -305,6 +309,7 @@ describe('bench-on-host names its container after the profile and the slot', () 
     const run = await runScript(sandbox, 'bench-on-host.sh', [
       '--target',
       BENCH_TARGET,
+      ...BENCH_STAGE,
       '--no-setup',
       '--script',
       'bench:latency',
@@ -330,7 +335,13 @@ describe('bench-on-host names its container after the profile and the slot', () 
     const sandbox = benchSandbox();
     rsyncCopiesNothing(sandbox);
 
-    const run = await runScript(sandbox, 'bench-on-host.sh', ['--target', BENCH_TARGET, '--script', 'bench:latency']);
+    const run = await runScript(sandbox, 'bench-on-host.sh', [
+      '--target',
+      BENCH_TARGET,
+      ...BENCH_STAGE,
+      '--script',
+      'bench:latency',
+    ]);
 
     assert.equal(run.exitCode, 0, `bench-on-host.sh failed: ${run.stdout}${run.stderr}`);
     const launches = sandbox.remoteCalls().filter((call) => call.startsWith('run '));
@@ -347,27 +358,55 @@ describe('bench-on-host names its container after the profile and the slot', () 
   it('puts the slot in the name, so two slots on one host do not collide', async () => {
     const sandbox = benchSandbox();
 
-    await runScript(sandbox, 'bench-on-host.sh', ['--target', BENCH_TARGET, '--no-setup', '--portSlot', '1']);
-    await runScript(sandbox, 'bench-on-host.sh', ['--target', BENCH_TARGET, '--no-setup', '--portSlot', '2']);
+    await runScript(sandbox, 'bench-on-host.sh', [
+      '--target',
+      BENCH_TARGET,
+      ...BENCH_STAGE,
+      '--no-setup',
+      '--portSlot',
+      '1',
+    ]);
+    await runScript(sandbox, 'bench-on-host.sh', [
+      '--target',
+      BENCH_TARGET,
+      ...BENCH_STAGE,
+      '--no-setup',
+      '--portSlot',
+      '2',
+    ]);
 
     const names = sandbox
       .sshCommands()
       .filter((command) => command.includes('docker run '))
       .map((command) => command.match(/--name (\S+)/)?.[1]);
-    assert.deepEqual(names, ['latbench-harness-slot1', 'latbench-harness-slot2']);
+    assert.deepEqual(names, ['bench-stage-harness-slot1', 'bench-stage-harness-slot2']);
   });
 
   it('puts the profile in the name, so two stages on one host do not collide', async () => {
     const sandbox = benchSandbox();
 
-    await runScript(sandbox, 'bench-on-host.sh', ['--target', BENCH_TARGET, '--no-setup', '--profile', 'latbench']);
-    await runScript(sandbox, 'bench-on-host.sh', ['--target', BENCH_TARGET, '--no-setup', '--profile', 'default']);
+    await runScript(sandbox, 'bench-on-host.sh', [
+      '--target',
+      BENCH_TARGET,
+      ...BENCH_STAGE,
+      '--no-setup',
+      '--profile',
+      'stage-b',
+    ]);
+    await runScript(sandbox, 'bench-on-host.sh', [
+      '--target',
+      BENCH_TARGET,
+      ...BENCH_STAGE,
+      '--no-setup',
+      '--profile',
+      'default',
+    ]);
 
     const names = sandbox
       .sshCommands()
       .filter((command) => command.includes('docker run '))
       .map((command) => command.match(/--name (\S+)/)?.[1]);
-    assert.deepEqual(names, ['latbench-harness-slot7', 'default-harness-slot7']);
+    assert.deepEqual(names, ['stage-b-harness-slot7', 'default-harness-slot7']);
   });
 
   /**
@@ -381,6 +420,7 @@ describe('bench-on-host names its container after the profile and the slot', () 
     const run = await runScript(sandbox, 'bench-on-host.sh', [
       '--target',
       BENCH_TARGET,
+      ...BENCH_STAGE,
       '--no-setup',
       '--profile',
       'Lat bench',
@@ -397,6 +437,7 @@ describe('bench-on-host names its container after the profile and the slot', () 
     const run = await runScript(sandbox, 'bench-on-host.sh', [
       '--target',
       BENCH_TARGET,
+      ...BENCH_STAGE,
       '--no-setup',
       '--portSlot',
       'seven',
@@ -419,7 +460,13 @@ describe('bench-on-host refuses a target that is already running a harness conta
     writeFileSync(join(sandbox.root, SPEND_LEDGER), OWNER_LEDGER);
     dockerReportsHarness(sandbox, 'running');
 
-    const run = await runScript(sandbox, 'bench-on-host.sh', ['--target', BENCH_TARGET, '--script', 'bench:latency']);
+    const run = await runScript(sandbox, 'bench-on-host.sh', [
+      '--target',
+      BENCH_TARGET,
+      ...BENCH_STAGE,
+      '--script',
+      'bench:latency',
+    ]);
 
     assert.notEqual(run.exitCode, 0, 'a second run was allowed onto a busy stage');
     assert.equal(existsSync(join(sandbox.remoteHome, REMOTE_BENCH_DIR)), false, 'the rsync ran before the refusal');
@@ -437,7 +484,7 @@ describe('bench-on-host refuses a target that is already running a harness conta
     const sandbox = benchSandbox();
     dockerReportsHarness(sandbox, 'running');
 
-    const run = await runScript(sandbox, 'bench-on-host.sh', ['--target', BENCH_TARGET, '--no-setup']);
+    const run = await runScript(sandbox, 'bench-on-host.sh', ['--target', BENCH_TARGET, ...BENCH_STAGE, '--no-setup']);
 
     assert.notEqual(run.exitCode, 0, '--no-setup was allowed onto a busy stage');
     assert.equal(sandbox.sshCommands().length, 1, 'the run went out anyway');
@@ -457,13 +504,14 @@ describe('bench-on-host refuses a target that is already running a harness conta
     const run = await runScript(sandbox, 'bench-on-host.sh', [
       '--target',
       BENCH_TARGET,
+      ...BENCH_STAGE,
       '--no-setup',
       '--portSlot',
       '1',
     ]);
 
     assert.equal(run.exitCode, 0, `a free target was refused: ${run.stdout}${run.stderr}`);
-    assert.match(sandbox.sshCommands()[0], /docker ps -a --filter 'name=\^latbench-harness-slot1\$'/);
+    assert.match(sandbox.sshCommands()[0], /docker ps -a --filter 'name=\^bench-stage-harness-slot1\$'/);
   });
 
   /**
@@ -481,7 +529,13 @@ describe('bench-on-host refuses a target that is already running a harness conta
     writeFileSync(join(sandbox.root, SPEND_LEDGER), OWNER_LEDGER);
     dockerReportsHarness(sandbox, 'exited');
 
-    const run = await runScript(sandbox, 'bench-on-host.sh', ['--target', BENCH_TARGET, '--script', 'bench:latency']);
+    const run = await runScript(sandbox, 'bench-on-host.sh', [
+      '--target',
+      BENCH_TARGET,
+      ...BENCH_STAGE,
+      '--script',
+      'bench:latency',
+    ]);
 
     assert.notEqual(run.exitCode, 0, 'a launch went out onto a name docker would have refused');
     assert.equal(existsSync(join(sandbox.remoteHome, REMOTE_BENCH_DIR)), false, 'the rsync ran before the refusal');
@@ -504,7 +558,13 @@ describe('bench-on-host refuses a target that is already running a harness conta
     writeFileSync(join(sandbox.root, SPEND_LEDGER), OWNER_LEDGER);
     sshCannotReachTarget(sandbox);
 
-    const run = await runScript(sandbox, 'bench-on-host.sh', ['--target', BENCH_TARGET, '--script', 'bench:latency']);
+    const run = await runScript(sandbox, 'bench-on-host.sh', [
+      '--target',
+      BENCH_TARGET,
+      ...BENCH_STAGE,
+      '--script',
+      'bench:latency',
+    ]);
 
     assert.notEqual(run.exitCode, 0, 'a target that could not be read was treated as free');
     assert.equal(existsSync(join(sandbox.remoteHome, REMOTE_BENCH_DIR)), false, 'the rsync ran before the refusal');
@@ -522,7 +582,7 @@ describe('bench-on-host stops the remote container when it is interrupted', () =
   it('issues no docker stop on a clean run', async () => {
     const sandbox = benchSandbox();
 
-    const run = await runScript(sandbox, 'bench-on-host.sh', ['--target', BENCH_TARGET, '--no-setup']);
+    const run = await runScript(sandbox, 'bench-on-host.sh', ['--target', BENCH_TARGET, ...BENCH_STAGE, '--no-setup']);
 
     assert.equal(run.exitCode, 0, `${run.stdout}${run.stderr}`);
     assert.deepEqual(stopCalls(sandbox), [], 'a green run stopped a container that had already gone');
@@ -539,7 +599,7 @@ describe('bench-on-host stops the remote container when it is interrupted', () =
       '#!/bin/sh\nnode -- "$0.cjs" "$@" || exit $?\nif [ "$1" = "run" ]; then exit 3; fi\nexit 0\n',
     );
 
-    const run = await runScript(sandbox, 'bench-on-host.sh', ['--target', BENCH_TARGET, '--no-setup']);
+    const run = await runScript(sandbox, 'bench-on-host.sh', ['--target', BENCH_TARGET, ...BENCH_STAGE, '--no-setup']);
 
     assert.equal(run.exitCode, 3, "the run's exit code was not the script's");
     assert.deepEqual(stopCalls(sandbox), [], 'a red run stopped a container that had already gone');

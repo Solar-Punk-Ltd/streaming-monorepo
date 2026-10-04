@@ -22,12 +22,14 @@
 # is immutable.
 #
 # Usage:
-#   deploy/scripts/stamp-guard.sh --batch <id> [--minutes 240] [--port 10075]
+#   deploy/scripts/stamp-guard.sh --batch <id> --port <uploader bee API port> [--minutes 240]
+#
+# STAMP_GUARD_PORT stands in for --port.
 set -u
 
 BATCH=""
 MINUTES=0
-PORT="${STAMP_GUARD_PORT:-10075}"
+PORT="${STAMP_GUARD_PORT:-}"
 # The written stop rule: 75% of buckets, or under two days left.
 MAX_UTILIZATION_PCT="${MAX_UTILIZATION_PCT:-75}"
 MIN_TTL_DAYS="${MIN_TTL_DAYS:-2}"
@@ -49,6 +51,7 @@ while [ $# -gt 0 ]; do
 done
 
 [ -n "${BATCH}" ] || { echo "stamp-guard: --batch is required" >&2; exit 2; }
+[ -n "${PORT}" ] || { echo "stamp-guard: --port is required, the API port of the uploader bee that holds the batch" >&2; exit 2; }
 
 STAMPS="$(curl -s --max-time 10 "http://127.0.0.1:${PORT}/stamps" 2>/dev/null)"
 if [ -z "${STAMPS}" ]; then

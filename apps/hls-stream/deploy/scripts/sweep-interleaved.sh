@@ -49,18 +49,18 @@
 # Until 2026-09-16 that funding check was the whole of what stood between this sweep and the money,
 # and it authorises the entire balance, because a node can pay right up to an empty chequebook. It
 # also cannot see what an earlier sitting the same night already spent, so two sweeps that each pass
-# it land past the owner's total together. `within_ceiling` is the one that reads the authorisation
+# it land past the operator's total together. `within_ceiling` is the one that reads the authorisation
 # in `.spend-ledger.env`, and it is asked at the same two moments, with no way to skip it.
 #
 # Usage, from the repo root on the laptop:
 #   rsync -a deploy/scripts/ <host>:~/swarm-hls-bench/deploy/scripts/   # the DIRECTORY, it sources burn-rates.sh
-#   ssh <host> 'setsid nohup bash ~/swarm-hls-bench/sweep-interleaved.sh >/dev/null 2>&1 &'
+#   ssh <host> 'PROFILE=<profile> PORT_SLOT=<slot> setsid nohup bash ~/swarm-hls-bench/sweep-interleaved.sh >/dev/null 2>&1 &'
 set -u
 
 REPO_DIR="${REPO_DIR:-${HOME}/swarm-hls-bench}"
 IMAGE="${IMAGE:-swarm-hls-bench:latest}"
-PROFILE="${PROFILE:-latbench}"
-PORT_SLOT="${PORT_SLOT:-7}"
+PROFILE="${PROFILE:?set PROFILE to the deploy profile of the stage this drives}"
+PORT_SLOT="${PORT_SLOT:?set PORT_SLOT to the port slot of the stage this drives}"
 ROUNDS="${ROUNDS:-2}"
 MINUTES="${MINUTES:-3}"
 
@@ -146,7 +146,7 @@ GATES="$(dirname "${BASH_SOURCE[0]}")/capacity-gate.sh"
   echo "cannot read ${GATES}: sync deploy/scripts as a directory, not one script" >&2
   exit 1
 }
-# Whether the owner authorised what this sweep would spend, which is a different question from
+# Whether the operator authorised what this sweep would spend, which is a different question from
 # whether the nodes can pay it. Sourced further down, after `available_plur`, because it reads a
 # chequebook through that function and refuses a caller that has not defined one yet.
 CEILING="$(dirname "${BASH_SOURCE[0]}")/spend-ceiling.sh"
@@ -335,7 +335,7 @@ if ! has_capacity "${TOTAL_MINUTES}"; then
 fi
 
 # ⛔ Distinct from `funds_cover_minutes` above, which asks whether the nodes CAN pay and so authorises
-# the whole balance right down to an empty chequebook. This asks whether the owner said they may, and
+# the whole balance right down to an empty chequebook. This asks whether the operator said they may, and
 # it is the only check here that can see what an earlier sitting tonight already spent, so two sweeps
 # that each pass the funding check cannot land past the authorisation together. It also reads every
 # node that can spend rather than the uploader and the gateway alone: since the per-rung split most

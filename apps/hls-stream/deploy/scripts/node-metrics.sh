@@ -16,9 +16,23 @@
 set -u
 
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-UPLOADER_PORT="${UPLOADER_BEE_PORT:-10075}"
-GATEWAY_PORT="${GATEWAY_BEE_PORT:-10077}"
-UPLOADER_API_PORT="${UPLOADER_API_PORT:-10070}"
+UPLOADER_PORT="${UPLOADER_BEE_PORT:-}"
+GATEWAY_PORT="${GATEWAY_BEE_PORT:-}"
+UPLOADER_API_PORT="${UPLOADER_API_PORT:-}"
+
+# The ports a reading takes, each from its own variable or else from the stage's PORT_SLOT, the way
+# `apply_port_slot` in `_lib.sh` publishes them. Only `snapshot` and `watch` read a node.
+resolve_ports() {
+  if [ -z "${UPLOADER_PORT}" ] || [ -z "${GATEWAY_PORT}" ] || [ -z "${UPLOADER_API_PORT}" ]; then
+    if ! [[ "${PORT_SLOT:-}" =~ ^[0-9]{1,2}$ ]]; then
+      echo "node-metrics.sh: set PORT_SLOT to the stage port slot, or UPLOADER_BEE_PORT, GATEWAY_BEE_PORT and UPLOADER_API_PORT" >&2
+      exit 2
+    fi
+  fi
+  UPLOADER_PORT="${UPLOADER_PORT:-$((10005 + PORT_SLOT * 10))}"
+  GATEWAY_PORT="${GATEWAY_PORT:-$((10007 + PORT_SLOT * 10))}"
+  UPLOADER_API_PORT="${UPLOADER_API_PORT:-$((10000 + PORT_SLOT * 10))}"
+}
 
 # What `watch` refuses to keep running past. The reserve is per node and is not a budget: it is the
 # distance from the point where peers start refusing service to a node that cannot pay, which was
@@ -80,6 +94,7 @@ sys.stdout.write(json.dumps({
 case "${1:-}" in
   snapshot)
     [ $# -ge 2 ] || { echo "usage: node-metrics.sh snapshot <out.json> [label]" >&2; exit 2; }
+    resolve_ports
     snapshot_to "$2" "${3:-}"
     echo "node-metrics: wrote $2"
     ;;
@@ -102,6 +117,7 @@ case "${1:-}" in
   # to a node that cannot pay. Writing the stop file is what makes the run cut itself off instead.
   watch)
     [ $# -ge 4 ] || { echo "usage: node-metrics.sh watch <out_dir> <interval_s> <stop_file> [label]" >&2; exit 2; }
+    resolve_ports
     OUT_DIR="$2"; INTERVAL_S="$3"; STOP_FILE="$4"; WATCH_LABEL="${5:-sample}"
     mkdir -p "${OUT_DIR}"
     n=0

@@ -717,7 +717,7 @@ describe('the wait the fetcher ships with', () => {
   });
 });
 
-describe('ManifestFetcher against a gateway that stops answering (LAT-3)', () => {
+describe('ManifestFetcher against a gateway that stops answering', () => {
   let fetcher: ManifestFetcher;
   let health: FeedHealthTracker;
   let waited: number[];
@@ -1089,7 +1089,7 @@ describe('ManifestFetcher against a gateway that stops answering (LAT-3)', () =>
 });
 
 /**
- * The property the bench and the player disagreed about for the whole of LAT-10.
+ * The property the bench and the player disagreed about for the whole of the feed head lookup investigation.
  *
  * `GET /feeds/{owner}/{topic}` asks a node to resolve the newest update, and it cannot keep up with a
  * feed advancing once a second: measured on 2026-08-04 it was 50 to 57% frozen at 1.0 to 7.0 seconds
@@ -1101,7 +1101,7 @@ describe('ManifestFetcher against a gateway that stops answering (LAT-3)', () =>
  * assertion runs in `packages/shared/test/feedFollow.test.ts` against the shared decision and in
  * `e2e/test/gateway.test.ts` against the bench's follower.
  */
-describe('following the feed costs one head lookup (LAT-10)', () => {
+describe('following the feed costs one head lookup', () => {
   let fetcher: ManifestFetcher;
   let requested: string[];
   let publishedThrough: bigint;

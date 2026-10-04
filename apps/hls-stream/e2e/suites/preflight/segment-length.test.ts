@@ -27,8 +27,8 @@ import {
  *  - the **gateway** measures the other way over 21 funded arms, 0.5s beating 2s on
  *    capture-to-fetchable latency at 1.55s against 3.88s.
  *
- * ⛔ So a stage matching the wrong profile is a WRONG number rather than a missing one. Our latbench
- * stage publishes 0.5s and the `in-browser` profile ran against it for a day: live in-tab readings
+ * ⛔ So a stage matching the wrong profile is a WRONG number rather than a missing one. A bench
+ * stage once published 0.5s and the `in-browser` profile ran against it for a day: live in-tab readings
  * sat at 0.35 to 0.68 of realtime with a 44ms buffer, complete, plausible and fully instrumented, and
  * nothing in the artefacts said the viewer had never had a chance. A warning would have scrolled
  * past, so this refuses.

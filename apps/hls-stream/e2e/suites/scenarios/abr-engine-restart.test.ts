@@ -183,7 +183,7 @@ describe('ABR — engine restart: the ladder comes back whole', { skip: abrOff(c
 
   /**
    * A restart is a real discontinuity and the uploader is expected to arm one, so this asserts the
-   * uploader kept working rather than that nothing happened. Since the owner's ruling of 2026-09-06
+   * uploader kept working rather than that nothing happened. Since 2026-09-06
    * it is one of only three things that still arm one, the others being the origin declaring a break
    * and, since the reconnect window change, an encoder returning inside the reconnect window: a lost segment now leaves a
    * hole the playlist says with gap entries instead. What is ABR-specific is that a stall in one rung

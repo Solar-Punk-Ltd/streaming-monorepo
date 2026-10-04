@@ -146,12 +146,11 @@ export class ChequebookService {
    * The uploader gate's chequebook half: read what the node can pay peers with
    * and put it in the log. Nothing here refuses a start.
    *
-   * ⛔ The name is older than the behaviour and the behaviour is the ruling.
+   * ⛔ The name is older than the behaviour.
    * From 2026-09-07 the gate refused a start on a node that said nothing and on one
-   * that reported a chequebook under the floor. On 2026-09-17 the silence was taken
-   * back, "we should be able to start the uploader but maybe say its
-   * node not available, try to reconnect or something", and the owner then took
-   * the shortfall too: an operator who wants an uploader up on an unfunded node
+   * that reported a chequebook under the floor. On 2026-09-17 a node that says nothing
+   * was allowed to start, with a note that the node is not available, and the
+   * shortfall was allowed too: an operator who wants an uploader up on an unfunded node
    * gets it up. What that costs is uploads that stall, which the deployment page
    * shows from the uploader's own health route, rather than a deployment that
    * will not start for a reason the operator was already looking at.
@@ -184,15 +183,15 @@ export class ChequebookService {
     if (health.state === 'unknown') {
       logger.warn(
         `[ChequebookService] ${name}: the Bee node at ${nodeUrl} answered the chequebook check with a balance that could not be read. ` +
-          'The uploader is started anyway, on the ruling of 2026-09-17.',
+          'The uploader is started anyway.',
       );
       return;
     }
     if (isChequebookShort(health.state)) {
       logger.warn(
         `[ChequebookService] ${name}: the Bee node at ${nodeUrl} has ${plurToBzz(health.availablePlur ?? 0n)} BZZ available ` +
-          `in its chequebook and the floor is ${plurToBzz(health.floorPlur)} BZZ. The uploader is started anyway, on the ` +
-          'ruling of 2026-09-17, and its uploads stall until the chequebook is filled.',
+          `in its chequebook and the floor is ${plurToBzz(health.floorPlur)} BZZ. The uploader is started anyway, and its ` +
+          'uploads stall until the chequebook is filled.',
       );
     }
   }

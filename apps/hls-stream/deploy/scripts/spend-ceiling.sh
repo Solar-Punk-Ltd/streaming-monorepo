@@ -2,13 +2,13 @@
 #
 # Sourced, never executed, so it carries a shell directive instead of a shebang.
 #
-# Refuse a sitting that would spend past what the owner authorised, as something that exits non-zero
+# Refuse a sitting that would spend past what the operator authorised, as something that exits non-zero
 # before the publisher starts.
 #
 # ⛔⛔⛔ `can_afford()` IS NOT THIS CHECK, AND READS EXACTLY LIKE IT.
 #
 # `can_afford` asks whether a node holds enough to pay for the next sitting. That stays true until the
-# chequebook is empty, so it authorises the whole balance. An owner who says "up to 2.4 BZZ tonight"
+# chequebook is empty, so it authorises the whole balance. An operator who says "up to 2.4 BZZ tonight"
 # out of a 3.5 BZZ balance has authorised less than the node can pay, and no driver could see the
 # difference. Worse, two sittings that each pass `can_afford` can still land past the authorisation
 # together, because neither knows the other ran.
@@ -35,7 +35,7 @@
 #
 # ⛔⛔⛔ AND A RISE ALSO ENDS THE LEDGER, WHICH THE CLAMP ALONE DOES NOT SAY.
 #
-# Clamping keeps the arithmetic honest and still throws the history away. On 2026-08-14 the owner
+# Clamping keeps the arithmetic honest and still throws the history away. On 2026-08-14 the operator
 # deposited 12 BZZ into the gateway. That node's 0.5406 BZZ of real spend stopped being a counted
 # term and became a clamped zero, and this gate went on printing a total short by exactly that much
 # with nothing anywhere marking it. The uploader was topped up minutes later, which would have taken
@@ -81,7 +81,7 @@ declare -F uploader_env > /dev/null 2>&1 || {
 : "${UPLOADER_BURN_PLUR_PER_MIN:?spend-ceiling.sh needs UPLOADER_BURN_PLUR_PER_MIN, source burn-rates.sh}"
 : "${GATEWAY_BURN_PLUR_PER_MIN:?spend-ceiling.sh needs GATEWAY_BURN_PLUR_PER_MIN, source burn-rates.sh}"
 
-# Where the night's authorisation lives. Written once, when the owner gives it, and read by every
+# Where the night's authorisation lives. Written once, when the operator gives it, and read by every
 # sitting that follows so they cannot each spend the whole allowance.
 SPEND_CEILING_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 SPEND_LEDGER="${SPEND_LEDGER:-${SPEND_CEILING_DIR}/../../.spend-ledger.env}"
@@ -228,7 +228,7 @@ within_ceiling() {
   fi
   if [ -n "${rose}" ]; then
     say "  REFUSING: balance is above its start on ${rose}, so a deposit landed after this authorisation was written and the spend above is measured from baselines that predate it"
-    say "  Rewrite ${SPEND_LEDGER} with fresh start balances and the total the owner has now authorised."
+    say "  Rewrite ${SPEND_LEDGER} with fresh start balances and the total the operator has now authorised."
     return 1
   fi
   if [ "${projected}" -gt "${remaining}" ]; then

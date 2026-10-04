@@ -35,7 +35,7 @@ describe('parseAppStream', () => {
   });
 
   /**
-   * These returned `{ app: 'video', stream: undefined }` and similar until SEC-25. That satisfied
+   * These returned `{ app: 'video', stream: undefined }` and similar until stream ids were validated. That satisfied
    * the `AppStream` type without being one, and `handleAdmission` went straight on to build the
    * stream id `video/undefined` and admit the publish. Every such URL collapsed onto one of two
    * ids, so one broadcaster's closing ended another's session.
@@ -50,7 +50,7 @@ describe('parseAppStream', () => {
   });
 
   /**
-   * Its own distinct text, not the shared `Could not parse app/stream` prefix. When the SEC-25
+   * Its own distinct text, not the shared `Could not parse app/stream` prefix. When the stream-id
    * errors reused that prefix, this assertion stopped discriminating: deleting the URL-parse throw
    * entirely and letting `parts` fall through as `[]` left 111 tests green, because the no-pair
    * branch raised a message this regex also matched.
@@ -60,7 +60,7 @@ describe('parseAppStream', () => {
   });
 
   /**
-   * The security half of SEC-25, and a strictly larger hole than the emptiness check beside it.
+   * The security half of the stream-id validation, and a strictly larger hole than the emptiness check beside it.
    * `srt:` is not a special scheme, so `new URL` keeps a backslash in `pathname` verbatim. The name
    * below therefore reached `OmeHlsPuller`, which interpolates it into an `http:` URL, where the
    * WHATWG parser reads `\` as `/` and resolves the dot segments, pointing the puller at
@@ -72,7 +72,7 @@ describe('parseAppStream', () => {
   });
 
   // Every id the engine mints has to be one the operator can name back to /stream/stop. Before
-  // SEC-25 these parsed, were admitted, and were then refused by `streamIdSchema`. Asserted against
+  // validation these parsed, were admitted, and were then refused by `streamIdSchema`. Asserted against
   // that schema rather than against a list of my own, so the two cannot drift apart.
   it('throws on names the request schema would refuse, so no stream is started that cannot be stopped', () => {
     for (const name of ['-leading-dash', 'a b', 'dem%6f', '.hidden', 'a'.repeat(400)]) {
@@ -209,7 +209,7 @@ describe('parseMediaPlaylist', () => {
   });
 
   // `#EXT-X-DISCONTINUITY` used to be in this list and is not any more: it is the one tag here that
-  // changes what the segment after it means, and it has its own test below. See CON-9.
+  // changes what the segment after it means, and it has its own test below.
   it('ignores blank lines, comments, and unrelated tags between segments', () => {
     const text = [
       '#EXTM3U',
@@ -251,7 +251,7 @@ describe('parseMediaPlaylist', () => {
 
   // Every one of these used to become the segment's duration verbatim. It reaches `#EXTINF` in the
   // manifest we publish, which makes that playlist unplayable, and it poisons the total the VOD
-  // catalog entry advertises. See CON-7.
+  // catalog entry advertises.
   const UNUSABLE_DURATIONS = [
     { label: 'non-numeric', extinf: '#EXTINF:not-a-number,' },
     { label: 'empty', extinf: '#EXTINF:,' },
@@ -318,7 +318,7 @@ describe('parseMediaPlaylist', () => {
 
   // The tag an origin sends when the media after it is not a continuation of the media before it,
   // which is what an encoder restart produces. Swallowed with every other `#` line, the manifest we
-  // publish told players the join was seamless and they stalled on it instead of resetting. See CON-9.
+  // publish told players the join was seamless and they stalled on it instead of resetting.
   it('marks the segment after an #EXT-X-DISCONTINUITY, and only that one', () => {
     const text = [
       '#EXTM3U',
@@ -381,7 +381,7 @@ describe('parseMediaPlaylist', () => {
     ].join('\n');
 
     // Forward: the tag says the timeline restarts, so the next segment's start cannot be derived by
-    // adding a duration to the last one. Unknown is the honest answer, and the handover floor CON-20
+    // adding a duration to the last one. Unknown is the honest answer, and the handover floor
     // reads this for treats unknown as "cannot judge" rather than acting on a wrong number.
     assert.deepEqual(
       parseMediaPlaylist(stamped).map((entry) => entry.programDateTime),
@@ -418,7 +418,7 @@ describe('parseMediaPlaylist', () => {
   });
 
   // The date-time is the only field that separates one session's media from the next one's, since OME
-  // restarts the media sequence at zero and reuses its segment file names across both. See CON-20.
+  // restarts the media sequence at zero and reuses its segment file names across both.
   describe('#EXT-X-PROGRAM-DATE-TIME', () => {
     it('stamps each segment from the date-time that precedes it', () => {
       const text = [

@@ -35,7 +35,7 @@
  *
  * ## ⛔ It records and it refuses nothing
  *
- * Owner ruling of 2026-08-29: an e2e suite checks that a feature works and is stable, never how fast
+ * An e2e suite checks that a feature works and is stable, never how fast
  * it is. Nothing here is a threshold, a timing or a gate, and no suite may key a refusal to it.
  *
  * ## ⛔⛔ Zero captured is not zero requested

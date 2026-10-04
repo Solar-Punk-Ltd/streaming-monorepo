@@ -82,7 +82,7 @@ REST_ARGS=()
 # 10002 and 10003 from the arithmetic origin while `engines/srs/docker-compose.yml` documents 1935
 # and 8080. Since d6394a3 passed these into SRS's own config, that is what SRS bound: consistent end
 # to end, and not what the ports are documented as, so an operator opening 1935 for a broadcaster
-# opened a port nothing listened on. Filed as OPS-27.
+# opened a port nothing listened on.
 readonly PORT_VARS=(
   "API_PORT:3000:10000"
   "SRS_SRT_PORT:10080:10001"
@@ -279,7 +279,7 @@ parse_profile_args() {
   # A named profile always points at its OWN env file, present or not. The old fallback to the
   # default `.env` did not merely lose this profile's settings, it silently adopted the default
   # deployment's ports, STAMP and STREAM_KEY, so `--profile=streamr1` brought up a second stack
-  # fighting the first one for the same port range. See OPS-4.
+  # fighting the first one for the same port range.
   #
   # Missing is a warning here and a refusal in `require_env`, which only `deploy.sh` calls, because
   # the two cases are genuinely different. Deploying without the profile's settings is the harm.
@@ -594,7 +594,7 @@ FILTER_SERVICES=()
 # Append one argv entry to FILTER_SERVICES, or report an unknown service name and return 1 so the
 # caller can print its own usage before exiting. Compose reads an unknown `--profile` as "select no
 # services" and exits 0, so a typo that reached it would report success while the service the
-# operator named kept running. See OPS-3.
+# operator named kept running.
 add_service_filter() {
   local arg="$1" svc
   for svc in "${ALL_SERVICES[@]}"; do
@@ -744,7 +744,7 @@ shell_quote() {
 
 # --- Publish keys ---
 
-# The publish key for one stream id, derived from the master secret. See SEC-28.
+# The publish key for one stream id, derived from the master secret.
 #
 # Must agree byte for byte with `derivePublishKey` in packages/stream-uploader/src/utils/publishKey.ts,
 # because the service recomputes it and compares. Pinned to one golden vector, asserted here in
@@ -766,7 +766,7 @@ shell_quote() {
 #
 # **node is not on a deploy target**, which is where an operator issues keys from, and this used to
 # say the requirement was fair because `deploy.sh` did not ship `config.json` "so it cannot run there
-# anyway". OPS-29 removed that premise, and what was left underneath was `node: command not found`
+# anyway". That premise has gone, and what was left underneath was `node: command not found`
 # on the one machine the script exists for. Measured on `<host>`: no node, docker present.
 #
 # So node if it is here, and node in a container if it is not. The derivation itself is written once
@@ -824,7 +824,7 @@ readonly DEFAULT_BEE_GATEWAY_DATA_DIR="./data/bee-gateway"
 # deployment host, and no character set separates a directory this deployment owns from one it does
 # not: `../..`, `.`, `/etc` and a home directory are all ordinary-looking paths. `..` is refused here
 # because it is cheap to name, and the rest is refused by `nodes/init-node.sh`, on the host that
-# holds the directory and can actually tell. See SEC-21.
+# holds the directory and can actually tell.
 #
 # The set is narrower than what a docker bind mount source accepts, so this does refuse values that
 # used to work: a local deploy took `data/two words` and no longer does. That is a deliberate trade
@@ -921,7 +921,7 @@ load_engine_envs() {
 # `get_target`. A remote deploy target does not have that file: `deploy.sh` ships the compose files,
 # the Dockerfiles, `.env` and `deploy/scripts/`, and neither `config.json` nor `config.sample.json`.
 # So a script that wants an engine's port only to print a URL must not be gated on it, and the
-# question it actually has is which env files are here. See OPS-29.
+# question it actually has is which env files are here.
 load_engine_envs_present() {
   local engine file
   for engine in "${ENGINE_SERVICES[@]}"; do

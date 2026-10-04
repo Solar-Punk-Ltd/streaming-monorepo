@@ -24,7 +24,7 @@ const READER = join(ROOT, 'deploy/scripts/read-sitting.py');
  * CHEAPER viewer. The saturation question this reader exists to answer would have been answered in
  * the wrong direction, with every other column looking healthy.
  *
- * ⛔⛔ AND THE GUARD THAT ALREADY EXISTED WOULD NOT HAVE CAUGHT IT. `phase06-light-vs-ultralight.sh`
+ * ⛔⛔ AND THE GUARD THAT ALREADY EXISTED WOULD NOT HAVE CAUGHT IT. `light-vs-ultralight-browser.sh`
  * checks delivered segment LENGTH against the request and admits anything from 0.7x to 1.4x, so a
  * 13% stretch passes it comfortably. The frame rate is the sharp instrument for this failure, which
  * is why it is the one gated here.
@@ -219,7 +219,7 @@ describe('an arm not delivered at the requested profile voids the headline', () 
     assert.match(stdout, /26\.5/);
   });
 
-  // ⛔ The segment-length guard in phase06 admits 0.7x to 1.4x, and 26.5/30 is 0.883, so the historical
+  // ⛔ The segment-length guard in light-vs-ultralight-browser.sh admits 0.7x to 1.4x, and 26.5/30 is 0.883, so the historical
   // failure sits comfortably INSIDE it. Pinning the tolerance here is what stops somebody widening
   // this one to match that one.
   it('is tight enough that the historical shortfall could never be inside it', async () => {

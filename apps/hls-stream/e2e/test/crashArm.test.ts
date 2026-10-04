@@ -37,7 +37,7 @@ import { armState, crashArmState, GATEWAY_OUTAGE_RECOVERY, INSTRUMENT_UNPROVEN }
  *
  * The figures throughout are the ones the `crash-at-an-in-tab-viewer-2026-08-27` measurement (kept outside the repository) recorded,
  * so a predicate is exercised against runs that happened rather than against invented ones. ⭐ They
- * are the INPUTS here and never the contract: owner ruling of 2026-08-29, an e2e suite checks that
+ * are the INPUTS here and never the contract: an e2e suite checks that
  * the feature works properly and stably, and every duration one of these arms produces is measured,
  * printed and filed rather than held against a ceiling.
  */
@@ -254,7 +254,7 @@ describe('whether a crash arm is a viewer who was watching when the fault landed
   });
 
   /**
-   * ⭐ Owner ruling of 2026-08-29: an e2e suite checks feature correctness and stability, and how
+   * ⭐ An e2e suite checks feature correctness and stability, and how
    * long a fault cost a viewer is a performance reading. Live on the four rung ladder that day, three
    * faults froze the picture for 57 to 59 seconds against ceilings of 8 and 45 taken from a
    * single-rendition 720p sitting, and all three suites went red for a configuration difference.
@@ -296,7 +296,7 @@ describe('whether the picture came back the way this fault lets it', () => {
   });
 
   /**
-   * ⭐ Owner ruling of 2026-08-29. The uploader-crash fix is still worth watching, at 2.3s against
+   * ⭐ The uploader-crash fix is still worth watching, at 2.3s against
    * 46.7s before it landed, and this is where a regression is NOTICED rather than refused: the figure
    * is printed by {@link crashArmSummary} on every arm and filed in the artifact. The contract is
    * that the picture came back, and a slower return is still a viewer who got their broadcast.
@@ -363,7 +363,7 @@ describe('whether the picture came back the way this fault lets it', () => {
  * nothing more is coming. So the falsifiable proposition is whether the broadcast is over, and that
  * is the only thing a fault's expectation states here.
  *
- * ⛔ V6 demanded exactly `reconnecting` and got `degraded` live on 2026-08-29. Both are true. Which
+ * ⛔ The gateway outage arm demanded exactly `reconnecting` and got `degraded` live on 2026-08-29. Both are true. Which
  * one fires is a function of which internal counter crossed first, which depends on the rung count
  * and the byte source: on a weeb-3 arm the segments arrive from the node in the tab, every arrival
  * calls `recordGatewayReachable()` with no topic and forgives every held topic outright, so
@@ -382,7 +382,7 @@ describe('whether what the client told the viewer while the picture was stopped 
   });
 
   /**
-   * ⭐ The V6 red of 2026-08-29, and the case this rewrite exists for. The client said "The stream is
+   * ⭐ The gateway outage arm's red of 2026-08-29, and the case this rewrite exists for. The client said "The stream is
    * struggling to keep up" where the matrix had recorded "Reconnecting to the stream". A viewer read
    * a true sentence either way, and the suite failed them.
    */

@@ -5,7 +5,7 @@ import { RecentSegmentIndexes } from '../src/libs/RecentSegmentIndexes.js';
 
 const WINDOW = 4;
 
-describe('RecentSegmentIndexes (CON-8)', () => {
+describe('RecentSegmentIndexes', () => {
   it('suppresses a duplicate it has seen', () => {
     const seen = new RecentSegmentIndexes(WINDOW);
 

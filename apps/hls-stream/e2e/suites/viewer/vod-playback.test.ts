@@ -100,7 +100,7 @@ import { viewerGate } from '../../src/viewerCoverage.js';
  *
  * ## ⛔ No timing is asserted
  *
- * Owner ruling of 2026-08-29. How fast a seek landed is measured, printed and filed.
+ * How fast a seek landed is measured, printed and filed.
  *
  * ## ⛔⛔ A run that pinned no segment length still runs this file, and now asks every question
  *

@@ -418,7 +418,7 @@ describe('the readiness of a node that reaches no chain', () => {
  * What the overview lists, from the readings it takes of every deployment.
  *
  * On 2026-09-24 the overview said "nothing right now, everything is running and
- * ready" while the tester's ABR uploader reported `postage_refused` and the
+ * ready" while an ABR uploader reported `postage_refused` and the
  * 1080p rung behind it held a full batch.
  */
 describe('the overview’s Needs attention, from the readings it holds', () => {
@@ -429,7 +429,7 @@ describe('the overview’s Needs attention, from the readings it holds', () => {
     components: ['srs', 'stream-uploader'],
     stamp_id: null,
     bee_publishers: DEFAULT_ABR_RUNGS.map(
-      (rung, index) => `${rung}@http://10.200.0.1:${10015 + index * 10}<${String(index + 1).repeat(64)}>`,
+      (rung, index) => `${rung}@http://192.0.2.1:${10015 + index * 10}<${String(index + 1).repeat(64)}>`,
     ).join(' '),
     containers: [
       { service: 'srs', ports: {}, buildId: null, buildCommit: null },
@@ -463,7 +463,7 @@ describe('the overview’s Needs attention, from the readings it holds', () => {
     const waiting: UploaderHealthReading = {
       state: 'waiting_for_node',
       reasons: ['node_unavailable'],
-      node: { url: 'http://10.200.0.1:10015', attempts: 3 },
+      node: { url: 'http://192.0.2.1:10015', attempts: 3 },
     };
     const silent: UploaderHealthReading = { state: 'unreachable', reasons: [] };
 

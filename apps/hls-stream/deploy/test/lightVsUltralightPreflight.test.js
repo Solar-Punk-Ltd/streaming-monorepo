@@ -9,7 +9,7 @@ import { promisify } from 'node:util';
 
 const run = promisify(execFile);
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '../..');
-const SCRIPT = join(ROOT, 'deploy/scripts/phase06-light-vs-ultralight.sh');
+const SCRIPT = join(ROOT, 'deploy/scripts/light-vs-ultralight-browser.sh');
 /** Synthetic. A live batch id in a committed fixture is a stamp anyone can spend against. */
 const BATCH = 'a'.repeat(64);
 
@@ -71,7 +71,7 @@ function stubHost({
   // default here would refuse every case in this file for the right reason and test nothing.
   ceilingPlur = 12n * 10n ** 16n,
 }) {
-  const out = mkdtempSync(join(tmpdir(), 'phase06-'));
+  const out = mkdtempSync(join(tmpdir(), 'light-vs-ultralight-'));
   cleanups.push(() => rmSync(out, { recursive: true, force: true }));
   const bin = join(out, 'bin');
   mkdirSync(bin, { recursive: true });
@@ -184,6 +184,8 @@ async function preflight(options = {}) {
     const ok = await run('bash', [SCRIPT], {
       env: {
         ...process.env,
+        PROFILE: 'bench-stage',
+        PORT_SLOT: '7',
         PATH: `${host.bin}:${process.env.PATH}`,
         OUT_DIR: host.out,
         STACK_DIR: host.stack,
@@ -198,7 +200,7 @@ async function preflight(options = {}) {
     code = failure.code;
     ({ stdout, stderr } = failure);
   }
-  return { code, stdout, stderr, log: readFileSync(join(host.out, 'phase06.log'), 'utf8') };
+  return { code, stdout, stderr, log: readFileSync(join(host.out, 'light-vs-ultralight.log'), 'utf8') };
 }
 
 /** What the preflight said the uploader needs, in BZZ. */

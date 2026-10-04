@@ -34,7 +34,7 @@ function fakeRequest(signature: string | undefined, rawBody: Buffer | undefined)
   } as unknown as Request;
 }
 
-describe('verifyAdmissionSignature (SEC-3)', () => {
+describe('verifyAdmissionSignature', () => {
   // The empty secret is not a secret. Anyone who can reach the webhook can compute this signature
   // themselves, so an empty secret has to reject rather than wave the request through.
   it('rejects an empty secret even when the request carries a signature made with the empty key', () => {
@@ -66,7 +66,7 @@ describe('verifyAdmissionSignature (SEC-3)', () => {
   });
 });
 
-describe('createOmeEngineFromEnv requires an admission secret (SEC-3)', () => {
+describe('createOmeEngineFromEnv requires an admission secret', () => {
   let saved: string | undefined;
 
   beforeEach(() => {
@@ -147,7 +147,7 @@ async function postAdmission(
   }
 }
 
-describe('OME admission route with no secret configured (SEC-3)', () => {
+describe('OME admission route with no secret configured', () => {
   let originalFetch: typeof globalThis.fetch;
 
   // An admitted request starts an HLS puller against HLS_BASE, which does not resolve. Only that

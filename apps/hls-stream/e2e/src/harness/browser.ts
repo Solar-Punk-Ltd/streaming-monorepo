@@ -169,7 +169,7 @@ const WROTE_ARTIFACT_RE = /^browser: wrote (.+)\.md$/gm;
  * console handler that forwards every page error and every ladder, rung and restart line, precisely
  * so a ladder failure is diagnosable without a second paid run. The arm prints them to its stdout,
  * `runBrowserArm` read ONE line out of that stdout and dropped the rest, and the suite log therefore
- * carried not a single word the client said. On 2026-08-31 V3 went red with the viewer stuck on a
+ * carried not a single word the client said. On 2026-08-31 the rung outage arm went red with the viewer stuck on a
  * dead rung, and the one thing that would have said whether the client had decided to drop that rung
  * had been captured, forwarded, and then binned by the harness.
  *
@@ -423,7 +423,7 @@ export interface BrowserArmResult {
    * about the FILE rather than about any of the three above: an artifact written before one of those
    * readings existed reads with it null, and every phase count beside it is still good.
    *
-   * ⛔ An observation. Nothing asserts on it, per the owner ruling of 2026-08-29.
+   * ⛔ An observation. Nothing asserts on it, because an e2e suite checks correctness and never speed.
    */
   fragmentRequests: FragmentRequestTimeline | null;
   /**

@@ -123,9 +123,9 @@ export const UNSERVED_SLOT_STALL_MS = 8_000;
  *
  * ⛔⛔⛔ **SEGMENTS, AND DELIBERATELY NOT SECONDS. Every regression this rule has had was a clock.**
  * Four attempts judged a rung by how long it had been quiet, and three of them shipped a fault:
- * a gateway outage (V6, 2026-08-30) amputated a healthy 480p rung that had merely been between
- * segments when the gateway went away; an uploader crash (V7, same day) amputated two rungs because
- * the rungs resumed staggered; and the patch for that (V3, 2026-08-31) fired during ordinary
+ * a gateway outage (2026-08-30) amputated a healthy 480p rung that had merely been between
+ * segments when the gateway went away; an uploader crash (same day) amputated two rungs because
+ * the rungs resumed staggered; and the patch for that (2026-08-31) fired during ordinary
  * operation, because "every rung is quiet at once" is also what a ladder looks like between
  * segments, and it disabled the feature outright.
  *
@@ -402,7 +402,7 @@ export class FeedHealthTracker {
    * the only one their link carries and the only one that survives a restart, while the rung topics
    * are per session and are discovered from the master playlist. Every gateway fault is recorded
    * against a rung, so `reconnecting` and `stalled` had no way to reach a watching viewer. Caught
-   * live by V6 on 2026-08-29: a gateway taken away froze the picture for 26.6 seconds and the client
+   * live by the gateway outage arm on 2026-08-29: a gateway taken away froze the picture for 26.6 seconds and the client
    * said nothing at all, which is how it says the feed is live.
    */
   private readonly rungsOfGroup = new Map<string, readonly string[]>();
@@ -795,7 +795,7 @@ export class FeedHealthTracker {
         // ⛔⛔⛔ **The unserved run ends here, and leaving it running cost a viewer their picture.**
         // An unserved slot means the gateway ANSWERED and had nothing in it. A gateway that did not
         // answer is no evidence at all about the slot, so a run carried through an outage measures
-        // the outage. Caught live by V6 on 2026-08-30: a 20.5 second gateway outage under a watching
+        // the outage. Caught live by the gateway outage arm on 2026-08-30: a 20.5 second gateway outage under a watching
         // viewer, and 480p was dropped from the ladder on the other side of it while the uploader
         // was publishing it normally, 24 segments across the window it was removed in. That rung had
         // simply been between segments when the gateway went away, so it came back looking silent

@@ -56,7 +56,7 @@ function isAbortError(error: unknown): boolean {
  * body hangs the caller forever, and the caller's own signal has been unsubscribed by then, so an
  * unmount cannot rescue it either. In `StreamPreview` that is worse than one stalled preview, because
  * the thumbnail queue runs at concurrency 1 and a stuck read blocks every other stream's thumbnail
- * for the life of the page. See OBS-2.
+ * for the life of the page.
  *
  * Deliberately built from `AbortController` and `setTimeout` rather than `AbortSignal.timeout` and
  * `AbortSignal.any`, which are the obvious tools and are both newer than this bundle's declared

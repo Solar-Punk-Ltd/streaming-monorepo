@@ -40,9 +40,9 @@ import { requireByteSource, viewerGate } from '../../src/viewerCoverage.js';
 /**
  * V11, a real viewer watches through one rung's postage batch running dry.
  *
- * ## What this asks that V3 does not
+ * ## What this asks that the rung outage arm does not
  *
- * V3, `suites/viewer/rung-outage.test.ts`, stops the transcode producing the rung a viewer is
+ * The rung outage arm, `suites/viewer/rung-outage.test.ts`, stops the transcode producing the rung a viewer is
  * riding: the encoder for that quality goes away. This one leaves everything running and empties the
  * prepaid postage behind ONE rung, so its node is up, its encoder is up, and every upload it makes
  * comes back refused. That is the failure a broadcaster actually meets, because postage is bought in
@@ -69,7 +69,7 @@ import { requireByteSource, viewerGate } from '../../src/viewerCoverage.js';
  * declining while the player is still settling, and this suite cannot arrange for the viewer to be
  * riding the drained rung at the moment it dies. Whether they ever decoded it at all is **recorded
  * as an observation** rather than asserted. Proving that a viewer riding a dead rung moves off it is
- * V3's question, and V3 answers it with a fault whose instant it controls.
+ * that arm's question, and it answers it with a fault whose instant it controls.
  *
  * ⛔⛔ And it declines rather than stopping. Measured on the first live drain, 2026-09-04: bee refused
  * that rung's batch four times in about fifty seconds with segments landing in between, because a
@@ -99,11 +99,11 @@ import { requireByteSource, viewerGate } from '../../src/viewerCoverage.js';
  * `test/rungDeathAgreement.test.ts` holds them against each other. What no unit test can show is
  * what a live master ended up offering, and that is the reading here: three rungs, not two and not
  * four. A master down to two has taken a healthy rung out from under viewers who were watching it,
- * which is the failure the owner's ruling of 2026-09-01 capped the drop at one to prevent.
+ * which is the failure that capping the drop at one exists to prevent.
  *
  * ## What this does not assert
  *
- * ⛔ No timing, per the owner ruling of 2026-08-29. Every duration is measured, printed under a
+ * ⛔ No timing, by design. Every duration is measured, printed under a
  * heading saying so, and filed in the artifact.
  *
  * ⛔ Nothing about the uploader side. `suites/scenarios/batch-drain.test.ts` asserts the refusal
@@ -111,8 +111,7 @@ import { requireByteSource, viewerGate } from '../../src/viewerCoverage.js';
  *
  * ⛔ Requires a deployed profile, funded stamps, the browser image on the host and an ARMED stage.
  * Nothing in CI runs these, and this one is deliberately absent from `test:e2e`, because the ordinary
- * full suite must never depend on a stage somebody broke on purpose. Decision 6 of
- * `docs/e2e-batch-drain-plan.md`.
+ * full suite must never depend on a stage somebody broke on purpose, so the drain arms only on an explicit opt-in.
  *
  * ⛔ A run that armed a rung and then declared itself browser-less is REFUSED here rather than
  * skipped. Every other viewer suite skips on that declaration and is right to, but there is nothing
@@ -128,8 +127,8 @@ const MIN_STAMP_TTL_S = 600;
 /**
  * How long the viewer watches.
  *
- * `rungArmMinutes()`, which is V3's own budget, because a rung dying is only visible to a player
- * once the fragments it already holds run out and those are the windows V3's driver established for
+ * `rungArmMinutes()`, which is the rung outage arm's own budget, because a rung dying is only visible to a player
+ * once the fragments it already holds run out and those are the windows that arm's driver established for
  * exactly that. Derived rather than picked, so the two rung-death viewer suites buy the same length
  * of broadcast and their playback figures are comparable.
  */
