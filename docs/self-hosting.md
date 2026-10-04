@@ -261,7 +261,7 @@ images on the host itself.
    ```
 
 3. **Let only the control host in on ssh**, and your own address while you set up. The public ports
-   come in step 7, once the manager knows what it put here.
+   come in step 6, before anything is deployed here.
 
 4. **Tell the control host about this host.** On the control host, add a block to
    `/opt/streaming/manager-ssh/ssh_config`. `IdentityFile` is the path inside the manager's
@@ -291,7 +291,9 @@ images on the host itself.
    node and engine APIs answer and generates an nftables table for exactly this, which also filters
    Docker's published traffic. Apply it, or a provider firewall that does the same, before step 7.
    To keep a deployment's Bee APIs on one private address instead, set `BEE_UPLOADER_API_BIND` and
-   `BEE_GATEWAY_API_BIND` to that address in its settings.
+   `BEE_GATEWAY_API_BIND` to that address in its settings, and only to the address the control host
+   reaches this host on, its `HostName` in the manager's ssh config, because the manager dials the
+   Bee API there.
 
    The generated table drops the RTMP port, the one ending in 2, like any other private port. Both
    consoles offer RTMP on every SRS stage all the same, because which ports are reachable is the
