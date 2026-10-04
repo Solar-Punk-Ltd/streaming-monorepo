@@ -209,3 +209,30 @@ describe('the admission secret the entrypoint splices into Server.xml', () => {
     assert.match(xml, new RegExp(`<SecretKey>${secret}</SecretKey>`));
   });
 });
+
+/**
+ * The STUN server OME names in its config, a setting with Google's public server as its documented
+ * default, so a deployment that must not reach a third party can name its own.
+ */
+describe('the STUN server the entrypoint writes into Server.xml', () => {
+  it('writes Google public STUN server when OME_STUN_SERVER is unset', () => {
+    const xml = renderServerXml({ OME_ADMISSION_SECRET: 'x'.repeat(64) });
+
+    assert.match(xml, /<StunServer>stun\.l\.google\.com:19302<\/StunServer>/);
+  });
+
+  it('writes the server OME_STUN_SERVER names', () => {
+    const xml = renderServerXml({ OME_STUN_SERVER: 'stun.example.com:3478', OME_ADMISSION_SECRET: 'x'.repeat(64) });
+
+    assert.match(xml, /<StunServer>stun\.example\.com:3478<\/StunServer>/);
+  });
+
+  for (const composePath of [COMPOSE, STANDALONE]) {
+    it(`passes OME_STUN_SERVER into the container from ${composePath.slice(ROOT.length + 1)}`, () => {
+      const compose = readFileSync(composePath, 'utf8');
+      const ome = compose.slice(compose.indexOf('\n  ome:'));
+
+      assert.match(ome, /OME_STUN_SERVER:\s*\$\{OME_STUN_SERVER:-\}/);
+    });
+  }
+});

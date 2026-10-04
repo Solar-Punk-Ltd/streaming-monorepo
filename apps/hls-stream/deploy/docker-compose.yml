@@ -540,6 +540,8 @@ services:
       # of OPS-30. They were previously publish mappings only, so the container never saw them.
       OME_SRT_PORT: ${OME_SRT_PORT:-10080}
       OME_HLS_PORT: ${OME_HLS_PORT:-8081}
+      # Blank leaves the entrypoint's default, Google's public STUN server.
+      OME_STUN_SERVER: ${OME_STUN_SERVER:-}
       HLS_SEGMENT_DURATION: ${HLS_SEGMENT_DURATION:-2}
       HLS_SEGMENT_COUNT: ${HLS_SEGMENT_COUNT:-5}
 
