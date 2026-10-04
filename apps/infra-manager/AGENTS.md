@@ -11,8 +11,8 @@ draft pull request bodies, and the dated narrative of that remediation, were kep
 until 2026-09-28. They were records of finished work, so they were taken out of the tree and are
 read from the repository's history. New work does not add records of that kind here.
 
-Sessions also write working notes under `.scratch/`. That directory is gitignored and local to
-one machine, so nothing there can be cited as a source.
+`.scratch/` is gitignored and local to one machine. Working notes kept there are not a source
+anything in the repository can cite.
 
 ## Reference documentation
 

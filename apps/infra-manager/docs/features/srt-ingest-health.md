@@ -30,7 +30,7 @@ a second in the past, which `2cfcfc79` fixed. The first look at a live host is
 still the check that SRS 6 writes the line in this shape there. The SRT latency
 setting the remedy points at came with PR 44, which reached `main` on
 2026-09-24, before this one. PR 45 was revised on 2026-09-23 for three points of
-Copilot's review: the card on a stopped deployment, a bad minute with nothing
+its code review: the card on a stopped deployment, a bad minute with nothing
 received, and a latency the remedy named that some deployments do not run with.
 
 ## Why it exists
@@ -142,7 +142,7 @@ Packet seqno %861816580 delayed for 4.5 ms`, about forty a second on
   the command in `manager/src/domain/ports/remoteLogLines.ts`).
   So no other line of the log crosses the connection, not even a hook line
   whose publisher chose a stream id or a stream name that quotes a report. A filter on the
-  marker text alone let such a line through, token and all, until Copilot's
+  marker text alone let such a line through, token and all, until the code
   review of PR 45 found it. That command frames its answer, because a pipeline
   into grep reports grep's status alone and would make no container, a quiet
   window and a failed read look the same.
@@ -247,7 +247,7 @@ as a bitrate below what the encoder sends.
 
 ## Limits
 
-These are P3: rare, with no damage path, recorded once.
+These are low priority: rare, with no damage path, and recorded here once.
 
 - **A crafted stream id can put fake numbers on the card.** A publisher chooses
   its SRT stream id and SRS quotes it into its log. An id carrying a newline and
@@ -266,7 +266,7 @@ These are P3: rare, with no damage path, recorded once.
   goes through the same bounded command runner as every other remote read,
   whose output stops at 64 KiB. That is about 460 report lines, six a minute for
   each SRT publisher, so it takes more than seventy publishers on one SRS in a
-  single minute. Raised by Copilot on PR 45 and recorded rather than fixed,
+  single minute. Raised in the review of PR 45 and recorded rather than fixed,
   because widening the bound changes the runner every remote read shares.
 - **The suggested 4000 ms is a fixed number.** It is twice the manager's default
   and well above the 120 ms SRS waits on ingest on `v3.1`, whose template fills
