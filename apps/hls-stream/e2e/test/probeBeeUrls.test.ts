@@ -16,12 +16,18 @@ describe('probe Bee addresses', () => {
     assert.equal(probeWriteUrl(env), 'http://198.51.100.7:1633');
   });
 
-  it('derives both from the port slot on this host, the way the deploy scripts publish them', () => {
+  it('derives both from the port slot on the bridge address, the way the deploy scripts publish them', () => {
     for (const slot of [0, 1, 7, 42, 99]) {
-      const env = { PORT_SLOT: String(slot) };
-      assert.equal(probeReadUrl(env), `http://127.0.0.1:${resolvePort('BEE_GATEWAY_API_PORT', slot, {})}`);
-      assert.equal(probeWriteUrl(env), `http://127.0.0.1:${resolvePort('BEE_UPLOADER_API_PORT', slot, {})}`);
+      const env = { PORT_SLOT: String(slot), DOCKER_BRIDGE_ADDRESS: '198.51.100.9' };
+      assert.equal(probeReadUrl(env), `http://198.51.100.9:${resolvePort('BEE_GATEWAY_API_PORT', slot, {})}`);
+      assert.equal(probeWriteUrl(env), `http://198.51.100.9:${resolvePort('BEE_UPLOADER_API_PORT', slot, {})}`);
     }
+  });
+
+  it('dials loopback only where no bridge address is named, as the deploy falls back to', () => {
+    const env = { PORT_SLOT: '7' };
+    assert.equal(probeReadUrl(env), `http://127.0.0.1:${resolvePort('BEE_GATEWAY_API_PORT', 7, {})}`);
+    assert.equal(probeWriteUrl(env), `http://127.0.0.1:${resolvePort('BEE_UPLOADER_API_PORT', 7, {})}`);
   });
 
   it('refuses when neither the address nor the slot is named', () => {

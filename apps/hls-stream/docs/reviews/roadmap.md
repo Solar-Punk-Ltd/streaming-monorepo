@@ -4,7 +4,7 @@
 > measurement it cites is kept outside the repository.
 
 **2026-08-05, re-ordered 2026-08-08.** Ordered by what unblocks what, not by appeal. Every claim below
-is either measured and linked, or marked as a guess. Items already tracked carry their task number.
+is either measured and cited, or marked as a guess. Items already tracked carry their task number.
 
 ## Order of work, as the owner set it on 2026-08-08
 
@@ -69,7 +69,7 @@ explain, so the hour buys a second null.
 harness could express any of them, because `e2e/src/browser/faults.ts` stops, kills, restarts or pauses
 one container and these need a kill timed to a program moment, several containers at once, a mutation
 performed while a service is down, a bounded full disk, and a second publisher. That harness is built
-and the runs are in `docs/bench/the-crash-scenarios-nobody-had-run-2026-08-09.md`.
+and the runs are in the `the-crash-scenarios-nobody-had-run-2026-08-09` measurement (kept outside the repository).
 
 ⭐⭐ **It was priced at 60 broadcast-minutes and cost 1.37 minutes of publishing.** One full pass of all
 four scenarios spent **0.0174 BZZ and moved postage not at all**. The estimate assumed five browser runs
@@ -107,8 +107,8 @@ topology, at 0.0002 BZZ/min.
 | ------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | Engine              | **SRS works.** OME is at **6 of 11** e2e and must not be called working.                                                                                                                                                                                                                                                                                                                                                                                                                                    |
 | LL-HLS              | **Not implemented and not configured.** `OmeHlsPuller` reads `ts:playlist.m3u8`, OME's MPEG-TS playlist. No `<LLHLS>` publisher exists in `Server.xml.template`. Neither engine transcodes: both set bypass and remux the broadcaster's own streams.                                                                                                                                                                                                                                                        |
-| Live latency        | **1.074s** capture-to-fetchable at 720p 2500kbps, 0.25s GOP, [gated over three 10-minute runs](../bench/ten-minute-gate-2026-08-05.md) with a 29ms spread and no drift. ✅ **Glass to glass at a viewer is 6.4 to 7.3s and flat**, read off a burned-in clock, [after the client fix](../bench/the-loop-fixed-2026-08-05.md). It was 17.9s and growing before it.                                                                                                                                           |
-| What a viewer sees  | ✅ **1.000 and 1.003 media seconds per wall second at 0.25s, nothing frozen, no rebuffers**, holding 5.86s behind live against a 6s target. It was 0.82x and 17.3% frozen: the client took one feed slot per playlist reload. [Fixed and measured](../bench/the-loop-fixed-2026-08-05.md), [diagnosed](../bench/what-starves-the-viewer-2026-08-05.md).                                                                                                                                                     |
+| Live latency        | **1.074s** capture-to-fetchable at 720p 2500kbps, 0.25s GOP, gated over three 10-minute runs (the `ten-minute-gate-2026-08-05` measurement, kept outside the repository) with a 29ms spread and no drift. ✅ **Glass to glass at a viewer is 6.4 to 7.3s and flat**, read off a burned-in clock, after the client fix (the `the-loop-fixed-2026-08-05` measurement, kept outside the repository). It was 17.9s and growing before it.                                                                       |
+| What a viewer sees  | ✅ **1.000 and 1.003 media seconds per wall second at 0.25s, nothing frozen, no rebuffers**, holding 5.86s behind live against a 6s target. It was 0.82x and 17.3% frozen: the client took one feed slot per playlist reload. Fixed and measured (the `the-loop-fixed-2026-08-05` measurement, kept outside the repository), diagnosed (the `what-starves-the-viewer-2026-08-05` measurement, kept outside the repository).                                                                                 |
 | Which profile ships | ✅ **0.25s GOP, and 1080p at 6000kbps with it.** Gated at ten minutes at a viewer: 30.0fps, advance 1.000, nothing stalled, nothing rebuffered. Latency across a 2.4x bitrate range differs by 70ms, so the best picture costs bandwidth (2.24x the BZZ) rather than seconds.                                                                                                                                                                                                                               |
 | Seeking             | ✅ **A recording plays and seeks**, five runs, every seek landing in 17-48ms and resuming in 338-359ms. ⚠️ Still unreached: seeking **past a discontinuity** and into a region **whose chunks left the local gateway**, because a 27-second recording fits in the buffer whole. ⭐ The client uses `HashRouter`, so a watch URL is `#/watch/...` and the path form silently renders the catalog.                                                                                                            |
 | Live DVR            | One chunk of manifest. On the bench stage at the best profile that is **9.0 seconds**, up from 2.5.                                                                                                                                                                                                                                                                                                                                                                                                         |
@@ -166,7 +166,7 @@ silent. Five times the window is five times the tolerance and it does not close 
 ### 0.2 ✅ diagnosed — the encoder never missed its GOP, the publisher was throttled
 
 Filed twice with the wrong cause, first as a 1080p limit and then as an encoder that misses its GOP.
-[It is neither.](../bench/publisher-backpressure.md) `-g` is set in **frames** and is honoured exactly
+It is neither (the `publisher-backpressure` measurement, kept outside the repository). `-g` is set in **frames** and is honoured exactly
 in every run: 8 packets at a 0.25s request, 15 at 0.5s, good runs and bad alike. What moves is the
 **delivered frame rate**, 30.1 in the good runs against 12.0 and 23.7 in the bad, and the segment
 length follows from it.
@@ -187,7 +187,7 @@ probe already downloads each segment and discards the size.
 
 ### 0.3 ✅ done — the 0.25s winner holds at 10 minutes
 
-[Six 10-minute runs, 6 of 6 usable.](../bench/ten-minute-gate-2026-08-05.md) **0.25s measured 1055,
+Six 10-minute runs, 6 of 6 usable (the `ten-minute-gate-2026-08-05` measurement, kept outside the repository). **0.25s measured 1055,
 1081 and 1084ms, a 29ms spread and the tightest repeatability this project has recorded**, against
 1502-1596ms for the 0.5s reference. No run drifted: every one has `msPerMinute` below its own scatter.
 The encoder delivered 30.0-30.1fps in all six, so the publisher throttle of 0.2 did not appear once.
@@ -260,13 +260,13 @@ headroom, no failing arm in either sitting.
 ✅ **At 1.0s the penalty is absorbed completely**, which is the one thing that reliably fixes it: a
 segment budget large enough to swallow a 2-4x transfer cost.
 
-[0.25s, 2026-08-08](../bench/ultra-light-at-the-shipping-profile-2026-08-08.md),
-[0.25s, 2026-08-06](../bench/light-vs-ultra-light-2026-08-06.md),
-[1.0s, 2026-08-07](../bench/light-vs-ultra-light-at-a-viewer-2026-08-07.md).
+0.25s, 2026-08-08 (the `ultra-light-at-the-shipping-profile-2026-08-08` measurement, kept outside the repository),
+0.25s, 2026-08-06 (the `light-vs-ultra-light-2026-08-06` measurement, kept outside the repository),
+1.0s, 2026-08-07 (the `light-vs-ultra-light-at-a-viewer-2026-08-07` measurement, kept outside the repository).
 
 ### ✅ The mechanism, measured 2026-08-08 for 0.184 BZZ and thirteen minutes
 
-[What throttles an unfunded gateway](../bench/what-throttles-an-unfunded-gateway-2026-08-08.md). Six
+What throttles an unfunded gateway (the `what-throttles-an-unfunded-gateway-2026-08-08` measurement, kept outside the repository). Six
 arms retrieving the **same 800 segments in the same order**, no encoder, no publisher, no upload and no
 postage, because the segments were already on Swarm from the sitting above.
 
@@ -292,7 +292,7 @@ short arm measures the approach rather than the steady state.
 
 ### ⭐ The open term, answered from the archive for nothing
 
-[What separates a collapse from a clean run](../bench/what-separates-a-collapse-from-a-clean-run-2026-08-08.md),
+What separates a collapse from a clean run (the `what-separates-a-collapse-from-a-clean-run-2026-08-08` measurement, kept outside the repository),
 read out of the `.requests.json` companions already in this repository.
 
 **It is not the median. It is the rate of one-second retrievals.**
@@ -321,7 +321,7 @@ nothing controls**. A 1.0s GOP still absorbs it, and now for a legible reason: o
 
 ### ⭐ Eleven unfunded arms: no setting makes it reliable
 
-[Eleven unfunded arms](../bench/eleven-unfunded-arms-2026-08-08.md), one node, two hours, the same 800
+Eleven unfunded arms (the `eleven-unfunded-arms-2026-08-08` measurement, kept outside the repository), one node, two hours, the same 800
 references every time. The eight arms after the first sitting **cost nothing at all**.
 
 ⛔ **The refill hypothesis is refuted twice over.** Debt read -1,357,400,000 PLUR at the end of an arm
@@ -344,7 +344,7 @@ that makes an unfunded gateway reliable**, and the spread is wider than the marg
 
 ### ⭐⭐ SETTLED: it is starved, and bee counts it
 
-[Why an unfunded gateway is slow](../bench/why-an-unfunded-gateway-is-slow-2026-08-08.md), read from
+Why an unfunded gateway is slow (the `why-an-unfunded-gateway-is-slow-2026-08-08` measurement, kept outside the repository), read from
 **bee's own counters** rather than from the browser.
 
 | arm      |  chunk requests | **peers skipped for accounting** | **loop iterations per request** |
@@ -410,7 +410,7 @@ is real and the peer-accounting evidence still stands.
 
 1. Every frozen-share figure in that comparison came through **the bench's `/feeds/` head lookup**,
    which is 50-57% frozen on its own and which a viewer never calls. See
-   [the reader A/B](../bench/feed-reader-ab.md).
+   the reader A/B (the `feed-reader-ab` measurement, kept outside the repository).
 2. The client has since been fixed to walk the feed rather than take one slot per poll, which changed
    the viewer's fetch pattern completely.
 
@@ -433,7 +433,7 @@ bee refuses to start. `deploy/scripts/retrieval-debt-probe.sh` and
 
 ⛔ **Label correction, 2026-09-15.** Arm U above was a light node with swap off, not ultra-light: bee decides
 ultra-light on an empty `--blockchain-rpc-endpoint`, and every gateway here carried one. The comparison stands as
-funded against unfunded light node. See the correction note in `docs/bench/light-vs-ultra-light-2026-08-06.md`.
+funded against unfunded light node. See the correction note in the `light-vs-ultra-light-2026-08-06` measurement (kept outside the repository).
 
 **Interleave L, U, L, U in one sitting.** Two sittings of one configuration have differed by 1.05s,
 which is larger than most effects this project chases, so arms compared across sittings are not
@@ -579,11 +579,11 @@ measured from request logs and both reproduce on demand.
 
 ### Phase 0.7's runs
 
-| run  | what                                                                                                                                                                                      | broadcast-min |
-| ---- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------- |
-| 0.7a | ✅ **done.** Screened all three at 3 min in one sitting: **all deliver 30.0fps at full resolution, 0 stalled, 0 rebuffers**, and latency across a 2.4x bitrate range differs by **70ms**. | 10            |
-| 0.7b | ✅ **done.** 1080p/6000k gated at 10 min: 594 samples, 30.0fps, advance **1.000**, 0 stalled, 0 rebuffers, 0 fatal. [Report](../bench/quality-at-a-viewer-2026-08-06.md).                 | 10            |
-| 0.7c | ⛔ **STRUCK 2026-08-09.** Its antecedent is false: 1080p holds at 0.25s, gated twice at sixty minutes. See the step 3 re-scope above.                                                     | ~~22~~ 0      |
+| run  | what                                                                                                                                                                                                       | broadcast-min |
+| ---- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------- |
+| 0.7a | ✅ **done.** Screened all three at 3 min in one sitting: **all deliver 30.0fps at full resolution, 0 stalled, 0 rebuffers**, and latency across a 2.4x bitrate range differs by **70ms**.                  | 10            |
+| 0.7b | ✅ **done.** 1080p/6000k gated at 10 min: 594 samples, 30.0fps, advance **1.000**, 0 stalled, 0 rebuffers, 0 fatal. Report: the `quality-at-a-viewer-2026-08-06` measurement, kept outside the repository. | 10            |
+| 0.7c | ⛔ **STRUCK 2026-08-09.** Its antecedent is false: 1080p holds at 0.25s, gated twice at sixty minutes. See the step 3 re-scope above.                                                                      | ~~22~~ 0      |
 
 ⭐ **Quality is bought with bandwidth, not with latency: 2.24x the BZZ (0.0170 → 0.0381 per
 broadcast-minute) and essentially no seconds.** 1080p at 6000kbps ships.
@@ -636,13 +636,13 @@ in this phase, deliberately, because two variables at once answers neither.
 
 ### Phase 0.5's runs
 
-| run  | what                                                                                                                                                                                                                                                                         | why it is on the list                                                                                                               | broadcast-min |
-| ---- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------- | ------------- |
-| 0.5a | ✅ **done 2026-08-06.** 10-minute gate: 0.998, one stall at t=2.2s (the join).                                                                                                                                                                                               |                                                                                                                                     | 13            |
-| 0.5b | ✅ **DONE 2026-08-06, and it holds.** 12 windows all at 1.000 or 0.999, **zero frozen samples**, latency drift −0.29s. The predicted manifest-growth degradation is **absent** at 13,522 accumulated segments. [Report](../bench/browser-watch-2026-08-06T02-23-11-449Z.md). |                                                                                                                                     | 63            |
-| 0.5c | ⚠️ **DEMOTED 2026-08-09.** 60-minute run at 1.0s                                                                                                                                                                                                                             | Was the control for 0.5b. 0.5b came back **null**, so there is no effect for a control to separate and the hour buys a second null. | 63            |
-| 0.5d | The stuck walk and the overshooting backoff fixed, each verified before and after                                                                                                                                                                                            | Both are measured, both have a named number to move (46.7s and 16.2s), and both are recovery rather than steady state.              | 50            |
-| 0.5e | The five remaining crash scenarios, ×2                                                                                                                                                                                                                                       | Phase 2's list, now that a viewer can be watched through one.                                                                       | 60            |
+| run  | what                                                                                                                                                                                                                                                                                                          | why it is on the list                                                                                                               | broadcast-min |
+| ---- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------- | ------------- |
+| 0.5a | ✅ **done 2026-08-06.** 10-minute gate: 0.998, one stall at t=2.2s (the join).                                                                                                                                                                                                                                |                                                                                                                                     | 13            |
+| 0.5b | ✅ **DONE 2026-08-06, and it holds.** 12 windows all at 1.000 or 0.999, **zero frozen samples**, latency drift −0.29s. The predicted manifest-growth degradation is **absent** at 13,522 accumulated segments. Report: the `browser-watch-2026-08-06T02-23-11-449Z` measurement, kept outside the repository. |                                                                                                                                     | 63            |
+| 0.5c | ⚠️ **DEMOTED 2026-08-09.** 60-minute run at 1.0s                                                                                                                                                                                                                                                              | Was the control for 0.5b. 0.5b came back **null**, so there is no effect for a control to separate and the hour buys a second null. | 63            |
+| 0.5d | The stuck walk and the overshooting backoff fixed, each verified before and after                                                                                                                                                                                                                             | Both are measured, both have a named number to move (46.7s and 16.2s), and both are recovery rather than steady state.              | 50            |
+| 0.5e | The five remaining crash scenarios, ×2                                                                                                                                                                                                                                                                        | Phase 2's list, now that a viewer can be watched through one.                                                                       | 60            |
 
 **Read the windows, not the median.** A run that is perfect for its first half and rebuffering
 through its second has a respectable median and is a broken stream, which is why `stability.ts` cuts
@@ -665,7 +665,7 @@ capacity.** Nothing has measured that spin's CPU cost, and it is now the first t
 
 ### 0.9a ✅ DONE 2026-08-08 — it is a switch, and it flips at zero
 
-[Report.](../bench/the-funding-cliff-is-at-zero-2026-08-08.md) The chequebook was drained to a known
+Report: the `the-funding-cliff-is-at-zero-2026-08-08` measurement, kept outside the repository. The chequebook was drained to a known
 balance by the owner and sampled every five seconds beside the retrieval counters.
 
 | chequebook available |    median | over 267ms | first-peer service | skips per chunk |
@@ -694,9 +694,9 @@ commands, fund nothing.
 
 ### 0.9b ✅ DONE 2026-08-08, extended 2026-08-09 — size the cache for the hot set
 
-Three sittings, all free. [Eviction.](../bench/a-cache-that-does-not-fit-does-nothing-2026-08-08.md)
-[The bisect that located the cliff.](../bench/the-cache-cliff-is-at-one-hundred-percent-2026-08-08.md)
-[The access pattern.](../bench/the-cache-cliff-belongs-to-the-access-pattern-2026-08-09.md)
+Three sittings, all free. Eviction (the `a-cache-that-does-not-fit-does-nothing-2026-08-08` measurement, kept outside the repository).
+The bisect that located the cliff (the `the-cache-cliff-is-at-one-hundred-percent-2026-08-08` measurement, kept outside the repository).
+The access pattern (the `the-cache-cliff-belongs-to-the-access-pattern-2026-08-09` measurement, kept outside the repository).
 
 Under a **cyclic scan** the cliff is a step at exactly 100% of the working set: 76% is byte-identical
 to no cache, 100.1% buys the whole benefit, and above that buys nothing. ⛔ **That turned out to be a
@@ -715,7 +715,7 @@ equally popular. ⚠️ Capacity is counted in **chunks, not bytes**: 1 GB is ro
 
 ### 0.9c ✅ DONE 2026-08-08, free — sixteen viewers cost the network what one costs
 
-[Report.](../bench/sixteen-viewers-cost-what-one-costs-2026-08-08.md) Concurrency alternated 1, 2, 1,
+Report: the `sixteen-viewers-cost-what-one-costs-2026-08-08` measurement, kept outside the repository. Concurrency alternated 1, 2, 1,
 4, 1, 8, 1, 16 against an unfunded gateway. **Network peer contacts held at 3,167 to 3,287 while
 retrieval operations moved 15x**, so bee fetches each distinct chunk once and serves every concurrent
 viewer from it. Throughput scaled **16.7x** with a flat median. The late share roughly doubled, 4.0%
@@ -731,8 +731,8 @@ which LAT-11 found goes 1.30x at eight.
 
 ### 0.9c-ii ✅ DONE 2026-08-08, free — the knee is a byte rate
 
-[The ceiling.](../bench/the-ceiling-is-bytes-not-viewers-2026-08-08.md)
-[What actually limits it.](../bench/a-synchronised-audience-is-the-failure-2026-08-08.md)
+The ceiling (the `the-ceiling-is-bytes-not-viewers-2026-08-08` measurement, kept outside the repository).
+What actually limits it (the `a-synchronised-audience-is-the-failure-2026-08-08` measurement, kept outside the repository).
 
 **Throughput plateaus at 43 to 44 MB/s** across four concurrencies and both rounds. At 2.83 Mbps per
 viewer that is **~123 viewers**, bracketed exactly by 128 holding at zero buffer drain and 192 draining
@@ -770,7 +770,7 @@ client side. The count is now measured at the node, the shape is not.
 
 ### 0.9f ✅ DONE 2026-08-09, free — the feed does not care how many are reading it
 
-[Report.](../bench/the-feed-does-not-care-how-many-are-reading-it-2026-08-09.md) The last
+Report: the `the-feed-does-not-care-how-many-are-reading-it-2026-08-09` measurement, kept outside the repository. The last
 measurable item before Phase 3. **54,400 feed slot reads across 20 alternating arms**, no broadcast, no
 publisher, no postage. Attributed cost **one cheque of 77 gwei**, which is 0.0000077 BZZ.
 
@@ -807,12 +807,12 @@ on **every sample**, and a run that fails any of them reports **VOID** instead o
 with no broadcast and no BZZ. It is the cheap first call after any change to the image or the host,
 and it earned its keep immediately by catching a clock overlay that silently never rendered.
 
-**[What it found is worse than what it unblocked.](../bench/viewer-in-a-browser-2026-08-05.md)** The
+**What it found is worse than what it unblocked** (the `viewer-in-a-browser-2026-08-05` measurement, kept outside the repository). The
 byte-budgeted window works, twice measured at 5.96 and 5.97s against a 6s target. But the player
 cannot hold it: 12-17% of the wall clock frozen in 3 of 3 sessions, and a true glass-to-glass gap
 that reached **17.9s while the player reported 1.16s**.
 
-### 1.1b ✅ diagnosed — [the client asks for segments one at a time](../bench/what-starves-the-viewer-2026-08-05.md)
+### 1.1b ✅ diagnosed — the client asks for segments one at a time (the `what-starves-the-viewer-2026-08-05` measurement, kept outside the repository)
 
 Both obvious causes are **refuted by the request log**: 0 refusals in 469 segment requests, 0ms spent
 on retry delays, and a 125ms median transfer from a gateway that served everything asked of it.
@@ -846,7 +846,7 @@ the three runs used three different recordings, and one of them **opens with fou
 AAC packets and zero video packets**. The player fixes its codec set from the first fragment it parses,
 so it built an audio-only buffer set and refused every later video sample with a warning marked
 **non-fatal**. Sound over a blank picture for 209 seconds, with nothing saying so.
-[Report](../bench/a-recording-that-opens-without-video-2026-08-09.md).
+Report: the `a-recording-that-opens-without-video-2026-08-09` measurement, kept outside the repository.
 
 ⭐ The cause is old — 5 video packets in 2.51s is about 2fps against a requested 30, which is the
 publisher throttle of 0.2. What is new is that a throttle **at second zero** does not degrade
@@ -912,7 +912,7 @@ The two things that still do are the origin declaring one and the engine's own c
 ⚠️ **Every one of those reads the uploader's log.** They answer whether the publisher did the right
 thing, and all six pass. **`pnpm browser:crash` asks the other question**: what a viewer saw, from a
 real browser watching while the fault is injected. Two scenarios run so far
-([report](../bench/crash-at-a-viewer-2026-08-05.md)), and both found something the six could not see:
+(the `crash-at-a-viewer-2026-08-05` measurement, kept outside the repository), and both found something the six could not see:
 
 - ✅ **`FeedStateOverlay` works.** Both states rendered within a second of their fault and both were
   correct. Nothing had ever watched it render.
@@ -937,7 +937,7 @@ real browser watching while the fault is injected. Two scenarios run so far
 
 ### ✅ 2.6 is done, and it cost nothing
 
-`docs/bench/what-a-full-disk-costs-a-broadcast-2026-08-09.md`. Two arms differing only in free space:
+the `what-a-full-disk-costs-a-broadcast-2026-08-09` measurement (kept outside the repository). Two arms differing only in free space:
 
 |                        | **space available**      | **0 bytes free**                                    |
 | ---------------------- | ------------------------ | --------------------------------------------------- |
@@ -998,7 +998,7 @@ turns on and it can be measured long before anyone builds LL-HLS.
 
 ### ✅ The floor is measured 2026-08-09, and it is a MISS floor
 
-[Full report.](../bench/the-announcement-floor-is-a-miss-floor-2026-08-09.md) **78,482 feed slot reads
+Full report: the `the-announcement-floor-is-a-miss-floor-2026-08-09` measurement, kept outside the repository. **78,482 feed slot reads
 taken from the 70 archived request logs. No run, and nothing spent.**
 
 The floor on record was about **3.8 slot reads a second** because a slot read costs roughly 260ms. What
@@ -1070,7 +1070,7 @@ time**, and ⚠️ the 43-44 MB/s throughput ceiling cannot see them at all, bec
 ## Phase 2.7 — in-browser viewer nodes, phase 1 🔎 **assessed and measured 2026-08-09, steps 1, 3, 7, 8 done**
 
 Full write-up: the in-browser phase 1 hand-over, which the repository's history keeps. Raw data
-[service time n=500](../bench/in-browser-service-time-2026-08-09.tsv), harness
+service time n=500 (the `in-browser-service-time-2026-08-09` measurement, kept outside the repository), harness
 `deploy/scripts/in-browser-service-time.js`. **Total cost 0.0019231 BZZ and no broadcast minutes.**
 
 ⛔⛔⛔ **The measured answer is worse than the assessment predicted, in two independent ways.**

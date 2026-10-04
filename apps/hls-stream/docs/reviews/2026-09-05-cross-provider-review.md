@@ -220,7 +220,7 @@ keeping their uptime, gateway peers 134, the 360p rung moved to a batch at 15.6%
 | full suite, gateway byte source, rerun                        | 15:19Z to 16:19Z | green, 29 scenarios, 37 cases                            | 2.43 BZZ       |
 
 7.25 BZZ of the 10 BZZ left the five chequebooks over the day, plus two depth 17 drain batches at
-0.0384 BZZ each. The V11 record is `docs/bench/viewer-through-a-drained-rung-2026-09-06.md`.
+0.0384 BZZ each. The V11 record is the `viewer-through-a-drained-rung-2026-09-06` measurement (kept outside the repository).
 
 The plan the day followed, as written the evening before:
 

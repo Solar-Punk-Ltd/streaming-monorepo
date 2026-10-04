@@ -13,7 +13,7 @@
  * is a few seconds.
  *
  * Usage, on the deployment host, against a broadcast that is already running:
- *   deploy/scripts/browser-on-host.sh --target <host> --script browser:crash -- BROWSER_SCENARIO=viewer-gateway-outage
+ *   deploy/scripts/browser-on-host.sh --target <host> --profile <profile> --portSlot <slot> --script browser:crash -- BROWSER_SCENARIO=viewer-gateway-outage
  *
  * A paid sitting over several scenarios goes through `deploy/scripts/crash-arms.sh` instead, which
  * publishes one broadcast per fault, puts the spend gates in the path, and refuses an arm that does

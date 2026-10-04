@@ -121,8 +121,8 @@ video and no product code in it, and a full pass costs about a minute.
 
 Write N slots to a sequence feed, let it settle, then time `GET /feeds/{owner}/{topic}` against a
 direct `GET /soc/{owner}/{identifier}` for the same chunk, round robin across several feed lengths.
-Our version is `e2e/src/probes/feed-head-scaling.mjs` in this repository, raw output in
-`docs/bench/feed-head-scaling.json`, analysis in `docs/bench/feed-head-scaling.md`.
+Our version is `e2e/src/probes/feed-head-scaling.mjs` in this repository. Its raw output and
+analysis, the `feed-head-scaling` measurement, are kept outside the repository.
 
 The one thing worth copying from it: **read the arms round robin rather than one length at a time.**
 We have measured 1.05s of between sitting drift on identical settings in this environment, which is

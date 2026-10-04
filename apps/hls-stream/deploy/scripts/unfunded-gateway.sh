@@ -29,11 +29,12 @@
 # publisher serving a live paid broadcast on 2026-08-12, and the sitting sampled a dead stream for
 # forty minutes afterwards.
 #
-# Usage, on the deployment host:
-#   bash deploy/scripts/unfunded-gateway.sh start
-#   bash deploy/scripts/unfunded-gateway.sh wait 40      # peers, not "does it answer"
-#   bash deploy/scripts/unfunded-gateway.sh status
-#   bash deploy/scripts/unfunded-gateway.sh stop
+# Usage, on the deployment host. Every subcommand needs PROFILE, the stage whose funded gateway this
+# copies, or FUNDED_CONTAINER naming that gateway's container:
+#   PROFILE=<profile> bash deploy/scripts/unfunded-gateway.sh start
+#   PROFILE=<profile> bash deploy/scripts/unfunded-gateway.sh wait 40      # peers, not "does it answer"
+#   PROFILE=<profile> bash deploy/scripts/unfunded-gateway.sh status
+#   PROFILE=<profile> bash deploy/scripts/unfunded-gateway.sh stop
 set -u
 
 # Exact, and used for every lookup and the removal. Nothing here ever filters on a prefix.
@@ -130,7 +131,7 @@ bee_mode() {
 start_node() {
   if exists; then
     say "REFUSING: ${CONTAINER} already exists. Stop it first rather than racing a node that may"
-    say "  already be warm and measured. \`unfunded-gateway.sh stop\` removes it."
+    say "  already be warm and measured. \`PROFILE=<profile> unfunded-gateway.sh stop\` removes it."
     return 1
   fi
   for port in "${API_PORT}" "${P2P_PORT}"; do
