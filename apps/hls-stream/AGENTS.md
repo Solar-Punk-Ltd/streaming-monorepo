@@ -52,13 +52,13 @@ rungs. The gateway node serves viewers. On a deployment started with
 `--portSlot <slot>` (1 to 99), `deploy/scripts/_lib.sh` gives each node's API port as its base plus
 `<slot> * 10`:
 
-| Node | Variable | Port |
-|---|---|---|
-| coordinator (uploader) | `BEE_UPLOADER_API_PORT` | 10005 + `<slot>` * 10 |
-| 480p rung | `BEE_RUNG_480P_API_PORT` | 11001 + `<slot>` * 10 |
-| 720p rung | `BEE_RUNG_720P_API_PORT` | 11003 + `<slot>` * 10 |
-| 1080p rung | `BEE_RUNG_1080P_API_PORT` | 11005 + `<slot>` * 10 |
-| gateway | `BEE_GATEWAY_API_PORT` | 10007 + `<slot>` * 10 |
+| Node                   | Variable                  | Port                  |
+| ---------------------- | ------------------------- | --------------------- |
+| coordinator (uploader) | `BEE_UPLOADER_API_PORT`   | 10005 + `<slot>` * 10 |
+| 480p rung              | `BEE_RUNG_480P_API_PORT`  | 11001 + `<slot>` * 10 |
+| 720p rung              | `BEE_RUNG_720P_API_PORT`  | 11003 + `<slot>` * 10 |
+| 1080p rung             | `BEE_RUNG_1080P_API_PORT` | 11005 + `<slot>` * 10 |
+| gateway                | `BEE_GATEWAY_API_PORT`    | 10007 + `<slot>` * 10 |
 
 Read them all before any funds statement, with `<slot>` replaced by the deployment's slot:
 
