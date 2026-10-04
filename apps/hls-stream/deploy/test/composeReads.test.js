@@ -192,7 +192,7 @@ describe('a gateway probe whose arms the stack cannot run', () => {
    * run again at all. Only the cold-idle probe is driven past its guard here, because it is the one
    * whose next step stops it on its own: the stack in this sandbox has no env file, so the first
    * write it makes fails and it exits before reaching docker. The same shape is proven on the third
-   * probe by `phase06Preflight.test.js`, which runs a whole green preflight through this guard.
+   * probe by `lightVsUltralightPreflight.test.js`, which runs a whole green preflight through this guard.
    */
   it('cold-gateway-idle-cpu.sh runs on past the guard when compose does read both keys', async () => {
     const { sandbox, env } = stackSandbox(BOTH_KEYS);
@@ -221,7 +221,7 @@ describe('a gateway probe whose arms the stack cannot run', () => {
  *
  * Driven through `cold-gateway-idle-cpu.sh`, whose every window can be set to zero seconds, so the
  * whole probe runs in a test. The other two set their arms the same way and are not reachable this
- * cheaply: `retrieval-debt-probe.sh` needs a reference corpus and `phase06-light-vs-ultralight.sh`
+ * cheaply: `retrieval-debt-probe.sh` needs a reference corpus and `light-vs-ultralight-browser.sh`
  * needs a broadcast.
  */
 describe('the arm a probe hands to compose', () => {

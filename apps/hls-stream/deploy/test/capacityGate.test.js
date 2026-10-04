@@ -18,7 +18,7 @@ const SHARED = join(SCRIPTS, 'capacity-gate.sh');
  * That every sitting checks the batch it is about to publish to, and that the check exists once.
  *
  * ⛔⛔⛔ On 2026-08-13 the gate lived in `viewer-arms.sh` alone. `sweep-interleaved.sh` published
- * without asking about postage at all, and `phase06-light-vs-ultralight.sh` had its own reader that
+ * without asking about postage at all, and `light-vs-ultralight-browser.sh` had its own reader that
  * selected `depth == 24 and immutableFlag` from `/stamps`. The measurement batch on the host is
  * **depth 25**, so that filter matched nothing, `max(..., default="")` returned an empty string and
  * the sitting refused with "postage utilization could not be read". A gate stuck closed fails safe
@@ -79,7 +79,7 @@ describe('the postage capacity gate', () => {
    * host, `/stamps` lists batches of which some are dead, and a batch that gets diluted changes depth
    * under any gate that hardcoded one. The uploader's own environment cannot go stale.
    */
-  it('never selects a batch by shape, which is how phase06 came to read no batch at all', () => {
+  it('never selects a batch by shape, which is how the light against ultra-light sitting came to read no batch at all', () => {
     for (const name of readdirSync(SCRIPTS).filter((f) => f.endsWith('.sh'))) {
       const body = readFileSync(join(SCRIPTS, name), 'utf8');
       const selectsByDepth = body
@@ -273,7 +273,7 @@ if (process.argv[2] === 'inspect') process.stdout.write(${JSON.stringify(uploade
   });
 
   /**
-   * ⛔ 254 of a depth-25 batch's 512 buckets is 50% and fine. Read against the 256 that phase06
+   * ⛔ 254 of a depth-25 batch's 512 buckets is 50% and fine. Read against the 256 that the light against ultra-light sitting
    * hardcoded for depth 24 it is 99% and refuses. The denominator has to come from the batch.
    */
   it('measures utilization against the batch depth rather than an assumed one', async () => {

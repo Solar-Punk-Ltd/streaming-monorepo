@@ -7,7 +7,7 @@
 # ⛔⛔⛔ THIS FILE EXISTS BECAUSE THE GATE WAS IN ONE DRIVER OF THREE.
 #
 # On 2026-08-13 `viewer-arms.sh` refused on postage and the other two publishing drivers did not.
-# `sweep-interleaved.sh` asked nothing at all. `phase06-light-vs-ultralight.sh` had a reader of its
+# `sweep-interleaved.sh` asked nothing at all. `light-vs-ultralight-browser.sh` had a reader of its
 # own that selected `depth == 24 and immutableFlag` out of `/stamps` and compared the result against a
 # hardcoded 256 buckets. The measurement batch on the host is **depth 25 with 512 buckets**, diluted
 # there by the fix `stamp-guard.sh` itself prints, so that filter matched nothing at all: the sitting

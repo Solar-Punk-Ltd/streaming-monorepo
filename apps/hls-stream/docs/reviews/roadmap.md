@@ -421,7 +421,7 @@ Flip is two env values and a redeploy: `BEE_GATEWAY_RPC_ENDPOINT` and `BEE_GATEW
 together in `.env.<profile>`, both set for the light arm and both empty or absent for the ultra-light
 one, then `deploy.sh --profile=latbench --portSlot=7 bee-gateway`. Swap on with no endpoint is a node
 bee refuses to start. `deploy/scripts/retrieval-debt-probe.sh` and
-`deploy/scripts/phase06-light-vs-ultralight.sh` write both halves for you.
+`deploy/scripts/light-vs-ultralight-browser.sh` write both halves for you.
 
 | arm   | gateway                                                                                               |
 | ----- | ----------------------------------------------------------------------------------------------------- |

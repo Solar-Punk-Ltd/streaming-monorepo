@@ -582,7 +582,7 @@ describe('a sitting that refuses leaves the bench host as it found it', () => {
 describe('the funding gate asks only the nodes that can spend', () => {
   /**
    * ⛔ Asking whether the ultra-light node can pay would refuse the sitting on the strength of its own
-   * treatment. `phase06-light-vs-ultralight.sh` learned this as a special case; here the node is
+   * treatment. `light-vs-ultralight-browser.sh` learned this as a special case; here the node is
    * simply not on the list.
    */
   it('never reports the unfunded node as short of funds', async () => {

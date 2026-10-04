@@ -54,7 +54,7 @@
 #
 # Usage, from the repo root on the laptop:
 #   rsync -a deploy/scripts/ <host>:~/swarm-hls-bench/deploy/scripts/   # the DIRECTORY, it sources burn-rates.sh
-#   ssh <host> 'setsid nohup bash ~/swarm-hls-bench/sweep-interleaved.sh >/dev/null 2>&1 &'
+#   ssh <host> 'PROFILE=<profile> PORT_SLOT=<slot> setsid nohup bash ~/swarm-hls-bench/sweep-interleaved.sh >/dev/null 2>&1 &'
 set -u
 
 REPO_DIR="${REPO_DIR:-${HOME}/swarm-hls-bench}"

@@ -55,7 +55,7 @@ const ENV_DRIVEN = [
   'does-the-network-warm-up.sh',
   'gateway-funding-arms.sh',
   'overnight-golden-zone.sh',
-  'phase06-light-vs-ultralight.sh',
+  'light-vs-ultralight-browser.sh',
   'retrieval-debt-probe.sh',
   'sweep-interleaved.sh',
   'validate-light-vs-ultralight.sh',

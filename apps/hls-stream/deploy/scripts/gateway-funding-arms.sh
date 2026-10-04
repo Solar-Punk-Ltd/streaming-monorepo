@@ -6,7 +6,7 @@
 #
 # Every viewer-side figure this project holds was measured through a chequebook-funded gateway. That
 # is the best case and not the shipping case: a real viewer arrives at whatever public node they were
-# given, and the owner's framing is that it has neither funding nor a full node behind it. Phase 0.6
+# given, and that node has neither funding nor a full node behind it. `light-vs-ultralight-browser.sh`
 # compared the two by recreating one gateway with `--swap-enable` flipped, which makes the arms two
 # soaks separated by a container restart, so a cold cache and a lost peer set ride along with the
 # treatment.

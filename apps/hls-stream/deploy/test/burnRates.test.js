@@ -25,8 +25,8 @@ function sourced(name) {
 describe('the burn rate every sitting is priced against', () => {
   /**
    * ⛔⛔⛔ On 2026-08-13 three scripts carried FOUR different values between them: viewer-arms at
-   * 0.0130/0.0107 BZZ per minute, sweep-interleaved at 0.0437/0.0355, and phase06 at 0.0179/0.0102,
-   * with a fourth quoted in a phase06 comment as sweep-interleaved's. Only the first was measured.
+   * 0.0130/0.0107 BZZ per minute, sweep-interleaved at 0.0437/0.0355, and light-vs-ultralight-browser.sh at 0.0179/0.0102,
+   * with a fourth quoted in a comment of that last script as sweep-interleaved's. Only the first was measured.
    *
    * That is how a wrong constant survives: it is corrected where someone is looking and left
    * everywhere else. sweep-interleaved's 0.0437 was refit #3, the one that cut a planned 7.9-hour
@@ -54,7 +54,7 @@ describe('the burn rate every sitting is priced against', () => {
   });
 
   it('is sourced by every script that prices a sitting', () => {
-    for (const name of ['sweep-interleaved.sh', 'viewer-arms.sh', 'phase06-light-vs-ultralight.sh']) {
+    for (const name of ['sweep-interleaved.sh', 'viewer-arms.sh', 'light-vs-ultralight-browser.sh']) {
       const body = readFileSync(join(SCRIPTS, name), 'utf8');
       assert.match(body, /burn-rates\.sh/, `${name} prices a sitting without sourcing the measured rate`);
     }
@@ -85,7 +85,7 @@ describe('the burn rate every sitting is priced against', () => {
    * the exact class of fault the gates exist to prevent.
    */
   it('names the missing rate file rather than dying on an unbound variable later', () => {
-    for (const name of ['sweep-interleaved.sh', 'viewer-arms.sh', 'phase06-light-vs-ultralight.sh']) {
+    for (const name of ['sweep-interleaved.sh', 'viewer-arms.sh', 'light-vs-ultralight-browser.sh']) {
       const lines = readFileSync(join(SCRIPTS, name), 'utf8').split('\n');
       const at = lines.findIndex((l) => /^RATES=.*burn-rates\.sh"$/.test(l.trim()));
       assert.ok(at >= 0, `${name} does not resolve a path to burn-rates.sh`);

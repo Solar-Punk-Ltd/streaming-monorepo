@@ -92,7 +92,7 @@ describe('the spend ceiling is wired into everything that can spend', () => {
 
   /**
    * ⛔ One definition, for the reason `capacity-gate.sh` carries: a driver with its own copy is a gate
-   * that drifts, and the copy that drifts is the one nobody is looking at. `phase06` had exactly that
+   * that drifts, and the copy that drifts is the one nobody is looking at. `light-vs-ultralight-browser.sh` had exactly that
    * shape on the postage side and its private reader matched no batch at all.
    */
   it('is defined in exactly one file, and no driver carries its own', () => {

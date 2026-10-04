@@ -222,7 +222,7 @@ report_status() {
   # ⛔⛔⛔ Non-zero, because this exit code is what a sitting gates its arms on. A missing node is
   # emphatically not "an unfunded gateway", and answering zero here would be a gate stuck OPEN: the
   # driver would clear a condition that does not exist, then run arms against a port nothing is
-  # listening on. That is the same shape as the phase06 filter that matched no batch, and the
+  # listening on. That is the same shape as the light against ultra-light filter that matched no batch, and the
   # dangerous way round, since a gate stuck closed at least refuses.
   if ! exists; then
     say "${CONTAINER} is not running, so there is no unfunded arm to measure"

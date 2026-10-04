@@ -306,7 +306,7 @@ last_line() {
 # ⛔⛔ The path arrives as `--stop-file=` and never from the environment, and this clears it here so a
 # marker found later cannot be a previous sitting's. Both halves are load-bearing:
 # `overnight-chain.sh` exports a `STOP_FILE` naming the chain's own halt signal into everything it
-# runs, so an ambient name would have this delete that; and `phase06-light-vs-ultralight.sh` writes
+# runs, so an ambient name would have this delete that; and `light-vs-ultralight-browser.sh` writes
 # every sitting into one fixed `OUT_DIR`, so a marker left by one run would silence the next run's
 # real failure.
 STOP_REQUESTED=0

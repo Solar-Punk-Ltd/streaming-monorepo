@@ -47,7 +47,7 @@ PUBLISHER_FPS = 30
 # decoding 30, so on the main-thread axis a starved encoder reads as a cheaper viewer. That is the
 # wrong sign on the one question these sittings are run to answer.
 #
-# ⛔⛔ `phase06-light-vs-ultralight.sh` already guards the delivered segment LENGTH and admits 0.7x to
+# ⛔⛔ `light-vs-ultralight-browser.sh` already guards the delivered segment LENGTH and admits 0.7x to
 # 1.4x, so a 13% stretch passes it comfortably. This is a different instrument, not a duplicate one.
 #
 # The low bound is the measured failure mode. The high bound has never been observed on this rig, the

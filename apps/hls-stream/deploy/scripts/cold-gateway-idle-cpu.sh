@@ -24,7 +24,7 @@
 #
 # Host-side probes are copied to the measurement host as a single file and run there, so they carry
 # their own gateway lifecycle rather than depending on a library that is not shipped with them. That is
-# the same reason `retrieval-debt-probe.sh` and `phase06-light-vs-ultralight.sh` are self-contained.
+# the same reason `retrieval-debt-probe.sh` and `light-vs-ultralight-browser.sh` are self-contained.
 #
 # The gateway is restored to the arm it was found in by an EXIT trap on every path.
 set -u

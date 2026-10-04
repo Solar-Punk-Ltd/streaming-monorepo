@@ -179,7 +179,7 @@ describe('a publisher torn down on purpose', () => {
   });
 
   /**
-   * ⛔⛔ The other way the quieting could swallow a real failure. `phase06-light-vs-ultralight.sh`
+   * ⛔⛔ The other way the quieting could swallow a real failure. `light-vs-ultralight-browser.sh`
    * writes every sitting into one fixed `OUT_DIR`, so a marker outliving its run is not hypothetical:
    * without the clear at startup, one sitting's teardown would vouch for the next one's death.
    */

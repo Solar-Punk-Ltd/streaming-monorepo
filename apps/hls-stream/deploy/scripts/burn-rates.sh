@@ -7,8 +7,8 @@
 # ⛔⛔⛔ THIS FILE EXISTS BECAUSE THE NUMBER WAS WRONG IN THREE PLACES AT ONCE.
 #
 # On 2026-08-13 three scripts carried four different values between them: `viewer-arms.sh` at
-# 0.0130/0.0107, `sweep-interleaved.sh` at 0.0437/0.0355, `phase06-light-vs-ultralight.sh` at
-# 0.0179/0.0102, and a comment in phase06 quoting a fourth. Only the first had been measured. A
+# 0.0130/0.0107, `sweep-interleaved.sh` at 0.0437/0.0355, `light-vs-ultralight-browser.sh` at
+# 0.0179/0.0102, and a comment in light-vs-ultralight-browser.sh quoting a fourth. Only the first had been measured. A
 # constant corrected where somebody happened to be looking, and left everywhere else.
 #
 # `deploy/test/burnRates.test.js` refuses a fifth: no script may define its own.

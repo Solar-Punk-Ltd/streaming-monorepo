@@ -1,6 +1,6 @@
 #!/bin/bash
 #
-# Phase 0.6: a viewer's gateway, funded against unfunded, measured in a browser.
+# A viewer's gateway, funded against unfunded, measured in a browser.
 #
 # ## The question
 #
@@ -22,8 +22,8 @@
 # watching and wrong for a sitting that has to outlive the laptop closing. This is the same shape as
 # `sweep-interleaved.sh`: started detached on the host, it holds no session open and reports to disk.
 #
-#   scp phase06-light-vs-ultralight.sh <host>:~/phase06/
-#   ssh <host> 'setsid nohup bash ~/phase06/phase06-light-vs-ultralight.sh >/dev/null 2>&1 &'
+#   scp light-vs-ultralight-browser.sh <host>:~/light-vs-ultralight/
+#   ssh <host> 'PROFILE=<profile> PORT_SLOT=<slot> setsid nohup bash ~/light-vs-ultralight/light-vs-ultralight-browser.sh >/dev/null 2>&1 &'
 #
 # ## Why it proves itself before it spends the sitting
 #
@@ -63,7 +63,7 @@
 # running out is a clean stop with a named reason rather than a slide into measuring starvation.
 set -u
 
-OUT_DIR="${OUT_DIR:-${HOME}/phase06}"
+OUT_DIR="${OUT_DIR:-${HOME}/light-vs-ultralight}"
 # Deliberately outside both rsync targets. `~/swarm-hls-bench` is synced with `--delete` by
 # `bench-on-host.sh` and `~/swarm-hls-stream-<profile>` is owned by `deploy.sh`, so anything written in
 # either is removed the next time a laptop syncs, which is exactly when someone would be checking on a
@@ -125,8 +125,8 @@ RATES="$(dirname "${BASH_SOURCE[0]}")/burn-rates.sh"
 }
 
 mkdir -p "${OUT_DIR}"
-LOG="${OUT_DIR}/phase06.log"
-STATE="${OUT_DIR}/phase06-state.tsv"
+LOG="${OUT_DIR}/light-vs-ultralight.log"
+STATE="${OUT_DIR}/light-vs-ultralight-state.tsv"
 REPORTS="${OUT_DIR}/reports"
 mkdir -p "${REPORTS}"
 
