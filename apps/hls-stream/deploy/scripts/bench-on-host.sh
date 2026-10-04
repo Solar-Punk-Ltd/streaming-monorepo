@@ -24,8 +24,8 @@
 # viewer arm of the e2e suite needs, since it mounts this checkout into the browser container.
 #
 # ⛔⛔ THE CONTAINER IS NAMED, THE TARGET IS CHECKED, AND AN INTERRUPT STOPS THE CONTAINER. Three
-# things, all of them here because two faults two minutes apart on 2026-09-04 cost a postage batch
-# the owner had paid for and a stage arming.
+# things, all of them here because two faults two minutes apart cost a paid postage batch and a
+# stage arming.
 #
 # The container runs as `<profile>-harness-slot<N>`, so an operator can stop it by name instead of
 # reading `docker ps` and guessing which random name was ours. Every phase of one launch, the
@@ -65,8 +65,8 @@
 # because a gate that can be switched off from the command line is a warning.
 #
 # ⛔ AND IT REFUSES A CHECKOUT WITHOUT `.spend-ledger.env` BEFORE THE SYNC. The rsync below runs with
-# `--delete`, so a checkout that holds no authorisation to spend, an agent worktree for one, would
-# otherwise replace the host's harness copy, ledger included, before any gate could say no.
+# `--delete`, so a checkout that holds no spend ceiling, a fresh clone for one, would otherwise
+# replace the host's harness copy, ledger included, before any gate could say no.
 #
 # Anything after `--` is passed to the container as environment, so a knob sweep reads:
 #   deploy/scripts/bench-on-host.sh --target <host> -- BENCH_GOP_SECONDS=4 BENCH_BITRATE_KBPS=1200
@@ -324,24 +324,24 @@ run_harness_container() {
   return "${rc}"
 }
 
-# ⛔ The ledger is the owner's authorisation to spend: `.spend-ledger.env` at the root of the checkout
-# this is launched from, written by `spend-ledger.sh` and kept out of git. The `spend-ceiling`
+# ⛔ The ledger is the operator's spend ceiling, a setting: `.spend-ledger.env` at the root of the
+# checkout this is launched from, written by `spend-ledger.sh` and kept out of git. The `spend-ceiling`
 # preflight reads the copy this script syncs, so a checkout without the file could never pass that
 # gate. The gap was the order: the rsync below runs first, with `--delete`, so a launch from such a
 # checkout would have replaced the host's harness copy, ledger included, with a tree nobody had
-# authorised, and only then been refused. An agent worktree is exactly such a checkout, since it holds
-# only what git tracks. Ruled by the owner on 2026-09-04, when the browser-path gate made it visible.
+# authorised, and only then been refused. Any fresh clone is such a checkout, since it holds only what
+# git tracks.
 # `--no-setup` does not exempt it: the checkout is still the one launching a sitting.
 SPEND_LEDGER_FILE="${REPO_ROOT}/.spend-ledger.env"
 if [ ! -f "${SPEND_LEDGER_FILE}" ]; then
   echo "bench-on-host: ${SPEND_LEDGER_FILE} does not exist, so this checkout holds no authorisation to spend and nothing is copied to the host." >&2
-  echo "bench-on-host: launch from the checkout that carries the owner's ledger. An agent worktree never does." >&2
+  echo "bench-on-host: launch from the checkout that carries the spend ceiling, or write one there with deploy/scripts/spend-ledger.sh --authorise=<BZZ>." >&2
   exit 2
 fi
 
 # ⛔⛔ ONE stage, ONE harness. On 2026-09-04 a second launch went out against the same host, profile
 # and slot while the first one's container was still broadcasting, and two harness runs then drove one
-# stage: each read the other's segments as its own, on a postage batch the owner had paid for.
+# stage: each read the other's segments as its own, on a postage batch that had been paid for.
 #
 # Read before the rsync, because that rsync runs with `--delete` and would replace the tree the live
 # container is running from. There is no flag to override this, because an override is a warning.
@@ -432,14 +432,19 @@ if [ -n "${WORKSPACE_ROOT}" ]; then
   cut_stack_pair "${WORKSPACE_ROOT}" "${STACK_APP}" "${CUT_DIR}/stack"
   CUT_SOURCE=("${CUT_DIR}/stack/")
 fi
+SYNC_EXCLUDES=()
+for excluded in ${BENCH_SYNC_EXCLUDE:-}; do
+  SYNC_EXCLUDES+=(--exclude "${excluded}")
+done
 echo "bench-on-host: syncing source to ${TARGET}:${REMOTE_DIR}"
 # `node_modules` is excluded because the container installs into the bind mount and the two trees are
-# built for different platforms. `.git` is excluded because nothing here reads history. Agent worktrees
-# under `.claude/worktrees` are whole second copies of this tree, so they are excluded too. The empty
+# built for different platforms. `.git` is excluded because nothing here reads history. Folders named
+# in BENCH_SYNC_EXCLUDE, space separated, are left behind too, for whole second copies of the tree a
+# checkout may hold, such as nested git worktrees. The empty
 # cut source expands to nothing under `set -u` in bash 3.2 through the `+` form.
 rsync -az --delete \
   --exclude '.git' \
-  --exclude '.claude/worktrees' \
+  ${SYNC_EXCLUDES[@]+"${SYNC_EXCLUDES[@]}"} \
   --exclude 'node_modules' \
   --exclude 'reports' \
   --exclude 'docs/bench' \

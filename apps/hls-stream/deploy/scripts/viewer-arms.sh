@@ -452,7 +452,7 @@ if ! has_capacity $((TOTAL_ARMS * MINUTES)); then
   exit 1
 fi
 # ⛔ Distinct from can_afford above, which asks whether the nodes CAN pay and so authorises the whole
-# balance. This asks whether the owner said they may, and it is the only one of the two that can see
+# balance. This asks whether the operator said they may, and it is the only one of the two that can see
 # what an earlier sitting tonight already spent.
 if ! within_ceiling $((TOTAL_ARMS * MINUTES)); then
   say "REFUSING TO START: this sitting would spend past the authorisation in ${SPEND_LEDGER}"

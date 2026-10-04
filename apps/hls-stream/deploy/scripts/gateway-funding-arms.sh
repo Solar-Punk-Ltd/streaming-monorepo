@@ -461,7 +461,7 @@ if ! has_capacity "${SITTING_MINUTES}"; then
   exit 1
 fi
 # ⛔ Distinct from can_afford above, which asks whether the node CAN pay and so authorises the whole
-# balance. This asks whether the owner said it may, and it is the only one of the two that can see
+# balance. This asks whether the operator said it may, and it is the only one of the two that can see
 # what an earlier sitting tonight already spent.
 if ! within_ceiling "${SITTING_MINUTES}"; then
   say "REFUSING TO START: this sitting would spend past the authorisation in ${SPEND_LEDGER}"

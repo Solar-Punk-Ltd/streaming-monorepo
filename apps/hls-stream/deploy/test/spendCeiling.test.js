@@ -12,11 +12,11 @@ const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '../..');
 const GATE = join(ROOT, 'deploy/scripts/spend-ceiling.sh');
 
 /**
- * That a sitting cannot spend past what the owner authorised for this night.
+ * That a sitting cannot spend past what the operator authorised for this night.
  *
  * ⛔⛔⛔ THE GATE BESIDE THIS ONE ANSWERS A DIFFERENT QUESTION AND READS LIKE THIS ONE.
  * `can_afford()` asks whether the node holds enough to pay, which is true right up until the
- * chequebook is empty. An owner who authorises 2.4 BZZ of a 3.5 BZZ balance is authorising less than
+ * chequebook is empty. An operator who authorises 2.4 BZZ of a 3.5 BZZ balance is authorising less than
  * the node can pay, and nothing in the driver knew the difference. Two sittings that each pass
  * `can_afford` can still land past the authorisation together, because neither can see the other.
  *
@@ -101,14 +101,14 @@ echo "VERDICT=$?"
 }
 
 /**
- * A ledger written when the owner gave the authorisation, with both nodes at their start balance.
+ * A ledger written when the operator gave the authorisation, with both nodes at their start balance.
  *
  * Keyed by port, one line per node that can spend. The gate refuses a node it has no baseline for and
  * a baseline no node answers to, so these two have to be exactly the ports the harness configures.
  */
 function ledgerAt({ ceiling, uploaderStart, gatewayStart }) {
   return [
-    '# written when the owner authorised this night, not edited by hand',
+    '# written when the operator authorised this night, not edited by hand',
     'authorised_at=2026-08-14T00:00:00Z',
     `ceiling_plur=${ceiling}`,
     `node_10075_start_plur=${uploaderStart}`,
