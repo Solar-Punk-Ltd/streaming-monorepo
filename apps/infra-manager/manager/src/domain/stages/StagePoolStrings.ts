@@ -183,6 +183,10 @@ function poolNamedBy(entries: readonly BeePublisherEntry[], pools: readonly Stag
 
 function currentPoolString(pool: StagePool): string {
   return beePublishersValue(
-    pool.rungs.map((rung) => ({ rungName: rung.rung, url: rung.url, batchId: rung.member.stamp_id!.toLowerCase() })),
+    pool.rungs.map((rung) => ({
+      rungName: rung.rung,
+      url: rung.url,
+      batchId: rung.member.stamp_id!.replace(/^0x/i, '').toLowerCase(),
+    })),
   );
 }

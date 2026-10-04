@@ -100,6 +100,17 @@ describe('a stage whose rungs came from a pool on this manager', () => {
     assert.equal(profiles.rows.get(STAGE)?.bee_publishers, poolString(NEW_BATCHES), 'the stored copy shows them too');
   });
 
+  it('writes a rung’s batch given as 0x-prefixed uppercase in the form the uploader accepts', async () => {
+    const stored = stage(poolString(OLD_BATCHES));
+    const shouting = `0x${batch('a').toUpperCase()}`;
+    const { orchestrator, profiles } = harness([stored, ...rungMembers([shouting, ...NEW_BATCHES.slice(1)])]);
+
+    await orchestrator.startDeploy(stored, undefined);
+
+    assert.equal(writtenPublishers(), poolString(NEW_BATCHES));
+    assert.equal(profiles.rows.get(STAGE)?.bee_publishers, poolString(NEW_BATCHES));
+  });
+
   it('refuses the deploy when a rung of its pool has no batch, naming the rung', async () => {
     const stored = stage(poolString(OLD_BATCHES));
     const { orchestrator, profiles, runner } = harness([stored, ...rungMembers([...NEW_BATCHES.slice(0, 3), null])]);
