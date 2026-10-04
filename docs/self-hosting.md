@@ -69,9 +69,10 @@ with the admin. [architecture/stages.md](architecture/stages.md) is the design.
 
 1. **An ssh alias on your machine**, in `~/.ssh/config`. The forward is the way into the manager
    before the edge serves it, and stays the way in when the edge is down.
+   `<control-host>` stands for whatever alias you choose, and the steps below use it.
 
    ```
-   Host control-1
+   Host <control-host>
      HostName 203.0.113.6
      User deploy
      LocalForward 8080 localhost:8080
@@ -91,11 +92,11 @@ with the admin. [architecture/stages.md](architecture/stages.md) is the design.
    ```
 
    ```sh
-   ./deploy/deploy.sh control-1
+   ./deploy/deploy.sh <control-host>
    ```
 
    It worked when the deploy ends without an error and `http://localhost:8080` shows the manager's
-   sign-in page while `ssh control-1` is open. The first deploy takes a while, because the host
+   sign-in page while `ssh <control-host>` is open. The first deploy takes a while, because the host
    builds the stack version the manager bundles.
 
    Every Bee node the manager deploys on this host on a bridge network, the stack's default, has
@@ -143,7 +144,7 @@ with the admin. [architecture/stages.md](architecture/stages.md) is the design.
    ```
 
    ```sh
-   ./deploy/deploy.sh --host=control-1 --profile=brand-a
+   ./deploy/deploy.sh --host=<control-host> --profile=brand-a
    ```
 
    It worked when the deploy reports the API and the console healthy and prints the console's
@@ -160,7 +161,7 @@ with the admin. [architecture/stages.md](architecture/stages.md) is the design.
    ```
 
    ```sh
-   ./infra/edge/edge.sh --host=control-1
+   ./infra/edge/edge.sh --host=<control-host>
    ```
 
    It worked when `https://manager.example.org` and `https://admin.example.org` show the two sign-in
@@ -341,7 +342,7 @@ stage hosts publish through. It is prepared like a stage host.
    - **The firewall.** Generate this host's table and name each allowed address once, as a `/32`:
 
      ```sh
-     ./deploy/host/firewall-rules.sh --iface eth0 --inventory firewall-inventory.json --bee-api-source <stage-host-address>/32 --bee-api-source <control-host-address>/32 > /tmp/bee-1-firewall.nft
+     ./deploy/host/firewall-rules.sh --iface <public interface> --inventory firewall-inventory.json --bee-api-source <stage-host-address>/32 --bee-api-source <control-host-address>/32 > /tmp/bee-1-firewall.nft
      ```
 
    A provider firewall that admits the same addresses to the same ports does the same job.

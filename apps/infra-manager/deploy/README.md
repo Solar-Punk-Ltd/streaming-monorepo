@@ -39,8 +39,11 @@ MANAGER_PORT=9876
 
 ## Local `~/.ssh/config` snippet
 
+`<control-host>` stands for whatever alias you give the server that runs the manager. The
+commands below use the same alias.
+
 ```
-Host control-1
+Host <control-host>
   HostName <server-ip-or-hostname>
   User deploy
   LocalForward 8080 localhost:8080
@@ -51,7 +54,7 @@ Host control-1
 From your local checkout:
 
 ```sh
-./deploy/deploy.sh control-1
+./deploy/deploy.sh <control-host>
 ```
 
 This rsyncs the repo, then builds the images on the server and runs the upgrade
@@ -120,7 +123,7 @@ the project, waits for the new API to answer its health check, and then waits fo
 that API's own boot to finish building the pinned commit. `--bundled-timeout`
 says how long that last wait may take, twenty minutes by default, and you can
 raise it for a first build on a cold host with
-`BUNDLED_TIMEOUT=3600 ./deploy/deploy.sh control-1`. It prints one line of
+`BUNDLED_TIMEOUT=3600 ./deploy/deploy.sh <control-host>`. It prints one line of
 JSON with the state and the bundled build, which the deploy echoes. A bundled
 build that failed or ran out of time makes the deploy exit non zero after the
 manager is already up, so the fix is Update on the Versions page rather than
@@ -163,7 +166,7 @@ root, so every file under the versions root belongs to root, and each of them is
 readable by its owner alone.
 
 ```sh
-ssh control-1
+ssh <control-host>
 cd /opt/streaming/streaming-infra-manager/manager
 sudo scripts/stack-config-edit.sh /opt/streaming/streaming-infra-manager-versions/bundled set .env /tmp/new-env
 sudo scripts/stack-config-edit.sh /opt/streaming/streaming-infra-manager-versions/bundled commit
@@ -188,7 +191,7 @@ That identity lives on the manager host in `/opt/streaming/manager-ssh/`
 key pair, an `ssh_config` and a `known_hosts`:
 
 ```sh
-# As deploy@control-1
+# As deploy@<control-host>
 mkdir -p /opt/streaming/manager-ssh
 ssh-keygen -t ed25519 -N '' -f /opt/streaming/manager-ssh/deploy_key
 ssh-copy-id -i /opt/streaming/manager-ssh/deploy_key.pub deploy@203.0.113.7
@@ -248,7 +251,7 @@ If a deploy failed after the upgrade started, the guard directory is still
 there:
 
 ```sh
-ssh control-1
+ssh <control-host>
 ls /opt/streaming/streaming-infra-manager-versions/.manager-upgrade
 cat /opt/streaming/streaming-infra-manager-versions/.manager-upgrade/owner.json
 ```
@@ -288,7 +291,7 @@ and it holds the `.env`, `deploy/config.json` and engine envs of every deploy
 that shipped one, so remove it once no deploy is running.
 
 ```sh
-ssh control-1
+ssh <control-host>
 ls /opt/streaming/streaming-infra-manager-versions/bundled.packages    # if it is still there
 rm -r /opt/streaming/streaming-infra-manager-versions/bundled.packages
 ```
@@ -305,7 +308,7 @@ The manager has a login, and there is no sign-up. Once, after the first deploy,
 create a user on the server:
 
 ```sh
-ssh control-1
+ssh <control-host>
 cd /opt/streaming/streaming-infra-manager/manager
 docker compose exec -it api node dist/cli.js user:add <username>
 ```
@@ -328,7 +331,7 @@ last admin.
 ## Accessing
 
 ```sh
-ssh control-1       # the LocalForward in ssh_config opens the tunnel
+ssh <control-host>       # the LocalForward in ssh_config opens the tunnel
 # then in your browser:
 open http://localhost:8080
 ```
@@ -504,7 +507,7 @@ covered by its own build contract.
 With the external interface name supplied by the host operator:
 
 ```sh
-./deploy/host/firewall-rules.sh --iface eth0 \
+./deploy/host/firewall-rules.sh --iface <public interface> \
   --inventory firewall-inventory.json --max-slot 20 \
   > /tmp/manager-firewall.nft
 less /tmp/manager-firewall.nft
@@ -621,7 +624,7 @@ the name in the edge's env file:
 ```sh
 cp infra/edge/.env.sample infra/edge/.env
 # set MANAGER_DOMAIN=manager.example.org, and MANAGER_PORT if WEB_PORT is not 8080
-./infra/edge/edge.sh --host=control-1
+./infra/edge/edge.sh --host=<control-host>
 ```
 
 The run says which name it serves on which loopback port, checks that the
@@ -638,7 +641,7 @@ wrong, so leave it there.
 
 ## Operations
 
-All run on the server (`ssh control-1`, then `cd /opt/streaming/streaming-infra-manager/manager`):
+All run on the server (`ssh <control-host>`, then `cd /opt/streaming/streaming-infra-manager/manager`):
 
 ```sh
 docker compose ps                 # status
