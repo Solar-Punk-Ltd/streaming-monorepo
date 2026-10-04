@@ -67,7 +67,10 @@ export class StagePoolStrings {
     const entries = entriesOf(stage);
     if (!entries) return stage;
     const pool = poolNamedBy(entries, await this.pools());
-    if (!pool) return stage;
+    if (!pool) {
+      logger.info(`[StagePoolStrings] ${stage.name}: its pool string names no pool of this manager, so it deploys as saved`);
+      return stage;
+    }
 
     const unstamped = pool.rungs.find((rung) => !rung.member.stamp_id);
     if (unstamped) {
