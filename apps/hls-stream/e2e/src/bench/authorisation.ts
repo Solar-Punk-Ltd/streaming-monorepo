@@ -112,7 +112,7 @@ export async function requireBenchAuthorised(
   // postage and bandwidth have no answer there. `suites/preflight/spend-ceiling.test.ts` draws the
   // same two lines.
   const spenders = [
-    ...publishers.map((node) => ({ port: node.port, who: `${node.rungs.join('/')} publisher` })),
+    ...publishers.map((node) => ({ port: node.port, address: node.address, who: `${node.rungs.join('/')} publisher` })),
     { port: cfg.ports.beeGatewayApi, who: 'gateway' },
   ];
 
@@ -123,7 +123,7 @@ export async function requireBenchAuthorised(
     readings.push({
       port: String(node.port),
       who: node.who,
-      plur: availablePlur(await host.localJson<unknown>(node.port, '/chequebook/balance'), node.who),
+      plur: availablePlur(await host.localJson<unknown>(node, '/chequebook/balance'), node.who),
     });
   }
 

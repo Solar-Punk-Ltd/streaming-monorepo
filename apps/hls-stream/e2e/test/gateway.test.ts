@@ -5,6 +5,7 @@ import type { AddressInfo } from 'node:net';
 import { describe, it } from 'node:test';
 
 import {
+  benchGatewayUrl,
   DEFAULT_FEED_READER,
   FEED_BLACKOUT_LIMIT_MS,
   FeedFollower,
@@ -17,6 +18,8 @@ import {
   resolvedFeedIndex,
   segmentRefFromUri,
 } from '../src/bench/gateway.js';
+import type { E2EConfig } from '../src/config.js';
+import type { Host } from '../src/harness/host.js';
 
 /**
  * The one status that means "not yet" rather than "wrong".
@@ -396,5 +399,27 @@ describe('following the feed the way the player does', () => {
 
   it('refuses a mode it does not have, rather than silently walking', () => {
     assert.throws(() => parseFeedReaderMode('latest'), /must be 'walk' or 'head'/);
+  });
+});
+
+/**
+ * Where the bench fetches the gateway from. Launched on the deployment host it dials the gateway's
+ * Bee API where the deploy bound it, since that port answers on the Docker bridge address by default
+ * and not on the address publishers reach ingest on.
+ */
+describe('the gateway the bench fetches', () => {
+  const cfg = { publicHost: '203.0.113.10', ports: { beeGatewayApi: 11_077 } } as unknown as E2EConfig;
+  const hostOn = (isLocal: boolean): Host => ({ isLocal, dialAddress: async () => '172.17.0.1' }) as unknown as Host;
+
+  it('dials the bound address when the bench runs on the deployment host', async () => {
+    assert.equal(await benchGatewayUrl(hostOn(true), cfg, undefined), 'http://172.17.0.1:11077');
+  });
+
+  it('keeps the public host for a bench that reaches the deployment over ssh', async () => {
+    assert.equal(await benchGatewayUrl(hostOn(false), cfg, undefined), 'http://203.0.113.10:11077');
+  });
+
+  it('takes BENCH_GATEWAY_URL over either', async () => {
+    assert.equal(await benchGatewayUrl(hostOn(true), cfg, 'http://198.51.100.7:1733'), 'http://198.51.100.7:1733');
   });
 });

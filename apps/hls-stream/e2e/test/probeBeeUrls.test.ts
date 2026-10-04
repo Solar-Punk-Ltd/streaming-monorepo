@@ -30,6 +30,30 @@ describe('probe Bee addresses', () => {
     assert.equal(probeWriteUrl(env), `http://127.0.0.1:${resolvePort('BEE_UPLOADER_API_PORT', 7, {})}`);
   });
 
+  it('derives each from the address its own bind setting names, before the bridge address', () => {
+    const env = {
+      PORT_SLOT: '3',
+      DOCKER_BRIDGE_ADDRESS: '172.17.0.1',
+      BEE_GATEWAY_API_BIND: '198.51.100.4',
+      BEE_UPLOADER_API_BIND: '198.51.100.5',
+    };
+    assert.equal(probeReadUrl(env), `http://198.51.100.4:${resolvePort('BEE_GATEWAY_API_PORT', 3, {})}`);
+    assert.equal(probeWriteUrl(env), `http://198.51.100.5:${resolvePort('BEE_UPLOADER_API_PORT', 3, {})}`);
+  });
+
+  it('takes the bind from *_API_LISTEN under host networking, and loopback for every address', () => {
+    const env = {
+      PORT_SLOT: '0',
+      COMPOSE_NETWORK: 'host',
+      DOCKER_BRIDGE_ADDRESS: '172.17.0.1',
+      BEE_GATEWAY_API_BIND: '198.51.100.4',
+      BEE_GATEWAY_API_LISTEN: '203.0.113.4',
+      BEE_UPLOADER_API_LISTEN: '0.0.0.0',
+    };
+    assert.equal(probeReadUrl(env), 'http://203.0.113.4:1733');
+    assert.equal(probeWriteUrl(env), 'http://127.0.0.1:1633');
+  });
+
   it('refuses when neither the address nor the slot is named', () => {
     assert.throws(() => probeReadUrl({}), /READ_URL.*PORT_SLOT/);
     assert.throws(() => probeWriteUrl({}), /WRITE_URL.*PORT_SLOT/);

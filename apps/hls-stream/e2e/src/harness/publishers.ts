@@ -1,3 +1,5 @@
+import { isIP } from 'node:net';
+
 import { type ServiceName, SERVICES } from '../config.js';
 
 /**
@@ -22,6 +24,11 @@ export interface PublisherNode {
   batch: string;
   /** The port on the deployment host that reaches this node's bee API. */
   port: number;
+  /**
+   * The address on the deployment host that reaches it, when the url names one. Absent for a node
+   * named by its compose service, which is dialled where the deploy bound `port`.
+   */
+  address?: string;
 }
 
 /**
@@ -123,21 +130,22 @@ function serviceCarrying(node: PublisherNode): ServiceName {
   );
 }
 
-const LOOPBACK_HOSTS = new Set(['127.0.0.1', 'localhost', '::1', '[::1]']);
+const LOOPBACK_NAMES = new Set(['localhost']);
 
 /**
  * Group a `/health` routing into the nodes behind it, each with a port the suite can dial.
  *
  * The url on a route is the one the **uploader** dials. The suite dials from the deployment host, so
  * the two coincide only when the nodes are on the host network. A split deployment is: each per-rung
- * bee runs `network_mode: host` and its url carries the real host port. An unsplit one usually is
- * not, because `bee-uploader` is a compose service name that resolves inside the container network
- * and nowhere else, and the host port is a separate thing the deploy publishes.
+ * bee runs `network_mode: host` and its url carries the address it listens on, the host's Docker
+ * bridge address by default, and the real host port. An unsplit one usually is not, because
+ * `bee-uploader` is a compose service name that resolves inside the container network and nowhere
+ * else, and the host port is a separate thing the deploy publishes.
  *
- * Hence two rules and no third. A loopback url carries its own port. A single node named any other
- * way is the unsplit deployment, and `deployPort` is the port the deploy published for it. Anything
- * else is refused, because a preflight that guessed would read one node's chequebook and report it
- * under another node's name.
+ * Hence two rules and no third. A url on an IP address or on localhost carries its own address and
+ * port. A single node named any other way is the unsplit deployment, and `deployPort` is the port the
+ * deploy published for it. Anything else is refused, because a preflight that guessed would read one
+ * node's chequebook and report it under another node's name.
  *
  * ⛔ Every rung on one node has to name the same batch, and a node named with two is refused rather
  * than answered. See {@link twoBatchesOnOneNode}.
@@ -171,7 +179,7 @@ export function nodesBehind(routes: readonly PublisherRoute[] | undefined, deplo
   }
 
   const nodes = [...byNode.values()];
-  return nodes.map((node) => ({ ...node, port: portOf(node, nodes.length, deployPort) }));
+  return nodes.map((node) => reachable(node, nodes.length, deployPort));
 }
 
 /**
@@ -201,10 +209,10 @@ function twoBatchesOnOneNode(existing: PublisherNode, route: PublisherRoute): st
   );
 }
 
-function portOf(node: PublisherNode, nodeCount: number, deployPort: number): number {
+function reachable(node: PublisherNode, nodeCount: number, deployPort: number): PublisherNode {
   const parsed = parseUrl(node.url);
 
-  if (LOOPBACK_HOSTS.has(parsed.hostname)) {
+  if (namesAnAddress(parsed.hostname)) {
     if (parsed.port === '') {
       throw new Error(
         `the node carrying ${node.rungs.join(', ')} names no port (${node.url}), so there is nothing ` +
@@ -212,19 +220,24 @@ function portOf(node: PublisherNode, nodeCount: number, deployPort: number): num
           'on that port, which on a slotted deployment is another profile’s node.',
       );
     }
-    return Number(parsed.port);
+    return { ...node, port: Number(parsed.port), address: parsed.hostname };
   }
 
   if (nodeCount === 1) {
-    return deployPort;
+    return { ...node, port: deployPort };
   }
 
   throw new Error(
     `the node carrying ${node.rungs.join(', ')} cannot be reached from the deployment host: ` +
       `${node.url} resolves inside the container network, and with ${nodeCount} nodes there is no one ` +
       'published port to fall back to. Run the per-rung bee nodes on the host network, which is what ' +
-      'docker-compose.host.yml already does, so their urls carry the port the host can dial.',
+      'docker-compose.host.yml already does, so their urls carry the address and port the host can dial.',
   );
+}
+
+/** An IP literal, bracketed when it is IPv6 as a url's hostname is, or a loopback name. */
+function namesAnAddress(hostname: string): boolean {
+  return LOOPBACK_NAMES.has(hostname) || isIP(hostname.replace(/^\[(.*)\]$/, '$1')) !== 0;
 }
 
 function parseUrl(url: string): URL {

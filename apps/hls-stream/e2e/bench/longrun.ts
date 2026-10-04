@@ -26,6 +26,7 @@ import { join } from 'node:path';
 
 import { MIN_STAMP_TTL_S, requireBenchAuthorised } from '../src/bench/authorisation.js';
 import {
+  benchGatewayUrl,
   fetchSegment,
   parseFeedReaderMode,
   requireGatewayReachable,
@@ -491,7 +492,8 @@ async function main(): Promise<void> {
   const cfg = loadConfig();
   const knobs = knobsFromEnv();
   const runMinutes = envNumber('BENCH_RUN_MINUTES', DEFAULT_RUN_MINUTES);
-  const gatewayUrl = process.env.BENCH_GATEWAY_URL ?? `http://${cfg.publicHost}:${cfg.ports.beeGatewayApi}`;
+  const host = makeHost(cfg);
+  const gatewayUrl = await benchGatewayUrl(host, cfg);
 
   console.log(`longrun: engine ${cfg.engine}, profile ${cfg.profile}, gateway ${gatewayUrl}`);
   console.log(
@@ -508,7 +510,6 @@ async function main(): Promise<void> {
 
   await requireGatewayReachable(gatewayUrl);
 
-  const host = makeHost(cfg);
   const uploader = containerName(cfg, 'stream-uploader');
   const level = effectiveLogLevel((await host.containerEnv(uploader)).LOG_LEVEL);
   const problem = logLevelProblem(level);

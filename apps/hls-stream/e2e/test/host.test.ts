@@ -311,6 +311,112 @@ describe('the address the local transport curls', () => {
 });
 
 /**
+ * Where a read of a bridge-bound port goes: the Bee APIs, SRS's HTTP server and OME's HLS port answer
+ * on the address their own bind setting names, else on the host's Docker bridge address, else on
+ * 127.0.0.1, which is how `deploy/scripts/bound-host.sh` resolves them.
+ */
+describe('the address a bridge-bound port is dialled on', () => {
+  const GATEWAY = 11_737;
+
+  function boundHostWith(target: string, bind: string, bridgeAddress = '', localAddress?: string): Host {
+    return new Host(target, undefined, localAddress, { bridgeAddress, boundPorts: [{ port: GATEWAY, bind }] });
+  }
+
+  it('dials the bridge address the stage names when the port names no bind', async () => {
+    const sandbox = stubSsh([0]);
+
+    await boundHostWith('stub-target', '', '172.17.0.1').localText(GATEWAY, '/health');
+
+    assert.match(sandbox.invocations()[0], /http:\/\/172\.17\.0\.1:11737\/health/);
+  });
+
+  it('dials the address the bind setting names over the bridge', async () => {
+    const sandbox = stubSsh([0]);
+
+    await boundHostWith('stub-target', '198.51.100.4', '172.17.0.1').localText(GATEWAY, '/health');
+
+    assert.match(sandbox.invocations()[0], /http:\/\/198\.51\.100\.4:11737\/health/);
+  });
+
+  it('dials loopback for a port bound to every address', async () => {
+    const sandbox = stubSsh([0]);
+
+    await boundHostWith('stub-target', '0.0.0.0', '172.17.0.1').localText(GATEWAY, '/health');
+
+    assert.match(sandbox.invocations()[0], /http:\/\/localhost:11737\/health/);
+  });
+
+  it('asks the deployment host for its bridge address once, when the stage names none', async () => {
+    const sandbox = stubSsh([0], '172.17.0.1');
+    const host = boundHostWith('stub-target', '');
+
+    await host.localText(GATEWAY, '/health');
+    await host.localText(GATEWAY, '/status');
+
+    // The script spans lines, so the journal is read whole rather than one invocation per line.
+    const journal = sandbox.invocations().join('\n');
+    assert.equal(journal.match(/docker network inspect bridge/g)?.length, 1);
+    assert.deepEqual(
+      [...journal.matchAll(/http:\/\/\S+/g)].map(([url]) => url),
+      ['http://172.17.0.1:11737/health', 'http://172.17.0.1:11737/status'],
+    );
+  });
+
+  it('falls back to loopback when the host reports no bridge address', async () => {
+    const sandbox = stubSsh([1, 0]);
+
+    await boundHostWith('stub-target', '').localText(GATEWAY, '/health');
+
+    assert.match(sandbox.invocations().join('\n'), /http:\/\/localhost:11737\/health/);
+  });
+
+  it('dials the bridge from a container with a network of its own, and the host alias for the rest', async () => {
+    stubCurl();
+    const host = boundHostWith(LOCAL_TARGET, '', '172.17.0.1', 'host.docker.internal');
+
+    assert.match(await host.localText(GATEWAY, '/health'), /http:\/\/172\.17\.0\.1:11737\/health/);
+    assert.match(await host.localText(10_074, '/health'), /http:\/\/host\.docker\.internal:10074\/health/);
+  });
+
+  /**
+   * An unsplit stage's one publisher node is named by its compose service, so nodesBehind gives it
+   * the deploy's published port and no address, and the port is bound like any other.
+   */
+  it('dials a node with no address where the deploy bound its port', async () => {
+    const sandbox = stubSsh([0]);
+
+    await boundHostWith('stub-target', '', '172.17.0.1').localText({ port: GATEWAY }, '/chequebook/balance');
+
+    assert.match(sandbox.invocations()[0], /http:\/\/172\.17\.0\.1:11737\/chequebook\/balance/);
+  });
+
+  it('dials a publisher node at the address its url names, and on loopback as before', async () => {
+    const sandbox = stubSsh([0]);
+    const host = boundHostWith('stub-target', '', '172.17.0.1');
+
+    await host.localText({ port: 11_071, address: '198.51.100.4' }, '/stamps');
+    await host.localText({ port: 11_073, address: '127.0.0.1' }, '/stamps');
+
+    const [bridged, loopback] = sandbox.invocations();
+    assert.match(bridged, /http:\/\/198\.51\.100\.4:11071\/stamps/);
+    assert.match(loopback, /http:\/\/localhost:11073\/stamps/);
+  });
+
+  it('answers the address it dials, for a caller that builds its own command', async () => {
+    assert.equal(await boundHostWith('stub-target', '', '172.17.0.1').dialAddress(GATEWAY), '172.17.0.1');
+    assert.equal(await boundHostWith('stub-target', '', '172.17.0.1').dialAddress(10_074), 'localhost');
+  });
+
+  it('answers the address the deployment host itself dials, for a command printed for an operator', async () => {
+    const host = boundHostWith(LOCAL_TARGET, '', '172.17.0.1', 'host.docker.internal');
+
+    assert.equal(await host.hostAddress(GATEWAY), '172.17.0.1');
+    assert.equal(await host.hostAddress(10_074), 'localhost');
+    assert.equal(await host.hostAddress({ port: 11_071, address: '127.0.0.1' }), 'localhost');
+  });
+});
+
+/**
  * ⛔⛔⛔ **Which batch a verdict about a rung is allowed to be about.** Until 2026-09-04 the stage
  * stamp gate read each node's BEST usable stamp, sorted by TTL, and never compared it with the batch
  * `BEE_PUBLISHERS` routes that rung to. A node holding one drained batch (the configured one) and one

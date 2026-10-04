@@ -1248,11 +1248,11 @@ export function browserArmHostSetup(repoDir: string, env: NodeJS.ProcessEnv = pr
  * The environment a viewer arm is run with, which is `byte-source-arms.sh`'s minus the treatments.
  *
  * `E2E_SSH_TARGET=local` is what makes the driver's own harness shell out rather than try to ssh from
- * the host to itself, and `127.0.0.1` is what the client and the gateway are both reached on from a
- * host-networked container.
+ * the host to itself, and `127.0.0.1` is what the publisher and the client are reached on from a
+ * host-networked container. The harness reads the gateway's Bee API where the deploy bound it.
  *
  * ⭐ Loopback deliberately, and not an oversight: {@link browserArmCommand} runs this container with
- * `--network host`, so the deployment genuinely is on its loopback. The container that is NOT is the
+ * `--network host`, so ingest and the client genuinely are on its loopback. The container that is NOT is the
  * one `deploy/scripts/bench-on-host.sh --own-network` starts, which sets `E2E_LOCAL_HOST_ADDRESS`
  * and moves all three of these to `host.docker.internal`. Nothing here launches that one.
  *

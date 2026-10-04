@@ -46,6 +46,13 @@ Ports come from `.env` / `.env.<profile>` and `engines/<engine>/.env[.<profile>]
 process environment exactly as `load_env` then `load_engine_envs` layer them. **OME's ports are not
 slot-shifted**. `apply_port_slot` leaves them alone and so does this.
 
+The Bee APIs, SRS's HTTP server and OME's HLS port answer where the deploy bound them, and the suite
+dials them there the way `deploy/scripts/bound-host.sh` does: at the address their own bind setting
+names (`BEE_UPLOADER_API_BIND`, `BEE_GATEWAY_API_BIND`, or `*_API_LISTEN` under
+`COMPOSE_NETWORK=host`, `SRS_HTTP_BIND`, `OME_HTTP_BIND`), else at `DOCKER_BRIDGE_ADDRESS` when the
+env files set it, else at the bridge address the deployment host reports, else at 127.0.0.1. The
+uploader and the client bind every address and are still read on loopback.
+
 ### Saying whether the run covers ABR
 
 The two ABR suites only apply to a deployment running a ladder, so they are gated on `ABR_ENABLED`,
@@ -702,7 +709,8 @@ over HTTP rather than through ssh, so no clock skew enters the total. That is al
 viewer takes. It does mean the gateway has to be reachable from wherever you run this: set
 `BENCH_GATEWAY_URL`, or forward the port with `ssh -L`. The run refuses to start otherwise rather than
 publishing first and failing after. Launched through `bench-on-host.sh` the run happens on the
-deployment host over loopback, so there is nothing to forward and nothing to set.
+deployment host and fetches the gateway at the address the deploy bound its Bee API to, so there is
+nothing to forward and nothing to set.
 
 **It checks itself before it spends anything.** The first thing a run does is publish to a local file,
 probe it, and recover the capture instants, the whole chain, offline, in about fifteen seconds. If
