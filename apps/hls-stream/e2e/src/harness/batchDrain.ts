@@ -423,7 +423,7 @@ async function readArmedStage(host: Host, cfg: E2EConfig, rung: string): Promise
     );
   }
 
-  const { state, stamp, lastSeen } = await pollConfiguredStamp(host, node.port, node.batch);
+  const { state, stamp, lastSeen } = await pollConfiguredStamp(host, node, node.batch);
 
   return {
     rung,

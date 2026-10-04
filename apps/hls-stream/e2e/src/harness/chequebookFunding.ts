@@ -106,7 +106,7 @@ function depositCommand(reading: NodeFunding): string {
 export async function readChequebookFunding(host: Host, nodes: readonly PublisherNode[]): Promise<NodeFunding[]> {
   const readings: NodeFunding[] = [];
   for (const node of nodes) {
-    const body = (await chequebookBalance(host, node.port)) as unknown as Record<string, unknown>;
+    const body = (await chequebookBalance(host, node)) as unknown as Record<string, unknown>;
     readings.push({
       node,
       availablePlur: plurField(body, 'availableBalance', node),

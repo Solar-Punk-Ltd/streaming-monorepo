@@ -69,7 +69,7 @@ describe('preflight — the run stays inside what the operator authorised', () =
     // deployment, so a node added to the stage cannot be one the ceiling is blind to.
     const routing = nodesBehind((await uploaderHealth(host, cfg)).publishers, cfg.ports.beeUploaderApi);
     const nodes = [
-      ...routing.map((node) => ({ port: node.port, who: `${node.rungs.join('/')} publisher` })),
+      ...routing.map((node) => ({ port: node.port, address: node.address, who: `${node.rungs.join('/')} publisher` })),
       { port: cfg.ports.beeGatewayApi, who: 'gateway' },
     ];
 
@@ -80,7 +80,7 @@ describe('preflight — the run stays inside what the operator authorised', () =
       readings.push({
         port: String(node.port),
         who: node.who,
-        plur: availablePlur(await host.localJson<unknown>(node.port, '/chequebook/balance'), node.who),
+        plur: availablePlur(await host.localJson<unknown>(node, '/chequebook/balance'), node.who),
       });
     }
 

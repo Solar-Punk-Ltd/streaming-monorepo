@@ -172,8 +172,8 @@ export async function readResources(host: Host, cfg: E2EConfig): Promise<Resourc
   const readings = await Promise.all(
     nodes.map(async (node): Promise<NodeReading> => {
       const [stamps, cheque] = await Promise.all([
-        host.localJson<{ stamps: Stamp[] }>(node.port, '/stamps'),
-        chequebookBalance(host, node.port),
+        host.localJson<{ stamps: Stamp[] }>(node, '/stamps'),
+        chequebookBalance(host, node),
       ]);
       const stamp = matchBatch(stamps.stamps ?? [], node.batch, node);
 

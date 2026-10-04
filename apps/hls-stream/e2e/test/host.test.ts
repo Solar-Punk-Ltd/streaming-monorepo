@@ -378,6 +378,18 @@ describe('the address a bridge-bound port is dialled on', () => {
     assert.match(await host.localText(10_074, '/health'), /http:\/\/host\.docker\.internal:10074\/health/);
   });
 
+  it('dials a publisher node at the address its url names, and on loopback as before', async () => {
+    const sandbox = stubSsh([0]);
+    const host = boundHostWith('stub-target', '', '172.17.0.1');
+
+    await host.localText({ port: 11_071, address: '198.51.100.4' }, '/stamps');
+    await host.localText({ port: 11_073, address: '127.0.0.1' }, '/stamps');
+
+    const [bridged, loopback] = sandbox.invocations();
+    assert.match(bridged, /http:\/\/198\.51\.100\.4:11071\/stamps/);
+    assert.match(loopback, /http:\/\/localhost:11073\/stamps/);
+  });
+
   it('answers the address it dials, for a caller that builds its own command', async () => {
     assert.equal(await boundHostWith('stub-target', '', '172.17.0.1').dialAddress(GATEWAY), '172.17.0.1');
     assert.equal(await boundHostWith('stub-target', '', '172.17.0.1').dialAddress(10_074), 'localhost');

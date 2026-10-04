@@ -122,6 +122,16 @@ export interface ServiceBinds {
   readonly boundPorts: readonly BoundPort[];
 }
 
+/**
+ * A port on the deployment host, with the address it answers on there when the caller knows it, such
+ * as a publisher node whose url names one. See `nodesBehind`.
+ */
+export type ServiceTarget = number | { readonly port: number; readonly address?: string };
+
+function portOf(target: ServiceTarget): number {
+  return typeof target === 'number' ? target : target.port;
+}
+
 const NO_BINDS: ServiceBinds = { bridgeAddress: '', boundPorts: [] };
 
 /** Run on the deployment host to read its bridge address, the way `bound-host.sh` reads it. */
@@ -298,19 +308,23 @@ export class Host {
   }
 
   /**
-   * The address a `local*` call dials for a port: where the deploy bound it when it is one of
-   * {@link ServiceBinds.boundPorts}, and {@link serviceAddress} for a port bound to loopback or to
-   * every address, such as the uploader's.
+   * The address a `local*` call dials for a port: the address the caller named, else where the
+   * deploy bound it when it is one of {@link ServiceBinds.boundPorts}, and {@link serviceAddress} for
+   * a port bound to loopback or to every address, such as the uploader's.
    *
    * Public for a caller that builds its own command line rather than going through `local*`.
    */
-  async dialAddress(port: number): Promise<string> {
+  async dialAddress(target: ServiceTarget): Promise<string> {
+    const address = typeof target === 'number' ? await this.boundAddress(target) : target.address;
+    return address === undefined || LOOPBACK_NAMES.has(address) ? this.serviceAddress : address;
+  }
+
+  private async boundAddress(port: number): Promise<string | undefined> {
     const bound = this.binds.boundPorts.find((candidate) => candidate.port === port);
     if (bound === undefined) {
-      return this.serviceAddress;
+      return undefined;
     }
-    const address = boundHost(bound.bind, bound.bind === '' ? await this.bridgeAddress() : '');
-    return LOOPBACK_NAMES.has(address) ? this.serviceAddress : address;
+    return boundHost(bound.bind, bound.bind === '' ? await this.bridgeAddress() : '');
   }
 
   private bridgeAddress(): Promise<string> {
@@ -352,8 +366,8 @@ export class Host {
    * own docstring explained how, so the method and the `-X POST` under it went together. A later
    * spend-capable call is a decision to take to the owner, not a parameter to put back.
    */
-  async localJson<T>(port: number, path: string, timeoutS: number = 5): Promise<T> {
-    return this.curlJson<T>(port, path, timeoutS);
+  async localJson<T>(target: ServiceTarget, path: string, timeoutS: number = 5): Promise<T> {
+    return this.curlJson<T>(target, path, timeoutS);
   }
 
   /**
@@ -363,8 +377,8 @@ export class Host {
    * `GET /feeds/{owner}/{topic}` as the m3u8 text itself rather than wrapped in an envelope, so
    * {@link localJson} would throw on it.
    */
-  async localText(port: number, path: string, timeoutS: number = 5): Promise<string> {
-    const { stdout } = await this.curl(port, path, timeoutS);
+  async localText(target: ServiceTarget, path: string, timeoutS: number = 5): Promise<string> {
+    const { stdout } = await this.curl(target, path, timeoutS);
     return stdout;
   }
 
@@ -374,9 +388,13 @@ export class Host {
    * For a route whose body is media, such as a segment through the gateway's `/bytes/`. Whether a viewer could have
    * it is the status and the size, and the bytes themselves have no business in this process.
    */
-  async localStatus(port: number, path: string, timeoutS: number = 5): Promise<{ status: number; bytes: number }> {
+  async localStatus(
+    target: ServiceTarget,
+    path: string,
+    timeoutS: number = 5,
+  ): Promise<{ status: number; bytes: number }> {
     const runTimeoutMs = Math.max(DEFAULT_RUN_TIMEOUT_MS, (timeoutS + 5) * 1_000);
-    const url = shellQuoted(`http://${await this.dialAddress(port)}:${port}${path}`);
+    const url = shellQuoted(`http://${await this.dialAddress(target)}:${portOf(target)}${path}`);
     const { stdout } = await this.run(
       `curl -s -o /dev/null -w '%{http_code} %{size_download}' --max-time ${timeoutS} ${url}`,
       runTimeoutMs,
@@ -385,20 +403,20 @@ export class Host {
     return { status, bytes };
   }
 
-  private async curlJson<T>(port: number, path: string, timeoutS: number): Promise<T> {
-    const { stdout } = await this.curl(port, path, timeoutS);
+  private async curlJson<T>(target: ServiceTarget, path: string, timeoutS: number): Promise<T> {
+    const { stdout } = await this.curl(target, path, timeoutS);
     const text = stdout.trim();
     try {
       return JSON.parse(text) as T;
     } catch {
-      throw new Error(`non-JSON from GET :${port}${path} → ${text.slice(0, 200)}`);
+      throw new Error(`non-JSON from GET :${portOf(target)}${path} → ${text.slice(0, 200)}`);
     }
   }
 
-  private async curl(port: number, path: string, timeoutS: number): Promise<RunResult> {
+  private async curl(target: ServiceTarget, path: string, timeoutS: number): Promise<RunResult> {
     // Keep the ssh run bound above curl's own deadline so --max-time is what fires first on a slow reply.
     const runTimeoutMs = Math.max(DEFAULT_RUN_TIMEOUT_MS, (timeoutS + 5) * 1_000);
-    const url = `http://${await this.dialAddress(port)}:${port}${path}`;
+    const url = `http://${await this.dialAddress(target)}:${portOf(target)}${path}`;
     return this.run(`curl -s --max-time ${timeoutS} ${url}`, runTimeoutMs);
   }
 }
@@ -542,8 +560,8 @@ export function readConfiguredBatch(stamps: readonly Stamp[], prefix: string): C
  * read. ⚠️ So a genuinely misconfigured node costs the whole window before it refuses, and a stage
  * with four of them costs four. That is the price of the refusal being about the right batch.
  *
- * Takes a port rather than the config, because a split deployment has one Bee node per rung and the
- * ports come off the routing the uploader reports. See {@link nodesBehind}.
+ * Takes the node rather than the config, because a split deployment has one Bee node per rung and
+ * their addresses and ports come off the routing the uploader reports. See {@link nodesBehind}.
  *
  * ⛔ Returns the failure rather than throwing it. `stageStamps.ts` reads every publisher node and has
  * to name all of the ones that cannot stamp, not stop at the first, so composing the message is the
@@ -572,7 +590,7 @@ export function readConfiguredBatch(stamps: readonly Stamp[], prefix: string): C
  */
 export async function pollConfiguredStamp(
   host: Host,
-  port: number,
+  node: ServiceTarget,
   configured: string,
   clock: { now: () => number; wait: (ms: number) => Promise<void> } = { now: () => Date.now(), wait: sleep },
 ): Promise<ConfiguredStampRead> {
@@ -583,7 +601,7 @@ export async function pollConfiguredStamp(
 
   for (;;) {
     try {
-      const body = await host.localJson<{ stamps?: unknown }>(port, '/stamps');
+      const body = await host.localJson<{ stamps?: unknown }>(node, '/stamps');
       if (!Array.isArray(body.stamps)) {
         unread = `no stamps array in what it answered, which was ${bodyExcerpt(body)}`;
       } else {
@@ -644,11 +662,11 @@ interface ChequebookBalance {
 /**
  * Read one bee node's SWAP chequebook balance (bandwidth funds, distinct from postage stamps).
  *
- * Takes a port rather than the config because a split deployment has one of these per rung, and the
- * ports come off the routing the uploader reports. See {@link nodesBehind}.
+ * Takes the node rather than the config because a split deployment has one of these per rung, and
+ * their addresses and ports come off the routing the uploader reports. See {@link nodesBehind}.
  */
-export function chequebookBalance(host: Host, port: number): Promise<ChequebookBalance> {
-  return host.localJson<ChequebookBalance>(port, '/chequebook/balance');
+export function chequebookBalance(host: Host, node: ServiceTarget): Promise<ChequebookBalance> {
+  return host.localJson<ChequebookBalance>(node, '/chequebook/balance');
 }
 
 /**

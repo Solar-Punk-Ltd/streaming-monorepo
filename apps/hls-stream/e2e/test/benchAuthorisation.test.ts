@@ -7,7 +7,7 @@ import { fileURLToPath } from 'node:url';
 
 import { requireBenchAuthorised } from '../src/bench/authorisation.js';
 import { type E2EConfig, loadConfig } from '../src/config.js';
-import type { Host, Stamp } from '../src/harness/host.js';
+import type { Host, ServiceTarget, Stamp } from '../src/harness/host.js';
 import type { PublisherRoute } from '../src/harness/publishers.js';
 
 /**
@@ -105,7 +105,8 @@ interface Stage {
 function stageHost({ balances = {}, ttlS = {} }: Stage = {}): { host: Host; asked: string[] } {
   const asked: string[] = [];
   const host = {
-    localJson: async (port: number, path: string): Promise<unknown> => {
+    localJson: async (target: ServiceTarget, path: string): Promise<unknown> => {
+      const port = typeof target === 'number' ? target : target.port;
       asked.push(`${port}${path}`);
       if (port === cfg.ports.uploaderApi && path === '/health') {
         return { status: 'ok', reasons: [], activeStreams: 0, engines: ['srs'], publishers: ROUTES };

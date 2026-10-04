@@ -227,7 +227,7 @@ export async function readStageStamps(host: Host, cfg: E2EConfig): Promise<NodeS
 
   const readings: NodeStampReading[] = [];
   for (const node of nodes) {
-    const { state, stamp, lastSeen } = await pollConfiguredStamp(host, node.port, node.batch);
+    const { state, stamp, lastSeen } = await pollConfiguredStamp(host, node, node.batch);
     readings.push({
       rungs: node.rungs,
       port: node.port,

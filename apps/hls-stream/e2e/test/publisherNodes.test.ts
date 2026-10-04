@@ -19,12 +19,12 @@ const route = (rung: string, url: string, batch = 'abcdef12…'): PublisherRoute
  *
  * The URL on the routing is the one the **uploader** dials, and the suite dials from the deployment
  * host, so the two only coincide when the nodes run on the host network. A split deployment does run
- * that way, and its urls carry the real host port. An unsplit one usually does not: `bee-uploader` is
- * a compose service name that resolves inside the container network and nowhere else, and its host
- * port is a separate thing the deploy publishes.
+ * that way, and its urls carry the address each node listens on and the real host port. An unsplit
+ * one usually does not: `bee-uploader` is a compose service name that resolves inside the container
+ * network and nowhere else, and its host port is a separate thing the deploy publishes.
  *
- * So one case is read off the url, the other is the deploy's own port, and anything that is neither
- * is refused. A preflight that guessed a port would report a healthy chequebook it had never read.
+ * So a url on an IP address or on localhost is read off the url, a single node named by its service
+ * gets the deploy's own port, and anything that is neither is refused. A preflight that guessed a port would report a healthy chequebook it had never read.
  */
 describe('nodesBehind', () => {
   it('reads one node per distinct url, keeping every rung it carries', () => {
@@ -135,6 +135,56 @@ describe('nodesBehind', () => {
 
     assert.equal(nodes.length, 1);
     assert.equal(nodes[0].port, 11073);
+    assert.equal(nodes[0].address, 'localhost');
+  });
+
+  /**
+   * The split stage under host networking: each rung's node listens on the host's Docker bridge
+   * address, and `bee-publishers.sh` names it there. The suite dials from the deployment host, where
+   * that address is reachable, so each url carries the address and port to read.
+   */
+  it('takes each node of a split stage on a bridge address at its own address and port', () => {
+    const nodes = nodesBehind(
+      [
+        route('360p', 'http://172.17.0.1:10075', 'aaaaaaaa…'),
+        route('480p', 'http://172.17.0.1:11071', 'bbbbbbbb…'),
+        route('720p', 'http://172.17.0.1:11073', 'cccccccc…'),
+        route('1080p', 'http://172.17.0.1:11075', 'dddddddd…'),
+      ],
+      DEPLOY_PORT,
+    );
+
+    assert.deepEqual(
+      nodes.map((node) => ({ rungs: node.rungs, address: node.address, port: node.port })),
+      [
+        { rungs: ['360p'], address: '172.17.0.1', port: 10075 },
+        { rungs: ['480p'], address: '172.17.0.1', port: 11071 },
+        { rungs: ['720p'], address: '172.17.0.1', port: 11073 },
+        { rungs: ['1080p'], address: '172.17.0.1', port: 11075 },
+      ],
+    );
+  });
+
+  it('takes a node on any other IP address, IPv6 included, at that address and port', () => {
+    const nodes = nodesBehind(
+      [
+        route('480p', 'http://198.51.100.4:11071', 'aaaaaaaa…'),
+        route('720p', 'http://[2001:db8::4]:11073', 'bbbbbbbb…'),
+      ],
+      DEPLOY_PORT,
+    );
+
+    assert.deepEqual(
+      nodes.map((node) => ({ address: node.address, port: node.port })),
+      [
+        { address: '198.51.100.4', port: 11071 },
+        { address: '[2001:db8::4]', port: 11073 },
+      ],
+    );
+  });
+
+  it('refuses a node on a bridge address with no port rather than assuming bee’s default', () => {
+    assert.throws(() => nodesBehind([route('480p', 'http://172.17.0.1')], DEPLOY_PORT), /names no port/);
   });
 
   /** One node named by its compose service, which is every deployment that has not been split. */
@@ -142,8 +192,8 @@ describe('nodesBehind', () => {
     const nodes = nodesBehind([route('all', 'http://bee-uploader:1633')], DEPLOY_PORT);
 
     assert.deepEqual(
-      nodes.map((node) => ({ rungs: node.rungs, port: node.port })),
-      [{ rungs: ['all'], port: DEPLOY_PORT }],
+      nodes.map((node) => ({ rungs: node.rungs, address: node.address, port: node.port })),
+      [{ rungs: ['all'], address: undefined, port: DEPLOY_PORT }],
     );
   });
 
@@ -160,6 +210,20 @@ describe('nodesBehind', () => {
           DEPLOY_PORT,
         ),
       /cannot be reached from the deployment host/,
+    );
+  });
+
+  it('still refuses several nodes named by container when one of them is on an address', () => {
+    assert.throws(
+      () =>
+        nodesBehind(
+          [
+            route('360p', 'http://172.17.0.1:10075', 'aaaaaaaa…'),
+            route('1080p', 'http://bee-uploader-1080p:1633', 'bbbbbbbb…'),
+          ],
+          DEPLOY_PORT,
+        ),
+      /the node carrying 1080p cannot be reached from the deployment host/,
     );
   });
 
