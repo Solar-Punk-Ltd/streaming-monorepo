@@ -20,9 +20,6 @@ import { DIGITS, HOST_DIGITS, SRS_LINE_PREFIX, srsLogText, wholeHostLine } from 
  * what comes out is the connection id, the vhost and the 30-second bitrate.
  */
 
-/** Text every RTMP publisher report contains, for a reader to filter on before parsing. */
-export const RTMP_PUBLISH_REPORT_MARKER = '<- CPB time=';
-
 /** One RTMP publisher report: one connection's incoming bitrate, and the vhost it is on when SRS names it. */
 export interface RtmpPublishReport {
   /** SRS's id for the connection, used only to tell connections apart. It never leaves the manager. */

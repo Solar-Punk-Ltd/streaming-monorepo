@@ -18,8 +18,8 @@ import {
   parseTransportStatsLine,
   parseTransportStatsLines,
   TRANSPORT_STATS_HOST_PATTERN,
-  TRANSPORT_STATS_MARKER,
 } from '../../src/domain/ingestHealth/transportStatsLine.js';
+import { INGEST_LOG_LINES } from '../../src/domain/ingestHealth/IngestHealthService.js';
 
 const FIRST =
   '[2026-09-22 17:33:50.386][INFO][1][4ek6chsn] <- SRT_CPB Transport Stats # pktRecv=6500, pktRcvLoss=394, pktRcvRetrans=381, pktRcvDrop=397';
@@ -114,7 +114,7 @@ describe('parseTransportStatsLine', () => {
   });
 
   it('keeps the marker a reader filters on inside every line it reads', () => {
-    assert.ok(FIRST.includes(TRANSPORT_STATS_MARKER));
+    assert.ok(FIRST.includes(INGEST_LOG_LINES.marker));
   });
 });
 

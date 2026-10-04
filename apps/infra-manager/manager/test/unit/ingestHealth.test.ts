@@ -49,7 +49,7 @@ import {
   type MarkedLogLines,
 } from '../../src/domain/ingestHealth/IngestHealthService.js';
 import { parseRtmpPublishReport } from '../../src/domain/ingestHealth/rtmpPublishReport.js';
-import { parseTransportStatsLine, TRANSPORT_STATS_MARKER } from '../../src/domain/ingestHealth/transportStatsLine.js';
+import { parseTransportStatsLine } from '../../src/domain/ingestHealth/transportStatsLine.js';
 import type { Profile } from '../../src/types/index.js';
 import { InMemoryProfiles, makeProfile } from '../support/profileFixtures.js';
 
@@ -80,7 +80,7 @@ const SECRET_BEARING = [
   '[2026-09-22 17:33:40.101][INFO][1][4ek6chsn] SRT: publish stream=live/stream, peer ip=203.0.113.7:51514',
   '[2026-09-22 17:33:40.123][INFO][1][4ek6chsn] http: on_publish ok, client_id=4ek6chsn, url=http://stream-uploader:3000/engines/srs/streams?token=abc123, response={"code":0}',
   '\u001b[33m[2026-09-22 17:33:50.901][WARN][1][4ek6chsn] RCV-DROPPED 1 packet(s). Packet seqno %861816580 delayed for 4.5 ms\u001b[0m',
-  `[2026-09-22 17:33:51.000][INFO][1][4ek6chsn] url=http://srs/?token=abc123 ${TRANSPORT_STATS_MARKER}pktRecv=1, pktRcvLoss=0, pktRcvRetrans=0, pktRcvDrop=0`,
+  `[2026-09-22 17:33:51.000][INFO][1][4ek6chsn] url=http://srs/?token=abc123 <- SRT_CPB Transport Stats # pktRecv=1, pktRcvLoss=0, pktRcvRetrans=0, pktRcvDrop=0`,
   '[2026-10-03 17:43:10.120][INFO][1][9tq3vz71] connect app, tcUrl=rtmp://ingest.example.org:10062/video, pageUrl=, swfUrl=, schema=rtmp, vhost=ingest.example.org, port=10062, app=video, args=null',
   '[2026-10-03 17:43:10.130][INFO][1][9tq3vz71] client identified, type=fmle-publish, vhost=ingest.example.org, app=video, stream=1867808f, param=?key=abc123, duration=0ms',
   `[2026-10-03 17:43:10.140][INFO][1][9tq3vz71] stream=${rtmpReport('9tq3vz71', INGEST_VHOST, 4812)}`,

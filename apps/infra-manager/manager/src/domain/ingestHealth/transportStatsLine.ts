@@ -16,9 +16,6 @@ import { DIGITS, HOST_DIGITS, SRS_LINE_PREFIX, srsLogText, wholeHostLine } from 
  * is not read at all, and what comes out is four counts and the connection id.
  */
 
-/** Text every publisher statistics line contains, for a reader to filter on before parsing. */
-export const TRANSPORT_STATS_MARKER = '<- SRT_CPB Transport Stats # ';
-
 /** One statistics line: one SRT connection's counts over one interval. */
 export interface TransportStatsReport {
   /** SRS's id for the connection, used only to tell connections apart. It never leaves the manager. */
