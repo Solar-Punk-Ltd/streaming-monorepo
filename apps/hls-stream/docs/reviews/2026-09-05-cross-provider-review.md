@@ -234,7 +234,7 @@ The plan the day followed, as written the evening before:
    ssh <host> "curl -s -XPOST -H 'Immutable: true' 'http://127.0.0.1:11075/stamps/2924605440/17?label=drain-1080p'"
    ```
 
-   then `deploy/scripts/drain-stage.sh --profile=latbench --portSlot=7 --rung=1080p arm --batch=<that id>`,
+   then `deploy/scripts/drain-stage.sh --profile=<profile> --portSlot=7 --rung=1080p arm --batch=<that id>`,
    the sitting through `bench-on-host.sh --script e2e:batch-drain-viewer` with the byte source's
    profile, `drain-stage.sh ... restore`, and `pnpm e2e:ladder-restored` to close it.
 
