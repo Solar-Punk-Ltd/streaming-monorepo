@@ -19,10 +19,12 @@ import { describe, it } from 'node:test';
 import { ABR_NODE_POOL_GROUP_KIND, beePublishersValue, DEFAULT_ABR_RUNGS } from '@streaming-infra-manager/common';
 
 import { ProfileConfigError } from '../../src/domain/errors/index.js';
+import { EventBus } from '../../src/domain/EventBus.js';
+import { StampService } from '../../src/domain/StampService.js';
 import { StagePoolStrings } from '../../src/domain/stages/StagePoolStrings.js';
 import type { DeploymentGroup, Profile } from '../../src/types/index.js';
 import { throwawayRoot } from '../support/throwawayRoot.js';
-import { makeProfile } from '../support/profileFixtures.js';
+import { FakeContainers, InMemoryProfiles, makeProfile } from '../support/profileFixtures.js';
 
 const root = throwawayRoot('stage-follows-pool-');
 process.env.SHLS_ROOT = root;
@@ -123,6 +125,23 @@ describe('a stage whose rungs came from a pool on this manager', () => {
       return true;
     });
     assert.equal(runner.runs.length, 0);
+  });
+
+  it('takes a rung’s new batch into its stored copy when the rung is set to it', async () => {
+    const stored = stage(poolString(OLD_BATCHES));
+    const profiles = new InMemoryProfiles([stored, ...rungMembers(OLD_BATCHES)]);
+    const poolStrings = new StagePoolStrings({
+      profiles: profiles.asRepository(),
+      groups: { list: async () => [POOL] },
+      publisherHost: async () => PUBLISHER_HOST,
+    });
+    const stamps = new StampService(profiles.asRepository(), new FakeContainers().asRepository(), new EventBus());
+    stamps.setAfterStampSet((name) => poolStrings.refreshStagesOf(name));
+
+    await stamps.setStamp('abr-720p', NEW_BATCHES[2]!);
+
+    const expected = [OLD_BATCHES[0]!, OLD_BATCHES[1]!, NEW_BATCHES[2]!, OLD_BATCHES[3]!];
+    assert.equal(profiles.rows.get(STAGE)?.bee_publishers, poolString(expected));
   });
 });
 

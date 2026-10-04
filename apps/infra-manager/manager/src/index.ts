@@ -448,6 +448,7 @@ async function main(): Promise<void> {
       eventBus.publish({ type: 'profile.changed', profile: await containerRepository.withContainers(profile) }),
   });
   orchestrator.setPoolStrings((profile) => stagePoolStrings.withCurrentBatches(profile));
+  stampService.setAfterStampSet((name) => stagePoolStrings.refreshStagesOf(name));
   // The pinned batch's node, and while a move is pending the node of the batch it moved from.
   orchestrator.setRemovalGuard((name) => catalogueService.assertRemovable(name));
   catalogue.start();

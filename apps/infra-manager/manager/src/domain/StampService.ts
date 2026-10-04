@@ -118,8 +118,12 @@ export function beePublisherUrlFor(profile: Profile, localPublisherHost: string)
   return `http://${host}:${port}`;
 }
 
+/** What runs once a batch is set on a deployment, given its name. Never throws. */
+export type AfterStampSet = (name: string) => Promise<void>;
+
 export class StampService {
   private readonly pendingUsableWaits = new Set<string>();
+  private afterStampSet: AfterStampSet | null = null;
 
   constructor(
     private readonly profiles: ProfileRepository,
@@ -130,6 +134,14 @@ export class StampService {
     private readonly readLog: NodeReadLog = new NodeReadLog(),
     private readonly pause: PollPause = sleep,
   ) {}
+
+  /**
+   * Sets what runs once a batch is set on a deployment: bringing the stored pool string of the ABR stages of a
+   * pool rung to its new batch. A setter because those stages are kept by a service built after this one.
+   */
+  setAfterStampSet(hook: AfterStampSet | null): void {
+    this.afterStampSet = hook;
+  }
 
   async getNodeObservation(name: string): Promise<BeeNodeObservation> {
     return this.shared(name, 'observation', (client) => client.getNodeObservation());
@@ -227,6 +239,7 @@ export class StampService {
     logger.info(`[StampService] ${name}: stamp_id set`);
     const withContainers = await this.containers.withContainers(updated);
     this.events.publish({ type: 'profile.changed', profile: withContainers });
+    await this.afterStampSet?.(name);
     return withContainers;
   }
 
@@ -492,6 +505,7 @@ export class StampService {
           profile: withContainers,
         });
         logger.info(`[StampService] ${name}: stamp ${batchID} usable → set as active`);
+        await this.afterStampSet?.(name);
       }
       return;
     }
