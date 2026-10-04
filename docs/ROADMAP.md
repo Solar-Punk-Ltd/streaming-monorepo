@@ -346,7 +346,7 @@ Left open after the nine phases:
 - **The catalogue move** is built and off until it has been tried on a
   real node.
 - **The upgrade, scripted.** The rollout below is six manual steps in a fixed
-  order; a script with a check after each step comes before an existing
+  order. A script with a check after each step comes before an existing
   installation is upgraded.
 - **Pending retirements** show only in the manager's log; the Stages page
   could count them.

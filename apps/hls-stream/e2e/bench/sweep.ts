@@ -1,5 +1,5 @@
 /**
- * `pnpm bench:sweep-report` — read every run in `BENCH_RESULTS_DIR` and print the grid.
+ * `pnpm bench:sweep-report`: read every run in `BENCH_RESULTS_DIR` and print the grid.
  *
  * Reads artifacts only. It spends nothing, touches no deployment, and can be re-run against a sweep
  * that finished hours ago, which is the point of the runs carrying their own instants.
