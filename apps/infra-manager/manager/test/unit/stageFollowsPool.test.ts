@@ -18,6 +18,7 @@ import { describe, it } from 'node:test';
 
 import { ABR_NODE_POOL_GROUP_KIND, beePublishersValue, DEFAULT_ABR_RUNGS } from '@streaming-infra-manager/common';
 
+import type { BeeClient } from '../../src/domain/BeeClient.js';
 import { ProfileConfigError } from '../../src/domain/errors/index.js';
 import { EventBus } from '../../src/domain/EventBus.js';
 import { StampService } from '../../src/domain/StampService.js';
@@ -142,6 +143,44 @@ describe('a stage whose rungs came from a pool on this manager', () => {
 
     const expected = [OLD_BATCHES[0]!, OLD_BATCHES[1]!, NEW_BATCHES[2]!, OLD_BATCHES[3]!];
     assert.equal(profiles.rows.get(STAGE)?.bee_publishers, poolString(expected));
+  });
+});
+
+describe('a batch bought on a rung of its pool', () => {
+  it('reaches the stage’s stored pool string once the batch is usable', async () => {
+    const bought = batch('e');
+    const stored = stage(poolString(OLD_BATCHES));
+    const profiles = new InMemoryProfiles([stored, ...rungMembers(OLD_BATCHES)]);
+    const poolStrings = new StagePoolStrings({
+      profiles: profiles.asRepository(),
+      groups: { list: async () => [POOL] },
+      publisherHost: async () => PUBLISHER_HOST,
+    });
+    const client = {
+      buyStamp: async () => ({ batchID: bought }),
+      getStamp: async () => ({ usable: true }),
+    } as unknown as BeeClient;
+    const stamps = new StampService(
+      profiles.asRepository(),
+      new FakeContainers().asRepository(),
+      new EventBus(),
+      () => client,
+      undefined,
+      undefined,
+      async () => {},
+    );
+    stamps.setAfterStampSet((name) => poolStrings.refreshStagesOf(name));
+
+    await stamps.buyStamp('abr-720p', { amount: '1000000000', depth: 23, immutable: true });
+
+    const expected = poolString([OLD_BATCHES[0]!, OLD_BATCHES[1]!, bought, OLD_BATCHES[3]!]);
+    const deadline = Date.now() + 5_000;
+    while (profiles.rows.get(STAGE)?.bee_publishers !== expected && Date.now() < deadline) {
+      await new Promise((resolve) => {
+        setTimeout(resolve, 10);
+      });
+    }
+    assert.equal(profiles.rows.get(STAGE)?.bee_publishers, expected);
   });
 });
 
