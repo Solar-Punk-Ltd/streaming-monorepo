@@ -219,8 +219,8 @@ SSH_TRANSPORT_FAILED=255
 
 # The uploader is network_mode: host on every deployment that splits its bees this way (see
 # deploy/docker-compose.host.yml), so it dials each node at the address the node listens on, the same
-# address this script reads /stamps from. It is also what makes the e2e preflight able to resolve a
-# port off the routing the uploader reports.
+# address this script reads /stamps from. The e2e preflight resolves a port off the routing the
+# uploader reports only when that url is a loopback one, so it refuses a bridge address here.
 #
 # Under COMPOSE_NETWORK=host a node listens where its own *_API_LISTEN says, and where that is empty
 # on the bridge address deploy.sh hands it through HOST_NETWORK_LISTEN, or 127.0.0.1 when the bridge
