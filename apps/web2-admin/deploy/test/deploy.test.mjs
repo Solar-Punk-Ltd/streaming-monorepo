@@ -264,7 +264,7 @@ describe('deploy.sh and the keys the catalogue stamp replaced', () => {
   });
 });
 
-describe('deploy.sh and the public values a fresh copy of .env.sample carries', () => {
+describe('deploy.sh and the published test values', () => {
   const SAMPLE_KEY = '0xac0974bec39a17e36ba4a6b4d238ff944bacb478cbed5efcae784d7bf4f2ff80';
   const SAMPLE_TOKEN = 'change-me-to-32-or-more-random-characters';
 
@@ -272,13 +272,13 @@ describe('deploy.sh and the public values a fresh copy of .env.sample carries', 
     env.replace(/^FEED_PRIVATE_KEY=.*$/m, `FEED_PRIVATE_KEY=${SAMPLE_KEY.toUpperCase().replace('0X', '0x')}`);
   const withSampleToken = (env) => env.replace(/^INTERNAL_API_TOKEN=.*$/m, `INTERNAL_API_TOKEN=${SAMPLE_TOKEN}`);
 
-  it('refuses the sample FEED_PRIVATE_KEY, in either case, and runs nothing', () => {
+  it('refuses the public Hardhat FEED_PRIVATE_KEY, in either case, and runs nothing', () => {
     const sandbox = makeSandbox({ checkout: { [ENV_FILES.qa.now]: withSampleKey(fakeAdminEnv('sample-key')) } });
 
     const refused = sandbox.runScript(DEPLOY, LOCAL_QA);
 
     assert.equal(refused.status, 1, refused.stderr);
-    assert.match(refused.stderr, /ERROR: \S+: FEED_PRIVATE_KEY is the public Hardhat test key from \.env\.sample/);
+    assert.match(refused.stderr, /ERROR: \S+: FEED_PRIVATE_KEY is the public Hardhat test key\. Anyone/);
     assert.match(refused.stderr, /1 problem\(s\) in \S+\. Nothing was deployed\./);
     assert.deepEqual(refused.calls, [], 'a tool ran before the refusal');
   });

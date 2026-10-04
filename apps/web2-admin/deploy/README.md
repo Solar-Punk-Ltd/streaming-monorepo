@@ -62,8 +62,8 @@ The script refuses to deploy, before anything leaves your machine, when a key
 the API cannot start without is missing or malformed: `POSTGRES_PASSWORD`,
 `FEED_PRIVATE_KEY` and `INTERNAL_API_TOKEN` (32 characters or more), plus the
 optional keys the API refuses when they are set wrong. It also refuses a
-`FEED_PRIVATE_KEY` or an `INTERNAL_API_TOKEN` that is still the sample's: the
-public Hardhat key, the placeholder token. Anyone could write the stream list
+`FEED_PRIVATE_KEY` or an `INTERNAL_API_TOKEN` that is a published test value:
+the public Hardhat key, the sample's placeholder token. Anyone could write the stream list
 with the one and register stages with the other. A test install can keep them
 with `--allow-sample-secrets`, and the script then warns about each one and
 deploys.
@@ -124,7 +124,7 @@ deploy.sh --host=<ssh-target> [--profile=<name>] [--portSlot=<N>] [--remote-path
   `/opt/streaming/streaming-monorepo`. It is not accepted with
   `--host=localhost`.
 - `--allow-sample-secrets` deploys an env file whose `FEED_PRIVATE_KEY` or
-  `INTERNAL_API_TOKEN` is still the sample's, with a warning for each. It is
+  `INTERNAL_API_TOKEN` is a published test value, with a warning for each. It is
   for a test install only. Without it, either value refuses the deploy.
 - Services are `postgres`, `api` and `web`. None named means all three. Compose
   starts whatever a named service depends on.
