@@ -285,7 +285,11 @@ describe('who may play from SRS and who may publish to it', () => {
   });
 
   it('lets an operator allow play from every address with SRS_PLAY_FROM=all', () => {
-    const conf = renderLadderConf({ SRS_WEBHOOK_TOKEN: VALID.SRS_WEBHOOK_TOKEN, ABR_ENABLED: 'false', SRS_PLAY_FROM: 'all' });
+    const conf = renderLadderConf({
+      SRS_WEBHOOK_TOKEN: VALID.SRS_WEBHOOK_TOKEN,
+      ABR_ENABLED: 'false',
+      SRS_PLAY_FROM: 'all',
+    });
 
     assert.deepEqual(playFrom(vhostBlock(conf, INGEST_VHOST)), ['all']);
   });

@@ -265,11 +265,15 @@ describe('the published ports an operator can bind to one interface', () => {
     );
   });
 
-  it('gives every Bee API the deploy\'s host-networking listen default, which is empty on a bridge network', () => {
+  it("gives every Bee API the deploy's host-networking listen default, which is empty on a bridge network", () => {
     for (const file of BEE_COMPOSE_FILES) {
       const listens = composeText(file).match(/--api-addr=[^\n]*/g) ?? [];
       for (const listen of listens.filter((line) => line.includes('_API_LISTEN'))) {
-        assert.match(listen, /^--api-addr=\$\{BEE_[A-Z0-9_]+_API_LISTEN:-\$\{HOST_NETWORK_LISTEN:-\}\}:/, `${file}: ${listen}`);
+        assert.match(
+          listen,
+          /^--api-addr=\$\{BEE_[A-Z0-9_]+_API_LISTEN:-\$\{HOST_NETWORK_LISTEN:-\}\}:/,
+          `${file}: ${listen}`,
+        );
       }
     }
   });

@@ -114,7 +114,7 @@ describe('the SRT line a broadcaster points at an SRS deployment', () => {
 describe('the RTMP server and stream key a broadcaster gives OBS for an SRS deployment', () => {
   const containersOf = (ports: Record<string, number>, service = SRS_SERVICE) =>
     [{ service, ports }] as unknown as Profile['containers'];
-  it('offers RTMP on every SRS deployment, because its engine takes it and the firewall is the operator\'s', () => {
+  it("offers RTMP on every SRS deployment, because its engine takes it and the firewall is the operator's", () => {
     const srs = profile({
       host: 'stream.example',
       port_slot: 6,
@@ -145,10 +145,7 @@ describe('the RTMP server and stream key a broadcaster gives OBS for an SRS depl
       containers: containersOf({ SRS_SRT_PORT: 10061 }),
     });
 
-    assert.equal(
-      rtmpPublishSettings(recordedBefore, SERVER_HOST)?.server,
-      'rtmp://stream.example:10062/live',
-    );
+    assert.equal(rtmpPublishSettings(recordedBefore, SERVER_HOST)?.server, 'rtmp://stream.example:10062/live');
   });
 
   it('offers no RTMP at slot 0 with no recorded port, rather than guess one', () => {

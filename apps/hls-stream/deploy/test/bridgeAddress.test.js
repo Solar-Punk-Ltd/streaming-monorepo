@@ -130,16 +130,14 @@ describe('host networking', () => {
   });
 
   it('points it at an explicit listen address, and at localhost for an operator who opened every address', async () => {
-    const named = await deployLocal(
-      ['COMPOSE_NETWORK=host', 'BEE_UPLOADER_API_LISTEN=198.51.100.7'],
-      {},
-      ['bee-uploader', 'stream-uploader'],
-    );
-    const open = await deployLocal(
-      ['COMPOSE_NETWORK=host', 'BEE_UPLOADER_API_LISTEN=0.0.0.0'],
-      {},
-      ['bee-uploader', 'stream-uploader'],
-    );
+    const named = await deployLocal(['COMPOSE_NETWORK=host', 'BEE_UPLOADER_API_LISTEN=198.51.100.7'], {}, [
+      'bee-uploader',
+      'stream-uploader',
+    ]);
+    const open = await deployLocal(['COMPOSE_NETWORK=host', 'BEE_UPLOADER_API_LISTEN=0.0.0.0'], {}, [
+      'bee-uploader',
+      'stream-uploader',
+    ]);
 
     assert.equal(lastValue(named.sandbox.envFiles(), 'BEE_URL'), 'http://198.51.100.7:1633');
     assert.equal(lastValue(open.sandbox.envFiles(), 'BEE_URL'), 'http://localhost:1633');
