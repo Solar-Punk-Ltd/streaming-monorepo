@@ -56,26 +56,27 @@ describe('the OBS server line for SRT', () => {
 
 describe('what a console says beside RTMP', () => {
   const WITH_PASSPHRASE =
-    "RTMP is not encrypted. Your stream key crosses the network as readable text, and anyone who reads it there can publish to this stream with it. This stage lets a new RTMP publisher with the key take over a live stream, so they can also replace your live broadcast with theirs, whichever protocol you broadcast over. SRT with this stage's passphrase keeps your picture private but not your key, because SRT sends the key before encryption starts, and while RTMP is open a key read off either protocol publishes over RTMP.";
+    "RTMP is not encrypted, so your stream key crosses the network as readable text. A key read off the network publishes to this stream over RTMP, whichever protocol it was read from, because SRT sends the key before its encryption starts. With the takeover on, a publisher with the key can also replace your live broadcast with theirs. This stage's SRT passphrase keeps your picture private but not your key.";
 
   it("gives the web2 admin's OBS panel and the manager's Publish card the same warning, each naming its own owner", () => {
     assert.equal(rtmpUnencryptedWarning('stage', true), WITH_PASSPHRASE);
     assert.equal(rtmpUnencryptedWarning('deployment', true), WITH_PASSPHRASE.replaceAll('stage', 'deployment'));
   });
 
-  it('says the takeover is on, without hedging, because the stack turns it on wherever keys are checked', () => {
-    for (const passphrase of [true, false]) {
-      const warning = rtmpUnencryptedWarning('stage', passphrase);
-      assert.match(warning, /This stage lets a new RTMP publisher with the key take over a live stream/);
-      assert.doesNotMatch(warning, /On a stage that lets/);
-    }
-  });
-
-  it('says a key read off SRT publishes over RTMP while RTMP is open, passphrase or not', () => {
+  it('names the takeover as the condition for replacing a live broadcast, because it is a setting', () => {
     for (const passphrase of [true, false]) {
       assert.match(
         rtmpUnencryptedWarning('stage', passphrase),
-        /SRT sends the key before (any )?encryption starts, .*a key read off either protocol publishes over RTMP/,
+        /With the takeover on, a publisher with the key can also replace your live broadcast/,
+      );
+    }
+  });
+
+  it('says a key read off SRT publishes over RTMP, passphrase or not', () => {
+    for (const passphrase of [true, false]) {
+      assert.match(
+        rtmpUnencryptedWarning('stage', passphrase),
+        /publishes to this stream over RTMP, whichever protocol it was read from, because SRT sends the key before its encryption starts/,
       );
     }
   });
@@ -84,7 +85,16 @@ describe('what a console says beside RTMP', () => {
     const warning = rtmpUnencryptedWarning('stage', false);
     assert.doesNotMatch(warning, /with a passphrase instead/);
     assert.doesNotMatch(warning, /keeps your picture private/);
-    assert.match(warning, /this stage has no SRT passphrase to keep the picture private/);
+    assert.match(warning, /This stage has no SRT passphrase, so the picture is not private either/);
+  });
+
+  it('states only facts about the protocol, and nothing about which ports are reachable', () => {
+    for (const owner of ['stage', 'deployment'] as const) {
+      for (const passphrase of [true, false]) {
+        const warning = rtmpUnencryptedWarning(owner, passphrase);
+        assert.doesNotMatch(warning, /while RTMP is open|closed to the outside|firewall|open the port/i);
+      }
+    }
   });
 
   it('carries no em dash and no semicolon', () => {

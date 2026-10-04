@@ -18,8 +18,6 @@ import {
 
 import {
   CATALOGUE_RELEASE_LABEL,
-  CATALOGUE_API_EVERY_ADDRESS_WARNING,
-  catalogueApiWarning,
   catalogueBatchViews,
   catalogueCandidates,
   catalogueMoveConfirmText,
@@ -207,37 +205,5 @@ describe('what the card says of the pinned batch', () => {
     assert.match(note, /leaves the catalogue on the pinned one/);
     assert.match(note, /Moving the catalogue to another batch is its own action\./);
     assert.match(note, /Top up the pinned batch here/);
-  });
-});
-
-describe('the pinned node’s Bee API', () => {
-  it('warns when Docker reports it published on every address, and says nothing otherwise', () => {
-    assert.equal(catalogueApiWarning({ apiOnEveryAddress: true }), CATALOGUE_API_EVERY_ADDRESS_WARNING);
-    assert.match(CATALOGUE_API_EVERY_ADDRESS_WARNING, /every address/);
-    assert.match(CATALOGUE_API_EVERY_ADDRESS_WARNING, /no password/);
-    assert.match(CATALOGUE_API_EVERY_ADDRESS_WARNING, /firewall must admit the control host alone/);
-    for (const apiOnEveryAddress of [false, null, undefined]) {
-      assert.equal(catalogueApiWarning({ apiOnEveryAddress }), null, String(apiOnEveryAddress));
-    }
-  });
-
-  // A redeploy binds a node on the manager's own host to the bridge only when
-  // its bind is empty, it is not on host networking and the manager confirmed
-  // the bridge. The card promises no more than that, so a node kept open on
-  // purpose, or one on host networking, is not told a redeploy closes it.
-  it('promises a redeploy only where one binds the node, and says what binds it otherwise', () => {
-    const warning = CATALOGUE_API_EVERY_ADDRESS_WARNING;
-    assert.match(
-      warning,
-      /only when its BEE_UPLOADER_API_BIND is empty, it is not on host networking and the manager confirmed the bridge/,
-    );
-    assert.match(warning, /could not confirm the bridge.*BEE_UPLOADER_API_BIND in the node’s settings is yours to set/);
-    assert.match(
-      warning,
-      /0\.0\.0\.0 keeps the node open on purpose, so this warning stays until that setting changes/,
-    );
-    assert.match(warning, /Under host networking its listen address is what counts/);
-    assert.match(warning, /BEE_UPLOADER_API_LISTEN in the node’s settings/);
-    assert.match(warning, /the deploy warns while it is empty/);
   });
 });

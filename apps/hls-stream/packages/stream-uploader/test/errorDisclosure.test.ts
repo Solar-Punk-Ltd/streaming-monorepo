@@ -218,13 +218,13 @@ describe('responses do not carry internals (S1.7)', () => {
   });
 
   /**
-   * The SEC-12 residue. The control route token change moved the gate ahead of the parsers for `/stream/*`, which left the
+   * The residue of the error-disclosure fix. The control route token change moved the gate ahead of the parsers for `/stream/*`, which left the
    * engine prefixes: OME signs its own request body, so it has no app-level gate to sit behind, and
    * a malformed body there reached `express.json` from an anonymous caller and answered 500 with an
    * ERROR log line per request. That put the 5xx rate and the error channel operators alert on under
    * the control of anyone who could reach the port.
    */
-  describe('a body this service cannot read is the caller’s fault, not a 500 (SEC-12)', () => {
+  describe('a body this service cannot read is the caller’s fault, not a 500', () => {
     async function postToUngatedEngine(body: string, headers: Record<string, string> = {}) {
       const engine = createOmeEngine('http://ome:8081', 60_000, { admissionSecret: 'secret' });
       const api = await start(makeTestOrchestrator(), [engine]);
@@ -284,9 +284,9 @@ describe('responses do not carry internals (S1.7)', () => {
    * see, and only for the 4xx range this service has decided to attribute. Everything else collapses
    * to the one generic 500, because a status is disclosure too: answering an internal Bee 404 as a
    * 404 tells a caller their own request was at fault and moves the failure off the channel operators
-   * alert on. See SEC-12.
+   * alert on.
    */
-  describe('the status answered back comes from the error, and is bounded (SEC-12)', () => {
+  describe('the status answered back comes from the error, and is bounded', () => {
     async function answerFor(props: Record<string, unknown>) {
       const engine = engineThatThrows(Object.assign(new Error(LEAKY_MESSAGE), props));
       const api = await start(makeTestOrchestrator(), [engine]);

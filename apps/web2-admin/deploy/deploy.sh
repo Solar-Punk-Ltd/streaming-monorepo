@@ -52,10 +52,11 @@ readonly KNOWN_SERVICES="postgres api web"
 # The loopback port the console gets without a port slot. The manager's own
 # console is on 8080, and both are often tunnelled from one laptop.
 readonly DEFAULT_WEB_PORT=9090
-# The public keys a fresh copy of .env.sample carries. They make a checkout
-# start, and they must never sign a real catalogue or guard a real internal API,
-# so a deploy refuses them unless --allow-sample-secrets is given.
-readonly SAMPLE_FEED_PRIVATE_KEY="0xac0974bec39a17e36ba4a6b4d238ff944bacb478cbed5efcae784d7bf4f2ff80"
+# Published values: the first Hardhat test account's key, which every Hardhat
+# install documents, and the placeholder token in .env.sample. They must never
+# sign a real catalogue or guard a real internal API, so a deploy refuses them
+# unless --allow-sample-secrets is given.
+readonly PUBLIC_TEST_FEED_PRIVATE_KEY="0xac0974bec39a17e36ba4a6b4d238ff944bacb478cbed5efcae784d7bf4f2ff80"
 readonly SAMPLE_INTERNAL_API_TOKEN="change-me-to-32-or-more-random-characters"
 
 usage() {
@@ -85,7 +86,7 @@ Flags (each one with a value also accepts it separately, as in --host admin-host
                         profile. Not accepted with --host=localhost.
   --allow-sample-secrets
                         Deploy a FEED_PRIVATE_KEY or INTERNAL_API_TOKEN that is
-                        still the public value from .env.sample, with a warning
+                        a published test value, with a warning
                         for each. For a test install only: without it, either
                         value refuses the deploy.
   -h, --help            Show this help.
@@ -326,7 +327,7 @@ problem() {
     PROBLEMS=$((PROBLEMS + 1))
 }
 
-# A value still the sample's is public. It refuses the deploy, and only warns
+# A published value signs or guards nothing. It refuses the deploy, and only warns
 # when --allow-sample-secrets says the install is a test one.
 SAMPLE_SECRETS=0
 sample_secret() {
@@ -364,8 +365,8 @@ elif ! [[ "$FEED_PRIVATE_KEY" =~ ^0x[0-9a-fA-F]{64}$ ]]; then
     problem "FEED_PRIVATE_KEY must be 0x followed by 64 hex characters."
 elif [[ "$FEED_PRIVATE_KEY" =~ ^0x0{64}$ ]]; then
     problem "FEED_PRIVATE_KEY is all zeroes, which is not a private key."
-elif [ "$(lower "$FEED_PRIVATE_KEY")" = "$SAMPLE_FEED_PRIVATE_KEY" ]; then
-    sample_secret "FEED_PRIVATE_KEY is the public Hardhat test key from .env.sample. Anyone can write this catalogue's feed. Generate a key of your own."
+elif [ "$(lower "$FEED_PRIVATE_KEY")" = "$PUBLIC_TEST_FEED_PRIVATE_KEY" ]; then
+    sample_secret "FEED_PRIVATE_KEY is the public Hardhat test key. Anyone can write this catalogue's feed. Generate a key of your own."
 fi
 
 INTERNAL_API_TOKEN="$(env_value INTERNAL_API_TOKEN)"
@@ -462,7 +463,7 @@ log "commit $COMMIT (written to $APP_DIR_FROM_ROOT/deploy/.deployed-commit)"
 
 # The host's last step: say when this profile's env file from before the move
 # is still there. It is no longer read, but it keeps a second copy of the
-# signing key and token. Removing a file from a host is the owner's call, so
+# signing key and token. Removing a file from a host is the operator's call, so
 # the step prints the command rather than running it. --host=localhost has no
 # host checkout to look in. The path, profile and host it names were held to
 # patterns above, as everything host_script interpolates is.

@@ -22,11 +22,11 @@ import { waitFor } from '../../src/harness/wait.js';
 import { requireByteSource, viewerGate } from '../../src/viewerCoverage.js';
 
 /**
- * V7 — the process writing the broadcast into Swarm is killed under a watching viewer.
+ * The uploader crash arm: the process writing the broadcast into Swarm is killed under a watching viewer.
  *
  * ## What this promotes
  *
- * Arm 3 of the crash matrix, `docs/bench/crash-at-an-in-tab-viewer-2026-08-27.md`. SIGKILL to the
+ * Arm 3 of the crash matrix, the `crash-at-an-in-tab-viewer-2026-08-27` measurement (kept outside the repository). SIGKILL to the
  * uploader, nothing new reaching the feed for fifteen seconds, and a viewer who spent 7.1s of buffer,
  * froze for 13.5s, and had their picture back 2.3s after the process answered again.
  *
@@ -36,7 +36,7 @@ import { requireByteSource, viewerGate } from '../../src/viewerCoverage.js';
  *
  * ## ⛔ No timing is asserted
  *
- * Owner ruling of 2026-08-29: an e2e suite checks feature correctness and stability, and performance
+ * An e2e suite checks feature correctness and stability, and performance
  * is a separate kind of test. This once held the freeze between 3 and 45 seconds, required 3s of
  * buffer and required the resume inside 20s. Live on the four rung ladder the freeze read 57.1s and
  * the case went red for a configuration difference, not a broken feature. The resume figure is the
@@ -55,7 +55,7 @@ import { requireByteSource, viewerGate } from '../../src/viewerCoverage.js';
  *
  * ⭐ **So the silence is printed, and only a FALSE message fails.** This used to assert the silence
  * exactly, which meant a fix for the silent overlay gap turned the case red for the product
- * improving. Under the owner ruling of 2026-08-29 a correctness suite goes green when the product
+ * improving. Because an e2e suite checks correctness and never speed, it goes green when the product
  * gets better, so the client finding its voice here passes and the run's own line says which of the
  * two happened.
  *
@@ -97,7 +97,7 @@ const backend = byteSourceFromEnv(process.env.BROWSER_FETCH_BACKEND);
 // Module scope, so an undeclared run fails the file during import rather than skipping into silence.
 const skip = viewerGate(cfg.viewerExpectation, backend, cfg.browserRepoDir);
 
-describe('V7 — a viewer watching when the uploader is killed', { skip }, () => {
+describe('a viewer watching when the uploader is killed', { skip }, () => {
   const host = makeHost(cfg);
   const uploader = containerName(cfg, 'stream-uploader');
   const broken = containerName(cfg, SCENARIO.service);

@@ -136,6 +136,8 @@ async function runPreflight({ uploaderPort, gatewayPort, rounds = 1, minutes = 3
 
   const env = {
     ...process.env,
+    PROFILE: 'bench-stage',
+    PORT_SLOT: '7',
     OUT_DIR: out,
     SPEND_LEDGER: writeLedger(out, [uploaderPort, gatewayPort]),
     PREFLIGHT_ONLY: '1',
@@ -191,7 +193,7 @@ describe('a sweep proves it can pay before it publishes anything', () => {
 
   it('refuses when a chequebook cannot be read at all', async () => {
     // Unknown funding is not permission to spend. A node answering 405 has no chequebook, which is
-    // the shape that caused LAT-10, so treating it as "nothing to check" is how that returns.
+    // the shape of a node with no chequebook, so treating it as "nothing to check" is how that returns.
     const noChequebook = await startChequebook(null);
     const funded = await startChequebook(5);
     const result = await runPreflight({ uploaderPort: noChequebook, gatewayPort: funded });

@@ -297,23 +297,15 @@ moved and are marked where they do.
 
 1. Deploy the manager with PR 1. Create the first user with the CLI above. Sign in through the
    tunnel and confirm the gate before anything is opened.
-2. Bind the node and engine APIs off the public interface. **Where these settings live has
-   changed.** This step used to say they belong in `manager/swarm-hls-stream/.env` in the laptop's
-   checkout, because a deploy rsynced that file to the host. A deploy no longer carries the stack
-   at all, it carries one commit, and the submodule directory is excluded from the rsync, so an
-   edit there now reaches nothing. They live on the server, in the bundled version's own config
-   root, and are edited with the settings page or the editing script. There are five of them
-   rather than two, because the engines publish three HTTP ports of their own.
-   `deploy/README.md` step 2 names all five and how to edit them.
-
-   The reasoning is unchanged. Set them to the Docker bridge address, never `127.0.0.1` for the
-   Bee ports or OME's HLS port, because the manager reaches those through `host.docker.internal`,
-   which is that same address, and loopback would cut off stamp management for every deployment
-   on the host without saying so. Each node and engine picks the new binding up on its next
-   deploy. **This step cannot be swapped for the firewall.** Docker publishes a container port by
-   rewriting the destination and forwarding the packet, which never reaches the input hook a host
-   firewall filters. The forward rules of step 3 do reach it, but they filter one way in where the
-   bind closes the port outright.
+2. Check where the node and engine APIs answer. They live on the server, in the bundled version's
+   own config root, and are edited with the settings page or the editing script.
+   `deploy/README.md` step 2 names all eight. Left empty, each answers on the host's Docker bridge
+   address, which the stack's deploy reads at deploy time, because Docker publishes a container
+   port by rewriting the destination and forwarding the packet, which never reaches the input hook
+   a host firewall filters. Never `127.0.0.1` for the Bee ports or OME's HLS port on a Linux host,
+   because the manager reaches those through `host.docker.internal`, which is the bridge address,
+   and loopback would cut off stamp management for every deployment on the host without saying
+   so. Each node and engine picks a new binding up on its next deploy.
 
 3. Firewall, default deny inbound. Allowed: 22 (or `--ssh-port`), 80 and 443 TCP, and 443 UDP for
    the edge's HTTP/3. In the 10000 to 19999 band the stack uses, allowed only: TCP on the Bee P2P
@@ -339,8 +331,8 @@ moved and are marked where they do.
    forward chain governs the ports Docker publishes for containers, which no input chain ever
    sees, and it matches the connection's original destination port because Docker has rewritten
    it by then. That chain needs the name of the external interface, passed as `--iface`, and the
-   script refuses to print without it. So the three controls are: the API binds of step 2 close
-   those ports at the source, the forward chain closes everything else that is published, and the
+   script refuses to print without it. So the three controls are: the API binds of step 2 keep
+   those ports on the bridge, the forward chain closes everything else that is published, and the
    input chain covers the host itself.
 
    **The per-rung band closed on 2026-09-16.** The step above lists a second band for the three
@@ -353,20 +345,15 @@ moved and are marked where they do.
    current wording, and a port the deployment page calls public has to be one of those four bands,
    which a test holds.
 
-   **RTMP stays closed (2026-10-03).** The step above lists RTMP (2) among the ports that fall to
-   the drop policy, and that still holds. RTMP is closed to the outside on every stage for now, and
-   SRT is the ingest broadcasters use. The policy has no RTMP band, so the four bands above are the
-   whole of what opens, stage records say `rtmpPublic: false`, and neither the manager nor the web2
-   admin offers RTMP. SRS keeps its RTMP listener because the ABR ladder republishes every rung to
-   it over loopback. Opening RTMP on a stage later is not a firewall change alone: the stage must
-   first run a stack whose SRS allows play from loopback only, on image `6.0-r2-swarm.3`, RTMP
-   needs a key of its own, separate from the SRT one, and the manager needs a per-stage switch.
-   RTMP is plain RTMP and not encrypted. Wherever it is open, a broadcaster's stream key crosses
-   the network as readable text, anyone who reads it there can publish to that stream with it, and
-   wherever keys are checked the stack lets a new RTMP publisher take over a live stream, so they
-   can replace a live broadcast too, whichever protocol it came in over. While RTMP is open the SRT
-   passphrase keeps the picture private but not the key, because SRT sends the key before
-   encryption starts.
+   **RTMP.** The step above lists RTMP (2) among the ports that fall to the drop policy, and the
+   draft still opens no RTMP band. That is the draft's choice: the consoles offer RTMP on every SRS
+   stage, because which ports are reachable is the firewall's job, and an operator who wants
+   broadcasters on RTMP opens the port in the host firewall. SRS allows play from its own container
+   only, `SRS_PLAY_FROM` in the stack, because RTMP publishing and playback share one port. RTMP is
+   not encrypted: a stream key crosses the network as readable text, a key read off the network
+   publishes over RTMP whichever protocol it was read from, because SRT sends the key before
+   encryption starts, and with the takeover on such a publisher can replace a live broadcast. The
+   SRT passphrase keeps the picture private but not the key.
 
 4. Point a DNS A record at the host, set `MANAGER_DOMAIN` in `manager/.env`, deploy PR 2.
    `deploy.sh` reads that name, adds `--profile public` so the edge starts, and says which of the

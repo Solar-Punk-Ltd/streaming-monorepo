@@ -91,7 +91,7 @@ const ROUTES = [
   },
 ];
 
-describe('api auth (S1.1, closes SEC-1)', () => {
+describe('api auth (S1.1)', () => {
   const servers: ApiTestServer[] = [];
 
   async function start(calls: OrchestratorCalls): Promise<ApiTestServer> {
@@ -153,7 +153,7 @@ describe('api auth (S1.1, closes SEC-1)', () => {
 
     assert.equal(metrics.status, 401);
     // Reachable, not necessarily 200. The refusal on the line above is itself a signal on a service
-    // that has ingested nothing, so this probe now reads 503 with `ingest_refused`, which is OBS-15
+    // that has ingested nothing, so this probe now reads 503 with `ingest_refused`, which is the refused-ingest signal
     // working rather than the gate covering `/health`. What this test is about is the mount, and a
     // health body coming back at all is what proves it: behind the gate there would be no body but
     // `Unauthorized`.
@@ -386,9 +386,9 @@ describe('api auth (S1.1, closes SEC-1)', () => {
  * reads the same endpoint, so the same state now also makes `docker ps` report `healthy`.
  *
  * Driven through the real app rather than `deriveHealthStatus`, because the gap this row describes is
- * in the wiring: the policy could not fire because nothing was giving it the input. See OBS-15.
+ * in the wiring: the policy could not fire because nothing was giving it the input.
  */
-describe('refused ingest reaches the health surface (OBS-15)', () => {
+describe('refused ingest reaches the health surface', () => {
   const servers: ApiTestServer[] = [];
   // No puller can start from a rejected admission, but a real interval would be a live timer if one did.
   const OME_POLL_INTERVAL_MS = 60_000;

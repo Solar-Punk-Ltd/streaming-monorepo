@@ -5,7 +5,7 @@
  * ⛔ Through the routers rather than against `resolveAdminPublish` directly, and for the reason
  * `EnginePublishKey.test.ts` states one file along: a gate that is never reached is indistinguishable
  * from a gate that admits everyone, and both engines have already shipped in exactly that state once
- * (SEC-26's publisher address, wrong at both call sites for the whole life of the feature). The unit
+ * (the publisher address, wrong at both call sites for the whole life of the feature). The unit
  * is one function on purpose; what these cases pin is that each engine actually calls it, with the
  * key it was sent and the media type its own `app` implies, and acts on the answer.
  *
@@ -439,7 +439,7 @@ for (const [name, withThisEngine] of ENGINES) {
 
     /**
      * ⛔ The end-to-end shape of "an accepted publish is an authenticated claimant". A takeover from
-     * another address is refused by SEC-26 unless the announce proved a key, so this is only green
+     * another address is refused by the takeover guard unless the announce proved a key, so this is only green
      * while the gate marks admitted publishers `isAuthenticated: true` — which is the field nothing
      * else in the suite would notice going missing.
      */
@@ -534,7 +534,7 @@ describe('fail-open in admin mode', () => {
  * to. Losing it would start four rungs with no declaration, on topics of their own, publishing a ladder
  * the admin never learns about and no viewer could find.
  *
- * SEC-28's rule is unchanged underneath: a rung is admitted only because its base authenticated, and
+ * The publish-key rule is unchanged underneath: a rung is admitted only because its base authenticated, and
  * only from the transcode loopback.
  */
 describe('the admin publish gate with the ABR ladder on', () => {
@@ -556,7 +556,7 @@ describe('the admin publish gate with the ABR ladder on', () => {
     stops: string[];
     /** Every disconnect the engine reported, which is what an unpublish now does instead of stopping. */
     disconnects: string[];
-    /** How many refusals reached `/health` through `recordAuthRejection`. See OBS-15. */
+    /** How many refusals reached `/health` through `recordAuthRejection`. */
     authRejections: number;
     /** Every ladder source whose held rungs the engine asked to resume. */
     resumes: string[];
@@ -672,7 +672,7 @@ describe('the admin publish gate with the ABR ladder on', () => {
     await withSrsLadder(answersDraft(), async ({ calls, post }) => {
       assert.equal(await post(source({ param: '?key=not-the-declared-key' })), 1);
       assert.deepEqual(calls.starts, []);
-      assert.equal(calls.authRejections, 1, 'a refused credential has to be visible on /health. See OBS-15');
+      assert.equal(calls.authRejections, 1, 'a refused credential has to be visible on /health');
     });
   });
 
@@ -848,7 +848,7 @@ describe('the admin publish gate with the ABR ladder on', () => {
         assert.equal(await post(source({ stream: RUNG })), 1);
         assert.deepEqual(calls.starts, []);
         assert.equal(lookups, 0);
-        assert.equal(calls.authRejections, 1, 'a refused publish has to be visible on /health. See OBS-15');
+        assert.equal(calls.authRejections, 1, 'a refused publish has to be visible on /health');
       },
     );
   });

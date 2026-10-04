@@ -116,7 +116,7 @@ export function isFeedPendingFirstWrite(error: unknown, feedSeenBefore: boolean)
 /**
  * How long every feed poll may go on failing before the run is called dead rather than slow.
  *
- * Sized against the effect it must not mistake itself for. LAT-10 freezes the feed for 30 to 45s on a
+ * Sized against the effect it must not mistake itself for. The feed head freeze holds the feed for 30 to 45s on a
  * roughly 63 second cycle, so anything near one cycle would report the finding as a broken gateway.
  * Three minutes clears more than two full cycles, which is long enough that a feed still silent
  * afterwards is not slow, it is gone.
@@ -128,7 +128,7 @@ export const FEED_BLACKOUT_LIMIT_MS = 180_000;
  *
  * A failed feed poll used to end the run outright, and that was wrong in both directions. It threw
  * away every sample already collected, each of which cost a real broadcast and real postage. And the
- * thing that triggered it was the effect under study: LAT-10 *is* feed polls being slow, so a poll
+ * thing that triggered it was the effect under study: the feed head freeze *is* feed polls being slow, so a poll
  * slow enough to exceed the timeout is the strongest sample of it there is, and it was the one sample
  * certain to destroy the run carrying it. A 34-minute run died exactly this way on 2026-08-04 with 30
  * minutes of good samples already in hand.
@@ -187,7 +187,7 @@ export function parseFeedReaderMode(raw: string | undefined): FeedReaderMode {
 /**
  * Follows one feed the way the player does, so that what the bench reports is what a viewer sees.
  *
- * **This is the correction to LAT-10 and it is the whole point of the class.** The bench used to
+ * **This is the correction to the feed head freeze finding and it is the whole point of the class.** The bench used to
  * resolve the feed with `GET /feeds/{owner}/{topic}` on every single poll. The player asks for that
  * once, on mount, and then walks explicit slot addresses. The two are not close: measured on
  * 2026-08-04 with a synthetic feed advancing one slot per second, the head lookup was **50 to 57%
@@ -197,7 +197,7 @@ export function parseFeedReaderMode(raw: string | undefined): FeedReaderMode {
  * retrieval. See `e2e/src/probes/feed-read-ab.mjs`.
  *
  * So every frozen-share figure this bench produced before this class measured the lookup, not the
- * viewer, and LAT-10's whole history rests on it.
+ * viewer, and the whole history of the feed head freeze finding rests on it.
  *
  * Which request follows is `nextFeedRequest`'s to decide, and the player routes on the same call.
  * That is the point: this bench and the player each used to own a copy of that decision, which is
@@ -392,8 +392,7 @@ export async function fetchSegment(
  *
  * A bee node answers JSON carrying `status`. A public Swarm gateway answers the plain text `OK` and
  * serves the feed API perfectly well, and this used to refuse it as "not a bee node". That was the
- * wrong test for the wrong reason, and it stopped mattering in the abstract on 2026-08-03: LAT-10's
- * only no-cost mitigation is to point viewers at a different gateway, and a bench that can only
+ * wrong test for the wrong reason, and it stopped mattering in the abstract on 2026-08-03: the only no-cost mitigation is to point viewers at a different gateway, and a bench that can only
  * measure a bee node cannot measure whether the mitigation works.
  *
  * What the guard is actually for is still enforced. A port that is open and serving something else,

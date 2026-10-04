@@ -19,17 +19,22 @@
  * original numbers and for the harness rule that survives it.
  *
  * Usage:
- *   node deploy/scripts/run-sustain-headless.mjs <stream> [minutes] [out.json]
- *   node deploy/scripts/run-sustain-headless.mjs tester-1 12 docs/bench/tester-1-headless.json
+ *   node deploy/scripts/run-sustain-headless.mjs <name> <owner> <topic> <segmentSeconds> <segmentKB> [minutes] [out.json]
+ *   node deploy/scripts/run-sustain-headless.mjs my-vod <40 hex owner> <topic> 4.17 4241 12 bench-results/headless.json
+ *
+ * The stream and its shape are arguments, because the probe has no table of streams to choose from.
+ *
+ * WEEB3_PAGE names the weeb-3 app page to drive, weeb-3's published deployment by default.
  */
 import { readFileSync, writeFileSync } from 'node:fs';
 import { availableParallelism } from 'node:os';
 import { fileURLToPath } from 'node:url';
 
 import { clickPage, evaluate, sleep, withPage } from './cdp.mjs';
+import { weeb3Page } from './weeb3-page.mjs';
 import { coresBetween, enableMetrics, readMetrics, sampleChromeCpu, summarizeCpu } from './chrome-cpu.mjs';
 
-const WEEB3 = 'https://lat-murmeldjur.github.io/weeb-3/';
+const WEEB3 = weeb3Page();
 const PROBE = fileURLToPath(new URL('./in-browser-sustain.js', import.meta.url));
 
 const SETTLE_MS = 4000;
@@ -47,11 +52,15 @@ const machineCores = availableParallelism();
 /** Whatever the run asks for, plus the probe's own peer wait and a margin, before giving up. */
 const OVERHEAD_MS = 6 * 60 * 1000;
 
-const [stream, minutesArg, outPath] = process.argv.slice(2);
-if (!stream) {
-  console.error('usage: run-sustain-headless.mjs <stream> [minutes] [out.json]');
+const [name, owner, topic, segmentSecondsArg, segmentKBArg, minutesArg, outPath] = process.argv.slice(2);
+if (!name || !owner || !topic || !segmentSecondsArg || !segmentKBArg) {
+  console.error(
+    'usage: run-sustain-headless.mjs <name> <owner> <topic> <segmentSeconds> <segmentKB> [minutes] [out.json]',
+  );
   process.exit(1);
 }
+/** What the probe reads off `window.__sustainStream`, and checks field by field before it runs. */
+const stream = { name, owner, topic, segmentSeconds: Number(segmentSecondsArg), segmentKB: Number(segmentKBArg) };
 const minutes = Number(minutesArg ?? 12);
 
 const summary = await withPage(

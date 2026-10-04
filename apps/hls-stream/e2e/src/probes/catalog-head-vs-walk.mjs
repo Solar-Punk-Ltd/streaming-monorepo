@@ -9,7 +9,9 @@
 import { FeedIndex, Identifier, Topic } from '@ethersphere/bee-js';
 import { Binary } from 'cafe-utility';
 
-const READ_URL = process.env.READ_URL ?? 'http://127.0.0.1:10077';
+import { probeReadUrl } from './bee-urls.mjs';
+
+const READ_URL = probeReadUrl();
 const OWNER = process.env.APP_OWNER;
 const RAW_TOPIC = process.env.APP_RAW_TOPIC;
 const ROUNDS = Number(process.env.ROUNDS ?? 15);

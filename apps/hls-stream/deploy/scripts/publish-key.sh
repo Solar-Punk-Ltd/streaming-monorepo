@@ -1,6 +1,6 @@
 #!/bin/bash
 
-# Print the publish key for one stream, and the publish URL a broadcaster uses with it. See SEC-28.
+# Print the publish key for one stream, and the publish URL a broadcaster uses with it.
 #
 # A shell entry point because it reads this host's env file and sits beside the other operator
 # scripts, but the derivation itself is `derive_publish_key` in `_lib.sh`, where a test can call it
@@ -15,7 +15,7 @@ usage() {
   # Every flag parse_profile_args consumes, because it consumes them whether or not they are
   # documented, and an undocumented one is worse than a rejected one: --portSlot=4 silently changed
   # the printed port, and the two-word spellings swallow the stream id and leave the usage text with
-  # no hint of why. See TEST-54.
+  # no hint of why.
   echo "  --profile=<name>      which .env.<name> and engines/*/.env.<name> to read"
   echo "  --portSlot=<0-99>     shifts every host port, so the printed URLs follow the deployment"
   echo "  --host=<target>       overrides the deploy target"
@@ -76,10 +76,10 @@ done
 # on a remote deploy target: those need `config.json` to decide which engines are enabled, and
 # `deploy.sh` does not ship it. Nothing here needs that decision. The engine env files are read if
 # they are present, purely to resolve the ports the URLs below print, and the compose fallbacks
-# stand in when they are not. See OPS-29.
+# stand in when they are not.
 #
 # `require_jq` is absent for the same reason rather than by omission: with `get_target` gone, no
-# function on this path runs jq. TEST-54 asked for the guard the other operator scripts carry, and
+# function on this path runs jq. The guard the other operator scripts carry is not needed, and
 # the dependency it guards is no longer here.
 load_env
 load_engine_envs_present

@@ -21,7 +21,7 @@ export interface SegmentSample {
   /**
    * What the manifest declared this segment's duration to be, against the measured span in the split.
    *
-   * Carried so a run can answer the question LAT-9 was opened on rather than only route around it.
+   * Carried so a run can answer the question the uneven segment duration finding raised rather than only route around it.
    * The register recorded SRS announcing 3.15, 2.73, 3.16, 2.04 and 2.64 seconds against a fixed
    * two-second GOP, and two different faults produce that: an engine whose segmenting really is that
    * uneven, and an engine that cuts evenly and misreports. Measuring the span from the bytes makes
@@ -257,7 +257,7 @@ function medianFlaggedNotice(median: SegmentSample): string[] {
  * Frames and bytes are both read against media time rather than wall time, because that is what
  * separates a throttled publisher from a healthy one: media time stretches to match a slow consumer,
  * so a throttled segment carries its full complement of frames and bytes over a longer span and both
- * rates fall together. See `docs/bench/publisher-backpressure.md`.
+ * rates fall together. See the `publisher-backpressure` measurement (kept outside the repository).
  */
 function perSecond(amount: number, mediaS: number): string {
   return mediaS > 0 ? (amount / mediaS).toFixed(1) : 'n/a';
@@ -282,7 +282,7 @@ function declaredSamples(run: BenchRun): DeclaredSample[] {
 /**
  * What the manifest declared each segment held, against what it holds.
  *
- * Printed always and with no verdict attached, for the same reason `trendLine` is. LAT-9 was opened on
+ * Printed always and with no verdict attached, for the same reason `trendLine` is. The uneven segment duration finding began with
  * SRS announcing 3.15, 2.73, 3.16, 2.04 and 2.64 seconds against a fixed two-second GOP, and two
  * different faults produce that reading: segmenting that really is uneven, and even segmenting that is
  * misreported. One run cannot separate them, so a line that only appeared past some threshold would be
@@ -296,9 +296,9 @@ function declaredSamples(run: BenchRun): DeclaredSample[] {
  * Which matters here more than it looks, because the two are not symmetric in what they cost.
  * `totalMs` is `fetchedAtMs - capturedAtMs` and never moves, and the hops sum to it whatever the span
  * is, so `impossibleHops` prints its all-clear either way. What a too-small measured span does instead
- * is grow the `upload` hop, and that hop coming out negative is the whole reason LAT-9 was opened.
+ * is grow the `upload` hop, and that hop coming out negative is the whole reason that finding was opened.
  * Measured on the real run's own instants: a 2.64s span gives -240ms, 2.0s gives +400ms, and a
- * truncated 0.067s gives +2333ms. **So a mis-measured span makes LAT-9's symptom look resolved**, and
+ * truncated 0.067s gives +2333ms. **So a mis-measured span makes that symptom look resolved**, and
  * this line is the only thing in the report that would show it.
  */
 /**
@@ -314,7 +314,7 @@ const DELIVERED_FPS_FLOOR = 0.9;
  * Whether the publisher kept up, which is not visible from any single row.
  *
  * ⛔ **Bytes are the wrong signal here and the task that asked for this said bytes.** The mechanism,
- * measured in `docs/bench/publisher-backpressure.md`, is that `wallclockEncodeArgs` stamps timestamps
+ * measured in the `publisher-backpressure` measurement (kept outside the repository), is that `wallclockEncodeArgs` stamps timestamps
  * at the demuxer and paces in the filter graph, so when anything downstream of the muxer blocks, **no
  * frames are stamped while the wall clock keeps running**. Media time stretches to match the consumer.
  * The encoder still hits its bitrate per second of media it produced, so a byte rate barely moves.
@@ -352,7 +352,7 @@ function deliveredFpsLine(run: BenchRun): string {
     'The encoder is not at fault and no frame was dropped: `-g` is set in frames and is honoured exactly, so ' +
     'something downstream of the muxer blocked and media time stretched to match it. **Every latency figure ' +
     'in this run is measured against a media clock that ran slow**, and the run is not comparable with one ' +
-    'that kept up. See `docs/bench/publisher-backpressure.md`.'
+    'that kept up. See the `publisher-backpressure` measurement (kept outside the repository).'
   );
 }
 

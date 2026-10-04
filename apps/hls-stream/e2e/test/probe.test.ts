@@ -72,7 +72,7 @@ describe('parsing ffprobe output into a timestamped segment', () => {
 
 describe('refusing output that only looks like a measurement', () => {
   /**
-   * The probe asked for one packet until LAT-9, so this is the shape every segment used to come back
+   * The probe asked for one packet until the segment duration fix, so this is the shape every segment used to come back
    * as. It reads cleanly and holds no span, which is why it is refused rather than defaulted.
    */
   it('refuses a segment holding one video packet, which fixes no duration', () => {
@@ -177,7 +177,7 @@ describe('the invocation the parser is written against', () => {
    * Measured against a real 2s MPEG-TS carrying 30fps video and 48kHz AAC: the span reads 2.034s
    * instead of 2.000, the anchor moves 23ms early, the frame duration drops from 33.3ms to 14.2ms,
    * and `videoPacketCount` says 148 for a 60-frame segment. Stable across segments and within
-   * rounding distance of the declared duration, which is the exact shape LAT-9 was opened on.
+   * rounding distance of the declared duration, which is the exact shape the segment duration finding was opened on.
    */
   it('reads the first video stream only, so audio packets cannot enter the span', () => {
     const args = probeArgs('/tmp/seg.ts');

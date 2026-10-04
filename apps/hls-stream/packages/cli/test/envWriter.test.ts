@@ -47,7 +47,7 @@ describe('writeEnvKey', () => {
   });
 
   it('creates the file when it does not exist', () => {
-    // OPS-1: a fresh clone has no .env, and this used to throw ENOENT *after* the batch was paid
+    // A fresh clone has no .env, and this used to throw ENOENT *after* the batch was paid
     // for on chain, leaving the id in scrollback and nowhere else.
     assert.equal(existsSync(envPath), false);
 

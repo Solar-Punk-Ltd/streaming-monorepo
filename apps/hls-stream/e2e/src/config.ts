@@ -132,14 +132,14 @@ export interface E2EConfig {
   /** OME container for the engine-restart scenario. */
   omeContainer: string;
   /**
-   * The deployment's `PUBLISH_KEY_SECRET`, or empty when publisher authentication is off. See SEC-28.
+   * The deployment's `PUBLISH_KEY_SECRET`, or empty when publisher authentication is off.
    *
    * Read from the deployment's own env rather than an `E2E_` var, because it is not a choice this
    * suite gets to make: the engine either demands a key or it does not, and a publisher that guesses
    * wrong is refused. Empty is the ordinary case, since `docker-compose.yml` defaults it empty.
    *
    * Every scenario here published without one until 2026-08-03, so against a deployment that had
-   * turned SEC-28 on, all of them failed at the first admission and blamed the publisher.
+   * turned publisher authentication on, all of them failed at the first admission and blamed the publisher.
    */
   publishKeySecret: string;
   /**

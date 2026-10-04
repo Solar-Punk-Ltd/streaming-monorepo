@@ -192,7 +192,7 @@ describe('StampService.stampHealthFor', () => {
     assert.deepEqual(warnings, [], 'a 404 is an answer, not a failure to answer');
   });
 
-  // The tester's 1080p rung on 2026-09-24: usable, two days left, and every
+  // A four-rung pool's 1080p rung on 2026-09-24: usable, two days left, and every
   // upload refused with a 402 because the immutable batch's fullest bucket held
   // all 128 chunks it can.
   it('reports a full immutable batch as full, with how full and of which kind', async () => {

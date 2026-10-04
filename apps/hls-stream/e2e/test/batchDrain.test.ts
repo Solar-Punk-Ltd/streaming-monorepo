@@ -59,8 +59,7 @@ import { StopWaiting } from '../src/harness/wait.js';
  * 360p is the lowest rung and the pool's coordinator, so the catalog, every ladder master and the
  * end-of-broadcast recording announce are all written through ITS batch. That batch running dry takes
  * the master rewrite down for all four rungs, which is the one case the dead-rung rule does not
- * handle and which no code in this repo implements a failover for. Decision 2 of
- * `docs/e2e-batch-drain-plan.md` files it as a known product gap, priced separately.
+ * handle and which no code in this repo implements a failover for. It is a known product gap, priced separately.
  *
  * These cover the rules rather than the readings, because the rules are the part that decides. The
  * readings are wiring over `/health`, `/stamps`, `/metrics` and `docker inspect`, and cannot run
@@ -416,7 +415,7 @@ describe('singleRefusalRefusal', () => {
  * in is full. So the shape worth filing is not when the rung died, it is how it declined: what landed
  * and what was lost in each ten seconds after the first refusal.
  *
- * ⛔ Nothing asserts on any of it, per the owner ruling of 2026-08-29. These tests hold the
+ * ⛔ Nothing asserts on any of it, by design. These tests hold the
  * arithmetic, not a threshold.
  */
 describe('drainRampOf', () => {

@@ -50,8 +50,8 @@
  * ⛔ Nothing else here asserts. The pre-registration is restated beside what was observed so a
  * reader compares them, and no figure refuses a run.
  *
- * @see `docs/bench/in-tab-throttle-probe-prediction-2026-09-02.md`
- * @see `docs/bench/in-tab-throttle-probe-result-2026-09-02.md`, and its owner's correction.
+ * @see the `in-tab-throttle-probe-prediction-2026-09-02` measurement (kept outside the repository)
+ * @see the `in-tab-throttle-probe-result-2026-09-02` measurement (kept outside the repository), and its owner's correction.
  */
 
 import { type CapProof, capProofLine, judgeRecorderProof, type RecorderProof, recorderProofLine } from './capProof.js';
@@ -794,7 +794,7 @@ function whatRanSection(run: InTabProbeRun): string[] {
     '',
     `The node joined the network in ${secondsLabel(run.joinedInMs)} s. Owner \`${run.owner}\`.`,
     '',
-    // Which cap held the link down leads, because the owner's correction of 2026-09-02 made the
+    // Which cap held the link down leads, because a correction of 2026-09-02 made the
     // emulation itself a suspect. A figure here means something different depending on this line.
     run.capSource === 'external'
       ? `**The cap is a real shaped link, not Chrome's emulation.** A \`tc\` ingress policer at ` +
@@ -972,7 +972,7 @@ function predictionsSection(run: InTabProbeRun): string[] {
     '## The pre-registration, against what was observed',
     '',
     'Written before the driver existed and before anything ran, so none of it can have been fitted to ' +
-      'the result. `docs/bench/in-tab-throttle-probe-prediction-2026-09-02.md` is the plan.',
+      'the result. the `in-tab-throttle-probe-prediction-2026-09-02` measurement (kept outside the repository) is the plan.',
     '',
     '| | predicted | observed |',
     '| --- | --- | --- |',

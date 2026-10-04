@@ -1,5 +1,8 @@
 # Taking the catalog off the head lookup
 
+> This is a dated record of one test deployment, not a description of the product. Any raw
+> measurement it cites is kept outside the repository.
+
 **2026-08-05. Written from reading, then measured against the deployment, then fix 1 built.
 The measurement is in the middle and the state of each fix is on its heading.**
 
@@ -139,7 +142,7 @@ thumbnail row in the fix 2 section above.
 
 ## ✅ Measured against the real catalog feed, 2026-08-05, and it holds
 
-Not a synthetic feed. The `latbench` app catalog, **455 slots deep**, read from its own gateway.
+Not a synthetic feed. The bench stage app catalog, **455 slots deep**, read from its own gateway.
 Probe: [`catalog-head-vs-walk.mjs`](../../e2e/src/probes/catalog-head-vs-walk.mjs). 15 rounds, round
 robin. No deploy needed, because this measures the read pattern rather than the shipped client.
 

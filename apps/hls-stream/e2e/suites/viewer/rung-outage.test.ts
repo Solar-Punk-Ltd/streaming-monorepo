@@ -23,7 +23,7 @@ import { waitFor } from '../../src/harness/wait.js';
 import { requireByteSource, viewerGate } from '../../src/viewerCoverage.js';
 
 /**
- * V3 — the rung a viewer is watching stops being produced, and three healthy ones sit beside it.
+ * The rung outage arm: the rung a viewer is watching stops being produced, and three healthy ones sit beside it.
  *
  * ## What this asks that nothing else does
  *
@@ -56,7 +56,7 @@ import { requireByteSource, viewerGate } from '../../src/viewerCoverage.js';
  *
  * ## ⛔ No timing is asserted
  *
- * Owner ruling of 2026-08-29. How long the switch took and how long the picture stopped are measured,
+ * How long the switch took and how long the picture stopped are measured,
  * printed under a heading saying so, and filed.
  *
  * ⛔ Requires a deployed profile, a funded stamp and the browser image on the host, like every suite
@@ -75,7 +75,7 @@ const backend = byteSourceFromEnv(process.env.BROWSER_FETCH_BACKEND);
 // Module scope, so an undeclared run fails the file during import rather than skipping into silence.
 const skip = viewerGate(cfg.viewerExpectation, backend, cfg.browserRepoDir) || abrOff(cfg.abrEnabled);
 
-describe('V3 — a viewer whose rung goes quiet moves to one that has not', { skip }, () => {
+describe('a viewer whose rung goes quiet moves to one that has not', { skip }, () => {
   const host = makeHost(cfg);
   const uploader = containerName(cfg, 'stream-uploader');
   let publisher: Publisher;

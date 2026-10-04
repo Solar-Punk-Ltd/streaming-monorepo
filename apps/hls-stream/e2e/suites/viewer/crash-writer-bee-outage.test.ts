@@ -27,8 +27,8 @@ import { requireByteSource, viewerGate } from '../../src/viewerCoverage.js';
  *
  * ## What this promotes
  *
- * Arm 5 of the crash matrix, `docs/bench/crash-at-an-in-tab-viewer-2026-08-27.md`. Past the fifteen
- * second retry window the uploader gives up on the segment in flight, and since the owner's ruling of
+ * Arm 5 of the crash matrix, the `crash-at-an-in-tab-viewer-2026-08-27` measurement (kept outside the repository). Past the fifteen
+ * second retry window the uploader gives up on the segment in flight, and since
  * 2026-09-06 the playlist lists that sequence as an `#EXT-X-GAP` entry so the numbering behind it does
  * not move. `suites/scenarios/bee-outage-long.test.ts` proves the uploader does that correctly and
  * stops there. Whether hls.js then plays on past the entries it was told to skip, or stalls on them,
@@ -45,7 +45,7 @@ import { requireByteSource, viewerGate } from '../../src/viewerCoverage.js';
  *
  * ## ⛔ No timing is asserted
  *
- * Owner ruling of 2026-08-29: an e2e suite checks feature correctness and stability, and performance
+ * An e2e suite checks feature correctness and stability, and performance
  * is a separate kind of test. This once held the freeze between 10 and 45 seconds and the resume
  * inside 25, chosen to sit between the matrix and the pre-loop-fix era. The ladder read 57.0s and the
  * case went red for a configuration difference rather than a broken feature: an in-browser node
@@ -54,15 +54,15 @@ import { requireByteSource, viewerGate } from '../../src/viewerCoverage.js';
  *
  * ## ⚠️ The known gap this REPORTS rather than asserts: the overlay says nothing
  *
- * The picture stopped for 29.5 seconds and `FeedStateOverlay` rendered nothing, the same silence V7
+ * The picture stopped for 29.5 seconds and `FeedStateOverlay` rendered nothing, the same silence the uploader crash arm
  * reports and the same mechanism: `UNSERVED_SLOT_POLL_LIMIT` counts polls whose rate collapses during
  * the stall it exists to detect, and one long freeze is a single playback stall rather than the burst
  * `degraded` needs. Half a minute of frozen frame with no explanation is the worst instance of it in
  * the matrix.
  *
  * ⭐ **So the silence is printed, and only a FALSE message fails.** This used to assert the silence
- * exactly, which turned the case red the day the product improved. Under the owner ruling of
- * 2026-08-29 a correctness suite goes green when that happens.
+ * exactly, which turned the case red the day the product improved. Because an e2e suite
+ * checks correctness and never speed, it goes green when that happens.
  *
  * ⛔ Requires a deployed profile, a funded stamp and the browser image on the host, like every suite
  * under `suites/`. Nothing in CI runs these.

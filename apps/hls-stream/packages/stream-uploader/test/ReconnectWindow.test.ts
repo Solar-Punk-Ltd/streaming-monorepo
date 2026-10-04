@@ -1,9 +1,9 @@
 /**
  * An encoder that goes away and comes back inside the reap window keeps its broadcast.
  *
- * ## What the owner asked for, and what used to happen
+ * ## What is wanted, and what used to happen
  *
- * Cases 1 and 2 of the owner's reconnect test cases: OBS stopped and restarted ten seconds later, and a
+ * Two reconnect cases: OBS stopped and restarted ten seconds later, and a
  * network outage of fifty seconds, are both "the same recording continues, with a discontinuity at
  * the seam and no `#EXT-X-ENDLIST` in between". What happened instead, measured live on 2026-09-22
  * against SRS 6.0.184, is that SRS ends the publish within seconds of ANY interruption — immediately
@@ -302,7 +302,7 @@ async function disconnectedAndReturned(
   return { beforeGap, afterGap };
 }
 
-describe('an encoder that disconnects and comes back inside the window (cases 1 and 2)', () => {
+describe('an encoder that disconnects and comes back inside the window', () => {
   it('holds the session open, publishing no ending of any kind, while the encoder is away', async () => {
     const harness = reconnectHarness();
     harness.start();
@@ -433,7 +433,7 @@ describe('an encoder that disconnects and comes back inside the window (cases 1 
   }
 
   /**
-   * The CON-16 hazard, reached the other way round. The duplicate filter still holds the indexes the
+   * The duplicate-filter hazard, reached the other way round. The duplicate filter still holds the indexes the
    * first run took, and a muxer that restarts numbers from zero again, so every opening segment of
    * the returning run comes back `{ accepted: true }` with nothing uploaded and nothing published.
    * The engine is told the segment landed, so it never retries, and accepted-as-duplicate is
@@ -463,7 +463,7 @@ describe('an encoder that disconnects and comes back inside the window (cases 1 
     );
   });
 
-  /** Case 6: several short outages, each followed by real video, is one recording with one seam each. */
+  /** Several short outages, each followed by real video, is one recording with one seam each. */
   it('survives four disconnect-and-return cycles as one recording with one seam per return', async () => {
     const harness = reconnectHarness();
     const cycles = 4;
@@ -600,7 +600,7 @@ describe('an encoder that disconnects and comes back inside the window (cases 1 
   });
 
   /**
-   * Case 11. The two webhooks race and this service cannot order them, so an `on_unpublish` for a
+   * The two webhooks race and this service cannot order them, so an `on_unpublish` for a
    * publish session that has already been replaced lands after the reconnect. It must cost nothing:
    * it opens a window, and the next segment closes it.
    */
@@ -895,7 +895,7 @@ describe('an operator stop is unchanged by the window', () => {
   });
 });
 
-describe('a whole ladder whose encoder disconnects together (case 8′s neighbour)', () => {
+describe('a whole ladder whose encoder disconnects together', () => {
   const rungIds = RUNG_NAMES.map((rung) => `${LADDER_BASE}_${rung}`);
 
   async function runLadderThroughAnOutage(harness: ReconnectHarness, returningIndex: number): Promise<void> {

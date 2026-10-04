@@ -31,8 +31,10 @@ import { Binary } from 'cafe-utility';
 import { randomBytes } from 'node:crypto';
 import { writeFileSync } from 'node:fs';
 
-const WRITE_URL = process.env.WRITE_URL ?? 'http://127.0.0.1:10075';
-const READ_URL = process.env.READ_URL ?? 'http://127.0.0.1:10077';
+import { probeReadUrl, probeWriteUrl } from './bee-urls.mjs';
+
+const WRITE_URL = probeWriteUrl();
+const READ_URL = probeReadUrl();
 const STAMP = process.env.STAMP;
 const REQUEST_TIMEOUT_MS = Number(process.env.REQUEST_TIMEOUT_MS ?? 15000);
 const ROUNDS = Number(process.env.ROUNDS ?? 30);

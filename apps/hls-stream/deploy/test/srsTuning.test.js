@@ -17,8 +17,8 @@ const ENTRYPOINT = join(ROOT, 'engines/srs/entrypoint.sh');
  * `HLS_FRAGMENT` and `HLS_WINDOW` were configurable on `main` and this branch hard-coded them back
  * into the template at 1.5 and 22.5. Nothing failed: the entrypoint kept substituting into
  * placeholders that were no longer there, compose kept not passing them, and the only symptom was
- * that setting either in an env file did nothing at all. That is the same shape as OPS-30, where two
- * port variables existed as publish mappings and never reached the container.
+ * that setting either in an env file did nothing at all. That is the same shape as the OME port variables, which
+ * existed as publish mappings and never reached the container.
  *
  * `HLS_FRAGMENT` matters more than the rest put together. The segment is the single largest hop in
  * the measured split, at 2000ms of a 5000ms total on the deployment host, and a viewer waits a whole
@@ -138,8 +138,8 @@ const VALID = { SRS_WEBHOOK_TOKEN: 'x'.repeat(64) };
 
 /**
  * The keyframe interval a broadcaster is told to publish, from two funded sittings on 2026-08-12
- * that bounded it on both sides. See `docs/bench/gop-sustain-2026-08-12.md` for why not larger and
- * `docs/bench/gop-floor-2026-08-12.md` for why not smaller.
+ * that bounded it on both sides. See the `gop-sustain-2026-08-12` measurement (kept outside the repository) for why not larger and
+ * the `gop-floor-2026-08-12` measurement (kept outside the repository) for why not smaller.
  *
  * The engine cannot set this, since nothing here transcodes. It is a number the config has to be
  * able to *accept*, which is what the range test below checks.
@@ -152,7 +152,7 @@ const RECOMMENDED_GOP_SECONDS = 0.5;
  * Measured 2026-08-12 across GOPs of 0.5, 1.0 and 2.0, which overshot by 0.136, 0.136 and 0.133
  * seconds. **It is a constant rather than a proportion of the GOP**, and it is invisible to any
  * summary that reports a median, because the median sits at the settled value.
- * See `docs/bench/shipped-fragment-validation-2026-08-12.md`.
+ * See the `shipped-fragment-validation-2026-08-12` measurement (kept outside the repository).
  */
 const SEGMENT_OVERSHOOT_S = 0.135;
 
@@ -240,7 +240,7 @@ describe('the SRS latency knobs', () => {
    * The pair is a range, not two numbers. SRS cuts on the first keyframe at or after the fragment and
    * force-closes at `fragment * aof_ratio` whether one arrived or not, so a GOP outside
    * `[fragment, fragment * aof_ratio]` is either rounded up or yields keyframeless segments. Measured
-   * over 20 arms in `docs/bench/gop-vs-fragment-2026-08-12.md`, and the ceiling half of that rule
+   * over 20 arms in the `gop-vs-fragment-2026-08-12` measurement (kept outside the repository), and the ceiling half of that rule
    * once invalidated twelve runs.
    *
    * This is the check the config did not have: the shipped fragment was 1.0 while the profile two
@@ -419,7 +419,7 @@ for (const { protocol, knob, section, defaultBlock } of TAKEOVERS) {
 }
 
 /**
- * SEC-28 keeps the publish key secret out of the SRS container, so what reaches SRS is only whether a key or admin
+ * The publish key secret is kept out of the SRS container, so what reaches SRS is only whether a key or admin
  * mode is configured, which compose works out from the variables it already holds. Both takeovers default from it.
  */
 describe('what the SRS container learns about the publish key check', () => {
@@ -499,11 +499,11 @@ describe('the credentials the entrypoint splices into its config', () => {
  *
  * There are two of them and they enumerate rather than inherit, which is deliberate: `env_file`
  * would hand `PUBLISH_KEY_SECRET` to the publisher-facing engine image, and that secret has no
- * per-stream revocation. See SEC-28. The cost of enumerating is that a variable added to one list is
+ * per-stream revocation. The cost of enumerating is that a variable added to one list is
  * silently missing from the other, and a variable the container never sees falls back to a default
  * with nothing reporting a problem.
  *
- * It has now happened twice over the same two files. OBS-20's healthcheck went into
+ * It has now happened twice over the same two files. The SRT listener healthcheck went into
  * `deploy/docker-compose.yml` and not `engines/srs/docker-compose.yml`, and the four latency knobs
  * did the same, so on the `pnpm srs:host` and `pnpm srs:local` path setting `HLS_FRAGMENT=0.5`
  * produced 1.0s segments. This compares the two lists instead of trusting whoever edits one of them.

@@ -1,5 +1,8 @@
 # Mutating `packages/shared`, and the limit the workspace puts on it
 
+> This is a dated record of one test deployment, not a description of the product. Any raw
+> measurement it cites is kept outside the repository.
+
 First mutation run against `packages/shared`, 2026-08-10. **76.00%**, 206 killed, 3 timed out, 66
 survived, 275 mutants over 9 files in 24m45s at concurrency 2.
 

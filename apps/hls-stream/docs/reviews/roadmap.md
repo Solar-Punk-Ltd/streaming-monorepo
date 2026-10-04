@@ -1,5 +1,8 @@
 # Roadmap
 
+> This is a dated record of one test deployment, not a description of the product. Any raw
+> measurement it cites is kept outside the repository.
+
 **2026-08-05, re-ordered 2026-08-08.** Ordered by what unblocks what, not by appeal. Every claim below
 is either measured and linked, or marked as a guess. Items already tracked carry their task number.
 
@@ -108,7 +111,7 @@ topology, at 0.0002 BZZ/min.
 | What a viewer sees  | ✅ **1.000 and 1.003 media seconds per wall second at 0.25s, nothing frozen, no rebuffers**, holding 5.86s behind live against a 6s target. It was 0.82x and 17.3% frozen: the client took one feed slot per playlist reload. [Fixed and measured](../bench/the-loop-fixed-2026-08-05.md), [diagnosed](../bench/what-starves-the-viewer-2026-08-05.md).                                                                                                                                                     |
 | Which profile ships | ✅ **0.25s GOP, and 1080p at 6000kbps with it.** Gated at ten minutes at a viewer: 30.0fps, advance 1.000, nothing stalled, nothing rebuffered. Latency across a 2.4x bitrate range differs by 70ms, so the best picture costs bandwidth (2.24x the BZZ) rather than seconds.                                                                                                                                                                                                                               |
 | Seeking             | ✅ **A recording plays and seeks**, five runs, every seek landing in 17-48ms and resuming in 338-359ms. ⚠️ Still unreached: seeking **past a discontinuity** and into a region **whose chunks left the local gateway**, because a 27-second recording fits in the buffer whole. ⭐ The client uses `HashRouter`, so a watch URL is `#/watch/...` and the path form silently renders the catalog.                                                                                                            |
-| Live DVR            | One chunk of manifest. On latbench at the best profile that is **9.0 seconds**, up from 2.5.                                                                                                                                                                                                                                                                                                                                                                                                                |
+| Live DVR            | One chunk of manifest. On the bench stage at the best profile that is **9.0 seconds**, up from 2.5.                                                                                                                                                                                                                                                                                                                                                                                                         |
 | Crash recovery      | 6 e2e scenarios pass on the **uploader's** side. ✅ **A viewer has now been watched through five**, and one of them plays through a **discontinuity** and survives it. ✅ The largest client-side cost is fixed: recovery from an uploader crash went **46.7s → 4.1s** by asking what is behind a refused slot instead of parking on it. ⛔ A write outage the upload side calls clean still freezes a viewer, because lossless is the uploader's 15s retry window and invisible is the viewer's 6s buffer. |
 | Browser validation  | ✅ **Unblocked 2026-08-05.** `pnpm browser:selfcheck` proves the browser is a valid instrument in ten seconds for no cost, and `browser:watch` reports VOID rather than a number when it is not.                                                                                                                                                                                                                                                                                                            |
 
@@ -129,7 +132,7 @@ fetches the root chunk back and wraps that, so crossing **4096 bytes** turns one
 publish into three. Ten segments spent **864** of those bytes, so 79% of the chunk was already paid
 for and unused.
 
-The window is a byte budget, so what it holds depends on how long a segment line is. On **latbench**
+The window is a byte budget, so what it holds depends on how long a segment line is. On the **bench stage**
 `MANIFEST_ACCESS_URL` was set and each line cost 111 bytes against the 79 a bare Swarm reference
 costs, so a deployment that left it empty got 50 segments where that one got 36.
 
@@ -419,9 +422,9 @@ direction and not a size.
 
 Flip is two env values and a redeploy: `BEE_GATEWAY_RPC_ENDPOINT` and `BEE_GATEWAY_SWAP_ENABLE`
 together in `.env.<profile>`, both set for the light arm and both empty or absent for the ultra-light
-one, then `deploy.sh --profile=latbench --portSlot=7 bee-gateway`. Swap on with no endpoint is a node
+one, then `deploy.sh --profile=<profile> --portSlot=7 bee-gateway`. Swap on with no endpoint is a node
 bee refuses to start. `deploy/scripts/retrieval-debt-probe.sh` and
-`deploy/scripts/phase06-light-vs-ultralight.sh` write both halves for you.
+`deploy/scripts/light-vs-ultralight-browser.sh` write both halves for you.
 
 | arm   | gateway                                                                                               |
 | ----- | ----------------------------------------------------------------------------------------------------- |

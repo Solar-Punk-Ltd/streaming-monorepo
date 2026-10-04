@@ -258,6 +258,8 @@ async function runSitting(stubs, env = {}) {
     await run('bash', [SCRIPT], {
       env: {
         ...process.env,
+        PROFILE: 'bench-stage',
+        PORT_SLOT: '7',
         PATH: `${stubs.bin}:${process.env.PATH}`,
         OUT_DIR: stubs.out,
         BENCH_REPO: stubs.benchRepo,
@@ -580,7 +582,7 @@ describe('a sitting that refuses leaves the bench host as it found it', () => {
 describe('the funding gate asks only the nodes that can spend', () => {
   /**
    * ⛔ Asking whether the ultra-light node can pay would refuse the sitting on the strength of its own
-   * treatment. `phase06-light-vs-ultralight.sh` learned this as a special case; here the node is
+   * treatment. `light-vs-ultralight-browser.sh` learned this as a special case; here the node is
    * simply not on the list.
    */
   it('never reports the unfunded node as short of funds', async () => {
@@ -634,7 +636,7 @@ describe('every arm is filed with the condition it ran under', () => {
  *
  * The gate this sitting did carry, `can_afford`, asks whether the node holds enough to pay. That
  * stays true right down to an empty chequebook, so a driver carrying only that authorises the entire
- * balance, and two sittings that each pass it can still land past the owner's total together because
+ * balance, and two sittings that each pass it can still land past the authorised total together because
  * neither can see the other. This driver spent real BZZ on 2026-08-13 with nothing between it and the
  * whole chequebook, and the reason it never overran is that nobody asked it to.
  */

@@ -469,7 +469,7 @@ describe('OmeHlsPuller injected fetcher (S0.6)', () => {
   });
 });
 
-describe('OmeHlsPuller segment loss (OBS-11)', () => {
+describe('OmeHlsPuller segment loss', () => {
   const THREE_SEGMENT_PLAYLIST = [
     '#EXTM3U',
     '#EXT-X-VERSION:3',
@@ -951,9 +951,9 @@ describe('OmeHlsPuller abort window coverage (TEST-15)', () => {
  * A crash-recovered stream is finalized as a VOD if nothing reaches it inside the recovery timeout,
  * and a puller restarted against an origin that is not back yet reaches it with nothing. Both windows
  * default to 60s, so an OME restart only had to be marginally slow to take a broadcast whose publisher
- * never went away. See CON-10.
+ * never went away.
  */
-describe('OmeHlsPuller origin discontinuity (CON-9)', () => {
+describe('OmeHlsPuller origin discontinuity', () => {
   it('hands the declared break over on the segment it belongs to, not ahead of it', async () => {
     const handovers: string[] = [];
     const playlist = [
@@ -993,7 +993,7 @@ describe('OmeHlsPuller origin discontinuity (CON-9)', () => {
   });
 });
 
-describe('OmeHlsPuller keepalive through an origin outage (CON-10)', () => {
+describe('OmeHlsPuller keepalive through an origin outage', () => {
   interface TickablePuller {
     tick(): Promise<void>;
     stop(): void;
@@ -1113,7 +1113,7 @@ describe('OmeHlsPuller keepalive through an origin outage (CON-10)', () => {
 });
 
 // it finally answers, because by then the stream id can belong to a different session.
-describe('OmeHlsPuller stopped mid-poll (CON-16)', () => {
+describe('OmeHlsPuller stopped mid-poll', () => {
   const MEDIA = ['#EXTM3U', '#EXT-X-MEDIA-SEQUENCE:0', '#EXTINF:2.0,', 'segment_0.ts'].join('\n');
 
   interface StoppablePuller {
@@ -1224,9 +1224,9 @@ describe('OmeHlsPuller stopped mid-poll (CON-16)', () => {
 /**
  * The handover floor's own failure modes. Every case here was found by a review-gate lens against the
  * first version of the fix, and each one is a way for the floor to destroy media rather than protect
- * it. See CON-20.
+ * it.
  */
-describe('OmeHlsPuller handover floor (CON-20)', () => {
+describe('OmeHlsPuller handover floor', () => {
   const FLOOR = Date.parse('2026-07-31T12:00:00.000Z');
   const PLAYLIST_URL = 'http://ome/hls/app/stream/ts:playlist.m3u8';
 
@@ -1458,7 +1458,6 @@ describe('OmeHlsPuller handover floor (CON-20)', () => {
 
   /**
    * The counter that makes a floor holding correctly distinguishable from a floor matching nothing.
-   * See OBS-16.
    */
   it('reports a deliberate discard, which no signal could see before', async () => {
     const { puller, delivered, skips } = drive(
@@ -1507,7 +1506,7 @@ describe('OmeHlsPuller handover floor (CON-20)', () => {
   });
 });
 
-describe('OmeHlsPuller unusable origin (OBS-6, OBS-18)', () => {
+describe('OmeHlsPuller unusable origin', () => {
   interface StartablePuller {
     start(): void;
     stop(): void;
@@ -1549,9 +1548,9 @@ describe('OmeHlsPuller unusable origin (OBS-6, OBS-18)', () => {
   }
 
   /**
-   * OBS-18 registered a 404 as the puller's only exit, so an origin behind a proxy answering 502 was
+   * The puller once registered a 404 as its only exit, so an origin behind a proxy answering 502 was
    * held forever: one request every poll interval, no VOD, and the stream pinned in `activeStreams`
-   * for the life of the process. CON-10 routed every non-404 failure through the same accounting, so
+   * for the life of the process. The keepalive work routed every non-404 failure through the same accounting, so
    * the row is closed by code that already shipped. This is what says so, and what keeps it closed.
    */
   it('halts on a proxy answering 502, not only on a 404', async () => {
@@ -1595,7 +1594,7 @@ describe('OmeHlsPuller unusable origin (OBS-6, OBS-18)', () => {
   /**
    * The scheduler's catch reaches outside this object twice, and a poll that started before a `stop()`
    * answers after it, by which time the stream id can belong to the session that replaced this puller.
-   * `handleNotFound` has guarded this since it was written. The catch CON-10 added did not.
+   * `handleNotFound` has guarded this since it was written. The catch added for the keepalive did not.
    *
    * The harm is on the reconnect path, where `startPuller` calls `stale.stop()` and builds a
    * replacement under the same id: `onHalt` runs `pullers.delete(streamId)`, dropping the **live**

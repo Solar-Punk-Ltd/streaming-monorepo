@@ -241,7 +241,7 @@ export const INSTRUMENT_UNPROVEN: readonly Record<string, unknown>[] = [
  * The recovery verdict `judgeRecovery` writes, holding the doc's own arm 1.
  *
  * The numbers are the 2026-08-27 in-tab gateway-outage arm as
- * `docs/bench/crash-at-an-in-tab-viewer-2026-08-27.md` records it, so a reader tested against this is
+ * the `crash-at-an-in-tab-viewer-2026-08-27` measurement (kept outside the repository) records it, so a reader tested against this is
  * tested against a run that happened. Trimmed the same way the watch fixture is: `judgeRecovery` also
  * writes `before`, `during`, `after`, `latencyBeforeS`, `latencyAfterS` and `targetRaisedByS`, which
  * the reader does not touch.
@@ -439,7 +439,7 @@ export function qualityArmState(overrides: ArmStateOverrides = {}): unknown {
 /**
  * The rung timeline of a viewer who moved off a rung that stopped being produced, and kept watching.
  *
- * The shape V3 asserts: 720p before the outage, 480p while the 720p transcode was stopped, 720p again
+ * The shape the rung outage arm asserts: 720p before the outage, 480p while the 720p transcode was stopped, 720p again
  * once it resumed.
  */
 export const MOVED_OFF_A_DEAD_RUNG: Record<string, unknown> = {

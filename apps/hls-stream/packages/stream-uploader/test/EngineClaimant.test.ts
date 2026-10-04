@@ -1,10 +1,10 @@
 /**
- * That each engine actually hands the orchestrator the publisher's address. See SEC-26.
+ * That each engine actually hands the orchestrator the publisher's address.
  *
  * `StreamTakeover.test.ts` drives `startStream` directly, so it pins what the guard does with the
  * evidence and nothing about whether the guard ever receives any. Those are separate failures and
  * the second one is silent: the guard fails open on a null address, so an engine that stops passing
- * one turns SEC-26 off with a green suite and `takeovers_refused_total` reading zero, which is
+ * one turns the takeover guard off with a green suite and `takeovers_refused_total` reading zero, which is
  * indistinguishable from nobody having tried.
  *
  * The gate's correctness lens established that both call sites were in exactly that state: replacing

@@ -74,7 +74,7 @@ function writeFileAtomically(targetPath: string, content: string): void {
  *
  * Creates the file when it is missing. A fresh clone has no `.env`, and this used to throw ENOENT at
  * the one moment it must not: after the postage batch had been paid for, leaving the batch id in
- * terminal scrollback and nowhere else. See OPS-1.
+ * terminal scrollback and nowhere else.
  */
 export function writeEnvKey(envPath: string, key: string, value: string): void {
   // A .env entry is one line, so a newline in the key or value would write a second entry. The batch

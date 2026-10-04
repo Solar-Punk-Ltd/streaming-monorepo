@@ -1,11 +1,11 @@
 #!/usr/bin/env bash
 #
-# Write the spend ledger: the ceiling the owner authorised, and one chequebook baseline per node that
+# Write the spend ledger: the ceiling the operator authorised, and one chequebook baseline per node that
 # can spend.
 #
 # ## Why this is a script and not a paste
 #
-# ⛔ The ceiling is the owner's number and this script cannot invent one. `--authorise` is required
+# ⛔ The ceiling is the operator's number and this script cannot invent one. `--authorise` is required
 # and has no default, because a default ceiling is an authorisation nobody gave.
 #
 # Everything else in the file is a reading, and readings are what go wrong by hand. A baseline is a
@@ -23,8 +23,8 @@
 # file.
 #
 # Usage:
-#   deploy/scripts/spend-ledger.sh --profile=latbench --portSlot=7 --authorise=12.5
-#   deploy/scripts/spend-ledger.sh --profile=latbench --portSlot=7 --authorise=12.5 --dry-run
+#   deploy/scripts/spend-ledger.sh --profile=<profile> --portSlot=<slot> --authorise=12.5
+#   deploy/scripts/spend-ledger.sh --profile=<profile> --portSlot=<slot> --authorise=12.5 --dry-run
 set -u
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -51,7 +51,7 @@ done
 
 if [ -z "${AUTHORISE_BZZ}" ]; then
   echo "spend-ledger: REFUSING, no --authorise=<BZZ>."
-  echo "  The ceiling is the owner's to set and there is no default for it. A ledger written from a"
+  echo "  The ceiling is the operator's to set and there is no default for it. A ledger written from a"
   echo "  default is an authorisation nobody gave."
   exit 2
 fi
@@ -241,7 +241,7 @@ fi
 # Rewritten whole rather than edited. A ledger is one authorisation: a file carrying a new ceiling
 # beside an old baseline measures a night against a decision that was never made.
 {
-  echo "# The owner's spend authorisation. Written by deploy/scripts/spend-ledger.sh."
+  echo "# The operator's spend authorisation. Written by deploy/scripts/spend-ledger.sh."
   echo "# Regenerate it rather than editing it: a baseline is a balance, and balances move."
   echo "authorised_at=${AUTHORISED_AT}"
   echo "ceiling_plur=${CEILING_PLUR}"

@@ -49,7 +49,7 @@
  * page at the same cap, so the two sit side by side.
  *
  * ⛔ Nothing here is asserted. Every ratio, byte count and stall count is measured, printed under a
- * heading that says so, and filed. Owner ruling of 2026-08-29.
+ * heading that says so, and filed, because an e2e suite checks correctness and never speed.
  *
  * ## ⛔⛔⛔ The two INSTRUMENT refusals, which are not timings
  *

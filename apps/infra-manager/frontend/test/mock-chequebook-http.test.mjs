@@ -112,7 +112,7 @@ after(async () => {
 });
 
 /**
- * The mock's uploader start, which since the owner's ruling of 2026-09-17 refuses
+ * The mock's uploader start, which since 2026-09-17 refuses
  * nothing about funding.
  *
  * This suite used to pin three refusals: a node the mock does not hold, a balance

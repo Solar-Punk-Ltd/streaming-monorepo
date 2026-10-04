@@ -122,8 +122,8 @@ function rungSection(run: QualityRun): string[] {
     } |`,
     `| resolutions the decoder produced while capped | ${q.during.resolutions.join(', ') || '—'} |`,
     '',
-    '⛔ Every duration above is measured and filed rather than held against a ceiling. Owner ruling of',
-    '2026-08-29: an e2e suite checks that the feature works and is stable, never how fast it is.',
+    '⛔ Every duration above is measured and filed rather than held against a ceiling.',
+    'An e2e suite checks that the feature works and is stable, never how fast it is.',
     '',
   ];
 }

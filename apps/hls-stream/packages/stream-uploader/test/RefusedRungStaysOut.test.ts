@@ -9,7 +9,7 @@
  * rule dropped the rung once the ladder had delivered four segments it had not, and took it back on
  * the next one of its segments that landed, so every stray success offered viewers the rung again.
  *
- * Owner ruling: a quality whose uploads are failing stays out of the master until it works again,
+ * The rule: a quality whose uploads are failing stays out of the master until it works again,
  * instead of flipping in and out.
  *
  * Driven through a real uploader whose uploads a script refuses, because the uploader is the one place

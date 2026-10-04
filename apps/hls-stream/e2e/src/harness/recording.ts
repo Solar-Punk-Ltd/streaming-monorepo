@@ -6,7 +6,7 @@
  * A recording is watched one rung at a time. The uploader writes one `Segment N of <stream>
  * uploaded` line per rung, so the merged count is the ladder's width times the recording's length,
  * and a target set against it produces a recording a viewer sees a fraction of. Found live on
- * 2026-09-02 on the latbench stage: 60 before and 60 after, on four rungs, made 32 segments per
+ * 2026-09-02 on one bench stage: 60 before and 60 after, on four rungs, made 32 segments per
  * rung. The driver reported success.
  *
  * ## Why the rules live here rather than in the driver

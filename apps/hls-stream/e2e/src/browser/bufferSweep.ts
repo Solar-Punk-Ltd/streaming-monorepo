@@ -146,9 +146,8 @@ export function perArmFromSessionTotals(totals: readonly number[]): number[] {
  * How many uneventful samples an arm keeps in the artefact.
  *
  * A sample costs about 400 bytes once `writeRunArtifacts` pretty-prints it, and a sitting is as many
- * arms as it has questions. Seventeen arms of 300s is 5,100 samples and a **2.54 MB** json committed
- * to git, against 1.29 MB for the largest file `docs/bench` holds and 9.9 MB for everything it has
- * accumulated. At this cap that sitting is 1.28 MB, the shipped four-plus-two arms of 240s go from
+ * arms as it has questions. Seventeen arms of 300s is 5,100 samples and a **2.54 MB** json, against
+ * 1.29 MB for the largest single run file kept before this cap. At this cap that sitting is 1.28 MB, the shipped four-plus-two arms of 240s go from
  * 0.72 MB to 0.36, and an uneventful stretch is sampled every other second.
  */
 export const MAX_LOGGED_UNEVENTFUL_SAMPLES = 150;
@@ -189,7 +188,7 @@ function eventfulFlags(samples: readonly ViewerSample[]): boolean[] {
  * Keep every sample where something happened, and an evenly spread sample of the rest.
  *
  * ⭐ **The series is what says _when_ inside an arm a rebuffer landed**, which a count cannot.
- * `docs/bench/gop-floor-replicate-2026-08-12.md` established that our own uploader publishes a
+ * the `gop-floor-replicate-2026-08-12` measurement (kept outside the repository) established that our own uploader publishes a
  * segment's reference about 100ms before its bytes are retrievable, and the refusals that follow from
  * it are already in the `.requests.json` beside the report with their `startedAtMs`. Whether the
  * rebuffers a small buffer target produces are those refusals is a question about two timestamps, and

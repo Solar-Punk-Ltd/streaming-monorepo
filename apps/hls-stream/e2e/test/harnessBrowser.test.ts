@@ -140,7 +140,7 @@ describe('finding the artifact a run wrote', () => {
     'browser: playback started',
     '  30 samples, 2.01s behind live, 0 rebuffers',
     '',
-    'browser: wrote /repo/docs/bench/browser-watch-2026-08-28T10-00-00-000Z.md',
+    'browser: wrote /repo/bench-results/browser-watch-2026-08-28T10-00-00-000Z.md',
     'browser: instrument SOUND',
   ].join('\n');
 
@@ -151,13 +151,13 @@ describe('finding the artifact a run wrote', () => {
    * ends up being read out of a co-tenant's run.
    */
   it('takes the path the driver printed, and reads the json beside the report', () => {
-    assert.equal(artifactJsonFromArmLog(log), '/repo/docs/bench/browser-watch-2026-08-28T10-00-00-000Z.json');
+    assert.equal(artifactJsonFromArmLog(log), '/repo/bench-results/browser-watch-2026-08-28T10-00-00-000Z.json');
   });
 
   it('takes the last one, so a log carrying more than one names the run that just finished', () => {
-    const twice = `browser: wrote /repo/docs/bench/a.md\nbrowser: wrote /repo/docs/bench/b.md`;
+    const twice = `browser: wrote /repo/bench-results/a.md\nbrowser: wrote /repo/bench-results/b.md`;
 
-    assert.equal(artifactJsonFromArmLog(twice), '/repo/docs/bench/b.json');
+    assert.equal(artifactJsonFromArmLog(twice), '/repo/bench-results/b.json');
   });
 
   it('refuses a log with no artifact line rather than guessing at a filename', () => {
@@ -175,7 +175,7 @@ describe('finding the artifact a run wrote', () => {
     for (let call = 0; call < 3; call += 1) {
       assert.equal(
         artifactJsonFromArmLog(log),
-        '/repo/docs/bench/browser-watch-2026-08-28T10-00-00-000Z.json',
+        '/repo/bench-results/browser-watch-2026-08-28T10-00-00-000Z.json',
         `call ${call}`,
       );
     }
@@ -188,8 +188,8 @@ describe('finding the artifact a run wrote', () => {
    */
   it('translates the container path onto the host checkout when the reader is the host', () => {
     assert.equal(
-      artifactReadPath('/repo/docs/bench/browser-watch-1.json', '/srv/swarm-hls-bench', false),
-      '/srv/swarm-hls-bench/docs/bench/browser-watch-1.json',
+      artifactReadPath('/repo/bench-results/browser-watch-1.json', '/srv/swarm-hls-bench', false),
+      '/srv/swarm-hls-bench/bench-results/browser-watch-1.json',
     );
   });
 
@@ -200,8 +200,8 @@ describe('finding the artifact a run wrote', () => {
    */
   it('keeps the container path when the reader shares the container namespace', () => {
     assert.equal(
-      artifactReadPath('/repo/docs/bench/browser-watch-1.json', '/srv/swarm-hls-bench', true),
-      '/repo/docs/bench/browser-watch-1.json',
+      artifactReadPath('/repo/bench-results/browser-watch-1.json', '/srv/swarm-hls-bench', true),
+      '/repo/bench-results/browser-watch-1.json',
     );
   });
 
@@ -414,7 +414,7 @@ describe('what the fault did to the viewer, out of a crash arm', () => {
 });
 
 /** A deployment on the bench profile, resolved against a root that holds no env files of its own. */
-const cfg = loadConfig({ env: { E2E_PROFILE: 'latbench', E2E_PORT_SLOT: '7' }, rootDir: '/no-such-e2e-root' });
+const cfg = loadConfig({ env: { E2E_PROFILE: 'bench-stage', E2E_PORT_SLOT: '7' }, rootDir: '/no-such-e2e-root' });
 
 describe('the environment an arm is run with', () => {
   const watch = browserArmEnv(cfg, { backend: WEEB3_BYTES, watchMinutes: 4 });
@@ -427,7 +427,7 @@ describe('the environment an arm is run with', () => {
   it('points the driver at this deployment over loopback', () => {
     assert.equal(watch.E2E_SSH_TARGET, 'local');
     assert.equal(watch.E2E_PUBLIC_HOST, '127.0.0.1');
-    assert.equal(watch.E2E_PROFILE, 'latbench');
+    assert.equal(watch.E2E_PROFILE, 'bench-stage');
     assert.equal(watch.E2E_PORT_SLOT, '7');
     assert.equal(watch.BROWSER_CLIENT_URL, `http://127.0.0.1:${cfg.ports.client}`);
   });
@@ -594,7 +594,7 @@ function stubHost(stdout: string, state: unknown = armState()): { host: Host; ru
   return { host, runs };
 }
 
-const AN_ARM_THAT_FINISHED = 'browser: wrote /repo/docs/bench/browser-watch-2026-08-28T10-00-00-000Z.md';
+const AN_ARM_THAT_FINISHED = 'browser: wrote /repo/bench-results/browser-watch-2026-08-28T10-00-00-000Z.md';
 
 describe('running an arm end to end', () => {
   /**
@@ -648,7 +648,7 @@ describe('running an arm end to end', () => {
 
     await runBrowserArm(host, armCfg, arm);
 
-    assert.equal(runs[2].command, "cat '/srv/bench/docs/bench/browser-watch-2026-08-28T10-00-00-000Z.json'");
+    assert.equal(runs[2].command, "cat '/srv/bench/bench-results/browser-watch-2026-08-28T10-00-00-000Z.json'");
   });
 
   /**
@@ -722,7 +722,7 @@ describe('what the browser arm said about itself', () => {
     '  page warning: Rung 480p has stopped being produced, dropping it from the ladder',
     '  page error: something the player shouted about',
     'some unrelated container chatter nobody asked for',
-    'browser: wrote /repo/docs/bench/browser-rung-outage-1.md',
+    'browser: wrote /repo/bench-results/browser-rung-outage-1.md',
   ].join('\n');
 
   function captured(stdout: string, stderr: string = ''): string[] {

@@ -9,7 +9,7 @@
  * twenty seconds, and served the next one in 2.5 s the moment the cap lifted. That is a collapse of
  * more than thirty times, not an overhead.
  *
- * ⛔ The owner ruled on 2026-09-02 that the answer is **not** a gateway fallback of any kind. The fix
+ * ⛔ The answer is **not** a gateway fallback of any kind (settled 2026-09-02). The fix
  * lives in the in-tab retrieval path itself, and this probe is the measurement that has to come
  * before any such fix, because the mechanism has so far only been reasoned about.
  *
@@ -66,8 +66,8 @@
  *   deploy/scripts/browser-on-host.sh --target <host> --own-network --shape-kbps 2800 \
  *     --script browser:in-tab-throttle-probe -- PROBE_CAP_MODE=external PROBE_CAP_KBPS=2800
  *
- * @see `docs/bench/in-tab-throttle-probe-prediction-2026-09-02.md`, written before this existed.
- * @see `docs/bench/in-tab-throttle-probe-result-2026-09-02.md`, and its owner's correction, which is
+ * @see the `in-tab-throttle-probe-prediction-2026-09-02` measurement (kept outside the repository), written before this existed.
+ * @see the `in-tab-throttle-probe-result-2026-09-02` measurement (kept outside the repository), and its owner's correction, which is
  *   why arm 2 exists.
  */
 

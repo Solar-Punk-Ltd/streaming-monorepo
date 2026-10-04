@@ -66,7 +66,7 @@ describe('GET /profiles/:name/engine on a version with its own defaults', () => 
   });
 
   it("names the manager's own SRT latency rather than the version's 200, and says the manager set it", async () => {
-    // The one setting whose default the owner decided (2026-09-23, 2000 ms)
+    // The one setting whose default was set to 2000 ms on 2026-09-23,
     // after the version was cut, so the version's own number is the old one.
     const res = await callEngine(app, 'GET', '/profiles/stream1/engine');
     const overview = res.body as EngineOverview;

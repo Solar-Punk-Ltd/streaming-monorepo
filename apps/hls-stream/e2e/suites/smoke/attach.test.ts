@@ -68,7 +68,7 @@ describe('attach smoke (read-only)', () => {
   });
 
   /**
-   * The URL is printed redacted and only printed redacted. On a deployment with SEC-28 on it carries
+   * The URL is printed redacted and only printed redacted. On a deployment with publisher authentication on it carries
    * the live publish credential, and this line put one into a transcript on 2026-08-28. What is
    * published with is still the real URL, which the publisher builds for itself.
    */

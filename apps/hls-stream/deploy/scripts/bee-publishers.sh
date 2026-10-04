@@ -29,9 +29,9 @@
 # and a full id is indistinguishable from a wallet private key to anything reading either.
 #
 # Usage:
-#   deploy/scripts/bee-publishers.sh --profile=latbench --portSlot=7            # print the line
-#   deploy/scripts/bee-publishers.sh --profile=latbench --portSlot=7 --write    # put it in .env.latbench
-#   deploy/scripts/bee-publishers.sh --profile=latbench --portSlot=7 --stamps-from=<dir>
+#   deploy/scripts/bee-publishers.sh --profile=<profile> --portSlot=<slot>            # print the line
+#   deploy/scripts/bee-publishers.sh --profile=<profile> --portSlot=<slot> --write    # put it in .env.<profile>
+#   deploy/scripts/bee-publishers.sh --profile=<profile> --portSlot=<slot> --stamps-from=<dir>
 #
 # --stamps-from reads `<dir>/<port>.json` instead of dialing anything, which is how the script's own
 # selection and refusal paths get verified without a deployment.

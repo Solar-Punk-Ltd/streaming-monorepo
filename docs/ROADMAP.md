@@ -22,9 +22,8 @@ scope `@streaming-monorepo/`.
   server-wide SRT passphrase shown alongside. The RTMP server and stream key were
   shown only where the deployment opened RTMP ingest (`INGEST_RTMP_PUBLIC`), which
   was off by default, since ingest was SRT only then. That key left the admin's
-  env with phase 4 of the stages work. RTMP is now offered only where a stage's
-  record says `rtmpPublic`, which no stage does while RTMP stays closed to the
-  outside, below.
+  env with phase 4 of the stages work. RTMP is now offered where a stage's
+  record says `rtmpPublic`, which every SRS stage's does, below.
 - A real stream for a draft: the uploader (swarm-hls-stream `main-v3`) resolves
   the draft by ingest stream id through the admin's internal API, checks the
   key, publishes under the draft's topic and reports live and vod; the admin
@@ -131,11 +130,11 @@ Manager-driven deploy is next.
 Verified 2026-09-23 with `--host=localhost` on a laptop: build, migrations,
 health through nginx, `user:add`, sign-in through nginx on the slot port, a
 service-scoped redeploy, and a crash-looping API caught by the health timeout.
-Deployed to a server on 2026-09-24 at the first try. On another host the
-tunnel connected but nothing answered: a persisted firewall there accepted
-Docker's default bridge range and not the custom address pool its daemon hands
-out. A host matter, written up in the README. Nothing in this repo changes for
-it. The 2026-09-23 run found two defects that had never
+Deployed to a server on 2026-09-24 at the first try. A host whose persisted
+firewall accepts Docker's default bridge range but not a custom address pool
+its daemon hands out leaves the tunnel connected with nothing answering. That
+is a host matter, written up in the README's troubleshooting, and nothing in
+this repo changes for it. The 2026-09-23 run found two defects that had never
 been hit because the images had never been built: the backend image's
 `pnpm deploy` fails under pnpm 10 (now `--legacy`), and nginx forwarded `Host`
 without the port, so the API's cross-site check refused every write, sign-in
@@ -195,8 +194,7 @@ admin's. [self-hosting.md](self-hosting.md) has the recipe.
 
 ## Ingest panel and unpublish (2026-09-26)
 
-Decided by the owner after a tester could not go live on the test host on
-2026-09-25. Nothing there was broken: every SRT attempt carried no passphrase,
+Decided after a broadcaster could not go live from OBS. Nothing was broken: every SRT attempt carried no passphrase,
 because the panel sent OBS users to an "OBS Passphrase field" that OBS does
 not have.
 
@@ -219,7 +217,7 @@ not have.
 
 ## Streams belong to the installation; actor logging and audit log (2026-09-28)
 
-Decided with the owner. A stream is the installation's, not the drafter's:
+Decided: a stream is the installation's, not the drafter's:
 every signed-in operator lists, edits, publishes, unpublishes and deletes
 every stream, and `streams.user_id` only records who drafted the row. No
 query in the backend scopes by user any more (sessions aside). Brand
@@ -247,8 +245,8 @@ Migration 008 follows from the same decision: `streams.user_id` was
 published and live ones included, and left their entries on the catalogue. It
 is nullable now and set to null instead; the `stream.create` audit row keeps
 the drafter's username for every stream created since migration 007. Nothing
-is backfilled for older streams: decided with the owner, since the
-installations start from a new database.
+is backfilled for older streams, because the installations start from a
+new database.
 
 Verified 2026-09-28 with the unit and integration suites, nothing deployed:
 each service's audit entries, a failed audit write, the actor on the routes
@@ -261,7 +259,7 @@ session and draft, published and live streams.
 
 ## Stages from the manager (decided 2026-09-28, built on `feat/stages`)
 
-Spec: [stages.md](architecture/stages.md). Decided with the owner: the admin
+Spec: [stages.md](architecture/stages.md). Decided: the admin
 stops carrying one stage in its env file and learns every stage from the
 manager.
 
@@ -279,7 +277,7 @@ manager.
 Built in nine phases, each a pull request into `feat/stages`: phases 1 to 8
 merged there on 2026-09-28, and the fix and phase 9 below opened for review on
 2026-09-29. Nothing has been deployed; the feature branch goes to `main` once
-the owner has tried it whole.
+it has been tried whole on a real installation.
 
 - Phase 1, the brief and the records (#56, 2026-09-28): the spec, this entry,
   and the stage and catalogue stamp records as zod schemas in
@@ -320,7 +318,7 @@ the owner has tried it whole.
   one until the operator releases it; the admin stamps every slot again under
   the new batch, byte for byte, then every stored thumbnail, then writes with
   it. Decided: `CATALOGUE_MOVE_ENABLED` stays off on every installation until
-  the owner has tried the move on a real node, by the procedure in the spec.
+  the move has been tried on a real node, by the procedure in the spec.
 - A fix between them (#64, 2026-09-29): the manager's admin-link browser test
   follows the per-stage owner wording phase 6 gave Test connection.
 - Phase 9, the shared token stops (#65, 2026-09-29): the admin's uploader
@@ -344,11 +342,11 @@ the owner has tried it whole.
 
 Left open after the nine phases:
 
-- **The catalogue move** is built and off until the owner's trial on a real
-  node, whose date goes here.
+- **The catalogue move** is built and off until it has been tried on a
+  real node.
 - **The upgrade, scripted.** The rollout below is six manual steps in a fixed
-  order; a script with a check after each step comes before the QA control
-  host or the pilot is upgraded.
+  order. A script with a check after each step comes before an existing
+  installation is upgraded.
 - **Pending retirements** show only in the manager's log; the Stages page
   could count them.
 - **Top-ups from the admin.** The admin reads every rung's stamp and
@@ -391,47 +389,36 @@ Left open after the nine phases:
   pushes, on the admin's registrar token, and every uploader presents a token
   of its own (done in phases 5 and 9).
 
-## RTMP ingest beside SRT (2026-10-03)
+## RTMP ingest beside SRT
 
-**RTMP is closed to the outside on every stage for now, and SRT is the ingest
-broadcasters use.** Decided by the owner on 2026-10-03. This reverses
-the decision made earlier the same day to offer RTMP at the same level as SRT.
-It was taken because every stack that runs today lets anyone who reaches its
-RTMP port play any live broadcast with no key, and because an open RTMP port
-lets a key read off an SRT connection publish without the passphrase.
+**A stage whose engine is SRS offers RTMP beside SRT, in both consoles.** Which
+ports are reachable is the operator's firewall, so no console hides RTMP
+because one firewall draft leaves its port closed.
 
-- The manager's firewall keeps every RTMP port closed. Its port policy has no
-  RTMP band and stays at version 1, so the generated draft drops
-  `10002 + 10 × slot` over TCP as it always has.
-- A stage record says `rtmpPublic: false` on every engine. The web2 admin's OBS
-  panel and the manager's Publish card offer SRT alone, and Copy publish URL
-  copies the SRT line alone.
-- SRS keeps its RTMP listener, because the ABR ladder republishes every rung to
-  it over loopback. "Closed" means closed to the outside, not switched off
-  inside SRS.
-- The stack's RTMP work ships all the same: the RTMP takeover
-  (`RTMP_TAKEOVER`), the health check that covers the RTMP listener, the deploy
-  wait for it, play allowed from loopback only, and the RTMP end-to-end suites.
+- A stage record says `rtmpPublic` from its engine: true on SRS, false on
+  OvenMediaEngine, which takes SRT alone. The web2 admin's OBS panel and the
+  manager's Publish card offer both protocols on an SRS stage, and Copy
+  publish URL copies both.
+- The manager's firewall draft generator is unchanged. Its port policy has no
+  RTMP band, so the draft it writes drops `10002 + 10 × slot` over TCP, and an
+  operator who wants broadcasters on RTMP opens that port in the host firewall.
+- SRS allows play from its own container only, `SRS_PLAY_FROM`, because RTMP
+  publishing and playback share one port and a firewall cannot tell them apart.
+  The ABR ladder republishes every rung to SRS over loopback, which that rule
+  admits.
+- The RTMP takeover (`RTMP_TAKEOVER`), the health check that covers the RTMP
+  listener, the deploy wait for it and the RTMP end-to-end suites ship with it.
   The takeover settings take empty, `on` or `off` in the manager, because SRS
   will not start on anything else.
 
-Opening RTMP on a stage later is a separate piece of work and needs three
-things first. The stage must run a stack whose SRS allows play from loopback
-only, on image `6.0-r2-swarm.3`, which also accepts the RTMP takeover line in
-that stack's config. RTMP needs a key of its own, separate from the key the
-SRT line carries, so a key read off one protocol does not publish over the
-other. And the manager needs a per-stage switch that opens RTMP on that stage
-alone and sets its record's `rtmpPublic` from it.
-
-The shared warning beside RTMP already says what the stack does wherever RTMP
-is open. SRS 6 has no TLS on its RTMP listener, so there is no RTMPS. An RTMP
-stream key crosses the network as readable text, anyone who reads it there can
-publish to that stream with it, and wherever keys are checked the stack lets a
-new RTMP publisher take over a live stream, so they can replace a live
-broadcast too, whichever protocol it came in over. While RTMP is open, the SRT
-passphrase keeps the picture private but not the key, because SRT sends the key
-before encryption starts and a key read off either protocol publishes over
-RTMP.
+The shared warning beside RTMP states what the protocol does with a key. SRS 6
+has no TLS on its RTMP listener, so there is no RTMPS. An RTMP stream key
+crosses the network as readable text, and a key read off the network publishes
+over RTMP whichever protocol it was read from, because SRT sends the key before
+encryption starts. With the takeover on, such a publisher can replace a live
+broadcast too. The SRT passphrase keeps the picture private but not the key. A
+key of RTMP's own, separate from the SRT one, would close that last part, and
+is not built.
 
 ## Checkpoint 4: brand console
 

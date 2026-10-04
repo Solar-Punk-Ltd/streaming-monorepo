@@ -24,7 +24,7 @@ const READER = join(ROOT, 'deploy/scripts/read-sitting.py');
  * CHEAPER viewer. The saturation question this reader exists to answer would have been answered in
  * the wrong direction, with every other column looking healthy.
  *
- * ⛔⛔ AND THE GUARD THAT ALREADY EXISTED WOULD NOT HAVE CAUGHT IT. `phase06-light-vs-ultralight.sh`
+ * ⛔⛔ AND THE GUARD THAT ALREADY EXISTED WOULD NOT HAVE CAUGHT IT. `light-vs-ultralight-browser.sh`
  * checks delivered segment LENGTH against the request and admits anything from 0.7x to 1.4x, so a
  * 13% stretch passes it comfortably. The frame rate is the sharp instrument for this failure, which
  * is why it is the one gated here.
@@ -130,7 +130,7 @@ function watch(arm) {
 }
 
 /**
- * A sitting directory shaped like the driver leaves one, plus the `docs/bench` the driver writes its
+ * A sitting directory shaped like the driver leaves one, plus the `bench-results` the driver writes its
  * per-arm watch summaries into.
  *
  * @param {ArmFixture[]} arms
@@ -139,7 +139,7 @@ function watch(arm) {
 function sitting(arms, requested = '1920x1080') {
   const dir = workspace();
   const metrics = join(dir, 'node-metrics');
-  const bench = join(dir, 'docs', 'bench');
+  const bench = join(dir, 'bench-results');
   mkdirSync(metrics, { recursive: true });
   mkdirSync(bench, { recursive: true });
 
@@ -154,7 +154,7 @@ function sitting(arms, requested = '1920x1080') {
       '  2.26s behind live, 3 rebuffers, 0 stalled samples',
     );
     if (arm.fps !== null) {
-      lines.push(`browser: wrote /repo/docs/bench/${watchStem(arm.arm)}.md`);
+      lines.push(`browser: wrote /repo/bench-results/${watchStem(arm.arm)}.md`);
       writeFileSync(join(bench, `${watchStem(arm.arm)}.json`), JSON.stringify(watch(arm)));
     }
     writeMainThread(metrics, arm, thread);
@@ -163,11 +163,11 @@ function sitting(arms, requested = '1920x1080') {
   return dir;
 }
 
-/** Runs the reader with `docs/bench` pointed at the fixture rather than at the real checkout. */
+/** Runs the reader with `bench-results` pointed at the fixture rather than at the real checkout. */
 async function table(dir) {
   try {
     const { stdout } = await run('python3', [READER, 'table', dir], {
-      env: { ...process.env, SITTING_BENCH_DIR: join(dir, 'docs', 'bench') },
+      env: { ...process.env, SITTING_BENCH_DIR: join(dir, 'bench-results') },
     });
     return { code: 0, stdout };
   } catch (error) {
@@ -219,7 +219,7 @@ describe('an arm not delivered at the requested profile voids the headline', () 
     assert.match(stdout, /26\.5/);
   });
 
-  // ⛔ The segment-length guard in phase06 admits 0.7x to 1.4x, and 26.5/30 is 0.883, so the historical
+  // ⛔ The segment-length guard in light-vs-ultralight-browser.sh admits 0.7x to 1.4x, and 26.5/30 is 0.883, so the historical
   // failure sits comfortably INSIDE it. Pinning the tolerance here is what stops somebody widening
   // this one to match that one.
   it('is tight enough that the historical shortfall could never be inside it', async () => {

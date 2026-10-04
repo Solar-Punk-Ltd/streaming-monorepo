@@ -233,8 +233,8 @@ describe('waitFor', () => {
  *
  * The tolerance above has no bound of its own, and a read that never once worked therefore spends
  * the whole ceiling before it says so. Four minutes of a paid broadcast go on an ssh target that is
- * refusing connections, and the run then reports a timeout against the product. The owner ruled on
- * 2026-09-05 that a dead instrument is named in about a minute instead.
+ * refusing connections, and the run then reports a timeout against the product. Since 2026-09-05
+ * a dead instrument is named in about a minute instead.
  *
  * ⛔ Both halves are needed and neither alone. A run of throws with no minute behind it is a stack
  * still coming up, and a minute with an answer somewhere in it is a read that works.

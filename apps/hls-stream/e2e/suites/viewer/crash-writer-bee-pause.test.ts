@@ -27,7 +27,7 @@ import { requireByteSource, viewerGate } from '../../src/viewerCoverage.js';
  *
  * ## What this promotes
  *
- * Arm 4 of the crash matrix, `docs/bench/crash-at-an-in-tab-viewer-2026-08-27.md`. An eight second
+ * Arm 4 of the crash matrix, the `crash-at-an-in-tab-viewer-2026-08-27` measurement (kept outside the repository). An eight second
  * pause, which is shorter than the uploader's fifteen second retry window, so segments buffer and
  * flush rather than being lost. `suites/scenarios/bee-outage-short.test.ts` already proves the
  * indices stay gapless and the uploader announces nothing, with nobody watching. What had never been
@@ -57,7 +57,7 @@ import { requireByteSource, viewerGate } from '../../src/viewerCoverage.js';
  *
  * ## ⛔ No timing is asserted
  *
- * Owner ruling of 2026-08-29. This once capped the freeze at the pause's own eight seconds and the
+ * This once capped the freeze at the pause's own eight seconds and the
  * resume at ten. The ladder run read 58.9s and the case went red for a configuration difference: an
  * in-browser node admits roughly one segment per second, so half second segments cap it near half of
  * real time, which is not a defect in this code.

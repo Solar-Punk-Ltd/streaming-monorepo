@@ -6,7 +6,7 @@ Recorded 2026-09-19 for `fix/main-v2-rpc-privacy`, based on `a5b4253`.
 
 ## Finding
 
-Priority P1. A keyed custom RPC URL was likely to trouble every signed-in user
+Highest priority. A keyed custom RPC URL was likely to trouble every signed-in user
 in normal use because profile reads, lists, group results and change events all
 carried the full stored URL. The edit page also put that value in a plain text
 field. Fixing it touches the profile projection and the private deployment read.
@@ -72,7 +72,7 @@ completed PR database run cited above.
 
 ## URL userinfo follow-up
 
-Copilot comment `4053142114` identified a P1 gap on 2026-09-19. A stored URL
+A review comment identified a gap of the same priority on 2026-09-19. A stored URL
 containing `synthetic-user:synthetic-secret@rpc.example.org` produced the
 userinfo as public host metadata. The database accepts this URL shape, so
 request validation alone cannot protect existing rows. A small projection

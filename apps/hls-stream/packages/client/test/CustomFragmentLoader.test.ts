@@ -630,7 +630,7 @@ describe('CustomFragmentLoader telling hls.js what the connection carried', () =
    *
    * Without this the model above is unfalsifiable: it would agree with any loader. Stamping `first` at
    * arrival is what an in-tab viewer did on 2026-08-30, and hls.js answered 74 to 109 Mbps on a link
-   * capped at 2800 kbps. See `docs/bench/abr-at-a-viewer-2026-08-30.md`.
+   * capped at 2800 kbps. See the `abr-at-a-viewer-2026-08-30` measurement (kept outside the repository).
    */
   it('reproduces the absurd estimate when the arrival is stamped as the first byte', () => {
     const SEGMENT_BYTES = 500_000;

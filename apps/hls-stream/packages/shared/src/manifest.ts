@@ -60,7 +60,7 @@ export function buildExtinf(duration: number): string {
  *
  * `parseFloat` stops at the first character it cannot use, so `#EXTINF:6abc,` reads as 6 and
  * `#EXTINF:0x10,` reads as 0. The second is the one that matters, because a real zero-length segment
- * and an unparseable one become indistinguishable. See CON-30.
+ * and an unparseable one become indistinguishable.
  */
 export function segmentDuration(extinf: string): number | null {
   if (!extinf.startsWith(`${HLS_EXTINF}:`)) {
@@ -118,7 +118,6 @@ export function programDateTimeMs(line: string): number | null {
  * an `#EXT-X-BYTERANGE`, which §4.3.2.2 requires to sit exactly there. A byte-range playlist
  * therefore parses to zero segments. `ManifestManager` writes neither, which is why this has been
  * correct in practice, and it is carried over unchanged from the client rather than introduced here.
- * See CON-30.
  */
 export function parseManifest(text: string): ParsedManifest {
   const lines = text.trim().split('\n');

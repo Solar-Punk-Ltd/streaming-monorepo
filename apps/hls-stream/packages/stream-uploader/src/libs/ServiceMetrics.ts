@@ -5,7 +5,7 @@ import { StartGateWarning } from '../types.js';
  *
  * `/health` reports the streams that exist right now, which is exactly why it answers `ok` with
  * `activeStreams: 0` at the moment a live session has been wrongly killed: there is nothing left to
- * describe, so the healthiest possible reading is also the worst possible state. See OBS-17. These
+ * describe, so the healthiest possible reading is also the worst possible state. These
  * are process-lifetime totals, so what happened stays readable after the stream it happened to is
  * gone, which is the whole reason they are separate from `HealthSignals`.
  *
@@ -174,7 +174,7 @@ export class ServiceMetrics {
   }
 
   /**
-   * Segments the CON-20 handover floor discarded on purpose, counted once per playlist index.
+   * Segments the handover floor discarded on purpose, counted once per playlist index.
    *
    * The floor deliberately leaves the high-water where it is during a handover, so the same indexes
    * are re-examined on every poll. Counting per pass would turn a five-segment window into hundreds.
@@ -225,7 +225,7 @@ export class ServiceMetrics {
    * **It cannot say which of those it is counting.** An attack and a legitimate broadcaster being
    * locked out of their own id produce the identical count, so this is a prompt to go and look at who
    * holds the stream, not a verdict. `POST /stream/stop` is what frees an id held by the wrong
-   * session. See SEC-26 and SEC-28.
+   * session.
    */
   public recordTakeoverRefused(): void {
     this.takeoversRefused += 1;
@@ -369,7 +369,7 @@ interface MetricsCounters {
    */
   segmentsDroppedByRung: Readonly<Record<string, number>>;
   segmentsLostTotal: number;
-  /** Segments the CON-20 handover floor discarded on purpose. Correct behaviour, not a failure. */
+  /** Segments the handover floor discarded on purpose. Correct behaviour, not a failure. */
   segmentsSkippedTotal: number;
   /** Opening segments withheld because the broadcast had produced no video yet. */
   openingSegmentsWithheldTotal: number;
@@ -383,7 +383,7 @@ interface MetricsCounters {
   segmentDurationsUnreadTotal: number;
   /** Requests refused by a credential gate, across every gate in the process. */
   authRejectionsTotal: number;
-  /** Announces refused because a live session on that stream id is still producing. See SEC-26. */
+  /** Announces refused because a live session on that stream id is still producing. */
   takeoversRefusedTotal: number;
   /**
    * Publishers bee has refused a paid write on, which is how many rungs have lost their postage.
@@ -407,7 +407,7 @@ export interface MetricsSnapshot extends MetricsCounters {
    *
    * The number an operator actually wants, and the one `queuePressure` could not give: a depth is
    * only meaningful next to `MAX_QUEUE_SIZE`, which has no relationship to how far behind live a
-   * viewer is. A 39 deep backlog reported `low` at roughly 78 seconds behind live. See OBS-9.
+   * viewer is. A 39 deep backlog reported `low` at roughly 78 seconds behind live.
    */
   queueBacklogSeconds: number;
 }

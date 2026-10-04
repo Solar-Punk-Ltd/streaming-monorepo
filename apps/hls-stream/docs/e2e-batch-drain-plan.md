@@ -1,5 +1,8 @@
 # Plan: one rung's postage batch runs dry, and the broadcast survives
 
+> This is a dated record of one test deployment, not a description of the product. Any raw
+> measurement it cites is kept outside the repository.
+
 Written 2026-09-04 at the owner's word ("okay you can do this"). Its sibling is
 `docs/e2e-viewer-coverage-plan.md`. Where this page says a reading was taken on a date, the reading
 itself is in the session record kept outside the repository, and every claim about the code is meant
@@ -206,10 +209,10 @@ overissued`, the master come down to three rungs 37.3 s after the first refusal,
 on the drained rung over about a minute of ramp, near the eighteen the model above expected. The other
 three rungs lost nothing. The restore put the original batch back and the ladder suite passed after it.
 Cost 0.0591 BZZ across the four publishing nodes plus the 0.0383 BZZ batch. The record is
-`docs/bench/one-rung-runs-dry-2026-09-05.md`. V11 ran green on both byte sources on 2026-09-06 at
+the `one-rung-runs-dry-2026-09-05` measurement (kept outside the repository). V11 ran green on both byte sources on 2026-09-06 at
 `2935091`, one arming each: the viewer decoded 720p and never the drained 1080p, advanced at 1.000
 and 1.003 of real time with no rebuffer, and the master was rewritten while they watched. The record is
-`docs/bench/viewer-through-a-drained-rung-2026-09-06.md`. Decision 5's master half ran green after
+the `viewer-through-a-drained-rung-2026-09-06` measurement (kept outside the repository). Decision 5's master half ran green after
 every restore that day: the master named all four rungs 8.5 s, 12.8 s and 12.7 s after the last of them
 announced.
 

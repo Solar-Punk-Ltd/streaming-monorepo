@@ -18,10 +18,9 @@ import { NodeUnreachableError } from './NodeUnreachableError.js';
  * the deploy guard refuse: it watches the restart count, and a count that climbs is its definition of
  * a service falling over.
  *
- * ## What the owner ruled, 2026-09-17
+ * ## The listener goes first
  *
- * "We should be able to start the uploader but maybe say its node not available, try to reconnect or
- * something." So the listener goes first and this runs behind it. A failure that says the node is not
+ * The uploader starts and says its node is not available, then tries to reconnect. So the listener goes first and this runs behind it. A failure that says the node is not
  * answering costs one log line and a wait. The wait doubles from a second and holds at thirty, and it
  * does not give up, because there is no number of attempts after which the right answer becomes
  * exiting: a node that is down for an hour is a node that comes back in an hour, and a process that

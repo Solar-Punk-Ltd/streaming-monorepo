@@ -61,7 +61,7 @@ const abrUploader: Profile = {
   components: ['srs', 'stream-uploader'],
   stamp_id: null,
   bee_publishers: DEFAULT_ABR_RUNGS.map(
-    (rung, index) => `${rung}@http://10.200.0.1:${10015 + index * 10}<${String(index + 1).repeat(64)}>`,
+    (rung, index) => `${rung}@http://192.0.2.1:${10015 + index * 10}<${String(index + 1).repeat(64)}>`,
   ).join(' '),
   containers: [
     { service: 'srs', ports: {}, buildId: null, buildCommit: null },
@@ -119,11 +119,11 @@ describe('a row for an uploader, in the words its readiness step uses', () => {
     const waiting: UploaderHealthReading = {
       state: 'waiting_for_node',
       reasons: ['node_unavailable'],
-      node: { url: 'http://10.200.0.1:10015', attempts: 5, lastError: 'connect ECONNREFUSED' },
+      node: { url: 'http://192.0.2.1:10015', attempts: 5, lastError: 'connect ECONNREFUSED' },
     };
     const row = attentionText(UPLOADER_WAITING_FOR_NODE, abrUploader, null, waiting);
 
-    assert.match(row.text, /Waiting for its Bee node at http:\/\/10\.200\.0\.1:10015/);
+    assert.match(row.text, /Waiting for its Bee node at http:\/\/192\.0\.2\.1:10015/);
     assert.match(row.text, /5 attempts so far, last error: connect ECONNREFUSED/);
     assert.equal(row.action, null);
   });

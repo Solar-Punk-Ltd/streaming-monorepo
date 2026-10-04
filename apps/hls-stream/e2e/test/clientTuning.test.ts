@@ -9,7 +9,7 @@ import { ROOT_DIR } from '../src/config.js';
 /**
  * The player settings the bench cannot measure are configured rather than observed, and the bench
  * mirrors them instead of importing across a package boundary. So this is the guard that keeps the
- * mirrors true: without it, lowering `liveSyncDuration` in the client — which is exactly what LAT-1
+ * mirrors true: without it, lowering `liveSyncDuration` in the client — which is exactly what the latency bench
  * exists to make possible — would leave every later bench report quoting the old buffer, and the
  * improvement would be understated by the size of the change that produced it.
  *

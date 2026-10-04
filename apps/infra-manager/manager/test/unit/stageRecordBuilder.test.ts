@@ -202,13 +202,13 @@ describe('a stage record, field by field', () => {
     assert.equal(record.ingest.srtPort, 10022);
   });
 
-  it('carries the ingest encoders dial: the address, the slot’s ports, RTMP closed and the passphrase', async () => {
+  it('carries the ingest encoders dial: the address, the slot’s ports, RTMP offered on SRS and the passphrase', async () => {
     const { record } = await built();
     assert.deepEqual(record.ingest, {
       host: '192.0.2.10',
       srtPort: 10012,
       rtmpPort: 10013,
-      rtmpPublic: false,
+      rtmpPublic: true,
       srtPassphrase: PASSPHRASE,
     });
   });

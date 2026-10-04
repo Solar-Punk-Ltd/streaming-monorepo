@@ -33,8 +33,7 @@
  * 360p is the lowest rung and the pool's coordinator, so the catalog, every ladder master and the
  * end-of-broadcast recording announce all go out through ITS batch. That batch running dry takes the
  * master rewrite down for all four rungs at once, which is the one case the dead-rung rule does not
- * handle and which nothing in this repo implements a failover for. Decision 2 of
- * `docs/e2e-batch-drain-plan.md` files it as a known product gap, to be priced separately.
+ * handle and which nothing in this repo implements a failover for. It is a known product gap, to be priced separately.
  *
  * ## ⛔⛔⛔ A batch that runs out RAMPS, it does not stop
  *
@@ -210,8 +209,8 @@ const DRAIN_DECLARATION_VAR = 'E2E_DRAIN_ARMED';
  * out of nothing. On any ordinary stage their `before()` then refuses, because the rung is spending
  * the depth 24 batch it publishes a broadcast on rather than a fresh depth 17 one nobody minted, and
  * a full sitting that was correct in every other respect reports two failures after an hour of paid
- * broadcast. That is the owner's decision 6 of `docs/e2e-batch-drain-plan.md` read the way it was
- * meant: the ordinary full suite must never depend on a stage somebody broke on purpose.
+ * broadcast. That is why the drain arms only on an explicit opt-in:
+ * the ordinary full suite must never depend on a stage somebody broke on purpose.
  *
  * ⭐ A declaration rather than a reading of the stage, for two reasons. A suite decides to skip at
  * module scope where nothing may reach a host, and an arming is an operator's act, so the honest
@@ -493,8 +492,8 @@ interface SurvivingMasterWait {
  * Wait until one ladder's master offers exactly the rungs that kept their postage, and hand it back.
  *
  * ⛔ Exactly, not "no longer the drained one". A master down to two rungs has taken a healthy quality
- * away from viewers who were watching it, which is the failure the owner's ruling of 2026-09-01
- * capped the drop at one to prevent, and a wait that only asked about the drained rung would sail
+ * away from viewers who were watching it, which is the failure that
+ * capping the drop at one exists to prevent, and a wait that only asked about the drained rung would sail
  * past it and then assert on a master read seconds later. So the wait and the assertion ask the same
  * question, `masterRungRefusal`, of the same body.
  *
@@ -573,7 +572,7 @@ interface DrainRamp {
  * its own bucket is full. So the shape worth filing is not when the rung died but how it declined:
  * how many segments landed and how many were lost in each ten seconds after the first refusal.
  *
- * ⛔ Never asserted, per the owner ruling of 2026-08-29. It is printed under a heading that says so
+ * ⛔ Never asserted, by design. It is printed under a heading that says so
  * and filed with the artifact.
  *
  * @param firstRefusalAtMs when bee first refused this stream, on the uploader host's own clock

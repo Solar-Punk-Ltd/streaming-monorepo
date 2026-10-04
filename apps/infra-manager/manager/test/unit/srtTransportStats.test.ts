@@ -3,7 +3,7 @@
  *
  * Unit test, no Docker and no SRS. `pnpm test` in manager/.
  *
- * The two report lines are real, from the tester's broadcast of 2026-09-22 that
+ * The two report lines are real, from an outside broadcast of 2026-09-22 that
  * came out with broken blocks of picture for five hours. The rest of the log
  * here is what sits around them on a live host: libsrt's drop warnings, the
  * viewer side's own statistics, the webhook line that carries the uploader's

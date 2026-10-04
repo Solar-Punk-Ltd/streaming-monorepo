@@ -2,7 +2,7 @@
  * Which way of following a live feed actually keeps up, and is asking for an index before it exists
  * what breaks the others?
  *
- * WHY THIS EXISTS. LAT-10's fix reads `/feeds/{owner}/{topic}` instead of computing the address of
+ * WHY THIS EXISTS. The fix for the feed head freeze reads `/feeds/{owner}/{topic}` instead of computing the address of
  * the slot after the one already held. But a sequential lookup has to find the end somehow, and the
  * only way to know N is the head is to ask for N+1 and be told no. So bee asks early too, and if
  * asking is what poisons, the fix moves the poisoning one level down and changes nothing.
@@ -29,7 +29,7 @@
  * plain ESM rather than TypeScript, so it cannot import the shared module the bench and the player
  * now follow feeds through, and it resolves its dependencies from wherever it is started:
  *
- *   docker run --rm --network host -w /repo/e2e -e STAMP=... swarm-hls-bench:latest \
+ *   docker run --rm --network host -w /repo/e2e -e STAMP=... -e PORT_SLOT=<slot> swarm-hls-bench:latest \
  *     node src/probes/feed-read-ab.mjs
  */
 import { Bee, FeedIndex, Identifier, PrivateKey, Topic } from '@ethersphere/bee-js';
@@ -37,8 +37,10 @@ import { Binary } from 'cafe-utility';
 import { randomBytes } from 'node:crypto';
 import { appendFileSync, writeFileSync } from 'node:fs';
 
-const WRITE_URL = process.env.WRITE_URL ?? 'http://127.0.0.1:10075';
-const READ_URL = process.env.READ_URL ?? 'http://127.0.0.1:10077';
+import { probeReadUrl, probeWriteUrl } from './bee-urls.mjs';
+
+const WRITE_URL = probeWriteUrl();
+const READ_URL = probeReadUrl();
 const STAMP = process.env.STAMP;
 const DURATION_S = Number(process.env.DURATION_S ?? 600);
 const WRITE_INTERVAL_MS = Number(process.env.WRITE_INTERVAL_MS ?? 1000);

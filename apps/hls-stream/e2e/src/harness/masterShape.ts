@@ -289,7 +289,7 @@ interface MasterRungsWait {
  *
  * A drain suite waits for the master to come DOWN to the rungs that kept their postage, and a master
  * down to two has taken a healthy quality away from viewers who were watching it, which is the
- * failure the owner's ruling of 2026-09-01 capped the drop at one to prevent. The suite that runs
+ * failure that capping the drop at one exists to prevent. The suite that runs
  * after a restore waits for it to come back UP to every rung the ladder announced. Both are
  * {@link masterRungRefusal} asked of a body that is re-read, so the wait and the assertion ask the
  * same question of the same reading, and a second copy of this poll would be the second place a

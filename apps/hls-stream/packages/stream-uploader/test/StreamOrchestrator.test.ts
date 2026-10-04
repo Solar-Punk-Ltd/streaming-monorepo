@@ -190,11 +190,11 @@ describe('StreamOrchestrator recovery-timer cancellation (F: uploader crash reco
    * `isDraining` guard, which is set synchronously in the same turn, leaving no window between the
    * two for `handleSegment` to run in.
    *
-   * Recorded as CON-12, whose measured damage was a segment uploaded and stamp-paid into a manifest
+   * It was once recorded as a defect whose measured damage was a segment uploaded and stamp-paid into a manifest
    * already committed, a live manifest published above the VOD's index, and a recovery file
    * resurrected after `notifyStop` removed it. None of that reproduces now: the guard added for
-   * CON-22 closed it as a side effect. This test is here because nothing else states that the
-   * recovery-timeout path depends on that guard, so removing it would reopen CON-12 silently.
+   * the repeated closing closed it as a side effect. This test is here because nothing else states that the
+   * recovery-timeout path depends on that guard, so removing it would reopen it silently.
    */
   it('refuses a segment that arrives while the recovery timeout is finalizing, rather than taking it', async () => {
     const id = 'live/stream';
@@ -532,7 +532,7 @@ describe('StreamOrchestrator re-announce (E: engine restart)', () => {
     const published: unknown[] = [];
     const orch = startedOrchestrator(published, []);
 
-    // Three announces, each fed in the same tick it arrives. CON-1's own account of this race is wrong
+    // Three announces, each fed in the same tick it arrives. The original account of this race is wrong
     // and the correction is what this test pins: p-queue 8 runs the first job inside `add()`, so two
     // announces never did both take the fresh-stream path. The window opened on the second one, which
     // retired the live session and queued its replacement, and that queued write was deferred. Between
@@ -564,7 +564,7 @@ describe('StreamOrchestrator re-announce (E: engine restart)', () => {
   });
 
   /**
-   * The owner's cases 1 and 2, at the layer that decides them. A broadcaster who stops and comes
+   * The reconnect cases, at the layer that decides them. A broadcaster who stops and comes
    * back, or whose network drops for fifty seconds, re-announces the id their own session is still
    * holding, and what they must get back is that session: same recording, same feed, no ending
    * written in between. `ReconnectWindow.test.ts` holds what the resumed playlist then looks like;
@@ -814,7 +814,7 @@ describe('StreamOrchestrator re-announce (E: engine restart)', () => {
   // the same id: a puller that halts calls this, and the closing OME sends afterwards calls it again.
   // A second drain finds the uploader still registered, because the first has not retired it yet, and
   // finalizes it a second time. The stream is not lost, it is published twice, and a viewer reading the
-  // list sees the same broadcast under two entries with nothing to say which is real. See CON-22.
+  // list sees the same broadcast under two entries with nothing to say which is real.
   it('finalizes a stream once when a second stop lands inside the first drain', async () => {
     const id = 'live/stream';
     const published: { state?: StreamStatus }[] = [];
@@ -1056,7 +1056,7 @@ describe('StreamOrchestrator recovery finalization on an injected clock (S0.5)',
   // would send one is being waited on too. A pull-based engine restarts its puller straight away and
   // then retries a silent origin for `haltAfterNotFoundMs`, which is 60s by default, the same 60s this
   // timer runs on. So an OME restart slower than the timer VOD-ed a broadcast whose publisher never
-  // went away, and the puller was mid-retry when it happened. See CON-10.
+  // went away, and the puller was mid-retry when it happened.
   it('defers the recovery finalize for as long as the engine says it is still trying', async () => {
     const clock = new FakeClock();
     const catalogEntries: CatalogEntry[] = [];
@@ -1241,7 +1241,7 @@ describe('StreamOrchestrator recovery finalization on an injected clock (S0.5)',
   });
 });
 
-describe('StreamOrchestrator segment loss (OBS-11)', () => {
+describe('StreamOrchestrator segment loss', () => {
   it('carries a loss through to the uploader without calling it a break', async () => {
     // Neither side of this link was crossed: the uploader tests call its method directly and the
     // health tests read /health, so the orchestrator could stop forwarding entirely and stay green.
@@ -1279,7 +1279,7 @@ describe('StreamOrchestrator segment loss (OBS-11)', () => {
   });
 
   /**
-   * OBS-19. `segmentLossAt` was written on a loss and deleted nowhere. `getMsSinceSegmentLoss` reads
+   * `segmentLossAt` was written on a loss and deleted nowhere. `getMsSinceSegmentLoss` reads
    * it for every id in `activeStreams`, so the entry was invisible while the stream was gone and
    * came back the moment a new session announced on the same id, which is the ordinary case for a
    * broadcaster reconnecting. `/health` then reads `degraded` with `segment_loss` for a broadcast
@@ -1602,7 +1602,7 @@ describe('StreamOrchestrator inferring a loss from a skipped index', () => {
   });
 
   /**
-   * OBS-19's shape, one map along. The accounting is written per session and cleared nowhere would
+   * The shape of the segment-loss timestamp, one map along. The accounting is written per session and cleared nowhere would
    * mean a broadcaster reconnecting on the same id opens with a break and a loss count that is the
    * distance between two unrelated engine counters.
    */
@@ -1699,7 +1699,7 @@ describe('StreamOrchestrator inferring a loss from a skipped index', () => {
   });
 });
 
-describe('StreamOrchestrator origin discontinuity (CON-9)', () => {
+describe('StreamOrchestrator origin discontinuity', () => {
   it('carries a declared discontinuity onto the segment it was declared for', async () => {
     const saved: StreamState[] = [];
     const orch = makeTestOrchestrator(
@@ -1823,7 +1823,7 @@ describe('StreamOrchestrator origin discontinuity (CON-9)', () => {
   });
 });
 
-describe('StreamOrchestrator drain that outlives its deadline (CON-26)', () => {
+describe('StreamOrchestrator drain that outlives its deadline', () => {
   const DRAIN_TIMEOUT_MS = 5 * 60 * 1000;
 
   it('gives up the recovery entry when it gives up waiting, so a replacement keeps its own', async () => {
@@ -1913,7 +1913,7 @@ describe('StreamOrchestrator stall signal during a drain', () => {
   });
 });
 
-describe('StreamOrchestrator duplicate filter (CON-8)', () => {
+describe('StreamOrchestrator duplicate filter', () => {
   const DEDUP_WINDOW = 2;
   const SEGMENTS = DEDUP_WINDOW * 3;
 
@@ -1961,7 +1961,7 @@ describe('StreamOrchestrator duplicate filter (CON-8)', () => {
   });
 });
 
-describe('StreamOrchestrator draining stream (CON-6)', () => {
+describe('StreamOrchestrator draining stream', () => {
   /** The first segment publishes a live manifest at SOC index 0, so the VOD manifest lands at 1. */
   const LIVE_SOC_INDEX = 0;
   const VOD_SOC_INDEX = 1;
@@ -1975,7 +1975,7 @@ describe('StreamOrchestrator draining stream (CON-6)', () => {
 
   /**
    * Holds the drain open inside the VOD manifest commit, which is the only place it can be held that
-   * is past `segmentQueue.onIdle()`. That is CON-6's window: the queue barrier the drain waits on has
+   * is past `segmentQueue.onIdle()`. That is the window: the queue barrier the drain waits on has
    * already resolved, so anything enqueued from here on is uploaded into a manifest that is finished.
    */
   function holdTheVodCommit(): HeldVodCommit {
@@ -2068,7 +2068,7 @@ describe('StreamOrchestrator draining stream (CON-6)', () => {
   });
 });
 
-describe('StreamOrchestrator stop outcome (OBS-3, OBS-10)', () => {
+describe('StreamOrchestrator stop outcome', () => {
   const id = 'live/stopping';
 
   /**
@@ -2352,7 +2352,7 @@ describe('StreamOrchestrator unusable segment durations (gate on PR 52)', () => 
    * every stream through `Math.max`, and `Math.max(x, NaN)` is `NaN`, so one degenerate duration on
    * one stream turned off the signal for the whole process while `/health` reported nothing wrong.
    *
-   * The OME parser has screened durations since CON-7. The two paths that take the number from a
+   * The OME parser has always screened durations. The two paths that take the number from a
    * caller, the HTTP route and the SRS webhook, never did.
    */
   const UNUSABLE: [string, number][] = [
@@ -2599,7 +2599,7 @@ describe('StreamOrchestrator ladder group lifecycle', () => {
 /**
  * The wall clock a broadcast's playlists carry once its engine has restarted inside it.
  *
- * ⛔ Owner decision of 2026-09-03. Before it, `#EXT-X-PROGRAM-DATE-TIME` kept stepping from the
+ * ⛔ Before this, `#EXT-X-PROGRAM-DATE-TIME` kept stepping from the
  * instant the broadcast was admitted, so every segment after a restart claimed a time behind real
  * time by the whole length of the gap, and nothing bounded that. It re-anchors now, on both of the
  * two paths an engine restart takes through here.

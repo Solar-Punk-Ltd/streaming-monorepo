@@ -18,9 +18,9 @@ import {
 
 /**
  * Preflight, in one sentence: a run against the deployed stack spends real money, and this refuses
- * one that has already spent what the owner said it could.
+ * one that has already spent what the operator said it could.
  *
- * The owner authorises an amount by writing `.spend-ledger.env` at the repository root. Until this
+ * The operator authorises an amount by writing `.spend-ledger.env` at the repository root. Until this
  * existed nothing read it at launch time, so every launch was gated by an operator remembering the
  * number, which is a threshold written down rather than a control. `deploy/scripts/spend-ceiling.sh`
  * refuses a bench sitting on the same ledger, and the two read one file so two paths cannot each
@@ -53,7 +53,7 @@ import {
  */
 const cfg = loadConfig();
 
-describe('preflight — the run stays inside what the owner authorised', () => {
+describe('preflight — the run stays inside what the operator authorised', () => {
   const host = makeHost(cfg);
 
   it('has spent less than the ceiling', async () => {

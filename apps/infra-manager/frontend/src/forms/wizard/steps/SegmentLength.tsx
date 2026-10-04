@@ -10,8 +10,8 @@ const FIELD_ID = 'wizard-segment-length';
  * The segment length question, for every goal that runs the SRS engine.
  *
  * Prefilled rather than blank, because a deployment that stores nothing runs on
- * whatever its stack version falls back to, and on main-v3 that is half a
- * second. Clearing the field is still allowed and means exactly that.
+ * whatever its stack version falls back to, which on the current stack is half
+ * a second. Clearing the field is still allowed and means exactly that.
  */
 export function SegmentLength({ state, update }: WizardStepProps) {
   const error = segmentLengthError(state.segmentSeconds);

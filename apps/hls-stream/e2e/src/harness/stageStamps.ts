@@ -17,7 +17,7 @@
  *
  * ## ⛔⛔⛔ And the second version of it: the gate read the wrong batch on the right node
  *
- * Closed 2026-09-04, decision 4 of `docs/e2e-batch-drain-plan.md`. Reading every node was only half
+ * Closed 2026-09-04. Reading every node was only half
  * the job. The batch each reading was about was the node's **best** stamp, the longest-lived usable
  * one it happened to hold, and never the batch `BEE_PUBLISHERS` routes that rung to. A node holding
  * one drained batch, the configured one, beside one fresh unused batch therefore passed this gate

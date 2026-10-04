@@ -48,7 +48,7 @@ const NARROW = 390;
 
 const frontend = fileURLToPath(new URL('../', import.meta.url));
 
-/** main-v3 in the mock, whose contract names generated secrets. */
+/** with-secrets in the mock, whose contract names generated secrets. */
 const VERSION = '2';
 
 const NAME = 'wizard-configured';
@@ -143,7 +143,7 @@ test('the wizard creates a deployment with its own settings at a phone width', {
     await evaluate(
       `${found('#wizard-version')}?.dispatchEvent(new MouseEvent('mousedown', { bubbles: true, button: 0 }))`,
     );
-    await click(found(`[role="option"][data-value="${VERSION}"]`), 'main-v3 in the version list');
+    await click(found(`[role="option"][data-value="${VERSION}"]`), 'with-secrets in the version list');
     await click(buttonWithText('Continue'), 'the Continue button');
 
     await waitFor(foldText, (text) => text.includes('Every key this version declares'), 'the Advanced settings fold');

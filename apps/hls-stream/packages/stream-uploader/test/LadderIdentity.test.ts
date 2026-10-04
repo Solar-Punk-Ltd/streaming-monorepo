@@ -160,7 +160,7 @@ describe('a ladder keeps its identity across a restart of the uploader', () => {
   });
 
   /**
-   * The dating a restart re-anchors to, which is the owner's decision of 2026-09-03: the media after
+   * The dating a restart re-anchors to, the media after
    * an engine restart carries the wall clock it really happened at rather than a time behind real
    * time by the length of the gap.
    *

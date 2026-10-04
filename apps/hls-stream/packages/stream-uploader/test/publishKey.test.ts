@@ -90,7 +90,7 @@ describe('verifying a presented publish key', () => {
   });
 
   /**
-   * The attack SEC-28 exists to stop, and the one SEC-26's address test could not: a publisher who
+   * The attack the publish key exists to stop, and the one the address test could not: a publisher who
    * legitimately holds one stream presenting that credential against someone else's.
    */
   it('refuses a key that is valid, but for another stream', () => {
@@ -112,7 +112,7 @@ describe('verifying a presented publish key', () => {
   });
 
   /**
-   * The SEC-3 lesson, load-bearing rather than defensive. Two empty strings encode to two zero-length
+   * The empty-secret lesson, load-bearing rather than defensive. Two empty strings encode to two zero-length
    * buffers and `timingSafeEqual` reports those as equal, so without this an unset secret would not
    * disable the check, it would make the empty key the valid one for every stream at once.
    */

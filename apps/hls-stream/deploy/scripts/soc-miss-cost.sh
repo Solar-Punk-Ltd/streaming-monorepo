@@ -21,7 +21,7 @@
 # already paid for at up to 1.95x with nothing happening.
 set -u
 
-GATEWAY_BEE_PORT="${GATEWAY_BEE_PORT:-10077}"
+GATEWAY_BEE_PORT="${GATEWAY_BEE_PORT:-$((10007 + ${PORT_SLOT:?set PORT_SLOT to the port slot of the stage this reads, or GATEWAY_BEE_PORT} * 10))}"
 OUT_DIR="${OUT_DIR:-${HOME}/soc-miss}"
 # Real slot identifiers that a browser fetched successfully, one per line, owner included.
 HITS_FILE="${HITS_FILE:-${OUT_DIR}/hits.txt}"

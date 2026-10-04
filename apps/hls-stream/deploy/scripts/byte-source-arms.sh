@@ -45,9 +45,9 @@
 #   ARM_PLAN="weeb3:6:warm-up weeb3:180:counted" bash deploy/scripts/byte-source-arms.sh
 set -u
 
-BENCH_REPO="${BENCH_REPO:-${HOME}/swarm-hls-bench}"
-PROFILE="${PROFILE:-latbench}"
-PORT_SLOT="${PORT_SLOT:-7}"
+BENCH_REPO="${BENCH_REPO:-$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)}"
+PROFILE="${PROFILE:?set PROFILE to the deploy profile of the stage this drives}"
+PORT_SLOT="${PORT_SLOT:?set PORT_SLOT to the port slot of the stage this drives}"
 
 # Four rounds of two arms. The order is counterbalanced and comes from the harness rather than from
 # arithmetic repeated here, see `browser:byte-source-order`.
@@ -91,8 +91,8 @@ TARGET_LATENCY_S="${TARGET_LATENCY_S:-2}"
 # ⛔⛔ WHICH PAIR THIS SITTING RUNS. Unset it and nothing changes: gateway against our hybrid client,
 # which is every byte-source sitting run so far.
 #
-# `gateway-less` swaps the gateway condition for weeb-3's OWN PAGE, which is what the owner asked for
-# on 2026-08-11 and what the split of the in-tab fetch backend change never measured.
+# `gateway-less` swaps the gateway condition for weeb-3's OWN PAGE, which is the comparison that
+# was wanted on 2026-08-11 and what the split of the in-tab fetch backend change never measured.
 #
 # ⚠️ That contrast moves TWO things, whose page and player, and whether a gateway serves the
 # manifest. It bounds the cost of going fully gateway-less rather than isolating either one.
@@ -698,7 +698,7 @@ if ! has_capacity "${SITTING_MINUTES}"; then
   exit 1
 fi
 # ⛔ Distinct from can_afford above, which asks whether the node CAN pay and so authorises the whole
-# balance. This asks whether the owner said it may, and it is the only one of the two that can see
+# balance. This asks whether the operator said it may, and it is the only one of the two that can see
 # what an earlier sitting tonight already spent.
 if ! within_ceiling "${SITTING_MINUTES}"; then
   say "REFUSING TO START: this sitting would spend past the authorisation in ${SPEND_LEDGER}"

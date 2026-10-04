@@ -157,7 +157,7 @@ describe('the timeline a playlist declares', () => {
   });
 
   /**
-   * A segment whose upload failed leaves a hole, and since the owner's ruling of 2026-09-06 the hole
+   * A segment whose upload failed leaves a hole, and since 2026-09-06 the hole
    * is listed: every missing sequence is an `#EXT-X-GAP` entry carrying its own derived stamp. So the
    * dates step by exactly one fragment across a hole that was said, which is the whole point of
    * saying it.
@@ -217,7 +217,7 @@ describe('the timeline a playlist declares', () => {
   }
 
   /**
-   * ⛔ Owner decision of 2026-09-03. An engine restart re-anchors the dating on the wall clock the
+   * ⛔ Since 2026-09-03 an engine restart re-anchors the dating on the wall clock the
    * engine came back at, so the step across the break is the length of the outage and nothing makes
    * that a whole number of fragments. The step after it is one fragment again.
    */

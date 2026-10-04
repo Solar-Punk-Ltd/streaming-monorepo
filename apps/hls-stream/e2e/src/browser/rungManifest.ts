@@ -84,7 +84,7 @@ function taggedNumber(lines: readonly string[], tag: string): number | null {
  * belongs to: `browser:vod` reads one off the address the player's own fragment log names, and a
  * rung name it invented would put a label nobody chose on a reference.
  *
- * ⛔ A gap entry is not one of these. Since the owner's ruling of 2026-09-06 the uploader lists every
+ * ⛔ A gap entry is not one of these. Since 2026-09-06 the uploader lists every
  * sequence it lost as an `#EXT-X-GAP` entry, so the numbering behind a hole does not move, and such an
  * entry's URI names no chunk. It is refused by the same shape test that keeps a tag line out, because
  * a hole is named `gap-<sequence>` and a reference is 64 lowercase hex characters. A probe that took

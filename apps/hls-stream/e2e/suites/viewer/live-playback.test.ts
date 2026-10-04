@@ -30,13 +30,13 @@ import { requireByteSource, viewerGate } from '../../src/viewerCoverage.js';
  * in-tab arm it also asserts the arm was that condition, because a weeb-3 arm's headline is a
  * near-zero and a client that never switched produces the same near-zero.
  *
- * ⛔ **It asserts NOTHING about speed.** Owner ruling of 2026-08-29: an e2e suite checks feature
+ * ⛔ **It asserts NOTHING about speed.** An e2e suite checks feature
  * correctness and stability, and performance is a separate kind of test. Every timing this once
  * gated on is measured and printed instead, so a run is still where drift is noticed, and noticing is
  * the job rather than refusing. That covers how far behind live the player sat, the rebuffer count,
  * and the advance ratio: this held the last of those against a floor of 0.95 taken from a
  * single-rendition 720p broadcast, and a four rung ABR ladder delivers 0.80 for reasons that belong
- * to the configuration rather than to this code. See `docs/bench` for what all three have been.
+ * to the configuration rather than to this code. The measurements of what all three have been are kept outside the repository.
  *
  * ⛔ Requires a deployed profile, a funded stamp and the browser image on the host, like every suite
  * under `suites/`. Nothing in CI runs these. See `src/harness/browser.ts` for the launch contract.

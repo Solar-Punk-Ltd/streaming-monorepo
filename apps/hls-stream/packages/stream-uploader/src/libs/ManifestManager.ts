@@ -260,7 +260,7 @@ function mediaSecondsOf(timeline: readonly string[]): number {
  * `http://<host>:<port>/bytes/<ref>` into every line, and an absolute URI is passed straight through
  * by every reader: the publisher therefore chose the gateway for the entire audience, and that
  * gateway was a single point of load and failure for every viewer of the broadcast no matter what
- * they had configured. Owner decision of 2026-08-13, asked directly: **each viewer fetches
+ * they had configured. The rule now: **each viewer fetches
  * themselves**.
  *
  * ⭐ It was invisible from the viewer side, which is why it survived so long. On 2026-08-13 both arms
@@ -327,7 +327,7 @@ function mediaSecondsOf(timeline: readonly string[]): number {
  *
  * ## A segment that was lost is said out loud, as a gap entry
  *
- * **Owner ruling of 2026-09-06, "Option A, say the gap".** A segment the engine closed while nothing
+ * **The gap is said, not hidden.** A segment the engine closed while nothing
  * took it leaves a hole in the sequences this manager holds: a failed upload, a loss the engine
  * reported, or a loss inferred from the index that followed an uploader crash. HLS numbers the
  * entries a playlist lists consecutively from `#EXT-X-MEDIA-SEQUENCE`, so a playlist that simply left

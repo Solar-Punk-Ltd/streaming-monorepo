@@ -47,8 +47,11 @@
 #     bash deploy/scripts/recording-timeline-arms.sh
 set -u
 
-BENCH_REPO="${BENCH_REPO:-${HOME}/swarm-hls-bench}"
+BENCH_REPO="${BENCH_REPO:-$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)}"
 OWNER="${OWNER:-00000000000000000000000000000000000fa4e1}"
+# The stage whose gateway the node snapshots read, which node-metrics.sh finds from the slot.
+PORT_SLOT="${PORT_SLOT:?set PORT_SLOT to the port slot of the stage this reads}"
+export PORT_SLOT
 
 # `label:topic:start_seconds`, space separated. Labels carry into the state file and the artefact
 # names, so they are what a write-up joins on.

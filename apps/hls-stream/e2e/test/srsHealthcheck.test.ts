@@ -160,9 +160,9 @@ function procFor(options: ProcContents): FakeProc {
 }
 
 /**
- * OBS-20: a stack can be Up, healthy and unable to receive a broadcast.
+ * A stack can be Up, healthy and unable to receive a broadcast.
  *
- * On 2026-08-03 `latbench-srs-1` ran 44 minutes with its SRT listener dead. It had failed to bind
+ * On 2026-08-03 one stage's SRS ran 44 minutes with its SRT listener dead. It had failed to bind
  * with `errno=98` because another container still held the port under host networking, and every
  * signal the deployment had reported on a process that was running rather than on a socket that was
  * listening. The bind error itself was not written to the log until the container was stopped.
@@ -219,7 +219,7 @@ describe('the SRS ingest healthcheck', () => {
    * A port whose hex spelling is a suffix of another's. 10071 is `2757` and 4439 is `1157`, so a
    * match anchored anywhere but the end of the address field would confuse `:1157` for `:2757`
    * whenever one contains the other. Guarded because the failure would be a healthcheck that passes
-   * off an unrelated listener, which is the same shape of blindness OBS-20 already is.
+   * off an unrelated listener, which is the same shape of blindness the SRT listener check already covers.
    */
   it('does not accept a listener on a different port whose hex looks similar', () => {
     const proc = procFor({
@@ -310,7 +310,7 @@ describe('the SRS ingest healthcheck', () => {
  *
  * There are two compose files carrying an `srs` service and they are not interchangeable.
  * `engines/srs/docker-compose.yml` is the standalone one behind `pnpm srs:host`, and
- * `deploy/docker-compose.yml` is what `deploy.sh` puts on a target: the live `latbench-srs-1`
+ * `deploy/docker-compose.yml` is what `deploy.sh` puts on a target: the live stage's SRS
  * reports the second. The first version of this fix wired only the standalone file, so the check
  * would have been absent from every real deployment while every test here passed.
  *

@@ -244,7 +244,7 @@ describe('the report an operator reads', () => {
 
   // A throttled publisher carries its full complement of frames and bytes over a stretched span, so
   // both per-second columns fall together and neither alone would say which fault it was.
-  // See `docs/bench/publisher-backpressure.md`.
+  // See the `publisher-backpressure` measurement (kept outside the repository).
   it('reports frames and bytes per second of media, not per segment', () => {
     const report = renderReport(runWith([sampleWithTotal(1, 7_000)]));
 
@@ -404,7 +404,7 @@ describe('a run that measured nothing', () => {
 });
 
 /**
- * LAT-9's own question, which the fix routes around rather than answers: the split is measured from
+ * The segment duration finding's own question, which the fix routes around rather than answers: the split is measured from
  * the bytes now, so an engine that misreports its segment durations no longer moves any figure, and
  * the only place that misreporting can still be seen is here.
  */
@@ -459,7 +459,7 @@ describe('reporting the manifest against the bytes', () => {
    * false pair: nothing derives from the declared figure, and everything but the total derives from
    * the measured one. So a wide gap is evidence against the measurement too, and that direction is
    * the dangerous one. A span measured too small grows the `upload` hop instead of making it
-   * negative, and a negative `upload` hop is the entire symptom LAT-9 was opened on.
+   * negative, and a negative `upload` hop is the entire symptom that finding was opened on.
    */
   it('does not blame the engine for a gap that is evidence against the measurement too', () => {
     const report = renderReport(runWith([declaring(1, 3.15)]));
@@ -500,7 +500,7 @@ describe('reporting the manifest against the bytes', () => {
  * Whether the publisher kept up, which is the one thing a run cannot be compared without.
  *
  * ⛔ **This is a frame-rate check and not a byte-rate one, and the task that asked for it asked for
- * bytes.** `docs/bench/publisher-backpressure.md` measured the mechanism: `wallclockEncodeArgs` stamps
+ * bytes.** the `publisher-backpressure` measurement (kept outside the repository) measured the mechanism: `wallclockEncodeArgs` stamps
  * timestamps at the demuxer, so when anything downstream of the muxer blocks, no frames are stamped
  * while the wall clock keeps running and media time stretches to match. The encoder still hits its
  * bitrate per second of media it produced, so **a byte rate barely moves** and would have caught
@@ -535,7 +535,7 @@ describe('whether the publisher kept up', () => {
     assert.match(report, /⛔ \*\*the publisher delivered only 12\.0 fps against the 30 it was configured for\*\*/);
     assert.match(report, /40% of it/);
     assert.match(report, /The encoder is not at fault and no frame was dropped/);
-    assert.match(report, /publisher-backpressure\.md/);
+    assert.match(report, /publisher-backpressure/);
   });
 
   /**

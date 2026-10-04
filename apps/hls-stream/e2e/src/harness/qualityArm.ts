@@ -19,7 +19,7 @@
  *
  * ## ⛔ No timing is judged
  *
- * Owner ruling of 2026-08-29. Whether the player came down, kept playing and went back up is
+ * Whether the player came down, kept playing and went back up is
  * correctness. How many seconds each took is measured, carried in the artifact and printed. None of
  * it refuses a run.
  *
@@ -279,7 +279,7 @@ export function climbedBackRefusal(quality: QualitySwitchVerdict): string | null
  * that recorded lines and shows a phase at zero is the player, which is the only one of the three that
  * is a finding about the product.
  *
- * ⛔ An observation. Nothing here refuses a run, per the owner ruling of 2026-08-29.
+ * ⛔ An observation. Nothing here refuses a run, because an e2e suite checks correctness and never speed.
  */
 export function levelsAskedForSummary(asked: FragmentRequestTimeline | null): string {
   if (asked === null) {

@@ -95,6 +95,9 @@ const sandboxes = [];
  */
 export const BENCH_TARGET = 'bench.example.org';
 
+/** The stage a bench launch names beside its target, as `--profile` and `--portSlot`. */
+export const BENCH_STAGE = ['--profile', 'bench-stage', '--portSlot', '7'];
+
 export function removeSandboxes() {
   for (const dir of sandboxes) {
     rmSync(dir, { recursive: true, force: true });
@@ -522,6 +525,20 @@ if (argv[0] === 'compose' && argv.includes('up') && process.env.DOCKER_STUB_UP_E
   process.exit(Number(process.env.DOCKER_STUB_UP_EXIT));
 }
 
+// What the daemon reports about itself and its default bridge network, which \`docker-bridge-address.sh\`
+// reads. DOCKER_STUB_BRIDGE set to the empty string is a daemon that reports no gateway at all.
+if (argv[0] === 'info') {
+  console.log(process.env.DOCKER_STUB_OS ?? 'Ubuntu 24.04 LTS');
+  process.exit(0);
+}
+
+if (argv[0] === 'network' && argv[1] === 'inspect') {
+  const bridge = process.env.DOCKER_STUB_BRIDGE ?? '192.0.2.1';
+  if (bridge === '') process.exit(1);
+  console.log(bridge + ' ');
+  process.exit(0);
+}
+
 const inventory = ${JSON.stringify(INVENTORY)};
 
 // What the service says about its own health, which the watch asks a running container for when it
@@ -685,7 +702,7 @@ for (const source of positional) {
  * path executes for real. Recording the text alone would let the remote sweep drift from the local
  * one while a substring assertion still passed.
  *
- * `bash -c "$*"` is not a shortcut, it is the fidelity that makes SEC-21 visible. Real ssh joins its
+ * `bash -c "$*"` is not a shortcut, it is the fidelity that makes command injection through an unquoted value visible. Real ssh joins its
  * remaining arguments into one string and hands it to the far side's LOGIN SHELL, which word-splits
  * and evaluates it, which is why an unquoted interpolation into an ssh command line is a command
  * injection rather than a quoting nit. A stub that exec'd an argv would model something ssh does not

@@ -19,6 +19,7 @@ import { fileURLToPath } from 'node:url';
 
 import {
   ALL_REMOTE,
+  BENCH_STAGE,
   BENCH_TARGET,
   GIT_STUB,
   makeSandbox,
@@ -376,7 +377,9 @@ describe('bench-on-host.sh from a checkout of the one workspace', () => {
     writeFileSync(join(sandbox.root, SPEND_LEDGER), OWNER_LEDGER);
     const tmp = ownTmpdir();
 
-    await runScriptOk(sandbox, 'bench-on-host.sh', ['--target', BENCH_TARGET, '--setup-only'], { TMPDIR: tmp });
+    await runScriptOk(sandbox, 'bench-on-host.sh', ['--target', BENCH_TARGET, ...BENCH_STAGE, '--setup-only'], {
+      TMPDIR: tmp,
+    });
 
     const cut = expectedCut(workspace);
     const mirror = join(sandbox.remoteHome, REMOTE_BENCH_DIR);
@@ -400,14 +403,14 @@ describe('bench-on-host.sh from a checkout of the one workspace', () => {
       'pnpm-lock.yaml': "lockfileVersion: '9.0'\n# the stack's own, from before the one workspace\n",
       'stale.txt': 'a file the checkout no longer has\n',
       'reports/kept.txt': 'a report the harness wrote on the host\n',
-      'docs/bench/kept.md': 'a result the harness wrote on the host\n',
+      'bench-results/kept.md': 'a result the harness wrote on the host\n',
     };
     write(join(sandbox.remoteHome, REMOTE_BENCH_DIR), earlier);
     const alone = join(ownTmpdir(), 'mirror');
     write(alone, earlier);
     const tmp = ownTmpdir();
 
-    await runScriptOk(sandbox, 'bench-on-host.sh', ['--target', BENCH_TARGET, '--setup-only'], {
+    await runScriptOk(sandbox, 'bench-on-host.sh', ['--target', BENCH_TARGET, ...BENCH_STAGE, '--setup-only'], {
       TMPDIR: tmp,
       RSYNC_ALONE_DEST: alone,
       RSYNC_ALONE_SKIP: tmp,
@@ -425,14 +428,16 @@ describe('bench-on-host.sh from a checkout of the one workspace', () => {
     assert.equal(withoutPair['stale.txt'], undefined, '--delete removed what the checkout no longer has');
     assert.equal(withoutPair['pnpm-lock.yaml'], undefined, "alone, --delete would have removed the mirror's lockfile");
     assert.equal(withoutPair['reports/kept.txt'], earlier['reports/kept.txt']);
-    assert.equal(withoutPair['docs/bench/kept.md'], earlier['docs/bench/kept.md']);
+    assert.equal(withoutPair['bench-results/kept.md'], earlier['bench-results/kept.md']);
   });
 
   it('mirrors a stack that keeps its own lockfile as before', async () => {
     const { sandbox } = oneWorkspace({ ownPair: true });
     writeFileSync(join(sandbox.root, SPEND_LEDGER), OWNER_LEDGER);
 
-    await runScriptOk(sandbox, 'bench-on-host.sh', ['--target', BENCH_TARGET, '--setup-only'], { TMPDIR: ownTmpdir() });
+    await runScriptOk(sandbox, 'bench-on-host.sh', ['--target', BENCH_TARGET, ...BENCH_STAGE, '--setup-only'], {
+      TMPDIR: ownTmpdir(),
+    });
 
     assert.equal(
       readFileSync(join(sandbox.remoteHome, REMOTE_BENCH_DIR, 'pnpm-lock.yaml'), 'utf8'),

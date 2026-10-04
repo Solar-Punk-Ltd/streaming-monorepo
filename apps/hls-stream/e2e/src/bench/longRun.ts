@@ -286,7 +286,7 @@ export interface FeedProgress {
    * `stallPolls` minus this is what actually saw the same segment still newest. A stall spanned
    * mostly by failures is one the bench cannot attribute, and saying so is the point: `run.ts`
    * records a failed poll deliberately, because a feed read slow enough to time out is the strongest
-   * sample of LAT-10 there is, and a reader needs to know how much of a stall rests on it.
+   * sample of the feed head freeze there is, and a reader needs to know how much of a stall rests on it.
    */
   stallPollsWithoutAnswer: number;
   /** Bench clock, when that segment first appeared. */

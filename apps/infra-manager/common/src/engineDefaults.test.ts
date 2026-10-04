@@ -71,7 +71,7 @@ describe('effectiveEngineDefaults', () => {
   });
 
   it("takes the manager's own SRT latency over a version's fallback, and says the manager set it", () => {
-    // v3.1's entrypoint falls back to 200. The owner decided 2000 on
+    // v3.1's entrypoint falls back to 200. The manager sets 2000 since
     // 2026-09-23, and a version pinned before that does not know it.
     const { values, sources } = effectiveEngineDefaults(SRS_SERVICE, {}, { SRT_LATENCY: '200', HLS_FRAGMENT: '0.5' });
 

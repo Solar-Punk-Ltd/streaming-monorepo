@@ -10,7 +10,7 @@
  *
  * ## ⛔ Nothing here asserts, and a phase nobody sampled says so
  *
- * Owner ruling of 2026-08-29: a ratio, a duration and a byte rate are measured, printed under a
+ * A ratio, a duration and a byte rate are measured, printed under a
  * heading that says they are observations, and refuse nothing. The one thing this module is strict
  * about is the difference between a reading of zero and no reading at all. A phase with fewer than
  * two samples has no pair to subtract, so every figure derived from a pair comes back null. Zero is
@@ -35,7 +35,7 @@
  * publishes no handle a known-size payload could be timed through, so unlike our own client's
  * squeeze this run cannot PROVE its cap landed. It can only rule out the two failures above.
  *
- * @see `docs/bench/in-tab-throttle-probe-result-2026-09-02.md` for the run this is the control for.
+ * @see the `in-tab-throttle-probe-result-2026-09-02` measurement (kept outside the repository) for the run this is the control for.
  */
 
 import { blindWhileDeliveringRefusal, capExceededRefusal } from './capProof.js';
@@ -270,7 +270,7 @@ const PLAYHEAD_STARTED_ADVANCE_S = 1;
  * 0.000 after, which is a startup measured three times rather than a cap measured once.
  *
  * @param startSample The poll taken where the seek left the playhead, which advance is measured from.
- * @see `docs/bench/weeb3-native-arm-2026-08-16.md` for the 26.1 s reading.
+ * @see the `weeb3-native-arm-2026-08-16` measurement (kept outside the repository) for the 26.1 s reading.
  */
 export function playheadHasMoved(
   startSample: NativeSqueezeSample,

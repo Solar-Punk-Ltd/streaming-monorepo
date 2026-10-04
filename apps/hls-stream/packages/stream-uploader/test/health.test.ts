@@ -46,7 +46,7 @@ function signals(overrides: Partial<HealthSignals> = {}): HealthSignals {
     msSinceAuthRejection: null,
     disconnectedStreams: [],
     // A service that has ingested media, so an unrelated case cannot pick up `ingest_refused` by
-    // default. The OBS-15 cases below set both fields explicitly.
+    // default. The refused-ingest cases below set both fields explicitly.
     hasIngestedMedia: true,
     segmentsSkipped: 0,
     openingSegmentsWithheld: 0,
@@ -290,7 +290,7 @@ describe('deriveHealthStatus segment loss', () => {
   });
 });
 
-describe('deriveHealthStatus unlisted stream (CON-3)', () => {
+describe('deriveHealthStatus unlisted stream', () => {
   /**
    * No threshold, unlike the manifest counter, because a failure that reaches this signal has already
    * survived `StreamCatalog`'s own 10 second retry window. There is no hiccup left to ride out: the
@@ -324,7 +324,7 @@ describe('deriveHealthStatus unlisted stream (CON-3)', () => {
   });
 });
 
-describe('deriveHealthStatus unpersisted state (OBS-4, OBS-5)', () => {
+describe('deriveHealthStatus unpersisted state', () => {
   /**
    * The quietest failure in the service: the running process is perfectly healthy and stays that way,
    * because it holds the right state in memory. The damage arrives whole at the next restart, as a
@@ -357,7 +357,7 @@ describe('deriveHealthStatus unpersisted state (OBS-4, OBS-5)', () => {
   });
 });
 
-describe('deriveHealthStatus queue backlog (OBS-9)', () => {
+describe('deriveHealthStatus queue backlog', () => {
   /**
    * The measured case from the register: a 39 deep queue against a `MAX_QUEUE_SIZE` of 100 is a ratio
    * of 0.39, so the pressure band reports `low` and the service reports `ok`, while a viewer is 78
@@ -409,7 +409,7 @@ describe('deriveHealthStatus queue backlog (OBS-9)', () => {
  * startup leaves all of them at their healthy value: no `on_publish` succeeds, nothing registers, and
  * `deploy/scripts/health.sh` prints a green check over a deployment that has never worked.
  */
-describe('deriveHealthStatus refused ingest (OBS-15)', () => {
+describe('deriveHealthStatus refused ingest', () => {
   /** The state the row was measured in: rejections in-process, and every other signal spotless. */
   function neverIngested(overrides: Partial<HealthSignals> = {}): HealthSignals {
     return signals({ activeStreams: 0, msSinceStreamActivity: null, hasIngestedMedia: false, ...overrides });
@@ -454,7 +454,7 @@ describe('deriveHealthStatus refused ingest (OBS-15)', () => {
   });
 });
 
-describe('deriveHealthStatus deliberate discards (OBS-16)', () => {
+describe('deriveHealthStatus deliberate discards', () => {
   /**
    * A skip is the handover floor working, so it carries no threshold and raises no reason. It is on
    * `HealthSignals` to be read, not to be judged: a floor matching zero segments and a floor holding
@@ -475,7 +475,7 @@ describe('deriveHealthStatus deliberate discards (OBS-16)', () => {
    * ⛔ **Deliberately does not degrade the verdict, and that is a decision rather than an
    * oversight.** The compose healthcheck acts on this status, so a broadcast that lost a few
    * segments could take a running stack down. It is here to be READ, exactly as `segmentsSkipped`
-   * is. Changing it to raise a reason is the owner's call.
+   * is. Changing it to raise a reason is a product decision.
    */
   it('does not degrade on segments no manifest will ever name, which is a decision not an oversight', () => {
     const report = deriveHealthStatus(signals({ segmentsNeverNamed: 40 }), STALL_MS);

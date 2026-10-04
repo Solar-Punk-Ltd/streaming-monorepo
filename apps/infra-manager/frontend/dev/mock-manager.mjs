@@ -719,7 +719,7 @@ const ROUTES = [
     'POST',
     /^\/profiles\/([^/]+)\/deploy-uploader$/,
     withProfile((_req, res, profile) => {
-      // Nothing about funding refuses a start, on the owner's ruling of
+      // Nothing about funding refuses a start, since
       // 2026-09-17. What a dry chequebook costs shows up on the deployment
       // page, from the uploader's own health.
       deploy(profile, { withUploader: true });

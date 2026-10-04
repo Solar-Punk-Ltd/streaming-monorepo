@@ -6,12 +6,12 @@
  * One broadcast, one fault, one viewer. `browser:crash` opens a real player, watches it settle,
  * breaks a container of the deployment from inside the same process, and keeps sampling while the
  * service comes back. Five faults are declared in `browser/faults.ts` and all five were measured
- * against a real viewer on 2026-08-27, recorded in `docs/bench/crash-at-an-in-tab-viewer-2026-08-27.md`.
+ * against a real viewer on 2026-08-27, recorded in the `crash-at-an-in-tab-viewer-2026-08-27` measurement (kept outside the repository).
  * The suites under `suites/viewer/` drive those faults, and this is what they judge on.
  *
  * ## ⛔ What these judge, and what they only measure
  *
- * **Owner ruling, 2026-08-29: an e2e suite checks feature correctness and stability. It never gates
+ * **An e2e suite checks feature correctness and stability. It never gates
  * on a timing.** So what is asserted is that the viewer watched, that the picture came back where
  * recovery is the contract and correctly did not where the broadcast ended, and that the client told
  * them something true meanwhile. How long the freeze lasted, how much buffer ran out in front of it
@@ -231,8 +231,8 @@ interface ResumeExpectation {
  * ⭐ **Whether, never how fast.** This once held `recoveredAfterLiftMs` against a per-fault ceiling,
  * and that figure is still the sharpest one these arms produce: the uploader-crash recovery fix moved
  * it from 46.7s to 2.3s. It is measured on every arm, printed by {@link crashArmSummary} and filed,
- * so a regression is noticed. It is not refused. Owner ruling of 2026-08-29, and the reading behind
- * it: on a four rung ladder the same faults froze a viewer for 57 to 59 seconds where the
+ * so a regression is noticed. It is not refused, and the reading behind
+ * that is this: on a four rung ladder the same faults froze a viewer for 57 to 59 seconds where the
  * single-rendition matrix recorded 13 to 30, which is the configuration and not a broken recovery.
  */
 export function resumeRefusal(recovery: CrashRecoveryResult, { expectRecovery }: ResumeExpectation): string | null {
@@ -290,8 +290,8 @@ interface FrozenOverlayExpectation {
  * frame. Where {@link FrozenOverlayExpectation.mustSpeak} is set, that is refused.
  *
  * ⚠️ This once asserted the recorded silence EXACTLY, so a fix for the silent overlay gap would
- * have turned three cases red for the product improving. Under the owner ruling of 2026-08-29 a
- * correctness suite goes green when the product gets better, so a client that starts explaining a
+ * have turned three cases red for the product improving. Because an e2e suite checks correctness and never speed, it
+ * goes green when the product gets better, so a client that starts explaining a
  * fault it used to sit through in silence now passes.
  */
 export function frozenOverlayRefusal(

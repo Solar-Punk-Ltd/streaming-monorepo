@@ -253,6 +253,33 @@ fi
 require_on_off RTMP_TAKEOVER "$RTMP_TAKEOVER"
 sed -i "s/RTMP_TAKEOVER_PLACEHOLDER/${RTMP_TAKEOVER}/" "$CONF"
 
+# Who may play a stream out of SRS, over RTMP and SRT and for a playlist from the file server. RTMP
+# publishing and playback share one port, so a firewall that lets broadcasters in lets players in too,
+# and this rule is what tells them apart. The default is this container alone, where the ladder's
+# transcode input dials, because a viewer reads the broadcast from Swarm. SRS_PLAY_FROM takes addresses
+# and CIDR blocks, separated by spaces or commas, or `all`. Anything else is refused, because each entry
+# becomes a directive of its own in the config. Written into every security section that carries the
+# placeholder, the ladder's vhost included, so it runs once that vhost is in.
+write_play_rules() {
+  local from="${SRS_PLAY_FROM:-127.0.0.1 ::1 ::ffff:127.0.0.1}" rules=/tmp/srs-play-rules.conf source
+  : > "$rules"
+  for source in ${from//,/ }; do
+    case "$source" in
+      all) ;;
+      *[!0-9a-fA-F:./]*)
+        echo "SRS_PLAY_FROM takes addresses, CIDR blocks or all, got '$source'" >&2
+        exit 1
+        ;;
+    esac
+    printf '        allow       play        %s;\n' "$source" >> "$rules"
+  done
+  if [ ! -s "$rules" ]; then
+    echo "SRS_PLAY_FROM names no address, and the ladder's transcode input plays from loopback" >&2
+    exit 1
+  fi
+  sed -i -e "/PLAY_FROM_PLACEHOLDER/r $rules" -e "/PLAY_FROM_PLACEHOLDER/d" "$CONF"
+}
+
 # The uploader rejects every webhook without this, so an empty value is a misconfiguration worth
 # failing on here rather than at the first publish. SRS cannot sign its callbacks or send a header,
 # so the credential travels in the hook URL.
@@ -430,9 +457,7 @@ vhost ${ABR_VHOST} {
     security {
         enabled     on;
         allow       publish     all;
-        allow       play        127.0.0.1;
-        allow       play        ::1;
-        allow       play        ::ffff:127.0.0.1;
+        allow       play        PLAY_FROM_PLACEHOLDER;
     }
 
     hls {
@@ -441,7 +466,7 @@ vhost ${ABR_VHOST} {
         hls_fragment    ${HLS_FRAGMENT};
         # Without this the rungs run on SRS's own 2.1 default while the ingest vhost runs on
         # the configured ratio, so an enabled ladder force-closes segments the single-rendition
-        # path does not. 0.5 * 5.0 = 2.5s, the ceiling latbench has always run.
+        # path does not. 0.5 * 5.0 = 2.5s, the ceiling the stages have always run.
         hls_aof_ratio   ${HLS_AOF_RATIO};
         hls_window      ${HLS_WINDOW};
         hls_ts_file     [app]/[stream]/[stream]-[seq].ts;
@@ -473,6 +498,8 @@ else
   sed -i "s/INGEST_HLS_PLACEHOLDER/on/" "$CONF"
   sed -i -e '/TRANSCODE_PLACEHOLDER/d' -e '/ABR_VHOST_PLACEHOLDER/d' "$CONF"
 fi
+
+write_play_rules
 
 sed -i "s/HLS_FRAGMENT_PLACEHOLDER/${HLS_FRAGMENT:-0.5}/" "$CONF"
 sed -i "s/HLS_AOF_RATIO_PLACEHOLDER/${HLS_AOF_RATIO}/" "$CONF"

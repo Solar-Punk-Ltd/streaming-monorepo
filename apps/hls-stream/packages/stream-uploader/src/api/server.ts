@@ -54,7 +54,7 @@ export function createApiApp(streamOrchestrator: StreamOrchestrator, options: Ap
 
   // Global middleware
   app.use(requestLogger);
-  // Ahead of every gate, so the refusal is counted whichever one answers. See OBS-15.
+  // Ahead of every gate, so the refusal is counted whichever one answers.
   app.use(createAuthRejectionObserver(() => streamOrchestrator.recordAuthRejection()));
 
   // Ahead of the body parsers on purpose. Behind them, an anonymous caller gets 50MB of process

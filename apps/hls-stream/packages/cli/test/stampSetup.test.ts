@@ -158,7 +158,7 @@ async function run(
   return { spends, output: captured.join('\n'), exitCode };
 }
 
-describe('stampSetup, OPS-1: no path loses the batch id after a spend', () => {
+describe('stampSetup, no path loses the batch id after a spend', () => {
   let dir: string;
   let envPath: string;
 
@@ -293,7 +293,7 @@ describe('stampSetup, OPS-1: no path loses the batch id after a spend', () => {
 
   // The check used to be `balance > 0`, so a wallet holding a single PLUR passed it and the run went
   // on to submit a transaction the chain then reverted, after the gas for it had been spent. A batch
-  // costs `amount * 2^depth`, which is a number this command has known all along. See OPS-5.
+  // costs `amount * 2^depth`, which is a number this command has known all along.
   it('does not spend when the wallet holds dust rather than the batch price', async () => {
     const result = await run({ envPath, createBee: () => walletBee({ bzzPlur: 1n }) });
 
@@ -463,7 +463,7 @@ describe('stampSetup, OPS-1: no path loses the batch id after a spend', () => {
     },
   );
 
-  // OPS-12: a check that fails is not a check that passed. Both of these used to warn on one line
+  // A check that fails is not a check that passed. Both of these used to warn on one line
   // and carry on to the purchase.
   it('does not spend when the wallet balance cannot be read', async () => {
     const result = await run({

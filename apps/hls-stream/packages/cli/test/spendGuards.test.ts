@@ -45,7 +45,7 @@ describe('the guards on a spend', () => {
    * nothing asserted that the flag survived the trip. It did not: the docblock at the top of this
    * file names hardcoding `assumeYes: true` as a mutation the suite cannot catch, and that is
    * exactly what `stampArgs` was doing, so the confirmation in `stampBuy` and `stampSetup` never
-   * ran and `--yes` documented a flag with nothing behind it. OPS-7 is recorded CLOSED on the
+   * ran and `--yes` documented a flag with nothing behind it. The spend confirmation was recorded as done on the
    * acceptance criterion that a spend "requires confirmation, with a `--yes` escape for
    * automation", which this reopened without failing anything.
    */

@@ -75,7 +75,7 @@ export async function stampSetup(args: StampCommandArgs = {}, seams: StampSetupS
     batches = await bee.stamp.getAll();
   } catch (err) {
     // Indistinguishable from "there are none", and the difference costs a whole batch: carrying on
-    // buys a duplicate and orphans whichever one STAMP does not name. See OPS-12.
+    // buys a duplicate and orphans whichever one STAMP does not name.
     error(`Could not list existing stamps: ${err instanceof Error ? err.message : 'unknown'}`);
     info('Refusing to buy a stamp that may duplicate one you already own. No money has been spent.');
     info('Check with: pnpm stamp:check');
@@ -137,7 +137,7 @@ export async function stampSetup(args: StampCommandArgs = {}, seams: StampSetupS
     funding = {
       // A batch costs `amount * 2^depth`, so "has any BZZ at all" was never the question. One PLUR
       // of dust passed the old check and the transaction then failed on chain, after the gas for it
-      // had been spent. See OPS-5.
+      // had been spent.
       affordsBatch: wallet.bzzBalance.gte(quote.cost),
       // No equivalent sufficiency check exists for gas: the fee depends on the chain's price at the
       // moment of the transaction, which nothing here can read, so this stays a non-zero check and
@@ -150,7 +150,7 @@ export async function stampSetup(args: StampCommandArgs = {}, seams: StampSetupS
   } catch (err) {
     // A failed check is not a passed check. This used to warn on one line and carry on to the
     // purchase with the balance unknown, which is the one state where proceeding is least
-    // defensible: the next step spends money. See OPS-12.
+    // defensible: the next step spends money.
     error(`Could not check the wallet balance: ${err instanceof Error ? err.message : 'unknown'}`);
     info('Refusing to buy a stamp without knowing the balance. No money has been spent.');
     return exit(1);

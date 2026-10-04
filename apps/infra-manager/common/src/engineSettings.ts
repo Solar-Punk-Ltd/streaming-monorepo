@@ -47,7 +47,7 @@ export interface EngineSettingField {
   /**
    * `defaultValue` applies on every stack version in place of the version's
    * own fallback, and `engineSettingsEnv` writes it wherever the host sets no
-   * value of its own. For a number the owner decided after the versions in use
+   * value of its own. For a number that was decided after the versions in use
    * were cut: they still fall back to the old one, so a default the manager
    * only named would describe a container nobody runs.
    */
@@ -105,8 +105,8 @@ export const SRS_SETTINGS: readonly EngineSettingField[] = [
     label: 'Segment length',
     unit: 'seconds',
     kind: 'number',
-    // The manager's own default segment length is two seconds, by the owner's
-    // decision of 2026-09-16, rather than anything a stack version cuts.
+    // The manager's own default segment length is two seconds, as set on
+    // 2026-09-16, rather than anything a stack version cuts.
     defaultValue: '2',
     min: 0.5,
     max: 30,
@@ -147,7 +147,7 @@ export const SRS_SETTINGS: readonly EngineSettingField[] = [
     label: 'SRT latency',
     unit: 'milliseconds',
     kind: 'integer',
-    // The owner's decision of 2026-09-23. An outside broadcaster lost 5 to 8.5%
+    // Set on 2026-09-23. An outside broadcaster lost 5 to 8.5%
     // of its packets on 2026-09-22, and SRS dropped nearly every resend as too
     // late at its own 120, where the stack asked for 200 and SRS ignored it.
     defaultValue: '2000',

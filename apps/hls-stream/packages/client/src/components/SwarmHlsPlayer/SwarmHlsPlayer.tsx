@@ -77,7 +77,7 @@ const DEFAULT_HLS_TUNING: Readonly<HlsTuning> = Object.freeze({
   // is a second place for them to be wrong: the copy this replaces had drifted back to
   // `liveSyncDuration: 10` and `liveMaxLatencyDuration: 30`, which is the pair `playerConfig.ts`
   // names as leaving a viewer between the end of catch-up and the start of the seek with neither
-  // running, and it omitted `maxLiveSyncPlaybackRate` altogether, which is LAT-2.
+  // running, and it omitted `maxLiveSyncPlaybackRate` altogether.
   ...HLS_TUNING,
 
   // --- ABR ---

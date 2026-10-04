@@ -390,7 +390,7 @@ browser image on the host and the settings under **Saying whether a real browser
 ⛔ None of them asserts how far behind live the player sat. That figure is printed and filed, and
 turning it into a threshold is a product decision about what latency this deployment promises.
 
-⛔ V6 to V10 are the 2026-08-27 crash matrix, `docs/bench/crash-at-an-in-tab-viewer-2026-08-27.md`,
+⛔ V6 to V10 are the 2026-08-27 crash matrix, the `crash-at-an-in-tab-viewer-2026-08-27` measurement (kept outside the repository),
 promoted into pass/fail. **Each asserts what that sitting recorded, including where what it recorded
 is a defect.** V7 and V9 assert an overlay that says nothing during a freeze, which is the silent
 overlay gap: they are written so that fixing it turns them red, with a message saying so, rather
@@ -469,7 +469,7 @@ references from an existing recording straight through the client's retrieval pa
 under a cap, counting the tab's WebSocket frames either side of each one. Under the emulated cap
 three idle windows come first, which is where the cap is shown to reach the transport at all, and
 every capped figure is void if it does not. Nothing is asserted, the pre-registered predictions in
-`docs/bench/in-tab-throttle-probe-prediction-2026-09-02.md` are restated in the report beside what
+the `in-tab-throttle-probe-prediction-2026-09-02` measurement (kept outside the repository) are restated in the report beside what
 was observed, and it costs **0 BZZ**, so it needs no sitting and no gate. Run it on the host with
 `deploy/scripts/browser-on-host.sh --target <host> --script browser:in-tab-throttle-probe`. `PROBE_OWNER`,
 `PROBE_TOPIC_360_HEX` and `PROBE_TOPIC_1080_HEX` choose the recording, and `PROBE_CAP_KBPS`,
@@ -574,7 +574,7 @@ measured a curl from the container's own namespace and the proof measures the no
 
 #### ⛔ The two readings these void
 
-- **The arm 3 probe, `docs/bench/in-tab-throttle-probe-2026-09-02T10-53-22-247Z.md`.** Under a
+- **The arm 3 probe, the `in-tab-throttle-probe-2026-09-02T10-53-22-247Z` measurement (kept outside the repository).** Under a
   "2800 kbps cap", which carries 350,000 bytes/s, every 225 KB retrieval completed in 0.1 s and every
   1.2 MB one in 0.3 to 0.4 s. The physical floors are 0.64 s and 3.3 s, so the link was never held
   down. Every byte column in it reads **0** while those retrievals succeeded, and its H0 check
@@ -592,7 +592,7 @@ aggregate budget the browser schedules across every transport itself, and an in-
 about two hundred WebSocket connections, so how Chromium divides such a budget across two hundred
 sockets is not a fact about a 2.8 Mbps link. The owner ruled on 2026-09-02 that the emulation, not
 the node, is a prime suspect for what the probe found. Read the owner's-correction banner at the top
-of `docs/bench/in-tab-throttle-probe-result-2026-09-02.md` before quoting any figure from that run.
+of the `in-tab-throttle-probe-result-2026-09-02` measurement (kept outside the repository) before quoting any figure from that run.
 
 **Arm 2 repeats the probe under a real shaped link.** Run it on the deployment host with:
 
@@ -675,7 +675,8 @@ pnpm bench:latency
 
 Publishes a real stream, follows it through the feed a viewer reads, and reports how far behind live
 that viewer is and split across segment duration, upload, feed write, propagation and fetch, plus the
-player's own configured buffer. Writes a markdown report and its JSON to `docs/bench/`.
+player's own configured buffer. Writes a markdown report and its JSON to `BENCH_RESULTS_DIR`, which defaults to `bench-results/`
+in the stack's folder, ignored by git.
 
 Nothing else in this repository can measure that. `liveSyncDuration` was 10 when this bench was written
 and the client ships 6 today (`LIVE_SYNC_DURATION_S` in `packages/client/src/components/SwarmHlsPlayer/playerConfig.ts`),

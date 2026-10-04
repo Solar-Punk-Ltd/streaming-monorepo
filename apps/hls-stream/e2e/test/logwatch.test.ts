@@ -239,7 +239,7 @@ describe('every path that loses a segment or declares a break is counted', () =>
    * shipped SRS path actually takes. The seventh is an ordinary event rather than a fault: an encoder
    * that dropped and came back inside the reconnect window. See the cases for all three below.
    *
-   * ⚠️ Since the owner's ruling of 2026-09-06 only three of the seven really are a break: the origin
+   * ⚠️ Since 2026-09-06 only three of the seven really are a break: the origin
    * declaring one, the engine's counter restarting and an encoder returning inside the reconnect
    * window. The rest report a lost segment, whose hole the playlist says with `#EXT-X-GAP` entries.
    * All seven stay in the counter, which is what every suite reading it means: did this broadcast

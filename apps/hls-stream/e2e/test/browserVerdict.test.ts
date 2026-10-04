@@ -136,7 +136,7 @@ describe('whether a viewer actually watched the broadcast', () => {
   });
 
   /**
-   * ⭐ The owner's ruling of 2026-08-29: an e2e suite checks that the feature works, and how fast it
+   * ⭐ An e2e suite checks that the feature works, and how fast it
    * worked is an observation rather than a gate. A viewer who kept up with 0.62 of the wall clock
    * watched the broadcast, on a configuration that delivers less of it per second, and a suite that
    * failed them would be reporting a performance difference as a broken product.

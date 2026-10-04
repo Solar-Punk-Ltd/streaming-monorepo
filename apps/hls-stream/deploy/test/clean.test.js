@@ -54,7 +54,7 @@ function composeCalls(calls) {
   return calls.filter((call) => call.startsWith('compose '));
 }
 
-describe('clean.sh straggler sweep (OPS-2)', () => {
+describe('clean.sh straggler sweep', () => {
   // The sweep exists to catch containers `compose down` could not see, so it filters on the compose
   // project label. That label is on every container in the stack, so with a service named on the
   // command line it force-removed the ones the operator did not ask about: cleaning one service
@@ -97,9 +97,8 @@ describe('clean.sh straggler sweep (OPS-2)', () => {
   // A scoped sweep that asked docker for the wrong project would quietly remove nothing and pass
   // every assertion above, since the stub answers only its own project.
   it('scopes the sweep to the profile it was given', async () => {
-    // The profile's own env file is written because a named profile now requires one. Before OPS-4
-    // was fixed this test ran without it and passed, on the silent fallback to the default `.env`
-    // that OPS-4 describes.
+    // The profile's own env file is written because a named profile now requires one. Before an unknown
+    // profile was refused this test ran without it and passed, on the silent fallback to the default `.env`.
     const sandbox = makeSandbox({
       project: 'streamer1',
       envFiles: { '.env': 'STAMP=stamp\nSTREAM_KEY=key\n', '.env.streamer1': 'STAMP=s1\nSTREAM_KEY=k1\n' },

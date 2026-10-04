@@ -114,9 +114,19 @@ fi
 # cannot read that way would let the upgrade stop the old api and migrate the
 # database before the bundled build fails, so it is asked the same way here first:
 # no credential helper, no prompt, and none of this machine's git configuration,
-# which could hold a helper or rewrite the address. The address is the manager's
-# MONOREPO_STACK_SOURCE, and a test holds the two to each other.
-STACK_REPO_URL="https://github.com/Solar-Punk-Ltd/streaming-monorepo.git"
+# which could hold a helper or rewrite the address. The address is the first
+# repository STACK_SOURCES in manager/.env lists, read the way the manager reads
+# it, or the manager's MONOREPO_STACK_SOURCE when it lists none, and a test
+# holds the two to each other.
+STACK_SOURCES_SETTING="$(sed -n 's/^STACK_SOURCES=//p' "$ENV_FILE" | tail -n 1 | tr -d '\r"' | tr -d "'")"
+STACK_REPO_URL="${STACK_SOURCES_SETTING%%,*}"
+STACK_REPO_URL="${STACK_REPO_URL%%#*}"
+STACK_REPO_URL="${STACK_REPO_URL//[[:space:]]/}"
+STACK_REPO_URL="${STACK_REPO_URL:-https://github.com/Solar-Punk-Ltd/streaming-monorepo.git}"
+if ! [[ "$STACK_REPO_URL" =~ ^https://github\.com/[A-Za-z0-9._-]+/[A-Za-z0-9._-]+\.git$ ]]; then
+    echo "ERROR: STACK_SOURCES in $ENV_FILE must start with an https://github.com/<owner>/<repo>.git address (got: $STACK_REPO_URL)" >&2
+    exit 1
+fi
 if ! GIT_TERMINAL_PROMPT=0 GIT_CONFIG_GLOBAL=/dev/null GIT_CONFIG_NOSYSTEM=1 \
     git -c credential.helper= ls-remote "$STACK_REPO_URL" HEAD > /dev/null 2>&1; then
     echo "ERROR: $STACK_REPO_URL does not answer without a login, and the host fetches the stack from it that way. Deploy once the repository can be read anonymously, which it can once it is public." >&2

@@ -7,7 +7,7 @@ import { TS_PACKET_BYTES } from '@swarm-hls-stream/shared';
  * The property that matters most here is whether a segment carries video at all. A real broadcast
  * produced segments that declare a video stream in the PMT and hold nothing but audio, and a player
  * that parses one of those first builds an audio-only codec set it never revises. See
- * `docs/bench/a-recording-that-opens-without-video-2026-08-09.md`.
+ * the `a-recording-that-opens-without-video-2026-08-09` measurement (kept outside the repository).
  */
 
 /** 90kHz, so 3000 ticks is one frame at 30fps. */

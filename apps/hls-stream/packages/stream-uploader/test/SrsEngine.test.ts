@@ -15,7 +15,7 @@ import { listenOnLoopback } from './helpers/loopbackServer.js';
 const MEDIA_ROOT = '/srv/media';
 const SRS_PREFIX = './objs/nginx/html/';
 
-// The three vectors from the SEC-2 acceptance criteria. Each reaches the handler as the `file` in a
+// The three path-escape vectors. Each reaches the handler as the `file` in a
 // webhook body, and the handler reads then deletes whatever the path names. The token every SRS
 // webhook has had to carry since 2026-07-31 proves who sent the call, not that the path is sane,
 // which is why the containment is tested here.
@@ -27,7 +27,7 @@ const ESCAPING_PATHS = [
 
 const TEST_WEBHOOK_TOKEN = 'srs-webhook-token-0123456789abcdef';
 
-describe('resolveSegmentPath containment (SEC-2)', () => {
+describe('resolveSegmentPath containment', () => {
   for (const { name, file } of ESCAPING_PATHS) {
     it(`rejects ${name}`, () => {
       assert.equal(resolveSegmentPath(MEDIA_ROOT, file), undefined);
@@ -161,7 +161,7 @@ function pathsPassedTo(spy: FsSpy): string[] {
   return spy.mock.calls.map((call) => String(call.arguments[0]));
 }
 
-describe('SRS /hls route reaches the filesystem only inside the media root (SEC-2)', () => {
+describe('SRS /hls route reaches the filesystem only inside the media root', () => {
   let sandbox: string;
   let mediaRoot: string;
   let decoyPath: string;
@@ -328,15 +328,15 @@ describe('a segment SRS delivered and the uploader never took is accounted as lo
 /**
  * `app` and `stream` are relayed by SRS from whatever a publisher typed into their own publish url, so
  * they are attacker-controlled, and with `PUBLISH_KEY_SECRET` unset they are unauthenticated too.
- * `utils/streamId.ts` states this rule as belonging to both ends and names SEC-25 as the incident: an
+ * `utils/streamId.ts` states this rule as belonging to both ends and names the incident: an
  * unscreened name was admitted and then could not be named back to `POST /stream/stop` to be removed.
  * OME's `parseAppStream` applied it. The engine that ships did not.
  */
-describe('the SRS webhook refuses an app/stream it cannot vouch for (SEC-25)', () => {
+describe('the SRS webhook refuses an app/stream it cannot vouch for', () => {
   const UNUSABLE = [
     { name: 'a traversal in the stream half', app: 'video', stream: '../../etc/passwd' },
     { name: 'a traversal in the app half', app: '..', stream: 'demo' },
-    { name: 'a backslash, the shape SEC-25 was reported with', app: 'pwn', stream: '..\\..\\video\\victim' },
+    { name: 'a backslash, the shape it was first reported with', app: 'pwn', stream: '..\\..\\video\\victim' },
     { name: 'a name that does not begin with an alphanumeric', app: 'video', stream: '-leading-dash' },
     { name: 'an empty stream half', app: 'video', stream: '' },
     { name: 'a newline, which would forge a log line', app: 'video', stream: 'demo\ninjected' },

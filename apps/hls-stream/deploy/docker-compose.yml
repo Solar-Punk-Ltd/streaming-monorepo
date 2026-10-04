@@ -13,11 +13,14 @@ services:
     restart: unless-stopped
     logging: *default-logging
     ports:
-      # The API is an unauthenticated write surface — postage spend, chunk upload, feed writes —
-      # so on any host with a public address it must be bound to one interface and firewalled.
-      # P2P stays on every interface: that is how the node reaches Swarm.
-      - '${BEE_UPLOADER_API_BIND:-0.0.0.0}:${BEE_UPLOADER_API_PORT:-1633}:${BEE_UPLOADER_API_PORT:-1633}'
-      - '${BEE_UPLOADER_P2P_PORT:-1634}:${BEE_UPLOADER_P2P_PORT:-1634}'
+      # The API has no password and spends postage, uploads chunks and writes feeds. Docker publishes
+      # a port with rules of its own that a host firewall such as ufw never sees, so with no
+      # BEE_UPLOADER_API_BIND it is bound to the host's Docker bridge address, which deploy.sh reads
+      # into DOCKER_BRIDGE_ADDRESS at deploy time, and to 127.0.0.1 when compose runs without it. Any
+      # address set there wins, 0.0.0.0 included. P2P is how the node reaches Swarm and defaults to
+      # every address.
+      - '${BEE_UPLOADER_API_BIND:-${DOCKER_BRIDGE_ADDRESS:-127.0.0.1}}:${BEE_UPLOADER_API_PORT:-1633}:${BEE_UPLOADER_API_PORT:-1633}'
+      - '${BEE_UPLOADER_P2P_BIND:-0.0.0.0}:${BEE_UPLOADER_P2P_PORT:-1634}:${BEE_UPLOADER_P2P_PORT:-1634}'
     # The default endpoint below is a public RPC that rate-limits a node hard. An operator
     # pointing RPC_ENDPOINT at one of their own runs it on this host, and a container reaches
     # a host process only through the gateway this name resolves to.
@@ -27,10 +30,12 @@ services:
       - ${BEE_UPLOADER_DATA_DIR:-${BEE_DATA_ROOT:-./data}/bee-uploader}:/home/bee/.bee
     command:
       - start
-      # BEE_UPLOADER_API_LISTEN is the process's own bind address, and it is what protects the API
-      # under COMPOSE_NETWORK=host, where published ports are ignored. Empty means every interface,
-      # which is correct in bridge mode: there the published port above is the boundary.
-      - --api-addr=${BEE_UPLOADER_API_LISTEN:-}:${BEE_UPLOADER_API_PORT:-1633}
+      # BEE_UPLOADER_API_LISTEN is the process's own bind address, and it is the whole bind under
+      # COMPOSE_NETWORK=host, where published ports are ignored. With none, deploy.sh sets
+      # HOST_NETWORK_LISTEN to the bridge address under host networking and leaves it empty on a
+      # bridge network, where the process has to listen on every address of its own namespace for
+      # the published port above to reach it.
+      - --api-addr=${BEE_UPLOADER_API_LISTEN:-${HOST_NETWORK_LISTEN:-}}:${BEE_UPLOADER_API_PORT:-1633}
       - --p2p-addr=:${BEE_UPLOADER_P2P_PORT:-1634}
       - --blockchain-rpc-endpoint=${RPC_ENDPOINT:-https://rpc.gnosischain.com}
       - --full-node=${BEE_UPLOADER_FULL_NODE:-false}
@@ -61,8 +66,8 @@ services:
     restart: unless-stopped
     logging: *default-logging
     ports:
-      - '${BEE_RUNG_480P_API_BIND:-0.0.0.0}:${BEE_RUNG_480P_API_PORT:-11001}:${BEE_RUNG_480P_API_PORT:-11001}'
-      - '${BEE_RUNG_480P_P2P_PORT:-11002}:${BEE_RUNG_480P_P2P_PORT:-11002}'
+      - '${BEE_RUNG_480P_API_BIND:-${DOCKER_BRIDGE_ADDRESS:-127.0.0.1}}:${BEE_RUNG_480P_API_PORT:-11001}:${BEE_RUNG_480P_API_PORT:-11001}'
+      - '${BEE_RUNG_480P_P2P_BIND:-0.0.0.0}:${BEE_RUNG_480P_P2P_PORT:-11002}:${BEE_RUNG_480P_P2P_PORT:-11002}'
     # The default endpoint below is a public RPC that rate-limits a node hard. An operator
     # pointing RPC_ENDPOINT at one of their own runs it on this host, and a container reaches
     # a host process only through the gateway this name resolves to.
@@ -72,7 +77,7 @@ services:
       - ${BEE_RUNG_480P_DATA_DIR:-${BEE_DATA_ROOT:-./data}/bee-uploader-480p}:/home/bee/.bee
     command:
       - start
-      - --api-addr=${BEE_RUNG_480P_API_LISTEN:-}:${BEE_RUNG_480P_API_PORT:-11001}
+      - --api-addr=${BEE_RUNG_480P_API_LISTEN:-${HOST_NETWORK_LISTEN:-}}:${BEE_RUNG_480P_API_PORT:-11001}
       - --p2p-addr=:${BEE_RUNG_480P_P2P_PORT:-11002}
       - --blockchain-rpc-endpoint=${RPC_ENDPOINT:-https://rpc.gnosischain.com}
       - --full-node=${BEE_RUNG_FULL_NODE:-false}
@@ -86,8 +91,8 @@ services:
     restart: unless-stopped
     logging: *default-logging
     ports:
-      - '${BEE_RUNG_720P_API_BIND:-0.0.0.0}:${BEE_RUNG_720P_API_PORT:-11003}:${BEE_RUNG_720P_API_PORT:-11003}'
-      - '${BEE_RUNG_720P_P2P_PORT:-11004}:${BEE_RUNG_720P_P2P_PORT:-11004}'
+      - '${BEE_RUNG_720P_API_BIND:-${DOCKER_BRIDGE_ADDRESS:-127.0.0.1}}:${BEE_RUNG_720P_API_PORT:-11003}:${BEE_RUNG_720P_API_PORT:-11003}'
+      - '${BEE_RUNG_720P_P2P_BIND:-0.0.0.0}:${BEE_RUNG_720P_P2P_PORT:-11004}:${BEE_RUNG_720P_P2P_PORT:-11004}'
     # The default endpoint below is a public RPC that rate-limits a node hard. An operator
     # pointing RPC_ENDPOINT at one of their own runs it on this host, and a container reaches
     # a host process only through the gateway this name resolves to.
@@ -97,7 +102,7 @@ services:
       - ${BEE_RUNG_720P_DATA_DIR:-${BEE_DATA_ROOT:-./data}/bee-uploader-720p}:/home/bee/.bee
     command:
       - start
-      - --api-addr=${BEE_RUNG_720P_API_LISTEN:-}:${BEE_RUNG_720P_API_PORT:-11003}
+      - --api-addr=${BEE_RUNG_720P_API_LISTEN:-${HOST_NETWORK_LISTEN:-}}:${BEE_RUNG_720P_API_PORT:-11003}
       - --p2p-addr=:${BEE_RUNG_720P_P2P_PORT:-11004}
       - --blockchain-rpc-endpoint=${RPC_ENDPOINT:-https://rpc.gnosischain.com}
       - --full-node=${BEE_RUNG_FULL_NODE:-false}
@@ -111,8 +116,8 @@ services:
     restart: unless-stopped
     logging: *default-logging
     ports:
-      - '${BEE_RUNG_1080P_API_BIND:-0.0.0.0}:${BEE_RUNG_1080P_API_PORT:-11005}:${BEE_RUNG_1080P_API_PORT:-11005}'
-      - '${BEE_RUNG_1080P_P2P_PORT:-11006}:${BEE_RUNG_1080P_P2P_PORT:-11006}'
+      - '${BEE_RUNG_1080P_API_BIND:-${DOCKER_BRIDGE_ADDRESS:-127.0.0.1}}:${BEE_RUNG_1080P_API_PORT:-11005}:${BEE_RUNG_1080P_API_PORT:-11005}'
+      - '${BEE_RUNG_1080P_P2P_BIND:-0.0.0.0}:${BEE_RUNG_1080P_P2P_PORT:-11006}:${BEE_RUNG_1080P_P2P_PORT:-11006}'
     # The default endpoint below is a public RPC that rate-limits a node hard. An operator
     # pointing RPC_ENDPOINT at one of their own runs it on this host, and a container reaches
     # a host process only through the gateway this name resolves to.
@@ -122,7 +127,7 @@ services:
       - ${BEE_RUNG_1080P_DATA_DIR:-${BEE_DATA_ROOT:-./data}/bee-uploader-1080p}:/home/bee/.bee
     command:
       - start
-      - --api-addr=${BEE_RUNG_1080P_API_LISTEN:-}:${BEE_RUNG_1080P_API_PORT:-11005}
+      - --api-addr=${BEE_RUNG_1080P_API_LISTEN:-${HOST_NETWORK_LISTEN:-}}:${BEE_RUNG_1080P_API_PORT:-11005}
       - --p2p-addr=:${BEE_RUNG_1080P_P2P_PORT:-11006}
       - --blockchain-rpc-endpoint=${RPC_ENDPOINT:-https://rpc.gnosischain.com}
       - --full-node=${BEE_RUNG_FULL_NODE:-false}
@@ -136,10 +141,10 @@ services:
     restart: unless-stopped
     logging: *default-logging
     ports:
-      # Read-only in practice, but it can still spend nothing and serve anything: bind it to the
-      # interface the client proxies from rather than to every address the host answers on.
-      - '${BEE_GATEWAY_API_BIND:-0.0.0.0}:${BEE_GATEWAY_API_PORT:-1733}:${BEE_GATEWAY_API_PORT:-1733}'
-      - '${BEE_GATEWAY_P2P_PORT:-1734}:${BEE_GATEWAY_P2P_PORT:-1734}'
+      # The same bind as bee-uploader's API, for the same reason. The client reaches it on the compose
+      # network, or through the bridge under host networking, so the default costs it nothing.
+      - '${BEE_GATEWAY_API_BIND:-${DOCKER_BRIDGE_ADDRESS:-127.0.0.1}}:${BEE_GATEWAY_API_PORT:-1733}:${BEE_GATEWAY_API_PORT:-1733}'
+      - '${BEE_GATEWAY_P2P_BIND:-0.0.0.0}:${BEE_GATEWAY_P2P_PORT:-1734}:${BEE_GATEWAY_P2P_PORT:-1734}'
     # The default endpoint below is a public RPC that rate-limits a node hard. An operator
     # pointing RPC_ENDPOINT at one of their own runs it on this host, and a container reaches
     # a host process only through the gateway this name resolves to.
@@ -149,7 +154,7 @@ services:
       - ${BEE_GATEWAY_DATA_DIR:-${BEE_DATA_ROOT:-./data}/bee-gateway}:/home/bee/.bee
     command:
       - start
-      - --api-addr=${BEE_GATEWAY_API_LISTEN:-}:${BEE_GATEWAY_API_PORT:-1733}
+      - --api-addr=${BEE_GATEWAY_API_LISTEN:-${HOST_NETWORK_LISTEN:-}}:${BEE_GATEWAY_API_PORT:-1733}
       - --p2p-addr=:${BEE_GATEWAY_P2P_PORT:-1734}
       # ⛔ These two lines ARE the mode, and the endpoint is the half that decides it. Bee reads
       # `pkg/node/node.go:1605` isChainEnabled: `chainDisabled := swapEndpoint == ""`, `lightMode :=
@@ -161,16 +166,16 @@ services:
       # version of this comment stated the rule wrongly and four other places in the tree carried
       # the same error.
       #
-      # The owner ruled on 2026-09-17 that a node's mode is chosen when the node is created, so the
+      # A node's mode is chosen when the node is created, so the
       # two flags below are settings and their defaults are what this file has always started. A
       # deployment that sets neither key gets the ultra-light gateway exactly as before: the endpoint
       # is empty, swap is off, and there is nothing to fund. The manager writes both keys into a
       # deployment's env file for a gateway an operator created on the chain, and neither key for one
-      # created ultra-light. This supersedes the ruling of 2026-09-15, which stated both here as
-      # literals and made a gateway on the chain a deliberate edit to this file.
+      # created ultra-light. Both used to be literals here,
+      # which made a gateway on the chain a deliberate edit to this file.
       #
       # --full-node stays a literal because a full node is never what a viewer's gateway is. What
-      # ultra-light costs is LAT-10: such a node has no chequebook, lives on the free bandwidth
+      # ultra-light costs is this: such a node has no chequebook, lives on the free bandwidth
       # allowance alone, and a viewer polling it sees the feed freeze 30 to 48s at a time. What the
       # other mode costs is gas and a funded chequebook at the address `/addresses` reports as
       # `chain_address`, both topped up by hand.
@@ -188,7 +193,7 @@ services:
       # and has never evicted once. So this node's cache is neither on nor off, it is a sawtooth whose
       # phase nothing records, and a measurement's exposure scales with how long it takes to gather.
       # ⚠️ Left at 0 because every sitting this project has run was gathered at 0 and moving it breaks
-      # comparability AND restarts the gateway. docs/bench/the-gateway-cache-is-a-sawtooth-2026-08-14.md
+      # comparability AND restarts the gateway. the `the-gateway-cache-is-a-sawtooth-2026-08-14` measurement (kept outside the repository)
       - --cache-capacity=${BEE_GATEWAY_CACHE_CAPACITY:-0}
       # ⛔ Capacity does NOT gate caching, and setting it to 0 never turned the cache off. Measured
       # 2026-08-10: with capacity 0 confirmed on the running container, a second walk of the same 1000
@@ -234,7 +239,7 @@ services:
     stop_grace_period: 120s
     logging: *default-logging
     ports:
-      - '${API_PORT:-3000}:${API_PORT:-3000}'
+      - '${API_BIND:-0.0.0.0}:${API_PORT:-3000}:${API_PORT:-3000}'
     volumes:
       - uploader-state:/app/state
       - srs-media:/media
@@ -248,7 +253,7 @@ services:
       # where the 4000 comes from.
       BEE_REQUEST_TIMEOUT_MS: ${BEE_REQUEST_TIMEOUT_MS:-4000}
       # What the two startup gates below do about a node they cannot read, and how long each of their
-      # reads gets. The owner ruled the two apart on 2026-09-17, so `chequebook-warn`, the default,
+      # reads gets. The two are kept apart, so `chequebook-warn`, the default,
       # has the chequebook gate warning and starting while the postage gate still refuses a batch
       # that the node answered about as expired, unusable or, when it is immutable, full. `warn` has
       # both gates warning. `refuse` has both gates refusing. The coordinator is always waited for
@@ -283,7 +288,7 @@ services:
       # Only the uploader gets this, not the engines: it is what verifies a publish key, and neither
       # engine does anything with one beyond forwarding the query it arrived in. Empty disables
       # publisher authentication rather than rejecting everything, so an existing deployment keeps
-      # working across the upgrade that introduced it. See SEC-28 and `publish-key.sh`.
+      # working across the upgrade that introduced it. See `publish-key.sh`.
       PUBLISH_KEY_SECRET: ${PUBLISH_KEY_SECRET:-}
       # Admin mode, which ADMIN_API_URL alone turns on: set, the uploader publishes each stream on
       # the topic the admin minted and reports state back instead of writing the catalog itself;
@@ -331,7 +336,7 @@ services:
       LOG_FORMAT: ${LOG_FORMAT:-}
     # Something finally reads /health. Every 503 it can raise was a value in a response body nobody
     # requested: there was no healthcheck here, health.sh is human-run, and `restart: unless-stopped`
-    # cannot act on a degraded service because the process does not exit. See OBS-17.
+    # cannot act on a degraded service because the process does not exit.
     #
     # This reports and does not act, deliberately. Compose does not restart a container for failing
     # its healthcheck, and nothing here declares `depends_on: condition: service_healthy`, so the
@@ -400,7 +405,7 @@ services:
     restart: unless-stopped
     logging: *default-logging
     ports:
-      - '${CLIENT_PORT:-5173}:80'
+      - '${CLIENT_BIND:-0.0.0.0}:${CLIENT_PORT:-5173}:80'
     environment:
       # Runtime — used by client-nginx.conf.template via envsubst.
       # Default points to the bee-gateway service on the same compose network;
@@ -419,20 +424,17 @@ services:
     # the fixed ones its config used to carry. Mapping a shifted host port onto a fixed container
     # port would leave the mapping pointing at nothing.
     #
-    # The two ingest ports below stay on every interface: a broadcaster dials them from wherever they
-    # are. The two HTTP ones take a bind address for the same reason the Bee APIs do. SRS's control
+    # The two HTTP ports default to the host's Docker bridge address, as the Bee APIs do. SRS's control
     # API has no authentication of any kind, and `/api/v1/streams` names every live stream as
     # `app/stream`, which is the id an ingest URL and a publish key are built from, while
     # `/api/v1/clients` names every publisher's and every viewer's address. The file server serves the
-    # segment directory itself: play is loopback only, so it refuses a playlist to anyone outside the
-    # container, but it still serves a segment asked for by its name. Both default to every interface,
-    # which is what they have always done, and every documented use of the API is a curl run on the
-    # host. See the paragraph in `.env.sample` beside the Bee binds.
+    # segment directory itself, and SRS_PLAY_FROM decides who may play. See the paragraph in `.env.sample`
+    # beside the Bee binds.
     ports:
-      - '${SRS_SRT_PORT:-10080}:${SRS_SRT_PORT:-10080}/udp'
-      - '${SRS_RTMP_PORT:-1935}:${SRS_RTMP_PORT:-1935}'
-      - '${SRS_HTTP_BIND:-0.0.0.0}:${SRS_HTTP_PORT:-8080}:${SRS_HTTP_PORT:-8080}'
-      - '${SRS_HTTP_API_BIND:-0.0.0.0}:${SRS_HTTP_API_PORT:-1985}:${SRS_HTTP_API_PORT:-1985}'
+      - '${SRS_SRT_BIND:-0.0.0.0}:${SRS_SRT_PORT:-10080}:${SRS_SRT_PORT:-10080}/udp'
+      - '${SRS_RTMP_BIND:-0.0.0.0}:${SRS_RTMP_PORT:-1935}:${SRS_RTMP_PORT:-1935}'
+      - '${SRS_HTTP_BIND:-${DOCKER_BRIDGE_ADDRESS:-127.0.0.1}}:${SRS_HTTP_PORT:-8080}:${SRS_HTTP_PORT:-8080}'
+      - '${SRS_HTTP_API_BIND:-${DOCKER_BRIDGE_ADDRESS:-127.0.0.1}}:${SRS_HTTP_API_PORT:-1985}:${SRS_HTTP_API_PORT:-1985}'
     extra_hosts:
       - 'host.docker.internal:host-gateway'
     volumes:
@@ -442,7 +444,7 @@ services:
       - srs-media:/usr/local/srs/objs/nginx/html
     entrypoint: ['/bin/bash', '/usr/local/srs/conf/entrypoint.sh']
     # Asks whether a broadcaster could reach this engine over SRT and over RTMP, not whether the
-    # process is alive. See OBS-20 and the reasoning in `engines/srs/healthcheck.sh`.
+    # process is alive. See the reasoning in `engines/srs/healthcheck.sh`.
     healthcheck:
       test: ['CMD', 'bash', '/usr/local/srs/conf/healthcheck.sh']
       interval: 15s
@@ -468,7 +470,7 @@ services:
       # decimals, the segment is `ceil(HLS_FRAGMENT / GOP) * GOP`, so the publisher's keyframe
       # interval decides it and the fragment only sets a floor. This was 1.0, which put the floor
       # above the 0.5s GOP that a funded sitting found best and silently produced 1.0s segments for a
-      # broadcaster who asked for 0.5s ones. See `docs/bench/gop-vs-fragment-2026-08-12.md`.
+      # broadcaster who asked for 0.5s ones. See the `gop-vs-fragment-2026-08-12` measurement (kept outside the repository).
       HLS_FRAGMENT: ${HLS_FRAGMENT:-0.5}
       # SRS force-closes a segment at `HLS_FRAGMENT * HLS_AOF_RATIO` regardless of keyframes, so this
       # is the ceiling on the pair rather than a detail.
@@ -478,8 +480,8 @@ services:
       # tested. A 2.0s GOP therefore needs 2.135s, and both the old pair (1.0 * 2.1) and the 0.5s fragment change's
       # (0.5 * 4.2) gave exactly 2.1, which force-closed the common OBS default intermittently:
       # mode 2.117 and spread 1.861-2.219 against a clean 2.000 with room. 5.0 gives **2.5s**, which
-      # is the ceiling latbench has run all along. See
-      # `docs/bench/shipped-fragment-validation-2026-08-12.md`.
+      # is the ceiling the measurement stage ran on. See
+      # the `shipped-fragment-validation-2026-08-12` measurement (kept outside the repository).
       # In seconds, and derived into SRS's own ratio by the entrypoint. Set HLS_AOF_RATIO to drive
       # that ratio directly instead, which the deploy/scripts probes do.
       HLS_SEGMENT_MAX: ${HLS_SEGMENT_MAX:-2.5}
@@ -488,9 +490,11 @@ services:
       SRT_LATENCY: ${SRT_LATENCY:-2000}
       # A reconnecting SRT or RTMP broadcaster replaces a publisher SRS still holds. See engines/README.md. Unset,
       # each is on only where the uploader refuses a wrong publish key, which the two lines below tell SRS
-      # without handing it the secret or the admin address, only whether each is set (SEC-28).
+      # without handing it the secret or the admin address, only whether each is set.
       SRT_TAKEOVER: ${SRT_TAKEOVER:-}
       RTMP_TAKEOVER: ${RTMP_TAKEOVER:-}
+      # Who may play from SRS. Empty is this container alone, see entrypoint.sh.
+      SRS_PLAY_FROM: ${SRS_PLAY_FROM:-}
       UPLOADER_PUBLISH_KEYS: ${PUBLISH_KEY_SECRET:+yes}
       UPLOADER_ADMIN_MODE: ${ADMIN_API_URL:+yes}
       # The ABR ladder, read by the SRS entrypoint. Off by default.
@@ -519,13 +523,13 @@ services:
     # Host and container port are the same number on purpose, because the entrypoint now binds OME to
     # the configured port rather than to a fixed one. A mapping from a fixed container port hid the
     # fact that these two variables never reached the container at all, which `network_mode: host`
-    # then exposed by discarding the mapping. See OPS-30.
+    # then exposed by discarding the mapping.
     #
-    # The HLS port serves the segments themselves, so it takes a bind address the way SRS's two HTTP
-    # ports do. The SRT port is ingest and stays on every interface.
+    # The HLS port serves the segments themselves, so it defaults to the host's Docker bridge address
+    # the way SRS's two HTTP ports do.
     ports:
-      - '${OME_SRT_PORT:-10080}:${OME_SRT_PORT:-10080}/udp'
-      - '${OME_HTTP_BIND:-0.0.0.0}:${OME_HLS_PORT:-8081}:${OME_HLS_PORT:-8081}'
+      - '${OME_SRT_BIND:-0.0.0.0}:${OME_SRT_PORT:-10080}:${OME_SRT_PORT:-10080}/udp'
+      - '${OME_HTTP_BIND:-${DOCKER_BRIDGE_ADDRESS:-127.0.0.1}}:${OME_HLS_PORT:-8081}:${OME_HLS_PORT:-8081}'
     extra_hosts:
       - 'host.docker.internal:host-gateway'
     volumes:
@@ -537,9 +541,11 @@ services:
       OME_ADAPTER_PORT: ${API_PORT:-3000}
       OME_ADMISSION_SECRET: ${OME_ADMISSION_SECRET:-}
       # Without these two the entrypoint cannot bind what the operator configured, which is the whole
-      # of OPS-30. They were previously publish mappings only, so the container never saw them.
+      # problem. They were previously publish mappings only, so the container never saw them.
       OME_SRT_PORT: ${OME_SRT_PORT:-10080}
       OME_HLS_PORT: ${OME_HLS_PORT:-8081}
+      # Blank leaves the entrypoint's default, Google's public STUN server.
+      OME_STUN_SERVER: ${OME_STUN_SERVER:-}
       HLS_SEGMENT_DURATION: ${HLS_SEGMENT_DURATION:-2}
       HLS_SEGMENT_COUNT: ${HLS_SEGMENT_COUNT:-5}
 

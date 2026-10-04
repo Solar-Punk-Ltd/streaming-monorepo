@@ -22,18 +22,20 @@ services:
     # The two HTTP ports take a bind address, the same knob and the same default as in
     # `deploy/docker-compose.yml`. The control API authenticates nobody and names every live stream
     # and every publisher's address, and the file server serves the segment directory. On this path
-    # the variables are read from `.env` beside this file rather than from the root one.
+    # the variables are read from `.env` beside this file rather than from the root one, and nothing
+    # reads the bridge address into DOCKER_BRIDGE_ADDRESS, so unless that file names one they answer
+    # on 127.0.0.1.
     ports:
-      - '${SRS_RTMP_PORT:-1935}:${SRS_RTMP_PORT:-1935}'
-      - '${SRS_HTTP_API_BIND:-0.0.0.0}:${SRS_HTTP_API_PORT:-1985}:${SRS_HTTP_API_PORT:-1985}'
-      - '${SRS_HTTP_BIND:-0.0.0.0}:${SRS_HTTP_PORT:-8080}:${SRS_HTTP_PORT:-8080}'
-      - '${SRS_SRT_PORT:-10080}:${SRS_SRT_PORT:-10080}/udp'
+      - '${SRS_RTMP_BIND:-0.0.0.0}:${SRS_RTMP_PORT:-1935}:${SRS_RTMP_PORT:-1935}'
+      - '${SRS_HTTP_API_BIND:-${DOCKER_BRIDGE_ADDRESS:-127.0.0.1}}:${SRS_HTTP_API_PORT:-1985}:${SRS_HTTP_API_PORT:-1985}'
+      - '${SRS_HTTP_BIND:-${DOCKER_BRIDGE_ADDRESS:-127.0.0.1}}:${SRS_HTTP_PORT:-8080}:${SRS_HTTP_PORT:-8080}'
+      - '${SRS_SRT_BIND:-0.0.0.0}:${SRS_SRT_PORT:-10080}:${SRS_SRT_PORT:-10080}/udp'
     # Enumerated rather than inherited, deliberately. This used to be `env_file: ../../.env`, which
     # fills the container with **every** root variable, including PUBLISH_KEY_SECRET: the master
     # secret every stream's publish key derives from, handed to the third-party publisher-facing
     # image it exists to authenticate publishers against. Anyone who can read that environment mints
     # a valid key for every stream, and rotating is the only response because there is no per-stream
-    # revocation. See SEC-28.
+    # revocation.
     #
     # This block is the same pattern deploy/docker-compose.yml already uses and says it uses: a
     # variable absent here is one the container never sees, however carefully an operator sets it.
@@ -56,9 +58,9 @@ services:
       # template whose placeholder the variable never reached. Defaults are the same on both sides on
       # purpose, so which compose file started the engine cannot change the picture.
       #
-      # This is the second time the two files have diverged over the same kind of change. OBS-20's
+      # This is the second time the two files have diverged over the same kind of change. The SRT listener
       # healthcheck went into one and not the other. Enumerating rather than inheriting is right, for
-      # the SEC-28 reason above, and its cost is exactly this: a knob added to one list is missing
+      # the secret-handling reason above, and its cost is exactly this: a knob added to one list is missing
       # from the other until someone notices.
       #
       # ⛔ The `HLS_FRAGMENT=0.5 produced 1.0s segments` above had a second cause as well as the
@@ -69,7 +71,7 @@ services:
       # ⛔ The ratio is 5.0 rather than the 4.2 that held the product at SRS's own 2.1s ceiling,
       # because the ceiling has to clear `GOP + 0.135s` and not the GOP: a segment overshoots its
       # settled length by that constant before ramping back down. At 2.1 the common 2.0s GOP was
-      # force-closed intermittently. 0.5 * 5.0 = 2.5s, the ceiling latbench has always run.
+      # force-closed intermittently. 0.5 * 5.0 = 2.5s, the ceiling the stages have always run.
       HLS_FRAGMENT: ${HLS_FRAGMENT:-0.5}
       # In seconds, and derived into SRS's own ratio by the entrypoint. Set HLS_AOF_RATIO to drive
       # that ratio directly instead, which the deploy/scripts probes do.
@@ -79,10 +81,12 @@ services:
       SRT_LATENCY: ${SRT_LATENCY:-2000}
       # A reconnecting SRT or RTMP broadcaster replaces a publisher SRS still holds. See engines/README.md. Unset,
       # each is on only where the uploader refuses a wrong publish key, which the two lines below tell SRS
-      # without handing it the secret or the admin address, only whether each is set (SEC-28). This file's
+      # without handing it the secret or the admin address, only whether each is set. This file's
       # `.env` carries neither, so here both stay off unless SRT_TAKEOVER or RTMP_TAKEOVER says otherwise.
       SRT_TAKEOVER: ${SRT_TAKEOVER:-}
       RTMP_TAKEOVER: ${RTMP_TAKEOVER:-}
+      # Who may play from SRS. Empty is this container alone, see entrypoint.sh.
+      SRS_PLAY_FROM: ${SRS_PLAY_FROM:-}
       UPLOADER_PUBLISH_KEYS: ${PUBLISH_KEY_SECRET:+yes}
       UPLOADER_ADMIN_MODE: ${ADMIN_API_URL:+yes}
       # The ABR ladder, read by this entrypoint. Off by default.
@@ -101,7 +105,7 @@ services:
       # the transcode republish dials. Pinning a fixed port here would re-break the ladder under --portSlot.
       ABR_RTMP_PORT: ${ABR_RTMP_PORT:-}
     # Asks whether a broadcaster could reach this engine over SRT and over RTMP, not whether the process
-    # is alive. See OBS-20 and the reasoning in `healthcheck.sh`: SRS ran 44 minutes with a dead SRT
+    # is alive. See the reasoning in `healthcheck.sh`: SRS ran 44 minutes with a dead SRT
     # listener while every signal the deployment had said it was fine.
     #
     # `start_period` covers the entrypoint templating the config and SRS binding, which is under a

@@ -5,7 +5,7 @@ import { describe, it } from 'node:test';
 import { classifySpawn, SPAWN_ABSENT, SPAWN_OK, SPAWN_REFUSED, SPAWN_TIMED_OUT } from './helpers/spawnOutcome.js';
 
 /**
- * OPS-28. The deploy suite ran 742 seconds against a nominal 12.8 and failed one test, then passed
+ * The deploy suite ran 742 seconds against a nominal 12.8 and failed one test, then passed
  * on a re-run. The test shells out to `docker compose config` with no timeout and read the result
  * with two branches, so anything other than a missing binary or a clean exit was reported as the
  * compose file being refused.

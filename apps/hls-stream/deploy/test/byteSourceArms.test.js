@@ -228,7 +228,7 @@ exit 0
       `ceiling_plur=${ceilingPlur}`,
       // One baseline per node, keyed by port, because the gate reads every node that can
       // spend and refuses one it has no baseline for. These are the ports the driver derives
-      // from the default port slot.
+      // from the port slot the sitting is handed.
       `node_10075_start_plur=${plur}`,
       `node_10077_start_plur=${plur}`,
       '',
@@ -250,6 +250,8 @@ async function runSitting(stubs, env = {}) {
         NODE_METRICS: stubs.nodeMetrics,
         STAMP_GUARD: stubs.stampGuard,
         STAMP: BATCH,
+        PROFILE: 'bench-stage',
+        PORT_SLOT: '7',
         SPEND_LEDGER: stubs.ledger,
         ROUNDS: '2',
         ARM_MINUTES: '2',

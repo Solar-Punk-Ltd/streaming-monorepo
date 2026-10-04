@@ -1,7 +1,7 @@
 /**
  * The ingest card on a real deployment page, in a real Chrome.
  *
- * On 2026-09-22 a tester's SRT broadcast broke up for five hours and nothing on
+ * On 2026-09-22 an outside SRT broadcast broke up for five hours and nothing on
  * any screen said so, while SRS counted about six percent of its packets
  * dropped. The card is the page saying so. This drives it through the states
  * an operator meets: an SRT link that is breaking up with the fix beside it,
@@ -84,7 +84,7 @@ const base = {
 /** A minute of SRS's log read whole, with what it said about SRT and RTMP. */
 const readWith = (srt, rtmp = { state: 'no_reports' }) => ({ state: 'read', windowSeconds: 60, srt, rtmp });
 
-/** The two reports SRS printed for the tester's broadcast of 2026-09-22. */
+/** The two reports SRS printed for an outside broadcast of 2026-09-22. */
 const BROKEN_UP = readWith(
   measuredSrtIngest({
     reports: 2,

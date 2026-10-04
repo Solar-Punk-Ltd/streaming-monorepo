@@ -279,7 +279,7 @@ export class Host {
    * curl a service port on the host and parse JSON (uploader /health, bee /stamps, …).
    *
    * ⛔ **Reads only, and there is deliberately no POST alongside it.** `localPost` stood here until
-   * 2026-09-16 with no caller anywhere in the package, left behind when the owner ruled on
+   * 2026-09-16 with no caller anywhere in the package, left behind when it was settled on
    * 2026-08-03 that the funding preflight must report a shortfall and print the command rather than
    * deposit it. A harness that is not allowed to move money should not carry the one method whose
    * own docstring explained how, so the method and the `-X POST` under it went together. A later

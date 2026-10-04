@@ -73,7 +73,7 @@ function programDateTimesOf(manifest: string): number[] {
  */
 const SHIPPED_SEGMENT_DURATIONS_S = [0.25, 0.5, 1, 2];
 
-/** The shortest of them, which is the winning profile of `docs/bench/quarter-second-2026-08-05.md`. */
+/** The shortest of them, which is the winning profile of the `quarter-second-2026-08-05` measurement (kept outside the repository). */
 const SHORTEST_SEGMENT_DURATION_S = SHIPPED_SEGMENT_DURATIONS_S[0];
 
 const PLAYER_CONFIG_PATH = '../../client/src/components/SwarmHlsPlayer/playerConfig.ts';
@@ -379,7 +379,7 @@ describe('an engine that restarts mid-broadcast and starts counting again', () =
 });
 
 /**
- * The dating a restart moves on to, which is the owner's decision of 2026-09-03.
+ * The dating a restart moves on to.
  *
  * ⛔ Before it, the date kept stepping from the instant the broadcast was admitted, so the media
  * after an engine restart carried a time behind real time by the whole length of the gap, without

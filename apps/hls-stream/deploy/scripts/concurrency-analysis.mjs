@@ -9,7 +9,7 @@
  * can be re-derived later without asking anyone to sit at a browser again.
  *
  * Run it over a saved sitting with:
- *   node deploy/scripts/concurrency-analysis.mjs docs/bench/in-browser-concurrency-sweep-<date>.tsv
+ *   node deploy/scripts/concurrency-analysis.mjs bench-results/in-browser-concurrency-sweep-<date>.tsv
  */
 
 /**

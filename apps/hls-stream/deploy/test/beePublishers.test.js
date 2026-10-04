@@ -12,9 +12,9 @@ after(removeSandboxes);
 const HERE = dirname(fileURLToPath(import.meta.url));
 const SCRIPT = resolve(HERE, '..', 'scripts', 'bee-publishers.sh');
 const SCRIPT_NAME = 'bee-publishers.sh';
-const PROFILE = 'latbench';
+const PROFILE = 'bench-stage';
 
-/** Slot 7 is the latbench stage's, so the ports below are the ones an operator would recognise. */
+/** Slot 7, so the ports below are the ones an operator would recognise. */
 const PORT_SLOT = '7';
 const PORTS = { '360p': 10075, '480p': 11071, '720p': 11073, '1080p': 11075 };
 

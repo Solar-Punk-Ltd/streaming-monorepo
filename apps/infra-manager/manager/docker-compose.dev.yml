@@ -1,0 +1,12 @@
+# Development override for the manager's compose file.
+#
+#   pnpm database:start   postgres only, on 127.0.0.1:${MANAGER_DEV_PG_PORT:-5432}, for `pnpm dev`
+#   pnpm stack:start      the whole stack built from this checkout, with the same port
+#
+# The file a server runs, docker-compose.yml, publishes no database port. Set
+# MANAGER_DEV_PG_PORT when the host already runs a Postgres on 5432, and point
+# DATABASE_URL in manager/.env at the same port.
+services:
+  postgres:
+    ports:
+      - '127.0.0.1:${MANAGER_DEV_PG_PORT:-5432}:5432'

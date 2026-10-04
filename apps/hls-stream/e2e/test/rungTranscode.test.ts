@@ -93,15 +93,18 @@ describe('the rung name, before it reaches a shell', () => {
 
 describe('the commands sent to the host', () => {
   it('reads the process table of the container it was given', () => {
-    assert.equal(listProcessesCommand('latbench-srs-1'), "docker exec 'latbench-srs-1' ps -eo pid,args");
+    assert.equal(listProcessesCommand('bench-stage-srs-1'), "docker exec 'bench-stage-srs-1' ps -eo pid,args");
   });
 
   it('sends one signal to every pid it found', () => {
     assert.equal(
-      signalCommand('latbench-srs-1', [418, 419], SIGNAL_QUIET),
-      "docker exec 'latbench-srs-1' kill -STOP 418 419",
+      signalCommand('bench-stage-srs-1', [418, 419], SIGNAL_QUIET),
+      "docker exec 'bench-stage-srs-1' kill -STOP 418 419",
     );
-    assert.equal(signalCommand('latbench-srs-1', [418], SIGNAL_RESUME), "docker exec 'latbench-srs-1' kill -CONT 418");
+    assert.equal(
+      signalCommand('bench-stage-srs-1', [418], SIGNAL_RESUME),
+      "docker exec 'bench-stage-srs-1' kill -CONT 418",
+    );
   });
 
   /**
@@ -109,12 +112,12 @@ describe('the commands sent to the host', () => {
    * that matched no process would report a clean fault, watch a completely healthy ladder, and pass.
    */
   it('refuses to send a signal to nothing, which would report a fault that never landed', () => {
-    assert.throws(() => signalCommand('latbench-srs-1', [], SIGNAL_QUIET), /never landed/);
+    assert.throws(() => signalCommand('bench-stage-srs-1', [], SIGNAL_QUIET), /never landed/);
   });
 
   it('refuses a pid that is not one', () => {
-    assert.throws(() => signalCommand('latbench-srs-1', [0], SIGNAL_QUIET), /not a pid/);
-    assert.throws(() => signalCommand('latbench-srs-1', [-1], SIGNAL_QUIET), /not a pid/);
+    assert.throws(() => signalCommand('bench-stage-srs-1', [0], SIGNAL_QUIET), /not a pid/);
+    assert.throws(() => signalCommand('bench-stage-srs-1', [-1], SIGNAL_QUIET), /not a pid/);
   });
 
   /** The container name reaches a shell, so it is quoted like every other value that does. */
@@ -130,15 +133,15 @@ describe('the commands sent to the host', () => {
  */
 describe('putting every transcode back, whatever state it is in', () => {
   it('sends CONT to every ffmpeg rather than to the pids the caller happened to record', () => {
-    const command = resumeAllTranscodesCommand('latbench-srs-1');
+    const command = resumeAllTranscodesCommand('bench-stage-srs-1');
 
     assert.match(command, /kill -CONT \$\(pgrep ffmpeg\)/);
-    assert.match(command, /^docker exec 'latbench-srs-1'/);
+    assert.match(command, /^docker exec 'bench-stage-srs-1'/);
   });
 
   /** A container with no transcodes running is the ordinary case between broadcasts, not an error. */
   it('succeeds where nothing is running', () => {
-    assert.match(resumeAllTranscodesCommand('latbench-srs-1'), /\|\| true/);
+    assert.match(resumeAllTranscodesCommand('bench-stage-srs-1'), /\|\| true/);
   });
 
   it('quotes the container name', () => {

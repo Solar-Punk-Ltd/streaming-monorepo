@@ -36,8 +36,8 @@
 # was built to refuse, and printed nothing while doing it.
 #
 # Usage:
-#   deploy/scripts/stage-fingerprint.sh --container latbench-srs-1 --gop 0.5
-#   deploy/scripts/stage-fingerprint.sh --container latbench-srs-1 --gop 0.5 --rungs 4
+#   deploy/scripts/stage-fingerprint.sh --container <profile>-srs-1 --gop 0.5
+#   deploy/scripts/stage-fingerprint.sh --container <profile>-srs-1 --gop 0.5 --rungs 4
 #
 #   --rungs <n>  How many playlists to judge, newest first. One per rung of the ABR ladder the
 #                driver configured. Defaults to 1, which is what this did before ABR existed, so an

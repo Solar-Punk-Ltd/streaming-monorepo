@@ -27,7 +27,7 @@ import { ROOT_DIR } from '../src/config.js';
 const CONSTANT = 'RUNG_DEATH_LAG_SEGMENTS';
 
 /**
- * How many rungs each side will act on at once. Owner ruling 2026-09-01, after a broadcast ending
+ * How many rungs each side will act on at once, set on 2026-09-01 after a broadcast ending
  * made the player delete three rungs of four and hls.js go fatal.
  *
  * ⚠️ The two names differ on purpose. The player's removal is irreversible, so its limit is per
@@ -127,7 +127,7 @@ describe('the player and the master agree how much of a ladder may be dropped at
    * ⛔ Pinned to the ruling rather than only to each other, because "both sides say 3" would satisfy
    * the equality above and is not what was decided.
    */
-  it('is one, which is what the owner ruled on 2026-09-01', () => {
+  it('is one, which is what a broadcast ending needs', () => {
     for (const [whose, [file, name]] of Object.entries(DROP_LIMITS)) {
       assert.equal(
         declaredValueOf(join(ROOT_DIR, file), name),

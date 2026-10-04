@@ -223,7 +223,7 @@ const CAUSE_SLOT = 'CAUSESLOT';
  * Seven separate messages report it and the harness counts all seven as one number,
  * `discontinuitiesArmed` in `e2e/src/harness/logwatch.ts`.
  *
- * ⚠️ **Only three of them are a break now.** Owner ruling of 2026-09-06: a lost segment leaves a hole
+ * ⚠️ **Only three of them are a break now.** A lost segment leaves a hole
  * the playlist lists as `#EXT-X-GAP` entries, so the numbering behind it does not move, and it arms no
  * `#EXT-X-DISCONTINUITY`. What still does is the origin declaring one, the engine's own counter
  * restarting, and an encoder returning inside the reconnect window. The four loss lines keep the

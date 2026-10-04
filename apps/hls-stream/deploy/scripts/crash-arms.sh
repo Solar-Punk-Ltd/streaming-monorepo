@@ -29,9 +29,9 @@
 #   ARMS="viewer-gateway-outage:weeb3 viewer-gateway-outage:gateway" bash deploy/scripts/crash-arms.sh
 set -u
 
-BENCH_REPO="${BENCH_REPO:-${HOME}/swarm-hls-bench}"
-PROFILE="${PROFILE:-latbench}"
-PORT_SLOT="${PORT_SLOT:-7}"
+BENCH_REPO="${BENCH_REPO:-$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)}"
+PROFILE="${PROFILE:?set PROFILE to the deploy profile of the stage this drives}"
+PORT_SLOT="${PORT_SLOT:?set PORT_SLOT to the port slot of the stage this drives}"
 MINUTES="${MINUTES:-7}"
 SIZE="${SIZE:-1280x720}"
 BITRATE_KBPS="${BITRATE_KBPS:-2500}"
@@ -392,4 +392,4 @@ done
 snapshot_metrics "${METRICS_DIR}/sitting-after.json" "sitting-after"
 diff_metrics "${METRICS_DIR}/sitting-before.json" "${METRICS_DIR}/sitting-after.json" \
   "${METRICS_DIR}/sitting-diff.txt" "  what the whole sitting did to the nodes:"
-say "crash-arms done. Reports are in ${BENCH_REPO}/docs/bench/, state in ${STATE}"
+say "crash-arms done. Reports are in ${BENCH_REPO}/bench-results/, state in ${STATE}"

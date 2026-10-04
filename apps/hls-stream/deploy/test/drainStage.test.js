@@ -39,10 +39,10 @@ const SCRIPTS = resolve(dirname(fileURLToPath(import.meta.url)), '..', 'scripts'
  * real one, and the two paths that reach a redeploy are driven locally, where it can complete.
  */
 const SCRIPT = 'drain-stage.sh';
-const PROFILE = 'latbench';
+const PROFILE = 'bench-stage';
 const RUNG = '1080p';
 
-/** Slot 7 is the latbench stage's, so the ports below are the ones an operator would recognise. */
+/** Slot 7, so the ports below are the ones an operator would recognise. */
 const PORT_SLOT = '7';
 const RUNG_PORT = 11075;
 

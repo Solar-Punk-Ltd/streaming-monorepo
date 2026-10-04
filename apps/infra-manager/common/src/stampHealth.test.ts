@@ -97,7 +97,7 @@ describe('stampHealthFrom', () => {
 });
 
 /**
- * What the 1080p rung of the tester's pool reported on 2026-09-24: depth 23 over
+ * What the 1080p rung of a four-rung pool reported on 2026-09-24: depth 23 over
  * 16 bucket bits is 128 chunks a bucket, and its fullest bucket held all 128.
  * bee still called the batch usable with two days left, and refused every upload
  * that landed in that bucket with a 402.
@@ -299,7 +299,7 @@ describe('nearlyFullConsequence', () => {
     assert.match(nearlyFullConsequence(false), /stack v3\.3 and earlier refuses to restart on it/);
   });
 
-  // The tester's 720p batch reaches this within a few broadcast hours of 2026-09-24.
+  // A four-rung pool's 720p batch reaches this within a few broadcast hours of 2026-09-24.
   it('says a full mutable batch is overwriting now, not once it fills', () => {
     const full = nearlyFullConsequence(false, 1);
 

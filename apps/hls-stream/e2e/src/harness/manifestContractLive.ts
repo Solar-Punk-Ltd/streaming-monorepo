@@ -119,7 +119,7 @@ interface RungPlaylistParse {
    *
    * ⛔ Beside the break count rather than folded into it. The two say different things: a gap entry is
    * media the broadcast lost, a break is media that is not a continuation of what came before it, and
-   * since the owner's ruling of 2026-09-06 a lost segment produces only the first. It is what lets the
+   * since 2026-09-06 a lost segment produces only the first. It is what lets the
    * uploader-crash scenario wait for the hole to be visible in a published window, because nothing
    * else in the playlist names the segments the engine closed while the uploader was dead.
    */
@@ -530,7 +530,7 @@ interface TimelineVerdict {
    * How many `#EXT-X-GAP` entries this read saw across every rung.
    *
    * ⛔ What lets a suite wait for a HOLE instead of guessing at the clock, which is a different wait
-   * from the one above. Since the owner's ruling of 2026-09-06 a lost segment produces gap entries and
+   * from the one above. Since 2026-09-06 a lost segment produces gap entries and
    * no break, so a scenario that drops segments on purpose watches this and a scenario that restarts
    * the engine watches the breaks. Zero on a run that pinned no segment length, which is a read that
    * never happened rather than a window holding no hole.

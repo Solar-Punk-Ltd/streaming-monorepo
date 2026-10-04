@@ -47,7 +47,7 @@ PUBLISHER_FPS = 30
 # decoding 30, so on the main-thread axis a starved encoder reads as a cheaper viewer. That is the
 # wrong sign on the one question these sittings are run to answer.
 #
-# ⛔⛔ `phase06-light-vs-ultralight.sh` already guards the delivered segment LENGTH and admits 0.7x to
+# ⛔⛔ `light-vs-ultralight-browser.sh` already guards the delivered segment LENGTH and admits 0.7x to
 # 1.4x, so a 13% stretch passes it comfortably. This is a different instrument, not a duplicate one.
 #
 # The low bound is the measured failure mode. The high bound has never been observed on this rig, the
@@ -85,14 +85,14 @@ def summary_of(path):
 def bench_dir(root):
     """Where the driver's per-arm watch summaries landed.
 
-    The driver logs the container's own `/repo/docs/bench/...` path, which is this checkout's
-    `docs/bench` on the host that ran it. `SITTING_BENCH_DIR` overrides it for reading a sitting whose
+    The driver logs the container's own `/repo/bench-results/...` path, which is this checkout's
+    `bench-results` on the host that ran it. `SITTING_BENCH_DIR` overrides it for reading a sitting whose
     summaries were copied somewhere else.
     """
     override = os.environ.get("SITTING_BENCH_DIR")
     if override:
         return Path(override)
-    return Path(__file__).resolve().parents[2] / "docs" / "bench"
+    return Path(__file__).resolve().parents[2] / "bench-results"
 
 
 def watch_document(bench, stem):

@@ -23,7 +23,7 @@ export const LOW_CHEQUEBOOK_RUNG = '480p';
 
 /**
  * The rung seeded with a full immutable batch that still has days left, in
- * the shape of the tester's 1080p rung on 2026-09-24, so the full state, its
+ * the shape of a four-rung pool's 1080p rung on 2026-09-24, so the full state, its
  * alert and the Dilute remedy are visible at startup.
  */
 export const FULL_BATCH_RUNG = '720p';

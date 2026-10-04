@@ -69,7 +69,7 @@ import { requireByteSource, viewerGate } from '../../src/viewerCoverage.js';
  *
  * ## ⛔ No timing is asserted
  *
- * Owner ruling of 2026-08-29. How long the player took to come down, and how long it took to go back
+ * How long the player took to come down, and how long it took to go back
  * up, are measured on every arm, printed under a heading that says so, and filed in the artifact.
  * Neither refuses a run.
  *

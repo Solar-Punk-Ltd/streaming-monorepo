@@ -23,7 +23,7 @@
  *
  * ## ⛔ No timing is judged
  *
- * Owner ruling of 2026-08-29. Whether the viewer kept watching is correctness. How long each part
+ * Whether the viewer kept watching is correctness. How long each part
  * took is measured, printed and filed, and refuses nothing.
  */
 

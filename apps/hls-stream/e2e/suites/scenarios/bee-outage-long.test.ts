@@ -15,7 +15,7 @@ import { sleep, waitFor } from '../../src/harness/wait.js';
  * uploader reports the loss, and uploads resume. Result: >=1 loss reported, a gap in uploaded
  * indices, clean resume.
  *
- * ⭐ Since the owner's ruling of 2026-09-06 the dropped segment leaves its sequence empty and the
+ * ⭐ Since 2026-09-06 the dropped segment leaves its sequence empty and the
  * playlist lists it as an `#EXT-X-GAP` entry, so the numbering behind the hole never moves. It does
  * NOT arm an `#EXT-X-DISCONTINUITY` any more: nothing restarted the encoder, so the media behind the
  * hole is a continuation. What this suite reads is the uploader's own log, where the spent retry

@@ -98,11 +98,11 @@ export function createOmeEngine(
     // An announce for a stream already being pulled means the origin restarted its session, and the
     // orchestrator has already finalized the old uploader and spawned a fresh one. Keeping the old
     // puller left the two halves disagreeing about which session is live: it carries the previous
-    // session's `lastSeq`, so it discards every index the new session publishes, forever. See CON-16.
+    // session's `lastSeq`, so it discards every index the new session publishes, forever.
     // The replacement has to be told where the outgoing session's media ends, or it ingests whatever
     // the origin is still serving. OME keeps a dropped publisher's HLS output up until the SRT session
     // is reaped, five seconds when measured, and the admission webhook that lands the reconnect fires
-    // inside that window. See CON-20.
+    // inside that window.
     //
     // Read from the per-stream record rather than off the outgoing puller, because OME sends a
     // `closing` between two announces whenever it rejects a republish as a duplicate name, 111ms after
@@ -218,11 +218,11 @@ export function createOmeEngine(
         );
       } else if (!publishKeySecret) {
         // The signature above authenticates OME, and says nothing about who is publishing into it.
-        // Without this an operator has no way to tell a deployment where SEC-28 applies from one
+        // Without this an operator has no way to tell a deployment where publisher authentication applies from one
         // where ownership is still decided by the address alone.
         logger.warn(
           '[OME] No PUBLISH_KEY_SECRET configured, so publishers are not authenticated and stream ownership ' +
-            'is judged only by the address OME reports. See SEC-28.',
+            'is judged only by the address OME reports.',
         );
       }
 
@@ -283,7 +283,7 @@ export function createOmeEngine(
  * Two discriminators rather than one, because each covers a case the other cannot. Both were measured
  * against a real OvenMediaEngine rather than inferred: a publish, an abrupt kill and a republish
  * produced four admissions carrying both fields. The stream id is not among them, because both
- * sessions carry the same one, which is the whole of CON-21.
+ * sessions carry the same one.
  *
  * Either half is null whenever the payload does not carry it whole, which is wider than the field
  * being absent. These are parsed from a webhook body, so the declared types are a claim rather than a
@@ -301,7 +301,7 @@ interface SessionIdentity {
   /**
    * `request.time` in epoch milliseconds. Monotone across admissions, so it orders two sessions the
    * socket cannot tell apart, which is any pair where the second reconnects on the port the first
-   * used. See CON-23.
+   * used.
    */
   issuedAt: number | null;
 }
@@ -376,7 +376,7 @@ function describeSession(identity: SessionIdentity): string {
  * The closed state is the whole point of there being three. An accepted closing used to delete the
  * record, and an absent record means "no evidence", so from that instant until the next accepted
  * opening the guard was off: a repeat of the closing just honoured was acted on again and started a
- * second drain of a stream the first one had already retired. See CON-22.
+ * second drain of a stream the first one had already retired.
  */
 type SessionRecord =
   | { phase: 'live'; identity: SessionIdentity }
@@ -397,7 +397,7 @@ const IGNORED_CLOSINGS: Record<
 > = {
   // Two admissions for one stream are independent requests against a 3000ms timeout, so a slow
   // `closing` for a dropped session can be processed after an `opening` OME did admit. Acting on it
-  // would stop the live puller and VOD-finalize the session that replaced the sender. See CON-21.
+  // would stop the live puller and VOD-finalize the session that replaced the sender.
   replaced: {
     replyReason: 'ok (closing for a replaced session)',
     warn: (streamId, identity) =>
@@ -483,7 +483,6 @@ async function handleAdmission(
       // publishing when the secret was turned on has no key in their url, so their closing is ignored
       // and their stream finalizes at the recovery timeout instead of promptly. Bounded, one-time, and
       // the alternative is honouring an unproven closing for the whole life of every such session.
-      // See SEC-29.
       //
       // ⚠️ In admin mode `publishKeySecret` is blank, so this check is off and a closing is gated
       // only by the admission signature. Deliberate, and the same choice `srs.ts` makes on its
@@ -491,7 +490,7 @@ async function handleAdmission(
       // on the stop path and let an admin outage keep a finished broadcast from finalizing.
       if (publishKeySecret && !hasValidPublishKey(publishKeySecret, streamId, publishKeyFromUrl(request.url))) {
         logger.warn(`[OME] Ignored a closing for ${streamId} with a missing or invalid publish key`);
-        // Reported rather than observed, because this answers 200 and the observer counts 401. See OBS-15.
+        // Reported rather than observed, because this answers 200 and the observer counts 401.
         orchestrator.recordAuthRejection();
         reply(res, { allowed: true, lifetime: 0, reason: 'ignored (invalid publish key)' });
         return;
@@ -536,7 +535,7 @@ async function handleAdmission(
       if (verdict.kind !== ADMIN_PUBLISH_ALLOWED) {
         if (isAuthRefusal(verdict.kind)) {
           // Reported rather than observed: this answers 200 with an admission verdict, which is what
-          // OME's protocol wants, so the status-code observer never sees it. See OBS-15.
+          // OME's protocol wants, so the status-code observer never sees it.
           orchestrator.recordAuthRejection();
         }
         // The same uninformative reason for every refusal, deliberately. The gate has already said
@@ -549,7 +548,7 @@ async function handleAdmission(
       const admitted = orchestrator.startStream(
         streamId,
         mediatype,
-        // Proven by the declaration's own key, so SEC-26's takeover rules apply unchanged.
+        // Proven by the declaration's own key, so the address-based takeover rules apply unchanged.
         { address: publisherAddress(payload), isAuthenticated: true },
         verdict.session,
       );
@@ -575,7 +574,7 @@ async function handleAdmission(
       logger.warn(`[OME] Rejected an admission for ${streamId} with a missing or invalid publish key`);
       // Reported rather than observed. The signature refusal above answers 401 and the observer sees
       // it; this one answers 200 with an admission verdict, which is what OME's protocol wants, and
-      // was therefore invisible to `/health` on a live deployment. See OBS-15.
+      // was therefore invisible to `/health` on a live deployment.
       orchestrator.recordAuthRejection();
       reply(res, { allowed: false, reason: 'invalid publish key' });
       return;

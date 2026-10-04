@@ -34,7 +34,7 @@
  *    speeds, so cumulative counts drift apart without bound for reasons that are nobody's fault.
  *
  * ⚠️ Two limits, and they now point the same way. Inherited: if THREE die at once the middle sits
- * among the dead and none of them reads as dead. Ruled 2026-09-01: past
+ * among the dead and none of them reads as dead. Past
  * {@link MAX_RUNGS_DROPPED_AT_ONCE} nothing is dropped anyway. Both say a ladder losing most of
  * itself is a broadcast ending rather than rungs failing, which is not this class's job.
  *
@@ -86,8 +86,8 @@ export const RUNG_READMIT_AFTER_SEGMENTS = 2 * RUNG_DEATH_LAG_SEGMENTS;
 /**
  * How many rungs may be dropped at once before the right conclusion is that the broadcast ended.
  *
- * ⛔⛔⛔ Owner ruling, 2026-09-01, after the first sitting with the failover armed. The uploader was
- * killed in V7 so every rung stopped, and the player concluded three of the four had individually
+ * ⛔⛔⛔ Seen on 2026-09-01, the first sitting with the failover armed. The uploader was
+ * killed on a four-rung stage so every rung stopped, and the player concluded three of the four had individually
  * failed and deleted them: hls.js raised a fatal `levelSwitchError` and the whole player destroyed
  * and restarted itself. Rungs do not stop at the same instant, because each drains whatever it was
  * already holding and the queues differ, so a rung that drains further pushes the middle reference
@@ -97,7 +97,7 @@ export const RUNG_READMIT_AFTER_SEGMENTS = 2 * RUNG_DEATH_LAG_SEGMENTS;
  * quiet is not two independent failures, it is the source going away, and the answer to that is to
  * wait and recover rather than to take the ladder apart.
  *
- * ⚠️ Its honest cost, which the owner accepted: if two rungs genuinely fail separately during one
+ * ⚠️ Its honest cost, which is accepted: if two rungs genuinely fail separately during one
  * broadcast, the second dead one is kept and a viewer on it can freeze.
  */
 export const MAX_RUNGS_DROPPED_AT_ONCE = 1;

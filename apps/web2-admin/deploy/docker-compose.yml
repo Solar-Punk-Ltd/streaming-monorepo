@@ -86,12 +86,14 @@ services:
       - api
     labels:
       web2-admin.commit: ${WEB2_ADMIN_COMMIT:-unknown}
-    # Loopback only, as in the manager. The host's edge (infra/edge/ in this
-    # repository, its own compose project on the host's network) reaches it
-    # here, and the SSH tunnel stays the way in when the edge, its certificate
-    # or DNS is broken, or when the host has no edge.
+    # WEB2_ADMIN_WEB_BIND, 127.0.0.1 by default, as in the manager. The host's
+    # edge (infra/edge/ in this repository, its own compose project on the
+    # host's network) reaches it here, and the SSH tunnel stays the way in when
+    # the edge, its certificate or DNS is broken, or when the host has no edge.
+    # Docker publishes past a host firewall, so name another address only where
+    # something else stands in front of it.
     ports:
-      - '127.0.0.1:${WEB2_ADMIN_WEB_PORT:-9090}:80'
+      - '${WEB2_ADMIN_WEB_BIND:-127.0.0.1}:${WEB2_ADMIN_WEB_PORT:-9090}:80'
     healthcheck:
       test: ['CMD-SHELL', 'wget -q -O /dev/null http://127.0.0.1:80/']
       interval: 5s

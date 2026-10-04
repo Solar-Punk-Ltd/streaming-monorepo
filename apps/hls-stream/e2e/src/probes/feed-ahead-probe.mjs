@@ -7,7 +7,7 @@
  * how a reader that has caught up with the publisher finds out. The uploader-crash run on 2026-08-05
  * showed the cost of that when the 404 means something else: the viewer asked slot **301** one
  * hundred and thirteen times over sixty seconds, was served at last, and then consumed slots 302 to
- * 570 in twelve seconds flat. `docs/bench/crash-at-a-viewer-2026-08-05.md`.
+ * 570 in twelve seconds flat. the `crash-at-a-viewer-2026-08-05` measurement (kept outside the repository).
  *
  * That burst has two readings and they call for opposite fixes:
  *
@@ -52,7 +52,9 @@
 import { FeedIndex, Identifier, Topic } from '@ethersphere/bee-js';
 import { Binary } from 'cafe-utility';
 
-const READ_URL = process.env.READ_URL ?? 'http://127.0.0.1:10077';
+import { probeReadUrl } from './bee-urls.mjs';
+
+const READ_URL = probeReadUrl();
 const APP_OWNER = process.env.APP_OWNER;
 const APP_RAW_TOPIC = process.env.APP_RAW_TOPIC;
 const STREAM_OWNER = process.env.STREAM_OWNER;
