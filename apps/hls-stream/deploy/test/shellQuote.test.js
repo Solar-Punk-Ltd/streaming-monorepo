@@ -53,7 +53,7 @@ function roundTripSnippet(valuePath) {
   ].join('\n');
 }
 
-describe('shell_quote round trip (SEC-21)', () => {
+describe('shell_quote round trip', () => {
   for (const value of AWKWARD_VALUES) {
     it(`survives a trip through another shell: ${JSON.stringify(value)}`, async () => {
       const sandbox = makeSandbox();

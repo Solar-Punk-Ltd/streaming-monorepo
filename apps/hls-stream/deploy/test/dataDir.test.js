@@ -35,14 +35,14 @@ function deployBeeNode(envFiles, service = 'bee-uploader') {
   return { sandbox, run: runScript(sandbox, 'deploy.sh', [service]) };
 }
 
-describe('bee data dir from .env (SEC-21)', () => {
+describe('bee data dir from .env', () => {
   // `ssh host "...$data_dir..."` hands one string to the far side's login shell, which word-splits
   // and evaluates it. The value arrives from the root `.env`, and `.env.sample` is tracked while
   // `setup.sh` appends new sample keys into an existing `.env`, so a single line in a commit that
   // touches no shell script used to run a command on every operator's deployment host. Measured on
   // the unfixed tree, three runs of three: the payload below executed FOUR times, once per unquoted
   // expansion of the value in the block that used to live here, and `deploy.sh` reported success for
-  // the step. `load_env` is genuinely inert and OPS-6 proves that, which is a different claim.
+  // the step. `load_env` is genuinely inert and the load_env tests prove that, which is a different claim.
   it('refuses a value carrying a command instead of running it on the deployment host', async () => {
     const marker = payloadMarker();
 
@@ -136,7 +136,7 @@ describe('bee data dir from .env (SEC-21)', () => {
   });
 });
 
-describe('bee data dir initialisation (SEC-21)', () => {
+describe('bee data dir initialisation', () => {
   // The half a guard can quietly break. A refusal that also refused every ordinary value would pass
   // both tests above while making the script useless.
   it('still initialises an ordinary relative dir under deploy/ on the remote host', async () => {

@@ -289,7 +289,7 @@ describe('the stamp where the view never asked the node', () => {
 
 /**
  * How full a batch is, which bee reports beside its time left and which the
- * step read nothing of until 2026-09-24. That day the 1080p rung of the tester's
+ * step read nothing of until 2026-09-24. That day the 1080p rung of a four-rung
  * pool read "Postage stamp set, 2d 3h left" while its node refused every upload
  * with a 402, because the immutable batch's fullest bucket held 128 of its 128
  * chunks.

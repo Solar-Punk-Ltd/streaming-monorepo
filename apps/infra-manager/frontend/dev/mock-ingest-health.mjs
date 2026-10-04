@@ -40,7 +40,7 @@ const LINKS = {
   healthy: { received: 39_000, lost: 0, retransmitted: 0, dropped: 0 },
   recovered: { received: 39_000, lost: 118, retransmitted: 118, dropped: 0 },
   degraded: { received: 39_000, lost: 212, retransmitted: 190, dropped: 22 },
-  // Three times the two reports the tester's broadcast printed on 2026-09-22.
+  // Three times the two reports an outside broadcast printed on 2026-09-22.
   bad: { received: 38_871, lost: 2_283, retransmitted: 2_193, dropped: 2_289 },
 };
 

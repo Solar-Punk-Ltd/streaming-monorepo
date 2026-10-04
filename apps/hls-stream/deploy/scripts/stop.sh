@@ -40,7 +40,7 @@ apply_port_slot
 print_services
 
 # `--profile` does not scope `down`: compose removes every co-located service in the project
-# regardless, measured against v5.3.1 during the OPS-2 work. So a stop the operator scoped to a
+# regardless, measured against v5.3.1. So a stop the operator scoped to a
 # service uses `stop` with an explicit service list, which is the form compose honours. `down` is
 # kept for the unfiltered case, where taking the project's network with it is the actual request.
 compose_stop_flags() {

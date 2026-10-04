@@ -636,7 +636,7 @@ describe('every arm is filed with the condition it ran under', () => {
  *
  * The gate this sitting did carry, `can_afford`, asks whether the node holds enough to pay. That
  * stays true right down to an empty chequebook, so a driver carrying only that authorises the entire
- * balance, and two sittings that each pass it can still land past the owner's total together because
+ * balance, and two sittings that each pass it can still land past the authorised total together because
  * neither can see the other. This driver spent real BZZ on 2026-08-13 with nothing between it and the
  * whole chequebook, and the reason it never overran is that nobody asked it to.
  */

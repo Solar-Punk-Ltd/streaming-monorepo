@@ -3,7 +3,7 @@
  *
  * Unit test, no DOM. `pnpm test` in frontend/.
  *
- * The card exists because a tester's broadcast broke up for five hours on
+ * The card exists because an outside broadcast broke up for five hours on
  * 2026-09-22 and nothing on any screen said so, while SRS was counting six
  * percent of the packets dropped. So a bad link has to read as bad, with the
  * fix beside it. A minute with no reports is the card's as a whole, and

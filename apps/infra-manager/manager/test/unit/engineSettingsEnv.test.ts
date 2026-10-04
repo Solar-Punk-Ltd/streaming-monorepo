@@ -162,7 +162,7 @@ describe('writeProfileEnv: engine settings', () => {
 /**
  * The one default the manager writes itself.
  *
- * The owner set the SRT latency to 2000 ms on 2026-09-23, and v3.1's entrypoint
+ * The SRT latency default became 2000 ms on 2026-09-23, and v3.1's entrypoint
  * falls back to 200. Leaving the key out would hand SRS 200 for every
  * deployment that stores none while the settings page names 2000. A value
  * somebody set on the host still stands, which is the rule this file opens with.

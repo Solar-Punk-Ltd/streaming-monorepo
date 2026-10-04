@@ -107,7 +107,7 @@ describe('the burn rate every sitting is priced against', () => {
 
   /**
    * ⚠️ And not wildly above it either. Over-conservatism has its own cost: on 2026-08-05 a constant
-   * 1.5x high made the guard refuse 60 affordable minutes and led to asking the owner for an
+   * 1.5x high made the guard refuse 60 affordable minutes and led to asking for an
    * on-chain deposit that was not needed. The margin is where safety belongs.
    */
   it('does not price a sitting at more than twice what one has ever cost', () => {

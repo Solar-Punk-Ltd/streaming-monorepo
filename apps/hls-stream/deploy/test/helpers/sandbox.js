@@ -688,7 +688,7 @@ for (const source of positional) {
  * path executes for real. Recording the text alone would let the remote sweep drift from the local
  * one while a substring assertion still passed.
  *
- * `bash -c "$*"` is not a shortcut, it is the fidelity that makes SEC-21 visible. Real ssh joins its
+ * `bash -c "$*"` is not a shortcut, it is the fidelity that makes command injection through an unquoted value visible. Real ssh joins its
  * remaining arguments into one string and hands it to the far side's LOGIN SHELL, which word-splits
  * and evaluates it, which is why an unquoted interpolation into an ssh command line is a command
  * injection rather than a quoting nit. A stub that exec'd an argv would model something ssh does not

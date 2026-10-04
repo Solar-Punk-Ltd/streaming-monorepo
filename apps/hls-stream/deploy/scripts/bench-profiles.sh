@@ -136,7 +136,7 @@ for row in "${PROFILES[@]}"; do
 
   # A recreated container is reported running before its SRT socket is bound, and the first run after
   # a redeploy publishes into nothing and times out. That cost a run of `hd-half` on 2026-08-03, and
-  # it is the same gap as OBS-20 seen from the other side.
+  # it is the same gap as an engine running with an unbound ingest socket, seen from the other side.
   if ! "${REPO_ROOT}/deploy/scripts/wait-for-ingest.sh" \
     --profile="${PROFILE}" --portSlot="${PORT_SLOT}" --timeout=90 >> "${SWEEP_LOG}" 2>&1; then
     echo "    ingest never came up for ${name}, skipping the profile" | tee -a "${SWEEP_LOG}"

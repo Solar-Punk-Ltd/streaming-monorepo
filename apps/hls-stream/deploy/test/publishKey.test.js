@@ -1,5 +1,5 @@
 /**
- * That the key an operator issues is the key the service will accept. See SEC-28.
+ * That the key an operator issues is the key the service will accept.
  *
  * There are two implementations of one derivation: `derive_publish_key` in `_lib.sh`, because the
  * secret lives in this host's env file and the host is not required to have Node, and
@@ -241,8 +241,7 @@ function targetTree(scriptsDir = path.join(here, '..', 'scripts')) {
 }
 
 /**
- * OPS-29 and TEST-54. Two LOW rows filed by the per-stream publish key change's config lens, both about this script being run
- * somewhere other than a developer's checkout.
+ * That the script works when it is run somewhere other than a developer's checkout.
  *
  * A remote deploy target has `deploy/scripts/`, the compose files, the Dockerfiles and `.env`, and
  * neither `config.json` nor `config.sample.json`: `deploy.sh`'s rsync list does not carry them. The
@@ -270,7 +269,7 @@ describe('publish-key.sh where an operator actually runs it', () => {
   });
 
   /**
-   * TEST-54. `parse_profile_args` consumes seven flags and the usage string advertised one, so
+   * `parse_profile_args` consumes seven flags and the usage string advertised one, so
    * `--portSlot=4` silently changed the printed port and the two-word forms swallowed the stream id
    * with no hint of why. Asserted against the parser's own list rather than a copy, so a flag added
    * there without being documented here fails.

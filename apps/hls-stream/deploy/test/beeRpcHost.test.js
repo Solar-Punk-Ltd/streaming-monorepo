@@ -45,7 +45,7 @@ const CHAIN_BY_DEFAULT = /--blockchain-rpc-endpoint=\$\{[A-Z0-9_]+:-\S+\}/;
 const HOST_ALIAS = 'host.docker.internal:host-gateway';
 
 describe("a node reaching the chain through an endpoint of the operator's own", () => {
-  // The flag is not the test, and since the ruling of 2026-09-17 neither is the variable: bee-gateway
+  // The flag is not the test, and since 2026-09-17 neither is the variable: bee-gateway
   // reads a variable too. What separates the two is the default. These four default to an endpoint
   // and are on the chain unless a deployment says otherwise, while the gateway defaults to nothing and
   // reaches a chain only when it is given one.
@@ -75,10 +75,10 @@ describe("a node reaching the chain through an endpoint of the operator's own", 
 });
 
 describe('the node a viewer reads through', () => {
-  // The owner ruled on 2026-09-17: a node's mode is chosen when it is created, and the gateway's default
+  // A node's mode is chosen when it is created, and the gateway's default
   // is ultra-light. Ultra-light is bee's name for a light node with no chain behind it, which owns
   // no chequebook and so can never spend. What holds that now is the defaults rather than three
-  // literals, and the purpose of the ruling of 2026-09-15 is held with them: a deployment that sets
+  // literals, and the purpose of that choice is held with them: a deployment that sets
   // neither key gets exactly the node this file has always started, and only the manager writing
   // both keys for a gateway an operator created on the chain makes it anything else.
   const block = blockOf(compose, 'bee-gateway');
@@ -131,7 +131,7 @@ describe('the gateway command compose renders', () => {
   /**
    * Generous against a command that parses one file, and finite, for the reason `healthcheck.test.js`
    * gives at length: an unresponsive docker with no bound on it cost that suite 742 seconds on
-   * 2026-08-03. See OPS-28.
+   * 2026-08-03.
    */
   const COMPOSE_CONFIG_TIMEOUT_MS = 30_000;
 

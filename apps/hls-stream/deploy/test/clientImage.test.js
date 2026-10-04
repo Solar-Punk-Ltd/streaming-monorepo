@@ -100,7 +100,7 @@ describe('client image serving the weeb-3 shared worker runtime', () => {
 /**
  * Which files a browser may keep, and which it has to ask about again on every load.
  *
- * ⛔ The failure this exists for, 2026-09-24: right after the tester's viewer was redeployed, a
+ * ⛔ The failure this exists for, 2026-09-24: right after a stage's viewer was redeployed, a
  * browser that had visited before kept its old `index.html` for hours, and that page asked for
  * `assets/index-dZpFGtzr.js`, which the new container no longer had, so the viewer never loaded.
  * nginx served the page with only Last-Modified and an ETag, and without a Cache-Control a browser

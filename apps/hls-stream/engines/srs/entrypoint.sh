@@ -441,7 +441,7 @@ vhost ${ABR_VHOST} {
         hls_fragment    ${HLS_FRAGMENT};
         # Without this the rungs run on SRS's own 2.1 default while the ingest vhost runs on
         # the configured ratio, so an enabled ladder force-closes segments the single-rendition
-        # path does not. 0.5 * 5.0 = 2.5s, the ceiling latbench has always run.
+        # path does not. 0.5 * 5.0 = 2.5s, the ceiling the stages have always run.
         hls_aof_ratio   ${HLS_AOF_RATIO};
         hls_window      ${HLS_WINDOW};
         hls_ts_file     [app]/[stream]/[stream]-[seq].ts;

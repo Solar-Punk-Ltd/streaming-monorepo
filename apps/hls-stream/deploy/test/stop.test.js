@@ -20,14 +20,14 @@ function trailingServices(call, subcommand) {
   return at === -1 ? [] : call.split(/\s+/).slice(at + 1);
 }
 
-describe('stop.sh service filter (OPS-3)', () => {
+describe('stop.sh service filter', () => {
   // `parse_profile_args` puts the non-flag argv into REST_ARGS and the script even re-applies it
   // with `set --`, and then every loop below reads the target's full service list instead. An
   // operator stopping one service took the whole stack down, with the script printing the list of
   // everything it was about to stop as if that had been asked for.
   //
   // The assertion is on the subcommand rather than on `--profile` flags on purpose. Compose ignores
-  // `--profile` when choosing what `down` removes, measured against v5.3.1 in the OPS-2 work, so a
+  // `--profile` when choosing what `down` removes, measured against v5.3.1, so a
   // test that only checked the flags would pass with the whole stack still coming down.
   it('never issues compose down when a service is named', async () => {
     const sandbox = makeSandbox();
@@ -79,7 +79,7 @@ describe('stop.sh service filter (OPS-3)', () => {
 
   // Not a duplicate of the local case: the remote branch builds its own compose command inside a
   // heredoc, so it can drift from the local one while every assertion above still passes. That is
-  // exactly how OPS-2 had three sweeps to fix rather than one.
+  // exactly how the straggler sweep came to need fixing in three places rather than one.
   it('stops only the named service on a remote host', async () => {
     const sandbox = makeSandbox({ config: ALL_REMOTE });
 

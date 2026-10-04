@@ -463,7 +463,7 @@ log "commit $COMMIT (written to $APP_DIR_FROM_ROOT/deploy/.deployed-commit)"
 
 # The host's last step: say when this profile's env file from before the move
 # is still there. It is no longer read, but it keeps a second copy of the
-# signing key and token. Removing a file from a host is the owner's call, so
+# signing key and token. Removing a file from a host is the operator's call, so
 # the step prints the command rather than running it. --host=localhost has no
 # host checkout to look in. The path, profile and host it names were held to
 # patterns above, as everything host_script interpolates is.

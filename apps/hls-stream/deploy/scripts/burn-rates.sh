@@ -51,5 +51,5 @@ GATEWAY_SETUP_PLUR="${GATEWAY_SETUP_PLUR:-0}"
 
 # Headroom over the straight-line estimate, and the only place safety belongs. ⚠️ Conservatism
 # applied twice is its own fault: on 2026-08-05 a constant 1.5x high plus this margin refused 60
-# affordable minutes and led to asking the owner for a deposit that was not needed.
+# affordable minutes and led to asking for a deposit that was not needed.
 FUNDS_MARGIN_PERCENT="${FUNDS_MARGIN_PERCENT:-140}"

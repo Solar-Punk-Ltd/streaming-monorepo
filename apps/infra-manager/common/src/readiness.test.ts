@@ -418,7 +418,7 @@ describe('the readiness of a node that reaches no chain', () => {
  * What the overview lists, from the readings it takes of every deployment.
  *
  * On 2026-09-24 the overview said "nothing right now, everything is running and
- * ready" while the tester's ABR uploader reported `postage_refused` and the
+ * ready" while an ABR uploader reported `postage_refused` and the
  * 1080p rung behind it held a full batch.
  */
 describe('the overview’s Needs attention, from the readings it holds', () => {

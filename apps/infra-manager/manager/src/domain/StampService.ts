@@ -361,9 +361,8 @@ export class StampService {
    * yet blocks the start: an uploader on such a batch reports RUNNING and
    * fails every upload, and the node itself has said so.
    *
-   * A node that answers nothing no longer blocks it. Since 2026-09-17, in the
-   * owner's words: "we should be able to start the uploader but maybe say its
-   * node not available, try to reconnect or something". The uploader waits for
+   * A node that answers nothing no longer blocks it. Since 2026-09-17, the
+   * uploader may start while its node is unavailable. The uploader waits for
    * its node instead of exiting, and reports that wait on its own health
    * route, which UploaderHealthService reads onto the deployment page. So the
    * silence becomes a state an operator can watch rather than a refusal they

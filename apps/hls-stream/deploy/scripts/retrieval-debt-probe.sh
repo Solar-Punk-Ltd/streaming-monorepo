@@ -117,7 +117,7 @@ PASSES="${PASSES:-1}"
 
 # How many viewers walk the list at once, against one gateway.
 #
-# ⭐ This is the cheap half of the concurrency question. LAT-11 measured 1 against 8 viewers on a live
+# ⭐ This is the cheap half of the concurrency question. A measurement of 1 against 8 viewers on a live
 # broadcast and found the gateway serves the extra seven almost for free in retrieval (1.09x chunks)
 # and expensively in request handling (1.84x CPU), with the ceiling inside bee rather than in the
 # network or the wallet. Nothing between 2 and 8, or above 8, has ever been measured, and here it needs

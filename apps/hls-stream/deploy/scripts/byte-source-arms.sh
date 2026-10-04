@@ -91,8 +91,8 @@ TARGET_LATENCY_S="${TARGET_LATENCY_S:-2}"
 # ⛔⛔ WHICH PAIR THIS SITTING RUNS. Unset it and nothing changes: gateway against our hybrid client,
 # which is every byte-source sitting run so far.
 #
-# `gateway-less` swaps the gateway condition for weeb-3's OWN PAGE, which is what the owner asked for
-# on 2026-08-11 and what the split of the in-tab fetch backend change never measured.
+# `gateway-less` swaps the gateway condition for weeb-3's OWN PAGE, which is the comparison that
+# was wanted on 2026-08-11 and what the split of the in-tab fetch backend change never measured.
 #
 # ⚠️ That contrast moves TWO things, whose page and player, and whether a gateway serves the
 # manifest. It bounds the cost of going fully gateway-less rather than isolating either one.

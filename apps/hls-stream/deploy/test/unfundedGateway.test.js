@@ -21,7 +21,7 @@ const SCRIPT = join(ROOT, 'deploy/scripts/unfunded-gateway.sh');
  * soaks with a night between them.
  *
  * ⛔⛔ It runs standalone rather than as a compose service, and that is the safety property. This host
- * carries the running latbench stack plus forty other bee nodes and eight unrelated stacks. A compose
+ * carries the running stage plus forty other bee nodes and eight unrelated stacks. A compose
  * change can recreate services that were not meant to move, and the funded gateway losing its warm
  * peer set mid-sitting would silently become the cold-join penalty instead of the funded arm.
  *
@@ -174,7 +174,7 @@ describe('the unfunded gateway stands up beside the funded one', () => {
    * because bee prompts for a password on first boot and a detached container has no terminal. No
    * stub asks bee for a password, so no stubbed test could have found it.
    *
-   * Reading `docker inspect latbench-bee-gateway-1` then showed three more flags the compose file does
+   * Reading `docker inspect` on the running gateway then showed three more flags the compose file does
    * not: `--cors-allowed-origins`, `--cache-capacity` and `--cache-retrieval`. It showed the funded
    * gateway's local rpc at 127.0.0.1:9000 as well, and copying THAT is the one place matching went too
    * far, because the endpoint is the mode. It is asserted empty above instead.

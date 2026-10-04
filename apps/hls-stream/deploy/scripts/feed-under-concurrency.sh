@@ -5,7 +5,7 @@
 #
 # Every concurrency figure this project has (0.9c, 0.9c-ii: 16, 128, 192, 512 viewers) came from a
 # probe that replays a fixed list of chunk references. That probe never reads a feed. So the whole
-# scale story above eight viewers was measured with **zero feed reads in it**, while LAT-11 put feed
+# scale story above eight viewers was measured with **zero feed reads in it**, while an earlier measurement put feed
 # staleness at 1.30x at eight and nothing has looked since.
 #
 # It matters because the feed is where a viewer learns that media exists. The announcement floor

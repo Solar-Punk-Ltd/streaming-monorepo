@@ -398,11 +398,11 @@ init_bee_dirs() {
       # command to the far side's LOGIN SHELL, which word-splits and evaluates it, so a `.env` line
       # reading `BEE_UPLOADER_DATA_DIR=./data/bee; touch /tmp/x; echo` used to run on the
       # deployment host. `.env.sample` is tracked and `setup.sh` appends new sample keys into an
-      # existing `.env`, so that line reaches every operator without touching a shell script. SEC-21.
+      # existing `.env`, so that line reaches every operator without touching a shell script.
       # `$REMOTE_BASE` is interpolated locally on purpose: it holds an unexpanded `~` that only the
       # far side can resolve. The directive below is inert today, because `.shellcheckrc` disables
-      # SC2029 for the whole repository. It is here so that narrowing that disable, which SEC-22
-      # records the measurement for, does not have to rediscover which lines wanted it.
+      # SC2029 for the whole repository. It is here so that narrowing that disable
+      # does not have to rediscover which lines wanted it.
       # shellcheck disable=SC2029
       ssh "$target" "cd $REMOTE_BASE/deploy && bash ../nodes/init-node.sh $(shell_quote "$data_dir")"
     fi

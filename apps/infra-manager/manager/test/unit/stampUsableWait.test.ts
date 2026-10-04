@@ -4,7 +4,7 @@
  *
  * Unit test, no database and no node. `pnpm test` in manager/.
  *
- * On 2026-09-24 the tester bought a fresh batch for the pool's 1080p rung, whose
+ * On 2026-09-24 a fresh batch was bought for the pool's 1080p rung, whose
  * immutable batch was full, and the card's promise that a new batch "is set on
  * this deployment automatically" did not hold: the wait saw a stamp already
  * recorded and logged "not overriding", so the full batch stayed set until the

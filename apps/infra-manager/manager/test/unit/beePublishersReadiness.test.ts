@@ -306,7 +306,7 @@ describe('beePublishersForGroup — live batch state', () => {
   });
 });
 
-/** The tester's 1080p batch on 2026-09-24: 128 chunks a bucket, the fullest holding all 128. */
+/** A four-rung pool's 1080p batch on 2026-09-24: 128 chunks a bucket, the fullest holding all 128. */
 const FULL_IMMUTABLE: BatchFill = { depth: 23, bucketDepth: 16, utilization: 128, immutableFlag: true };
 
 describe('beePublishersForGroup, how full each batch is', () => {

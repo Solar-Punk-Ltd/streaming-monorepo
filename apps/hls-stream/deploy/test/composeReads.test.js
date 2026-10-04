@@ -94,7 +94,7 @@ after(removeSandboxes);
 /**
  * A sandbox holding both a copy of the scripts and the stack they drive, which are two different
  * checkouts on the measurement host: the probes are synced to `~/phase06` and the stack they flip
- * lives at `~/swarm-hls-stream-latbench`. The guard has to read the stack's compose file and not the
+ * lives at `~/swarm-hls-stream-<profile>`. The guard has to read the stack's compose file and not the
  * one beside itself, which is the second half of the same defect.
  */
 function stackSandbox(keys, env = null) {

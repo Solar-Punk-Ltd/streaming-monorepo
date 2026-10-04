@@ -287,7 +287,7 @@ describe('what the nodes say they did, over one window and not over their lives'
  * peers being blocklisted; and `bee_topology_*`, `bee_chunk_*`, `bee_storage_*`, `bee_stamp_*`,
  * `bee_settlement_*`, `bee_chequebook_*`.
  *
- * ⭐⭐⭐ The owner's rule is older than the defect: capture the COMPLETE instrument surface and diff
+ * ⭐⭐⭐ The rule is older than the defect: capture the COMPLETE instrument surface and diff
  * the whole of it, ranked by what moved, because grepping for the subsystem you think you are
  * measuring is how you publish a number with the wrong cause. That cost a real finding on 2026-08-12,
  * when a publishing ceiling was attributed to protocol overhead while three metrics in the same HTTP

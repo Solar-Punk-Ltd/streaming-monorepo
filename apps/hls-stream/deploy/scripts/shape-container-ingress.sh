@@ -9,7 +9,7 @@
 # applied over CDP, which is one aggregate budget the browser schedules across every transport
 # itself. An in-tab Swarm node holds about two hundred WebSocket connections, and how Chromium
 # divides an emulated budget across two hundred sockets is not a fact about a 2.8 Mbps link. The
-# probe of 2026-09-02 found the in-tab node behaving badly under that emulation, and the owner ruled
+# probe of 2026-09-02 found the in-tab node behaving badly under that emulation, which made
 # the emulation a prime suspect rather than the node. This is the arm that repeats the probe with the
 # emulation removed and a shaped link in its place.
 #

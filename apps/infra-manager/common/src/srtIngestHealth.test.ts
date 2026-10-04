@@ -44,7 +44,7 @@ describe('srtLinkVerdict', () => {
     assert.equal(srtLinkVerdict(counts({ dropped: 100 })), SRT_LINK_BAD);
   });
 
-  // The two reports the tester's broadcast printed on 2026-09-22, summed.
+  // The two reports an outside broadcast printed on 2026-09-22, summed.
   it('calls the broadcast that broke up for five hours bad', () => {
     assert.equal(srtLinkVerdict({ received: 12_957, lost: 761, retransmitted: 731, dropped: 763 }), SRT_LINK_BAD);
   });

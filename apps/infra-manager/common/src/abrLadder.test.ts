@@ -307,7 +307,7 @@ describe('assembleBeePublishers — live batch state', () => {
     );
   });
 
-  // The tester's pool on 2026-09-24: the 1080p rung's immutable batch was full,
+  // A four-rung pool on 2026-09-24: the 1080p rung's immutable batch was full,
   // its node refused every upload with a 402, and the pool still read ready.
   it('refuses the string when one rung’s immutable batch is full', () => {
     const result = assembleBeePublishers(

@@ -115,7 +115,7 @@ describe('the pill on a pool the manager calls ready', () => {
 });
 
 describe('a pool whose rung holds a full batch', () => {
-  // The tester's pool on 2026-09-24: the 1080p rung's immutable batch was full,
+  // A four-rung pool on 2026-09-24: the 1080p rung's immutable batch was full,
   // so its node refused every upload, and the manager now withholds the string.
   const fullRung: BeePublishersResult = {
     ...ready,

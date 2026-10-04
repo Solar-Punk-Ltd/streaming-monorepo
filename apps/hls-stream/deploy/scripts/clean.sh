@@ -75,7 +75,7 @@ done
 # Compose volumes carry the project label and have no per-service equivalent, so there is no way to
 # remove one service's data without reaching every other service's as well. Refusing is the only
 # honest answer: silently ignoring the flag would leave an operator believing data was removed, and
-# honouring it destroys recordings nobody named. See OPS-2.
+# honouring it destroys recordings nobody named.
 if [ "$REMOVE_VOLUMES" = "true" ] && [ ${#FILTER_SERVICES[@]} -gt 0 ]; then
   log_error "--volumes cannot be limited to a service (${FILTER_SERVICES[*]})."
   echo "  Compose volumes are labelled per project, not per service, so removing them would take"
@@ -93,7 +93,7 @@ fi
 # nothing else, and compose's own service label is what narrows it. Called with no services the
 # request was the entire project, and the sweep stays deliberately broad, because that is the case it
 # exists for: a container whose service definition has since disappeared from config.json is exactly
-# what `down` can no longer see. See OPS-2.
+# what `down` can no longer see.
 sweep_container_ids() {
   local svc
   if [ $# -eq 0 ]; then
@@ -112,7 +112,7 @@ sweep_container_ids() {
 # file: `docker compose -p X --profile bee-uploader down` removed the bee-gateway container too, which
 # is every co-located service in the project. So the profile flags that select what to act on are
 # silently ignored by the one subcommand that does the removing, and narrowing the straggler sweep
-# alone left the stack being destroyed one step earlier. See OPS-2.
+# alone left the stack being destroyed one step earlier.
 #
 # With services named, `stop` followed by `rm -f` is used instead, because both take an explicit
 # service list and honour it. `down` is reserved for the unfiltered case, where removing the project's

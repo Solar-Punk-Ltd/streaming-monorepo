@@ -13,7 +13,7 @@ const STANDALONE = join(ROOT, 'engines/ome/docker-compose.yml');
 const ENTRYPOINT = join(ROOT, 'engines/ome/entrypoint.sh');
 
 /**
- * That OME binds the ports the operator configured. See OPS-30.
+ * That OME binds the ports the operator configured.
  *
  * `OME_SRT_PORT` and `OME_HLS_PORT` used to exist **only** as compose publish mappings, against a
  * `Server.xml.template` that hardcoded 10080 and 8081. On the bridge that difference is invisible,
@@ -91,7 +91,7 @@ function renderServerXml(env) {
   return rendered;
 }
 
-describe('the ports OME binds (OPS-30)', () => {
+describe('the ports OME binds', () => {
   it('binds what the operator configured', () => {
     const xml = renderServerXml({ OME_SRT_PORT: '10071', OME_HLS_PORT: '10092', OME_ADMISSION_SECRET: 'x'.repeat(64) });
 
@@ -120,7 +120,7 @@ describe('the ports OME binds (OPS-30)', () => {
    * The container half, over both compose files. The entrypoint cannot bind what compose never hands
    * it, and that was the actual defect: the variables were in `ports:` and nowhere else. This checked
    * only deploy/docker-compose.yml, so the standalone engines/ome file kept the fixed container ports
-   * and the missing pass-through that OPS-30 was about, unseen on the `pnpm ome:host` path.
+   * and the missing pass-through, unseen on the `pnpm ome:host` path.
    */
   for (const composePath of [COMPOSE, STANDALONE]) {
     const where = composePath.slice(ROOT.length + 1);

@@ -28,7 +28,7 @@ describe('the spend ledger writer', () => {
    * an authorisation nobody gave, so there is none, and the refusal says why rather than just how.
    */
   it('refuses to write anything without an explicit authorisation', () => {
-    const { code, out } = run(['--profile=latbench', '--portSlot=7']);
+    const { code, out } = run(['--profile=bench-stage', '--portSlot=7']);
 
     assert.equal(code, 2);
     assert.match(out, /no --authorise/);
@@ -42,7 +42,7 @@ describe('the spend ledger writer', () => {
    * profile flags are the only arguments.
    */
   it('gets past argument parsing when the profile flags are the only arguments', () => {
-    const { out } = run(['--profile=latbench', '--portSlot=7']);
+    const { out } = run(['--profile=bench-stage', '--portSlot=7']);
 
     assert.doesNotMatch(out, /unbound variable/, 'the script died on its own argument handling');
   });

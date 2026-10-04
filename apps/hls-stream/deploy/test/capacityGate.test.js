@@ -75,7 +75,7 @@ describe('the postage capacity gate', () => {
 
   /**
    * ⛔ The batch is read off the container that is actually publishing, never off a file and never
-   * off a shape like "the depth-24 immutable one". `.env.latbench` is gitignored and lives on the
+   * off a shape like "the depth-24 immutable one". A profile env file is gitignored and lives on the
    * host, `/stamps` lists batches of which some are dead, and a batch that gets diluted changes depth
    * under any gate that hardcoded one. The uploader's own environment cannot go stale.
    */

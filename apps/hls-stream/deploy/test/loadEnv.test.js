@@ -38,7 +38,7 @@ function assertNothingRan(where) {
   }
 }
 
-describe('load_env does not evaluate .env values (OPS-6)', () => {
+describe('load_env does not evaluate .env values', () => {
   // The audit recorded `_lib.sh:441` as evaluating raw lines. It never did: that line is
   // `compose_project_flag`, and `load_env_file` has carried an explicit non-evaluating parser since
   // before the audit ran. What the row was missing was a test, so this is the test.
