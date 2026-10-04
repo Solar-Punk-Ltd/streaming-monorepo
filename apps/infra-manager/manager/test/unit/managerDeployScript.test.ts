@@ -761,6 +761,26 @@ describe('deploy/deploy.sh, run against a repository on this disk', () => {
     }
   });
 
+  it('asks the first repository STACK_SOURCES in manager/.env names, which is where the host fetches the stack from', () => {
+    const root = mkdtempSync(join(tmpdir(), 'manager-deploy-fork-'));
+    try {
+      const { manager, environment } = checkout(root);
+      writeFileSync(
+        join(manager, 'manager', '.env'),
+        'POSTGRES_PASSWORD=synthetic-not-a-secret\n' +
+          'STACK_SOURCES="https://github.com/example/streaming-monorepo.git#apps/hls-stream, https://github.com/example/other.git#."\n',
+      );
+
+      const deployed = deploy(root, manager, environment);
+
+      assert.equal(deployed.status, 0, deployed.stderr);
+      const [asked] = readFileSync(join(root, 'ls-remote-calls'), 'utf8').trim().split('\n');
+      assert.match(asked, /ls-remote https:\/\/github\.com\/example\/streaming-monorepo\.git HEAD/);
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
+  });
+
   /**
    * The host fetches the pinned commit from GitHub by its name. A commit only
    * this machine has would get as far as replacing the manager, and only then

@@ -210,6 +210,8 @@ async function main(): Promise<void> {
     config.stackVersionsRoot,
     buildLedger,
     BUNDLED_STACK_ROOT,
+    undefined,
+    config.stackSources,
   );
 
   const interruptedBuilds = await stackVersionService.failInterruptedBuilds();

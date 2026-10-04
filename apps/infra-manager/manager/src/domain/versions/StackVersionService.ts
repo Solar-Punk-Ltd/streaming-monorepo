@@ -55,7 +55,7 @@ import {
 } from './hostConfigSettings.js';
 import { carryOverLegacyHostConfig } from './legacyHostConfig.js';
 import { readStackContract } from './stackContract.js';
-import { MONOREPO_STACK_SOURCE, stackSourceAt, type StackSource } from './stackSources.js';
+import { DEFAULT_STACK_SOURCES, stackSourceAt, type StackSource } from './stackSources.js';
 import { BUNDLED_STACK_ROOT, parseBaseEnv } from '../../utils/envUtils.js';
 import {
   buildDirFor,
@@ -177,7 +177,16 @@ export class StackVersionService {
      * route tests do so a held lock does not cost them ten seconds.
      */
     private readonly settingsLockWaitMs: number | undefined = undefined,
+    /** The repositories versions are built from, the first one for a new version. See `parseStackSources`. */
+    private readonly sources: readonly StackSource[] = DEFAULT_STACK_SOURCES,
   ) {}
+
+  /** Where a new version, and the bundled one, is fetched from. */
+  private get primarySource(): StackSource {
+    const [primary] = this.sources;
+    if (!primary) throw new InvalidStackVersionError('STACK_SOURCES lists no repository to build from.');
+    return primary;
+  }
 
   async list(): Promise<StackVersion[]> {
     const rows = await this.versions.list();
@@ -249,9 +258,9 @@ export class StackVersionService {
         name,
         gitRef: ref,
         rootPath: configRootFor(this.versionsRoot, name),
-        sourceUrl: MONOREPO_STACK_SOURCE.url,
+        sourceUrl: this.primarySource.url,
       });
-      return this.startBuild(version, MONOREPO_STACK_SOURCE);
+      return this.startBuild(version, this.primarySource);
     } catch (err) {
       this.buildingName = null;
       throw err;
@@ -271,7 +280,7 @@ export class StackVersionService {
       const version = await this.require(id);
       const bundled = version.name === BUNDLED_VERSION_NAME;
       const gitRef = bundled ? this.pinnedStackCommit() : undefined;
-      const source = bundled ? MONOREPO_STACK_SOURCE : sourceOf(version);
+      const source = bundled ? this.primarySource : sourceOf(version, this.sources);
 
       const building = await this.versions.markBuilding(id, gitRef);
       if (!building) throw new StackVersionNotFoundError(id);
@@ -1017,8 +1026,8 @@ function refuse(problem: string | null): void {
 }
 
 /** The repository a version rebuilds from: the one its row names, when this manager builds from it. */
-function sourceOf(version: StackVersionRecord): StackSource {
-  const source = stackSourceAt(version.source.url);
+function sourceOf(version: StackVersionRecord, sources: readonly StackSource[]): StackSource {
+  const source = stackSourceAt(version.source.url, sources);
   if (!source) {
     throw new InvalidStackVersionError(
       `${version.name} is fetched from ${version.source.url}, which this manager does not build from.`,

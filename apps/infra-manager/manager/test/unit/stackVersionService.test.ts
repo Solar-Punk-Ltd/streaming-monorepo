@@ -18,6 +18,7 @@ import { beforeEach, describe, it } from 'node:test';
 import { EventBus } from '../../src/domain/EventBus.js';
 import { BUILD_SCRIPT, StackVersionService } from '../../src/domain/versions/StackVersionService.js';
 import { repoRootFor, stagingDirFor } from '../../src/domain/versions/stackPaths.js';
+import { parseStackSources } from '../../src/domain/versions/stackSources.js';
 import { FakeScriptSpawner } from '../support/FakeScriptSpawner.js';
 import { InMemoryStackVersionRepository } from '../support/InMemoryStackVersionRepository.js';
 import {
@@ -253,6 +254,44 @@ describe("where a version's stack comes from", () => {
     await assert.rejects(service.update(odd.id), /elsewhere\.git/);
     assert.equal(runner.spawned.length, 0);
     assert.equal((await repository.findById(odd.id))?.status, 'failed', 'the row was never put to building');
+  });
+
+  it('adds from the first repository STACK_SOURCES lists, and rebuilds only from a listed one', async () => {
+    const fork = parseStackSources('https://github.com/example/streaming-monorepo.git');
+    const forked = new StackVersionService(
+      repository,
+      runner,
+      bus,
+      versionsRoot,
+      { openReferences: async () => [] },
+      join(versionsRoot, 'bundled-tree'),
+      undefined,
+      fork,
+    );
+
+    await forked.add('v3', 'main');
+    assert.deepEqual(runner.last.args.slice(2, 6), [
+      'main',
+      'https://github.com/example/streaming-monorepo.git',
+      MONOREPO_STACK_FOLDER,
+      STACK_HISTORY_HEAD,
+    ]);
+    built('v3');
+    runner.finish(0, 'built\n');
+    await settled();
+    assert.deepEqual((await repository.findByName('v3'))?.source, {
+      url: 'https://github.com/example/streaming-monorepo.git',
+      folder: MONOREPO_STACK_FOLDER,
+    });
+
+    const upstream = await repository.insert({
+      name: 'v4',
+      gitRef: 'main',
+      rootPath: join(versionsRoot, 'v4'),
+      sourceUrl: MONOREPO_URL,
+    });
+    await repository.markFailed(upstream.id, 'an earlier build failed');
+    await assert.rejects(forked.update(upstream.id), /which this manager does not build from/);
   });
 
   it('fails a build whose folder is neither the one it asked for nor the whole tree', async () => {
