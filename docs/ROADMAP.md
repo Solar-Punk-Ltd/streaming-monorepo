@@ -417,8 +417,9 @@ because one firewall draft leaves its port closed.
   `FIRST_RUNG_DEADLINE_MS` of the source being accepted, the uploader logs an
   error naming the stream and reports `ladder_not_started` on `/health`. The
   uploader has no channel to SRS's HTTP API, so it does not drop the source
-  itself: the broadcaster reconnecting is still what starts the encoders
-  afresh. Decided 2026-10-04.
+  itself: the broadcaster has to stop the broadcast for longer than the encoder
+  hold (about 15 s at the default) and start it again to get fresh encoders.
+  A quicker reconnect meets the same hung encoders.
 
 The shared warning beside RTMP states what the protocol does with a key. SRS 6
 has no TLS on its RTMP listener, so there is no RTMPS. An RTMP stream key

@@ -520,7 +520,7 @@ export interface HealthSignals {
    *
    * A source starts no stream of its own, so until a rung publishes nothing else here can see the
    * broadcast at all: no session, no stall reaper and no `segment_stall`. Cleared by the first rung
-   * and by the source leaving, since a broadcaster that reconnects gets fresh transcoders.
+   * and by the source leaving, since a broadcaster that stops for longer than the encoder hold gets fresh transcoders.
    */
   ladderNotStartedStreams: string[];
   /**

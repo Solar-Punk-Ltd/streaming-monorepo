@@ -234,7 +234,7 @@ output, which SRS puts after it. `ABR_IO_TIMEOUT` sets it in seconds, and unset 
 check, because a held encoder reads nothing while the broadcaster is away. Seen once on a test
 deployment, every encoder of a source that began on a slow link hung at its banner for minutes and
 no rung ever published. If the transcoders still never start, the uploader reports `ladder_not_started`
-on `/health` after `FIRST_RUNG_DEADLINE_MS`, and a reconnect of the broadcaster starts them afresh.
+on `/health` after `FIRST_RUNG_DEADLINE_MS`, and the broadcaster has to stop the broadcast for longer than the encoder hold (about 15 s at the default) and then start it again. A quicker reconnect meets the same hung encoders.
 
 ⛔⛔⛔ **`HLS_FRAGMENT` also sets how fast SRS has to announce, and that has a ceiling.** SRS fires
 `on_hls` once per closed segment per rung, so a ladder asks for `rungs / HLS_FRAGMENT` announcements

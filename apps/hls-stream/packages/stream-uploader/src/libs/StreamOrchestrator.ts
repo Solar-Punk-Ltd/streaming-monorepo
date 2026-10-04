@@ -2397,8 +2397,8 @@ export class StreamOrchestrator {
         this.ladderNotStarted.add(baseStreamId);
         this.logger.error(
           `[StreamOrchestrator] Ladder source ${baseStreamId} was accepted ${deadlineMs}ms ago and no rung of it ` +
-            'has published. Its transcoders have not started, so viewers see nothing. A reconnect of the ' +
-            'broadcaster starts them afresh.',
+            'has published. Its transcoders have not started, so viewers see nothing. Stop the broadcast for ' +
+            'longer than the encoder hold (about 15 s at the default), then start it again.',
         );
       },
       deadlineMs,
