@@ -85,6 +85,8 @@ services:
       # `.env` carries neither, so here both stay off unless SRT_TAKEOVER or RTMP_TAKEOVER says otherwise.
       SRT_TAKEOVER: ${SRT_TAKEOVER:-}
       RTMP_TAKEOVER: ${RTMP_TAKEOVER:-}
+      # Who may play from SRS. Empty is this container alone, see entrypoint.sh.
+      SRS_PLAY_FROM: ${SRS_PLAY_FROM:-}
       UPLOADER_PUBLISH_KEYS: ${PUBLISH_KEY_SECRET:+yes}
       UPLOADER_ADMIN_MODE: ${ADMIN_API_URL:+yes}
       # The ABR ladder, read by this entrypoint. Off by default.

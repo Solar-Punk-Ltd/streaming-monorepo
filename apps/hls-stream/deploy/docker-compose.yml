@@ -428,7 +428,8 @@ services:
     # API has no authentication of any kind, and `/api/v1/streams` names every live stream as
     # `app/stream`, which is the id an ingest URL and a publish key are built from, while
     # `/api/v1/clients` names every publisher's and every viewer's address. The file server serves the
-    # segment directory itself. See the paragraph in `.env.sample` beside the Bee binds.
+    # segment directory itself, and SRS_PLAY_FROM decides who may play. See the paragraph in `.env.sample`
+    # beside the Bee binds.
     ports:
       - '${SRS_SRT_BIND:-0.0.0.0}:${SRS_SRT_PORT:-10080}:${SRS_SRT_PORT:-10080}/udp'
       - '${SRS_RTMP_BIND:-0.0.0.0}:${SRS_RTMP_PORT:-1935}:${SRS_RTMP_PORT:-1935}'
@@ -492,6 +493,8 @@ services:
       # without handing it the secret or the admin address, only whether each is set (SEC-28).
       SRT_TAKEOVER: ${SRT_TAKEOVER:-}
       RTMP_TAKEOVER: ${RTMP_TAKEOVER:-}
+      # Who may play from SRS. Empty is this container alone, see entrypoint.sh.
+      SRS_PLAY_FROM: ${SRS_PLAY_FROM:-}
       UPLOADER_PUBLISH_KEYS: ${PUBLISH_KEY_SECRET:+yes}
       UPLOADER_ADMIN_MODE: ${ADMIN_API_URL:+yes}
       # The ABR ladder, read by the SRS entrypoint. Off by default.
