@@ -1,6 +1,6 @@
 /**
  * `pnpm bench:longrun` — publish for half an hour instead of fifty seconds, and answer the question
- * every other artifact in `docs/bench/` leaves open: whether a setting holds still.
+ * every other run's artifact leaves open: whether a setting holds still.
  *
  * The profile grid measures the opening of a broadcast. Its runs are reproducible across independent
  * starts, which is not the same property as constant over time, and an operator choosing a setting
@@ -49,7 +49,8 @@ import { checkInstrumentLocally } from '../src/bench/selfCheck.js';
 import { type BufferSample, median, recommendBufferMs } from '../src/bench/sweepAnalysis.js';
 import { UnservedSegmentWatch } from '../src/bench/unservedWatch.js';
 import { DEFAULT_KNOBS, type PublishKnobs } from '../src/bench/wallclockPublisher.js';
-import { containerName, loadConfig, ROOT_DIR } from '../src/config.js';
+import { benchResultsDir } from '../src/benchResults.js';
+import { containerName, loadConfig } from '../src/config.js';
 import { makeHost, uploaderHealth } from '../src/harness/host.js';
 import { effectiveLogLevel, logLevelProblem } from '../src/logLevel.js';
 
@@ -103,7 +104,7 @@ const ASSUMED_CLIENT_POLL_INTERVAL_MS = 2_000;
  */
 const SAMPLE_CEILING = 100_000;
 
-const REPORT_DIR = join(ROOT_DIR, 'docs', 'bench');
+const REPORT_DIR = benchResultsDir();
 
 function envNumber(name: string, fallback: number): number {
   const raw = process.env[name];

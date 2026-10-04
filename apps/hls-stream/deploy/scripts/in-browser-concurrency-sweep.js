@@ -12,7 +12,7 @@
  *
  * ⭐ EVERY FETCH IS RETAINED AS ITS OWN ROW, with the start and end instants that make overlap
  * recoverable. `window.__conc.tsv()` emits them. Save that file, then:
- *   node deploy/scripts/concurrency-analysis.mjs docs/bench/in-browser-concurrency-sweep-<date>.tsv
+ *   node deploy/scripts/concurrency-analysis.mjs bench-results/in-browser-concurrency-sweep-<date>.tsv
  *
  * ⭐ REQUESTED CONCURRENCY IS A KNOB THIS SCRIPT TURNS, ACHIEVED CONCURRENCY IS A MEASUREMENT. They are
  * not the same number, which is why the rows carry instants rather than a worker count. Assuming they
@@ -56,7 +56,7 @@
  *          __concArms: p.arms, __concRounds: p.rounds, __concBlock: p.block,
  *        }));
  *        fetch('http://127.0.0.1:8899/sweep.js').then((r) => r.text()).then(eval);
- *   5. Watch window.__conc.progress(). Save window.__conc.tsv() to docs/bench.
+ *   5. Watch window.__conc.progress(). Save window.__conc.tsv() to bench-results.
  */
 (() => {
   const ARMS = window.__concArms || [1, 2, 3, 4, 8, 16];

@@ -7,7 +7,7 @@
 # Measured 2026-08-05: two sittings of one configuration, 720p 2500kbps at a 2.0s GOP, differed by
 # **1.05s** while runs within a sitting agreed to 0.1s. It is not the postage batch, which was
 # controlled for, and not the publisher, whose `segment` and `upload` hops were identical. Both hops
-# that moved were the ones where Swarm delivers to a reader. See `docs/bench/between-session-drift.md`.
+# that moved were the ones where Swarm delivers to a reader. See the `between-session-drift` measurement (kept outside the repository).
 #
 # That drift is larger than most of what a profile sweep is trying to detect, so a blocked sweep
 # (A,A,A then B,B,B) would report it as the difference between A and B and it would look like a
@@ -276,7 +276,7 @@ run_one() {
     verdict="RUN-FAILED(${status})"
   else
     local newest="" candidate
-    for candidate in "${REPO_DIR}"/docs/bench/longrun-*.json; do
+    for candidate in "${REPO_DIR}"/bench-results/longrun-*.json; do
       [ -e "${candidate}" ] || continue
       if [ -z "${newest}" ] || [ "${candidate}" -nt "${newest}" ]; then
         newest="${candidate}"

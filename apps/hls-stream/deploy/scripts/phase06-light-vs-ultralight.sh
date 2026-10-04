@@ -457,7 +457,7 @@ wait_for_active_stream() {
 
 newest_report() {
   local newest="" candidate
-  for candidate in "${BENCH_REPO}"/docs/bench/browser-watch-*.json; do
+  for candidate in "${BENCH_REPO}"/bench-results/browser-watch-*.json; do
     [ -e "${candidate}" ] || continue
     # `browser-watch-<id>.requests.json` sits beside the report and matches the same glob, and being
     # written last it is what "newest" finds. The proving pass picked it, validated a document with no

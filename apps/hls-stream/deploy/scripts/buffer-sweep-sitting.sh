@@ -310,5 +310,5 @@ diff_metrics "${METRICS_DIR}/sitting-before.json" "${METRICS_DIR}/sitting-after.
 
 printf '%s\t%s\t%s\t%s\n' "$(date -u +%FT%TZ)" "${BYTE_SOURCE}" "${MINUTES}" \
   "$([ ${status} -eq 0 ] && echo ok || echo "BROWSER-FAILED(${status})")" >> "${STATE}"
-say "buffer-sweep done, status ${status}. Reports are in ${BENCH_REPO}/docs/bench/, state in ${STATE}"
+say "buffer-sweep done, status ${status}. Reports are in ${BENCH_REPO}/bench-results/, state in ${STATE}"
 exit "${status}"

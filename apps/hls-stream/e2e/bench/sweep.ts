@@ -1,5 +1,5 @@
 /**
- * `pnpm bench:sweep-report` — read every run in `docs/bench/` and print the grid.
+ * `pnpm bench:sweep-report` — read every run in `BENCH_RESULTS_DIR` and print the grid.
  *
  * Reads artifacts only. It spends nothing, touches no deployment, and can be re-run against a sweep
  * that finished hours ago, which is the point of the runs carrying their own instants.
@@ -18,9 +18,9 @@ import {
   median,
   recommendBufferMs,
 } from '../src/bench/sweepAnalysis.js';
-import { ROOT_DIR } from '../src/config.js';
+import { benchResultsDir } from '../src/benchResults.js';
 
-const REPORT_DIR = join(ROOT_DIR, 'docs', 'bench');
+const REPORT_DIR = benchResultsDir();
 /** What the bench polls the feed at, which is the cadence its `visibleAt` instants were taken under. */
 const POLL_INTERVAL_MS = 2_000;
 

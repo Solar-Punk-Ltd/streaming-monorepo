@@ -20,7 +20,7 @@
  *
  * Usage:
  *   node deploy/scripts/run-sustain-headless.mjs <stream> [minutes] [out.json]
- *   node deploy/scripts/run-sustain-headless.mjs tester-1 12 docs/bench/tester-1-headless.json
+ *   node deploy/scripts/run-sustain-headless.mjs tester-1 12 bench-results/headless.json
  */
 import { readFileSync, writeFileSync } from 'node:fs';
 import { availableParallelism } from 'node:os';
