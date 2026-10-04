@@ -311,7 +311,26 @@ resolve_bee_url() {
   local bee_host
   bee_host=$(host_from_target "$bee_target")
   local bee_port="${BEE_UPLOADER_API_PORT:-$DEFAULT_BEE_UPLOADER_PORT}"
+  if [ "${COMPOSE_NETWORK:-}" = "host" ]; then
+    warn_cross_target_bind "$bee_host" "bee-uploader's API" BEE_UPLOADER_API_LISTEN
+  else
+    warn_cross_target_bind "$bee_host" "bee-uploader's API" BEE_UPLOADER_API_BIND
+  fi
   echo "http://${bee_host}:${bee_port}"
+}
+
+# Says, on stderr because the callers' output is a URL, that a port the uploader is pointed at on
+# another host will refuse it. With <setting> empty the port answers only on that host's Docker
+# bridge address, which nothing outside the host reaches. The deploy does not open it on its own,
+# because these ports ask for no password.
+warn_cross_target_bind() {
+  local host="$1" what="$2" setting="$3"
+  if [ -n "${!setting:-}" ]; then
+    return
+  fi
+  log_warn "$what on $host answers only on that host's Docker bridge address while $setting is empty," >&2
+  log_warn "so stream-uploader on another host cannot reach it. Set $setting in $ENV_FILE, for example" >&2
+  log_warn "to 0.0.0.0 with a firewall in front, or run both services on one target." >&2
 }
 
 # The address a Bee API listens on under host networking, as a process on the same host dials it:
@@ -416,9 +435,13 @@ resolve_ome_hls_url() {
     return
   fi
 
-  # Different targets: use OME's published port on its host.
+  # Different targets: use OME's published port on its host. Under host networking OME binds every
+  # address itself, and OME_HTTP_BIND does nothing.
   local ome_host
   ome_host=$(host_from_target "$ome_target")
+  if [ "${COMPOSE_NETWORK:-}" != "host" ]; then
+    warn_cross_target_bind "$ome_host" "OME's HLS port" OME_HTTP_BIND
+  fi
   echo "http://${ome_host}:${OME_HLS_PORT:-8081}"
 }
 

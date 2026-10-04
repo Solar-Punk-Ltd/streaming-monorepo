@@ -440,7 +440,7 @@ Safe to run: skips bee node init if already initialized, `docker compose up` is 
 
 - `config.json` determines topology, scripts route services to targets
 - Each service has a Docker Compose [profile](https://docs.docker.com/compose/how-tos/profiles/): only activated profiles start
-- Cross-target URLs are resolved automatically (e.g. `BEE_URL=http://<remote-ip>:1633` when bee is on a different host)
+- Cross-target URLs are resolved automatically (e.g. `BEE_URL=http://<remote-ip>:1633` when bee is on a different host). The port on the other host answers only on its Docker bridge address until its own setting names one: `BEE_UPLOADER_API_BIND` (`BEE_UPLOADER_API_LISTEN` under `COMPOSE_NETWORK=host`) for the Bee API, `OME_HTTP_BIND` for OME's HLS port. The deploy warns when that setting is empty, and does not open the port on its own
 - Remote deploy: rsync files + start Docker Compose via SSH
 - `COMPOSE_NETWORK=host` activates `docker-compose.host.yml` override for host network mode
 - `SRS_CONF_FILE` or `OME_CONF_FILE` activates `docker-compose.srs-conf.yml` or `docker-compose.ome-conf.yml`, which runs the engine on a config file of your own (see `engines/README.md`)
