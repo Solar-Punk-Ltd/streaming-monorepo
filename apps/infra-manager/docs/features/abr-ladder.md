@@ -12,6 +12,9 @@ reads each uploader's own health, and that a batch bought on a rung is set on it
 Extended again 2026-09-25 on `feat/stamp-top-up-and-dilute`, off `5c76e2b5`: a rung's batch can be
 topped up and diluted from the rung's own page, neither needs the string pasted again, and a full
 rung is told to dilute its batch or buy a new one. [postage-stamps.md](postage-stamps.md) has both.
+Corrected 2026-10-04 on `fix/stage-follows-pool-batches`, off `6b28dfaf`: an ABR uploader whose
+pool string names a pool on this manager deploys with that pool's current batches, so a batch
+bought on a rung needs no re-paste. See "A rung buys a new batch" below.
 
 A deployment **group** whose members are one `bee-uploader` per ABR quality rung,
 used as the publish targets for a `stream-uploader`. That uploader is
@@ -208,19 +211,29 @@ A change to any of them recreates the engine and the uploader, which both read
 size and bitrate, and a rung's suggested batch depth still follows the shipped
 bitrates, because a pool does not know which uploader publishes through it.
 
-The string goes stale two ways, and since nothing links the two managers,
-nothing invalidates a copy that has gone wrong:
+The string goes stale two ways. A copy pasted from another manager has nothing linking it to the
+pool, so nothing invalidates it when it goes wrong:
 
 - **A rung buys a _new_ batch** (topping up and diluting keep the id, so
-  neither needs a re-paste, and since 2026-09-25 both are on the rung's own
-  Storage card). Re-paste after a re-buy, until a stamp manager keeps batches
-  from expiring. Since 2026-09-25 a
+  neither changes the string, and since 2026-09-25 both are on the rung's own
+  Storage card). Since 2026-09-25 a
   batch bought on the rung's own page is set on the rung once bee calls it
   usable, even while the rung records another, because it was bought there for
   that rung. Only a batch set on the rung with **Use** while it settled is kept
-  instead. The pool string then names the new batch, and the uploader goes on
-  paying with the old one until the new string is pasted into its **Node pool
-  string** under Edit, which redeploys it.
+  instead. The pool string then names the new batch.
+  Since 2026-10-04 an ABR uploader on the same manager follows it. Its pool is
+  the pool whose rung nodes every one of its entries names, at the address the
+  pool card gives each rung. Each deploy of the uploader, an edit, a Start after
+  a Stop or a redeploy, writes the pool's current string rather than the stored
+  copy, and stores it when it differs. A batch set on a rung, bought or with
+  **Use**, also brings the stored copy of each such uploader up to date, so its
+  page and the rung report in its stage record name the new batch. Setting a
+  batch redeploys nothing: a running uploader pays with the old batch until its
+  next deploy. A rung of the pool with no batch refuses the deploy with
+  `<rung>: no postage batch set on this rung yet`, and a string the catalogue
+  guard refuses is refused with the guard's own sentence. A string that names
+  any other node, one pasted from another manager among them, is deployed as it
+  was saved and still has to be pasted again after a re-buy.
 - **A rung is removed and re-created**, which changes its _address_, not just
   its batch. Ports come from the profile's port slot, and a freed slot is
   reused by the next profile created on that machine, so `720p@…:10035` can
@@ -322,6 +335,7 @@ stdin-less runner.
 | `src/schemas/profile.ts`                         | `abr_ladder` flag, and the group-name length rule that applies only to ladders.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                    |
 | `src/domain/ProfileService.ts`                   | Ladder member seeding (names fixed, components fixed to `bee-uploader`), `ladderMembersOf`, `beePublishersForGroup`, and guards on `updateGroupConfig` and `addGroupMembers`.                                                                                                                                                                                                                                                                                                                                                                                                                                                      |
 | `src/domain/StampService.ts`                     | `stampHealthFor`, what a rung's own node says about its recorded batch (state _and_ TTL, so expiry can be warned about early), on a short timeout, never throwing. A 404 is an answer (`gone`), anything else is `unknown`. `publishUrlStateFor` asks whether anything answers at the _published_ address. `networkHostOf` turns a deploy target into an address, through `resolveNetworkHost`. Plus `beePublisherUrlFor`, the URL a pool string carries, which for a local member is the address a container on this host reaches it on (2026-09-17), as opposed to `beeApiUrlFor`, which is the manager’s own read of that node. |
+| `src/domain/stages/StagePoolStrings.ts` (new)    | Since 2026-10-04, an ABR uploader's pool string kept on its pool's current batches. `withCurrentBatches` is what each deploy writes, refusing a rung with no batch or a string the catalogue guard refuses. `refreshStagesOf` runs after a batch is set on a rung and brings the stored copy up to date. Tested in `test/unit/stageFollowsPool.test.ts`.                                                                                                                                                                                                                                                                           |
 | `src/utils/deployHost.ts` (new)                  | `resolveNetworkHost`: ssh user info dropped, a dotless alias resolved through `ssh -G` against the config the api container mounts, results cached for 60s. The same semantics as `host_from_target` in swarm-hls-stream's `deploy/scripts/_lib.sh`, so both halves of a deploy agree on what an alias means.                                                                                                                                                                                                                                                                                                                      |
 | `src/domain/ContainerRepository.ts`              | `withContainers` derives `network_host` onto every profile the API returns, so the UI composes links from an address rather than from a deploy target.                                                                                                                                                                                                                                                                                                                                                                                                                                                                             |
 | `src/domain/errors/LadderGroupError.ts` (new)    | 409 `ladder_group_invalid_operation`.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                              |
@@ -348,7 +362,7 @@ request or block the value.
 | `src/groups/PoolRungRow.tsx`                          | One rung's row, driven by the node's own answer about its batch. A status chip appears when the node is not running, and a dead or nearly spent batch raises an alert rather than a silent row.                                                                                                                                                                                                                                                   |
 | `src/groups/GroupPage.tsx`, `GroupMembersCard.tsx`    | The pool's own page: the string card above, then its rungs, each expandable to the funding and batch controls. A damaged ladder still appears, selected by `group.kind`.                                                                                                                                                                                                                                                                          |
 | `src/groups/groupReadiness.ts`, `useBeePublishers.ts` | What the page asks the manager and how it counts the header chip, from the _verified_ state the manager reports rather than from the profile rows.                                                                                                                                                                                                                                                                                                |
-| `src/uploaders/BuyStampForm.tsx`                      | Optional `defaultDepth`, so a rung's form starts at _its_ suggested depth rather than a flat 17. Since 2026-09-25 its caption says what a newly set batch reaches, from `src/deployments/newBatchReach.ts`: on a rung, the pool string and not the uploader until it is pasted again.                                                                                                                                                             |
+| `src/uploaders/BuyStampForm.tsx`                      | Optional `defaultDepth`, so a rung's form starts at _its_ suggested depth rather than a flat 17. Since 2026-09-25 its caption says what a newly set batch reaches, from `src/deployments/newBatchReach.ts`: on a rung, the pool string, and an ABR uploader of its pool at that uploader's next deploy (since 2026-10-04).                                                                                                                        |
 | `src/uploaders/NodeFunding.tsx`, `StampTable.tsx`     | A rung's wallet, address and batch list. The Usable column has an `expired` state, which previously read `pending`, that is, as something that would come good on its own, and an empty table names the orphaned id instead of saying "No stamps on this node yet." Since 2026-09-25 a Used column says how full each batch's fullest bucket is, and under each batch are Use, Top up and Dilute, with Use unavailable on a full immutable batch. |
 | `src/forms/wizard/`                                   | **Deployment type** is a step of the wizard, and `PoolPrerequisites.tsx` and `PoolSettings.tsx` are the pool's own screens. `poolDraft.ts`, `poolIdentity.ts` and `poolMembership.ts` hold its draft, so a pool created mid-wizard is not lost by a step back.                                                                                                                                                                                    |
 | `src/PublisherRungs.tsx`                              | Renders the rungs a pasted `BEE_PUBLISHERS` resolves to, because a line of four URLs and four 64-character batch ids is not something anyone proof-reads.                                                                                                                                                                                                                                                                                         |

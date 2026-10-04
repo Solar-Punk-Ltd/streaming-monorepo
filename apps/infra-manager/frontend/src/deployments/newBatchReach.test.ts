@@ -52,11 +52,12 @@ const rungNode: Profile = {
 };
 
 describe('what a batch newly set on a deployment reaches', () => {
-  it('says a pool rung’s batch reaches its uploader only through a pasted pool string', () => {
+  it('says a pool rung’s batch reaches the ABR uploaders of its pool at their next deploy', () => {
     const note = newBatchReach(rungNode, '1080p');
 
     assert.match(note ?? '', /pool string then names it/);
-    assert.match(note ?? '', /pasted into its Node pool string under Edit/);
+    assert.match(note ?? '', /takes it at its next deploy/);
+    assert.doesNotMatch(note ?? '', /pasted/);
   });
 
   it('says a running uploader keeps its old batch until the deployment is deployed again', () => {
