@@ -68,6 +68,23 @@ describe('the deploy reads the Docker bridge address of the host that runs compo
     assert.equal(lastValue(sandbox.remoteEnvFiles(), 'DOCKER_BRIDGE_ADDRESS'), BRIDGE);
   });
 
+  it('reads it again for a remote target deployed after a local one, rather than reusing the local one', async () => {
+    const sandbox = makeSandbox({
+      config: { services: { 'bee-uploader': 'localhost', 'bee-gateway': 'streamhost' } },
+      envFiles: { '.env': envText() },
+    });
+    await runScriptOk(sandbox, 'deploy.sh', ['bee-uploader', 'bee-gateway'], { DOCKER_STUB_BRIDGE: BRIDGE });
+
+    assert.ok(
+      sandbox.calls().some((call) => call.startsWith('network inspect bridge')),
+      `the local daemon was never asked: ${sandbox.calls().join(' | ')}`,
+    );
+    assert.ok(
+      sandbox.remoteCalls().some((call) => call.startsWith('network inspect bridge')),
+      `the remote daemon was never asked: ${sandbox.remoteCalls().join(' | ')}`,
+    );
+  });
+
   it('keeps an address the env file names, and does not ask the daemon', async () => {
     const { sandbox } = await deployLocal(['DOCKER_BRIDGE_ADDRESS=198.51.100.7']);
 

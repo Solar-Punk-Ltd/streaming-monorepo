@@ -54,6 +54,11 @@ for engine in "${ENGINE_SERVICES[@]}"; do
 done
 load_engine_envs
 
+# The bridge address the env files name, if any, kept apart from DOCKER_BRIDGE_ADDRESS itself. A local
+# deploy sources its overrides into this shell, and those carry the address read for that host, so the
+# variable no longer says what the env files said by the time the next target is deployed.
+CONFIGURED_BRIDGE_ADDRESS="${DOCKER_BRIDGE_ADDRESS:-}"
+
 apply_port_slot
 
 # --- Parse service filter ---
@@ -342,10 +347,11 @@ bridge_overrides_text() {
 }
 
 # Reads the bridge address of the host that runs compose for <target> into DEPLOY_BRIDGE_ADDRESS,
-# refusing a named one compose could not bind, and saying so when there is none to read.
+# refusing a named one compose could not bind, and saying so when there is none to read. Only the
+# address the env files named counts as named, never one an earlier local target left in this shell.
 read_bridge_address() {
   local target="$1"
-  DEPLOY_BRIDGE_ADDRESS="$(docker_bridge_address_for "$target")"
+  DEPLOY_BRIDGE_ADDRESS="$(DOCKER_BRIDGE_ADDRESS="$CONFIGURED_BRIDGE_ADDRESS" docker_bridge_address_for "$target")"
   if [ -n "$DEPLOY_BRIDGE_ADDRESS" ] && ! is_ipv4 "$DEPLOY_BRIDGE_ADDRESS"; then
     log_error "DOCKER_BRIDGE_ADDRESS must be an IPv4 address. $ENV_FILE says \"$DEPLOY_BRIDGE_ADDRESS\"."
     exit 1
