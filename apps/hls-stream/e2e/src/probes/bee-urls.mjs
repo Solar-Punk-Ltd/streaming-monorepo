@@ -1,7 +1,11 @@
 /**
  * Where a probe reads and writes. READ_URL names the gateway's Bee API and WRITE_URL the uploader's.
- * Where one is unset it is derived from PORT_SLOT, the stage's `--portSlot`, on this host's loopback,
- * which is where a probe run with `--network host` beside the stage reaches it.
+ * Where one is unset it is derived from PORT_SLOT, the stage's `--portSlot`, on DOCKER_BRIDGE_ADDRESS.
+ * That is the address deploy.sh binds a Bee API to when its own *_API_BIND is empty, and the one it
+ * listens on under host networking, so a probe run with `--network host` beside the stage reaches it
+ * there. `deploy/scripts/docker-bridge-address.sh` prints it on the host. Where DOCKER_BRIDGE_ADDRESS
+ * is unset too, the probe dials 127.0.0.1, which is right only where the deploy could not read a
+ * bridge address and so fell back to loopback.
  *
  * Plain ESM, like the probes that import it, so `node` runs them without a build. The slot arithmetic
  * mirrors `apply_port_slot` in `deploy/scripts/_lib.sh`, and the test compares it with `src/ports.ts`.
@@ -31,7 +35,7 @@ function slotUrl(port, name, env) {
   }
   const slot = Number(raw);
   const hostPort = slot === 0 ? port.stock : port.base + slot * PORT_SLOT_STRIDE;
-  return `http://${LOOPBACK}:${hostPort}`;
+  return `http://${env.DOCKER_BRIDGE_ADDRESS || LOOPBACK}:${hostPort}`;
 }
 
 /**
