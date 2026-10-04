@@ -146,6 +146,9 @@ async function runPreflight({ uploaderPort, gatewayPort, rounds = 1, minutes = 3
     ...(configs === undefined ? {} : { SWEEP_CONFIGS: configs }),
     UPLOADER_BEE_PORT: String(uploaderPort),
     GATEWAY_BEE_PORT: String(gatewayPort),
+    // The fake chequebooks listen on 127.0.0.1. Naming the bridge there keeps the script from asking
+    // a real docker, which on a machine that has one would send it to that host's bridge instead.
+    DOCKER_BRIDGE_ADDRESS: '127.0.0.1',
     // Named directly rather than read off a container, so these cases need no docker at all.
     STAMP: BATCH,
     UPLOADER_BURN_PLUR_PER_MIN: String(PLUR_PER_BZZ / 100n), // 0.01 BZZ per minute
