@@ -2,14 +2,15 @@
  * The rules of the public leak gate, as pure functions over text, so the tests can drive them with
  * placeholder fixtures and the command line only has to list files.
  *
- * Three things fail a file: an IPv4 address outside the ranges documentation and private networks
- * use, an Ethereum address that is not on the allow list of known fakes and public contracts, and a
+ * Four things fail a file: an IPv4 address outside the ranges documentation and private networks
+ * use, a private address inside one of the few ranges that describe a single host's setup, an
+ * Ethereum address that is not on the allow list of known fakes and public contracts, and a
  * token whose sha256 is on the deny list. The deny list holds hashes only, so it names nothing it
  * refuses.
  */
 import { createHash } from 'node:crypto';
 
-/** @typedef {{ rule: 'ipv4' | 'eth-address' | 'denied-token', line: number, value: string }} Finding */
+/** @typedef {{ rule: 'ipv4' | 'host-private-ipv4' | 'eth-address' | 'denied-token', line: number, value: string }} Finding */
 /** @typedef {{ allowedAddresses: Set<string>, deniedHashes: Set<string> }} Rules */
 
 const IPV4 = /(?<![\w.§])(\d{1,3})\.(\d{1,3})\.(\d{1,3})\.(\d{1,3})(?![\w]|\.\d)/g;
@@ -21,6 +22,35 @@ const MAX_PARTS_PER_RUN = 12;
 /** The shortest and longest token the deny list is checked against. */
 const MIN_TOKEN_LENGTH = 3;
 const MAX_TOKEN_LENGTH = 128;
+
+/**
+ * Private ranges that are not neutral: an address in one of them describes how one particular host
+ * was set up rather than a default every reader shares. Listed by hand, never guessed. A network is
+ * written as octets so this file never carries an address the gate itself would refuse.
+ * @type {ReadonlyArray<{ network: number[], prefixLength: number, why: string }>}
+ */
+export const HOST_SPECIFIC_PRIVATE_RANGES = [
+  { network: [10, 200, 0, 0], prefixLength: 16, why: 'a custom Docker address pool chosen for one host' },
+  { network: [192, 168, 65, 0], prefixLength: 24, why: 'the virtual machine range of Docker Desktop on a laptop' },
+];
+
+/** @param {number[]} octets */
+function ipv4Number(octets) {
+  return octets.reduce((value, octet) => value * 256 + octet, 0);
+}
+
+/**
+ * Whether an IPv4 address falls in one of the private ranges that describe a single host.
+ * @param {number[]} octets
+ */
+export function isHostSpecificPrivateIpv4(octets) {
+  const address = ipv4Number(octets);
+  return HOST_SPECIFIC_PRIVATE_RANGES.some(({ network, prefixLength }) => {
+    const size = 2 ** (32 - prefixLength);
+    const start = ipv4Number(network);
+    return address >= start && address < start + size;
+  });
+}
 
 /** Well-known public resolvers, which examples name. */
 const PUBLIC_EXAMPLE_ADDRESSES = new Set(['8.8.8.8', '8.8.4.4', '1.1.1.1', '1.0.0.1', '9.9.9.9']);
@@ -94,7 +124,11 @@ export function scanText(text, rules, hashCache = new Map()) {
       if (match.slice(1, 5).some((octet) => octet.length > 1 && octet.startsWith('0'))) continue;
       if (octets.some((octet) => octet > 255)) continue;
       if (SECTION_BEFORE.test(line.slice(0, match.index))) continue;
-      if (!isAllowedIpv4(octets)) findings.push({ rule: 'ipv4', line: index + 1, value: match[0] });
+      if (isHostSpecificPrivateIpv4(octets)) {
+        findings.push({ rule: 'host-private-ipv4', line: index + 1, value: match[0] });
+      } else if (!isAllowedIpv4(octets)) {
+        findings.push({ rule: 'ipv4', line: index + 1, value: match[0] });
+      }
     }
     for (const match of line.matchAll(ETH_ADDRESS)) {
       if (!rules.allowedAddresses.has(match[0].toLowerCase())) {

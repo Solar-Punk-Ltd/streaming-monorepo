@@ -51,6 +51,39 @@ describe('IPv4 addresses', () => {
     assert.deepEqual(findings, [{ rule: 'ipv4', line: 1, value: PUBLIC_ADDRESS }]);
   });
 
+  it('lets through the private addresses fixtures and container defaults use', () => {
+    const text = ['10.0.0.7', '10.42.0.1', '172.17.0.1', '172.18.0.4', '192.168.1.20', '192.168.0.0/16'].join('\n');
+    assert.deepEqual(scanText(text, rulesWith()), []);
+  });
+
+  it('refuses a private address inside a range that describes one host', () => {
+    const addresses = [
+      ['10', '200', '0', '1'],
+      ['10', '200', '255', '254'],
+      ['192', '168', '65', '1'],
+      ['192', '168', '65', '254'],
+    ].map((octets) => octets.join('.'));
+    for (const address of addresses) {
+      assert.deepEqual(
+        scanText(`gateway ${address}`, rulesWith()),
+        [{ rule: 'host-private-ipv4', line: 1, value: address }],
+        address,
+      );
+    }
+  });
+
+  it('refuses such a range written as a network', () => {
+    const network = ['10', '200', '0', '0'].join('.');
+    assert.deepEqual(scanText(`subnet: ${network}/16`, rulesWith()), [
+      { rule: 'host-private-ipv4', line: 1, value: network },
+    ]);
+  });
+
+  it('lets through the neighbours of each host range', () => {
+    const text = ['10.199.255.255', '10.201.0.1', '192.168.64.1', '192.168.66.1'].join('\n');
+    assert.deepEqual(scanText(text, rulesWith()), []);
+  });
+
   it('reads an RFC section number, an octet over 255 and a longer dotted version as no address', () => {
     const text = [
       'RFC 8216 §4.3.2.6 says so',
@@ -137,6 +170,18 @@ describe('the command, on a repository of its own', () => {
     try {
       const run = spawnSync(process.execPath, [GATE, '--root', root], { encoding: 'utf8' });
       assert.equal(run.status, 0, run.stdout + run.stderr);
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
+  });
+
+  it('goes red on a planted host range address and names it', () => {
+    const address = ['192', '168', '65', '1'].join('.');
+    const root = repositoryWith({ 'compose.yml': `extra_hosts:\n  - "bee:${address}"\n` });
+    try {
+      const run = spawnSync(process.execPath, [GATE, '--root', root], { encoding: 'utf8' });
+      assert.equal(run.status, 1, run.stdout + run.stderr);
+      assert.match(run.stdout, new RegExp(`compose\\.yml:2: host-private-ipv4: ${address.replaceAll('.', '\\.')}`));
     } finally {
       rmSync(root, { recursive: true, force: true });
     }
