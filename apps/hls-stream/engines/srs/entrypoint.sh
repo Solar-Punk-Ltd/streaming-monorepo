@@ -362,14 +362,26 @@ if abr_enabled; then
   # Seconds a rung encoder's input or output may stall before ffmpeg exits and SRS starts it again.
   # Without it an encoder whose read or write never returns hangs for good: seen once on a test
   # deployment, every encoder of a source that began on a slow link hung at its banner for minutes.
-  # It has to outlast the hold, because a held encoder reads nothing while the broadcaster is away, so
-  # unset it follows the hold: 20 seconds at the default hold of 12.
-  ABR_IO_TIMEOUT="${ABR_IO_TIMEOUT:-$((ABR_UNPUBLISH_HOLD + 8))}"
+  # It has to outlast the hold, because a held encoder reads nothing while the broadcaster is away.
+  # The silence starts at the last packet, which on an unclean drop is up to about 7 seconds before
+  # the hold starts, and SRS checks the hold every 3 seconds, so a hold can run 3 seconds past
+  # ABR_UNPUBLISH_HOLD. SRS also cuts an idle rung publish about 16 seconds after the last packet,
+  # so a timeout of 16 or less only ever fires on an encoder SRS has already cut. The floor is
+  # therefore max(hold + 3, 17), and the timeout must be longer than it. Unset it follows the hold,
+  # 20 seconds at the default hold of 12, and is never below 18 so that a short hold still starts.
+  ABR_IO_TIMEOUT_FLOOR=$((ABR_UNPUBLISH_HOLD + 3))
+  if [ "$ABR_IO_TIMEOUT_FLOOR" -lt 17 ]; then
+    ABR_IO_TIMEOUT_FLOOR=17
+  fi
+  ABR_IO_TIMEOUT_DEFAULT=$((ABR_UNPUBLISH_HOLD + 8))
+  if [ "$ABR_IO_TIMEOUT_DEFAULT" -le "$ABR_IO_TIMEOUT_FLOOR" ]; then
+    ABR_IO_TIMEOUT_DEFAULT=$((ABR_IO_TIMEOUT_FLOOR + 1))
+  fi
+  ABR_IO_TIMEOUT="${ABR_IO_TIMEOUT:-$ABR_IO_TIMEOUT_DEFAULT}"
   require_int ABR_IO_TIMEOUT "$ABR_IO_TIMEOUT"
-  # SRS checks the hold every 3 seconds, so a hold can run up to 3 seconds past ABR_UNPUBLISH_HOLD.
-  if [ "$ABR_IO_TIMEOUT" -le $((ABR_UNPUBLISH_HOLD + 3)) ]; then
-    echo "ABR_IO_TIMEOUT ($ABR_IO_TIMEOUT) must be longer than ABR_UNPUBLISH_HOLD ($ABR_UNPUBLISH_HOLD) plus 3 seconds." >&2
-    echo "A held encoder reads nothing while the broadcaster is away, and a shorter timeout ends it before its hold does." >&2
+  if [ "$ABR_IO_TIMEOUT" -le "$ABR_IO_TIMEOUT_FLOOR" ]; then
+    echo "ABR_IO_TIMEOUT ($ABR_IO_TIMEOUT) must be longer than $ABR_IO_TIMEOUT_FLOOR seconds, the larger of ABR_UNPUBLISH_HOLD ($ABR_UNPUBLISH_HOLD) plus 3 and 17." >&2
+    echo "A held encoder reads nothing while the broadcaster is away, and SRS cuts an idle rung publish about 16 seconds after the last packet." >&2
     exit 1
   fi
   ABR_IO_TIMEOUT_US=$((ABR_IO_TIMEOUT * 1000000))

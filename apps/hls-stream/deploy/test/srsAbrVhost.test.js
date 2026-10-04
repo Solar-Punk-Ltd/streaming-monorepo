@@ -260,6 +260,16 @@ describe('the I/O timeout of each rung encoder', () => {
     }
   });
 
+  it('is never below 18 seconds when the hold is short or off', () => {
+    for (const hold of ['0', '5']) {
+      for (const { block } of engineBlocks(
+        renderLadderConf({ ...VALID, ABR_UNPUBLISH_HOLD: hold, ABR_IO_TIMEOUT: '' }),
+      )) {
+        assert.equal(timeoutIn(block, 'perfile'), '18000000');
+      }
+    }
+  });
+
   it('carries a configured timeout', () => {
     for (const { block } of engineBlocks(renderLadderConf({ ...VALID, ABR_IO_TIMEOUT: '30' }))) {
       assert.equal(timeoutIn(block, 'perfile'), '30000000');
@@ -271,13 +281,29 @@ describe('the I/O timeout of each rung encoder', () => {
     assert.throws(() => renderLadderConf({ ...VALID, ABR_IO_TIMEOUT: '2.5' }), /ABR_IO_TIMEOUT/);
   });
 
-  /** A held encoder reads nothing while the broadcaster is away, and SRS ends the hold up to 3 seconds late. */
+  /**
+   * A held encoder reads nothing while the broadcaster is away, SRS ends the hold up to 3 seconds late,
+   * and SRS cuts an idle rung publish about 16 seconds after the last packet. So the timeout must be
+   * longer than max(hold + 3, 17).
+   */
   it('refuses a timeout that would end held encoders before their hold does', () => {
     assert.throws(
-      () => renderLadderConf({ ...VALID, ABR_UNPUBLISH_HOLD: '12', ABR_IO_TIMEOUT: '15' }),
+      () => renderLadderConf({ ...VALID, ABR_UNPUBLISH_HOLD: '30', ABR_IO_TIMEOUT: '33' }),
       /ABR_IO_TIMEOUT/,
     );
-    assert.doesNotThrow(() => renderLadderConf({ ...VALID, ABR_UNPUBLISH_HOLD: '12', ABR_IO_TIMEOUT: '16' }));
+    assert.doesNotThrow(() => renderLadderConf({ ...VALID, ABR_UNPUBLISH_HOLD: '30', ABR_IO_TIMEOUT: '34' }));
+  });
+
+  it('refuses a timeout of 17 seconds or less even for a short hold', () => {
+    assert.throws(
+      () => renderLadderConf({ ...VALID, ABR_UNPUBLISH_HOLD: '12', ABR_IO_TIMEOUT: '17' }),
+      /ABR_IO_TIMEOUT/,
+    );
+    assert.throws(
+      () => renderLadderConf({ ...VALID, ABR_UNPUBLISH_HOLD: '5', ABR_IO_TIMEOUT: '12' }),
+      /ABR_IO_TIMEOUT/,
+    );
+    assert.doesNotThrow(() => renderLadderConf({ ...VALID, ABR_UNPUBLISH_HOLD: '12', ABR_IO_TIMEOUT: '18' }));
   });
 });
 
