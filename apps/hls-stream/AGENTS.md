@@ -60,11 +60,15 @@ rungs. The gateway node serves viewers. On a deployment started with
 | 1080p rung             | `BEE_RUNG_1080P_API_PORT` | 11005 + `<slot>` * 10 |
 | gateway                | `BEE_GATEWAY_API_PORT`    | 10007 + `<slot>` * 10 |
 
-Read them all before any funds statement, with `<slot>` replaced by the deployment's slot:
+Read them all before any funds statement, with `<slot>` replaced by the deployment's slot. The
+Bee APIs answer on the host's Docker bridge address, not on 127.0.0.1, unless the env file sets a
+`*_API_BIND`. In that case dial the address it names instead:
 
 ```bash
-ssh <host> 'slot=<slot>; for p in $((10005 + slot * 10)) $((11001 + slot * 10)) $((11003 + slot * 10)) $((11005 + slot * 10)) $((10007 + slot * 10)); do echo "== $p"; curl -s http://127.0.0.1:$p/chequebook/balance; echo; curl -s http://127.0.0.1:$p/wallet; echo; done'
+ssh <host> 'slot=<slot>; a=$(docker network inspect bridge -f "{{(index .IPAM.Config 0).Gateway}}" 2>/dev/null); a=${a:-127.0.0.1}; for p in $((10005 + slot * 10)) $((11001 + slot * 10)) $((11003 + slot * 10)) $((11005 + slot * 10)) $((10007 + slot * 10)); do echo "== $p"; curl -s http://$a:$p/chequebook/balance; echo; curl -s http://$a:$p/wallet; echo; done'
 ```
+
+On Docker Desktop the bridge is inside its virtual machine, and the APIs answer on 127.0.0.1.
 
 A deployment without `--portSlot` takes these variables from its env file, and where one is unset
 the stock port: 1633 for the coordinator, 1733 for the gateway, and 11001, 11003 and 11005 for the
