@@ -6,6 +6,8 @@ import { dirname, join, resolve } from 'node:path';
 import { after, describe, it } from 'node:test';
 import { fileURLToPath } from 'node:url';
 
+import { makeSandbox, removeSandboxes, runScriptOk } from './helpers/sandbox.js';
+
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '../..');
 const TEMPLATE = join(ROOT, 'engines/ome/Server.xml.template');
 const COMPOSE = join(ROOT, 'deploy/docker-compose.yml');
@@ -146,6 +148,34 @@ describe('the ports OME binds', () => {
       assert.match(ome, /\$\{OME_HLS_PORT:-8081\}:\$\{OME_HLS_PORT:-8081\}/);
     });
   }
+});
+
+/**
+ * Where the uploader pulls OME's HLS from. OME listens on OME_HLS_PORT inside the container, so on the
+ * bridge the uploader dials that port by service name. A fixed 8081 there reaches nothing on any
+ * deployment that moves the port, as every slotted one does.
+ */
+describe('the HLS URL the uploader is given for OME on the same target', () => {
+  after(removeSandboxes);
+
+  it('names the configured HLS port in the deploy override', async () => {
+    const sandbox = makeSandbox({
+      envFiles: { '.env': 'STAMP=stamp\nSTREAM_KEY=key\nOME_HLS_PORT=10013\n' },
+    });
+    await runScriptOk(sandbox, 'deploy.sh', ['ome', 'stream-uploader']);
+
+    const urls = sandbox
+      .envFiles()
+      .split('\n')
+      .filter((line) => line.startsWith('OME_HLS_URL='));
+    assert.equal(urls.at(-1), 'OME_HLS_URL=http://ome:10013');
+  });
+
+  it('falls back to the configured HLS port in deploy/docker-compose.yml too', () => {
+    const compose = readFileSync(COMPOSE, 'utf8');
+
+    assert.match(compose, /OME_HLS_URL: \$\{OME_HLS_URL:-http:\/\/ome:\$\{OME_HLS_PORT:-8081\}\}/);
+  });
 });
 
 /**

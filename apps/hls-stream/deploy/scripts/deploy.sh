@@ -429,8 +429,9 @@ resolve_ome_hls_url() {
     if [ "${COMPOSE_NETWORK:-}" = "host" ]; then
       echo "http://localhost:${OME_HLS_PORT:-8081}"
     else
-      # Bridge network: docker DNS, container-internal port.
-      echo "http://ome:8081"
+      # Bridge network: docker DNS, container-internal port, which is OME_HLS_PORT because OME binds
+      # the configured port inside the container too.
+      echo "http://ome:${OME_HLS_PORT:-8081}"
     fi
     return
   fi
