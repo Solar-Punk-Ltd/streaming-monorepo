@@ -9,13 +9,34 @@
  * is also the path a real viewer takes: the client makes exactly these two requests against exactly
  * this gateway.
  *
- * The rest of the harness reads the gateway through `host.localJson`, over ssh to `localhost`. That
+ * The rest of the harness reads the gateway through `host.localJson`, over ssh. That
  * is right for asserting *what* the gateway serves and wrong for measuring *when*, which is why this
  * does not reuse it.
  */
 
 import { FeedIndex, Topic } from '@ethersphere/bee-js';
 import { type FeedSlotRequest, nextFeedRequest, resolvedFeedIndex } from '@swarm-hls-stream/shared';
+
+import type { E2EConfig } from '../config.js';
+import type { Host } from '../harness/host.js';
+
+/**
+ * The gateway a bench fetches from this machine: `BENCH_GATEWAY_URL` when it is set, else on the
+ * deployment host the address the deploy bound the gateway's Bee API to, which is the host's Docker
+ * bridge address by default. A bench reaching the deployment over ssh keeps `E2E_PUBLIC_HOST`, which
+ * is where a forwarded port answers.
+ */
+export async function benchGatewayUrl(
+  host: Host,
+  cfg: E2EConfig,
+  override: string | undefined = process.env.BENCH_GATEWAY_URL,
+): Promise<string> {
+  if (override !== undefined) {
+    return override;
+  }
+  const address = host.isLocal ? await host.dialAddress(cfg.ports.beeGatewayApi) : cfg.publicHost;
+  return `http://${address}:${cfg.ports.beeGatewayApi}`;
+}
 
 const FEED_TIMEOUT_MS = 15_000;
 const SEGMENT_TIMEOUT_MS = 30_000;

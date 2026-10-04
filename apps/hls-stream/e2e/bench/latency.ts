@@ -18,7 +18,7 @@ import { mkdir, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 
 import { requireBenchAuthorised } from '../src/bench/authorisation.js';
-import { parseFeedReaderMode, requireGatewayReachable } from '../src/bench/gateway.js';
+import { benchGatewayUrl, parseFeedReaderMode, requireGatewayReachable } from '../src/bench/gateway.js';
 import { renderReport } from '../src/bench/report.js';
 import { measureLatency } from '../src/bench/run.js';
 import { checkInstrumentLocally } from '../src/bench/selfCheck.js';
@@ -65,7 +65,8 @@ async function main(): Promise<void> {
   const cfg = loadConfig();
   const knobs = knobsFromEnv();
   const samples = envNumber('BENCH_SAMPLES', DEFAULT_SAMPLES);
-  const gatewayUrl = process.env.BENCH_GATEWAY_URL ?? `http://${cfg.publicHost}:${cfg.ports.beeGatewayApi}`;
+  const host = makeHost(cfg);
+  const gatewayUrl = await benchGatewayUrl(host, cfg);
 
   console.log(`bench: engine ${cfg.engine}, profile ${cfg.profile}, gateway ${gatewayUrl}`);
   console.log(
@@ -89,7 +90,6 @@ async function main(): Promise<void> {
   await requireGatewayReachable(gatewayUrl);
   console.log('bench: viewer gateway reachable from this machine');
 
-  const host = makeHost(cfg);
   const uploader = containerName(cfg, 'stream-uploader');
   const level = effectiveLogLevel((await host.containerEnv(uploader)).LOG_LEVEL);
   const problem = logLevelProblem(level);
