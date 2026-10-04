@@ -1,5 +1,8 @@
 # The cross-provider review of 2026-09-05, verified and answered
 
+> This is a dated record of one test deployment, not a description of the product. Any raw
+> measurement it cites is kept outside the repository.
+
 An OpenAI-hosted reviewer read the repository at `4e0474b` on 2026-09-05 and reported six actionable
 findings, five of them demonstrated with in-memory probes. This page records what the coordinator
 verified against the code the same day, what was built in answer, and what the owner still has to

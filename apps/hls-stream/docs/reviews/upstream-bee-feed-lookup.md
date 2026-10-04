@@ -1,5 +1,8 @@
 # Upstream report: sequential feed lookup costs a whole second per narrowing step
 
+> This is a dated record of one test deployment, not a description of the product. Any raw
+> measurement it cites is kept outside the repository.
+
 **Ready to file against [ethersphere/bee](https://github.com/ethersphere/bee). Written to stand alone,
 so it repeats context a maintainer would not otherwise have. Measured against `v2.8.1`.**
 

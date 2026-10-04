@@ -1,5 +1,8 @@
 # Plan: one rung's postage batch runs dry, and the broadcast survives
 
+> This is a dated record of one test deployment, not a description of the product. Any raw
+> measurement it cites is kept outside the repository.
+
 Written 2026-09-04 at the owner's word ("okay you can do this"). Its sibling is
 `docs/e2e-viewer-coverage-plan.md`. Where this page says a reading was taken on a date, the reading
 itself is in the session record kept outside the repository, and every claim about the code is meant

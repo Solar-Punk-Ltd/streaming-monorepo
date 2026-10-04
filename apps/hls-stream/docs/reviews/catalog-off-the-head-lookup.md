@@ -1,5 +1,8 @@
 # Taking the catalog off the head lookup
 
+> This is a dated record of one test deployment, not a description of the product. Any raw
+> measurement it cites is kept outside the repository.
+
 **2026-08-05. Written from reading, then measured against the deployment, then fix 1 built.
 The measurement is in the middle and the state of each fix is on its heading.**
 

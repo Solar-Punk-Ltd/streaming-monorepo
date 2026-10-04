@@ -1,5 +1,8 @@
 # Hardening audit and sprint plan
 
+> This is a dated record of one test deployment, not a description of the product. Any raw
+> measurement it cites is kept outside the repository.
+
 Branch `feature/uploader-hardening` @ `f146588`. Audit date 2026-07-29.
 
 **Historical, marked 2026-09-16.** This is the findings register of the July 2026 hardening sprint, which closed in August. Its file paths, script names and line numbers are those of `f146588`, and many have moved or gone since (`engines/ome.ts` and `engines/srs.ts` live under `packages/stream-uploader/src/engines/`, the CLI under `packages/cli/`, and `pnpm audit`, `srs:up` and `start:uploader` are no longer scripts). Read it as the record of what was found and decided, never as a map of the tree.
