@@ -20,7 +20,7 @@ services:
       # address set there wins, 0.0.0.0 included. P2P is how the node reaches Swarm and defaults to
       # every address.
       - '${BEE_UPLOADER_API_BIND:-${DOCKER_BRIDGE_ADDRESS:-127.0.0.1}}:${BEE_UPLOADER_API_PORT:-1633}:${BEE_UPLOADER_API_PORT:-1633}'
-      - '${BEE_UPLOADER_P2P_PORT:-1634}:${BEE_UPLOADER_P2P_PORT:-1634}'
+      - '${BEE_UPLOADER_P2P_BIND:-0.0.0.0}:${BEE_UPLOADER_P2P_PORT:-1634}:${BEE_UPLOADER_P2P_PORT:-1634}'
     # The default endpoint below is a public RPC that rate-limits a node hard. An operator
     # pointing RPC_ENDPOINT at one of their own runs it on this host, and a container reaches
     # a host process only through the gateway this name resolves to.
@@ -67,7 +67,7 @@ services:
     logging: *default-logging
     ports:
       - '${BEE_RUNG_480P_API_BIND:-${DOCKER_BRIDGE_ADDRESS:-127.0.0.1}}:${BEE_RUNG_480P_API_PORT:-11001}:${BEE_RUNG_480P_API_PORT:-11001}'
-      - '${BEE_RUNG_480P_P2P_PORT:-11002}:${BEE_RUNG_480P_P2P_PORT:-11002}'
+      - '${BEE_RUNG_480P_P2P_BIND:-0.0.0.0}:${BEE_RUNG_480P_P2P_PORT:-11002}:${BEE_RUNG_480P_P2P_PORT:-11002}'
     # The default endpoint below is a public RPC that rate-limits a node hard. An operator
     # pointing RPC_ENDPOINT at one of their own runs it on this host, and a container reaches
     # a host process only through the gateway this name resolves to.
@@ -92,7 +92,7 @@ services:
     logging: *default-logging
     ports:
       - '${BEE_RUNG_720P_API_BIND:-${DOCKER_BRIDGE_ADDRESS:-127.0.0.1}}:${BEE_RUNG_720P_API_PORT:-11003}:${BEE_RUNG_720P_API_PORT:-11003}'
-      - '${BEE_RUNG_720P_P2P_PORT:-11004}:${BEE_RUNG_720P_P2P_PORT:-11004}'
+      - '${BEE_RUNG_720P_P2P_BIND:-0.0.0.0}:${BEE_RUNG_720P_P2P_PORT:-11004}:${BEE_RUNG_720P_P2P_PORT:-11004}'
     # The default endpoint below is a public RPC that rate-limits a node hard. An operator
     # pointing RPC_ENDPOINT at one of their own runs it on this host, and a container reaches
     # a host process only through the gateway this name resolves to.
@@ -117,7 +117,7 @@ services:
     logging: *default-logging
     ports:
       - '${BEE_RUNG_1080P_API_BIND:-${DOCKER_BRIDGE_ADDRESS:-127.0.0.1}}:${BEE_RUNG_1080P_API_PORT:-11005}:${BEE_RUNG_1080P_API_PORT:-11005}'
-      - '${BEE_RUNG_1080P_P2P_PORT:-11006}:${BEE_RUNG_1080P_P2P_PORT:-11006}'
+      - '${BEE_RUNG_1080P_P2P_BIND:-0.0.0.0}:${BEE_RUNG_1080P_P2P_PORT:-11006}:${BEE_RUNG_1080P_P2P_PORT:-11006}'
     # The default endpoint below is a public RPC that rate-limits a node hard. An operator
     # pointing RPC_ENDPOINT at one of their own runs it on this host, and a container reaches
     # a host process only through the gateway this name resolves to.
@@ -144,7 +144,7 @@ services:
       # The same bind as bee-uploader's API, for the same reason. The client reaches it on the compose
       # network, or through the bridge under host networking, so the default costs it nothing.
       - '${BEE_GATEWAY_API_BIND:-${DOCKER_BRIDGE_ADDRESS:-127.0.0.1}}:${BEE_GATEWAY_API_PORT:-1733}:${BEE_GATEWAY_API_PORT:-1733}'
-      - '${BEE_GATEWAY_P2P_PORT:-1734}:${BEE_GATEWAY_P2P_PORT:-1734}'
+      - '${BEE_GATEWAY_P2P_BIND:-0.0.0.0}:${BEE_GATEWAY_P2P_PORT:-1734}:${BEE_GATEWAY_P2P_PORT:-1734}'
     # The default endpoint below is a public RPC that rate-limits a node hard. An operator
     # pointing RPC_ENDPOINT at one of their own runs it on this host, and a container reaches
     # a host process only through the gateway this name resolves to.
@@ -239,7 +239,7 @@ services:
     stop_grace_period: 120s
     logging: *default-logging
     ports:
-      - '${API_PORT:-3000}:${API_PORT:-3000}'
+      - '${API_BIND:-0.0.0.0}:${API_PORT:-3000}:${API_PORT:-3000}'
     volumes:
       - uploader-state:/app/state
       - srs-media:/media
@@ -405,7 +405,7 @@ services:
     restart: unless-stopped
     logging: *default-logging
     ports:
-      - '${CLIENT_PORT:-5173}:80'
+      - '${CLIENT_BIND:-0.0.0.0}:${CLIENT_PORT:-5173}:80'
     environment:
       # Runtime — used by client-nginx.conf.template via envsubst.
       # Default points to the bee-gateway service on the same compose network;
@@ -430,8 +430,8 @@ services:
     # `/api/v1/clients` names every publisher's and every viewer's address. The file server serves the
     # segment directory itself. See the paragraph in `.env.sample` beside the Bee binds.
     ports:
-      - '${SRS_SRT_PORT:-10080}:${SRS_SRT_PORT:-10080}/udp'
-      - '${SRS_RTMP_PORT:-1935}:${SRS_RTMP_PORT:-1935}'
+      - '${SRS_SRT_BIND:-0.0.0.0}:${SRS_SRT_PORT:-10080}:${SRS_SRT_PORT:-10080}/udp'
+      - '${SRS_RTMP_BIND:-0.0.0.0}:${SRS_RTMP_PORT:-1935}:${SRS_RTMP_PORT:-1935}'
       - '${SRS_HTTP_BIND:-${DOCKER_BRIDGE_ADDRESS:-127.0.0.1}}:${SRS_HTTP_PORT:-8080}:${SRS_HTTP_PORT:-8080}'
       - '${SRS_HTTP_API_BIND:-${DOCKER_BRIDGE_ADDRESS:-127.0.0.1}}:${SRS_HTTP_API_PORT:-1985}:${SRS_HTTP_API_PORT:-1985}'
     extra_hosts:
@@ -525,7 +525,7 @@ services:
     # The HLS port serves the segments themselves, so it defaults to the host's Docker bridge address
     # the way SRS's two HTTP ports do.
     ports:
-      - '${OME_SRT_PORT:-10080}:${OME_SRT_PORT:-10080}/udp'
+      - '${OME_SRT_BIND:-0.0.0.0}:${OME_SRT_PORT:-10080}:${OME_SRT_PORT:-10080}/udp'
       - '${OME_HTTP_BIND:-${DOCKER_BRIDGE_ADDRESS:-127.0.0.1}}:${OME_HLS_PORT:-8081}:${OME_HLS_PORT:-8081}'
     extra_hosts:
       - 'host.docker.internal:host-gateway'

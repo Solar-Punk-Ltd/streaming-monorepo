@@ -46,24 +46,26 @@ const PORT_COMPOSE_FILES = [
 ];
 
 /**
- * The published ports that answer on every interface on purpose, and what binding each would cost.
+ * The binds that default to every address, and why: these are the ports the outside world dials. Each
+ * is still a setting, because which addresses a host answers on is the operator's to decide, and which
+ * of them the internet reaches is the operator's firewall.
  *
- * Keyed by the port variable rather than by service, because that is what survives a rename and a
- * reindent. Every other published port has to offer a `*_BIND` variable, so one added without a way
- * to bind it fails here rather than being found from outside.
+ * Keyed by the bind variable, which is what survives a rename and a reindent. Every published port has
+ * to carry a bind, and every bind is either here or an admin bind below, so a port added without one,
+ * or with a default nobody chose, fails here rather than being found from outside.
  */
-const EVERY_INTERFACE_ON_PURPOSE = new Map([
-  ['BEE_UPLOADER_P2P_PORT', 'P2P is how the node reaches Swarm, and restricting it cuts the node off'],
-  ['BEE_RUNG_480P_P2P_PORT', 'P2P, as above'],
-  ['BEE_RUNG_720P_P2P_PORT', 'P2P, as above'],
-  ['BEE_RUNG_1080P_P2P_PORT', 'P2P, as above'],
-  ['BEE_GATEWAY_P2P_PORT', 'P2P, as above'],
-  ['SRS_RTMP_PORT', 'ingest: a broadcaster dials it from wherever they are'],
-  ['SRS_SRT_PORT', 'ingest, as above'],
-  ['OME_SRT_PORT', 'ingest, as above'],
-  ['CLIENT_PORT', 'the viewer opens this one in a browser'],
+const OPEN_BY_DEFAULT = new Map([
+  ['BEE_UPLOADER_P2P_BIND', 'P2P is how the node reaches Swarm, and restricting it cuts the node off'],
+  ['BEE_RUNG_480P_P2P_BIND', 'P2P, as above'],
+  ['BEE_RUNG_720P_P2P_BIND', 'P2P, as above'],
+  ['BEE_RUNG_1080P_P2P_BIND', 'P2P, as above'],
+  ['BEE_GATEWAY_P2P_BIND', 'P2P, as above'],
+  ['SRS_RTMP_BIND', 'ingest: a broadcaster dials it from wherever they are'],
+  ['SRS_SRT_BIND', 'ingest, as above'],
+  ['OME_SRT_BIND', 'ingest, as above'],
+  ['CLIENT_BIND', 'the viewer opens this one in a browser'],
   [
-    'API_PORT',
+    'API_BIND',
     "the uploader's own API, and the one port here with authentication of its own: every gated route " +
       'needs the bearer token, there is no unauthenticated mode, and the engines post their webhooks to it',
   ],
@@ -170,17 +172,12 @@ describe('the Bee nodes a web page can talk to', () => {
 });
 
 /**
- * That every published port an operator might need to shut in can be shut in.
+ * That every published port answers where a setting says, with a default somebody chose.
  *
- * The Bee ports gained `*_API_BIND` and nothing else did, so an operator who followed the firewall
- * guidance in `.env.sample` still had SRS's control API, SRS's file server and OME's HLS port open on
- * every interface, with no variable to close them and no mention of them in that file. The control
- * API alone names every live stream and every publisher's address, and the other two serve the
- * segments, so a broadcast is watchable straight off the ingest host.
- *
- * The exemptions carry their reason rather than a list of numbers, and the map is checked for stale
- * keys below, because an exemption nobody can justify any more is how this check would come to pass
- * over the port it exists for.
+ * Every listen address is a setting. Admin and file interfaces default to the host's Docker bridge,
+ * because a firewall cannot close a port Docker publishes. Ingest, the viewer and the peer ports
+ * default to every address, and which of those the internet reaches is the operator's firewall. The
+ * open-by-default map carries each reason and is checked for stale keys below.
  */
 describe('the published ports an operator can bind to one interface', () => {
   for (const file of PORT_COMPOSE_FILES) {
@@ -202,20 +199,27 @@ describe('the published ports an operator can bind to one interface', () => {
       assert.ok(declared.length > 0, `no published port was found in ${file} at all`);
     });
 
-    it(`offers a bind address for every published port in ${file} that is not deliberately open`, () => {
-      const open = published
-        .filter(({ entry }) => !variablesOf(entry).some((name) => name.endsWith('_BIND')))
-        .filter(
-          ({ entry }) => !EVERY_INTERFACE_ON_PURPOSE.has(variablesOf(entry).find((name) => name.endsWith('_PORT'))),
-        )
+    it(`offers a bind address for every published port in ${file}`, () => {
+      const unbound = published
+        .filter(({ entry }) => !/^\$\{[A-Z0-9_]+_BIND:-/.test(entry))
         .map(({ service, entry }) => `${service}: ${entry}`);
 
       assert.deepEqual(
-        open,
+        unbound,
         [],
-        `these answer on every interface with no way to bind them, so an operator on a host with a ` +
-          `public address cannot shut them in: ${open.join(' | ')}`,
+        `these answer on every interface with no way to bind them, so an operator cannot choose ` +
+          `where they answer: ${unbound.join(' | ')}`,
       );
+    });
+
+    it(`defaults every ingest, viewer and peer bind in ${file} to every address, and no other bind`, () => {
+      const wrong = published
+        .map(({ service, entry }) => ({ service, entry, bind: variablesOf(entry)[0] }))
+        .filter(({ bind }) => !ADMIN_BINDS.has(bind))
+        .filter(({ bind, entry }) => !OPEN_BY_DEFAULT.has(bind) || !entry.startsWith(`\${${bind}:-0.0.0.0}:`))
+        .map(({ service, entry }) => `${service}: ${entry}`);
+
+      assert.deepEqual(wrong, [], `a bind that is neither an admin one nor open by default: ${wrong.join(' | ')}`);
     });
 
     it(`gives every bind variable in ${file} a default, so an unset one still publishes`, () => {
@@ -270,14 +274,14 @@ describe('the published ports an operator can bind to one interface', () => {
     }
   });
 
-  it('keeps no exemption that no longer names a published port', () => {
+  it('keeps no open-by-default bind that no longer names a published port', () => {
     const everyPortVariable = new Set(
       PORT_COMPOSE_FILES.flatMap((file) =>
         publishedPortsOf(composeText(file)).flatMap(({ entry }) => variablesOf(entry)),
       ),
     );
-    const stale = [...EVERY_INTERFACE_ON_PURPOSE.keys()].filter((name) => !everyPortVariable.has(name));
+    const stale = [...OPEN_BY_DEFAULT.keys()].filter((name) => !everyPortVariable.has(name));
 
-    assert.deepEqual(stale, [], `these are excused from carrying a bind and no compose file publishes them any more`);
+    assert.deepEqual(stale, [], `these are open by default and no compose file publishes them any more`);
   });
 });

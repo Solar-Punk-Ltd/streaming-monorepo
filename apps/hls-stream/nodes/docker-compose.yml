@@ -7,7 +7,7 @@ services:
     ports:
       # The API has no password, so it defaults to the bridge address or 127.0.0.1. See deploy/.
       - '${BEE_UPLOADER_API_BIND:-${DOCKER_BRIDGE_ADDRESS:-127.0.0.1}}:${BEE_UPLOADER_API_PORT:-1633}:1633'
-      - '${BEE_UPLOADER_P2P_PORT:-1634}:1634'
+      - '${BEE_UPLOADER_P2P_BIND:-0.0.0.0}:${BEE_UPLOADER_P2P_PORT:-1634}:1634'
     volumes:
       - ${BEE_UPLOADER_DATA_DIR:-./data/bee-uploader}:/home/bee/.bee
     command:
@@ -28,7 +28,7 @@ services:
     restart: unless-stopped
     ports:
       - '${BEE_GATEWAY_API_BIND:-${DOCKER_BRIDGE_ADDRESS:-127.0.0.1}}:${BEE_GATEWAY_API_PORT:-1733}:1633'
-      - '${BEE_GATEWAY_P2P_PORT:-1734}:1634'
+      - '${BEE_GATEWAY_P2P_BIND:-0.0.0.0}:${BEE_GATEWAY_P2P_PORT:-1734}:1634'
     volumes:
       - ${BEE_GATEWAY_DATA_DIR:-./data/bee-gateway}:/home/bee/.bee
     command:

@@ -18,7 +18,7 @@ services:
     # DOCKER_BRIDGE_ADDRESS, so unless that file names one it answers on 127.0.0.1.
     ports:
       - '${OME_HTTP_BIND:-${DOCKER_BRIDGE_ADDRESS:-127.0.0.1}}:${OME_HLS_PORT:-8081}:${OME_HLS_PORT:-8081}'
-      - '${OME_SRT_PORT:-10080}:${OME_SRT_PORT:-10080}/udp'
+      - '${OME_SRT_BIND:-0.0.0.0}:${OME_SRT_PORT:-10080}:${OME_SRT_PORT:-10080}/udp'
     # Enumerated rather than inherited, deliberately. This used to be `env_file: ../../.env`, which
     # fills the container with **every** root variable, including PUBLISH_KEY_SECRET: the master
     # secret every stream's publish key derives from, handed to the third-party publisher-facing

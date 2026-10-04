@@ -26,10 +26,10 @@ services:
     # reads the bridge address into DOCKER_BRIDGE_ADDRESS, so unless that file names one they answer
     # on 127.0.0.1.
     ports:
-      - '${SRS_RTMP_PORT:-1935}:${SRS_RTMP_PORT:-1935}'
+      - '${SRS_RTMP_BIND:-0.0.0.0}:${SRS_RTMP_PORT:-1935}:${SRS_RTMP_PORT:-1935}'
       - '${SRS_HTTP_API_BIND:-${DOCKER_BRIDGE_ADDRESS:-127.0.0.1}}:${SRS_HTTP_API_PORT:-1985}:${SRS_HTTP_API_PORT:-1985}'
       - '${SRS_HTTP_BIND:-${DOCKER_BRIDGE_ADDRESS:-127.0.0.1}}:${SRS_HTTP_PORT:-8080}:${SRS_HTTP_PORT:-8080}'
-      - '${SRS_SRT_PORT:-10080}:${SRS_SRT_PORT:-10080}/udp'
+      - '${SRS_SRT_BIND:-0.0.0.0}:${SRS_SRT_PORT:-10080}:${SRS_SRT_PORT:-10080}/udp'
     # Enumerated rather than inherited, deliberately. This used to be `env_file: ../../.env`, which
     # fills the container with **every** root variable, including PUBLISH_KEY_SECRET: the master
     # secret every stream's publish key derives from, handed to the third-party publisher-facing
