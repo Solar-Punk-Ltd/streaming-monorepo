@@ -1,13 +1,13 @@
 /**
- * What the Containers card calls public against what the firewall opens.
+ * What the Containers card calls public, against what the firewall draft opens.
  *
- * Two lists decide that and neither reads the other. `endpointKindOf` in the
- * frontend reads a port's audience off its key, and `PUBLIC_PORT_ROLES` in the
- * shared policy is what the generated nftables draft opens. RTMP was in the
- * first and never in the second, so the card offered an ingest address the
- * firewall drops, which is the one thing an operator cannot check from the
- * screen. It is a manager test because the shared policy and the manager's own
- * port table both live on this side.
+ * `endpointKindOf` in the frontend reads a port's audience off its key, and
+ * `PUBLIC_PORT_ROLES` in the shared policy is what the generated nftables draft
+ * opens. The card says what a port is for, and which ports are reachable is the
+ * operator's firewall, so the two agree on every port but RTMP: an ingest port
+ * the card calls public and the draft leaves to the operator to open. It is a
+ * manager test because the shared policy and the manager's own port table both
+ * live on this side.
  *
  * The keys checked are the ones a deployment can show: the bundled port table,
  * the OME variables the engine swap resolves to, and every variable a public
@@ -45,13 +45,16 @@ function calledPublic(): string[] {
   return [...new Set(PORT_KEYS)].filter((key) => endpointKindOf(key).audience === 'public');
 }
 
+/** The one port the card calls public and the firewall draft opens no band for. */
+const OPENED_BY_THE_OPERATOR = ['SRS_RTMP_PORT'];
+
 describe('what the port cell calls public', () => {
-  it('names only ports the generated firewall opens', () => {
+  it('names only ports the generated firewall opens, and RTMP, which the operator opens', () => {
     const opened = openedPortVars();
 
     assert.deepEqual(
       calledPublic().filter((key) => !opened.has(key)),
-      [],
+      OPENED_BY_THE_OPERATOR,
       'the card calls these public and the generated rules drop them from outside',
     );
   });
@@ -62,12 +65,13 @@ describe('what the port cell calls public', () => {
       'BEE_UPLOADER_P2P_PORT',
       'CLIENT_PORT',
       'OME_SRT_PORT',
+      'SRS_RTMP_PORT',
       'SRS_SRT_PORT',
     ]);
   });
 
-  it('was written for the RTMP port, which no role names at all', () => {
+  it('calls RTMP public though no role names it, because the card does not read the firewall draft', () => {
     assert.equal(openedPortVars().has('SRS_RTMP_PORT'), false);
-    assert.notEqual(endpointKindOf('SRS_RTMP_PORT').audience, 'public');
+    assert.equal(endpointKindOf('SRS_RTMP_PORT').audience, 'public');
   });
 });
