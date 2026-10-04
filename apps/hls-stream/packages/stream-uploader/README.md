@@ -878,7 +878,7 @@ middle of a broadcast, under one key.
 the key crosses the network readable. Anyone who reads it there can publish to that stream, and
 while the engine's takeover is on, which it is wherever a key is checked, take a live broadcast
 over. The SRT streamid crosses readable as well, so an SRT passphrase keeps the picture private but
-not the key: while the RTMP port is open, a key read off either protocol publishes over RTMP. See the takeover section of
+not the key: a key read off either protocol publishes over RTMP. See the takeover section of
 [engines/README.md](../../engines/README.md).
 
 **Take the ports from `publish-key.sh` rather than from here.** At slot 0 SRS uses the stock 1935
