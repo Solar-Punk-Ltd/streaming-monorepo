@@ -335,7 +335,7 @@ run_harness_container() {
 SPEND_LEDGER_FILE="${REPO_ROOT}/.spend-ledger.env"
 if [ ! -f "${SPEND_LEDGER_FILE}" ]; then
   echo "bench-on-host: ${SPEND_LEDGER_FILE} does not exist, so this checkout holds no authorisation to spend and nothing is copied to the host." >&2
-  echo "bench-on-host: launch from the checkout that carries the spend ceiling, or write one there with deploy/scripts/spend-ledger.sh --authorise=<BZZ>." >&2
+  echo "bench-on-host: launch from the checkout that carries the spend ceiling, or write one there with deploy/scripts/spend-ledger.sh --profile=${PROFILE} --portSlot=${PORT_SLOT} --authorise=<BZZ>." >&2
   exit 2
 fi
 
