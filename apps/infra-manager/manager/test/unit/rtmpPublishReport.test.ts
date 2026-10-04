@@ -20,8 +20,8 @@ import {
   parseRtmpPublishReport,
   parseRtmpPublishReports,
   RTMP_PUBLISH_HOST_PATTERN,
-  RTMP_PUBLISH_REPORT_MARKER,
 } from '../../src/domain/ingestHealth/rtmpPublishReport.js';
+import { INGEST_LOG_LINES } from '../../src/domain/ingestHealth/IngestHealthService.js';
 
 const INGEST =
   '[2026-10-03 17:43:50.386][INFO][1][9tq3vz71] <- CPB time=40021, okbps=0,0,0, ikbps=0,4812,0, mr=0/350, p1stpt=20000, pnt=5000, vhost=__defaultVhost__';
@@ -132,7 +132,7 @@ describe('parseRtmpPublishReport', () => {
   });
 
   it('keeps the marker a reader filters on inside every line it reads', () => {
-    for (const line of [INGEST, RUNG, OLDER_ENGINE]) assert.ok(line.includes(RTMP_PUBLISH_REPORT_MARKER));
+    for (const line of [INGEST, RUNG, OLDER_ENGINE]) assert.ok(line.includes(INGEST_LOG_LINES.marker));
   });
 });
 
