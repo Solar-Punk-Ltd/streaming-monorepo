@@ -70,7 +70,7 @@ as `createXRouter(deps)` factories, manual constructor injection in
 | `FEED_TOPIC`            | `swarm-stream` | raw topic of the stream list feed                                                                                                      |
 | `VIEWER_BASE_URL`       | empty          | e.g. `https://player.example.com`, the brand's player built for this backend's feed owner and topic, for "open player catalogue" links |
 | `INGEST_HOST`           | required       | host the encoder connects to                                                                                                           |
-| `INGEST_SRT_PORT`       | `10061`        | SRS SRT port (10001 + slot*10; slot 6 on the test host)                                                                                |
+| `INGEST_SRT_PORT`       | `10061`        | SRS SRT port (10001 + slot*10, the example is slot 6)                                                                                  |
 | `INGEST_RTMP_PORT`      | `10062`        | SRS RTMP port                                                                                                                          |
 | `INGEST_RTMP_PUBLIC`    | `false`        | true only where the deployment opens RTMP ingest. Off, the ingest details carry no RTMP and the console shows none                     |
 | `INGEST_SRT_PASSPHRASE` | empty          | the server-wide SRT passphrase, shown to the operator                                                                                  |

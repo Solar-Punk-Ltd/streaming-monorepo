@@ -5,7 +5,7 @@ import type { Segment } from '../src/components/SwarmHlsPlayer/ManifestManagemen
 import { ManifestStateManager } from '../src/components/SwarmHlsPlayer/ManifestManagement';
 
 /**
- * The measurement behind `docs/bench/manifest-growth-2026-08-12.md`, kept so the numbers there can
+ * The run behind the `manifest-growth-2026-08-12` measurement (kept outside the repository), kept so its numbers can
  * be re-run rather than trusted.
  *
  * Skipped unless `PROBE_OUT` names a file to write, because it is a timing run rather than a check:

@@ -35,7 +35,7 @@ import { armState, crashArmState, GATEWAY_OUTAGE_RECOVERY, INSTRUMENT_UNPROVEN }
  * `suites/` runs in CI, so every rule they judge on is covered here instead: a rule written inline in
  * a scenario is a rule nothing checks until a paid broadcast is already burning.
  *
- * The figures throughout are the ones `docs/bench/crash-at-an-in-tab-viewer-2026-08-27.md` recorded,
+ * The figures throughout are the ones the `crash-at-an-in-tab-viewer-2026-08-27` measurement (kept outside the repository) recorded,
  * so a predicate is exercised against runs that happened rather than against invented ones. ⭐ They
  * are the INPUTS here and never the contract: owner ruling of 2026-08-29, an e2e suite checks that
  * the feature works properly and stably, and every duration one of these arms produces is measured,

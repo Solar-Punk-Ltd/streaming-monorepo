@@ -6,7 +6,7 @@
  * Every "in-tab node" figure this project has published came from a **hybrid** client: segment bytes
  * from weeb-3, feed and manifest still from a bee gateway. That split was never authorised, and the
  * owner had asked, two days before it was built, to measure weeb-3's own setup as it is. See
- * `docs/bench/tester-gateway-less-live-2026-08-16.md`.
+ * the gateway-less live measurement of 2026-08-16 (kept outside the repository).
  *
  * ⭐ The thing that makes this cheap was in our own uploader the whole time: `streamRawTopic` is a
  * `crypto.randomUUID()`, and weeb-3's page route is `#/live/stream/<owner>/<uuid>`. Our identifiers
@@ -36,7 +36,7 @@
  * changed. An outside tester's published page is the same node inside a client we did not write, so
  * the same recording under the same cap is the first thing that can tell our harness apart from the
  * tester's node. See
- * `docs/bench/in-tab-throttle-probe-result-2026-09-02.md`.
+ * the `in-tab-throttle-probe-result-2026-09-02` measurement (kept outside the repository).
  *
  * ⛔ Unset, the driver behaves exactly as it did before the mode existed. Nothing in the squeeze
  * phases asserts, refuses or gates on a ratio.

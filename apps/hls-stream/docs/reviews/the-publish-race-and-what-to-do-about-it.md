@@ -1,5 +1,8 @@
 # The reference beats its bytes by about 100ms. What, if anything, to do
 
+> This is a dated record of one test deployment, not a description of the product. Any raw
+> measurement it cites is kept outside the repository.
+
 Written 2026-08-12 straight after `gop-floor-replicate-2026-08-12.md` measured the window. No
 broadcast needed to reach any of this.
 

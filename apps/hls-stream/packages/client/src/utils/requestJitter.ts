@@ -8,7 +8,7 @@
  * cohorts of 8 held a 57-68ms median with 1.7% of segments over the 267ms budget and drained no
  * buffer at all. The same 128 viewers firing on one tick put 40% of segments over budget and drained
  * 12.8 seconds of buffer. Cohorts of 8 were safe, 32 was unstable, 128 failed every time it was run.
- * See `docs/bench/a-synchronised-audience-is-the-failure-2026-08-08.md`.
+ * See the `a-synchronised-audience-is-the-failure-2026-08-08` measurement (kept outside the repository).
  *
  * Firing many requests for one chunk at the same moment does not get them merged, it gets them
  * raced: 47 retrieval operations per distinct chunk synchronised, against 8.4 for eight cohorts.
@@ -22,7 +22,7 @@
  * **60ms was measured and it does nothing.** Eight arms at 128 paced viewers put a jittered herd at
  * 8041 and 10826ms of ending lag against an unjittered one at 9437 and 9711, in both rounds, inside
  * the spread an unfunded node shows on identical work. See
- * `docs/bench/jitter-is-not-what-breaks-a-herd-2026-08-08.md`.
+ * the `jitter-is-not-what-breaks-a-herd-2026-08-08` measurement (kept outside the repository).
  *
  * ⭐⭐ **The reason is that the cohort finding above is about chunk diversity, not arrival instant, and
  * jitter buys no chunk diversity.** Viewers at sixteen playback positions want sixteen different

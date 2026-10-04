@@ -13,7 +13,7 @@ import { waitFor } from './helpers/waiting.js';
  * The unit tests beside this pin the measurement. This one pins that the measurement is what reaches
  * the playlist, because between the two sits the whole reason the defect existed: the number was
  * taken from the engine's webhook and carried all the way to `#EXTINF` without anything looking at
- * the segment. See `docs/bench/a-recording-played-back-2026-08-06.md`.
+ * the segment. See the `a-recording-played-back-2026-08-06` measurement (kept outside the repository).
  */
 
 const STREAM_ID = 'live/one';

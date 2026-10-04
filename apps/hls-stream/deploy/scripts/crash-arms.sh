@@ -392,4 +392,4 @@ done
 snapshot_metrics "${METRICS_DIR}/sitting-after.json" "sitting-after"
 diff_metrics "${METRICS_DIR}/sitting-before.json" "${METRICS_DIR}/sitting-after.json" \
   "${METRICS_DIR}/sitting-diff.txt" "  what the whole sitting did to the nodes:"
-say "crash-arms done. Reports are in ${BENCH_REPO}/docs/bench/, state in ${STATE}"
+say "crash-arms done. Reports are in ${BENCH_REPO}/bench-results/, state in ${STATE}"

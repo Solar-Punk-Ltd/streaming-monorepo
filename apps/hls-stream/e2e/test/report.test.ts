@@ -244,7 +244,7 @@ describe('the report an operator reads', () => {
 
   // A throttled publisher carries its full complement of frames and bytes over a stretched span, so
   // both per-second columns fall together and neither alone would say which fault it was.
-  // See `docs/bench/publisher-backpressure.md`.
+  // See the `publisher-backpressure` measurement (kept outside the repository).
   it('reports frames and bytes per second of media, not per segment', () => {
     const report = renderReport(runWith([sampleWithTotal(1, 7_000)]));
 
@@ -500,7 +500,7 @@ describe('reporting the manifest against the bytes', () => {
  * Whether the publisher kept up, which is the one thing a run cannot be compared without.
  *
  * ⛔ **This is a frame-rate check and not a byte-rate one, and the task that asked for it asked for
- * bytes.** `docs/bench/publisher-backpressure.md` measured the mechanism: `wallclockEncodeArgs` stamps
+ * bytes.** the `publisher-backpressure` measurement (kept outside the repository) measured the mechanism: `wallclockEncodeArgs` stamps
  * timestamps at the demuxer, so when anything downstream of the muxer blocks, no frames are stamped
  * while the wall clock keeps running and media time stretches to match. The encoder still hits its
  * bitrate per second of media it produced, so **a byte rate barely moves** and would have caught
@@ -535,7 +535,7 @@ describe('whether the publisher kept up', () => {
     assert.match(report, /⛔ \*\*the publisher delivered only 12\.0 fps against the 30 it was configured for\*\*/);
     assert.match(report, /40% of it/);
     assert.match(report, /The encoder is not at fault and no frame was dropped/);
-    assert.match(report, /publisher-backpressure\.md/);
+    assert.match(report, /publisher-backpressure/);
   });
 
   /**

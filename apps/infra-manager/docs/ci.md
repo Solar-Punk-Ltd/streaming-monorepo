@@ -137,7 +137,7 @@ four full runs failed, once on the lock-ordering case in
 `chequebookConnected.test.ts`. Both read the clock while another connection
 holds a lock, so a loaded machine beats them and neither failure was a rule
 being wrong. Serialized, every run since has passed. **It costs 235 seconds**,
-the longest of the six full runs measured here and on two review worktrees,
+the longest of the six full runs measured here and on two other checkouts,
 and that one number is what the estimate below is built from. A required check
 that fails half the time is worth more than the difference.
 

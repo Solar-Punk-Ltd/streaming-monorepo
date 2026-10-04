@@ -1,5 +1,8 @@
 # Next features, planned 2026-09-05
 
+> This is a dated plan, written on 2026-09-05. It records what was asked for at the time and does
+> not describe the product as it is. The other pages in this folder describe the current behaviour.
+
 Status, 2026-09-16. This is the plan as written on 2026-09-05, kept as the record of what was
 asked for and why. All four features are built and merged to `main-v2`, apart from the live engine
 status, which is the second pull request of feature 3 and is not started. The remediation set from

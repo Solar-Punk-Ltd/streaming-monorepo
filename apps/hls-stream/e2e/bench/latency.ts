@@ -23,7 +23,8 @@ import { renderReport } from '../src/bench/report.js';
 import { measureLatency } from '../src/bench/run.js';
 import { checkInstrumentLocally } from '../src/bench/selfCheck.js';
 import { DEFAULT_KNOBS, type PublishKnobs } from '../src/bench/wallclockPublisher.js';
-import { containerName, loadConfig, ROOT_DIR } from '../src/config.js';
+import { benchResultsDir } from '../src/benchResults.js';
+import { containerName, loadConfig } from '../src/config.js';
 import { makeHost, uploaderHealth } from '../src/harness/host.js';
 import { effectiveLogLevel, logLevelProblem } from '../src/logLevel.js';
 
@@ -37,7 +38,7 @@ const DEFAULT_SAMPLES = 5;
  */
 const DEFAULT_POLL_MS = 2_000;
 
-const REPORT_DIR = join(ROOT_DIR, 'docs', 'bench');
+const REPORT_DIR = benchResultsDir();
 
 function envNumber(name: string, fallback: number): number {
   const raw = process.env[name];

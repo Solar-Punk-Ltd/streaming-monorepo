@@ -50,7 +50,7 @@ const at = (atMs: number, overrides: Partial<GatewaySample> = {}): GatewaySample
 /**
  * The half of a run nothing has ever recorded.
  *
- * `docs/bench/the-fourteen-minute-collapse-2026-08-07.md` located a read-path slowdown to the second
+ * the `the-fourteen-minute-collapse-2026-08-07` measurement (kept outside the repository) located a read-path slowdown to the second
  * and could not say what caused it, because every figure in it was measured at the browser. A browser
  * can see that answers got slower. It cannot see whether the node was busy, whether the host was, or
  * whether the node had lost the peers it retrieves through.
@@ -123,7 +123,7 @@ describe('reading a gateway sample off the host', () => {
   /**
    * ⭐ The reading Phase 0.6 asked for and no sitting ever took.
    *
-   * `docs/bench/ultra-light-at-the-shipping-profile-2026-08-08.md` closed on one open term: an unfunded
+   * the `ultra-light-at-the-shipping-profile-2026-08-08` measurement (kept outside the repository) closed on one open term: an unfunded
    * gateway moved segments 2 to 4x slower than a funded one, and on one night it was 24% faster than on
    * another with no measured reason. The node's own samples ruled out three candidates — it held 134
    * peers and a 135-node neighbourhood in every arm, answered `/health` in 1ms throughout, and the host

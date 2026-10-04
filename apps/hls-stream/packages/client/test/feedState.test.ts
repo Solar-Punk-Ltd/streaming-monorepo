@@ -161,7 +161,7 @@ describe('FeedHealthTracker backoff schedule', () => {
  * The bound is the same client's cost on a single rendition, measured 2026-08-27 across both byte
  * sources: a 20.5 second gateway stop froze the picture 28.6s and 27.6s, of which **10.7s and 9.9s
  * were spent after the gateway had started answering again**. See
- * `docs/bench/crash-at-an-in-tab-viewer-2026-08-27.md`. A ladder viewer walks five feeds where a
+ * the `crash-at-an-in-tab-viewer-2026-08-27` measurement (kept outside the repository). A ladder viewer walks five feeds where a
  * single rendition walks one, and walking more of them must not make recovery worse than the
  * one-rung case a ladder is built out of.
  */
@@ -332,7 +332,7 @@ describe('FeedHealthTracker proof that did not come from a feed read', () => {
    * from the failure that set it and nothing shortens it. All the while hls.js was fetching segments
    * through that same gateway and those started succeeding the moment it returned, so the client
    * held the answer and threw it away. 16.2 of the 30.6 second freeze was that wait.
-   * `docs/bench/browser-crash-2026-08-06T05-31-04-624Z.md`.
+   * the `browser-crash-2026-08-06T05-31-04-624Z` measurement (kept outside the repository).
    */
   it('ends the wait on every topic held off, since one gateway serves them all', () => {
     const clock = makeClock();
@@ -777,7 +777,7 @@ describe('FeedHealthTracker on a broadcast that has ended', () => {
 
 /**
  * The fault the other three states cannot describe, from
- * `docs/bench/the-fourteen-minute-collapse-2026-08-07.md`.
+ * the `the-fourteen-minute-collapse-2026-08-07` measurement (kept outside the repository).
  *
  * A gateway answered every request it was given, correctly, for twenty minutes. For the last six of
  * them it answered about five times more slowly than it had, the player's buffer never recovered, and

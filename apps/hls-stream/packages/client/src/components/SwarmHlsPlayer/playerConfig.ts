@@ -23,7 +23,7 @@ const MB = 1024 * 1024;
  *
  * ## Re-derived 2026-08-05, and it stays at six
  *
- * The four clean runs of `docs/bench/quarter-second-2026-08-05.md`, which are the first arrivals
+ * The four clean runs of the `quarter-second-2026-08-05` measurement (kept outside the repository), which are the first arrivals
  * measured with the bench's follower reaching the live edge:
  *
  * | segment | samples | observed floor | so this constant needs |
@@ -74,7 +74,7 @@ const MB = 1024 * 1024;
  * A paragraph here used to say that a player on this deployment rebuffers every 63 seconds whatever
  * this number is. That was LAT-10 and it is **retracted**: the freeze was bee's sequential feed head
  * lookup, which the bench polled every cycle and a player calls only on mount. See
- * `docs/bench/feed-reader-ab.md` for the reader comparison that showed it, and
+ * the `feed-reader-ab` measurement (kept outside the repository) for the reader comparison that showed it, and
  * `docs/reviews/upstream-bee-feed-lookup.md` for what the lookup costs.
  */
 export const LIVE_SYNC_DURATION_S = 6;

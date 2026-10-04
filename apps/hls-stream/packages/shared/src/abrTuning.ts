@@ -12,7 +12,7 @@
  * harness uses them to say which rungs a cap left within a player's reach. A copy in each would be a
  * report describing a player that no longer exists. Measured 2026-09-02: a viewer capped at 2800 kbps,
  * the 720p rung's own bitrate, could not take 720p on the way down (it needed 2947) and needed a
- * 4000 kbps estimate to climb back to it (`docs/bench/browser-quality-2026-09-02T12-52-16-340Z.md`).
+ * 4000 kbps estimate to climb back to it (the `browser-quality-2026-09-02T12-52-16-340Z` measurement (kept outside the repository)).
  */
 
 /** Fraction of the measured bandwidth a rung must sit under to be chosen going down or staying. hls.js's own default. */

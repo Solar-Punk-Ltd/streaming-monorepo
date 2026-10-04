@@ -27,7 +27,7 @@ import { requireByteSource, viewerGate } from '../../src/viewerCoverage.js';
  *
  * ## What this promotes
  *
- * Arm 5 of the crash matrix, `docs/bench/crash-at-an-in-tab-viewer-2026-08-27.md`. Past the fifteen
+ * Arm 5 of the crash matrix, the `crash-at-an-in-tab-viewer-2026-08-27` measurement (kept outside the repository). Past the fifteen
  * second retry window the uploader gives up on the segment in flight, and since the owner's ruling of
  * 2026-09-06 the playlist lists that sequence as an `#EXT-X-GAP` entry so the numbering behind it does
  * not move. `suites/scenarios/bee-outage-long.test.ts` proves the uploader does that correctly and

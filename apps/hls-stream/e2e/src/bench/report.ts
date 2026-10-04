@@ -257,7 +257,7 @@ function medianFlaggedNotice(median: SegmentSample): string[] {
  * Frames and bytes are both read against media time rather than wall time, because that is what
  * separates a throttled publisher from a healthy one: media time stretches to match a slow consumer,
  * so a throttled segment carries its full complement of frames and bytes over a longer span and both
- * rates fall together. See `docs/bench/publisher-backpressure.md`.
+ * rates fall together. See the `publisher-backpressure` measurement (kept outside the repository).
  */
 function perSecond(amount: number, mediaS: number): string {
   return mediaS > 0 ? (amount / mediaS).toFixed(1) : 'n/a';
@@ -314,7 +314,7 @@ const DELIVERED_FPS_FLOOR = 0.9;
  * Whether the publisher kept up, which is not visible from any single row.
  *
  * ⛔ **Bytes are the wrong signal here and the task that asked for this said bytes.** The mechanism,
- * measured in `docs/bench/publisher-backpressure.md`, is that `wallclockEncodeArgs` stamps timestamps
+ * measured in the `publisher-backpressure` measurement (kept outside the repository), is that `wallclockEncodeArgs` stamps timestamps
  * at the demuxer and paces in the filter graph, so when anything downstream of the muxer blocks, **no
  * frames are stamped while the wall clock keeps running**. Media time stretches to match the consumer.
  * The encoder still hits its bitrate per second of media it produced, so a byte rate barely moves.
@@ -352,7 +352,7 @@ function deliveredFpsLine(run: BenchRun): string {
     'The encoder is not at fault and no frame was dropped: `-g` is set in frames and is honoured exactly, so ' +
     'something downstream of the muxer blocked and media time stretched to match it. **Every latency figure ' +
     'in this run is measured against a media clock that ran slow**, and the run is not comparable with one ' +
-    'that kept up. See `docs/bench/publisher-backpressure.md`.'
+    'that kept up. See the `publisher-backpressure` measurement (kept outside the repository).'
   );
 }
 

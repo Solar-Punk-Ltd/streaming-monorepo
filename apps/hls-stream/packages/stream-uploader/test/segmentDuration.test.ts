@@ -51,7 +51,7 @@ function tsSegment(...pts: number[]): Buffer {
 describe('how long a segment is, according to the segment', () => {
   it('reports the media in the bytes rather than what the engine claimed about them', () => {
     // Eight frames at 30fps, which is what a 0.25s fragment setting actually cuts, against the 0.32s
-    // SRS declares for the same segment. See docs/bench/a-recording-played-back-2026-08-06.md.
+    // SRS declares for the same segment. See the a-recording-played-back-2026-08-06 measurement (kept outside the repository).
     const eightFrames = tsSegment(...Array.from({ length: 8 }, (_, frame) => frame * FRAME_TICKS));
 
     const reading = measureSegmentDuration(eightFrames, SRS_CLAIMED_SECONDS);
