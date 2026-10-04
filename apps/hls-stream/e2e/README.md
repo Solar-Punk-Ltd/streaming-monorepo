@@ -46,6 +46,13 @@ Ports come from `.env` / `.env.<profile>` and `engines/<engine>/.env[.<profile>]
 process environment exactly as `load_env` then `load_engine_envs` layer them. **OME's ports are not
 slot-shifted**. `apply_port_slot` leaves them alone and so does this.
 
+The Bee APIs, SRS's HTTP server and OME's HLS port answer where the deploy bound them, and the suite
+dials them there the way `deploy/scripts/bound-host.sh` does: at the address their own bind setting
+names (`BEE_UPLOADER_API_BIND`, `BEE_GATEWAY_API_BIND`, or `*_API_LISTEN` under
+`COMPOSE_NETWORK=host`, `SRS_HTTP_BIND`, `OME_HTTP_BIND`), else at `DOCKER_BRIDGE_ADDRESS` when the
+env files set it, else at the bridge address the deployment host reports, else at 127.0.0.1. The
+uploader and the client bind every address and are still read on loopback.
+
 ### Saying whether the run covers ABR
 
 The two ABR suites only apply to a deployment running a ladder, so they are gated on `ABR_ENABLED`,

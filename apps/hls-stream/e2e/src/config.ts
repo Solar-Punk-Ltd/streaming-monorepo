@@ -18,6 +18,7 @@ import { fileURLToPath } from 'node:url';
 
 import { DEFAULT_LOCAL_HOST_ADDRESS } from './harness/host.js';
 import { type AbrExpectation, readAbrExpectation } from './abrCoverage.js';
+import { beeApiBindKey, type BoundPort } from './boundHost.js';
 import { type EnvBag, layerEnv, processEnv, readEnvFile } from './envFile.js';
 import {
   DEFAULT_INGEST_PROTOCOL,
@@ -107,8 +108,9 @@ export interface E2EConfig {
    * Where the deployment's own service ports are, seen from this process, out of
    * `E2E_LOCAL_HOST_ADDRESS`. `localhost` unless something said otherwise.
    *
-   * Only the `local` transport uses it: over ssh the command runs on the deployment host, where the
-   * services genuinely are on loopback. See `harness/host.ts` and `--own-network` in
+   * Only the `local` transport uses it, and only for a port that answers on loopback: over ssh the
+   * command runs on the deployment host and dials loopback there, and a port in {@link boundPorts}
+   * is dialled where the deploy bound it. See `harness/host.ts` and `--own-network` in
    * `deploy/scripts/bench-on-host.sh`.
    *
    * ⛔ Separate from {@link publicHost}, which is the address a PUBLISHER dials and a VIEWER is
@@ -118,6 +120,16 @@ export interface E2EConfig {
    * container, and names the empty inside of the container to anything within it.
    */
   localHostAddress: string;
+  /**
+   * `DOCKER_BRIDGE_ADDRESS` from the env files, or empty when they set none and the deployment host
+   * has to be asked. The address every port in {@link boundPorts} answers on when its bind is empty.
+   */
+  bridgeAddress: string;
+  /**
+   * The ports here that the stack binds to the bridge address unless their own bind setting names
+   * another, with that setting. See `src/boundHost.ts`.
+   */
+  boundPorts: readonly BoundPort[];
   /** The deploy's `--profile`: the docker compose project, and so the container-name prefix. */
   profile: string;
   /** The deploy's `--portSlot`. 0 means no slot, and env values decide the ports. */
@@ -252,6 +264,14 @@ const SSH_TARGET_RE = /^[A-Za-z0-9_.][A-Za-z0-9_.@-]*$/;
  */
 const HOST_AUTHORITY_RE = /^(\[[0-9A-Fa-f:.]+\]|[A-Za-z0-9_.-]+)$/;
 
+/** What compose accepts in front of a published port, and so what the suite dials it on. */
+const BIND_ADDRESS_RE = /^(\[[0-9A-Fa-f:.]+\]|[0-9A-Fa-f:.]+|[A-Za-z0-9_.-]+)$/;
+
+/** A bind setting or a bridge address, empty for none, screened because it lands in a curl line. */
+function requireBindAddress(name: string, raw: string): string {
+  return raw === '' ? raw : requireMatch(name, raw, BIND_ADDRESS_RE, 'an IP address or a hostname');
+}
+
 /** `<app>/<name>`, the only shape either engine's ingest accepts. */
 const STREAM_PATH_RE = /^[A-Za-z0-9_-]+\/[A-Za-z0-9_-]+$/;
 
@@ -378,6 +398,7 @@ export function loadConfig({ env: source = process.env, rootDir = ROOT_DIR }: Lo
   const ports = Object.fromEntries(
     Object.entries(PORT_SOURCES).map(([key, name]) => [key, resolvePort(name, portSlot, resolved)]),
   ) as Ports;
+  const omeHlsPort = resolveOmePort('OME_HLS_PORT', resolved);
 
   return {
     mode,
@@ -401,6 +422,15 @@ export function loadConfig({ env: source = process.env, rootDir = ROOT_DIR }: Lo
       HOST_AUTHORITY_RE,
       'a hostname, IPv4 address, or bracketed IPv6 address',
     ),
+    bridgeAddress: requireBindAddress('DOCKER_BRIDGE_ADDRESS', env(resolved, 'DOCKER_BRIDGE_ADDRESS', '')),
+    boundPorts: (
+      [
+        [ports.beeUploaderApi, beeApiBindKey('BEE_UPLOADER', resolved)],
+        [ports.beeGatewayApi, beeApiBindKey('BEE_GATEWAY', resolved)],
+        [ports.srsHttp, 'SRS_HTTP_BIND'],
+        [omeHlsPort, 'OME_HTTP_BIND'],
+      ] as const
+    ).map(([port, name]) => ({ port, bind: requireBindAddress(name, env(resolved, name, '')) })),
     profile,
     portSlot,
     ports,
@@ -411,7 +441,7 @@ export function loadConfig({ env: source = process.env, rootDir = ROOT_DIR }: Lo
       '<app>/<name>, e.g. live/stream for SRS or video/stream for OME',
     ),
     omeSrtPort: omePortWithOverride(resolved, 'E2E_OME_SRT_PORT', 'OME_SRT_PORT'),
-    omeHlsPort: resolveOmePort('OME_HLS_PORT', resolved),
+    omeHlsPort,
     omeContainer: requireMatch(
       'E2E_OME_CONTAINER',
       env(resolved, 'E2E_OME_CONTAINER', containerNameFor(profile, 'ome')),
