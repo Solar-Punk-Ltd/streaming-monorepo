@@ -68,7 +68,9 @@ export class StagePoolStrings {
     if (!entries) return stage;
     const pool = poolNamedBy(entries, await this.pools());
     if (!pool) {
-      logger.info(`[StagePoolStrings] ${stage.name}: its pool string names no pool of this manager, so it deploys as saved`);
+      logger.info(
+        `[StagePoolStrings] ${stage.name}: its pool string names no pool of this manager, so it deploys as saved`,
+      );
       return stage;
     }
 
