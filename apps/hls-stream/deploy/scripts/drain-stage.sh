@@ -319,11 +319,13 @@ NODE_STATUS=0
 NODE_HTTP_CODE=""
 read_node() {
   local path="$1" answer
+  resolve_node_host
   if [ "$TARGET" = "$TARGET_LOCAL" ]; then
-    answer="$(curl -s -w "$HTTP_CODE_SUFFIX" --max-time 10 "http://127.0.0.1:${PORT}${path}" 2>/dev/null)"
+    answer="$(curl -s -w "$HTTP_CODE_SUFFIX" --max-time 10 "http://${NODE_HOST}:${PORT}${path}" 2>/dev/null)"
     NODE_STATUS=$?
   else
-    answer="$(ssh -o ConnectTimeout=10 "$TARGET" "curl -s -w '${HTTP_CODE_SUFFIX}' --max-time 10 'http://127.0.0.1:${PORT}${path}'" 2>/dev/null)"
+    # shellcheck disable=SC2029
+    answer="$(ssh -o ConnectTimeout=10 "$TARGET" "curl -s -w '${HTTP_CODE_SUFFIX}' --max-time 10 $(shell_quote "http://${NODE_HOST}:${PORT}${path}")" 2>/dev/null)"
     NODE_STATUS=$?
   fi
   split_node_answer "$answer"
@@ -386,9 +388,14 @@ require_node_answer() {
   fi
 }
 
-# The uploader is network_mode: host on every deployment that splits its bees per rung, so 127.0.0.1
-# from inside the container is the host loopback and reaches each node directly.
-readonly NODE_URL_PREFIX="http://127.0.0.1:"
+# The address the rung's node answers on, on the uploader's host: where the deploy bound its API, which
+# by default is that host's Docker bridge address rather than 127.0.0.1. Read once, on the first read
+# of the node, because the bridge may have to be asked for over ssh.
+NODE_HOST=""
+resolve_node_host() {
+  [ -n "$NODE_HOST" ] && return 0
+  NODE_HOST="$(bound_host "$(bee_api_bind "${PORT_VAR%_API_PORT}")" "$(bridge_address "$TARGET")")"
+}
 
 # `<verdict>\t<text>`, the answer shape every reader below uses: OK carries a reading, REFUSE carries
 # a whole refusal sentence, ABSENT carries one that is a refusal for `arm` and a reading for `status`.
@@ -908,9 +915,9 @@ answer(
   log_warn "The owner runs this, from their own shell. This script never runs it."
   echo ""
   if [ "$TARGET" = "$TARGET_LOCAL" ]; then
-    echo "    curl -s -XPOST -H 'Immutable: true' '${NODE_URL_PREFIX}${PORT}/stamps/${amount}/${ARM_DEPTH}?label=drain-${RUNG}'"
+    echo "    curl -s -XPOST -H 'Immutable: true' 'http://${NODE_HOST}:${PORT}/stamps/${amount}/${ARM_DEPTH}?label=drain-${RUNG}'"
   else
-    echo "    ssh ${TARGET} \"curl -s -XPOST -H 'Immutable: true' '${NODE_URL_PREFIX}${PORT}/stamps/${amount}/${ARM_DEPTH}?label=drain-${RUNG}'\""
+    echo "    ssh ${TARGET} \"curl -s -XPOST -H 'Immutable: true' 'http://${NODE_HOST}:${PORT}/stamps/${amount}/${ARM_DEPTH}?label=drain-${RUNG}'\""
   fi
   echo ""
   echo "  Then arm the batch id it answers with:"
