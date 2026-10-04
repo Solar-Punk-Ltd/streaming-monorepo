@@ -117,8 +117,10 @@ function run(args) {
  * @param {object} [options]
  * @param {Record<number, string>} [options.bodies] A literal body per port, replacing the fixture.
  * @param {Record<number, number>} [options.statuses] The HTTP status per port, 200 by default.
+ * @param {Record<number, string>} [options.hosts] The address each port's node listens on, 127.0.0.1
+ *   by default. A read of any other address fails the way a refused connection does.
  */
-function stubCurl(sandbox, { bodies = {}, statuses = {} } = {}) {
+function stubCurl(sandbox, { bodies = {}, statuses = {}, hosts = {} } = {}) {
   const answers = Object.fromEntries(
     Object.entries(PORTS).map(([rung, port]) => [
       port,
@@ -126,6 +128,7 @@ function stubCurl(sandbox, { bodies = {}, statuses = {} } = {}) {
     ]),
   );
   const codes = Object.fromEntries(Object.entries(PORTS).map(([, port]) => [port, statuses[port] ?? 200]));
+  const listens = Object.fromEntries(Object.entries(PORTS).map(([, port]) => [port, hosts[port] ?? '127.0.0.1']));
   const path = join(sandbox.binDir, 'curl');
   writeFileSync(
     `${path}.cjs`,
@@ -133,8 +136,10 @@ function stubCurl(sandbox, { bodies = {}, statuses = {} } = {}) {
 const url = argv.find((a) => a.startsWith('http')) || '';
 const answers = ${JSON.stringify(answers)};
 const codes = ${JSON.stringify(codes)};
+const listens = ${JSON.stringify(listens)};
 const port = (url.match(/:(\\d+)\\//) || [])[1] || '';
-if (!(port in answers) || !url.endsWith('/stamps')) {
+const host = (url.match(/^http:\\/\\/(.+):\\d+\\//) || [])[1] || '';
+if (!(port in answers) || !url.endsWith('/stamps') || host !== listens[port]) {
   process.stderr.write('curl stub was asked for ' + url + '\\n');
   process.exit(7);
 }
@@ -450,5 +455,52 @@ describe('the generator holds only immutable batches to the utilization ceiling'
 
     assert.notEqual(exitCode, 0, 'a mutable batch under the floor was written into the line');
     assert.match(`${stdout}${stderr}`, /1\.0h left, floor is 12\.0h/);
+  });
+});
+
+/**
+ * Under host networking a rung's node listens where its own *_API_LISTEN says, and with that empty on
+ * the bridge address the deploy hands it, not on loopback. The generator reads /stamps there and
+ * points the uploader there, or neither the read nor the upload reaches the node.
+ */
+describe('the generator under host networking', () => {
+  const BRIDGE = '192.0.2.1';
+  const everyPort = (host) => Object.fromEntries(Object.values(PORTS).map((port) => [port, host]));
+
+  it('dials each node on the bridge address when its listen setting is empty', async () => {
+    const sandbox = publisherSandbox({ extra: 'COMPOSE_NETWORK=host\n', hosts: everyPort(BRIDGE) });
+
+    const { exitCode, stdout, stderr } = await generate(sandbox, { DOCKER_STUB_BRIDGE: BRIDGE });
+
+    assert.equal(exitCode, 0, `${stdout}${stderr}`);
+    for (const [rung, port] of Object.entries(PORTS)) {
+      assert.match(stdout, new RegExp(`${rung}@http://192\\.0\\.2\\.1:${port}<${BATCHES[rung].slice(0, 8)}…>`));
+    }
+  });
+
+  it('dials a node at the address its own listen setting names, and on loopback when that is every address', async () => {
+    const sandbox = publisherSandbox({
+      extra: 'COMPOSE_NETWORK=host\nBEE_RUNG_720P_API_LISTEN=198.51.100.7\nBEE_RUNG_1080P_API_LISTEN=0.0.0.0\n',
+      hosts: { ...everyPort(BRIDGE), [PORTS['720p']]: '198.51.100.7', [PORTS['1080p']]: '127.0.0.1' },
+    });
+
+    const { exitCode, stdout, stderr } = await generate(sandbox, { DOCKER_STUB_BRIDGE: BRIDGE });
+
+    assert.equal(exitCode, 0, `${stdout}${stderr}`);
+    assert.match(stdout, new RegExp(`480p@http://192\\.0\\.2\\.1:${PORTS['480p']}<`));
+    assert.match(stdout, new RegExp(`720p@http://198\\.51\\.100\\.7:${PORTS['720p']}<`));
+    assert.match(stdout, new RegExp(`1080p@http://127\\.0\\.0\\.1:${PORTS['1080p']}<`));
+  });
+
+  it('refuses a listen setting that is not an address, before anything dials it', async () => {
+    const sandbox = publisherSandbox({
+      extra: "COMPOSE_NETWORK=host\nBEE_RUNG_480P_API_LISTEN='a;b'\n",
+      hosts: everyPort(BRIDGE),
+    });
+
+    const { exitCode, stdout, stderr } = await generate(sandbox, { DOCKER_STUB_BRIDGE: BRIDGE });
+
+    assert.notEqual(exitCode, 0);
+    assert.match(`${stdout}${stderr}`, /BEE_RUNG_480P_API_LISTEN/);
   });
 });

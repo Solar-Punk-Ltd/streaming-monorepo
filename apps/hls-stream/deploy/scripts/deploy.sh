@@ -54,6 +54,11 @@ for engine in "${ENGINE_SERVICES[@]}"; do
 done
 load_engine_envs
 
+# The bridge address the env files name, if any, kept apart from DOCKER_BRIDGE_ADDRESS itself. A local
+# deploy sources its overrides into this shell, and those carry the address read for that host, so the
+# variable no longer says what the env files said by the time the next target is deployed.
+CONFIGURED_BRIDGE_ADDRESS="${DOCKER_BRIDGE_ADDRESS:-}"
+
 apply_port_slot
 
 # --- Parse service filter ---
@@ -306,7 +311,26 @@ resolve_bee_url() {
   local bee_host
   bee_host=$(host_from_target "$bee_target")
   local bee_port="${BEE_UPLOADER_API_PORT:-$DEFAULT_BEE_UPLOADER_PORT}"
+  if [ "${COMPOSE_NETWORK:-}" = "host" ]; then
+    warn_cross_target_bind "$bee_host" "bee-uploader's API" BEE_UPLOADER_API_LISTEN
+  else
+    warn_cross_target_bind "$bee_host" "bee-uploader's API" BEE_UPLOADER_API_BIND
+  fi
   echo "http://${bee_host}:${bee_port}"
+}
+
+# Says, on stderr because the callers' output is a URL, that a port the uploader is pointed at on
+# another host will refuse it. With <setting> empty the port answers only on that host's Docker
+# bridge address, which nothing outside the host reaches. The deploy does not open it on its own,
+# because these ports ask for no password.
+warn_cross_target_bind() {
+  local host="$1" what="$2" setting="$3"
+  if [ -n "${!setting:-}" ]; then
+    return
+  fi
+  log_warn "$what on $host answers only on that host's Docker bridge address while $setting is empty," >&2
+  log_warn "so stream-uploader on another host cannot reach it. Set $setting in $ENV_FILE, for example" >&2
+  log_warn "to 0.0.0.0 with a firewall in front, or run both services on one target." >&2
 }
 
 # The address a Bee API listens on under host networking, as a process on the same host dials it:
@@ -342,10 +366,11 @@ bridge_overrides_text() {
 }
 
 # Reads the bridge address of the host that runs compose for <target> into DEPLOY_BRIDGE_ADDRESS,
-# refusing a named one compose could not bind, and saying so when there is none to read.
+# refusing a named one compose could not bind, and saying so when there is none to read. Only the
+# address the env files named counts as named, never one an earlier local target left in this shell.
 read_bridge_address() {
   local target="$1"
-  DEPLOY_BRIDGE_ADDRESS="$(docker_bridge_address_for "$target")"
+  DEPLOY_BRIDGE_ADDRESS="$(DOCKER_BRIDGE_ADDRESS="$CONFIGURED_BRIDGE_ADDRESS" docker_bridge_address_for "$target")"
   if [ -n "$DEPLOY_BRIDGE_ADDRESS" ] && ! is_ipv4 "$DEPLOY_BRIDGE_ADDRESS"; then
     log_error "DOCKER_BRIDGE_ADDRESS must be an IPv4 address. $ENV_FILE says \"$DEPLOY_BRIDGE_ADDRESS\"."
     exit 1
@@ -404,15 +429,20 @@ resolve_ome_hls_url() {
     if [ "${COMPOSE_NETWORK:-}" = "host" ]; then
       echo "http://localhost:${OME_HLS_PORT:-8081}"
     else
-      # Bridge network: docker DNS, container-internal port.
-      echo "http://ome:8081"
+      # Bridge network: docker DNS, container-internal port, which is OME_HLS_PORT because OME binds
+      # the configured port inside the container too.
+      echo "http://ome:${OME_HLS_PORT:-8081}"
     fi
     return
   fi
 
-  # Different targets: use OME's published port on its host.
+  # Different targets: use OME's published port on its host. Under host networking OME binds every
+  # address itself, and OME_HTTP_BIND does nothing.
   local ome_host
   ome_host=$(host_from_target "$ome_target")
+  if [ "${COMPOSE_NETWORK:-}" != "host" ]; then
+    warn_cross_target_bind "$ome_host" "OME's HLS port" OME_HTTP_BIND
+  fi
   echo "http://${ome_host}:${OME_HLS_PORT:-8081}"
 }
 

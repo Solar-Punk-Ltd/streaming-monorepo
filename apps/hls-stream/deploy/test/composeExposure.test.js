@@ -42,7 +42,6 @@ const PORT_COMPOSE_FILES = [
   'nodes/docker-compose.yml',
   'engines/srs/docker-compose.yml',
   'engines/ome/docker-compose.yml',
-  'engines/ome/docker-compose.local.yml',
 ];
 
 /**

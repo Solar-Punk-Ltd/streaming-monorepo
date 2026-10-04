@@ -69,7 +69,7 @@
 # replace the host's harness copy, ledger included, before any gate could say no.
 #
 # Anything after `--` is passed to the container as environment, so a knob sweep reads:
-#   deploy/scripts/bench-on-host.sh --target <host> -- BENCH_GOP_SECONDS=4 BENCH_BITRATE_KBPS=1200
+#   deploy/scripts/bench-on-host.sh --target <host> --profile <profile> --portSlot <slot> -- BENCH_GOP_SECONDS=4 BENCH_BITRATE_KBPS=1200
 #
 # `--script` chooses which bench runs, so `bench:longrun` reuses the sync, the image and the container
 # arguments rather than copying them into a second script that could drift from this one.
@@ -335,7 +335,7 @@ run_harness_container() {
 SPEND_LEDGER_FILE="${REPO_ROOT}/.spend-ledger.env"
 if [ ! -f "${SPEND_LEDGER_FILE}" ]; then
   echo "bench-on-host: ${SPEND_LEDGER_FILE} does not exist, so this checkout holds no authorisation to spend and nothing is copied to the host." >&2
-  echo "bench-on-host: launch from the checkout that carries the spend ceiling, or write one there with deploy/scripts/spend-ledger.sh --authorise=<BZZ>." >&2
+  echo "bench-on-host: launch from the checkout that carries the spend ceiling, or write one there with deploy/scripts/spend-ledger.sh --profile=${PROFILE} --portSlot=${PORT_SLOT} --authorise=<BZZ>." >&2
   exit 2
 fi
 

@@ -268,8 +268,11 @@ export class Host {
    * The authority a `local*` call dials, which is the host's own address as this process sees it.
    *
    * ⛔ Only the local transport gets the configured address. Over ssh the command runs ON the
-   * deployment host, where the services genuinely are on loopback, so carrying a bridge address
-   * across would name a machine that does not exist from there.
+   * deployment host and dials loopback there. That reaches the uploader, which publishes on 0.0.0.0,
+   * but a Bee API only where the deploy found no bridge address and fell back to 127.0.0.1. A default
+   * Linux stage binds its Bee APIs to its Docker bridge address, so there these reads are refused.
+   * The configured address is not carried across, because it names the host as this process sees
+   * it, not as the deployment host sees itself.
    */
   private get serviceAddress(): string {
     return this.isLocal ? this.localHostAddress : DEFAULT_LOCAL_HOST_ADDRESS;

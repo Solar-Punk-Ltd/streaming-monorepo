@@ -84,9 +84,10 @@ RATES="$(dirname "${BASH_SOURCE[0]}")/burn-rates.sh"
 }
 
 # origin + slot*10, matching apply_port_slot in _lib.sh, where BEE_UPLOADER_API_PORT has origin 10005
-# and BEE_GATEWAY_API_PORT has origin 10007.
-UPLOADER_BEE_PORT="${UPLOADER_BEE_PORT:-$((10005 + PORT_SLOT * 10))}"
-GATEWAY_BEE_PORT="${GATEWAY_BEE_PORT:-$((10007 + PORT_SLOT * 10))}"
+# and BEE_GATEWAY_API_PORT has origin 10007. Slot 0 is a stock stage and takes the stock ports, 1633
+# and 1733.
+UPLOADER_BEE_PORT="${UPLOADER_BEE_PORT:-$((PORT_SLOT == 0 ? 1633 : 10005 + PORT_SLOT * 10))}"
+GATEWAY_BEE_PORT="${GATEWAY_BEE_PORT:-$((PORT_SLOT == 0 ? 1733 : 10007 + PORT_SLOT * 10))}"
 
 # Deliberately outside REPO_DIR. That tree is an rsync target with `--delete`, so anything written
 # there is removed the next time the laptop syncs, which is exactly when someone would be checking on
@@ -168,6 +169,16 @@ bzz() {
   printf '%d.%03d' "$(($1 / 10000000000000000))" "$((($1 % 10000000000000000) / 10000000000000))"
 }
 
+# Where the nodes answer: at the address a node's own bind names, and otherwise at the host's Docker
+# bridge address, which the deploy binds the Bee APIs to by default. The bridge is read once per run.
+BOUND="$(dirname "${BASH_SOURCE[0]}")/bound-host.sh"
+# shellcheck source=deploy/scripts/bound-host.sh
+. "${BOUND}" || {
+  echo "cannot read ${BOUND}: sync deploy/scripts as a directory, not one script" >&2
+  exit 1
+}
+BRIDGE="$(bridge_address)"
+
 # Prints the node's spendable chequebook balance in PLUR, or nothing at all if it cannot be read.
 #
 # Empty is meaningfully different from zero. A node running with swap disabled has no chequebook and
@@ -180,7 +191,7 @@ bzz() {
 # Named `available_plur` because `spend-ceiling.sh` reads every chequebook through a function of that
 # name that the caller owes it, and the five other publishing drivers all spell it this way.
 available_plur() {
-  curl -s --max-time 10 "http://127.0.0.1:${1}/chequebook/balance" 2>/dev/null |
+  curl -s --max-time 10 "http://$(bee_api_host_for_port "${1}" "${BRIDGE}"):${1}/chequebook/balance" 2>/dev/null |
     python3 -c 'import sys,json;print(json.load(sys.stdin)["availableBalance"])' 2>/dev/null
 }
 

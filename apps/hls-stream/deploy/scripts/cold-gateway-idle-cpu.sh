@@ -51,7 +51,17 @@ STACK_DIR="${STACK_DIR:-${HOME}/swarm-hls-stream-${PROFILE}}"
 COMPOSE_DIR="${STACK_DIR}/deploy"
 ENV_FILE="${STACK_DIR}/.env"
 COMPOSE_PROJECT="${COMPOSE_PROJECT:-${PROFILE}}"
-GATEWAY_BEE_PORT="${GATEWAY_BEE_PORT:-$((10007 + PORT_SLOT * 10))}"
+GATEWAY_BEE_PORT="${GATEWAY_BEE_PORT:-$((PORT_SLOT == 0 ? 1733 : 10007 + PORT_SLOT * 10))}"
+# The gateway answers at the address its own bind names, and otherwise at the host's Docker bridge
+# address, which the deploy binds the Bee APIs to by default. The bridge is read once per run, on the
+# first wait for the gateway, so the guards below refuse before anything asks docker.
+BOUND="$(dirname "${BASH_SOURCE[0]}")/bound-host.sh"
+# shellcheck source=deploy/scripts/bound-host.sh
+. "${BOUND}" || {
+  echo "cannot read ${BOUND}: sync deploy/scripts as a directory, not one script" >&2
+  exit 1
+}
+GATEWAY_HOST=""
 ACCT="${ACCT:-${HOME}/phase06/acct2.sh}"
 METRICS="${METRICS:-${HOME}/phase06/metrics.sh}"
 
@@ -177,8 +187,9 @@ recreate_gateway() {
 
 wait_for_gateway_api() {
   local deadline=$(($(date -u +%s) + 240))
+  [ -n "${GATEWAY_HOST}" ] || GATEWAY_HOST="$(bound_host "$(bee_api_bind BEE_GATEWAY)" "$(bridge_address)")"
   while [ "$(date -u +%s)" -lt "${deadline}" ]; do
-    if curl -s -o /dev/null --max-time 5 "http://127.0.0.1:${GATEWAY_BEE_PORT}/health"; then
+    if curl -s -o /dev/null --max-time 5 "http://${GATEWAY_HOST}:${GATEWAY_BEE_PORT}/health"; then
       return 0
     fi
     sleep 3

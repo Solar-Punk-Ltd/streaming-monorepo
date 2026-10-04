@@ -441,9 +441,8 @@ uploader names every rung at this same bridge address, not at the host's public
 one, and that is what an uploader container on this host can reach.
 `BEE_LOCAL_HOST` overrides that too. An uploader on another machine is the Bee
 host's case instead: its rungs are named at that host's own address, and "A Bee
-host, made by hand" in `docs/self-hosting.md` at the repository root opens their
-API to the uploader's address with a wider bind and the `--bee-api-source` flag
-of step 3.
+host" in `docs/self-hosting.md` at the repository root opens their API to the
+uploader's address with a wider bind and the `--bee-api-source` flag of step 3.
 
 If this host runs the stack with `COMPOSE_NETWORK=host`, the keys that apply to
 the Bee APIs are the `*_API_LISTEN` ones instead, `BEE_UPLOADER_API_LISTEN` and
@@ -522,7 +521,7 @@ port, `10005 + 10 × slot` over TCP, to those IPv4 blocks and to nobody else, in
 both the input and the forward chain. A block wider than `/24` is refused,
 because anyone inside it can spend the node's postage. Without the flag nothing about the draft changes and the API
 ports stay closed. The draft names the admitted blocks in its header. Such a
-host binds its rungs' API wider as well, and "A Bee host, made by hand" in
+host binds its rungs' API wider as well, and "A Bee host" in
 `docs/self-hosting.md` has both halves.
 
 An endpoint that lands on a tuple one of those bands opens causes generation to
@@ -563,10 +562,12 @@ operator-approved application. Persist only the manager table through the
 host's existing firewall configuration. Replacing all of `/etc/nftables.conf`
 could discard unrelated policy.
 
-The Bee API bind of step 2 still keeps those APIs on the Docker bridge by
-default, except on a Bee host that binds them wider for the addresses it
-names with `--bee-api-source`, where this table is what admits those
-addresses alone. The input hook covers host listeners. The forward hook covers
+The Bee API bind of step 2 keeps those APIs on the Docker bridge by default
+only on the manager's own host. On any other host the manager binds each Bee
+API that a deployment's settings leave empty to `0.0.0.0`, so there this
+table is what closes them, and it has to be in place before the first deploy
+on that host. On a Bee host it admits the addresses named with
+`--bee-api-source` alone. The input hook covers host listeners. The forward hook covers
 published container traffic. Host-network containers with unprovable bindings
 cause the inventory export to refuse.
 

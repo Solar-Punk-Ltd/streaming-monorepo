@@ -158,7 +158,7 @@ export function IngestPanel({
             {details.stage.retiredAt ? <Alert severity="warning">{RETIRED_STAGE_NOTE}</Alert> : null}
 
             <SrtSettings srt={details.srt} />
-            {/* Sent only where the stage opens RTMP ingest. Elsewhere its port refuses encoders. */}
+            {/* Sent only where the stage takes RTMP, an SRS stage. An OvenMediaEngine stage takes SRT alone. */}
             {details.rtmp ? (
               <RtmpSettings rtmp={details.rtmp} hasSrtPassphrase={Boolean(details.srt.passphrase)} />
             ) : null}

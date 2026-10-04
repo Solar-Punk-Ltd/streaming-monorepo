@@ -81,7 +81,7 @@ describe('IngestPanel', () => {
     expect(srt.getByLabelText('copy srt server')).toBeInTheDocument();
   });
 
-  it('offers SRT alone where the deployment keeps RTMP closed', () => {
+  it('offers SRT alone on a stage that takes no RTMP', () => {
     mockFetch([]);
 
     renderPanel(makeIngest({ rtmp: null }));

@@ -90,7 +90,7 @@ describe('beePublisherUrlFor', () => {
   });
 
   it('gives a local member the address a container on this host reaches it on', () => {
-    // Not the public host. The manager binds every local bee API to the docker bridge, so
+    // Not the public host. The stack's deploy binds every local bee API to the docker bridge, so
     // the public address answers on those ports from nowhere, and the uploader
     // handed this string is a container beside the manager.
     assert.equal(publisherUrl({ host: 'localhost' }), 'http://192.0.2.1:10055');

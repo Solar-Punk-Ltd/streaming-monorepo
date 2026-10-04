@@ -79,11 +79,12 @@ COMPOSE_DIR="${STACK_DIR}/deploy"
 ENV_FILE="${STACK_DIR}/.env"
 COMPOSE_PROJECT="${COMPOSE_PROJECT:-${PROFILE}}"
 GATEWAY_CONTAINER="${GATEWAY_CONTAINER:-${COMPOSE_PROJECT}-bee-gateway-1}"
-# Origins from `apply_port_slot` in `_lib.sh`, resolved here because this script never sources it.
-UPLOADER_BEE_PORT="${UPLOADER_BEE_PORT:-$((10005 + PORT_SLOT * 10))}"
-GATEWAY_BEE_PORT="${GATEWAY_BEE_PORT:-$((10007 + PORT_SLOT * 10))}"
-UPLOADER_API_PORT="${UPLOADER_API_PORT:-$((10000 + PORT_SLOT * 10))}"
-CLIENT_PORT="${CLIENT_PORT:-$((10004 + PORT_SLOT * 10))}"
+# Ports as `apply_port_slot` in `_lib.sh` publishes them (the stock port at slot 0, base + slot * 10
+# otherwise), resolved here because this script never sources it.
+UPLOADER_BEE_PORT="${UPLOADER_BEE_PORT:-$((PORT_SLOT == 0 ? 1633 : 10005 + PORT_SLOT * 10))}"
+GATEWAY_BEE_PORT="${GATEWAY_BEE_PORT:-$((PORT_SLOT == 0 ? 1733 : 10007 + PORT_SLOT * 10))}"
+UPLOADER_API_PORT="${UPLOADER_API_PORT:-$((PORT_SLOT == 0 ? 3000 : 10000 + PORT_SLOT * 10))}"
+CLIENT_PORT="${CLIENT_PORT:-$((PORT_SLOT == 0 ? 5173 : 10004 + PORT_SLOT * 10))}"
 
 SIZE="${SIZE:-1280x720}"
 BITRATE_KBPS="${BITRATE_KBPS:-2500}"
@@ -177,12 +178,23 @@ bzz() {
   printf '%d.%04d' "$(($1 / 10000000000000000))" "$((($1 % 10000000000000000) / 1000000000000))"
 }
 
+# Where the nodes answer: at the address a node's own bind names, and otherwise at the host's Docker
+# bridge address, which the deploy binds the Bee APIs to by default. The bridge is read once per run.
+BOUND="$(dirname "${BASH_SOURCE[0]}")/bound-host.sh"
+# shellcheck source=deploy/scripts/bound-host.sh
+. "${BOUND}" || {
+  echo "cannot read ${BOUND}: sync deploy/scripts as a directory, not one script" >&2
+  exit 1
+}
+BRIDGE="$(bridge_address)"
+GATEWAY_HOST="$(bound_host "$(bee_api_bind BEE_GATEWAY)" "${BRIDGE}")"
+
 # Prints the node's spendable chequebook balance in PLUR, or nothing when it cannot be read.
 #
 # Empty is meaningfully different from zero, and here it is the measurement: a node started with swap
 # disabled has no chequebook and answers 405, which is the arm rather than a shortfall.
 available_plur() {
-  curl -s --max-time 10 "http://127.0.0.1:${1}/chequebook/balance" 2>/dev/null |
+  curl -s --max-time 10 "http://$(bee_api_host_for_port "${1}" "${BRIDGE}"):${1}/chequebook/balance" 2>/dev/null |
     python3 -c 'import sys,json;print(json.load(sys.stdin)["availableBalance"])' 2>/dev/null
 }
 
@@ -286,7 +298,7 @@ spec_matches_baseline_except_mode() {
 wait_for_gateway_api() {
   local deadline=$(($(date -u +%s) + 180))
   while [ "$(date -u +%s)" -lt "${deadline}" ]; do
-    if curl -s -o /dev/null --max-time 5 "http://127.0.0.1:${GATEWAY_BEE_PORT}/health"; then
+    if curl -s -o /dev/null --max-time 5 "http://${GATEWAY_HOST}:${GATEWAY_BEE_PORT}/health"; then
       return 0
     fi
     sleep 3

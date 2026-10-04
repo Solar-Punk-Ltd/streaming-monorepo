@@ -57,6 +57,12 @@ const SMALL_BATCH = 'e'.repeat(64);
 
 const PORTS = { '360p': 10075, '480p': 11071, '720p': 11073, '1080p': RUNG_PORT };
 
+/**
+ * The bridge the sandbox's stubbed daemon reports, where a node whose bind names no address listens,
+ * so where the script has to dial it rather than 127.0.0.1.
+ */
+const BRIDGE = '192.0.2.1';
+
 const RECORD = `.drain-stage.${PROFILE}.env`;
 
 /** What the stage's chain state reads, and what the plan priced the small batch from. */
@@ -178,7 +184,7 @@ const argv = process.argv.slice(2);
 const url = argv.find((a) => a.startsWith('http')) || '';
 fs.appendFileSync(${JSON.stringify(journal)}, url + '\\n');
 const answers = ${JSON.stringify(body)};
-const own = ${JSON.stringify(`http://127.0.0.1:${port}`)};
+const own = ${JSON.stringify(`http://${BRIDGE}:${port}`)};
 
 // curl expands its own escapes in a --write-out format and appends the result to the body.
 function writeOut() {
@@ -386,7 +392,7 @@ describe('drain-stage print-buy hands the purchase to the owner', () => {
     assert.equal(run.exitCode, 0, `${run.stdout}${run.stderr}`);
     // 84370 PLUR per chunk per block * 17280 blocks per day * 2 days.
     assert.match(run.stdout, new RegExp(`/stamps/${CHAIN_PRICE * MINIMUM_VALIDITY_BLOCKS * 2}/${DEPTH}`));
-    assert.match(run.stdout, new RegExp(`127\\.0\\.0\\.1:${RUNG_PORT}`));
+    assert.match(run.stdout, new RegExp(`${BRIDGE.replaceAll('.', '\\.')}:${RUNG_PORT}`));
     assert.match(run.stdout, /Immutable: true/);
   });
 
@@ -459,7 +465,9 @@ describe('drain-stage print-buy hands the purchase to the owner', () => {
 
     await drainStage(sandbox, ['print-buy']);
 
-    const reads = sandbox.sshCommands();
+    // Less the read of the host's Docker bridge address, which is where the node is dialled and runs
+    // docker-bridge-address.sh on the host's own shell, asking the daemon and nothing else.
+    const reads = sandbox.sshCommands().filter((command) => command !== 'sh -s');
     assert.equal(reads.length, 1, `print-buy reached the host more than once: ${reads.join(' | ')}`);
     assert.match(reads[0], /\/chainstate/);
     assert.doesNotMatch(reads[0], /XPOST/);
@@ -1370,7 +1378,7 @@ describe('drain-stage dials the rung’s own node and no other', () => {
     const run = await drainStage(sandbox, ['print-buy']);
 
     assert.equal(run.exitCode, 0, `${run.stdout}${run.stderr}`);
-    assert.deepEqual(curlUrls(sandbox), [`http://127.0.0.1:${RUNG_PORT}/chainstate`]);
+    assert.deepEqual(curlUrls(sandbox), [`http://${BRIDGE}:${RUNG_PORT}/chainstate`]);
   });
 
   it('reads the batch off the rung’s own node before arming it', async () => {
@@ -1379,7 +1387,7 @@ describe('drain-stage dials the rung’s own node and no other', () => {
     const run = await drainStage(sandbox, ['arm', `--batch=${SMALL_BATCH}`], { HOME: sandbox.root });
 
     assert.equal(run.exitCode, 0, `arm failed: ${run.stdout}${run.stderr}`);
-    assert.deepEqual(curlUrls(sandbox), [`http://127.0.0.1:${RUNG_PORT}/stamps`]);
+    assert.deepEqual(curlUrls(sandbox), [`http://${BRIDGE}:${RUNG_PORT}/stamps`]);
   });
 
   /** A restore dials nothing at all: the record and the env file are the whole answer it needs. */
@@ -1411,7 +1419,7 @@ describe('drain-stage dials the rung’s own node and no other', () => {
     );
 
     assert.equal(run.exitCode, 0, `arm failed: ${run.stdout}${run.stderr}`);
-    assert.deepEqual(curlUrls(sandbox), [`http://127.0.0.1:${PORTS['720p']}/stamps`]);
+    assert.deepEqual(curlUrls(sandbox), [`http://${BRIDGE}:${PORTS['720p']}/stamps`]);
   });
 });
 

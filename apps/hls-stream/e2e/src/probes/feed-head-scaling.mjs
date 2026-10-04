@@ -32,7 +32,8 @@
  * RUN IT FROM `e2e`, one of the three workspace packages that declare `cafe-utility` and the one
  * this file lives in (`packages/shared` and `packages/stream-uploader` declare it too):
  *
- *   docker run --rm --network host -w /repo/e2e -e STAMP=... -e PORT_SLOT=<slot> swarm-hls-bench:latest \
+ *   docker run --rm --network host -w /repo/e2e -e STAMP=... -e PORT_SLOT=<slot> \
+ *     -e DOCKER_BRIDGE_ADDRESS=<bridge address> swarm-hls-bench:latest \
  *     node src/probes/feed-head-scaling.mjs
  */
 import { Bee, FeedIndex, Identifier, PrivateKey, Topic } from '@ethersphere/bee-js';

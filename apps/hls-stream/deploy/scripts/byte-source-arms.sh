@@ -107,10 +107,10 @@ SIZE="${SIZE:-1280x720}"
 BITRATE_KBPS="${BITRATE_KBPS:-2500}"
 GOP_SECONDS="${GOP_SECONDS:-0.5}"
 
-UPLOADER_API_PORT="${UPLOADER_API_PORT:-$((10000 + PORT_SLOT * 10))}"
-UPLOADER_BEE_PORT="${UPLOADER_BEE_PORT:-$((10005 + PORT_SLOT * 10))}"
-GATEWAY_BEE_PORT="${GATEWAY_BEE_PORT:-$((10007 + PORT_SLOT * 10))}"
-CLIENT_PORT="${CLIENT_PORT:-$((10004 + PORT_SLOT * 10))}"
+UPLOADER_API_PORT="${UPLOADER_API_PORT:-$((PORT_SLOT == 0 ? 3000 : 10000 + PORT_SLOT * 10))}"
+UPLOADER_BEE_PORT="${UPLOADER_BEE_PORT:-$((PORT_SLOT == 0 ? 1633 : 10005 + PORT_SLOT * 10))}"
+GATEWAY_BEE_PORT="${GATEWAY_BEE_PORT:-$((PORT_SLOT == 0 ? 1733 : 10007 + PORT_SLOT * 10))}"
+CLIENT_PORT="${CLIENT_PORT:-$((PORT_SLOT == 0 ? 5173 : 10004 + PORT_SLOT * 10))}"
 
 STREAM_TIMEOUT_S="${STREAM_TIMEOUT_S:-180}"
 QUIET_TIMEOUT_S="${QUIET_TIMEOUT_S:-120}"
@@ -211,8 +211,19 @@ STOPS="${HERE}/publisher-stop.sh"
 
 bzz() { printf '%d.%03d' "$(($1 / 10000000000000000))" "$((($1 % 10000000000000000) / 10000000000000))"; }
 
+# Where the nodes answer: at the address a node's own bind names, and otherwise at the host's Docker
+# bridge address, which the deploy binds the Bee APIs to by default. The bridge is read once per run.
+BOUND="$(dirname "${BASH_SOURCE[0]}")/bound-host.sh"
+# shellcheck source=deploy/scripts/bound-host.sh
+. "${BOUND}" || {
+  echo "cannot read ${BOUND}: sync deploy/scripts as a directory, not one script" >&2
+  exit 1
+}
+BRIDGE="$(bridge_address)"
+GATEWAY_HOST="$(bound_host "$(bee_api_bind BEE_GATEWAY)" "${BRIDGE}")"
+
 available_plur() {
-  curl -s --max-time 5 "http://127.0.0.1:$1/chequebook/balance" 2>/dev/null |
+  curl -s --max-time 5 "http://$(bee_api_host_for_port "$1" "${BRIDGE}"):$1/chequebook/balance" 2>/dev/null |
     python3 -c 'import sys,json;print(json.load(sys.stdin)["availableBalance"])' 2>/dev/null
 }
 
@@ -494,7 +505,7 @@ run_browser_arm() {
     -e "BROWSER_WATCH_SECONDS=${seconds}" \
     -e "BROWSER_GOP_SECONDS=${GOP_SECONDS}" \
     -e "BROWSER_GATEWAY_ARM=funded" \
-    -e "BROWSER_GATEWAY_URL=http://127.0.0.1:${GATEWAY_BEE_PORT}" \
+    -e "BROWSER_GATEWAY_URL=http://${GATEWAY_HOST}:${GATEWAY_BEE_PORT}" \
     -e "BROWSER_FETCH_BACKEND=${source}" \
     -e "BROWSER_SETTLE_SECONDS=${SETTLE_SECONDS}" \
     -e "BROWSER_TARGET_LATENCY_S=${TARGET_LATENCY_S}" \

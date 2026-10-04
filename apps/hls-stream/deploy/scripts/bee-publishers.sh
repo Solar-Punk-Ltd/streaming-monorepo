@@ -170,16 +170,16 @@ fi
 readonly HTTP_CODE_SUFFIX='\n%{http_code}'
 
 read_stamps() {
-  local port="$1"
+  local host="$1" port="$2"
   if [ -n "$STAMPS_FROM" ]; then
     cat "$STAMPS_FROM/${port}.json" 2>/dev/null
     return 0
   fi
   if [ "$TARGET" = "localhost" ]; then
-    curl -s -w "$HTTP_CODE_SUFFIX" --max-time 10 "http://127.0.0.1:${port}/stamps" 2>/dev/null
+    curl -s -w "$HTTP_CODE_SUFFIX" --max-time 10 "http://${host}:${port}/stamps" 2>/dev/null
     return $?
   fi
-  ssh -o ConnectTimeout=10 "$TARGET" "curl -s -w '${HTTP_CODE_SUFFIX}' --max-time 10 'http://127.0.0.1:${port}/stamps'" 2>/dev/null
+  ssh -o ConnectTimeout=10 "$TARGET" "curl -s -w '${HTTP_CODE_SUFFIX}' --max-time 10 'http://${host}:${port}/stamps'" 2>/dev/null
   return $?
 }
 
@@ -218,10 +218,38 @@ if isinstance(body, dict):
 SSH_TRANSPORT_FAILED=255
 
 # The uploader is network_mode: host on every deployment that splits its bees this way (see
-# deploy/docker-compose.host.yml), so 127.0.0.1 from inside the container is the host's loopback and
-# reaches each node directly. It is also what makes the e2e preflight able to resolve a port off the
-# routing the uploader reports.
-NODE_URL_PREFIX="http://127.0.0.1:"
+# deploy/docker-compose.host.yml), so it dials each node at the address the node listens on, the same
+# address this script reads /stamps from. The e2e preflight resolves a port off the routing the
+# uploader reports only when that url is a loopback one, so it refuses a bridge address here.
+#
+# Under COMPOSE_NETWORK=host a node listens where its own *_API_LISTEN says, and where that is empty
+# on the bridge address deploy.sh hands it through HOST_NETWORK_LISTEN, or 127.0.0.1 when the bridge
+# could not be read. A node told to listen on every address is dialled on 127.0.0.1. Without host
+# networking this stays 127.0.0.1.
+DEFAULT_NODE_HOST="127.0.0.1"
+if [ "${COMPOSE_NETWORK:-}" = "host" ]; then
+  if [ -n "$STAMPS_FROM" ]; then
+    # A rehearsal dials nothing, the daemon included.
+    bridge="${DOCKER_BRIDGE_ADDRESS:-}"
+  else
+    bridge="$(docker_bridge_address_for "$TARGET")"
+  fi
+  DEFAULT_NODE_HOST="${bridge:-127.0.0.1}"
+fi
+
+# The address one rung's node answers on, from the name of its *_API_PORT variable.
+node_host() {
+  local listen_var="${1%_PORT}_LISTEN"
+  if [ "${COMPOSE_NETWORK:-}" != "host" ]; then
+    echo "127.0.0.1"
+    return
+  fi
+  case "${!listen_var:-}" in
+    '') echo "$DEFAULT_NODE_HOST" ;;
+    0.0.0.0 | '::' | '[::]') echo "127.0.0.1" ;;
+    *) echo "${!listen_var}" ;;
+  esac
+}
 
 ENTRIES=""
 FAILED=0
@@ -236,7 +264,15 @@ for pair in "${RUNG_PORT_VARS[@]}"; do
     exit 1
   fi
 
-  answer="$(read_stamps "$port")"
+  host="$(node_host "$port_var")"
+  # The address goes into a URL and, for a remote host, into the command ssh hands its shell.
+  if ! [[ "$host" =~ ^[0-9A-Za-z.:-]+$ ]]; then
+    echo "bee-publishers: REFUSING, rung ${rung} would be dialled at \"${host}\", which is not an address."
+    echo "  Check ${port_var%_PORT}_LISTEN in .env.${PROFILE}."
+    exit 1
+  fi
+
+  answer="$(read_stamps "$host" "$port")"
   # shellcheck disable=SC2181
   if [ "$?" = "${SSH_TRANSPORT_FAILED}" ] && [ "$TARGET" != "localhost" ] && [ -z "$STAMPS_FROM" ]; then
     echo "bee-publishers: REFUSING, could not reach ${TARGET} over ssh."
@@ -385,16 +421,16 @@ print("OK\t{id}\t{short} {pct:.1f}% used, {ttl:.1f}h left, depth {depth}{kind}{a
   batch_id="${rest%%$'\t'*}"
   human="${rest#*$'\t'}"
   echo "  ${rung} :${port}  ${human}"
-  ENTRIES="${ENTRIES}${ENTRIES:+ }${rung}@${NODE_URL_PREFIX}${port}<${batch_id}>"
+  ENTRIES="${ENTRIES}${ENTRIES:+ }${rung}@http://${host}:${port}<${batch_id}>"
 done
 
 if [ "$FAILED" = "1" ]; then
   echo ""
   echo "bee-publishers: REFUSING TO WRITE. At least one rung has no batch that can carry a broadcast."
   echo "  Buy one on that node, from its own wallet, at the depth the others use:"
-  echo "    ssh ${TARGET} \"curl -s -XPOST 'http://127.0.0.1:<port>/stamps/<amount>/<depth>'\""
+  echo "    ssh ${TARGET} \"curl -s -XPOST 'http://${DEFAULT_NODE_HOST}:<port>/stamps/<amount>/<depth>'\""
   echo "  A batch that is merely full can be diluted instead, which buys depth by halving TTL:"
-  echo "    ssh ${TARGET} \"curl -s -XPATCH 'http://127.0.0.1:<port>/stamps/dilute/<batch>/<depth+1>'\""
+  echo "    ssh ${TARGET} \"curl -s -XPATCH 'http://${DEFAULT_NODE_HOST}:<port>/stamps/dilute/<batch>/<depth+1>'\""
   exit 1
 fi
 

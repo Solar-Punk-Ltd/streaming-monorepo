@@ -68,6 +68,23 @@ describe('the deploy reads the Docker bridge address of the host that runs compo
     assert.equal(lastValue(sandbox.remoteEnvFiles(), 'DOCKER_BRIDGE_ADDRESS'), BRIDGE);
   });
 
+  it('reads it again for a remote target deployed after a local one, rather than reusing the local one', async () => {
+    const sandbox = makeSandbox({
+      config: { services: { 'bee-uploader': 'localhost', 'bee-gateway': 'streamhost' } },
+      envFiles: { '.env': envText() },
+    });
+    await runScriptOk(sandbox, 'deploy.sh', ['bee-uploader', 'bee-gateway'], { DOCKER_STUB_BRIDGE: BRIDGE });
+
+    assert.ok(
+      sandbox.calls().some((call) => call.startsWith('network inspect bridge')),
+      `the local daemon was never asked: ${sandbox.calls().join(' | ')}`,
+    );
+    assert.ok(
+      sandbox.remoteCalls().some((call) => call.startsWith('network inspect bridge')),
+      `the remote daemon was never asked: ${sandbox.remoteCalls().join(' | ')}`,
+    );
+  });
+
   it('keeps an address the env file names, and does not ask the daemon', async () => {
     const { sandbox } = await deployLocal(['DOCKER_BRIDGE_ADDRESS=198.51.100.7']);
 
@@ -141,5 +158,41 @@ describe('host networking', () => {
 
     assert.equal(lastValue(named.sandbox.envFiles(), 'BEE_URL'), 'http://198.51.100.7:1633');
     assert.equal(lastValue(open.sandbox.envFiles(), 'BEE_URL'), 'http://localhost:1633');
+  });
+});
+
+/**
+ * The deploy points the uploader at a Bee node or an engine on another target by that host's name. With
+ * its own bind setting empty, the port there answers only on that host's bridge address, so the deploy
+ * says so rather than writing a URL that is refused without a word.
+ */
+describe('a node or engine on another target than the uploader', () => {
+  const SPLIT = { services: { 'bee-uploader': 'streamhost', ome: 'streamhost', 'stream-uploader': 'localhost' } };
+  const SERVICES = ['bee-uploader', 'ome', 'stream-uploader'];
+
+  async function deploySplit(lines) {
+    const sandbox = makeSandbox({ config: SPLIT, envFiles: { '.env': envText(lines) } });
+    const run = await runScriptOk(sandbox, 'deploy.sh', SERVICES, { DOCKER_STUB_BRIDGE: BRIDGE });
+    return `${run.stdout}${run.stderr}`;
+  }
+
+  it('warns that each port answers only on its own host with its bind empty', async () => {
+    const output = await deploySplit([]);
+
+    assert.match(output, /BEE_UPLOADER_API_BIND is empty/);
+    assert.match(output, /OME_HTTP_BIND is empty/);
+  });
+
+  it('names the listen setting for the Bee API under host networking, and nothing for OME', async () => {
+    const output = await deploySplit(['COMPOSE_NETWORK=host']);
+
+    assert.match(output, /BEE_UPLOADER_API_LISTEN is empty/);
+    assert.doesNotMatch(output, /OME_HTTP_BIND/);
+  });
+
+  it('stays quiet once the binds name an address', async () => {
+    const output = await deploySplit(['BEE_UPLOADER_API_BIND=0.0.0.0', 'OME_HTTP_BIND=0.0.0.0']);
+
+    assert.doesNotMatch(output, /is empty/);
   });
 });

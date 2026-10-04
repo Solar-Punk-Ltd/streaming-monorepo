@@ -53,9 +53,19 @@ done
 [ -n "${BATCH}" ] || { echo "stamp-guard: --batch is required" >&2; exit 2; }
 [ -n "${PORT}" ] || { echo "stamp-guard: --port is required, the API port of the uploader bee that holds the batch" >&2; exit 2; }
 
-STAMPS="$(curl -s --max-time 10 "http://127.0.0.1:${PORT}/stamps" 2>/dev/null)"
+# The node is read where the deploy bound its API, which by default is the host's Docker bridge
+# address rather than 127.0.0.1.
+BOUND="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/bound-host.sh"
+# shellcheck source=deploy/scripts/bound-host.sh
+. "${BOUND}" || {
+  echo "cannot read ${BOUND}: sync deploy/scripts as a directory, not one script" >&2
+  exit 1
+}
+HOST="$(bee_api_host_for_port "${PORT}" "$(bridge_address)")"
+
+STAMPS="$(curl -s --max-time 10 "http://${HOST}:${PORT}/stamps" 2>/dev/null)"
 if [ -z "${STAMPS}" ]; then
-  echo "stamp-guard: REFUSING, the uploader bee on ${PORT} did not answer /stamps."
+  echo "stamp-guard: REFUSING, the uploader bee on ${HOST}:${PORT} did not answer /stamps."
   echo "  Unknown capacity is not permission to spend a broadcast against it."
   exit 1
 fi
@@ -64,7 +74,7 @@ fi
 # that is not on the node is a refusal rather than an empty string compared against a number.
 printf '%s' "${STAMPS}" | BATCH="${BATCH}" MINUTES="${MINUTES}" \
   MAX_UTILIZATION_PCT="${MAX_UTILIZATION_PCT}" MIN_TTL_DAYS="${MIN_TTL_DAYS}" \
-  BUCKETS_PER_BROADCAST_HOUR="${BUCKETS_PER_BROADCAST_HOUR}" PORT="${PORT}" python3 -c '
+  BUCKETS_PER_BROADCAST_HOUR="${BUCKETS_PER_BROADCAST_HOUR}" HOST="${HOST}" PORT="${PORT}" python3 -c '
 import json, os, sys
 
 batch_id = os.environ["BATCH"]
@@ -72,6 +82,7 @@ minutes = float(os.environ["MINUTES"])
 max_pct = float(os.environ["MAX_UTILIZATION_PCT"])
 min_ttl_days = float(os.environ["MIN_TTL_DAYS"])
 per_hour = float(os.environ["BUCKETS_PER_BROADCAST_HOUR"])
+host = os.environ["HOST"]
 port = os.environ["PORT"]
 
 stamps = json.load(sys.stdin).get("stamps", [])
@@ -127,10 +138,10 @@ print("  Diluting adds capacity for no BZZ, by halving the remaining TTL. One de
 print(f"  the buckets, so {used}/{buckets} becomes about {used}/{buckets * 2} and TTL")
 print(f"  {ttl_days:.1f}d becomes {ttl_days / 2:.1f}d:")
 print("")
-print(f"    curl -s -XPATCH http://127.0.0.1:{port}/stamps/dilute/{batch_id}/{depth + 1}")
+print(f"    curl -s -XPATCH http://{host}:{port}/stamps/dilute/{batch_id}/{depth + 1}")
 print("")
 print("  Topping up buys TTL and NOT capacity, so it does not clear a utilization refusal:")
 print("")
-print(f"    curl -s -XPATCH http://127.0.0.1:{port}/stamps/topup/{batch_id}/AMOUNT_IN_PLUR")
+print(f"    curl -s -XPATCH http://{host}:{port}/stamps/topup/{batch_id}/AMOUNT_IN_PLUR")
 sys.exit(1)
 '

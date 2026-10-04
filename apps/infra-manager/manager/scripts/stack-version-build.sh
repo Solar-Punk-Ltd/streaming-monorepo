@@ -10,11 +10,12 @@
 # <ref>         branch or tag to follow, or the forty character commit the
 #               manager pins for the bundled version. The commit only moves
 #               when this runs.
-# <repo-url>    the repository the stack comes from. A constant in the
-#               manager, never operator supplied.
+# <repo-url>    the repository the stack comes from, an entry of the
+#               STACK_SOURCES allow-list in manager/.env. The operator chooses
+#               that list, never a build request.
 # <stack-folder> where the stack sits in that repository: . for the whole
-#               tree, or a folder such as apps/hls-stream. A constant in the
-#               manager too.
+#               tree, or a folder such as apps/hls-stream. It comes from the
+#               same STACK_SOURCES entry.
 # <history-head> a commit whose ancestors are the stack's own history, from
 #               before it moved into <stack-folder>, or none. A commit that
 #               lacks <stack-folder> is built whole when it is one of those,

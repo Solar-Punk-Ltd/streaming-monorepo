@@ -31,9 +31,10 @@ export const SWARM_HLS_STREAM_SOURCE: StackSource = {
 export const STACK_IMPORT_HEAD = 'b4912eb01dafb934cbb3bd9607c73724c5ec6bfb';
 
 /**
- * The monorepo this manager ships in. Every version added from now on, and the
- * bundled one, comes from here: apps/hls-stream for a commit made since the
- * import, the whole tree for a commit of the stack's own history.
+ * The monorepo this manager ships in, the first entry of DEFAULT_STACK_SOURCES.
+ * When STACK_SOURCES is unset, every version added from now on, and the bundled
+ * one, comes from here: apps/hls-stream for a commit made since the import, the
+ * whole tree for a commit of the stack's own history.
  */
 export const MONOREPO_STACK_SOURCE: StackSource = {
   url: 'https://github.com/Solar-Punk-Ltd/streaming-monorepo.git',

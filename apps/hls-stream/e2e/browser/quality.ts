@@ -18,7 +18,7 @@
  * that still means "everything above the bottom two rungs is undeliverable".
  *
  * Usage, on the deployment host, against a broadcast that is already running:
- *   deploy/scripts/browser-on-host.sh --target <host> --script browser:quality
+ *   deploy/scripts/browser-on-host.sh --target <host> --profile <profile> --portSlot <slot> --script browser:quality
  */
 
 import {

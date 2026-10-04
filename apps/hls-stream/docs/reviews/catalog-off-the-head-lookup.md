@@ -7,7 +7,7 @@
 The measurement is in the middle and the state of each fix is on its heading.**
 
 The head lookup costs **1 second at minimum and about 5 on a thousand-slot feed**, against **4ms** for
-the same chunk read by explicit address. See [`feed-head-scaling.md`](../bench/feed-head-scaling.md)
+the same chunk read by explicit address. See the `feed-head-scaling` measurement (kept outside the repository)
 and the upstream report beside this file. The player was moved onto the explicit path already. The
 catalog was not, and it is now the largest remaining consumer of the slow one.
 

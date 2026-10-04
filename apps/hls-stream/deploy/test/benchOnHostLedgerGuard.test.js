@@ -46,6 +46,8 @@ describe('bench-on-host refuses a checkout that holds no spend ledger', () => {
     assert.notEqual(run.exitCode, 0, 'a checkout without a ledger was allowed to sync');
     assert.match(run.stderr, /\.spend-ledger\.env does not exist/);
     assert.match(run.stderr, /nothing is copied to the host/);
+    // The advice names this run's stage. Without it spend-ledger.sh reads the default stage's nodes.
+    assert.match(run.stderr, /spend-ledger\.sh --profile=bench-stage --portSlot=7 --authorise=<BZZ>/);
     assert.equal(sandbox.sshCommands().length, 0, `ssh was reached: ${sandbox.sshCommands().join('\n')}`);
     assert.equal(existsSync(join(sandbox.remoteHome, REMOTE_BENCH_DIR)), false, 'the rsync ran before the refusal');
   });

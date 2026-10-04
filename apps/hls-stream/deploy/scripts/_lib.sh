@@ -527,6 +527,12 @@ host_from_target() {
 
 # --- The Docker bridge address ---
 
+# bridge_address_on, bridge_address, bound_host, bee_api_bind and bee_api_host_for_port: the address
+# a host-published admin or file port answers on. A file of its own, because the scripts that run on
+# the deployment host without this one need them too.
+# shellcheck source=bound-host.sh
+source "$SCRIPT_DIR/bound-host.sh"
+
 # The address of the host's Docker bridge that the stack's admin and file interfaces bind to wherever
 # their own *_BIND setting is empty, for the host that runs compose for <target>. DOCKER_BRIDGE_ADDRESS
 # set in the env file wins, and the daemon is then not asked. Otherwise docker-bridge-address.sh is run
@@ -534,14 +540,10 @@ host_from_target() {
 # the ports. Prints nothing when it could not be read.
 docker_bridge_address_for() {
   local target="$1"
-  if [ -n "${DOCKER_BRIDGE_ADDRESS:-}" ]; then
-    echo "$DOCKER_BRIDGE_ADDRESS"
-    return 0
-  fi
   if is_remote "$target"; then
-    ssh "$target" sh -s < "$SCRIPT_DIR/docker-bridge-address.sh" 2>/dev/null || true
+    bridge_address_on "$target"
   else
-    sh "$SCRIPT_DIR/docker-bridge-address.sh" 2>/dev/null || true
+    bridge_address_on ""
   fi
 }
 

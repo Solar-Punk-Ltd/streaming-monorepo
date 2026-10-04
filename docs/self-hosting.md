@@ -261,7 +261,7 @@ images on the host itself.
    ```
 
 3. **Let only the control host in on ssh**, and your own address while you set up. The public ports
-   come in step 7, once the manager knows what it put here.
+   come in step 6, before anything is deployed here.
 
 4. **Tell the control host about this host.** On the control host, add a block to
    `/opt/streaming/manager-ssh/ssh_config`. `IdentityFile` is the path inside the manager's
@@ -283,14 +283,17 @@ images on the host itself.
 5. **Verify it in the manager.** Open **Host**, enter `stage-1` under **Deploy targets** and press
    **Verify target**. It worked when the target shows `Verified` with a Docker daemon id.
 
-6. **Deploy onto it.** **New deployment**, with `stage-1` as the host. The deployment's port slot
-   decides its ports, as [architecture/overview.md](architecture/overview.md#ports) lists.
-
-7. **Open the public ports**, and only those: SRT ingest, the viewer page and the two Bee peer ports
-   of each slot. "Opening the manager to the internet" in `apps/infra-manager/deploy/README.md` says
-   where the node and engine APIs answer, the host's Docker bridge by default, and generates an
-   nftables table for exactly this. It worked when an encoder reaches the SRT port, a browser opens the viewer page, and a port
-   ending in 5 or 7 does not answer from outside.
+6. **Open the public ports**, and only those, before the first deploy: SRT ingest, the viewer page
+   and the two Bee peer ports of each slot. On any host other than the control host the manager
+   binds each Bee API that a deployment's settings leave empty to `0.0.0.0`, so the node APIs answer
+   on every address from the first deploy, and Docker publishes them past a host firewall such as
+   ufw. "Opening the manager to the internet" in `apps/infra-manager/deploy/README.md` says where the
+   node and engine APIs answer and generates an nftables table for exactly this, which also filters
+   Docker's published traffic. Apply it, or a provider firewall that does the same, before step 7.
+   To keep a deployment's Bee APIs on one private address instead, set `BEE_UPLOADER_API_BIND` and
+   `BEE_GATEWAY_API_BIND` to that address in its settings, and only to the address the control host
+   reaches this host on, its `HostName` in the manager's ssh config, because the manager dials the
+   Bee API there.
 
    The generated table drops the RTMP port, the one ending in 2, like any other private port. Both
    consoles offer RTMP on every SRS stage all the same, because which ports are reachable is the
@@ -302,6 +305,11 @@ images on the host itself.
    sends its stream id, key included, before encryption starts. With the takeover on, such a
    publisher can also replace a live broadcast. The SRT passphrase keeps the picture private but
    not the key.
+
+7. **Deploy onto it.** **New deployment**, with `stage-1` as the host. The deployment's port slot
+   decides its ports, as [architecture/overview.md](architecture/overview.md#ports) lists. It worked
+   when an encoder reaches the SRT port, a browser opens the viewer page, and a port ending in 5 or 7
+   does not answer from outside.
 
 The engine's `docker logs` on a stage host are as sensitive as its env files. SRS logs every
 broadcaster's publish key when they connect and the webhook token on every hook it calls, and a
@@ -315,19 +323,14 @@ stage hosts publish through. It is prepared like a stage host.
 
 1. **Steps 1 to 5 of the stage host**, with this host's address and an alias such as `bee-1`.
 
-2. **Create the pool.** **New deployment**, **Deployment type**, **ABR Node Pool**, with `bee-1` as
-   the host. The manager creates one deployment per rung. Each rung's data, its wallet and keys
-   included, lands on this host and nowhere else, so back it up before the host is ever rebuilt. Set
-   `BEE_UPLOADER_NAT_ADDR` in each rung's settings to this host's public address, so peers can dial
-   it, and deploy the rungs again.
+2. **Open the ports**, before the first rung is deployed. Each rung's peer port, `10006 + 10 × s`, to
+   everyone. Each rung's Bee API, `10005 + 10 × s`, to the stage hosts that publish through it and to
+   the control host, and to nobody else. The API asks for no password and can spend the node's
+   postage, so it takes both of these:
 
-3. **Open the ports.** Each rung's peer port, `10006 + 10 × s`, to everyone. Each rung's Bee API,
-   `10005 + 10 × s`, to the stage hosts that publish through it and to the control host, and to
-   nobody else. The API asks for no password and can spend the node's postage, so it takes both of
-   these:
-
-   - **The bind.** Set `BEE_UPLOADER_API_BIND` to `0.0.0.0` in each rung's settings and deploy the
-     rungs again. Do it only together with the firewall below.
+   - **The bind.** The manager already binds each rung's API to `0.0.0.0`, because this is another
+     host than the control host, so the API answers on every address from the first deploy. That is
+     why the firewall below goes in first.
    - **The firewall.** Generate this host's table and name each allowed address once, as a `/32`:
 
      ```sh
@@ -335,6 +338,12 @@ stage hosts publish through. It is prepared like a stage host.
      ```
 
    A provider firewall that admits the same addresses to the same ports does the same job.
+
+3. **Create the pool.** **New deployment**, **Deployment type**, **ABR Node Pool**, with `bee-1` as
+   the host. The manager creates one deployment per rung. Each rung's data, its wallet and keys
+   included, lands on this host and nowhere else, so back it up before the host is ever rebuilt. Set
+   `BEE_UPLOADER_NAT_ADDR` in each rung's settings to this host's public address, so peers can dial
+   it, and deploy the rungs again.
 
 4. **Fund each rung and buy its batch**, below.
 
@@ -391,7 +400,10 @@ the details of both paths.
 - Close everything by default and open ports one role at a time, as the lists above say.
 - Bind every Bee API, and the engines' HTTP ports, to a private address before opening anything.
   Docker publishes container ports around a host firewall's input rules, so the bind is what closes
-  them.
+  them. On any host other than the control host the manager binds a Bee API that a deployment's
+  settings leave empty to `0.0.0.0`, so there the manager's nftables table, which filters Docker's
+  published traffic too, or a provider firewall is what closes it, and it goes in before the first
+  deploy.
 - Never open a Bee API to a range wider than `/24`, and prefer a `/32` per host.
 - Keep ssh to your own address and the control host's.
 - Let the edge be the only public door to the consoles.
