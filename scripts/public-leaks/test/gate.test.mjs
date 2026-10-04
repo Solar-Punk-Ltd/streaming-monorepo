@@ -4,7 +4,7 @@
  */
 import assert from 'node:assert/strict';
 import { execFileSync, spawnSync } from 'node:child_process';
-import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { describe, it } from 'node:test';
@@ -12,6 +12,7 @@ import { fileURLToPath } from 'node:url';
 import { candidateTokens, isAllowedIpv4, parseRules, scanText, tokenHash } from '../lib.mjs';
 
 const GATE = fileURLToPath(new URL('../gate.mjs', import.meta.url));
+const DENY_LIST = fileURLToPath(new URL('../deny.sha256', import.meta.url));
 
 /** An address in public space that no documentation range covers, built here and never written down. */
 const PUBLIC_ADDRESS = ['11', '22', '33', '44'].join('.');
@@ -105,6 +106,13 @@ describe('the hashed deny list', () => {
 
   it('offers every contiguous span of a run', () => {
     assert.deepEqual(candidateTokens('a-b.c'), ['a', 'a-b', 'a-b.c', 'b', 'b.c', 'c']);
+  });
+
+  it('keeps the committed deny list sorted and free of repeats', () => {
+    const hashes = readFileSync(DENY_LIST, 'utf8')
+      .split('\n')
+      .filter((line) => line && !line.startsWith('#'));
+    assert.deepEqual(hashes, [...new Set(hashes)].sort());
   });
 
   it('refuses a deny list line that is not a lowercase sha256', () => {
