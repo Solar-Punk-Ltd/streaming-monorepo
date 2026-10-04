@@ -35,7 +35,7 @@ describe('beeApiOnEveryAddress', () => {
   });
 
   it('is false when the API port is bound to one address, whatever the P2P port does', () => {
-    assert.equal(beeApiOnEveryAddress(bridged(['10.200.0.1']), API), false);
+    assert.equal(beeApiOnEveryAddress(bridged(['192.0.2.1']), API), false);
   });
 
   it('is null when no binding names the API port, or the inspect is not one', () => {
@@ -50,7 +50,7 @@ describe('beeApiOnEveryAddress', () => {
     assert.equal(beeApiOnEveryAddress(host(['start', `--api-addr=:${API}`]), API), true);
     assert.equal(beeApiOnEveryAddress(host(['start', `--api-addr=0.0.0.0:${API}`]), API), true);
     assert.equal(beeApiOnEveryAddress(host(['start', '--api-addr', `[::]:${API}`]), API), true);
-    assert.equal(beeApiOnEveryAddress(host(['start', `--api-addr=10.200.0.1:${API}`]), API), false);
+    assert.equal(beeApiOnEveryAddress(host(['start', `--api-addr=192.0.2.1:${API}`]), API), false);
     assert.equal(beeApiOnEveryAddress(host(['start']), API), true, 'Bee’s own default is :1633, every address');
     assert.equal(beeApiOnEveryAddress(host(['start', `--api-addr=:${API}`, '--api-addr=127.0.0.1:1633']), API), false);
   });
@@ -80,7 +80,7 @@ describe('TargetDocker.beeApiInspect', () => {
   it('reads the local daemon through its own reader', async () => {
     const { TargetDocker } = await import('../../src/domain/ports/TargetDocker.js');
     const docker = new TargetDocker(
-      { daemonId: async () => 'local', beeApiInspect: async () => bridged(['10.200.0.1']) },
+      { daemonId: async () => 'local', beeApiInspect: async () => bridged(['192.0.2.1']) },
       async () => assert.fail('no ssh for the local daemon'),
     );
     assert.equal(beeApiOnEveryAddress(await docker.beeApiInspect('catalogue', 'localhost'), API), false);

@@ -29,7 +29,7 @@ const PULL_LOG = [
   ...Array.from({ length: 130 }, (_, line) => ` b156da58ef2a Extracting ${line}B`),
   ' Image ethersphere/bee:2.8.2 Pulled ',
   ' Container layout-stage-srs-1 Started ',
-  "Error response from daemon: ports are not available: exposing port TCP 10.200.0.1:10015 -> 127.0.0.1:0: listen tcp4 10.200.0.1:10015: bind: can't assign requested address",
+  "Error response from daemon: ports are not available: exposing port TCP 192.0.2.1:10015 -> 127.0.0.1:0: listen tcp4 192.0.2.1:10015: bind: can't assign requested address",
 ].join('\n');
 
 const profile = {

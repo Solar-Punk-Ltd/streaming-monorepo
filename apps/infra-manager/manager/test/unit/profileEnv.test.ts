@@ -688,7 +688,7 @@ describe('writeProfileEnv — the Bee API binds', () => {
   // the docker bridge address the manager reaches its nodes on, wherever
   // nothing else names a bind; a remote one, or a manager that could not
   // confirm the bridge, is given nothing and keeps the stack's default.
-  const BRIDGE = '10.200.0.1';
+  const BRIDGE = '192.0.2.1';
   const BINDS = [
     'BEE_UPLOADER_API_BIND',
     'BEE_GATEWAY_API_BIND',

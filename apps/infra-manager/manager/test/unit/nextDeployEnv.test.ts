@@ -145,11 +145,11 @@ describe('the environment the next deploy gives', () => {
     const remote = makeProfile({ name: 'remote-bee', port_slot: 6, stamp_id: STAMP, host: 'deploy@bee-1' });
     const harness = orchestratorHarness([local, remote]);
     await harness.versions.setContract(1, structuredClone(CONTRACT));
-    harness.orchestrator.setLocalBeeApiBind(async () => '10.200.0.1');
+    harness.orchestrator.setLocalBeeApiBind(async () => '192.0.2.1');
 
     const near = await harness.orchestrator.nextEnvFor(local);
-    assert.equal(near.env.BEE_UPLOADER_API_BIND, '10.200.0.1');
-    assert.equal(near.env.BEE_GATEWAY_API_BIND, '10.200.0.1');
+    assert.equal(near.env.BEE_UPLOADER_API_BIND, '192.0.2.1');
+    assert.equal(near.env.BEE_GATEWAY_API_BIND, '192.0.2.1');
     assert.equal((await harness.orchestrator.nextEnvFor(remote)).env.BEE_UPLOADER_API_BIND, undefined);
 
     harness.profiles.stackSettings.set('local-bee', { BEE_UPLOADER_API_BIND: '0.0.0.0' });

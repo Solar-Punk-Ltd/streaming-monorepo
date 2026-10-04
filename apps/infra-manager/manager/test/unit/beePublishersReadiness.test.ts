@@ -37,7 +37,7 @@ import { DeploymentGroup, Profile } from '../../src/types/index.js';
  * The address a container on this host reaches a locally deployed node on, which
  * is what localHost.ts resolves for real. Injected here, so no test needs Docker.
  */
-const LOCAL_PUBLISHER_HOST = '10.200.0.1';
+const LOCAL_PUBLISHER_HOST = '192.0.2.1';
 
 /** These tests never allocate: a reader that answers one daemon is enough to build the service. */
 function localTargets(): DeployTargets {
@@ -388,13 +388,13 @@ describe('beePublishersForGroup — rung address and status', () => {
   // manager's public one, which answers on those ports from nowhere at all.
   it('composes a local rung from the address a container here reaches it on', async () => {
     const members = DEFAULT_ABR_RUNGS.map(member).map((p) => ({ ...p, host: 'localhost' }));
-    const { service, askedUrls } = serviceFor({ members, localHost: '10.200.0.1' });
+    const { service, askedUrls } = serviceFor({ members, localHost: '192.0.2.1' });
     const result = await service.beePublishersForGroup(GROUP.id);
     assert.ok(
-      result.rungs.every((r) => r.url.startsWith('http://10.200.0.1:')),
+      result.rungs.every((r) => r.url.startsWith('http://192.0.2.1:')),
       JSON.stringify(result.rungs.map((r) => r.url)),
     );
-    assert.ok(askedUrls.every((u) => u.startsWith('http://10.200.0.1:')));
+    assert.ok(askedUrls.every((u) => u.startsWith('http://192.0.2.1:')));
   });
 
   it('leaves a rung on a declared remote host at that host’s own address', async () => {

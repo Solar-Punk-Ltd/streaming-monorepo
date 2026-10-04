@@ -22,7 +22,8 @@ import {
 } from '../../src/domain/localHost.js';
 import { config } from '../../src/utils/config.js';
 
-const BRIDGE = '10.200.0.1';
+/** Docker's own default bridge gateway, a private address as the lookup check expects. */
+const BRIDGE = '172.17.0.1';
 const DOCKER_HOST_NAME = 'host.docker.internal';
 
 function spies() {
@@ -191,7 +192,7 @@ describe('localBeeApiBindReader', () => {
   it('answers none, and warns once, when the docker host is not the daemon’s bridge', async () => {
     const warnings: string[] = [];
     const read = localBeeApiBindReader({
-      publisherHost: async () => '192.168.65.254',
+      publisherHost: async () => '192.0.2.254',
       bridgeGateway: async () => BRIDGE,
       warn: (message) => void warnings.push(message),
     });
@@ -240,7 +241,7 @@ describe('bridgeGatewayOf', () => {
         IPAM: {
           Config: [
             { Subnet: 'fd00::/64', Gateway: 'fd00::1' },
-            { Subnet: '10.200.0.0/16', Gateway: BRIDGE },
+            { Subnet: '172.17.0.0/16', Gateway: BRIDGE },
           ],
         },
       }),

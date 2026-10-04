@@ -1064,8 +1064,8 @@ describe('createOmeEngine reordered closing (CON-21)', () => {
 
   // The two sockets the live capture recorded, kept as the real numbers so the fixture cannot drift
   // into a shape OME does not produce.
-  const SESSION_A = { address: '192.168.65.1', port: 44546 };
-  const SESSION_B = { address: '192.168.65.1', port: 22138 };
+  const SESSION_A = { address: '192.0.2.1', port: 44546 };
+  const SESSION_B = { address: '192.0.2.1', port: 22138 };
 
   const PLAYLIST = [
     '#EXTM3U',
@@ -1230,8 +1230,8 @@ describe('createOmeEngine reordered closing (CON-21)', () => {
     // the live state this needs, and driving it that way would be testing the takeover guard instead
     // of this one.
     const SAME_PORT = 22138;
-    const FIRST = { address: '192.168.65.1', port: 44546 };
-    const RECONNECT = { address: '192.168.65.1', port: SAME_PORT };
+    const FIRST = { address: '192.0.2.1', port: 44546 };
+    const RECONNECT = { address: '192.0.2.1', port: SAME_PORT };
     const ELSEWHERE = { address: '10.0.0.5', port: SAME_PORT };
 
     const origin = makePollCountingOrigin();
@@ -1482,7 +1482,7 @@ describe('createOmeEngine reordered closing (CON-21)', () => {
    * Both times below are OME's own, so the comparison never touches this host's clock.
    */
   describe('two sessions on one socket (CON-23)', () => {
-    const SHARED_SOCKET = { address: '192.168.65.1', port: 44546 };
+    const SHARED_SOCKET = { address: '192.0.2.1', port: 44546 };
     const A_OPENED_AT = '2026-08-01T09:14:02.113+02:00';
     const A_CLOSED_AT = '2026-08-01T09:14:41.775+02:00';
     const B_OPENED_AT = '2026-08-01T09:14:44.298+02:00';
@@ -1635,12 +1635,12 @@ describe('createOmeEngine reordered closing (CON-21)', () => {
       { name: 'null fields, which is how JSON says a field is absent', client: { address: null, port: null } },
       {
         name: 'port 0, which is what a socket torn down before the closing reports',
-        client: { address: '192.168.65.1', port: 0 },
+        client: { address: '192.0.2.1', port: 0 },
       },
       { name: 'an empty address', client: { address: '', port: 44546 } },
       {
         name: 'a port that is not a whole number, which no socket has',
-        client: { address: '192.168.65.1', port: 44546.5 },
+        client: { address: '192.0.2.1', port: 44546.5 },
       },
     ];
 
@@ -1723,7 +1723,7 @@ describe('createOmeEngine admission decision (TEST-25)', () => {
   it('allows the closing of the session that is live', async () => {
     const engine = makeEngine();
     const orchestrator = makeTestOrchestrator({}, {}, makeFakeRecoveryStore());
-    const session = { address: '192.168.65.1', port: 44546 };
+    const session = { address: '192.0.2.1', port: 44546 };
 
     await postAdmission(engine, orchestrator, 'opening', SECRET, STREAM_URL, session);
     const reply = await postAdmission(engine, orchestrator, 'closing', SECRET, STREAM_URL, session);
