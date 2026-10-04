@@ -116,11 +116,11 @@ node, and 1985 for the engine's API.
 | 80, 443 | the edge, and 443 over udp for HTTP/3      | the internet                                       |
 | 8080    | the manager's console, with its API behind | the host's loopback only, reached through the edge |
 | 9090    | the web2 admin's console, with `/api/`     | the host's loopback only, reached through the edge |
-| 5432    | the manager's Postgres                     | the host's loopback only                           |
 | 22      | ssh                                        | your own address only                              |
 
-The manager's API listens on 9876 inside its compose network and publishes nothing. The web2 admin's
-database publishes nothing either.
+The manager's API listens on 9876 inside its compose network and publishes nothing. The manager's
+Postgres and the web2 admin's database publish nothing either. Only the manager's development compose,
+`pnpm database:start`, publishes its Postgres, on the host's loopback at `MANAGER_DEV_PG_PORT`.
 
 ## What must never be public
 
