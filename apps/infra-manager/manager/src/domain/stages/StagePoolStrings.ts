@@ -21,6 +21,8 @@ import { beePublisherUrlFor } from '../StampService.js';
 
 const logger = Logger.getInstance();
 
+const REFRESH_ATTEMPTS = 3;
+
 export interface StagePoolStringsDeps {
   profiles: Pick<ProfileRepository, 'list' | 'updatePoolString'>;
   groups: Pick<DeploymentGroupRepository, 'list'>;
@@ -84,18 +86,53 @@ export class StagePoolStrings {
       const profiles = await this.deps.profiles.list();
       const pools = await this.pools(profiles);
       const pool = pools.find((candidate) => candidate.rungs.some((rung) => rung.member.name === memberName));
-      if (!pool || pool.rungs.some((rung) => !rung.member.stamp_id)) return;
-      const current = currentPoolString(pool);
-      if (this.deps.guard && (await this.deps.guard(current))) return;
-      for (const stage of profiles) {
-        const entries = entriesOf(stage);
-        if (entries && poolNamedBy(entries, [pool])) await this.store(stage, pool, current);
-      }
+      if (!pool) return;
+      const stageNames = profiles
+        .filter((stage) => {
+          const entries = entriesOf(stage);
+          return entries !== null && poolNamedBy(entries, [pool]) !== null;
+        })
+        .map((stage) => stage.name);
+      for (const stageName of stageNames) await this.refreshStage(stageName, memberName);
     } catch (err) {
       logger.warn(
         `[StagePoolStrings] the stages of ${memberName}'s pool keep their stored pool string: ${getErrorMessage(err)}`,
       );
     }
+  }
+
+  /**
+   * One stage, from what is stored now. A write that loses to another writer reads the stage again and decides
+   * again, because the string it lost to may name another pool or none.
+   */
+  private async refreshStage(stageName: string, memberName: string): Promise<void> {
+    for (let attempt = 1; attempt <= REFRESH_ATTEMPTS; attempt += 1) {
+      const profiles = await this.deps.profiles.list();
+      const stage = profiles.find((profile) => profile.name === stageName);
+      const entries = stage ? entriesOf(stage) : null;
+      if (!stage || !entries) return;
+      const pool = poolNamedBy(entries, await this.pools(profiles));
+      if (!pool) return;
+
+      const unstamped = pool.rungs.find((rung) => !rung.member.stamp_id);
+      if (unstamped) {
+        logger.info(
+          `[StagePoolStrings] ${stageName}: kept its stored pool string after a batch was set on ${memberName}, because rung ${unstamped.rung} of pool ${pool.group.name} has no batch`,
+        );
+        return;
+      }
+      const current = currentPoolString(pool);
+      if (this.deps.guard && (await this.deps.guard(current))) {
+        logger.warn(
+          `[StagePoolStrings] ${stageName}: kept its stored pool string after a batch was set on ${memberName}, because the pool string guard refuses the pool's string`,
+        );
+        return;
+      }
+      if (await this.store(stage, pool, current)) return;
+    }
+    logger.warn(
+      `[StagePoolStrings] ${stageName}: kept its stored pool string after ${REFRESH_ATTEMPTS} attempts, because another writer kept changing it`,
+    );
   }
 
   private async store(stage: Profile, pool: StagePool, current: string): Promise<Profile | null> {

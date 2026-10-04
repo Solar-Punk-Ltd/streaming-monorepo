@@ -184,6 +184,47 @@ describe('a batch bought on a rung of its pool', () => {
   });
 });
 
+describe('a stage whose stored string changes while it is being brought up to date', () => {
+  function racedRefresh(raceTo: string) {
+    const stored = stage(poolString(OLD_BATCHES));
+    const profiles = new InMemoryProfiles([stored, ...rungMembers([...NEW_BATCHES.slice(0, 3), NEW_BATCHES[3]!])]);
+    const repository = profiles.asRepository();
+    let raced = false;
+    const poolStrings = new StagePoolStrings({
+      profiles: {
+        list: () => repository.list(),
+        updatePoolString: async (name, expected, next) => {
+          if (!raced) {
+            raced = true;
+            profiles.rows.set(name, { ...profiles.rows.get(name)!, bee_publishers: raceTo });
+          }
+          return repository.updatePoolString(name, expected, next);
+        },
+      },
+      groups: { list: async () => [POOL] },
+      publisherHost: async () => PUBLISHER_HOST,
+    });
+    return { profiles, poolStrings };
+  }
+
+  it('is read again and brought to the pool’s batches when the new string still names the pool', async () => {
+    const { profiles, poolStrings } = racedRefresh(poolString(['5', '6', '7', '8'].map(batch)));
+
+    await poolStrings.refreshStagesOf('abr-360p');
+
+    assert.equal(profiles.rows.get(STAGE)?.bee_publishers, poolString(NEW_BATCHES));
+  });
+
+  it('is left as the other writer saved it when the new string names no pool of this manager', async () => {
+    const pasted = poolString(OLD_BATCHES, '198.51.100.7');
+    const { profiles, poolStrings } = racedRefresh(pasted);
+
+    await poolStrings.refreshStagesOf('abr-360p');
+
+    assert.equal(profiles.rows.get(STAGE)?.bee_publishers, pasted);
+  });
+});
+
 describe('a stage whose pool string was pasted from elsewhere', () => {
   it('deploys the string as it was saved, and keeps it', async () => {
     const pasted = poolString(OLD_BATCHES, '198.51.100.7');
