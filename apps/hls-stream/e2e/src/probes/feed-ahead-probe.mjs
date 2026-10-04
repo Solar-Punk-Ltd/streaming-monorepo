@@ -7,7 +7,7 @@
  * how a reader that has caught up with the publisher finds out. The uploader-crash run on 2026-08-05
  * showed the cost of that when the 404 means something else: the viewer asked slot **301** one
  * hundred and thirteen times over sixty seconds, was served at last, and then consumed slots 302 to
- * 570 in twelve seconds flat. `docs/bench/crash-at-a-viewer-2026-08-05.md`.
+ * 570 in twelve seconds flat. the `crash-at-a-viewer-2026-08-05` measurement (kept outside the repository).
  *
  * That burst has two readings and they call for opposite fixes:
  *

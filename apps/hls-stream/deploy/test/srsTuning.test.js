@@ -138,8 +138,8 @@ const VALID = { SRS_WEBHOOK_TOKEN: 'x'.repeat(64) };
 
 /**
  * The keyframe interval a broadcaster is told to publish, from two funded sittings on 2026-08-12
- * that bounded it on both sides. See `docs/bench/gop-sustain-2026-08-12.md` for why not larger and
- * `docs/bench/gop-floor-2026-08-12.md` for why not smaller.
+ * that bounded it on both sides. See the `gop-sustain-2026-08-12` measurement (kept outside the repository) for why not larger and
+ * the `gop-floor-2026-08-12` measurement (kept outside the repository) for why not smaller.
  *
  * The engine cannot set this, since nothing here transcodes. It is a number the config has to be
  * able to *accept*, which is what the range test below checks.
@@ -152,7 +152,7 @@ const RECOMMENDED_GOP_SECONDS = 0.5;
  * Measured 2026-08-12 across GOPs of 0.5, 1.0 and 2.0, which overshot by 0.136, 0.136 and 0.133
  * seconds. **It is a constant rather than a proportion of the GOP**, and it is invisible to any
  * summary that reports a median, because the median sits at the settled value.
- * See `docs/bench/shipped-fragment-validation-2026-08-12.md`.
+ * See the `shipped-fragment-validation-2026-08-12` measurement (kept outside the repository).
  */
 const SEGMENT_OVERSHOOT_S = 0.135;
 
@@ -240,7 +240,7 @@ describe('the SRS latency knobs', () => {
    * The pair is a range, not two numbers. SRS cuts on the first keyframe at or after the fragment and
    * force-closes at `fragment * aof_ratio` whether one arrived or not, so a GOP outside
    * `[fragment, fragment * aof_ratio]` is either rounded up or yields keyframeless segments. Measured
-   * over 20 arms in `docs/bench/gop-vs-fragment-2026-08-12.md`, and the ceiling half of that rule
+   * over 20 arms in the `gop-vs-fragment-2026-08-12` measurement (kept outside the repository), and the ceiling half of that rule
    * once invalidated twelve runs.
    *
    * This is the check the config did not have: the shipped fragment was 1.0 while the profile two

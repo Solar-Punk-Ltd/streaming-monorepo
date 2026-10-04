@@ -28,7 +28,7 @@
  * timeline, so the two factors separate.
  *
  * Encoder settings are copied from `e2e/src/bench/wallclockPublisher.ts` so an arm here is comparable
- * to a broadcast arm. See `docs/bench/srs-segment-close-path-2026-08-11.md` for what the source says
+ * to a broadcast arm. See the `srs-segment-close-path-2026-08-11` measurement (kept outside the repository) for what the source says
  * the answer should be.
  *
  * Usage:

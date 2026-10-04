@@ -26,7 +26,7 @@ import { requireByteSource, viewerGate } from '../../src/viewerCoverage.js';
  *
  * ## What this promotes
  *
- * Arm 3 of the crash matrix, `docs/bench/crash-at-an-in-tab-viewer-2026-08-27.md`. SIGKILL to the
+ * Arm 3 of the crash matrix, the `crash-at-an-in-tab-viewer-2026-08-27` measurement (kept outside the repository). SIGKILL to the
  * uploader, nothing new reaching the feed for fifteen seconds, and a viewer who spent 7.1s of buffer,
  * froze for 13.5s, and had their picture back 2.3s after the process answered again.
  *

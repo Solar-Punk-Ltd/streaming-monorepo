@@ -1471,7 +1471,7 @@ export class StreamOrchestrator {
    * blank picture for its whole length, with every video sample afterwards refused non-fatally. One
    * 209 second recording did exactly that, and its first four segments held 41 audio packets and no
    * video at all. Withholding them costs those seconds of audio and buys the picture. See
-   * `docs/bench/a-recording-that-opens-without-video-2026-08-09.md`.
+   * the `a-recording-that-opens-without-video-2026-08-09` measurement (kept outside the repository).
    *
    * ⛔ **It gives up at a ceiling, and that bound is the point rather than a detail.** A publisher
    * that sends no video ever, under a mediatype that says it will, would otherwise have its whole

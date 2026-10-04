@@ -6,7 +6,7 @@
  * One broadcast, one fault, one viewer. `browser:crash` opens a real player, watches it settle,
  * breaks a container of the deployment from inside the same process, and keeps sampling while the
  * service comes back. Five faults are declared in `browser/faults.ts` and all five were measured
- * against a real viewer on 2026-08-27, recorded in `docs/bench/crash-at-an-in-tab-viewer-2026-08-27.md`.
+ * against a real viewer on 2026-08-27, recorded in the `crash-at-an-in-tab-viewer-2026-08-27` measurement (kept outside the repository).
  * The suites under `suites/viewer/` drive those faults, and this is what they judge on.
  *
  * ## ⛔ What these judge, and what they only measure

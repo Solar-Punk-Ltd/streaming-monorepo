@@ -466,7 +466,7 @@ describe('ManifestFetcher follow-up fetches (CON-29)', () => {
  * spent frozen: 0.82x at a 0.25s segment with 17.3% of the clock frozen, 0.90x at 0.5s, 0.98x at
  * 1.0s, each matching that ratio to within 0.02, over 897 logged requests. The shorter the segment
  * the worse it got, because a shorter segment does not make the client faster, it makes it ask more
- * often at a fixed cost per ask. See `docs/bench/what-starves-the-viewer-2026-08-05.md`.
+ * often at a fixed cost per ask. See the `what-starves-the-viewer-2026-08-05` measurement (kept outside the repository).
  *
  * The fix is not to poll faster. It is to stop treating one poll as worth one slot.
  */
@@ -1183,7 +1183,7 @@ describe('following the feed costs one head lookup (LAT-10)', () => {
  * | worst stall | **65 consecutive polls, 19.1s** |
  * | nearest served distance | **+1 in 73 of 74** |
  *
- * `docs/bench/what-is-behind-a-refused-slot-2026-08-06.md`. The reader was one request away from
+ * the `what-is-behind-a-refused-slot-2026-08-06` measurement (kept outside the repository). The reader was one request away from
  * moving for the whole of that nineteen seconds.
  *
  * ## Why skipping is safe

@@ -8,7 +8,7 @@
  * seconds, while explicit-address reads of the same chunks on the same node were 0.2% frozen at 46ms.
  * So the two ways of following a feed are not interchangeable, the bench was on the slow one, and
  * every "frozen share" this project published described the instrument. See
- * `docs/bench/feed-reader-ab.md`.
+ * the `feed-reader-ab` measurement (kept outside the repository).
  *
  * The paths are relative, because the player and the bench each hold their own gateway base URL.
  */

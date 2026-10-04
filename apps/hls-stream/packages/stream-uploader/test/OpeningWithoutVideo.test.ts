@@ -16,7 +16,7 @@ import { waitFor } from './helpers/waiting.js';
  * opens with segments carrying no video therefore plays audio over a blank picture for its whole
  * length, and every video sample after it is refused with a warning marked non-fatal, so nothing
  * fails and nobody is told. One real 209 second recording did exactly that. See
- * `docs/bench/a-recording-that-opens-without-video-2026-08-09.md`.
+ * the `a-recording-that-opens-without-video-2026-08-09` measurement (kept outside the repository).
  *
  * These pin the four things that make withholding safe rather than just effective: it stops at the
  * first segment with video, it never touches a segment later in the broadcast, it never applies to

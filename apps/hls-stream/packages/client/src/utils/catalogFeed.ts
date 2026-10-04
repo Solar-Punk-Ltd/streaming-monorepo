@@ -68,7 +68,7 @@ class CatalogFetchError extends Error {
  * for a slot that does not exist yet on almost every poll, since broadcasts are rare. Measured
  * 2026-08-05: that 404 costs 4ms at the median, indistinguishable from a hit. It has a real tail,
  * about one in twenty taking 1.4s, which is invisible at a five second cadence and is the reason
- * `MAX_WALK_PER_READ` exists rather than an unbounded walk. See `docs/bench/feed-miss-cost.md`.
+ * `MAX_WALK_PER_READ` exists rather than an unbounded walk. See the `feed-miss-cost` measurement (kept outside the repository).
  */
 export class CatalogFeedReader {
   private index: FeedIndex | null = null;
@@ -157,7 +157,7 @@ export class CatalogFeedReader {
         // transport failure and on its own timeout, and returns `ok: false` only for an HTTP status.
         // A hit and the miss that ends the walk are different requests, and a miss has a measured
         // tail of about 1.4s at the 95th percentile, so "one slot answered, the next one hung" is
-        // the ordinary shape of this rather than an exotic one. See `docs/bench/feed-miss-cost.md`.
+        // the ordinary shape of this rather than an exotic one. See the `feed-miss-cost` measurement (kept outside the repository).
         //
         // Rethrown only when there is nothing to salvage, so a walk that failed on its first step
         // still reaches the caller as the error it is instead of reading as an idle catalog.

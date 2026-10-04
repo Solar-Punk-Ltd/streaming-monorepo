@@ -806,7 +806,7 @@ Neither engine transcodes as this repository configures them. OME's output profi
 `transcode` section at all, so both engines remux the broadcaster's own elementary streams into HLS
 and the picture a viewer gets is the picture that was published. Changing the resolution or the
 bitrate is therefore the broadcaster's to do, not the deployment's, which is the same fact
-`docs/bench/profiles.md` records from the other direction.
+the `profiles` measurement (kept outside the repository) records from the other direction.
 
 ### OME Engine - OvenMediaEngine :
 
