@@ -90,7 +90,9 @@ ports is `10000 + 10 × s` plus a fixed last digit, so two deployments on one ho
 Every listen address is a setting. The Bee APIs and the engine's HTTP ports default to the host's
 Docker bridge address, which the stack's deploy reads at deploy time, because Docker publishes a port
 with rules of its own that a host firewall such as ufw never sees, and a Bee API has no password and
-can spend money. Ingest, the viewer and the peer ports default to every address, and which of them
+can spend money. A deployment on any host other than the manager's own is the exception for the Bee
+APIs: the manager writes `0.0.0.0` into each Bee API bind its settings leave empty, so the manager
+can dial it, and that host's firewall decides who reaches it. Ingest, the viewer and the peer ports default to every address, and which of them
 the internet reaches is the operator's firewall.
 
 An SRS stage offers RTMP beside SRT. SRS allows play from its own container only, because RTMP
@@ -135,7 +137,9 @@ database publishes nothing either.
 - **Postgres**, on any host.
 
 Docker publishes a container port by rewriting packets before a host firewall's input rules see
-them, so binding a port to a private address is the control and a firewall is the second layer. The
+them, so binding a port to a private address is the control and a firewall is the second layer. On
+a host other than the manager's own, where the manager binds the Bee APIs to every address, the
+firewall is the control for them, so it goes in before the first deploy there. The
 manager generates an nftables table from its own record of a host that opens exactly the public
 ports above and closes the rest of the band. "Opening the manager to the internet" in
 `apps/infra-manager/deploy/README.md` shows both steps.

@@ -563,10 +563,12 @@ operator-approved application. Persist only the manager table through the
 host's existing firewall configuration. Replacing all of `/etc/nftables.conf`
 could discard unrelated policy.
 
-The Bee API bind of step 2 still keeps those APIs on the Docker bridge by
-default, except on a Bee host that binds them wider for the addresses it
-names with `--bee-api-source`, where this table is what admits those
-addresses alone. The input hook covers host listeners. The forward hook covers
+The Bee API bind of step 2 keeps those APIs on the Docker bridge by default
+only on the manager's own host. On any other host the manager binds each Bee
+API that a deployment's settings leave empty to `0.0.0.0`, so there this
+table is what closes them, and it has to be in place before the first deploy
+on that host. On a Bee host it admits the addresses named with
+`--bee-api-source` alone. The input hook covers host listeners. The forward hook covers
 published container traffic. Host-network containers with unprovable bindings
 cause the inventory export to refuse.
 
