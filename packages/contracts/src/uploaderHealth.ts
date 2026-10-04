@@ -31,6 +31,8 @@ export const UPLOADER_REASON_FRAGMENT_PUBLISHER_GOP = 'fragment_publisher_gop' a
 export const UPLOADER_REASON_POSTAGE_REFUSED = 'postage_refused' as const;
 export const UPLOADER_REASON_NODE_UNAVAILABLE = 'node_unavailable' as const;
 export const UPLOADER_REASON_START_GATE_WARNED = 'start_gate_warned' as const;
+/** A ladder source was accepted and none of its rungs published within the deadline. */
+export const UPLOADER_REASON_LADDER_NOT_STARTED = 'ladder_not_started' as const;
 
 export const UPLOADER_HEALTH_REASONS = [
   UPLOADER_REASON_STALE_MANIFEST,
@@ -47,6 +49,7 @@ export const UPLOADER_HEALTH_REASONS = [
   UPLOADER_REASON_POSTAGE_REFUSED,
   UPLOADER_REASON_NODE_UNAVAILABLE,
   UPLOADER_REASON_START_GATE_WARNED,
+  UPLOADER_REASON_LADDER_NOT_STARTED,
 ] as const;
 
 export type UploaderHealthReason = (typeof UPLOADER_HEALTH_REASONS)[number];

@@ -547,6 +547,7 @@ async function handleStreams(
         // Its rungs must not outlive their base. Only after the key check, so a forged unpublish
         // cannot evict a live broadcaster's base and take the whole ladder down with it.
         authenticatedBases.delete(streamId);
+        streamOrchestrator.stopAwaitingFirstRung(streamId);
         logger.info(`[SRS] Ladder source unpublished: ${streamId}`);
         return;
       }
@@ -615,6 +616,7 @@ async function handleStreams(
       }
 
       logger.info(`[SRS] Rung published: ${streamId}`);
+      streamOrchestrator.stopAwaitingFirstRung(role.baseStreamId);
       const accepted = streamOrchestrator.startStream(
         streamId,
         resolveMediaType(payload.app),
@@ -666,6 +668,7 @@ async function handleStreams(
         authenticatedBases.set(streamId, verdict.session);
         logger.info(`[SRS] Ladder source authenticated: ${streamId}, declared as admin stream ${verdict.session.id}`);
         resumeHeldRungsOnReturn(streamOrchestrator, connections.sources, streamId, payload);
+        streamOrchestrator.awaitFirstRung(streamId);
         srsResponse(res, SRS_ACCEPT);
         return;
       }
@@ -710,6 +713,7 @@ async function handleStreams(
       authenticatedBases.set(streamId, null);
       logger.info(`[SRS] Ladder source authenticated: ${streamId}`);
       resumeHeldRungsOnReturn(streamOrchestrator, connections.sources, streamId, payload);
+      streamOrchestrator.awaitFirstRung(streamId);
       srsResponse(res, SRS_ACCEPT);
       return;
     }

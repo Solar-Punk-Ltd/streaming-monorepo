@@ -308,6 +308,7 @@ services:
       MAX_QUEUE_SIZE: ${MAX_QUEUE_SIZE:-100}
       RECOVERY_TIMEOUT: ${RECOVERY_TIMEOUT:-60000}
       SEGMENT_STALL_MS: ${SEGMENT_STALL_MS:-30000}
+      FIRST_RUNG_DEADLINE_MS: ${FIRST_RUNG_DEADLINE_MS:-45000}
       # The same variable the SRS block below sets, and the same default on purpose: it is what the
       # engine is asked to cut at and what every segment's `#EXT-X-PROGRAM-DATE-TIME` steps by, so
       # the two reading different values would date a recording against a fragment length nothing

@@ -343,6 +343,7 @@ export {
   UPLOADER_REASON_FRAGMENT_MISMATCH as HEALTH_REASON_FRAGMENT_MISMATCH,
   UPLOADER_REASON_FRAGMENT_PUBLISHER_GOP as HEALTH_REASON_FRAGMENT_PUBLISHER_GOP,
   UPLOADER_REASON_INGEST_REFUSED as HEALTH_REASON_INGEST_REFUSED,
+  UPLOADER_REASON_LADDER_NOT_STARTED as HEALTH_REASON_LADDER_NOT_STARTED,
   UPLOADER_REASON_NODE_UNAVAILABLE as HEALTH_REASON_NODE_UNAVAILABLE,
   UPLOADER_REASON_POSTAGE_REFUSED as HEALTH_REASON_POSTAGE_REFUSED,
   UPLOADER_REASON_QUEUE_PRESSURE as HEALTH_REASON_QUEUE_PRESSURE,
@@ -513,6 +514,15 @@ export interface HealthSignals {
    * one whose publisher was merely slow.
    */
   disconnectedStreams: string[];
+  /**
+   * Every ladder source SRS accepted whose first rung did not publish within `FIRST_RUNG_DEADLINE_MS`,
+   * and that is still waiting for one. Empty on a service whose ladders all started.
+   *
+   * A source starts no stream of its own, so until a rung publishes nothing else here can see the
+   * broadcast at all: no session, no stall reaper and no `segment_stall`. Cleared by the first rung
+   * and by the source leaving, since a broadcaster that reconnects gets fresh transcoders.
+   */
+  ladderNotStartedStreams: string[];
   /**
    * Whether any segment has ever reached Swarm in this process's lifetime.
    *
