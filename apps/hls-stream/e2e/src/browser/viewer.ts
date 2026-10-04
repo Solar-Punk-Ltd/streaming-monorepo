@@ -55,6 +55,7 @@
 import { createServer } from 'node:net';
 import { type Browser, chromium, type Page, type Request } from 'playwright-core';
 
+import { chromePath } from './chromePath.js';
 import { readFeedState } from './feedState.js';
 import {
   type InstrumentProof,
@@ -69,9 +70,6 @@ import { secureContextArgs } from './secureContext.js';
 import { type ViewerSample } from './session.js';
 import { type WebSocketTraffic } from './webSocketTraffic.js';
 import { openBrowserCdp, watchWorkerTargets, type WorkerTargetWatch } from './workerTargets.js';
-
-/** Where the image puts Google Chrome. Overridable so a workstation with Chrome elsewhere can run this. */
-const CHROME_PATH = process.env.BROWSER_CHROME_PATH ?? '/opt/google/chrome/chrome';
 
 /** A desktop viewport, since that is what the client's layout is built for. */
 export const VIEWPORT = { width: 1440, height: 900 } as const;
@@ -126,7 +124,7 @@ const CDP_PORT = process.env.VIEWER_CDP_PORT ?? '';
 export async function launchViewer(remoteDebuggingPort?: number): Promise<Browser> {
   const port = remoteDebuggingPort === undefined ? CDP_PORT : String(remoteDebuggingPort);
   return chromium.launch({
-    executablePath: CHROME_PATH,
+    executablePath: chromePath(),
     headless: false,
     args: [
       '--autoplay-policy=no-user-gesture-required',
