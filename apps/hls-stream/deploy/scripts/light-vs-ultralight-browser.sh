@@ -79,11 +79,12 @@ COMPOSE_DIR="${STACK_DIR}/deploy"
 ENV_FILE="${STACK_DIR}/.env"
 COMPOSE_PROJECT="${COMPOSE_PROJECT:-${PROFILE}}"
 GATEWAY_CONTAINER="${GATEWAY_CONTAINER:-${COMPOSE_PROJECT}-bee-gateway-1}"
-# Origins from `apply_port_slot` in `_lib.sh`, resolved here because this script never sources it.
-UPLOADER_BEE_PORT="${UPLOADER_BEE_PORT:-$((10005 + PORT_SLOT * 10))}"
-GATEWAY_BEE_PORT="${GATEWAY_BEE_PORT:-$((10007 + PORT_SLOT * 10))}"
-UPLOADER_API_PORT="${UPLOADER_API_PORT:-$((10000 + PORT_SLOT * 10))}"
-CLIENT_PORT="${CLIENT_PORT:-$((10004 + PORT_SLOT * 10))}"
+# Ports as `apply_port_slot` in `_lib.sh` publishes them (the stock port at slot 0, base + slot * 10
+# otherwise), resolved here because this script never sources it.
+UPLOADER_BEE_PORT="${UPLOADER_BEE_PORT:-$((PORT_SLOT == 0 ? 1633 : 10005 + PORT_SLOT * 10))}"
+GATEWAY_BEE_PORT="${GATEWAY_BEE_PORT:-$((PORT_SLOT == 0 ? 1733 : 10007 + PORT_SLOT * 10))}"
+UPLOADER_API_PORT="${UPLOADER_API_PORT:-$((PORT_SLOT == 0 ? 3000 : 10000 + PORT_SLOT * 10))}"
+CLIENT_PORT="${CLIENT_PORT:-$((PORT_SLOT == 0 ? 5173 : 10004 + PORT_SLOT * 10))}"
 
 SIZE="${SIZE:-1280x720}"
 BITRATE_KBPS="${BITRATE_KBPS:-2500}"

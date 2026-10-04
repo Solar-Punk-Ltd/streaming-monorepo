@@ -371,6 +371,49 @@ esac
 });
 
 /**
+ * The ports a snapshot reads when only PORT_SLOT is given. Slot 0 is a stock stage, so its nodes sit
+ * on the stock ports and not at the origin of the slot arithmetic, the same as `apply_port_slot` in
+ * `_lib.sh` publishes them.
+ */
+describe('the ports a snapshot reads from PORT_SLOT', () => {
+  async function portsRead(slot) {
+    const dir = workspace();
+    const { mkdirSync, chmodSync, readFileSync } = await import('node:fs');
+    const bin = join(dir, 'bin');
+    mkdirSync(bin, { recursive: true });
+    const log = join(dir, 'urls');
+    writeFileSync(
+      join(bin, 'curl'),
+      `#!/bin/sh
+for a in "$@"; do case "$a" in http*) echo "$a" >> '${log}' ;; esac; done
+`,
+    );
+    chmodSync(join(bin, 'curl'), 0o755);
+    const env = { ...process.env, PORT_SLOT: slot, PATH: `${bin}:${process.env.PATH}` };
+    delete env.UPLOADER_BEE_PORT;
+    delete env.GATEWAY_BEE_PORT;
+    delete env.UPLOADER_API_PORT;
+    await run('bash', [join(ROOT, 'deploy/scripts/node-metrics.sh'), 'snapshot', join(dir, 'snap.json'), 'arm01'], {
+      env,
+    });
+    return new Set(
+      readFileSync(log, 'utf8')
+        .split('\n')
+        .filter(Boolean)
+        .map((url) => new URL(url).port),
+    );
+  }
+
+  it('reads the stock ports at slot 0', async () => {
+    assert.deepEqual([...(await portsRead('0'))].sort(), ['1633', '1733', '3000']);
+  });
+
+  it('reads base + slot * 10 at any other slot', async () => {
+    assert.deepEqual([...(await portsRead('3'))].sort(), ['10030', '10035', '10037']);
+  });
+});
+
+/**
  * ⭐⭐⭐ THE OTHER HALF OF THE OWNER'S RULE: DIFF THE ENTIRE THING, RANKED BY WHAT MOVED.
  *
  * Capturing the whole surface buys nothing on its own. `diff` renders a curated summary of the

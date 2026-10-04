@@ -28,7 +28,7 @@ PROBE="${PROBE:-${HOME}/phase06/retrieval-debt-probe.sh}"
 RUN_DIR="${RUN_DIR:-${HOME}/retrieval-probe/cache-control-$(date -u +%Y%m%d-%H%M%S)}"
 LOG="${RUN_DIR}/control.log"
 CONTAINER="${CONTAINER:-${PROFILE}-bee-gateway-1}"
-GATEWAY_BEE_PORT="${GATEWAY_BEE_PORT:-$((10007 + PORT_SLOT * 10))}"
+GATEWAY_BEE_PORT="${GATEWAY_BEE_PORT:-$((PORT_SLOT == 0 ? 1733 : 10007 + PORT_SLOT * 10))}"
 SEGMENTS="${SEGMENTS:-150}"
 RETRIEVAL_KEY=BEE_GATEWAY_CACHE_RETRIEVAL
 

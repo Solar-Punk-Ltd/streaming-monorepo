@@ -40,12 +40,13 @@ declare -F say > /dev/null 2>&1 || {
 METRICS_BRACKET_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 NODE_METRICS="${NODE_METRICS:-${METRICS_BRACKET_DIR}/node-metrics.sh}"
 
-# Ports the collector reads. Origins from `apply_port_slot` in `_lib.sh`, resolved here so a driver
+# Ports the collector reads, as `apply_port_slot` in `_lib.sh` publishes them (the stock port at slot 0,
+# base + slot * 10 otherwise), resolved here so a driver
 # that only ever wanted a bracket does not have to know them.
 : "${PORT_SLOT:?metrics-bracket.sh needs PORT_SLOT, the slot of the stage it reads}"
-UPLOADER_BEE_PORT="${UPLOADER_BEE_PORT:-$((10005 + PORT_SLOT * 10))}"
-GATEWAY_BEE_PORT="${GATEWAY_BEE_PORT:-$((10007 + PORT_SLOT * 10))}"
-UPLOADER_API_PORT="${UPLOADER_API_PORT:-$((10000 + PORT_SLOT * 10))}"
+UPLOADER_BEE_PORT="${UPLOADER_BEE_PORT:-$((PORT_SLOT == 0 ? 1633 : 10005 + PORT_SLOT * 10))}"
+GATEWAY_BEE_PORT="${GATEWAY_BEE_PORT:-$((PORT_SLOT == 0 ? 1733 : 10007 + PORT_SLOT * 10))}"
+UPLOADER_API_PORT="${UPLOADER_API_PORT:-$((PORT_SLOT == 0 ? 3000 : 10000 + PORT_SLOT * 10))}"
 
 # Zero means endpoints only. Set it above zero for a measurement long enough to need a series rather
 # than two readings, which is also the only mid-flight funding check a single continuous run gets.
