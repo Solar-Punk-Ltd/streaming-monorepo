@@ -124,7 +124,9 @@ import { sleep, waitFor } from '../../src/harness/wait.js';
  *   one `#EXT-X-DISCONTINUITY` is there because the engine's counter restarted and
  *   `ManifestManager.placeInBroadcast` re-anchors a restarted counter forwards with a break, and
  *   there are no `#EXT-X-GAP` entries, because the forgotten accounting index must not turn that
- *   counter restart into a hole the broadcast never had. A restart is one of the only two things
+ *   counter restart into a hole the broadcast never had. The one exception is a rung that had
+ *   counted less than its siblings when the stack went down: every rung of the return resumes at one
+ *   sequence, so that rung lists the sequences up to it as gap entries right before its break. A restart is one of the only two things
  *   that still arm a break since 2026-09-06, the other being the origin
  *   declaring one, and a lost segment is now said with gap entries instead.
  *
@@ -365,9 +367,10 @@ describe('M — the uploader dies while its engine restarts, then the broadcaste
     // in that window is a real loss with real gap entries, and nothing to do with this scenario.
     const losses = parseUploaderLog(await log());
     assert.equal(
-      verdict.gapsSeen,
+      verdict.gapsSeen - verdict.gapsAtAReturnSeen,
       0,
-      `${verdict.gapsSeen} gap entries across the rungs. The uploader reported ` +
+      `${verdict.gapsSeen} gap entries across the rungs, ${verdict.gapsAtAReturnSeen} of them lining a rung up ` +
+        'with its ladder at the return. The uploader reported ' +
         `${losses.inferredSegmentGaps} inferred skips and ${losses.discontinuitySegments.length} failed uploads ` +
         'in the same window. Zero of both beside gap entries is the counter restart being measured as a run of ' +
         'missing segments, which is the inference the recovery branch drops the accounting index to avoid. ' +

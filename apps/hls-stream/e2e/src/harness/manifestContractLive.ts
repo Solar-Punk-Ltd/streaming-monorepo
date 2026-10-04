@@ -124,6 +124,16 @@ interface RungPlaylistParse {
    * else in the playlist names the segments the engine closed while the uploader was dead.
    */
   gaps: number;
+  /**
+   * How many of those gap entries sit in a run that ends at an entry opening a break, which is a rung
+   * lining up with its ladder at an encoder's return rather than media the broadcast lost.
+   *
+   * ⛔ Every rung of one return resumes at one sequence, the furthest any of them had counted, so a
+   * rung that stopped below its siblings lists the sequences up to that point as gap entries and then
+   * breaks. A loss is a hole between two runs of media with no break of its own, because a lost
+   * segment does not restart the encoder's clock.
+   */
+  gapsAtAReturn: number;
   /** Whether the first media entry declares the seam of a session continuing an older feed head. */
   firstSegmentDiscontinuity: boolean;
   /**
@@ -294,6 +304,7 @@ export function rungPlaylistParse(feed: RungFeed, body: string): RungPlaylistPar
     mediaSequence: mediaSequenceOf(text),
     discontinuities: tagCountOf(text, HLS_DISCONTINUITY),
     gaps: tagCountOf(text, HLS_GAP),
+    gapsAtAReturn: gapsBeforeABreak(parsed.segments),
     firstSegmentDiscontinuity: parsed.segments[0]?.discontinuity === true,
     discontinuitySequence: discontinuitySequenceOf(text),
     firstDate: isoOf(dates[0]),
@@ -312,6 +323,23 @@ function tagCountOf(text: string, tag: string): number {
   return text.split('\n').filter((line) => line.trim() === tag).length;
 }
 
+/** Gap entries in a run that the next media entry ends with a break. See {@link RungPlaylistParse.gapsAtAReturn}. */
+function gapsBeforeABreak(segments: readonly { gap?: boolean; discontinuity?: boolean }[]): number {
+  let total = 0;
+  let run = 0;
+  for (const segment of segments) {
+    if (segment.gap === true) {
+      run++;
+      continue;
+    }
+    if (segment.discontinuity === true) {
+      total += run;
+    }
+    run = 0;
+  }
+  return total;
+}
+
 /** The fields a parse carries when the feed produced no playlist to read. */
 const NOTHING_READ = {
   playlist: null,
@@ -319,6 +347,7 @@ const NOTHING_READ = {
   mediaSequence: null,
   discontinuities: 0,
   gaps: 0,
+  gapsAtAReturn: 0,
   firstSegmentDiscontinuity: false,
   discontinuitySequence: 0,
   firstDate: null,
@@ -536,6 +565,8 @@ interface TimelineVerdict {
    * never happened rather than a window holding no hole.
    */
   gapsSeen: number;
+  /** How many of those gap entries line a rung up with its ladder at a return. See {@link RungPlaylistParse.gapsAtAReturn}. */
+  gapsAtAReturnSeen: number;
 }
 
 /**
@@ -552,7 +583,13 @@ export async function checkPublishedTimeline(
 ): Promise<TimelineVerdict> {
   const fragmentSeconds = fragmentSecondsFor(check.expectation);
   if (fragmentSeconds === null) {
-    return { summary: `  ${UNCHECKED_WITHOUT_FRAGMENT}`, refusal: null, discontinuitiesSeen: 0, gapsSeen: 0 };
+    return {
+      summary: `  ${UNCHECKED_WITHOUT_FRAGMENT}`,
+      refusal: null,
+      discontinuitiesSeen: 0,
+      gapsSeen: 0,
+      gapsAtAReturnSeen: 0,
+    };
   }
 
   const parses = await readRungPlaylists(host, cfg, { owner: check.owner, rungs: check.rungs });
@@ -570,6 +607,7 @@ export async function checkPublishedTimeline(
     refusal: rungPlaylistRefusal(readings),
     discontinuitiesSeen: parses.reduce((total, parse) => total + parse.discontinuities, 0),
     gapsSeen: parses.reduce((total, parse) => total + parse.gaps, 0),
+    gapsAtAReturnSeen: parses.reduce((total, parse) => total + parse.gapsAtAReturn, 0),
   };
 }
 

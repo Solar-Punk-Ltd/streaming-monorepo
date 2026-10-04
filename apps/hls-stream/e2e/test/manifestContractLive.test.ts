@@ -228,6 +228,26 @@ describe('reading one rung playlist back', () => {
   });
 
   /**
+   * Every rung of one return resumes at one sequence, so a rung that had counted less lists the
+   * sequences up to it as gap entries and breaks on the next. A suite asserting that a return lost
+   * nothing has to tell those apart from a hole.
+   */
+  it('counts the gap entries that end at a break as a rung lining up at a return', () => {
+    const lined = rungPlaylistParse(feed, rungPlaylist([0, 1, 2, 3, 4], { gaps: [2, 3], breaks: [4] }));
+
+    assert.equal(lined.gaps, 2);
+    assert.equal(lined.gapsAtAReturn, 2);
+  });
+
+  it('counts a hole between two runs of media as no part of a return', () => {
+    const holed = rungPlaylistParse(feed, rungPlaylist([0, 1, 2, 3, 4, 5], { gaps: [1], breaks: [4] }));
+
+    assert.equal(holed.gaps, 1);
+    assert.equal(holed.gapsAtAReturn, 0);
+    assert.equal(rungPlaylistParse(feed, GATEWAY_ERROR_ENVELOPE).gapsAtAReturn, 0);
+  });
+
+  /**
    * ⛔⛔ A gap entry is not media, and this count decides whether a live window is judged as the
    * broadcast's first. `namesEverySegmentPublished` weighs it against the uploads the log attributes
    * to the rung, and a gap entry counted as a segment would make a window that HAS dropped segments
