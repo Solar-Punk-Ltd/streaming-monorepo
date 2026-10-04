@@ -522,6 +522,20 @@ if (argv[0] === 'compose' && argv.includes('up') && process.env.DOCKER_STUB_UP_E
   process.exit(Number(process.env.DOCKER_STUB_UP_EXIT));
 }
 
+// What the daemon reports about itself and its default bridge network, which \`docker-bridge-address.sh\`
+// reads. DOCKER_STUB_BRIDGE set to the empty string is a daemon that reports no gateway at all.
+if (argv[0] === 'info') {
+  console.log(process.env.DOCKER_STUB_OS ?? 'Ubuntu 24.04 LTS');
+  process.exit(0);
+}
+
+if (argv[0] === 'network' && argv[1] === 'inspect') {
+  const bridge = process.env.DOCKER_STUB_BRIDGE ?? '192.0.2.1';
+  if (bridge === '') process.exit(1);
+  console.log(bridge + ' ');
+  process.exit(0);
+}
+
 const inventory = ${JSON.stringify(INVENTORY)};
 
 // What the service says about its own health, which the watch asks a running container for when it

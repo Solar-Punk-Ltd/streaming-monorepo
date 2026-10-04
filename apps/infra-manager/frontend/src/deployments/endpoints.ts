@@ -1,5 +1,3 @@
-import { PUBLIC_PORT_ROLES, type PublicPortRole } from '@streaming-infra-manager/common';
-
 /** How an endpoint is reached, which decides what the port cell offers. */
 export type EndpointProtocol = 'http' | 'srt' | 'rtmp' | 'swarm-p2p' | 'tcp';
 
@@ -21,13 +19,6 @@ export interface EndpointKind {
   offersAddress: boolean;
 }
 
-/** Whether the firewall policy opens this port to the outside, as the generated host rules do. */
-function isOpened(portKey: string, publicRoles: readonly PublicPortRole[]): boolean {
-  return publicRoles.some(
-    (role) => role.portVar === portKey || (role.aliases ?? []).some((alias) => alias.portVar === portKey),
-  );
-}
-
 /**
  * What a port is, read off its key in the deployment's port table.
  *
@@ -40,10 +31,7 @@ function isOpened(portKey: string, publicRoles: readonly PublicPortRole[]): bool
  * The API check comes before the HTTP one on purpose: `SRS_HTTP_API_PORT` is
  * an API, and the order is what keeps it off the HLS branch.
  */
-export function endpointKindOf(
-  portKey: string,
-  publicRoles: readonly PublicPortRole[] = PUBLIC_PORT_ROLES,
-): EndpointKind {
+export function endpointKindOf(portKey: string): EndpointKind {
   const key = portKey.toUpperCase();
   if (key.includes('SRT')) {
     return {
@@ -55,15 +43,12 @@ export function endpointKindOf(
     };
   }
   if (key.includes('RTMP')) {
-    // Ingest is SRT only unless the policy opens RTMP, and an address the
-    // firewall turns away is not offered, as the admin console does not offer it.
-    const opened = isOpened(key, publicRoles);
     return {
       protocol: 'rtmp',
-      audience: opened ? 'public' : 'internal',
-      label: opened ? 'RTMP ingest, TCP, public' : 'RTMP ingest, TCP, internal, the firewall does not open it',
+      audience: 'public',
+      label: 'RTMP ingest, TCP, public',
       opensInBrowser: false,
-      offersAddress: opened,
+      offersAddress: true,
     };
   }
   if (key.includes('P2P')) {

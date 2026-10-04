@@ -78,23 +78,27 @@ ports is `10000 + 10 × s` plus a fixed last digit, so two deployments on one ho
 | ---------------- | -------- | -------------------------------------------- | ----------------------------------------------- |
 | `10000 + 10 × s` | tcp      | the uploader's API and the engine's webhooks | the host itself only                            |
 | `10001 + 10 × s` | udp      | SRT ingest                                   | the internet, so encoders can reach it          |
-| `10002 + 10 × s` | tcp      | SRS's RTMP listener                          | closed to the outside, see below                |
-| `10003 + 10 × s` | tcp      | the engine's HLS output                      | the host itself only                            |
+| `10002 + 10 × s` | tcp      | SRS's RTMP listener                          | the internet where the firewall opens it        |
+| `10003 + 10 × s` | tcp      | the engine's HLS output                      | the host's Docker bridge, by default            |
 | `10004 + 10 × s` | tcp      | the viewer page                              | the internet                                    |
 | `10005 + 10 × s` | tcp      | the uploader Bee node's API                  | **never the internet**, see below               |
 | `10006 + 10 × s` | tcp      | the uploader Bee node's peer port            | the internet, so Swarm peers can dial it        |
 | `10007 + 10 × s` | tcp      | the gateway Bee node's API                   | **never the internet** without a proxy in front |
 | `10008 + 10 × s` | tcp      | the gateway Bee node's peer port             | the internet                                    |
-| `10009 + 10 × s` | tcp      | the engine's own HTTP API                    | the host itself only                            |
+| `10009 + 10 × s` | tcp      | the engine's own HTTP API                    | the host's Docker bridge, by default            |
 
-RTMP is closed to the outside on every stage for now, and SRT is the ingest broadcasters use. SRS
-keeps its RTMP listener because the ABR ladder republishes every rung to it over loopback. Where RTMP
-is opened on a stage later, it is plain RTMP and is not encrypted. A broadcaster's stream key crosses
-the network as readable text, and anyone who reads it there can publish to that stream with it.
-Wherever keys are checked the stack lets a new RTMP publisher take over a live stream, so they can
-also replace a live broadcast, whichever protocol it came in over. While RTMP is open, the SRT
-passphrase keeps the picture private but not the key: SRT sends its stream id, key included, before
-encryption starts, so a key read off either protocol publishes over RTMP.
+Every listen address is a setting. The Bee APIs and the engine's HTTP ports default to the host's
+Docker bridge address, which the stack's deploy reads at deploy time, because Docker publishes a port
+with rules of its own that a host firewall such as ufw never sees, and a Bee API has no password and
+can spend money. Ingest, the viewer and the peer ports default to every address, and which of them
+the internet reaches is the operator's firewall.
+
+An SRS stage offers RTMP beside SRT. SRS allows play from its own container only, because RTMP
+publishing and playback share one port. RTMP is not encrypted: a broadcaster's stream key crosses
+the network as readable text, and a key read off the network publishes over RTMP whichever protocol
+it was read from, because SRT sends its stream id, key included, before encryption starts. With the
+takeover on, such a publisher can also replace a live broadcast. The SRT passphrase keeps the picture
+private but not the key.
 
 The per-rung Bee nodes of an ABR ladder take a second block, from `11001 + 10 × s`, with the same
 rule: each peer port is public and each API is not.

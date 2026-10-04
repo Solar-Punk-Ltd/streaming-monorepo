@@ -26,7 +26,7 @@ export function DeploymentHeader({
   serverHost: string;
   group: DeploymentGroup | null;
   rung: string | null;
-  /** What Copy publish URL puts on the clipboard, the SRT line with RTMP's values where RTMP is open. */
+  /** What Copy publish URL puts on the clipboard, the SRT line with RTMP's values where the engine takes RTMP. */
   publishCopyText: string | null;
   publishUrlReady: boolean;
 }) {

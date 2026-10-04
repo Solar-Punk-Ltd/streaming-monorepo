@@ -103,6 +103,10 @@ describe('substituteForCheck', () => {
     assert.equal(/PLACEHOLDER/.test(text), false);
   });
 
+  it('checks the play rule with the loopback address SRS allows play from by default', () => {
+    assert.equal(substituteForCheck('allow play PLAY_FROM_PLACEHOLDER;'), 'allow play 127.0.0.1;');
+  });
+
   it('gives a token it has no value for a number rather than leaving it', () => {
     assert.equal(substituteForCheck('x SOMETHING_NEW_PLACEHOLDER;'), 'x 1;');
   });

@@ -32,21 +32,49 @@ apply_port_slot
 SERVICES_CHECKED=0
 SERVICES_FAILED=0
 
+# Asks <url> with curl, here or, given a remote <target>, on that host over ssh. An admin interface
+# defaults to the host's Docker bridge address, which answers on that host alone.
+probe() {
+  local via="$1"
+  shift
+  if [ -z "$via" ]; then
+    curl "$@"
+    return
+  fi
+  local remote="curl" arg
+  for arg in "$@"; do
+    remote+=" $(shell_quote "$arg")"
+  done
+  # shellcheck disable=SC2029
+  ssh "$via" "$remote"
+}
+
+# The words a check prints after a service's name: the URL, and the host it was asked on.
+where() {
+  local url="$1" via="$2"
+  if [ -n "$via" ]; then
+    echo "$url on $via"
+  else
+    echo "$url"
+  fi
+}
+
 check_service() {
   local name="$1"
   local url="$2"
+  local via="${3:-}"
 
   SERVICES_CHECKED=$((SERVICES_CHECKED + 1))
 
   local response
-  if response=$(curl -s -o /dev/null -w "%{http_code}" --max-time 5 "$url" 2>/dev/null); then
+  if response=$(probe "$via" -s -o /dev/null -w "%{http_code}" --max-time 5 "$url" 2>/dev/null); then
     if [ "$response" = "200" ]; then
-      log_ok "$name ($url)"
+      log_ok "$name ($(where "$url" "$via"))"
       return 0
     fi
-    log_warn "$name ($url): HTTP $response"
+    log_warn "$name ($(where "$url" "$via")): HTTP $response"
   else
-    log_error "$name ($url): unreachable"
+    log_error "$name ($(where "$url" "$via")): unreachable"
   fi
 
   SERVICES_FAILED=$((SERVICES_FAILED + 1))
@@ -56,17 +84,37 @@ check_service() {
 check_service_reachable() {
   local name="$1"
   local url="$2"
+  local via="${3:-}"
 
   SERVICES_CHECKED=$((SERVICES_CHECKED + 1))
 
-  if curl -s -o /dev/null --max-time 5 "$url" 2>/dev/null; then
-    log_ok "$name ($url)"
+  if probe "$via" -s -o /dev/null --max-time 5 "$url" >/dev/null 2>&1; then
+    log_ok "$name ($(where "$url" "$via"))"
     return 0
   fi
 
-  log_error "$name ($url): unreachable"
+  log_error "$name ($(where "$url" "$via")): unreachable"
   SERVICES_FAILED=$((SERVICES_FAILED + 1))
   return 1
+}
+
+# The address an admin interface answers on, from its bind setting the way compose reads it: the
+# address it names, localhost for every address, and the bridge address when it names none.
+bound_host() {
+  local bind="$1" bridge="$2"
+  case "$bind" in
+    '') echo "$bridge" ;;
+    0.0.0.0 | '::' | '[::]') echo "localhost" ;;
+    *) echo "$bind" ;;
+  esac
+}
+
+# A Bee node's bind setting by its prefix: *_API_BIND on a bridge network, and under host networking
+# *_API_LISTEN, the process's own address, which is the whole bind there.
+bee_api_bind() {
+  local key="${1}_API_BIND"
+  [ "${COMPOSE_NETWORK:-}" = "host" ] && key="${1}_API_LISTEN"
+  echo "${!key:-}"
 }
 
 check_target() {
@@ -81,25 +129,32 @@ check_target() {
     host=$(host_from_target "$target")
   fi
 
+  # The admin and file interfaces are asked on the host that runs them, at the address compose bound
+  # them to, because by default that is the host's Docker bridge address.
+  local via="" bridge
+  is_remote "$target" && via="$target"
+  bridge=$(docker_bridge_address_for "$target")
+  bridge="${bridge:-127.0.0.1}"
+
   echo ""
   echo "=== $target ==="
 
   for svc in "${services[@]}"; do
     case "$svc" in
       "$SVC_BEE_UPLOADER")
-        check_service "$SVC_BEE_UPLOADER" "http://$host:${BEE_UPLOADER_API_PORT:-$DEFAULT_BEE_UPLOADER_PORT}/health"
+        check_service "$SVC_BEE_UPLOADER" "http://$(bound_host "$(bee_api_bind BEE_UPLOADER)" "$bridge"):${BEE_UPLOADER_API_PORT:-$DEFAULT_BEE_UPLOADER_PORT}/health" "$via"
         ;;
       "$SVC_BEE_GATEWAY")
-        check_service "$SVC_BEE_GATEWAY" "http://$host:${BEE_GATEWAY_API_PORT:-$DEFAULT_BEE_GATEWAY_PORT}/health"
+        check_service "$SVC_BEE_GATEWAY" "http://$(bound_host "$(bee_api_bind BEE_GATEWAY)" "$bridge"):${BEE_GATEWAY_API_PORT:-$DEFAULT_BEE_GATEWAY_PORT}/health" "$via"
         ;;
       "$SVC_UPLOADER")
         check_service "$SVC_UPLOADER" "http://$host:${API_PORT:-$DEFAULT_API_PORT}/health"
         ;;
       "$SVC_SRS")
-        check_service "$SVC_SRS" "http://$host:${SRS_HTTP_PORT:-8080}"
+        check_service "$SVC_SRS" "http://$(bound_host "${SRS_HTTP_BIND:-}" "$bridge"):${SRS_HTTP_PORT:-8080}" "$via"
         ;;
       "$SVC_OME")
-        check_service_reachable "$SVC_OME" "http://$host:${OME_HLS_PORT:-8081}"
+        check_service_reachable "$SVC_OME" "http://$(bound_host "${OME_HTTP_BIND:-}" "$bridge"):${OME_HLS_PORT:-8081}" "$via"
         ;;
       "$SVC_CLIENT")
         check_service "$SVC_CLIENT" "http://$host:${CLIENT_PORT:-5173}/"

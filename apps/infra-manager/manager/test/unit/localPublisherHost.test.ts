@@ -4,8 +4,8 @@
  * Unit test, no Docker and no dns: the operator's override, the in-container
  * check and the lookup are injected, so every shape runs on a laptop.
  *
- * Why the shapes are what they are. The manager binds every local bee API to the docker
- * bridge address and to nothing else, so the manager's public address answers on
+ * Why the shapes are what they are. The stack's deploy binds every local bee API to the
+ * docker bridge address and to nothing else, so the manager's public address answers on
  * those ports from nowhere at all, and an uploader is a container on this same
  * host. Inside the api container the bridge is what host.docker.internal resolves
  * to. The name cannot be passed on, because an uploader's compose service carries
@@ -14,12 +14,7 @@
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 
-import {
-  bridgeGatewayOf,
-  localBeeApiBindReader,
-  localPublisherHostReader,
-  resolveLocalPublisherHost,
-} from '../../src/domain/localHost.js';
+import { localPublisherHostReader, resolveLocalPublisherHost } from '../../src/domain/localHost.js';
 import { config } from '../../src/utils/config.js';
 
 const BRIDGE = '10.200.0.1';
@@ -171,92 +166,5 @@ describe('localPublisherHostReader', () => {
     assert.equal(await read(), '8.8.8.8');
     assert.equal(spy.warnings.length, 1);
     assert.ok(spy.warnings[0]!.includes('8.8.8.8'), spy.warnings[0]);
-  });
-});
-
-describe('localBeeApiBindReader', () => {
-  // The address a local deployment's Bee APIs are bound to where nothing names
-  // one. Only the bridge the daemon reports as its own: on Docker Desktop the
-  // docker host resolves to an address the daemon has no interface on, and a
-  // port published there would answer nowhere.
-  it('answers the docker host’s address when it is the daemon’s bridge gateway', async () => {
-    const read = localBeeApiBindReader({
-      publisherHost: async () => BRIDGE,
-      bridgeGateway: async () => BRIDGE,
-      warn: () => assert.fail('no warning'),
-    });
-    assert.equal(await read(), BRIDGE);
-  });
-
-  it('answers none, and warns once, when the docker host is not the daemon’s bridge', async () => {
-    const warnings: string[] = [];
-    const read = localBeeApiBindReader({
-      publisherHost: async () => '192.168.65.254',
-      bridgeGateway: async () => BRIDGE,
-      warn: (message) => void warnings.push(message),
-    });
-    assert.equal(await read(), null);
-    assert.equal(await read(), null);
-    assert.equal(warnings.length, 1);
-    assert.match(warnings[0]!, /BEE_UPLOADER_API_BIND/);
-  });
-
-  it('answers none for a name, which is what a manager running natively hands on', async () => {
-    let asked = false;
-    const read = localBeeApiBindReader({
-      publisherHost: async () => DOCKER_HOST_NAME,
-      bridgeGateway: async () => {
-        asked = true;
-        return BRIDGE;
-      },
-      warn: () => undefined,
-    });
-    assert.equal(await read(), null);
-    assert.equal(asked, false);
-  });
-
-  it('answers none while the bridge cannot be read, and asks again next time', async () => {
-    let calls = 0;
-    const read = localBeeApiBindReader({
-      publisherHost: async () => BRIDGE,
-      bridgeGateway: async () => {
-        calls += 1;
-        if (calls === 1) throw new Error('connect ENOENT /var/run/docker.sock');
-        return BRIDGE;
-      },
-      warn: () => undefined,
-    });
-    assert.equal(await read(), null);
-    assert.equal(await read(), BRIDGE);
-    assert.equal(await read(), BRIDGE);
-    assert.equal(calls, 2);
-  });
-});
-
-describe('bridgeGatewayOf', () => {
-  it('reads the IPv4 gateway of the bridge network’s inspect', () => {
-    assert.equal(
-      bridgeGatewayOf({
-        IPAM: {
-          Config: [
-            { Subnet: 'fd00::/64', Gateway: 'fd00::1' },
-            { Subnet: '10.200.0.0/16', Gateway: BRIDGE },
-          ],
-        },
-      }),
-      BRIDGE,
-    );
-  });
-
-  it('answers null for an inspect without one', () => {
-    for (const inspect of [
-      null,
-      {},
-      { IPAM: {} },
-      { IPAM: { Config: [] } },
-      { IPAM: { Config: [{ Gateway: 'not-an-ip' }] } },
-    ]) {
-      assert.equal(bridgeGatewayOf(inspect), null, JSON.stringify(inspect));
-    }
   });
 });

@@ -10,6 +10,7 @@ import { placeholdersIn } from '@streaming-infra-manager/common';
 const CHECK_VALUES: Record<string, string> = {
   PASSPHRASE_PLACEHOLDER: 'checkpassphrase16',
   RTMP_PORT_PLACEHOLDER: '1935',
+  PLAY_FROM_PLACEHOLDER: '127.0.0.1',
   HTTP_PORT_PLACEHOLDER: '8080',
   HTTP_API_PORT_PLACEHOLDER: '1985',
   SRT_PORT_PLACEHOLDER: '10080',
