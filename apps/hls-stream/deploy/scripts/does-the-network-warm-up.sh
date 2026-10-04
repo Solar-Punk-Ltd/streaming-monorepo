@@ -35,7 +35,7 @@ PHASE06="${PHASE06:-${HOME}/phase06}"
 RUN_DIR="${RUN_DIR:-${HOME}/retrieval-probe/warmup-$(date -u +%Y%m%d-%H%M%S)}"
 LOG="${RUN_DIR}/warmup.log"
 CONTAINER="${CONTAINER:-${PROFILE}-bee-gateway-1}"
-GATEWAY_BEE_PORT="${GATEWAY_BEE_PORT:-$((10007 + PORT_SLOT * 10))}"
+GATEWAY_BEE_PORT="${GATEWAY_BEE_PORT:-$((PORT_SLOT == 0 ? 1733 : 10007 + PORT_SLOT * 10))}"
 RETRIEVAL_KEY=BEE_GATEWAY_CACHE_RETRIEVAL
 
 # The half that tonight's sittings walked, and the half they never reached. SEGMENTS stays under 400 so

@@ -70,10 +70,10 @@ SIZE="${SIZE:-1280x720}"
 BITRATE_KBPS="${BITRATE_KBPS:-2500}"
 GOP_SECONDS="${GOP_SECONDS:-0.5}"
 
-UPLOADER_API_PORT="${UPLOADER_API_PORT:-$((10000 + PORT_SLOT * 10))}"
-UPLOADER_BEE_PORT="${UPLOADER_BEE_PORT:-$((10005 + PORT_SLOT * 10))}"
-GATEWAY_BEE_PORT="${GATEWAY_BEE_PORT:-$((10007 + PORT_SLOT * 10))}"
-CLIENT_PORT="${CLIENT_PORT:-$((10004 + PORT_SLOT * 10))}"
+UPLOADER_API_PORT="${UPLOADER_API_PORT:-$((PORT_SLOT == 0 ? 3000 : 10000 + PORT_SLOT * 10))}"
+UPLOADER_BEE_PORT="${UPLOADER_BEE_PORT:-$((PORT_SLOT == 0 ? 1633 : 10005 + PORT_SLOT * 10))}"
+GATEWAY_BEE_PORT="${GATEWAY_BEE_PORT:-$((PORT_SLOT == 0 ? 1733 : 10007 + PORT_SLOT * 10))}"
+CLIENT_PORT="${CLIENT_PORT:-$((PORT_SLOT == 0 ? 5173 : 10004 + PORT_SLOT * 10))}"
 
 # The standalone ultra-light node. Its port is fixed by `unfunded-gateway.sh` rather than derived from
 # the port slot, because it is not part of the profile stack and never should be.

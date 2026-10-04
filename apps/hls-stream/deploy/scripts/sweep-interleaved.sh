@@ -84,9 +84,10 @@ RATES="$(dirname "${BASH_SOURCE[0]}")/burn-rates.sh"
 }
 
 # origin + slot*10, matching apply_port_slot in _lib.sh, where BEE_UPLOADER_API_PORT has origin 10005
-# and BEE_GATEWAY_API_PORT has origin 10007.
-UPLOADER_BEE_PORT="${UPLOADER_BEE_PORT:-$((10005 + PORT_SLOT * 10))}"
-GATEWAY_BEE_PORT="${GATEWAY_BEE_PORT:-$((10007 + PORT_SLOT * 10))}"
+# and BEE_GATEWAY_API_PORT has origin 10007. Slot 0 is a stock stage and takes the stock ports, 1633
+# and 1733.
+UPLOADER_BEE_PORT="${UPLOADER_BEE_PORT:-$((PORT_SLOT == 0 ? 1633 : 10005 + PORT_SLOT * 10))}"
+GATEWAY_BEE_PORT="${GATEWAY_BEE_PORT:-$((PORT_SLOT == 0 ? 1733 : 10007 + PORT_SLOT * 10))}"
 
 # Deliberately outside REPO_DIR. That tree is an rsync target with `--delete`, so anything written
 # there is removed the next time the laptop syncs, which is exactly when someone would be checking on

@@ -41,7 +41,7 @@ STACK_DIR="${STACK_DIR:-${HOME}/swarm-hls-stream-${PROFILE}}"
 COMPOSE_DIR="${STACK_DIR}/deploy"
 ENV_FILE="${STACK_DIR}/.env"
 COMPOSE_PROJECT="${COMPOSE_PROJECT:-${PROFILE}}"
-GATEWAY_BEE_PORT="${GATEWAY_BEE_PORT:-$((10007 + PORT_SLOT * 10))}"
+GATEWAY_BEE_PORT="${GATEWAY_BEE_PORT:-$((PORT_SLOT == 0 ? 1733 : 10007 + PORT_SLOT * 10))}"
 REFS="${REFS:-${HOME}/phase06/refs.txt}"
 # Where a named reference pattern is looked up, as `refs-<name>.txt`. An arm that names one walks it
 # instead of ${REFS}, which is what lets one sitting interleave access patterns rather than compare a

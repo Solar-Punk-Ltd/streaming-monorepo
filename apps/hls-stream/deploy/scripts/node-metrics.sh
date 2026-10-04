@@ -21,7 +21,8 @@ GATEWAY_PORT="${GATEWAY_BEE_PORT:-}"
 UPLOADER_API_PORT="${UPLOADER_API_PORT:-}"
 
 # The ports a reading takes, each from its own variable or else from the stage's PORT_SLOT, the way
-# `apply_port_slot` in `_lib.sh` publishes them. Only `snapshot` and `watch` read a node.
+# `apply_port_slot` in `_lib.sh` publishes them: the stock port at slot 0, base + slot * 10 otherwise.
+# Only `snapshot` and `watch` read a node.
 resolve_ports() {
   if [ -z "${UPLOADER_PORT}" ] || [ -z "${GATEWAY_PORT}" ] || [ -z "${UPLOADER_API_PORT}" ]; then
     if ! [[ "${PORT_SLOT:-}" =~ ^[0-9]{1,2}$ ]]; then
@@ -29,9 +30,9 @@ resolve_ports() {
       exit 2
     fi
   fi
-  UPLOADER_PORT="${UPLOADER_PORT:-$((10005 + PORT_SLOT * 10))}"
-  GATEWAY_PORT="${GATEWAY_PORT:-$((10007 + PORT_SLOT * 10))}"
-  UPLOADER_API_PORT="${UPLOADER_API_PORT:-$((10000 + PORT_SLOT * 10))}"
+  UPLOADER_PORT="${UPLOADER_PORT:-$((PORT_SLOT == 0 ? 1633 : 10005 + PORT_SLOT * 10))}"
+  GATEWAY_PORT="${GATEWAY_PORT:-$((PORT_SLOT == 0 ? 1733 : 10007 + PORT_SLOT * 10))}"
+  UPLOADER_API_PORT="${UPLOADER_API_PORT:-$((PORT_SLOT == 0 ? 3000 : 10000 + PORT_SLOT * 10))}"
 }
 
 # What `watch` refuses to keep running past. The reserve is per node and is not a budget: it is the

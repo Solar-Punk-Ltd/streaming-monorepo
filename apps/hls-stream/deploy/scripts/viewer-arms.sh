@@ -43,9 +43,9 @@ WARMUP_ROUNDS="${WARMUP_ROUNDS:-1}"
 MINUTES="${MINUTES:-8}"
 SIZE="${SIZE:-1280x720}"
 BITRATE_KBPS="${BITRATE_KBPS:-2500}"
-UPLOADER_API_PORT="${UPLOADER_API_PORT:-$((10000 + PORT_SLOT * 10))}"
-UPLOADER_BEE_PORT="${UPLOADER_BEE_PORT:-$((10005 + PORT_SLOT * 10))}"
-GATEWAY_BEE_PORT="${GATEWAY_BEE_PORT:-$((10007 + PORT_SLOT * 10))}"
+UPLOADER_API_PORT="${UPLOADER_API_PORT:-$((PORT_SLOT == 0 ? 3000 : 10000 + PORT_SLOT * 10))}"
+UPLOADER_BEE_PORT="${UPLOADER_BEE_PORT:-$((PORT_SLOT == 0 ? 1633 : 10005 + PORT_SLOT * 10))}"
+GATEWAY_BEE_PORT="${GATEWAY_BEE_PORT:-$((PORT_SLOT == 0 ? 1733 : 10007 + PORT_SLOT * 10))}"
 
 # How long an arm waits for its own broadcast to appear, and for the previous one to go. Generous,
 # because both are only how promptly a state change is noticed. Overridable so a test can drive the
@@ -295,7 +295,7 @@ run_browser() {
     -e E2E_PUBLIC_HOST=127.0.0.1 \
     -e "E2E_PROFILE=${PROFILE}" \
     -e "E2E_PORT_SLOT=${PORT_SLOT}" \
-    -e "BROWSER_CLIENT_URL=http://127.0.0.1:$((10004 + PORT_SLOT * 10))" \
+    -e "BROWSER_CLIENT_URL=http://127.0.0.1:$((PORT_SLOT == 0 ? 5173 : 10004 + PORT_SLOT * 10))" \
     -e "BROWSER_WATCH_SECONDS=${seconds}" \
     -e "BROWSER_GOP_SECONDS=${gop}" \
     "${BROWSER_IMAGE}" pnpm browser:watch
@@ -314,7 +314,7 @@ run_selfcheck() {
     -e E2E_PUBLIC_HOST=127.0.0.1 \
     -e "E2E_PROFILE=${PROFILE}" \
     -e "E2E_PORT_SLOT=${PORT_SLOT}" \
-    -e "BROWSER_CLIENT_URL=http://127.0.0.1:$((10004 + PORT_SLOT * 10))" \
+    -e "BROWSER_CLIENT_URL=http://127.0.0.1:$((PORT_SLOT == 0 ? 5173 : 10004 + PORT_SLOT * 10))" \
     "${BROWSER_IMAGE}" pnpm browser:selfcheck
 }
 

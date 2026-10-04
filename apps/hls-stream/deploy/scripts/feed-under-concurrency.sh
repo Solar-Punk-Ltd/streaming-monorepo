@@ -56,7 +56,7 @@ HOST_LOAD="${HERE}/host-load.sh"
   exit 1
 }
 
-GATEWAY_BEE_PORT="${GATEWAY_BEE_PORT:-$((10007 + ${PORT_SLOT:?set PORT_SLOT to the port slot of the stage this reads, or GATEWAY_BEE_PORT} * 10))}"
+GATEWAY_BEE_PORT="${GATEWAY_BEE_PORT:-$((${PORT_SLOT:?set PORT_SLOT to the port slot of the stage this reads, or GATEWAY_BEE_PORT} == 0 ? 1733 : 10007 + PORT_SLOT * 10))}"
 OUT_DIR="${OUT_DIR:-${HOME}/feed-concurrency}"
 HITS_FILE="${HITS_FILE:-${HOME}/soc-miss/hits.txt}"
 
