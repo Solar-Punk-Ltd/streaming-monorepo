@@ -234,6 +234,9 @@ pool, so nothing invalidates it when it goes wrong:
   guard refuses is refused with the guard's own sentence. A string that names
   any other node, one pasted from another manager among them, is deployed as it
   was saved and still has to be pasted again after a re-buy.
+  A stage string that names this manager's pool nodes always follows the pool's
+  current batches, so to change a rung's batch use **Use** on the rung, not an
+  edit of the stage string.
 - **A rung is removed and re-created**, which changes its _address_, not just
   its batch. Ports come from the profile's port slot, and a freed slot is
   reused by the next profile created on that machine, so `720p@…:10035` can
