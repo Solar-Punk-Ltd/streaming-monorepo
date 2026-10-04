@@ -315,8 +315,17 @@ export class Host {
    * Public for a caller that builds its own command line rather than going through `local*`.
    */
   async dialAddress(target: ServiceTarget): Promise<string> {
+    const address = await this.hostAddress(target);
+    return address === DEFAULT_LOCAL_HOST_ADDRESS ? this.serviceAddress : address;
+  }
+
+  /**
+   * The address the deployment host itself reaches a port on, which is what a command printed for
+   * an operator to run there has to name. `localhost` for a port that answers on loopback.
+   */
+  async hostAddress(target: ServiceTarget): Promise<string> {
     const address = typeof target === 'number' ? await this.boundAddress(target) : target.address;
-    return address === undefined || LOOPBACK_NAMES.has(address) ? this.serviceAddress : address;
+    return address === undefined || LOOPBACK_NAMES.has(address) ? DEFAULT_LOCAL_HOST_ADDRESS : address;
   }
 
   private async boundAddress(port: number): Promise<string | undefined> {

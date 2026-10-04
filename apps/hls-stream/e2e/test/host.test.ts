@@ -394,6 +394,14 @@ describe('the address a bridge-bound port is dialled on', () => {
     assert.equal(await boundHostWith('stub-target', '', '172.17.0.1').dialAddress(GATEWAY), '172.17.0.1');
     assert.equal(await boundHostWith('stub-target', '', '172.17.0.1').dialAddress(10_074), 'localhost');
   });
+
+  it('answers the address the deployment host itself dials, for a command printed for an operator', async () => {
+    const host = boundHostWith(LOCAL_TARGET, '', '172.17.0.1', 'host.docker.internal');
+
+    assert.equal(await host.hostAddress(GATEWAY), '172.17.0.1');
+    assert.equal(await host.hostAddress(10_074), 'localhost');
+    assert.equal(await host.hostAddress({ port: 11_071, address: '127.0.0.1' }), 'localhost');
+  });
 });
 
 /**

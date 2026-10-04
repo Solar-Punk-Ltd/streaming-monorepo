@@ -70,6 +70,8 @@ const MIN_CHEQUEBOOK_PLUR = bzzToPlur(MIN_CHEQUEBOOK_BZZ);
  */
 interface NodeFunding {
   readonly node: PublisherNode;
+  /** Where the deployment host reaches the node, for the deposit command a refusal prints. */
+  readonly address: string;
   readonly availablePlur: bigint;
   readonly totalPlur: bigint;
 }
@@ -93,7 +95,7 @@ function plurField(body: Record<string, unknown>, field: string, node: Publisher
 
 function depositCommand(reading: NodeFunding): string {
   const shortfall = MIN_CHEQUEBOOK_PLUR - reading.availablePlur;
-  return `  curl -sS -XPOST 'http://localhost:${reading.node.port}/chequebook/deposit?amount=${shortfall}'`;
+  return `  curl -sS -XPOST 'http://${reading.address}:${reading.node.port}/chequebook/deposit?amount=${shortfall}'`;
 }
 
 /**
@@ -109,6 +111,7 @@ export async function readChequebookFunding(host: Host, nodes: readonly Publishe
     const body = (await chequebookBalance(host, node)) as unknown as Record<string, unknown>;
     readings.push({
       node,
+      address: await host.hostAddress(node),
       availablePlur: plurField(body, 'availableBalance', node),
       totalPlur: plurField(body, 'totalBalance', node),
     });

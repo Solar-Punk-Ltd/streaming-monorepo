@@ -120,6 +120,7 @@ function stageHost({ balances = {}, ttlS = {} }: Stage = {}): { host: Host; aske
       }
       throw new Error(`the gate asked for ${path} on ${port}, which this stage does not answer`);
     },
+    hostAddress: async () => 'localhost',
   } as unknown as Host;
 
   return { host, asked };
