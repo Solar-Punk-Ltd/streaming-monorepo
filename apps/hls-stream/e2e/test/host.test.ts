@@ -378,6 +378,18 @@ describe('the address a bridge-bound port is dialled on', () => {
     assert.match(await host.localText(10_074, '/health'), /http:\/\/host\.docker\.internal:10074\/health/);
   });
 
+  /**
+   * An unsplit stage's one publisher node is named by its compose service, so nodesBehind gives it
+   * the deploy's published port and no address, and the port is bound like any other.
+   */
+  it('dials a node with no address where the deploy bound its port', async () => {
+    const sandbox = stubSsh([0]);
+
+    await boundHostWith('stub-target', '', '172.17.0.1').localText({ port: GATEWAY }, '/chequebook/balance');
+
+    assert.match(sandbox.invocations()[0], /http:\/\/172\.17\.0\.1:11737\/chequebook\/balance/);
+  });
+
   it('dials a publisher node at the address its url names, and on loopback as before', async () => {
     const sandbox = stubSsh([0]);
     const host = boundHostWith('stub-target', '', '172.17.0.1');

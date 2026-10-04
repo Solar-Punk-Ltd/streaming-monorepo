@@ -324,7 +324,10 @@ export class Host {
    * an operator to run there has to name. `localhost` for a port that answers on loopback.
    */
   async hostAddress(target: ServiceTarget): Promise<string> {
-    const address = typeof target === 'number' ? await this.boundAddress(target) : target.address;
+    const address =
+      typeof target === 'number' || target.address === undefined
+        ? await this.boundAddress(portOf(target))
+        : target.address;
     return address === undefined || LOOPBACK_NAMES.has(address) ? DEFAULT_LOCAL_HOST_ADDRESS : address;
   }
 
