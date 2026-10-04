@@ -64,7 +64,7 @@ const omeStage = {
 };
 const profiles = [stage('plain-stage', 1), stage('awkward-stage', 2), omeStage];
 
-const RTMP_WARNING_START = 'RTMP is not encrypted.';
+const RTMP_WARNING_START = 'RTMP is not encrypted';
 
 /** How many times a value appears in a text. */
 const occurrences = (text, value) => text.split(value).length - 1;

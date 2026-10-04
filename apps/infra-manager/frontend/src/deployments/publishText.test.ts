@@ -23,16 +23,16 @@ import type { Profile } from '../types';
 describe('the Publish card beside RTMP', () => {
   it('warns that RTMP is not encrypted, what a key read off the network allows, and what SRT keeps', () => {
     const warning = rtmpUnencryptedWarning(true);
-    assert.match(warning, /^RTMP is not encrypted\./);
-    assert.match(warning, /anyone who reads it there can publish to this stream with it/);
-    assert.match(warning, /This deployment lets a new RTMP publisher with the key take over a live stream/);
-    assert.match(warning, /SRT with this deployment's passphrase keeps your picture private but not your key/);
+    assert.match(warning, /^RTMP is not encrypted, so your stream key crosses the network as readable text\./);
+    assert.match(warning, /A key read off the network publishes to this stream over RTMP/);
+    assert.match(warning, /With the takeover on, a publisher with the key can also replace your live broadcast/);
+    assert.match(warning, /This deployment's SRT passphrase keeps your picture private but not your key/);
   });
 
   it('does not recommend an SRT passphrase to a deployment that publishes without one', () => {
     const warning = rtmpUnencryptedWarning(false);
     assert.doesNotMatch(warning, /keeps your picture private/);
-    assert.match(warning, /this deployment has no SRT passphrase to keep the picture private/);
+    assert.match(warning, /This deployment has no SRT passphrase, so the picture is not private either/);
   });
 
   it("counts the deployment's own passphrase or the host-wide one, as the SRT line does", () => {
