@@ -40,15 +40,26 @@ const LADDER_NOT_STARTED = 'ladder_not_started';
 
 type SrsHookBody = Record<string, string>;
 
-function sourceHook(action: string): SrsHookBody {
+function sourceHook(action: string, clientId = 'p26w1s45'): SrsHookBody {
   return {
     action,
-    client_id: 'p26w1s45',
+    client_id: clientId,
     ip: '203.0.113.10',
     vhost: '__defaultVhost__',
     app: APP,
     stream: STREAM,
     param: `?${PUBLISH_KEY_PARAM}=${KEY}`,
+  };
+}
+
+const OTHER_STREAM = '9a8b7c6d-5e4f-4a3b-8c2d-1e0f9a8b7c6d';
+const OTHER_STREAM_ID = `${APP}/${OTHER_STREAM}`;
+
+function otherSourceHook(action: string): SrsHookBody {
+  return {
+    ...sourceHook(action, 'q81x4t07'),
+    stream: OTHER_STREAM,
+    param: `?${PUBLISH_KEY_PARAM}=${derivePublishKey(PUBLISH_SECRET, OTHER_STREAM_ID)}`,
   };
 }
 
@@ -192,6 +203,61 @@ describe('a ladder source whose first rung follows in time', () => {
       await clock.advance(FIRST_RUNG_DEADLINE_MS * 2);
       assert.deepEqual(linesAboutNoRung(errors), []);
       assert.ok(!reasonsOf(orchestrator).includes(LADDER_NOT_STARTED));
+    });
+  });
+});
+
+describe('a ladder source that comes back while SRS still holds its rungs', () => {
+  it('fires nothing when it returns inside the encoder hold, since the held rung is live', async () => {
+    await onStage(async ({ send, clock, orchestrator, errors }) => {
+      assert.equal(await send(sourceHook('on_publish')), 0);
+      assert.equal(await send(rungHook('on_publish')), 0);
+      assert.equal(await send(sourceHook('on_unpublish')), 0);
+      await clock.advance(5_000);
+      assert.equal(await send(sourceHook('on_publish', 'b3c9d1e5')), 0);
+
+      await clock.advance(FIRST_RUNG_DEADLINE_MS * 2);
+      assert.deepEqual(linesAboutNoRung(errors), []);
+      assert.ok(!reasonsOf(orchestrator).includes(LADDER_NOT_STARTED));
+      assert.deepEqual(orchestrator.getHealthSignals().ladderNotStartedStreams, []);
+    });
+  });
+});
+
+describe('a ladder source published a second time before any rung', () => {
+  it('keeps the original deadline, which fires once at 45 s', async () => {
+    await onStage(async ({ send, clock, orchestrator, errors }) => {
+      assert.equal(await send(sourceHook('on_publish')), 0);
+      await clock.advance(30_000);
+      assert.equal(await send(sourceHook('on_publish', 'b3c9d1e5')), 0);
+
+      await clock.advance(FIRST_RUNG_DEADLINE_MS - 30_000 - 1);
+      assert.deepEqual(linesAboutNoRung(errors), [], 'the takeover did not move the deadline, nothing yet');
+
+      await clock.advance(1);
+      assert.equal(linesAboutNoRung(errors).length, 1, 'it fires 45 s after the first publish');
+      assert.deepEqual(orchestrator.getHealthSignals().ladderNotStartedStreams, [STREAM_ID]);
+
+      await clock.advance(FIRST_RUNG_DEADLINE_MS * 4);
+      assert.equal(linesAboutNoRung(errors).length, 1, 'and only once');
+    });
+  });
+});
+
+describe('two ladder sources waiting at once', () => {
+  it('keeps the other armed and firing when one is cleared', async () => {
+    await onStage(async ({ send, clock, orchestrator, errors }) => {
+      assert.equal(await send(sourceHook('on_publish')), 0);
+      assert.equal(await send(otherSourceHook('on_publish')), 0);
+      await clock.advance(10_000);
+      assert.equal(await send(sourceHook('on_unpublish')), 0);
+
+      await clock.advance(FIRST_RUNG_DEADLINE_MS - 10_000);
+      const said = linesAboutNoRung(errors);
+      assert.equal(said.length, 1, `only the source still waiting is reported, got ${JSON.stringify(errors)}`);
+      assert.ok(said[0]?.includes(OTHER_STREAM_ID));
+      assert.ok(!said[0]?.includes(STREAM_ID));
+      assert.deepEqual(orchestrator.getHealthSignals().ladderNotStartedStreams, [OTHER_STREAM_ID]);
     });
   });
 });
