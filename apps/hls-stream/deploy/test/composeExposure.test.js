@@ -69,6 +69,21 @@ const EVERY_INTERFACE_ON_PURPOSE = new Map([
   ],
 ]);
 
+/**
+ * The binds of every admin and file interface: the Bee APIs, SRS's control API and file server, and
+ * OME's HLS port.
+ */
+const ADMIN_BINDS = new Set([
+  'BEE_UPLOADER_API_BIND',
+  'BEE_RUNG_480P_API_BIND',
+  'BEE_RUNG_720P_API_BIND',
+  'BEE_RUNG_1080P_API_BIND',
+  'BEE_GATEWAY_API_BIND',
+  'SRS_HTTP_BIND',
+  'SRS_HTTP_API_BIND',
+  'OME_HTTP_BIND',
+]);
+
 function composeText(relativePath) {
   return readFileSync(join(ROOT, relativePath), 'utf8');
 }
@@ -216,6 +231,44 @@ describe('the published ports an operator can bind to one interface', () => {
       );
     });
   }
+
+  /**
+   * That an admin or file interface left unset answers on the host's Docker bridge and nowhere else.
+   *
+   * A firewall cannot do this part. Docker publishes a port with rules of its own that a host firewall
+   * such as ufw never sees, and a Bee API has no password and spends postage. So these default to the
+   * bridge address `deploy.sh` reads at deploy time, and to the loopback address when compose runs
+   * without it, never to every address. An explicit value still wins, because `:-` only fills an empty one.
+   */
+  it('defaults every admin and file interface to the bridge address, and to loopback without one', () => {
+    const wrong = PORT_COMPOSE_FILES.flatMap((file) =>
+      publishedPortsOf(composeText(file))
+        .filter(({ entry }) => variablesOf(entry).some((name) => ADMIN_BINDS.has(name)))
+        .filter(({ entry }) => !/^\$\{[A-Z0-9_]+_BIND:-\$\{DOCKER_BRIDGE_ADDRESS:-127\.0\.0\.1\}\}:/.test(entry))
+        .map(({ service, entry }) => `${file} ${service}: ${entry}`),
+    );
+    const seen = new Set(
+      PORT_COMPOSE_FILES.flatMap((file) =>
+        publishedPortsOf(composeText(file)).flatMap(({ entry }) => variablesOf(entry)),
+      ),
+    );
+
+    assert.deepEqual(wrong, [], 'these admin interfaces default to something other than the bridge address');
+    assert.deepEqual(
+      [...ADMIN_BINDS].filter((name) => !seen.has(name)),
+      [],
+      'an admin bind this check knows is published by no compose file, so it checks nothing for it',
+    );
+  });
+
+  it('gives every Bee API the deploy\'s host-networking listen default, which is empty on a bridge network', () => {
+    for (const file of BEE_COMPOSE_FILES) {
+      const listens = composeText(file).match(/--api-addr=[^\n]*/g) ?? [];
+      for (const listen of listens.filter((line) => line.includes('_API_LISTEN'))) {
+        assert.match(listen, /^--api-addr=\$\{BEE_[A-Z0-9_]+_API_LISTEN:-\$\{HOST_NETWORK_LISTEN:-\}\}:/, `${file}: ${listen}`);
+      }
+    }
+  });
 
   it('keeps no exemption that no longer names a published port', () => {
     const everyPortVariable = new Set(
