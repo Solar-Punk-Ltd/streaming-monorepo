@@ -142,7 +142,7 @@ function rungRunOf(samples: ViewerSample[]): RungOutageRun {
     watchUrl: 'http://127.0.0.1:10074/watch',
     chromeVersion: 'Chrome 149',
     gopSeconds: 2,
-    engine: 'latbench-srs-1',
+    engine: 'bench-stage-srs-1',
     ladder: LADDER,
     silenced: {
       rung: '720p',

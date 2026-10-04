@@ -414,7 +414,7 @@ describe('what the fault did to the viewer, out of a crash arm', () => {
 });
 
 /** A deployment on the bench profile, resolved against a root that holds no env files of its own. */
-const cfg = loadConfig({ env: { E2E_PROFILE: 'latbench', E2E_PORT_SLOT: '7' }, rootDir: '/no-such-e2e-root' });
+const cfg = loadConfig({ env: { E2E_PROFILE: 'bench-stage', E2E_PORT_SLOT: '7' }, rootDir: '/no-such-e2e-root' });
 
 describe('the environment an arm is run with', () => {
   const watch = browserArmEnv(cfg, { backend: WEEB3_BYTES, watchMinutes: 4 });
@@ -427,7 +427,7 @@ describe('the environment an arm is run with', () => {
   it('points the driver at this deployment over loopback', () => {
     assert.equal(watch.E2E_SSH_TARGET, 'local');
     assert.equal(watch.E2E_PUBLIC_HOST, '127.0.0.1');
-    assert.equal(watch.E2E_PROFILE, 'latbench');
+    assert.equal(watch.E2E_PROFILE, 'bench-stage');
     assert.equal(watch.E2E_PORT_SLOT, '7');
     assert.equal(watch.BROWSER_CLIENT_URL, `http://127.0.0.1:${cfg.ports.client}`);
   });
