@@ -419,7 +419,8 @@ because one firewall draft leaves its port closed.
   uploader has no channel to SRS's HTTP API, so it does not drop the source
   itself: the broadcaster has to stop the broadcast for longer than the encoder
   hold (about 15 s at the default) and start it again to get fresh encoders.
-  A quicker reconnect meets the same hung encoders.
+  A quicker reconnect meets the same hung encoders. Dropping the source from the
+  uploader is not built and stays open.
 
 The shared warning beside RTMP states what the protocol does with a key. SRS 6
 has no TLS on its RTMP listener, so there is no RTMPS. An RTMP stream key
