@@ -52,7 +52,9 @@
 import { FeedIndex, Identifier, Topic } from '@ethersphere/bee-js';
 import { Binary } from 'cafe-utility';
 
-const READ_URL = process.env.READ_URL ?? 'http://127.0.0.1:10077';
+import { probeReadUrl } from './bee-urls.mjs';
+
+const READ_URL = probeReadUrl();
 const APP_OWNER = process.env.APP_OWNER;
 const APP_RAW_TOPIC = process.env.APP_RAW_TOPIC;
 const STREAM_OWNER = process.env.STREAM_OWNER;

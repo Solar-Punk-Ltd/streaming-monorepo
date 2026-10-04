@@ -29,7 +29,7 @@
  * plain ESM rather than TypeScript, so it cannot import the shared module the bench and the player
  * now follow feeds through, and it resolves its dependencies from wherever it is started:
  *
- *   docker run --rm --network host -w /repo/e2e -e STAMP=... swarm-hls-bench:latest \
+ *   docker run --rm --network host -w /repo/e2e -e STAMP=... -e PORT_SLOT=<slot> swarm-hls-bench:latest \
  *     node src/probes/feed-read-ab.mjs
  */
 import { Bee, FeedIndex, Identifier, PrivateKey, Topic } from '@ethersphere/bee-js';
@@ -37,8 +37,10 @@ import { Binary } from 'cafe-utility';
 import { randomBytes } from 'node:crypto';
 import { appendFileSync, writeFileSync } from 'node:fs';
 
-const WRITE_URL = process.env.WRITE_URL ?? 'http://127.0.0.1:10075';
-const READ_URL = process.env.READ_URL ?? 'http://127.0.0.1:10077';
+import { probeReadUrl, probeWriteUrl } from './bee-urls.mjs';
+
+const WRITE_URL = probeWriteUrl();
+const READ_URL = probeReadUrl();
 const STAMP = process.env.STAMP;
 const DURATION_S = Number(process.env.DURATION_S ?? 600);
 const WRITE_INTERVAL_MS = Number(process.env.WRITE_INTERVAL_MS ?? 1000);
