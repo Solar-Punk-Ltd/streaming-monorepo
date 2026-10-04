@@ -27,6 +27,7 @@ import { readManagerId } from './domain/stages/managerIdentity.js';
 import { StagePublisher } from './domain/stages/StagePublisher.js';
 import { StageRetirementRepository } from './domain/stages/StageRetirementRepository.js';
 import { StageRecordBuilder } from './domain/stages/StageRecordBuilder.js';
+import { StagePoolStrings } from './domain/stages/StagePoolStrings.js';
 import { beeApiUrlFor, beePublisherUrlFor, StampService } from './domain/StampService.js';
 import { localPublisherHost } from './domain/localHost.js';
 import { CatalogueDesignationRepository } from './domain/stages/CatalogueDesignationRepository.js';
@@ -437,6 +438,17 @@ async function main(): Promise<void> {
     nodeUrls: async (profile) => [beeApiUrlFor(profile), beePublisherUrlFor(profile, await localPublisherHost())],
   });
   profileService.setPoolStringGuard((beePublishers) => catalogueService.segmentBatchProblem(beePublishers));
+  // An ABR stage deploys with its pool's current batches, and a batch set on a rung reaches its stages' stored copy.
+  const stagePoolStrings = new StagePoolStrings({
+    profiles: profileRepository,
+    groups: deploymentGroupRepository,
+    publisherHost: localPublisherHost,
+    guard: (beePublishers) => catalogueService.segmentBatchProblem(beePublishers),
+    changed: async (profile) =>
+      eventBus.publish({ type: 'profile.changed', profile: await containerRepository.withContainers(profile) }),
+  });
+  orchestrator.setPoolStrings((profile) => stagePoolStrings.withCurrentBatches(profile));
+  stampService.setAfterStampSet((name) => stagePoolStrings.refreshStagesOf(name));
   // The pinned batch's node, and while a move is pending the node of the batch it moved from.
   orchestrator.setRemovalGuard((name) => catalogueService.assertRemovable(name));
   catalogue.start();
