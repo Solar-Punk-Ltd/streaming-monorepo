@@ -23,14 +23,14 @@
 # broadcaster on a real network and this instrument is the wrong one for it.
 #
 # Usage:
-#   deploy/scripts/bench-profiles.sh --target <host> [--runs 5] [--profile latbench] [--portSlot 7] [--only NAME]
+#   deploy/scripts/bench-profiles.sh --target <host> [--runs 5] --profile <profile> --portSlot <slot> [--only NAME]
 set -euo pipefail
 
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 
 RUNS=5
-PROFILE="latbench"
-PORT_SLOT="7"
+PROFILE=""
+PORT_SLOT=""
 ONLY=""
 TARGET=""
 
@@ -47,6 +47,10 @@ done
 
 if [ -z "${TARGET}" ]; then
   echo "bench-profiles: --target <host> is required, the bench host every run goes to" >&2
+  exit 2
+fi
+if [ -z "${PROFILE}" ] || [ -z "${PORT_SLOT}" ]; then
+  echo "bench-profiles: --profile <profile> and --portSlot <slot> are required, the stage every run publishes into" >&2
   exit 2
 fi
 

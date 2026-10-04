@@ -134,6 +134,8 @@ async function runSweep({
 
   const env = {
     ...process.env,
+    PROFILE: 'bench-stage',
+    PORT_SLOT: '7',
     PATH: `${stubs.bin}:${process.env.PATH}`,
     OUT_DIR: out,
     REPO_DIR: out,
@@ -241,6 +243,8 @@ if (process.argv[2] === 'run') {
       await run('bash', [SCRIPT], {
         env: {
           ...process.env,
+          PROFILE: 'bench-stage',
+          PORT_SLOT: '7',
           PATH: `${stubs.bin}:${process.env.PATH}`,
           OUT_DIR: out,
           REPO_DIR: out,
@@ -302,6 +306,8 @@ describe('a sweep proves the owner authorised what it would spend', () => {
       await run('bash', [SCRIPT], {
         env: {
           ...process.env,
+          PROFILE: 'bench-stage',
+          PORT_SLOT: '7',
           PATH: `${stubs.bin}:${process.env.PATH}`,
           OUT_DIR: out,
           REPO_DIR: out,
@@ -389,6 +395,8 @@ if (process.argv[2] === 'run') {
       await run('bash', [SCRIPT], {
         env: {
           ...process.env,
+          PROFILE: 'bench-stage',
+          PORT_SLOT: '7',
           PATH: `${stubs.bin}:${process.env.PATH}`,
           OUT_DIR: out,
           REPO_DIR: out,
@@ -426,6 +434,8 @@ if (process.argv[2] === 'run') {
       await run('bash', [SCRIPT], {
         env: {
           ...process.env,
+          PROFILE: 'bench-stage',
+          PORT_SLOT: '7',
           PATH: `${stubs.bin}:${process.env.PATH}`,
           OUT_DIR: out,
           REPO_DIR: out,

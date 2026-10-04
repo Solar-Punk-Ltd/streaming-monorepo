@@ -25,14 +25,17 @@
 # network held something for hours; it does not locate it or promise it survives a day.
 set -u
 
-STACK_DIR="${STACK_DIR:-${HOME}/swarm-hls-stream-latbench}"
+PROFILE="${PROFILE:?set PROFILE to the deploy profile of the stage this drives}"
+PORT_SLOT="${PORT_SLOT:?set PORT_SLOT to the port slot of the stage this drives}"
+# The stack deploy.sh keeps for this profile, and the gateway of its slot.
+STACK_DIR="${STACK_DIR:-${HOME}/swarm-hls-stream-${PROFILE}}"
 ENV_FILE="${STACK_DIR}/.env"
 PROBE="${PROBE:-${HOME}/phase06/retrieval-debt-probe.sh}"
 PHASE06="${PHASE06:-${HOME}/phase06}"
 RUN_DIR="${RUN_DIR:-${HOME}/retrieval-probe/warmup-$(date -u +%Y%m%d-%H%M%S)}"
 LOG="${RUN_DIR}/warmup.log"
-CONTAINER="${CONTAINER:-latbench-bee-gateway-1}"
-GATEWAY_BEE_PORT="${GATEWAY_BEE_PORT:-10077}"
+CONTAINER="${CONTAINER:-${PROFILE}-bee-gateway-1}"
+GATEWAY_BEE_PORT="${GATEWAY_BEE_PORT:-$((10007 + PORT_SLOT * 10))}"
 RETRIEVAL_KEY=BEE_GATEWAY_CACHE_RETRIEVAL
 
 # The half that tonight's sittings walked, and the half they never reached. SEGMENTS stays under 400 so
@@ -86,7 +89,7 @@ recreate_gateway() {
     cd "${STACK_DIR}/deploy" || exit 1
     BEE_GATEWAY_API_PORT="${GATEWAY_BEE_PORT}" \
       BEE_GATEWAY_P2P_PORT="$((GATEWAY_BEE_PORT + 1))" \
-      docker compose -p latbench \
+      docker compose -p "${PROFILE}" \
       -f docker-compose.yml -f docker-compose.host.yml -f docker-compose.nat.yml \
       --env-file "${ENV_FILE}" --profile bee-gateway \
       up -d --no-deps --force-recreate bee-gateway

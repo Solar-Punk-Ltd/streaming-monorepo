@@ -115,6 +115,8 @@ async function runScript(command, options = {}) {
     const result = await run('bash', [SCRIPT, ...command], {
       env: {
         ...process.env,
+        PROFILE: 'bench-stage',
+        PORT_SLOT: '7',
         PATH: `${stubs.bin}:${process.env.PATH}`,
         UNFUNDED_DATA_DIR: join(dir, 'data'),
         WARM_TIMEOUT_S: '3',

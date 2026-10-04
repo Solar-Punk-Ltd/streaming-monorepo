@@ -136,6 +136,8 @@ async function runPreflight({ uploaderPort, gatewayPort, rounds = 1, minutes = 3
 
   const env = {
     ...process.env,
+    PROFILE: 'bench-stage',
+    PORT_SLOT: '7',
     OUT_DIR: out,
     SPEND_LEDGER: writeLedger(out, [uploaderPort, gatewayPort]),
     PREFLIGHT_ONLY: '1',

@@ -34,11 +34,14 @@ HOST_LOAD="${HERE}/host-load.sh"
 }
 
 OUT_DIR="${OUT_DIR:-${HOME}/retrieval-probe}"
-STACK_DIR="${STACK_DIR:-${HOME}/swarm-hls-stream-latbench}"
+PROFILE="${PROFILE:?set PROFILE to the deploy profile of the stage this drives}"
+PORT_SLOT="${PORT_SLOT:?set PORT_SLOT to the port slot of the stage this drives}"
+# The stack deploy.sh keeps for this profile, and the gateway of its slot.
+STACK_DIR="${STACK_DIR:-${HOME}/swarm-hls-stream-${PROFILE}}"
 COMPOSE_DIR="${STACK_DIR}/deploy"
 ENV_FILE="${STACK_DIR}/.env"
-COMPOSE_PROJECT="${COMPOSE_PROJECT:-latbench}"
-GATEWAY_BEE_PORT="${GATEWAY_BEE_PORT:-10077}"
+COMPOSE_PROJECT="${COMPOSE_PROJECT:-${PROFILE}}"
+GATEWAY_BEE_PORT="${GATEWAY_BEE_PORT:-$((10007 + PORT_SLOT * 10))}"
 REFS="${REFS:-${HOME}/phase06/refs.txt}"
 # Where a named reference pattern is looked up, as `refs-<name>.txt`. An arm that names one walks it
 # instead of ${REFS}, which is what lets one sitting interleave access patterns rather than compare a

@@ -95,6 +95,9 @@ const sandboxes = [];
  */
 export const BENCH_TARGET = 'bench.example.org';
 
+/** The stage a bench launch names beside its target, as `--profile` and `--portSlot`. */
+export const BENCH_STAGE = ['--profile', 'bench-stage', '--portSlot', '7'];
+
 export function removeSandboxes() {
   for (const dir of sandboxes) {
     rmSync(dir, { recursive: true, force: true });

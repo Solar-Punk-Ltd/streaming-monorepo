@@ -114,6 +114,8 @@ function stackSandbox(keys, env = null) {
     sandbox,
     envFile,
     env: {
+      PROFILE: 'bench-stage',
+      PORT_SLOT: '7',
       STACK_DIR: stack,
       OUT_DIR: out,
       // Host-side helpers the probes shell out to. Pointed inside the sandbox so that a probe which

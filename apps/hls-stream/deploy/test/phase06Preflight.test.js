@@ -184,6 +184,8 @@ async function preflight(options = {}) {
     const ok = await run('bash', [SCRIPT], {
       env: {
         ...process.env,
+        PROFILE: 'bench-stage',
+        PORT_SLOT: '7',
         PATH: `${host.bin}:${process.env.PATH}`,
         OUT_DIR: host.out,
         STACK_DIR: host.stack,

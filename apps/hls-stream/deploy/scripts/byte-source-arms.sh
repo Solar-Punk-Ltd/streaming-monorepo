@@ -45,9 +45,9 @@
 #   ARM_PLAN="weeb3:6:warm-up weeb3:180:counted" bash deploy/scripts/byte-source-arms.sh
 set -u
 
-BENCH_REPO="${BENCH_REPO:-${HOME}/swarm-hls-bench}"
-PROFILE="${PROFILE:-latbench}"
-PORT_SLOT="${PORT_SLOT:-7}"
+BENCH_REPO="${BENCH_REPO:-$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)}"
+PROFILE="${PROFILE:?set PROFILE to the deploy profile of the stage this drives}"
+PORT_SLOT="${PORT_SLOT:?set PORT_SLOT to the port slot of the stage this drives}"
 
 # Four rounds of two arms. The order is counterbalanced and comes from the harness rather than from
 # arithmetic repeated here, see `browser:byte-source-order`.

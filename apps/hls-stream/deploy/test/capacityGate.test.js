@@ -133,7 +133,7 @@ describe('the shared gate refuses a caller that cannot use it', () => {
     return { code, stderr };
   }
 
-  const COMPLETE = 'say() { :; }\nLOG=/dev/null\nUPLOADER_BEE_PORT=10075';
+  const COMPLETE = 'say() { :; }\nLOG=/dev/null\nUPLOADER_BEE_PORT=10075\nPROFILE=bench-stage';
 
   it('sources cleanly when the caller has everything it needs', async () => {
     const { code } = await sourceWith(COMPLETE);
@@ -152,6 +152,20 @@ describe('the shared gate refuses a caller that cannot use it', () => {
 
     assert.notEqual(code, 0);
     assert.match(stderr, /LOG/);
+  });
+
+  it('refuses a caller that has named neither the stage nor the uploader container', async () => {
+    const { code, stderr } = await sourceWith('say() { :; }\nLOG=/dev/null\nUPLOADER_BEE_PORT=10075');
+
+    assert.notEqual(code, 0);
+    assert.match(stderr, /PROFILE or UPLOADER_CONTAINER/);
+  });
+
+  it('reads the uploader container a caller names, with no stage named', async () => {
+    const { code } = await sourceWith(
+      'say() { :; }\nLOG=/dev/null\nUPLOADER_BEE_PORT=10075\nUPLOADER_CONTAINER=stage-a-stream-uploader-1',
+    );
+    assert.equal(code, 0);
   });
 
   it('refuses a caller that has not said which node to read /stamps from', async () => {
@@ -229,7 +243,7 @@ if (process.argv[2] === 'inspect') process.stdout.write(${JSON.stringify(uploade
     let code = 0;
     try {
       await run('bash', ['-c', `set -u\n${preamble}`], {
-        env: { ...process.env, PATH: `${node.bin}:${process.env.PATH}` },
+        env: { ...process.env, PROFILE: 'bench-stage', PATH: `${node.bin}:${process.env.PATH}` },
         encoding: 'utf8',
       });
     } catch (failure) {
@@ -394,7 +408,7 @@ if (process.argv[2] === 'inspect') process.stdout.write(${JSON.stringify(
     let code = 0;
     try {
       await run('bash', ['-c', `set -u\n${preamble}`], {
-        env: { ...process.env, PATH: `${node.bin}:${process.env.PATH}`, BEE_PUBLISHERS: '' },
+        env: { ...process.env, PROFILE: 'bench-stage', PATH: `${node.bin}:${process.env.PATH}`, BEE_PUBLISHERS: '' },
         encoding: 'utf8',
       });
     } catch (failure) {

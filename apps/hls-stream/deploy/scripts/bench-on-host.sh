@@ -14,7 +14,7 @@
 # the run happens inside the image built from `e2e/Dockerfile.bench`.
 #
 # Usage:
-#   deploy/scripts/bench-on-host.sh --target <host> [--profile latbench] [--portSlot 7]
+#   deploy/scripts/bench-on-host.sh --target <host> --profile <profile> --portSlot <slot>
 #                                   [--script bench:latency]
 #
 # `--target` is the bench host, an ssh alias or user@host, and it has no default: a default would
@@ -103,8 +103,8 @@ if [ ! -f "${REPO_ROOT}/pnpm-lock.yaml" ]; then
 fi
 CUT_DIR=""
 
-PROFILE="latbench"
-PORT_SLOT="7"
+PROFILE=""
+PORT_SLOT=""
 TARGET=""
 # Kept apart from the rsynced deploy payload, which `deploy.sh` owns and overwrites.
 REMOTE_DIR="~/swarm-hls-bench"
@@ -194,6 +194,12 @@ done
 
 if [ -z "${TARGET}" ]; then
   echo "bench-on-host: --target <host> is required, the bench host as an ssh alias or user@host" >&2
+  exit 2
+fi
+# Required for the reason --target is: a default would name one stage, and a launch that forgot the
+# flags would publish into that stage and spend its postage.
+if [ -z "${PROFILE}" ] || [ -z "${PORT_SLOT}" ]; then
+  echo "bench-on-host: --profile <profile> and --portSlot <slot> are required, the stage the run publishes into" >&2
   exit 2
 fi
 

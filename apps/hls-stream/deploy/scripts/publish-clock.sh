@@ -126,10 +126,9 @@ say() {
   printf '%s\n' "$*" >> "${LOG}"
 }
 
-# The gate reads the batch off the container that is actually publishing, and its own default names
-# the `latbench` stack because every sitting driver runs against that one. This script takes
+# The gate reads the batch off the container that is actually publishing. This script takes
 # `--profile`, and PROFILE is the compose project name, so the container follows the deployment being
-# published into rather than whichever one the gate was written beside.
+# published into.
 UPLOADER_CONTAINER="${UPLOADER_CONTAINER:-${PROFILE}-stream-uploader-1}"
 
 # Whether the postage batch can carry what this broadcast intends to publish. Sourced after `say`,

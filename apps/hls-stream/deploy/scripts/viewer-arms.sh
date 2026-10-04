@@ -31,9 +31,9 @@
 #   ARMS="obs-default:2.0 shipped:0.5" ROUNDS=3 MINUTES=8 bash deploy/scripts/viewer-arms.sh
 set -u
 
-BENCH_REPO="${BENCH_REPO:-${HOME}/swarm-hls-bench}"
-PROFILE="${PROFILE:-latbench}"
-PORT_SLOT="${PORT_SLOT:-7}"
+BENCH_REPO="${BENCH_REPO:-$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)}"
+PROFILE="${PROFILE:?set PROFILE to the deploy profile of the stage this drives}"
+PORT_SLOT="${PORT_SLOT:?set PORT_SLOT to the port slot of the stage this drives}"
 ROUNDS="${ROUNDS:-3}"
 # How many leading rounds are discarded. One by default, because the first arms of a sitting run
 # differently and comparing them against later ones has cost two sittings here. ⛔ Set to 0 for a
@@ -62,7 +62,7 @@ QUIET_TIMEOUT_S="${QUIET_TIMEOUT_S:-120}"
 # two minutes. That is the finding, not a problem to wait out, so this waits only for the node to
 # answer at all and records how long that took.
 COLD_ARMS="${COLD_ARMS:-}"
-GATEWAY_CONTAINER="${GATEWAY_CONTAINER:-latbench-bee-gateway-1}"
+GATEWAY_CONTAINER="${GATEWAY_CONTAINER:-${PROFILE}-bee-gateway-1}"
 GATEWAY_READY_TIMEOUT_S="${GATEWAY_READY_TIMEOUT_S:-300}"
 
 # How much of an arm's broadcast is spent outside the watch: the stream has to exist before the

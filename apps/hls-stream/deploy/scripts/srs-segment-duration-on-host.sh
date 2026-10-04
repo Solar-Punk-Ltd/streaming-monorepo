@@ -9,7 +9,7 @@
 # isolates the transport from everything downstream of it.
 #
 # ⛔ It creates its own container on its own ports and removes it afterwards. It must never be
-# pointed at the `latbench` stack: that one has an uploader behind it, and publishing to it spends.
+# pointed at a deployed stack: that one has an uploader behind it, and publishing to it spends.
 #
 # Usage: PROBE_HOST=<ssh name> PROBE_HOST_ADDR=<host address> deploy/scripts/srs-segment-duration-on-host.sh <fragment> <gop> <recipe> [seconds]
 #   recipe: `bench` for wallclock-stamped MPEG-TS over SRT, `bench-nostamp` for the same transport

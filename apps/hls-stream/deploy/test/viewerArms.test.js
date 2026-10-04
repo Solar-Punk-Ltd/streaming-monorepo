@@ -236,6 +236,8 @@ exit 0
 
   const env = {
     ...process.env,
+    PROFILE: 'bench-stage',
+    PORT_SLOT: '7',
     PATH: `${bin}:${process.env.PATH}`,
     OUT_DIR: out,
     SPEND_LEDGER: ledger,
@@ -348,7 +350,7 @@ describe('a viewer sitting runs its arms in an order that cannot fake a result',
 
     assert.equal(gops.length, 4);
     assert.equal(restarts.length, 2, 'a cold arm per round, and no more');
-    assert.deepEqual(new Set(restarts), new Set(['latbench-bee-gateway-1']));
+    assert.deepEqual(new Set(restarts), new Set(['bench-stage-bee-gateway-1']));
   });
 
   it('restarts nothing when no arm is named cold', async () => {

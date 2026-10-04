@@ -37,10 +37,11 @@ declare -F say > /dev/null 2>&1 || {
 }
 : "${LOG:?capacity-gate.sh needs LOG, the file its refusals are written to}"
 : "${UPLOADER_BEE_PORT:?capacity-gate.sh needs UPLOADER_BEE_PORT, the node it reads /stamps from}"
+UPLOADER_CONTAINER="${UPLOADER_CONTAINER:-${PROFILE:+${PROFILE}-stream-uploader-1}}"
+: "${UPLOADER_CONTAINER:?capacity-gate.sh needs PROFILE or UPLOADER_CONTAINER, the uploader whose batch it reads}"
 
 CAPACITY_GATE_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 STAMP_GUARD="${STAMP_GUARD:-${CAPACITY_GATE_DIR}/stamp-guard.sh}"
-UPLOADER_CONTAINER="${UPLOADER_CONTAINER:-latbench-stream-uploader-1}"
 
 # One variable off the container that is actually publishing.
 uploader_env() {
@@ -49,7 +50,7 @@ uploader_env() {
 }
 
 # ⛔ Read off the container that is actually publishing, never off a file and never by shape.
-# `.env.latbench` is gitignored and lives on the host, `/stamps` lists batches of which some are dead,
+# A profile env file is gitignored and lives on the host, `/stamps` lists batches of which some are dead,
 # and "the stamp" has meant a different row on three separate days here. The uploader's own
 # environment is the only source that cannot be stale.
 resolve_stamp() {

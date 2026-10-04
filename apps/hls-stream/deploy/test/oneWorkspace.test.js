@@ -19,6 +19,7 @@ import { fileURLToPath } from 'node:url';
 
 import {
   ALL_REMOTE,
+  BENCH_STAGE,
   BENCH_TARGET,
   GIT_STUB,
   makeSandbox,
@@ -376,7 +377,9 @@ describe('bench-on-host.sh from a checkout of the one workspace', () => {
     writeFileSync(join(sandbox.root, SPEND_LEDGER), OWNER_LEDGER);
     const tmp = ownTmpdir();
 
-    await runScriptOk(sandbox, 'bench-on-host.sh', ['--target', BENCH_TARGET, '--setup-only'], { TMPDIR: tmp });
+    await runScriptOk(sandbox, 'bench-on-host.sh', ['--target', BENCH_TARGET, ...BENCH_STAGE, '--setup-only'], {
+      TMPDIR: tmp,
+    });
 
     const cut = expectedCut(workspace);
     const mirror = join(sandbox.remoteHome, REMOTE_BENCH_DIR);
@@ -407,7 +410,7 @@ describe('bench-on-host.sh from a checkout of the one workspace', () => {
     write(alone, earlier);
     const tmp = ownTmpdir();
 
-    await runScriptOk(sandbox, 'bench-on-host.sh', ['--target', BENCH_TARGET, '--setup-only'], {
+    await runScriptOk(sandbox, 'bench-on-host.sh', ['--target', BENCH_TARGET, ...BENCH_STAGE, '--setup-only'], {
       TMPDIR: tmp,
       RSYNC_ALONE_DEST: alone,
       RSYNC_ALONE_SKIP: tmp,
@@ -432,7 +435,9 @@ describe('bench-on-host.sh from a checkout of the one workspace', () => {
     const { sandbox } = oneWorkspace({ ownPair: true });
     writeFileSync(join(sandbox.root, SPEND_LEDGER), OWNER_LEDGER);
 
-    await runScriptOk(sandbox, 'bench-on-host.sh', ['--target', BENCH_TARGET, '--setup-only'], { TMPDIR: ownTmpdir() });
+    await runScriptOk(sandbox, 'bench-on-host.sh', ['--target', BENCH_TARGET, ...BENCH_STAGE, '--setup-only'], {
+      TMPDIR: ownTmpdir(),
+    });
 
     assert.equal(
       readFileSync(join(sandbox.remoteHome, REMOTE_BENCH_DIR, 'pnpm-lock.yaml'), 'utf8'),

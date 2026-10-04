@@ -337,7 +337,7 @@ esac
     chmodSync(join(bin, 'curl'), 0o755);
     const out = join(dir, 'snap.json');
     await run('bash', [SHELL, 'snapshot', out, 'arm01'], {
-      env: { ...process.env, PATH: `${bin}:${process.env.PATH}` },
+      env: { ...process.env, PORT_SLOT: '3', PATH: `${bin}:${process.env.PATH}` },
     });
     return JSON.parse(readFileSync(out, 'utf8'));
   }

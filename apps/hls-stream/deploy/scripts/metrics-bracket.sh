@@ -42,7 +42,7 @@ NODE_METRICS="${NODE_METRICS:-${METRICS_BRACKET_DIR}/node-metrics.sh}"
 
 # Ports the collector reads. Origins from `apply_port_slot` in `_lib.sh`, resolved here so a driver
 # that only ever wanted a bracket does not have to know them.
-PORT_SLOT="${PORT_SLOT:-7}"
+: "${PORT_SLOT:?metrics-bracket.sh needs PORT_SLOT, the slot of the stage it reads}"
 UPLOADER_BEE_PORT="${UPLOADER_BEE_PORT:-$((10005 + PORT_SLOT * 10))}"
 GATEWAY_BEE_PORT="${GATEWAY_BEE_PORT:-$((10007 + PORT_SLOT * 10))}"
 UPLOADER_API_PORT="${UPLOADER_API_PORT:-$((10000 + PORT_SLOT * 10))}"

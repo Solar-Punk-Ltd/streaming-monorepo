@@ -34,8 +34,8 @@
 # There is no flag to switch it off. See that script's header for the two sittings it cost.
 #
 # Usage, against a broadcast that is already running:
-#   deploy/scripts/browser-on-host.sh --target <host>
-#   deploy/scripts/browser-on-host.sh --target <host> -- BROWSER_WATCH_SECONDS=300
+#   deploy/scripts/browser-on-host.sh --target <host> --profile <profile> --portSlot <slot>
+#   deploy/scripts/browser-on-host.sh --target <host> --profile <profile> --portSlot <slot> -- BROWSER_WATCH_SECONDS=300
 #
 # Anything after `--` is passed to the container as environment, exactly as `bench-on-host.sh` does.
 #
@@ -43,7 +43,7 @@
 # `host.docker.internal` along with every other address the container dials. See `bench-on-host.sh`
 # for what they are for. Arm 2 of the throttle probe, which repeats it over a real shaped link
 # instead of Chrome's emulation:
-#   deploy/scripts/browser-on-host.sh --target <host> --own-network --shape-kbps 2800 \
+#   deploy/scripts/browser-on-host.sh --target <host> --profile <profile> --portSlot <slot> --own-network --shape-kbps 2800 \
 #     --script browser:in-tab-throttle-probe -- PROBE_CAP_MODE=external PROBE_CAP_KBPS=2800
 set -euo pipefail
 
@@ -52,8 +52,8 @@ REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 # Named apart from `_lib.sh`'s own PROFILE and PORT_SLOT, which sourcing it resets. Reading them
 # back after the source produced `--portSlot=0`, which silently means "keep the env file's ports",
 # and the run went looking for the client on the unshifted default port instead of this profile's.
-WANT_PROFILE="latbench"
-WANT_PORT_SLOT="7"
+WANT_PROFILE=""
+WANT_PORT_SLOT=""
 TARGET=""
 PASSTHROUGH=()
 FORWARDED=()
@@ -82,6 +82,10 @@ done
 
 if [ -z "${TARGET}" ]; then
   echo "browser-on-host: --target <host> is required, the bench host as an ssh alias or user@host" >&2
+  exit 2
+fi
+if [ -z "${WANT_PROFILE}" ] || [ -z "${WANT_PORT_SLOT}" ]; then
+  echo "browser-on-host: --profile <profile> and --portSlot <slot> are required, the stage whose broadcast is watched" >&2
   exit 2
 fi
 

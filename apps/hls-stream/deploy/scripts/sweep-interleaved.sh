@@ -59,8 +59,8 @@ set -u
 
 REPO_DIR="${REPO_DIR:-${HOME}/swarm-hls-bench}"
 IMAGE="${IMAGE:-swarm-hls-bench:latest}"
-PROFILE="${PROFILE:-latbench}"
-PORT_SLOT="${PORT_SLOT:-7}"
+PROFILE="${PROFILE:?set PROFILE to the deploy profile of the stage this drives}"
+PORT_SLOT="${PORT_SLOT:?set PORT_SLOT to the port slot of the stage this drives}"
 ROUNDS="${ROUNDS:-2}"
 MINUTES="${MINUTES:-3}"
 

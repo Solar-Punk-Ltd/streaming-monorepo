@@ -23,8 +23,8 @@
 # file.
 #
 # Usage:
-#   deploy/scripts/spend-ledger.sh --profile=latbench --portSlot=7 --authorise=12.5
-#   deploy/scripts/spend-ledger.sh --profile=latbench --portSlot=7 --authorise=12.5 --dry-run
+#   deploy/scripts/spend-ledger.sh --profile=<profile> --portSlot=<slot> --authorise=12.5
+#   deploy/scripts/spend-ledger.sh --profile=<profile> --portSlot=<slot> --authorise=12.5 --dry-run
 set -u
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"

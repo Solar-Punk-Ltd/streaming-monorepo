@@ -3,7 +3,7 @@ import { existsSync, mkdirSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { after, describe, it } from 'node:test';
 
-import { BENCH_TARGET, makeSandbox, removeSandboxes, runScript } from './helpers/sandbox.js';
+import { BENCH_STAGE, BENCH_TARGET, makeSandbox, removeSandboxes, runScript } from './helpers/sandbox.js';
 
 after(removeSandboxes);
 
@@ -36,7 +36,13 @@ describe('bench-on-host refuses a checkout that holds no spend ledger', () => {
   it('stops before anything reaches the host', async () => {
     const sandbox = makeSandbox();
 
-    const run = await runScript(sandbox, 'bench-on-host.sh', ['--target', BENCH_TARGET, '--script', 'browser:watch']);
+    const run = await runScript(sandbox, 'bench-on-host.sh', [
+      '--target',
+      BENCH_TARGET,
+      ...BENCH_STAGE,
+      '--script',
+      'browser:watch',
+    ]);
 
     assert.notEqual(run.exitCode, 0, 'a checkout without a ledger was allowed to sync');
     assert.match(run.stderr, /\.spend-ledger\.env does not exist/);
@@ -51,6 +57,7 @@ describe('bench-on-host refuses a checkout that holds no spend ledger', () => {
     const run = await runScript(sandbox, 'bench-on-host.sh', [
       '--target',
       BENCH_TARGET,
+      ...BENCH_STAGE,
       '--no-setup',
       '--script',
       'browser:watch',
@@ -68,6 +75,7 @@ describe('bench-on-host refuses a checkout that holds no spend ledger', () => {
     const run = await runScript(sandbox, 'bench-on-host.sh', [
       '--target',
       BENCH_TARGET,
+      ...BENCH_STAGE,
       '--no-setup',
       '--script',
       'browser:watch',
