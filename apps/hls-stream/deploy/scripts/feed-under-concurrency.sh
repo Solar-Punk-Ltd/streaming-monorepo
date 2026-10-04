@@ -57,6 +57,15 @@ HOST_LOAD="${HERE}/host-load.sh"
 }
 
 GATEWAY_BEE_PORT="${GATEWAY_BEE_PORT:-$((10007 + ${PORT_SLOT:?set PORT_SLOT to the port slot of the stage this reads, or GATEWAY_BEE_PORT} * 10))}"
+# The gateway answers at the address its own bind names, and otherwise at the host's Docker bridge
+# address, which the deploy binds the Bee APIs to by default. The bridge is read once per run.
+BOUND="$(dirname "${BASH_SOURCE[0]}")/bound-host.sh"
+# shellcheck source=deploy/scripts/bound-host.sh
+. "${BOUND}" || {
+  echo "cannot read ${BOUND}: sync deploy/scripts as a directory, not one script" >&2
+  exit 1
+}
+GATEWAY_HOST="$(bound_host "$(bee_api_bind BEE_GATEWAY)" "$(bridge_address)")"
 OUT_DIR="${OUT_DIR:-${HOME}/feed-concurrency}"
 HITS_FILE="${HITS_FILE:-${HOME}/soc-miss/hits.txt}"
 
@@ -116,7 +125,7 @@ settle_host() {
 mean_runnable() { awk '{n++; s += $2} END {if (n == 0) print 0; else printf "%d", s / n}' "$1"; }
 
 spendable() {
-  curl -s -m 5 "http://127.0.0.1:${GATEWAY_BEE_PORT}/chequebook/balance" 2>/dev/null |
+  curl -s -m 5 "http://${GATEWAY_HOST}:${GATEWAY_BEE_PORT}/chequebook/balance" 2>/dev/null |
     grep -o '"availableBalance":"[0-9]*"' | grep -o '[0-9]*'
 }
 
@@ -124,7 +133,7 @@ random_identifier() { od -An -tx1 -N32 /dev/urandom | tr -d ' \n'; }
 
 read_one() {
   curl -s -o /dev/null -m 30 -w '%{http_code} %{time_total}' \
-    "http://127.0.0.1:${GATEWAY_BEE_PORT}/soc/$1"
+    "http://${GATEWAY_HOST}:${GATEWAY_BEE_PORT}/soc/$1"
 }
 
 # One reader's whole arm: alternating miss, hit, miss, hit.

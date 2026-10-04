@@ -211,8 +211,19 @@ STOPS="${HERE}/publisher-stop.sh"
 
 bzz() { printf '%d.%03d' "$(($1 / 10000000000000000))" "$((($1 % 10000000000000000) / 10000000000000))"; }
 
+# Where the nodes answer: at the address a node's own bind names, and otherwise at the host's Docker
+# bridge address, which the deploy binds the Bee APIs to by default. The bridge is read once per run.
+BOUND="$(dirname "${BASH_SOURCE[0]}")/bound-host.sh"
+# shellcheck source=deploy/scripts/bound-host.sh
+. "${BOUND}" || {
+  echo "cannot read ${BOUND}: sync deploy/scripts as a directory, not one script" >&2
+  exit 1
+}
+BRIDGE="$(bridge_address)"
+GATEWAY_HOST="$(bound_host "$(bee_api_bind BEE_GATEWAY)" "${BRIDGE}")"
+
 available_plur() {
-  curl -s --max-time 5 "http://127.0.0.1:$1/chequebook/balance" 2>/dev/null |
+  curl -s --max-time 5 "http://$(bee_api_host_for_port "$1" "${BRIDGE}"):$1/chequebook/balance" 2>/dev/null |
     python3 -c 'import sys,json;print(json.load(sys.stdin)["availableBalance"])' 2>/dev/null
 }
 
@@ -494,7 +505,7 @@ run_browser_arm() {
     -e "BROWSER_WATCH_SECONDS=${seconds}" \
     -e "BROWSER_GOP_SECONDS=${GOP_SECONDS}" \
     -e "BROWSER_GATEWAY_ARM=funded" \
-    -e "BROWSER_GATEWAY_URL=http://127.0.0.1:${GATEWAY_BEE_PORT}" \
+    -e "BROWSER_GATEWAY_URL=http://${GATEWAY_HOST}:${GATEWAY_BEE_PORT}" \
     -e "BROWSER_FETCH_BACKEND=${source}" \
     -e "BROWSER_SETTLE_SECONDS=${SETTLE_SECONDS}" \
     -e "BROWSER_TARGET_LATENCY_S=${TARGET_LATENCY_S}" \

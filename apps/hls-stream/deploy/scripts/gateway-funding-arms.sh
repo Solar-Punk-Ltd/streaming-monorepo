@@ -140,16 +140,29 @@ STOPS="${HERE}/publisher-stop.sh"
 
 bzz() { printf '%d.%03d' "$(($1 / 10000000000000000))" "$((($1 % 10000000000000000) / 10000000000000))"; }
 
+# The unfunded node is unfunded-gateway.sh's own, which listens on every address, so it answers on
+# 127.0.0.1. The funded one is the stage's gateway, where the deploy bound it.
 gateway_url_for() {
   case "$1" in
-    funded) printf 'http://127.0.0.1:%s' "${GATEWAY_BEE_PORT}" ;;
+    funded) printf 'http://%s:%s' "${GATEWAY_HOST}" "${GATEWAY_BEE_PORT}" ;;
     unfunded) printf 'http://127.0.0.1:%s' "${UNFUNDED_BEE_PORT}" ;;
     *) return 1 ;;
   esac
 }
 
+# Where the nodes answer: at the address a node's own bind names, and otherwise at the host's Docker
+# bridge address, which the deploy binds the Bee APIs to by default. The bridge is read once per run.
+BOUND="$(dirname "${BASH_SOURCE[0]}")/bound-host.sh"
+# shellcheck source=deploy/scripts/bound-host.sh
+. "${BOUND}" || {
+  echo "cannot read ${BOUND}: sync deploy/scripts as a directory, not one script" >&2
+  exit 1
+}
+BRIDGE="$(bridge_address)"
+GATEWAY_HOST="$(bound_host "$(bee_api_bind BEE_GATEWAY)" "${BRIDGE}")"
+
 available_plur() {
-  curl -s --max-time 5 "http://127.0.0.1:$1/chequebook/balance" 2>/dev/null |
+  curl -s --max-time 5 "http://$(bee_api_host_for_port "$1" "${BRIDGE}"):$1/chequebook/balance" 2>/dev/null |
     python3 -c 'import sys,json;print(json.load(sys.stdin)["availableBalance"])' 2>/dev/null
 }
 

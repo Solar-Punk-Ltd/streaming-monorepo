@@ -45,6 +45,15 @@ RUN_DIR="${BASE}/${RUN_ID}"
 LOG="${RUN_DIR}/driver.log"
 CONTAINER="${CONTAINER:-${PROFILE}-bee-gateway-1}"
 GATEWAY_BEE_PORT="${GATEWAY_BEE_PORT:-$((10007 + PORT_SLOT * 10))}"
+# The gateway answers at the address its own bind names, and otherwise at the host's Docker bridge
+# address, which the deploy binds the Bee APIs to by default. The bridge is read once per run.
+BOUND="$(dirname "${BASH_SOURCE[0]}")/bound-host.sh"
+# shellcheck source=deploy/scripts/bound-host.sh
+. "${BOUND}" || {
+  echo "cannot read ${BOUND}: sync deploy/scripts as a directory, not one script" >&2
+  exit 1
+}
+GATEWAY_HOST="$(bound_host "$(bee_api_bind BEE_GATEWAY)" "$(bridge_address)")"
 
 RETRIEVAL_KEY=BEE_GATEWAY_CACHE_RETRIEVAL
 
@@ -92,7 +101,7 @@ recreate_gateway() {
 wait_for_gateway_api() {
   local waited=0
   while [ "${waited}" -lt 180 ]; do
-    curl -s -m 5 "http://127.0.0.1:${GATEWAY_BEE_PORT}/health" | grep -q '"status":"ok"' && return 0
+    curl -s -m 5 "http://${GATEWAY_HOST}:${GATEWAY_BEE_PORT}/health" | grep -q '"status":"ok"' && return 0
     sleep 3
     waited=$((waited + 3))
   done

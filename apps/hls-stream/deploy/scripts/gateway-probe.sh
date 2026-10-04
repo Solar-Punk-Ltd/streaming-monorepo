@@ -4,11 +4,12 @@
 #
 # Sourced, never executed. The caller supplies:
 #   CONTAINER          the gateway container name, for gateway_cpu_seconds
-#   METRICS            path to gateway-retrieval-metrics.sh, for metrics. It takes the API port as
-#                      its only argument, where node-metrics.sh wants a subcommand first. The two
+#   METRICS            path to gateway-retrieval-metrics.sh, for metrics. It takes the API port and
+#                      then the address, where node-metrics.sh wants a subcommand first. The two
 #                      scripts that call metrics default it to ~/phase06/metrics.sh
 #                      on the host.
 #   GATEWAY_BEE_PORT   the gateway's API port, for metrics
+#   GATEWAY_HOST       the address the gateway's API is bound to, for metrics
 #   ENV_FILE           the compose env file, for set_env_value
 #
 # shellcheck shell=bash
@@ -27,7 +28,7 @@ gateway_cpu_seconds() {
   awk -v t="${ticks:-0}" -v h="$(getconf CLK_TCK)" 'BEGIN{printf "%.2f", (h>0)?t/h:0}'
 }
 
-metrics() { bash "${METRICS}" "${GATEWAY_BEE_PORT}" 2>/dev/null; }
+metrics() { bash "${METRICS}" "${GATEWAY_BEE_PORT}" "${GATEWAY_HOST}" 2>/dev/null; }
 
 # ⛔ Absent from the env file is a distinct state from present-and-zero, and a caller that restores
 # the wrong one leaves the stack subtly different from how it found it. This writes; remembering

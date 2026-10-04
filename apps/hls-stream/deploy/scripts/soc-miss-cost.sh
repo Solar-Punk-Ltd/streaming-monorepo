@@ -22,6 +22,15 @@
 set -u
 
 GATEWAY_BEE_PORT="${GATEWAY_BEE_PORT:-$((10007 + ${PORT_SLOT:?set PORT_SLOT to the port slot of the stage this reads, or GATEWAY_BEE_PORT} * 10))}"
+# The gateway answers at the address its own bind names, and otherwise at the host's Docker bridge
+# address, which the deploy binds the Bee APIs to by default. The bridge is read once per run.
+BOUND="$(dirname "${BASH_SOURCE[0]}")/bound-host.sh"
+# shellcheck source=deploy/scripts/bound-host.sh
+. "${BOUND}" || {
+  echo "cannot read ${BOUND}: sync deploy/scripts as a directory, not one script" >&2
+  exit 1
+}
+GATEWAY_HOST="$(bound_host "$(bee_api_bind BEE_GATEWAY)" "$(bridge_address)")"
 OUT_DIR="${OUT_DIR:-${HOME}/soc-miss}"
 # Real slot identifiers that a browser fetched successfully, one per line, owner included.
 HITS_FILE="${HITS_FILE:-${OUT_DIR}/hits.txt}"
@@ -46,14 +55,14 @@ random_identifier() { od -An -tx1 -N32 /dev/urandom | tr -d ' \n'; }
 
 read_one() {
   curl -s -o /dev/null -m 30 -w '%{http_code} %{time_total} %{size_download}' \
-    "http://127.0.0.1:${GATEWAY_BEE_PORT}/soc/$1"
+    "http://${GATEWAY_HOST}:${GATEWAY_BEE_PORT}/soc/$1"
 }
 
 # ⭐ Spendable balance per block, so what a miss costs is attributed rather than inferred. A whole run's
 # delta cannot separate the two conditions, and it cannot separate either from the node settling
 # something in the background, which is what the idle block is for.
 spendable() {
-  curl -s -m 5 "http://127.0.0.1:${GATEWAY_BEE_PORT}/chequebook/balance" 2>/dev/null |
+  curl -s -m 5 "http://${GATEWAY_HOST}:${GATEWAY_BEE_PORT}/chequebook/balance" 2>/dev/null |
     grep -o '"availableBalance":"[0-9]*"' | grep -o '[0-9]*'
 }
 

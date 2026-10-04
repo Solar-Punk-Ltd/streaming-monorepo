@@ -42,6 +42,15 @@ COMPOSE_DIR="${STACK_DIR}/deploy"
 ENV_FILE="${STACK_DIR}/.env"
 COMPOSE_PROJECT="${COMPOSE_PROJECT:-${PROFILE}}"
 GATEWAY_BEE_PORT="${GATEWAY_BEE_PORT:-$((10007 + PORT_SLOT * 10))}"
+# The gateway answers at the address its own bind names, and otherwise at the host's Docker bridge
+# address, which the deploy binds the Bee APIs to by default. The bridge is read once per run, past the
+# guards below, which refuse before anything asks docker.
+BOUND="$(dirname "${BASH_SOURCE[0]}")/bound-host.sh"
+# shellcheck source=deploy/scripts/bound-host.sh
+. "${BOUND}" || {
+  echo "cannot read ${BOUND}: sync deploy/scripts as a directory, not one script" >&2
+  exit 1
+}
 REFS="${REFS:-${HOME}/phase06/refs.txt}"
 # Where a named reference pattern is looked up, as `refs-<name>.txt`. An arm that names one walks it
 # instead of ${REFS}, which is what lets one sitting interleave access patterns rather than compare a
@@ -280,6 +289,8 @@ if [ "${PLAN_HAS_LIGHT_ARM}" = "1" ] && [ -z "${STACK_RPC_ENDPOINT}" ]; then
   exit 1
 fi
 
+GATEWAY_HOST="$(bound_host "$(bee_api_bind BEE_GATEWAY)" "$(bridge_address)")"
+
 # The endpoint one arm runs on. An ultra-light arm states its empty endpoint rather than leaving the
 # key alone, so that neither a value left in the env file by something else nor one the host exports
 # can make that node light.
@@ -410,7 +421,7 @@ recreate_gateway() {
 wait_for_gateway_api() {
   local deadline=$(($(date -u +%s) + 240))
   while [ "$(date -u +%s)" -lt "${deadline}" ]; do
-    if curl -s -o /dev/null --max-time 5 "http://127.0.0.1:${GATEWAY_BEE_PORT}/health"; then
+    if curl -s -o /dev/null --max-time 5 "http://${GATEWAY_HOST}:${GATEWAY_BEE_PORT}/health"; then
       return 0
     fi
     sleep 3
@@ -464,7 +475,7 @@ cache_confirmed_on_node() {
 # with a balance; one started with swap disabled has no chequebook and refuses.
 arm_confirmed_on_node() {
   local body
-  body="$(curl -s -m 5 "http://127.0.0.1:${GATEWAY_BEE_PORT}/chequebook/balance" 2>/dev/null)"
+  body="$(curl -s -m 5 "http://${GATEWAY_HOST}:${GATEWAY_BEE_PORT}/chequebook/balance" 2>/dev/null)"
   case "${CURRENT_ARM_SWAP}" in
     true) case "${body}" in *availableBalance*) return 0 ;; esac ;;
     false) case "${body}" in *availableBalance*) : ;; *) return 0 ;; esac ;;
@@ -510,7 +521,7 @@ trap restore_gateway EXIT
 # An unfunded node has no chequebook and refuses, which is 0 rather than an error: it cannot spend.
 spendable() {
   local v
-  v="$(curl -s -m 5 "http://127.0.0.1:${GATEWAY_BEE_PORT}/chequebook/balance" 2>/dev/null |
+  v="$(curl -s -m 5 "http://${GATEWAY_HOST}:${GATEWAY_BEE_PORT}/chequebook/balance" 2>/dev/null |
     grep -o '"availableBalance":"[0-9]*"' | grep -o '[0-9]*')"
   printf '%s' "${v:-0}"
 }
@@ -521,7 +532,7 @@ acct() { bash "${ACCT}" "${GATEWAY_BEE_PORT}" 2>/dev/null; }
 warmup_fetch() {
   local ref took
   ref="$(head -1 "${REFS}")"
-  took="$(curl -s -o /dev/null -m 60 -w '%{time_total}' "http://127.0.0.1:${GATEWAY_BEE_PORT}/bytes/${ref}")"
+  took="$(curl -s -o /dev/null -m 60 -w '%{time_total}' "http://${GATEWAY_HOST}:${GATEWAY_BEE_PORT}/bytes/${ref}")"
   say "  discarded a warm-up retrieval of ${took}s before timing anything"
 }
 
@@ -625,7 +636,7 @@ fetch_walk() {
       # gap cumulative, and a viewer that never catches up is a viewer whose buffer drains to nothing.
       nextAt=$((nextAt + pace))
     fi
-    out="$(curl -s -o /dev/null -m 30 -w '%{time_total} %{size_download}' "http://127.0.0.1:${GATEWAY_BEE_PORT}/bytes/${ref}")"
+    out="$(curl -s -o /dev/null -m 30 -w '%{time_total} %{size_download}' "http://${GATEWAY_HOST}:${GATEWAY_BEE_PORT}/bytes/${ref}")"
     ms="$(printf '%s\n' "${out}" | awk '{printf "%d", $1*1000}')"
     b="$(printf '%s\n' "${out}" | awk '{print $2}')"
     printf '%s\n' "${ms}" >>"${timesFile}"
