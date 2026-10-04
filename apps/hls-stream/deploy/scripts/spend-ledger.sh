@@ -94,13 +94,17 @@ LEDGER="${SPEND_LEDGER:-${SCRIPT_DIR}/../../.spend-ledger.env}"
 # whole measurement arm has already been lost to that confusion, six reds that all read as product
 # faults. ssh exits 255 for connection and authentication failures and passes the remote command's
 # status through otherwise, so the two are separable and are separated here.
+#
+# The uploader's own API is published on every address and is read at 127.0.0.1. A Bee node is read
+# where the deploy bound its API, which by default is the host's Docker bridge address.
 read_url() {
-  local port="$1" path="$2"
+  local host="$1" port="$2" path="$3"
   if [ "$TARGET" = "localhost" ]; then
-    curl -s --max-time 10 "http://127.0.0.1:${port}${path}" 2>/dev/null
+    curl -s --max-time 10 "http://${host}:${port}${path}" 2>/dev/null
     return $?
   fi
-  ssh -o ConnectTimeout=10 "$TARGET" "curl -s --max-time 10 'http://127.0.0.1:${port}${path}'" 2>/dev/null
+  # shellcheck disable=SC2029
+  ssh -o ConnectTimeout=10 "$TARGET" "curl -s --max-time 10 $(shell_quote "http://${host}:${port}${path}")" 2>/dev/null
   return $?
 }
 
@@ -118,7 +122,7 @@ refuse_unreachable() {
   exit 1
 }
 
-HEALTH="$(read_url "${API_PORT}" /health)"
+HEALTH="$(read_url 127.0.0.1 "${API_PORT}" /health)"
 if [ "$?" = "${SSH_TRANSPORT_FAILED}" ] && [ "$TARGET" != "localhost" ]; then
   refuse_unreachable
 fi
@@ -189,9 +193,13 @@ case " ${PORTS} " in
     ;;
 esac
 
+# The bridge address of the uploader's host, read once, for every node whose bind names none.
+BRIDGE="$(bridge_address "$TARGET")"
+
 BALANCES=""
 for port in ${PORTS}; do
-  body="$(read_url "${port}" /chequebook/balance)"
+  host="$(bee_api_host_for_port "${port}" "${BRIDGE}")"
+  body="$(read_url "${host}" "${port}" /chequebook/balance)"
   # shellcheck disable=SC2181
   if [ "$?" = "${SSH_TRANSPORT_FAILED}" ] && [ "$TARGET" != "localhost" ]; then
     refuse_unreachable

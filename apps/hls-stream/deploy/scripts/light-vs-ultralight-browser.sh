@@ -178,12 +178,23 @@ bzz() {
   printf '%d.%04d' "$(($1 / 10000000000000000))" "$((($1 % 10000000000000000) / 1000000000000))"
 }
 
+# Where the nodes answer: at the address a node's own bind names, and otherwise at the host's Docker
+# bridge address, which the deploy binds the Bee APIs to by default. The bridge is read once per run.
+BOUND="$(dirname "${BASH_SOURCE[0]}")/bound-host.sh"
+# shellcheck source=deploy/scripts/bound-host.sh
+. "${BOUND}" || {
+  echo "cannot read ${BOUND}: sync deploy/scripts as a directory, not one script" >&2
+  exit 1
+}
+BRIDGE="$(bridge_address)"
+GATEWAY_HOST="$(bound_host "$(bee_api_bind BEE_GATEWAY)" "${BRIDGE}")"
+
 # Prints the node's spendable chequebook balance in PLUR, or nothing when it cannot be read.
 #
 # Empty is meaningfully different from zero, and here it is the measurement: a node started with swap
 # disabled has no chequebook and answers 405, which is the arm rather than a shortfall.
 available_plur() {
-  curl -s --max-time 10 "http://127.0.0.1:${1}/chequebook/balance" 2>/dev/null |
+  curl -s --max-time 10 "http://$(bee_api_host_for_port "${1}" "${BRIDGE}"):${1}/chequebook/balance" 2>/dev/null |
     python3 -c 'import sys,json;print(json.load(sys.stdin)["availableBalance"])' 2>/dev/null
 }
 
@@ -287,7 +298,7 @@ spec_matches_baseline_except_mode() {
 wait_for_gateway_api() {
   local deadline=$(($(date -u +%s) + 180))
   while [ "$(date -u +%s)" -lt "${deadline}" ]; do
-    if curl -s -o /dev/null --max-time 5 "http://127.0.0.1:${GATEWAY_BEE_PORT}/health"; then
+    if curl -s -o /dev/null --max-time 5 "http://${GATEWAY_HOST}:${GATEWAY_BEE_PORT}/health"; then
       return 0
     fi
     sleep 3

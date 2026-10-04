@@ -16,6 +16,12 @@
 set -u
 
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+BOUND="${HERE}/bound-host.sh"
+# shellcheck source=deploy/scripts/bound-host.sh
+. "${BOUND}" || {
+  echo "cannot read ${BOUND}: sync deploy/scripts as a directory, not one script" >&2
+  exit 1
+}
 UPLOADER_PORT="${UPLOADER_BEE_PORT:-}"
 GATEWAY_PORT="${GATEWAY_BEE_PORT:-}"
 UPLOADER_API_PORT="${UPLOADER_API_PORT:-}"
@@ -33,6 +39,13 @@ resolve_ports() {
   UPLOADER_PORT="${UPLOADER_PORT:-$((PORT_SLOT == 0 ? 1633 : 10005 + PORT_SLOT * 10))}"
   GATEWAY_PORT="${GATEWAY_PORT:-$((PORT_SLOT == 0 ? 1733 : 10007 + PORT_SLOT * 10))}"
   UPLOADER_API_PORT="${UPLOADER_API_PORT:-$((PORT_SLOT == 0 ? 3000 : 10000 + PORT_SLOT * 10))}"
+  # The nodes are read where the deploy bound their APIs, which by default is the host's Docker bridge
+  # address rather than 127.0.0.1, and the uploader's own API on 127.0.0.1, since it is published on
+  # every address. Read once here rather than on every sample of a watch.
+  local bridge
+  bridge="$(bridge_address)"
+  UPLOADER_HOST="$(bound_host "$(bee_api_bind BEE_UPLOADER)" "${bridge}")"
+  GATEWAY_HOST="$(bound_host "$(bee_api_bind BEE_GATEWAY)" "${bridge}")"
 }
 
 # What `watch` refuses to keep running past. The reserve is per node and is not a budget: it is the
@@ -69,12 +82,12 @@ snapshot_to() {
   # it, not an environment for it, which is how the first version handed python an empty LABEL.
   local out="$1" LABEL="${2:-}" LOAD UP GW STAMPS HEALTH CHQ_UP CHQ_GW
   LOAD="$(cut -d' ' -f1-3 /proc/loadavg 2>/dev/null || echo '')"
-  UP="$(get "http://127.0.0.1:${UPLOADER_PORT}/metrics" | grep -v '_bucket')"
-  GW="$(get "http://127.0.0.1:${GATEWAY_PORT}/metrics" | grep -v '_bucket')"
-  STAMPS="$(get "http://127.0.0.1:${UPLOADER_PORT}/stamps")"
+  UP="$(get "http://${UPLOADER_HOST}:${UPLOADER_PORT}/metrics" | grep -v '_bucket')"
+  GW="$(get "http://${GATEWAY_HOST}:${GATEWAY_PORT}/metrics" | grep -v '_bucket')"
+  STAMPS="$(get "http://${UPLOADER_HOST}:${UPLOADER_PORT}/stamps")"
   HEALTH="$(get "http://127.0.0.1:${UPLOADER_API_PORT}/health")"
-  CHQ_UP="$(get "http://127.0.0.1:${UPLOADER_PORT}/chequebook/balance")"
-  CHQ_GW="$(get "http://127.0.0.1:${GATEWAY_PORT}/chequebook/balance")"
+  CHQ_UP="$(get "http://${UPLOADER_HOST}:${UPLOADER_PORT}/chequebook/balance")"
+  CHQ_GW="$(get "http://${GATEWAY_HOST}:${GATEWAY_PORT}/chequebook/balance")"
 
   LABEL="${LABEL}" LOAD="${LOAD}" UP="${UP}" GW="${GW}" STAMPS="${STAMPS}" HEALTH="${HEALTH}" \
     CHQ_UP="${CHQ_UP}" CHQ_GW="${CHQ_GW}" python3 -c '

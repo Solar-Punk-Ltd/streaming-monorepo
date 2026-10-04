@@ -11,7 +11,10 @@
 # `durLe1` is the node's own view of the failure that matters: `durCount - durLe1` is the number of
 # retrievals that took a second or more, which is the retry timer firing, and it is the statistic a
 # median cannot see. `attLe1` is how many chunks were served on the first candidate peer.
-curl -s -m 10 "http://localhost:$1/metrics" 2>/dev/null | awk '
+#
+# Takes the API port, and the address the gateway's API is bound to, which by default is the host's
+# Docker bridge address rather than localhost. An older caller that names none still gets localhost.
+curl -s -m 10 "http://${2:-localhost}:$1/metrics" 2>/dev/null | awk '
   $1=="bee_accounting_accounting_blocks_count"        {printf "blocks=%d ", $2}
   $1=="bee_accounting_disconnects_overdraw_count"     {printf "dropOverdraw=%d ", $2}
   $1=="bee_accounting_disconnects_ghost_overdraw_count"{printf "dropGhost=%d ", $2}

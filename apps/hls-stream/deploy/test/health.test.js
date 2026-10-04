@@ -118,7 +118,7 @@ describe('health.sh asks each interface where compose bound it', () => {
     assert.match(run.stdout, /stream-uploader \(http:\/\/localhost:3000\/health\)/);
   });
 
-  it('asks at an address a bind names, and on localhost for one bound to every address', async () => {
+  it('asks at an address a bind names, and on 127.0.0.1 for one bound to every address', async () => {
     const sandbox = makeSandbox({
       envFiles: envWith(['BEE_UPLOADER_API_BIND=198.51.100.7', 'SRS_HTTP_BIND=0.0.0.0']),
     });
@@ -127,7 +127,7 @@ describe('health.sh asks each interface where compose bound it', () => {
     const run = await runScriptOk(sandbox, 'health.sh', [], { DOCKER_STUB_BRIDGE: BRIDGE });
 
     assert.match(run.stdout, /bee-uploader \(http:\/\/198\.51\.100\.7:1633\/health\)/);
-    assert.match(run.stdout, /srs \(http:\/\/localhost:8080\)/);
+    assert.match(run.stdout, /srs \(http:\/\/127\.0\.0\.1:8080\)/);
   });
 
   it('asks a remote host its admin interfaces over ssh, on that host', async () => {
