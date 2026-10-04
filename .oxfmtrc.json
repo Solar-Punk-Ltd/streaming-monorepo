@@ -21,6 +21,6 @@
     "**/.stryker-tmp/**",
     "pnpm-lock.yaml",
     "infra/**",
-    "apps/hls-stream/docs/bench/**"
+    "apps/hls-stream/e2e/test/fixtures/**"
   ]
 }
