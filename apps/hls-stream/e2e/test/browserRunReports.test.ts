@@ -16,7 +16,7 @@ import { summarize, type ViewerSample } from '../src/browser/session.js';
 import { type LadderRung } from '../src/config.js';
 
 /**
- * The two run reports written for V2 and V3, rendered.
+ * The two run reports written for the quality switch arm and the rung outage arm, rendered.
  *
  * ⛔ The verdict prose is where a report can LIE. Every other section restates a number, and a wrong
  * number is visible beside the table it came from. A verdict says "it stepped down" or "it never

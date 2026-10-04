@@ -22,7 +22,7 @@
  *
  * ## ⛔ It records and it refuses nothing ABOUT THE PRODUCT
  *
- * Owner ruling of 2026-08-29: an e2e suite checks that a feature works and stays stable, never how
+ * An e2e suite checks that a feature works and stays stable, never how
  * fast it is. No ratio, no byte count and no stall count below is a threshold, and no suite may key a
  * refusal to one.
  *
@@ -221,8 +221,8 @@ export function vodSqueezeSection(report: VodSqueezeReport): string[] {
       'column: zero bytes over no socket is a tab with no in-tab node in it, and zero bytes over open ' +
       'sockets is a node that was quiet, which are opposite findings printed as one zero.',
     '',
-    '⛔ Observations, none of them asserted, and no rate above is held against a ceiling. Owner ruling of',
-    '2026-08-29: an e2e suite checks that the feature works and is stable, never how fast it is.',
+    '⛔ Observations, none of them asserted, and no rate above is held against a ceiling.',
+    'An e2e suite checks that the feature works and is stable, never how fast it is.',
     '',
   ];
 }

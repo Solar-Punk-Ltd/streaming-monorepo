@@ -21,7 +21,7 @@ export interface SegmentSample {
   /**
    * What the manifest declared this segment's duration to be, against the measured span in the split.
    *
-   * Carried so a run can answer the question LAT-9 was opened on rather than only route around it.
+   * Carried so a run can answer the question the uneven segment duration finding raised rather than only route around it.
    * The register recorded SRS announcing 3.15, 2.73, 3.16, 2.04 and 2.64 seconds against a fixed
    * two-second GOP, and two different faults produce that: an engine whose segmenting really is that
    * uneven, and an engine that cuts evenly and misreports. Measuring the span from the bytes makes
@@ -282,7 +282,7 @@ function declaredSamples(run: BenchRun): DeclaredSample[] {
 /**
  * What the manifest declared each segment held, against what it holds.
  *
- * Printed always and with no verdict attached, for the same reason `trendLine` is. LAT-9 was opened on
+ * Printed always and with no verdict attached, for the same reason `trendLine` is. The uneven segment duration finding began with
  * SRS announcing 3.15, 2.73, 3.16, 2.04 and 2.64 seconds against a fixed two-second GOP, and two
  * different faults produce that reading: segmenting that really is uneven, and even segmenting that is
  * misreported. One run cannot separate them, so a line that only appeared past some threshold would be
@@ -296,9 +296,9 @@ function declaredSamples(run: BenchRun): DeclaredSample[] {
  * Which matters here more than it looks, because the two are not symmetric in what they cost.
  * `totalMs` is `fetchedAtMs - capturedAtMs` and never moves, and the hops sum to it whatever the span
  * is, so `impossibleHops` prints its all-clear either way. What a too-small measured span does instead
- * is grow the `upload` hop, and that hop coming out negative is the whole reason LAT-9 was opened.
+ * is grow the `upload` hop, and that hop coming out negative is the whole reason that finding was opened.
  * Measured on the real run's own instants: a 2.64s span gives -240ms, 2.0s gives +400ms, and a
- * truncated 0.067s gives +2333ms. **So a mis-measured span makes LAT-9's symptom look resolved**, and
+ * truncated 0.067s gives +2333ms. **So a mis-measured span makes that symptom look resolved**, and
  * this line is the only thing in the report that would show it.
  */
 /**

@@ -50,7 +50,7 @@ import { requireByteSource, viewerGate } from '../../src/viewerCoverage.js';
  *
  * ## ⛔ No timing is asserted
  *
- * Owner ruling of 2026-08-29: an e2e suite checks feature correctness and stability, and performance
+ * An e2e suite checks feature correctness and stability, and performance
  * is a separate kind of test. There was never a freeze ceiling here, because the picture stops and
  * stays stopped and the 83.2s the matrix records is just the rest of that arm. There WAS a floor of
  * 20s, and it is the sharpest example of why a timing gate does not belong in a correctness suite:

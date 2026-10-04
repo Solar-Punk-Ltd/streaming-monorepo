@@ -57,7 +57,7 @@ import { requireByteSource, viewerGate } from '../../src/viewerCoverage.js';
  *
  * ## ⛔ No timing is asserted
  *
- * Owner ruling of 2026-08-29. This once capped the freeze at the pause's own eight seconds and the
+ * This once capped the freeze at the pause's own eight seconds and the
  * resume at ten. The ladder run read 58.9s and the case went red for a configuration difference: an
  * in-browser node admits roughly one segment per second, so half second segments cap it near half of
  * real time, which is not a defect in this code.

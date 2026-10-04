@@ -404,7 +404,7 @@ describe('a run that measured nothing', () => {
 });
 
 /**
- * LAT-9's own question, which the fix routes around rather than answers: the split is measured from
+ * The segment duration finding's own question, which the fix routes around rather than answers: the split is measured from
  * the bytes now, so an engine that misreports its segment durations no longer moves any figure, and
  * the only place that misreporting can still be seen is here.
  */
@@ -459,7 +459,7 @@ describe('reporting the manifest against the bytes', () => {
    * false pair: nothing derives from the declared figure, and everything but the total derives from
    * the measured one. So a wide gap is evidence against the measurement too, and that direction is
    * the dangerous one. A span measured too small grows the `upload` hop instead of making it
-   * negative, and a negative `upload` hop is the entire symptom LAT-9 was opened on.
+   * negative, and a negative `upload` hop is the entire symptom that finding was opened on.
    */
   it('does not blame the engine for a gap that is evidence against the measurement too', () => {
     const report = renderReport(runWith([declaring(1, 3.15)]));

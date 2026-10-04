@@ -15,7 +15,7 @@ import type { EnvBag } from './envFile.js';
  * `stock` is what a plain deploy falls back to when the variable is unset, matching the
  * `${NAME:-NNNN}` fallback in the compose file that publishes it. `base` is the origin of the
  * `base + slot*10` arithmetic, where each service holds a unique last digit (0-8) so slots cannot
- * collide. They were one number until OPS-27, which is why a stock deploy bound SRS's RTMP listener
+ * collide. They were one number until the stock and base ports were split, which is why a stock deploy bound SRS's RTMP listener
  * on 10002 while the compose file documented 1935.
  */
 export const PORT_DEFAULTS = {

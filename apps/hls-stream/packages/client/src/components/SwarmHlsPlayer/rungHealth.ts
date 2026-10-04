@@ -27,7 +27,7 @@ const MIN_LEVELS_TO_DROP_ONE = 2;
 /**
  * How many rungs this player will ever take out of one ladder.
  *
- * ⛔⛔⛔ Owner ruling, 2026-09-01, after the first sitting with this armed. V7 kills the uploader, so
+ * ⛔⛔⛔ Found on 2026-09-01, in the first sitting with this armed. The uploader crash arm kills the uploader, so
  * every rung stops. The player read that as three separate rungs failing, deleted them one by one,
  * hls.js raised a fatal `levelSwitchError`, and the whole player destroyed and restarted itself.
  *
@@ -124,7 +124,7 @@ export function attachRungFailover(hls: Hls, feedHealth: FeedHealthTracker): () 
     const index = levelIndexOfRung(hls, rungTopicId);
     if (index < 0) {
       // ⛔ Silent until 2026-09-01, and it shares its silence with "the rung was never reported
-      // stopped at all". V3 went red that day having logged NOTHING: no drop, no refusal, no
+      // stopped at all". The rung outage arm went red that day having logged NOTHING: no drop, no refusal, no
       // detection, so the two had to be told apart by reasoning rather than by reading. Most
       // announcements really are another ladder's and this is the right answer for them, which is
       // why it says which ladder rather than warning.

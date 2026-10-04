@@ -3,7 +3,7 @@
  * how small the player's live buffer can be.
  *
  * `playerConfig.ts` carries `LIVE_SYNC_DURATION_S = 10` and its own note says why it had not been
- * cut: the per-hop split was unusable, and five samples is not a spread. LAT-9 closed the first, and
+ * cut: the per-hop split was unusable, and five samples is not a spread. The segment duration fix closed the first, and
  * a sweep closes the second, so the number is finally answerable from data instead of from caution.
  */
 

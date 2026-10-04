@@ -315,7 +315,7 @@ describe('refusing a stack that cuts at the wrong length for this run', () => {
   });
 
   /** The pairing that was actually running, and the one this whole gate exists for. */
-  it('refuses an in-browser run against the half-second stage latbench ships', () => {
+  it('refuses an in-browser run against a half-second stage', () => {
     const refusal = String(segmentLengthRefusal({ profile: 'in-browser', needed: 2, stage: ladder('0.5') }));
 
     assert.match(refusal, /in-browser/);

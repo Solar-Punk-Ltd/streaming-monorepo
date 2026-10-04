@@ -27,7 +27,7 @@ export interface SegmentInstants {
    *
    * Not the manifest's `#EXTINF`, which this used to take. That is the engine's claim about the
    * segment, it reaches two rows here and the viewer figure, and nothing downstream could have told a
-   * wrong claim from a real one. See LAT-9 and `segmentSpan.ts`.
+   * wrong claim from a real one. See `segmentSpan.ts`.
    */
   segmentDurationS: number;
   /** Uploader host clock. `Segment N uploaded`, so the payload had reached Swarm. */

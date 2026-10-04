@@ -228,7 +228,7 @@ function heldMediaMs(segment: Segment, fragmentSeconds: number): number {
  * 10.033 second segments against a configured 2 on 2026-09-15, and a contract demanding the declared
  * length passed a recording whose clock fell further behind its own media with every segment.
  *
- * ⭐ Owner ruling of 2026-09-06. A segment the broadcast lost is listed as an `#EXT-X-GAP` entry
+ * ⭐ Since 2026-09-06 a segment the broadcast lost is listed as an `#EXT-X-GAP` entry
  * carrying its own stamp and the declared length, because the media is gone and nobody measured it,
  * so a hole that was said steps one entry at a time and passes here by construction. A step that
  * runs a whole fragment or more past the media in front of it therefore means the hole was left out
@@ -243,7 +243,7 @@ function heldMediaMs(segment: Segment, fragmentSeconds: number): number {
  * publisher dated by the configured length passed this check silently.
  *
  * ⛔ Across a discontinuity a forward step of **any** size is legal, and this required a whole number
- * of fragments until the owner's decision of 2026-09-03. An engine restart re-anchors the dating on
+ * of fragments until 2026-09-03. An engine restart re-anchors the dating on
  * the wall clock the engine came back at, so the step across that break is the length of the outage
  * and nothing rounds it. A step that does not move forwards stays illegal everywhere: a date that
  * repeats or goes backwards is media a viewer is already holding being re-dated.

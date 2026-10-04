@@ -90,7 +90,7 @@ function idlePollIntervalMs(gopSeconds: number): number {
  * built on a constant that described neither.
  *
  * Kept at the value the recommendation has always used so this change moves no published figure.
- * ⚠️ It has never been checked against `ManifestManagement.ts`, and LAT-3 added backoff there, so
+ * ⚠️ It has never been checked against `ManifestManagement.ts`, and the gateway backoff work added backoff there, so
  * validating it is outstanding work rather than something this constant settles.
  */
 const ASSUMED_CLIENT_POLL_INTERVAL_MS = 2_000;

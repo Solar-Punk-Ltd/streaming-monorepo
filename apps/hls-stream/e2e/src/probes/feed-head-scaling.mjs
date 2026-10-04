@@ -1,13 +1,13 @@
 /**
  * Does bee's feed head lookup get slower as a feed gets longer?
  *
- * WHY THIS EXISTS. LAT-10 measured `GET /feeds/{owner}/{topic}` against a feed advancing once a
+ * WHY THIS EXISTS. The feed head freeze work measured `GET /feeds/{owner}/{topic}` against a feed advancing once a
  * second and found it 50 to 57% frozen. The player survives that because it resolves the head once
  * and then walks slot addresses, but the **catalog does not**: `App.tsx` polls `/feeds/` every five
  * seconds through SWR, and every `StreamPreview` thumbnail makes one more, serialised behind a
  * concurrency-1 queue. That is a shipped path on every page load.
  *
- * The catalog's feed is nothing like the one LAT-10 measured, though. It advances when a broadcast
+ * The catalog's feed is nothing like the one that work measured, though. It advances when a broadcast
  * starts or stops, so it is idle nearly all the time, and a lookup against an idle feed may well be
  * fast. What it does do is **grow forever**, one slot per lifecycle event, for as long as the
  * deployment lives. So the question that decides whether the catalog needs fixing is not how fast the

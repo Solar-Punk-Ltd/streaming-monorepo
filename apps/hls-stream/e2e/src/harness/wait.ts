@@ -65,7 +65,7 @@ export class StopWaiting extends Error {}
  * said only its label would read as a product that never did the thing.
  *
  * ⛔⛔ And that tolerance is bounded, by {@link CONSECUTIVE_THROW_LIMIT} throws in a row once
- * {@link THROW_GRACE_MS} has passed since the wait began. Owner ruling of 2026-09-05. Without it a
+ * {@link THROW_GRACE_MS} has passed since the wait began. Without it a
  * read that never worked at all spends the whole ceiling before anyone hears about it, which on a
  * four minute wait is four minutes of a paid broadcast bought to learn that an ssh target is
  * refusing connections. A poll that answered, true or false, starts the run of throws again.

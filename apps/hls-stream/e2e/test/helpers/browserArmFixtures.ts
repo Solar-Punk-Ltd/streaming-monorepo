@@ -439,7 +439,7 @@ export function qualityArmState(overrides: ArmStateOverrides = {}): unknown {
 /**
  * The rung timeline of a viewer who moved off a rung that stopped being produced, and kept watching.
  *
- * The shape V3 asserts: 720p before the outage, 480p while the 720p transcode was stopped, 720p again
+ * The shape the rung outage arm asserts: 720p before the outage, 480p while the 720p transcode was stopped, 720p again
  * once it resumed.
  */
 export const MOVED_OFF_A_DEAD_RUNG: Record<string, unknown> = {

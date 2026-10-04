@@ -10,7 +10,7 @@
  *
  * ## ⛔ Nothing here asserts, and a phase nobody sampled says so
  *
- * Owner ruling of 2026-08-29: a ratio, a duration and a byte rate are measured, printed under a
+ * A ratio, a duration and a byte rate are measured, printed under a
  * heading that says they are observations, and refuse nothing. The one thing this module is strict
  * about is the difference between a reading of zero and no reading at all. A phase with fewer than
  * two samples has no pair to subtract, so every figure derived from a pair comes back null. Zero is

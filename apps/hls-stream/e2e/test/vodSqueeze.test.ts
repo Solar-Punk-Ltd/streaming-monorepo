@@ -215,7 +215,7 @@ describe('the squeeze sections a report carries', () => {
     assert.match(section, /64/);
   });
 
-  /** ⛔ Owner ruling of 2026-08-29. Every rate here is measured, filed, and refuses nothing. */
+  /** ⛔ Every rate here is measured, filed, and refuses nothing. */
   it('says in the section itself that none of it is asserted', () => {
     assert.match(vodSqueezeSection(REPORT).join('\n'), /asserted/);
   });

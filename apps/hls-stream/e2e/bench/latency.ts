@@ -1,6 +1,6 @@
 /**
  * `pnpm bench:latency` — measure glass-to-glass latency against a deployed stack, and write the
- * report a later sprint is compared against. This is LAT-1.
+ * report a later sprint is compared against.
  *
  * Runs in this order for a reason: everything that can fail for free fails first. The instrument
  * checks itself locally, then the gateway is proved reachable, then the deployment's log level is

@@ -2,7 +2,7 @@
  * Which way of following a live feed actually keeps up, and is asking for an index before it exists
  * what breaks the others?
  *
- * WHY THIS EXISTS. LAT-10's fix reads `/feeds/{owner}/{topic}` instead of computing the address of
+ * WHY THIS EXISTS. The fix for the feed head freeze reads `/feeds/{owner}/{topic}` instead of computing the address of
  * the slot after the one already held. But a sequential lookup has to find the end somehow, and the
  * only way to know N is the head is to ask for N+1 and be told no. So bee asks early too, and if
  * asking is what poisons, the fix moves the poisoning one level down and changes nothing.

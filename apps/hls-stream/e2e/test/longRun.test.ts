@@ -387,7 +387,7 @@ describe('whether a gap belongs to the feed or to the bench watching it', () => 
 
   /**
    * `run.ts` records a poll that failed as `newestRef: null` on purpose, and says in its own
-   * comment that a feed poll slow enough to time out is the strongest sample of LAT-10 there is.
+   * comment that a feed poll slow enough to time out is the strongest sample of the feed head freeze there is.
    * This function then read that null as a change of newest segment, so the strongest evidence of a
    * stall ended the stall it was evidence of, and a long freeze was reported as its largest
    * uninterrupted piece.

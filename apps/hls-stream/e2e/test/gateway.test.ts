@@ -151,7 +151,7 @@ describe('the feed index the gateway resolved to', () => {
  * the wrong reason: the public gateway answers `/health` with the plain text `OK` rather than a bee
  * node's JSON, and it serves the feed API perfectly well.
  *
- * That matters now rather than in the abstract. LAT-10's only no-cost mitigation is to point viewers
+ * That matters now rather than in the abstract. The feed head freeze's only no-cost mitigation is to point viewers
  * at a different gateway, and a bench that can only measure a bee node cannot measure whether the
  * mitigation works.
  */
@@ -182,7 +182,7 @@ describe('what counts as a reachable viewer gateway', () => {
  *
  * A failed feed poll used to end the run outright, and that was wrong twice over. It discarded every
  * sample already collected, at the cost of a real broadcast and real postage. And what triggered it
- * was the very thing the run exists to measure: LAT-10 is feed polls being slow, so a poll slow
+ * was the very thing the run exists to measure: the feed head freeze is feed polls being slow, so a poll slow
  * enough to exceed the timeout is the strongest sample of the effect there is, and it was the one
  * sample guaranteed to destroy the run. A 34-minute run died this way on 2026-08-04 with 30 minutes
  * of good samples in hand.
@@ -228,11 +228,11 @@ describe('telling a slow feed from a gateway that has gone', () => {
  * live edge was 0.2% frozen at 46ms. It fails identically against the node holding every chunk
  * locally, so it is the lookup and not retrieval.
  *
- * The whole of LAT-10 was built on frozen shares this instrument produced, which means they described
+ * The whole of the feed head freeze finding was built on frozen shares this instrument produced, which means they described
  * the instrument. Nothing here could have caught that, because nothing asserted which request the
  * bench makes.
  */
-describe('following the feed the way the player does (LAT-10)', () => {
+describe('following the feed the way the player does', () => {
   /** Records every path asked for, and answers a feed that is one slot ahead of wherever it is asked. */
   async function stubGateway(
     answer: (path: string) => { status: number; body?: string; headers?: Record<string, string> },
@@ -369,7 +369,7 @@ describe('following the feed the way the player does (LAT-10)', () => {
 
   /**
    * The escape hatch has to work, or the instrument's own contribution can only be argued about. This
-   * is the mode that produced every frozen share LAT-10 was built on.
+   * is the mode that produced every frozen share that finding was built on.
    */
   it('still resolves the head on every poll in head mode', async () => {
     const gw = await stubGateway(() => ({

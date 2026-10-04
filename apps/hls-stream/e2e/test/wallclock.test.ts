@@ -112,7 +112,7 @@ describe('reading a wall-clock instant back out of an MPEG-TS timestamp', () => 
  *
  * A media engine that rebases the stream to zero still yields a pts, and the modulo still yields a
  * number of seconds. Without these bounds the bench would publish that number as a latency, and the
- * whole point of LAT-1 is to produce a figure a later sprint can be measured against.
+ * whole point of the latency bench is to produce a figure a later sprint can be measured against.
  */
 describe('refusing a reading the pipeline cannot have produced', () => {
   it('rejects a stream the engine rebased to start at zero', () => {

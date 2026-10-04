@@ -51,7 +51,7 @@ export function unprovenInstrumentRefusal(result: BrowserArmResult): string | nu
  * so. Those figures are properties of the harness, and a suite that failed a product on them, or
  * passed one, would be reporting on the harness either way.
  *
- * ⭐ **It asks whether the picture moved, never how fast.** Owner ruling of 2026-08-29: these suites
+ * ⭐ **It asks whether the picture moved, never how fast.** These suites
  * check that the feature works, properly and stably, and how much of the wall clock a viewer kept up
  * with is a performance reading. This once held an advance ratio against a floor of 0.95 taken from a
  * single-rendition 720p broadcast. The same client on a four rung ABR ladder delivers 0.80 of the

@@ -20,7 +20,7 @@ import { waitFor } from '../../src/harness/wait.js';
  * pick and where each one's playlist lives. It is the only thing a viewer who arrives mid-broadcast
  * reads to find out what the ladder offers.
  *
- * ## ⛔⛔ Decision 5 of `docs/e2e-batch-drain-plan.md`, and the half that was missing
+ * ## ⛔⛔ The master must offer every rung, and the half that was missing
  *
  * A drain sitting arms one rung's postage to run dry, proves the master drops that rung, and then
  * restores the original batch. The recovery half of the decision is that the master offers every
@@ -46,9 +46,9 @@ import { waitFor } from '../../src/harness/wait.js';
  * That the master offers exactly the rungs this broadcast's own announces name, joined by feed topic
  * rather than by resolution. Nothing about how long the master took to be written: the wait's
  * ceiling is the harness's patience, and the elapsed reading is printed under a heading that says it
- * is asserted nowhere. Owner ruling of 2026-08-29.
+ * is asserted nowhere, because an e2e suite checks correctness and never speed.
  *
- * ⛔ **The viewer half of decision 5 stays recorded rather than asserted, and it is not recorded
+ * ⛔ **The viewer half of that rule stays recorded rather than asserted, and it is not recorded
  * here.** That half is "a viewer who was watching keeps three", which is about a player that was
  * already mid-watch when the rung went and is a reading `suites/viewer/batch-drain-viewer.test.ts`
  * takes during the drain itself. This suite opens no browser and is deliberately cheap enough to run
@@ -142,7 +142,7 @@ describe(
       console.log(
         `  observations, none of them asserted. the master named all ${expectedRungs.length} rungs ` +
           `${(offeredAfterMs / 1000).toFixed(1)}s after the last of them announced. The other half of ` +
-          'decision 5, that a viewer who was watching keeps the rungs they had, is the drain viewer ' +
+          'that rule, that a viewer who was watching keeps the rungs they had, is the drain viewer ' +
           "suite's reading and is not taken here",
       );
     });

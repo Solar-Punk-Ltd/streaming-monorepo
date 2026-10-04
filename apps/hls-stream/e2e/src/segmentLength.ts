@@ -14,8 +14,8 @@
  *  - The **gateway** path measures the opposite optimum over 21 funded arms, 0.5s beating 2s on
  *    capture-to-fetchable latency at 1.55s against 3.88s.
  *
- * So a run has to name the number it needs, and the stack has to be producing it. Our own latbench
- * stage publishes 0.5s, and the `in-browser` profile has been running the byte source that cannot
+ * So a run has to name the number it needs, and the stack has to be producing it. A bench
+ * stage can publish 0.5s, and the `in-browser` profile has been running the byte source that cannot
  * sustain that: live in-tab readings sat at 0.35 to 0.68 of realtime with a 44ms buffer, which is the
  * 0.426x law and not a client fault.
  *

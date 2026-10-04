@@ -35,8 +35,8 @@ import {
 /**
  * Which level a viewer's player asked for, out of the lines the client writes.
  *
- * ⛔ Everything here is an observation. No case asserts a timing, a threshold or a refusal, per the
- * owner ruling of 2026-08-29, and the reader must not be able to grow one.
+ * ⛔ Everything here is an observation. No case asserts a timing, a threshold or a refusal, because an e2e
+ * suite checks correctness and never speed, and the reader must not be able to grow one.
  */
 
 const TOP = 'swarm://0xowner/top';

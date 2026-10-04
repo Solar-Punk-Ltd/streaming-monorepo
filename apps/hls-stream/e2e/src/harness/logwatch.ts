@@ -49,7 +49,7 @@ export interface UploaderEvents {
    * How many times the uploader announced that something happened to the timeline, by any of the
    * seven lines that say so.
    *
-   * ⚠️ **Since the owner's ruling of 2026-09-06 the name is wider than the truth, and the name is
+   * ⚠️ **Since 2026-09-06 the name is wider than the truth, and the name is
    * kept on purpose.** Three of the seven report a LOST SEGMENT, which no longer arms an
    * `#EXT-X-DISCONTINUITY`: the hole is said with `#EXT-X-GAP` entries instead, so the media behind it
    * keeps the numbers it was published with. Three of the remaining four really are a break, the origin
@@ -157,7 +157,7 @@ interface BatchRefusal {
  * inside the reconnect window. It is written where that seam is placed, so once per break, and an
  * ordinary reconnect rather than a fault is what produces it. See the note on it in the list below.
  *
- * ⚠️ **Only three of the seven are a break now.** Since the owner's ruling of 2026-09-06 the three
+ * ⚠️ **Only three of the seven are a break now.** Since 2026-09-06 the three
  * loss lines report a hole the playlist says with `#EXT-X-GAP` entries, and `markDiscontinuity`, the
  * re-anchoring and the encoder's return are what still arm an `#EXT-X-DISCONTINUITY`. Every line is
  * kept in the family because every suite reading this count is asking whether the broadcast lost or

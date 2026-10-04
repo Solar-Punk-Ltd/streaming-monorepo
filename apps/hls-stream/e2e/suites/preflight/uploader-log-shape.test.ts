@@ -147,7 +147,7 @@ const PARSED_MESSAGES: readonly DeployedMessage[] = [
   // vacuous green is the worst thing this gate can be asked to prevent, which is why each of the
   // seven is listed rather than the family.
   //
-  // ⚠️ Only the third, the fifth and the seventh are a break. Since the owner's ruling of 2026-09-06
+  // ⚠️ Only the third, the fifth and the seventh are a break. Since 2026-09-06
   // the other four report a lost segment, whose hole the playlist says with `#EXT-X-GAP` entries
   // instead.
   //

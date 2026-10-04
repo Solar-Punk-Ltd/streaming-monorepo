@@ -8,8 +8,8 @@
  * **Read-only, deliberately, and it used to not be.** This used to deposit the shortfall itself by
  * calling `/chequebook/deposit`, a real SWAP transaction on Gnosis mainnet, and then wait up to three
  * minutes for it to mine. That made `pnpm e2e` a command that spends the operator's money with no
- * prompt, on a node whose wallet the suite does not own. Owner decision 2026-08-03: report the
- * shortfall and fail. Funding is a decision, not a fixup, and the person whose wallet it is makes it.
+ * prompt, on a node whose wallet the suite does not own. Since 2026-08-03 it reports the
+ * shortfall and fails. Funding is a decision, not a fixup, and the person whose wallet it is makes it.
  *
  * The refusal carries the exact amount and the exact call, so acting on it is a copy and a paste
  * rather than a calculation.

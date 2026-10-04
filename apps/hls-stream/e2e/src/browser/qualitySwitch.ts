@@ -16,7 +16,7 @@
  *
  * ## ⛔ No timing is judged here
  *
- * Owner ruling of 2026-08-29. Whether the player came down, kept playing and went back up is
+ * Whether the player came down, kept playing and went back up is
  * correctness. How many seconds it took is measured, carried and printed, and refuses nothing.
  */
 
@@ -57,7 +57,7 @@ export interface QualityPhase {
 /**
  * What the player chose either side of a treatment, whatever the treatment was.
  *
- * ⭐ Shared by V2 and V3 on purpose. "The player was on this rung, something happened, it moved to
+ * ⭐ Shared by the quality switch arm and the rung outage arm on purpose. "The player was on this rung, something happened, it moved to
  * that one and kept playing" is one question, and a squeezed link and a rung going quiet are two
  * reasons to ask it. Two copies of this arithmetic would drift, and the whole value of a rung
  * timeline is that one suite's reading means the same as another's.
