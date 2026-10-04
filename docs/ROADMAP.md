@@ -131,11 +131,11 @@ Manager-driven deploy is next.
 Verified 2026-09-23 with `--host=localhost` on a laptop: build, migrations,
 health through nginx, `user:add`, sign-in through nginx on the slot port, a
 service-scoped redeploy, and a crash-looping API caught by the health timeout.
-Deployed to a server on 2026-09-24 at the first try. On another host the
-tunnel connected but nothing answered: a persisted firewall there accepted
-Docker's default bridge range and not the custom address pool its daemon hands
-out. A host matter, written up in the README. Nothing in this repo changes for
-it. The 2026-09-23 run found two defects that had never
+Deployed to a server on 2026-09-24 at the first try. A host whose persisted
+firewall accepts Docker's default bridge range but not a custom address pool
+its daemon hands out leaves the tunnel connected with nothing answering. That
+is a host matter, written up in the README's troubleshooting, and nothing in
+this repo changes for it. The 2026-09-23 run found two defects that had never
 been hit because the images had never been built: the backend image's
 `pnpm deploy` fails under pnpm 10 (now `--legacy`), and nginx forwarded `Host`
 without the port, so the API's cross-site check refused every write, sign-in
@@ -195,8 +195,7 @@ admin's. [self-hosting.md](self-hosting.md) has the recipe.
 
 ## Ingest panel and unpublish (2026-09-26)
 
-Decided by the owner after a tester could not go live on the test host on
-2026-09-25. Nothing there was broken: every SRT attempt carried no passphrase,
+Decided after a broadcaster could not go live from OBS. Nothing was broken: every SRT attempt carried no passphrase,
 because the panel sent OBS users to an "OBS Passphrase field" that OBS does
 not have.
 
@@ -219,7 +218,7 @@ not have.
 
 ## Streams belong to the installation; actor logging and audit log (2026-09-28)
 
-Decided with the owner. A stream is the installation's, not the drafter's:
+Decided: a stream is the installation's, not the drafter's:
 every signed-in operator lists, edits, publishes, unpublishes and deletes
 every stream, and `streams.user_id` only records who drafted the row. No
 query in the backend scopes by user any more (sessions aside). Brand
@@ -247,8 +246,8 @@ Migration 008 follows from the same decision: `streams.user_id` was
 published and live ones included, and left their entries on the catalogue. It
 is nullable now and set to null instead; the `stream.create` audit row keeps
 the drafter's username for every stream created since migration 007. Nothing
-is backfilled for older streams: decided with the owner, since the
-installations start from a new database.
+is backfilled for older streams, because the installations start from a
+new database.
 
 Verified 2026-09-28 with the unit and integration suites, nothing deployed:
 each service's audit entries, a failed audit write, the actor on the routes
@@ -261,7 +260,7 @@ session and draft, published and live streams.
 
 ## Stages from the manager (decided 2026-09-28, built on `feat/stages`)
 
-Spec: [stages.md](architecture/stages.md). Decided with the owner: the admin
+Spec: [stages.md](architecture/stages.md). Decided: the admin
 stops carrying one stage in its env file and learns every stage from the
 manager.
 
@@ -279,7 +278,7 @@ manager.
 Built in nine phases, each a pull request into `feat/stages`: phases 1 to 8
 merged there on 2026-09-28, and the fix and phase 9 below opened for review on
 2026-09-29. Nothing has been deployed; the feature branch goes to `main` once
-the owner has tried it whole.
+it has been tried whole on a real installation.
 
 - Phase 1, the brief and the records (#56, 2026-09-28): the spec, this entry,
   and the stage and catalogue stamp records as zod schemas in
@@ -320,7 +319,7 @@ the owner has tried it whole.
   one until the operator releases it; the admin stamps every slot again under
   the new batch, byte for byte, then every stored thumbnail, then writes with
   it. Decided: `CATALOGUE_MOVE_ENABLED` stays off on every installation until
-  the owner has tried the move on a real node, by the procedure in the spec.
+  the move has been tried on a real node, by the procedure in the spec.
 - A fix between them (#64, 2026-09-29): the manager's admin-link browser test
   follows the per-stage owner wording phase 6 gave Test connection.
 - Phase 9, the shared token stops (#65, 2026-09-29): the admin's uploader
@@ -344,11 +343,11 @@ the owner has tried it whole.
 
 Left open after the nine phases:
 
-- **The catalogue move** is built and off until the owner's trial on a real
-  node, whose date goes here.
+- **The catalogue move** is built and off until it has been tried on a
+  real node.
 - **The upgrade, scripted.** The rollout below is six manual steps in a fixed
-  order; a script with a check after each step comes before the QA control
-  host or the pilot is upgraded.
+  order; a script with a check after each step comes before an existing
+  installation is upgraded.
 - **Pending retirements** show only in the manager's log; the Stages page
   could count them.
 - **Top-ups from the admin.** The admin reads every rung's stamp and

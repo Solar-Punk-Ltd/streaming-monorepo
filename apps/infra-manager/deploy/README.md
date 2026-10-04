@@ -359,7 +359,7 @@ Each deployment publishes the API of every Bee node it runs, on the ports
 ending 5 and 7 for its slot, and the three HTTP ports its engines serve, and the
 stack's own default for each is every interface.
 
-Since 2026-10-02 the manager binds the Bee APIs itself. A deploy on this host
+The manager binds the Bee APIs itself. A deploy on this host
 writes the Docker bridge address into each Bee `*_API_BIND` that neither the
 base `.env` nor the deployment's own settings name: the address
 `host.docker.internal` resolves to inside the manager's `api` container, and

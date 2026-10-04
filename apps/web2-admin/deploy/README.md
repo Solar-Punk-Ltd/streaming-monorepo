@@ -332,14 +332,14 @@ created them, and nothing reads it again until the profile is deployed.
 ## When a loopback port connects but nothing answers
 
 `ssh -L` accepts the connection and the browser waits forever, while `docker ps`
-on the host shows the console healthy on `127.0.0.1:<port>`. Seen on one host in
-September 2026. The edge reaches the console the same way, so there its site
-times out too, and `edge.sh` reports it as `127.0.0.1:<port>` not answering
-within 5 seconds. The forward is a small proxy on the host that opens a second
-connection to the container, and that host's persisted firewall
-(`/etc/iptables/rules.v4`) accepted Docker's original `172.x` bridges but not
-the `10.200.x` pool its `/etc/docker/daemon.json` had handed out since June.
-Older projects such as the manager kept working because a network keeps the
+on the host shows the console healthy on `127.0.0.1:<port>`. The edge reaches
+the console the same way, so there its site times out too, and `edge.sh`
+reports it as `127.0.0.1:<port>` not answering within 5 seconds. The forward is
+a small proxy on the host that opens a second connection to the container. This
+happens when the host's persisted firewall accepts traffic from Docker's default
+`172.x` bridges but the daemon hands out a custom `default-address-pools` range
+(set in `/etc/docker/daemon.json`) that the firewall does not name. Projects
+created before the pool changed keep working, because a network keeps the
 subnet it was created with.
 
 To tell: `curl -m 5 http://127.0.0.1:<port>/` on the host itself times out too,
