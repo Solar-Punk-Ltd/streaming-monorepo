@@ -98,25 +98,6 @@ check_service_reachable() {
   return 1
 }
 
-# The address an admin interface answers on, from its bind setting the way compose reads it: the
-# address it names, localhost for every address, and the bridge address when it names none.
-bound_host() {
-  local bind="$1" bridge="$2"
-  case "$bind" in
-    '') echo "$bridge" ;;
-    0.0.0.0 | '::' | '[::]') echo "localhost" ;;
-    *) echo "$bind" ;;
-  esac
-}
-
-# A Bee node's bind setting by its prefix: *_API_BIND on a bridge network, and under host networking
-# *_API_LISTEN, the process's own address, which is the whole bind there.
-bee_api_bind() {
-  local key="${1}_API_BIND"
-  [ "${COMPOSE_NETWORK:-}" = "host" ] && key="${1}_API_LISTEN"
-  echo "${!key:-}"
-}
-
 check_target() {
   local target="$1"
   shift
