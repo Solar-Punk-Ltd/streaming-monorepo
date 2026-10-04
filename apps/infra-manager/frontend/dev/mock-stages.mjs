@@ -62,7 +62,7 @@ function consoleStageOf(profile, publicHost, managerId) {
         host: resolvedIngestHost(profile, publicHost),
         srtPort: PORT_BASES.SRS_SRT_PORT + profile.port_slot * 10,
         rtmpPort: PORT_BASES.SRS_RTMP_PORT + profile.port_slot * 10,
-        rtmpPublic: false,
+        rtmpPublic: engine === 'srs',
         hasSrtPassphrase: profile.has_srt_passphrase,
       },
       owner: profile.public_key ?? `0x${'0'.repeat(40)}`,

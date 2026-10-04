@@ -5,13 +5,10 @@ import {
   CLIENT_SERVICE,
   defaultServicesFor,
   OME_SERVICE,
-  PUBLIC_PORT_ROLES,
-  type PublicPortRole,
   SRS_SERVICE,
   type ObsSrtServer,
 } from '@streaming-infra-manager/common';
 
-import { endpointKindOf } from './deployments/endpoints';
 import type { Profile } from './types';
 
 const LOCAL_HOSTS = new Set(['', 'localhost', '0.0.0.0', '127.0.0.1', 'native']);
@@ -120,18 +117,12 @@ export interface RtmpPublishSettings {
 
 /**
  * OBS's RTMP boxes for an SRS deployment, naming the same application and
- * stream as its SRT line, or null wherever the firewall policy keeps RTMP
- * closed to the outside. It opens no RTMP band, so today that is every
- * deployment and SRT is the one ingest offered. RTMP has no passphrase, so
- * nothing secret is read or carried. OvenMediaEngine takes SRT alone, so it
- * has none either way.
+ * stream as its SRT line. Offered wherever SRS runs, because SRS takes RTMP and
+ * which ports are reachable is the operator's firewall. RTMP has no passphrase,
+ * so nothing secret is read or carried. OvenMediaEngine takes SRT alone, so it
+ * has none.
  */
-export function rtmpPublishSettings(
-  profile: Profile,
-  serverHost: string,
-  publicRoles: readonly PublicPortRole[] = PUBLIC_PORT_ROLES,
-): RtmpPublishSettings | null {
-  if (!endpointKindOf(SRS_RTMP_PORT_KEY, publicRoles).offersAddress) return null;
+export function rtmpPublishSettings(profile: Profile, serverHost: string): RtmpPublishSettings | null {
   const services = defaultServicesFor(profile);
   // OvenMediaEngine first, as srtPublishSettings decides it, so a record left from SRS offers nothing.
   if (profile.containers.some((c) => c.service === OME_SERVICE) || services.includes(OME_SERVICE)) return null;

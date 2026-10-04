@@ -65,7 +65,7 @@ describe('what Copy publish URL puts on the clipboard', () => {
     assert.equal(publishCopyText(SRT_LINE, null), SRT_LINE);
   });
 
-  it('adds the RTMP server and stream key, named by their OBS boxes, when RTMP is open', () => {
+  it('adds the RTMP server and stream key, named by their OBS boxes, where the engine takes RTMP', () => {
     assert.equal(
       publishCopyText(SRT_LINE, RTMP),
       [`SRT: ${SRT_LINE}`, 'RTMP Server: rtmp://stream.example:10062/live', 'RTMP Stream Key: stream'].join('\n'),

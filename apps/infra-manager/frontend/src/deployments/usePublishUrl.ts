@@ -20,7 +20,7 @@ export interface PublishUrl {
   url: string | null;
   /**
    * What Copy publish URL puts on the clipboard for the URL above: that line,
-   * with the RTMP server and stream key beside it where RTMP is open.
+   * with the RTMP server and stream key beside it where the engine takes RTMP.
    */
   copyText: string | null;
   /** Whether this revision still needs its own passphrase before it is complete. */
@@ -31,7 +31,7 @@ export interface PublishUrl {
    */
   fieldPassphrase: string | null;
   /**
-   * Puts the whole URL, with RTMP's values where RTMP is open, on the clipboard, asking for the passphrase first. A
+   * Puts the whole URL, with RTMP's values where the engine takes RTMP, on the clipboard, asking for the passphrase first. A
    * passphrase the URL cannot carry opens the deployment page instead, where
    * OBS's own passphrase field is shown, since the URL alone would be refused.
    */
