@@ -28,7 +28,7 @@ import { StagePublisher } from './domain/stages/StagePublisher.js';
 import { StageRetirementRepository } from './domain/stages/StageRetirementRepository.js';
 import { StageRecordBuilder } from './domain/stages/StageRecordBuilder.js';
 import { beeApiUrlFor, beePublisherUrlFor, StampService } from './domain/StampService.js';
-import { localBeeApiBindReader, localPublisherHost } from './domain/localHost.js';
+import { localPublisherHost } from './domain/localHost.js';
 import { CatalogueDesignationRepository } from './domain/stages/CatalogueDesignationRepository.js';
 import { CatalogueDesignationService } from './domain/stages/CatalogueDesignationService.js';
 import { CataloguePublisher } from './domain/stages/CataloguePublisher.js';
@@ -364,9 +364,6 @@ async function main(): Promise<void> {
   const managerAdminLink = new ManagerAdminLinkRepository(database.pool);
   // A deploy gives an uploader linked to this admin a token of its own. adminLink/ownAdminToken.ts.
   orchestrator.setManagerAdminLink(managerAdminLink);
-  orchestrator.setLocalBeeApiBind(
-    localBeeApiBindReader({ publisherHost: localPublisherHost, bridgeGateway: () => containerControl.bridgeGateway() }),
-  );
   const profileService = new ProfileService(
     profileRepository,
     containerRepository,

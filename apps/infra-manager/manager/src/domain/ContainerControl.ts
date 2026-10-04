@@ -15,7 +15,7 @@ import {
 } from './errors/index.js';
 import { completeLines, demultiplexDockerStream, readBounded, type StreamBounds } from './dockerStream.js';
 import { EventBus } from './EventBus.js';
-import { bridgeGatewayOf, LOCAL_PUBLISHED_HOST } from './localHost.js';
+import { LOCAL_PUBLISHED_HOST } from './localHost.js';
 import { Logger } from './Logger.js';
 import type { LogWindow } from './logWindow.js';
 import { collectPublishedPorts } from './ports/publishedPorts.js';
@@ -169,8 +169,6 @@ export interface DockerEngine {
   info(): Promise<unknown>;
   listContainers(options: Docker.ContainerListOptions): Promise<ListedContainer[]>;
   getContainer(id: string): ContainerHandle;
-  /** `docker network inspect`, for the bridge's gateway. Optional, since only `bridgeGateway` reads it. */
-  getNetwork?(id: string): { inspect(): Promise<unknown> };
 }
 
 /**
@@ -330,12 +328,6 @@ export class ContainerControl {
         };
       },
     };
-  }
-
-  /** The local daemon's default bridge gateway, which a Linux engine maps host.docker.internal to, or null. */
-  async bridgeGateway(): Promise<string | null> {
-    if (!this.docker.getNetwork) return null;
-    return bridgeGatewayOf(await this.withinLimit(this.docker.getNetwork('bridge').inspect()));
   }
 
   async publishedPorts(): Promise<Omit<PublishedPortsSnapshot, 'daemonId'>> {
