@@ -359,6 +359,20 @@ if abr_enabled; then
   require_int ABR_THREADS "$ABR_THREADS"
   require_int ABR_VBV_SECONDS "$ABR_VBV_SECONDS"
   require_int ABR_UNPUBLISH_HOLD "$ABR_UNPUBLISH_HOLD"
+  # Seconds a rung encoder's input or output may stall before ffmpeg exits and SRS starts it again.
+  # Without it an encoder whose read or write never returns hangs for good: seen once on a test
+  # deployment, every encoder of a source that began on a slow link hung at its banner for minutes.
+  # It has to outlast the hold, because a held encoder reads nothing while the broadcaster is away, so
+  # unset it follows the hold: 20 seconds at the default hold of 12.
+  ABR_IO_TIMEOUT="${ABR_IO_TIMEOUT:-$((ABR_UNPUBLISH_HOLD + 8))}"
+  require_int ABR_IO_TIMEOUT "$ABR_IO_TIMEOUT"
+  # SRS checks the hold every 3 seconds, so a hold can run up to 3 seconds past ABR_UNPUBLISH_HOLD.
+  if [ "$ABR_IO_TIMEOUT" -le $((ABR_UNPUBLISH_HOLD + 3)) ]; then
+    echo "ABR_IO_TIMEOUT ($ABR_IO_TIMEOUT) must be longer than ABR_UNPUBLISH_HOLD ($ABR_UNPUBLISH_HOLD) plus 3 seconds." >&2
+    echo "A held encoder reads nothing while the broadcaster is away, and a shorter timeout ends it before its hold does." >&2
+    exit 1
+  fi
+  ABR_IO_TIMEOUT_US=$((ABR_IO_TIMEOUT * 1000000))
   require_int ABR_AUDIO_BITRATE "$ABR_AUDIO_BITRATE"
   require_name ABR_PRESET "$ABR_PRESET"
   require_name ABR_PROFILE "$ABR_PROFILE"
@@ -409,6 +423,11 @@ if abr_enabled; then
       echo ""
       echo "        engine ${name} {"
       echo "            enabled         on;"
+      # SRS puts perfile before -i, so this bounds every read of the source. rw_timeout is ffmpeg's
+      # generic I/O option, which the RTMP protocol hands down to its TCP socket.
+      echo "            perfile {"
+      echo "                rw_timeout          ${ABR_IO_TIMEOUT_US};"
+      echo "            }"
       echo "            iformat         flv;"
       echo "            oformat         flv;"
       echo "            vcodec          libx264;"
@@ -434,6 +453,9 @@ if abr_enabled; then
       # than the spikes cost.
       echo "                maxrate             ${vbitrate}k;"
       echo "                bufsize             $((vbitrate * ABR_VBV_SECONDS))k;"
+      # Not a video option. vparams is where SRS puts output options, after -i, so this bounds every
+      # write of the rung's republish.
+      echo "                rw_timeout          ${ABR_IO_TIMEOUT_US};"
       echo "            }"
       echo "            acodec          ${ABR_ACODEC};"
       if [ "$ABR_ACODEC" != "copy" ]; then
