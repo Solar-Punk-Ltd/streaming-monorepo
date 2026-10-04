@@ -85,14 +85,14 @@ def summary_of(path):
 def bench_dir(root):
     """Where the driver's per-arm watch summaries landed.
 
-    The driver logs the container's own `/repo/docs/bench/...` path, which is this checkout's
-    `docs/bench` on the host that ran it. `SITTING_BENCH_DIR` overrides it for reading a sitting whose
+    The driver logs the container's own `/repo/bench-results/...` path, which is this checkout's
+    `bench-results` on the host that ran it. `SITTING_BENCH_DIR` overrides it for reading a sitting whose
     summaries were copied somewhere else.
     """
     override = os.environ.get("SITTING_BENCH_DIR")
     if override:
         return Path(override)
-    return Path(__file__).resolve().parents[2] / "docs" / "bench"
+    return Path(__file__).resolve().parents[2] / "bench-results"
 
 
 def watch_document(bench, stem):

@@ -113,8 +113,9 @@ restore() {
 }
 trap restore EXIT
 
-SWEEP_LOG="${REPO_ROOT}/docs/bench/profiles-$(date -u +%Y%m%dT%H%M%SZ).log"
-mkdir -p "${REPO_ROOT}/docs/bench"
+RESULTS_DIR="${BENCH_RESULTS_DIR:-${REPO_ROOT}/bench-results}"
+SWEEP_LOG="${RESULTS_DIR}/profiles-$(date -u +%Y%m%dT%H%M%SZ).log"
+mkdir -p "${RESULTS_DIR}"
 echo "bench-profiles: ${#PROFILES[@]} profile(s), ${RUNS} run(s) each, logging to ${SWEEP_LOG}"
 
 setup_flag=""
@@ -158,4 +159,4 @@ for row in "${PROFILES[@]}"; do
   done
 done
 
-echo "bench-profiles: done. Reports in docs/bench/, log at ${SWEEP_LOG}"
+echo "bench-profiles: done. Reports in ${RESULTS_DIR}, log at ${SWEEP_LOG}"

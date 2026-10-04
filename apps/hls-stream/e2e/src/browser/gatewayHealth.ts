@@ -3,7 +3,7 @@
  *
  * ## Why this exists
  *
- * `docs/bench/the-fourteen-minute-collapse-2026-08-07.md` located a read-path slowdown to the second
+ * the `the-fourteen-minute-collapse-2026-08-07` measurement (kept outside the repository) located a read-path slowdown to the second
  * and to the layer, and closed on the one thing it could not answer: **what slowed the node.** Every
  * figure in that report was measured at the browser, and a browser can see that answers got slower
  * without seeing why. The recommendation it ended on was to instrument rather than to buy a repro,

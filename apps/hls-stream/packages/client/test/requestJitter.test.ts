@@ -181,7 +181,7 @@ describe('the shipped defaults, which nothing else in this file exercises', () =
     assert.equal(
       GATEWAY_REQUEST_JITTER_MS,
       0,
-      'see docs/bench/jitter-is-not-what-breaks-a-herd-2026-08-08.md before turning this on',
+      'see the jitter-is-not-what-breaks-a-herd-2026-08-08 measurement (kept outside the repository) before turning this on',
     );
   });
 

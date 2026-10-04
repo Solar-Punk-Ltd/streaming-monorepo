@@ -31,7 +31,7 @@ said "segments are being cut mid-GOP", which sends a reader to the encoder. It i
 Two of the six runs on 2026-08-05 held **exactly** the frames one requested GOP holds, 8 for 0.25s and
 15 for 0.5s, and spanned 0.666s and 0.633s, so the GOP was intact and the media time was stretched.
 
-Reproduced with no engine, no Swarm and no postage in `docs/bench/publisher-backpressure.md`: the
+Reproduced with no engine, no Swarm and no postage in the `publisher-backpressure` measurement (kept outside the repository): the
 publish recipe stamps timestamps at demux and paces inside the filter graph, so a consumer slower than
 the stream's own bitrate blocks the muxer, the demuxer stops pulling, and the wall clock keeps
 running. Feeding that encode to a pipe read at 150kB/s delivered **12.2fps** against a run that

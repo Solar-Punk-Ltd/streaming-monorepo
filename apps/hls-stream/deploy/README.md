@@ -134,9 +134,8 @@ not the GOP: the feed slot naming a segment syncs before the segment bytes do, s
 the live edge asks too early. A viewer's hls.js retries. **The recommendation did not change, the
 reason for it did.**
 
-See [gop-sustain](../docs/bench/gop-sustain-2026-08-12.md),
-[gop-floor](../docs/bench/gop-floor-2026-08-12.md) and, for the withdrawal,
-[gop-floor-replicate](../docs/bench/gop-floor-replicate-2026-08-12.md).
+The measurements behind this, gop-sustain, gop-floor and, for the withdrawal,
+gop-floor-replicate, are kept outside the repository.
 
 ⚠️ `HLS_FRAGMENT` (default `0.5`) is a **floor** on the segment, not the segment. A GOP below it is
 rounded up, so lowering the encoder's keyframe interval without lowering `HLS_FRAGMENT` to match

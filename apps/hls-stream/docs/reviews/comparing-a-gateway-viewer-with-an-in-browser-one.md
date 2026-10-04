@@ -1,5 +1,8 @@
 # How to compare a gateway viewer with an in-browser one, given that today we cannot
 
+> This is a dated record of one test deployment, not a description of the product. Any raw
+> measurement it cites is kept outside the repository.
+
 **2026-08-13.** The overnight soaks measured the shipped client through a funded light gateway and
 produced a rich viewer report. The in-browser node has never been measured that way, and this says
 what it would take, why the obvious shortcut is the mistake that was already made once, and what the

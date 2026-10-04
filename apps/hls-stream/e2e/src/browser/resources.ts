@@ -61,7 +61,7 @@ export interface NodeReading {
    * ⛔ **Truncate where the field is built, never only where it is printed.** A full batch id is a
    * live credential-shaped value: anyone holding it can stamp uploads against a batch this project
    * pays for. The warning line below already sliced to eight, and that was read as the rule being
-   * kept, but `runFiles.ts` serializes this whole object into `docs/bench/*.json` without going near
+   * kept, but `runFiles.ts` serializes this whole object into the run's json without going near
    * the display path. Twenty-eight run artifacts carried the full sixty-four characters before anyone
    * noticed, because the one place that obeyed the rule was not the one place that wrote a file.
    *

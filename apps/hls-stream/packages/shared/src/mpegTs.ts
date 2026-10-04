@@ -143,7 +143,7 @@ export interface PesPacketCounts {
  * The two are not the same thing, and the gap between them cost a whole broadcast: a real SRS
  * recording's first four segments declared a video stream and carried 41 audio packets and no video
  * packets at all. A player parsing one of those first builds an audio-only codec set and never
- * revises it. See `docs/bench/a-recording-that-opens-without-video-2026-08-09.md`.
+ * revises it. See the `a-recording-that-opens-without-video-2026-08-09` measurement (kept outside the repository).
  *
  * ⛔ **Audio at zero does not mean silence, it means this is not a transport stream this can read.**
  * Both counts at zero is what bytes of any other format look like from here, so a caller

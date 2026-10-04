@@ -35,7 +35,7 @@ No cheque endpoints. No idempotency, pagination, webhooks.
 ### POST /profiles body
 
 name /^[a-z0-9][a-z0-9-]{0,30}$/ | kind streamer|viewer|custom|abr-uploader | notes ≤500 | host (localhost|ssh alias|user@host) | components ⊂ {bee-uploader,bee-gateway,stream-uploader,srs,ome,client} max one engine | feed_owner 0x40hex | feed_topic ≤128 | private_key 0x64hex (→ STREAM_KEY, required for abr-uploader) | public_key | stamp_id (0x)?64hex | bee_publishers "360p@http://h:p<batch> 480p@… 720p@… 1080p@…" | bee_url | srt_passphrase /^[A-Za-z0-9._~-]{10,79}$/.
-Ports = base + port_slot*10: API 10000, SRS_SRT 10001, SRS_RTMP 10002, SRS_HTTP 10003, CLIENT 10004, BEE_UPLOADER_API 10005, BEE_UPLOADER_P2P 10006, BEE_GATEWAY_API 10007, BEE_GATEWAY_P2P 10008. Slot 6 → client 10074, SRT 10061, RTMP 10062, uploader API 10060, bee 10065 (the test host runs slot 6).
+Ports = base + port_slot*10: API 10000, SRS_SRT 10001, SRS_RTMP 10002, SRS_HTTP 10003, CLIENT 10004, BEE_UPLOADER_API 10005, BEE_UPLOADER_P2P 10006, BEE_GATEWAY_API 10007, BEE_GATEWAY_P2P 10008. Slot 6, for example → API 10060, SRT 10061, RTMP 10062, client 10064, uploader Bee API 10065.
 Status: DEPLOYING|RUNNING|STOPPING|STOPPED|REMOVING|ERROR. Deploy = write .env.<name> (upsert ENGINE, STAMP, BEE_PUBLISHERS, ABR_*, BEE_URL, SRT_PASSPHRASE…) then bash deploy.sh --profile --portSlot … streamed as SSE; on success snapshot containers {ports, env}.
 
 ### SRT passphrase & ingest URL

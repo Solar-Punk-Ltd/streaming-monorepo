@@ -447,7 +447,7 @@ rsync -az --delete \
   ${SYNC_EXCLUDES[@]+"${SYNC_EXCLUDES[@]}"} \
   --exclude 'node_modules' \
   --exclude 'reports' \
-  --exclude 'docs/bench' \
+  --exclude 'bench-results' \
   "${REPO_ROOT}/" ${CUT_SOURCE[@]+"${CUT_SOURCE[@]}"} "${TARGET}:${REMOTE_DIR}/"
 
 echo "bench-on-host: building ${IMAGE} on ${TARGET}"
@@ -630,7 +630,10 @@ RUN_RC=0
 run_harness_container "cd ${REMOTE_DIR} && ${DOCKER_RUN} ${RUN_ENV} ${IMAGE} ${CONTAINER_CMD}" || RUN_RC=$?
 
 echo "bench-on-host: collecting reports (run exited ${RUN_RC})"
-mkdir -p "${REPO_ROOT}/docs/bench"
-rsync -az "${TARGET}:${REMOTE_DIR}/docs/bench/" "${REPO_ROOT}/docs/bench/"
+# The container writes under the mirror's `bench-results`, the harness default. The local copy goes to
+# `BENCH_RESULTS_DIR`, which defaults to the same folder in this checkout, ignored by git.
+LOCAL_RESULTS_DIR="${BENCH_RESULTS_DIR:-${REPO_ROOT}/bench-results}"
+mkdir -p "${LOCAL_RESULTS_DIR}"
+rsync -az "${TARGET}:${REMOTE_DIR}/bench-results/" "${LOCAL_RESULTS_DIR}/"
 echo "bench-on-host: done"
 exit "${RUN_RC}"

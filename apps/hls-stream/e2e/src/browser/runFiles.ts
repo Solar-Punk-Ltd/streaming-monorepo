@@ -8,9 +8,9 @@
 import { mkdir, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 
-import { ROOT_DIR } from '../config.js';
+import { benchResultsDir } from '../benchResults.js';
 
-export const REPORT_DIR = join(ROOT_DIR, 'docs', 'bench');
+export const REPORT_DIR = benchResultsDir();
 
 /**
  * A run's identity: one string that names its report, its json, its request log and its screenshots.

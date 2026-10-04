@@ -24,7 +24,7 @@
 #   soak 2.0s GOP, one broadcast          238.8              0.71             0.59
 #
 # ⭐⭐⭐ The eight-broadcast sitting sits INSIDE the range of the single-broadcast soaks, which is why
-# there is no per-broadcast setup term. See `docs/bench/interleaved-gop-arms-2026-08-12.md`.
+# there is no per-broadcast setup term. See the `interleaved-gop-arms-2026-08-12` measurement (kept outside the repository).
 #
 # ⭐ The 0.5s soak also replicates internally: four 30-minute windows at 0.80, 0.75, 0.79, 0.80. A
 # rate measured over a long continuous window and replicated inside it is the only kind that has

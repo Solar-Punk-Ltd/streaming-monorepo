@@ -64,7 +64,7 @@ const MANIFEST_RETRY_BASE_MS = 2_000;
  * ⭐ **It is the largest ceiling that keeps a ladder viewer no worse off than a single rendition
  * one.** The same client on one rendition was measured on 2026-08-27 taking **10.7s and 9.9s to
  * recover after the gateway had started answering again**, across both byte sources, on a 20.5
- * second gateway stop. See `docs/bench/crash-at-an-in-tab-viewer-2026-08-27.md`. A ladder walks five
+ * second gateway stop. See the `crash-at-an-in-tab-viewer-2026-08-27` measurement (kept outside the repository). A ladder walks five
  * feeds where a single rendition walks one, and walking more of them must not cost more to recover
  * than the one-rung case a ladder is built out of.
  *
@@ -100,7 +100,7 @@ export const MANIFEST_RETRY_CAP_MS = 8_000;
  *
  * ⛔⛔⛔ **This was a POLL COUNT, and the poll rate is not a constant.** It collapses during exactly
  * the stall it counts. Measured on two recorded uploader crashes
- * (`docs/bench/overlay-silence-during-a-crash-2026-08-07.md`), feed reads went from a 264ms gap
+ * (the `overlay-silence-during-a-crash-2026-08-07` measurement (kept outside the repository)), feed reads went from a 264ms gap
  * before the crash to 1064ms during the freeze, because each read takes about three times as long
  * and the client also spaces unserved reads about four times wider. So thirty polls was about eight
  * seconds while healthy and about thirty-two during a stall, and when a viewer heard anything was a
@@ -173,7 +173,7 @@ export const UNSERVED_POLLS_PROBE_CEILING = 30;
  *
  * ⭐ **Both numbers are measured rather than chosen**, by replaying every archived browser run's
  * rebuffer counter through candidate rules. Within a rolling twenty seconds and after the first
- * frame, the fourteen-minute collapse of `docs/bench/the-fourteen-minute-collapse-2026-08-07.md`
+ * frame, the fourteen-minute collapse of the `the-fourteen-minute-collapse-2026-08-07` measurement (kept outside the repository)
  * reaches 4 stalls, the one other run with viewer-visible degradation reaches 4, and the worst run a
  * viewer would call healthy reaches 1, including four separate clean hours. The next rule down, 3
  * stalls in fifteen seconds, fires 2786 seconds into one of those hours.

@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 #
-# Sweep the latency knobs, several runs per setting, and leave one report per run in `docs/bench/`.
+# Sweep the latency knobs, several runs per setting, and leave one report per run in `BENCH_RESULTS_DIR`.
 #
 # ## Why several runs per setting
 #
@@ -77,8 +77,9 @@ set_knobs() {
   mv "${tmp}" "${ENGINE_ENV}"
 }
 
-SWEEP_LOG="${REPO_ROOT}/docs/bench/sweep-$(date -u +%Y%m%dT%H%M%SZ).log"
-mkdir -p "${REPO_ROOT}/docs/bench"
+RESULTS_DIR="${BENCH_RESULTS_DIR:-${REPO_ROOT}/bench-results}"
+SWEEP_LOG="${RESULTS_DIR}/sweep-$(date -u +%Y%m%dT%H%M%SZ).log"
+mkdir -p "${RESULTS_DIR}"
 echo "bench-sweep: ${#SETTINGS[@]} setting(s), ${RUNS} run(s) each, logging to ${SWEEP_LOG}"
 
 setup_flag=""
@@ -107,4 +108,4 @@ for setting in "${SETTINGS[@]}"; do
   done
 done
 
-echo "bench-sweep: done. Reports in docs/bench/, log at ${SWEEP_LOG}"
+echo "bench-sweep: done. Reports in ${RESULTS_DIR}, log at ${SWEEP_LOG}"

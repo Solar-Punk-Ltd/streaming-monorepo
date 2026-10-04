@@ -102,7 +102,7 @@ type ProbeResult = ProbeServed | ProbeFoundNothing | ProbeGatewayFailed;
  * two were the head a 404 is meant to mean. The worst was refused for sixty-five consecutive polls
  * over nineteen seconds with something at +1 on every one of them, and the browser run before it
  * left a viewer frozen for forty-six seconds after the service was healthy again.
- * `docs/bench/what-is-behind-a-refused-slot-2026-08-06.md`.
+ * the `what-is-behind-a-refused-slot-2026-08-06` measurement (kept outside the repository).
  *
  * ## Why stepping over the refusal loses nothing
  *

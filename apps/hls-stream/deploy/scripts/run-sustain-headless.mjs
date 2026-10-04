@@ -20,7 +20,7 @@
  *
  * Usage:
  *   node deploy/scripts/run-sustain-headless.mjs <name> <owner> <topic> <segmentSeconds> <segmentKB> [minutes] [out.json]
- *   node deploy/scripts/run-sustain-headless.mjs my-vod <40 hex owner> <topic> 4.17 4241 12 sustain.json
+ *   node deploy/scripts/run-sustain-headless.mjs my-vod <40 hex owner> <topic> 4.17 4241 12 bench-results/headless.json
  *
  * The stream and its shape are arguments, because the probe has no table of streams to choose from.
  *

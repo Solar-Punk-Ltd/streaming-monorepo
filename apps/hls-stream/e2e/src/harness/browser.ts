@@ -18,7 +18,7 @@
  * ## ⛔ Why the artifact is found by reading the driver's own line
  *
  * The run id is stamped inside the container from its own clock, so a caller cannot predict the
- * filename. Picking the newest file in `docs/bench` would work until the day a co-tenant's sitting
+ * filename. Picking the newest file in the results folder would work until the day a co-tenant's sitting
  * writes one first, and this host carries other people's sittings. The driver prints the stem it
  * wrote, so that is what is read, and the container path is translated onto the host checkout it was
  * mounted from.

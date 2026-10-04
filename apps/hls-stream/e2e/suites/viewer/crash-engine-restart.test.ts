@@ -31,7 +31,7 @@ import { requireByteSource, viewerGate } from '../../src/viewerCoverage.js';
  *
  * ## What this promotes
  *
- * Arm 6 of the crash matrix, `docs/bench/crash-at-an-in-tab-viewer-2026-08-27.md`, and the one fault
+ * Arm 6 of the crash matrix, the `crash-at-an-in-tab-viewer-2026-08-27` measurement (kept outside the repository), and the one fault
  * in it whose correct outcome is a picture that never comes back. Restarting the engine takes the
  * publisher's SRT connection with it, so the broadcast this viewer is watching genuinely ends: there
  * is no more media coming and a resume would mean they had been handed a different broadcast.

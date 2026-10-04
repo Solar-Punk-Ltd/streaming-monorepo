@@ -76,7 +76,7 @@ function audioWithoutVideoIn(segment: Uint8Array): number | null {
  * A viewer met that as a recording whose length collapsed from 27.10s to 22.59s once it finished
  * buffering, but the reach is wider: the same sum is the catalog's advertised duration, it sets
  * `#EXT-X-TARGETDURATION`, and hls.js positions a live viewer `liveSyncDuration` seconds back along
- * a timeline built out of it. See `docs/bench/a-recording-played-back-2026-08-06.md`.
+ * a timeline built out of it. See the `a-recording-played-back-2026-08-06` measurement (kept outside the repository).
  *
  * The arithmetic is `measureSpanTicks`, which the bench uses for exactly this reason.
  *

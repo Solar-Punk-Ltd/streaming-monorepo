@@ -1,5 +1,8 @@
 # Plan: make the viewer side of ABR a tested property
 
+> This is a dated record of one test deployment, not a description of the product. Any raw
+> measurement it cites is kept outside the repository.
+
 Written 2026-08-29, after the owner asked where the ABR viewer tests and the per-rung publisher
 tests were. The answer was that neither exists. This is the plan to get them.
 

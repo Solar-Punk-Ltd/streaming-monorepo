@@ -26,7 +26,7 @@ import { requireByteSource, viewerGate } from '../../src/viewerCoverage.js';
  *
  * ## What this promotes
  *
- * Arms 1 and 2 of the crash matrix, `docs/bench/crash-at-an-in-tab-viewer-2026-08-27.md`. The gateway
+ * Arms 1 and 2 of the crash matrix, the `crash-at-an-in-tab-viewer-2026-08-27` measurement (kept outside the repository). The gateway
  * was stopped for 20.5s under two viewers minutes apart, one reading segment bytes from a Swarm node
  * in its own tab and one reading everything from the gateway. Both froze for about 28 seconds, both
  * were told why, and both came back about ten seconds after the service answered.

@@ -193,7 +193,7 @@ services:
       # and has never evicted once. So this node's cache is neither on nor off, it is a sawtooth whose
       # phase nothing records, and a measurement's exposure scales with how long it takes to gather.
       # ⚠️ Left at 0 because every sitting this project has run was gathered at 0 and moving it breaks
-      # comparability AND restarts the gateway. docs/bench/the-gateway-cache-is-a-sawtooth-2026-08-14.md
+      # comparability AND restarts the gateway. the `the-gateway-cache-is-a-sawtooth-2026-08-14` measurement (kept outside the repository)
       - --cache-capacity=${BEE_GATEWAY_CACHE_CAPACITY:-0}
       # ⛔ Capacity does NOT gate caching, and setting it to 0 never turned the cache off. Measured
       # 2026-08-10: with capacity 0 confirmed on the running container, a second walk of the same 1000
@@ -470,7 +470,7 @@ services:
       # decimals, the segment is `ceil(HLS_FRAGMENT / GOP) * GOP`, so the publisher's keyframe
       # interval decides it and the fragment only sets a floor. This was 1.0, which put the floor
       # above the 0.5s GOP that a funded sitting found best and silently produced 1.0s segments for a
-      # broadcaster who asked for 0.5s ones. See `docs/bench/gop-vs-fragment-2026-08-12.md`.
+      # broadcaster who asked for 0.5s ones. See the `gop-vs-fragment-2026-08-12` measurement (kept outside the repository).
       HLS_FRAGMENT: ${HLS_FRAGMENT:-0.5}
       # SRS force-closes a segment at `HLS_FRAGMENT * HLS_AOF_RATIO` regardless of keyframes, so this
       # is the ceiling on the pair rather than a detail.
@@ -481,7 +481,7 @@ services:
       # (0.5 * 4.2) gave exactly 2.1, which force-closed the common OBS default intermittently:
       # mode 2.117 and spread 1.861-2.219 against a clean 2.000 with room. 5.0 gives **2.5s**, which
       # is the ceiling the measurement stage ran on. See
-      # `docs/bench/shipped-fragment-validation-2026-08-12.md`.
+      # the `shipped-fragment-validation-2026-08-12` measurement (kept outside the repository).
       # In seconds, and derived into SRS's own ratio by the entrypoint. Set HLS_AOF_RATIO to drive
       # that ratio directly instead, which the deploy/scripts probes do.
       HLS_SEGMENT_MAX: ${HLS_SEGMENT_MAX:-2.5}

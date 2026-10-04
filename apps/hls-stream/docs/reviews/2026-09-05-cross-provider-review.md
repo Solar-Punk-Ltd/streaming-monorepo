@@ -1,6 +1,9 @@
 # The cross-provider review of 2026-09-05, verified and answered
 
-An OpenAI-hosted reviewer read the repository at `4e0474b` on 2026-09-05 and reported six actionable
+> This is a dated record of one test deployment, not a description of the product. Any raw
+> measurement it cites is kept outside the repository.
+
+An external automated review read the repository at `4e0474b` on 2026-09-05 and reported six actionable
 findings, five of them demonstrated with in-memory probes. This page records what the coordinator
 verified against the code the same day, what was built in answer, and what the owner still has to
 rule on. The reviewer changed no files and ran nothing live.
@@ -108,7 +111,7 @@ should. The full suite was green on both byte sources the same day, 29 scenarios
 
 ## Four older suggestions, still relevant, folded in
 
-Four suggestion chips from earlier sessions were re-checked against `4e0474b` on the same day. All
+Four follow-ups raised earlier were re-checked against `4e0474b` on the same day. All
 four still applied.
 
 **A. Typecheck sees weeb-3 API drift.** `Weeb3FetchBackend.ts` loaded the package through
@@ -158,8 +161,8 @@ whole post-restore step in one command. It has not run against a deployment yet,
 
 ## What the merge itself found
 
-Five builders worked in parallel worktrees off `4e0474b`, each green on its own base. Meeting on one
-branch turned two deploy tests red that no worktree could see: the passthrough gate read the note beside
+Five branches were built in parallel off `4e0474b`, each green on its own base. Meeting on one
+branch turned two deploy tests red that no single branch could see: the passthrough gate read the note beside
 the new master-rungs script as a script that arms, fixed in `2db8c56`, and the unused-export gate
 counted five shapes the new e2e helpers exported without anyone importing them, fixed in `2942a86`. The
 uploader's request timeout, the recovery fixes and the deploy image met cleanly.

@@ -123,7 +123,7 @@ interface PendingSample {
    * The segment's size on the wire.
    *
    * Free, since the probe already holds the bytes, and it is the reading that would have placed the
-   * publisher throttle of `docs/bench/publisher-backpressure.md` instead of leaving it inferred: a
+   * publisher throttle of the `publisher-backpressure` measurement (kept outside the repository) instead of leaving it inferred: a
    * throttled run stretches media time to match its consumer, so its bytes per second of media falls
    * while its bytes per segment does not.
    */

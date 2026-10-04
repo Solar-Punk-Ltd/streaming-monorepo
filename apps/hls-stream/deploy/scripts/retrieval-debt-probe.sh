@@ -90,7 +90,7 @@ ARM_PLAN="${ARM_PLAN:-L:true:0 U:false:0}"
 # ⛔⛔ This comment also used to justify that with "a 0.25s GOP loses 18-21% of live-edge reads to
 # 404". THAT NUMBER IS WITHDRAWN: a replicate the same afternoon gave 2.9%, 13.1% and 0.0%, and the
 # refusals were our own publish race rather than the GOP. The budget above is 500 because that is
-# what ships, which never needed the 404 rate. See `docs/bench/gop-floor-replicate-2026-08-12.md`.
+# what ships, which never needed the 404 rate. See the `gop-floor-replicate-2026-08-12` measurement (kept outside the repository).
 #
 # ⛔ This is the headline the first sitting nearly missed. Across six arms the median penalty was 2.9x
 # and the share of segments over budget was **45x**, 0.3% against 15.0%. A buffer drains on late
@@ -185,7 +185,7 @@ SPREAD="${SPREAD:-1}"
 # fixed offset held for the whole session, which models an audience that joined at different moments.
 # This models a bounded random delay drawn again for each request. The client shipped that bound at
 # **60ms** in the gateway request jitter change and has shipped **0** since the jitter removal (2026-08-08), because 60ms measured against a herd
-# did nothing. See `docs/bench/jitter-is-not-what-breaks-a-herd-2026-08-08.md` and
+# did nothing. See the `jitter-is-not-what-breaks-a-herd-2026-08-08` measurement (kept outside the repository) and
 # `GATEWAY_REQUEST_JITTER_MS` in `packages/client/src/utils/requestJitter.ts`. The default below is
 # 0, which is also what the client ships.
 #

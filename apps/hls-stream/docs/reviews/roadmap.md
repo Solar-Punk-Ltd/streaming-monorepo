@@ -1,5 +1,8 @@
 # Roadmap
 
+> This is a dated record of one test deployment, not a description of the product. Any raw
+> measurement it cites is kept outside the repository.
+
 **2026-08-05, re-ordered 2026-08-08.** Ordered by what unblocks what, not by appeal. Every claim below
 is either measured and linked, or marked as a guess. Items already tracked carry their task number.
 

@@ -909,7 +909,7 @@ export class ManifestFetcher {
    * 0.25s segment with 17.3% of the clock frozen, 0.90x at 0.5s, 0.98x at 1.0s**, each within 0.02
    * of that ratio. Shorter segments made it worse rather than better, because a shorter segment does
    * not make the client faster, it makes it ask more often at a fixed cost per ask. See
-   * `docs/bench/what-starves-the-viewer-2026-08-05.md`.
+   * the `what-starves-the-viewer-2026-08-05` measurement (kept outside the repository).
    *
    * Asking more often was the wrong fix: the cadence belongs to hls.js, and a poll loop of this
    * side's own would be a second thing to tear down and a second thing to get wrong. Reading every

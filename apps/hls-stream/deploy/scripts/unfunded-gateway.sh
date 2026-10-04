@@ -209,7 +209,7 @@ wait_warm() {
   done
   say "REFUSING: reached only ${seen:-0} peers against a floor of ${floor} in ${WARM_TIMEOUT_S}s."
   say "  A cold node answers /health long before it is useful, so measuring now would file the"
-  say "  cold-join penalty as the unfunded arm. See docs/bench for the 2-3x read cost while cold."
+  say "  cold-join penalty as the unfunded arm. A cold gateway reads at 2-3x the cost."
   return 1
 }
 

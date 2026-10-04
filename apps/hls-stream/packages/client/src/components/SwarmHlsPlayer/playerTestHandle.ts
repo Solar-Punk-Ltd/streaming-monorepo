@@ -20,7 +20,7 @@ interface PlayerHandleHolder {
  * `LIVE_SYNC_DURATION_S` is how far behind live a viewer sits, and it is roughly four fifths of the
  * delay a viewer actually feels. Nothing has ever measured whether the shipped 6 is the right value
  * at the segment length we now publish, and the experiment that would
- * (`docs/bench/stall-penalty-and-the-runtime-sweep-2026-08-12.md`) needs to vary it **between arms of
+ * (the `stall-penalty-and-the-runtime-sweep-2026-08-12` measurement (kept outside the repository)) needs to vary it **between arms of
  * one broadcast**. hls.js supports exactly that through `hls.targetLatency`, which also resets the
  * stall penalty so one arm cannot contaminate the next.
  *
