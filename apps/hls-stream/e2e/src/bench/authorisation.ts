@@ -5,7 +5,7 @@
  *
  * `pnpm bench:latency` and `pnpm bench:longrun` publish a real broadcast through the deployment's own
  * Bee nodes and pay for every segment in postage and bandwidth, exactly as a scenario suite does. The
- * suites are gated: `suites/preflight/` reads the owner's authorisation and every node's chequebook
+ * suites are gated: `suites/preflight/` reads the operator's authorisation and every node's chequebook
  * before a broadcast starts, and every suite's `before()` reads every publisher's postage TTL. The
  * benches read none of it until 2026-09-16. What stood in for the gate was
  * `deploy/scripts/bench-on-host.sh`, which prepends `pnpm e2e:preflight` to any script whose own
@@ -20,8 +20,8 @@
  * Nothing here is a new rule. Each check calls the helper the suites call, so a bench refusal and a
  * suite refusal are the same sentence about the same stage, and a fix to one fixes both:
  *
- * - the owner's authorisation, from `.spend-ledger.env`, through `harness/spendCeiling.ts`. An absent
- *   ledger refuses. That is the whole point of it: nothing is authorised to spend until the owner has
+ * - the operator's authorisation, from `.spend-ledger.env`, through `harness/spendCeiling.ts`. An absent
+ *   ledger refuses. That is the whole point of it: nothing is authorised to spend until the operator has
  *   written what it may spend, so a missing file is a refusal rather than an unlimited allowance.
  * - bandwidth, one SWAP chequebook per publisher node, through `harness/chequebookFunding.ts`.
  * - postage, the batch `BEE_PUBLISHERS` routes each rung to, through `harness/stageStamps.ts`.
@@ -71,7 +71,7 @@ interface BenchAuthorisation {
   /** TTL a publisher's configured batch must beat. Defaults to {@link MIN_STAMP_TTL_S}. */
   readonly minStampTtlS?: number;
   /**
-   * Where the owner's authorisation lives.
+   * Where the operator's authorisation lives.
    *
    * Injected for the same reason `pollConfiguredStamp` takes a clock: `test/benchAuthorisation.test.ts`
    * drives a ledger it wrote itself, so what the cases assert is the rule rather than whatever the

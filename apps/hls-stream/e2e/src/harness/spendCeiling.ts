@@ -1,10 +1,10 @@
 /**
- * What the owner authorised this run to spend, and what it has spent already.
+ * What the operator authorised this run to spend, and what it has spent already.
  *
  * ⛔⛔ A THRESHOLD WRITTEN DOWN IS NOT A CONTROL, ONLY A GATE THAT REFUSES IS.
  *
- * Every `pnpm e2e:run` against the deployed stack costs real BZZ in postage and bandwidth. The owner
- * authorises an amount, and until this existed the only thing holding a run to it was an operator
+ * Every `pnpm e2e:run` against the deployed stack costs real BZZ in postage and bandwidth. The operator
+ * sets a spend ceiling, and until this existed the only thing holding a run to it was an operator
  * remembering the number at launch time. `deploy/scripts/spend-ceiling.sh` already refuses a bench
  * sitting on this same ledger, so the rules here are that gate's, restated for the suite. The two
  * read one file so two paths cannot each spend the whole allowance.
@@ -151,7 +151,7 @@ export function readSpendLedger(path: string = SPEND_LEDGER_PATH): string | null
 }
 
 /**
- * The authorisation the owner wrote, or null when the file cannot be read as one.
+ * The authorisation the operator wrote, or null when the file cannot be read as one.
  *
  * Partial is never returned. A ledger short a key or holding an unusable amount says nothing about
  * what was authorised, and a run measured against half an authorisation reports a number that looks
@@ -230,7 +230,7 @@ export function ledgerRefusal(path: string, text: string | null): string {
 
   return (
     `${opening}\n` +
-    'An authorisation is a ceiling and one baseline per node, and the owner is the one who sets the ceiling:\n' +
+    'An authorisation is a ceiling and one baseline per node, and the operator is the one who sets the ceiling:\n' +
     `${format}\n` +
     'deploy/scripts/spend-ledger.sh --authorise=<BZZ> reads the baselines off the nodes and writes it.\n' +
     'Nothing has been run and nothing on the deployment was touched.'
@@ -355,9 +355,9 @@ export function spendRefusal(verdict: SpendVerdict, path: string): string | null
   }
   if (!verdict.withinCeiling) {
     return (
-      `This run would spend past what the owner authorised. ${spendSummary(verdict)}\n` +
+      `This run would spend past what the operator authorised. ${spendSummary(verdict)}\n` +
       'Nothing has been run and nothing on the deployment was touched. A run continues once the ' +
-      `owner rewrites ${path} with the total they have now authorised and fresh start balances.`
+      `operator rewrites ${path} with the total they have now authorised and fresh start balances.`
     );
   }
   return null;
@@ -390,7 +390,7 @@ function coverageRefusal(verdict: SpendVerdict, path: string): string {
     `This run cannot be measured against the authorisation: ${parts.join(', and ')}. Unknown spend is ` +
     'not zero spend, and a total summed over some of the nodes reads exactly like one summed over ' +
     'all of them, so it stops here rather than reporting a figure.\n' +
-    'Nothing has been run and nothing on the deployment was touched. The owner re-authorises by ' +
+    'Nothing has been run and nothing on the deployment was touched. The operator re-authorises by ' +
     `writing a fresh ${path} covering every node that can spend, which ` +
     'deploy/scripts/spend-ledger.sh --authorise=<BZZ> does from the nodes themselves.'
   );
@@ -412,7 +412,7 @@ function depositRefusal(rose: readonly string[], path: string): string {
     'way up, since writing a cheque lowers it and a peer cashing one leaves it alone, so this ' +
     "run's spend can no longer be measured against the recorded starts. Unknown spend is not " +
     'smaller spend, so it stops here rather than being reported as a total.\n' +
-    'Nothing has been run and nothing on the deployment was touched. The owner re-authorises by ' +
+    'Nothing has been run and nothing on the deployment was touched. The operator re-authorises by ' +
     `writing a fresh ${path}, with start balances read now and the total they are authorising now.`
   );
 }
