@@ -442,27 +442,6 @@ the last push, with Move to another batch and Clear the designation. Cleared,
 it says which batch and node the catalogue stays pinned to, and offers
 Designate again for that batch.
 
-The card warns when Docker publishes the pinned node's Bee API on every address
-of its host, since that API asks for no password and the catalogue's batch is
-behind it. `GET /manager-settings/catalogue-node` answers it as
-`apiOnEveryAddress`, read from Docker's own record of the node's container on
-the daemon it runs on, local or over ssh (`stages/beeApiExposure.ts`), at most
-once a minute: true when a binding of the API port is `0.0.0.0` or `::`, or,
-under host networking, when the node's `--api-addr` names no address; false
-when it is bound to one; null when nothing is pinned or Docker could not be
-read. It is not a probe of the host's public address, which hairpin NAT answers
-from inside and a provider firewall hides. A node on this host is bound to the
-Docker bridge at its next deploy only when its `BEE_UPLOADER_API_BIND` is empty,
-it is not on host networking and the manager confirmed the bridge. Where the
-manager could not confirm the bridge, its log says so and
-`BEE_UPLOADER_API_BIND` is the operator's to set. A `BEE_UPLOADER_API_BIND` of
-`0.0.0.0` keeps the node open on purpose, so the warning stays until that
-setting changes. Under host networking its listen address is what counts,
-`BEE_UPLOADER_API_LISTEN`, and the deploy logs a warning while it is empty
-(`deploy/README.md`, step 2 of opening the manager). A node on another host has
-to answer the control host, so there the warning means its firewall must admit
-the control host alone.
-
 Once a batch is pinned, choosing another one on a Bee-only node turns the
 button into **Move the catalogue to batch …**, which asks first: the web2 admin
 stamps every slot of the catalogue again under the new batch, then switches to

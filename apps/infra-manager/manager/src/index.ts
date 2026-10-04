@@ -31,7 +31,6 @@ import { beeApiUrlFor, beePublisherUrlFor, StampService } from './domain/StampSe
 import { localBeeApiBindReader, localPublisherHost } from './domain/localHost.js';
 import { CatalogueDesignationRepository } from './domain/stages/CatalogueDesignationRepository.js';
 import { CatalogueDesignationService } from './domain/stages/CatalogueDesignationService.js';
-import { beeApiOnEveryAddress } from './domain/stages/beeApiExposure.js';
 import { CataloguePublisher } from './domain/stages/CataloguePublisher.js';
 import { UploaderHealthService } from './domain/UploaderHealthService.js';
 import { UploaderStartGate } from './domain/UploaderStartGate.js';
@@ -437,12 +436,6 @@ async function main(): Promise<void> {
     status: () => catalogue.status(),
     changed: () => void catalogue.pushNow(),
     nodeUrls: async (profile) => [beeApiUrlFor(profile), beePublisherUrlFor(profile, await localPublisherHost())],
-    // Docker's own record of where the node's API is published, on the daemon the node runs on.
-    apiOnEveryAddress: async (profile) =>
-      beeApiOnEveryAddress(
-        await targetDocker.beeApiInspect(profile.name, profile.host ?? 'localhost'),
-        Number(new URL(beeApiUrlFor(profile)).port),
-      ),
   });
   profileService.setPoolStringGuard((beePublishers) => catalogueService.segmentBatchProblem(beePublishers));
   // The pinned batch's node, and while a move is pending the node of the batch it moved from.

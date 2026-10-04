@@ -20,7 +20,6 @@ import { Logger } from './Logger.js';
 import type { LogWindow } from './logWindow.js';
 import { collectPublishedPorts } from './ports/publishedPorts.js';
 import type { PublishedPortsSnapshot } from './ports/PublishedPortsProbe.js';
-import type { BeeApiInspect } from './stages/beeApiExposure.js';
 
 const logger = Logger.getInstance();
 
@@ -331,22 +330,6 @@ export class ContainerControl {
         };
       },
     };
-  }
-
-  /**
-   * The fields of a deployment's running Bee node's inspect that say where its API is published, for
-   * `beeApiOnEveryAddress`, or null when the deployment runs no Bee node here. The command is read, never answered.
-   */
-  async beeApiInspect(project: string): Promise<BeeApiInspect | null> {
-    let handle: ContainerHandle;
-    try {
-      handle = await this.find(project, 'bee-uploader');
-    } catch (err) {
-      if (err instanceof ContainerNotRunningError) return null;
-      throw err;
-    }
-    const info = await this.withinLimit(handle.inspect());
-    return { ports: info.NetworkSettings?.Ports, networkMode: info.HostConfig?.NetworkMode, cmd: info.Config?.Cmd };
   }
 
   /** The local daemon's default bridge gateway, which a Linux engine maps host.docker.internal to, or null. */

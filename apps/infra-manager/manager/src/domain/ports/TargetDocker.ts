@@ -12,7 +12,6 @@ import { isLocalTarget, targetAlias } from './DeployTargets.js';
 import type { TargetIdentityProbe } from './VerifiedDeployTargets.js';
 import type { PublishedPortsProbe, PublishedPortsSnapshot } from './PublishedPortsProbe.js';
 import { collectPublishedPorts } from './publishedPorts.js';
-import type { BeeApiInspect } from '../stages/beeApiExposure.js';
 import { type MarkedLines, remoteLogLinesCommand, remoteLogLinesFrom } from './remoteLogLines.js';
 
 /** Captures only the selected non-secret fields, with a bounded runtime and output. */
@@ -33,7 +32,6 @@ export class TargetDocker implements TargetIdentityProbe, DaemonObserver, Publis
       observeContainers?(project: string): Promise<Map<string, ObservedContainer[]>>;
       publishedPorts?(): Promise<Omit<PublishedPortsSnapshot, 'daemonId'>>;
       logLinesContaining?(project: string, service: string, marker: string, window: LogWindow): Promise<string[]>;
-      beeApiInspect?(project: string): Promise<BeeApiInspect | null>;
     },
     private readonly run: ReadOnlyCommand = readOnlyCommand,
   ) {}
@@ -89,33 +87,6 @@ export class TargetDocker implements TargetIdentityProbe, DaemonObserver, Publis
       throw new Error('Docker changed during port observation');
     }
     return { daemonId: first, ...collectPublishedPorts(lines.map((line) => JSON.parse(line))) };
-  }
-
-  /**
-   * Where a deployment's running Bee node publishes its API, from its inspect on the daemon it runs on, for
-   * `beeApiOnEveryAddress`, or null when it runs none. Over ssh only the three fields that say it cross.
-   */
-  async beeApiInspect(project: string, host = 'localhost'): Promise<BeeApiInspect | null> {
-    const alias = targetAlias(host);
-    if (isLocalTarget(alias)) {
-      if (!this.local.beeApiInspect) throw new Error('Local Bee API reader is not configured');
-      return this.local.beeApiInspect(project);
-    }
-    if (!/^[a-zA-Z0-9][a-zA-Z0-9_-]*$/.test(project)) throw new Error('Invalid Compose project');
-    const format =
-      '{"ports":{{json .NetworkSettings.Ports}},"networkMode":{{json .HostConfig.NetworkMode}},"cmd":{{json .Config.Cmd}}}';
-    const output = await this.run('ssh', [
-      '-o',
-      'BatchMode=yes',
-      '-o',
-      'ConnectTimeout=10',
-      '-o',
-      'StrictHostKeyChecking=yes',
-      alias,
-      `ids=$(docker ps -q --no-trunc --filter 'label=com.docker.compose.project=${project}' --filter 'label=com.docker.compose.service=bee-uploader') && for id in $ids; do docker inspect --format '${format}' "$id" || exit 1; done`,
-    ]);
-    const line = output.trim().split('\n')[0];
-    return line ? (JSON.parse(line) as BeeApiInspect) : null;
   }
 
   async snapshot(project: string, host = 'localhost'): Promise<DaemonSnapshot> {
