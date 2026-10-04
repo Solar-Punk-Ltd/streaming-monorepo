@@ -111,17 +111,22 @@ import { type WorkerTargetWatch } from '../src/browser/workerTargets.js';
 import { loadConfig } from '../src/config.js';
 import { makeHost } from '../src/harness/host.js';
 
-/** weeb-3's published deployment. Overridable so a pinned build can be measured against this one. */
+/** weeb-3's published deployment, the documented default. WEEB3_NATIVE_PAGE names another, such as a pinned or self-hosted build. */
 const DEFAULT_PAGE = 'https://lat-murmeldjur.github.io/weeb-3/';
 
 /**
- * The only origins a gateway-less run may contact.
+ * The origins a gateway-less run may contact besides the page's own host, which is added from the page it drives.
  *
  * ⛔ Everything else is the arm failing open. weeb-3 serves the feed and the segments from the node
  * through a service worker at its own scope, so a request leaving for any other host means bytes
  * came from somewhere this run does not control and cannot price.
  */
-const APP_SHELL_HOSTS = new Set(['lat-murmeldjur.github.io', 'cdn.jsdelivr.net', 'weeb-3-secure.github.io']);
+const APP_SHELL_SUPPORT_HOSTS = ['cdn.jsdelivr.net', 'weeb-3-secure.github.io'];
+
+/** Every host the app shell at `pageUrl` may contact. */
+function appShellHosts(pageUrl: string): ReadonlySet<string> {
+  return new Set([new URL(pageUrl).host, ...APP_SHELL_SUPPORT_HOSTS]);
+}
 
 const SAMPLE_INTERVAL_MS = 1_000;
 
@@ -342,7 +347,10 @@ async function readSegmentTally(page: Page): Promise<SegmentTally> {
  * next person who hits it. ⭐ Contact is still reported, because a host that appears here at all is
  * something nobody predicted.
  */
-function offShellTraffic(records: readonly RequestRecord[]): {
+function offShellTraffic(
+  records: readonly RequestRecord[],
+  shellHosts: ReadonlySet<string>,
+): {
   contacted: Record<string, number>;
   servedBytes: Record<string, number>;
 } {
@@ -355,7 +363,7 @@ function offShellTraffic(records: readonly RequestRecord[]): {
     } catch {
       continue;
     }
-    if (APP_SHELL_HOSTS.has(host)) {
+    if (shellHosts.has(host)) {
       continue;
     }
     contacted[host] = (contacted[host] ?? 0) + 1;
@@ -679,7 +687,7 @@ async function main(): Promise<void> {
     const stalls = await readStalls(page);
     const tally = await readSegmentTally(page);
     const instrument = judgeRun([await readInstrument(page)]);
-    const offShell = offShellTraffic(requests);
+    const offShell = offShellTraffic(requests, appShellHosts(pageUrl));
     const gatewayLess = Object.keys(offShell.servedBytes).length === 0;
 
     // A window whose playhead reached the end measured the media running out, not the delivery of it.

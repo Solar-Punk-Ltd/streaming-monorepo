@@ -18,13 +18,16 @@
  *
  * Usage:
  *   node deploy/scripts/run-concurrency-headless.mjs <plan.json> <out.tsv>
+ *
+ * WEEB3_PAGE names the weeb-3 app page to drive, weeb-3's published deployment by default.
  */
 import { readFileSync, writeFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 
 import { clickPage, evaluate, sleep, withPage } from './cdp.mjs';
+import { weeb3Page } from './weeb3-page.mjs';
 
-const WEEB3 = 'https://lat-murmeldjur.github.io/weeb-3/';
+const WEEB3 = weeb3Page();
 const SWEEP = fileURLToPath(new URL('./in-browser-concurrency-sweep.js', import.meta.url));
 
 const SETTLE_MS = 4000;

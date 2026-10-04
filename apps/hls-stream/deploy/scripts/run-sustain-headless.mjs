@@ -21,15 +21,18 @@
  * Usage:
  *   node deploy/scripts/run-sustain-headless.mjs <stream> [minutes] [out.json]
  *   node deploy/scripts/run-sustain-headless.mjs tester-1 12 docs/bench/tester-1-headless.json
+ *
+ * WEEB3_PAGE names the weeb-3 app page to drive, weeb-3's published deployment by default.
  */
 import { readFileSync, writeFileSync } from 'node:fs';
 import { availableParallelism } from 'node:os';
 import { fileURLToPath } from 'node:url';
 
 import { clickPage, evaluate, sleep, withPage } from './cdp.mjs';
+import { weeb3Page } from './weeb3-page.mjs';
 import { coresBetween, enableMetrics, readMetrics, sampleChromeCpu, summarizeCpu } from './chrome-cpu.mjs';
 
-const WEEB3 = 'https://lat-murmeldjur.github.io/weeb-3/';
+const WEEB3 = weeb3Page();
 const PROBE = fileURLToPath(new URL('./in-browser-sustain.js', import.meta.url));
 
 const SETTLE_MS = 4000;

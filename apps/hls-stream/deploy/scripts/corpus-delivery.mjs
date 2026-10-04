@@ -21,6 +21,8 @@
  *
  * Usage: node deploy/scripts/corpus-delivery.mjs <plan.json> [out.json]
  *
+ * WEEB3_PAGE names the weeb-3 app page to drive, weeb-3's published deployment by default.
+ *
  * plan.json:
  *   {
  *     "rounds": 3,
@@ -38,8 +40,9 @@
 import { readFileSync, writeFileSync } from 'node:fs';
 
 import { clickPage, evaluate, sleep, withPage } from './cdp.mjs';
+import { weeb3Page } from './weeb3-page.mjs';
 
-const NODE = 'https://lat-murmeldjur.github.io/weeb-3/';
+const NODE = weeb3Page();
 const BYTES = `${NODE}hls/bytes/`;
 
 const BUDGET_MS = 120000;
