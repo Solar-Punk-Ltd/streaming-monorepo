@@ -162,18 +162,6 @@ export function catalogueReadingLine(reading: CatalogueReading | null): string {
   return `${reading.state} · ${depth} · ${ttl} · ${fillOf(reading.fillRatio)} · ${kindOf(reading.immutable)}`;
 }
 
-/**
- * What the card says when Docker reports the pinned node's Bee API published on every address of its host. The API
- * asks for no password, and the catalogue's batch is behind it.
- */
-export const CATALOGUE_API_EVERY_ADDRESS_WARNING =
-  'Docker publishes this node’s Bee API on every address of its host, and the API asks for no password: whoever reaches the port can spend the node’s funds or fill the catalogue’s batch. On the manager’s own host a redeploy binds it to the Docker bridge only when its BEE_UPLOADER_API_BIND is empty, it is not on host networking and the manager confirmed the bridge. Where the manager could not confirm the bridge its log says so, and BEE_UPLOADER_API_BIND in the node’s settings is yours to set. A BEE_UPLOADER_API_BIND of 0.0.0.0 keeps the node open on purpose, so this warning stays until that setting changes. Under host networking its listen address is what counts: name one in BEE_UPLOADER_API_LISTEN in the node’s settings or close the port with the host firewall, and the deploy warns while it is empty. On another host, its firewall must admit the control host alone.';
-
-/** The warning about the pinned node's Bee API, or null when Docker reports it bound to one address or was not read. */
-export function catalogueApiWarning(answer: { apiOnEveryAddress?: boolean | null }): string | null {
-  return answer.apiOnEveryAddress === true ? CATALOGUE_API_EVERY_ADDRESS_WARNING : null;
-}
-
 /** What the deployment page says on the catalogue node's Storage and funding card. */
 export function pinnedBatchNote(batchId: string): string {
   return `This node is the brand’s catalogue node, and batch ${shortHex(batchId)} is pinned for the catalogue. Buying a batch here, or using another one, changes the batch this deployment records and leaves the catalogue on the pinned one. Moving the catalogue to another batch is its own action. Top up the pinned batch here to keep it alive.`;

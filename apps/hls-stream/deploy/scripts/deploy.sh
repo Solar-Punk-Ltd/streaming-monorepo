@@ -293,8 +293,8 @@ resolve_bee_url() {
   if [ "$bee_target" = "$uploader_target" ]; then
     local bee_port="${BEE_UPLOADER_API_PORT:-$DEFAULT_BEE_UPLOADER_PORT}"
     if [ "${COMPOSE_NETWORK:-}" = "host" ]; then
-      # Host network: no docker DNS, use localhost
-      echo "http://localhost:${bee_port}"
+      # Host network: no docker DNS, so the address the node itself listens on.
+      echo "http://$(host_network_api_host "${BEE_UPLOADER_API_LISTEN:-}"):${bee_port}"
     else
       # Bridge network: docker service name works
       echo "http://bee-uploader:${bee_port}"
@@ -308,6 +308,56 @@ resolve_bee_url() {
   local bee_port="${BEE_UPLOADER_API_PORT:-$DEFAULT_BEE_UPLOADER_PORT}"
   echo "http://${bee_host}:${bee_port}"
 }
+
+# The address a Bee API listens on under host networking, as a process on the same host dials it:
+# its own *_API_LISTEN when that names one address, localhost when it names every address, and the
+# default the deploy gives it otherwise, HOST_NETWORK_LISTEN below.
+host_network_api_host() {
+  local listen="$1"
+  case "$listen" in
+    '') host_network_listen ;;
+    0.0.0.0 | '::' | '[::]') echo "localhost" ;;
+    *) echo "$listen" ;;
+  esac
+}
+
+# What a Bee API listens on under host networking where its own *_API_LISTEN is empty. Docker publishes
+# nothing there, so the process's own address is the whole of the bind, and empty would be every
+# address. The bridge address, or the loopback address when that could not be read.
+host_network_listen() {
+  echo "${DEPLOY_BRIDGE_ADDRESS:-127.0.0.1}"
+}
+
+# The lines that carry the bridge address into compose: DOCKER_BRIDGE_ADDRESS, which every admin bind
+# in the compose files defaults to, and under host networking HOST_NETWORK_LISTEN, which every Bee
+# API's listen address defaults to. Nothing for the first when the bridge could not be read, which
+# leaves the compose files' own fallback of 127.0.0.1.
+bridge_overrides_text() {
+  if [ -n "$DEPLOY_BRIDGE_ADDRESS" ]; then
+    printf 'DOCKER_BRIDGE_ADDRESS=%s\n' "$DEPLOY_BRIDGE_ADDRESS"
+  fi
+  if [ "${COMPOSE_NETWORK:-}" = "host" ]; then
+    printf 'HOST_NETWORK_LISTEN=%s\n' "$(host_network_listen)"
+  fi
+}
+
+# Reads the bridge address of the host that runs compose for <target> into DEPLOY_BRIDGE_ADDRESS,
+# refusing a named one compose could not bind, and saying so when there is none to read.
+read_bridge_address() {
+  local target="$1"
+  DEPLOY_BRIDGE_ADDRESS="$(docker_bridge_address_for "$target")"
+  if [ -n "$DEPLOY_BRIDGE_ADDRESS" ] && ! is_ipv4 "$DEPLOY_BRIDGE_ADDRESS"; then
+    log_error "DOCKER_BRIDGE_ADDRESS must be an IPv4 address. $ENV_FILE says \"$DEPLOY_BRIDGE_ADDRESS\"."
+    exit 1
+  fi
+  if [ -z "$DEPLOY_BRIDGE_ADDRESS" ]; then
+    log_warn "Could not read the Docker bridge address on $target."
+    log_warn "The Bee APIs and the engines' HTTP ports bind to 127.0.0.1 there unless their own *_BIND names an address."
+    log_warn "Set DOCKER_BRIDGE_ADDRESS in $ENV_FILE to name the bridge."
+  fi
+}
+
+DEPLOY_BRIDGE_ADDRESS=""
 
 # When stream-uploader is on a different host than the media engine,
 # engine webhooks need the real IP. (Currently blocked by validation for SRS,
@@ -644,6 +694,11 @@ generate_env_overrides() {
   local overrides
   overrides="$(engine_env_overrides_text)"
   overrides+="$PORT_OVERRIDES_TEXT"
+  local bridge_lines
+  bridge_lines="$(bridge_overrides_text)"
+  if [ -n "$bridge_lines" ]; then
+    overrides+="${bridge_lines}\n"
+  fi
 
   for svc in "${services[@]}"; do
     if [ "$svc" = "$SVC_UPLOADER" ]; then
@@ -703,6 +758,8 @@ deploy_target() {
 
   echo ""
   log_info "Deploying to $target: ${services[*]}"
+
+  read_bridge_address "$target"
 
   # Generate env overrides
   local overrides

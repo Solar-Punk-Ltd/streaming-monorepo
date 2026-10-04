@@ -338,7 +338,7 @@ times out too, and `edge.sh` reports it as `127.0.0.1:<port>` not answering
 within 5 seconds. The forward is a small proxy on the host that opens a second
 connection to the container, and that host's persisted firewall
 (`/etc/iptables/rules.v4`) accepted Docker's original `172.x` bridges but not
-the `10.200.x` pool its `/etc/docker/daemon.json` had handed out since June.
+a custom pool its `/etc/docker/daemon.json` had handed out since June.
 Older projects such as the manager kept working because a network keeps the
 subnet it was created with.
 

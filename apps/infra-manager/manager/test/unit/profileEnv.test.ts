@@ -683,69 +683,54 @@ describe('the keys a Bee gateway put on the chain reads', () => {
 });
 
 describe('writeProfileEnv — the Bee API binds', () => {
-  // Bee's API asks for no password, and the stack publishes each node's API on
-  // every address unless its *_API_BIND names one. A local deployment is given
-  // the docker bridge address the manager reaches its nodes on, wherever
-  // nothing else names a bind; a remote one, or a manager that could not
-  // confirm the bridge, is given nothing and keeps the stack's default.
-  const BRIDGE = '192.0.2.1';
-  const BINDS = [
+  // The stack's deploy defaults each Bee API to the Docker bridge address of
+  // the host that runs it, so a deployment on the manager's own host is given
+  // no bind. One on another host is dialled by the manager over the network, so
+  // each bind and listen address nothing else names is written as every
+  // address, and that host's firewall decides who reaches it.
+  const KEYS = [
     'BEE_UPLOADER_API_BIND',
     'BEE_GATEWAY_API_BIND',
     'BEE_RUNG_480P_API_BIND',
     'BEE_RUNG_720P_API_BIND',
     'BEE_RUNG_1080P_API_BIND',
+    'BEE_UPLOADER_API_LISTEN',
+    'BEE_GATEWAY_API_LISTEN',
+    'BEE_RUNG_480P_API_LISTEN',
+    'BEE_RUNG_720P_API_LISTEN',
+    'BEE_RUNG_1080P_API_LISTEN',
   ];
 
-  it('writes the bridge address into every Bee bind the base env leaves empty or does not name', () => {
-    writeBaseEnv('ENGINE=srs\nBEE_UPLOADER_API_BIND=\nBEE_GATEWAY_API_BIND=\n# BEE_RUNG_480P_API_BIND=\n');
-    const path = writeProfileEnv(root, 'bound', { engine: 'srs', localBeeApiBind: BRIDGE });
-
-    for (const key of BINDS) {
-      assert.equal(lineFor(path, key), `${key}=${BRIDGE}`);
-      assert.equal(lines(path).filter((line) => line.startsWith(`${key}=`)).length, 1, `${key} once`);
-    }
-  });
-
-  it('leaves a bind the base env names standing', () => {
-    writeBaseEnv('ENGINE=srs\nBEE_UPLOADER_API_BIND=10.9.0.1\n');
-    const path = writeProfileEnv(root, 'base-bound', { engine: 'srs', localBeeApiBind: BRIDGE });
-
-    assert.equal(lineFor(path, 'BEE_UPLOADER_API_BIND'), 'BEE_UPLOADER_API_BIND=10.9.0.1');
-    assert.equal(lineFor(path, 'BEE_GATEWAY_API_BIND'), `BEE_GATEWAY_API_BIND=${BRIDGE}`);
-  });
-
-  it('leaves a bind the operator stored for the deployment standing, 0.0.0.0 included', () => {
-    writeBaseEnv('ENGINE=srs\nBEE_UPLOADER_API_BIND=\n');
-    const path = writeProfileEnv(
-      root,
-      'stored-bound',
-      { engine: 'srs', localBeeApiBind: BRIDGE },
-      {
-        BEE_UPLOADER_API_BIND: '0.0.0.0',
-      },
-    );
-
-    assert.equal(lineFor(path, 'BEE_UPLOADER_API_BIND'), 'BEE_UPLOADER_API_BIND=0.0.0.0');
-  });
-
-  it('writes no bind when the caller names none, for a remote target or an unconfirmed bridge', () => {
-    for (const none of [undefined, null]) {
+  it('writes no bind for a deployment on this host', () => {
+    for (const onAnotherHost of [undefined, false]) {
       writeBaseEnv('ENGINE=srs\nBEE_UPLOADER_API_BIND=\n');
-      const path = writeProfileEnv(root, 'unbound', { engine: 'srs', localBeeApiBind: none });
+      const path = writeProfileEnv(root, 'local', { engine: 'srs', onAnotherHost });
 
       assert.equal(lineFor(path, 'BEE_UPLOADER_API_BIND'), 'BEE_UPLOADER_API_BIND=');
       assert.equal(lineFor(path, 'BEE_GATEWAY_API_BIND'), undefined);
     }
   });
 
-  it('refuses an address that is not an IPv4 address rather than writing it', () => {
-    writeBaseEnv();
-    for (const bad of ['host.docker.internal', '::1', '10.0.0.1:1633']) {
-      assert.throws(
-        () => writeProfileEnv(root, 'bad-bind', { engine: 'srs', localBeeApiBind: bad }),
-        /BEE_UPLOADER_API_BIND/,
-      );
+  it('writes every address into each bind and listen address the base env leaves empty, on another host', () => {
+    writeBaseEnv('ENGINE=srs\nBEE_UPLOADER_API_BIND=\nBEE_GATEWAY_API_LISTEN=\n# BEE_RUNG_480P_API_BIND=\n');
+    const path = writeProfileEnv(root, 'remote', { engine: 'srs', onAnotherHost: true });
+
+    for (const key of KEYS) {
+      assert.equal(lineFor(path, key), `${key}=0.0.0.0`);
+      assert.equal(lines(path).filter((line) => line.startsWith(`${key}=`)).length, 1, `${key} once`);
     }
+  });
+
+  it('leaves a bind the base env or the operator names standing', () => {
+    writeBaseEnv('ENGINE=srs\nBEE_UPLOADER_API_BIND=192.0.2.10\n');
+    const path = writeProfileEnv(
+      root,
+      'remote-named',
+      { engine: 'srs', onAnotherHost: true },
+      { BEE_GATEWAY_API_BIND: '198.51.100.7' },
+    );
+
+    assert.equal(lineFor(path, 'BEE_UPLOADER_API_BIND'), 'BEE_UPLOADER_API_BIND=192.0.2.10');
+    assert.equal(lineFor(path, 'BEE_GATEWAY_API_BIND'), 'BEE_GATEWAY_API_BIND=198.51.100.7');
   });
 });

@@ -98,23 +98,16 @@ with the admin. [architecture/stages.md](architecture/stages.md) is the design.
    sign-in page while `ssh control-1` is open. The first deploy takes a while, because the host
    builds the stack version the manager bundles.
 
-   Every Bee node the manager deploys on this host on a bridge network, the stack's default, has
-   its API bound to the Docker bridge address, where neither the stack's `.env` nor the deployment
-   names a bind, since the API asks for no password. "Bind the node and engine APIs off the public
-   interface" in `apps/infra-manager/deploy/README.md` says how, and the engine ports are still
-   yours to bind. A deployment on host networking, `COMPOSE_NETWORK=host`, is not bound: Docker
-   publishes no port there, so each of its Bee APIs listens on every address unless its
-   `*_API_LISTEN` names one, and a deploy logs a warning for each that does not. The
-   `COMPOSE_NETWORK=host` paragraph of that section says what applies there instead.
-   Each deploy's log names every bind it wrote. On a host upgraded to this manager, a node is
-   narrowed at its next deploy and from then on answers on the bridge address alone. Three kinds of
-   client stop reaching it: anything on another host that reaches it by this host's public
-   address, anything on this host that dials `localhost` or `127.0.0.1`, such as the stack's own
-   scripts and the reads its e2e suite runs here over ssh, and a container on this host that dials
-   the host's public or LAN address. To keep a node open to them, give the deployment `0.0.0.0` in
-   its own settings for that node's key, `BEE_UPLOADER_API_BIND`, `BEE_GATEWAY_API_BIND`,
-   `BEE_RUNG_480P_API_BIND`, `BEE_RUNG_720P_API_BIND` or `BEE_RUNG_1080P_API_BIND`, and let the
-   firewall close the port.
+   Every Bee API and engine HTTP port the stack runs answers on the host's Docker bridge address
+   wherever its own `*_BIND` setting is empty, because the API asks for no password and Docker
+   publishes past a host firewall. The stack's deploy reads that address at deploy time. Under
+   `COMPOSE_NETWORK=host` the Bee APIs listen there through `*_API_LISTEN` instead. "Check where the
+   node and engine APIs answer" in `apps/infra-manager/deploy/README.md` names the settings. A
+   client that dials a Bee API by `localhost`, `127.0.0.1` or the host's public or LAN address does
+   not reach a node on the bridge. To keep a node open to such a client, give the deployment
+   `0.0.0.0` in its own settings for that node's key, `BEE_UPLOADER_API_BIND`,
+   `BEE_GATEWAY_API_BIND`, `BEE_RUNG_480P_API_BIND`, `BEE_RUNG_720P_API_BIND` or
+   `BEE_RUNG_1080P_API_BIND`, and let the firewall decide who reaches it.
 
 4. **The manager's first user**, on the host. It asks for the password twice.
 
@@ -293,25 +286,21 @@ images on the host itself.
    decides its ports, as [architecture/overview.md](architecture/overview.md#ports) lists.
 
 7. **Open the public ports**, and only those: SRT ingest, the viewer page and the two Bee peer ports
-   of each slot. "Opening the manager to the internet" in `apps/infra-manager/deploy/README.md` binds
-   the node and engine APIs off the public interface and generates an nftables table for exactly
-   this. It worked when an encoder reaches the SRT port, a browser opens the viewer page, and a port
+   of each slot. "Opening the manager to the internet" in `apps/infra-manager/deploy/README.md` says
+   where the node and engine APIs answer, the host's Docker bridge by default, and generates an
+   nftables table for exactly this. It worked when an encoder reaches the SRT port, a browser opens the viewer page, and a port
    ending in 5 or 7 does not answer from outside.
 
-   RTMP is closed to the outside on every stage for now, and SRT is the ingest broadcasters use. The
-   generated table keeps the RTMP port, the one ending in 2, closed, and neither console offers
-   RTMP. SRS keeps its RTMP listener, because the ABR ladder republishes every rung to it over
-   loopback. Opening RTMP on a stage later is not a firewall change alone. The stage must first run
-   a stack whose SRS allows play from loopback only, on image `6.0-r2-swarm.3`. RTMP needs a key of
-   its own, separate from the SRT one. And the manager needs a per-stage switch that opens it on that
-   stage alone.
+   The generated table drops the RTMP port, the one ending in 2, like any other private port. Both
+   consoles offer RTMP on every SRS stage all the same, because which ports are reachable is the
+   firewall's job: open that port in the table if broadcasters are to use RTMP. SRS allows play
+   from its own container only, so an open RTMP port takes publishes and refuses playback.
 
-   RTMP is plain RTMP and is not encrypted. Wherever it is open, a broadcaster's stream key crosses
-   the network as readable text, and anyone who reads it there can publish to that stream with it.
-   Wherever keys are checked the stack lets a new RTMP publisher take over a live stream, so they
-   can also replace a live broadcast, whichever protocol it came in over. While RTMP is open, the
-   SRT passphrase keeps the picture private but not the key: SRT sends its stream id, key included,
-   before encryption starts, so a key read off either protocol publishes over RTMP.
+   RTMP is not encrypted. A broadcaster's stream key crosses the network as readable text, and a
+   key read off the network publishes over RTMP whichever protocol it was read from, because SRT
+   sends its stream id, key included, before encryption starts. With the takeover on, such a
+   publisher can also replace a live broadcast. The SRT passphrase keeps the picture private but
+   not the key.
 
 The engine's `docker logs` on a stage host are as sensitive as its env files. SRS logs every
 broadcaster's publish key when they connect and the webhook token on every hook it calls, and a

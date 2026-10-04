@@ -1,6 +1,5 @@
 import { chmodSync, existsSync, readFileSync, unlinkSync, writeFileSync } from 'node:fs';
 import { copyFile } from 'node:fs/promises';
-import { isIPv4 } from 'node:net';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
@@ -276,78 +275,45 @@ export interface ProfileEnvValues {
    */
   gatewayMode?: NodeMode | null;
   /**
-   * The address this deployment's Bee APIs are bound to wherever neither the
-   * base .env nor the operator names one: the docker bridge address the
-   * manager reaches a local node on. Null or absent for a deployment on
-   * another host, whose API has to answer the control host, and wherever the
-   * manager could not confirm the bridge, which leaves the stack's default.
+   * Whether this deployment runs on another host than the manager's. The
+   * manager dials such a deployment's Bee APIs over the network, so each bind
+   * and listen address nothing else names is written as every address, and
+   * that host's firewall decides who reaches it. On the manager's own host the
+   * stack's deploy binds them to the Docker bridge, and nothing is written.
    */
-  localBeeApiBind?: string | null;
+  onAnotherHost?: boolean;
 }
 
 /**
  * The host-side address of each Bee node's published API in the stack's
- * compose file. Bee's API asks for no password, and an empty one publishes it
- * on every address.
+ * compose file, and the address each node's process listens on, which is the
+ * whole bind under host networking.
  */
-export const BEE_API_BIND_KEYS = [
+export const BEE_API_ADDRESS_KEYS = [
   'BEE_UPLOADER_API_BIND',
   'BEE_GATEWAY_API_BIND',
   'BEE_RUNG_480P_API_BIND',
   'BEE_RUNG_720P_API_BIND',
   'BEE_RUNG_1080P_API_BIND',
+  'BEE_UPLOADER_API_LISTEN',
+  'BEE_GATEWAY_API_LISTEN',
+  'BEE_RUNG_480P_API_LISTEN',
+  'BEE_RUNG_720P_API_LISTEN',
+  'BEE_RUNG_1080P_API_LISTEN',
 ] as const;
 
+/** Every address, which a deployment the manager dials over the network has to answer on. */
+const EVERY_ADDRESS = '0.0.0.0';
+
 /**
- * The Bee API binds a deploy writes where nothing names one, from
- * `localBeeApiBind`, or none. Unlike the managed lines these give way: a value
- * the base .env or the operator sets stands, 0.0.0.0 included, which is how a
- * node that a host elsewhere reaches is opened on purpose.
+ * The Bee API binds a deploy writes where nothing names one: every address for
+ * a deployment on another host, and none on the manager's own. Unlike the
+ * managed lines these give way, so a value the base .env or the operator sets
+ * stands.
  */
 export function beeApiBindLines(values: ProfileEnvValues): ManagedEnvLines {
-  const bind = values.localBeeApiBind;
-  if (bind === undefined || bind === null) return {};
-  if (!isIPv4(bind)) {
-    throw new Error(
-      `refusing to write BEE_UPLOADER_API_BIND to the env file: the bridge address is not an IPv4 address`,
-    );
-  }
-  return Object.fromEntries(BEE_API_BIND_KEYS.map((key) => [key, bind]));
-}
-
-/** The COMPOSE_NETWORK value that runs the stack on the host's own network, the stack's docker-compose.host.yml. */
-const HOST_NETWORK = 'host';
-
-/**
- * The key each Bee node of the stack's compose file takes the listen address
- * of its API from, by service. The node binds that address itself
- * (`--api-addr`), and empty is every address. Under host networking Docker
- * publishes no port, so a `*_API_BIND` does nothing there and this is the one
- * thing that binds the API.
- */
-export const BEE_API_LISTEN_KEYS: ReadonlyMap<string, string> = new Map([
-  ['bee-uploader', 'BEE_UPLOADER_API_LISTEN'],
-  ['bee-gateway', 'BEE_GATEWAY_API_LISTEN'],
-  ['bee-uploader-480p', 'BEE_RUNG_480P_API_LISTEN'],
-  ['bee-uploader-720p', 'BEE_RUNG_720P_API_LISTEN'],
-  ['bee-uploader-1080p', 'BEE_RUNG_1080P_API_LISTEN'],
-]);
-
-/**
- * The listen keys of the Bee nodes among `services` whose API this environment
- * leaves on every address of the host: it runs on host networking and names no
- * listen address for them. Empty on a bridge, where the published port is what
- * a `*_API_BIND` narrows.
- *
- * Read, never filled in: a host-networked uploader reaches its own node on
- * localhost, so a listen address the manager chose could cut it off.
- */
-export function beeApiListenKeysLeftOpen(env: Readonly<Record<string, string>>, services: readonly string[]): string[] {
-  if (env.COMPOSE_NETWORK !== HOST_NETWORK) return [];
-  return services.flatMap((service) => {
-    const key = BEE_API_LISTEN_KEYS.get(service);
-    return key !== undefined && !env[key] ? [key] : [];
-  });
+  if (!values.onAnotherHost) return {};
+  return Object.fromEntries(BEE_API_ADDRESS_KEYS.map((key) => [key, EVERY_ADDRESS]));
 }
 
 /**
@@ -676,19 +642,6 @@ function withStoredValues(baseText: string, stored: Readonly<Record<string, stri
 function fallbacksLeftUnnamed(text: string, fallbacks: ManagedEnvLines): ManagedEnvLines {
   const named = parseEnvText(text);
   return Object.fromEntries(Object.entries(fallbacks).filter(([key]) => !named[key]));
-}
-
-/**
- * The Bee API binds a deploy writes into the deployment's env file over this
- * base text and these stored values: each of {@link beeApiBindLines} whose key
- * neither names, with the address it is given. Empty where it writes none.
- */
-export function beeApiBindsWritten(
-  values: ProfileEnvValues,
-  baseText: string,
-  stored: Readonly<Record<string, string>> = {},
-): ManagedEnvLines {
-  return fallbacksLeftUnnamed(withStoredValues(baseText, stored), beeApiBindLines(values));
 }
 
 // deploy.sh switches ENV_FILE to .env.<profile> when present and uses it as

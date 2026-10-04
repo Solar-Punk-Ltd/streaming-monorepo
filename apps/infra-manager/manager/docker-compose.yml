@@ -82,10 +82,12 @@ services:
     restart: unless-stopped
     depends_on:
       - api
-    # Loopback only. The host's edge (infra/edge) reaches it there, and the SSH
-    # tunnel stays the way back in when the edge or its certificate is broken.
+    # MANAGER_WEB_BIND, 127.0.0.1 by default. The host's edge (infra/edge)
+    # reaches it there, and the SSH tunnel stays the way back in when the edge or
+    # its certificate is broken. Docker publishes past a host firewall, so name
+    # another address only where something else stands in front of it.
     ports:
-      - '127.0.0.1:${WEB_PORT:-8080}:80'
+      - '${MANAGER_WEB_BIND:-127.0.0.1}:${WEB_PORT:-8080}:80'
     healthcheck:
       test: ['CMD-SHELL', 'wget -q -O /dev/null http://127.0.0.1:80/']
       interval: 5s

@@ -4,7 +4,7 @@ import { join } from 'node:path';
 import { after, describe, it } from 'node:test';
 
 import { stubCurl } from './helpers/curlStub.js';
-import { makeSandbox, removeSandboxes, runScript, runScriptOk } from './helpers/sandbox.js';
+import { ALL_REMOTE, makeSandbox, removeSandboxes, runScript, runScriptOk } from './helpers/sandbox.js';
 
 after(removeSandboxes);
 
@@ -94,5 +94,52 @@ describe('health.sh answers in its exit status as well as on the terminal', () =
 
     assert.notEqual(run.exitCode, 0, 'a profile with nothing enabled reported a healthy stack');
     assert.match(`${run.stdout}${run.stderr}`, /Nothing was checked/);
+  });
+});
+
+/**
+ * Where health.sh asks an admin or file interface. The Bee APIs and the engines' HTTP ports default to
+ * the host's Docker bridge address, which answers on that host alone, so they are asked there: at the
+ * address compose bound them to, and over ssh on the host for a remote target.
+ */
+describe('health.sh asks each interface where compose bound it', () => {
+  const BRIDGE = '192.0.2.1';
+  const envWith = (lines) => ({ '.env': ['STAMP=stamp', 'STREAM_KEY=key', ...lines].join('\n') + '\n' });
+
+  it('asks the Bee API and the SRS file server on the bridge, and the viewer and uploader on localhost', async () => {
+    const sandbox = makeSandbox();
+    stubCurl(sandbox, { status: '200' });
+
+    const run = await runScriptOk(sandbox, 'health.sh', [], { DOCKER_STUB_BRIDGE: BRIDGE });
+
+    assert.match(run.stdout, new RegExp(`bee-uploader \\(http://${BRIDGE}:1633/health\\)`));
+    assert.match(run.stdout, new RegExp(`srs \\(http://${BRIDGE}:8080\\)`));
+    assert.match(run.stdout, /client \(http:\/\/localhost:5173\/\)/);
+    assert.match(run.stdout, /stream-uploader \(http:\/\/localhost:3000\/health\)/);
+  });
+
+  it('asks at an address a bind names, and on localhost for one bound to every address', async () => {
+    const sandbox = makeSandbox({
+      envFiles: envWith(['BEE_UPLOADER_API_BIND=198.51.100.7', 'SRS_HTTP_BIND=0.0.0.0']),
+    });
+    stubCurl(sandbox, { status: '200' });
+
+    const run = await runScriptOk(sandbox, 'health.sh', [], { DOCKER_STUB_BRIDGE: BRIDGE });
+
+    assert.match(run.stdout, /bee-uploader \(http:\/\/198\.51\.100\.7:1633\/health\)/);
+    assert.match(run.stdout, /srs \(http:\/\/localhost:8080\)/);
+  });
+
+  it('asks a remote host its admin interfaces over ssh, on that host', async () => {
+    const sandbox = makeSandbox({ config: ALL_REMOTE });
+    stubCurl(sandbox, { status: '200' });
+
+    const run = await runScriptOk(sandbox, 'health.sh', ['bee-uploader'], { DOCKER_STUB_BRIDGE: BRIDGE });
+
+    assert.match(run.stdout, new RegExp(`bee-uploader \\(http://${BRIDGE}:1633/health on streamhost\\)`));
+    assert.ok(
+      sandbox.sshCommands().some((command) => command.includes('curl') && command.includes(`${BRIDGE}:1633`)),
+      `the remote host was not asked: ${sandbox.sshCommands().join(' | ')}`,
+    );
   });
 });

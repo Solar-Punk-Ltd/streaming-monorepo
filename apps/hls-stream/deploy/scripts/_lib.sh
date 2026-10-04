@@ -525,6 +525,31 @@ host_from_target() {
   fi
 }
 
+# --- The Docker bridge address ---
+
+# The address of the host's Docker bridge that the stack's admin and file interfaces bind to wherever
+# their own *_BIND setting is empty, for the host that runs compose for <target>. DOCKER_BRIDGE_ADDRESS
+# set in the env file wins, and the daemon is then not asked. Otherwise docker-bridge-address.sh is run
+# on that host, over ssh for a remote one, because the bridge is a fact about the host that publishes
+# the ports. Prints nothing when it could not be read.
+docker_bridge_address_for() {
+  local target="$1"
+  if [ -n "${DOCKER_BRIDGE_ADDRESS:-}" ]; then
+    echo "$DOCKER_BRIDGE_ADDRESS"
+    return 0
+  fi
+  if is_remote "$target"; then
+    ssh "$target" sh -s < "$SCRIPT_DIR/docker-bridge-address.sh" 2>/dev/null || true
+  else
+    sh "$SCRIPT_DIR/docker-bridge-address.sh" 2>/dev/null || true
+  fi
+}
+
+# Whether a value is a dotted IPv4 address, which is all a compose port mapping takes unbracketed.
+is_ipv4() {
+  [[ "$1" =~ ^[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}$ ]]
+}
+
 # --- Service grouping ---
 
 # Get unique enabled Docker targets from config (excludes "native", since those run outside compose).

@@ -139,20 +139,21 @@ describe('the environment the next deploy gives', () => {
     assert.deepEqual(next.generatedKeys, []);
   });
 
-  it('binds a local deployment’s Bee APIs to the bridge where nothing names a bind, and a remote one’s not', async () => {
+  it('leaves a local deployment’s Bee binds to the stack, and opens a remote one’s to the control host', async () => {
     writeVersion();
     const local = makeProfile({ name: 'local-bee', port_slot: 5, stamp_id: STAMP });
     const remote = makeProfile({ name: 'remote-bee', port_slot: 6, stamp_id: STAMP, host: 'deploy@bee-1' });
     const harness = orchestratorHarness([local, remote]);
     await harness.versions.setContract(1, structuredClone(CONTRACT));
-    harness.orchestrator.setLocalBeeApiBind(async () => '192.0.2.1');
 
     const near = await harness.orchestrator.nextEnvFor(local);
-    assert.equal(near.env.BEE_UPLOADER_API_BIND, '192.0.2.1');
-    assert.equal(near.env.BEE_GATEWAY_API_BIND, '192.0.2.1');
-    assert.equal((await harness.orchestrator.nextEnvFor(remote)).env.BEE_UPLOADER_API_BIND, undefined);
+    assert.equal(near.env.BEE_UPLOADER_API_BIND, undefined);
+    assert.equal(near.env.BEE_GATEWAY_API_LISTEN, undefined);
+    const far = await harness.orchestrator.nextEnvFor(remote);
+    assert.equal(far.env.BEE_UPLOADER_API_BIND, '0.0.0.0');
+    assert.equal(far.env.BEE_UPLOADER_API_LISTEN, '0.0.0.0');
 
-    harness.profiles.stackSettings.set('local-bee', { BEE_UPLOADER_API_BIND: '0.0.0.0' });
-    assert.equal((await harness.orchestrator.nextEnvFor(local)).env.BEE_UPLOADER_API_BIND, '0.0.0.0');
+    harness.profiles.stackSettings.set('remote-bee', { BEE_UPLOADER_API_BIND: '192.0.2.10' });
+    assert.equal((await harness.orchestrator.nextEnvFor(remote)).env.BEE_UPLOADER_API_BIND, '192.0.2.10');
   });
 });
