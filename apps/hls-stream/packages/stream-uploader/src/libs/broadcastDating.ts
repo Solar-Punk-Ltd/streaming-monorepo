@@ -215,6 +215,50 @@ export interface BroadcastDating {
    * Omitted where the engine's own counter restarted. See {@link BroadcastEpoch.returnToken}.
    */
   epochFrom(resumeAt: number, notBeforeMs: number, returnToken?: string): BroadcastEpoch;
+
+  /**
+   * The sequence a rung coming back from this return resumes at, which is the same answer for every
+   * rung of the return and never below `ownResumeAt`, the one past the highest sequence the asking
+   * rung has placed. See {@link sharedResumePoint}.
+   */
+  resumePointFor(returnToken: string, ownResumeAt: number): number;
+}
+
+/**
+ * The sequence every rung of one return resumes at: the point the return already took, or the
+ * furthest any rung of the ladder has counted, whichever is higher.
+ *
+ * ⛔⛔ **One sequence names one moment on every rung, so a return resumes them all at one sequence.**
+ * The rungs stop at different counts before an outage. One closes a short partial segment the others
+ * do not, or one is a segment behind on its upload, and a player switching quality picks the segment
+ * by its sequence. Each rung resuming at its own count put sequence 331 about 30 seconds apart on two
+ * rungs of one broadcast measured on a test deployment, with the breaks four sequences apart. A rung
+ * that is behind the shared point fills the hole with gap entries, which is what a sequence nothing
+ * fills already publishes as.
+ *
+ * The first rung of the return to place a segment fixes the point from every rung's count, its
+ * siblings' included, and writes it down as the `fromSequence` of the epoch it mints for the return.
+ * A rung placing later reads it back off that epoch, through the broadcast's anchor, which is what
+ * keeps the point across a restart of this process: the epoch rides in the ladder group store and in
+ * every rung's recovery entry. Once the point is taken the siblings' counts are not read again,
+ * because a sibling that has already resumed has counted past it.
+ *
+ * ⚠️ **Never below the asking rung's own count**, because a number already published cannot be
+ * reused. A rung still placing segments from before the outage when its siblings fixed the point can
+ * pass it, and it then resumes at its own count, a sequence or more above them. See
+ * `ManifestManager.placeResumed`.
+ *
+ * @param ownResumeAt one past the highest sequence the asking rung has placed.
+ * @param ladderCounts the sequence each live rung of the ladder would resume at on its own.
+ */
+export function sharedResumePoint(
+  epochs: readonly BroadcastEpoch[],
+  returnToken: string,
+  ownResumeAt: number,
+  ladderCounts: readonly number[],
+): number {
+  const taken = epochs.find((epoch) => epoch.returnToken === returnToken);
+  return taken === undefined ? Math.max(ownResumeAt, ...ladderCounts) : Math.max(ownResumeAt, taken.fromSequence);
 }
 
 /** Which of the two ways a re-anchoring reached its epoch, alongside the epoch itself. */
@@ -235,12 +279,14 @@ interface ReanchorDecision {
  * The epoch a rung takes when its numbering resumes after a restart, reusing the line a sibling
  * already minted for that same restart, and which of those two things it did.
  *
- * ⭐ **What is shared across the ladder is the line, never the point it is written down at.** Rungs
- * cross a restart with their own numbering at their own places, so each one materialises the shared
- * line at its own `resumeAt`. A rung one sequence behind its siblings therefore lands one fragment
- * earlier on that line, which is the same function of sequence they are all reading. Handing it the
- * sibling's point unchanged would leave its own first post-restart segment on the old line, with the
- * whole jump landing on the segment after it, where no discontinuity marks it.
+ * ⭐ **What is shared across the ladder is the line, and each rung writes it down at the `resumeAt` it
+ * asks about.** After an encoder returns, every rung of the return asks at the same sequence, the one
+ * {@link sharedResumePoint} fixes, so they all land on one point of the line. After the engine's own
+ * counter restarts, which nothing outside the rung witnesses, each rung still resumes at its own
+ * count, and a rung one sequence behind its siblings lands one fragment earlier on that line, which is
+ * the same function of sequence they are all reading. Handing it the sibling's point unchanged would
+ * leave its own first post-restart segment on the old line, with the whole jump landing on the segment
+ * after it, where no discontinuity marks it.
  *
  * ⛔⛔ **A returning encoder's line is recognised by the RETURN it belongs to, and by nothing else.**
  * The orchestrator sees a whole-encoder return once per rung and is the only layer that can tell four
@@ -255,9 +301,10 @@ interface ReanchorDecision {
  *   four fifty second outages: the second return landed 48 seconds behind, the third 96.
  * - **At-or-below the minted sequence** fixed that for a lone rung and failed on a ladder, because
  *   the epoch list is the whole ladder's: the newest epoch is often a SIBLING's, so a rung a segment
- *   behind asks at a sequence below its sibling's line and joins the PREVIOUS return's, again dating
+ *   behind asked at a sequence below its sibling's line and joined the PREVIOUS return's, again dating
  *   its media a whole outage ago. Reproduced on two rungs one segment apart over two outages, about
- *   half the time depending on which rung came back first.
+ *   half the time depending on which rung came back first. The rungs of one return now ask at one
+ *   sequence, but a rung's own next return still asks higher, so the name stays the only test.
  *
  * A name cannot be confused either way: it is minted per return by the layer that witnesses the
  * return, and it is a uuid rather than a count, so it cannot collide with a line the anchor carried
@@ -333,5 +380,7 @@ export function soleRungDating(anchorOf: () => BroadcastAnchor, wallClock: () =>
   return {
     epochFrom: (resumeAt, notBeforeMs, returnToken) =>
       reanchorEpoch(anchorOf(), { resumeAt, nowMs: wallClock(), notBeforeMs, returnToken }),
+    // A rung with no siblings has nobody to agree a sequence with.
+    resumePointFor: (_returnToken, ownResumeAt) => ownResumeAt,
   };
 }

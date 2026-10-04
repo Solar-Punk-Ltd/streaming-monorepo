@@ -392,6 +392,20 @@ when the line carries its own return's name, and mints one otherwise, whatever s
 is at. The name is a uuid rather than a count, because the epochs it labels ride in the recovery entry
 and the ladder group store and so outlive the process.
 
+⛔ **Every rung of one return resumes at one sequence.** The rungs stop at different counts before an
+outage: one closes a short partial segment the others do not, or one is a segment behind on its
+upload. A player switching quality picks the segment by its sequence, so a rung resuming at its own
+count put one sequence on two moments about 30 seconds apart on a test deployment, with the breaks
+four sequences apart. The first rung of a return to place a segment now fixes the point as the
+furthest any live rung of the ladder has counted (`sharedResumePoint` in
+`src/libs/broadcastDating.ts`), and it is written down as the `fromSequence` of the epoch minted under
+that return's name. Every later rung of the return, a late one included, reads it back off that epoch
+and resumes there, with its `#EXT-X-DISCONTINUITY` on the same sequence. A rung that had counted less
+lists the sequences in between as gap entries. The point is never below a rung's own count, because a
+published sequence cannot be reused, so a rung still placing segments from before the outage when the
+point was fixed resumes at its own count and the uploader logs a warning. A single rendition resumes at
+its own count as it always has, and so does every rung after the engine's own counter restarts.
+
 Two sequence-shaped rules were tried before this one and both were wrong, which is worth knowing
 before anyone simplifies it. Recognising a return by the clock alone read a second outage on the same
 rung as a sibling crossing the first, because nothing advances while an encoder is away: four fifty

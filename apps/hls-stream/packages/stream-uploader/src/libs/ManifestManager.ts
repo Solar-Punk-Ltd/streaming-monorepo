@@ -508,19 +508,20 @@ export class ManifestManager {
 
   /**
    * The encoder that stopped feeding this session has come back, so the next segment opens a resumed
-   * run: it publishes one above everything already published whatever number its engine gives it,
-   * the numbering carries on from there, and the dating re-anchors at that sequence.
+   * run: it publishes at the sequence the whole return resumes at, whatever number its engine gives
+   * it, the numbering carries on from there, and the dating re-anchors at that sequence.
    *
    * ⛔ **Whatever the engine's counter did**, which is the whole reason this is told rather than
    * inferred. See {@link resumingAfterReconnect}.
    *
-   * ⛔ Publishing at the high-water mark plus one rather than at wherever the index lands is also
-   * what keeps a returning encoder from emitting gap entries across the reconnect: an index that
-   * jumped forward while nobody was listening would otherwise publish that far ahead, and every
-   * sequence in between would be listed as media a viewer cannot have. Nothing was lost — nothing
-   * was being produced — so there is nothing to say. See {@link placeResumed} for what a lower index
-   * of the resumed run arriving afterwards would do, which is a second break rather than a gap, and
-   * is pre-existing behaviour rather than a shape this path introduced.
+   * ⛔ Resuming at a point the return decides rather than at wherever the index lands is also what
+   * keeps a lone rung from emitting gap entries across the reconnect: an index that jumped forward
+   * while nobody was listening would otherwise publish that far ahead, and every sequence in between
+   * would be listed as media a viewer cannot have. On a ladder, a rung that stopped below its siblings
+   * does list the sequences up to the shared point as gap entries, because those sequences are media
+   * on the rung that got further. See {@link placeResumed} for what a lower index of the resumed run
+   * arriving afterwards would do, which is a second break rather than a gap, and is pre-existing
+   * behaviour rather than a shape this path introduced.
    *
    * @param returnToken which return this is, so the rungs of one ladder date it alike. See
    * {@link BroadcastEpoch.returnToken}.
@@ -538,6 +539,15 @@ export class ManifestManager {
    */
   public armedReturn(): string | null {
     return this.resumingAfterReconnect;
+  }
+
+  /**
+   * The sequence this rung would resume at on its own after a return, one past the highest it has
+   * placed, or null before it has placed anything. What its siblings fix a shared resume point from.
+   * See `sharedResumePoint`.
+   */
+  public nextSequence(): number | null {
+    return this.sequenceAnchor === null ? null : this.highestSequence() + 1;
   }
 
   /** The number `sequence` is written into a playlist as. See {@link sequenceOffset}. */
@@ -667,8 +677,14 @@ export class ManifestManager {
   }
 
   /**
-   * The first segment after the encoder came back, placed one above everything already published and
-   * dated at the clock it returned at. See {@link resumeAfterReconnect}.
+   * The first segment after the encoder came back, placed at the sequence every rung of the return
+   * resumes at and dated at the clock it returned at. See {@link resumeAfterReconnect}.
+   *
+   * ⛔⛔ **The sequence is the return's, not this rung's count.** The rungs of a ladder stop at
+   * different counts before an outage, and a player switching quality picks a segment by its
+   * sequence, so each resuming at its own count put one sequence on two moments about 30 seconds
+   * apart. The dating answers with the shared point, which is never below this rung's own count, and
+   * the sequences between are listed by {@link gapLines}. See `sharedResumePoint`.
    *
    * ⛔ The same forward move {@link placeInBroadcast} makes for a restarted counter, taken without
    * asking whether the counter restarted. Inside the reconnect window it usually has not, because
@@ -696,7 +712,14 @@ export class ManifestManager {
       return { sequence: 0, reanchored: false };
     }
 
-    const resumeAt = this.highestSequence() + 1;
+    const ownResumeAt = this.highestSequence() + 1;
+    const resumeAt = this.dating.resumePointFor(returnToken, ownResumeAt);
+    if (resumeAt > ownResumeAt) {
+      this.logger.info(
+        `[ManifestManager] Segment index ${index} resumes at sequence ${resumeAt} with the rest of its ladder ` +
+          `rather than at ${ownResumeAt}, so sequences ${ownResumeAt} to ${resumeAt - 1} are published as gaps`,
+      );
+    }
     this.sequenceAnchor = { index, sequence: resumeAt };
     this.reanchorDating(resumeAt, ENCODER_RETURNED, returnToken);
     return { sequence: resumeAt, reanchored: true };

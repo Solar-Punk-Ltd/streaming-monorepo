@@ -179,9 +179,11 @@ export interface BroadcastAnchor {
  * published with, and the media after it is dated from the wall clock the engine came back at.
  *
  * ⛔ **Minted once for the whole ladder, by whichever rung crosses the restart first.** Every other
- * rung materialises that same line at its own resuming sequence, so the mapping from sequence to
- * date stays one function for the ladder. That is the property the tag is here for, and it is why
- * the shared thing is the line rather than the point it is written down at.
+ * rung materialises that same line at the sequence it resumes at, so the mapping from sequence to
+ * date stays one function for the ladder. That is the property the tag is here for. After an encoder
+ * returns, every rung of the return resumes at one sequence, the epoch's `fromSequence`, so they all
+ * write it down at one point. After the engine's own counter restarts, each rung resumes at its own
+ * count and writes the line down there.
  */
 export interface BroadcastEpoch {
   /** The first playlist sequence this epoch dates. Everything below it keeps the epoch it had. */
@@ -193,11 +195,11 @@ export interface BroadcastEpoch {
    * on one minted by the engine's counter restarting, and on every epoch written before returns were
    * named.
    *
-   * ⛔ **The rungs of one ladder share a line because they share this, not because their numbers look
-   * alike.** A whole-encoder return reaches the orchestrator once per rung and it is the orchestrator
-   * that can see they are one event; the sequences the rungs resume at cannot say so, because a rung
-   * that is a segment behind its siblings resumes a sequence lower and a rung's own next return
-   * resumes a sequence higher, and those two overlap. See `StreamOrchestrator.tokenForThisReturn`.
+   * ⛔ **The rungs of one ladder share a line and a resume point because they share this, not because
+   * their numbers look alike.** A whole-encoder return reaches the orchestrator once per rung and it
+   * is the orchestrator that can see they are one event. The epoch minted under this name carries the
+   * sequence the whole return resumes at, which is how a rung placing after its siblings finds it. See
+   * `StreamOrchestrator.tokenForThisReturn` and `sharedResumePoint`.
    *
    * Unique per return rather than counted, because the epoch list survives a process restart inside
    * the recovery entry and the ladder group store: a number restarting from zero would let a return

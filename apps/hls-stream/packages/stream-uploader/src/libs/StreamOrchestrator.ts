@@ -47,7 +47,7 @@ import { isUsableDuration, measureSegmentDuration, SegmentDurationReading } from
 import { AbrLadder } from './AbrLadder.js';
 import { AdminApiClient } from './AdminApiClient.js';
 import { BeePublisherPool, PublisherRoute } from './BeePublisherPool.js';
-import { BroadcastDating, reanchorDecision, withEpoch } from './broadcastDating.js';
+import { BroadcastDating, reanchorDecision, sharedResumePoint, withEpoch } from './broadcastDating.js';
 import { Clock, systemClock, Timer } from './Clock.js';
 import { DrainTimeoutError } from './DrainTimeoutError.js';
 import { ErrorHandler } from './ErrorHandler.js';
@@ -378,12 +378,15 @@ export class StreamOrchestrator {
    *
    * ⛔⛔ **This is how four webhooks are known to be one event, and nothing about the numbering can
    * say it.** A whole-encoder outage stops SRS's transcoders, so each rung announces its return
-   * separately, seconds apart, and the rungs of one ladder have to date the media they come back with
-   * identically or a level switch lands somewhere else. Two sequence-shaped rules were tried and both
-   * failed: a rung a segment behind its siblings resumes a LOWER sequence and a rung's own next
-   * return resumes a HIGHER one, and those overlap, so no arithmetic separates a sibling from a later
-   * return. The orchestrator is the only layer that sees the returns as they arrive, so it is the one
-   * that can name them. See {@link tokenForThisReturn} and {@link BroadcastEpoch.returnToken}.
+   * separately, seconds apart, and the rungs of one ladder have to resume at one sequence and date the
+   * media they come back with identically, or a level switch lands somewhere else. The name is what
+   * gives them both: the first rung of a return to place a segment fixes the sequence for all of them,
+   * and each later rung finds it on the epoch minted under the same name. See {@link resumePointOf}.
+   * Two sequence-shaped rules were tried for recognising the return and both failed, because the
+   * rungs had stopped at different counts and a rung's own next return resumes higher, so no
+   * arithmetic separated a sibling from a later return. The orchestrator is the only layer that sees
+   * the returns as they arrive, so it is the one that can name them. See {@link tokenForThisReturn}
+   * and {@link BroadcastEpoch.returnToken}.
    */
   private returnsInProgress = new Map<string, { token: string; resumedRungs: Set<string> }>();
   /** What became of each recently stopped stream, so a caller answered 202 can find out. */
@@ -2611,7 +2614,41 @@ export class StreamOrchestrator {
     return {
       epochFrom: (resumeAt, notBeforeMs, returnToken) =>
         this.reanchorBroadcast(datingKey, base, resumeAt, notBeforeMs, returnToken),
+      resumePointFor: (returnToken, ownResumeAt) => this.resumePointOf(datingKey, base, returnToken, ownResumeAt),
     };
+  }
+
+  /**
+   * The sequence every rung of this return resumes at, from the point the return already took and
+   * the count of every rung of the ladder that is still publishing. See `sharedResumePoint`.
+   *
+   * ⛔ Every live rung of the ladder counts, not only those that have said they are back. A rung whose
+   * return is late is still the one that may have counted furthest, and the first rung to place a
+   * segment fixes the point for the whole return.
+   *
+   * A lone rendition resumes at its own count, as it always has: it has no sibling to agree with.
+   */
+  private resumePointOf(datingKey: string, base: string | null, returnToken: string, ownResumeAt: number): number {
+    if (base === null) {
+      return ownResumeAt;
+    }
+    const epochs = this.broadcastAnchors.get(datingKey)?.epochs ?? [];
+    const taken = epochs.find((epoch) => epoch.returnToken === returnToken);
+    const ladderCounts = [...this.streamBases]
+      .filter(([, rungBase]) => rungBase === base)
+      .map(([streamId]) => {
+        const uploader = this.activeStreams.get(streamId);
+        return uploader === undefined || this.isDraining(streamId, uploader) ? null : uploader.nextSequence();
+      })
+      .filter((count) => count !== null);
+    if (taken !== undefined && taken.fromSequence < ownResumeAt) {
+      this.logger.warn(
+        `[StreamOrchestrator] A rung of ${base} resumes at its own sequence ${ownResumeAt}, above the ` +
+          `${taken.fromSequence} the rest of its return took, because it placed more segments from before the ` +
+          'outage after that point was fixed',
+      );
+    }
+    return sharedResumePoint(epochs, returnToken, ownResumeAt, ladderCounts);
   }
 
   /**

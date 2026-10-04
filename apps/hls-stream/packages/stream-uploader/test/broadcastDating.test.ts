@@ -9,6 +9,7 @@ import {
   reanchorDecision,
   reanchorEpoch,
   SAME_RESTART_TOLERANCE_MS,
+  sharedResumePoint,
   withEpoch,
 } from '../src/libs/broadcastDating.js';
 import { FRAGMENT_TOLERANCE } from '../src/libs/fragmentAgreement.js';
@@ -742,5 +743,37 @@ describe('what a re-anchoring reports about how it reached its epoch', () => {
     });
 
     assert.deepEqual(decision, { epoch: { fromSequence: 42, atMs: secondRestartAtMs }, joined: false });
+  });
+});
+
+describe('the sequence every rung of one return resumes at', () => {
+  const RETURN = 'one-return';
+
+  it('is the furthest any rung has counted, before the return has taken a point', () => {
+    assert.equal(sharedResumePoint([], RETURN, 331, [335, 331, 330]), 335);
+  });
+
+  it('is the point the return already took, for a rung that counted less', () => {
+    const epochs = [{ fromSequence: 335, atMs: 1, returnToken: RETURN }];
+
+    assert.equal(sharedResumePoint(epochs, RETURN, 331, []), 335);
+  });
+
+  it('reads no sibling again once the return has taken a point, since a sibling that resumed counted past it', () => {
+    const epochs = [{ fromSequence: 335, atMs: 1, returnToken: RETURN }];
+
+    assert.equal(sharedResumePoint(epochs, RETURN, 331, [338]), 335);
+  });
+
+  it('never resumes a rung below its own count', () => {
+    const epochs = [{ fromSequence: 335, atMs: 1, returnToken: RETURN }];
+
+    assert.equal(sharedResumePoint(epochs, RETURN, 337, []), 337);
+  });
+
+  it('ignores the point an earlier return took', () => {
+    const epochs = [{ fromSequence: 335, atMs: 1, returnToken: 'an-earlier-return' }];
+
+    assert.equal(sharedResumePoint(epochs, RETURN, 340, [341]), 341);
   });
 });

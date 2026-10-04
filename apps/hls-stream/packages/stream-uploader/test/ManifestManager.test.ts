@@ -39,6 +39,7 @@ function pinnedDating(atMs: number): BroadcastDating & { asked: { resumeAt: numb
       asked.push({ resumeAt, notBeforeMs });
       return { fromSequence: resumeAt, atMs };
     },
+    resumePointFor: (_returnToken, ownResumeAt) => ownResumeAt,
   };
 }
 
@@ -54,6 +55,7 @@ function ladderDating(anchor: BroadcastAnchor, nowMs: () => number): BroadcastDa
       held = withEpoch(held, epoch);
       return epoch;
     },
+    resumePointFor: (_returnToken, ownResumeAt) => ownResumeAt,
   };
 }
 
