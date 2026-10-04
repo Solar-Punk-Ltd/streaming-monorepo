@@ -1,12 +1,10 @@
+# Deliberately declares no `ports:`, for the reason engines/srs/docker-compose.local.yml gives. Compose
+# concatenates port lists across overlaid files rather than replacing them, so repeating a mapping here
+# adds a second claim on the same host port and `docker compose up` fails on allocation. The base
+# file's mappings are the only ones, and they already carry OME_HTTP_BIND, OME_SRT_BIND and the
+# configured ports on both sides.
 services:
   ome:
-    # OME_HTTP_BIND is restated here rather than left to the base file, because compose merges port
-    # lists and keeps two entries that differ in any field. Without it, a bind set for the base file's
-    # mapping would leave this path publishing 8081 twice, once bound and once on every interface,
-    # which both defeats the bind and claims the host port twice.
-    ports:
-      - '${OME_HTTP_BIND:-${DOCKER_BRIDGE_ADDRESS:-127.0.0.1}}:${OME_HLS_PORT:-8081}:8081'
-      - '${OME_SRT_BIND:-0.0.0.0}:${OME_SRT_PORT:-10080}:10080/udp'
     environment:
       OME_ADAPTER_HOST: host.docker.internal
     extra_hosts:

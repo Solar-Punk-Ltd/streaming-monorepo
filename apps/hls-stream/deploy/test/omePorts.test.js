@@ -151,6 +151,21 @@ describe('the ports OME binds', () => {
 });
 
 /**
+ * Compose concatenates port lists across overlaid files, so an engine's local overlay that repeats a
+ * mapping claims the same host port a second time and `pnpm ome:local` or `pnpm srs:local` fails on
+ * allocation. The base files carry every mapping.
+ */
+describe("the engines' local overlays", () => {
+  for (const engine of ['ome', 'srs']) {
+    it(`publishes no port of its own in engines/${engine}/docker-compose.local.yml`, () => {
+      const overlay = readFileSync(join(ROOT, `engines/${engine}/docker-compose.local.yml`), 'utf8');
+
+      assert.doesNotMatch(overlay, /^ {4}ports:/m);
+    });
+  }
+});
+
+/**
  * Where the uploader pulls OME's HLS from. OME listens on OME_HLS_PORT inside the container, so on the
  * bridge the uploader dials that port by service name. A fixed 8081 there reaches nothing on any
  * deployment that moves the port, as every slotted one does.
