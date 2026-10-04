@@ -209,7 +209,8 @@ export interface ProfileEnvValues {
 
   /**
    * The generated secrets the deployment's stack version requires, for
-   * example API_AUTH_TOKEN and SRS_WEBHOOK_TOKEN on main-v3. Written at the
+   * example API_AUTH_TOKEN and SRS_WEBHOOK_TOKEN on a version whose contract
+   * lists them in requiredSecrets. Written at the
    * root, where compose interpolates both the uploader's and the engine's copy
    * from, and where deploy.sh lets the root file win over the engine env.
    *

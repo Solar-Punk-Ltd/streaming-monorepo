@@ -119,7 +119,7 @@ after(async () => {
 });
 
 /**
- * A running SRS stream on main-v3, the version whose contract names its
+ * A running SRS stream on with-secrets, the version whose contract names its
  * generated secrets. Stamped, because the mock starts an uploader only for a
  * deployment that has a batch to pay with.
  */
