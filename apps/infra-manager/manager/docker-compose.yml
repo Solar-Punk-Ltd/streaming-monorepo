@@ -13,8 +13,9 @@ services:
       POSTGRES_USER: manager
     volumes:
       - manager-pg:/var/lib/postgresql/data
-    ports:
-      - '127.0.0.1:5432:5432'
+    # No published port. The api reaches it by service name on the project
+    # network, so a host Postgres on 5432 does not collide with it. `pnpm dev`
+    # on the host gets a loopback port from docker-compose.dev.yml.
     healthcheck:
       test: ['CMD-SHELL', 'pg_isready -U manager -d manager']
       interval: 5s
