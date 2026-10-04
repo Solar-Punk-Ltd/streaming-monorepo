@@ -315,7 +315,7 @@ resolve_bee_url() {
 host_network_api_host() {
   local listen="$1"
   case "$listen" in
-    '') echo "$(host_network_listen)" ;;
+    '') host_network_listen ;;
     0.0.0.0 | '::' | '[::]') echo "localhost" ;;
     *) echo "$listen" ;;
   esac
