@@ -331,14 +331,18 @@ function availableBzz(line: string): number | null {
 type GatewayReader = () => Promise<string>;
 
 /**
- * ⛔ `cfg.localHostAddress` rather than a loopback literal, because these five reads are one shell
- * line handed to {@link Host.run} and so never pass through `Host.localJson`, which is where every
- * other gateway read gets that address applied. In a container with a network namespace of its own
- * loopback names nothing, and a sampler dialling it records every minute as unanswered, which reads
- * exactly like a gateway that was asked and said nothing.
+ * ⛔ The address comes from {@link Host.dialAddress} rather than a literal, because these five reads
+ * are one shell line handed to {@link Host.run} and so never pass through `Host.localJson`, which is
+ * where every other gateway read gets it. The gateway's Bee API binds to the deployment host's Docker
+ * bridge address by default, and a container with a network namespace of its own has nothing on its
+ * loopback, so a sampler dialling a literal records every minute as unanswered, which reads exactly
+ * like a gateway that was asked and said nothing.
  */
 export function gatewayReader(host: Host, cfg: E2EConfig): GatewayReader {
-  return async () => (await host.run(sampleCommand(cfg.ports.beeGatewayApi, cfg.localHostAddress))).stdout;
+  return async () => {
+    const address = await host.dialAddress(cfg.ports.beeGatewayApi);
+    return (await host.run(sampleCommand(cfg.ports.beeGatewayApi, address))).stdout;
+  };
 }
 
 /** One sample, with every failure recorded rather than raised. */

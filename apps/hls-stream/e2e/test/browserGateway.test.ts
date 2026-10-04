@@ -663,43 +663,42 @@ describe('summarizing what the gateway did during a run', () => {
  * Where the sampler dials the gateway.
  *
  * ⛔ Its five curls are one shell line handed to `Host.run`, so they never pass through
- * `Host.localJson` and were the one gateway read that kept its own loopback literal. In a container
- * with a network namespace of its own that names nothing, and every sample would come back
- * unanswered: a gateway starved of a route reads exactly like a gateway that answered nothing.
+ * `Host.localJson` and have to ask the host for the address themselves. The gateway's Bee API binds
+ * to the deployment host's Docker bridge address by default, and a sampler dialling loopback there
+ * would record every sample as unanswered: a gateway that was never reached reads exactly like a
+ * gateway that answered nothing.
  */
 describe('the address the gateway sampler dials', () => {
-  function recordingHost(): { host: Host; commands: string[] } {
+  function recordingHost(address: string): { host: Host; commands: string[]; asked: number[] } {
     const commands: string[] = [];
+    const asked: number[] = [];
     return {
       commands,
+      asked,
       host: {
         run: async (command: string) => {
           commands.push(command);
           return { stdout: '', stderr: '' };
         },
+        dialAddress: async (port: number) => {
+          asked.push(port);
+          return address;
+        },
       } as unknown as Host,
     };
   }
 
-  it('dials loopback when the config names no other address', async () => {
-    const { host, commands } = recordingHost();
+  it('dials the gateway where the host dials its port, for every one of its five reads', async () => {
+    const { host, commands, asked } = recordingHost('172.17.0.1');
 
     await gatewayReader(host, cfgWith('localhost'))();
 
-    assert.match(commands[0], /http:\/\/localhost:11077\/health/);
-    assert.equal(commands[0].includes('host.docker.internal'), false);
-  });
-
-  it('dials the configured address for every one of its five reads', async () => {
-    const { host, commands } = recordingHost();
-
-    await gatewayReader(host, cfgWith('host.docker.internal'))();
-
+    assert.deepEqual(asked, [GATEWAY_PORT]);
     const dialled = commands[0].match(/http:\/\/[^/]+/g) ?? [];
     assert.equal(dialled.length, 4, 'the sampler reads health, chequebook, balances and status');
     assert.deepEqual(
       [...new Set(dialled)],
-      ['http://host.docker.internal:11077'],
+      ['http://172.17.0.1:11077'],
       'one read kept loopback, so that reading would be missing rather than wrong',
     );
   });
