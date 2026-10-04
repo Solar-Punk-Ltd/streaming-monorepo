@@ -46,6 +46,6 @@ describe('bench-on-host leaves out the folders BENCH_SYNC_EXCLUDE names', () => 
 
     await runScriptOk(box, 'bench-on-host.sh', ['--target', BENCH_TARGET, ...BENCH_STAGE, '--setup-only']);
 
-    assert.deepEqual(excludes(box.rsyncArgv()), ['.git', 'node_modules', 'reports', 'docs/bench']);
+    assert.deepEqual(excludes(box.rsyncArgv()), ['.git', 'node_modules', 'reports', 'bench-results']);
   });
 });
