@@ -1,9 +1,9 @@
 /**
- * Who is allowed to take a stream id that another session is already publishing on. See SEC-26.
+ * Who is allowed to take a stream id that another session is already publishing on.
  *
- * The behaviour under test is a narrowing of CON-16, so both halves are pinned here rather than only
+ * The behaviour under test is a narrowing of the rule that lets a restarted engine re-announce, so both halves are pinned here rather than only
  * the new refusal: a build that refuses every re-announce would close the hole and break every
- * reconnect, and a build that accepts every one is what SEC-26 describes.
+ * reconnect, and a build that accepts every one is the takeover hole itself.
  */
 
 import assert from 'node:assert/strict';
@@ -80,7 +80,7 @@ async function publishOneSegment({ orch, saved }: Harness, index: number): Promi
 
 describe('taking over a stream id that is already being published', () => {
   /**
-   * SEC-26. The app and stream are public, since they are in every HLS URL, so this costs the attacker
+   * The app and stream are public, since they are in every HLS URL, so this costs the attacker
    * one connect. What made it work is that the opening path never asked who was announcing: the live
    * session was retired and finalized as a VOD before anything compared the newcomer to it.
    */
@@ -113,7 +113,7 @@ describe('taking over a stream id that is already being published', () => {
   });
 
   /**
-   * CON-16's case, which this must not break. A media engine restarted without sending its unpublish
+   * The restart case, which this must not break. A media engine restarted without sending its unpublish
    * re-announces the same broadcaster, and rejecting that leaves them unable to resume at all.
    *
    * ⚠️ **Since 2026-09-22 an allowed announce resumes the live session rather than replacing it,
@@ -549,7 +549,7 @@ describe('taking over a stream id that is already being published', () => {
 });
 
 /**
- * What a proven publish key changes about the rules above. See SEC-28.
+ * What a proven publish key changes about the rules above.
  *
  * Every test in the block above judges an announce by the address the engine reported, which is
  * circumstantial in both directions: it cannot separate two publishers behind one egress, and it
@@ -558,11 +558,11 @@ describe('taking over a stream id that is already being published', () => {
  * all.
  *
  * The claimants here carry no address on purpose in most cases, so what is under test is the key and
- * not a second reading of the SEC-26 rule.
+ * not a second reading of the address rule.
  */
 describe('taking over a stream id with a proven publish key', () => {
   /**
-   * The case SEC-26 named as its own first residual, and could not fix: an attacker sharing the
+   * The case the address rule names as its own first residual, and could not fix: an attacker sharing the
    * victim's egress address is indistinguishable from the victim. Turned around here, it is the
    * legitimate broadcaster who was indistinguishable from an attacker whenever their address moved,
    * and who had to wait out the whole stall window to get their own id back.
@@ -597,7 +597,7 @@ describe('taking over a stream id with a proven publish key', () => {
   });
 
   /**
-   * SEC-26's other stated residual. Its guard is symmetric, so it protects whoever arrived first,
+   * The address rule's other stated residual. Its guard is symmetric, so it protects whoever arrived first,
    * which protects a squatter who claims an id and keeps feeding it just as firmly as it protects a
    * real broadcaster. `POST /stream/stop` was the only answer, and it needs an operator.
    *
@@ -669,7 +669,7 @@ describe('taking over a stream id with a proven publish key', () => {
    * `segmentStallMs` gets nothing, because the escape hatch exists for a broadcaster who cannot be
    * identified and this one can be.
    *
-   * Asserted past the window on purpose. Without that advance the announce is refused by the SEC-26
+   * Asserted past the window on purpose. Without that advance the announce is refused by the address
    * rule anyway, and the test would pass against a build that ignores authentication entirely.
    */
   it('refuses an unproven announce against a proven incumbent, even long after it went quiet', async () => {
@@ -698,8 +698,8 @@ describe('taking over a stream id with a proven publish key', () => {
    *
    * ⛔ This is also the shape every deployment that matters takes: in admin mode and under
    * `PUBLISH_KEY_SECRET` every publish proves a key, so an encoder that stopped and came back is two
-   * proven claimants and RESUMES its own broadcast whatever its address did in between. The owner's
-   * cases 1 and 2 are exactly this row.
+   * proven claimants and RESUMES its own broadcast whatever its address did in between. That is
+   * exactly this row.
    */
   it('lets the key holder back in against a proven incumbent, resuming their broadcast', async () => {
     const harness = makeHarness();
@@ -722,7 +722,7 @@ describe('taking over a stream id with a proven publish key', () => {
 
   /**
    * The recovered-stream case, which is where the stall window cost the most. Nothing on record says
-   * who was broadcasting a stream this process restored after its own restart, so under SEC-26 alone
+   * who was broadcasting a stream this process restored after its own restart, so under the address rule alone
    * the real owner reconnecting to it is a stranger and waits out the window like anyone else. A key
    * answers the question the record cannot.
    */
@@ -757,7 +757,7 @@ describe('taking over a stream id with a proven publish key', () => {
 
   /**
    * A refused announce must not leave the incumbent looking unproven to the next one. The claimant is
-   * recorded where the session is spawned, so this is the mirror of the SEC-26 test above: it pins
+   * recorded where the session is spawned, so this is the mirror of the address-rule test above: it pins
    * that the *authentication* half survives a refusal too, and not just the address half.
    */
   it('keeps the incumbent proven after refusing an announce', async () => {
@@ -781,7 +781,7 @@ describe('taking over a stream id with a proven publish key', () => {
   });
 
   /**
-   * The mirror of SEC-26's own draining test, one field along, and the case the proven-incumbent
+   * The mirror of the address rule's own draining test, one field along, and the case the proven-incumbent
    * branch got wrong by returning before anything asked whether the session was still there.
    *
    * A drained session has already stopped. `handleSegment` answers `draining` to anything it sends,

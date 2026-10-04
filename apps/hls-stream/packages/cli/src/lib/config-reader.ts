@@ -47,7 +47,7 @@ export function getEnvPath(): string {
  * service as localhost. So a config.json with one trailing comma silently pointed `pnpm stamp:setup`
  * at localhost, on a machine whose bee node is somewhere else entirely, and bought the batch there.
  * A missing file keeps the empty default because that is the fresh-clone case setup.sh exists to
- * fix, and localhost is the right guess when nobody has said otherwise. See OPS-8.
+ * fix, and localhost is the right guess when nobody has said otherwise.
  */
 export function readDeployConfig(path: string): DeployConfig {
   let raw: string;
@@ -225,7 +225,7 @@ export function resolvePublisherTargets(): NamedTarget[] {
     }));
   }
 
-  // Set, but nothing in it could be read. This is the OPS-8 mistake on a different variable: reading
+  // Set, but nothing in it could be read. This is the same mistake as an unreadable config.json, on a different variable: reading
   // it as the single node would buy on and report the one uploader while every rung BEE_PUBLISHERS
   // names went unchecked, on the command whose whole job is catching a batch filling silently. An
   // unquoted `#` is the usual cause, because dotenv truncates the value at the first one and hands

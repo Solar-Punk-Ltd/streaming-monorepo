@@ -246,7 +246,7 @@ describe('metrics exposition format', () => {
   });
 });
 
-describe('GET /metrics (S2.7, OBS-7)', () => {
+describe('GET /metrics (S2.7)', () => {
   const servers: ApiTestServer[] = [];
   after(async () => {
     await Promise.all(servers.map((server) => server.close()));
@@ -356,7 +356,7 @@ describe('GET /metrics (S2.7, OBS-7)', () => {
    * The reason these exist rather than more `/health` fields. `/health` describes the streams that are
    * registered now, so at the moment a live session is wrongly killed it answers `ok` with
    * `activeStreams: 0`: the healthiest reading it can give is also the worst state it can be in. A
-   * total outlives the stream it counted. See OBS-17.
+   * total outlives the stream it counted.
    */
   it('keeps its totals after every stream it counted is gone', async () => {
     const api = await start(makeTestOrchestrator());

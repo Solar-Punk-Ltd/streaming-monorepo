@@ -36,7 +36,7 @@ export function assertUsableWebhookToken(token: string): void {
  *
  * Constant-time, for the same reason the API gate is: a comparison that returns on the first
  * differing byte leaks how much of the secret the caller already has. An empty configured token
- * rejects rather than disabling the check, which is the SEC-3 lesson: the empty string is a value
+ * rejects rather than disabling the check, since the empty string is a value
  * anyone can supply. That guard is load-bearing rather than defensive: two empty strings encode to
  * two zero-length buffers, which `timingSafeEqual` reports as equal.
  *

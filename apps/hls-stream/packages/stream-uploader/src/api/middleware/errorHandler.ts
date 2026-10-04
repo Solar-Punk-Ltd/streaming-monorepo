@@ -55,7 +55,7 @@ function isAnswerableClientStatus(declared: unknown): declared is number {
  * caller, rather than matched on the parser's `type` strings. A malformed or oversized body is the
  * sender's fault and has to be answered as such: as a 500 it was indistinguishable from a service
  * that had broken, and since these parsers run on routes with no gate in front of them, an anonymous
- * caller could drive both the 5xx rate and the ERROR log channel that operators alert on. See SEC-12.
+ * caller could drive both the 5xx rate and the ERROR log channel that operators alert on.
  */
 function clientErrorStatus(err: Error): number | undefined {
   const { status, statusCode, expose } = err as Error & {

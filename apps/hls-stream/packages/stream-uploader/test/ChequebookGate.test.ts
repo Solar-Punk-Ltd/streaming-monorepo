@@ -333,8 +333,8 @@ describe('what a refusal says about the node url', () => {
  * ⛔ **Under `warn` the first bad node used to be the only one an operator heard about.**
  *
  * The loop above throws at the first refusal, which is right when the refusal stops the boot: there
- * is nothing to learn from the second node when the service is not going to start. Since the owner's
- * ruling of 2026-09-17 the service does start, so that same throw meant a four rung stage reported
+ * is nothing to learn from the second node when the service is not going to start. Now that the
+ * service starts anyway, that same throw meant a four rung stage reported
  * one rung per boot and an operator fixed them one restart at a time.
  *
  * Handing the gate somewhere to put a refusal changes that and nothing else. Every node is read, each

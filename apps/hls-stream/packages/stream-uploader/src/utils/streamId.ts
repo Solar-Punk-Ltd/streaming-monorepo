@@ -12,7 +12,7 @@
  * Before it was shared, only the first end had it, and the schema's docstring asserted that the
  * shape "is what the engines already produce", which was false: a name containing a backslash came
  * out of `parseAppStream`, was admitted, and then could not be named to `POST /stream/stop` because
- * this pattern refused it. See SEC-25.
+ * this pattern refused it.
  */
 export const STREAM_ID_SEGMENT = '[A-Za-z0-9][A-Za-z0-9._-]*';
 

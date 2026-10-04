@@ -400,7 +400,7 @@ export class StreamUploader {
   private catalogAnnounceFailedAt: number | null = null;
   private lastCatalogAnnounceAt: number | null = null;
   private readonly catalogAnnounceRetryMs: number;
-  /** When this stream's state first failed to reach disk and has not since landed. See OBS-4. */
+  /** When this stream's state first failed to reach disk and has not since landed. */
   private statePersistFailedAt: number | null = null;
   private readonly metrics?: ServiceMetrics;
   /** Playing time of everything still queued, in seconds, which is how far behind live this stream is. */
@@ -1660,7 +1660,7 @@ export class StreamUploader {
       // Deferred means bee acks the SOC from its own local store and push-syncs it in the
       // background, so the publish reports success while the chunk is still only local and a
       // viewer's gateway is told about a segment it cannot yet resolve. This was deferred until
-      // LAT-10 measured what that costs: worst capture-to-fetchable 14.04s and 14.53s over two
+      // a measurement showed what that costs: worst capture-to-fetchable 14.04s and 14.53s over two
       // 30-minute broadcasts, against 9.04s and 9.27s with the synchronous write, and the buffer a
       // player needs 12.08s against 7.08s.
       //

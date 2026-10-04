@@ -225,11 +225,11 @@ describe('a live stream whose engine dies without saying so', () => {
   });
 
   /**
-   * The disconnect arm of the same window, and the one the owner's cases 3 and 5 are about.
+   * The disconnect arm of the same window, and the one an encoder that keeps reconnecting is about.
    *
    * ⛔ **A disconnect starts no window of its own.** The window is the reaper's and it runs from the
    * last media, so a broadcast whose encoder leaves ends one window after its last segment rather
-   * than one window after the webhook. Case 5 is the reason: a broadcaster reconnecting every few
+   * than one window after the webhook. The reason: a broadcaster reconnecting every few
    * seconds and never sending a frame would otherwise hold a recording with no media in it open for
    * as long as it kept trying.
    */
@@ -259,7 +259,7 @@ describe('a live stream whose engine dies without saying so', () => {
   });
 
   /**
-   * Case 5 in full. Connection attempts that never deliver a frame must not keep a dead recording
+   * Connection attempts that never deliver a frame must not keep a dead recording
    * open, and an announce is not media.
    *
    * ⛔ Six announces move the deadline by exactly one grace, which is what one announce moves it by.
@@ -395,7 +395,7 @@ describe('a live stream whose engine dies without saying so', () => {
   /**
    * The one behaviour this fix takes away, stated here rather than left to be discovered.
    *
-   * SEC-28 gave a proven publish key an unconditional hold on its stream id: an unproven announce was
+   * A proven publish key had an unconditional hold on its stream id: an unproven announce was
    * refused however long the incumbent had been quiet, because the incumbent session lived for as
    * long as the process did. Now that broadcast ends when its engine does, and `retireSession` drops
    * the claim with it, so the id becomes free.
@@ -406,7 +406,7 @@ describe('a live stream whose engine dies without saying so', () => {
    * incumbent. What an operator gives up is squatting protection on an id whose broadcast has already
    * ended, and what they get back is that the broadcast ends at all.
    */
-  it('frees a proven incumbent id once the reaper has ended that broadcast (narrows SEC-28)', async () => {
+  it('frees a proven incumbent id once the reaper has ended that broadcast (narrows the publish-key hold)', async () => {
     const harness = makeHarness();
     const { orch, clock } = harness;
 

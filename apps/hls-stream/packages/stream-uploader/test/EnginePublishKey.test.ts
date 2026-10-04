@@ -1,5 +1,5 @@
 /**
- * That each engine actually reads the publish key out of what it was sent, and acts on it. See SEC-28.
+ * That each engine actually reads the publish key out of what it was sent, and acts on it.
  *
  * The same argument as `EngineClaimant.test.ts`, one field along, and the same failure mode it was
  * written for. `StreamTakeover.test.ts` drives `startStream` directly, so it pins what the guard does
@@ -8,7 +8,7 @@
  * who presented nothing, and the whole feature is off with a green suite.
  *
  * That is not hypothetical here: the gate's correctness lens established that both call sites were in
- * exactly that state for SEC-26's address, and this field arrives through the same two webhooks.
+ * exactly that state for the publisher address, and this field arrives through the same two webhooks.
  *
  * The bodies below are shaped from captures taken on 2026-08-03 against `airensoft/ovenmediaengine:latest`
  * and `ossrs/srs:6`, the images this deployment ran then. `param` really does arrive with its leading `?`.
@@ -58,7 +58,7 @@ interface OmeReply {
  * `port` and `timeMs` are the two session discriminators `reasonToIgnoreClosing` matches a closing on,
  * so a closing meant to be *acted on* has to carry its own opening's port and a time at or after it.
  * Get either wrong and the closing is discarded as `replaced` or `already-closed`, which looks
- * identical from the orchestrator to the refusal these tests are about. See CON-21 and CON-23.
+ * identical from the orchestrator to the refusal these tests are about.
  */
 interface AdmissionOptions {
   status?: 'opening' | 'closing';
@@ -145,7 +145,7 @@ interface OmeHarness {
   announce: (address: string, query: string) => Promise<OmeReply>;
   /** An admission for any publish url at all, for the ones that must not parse. */
   announceUrl: (address: string, url: string) => Promise<OmeReply>;
-  /** A `closing` for `STREAM_ID`, matching the opening's session. See SEC-29. */
+  /** A `closing` for `STREAM_ID`, matching the opening's session. */
   close: (address: string, query: string) => Promise<OmeReply>;
   orchestrator: StreamOrchestrator;
 }
@@ -213,8 +213,8 @@ async function liveStreamFedOnce(orchestrator: StreamOrchestrator): Promise<void
 
 describe('the publish key OME reads out of an admission', () => {
   /**
-   * The end-to-end shape of SEC-28, driven through the real router: an announce from an address the
-   * SEC-26 guard would refuse, allowed because it proved the key. If the engine stopped extracting
+   * The end-to-end shape of the publish key, driven through the real router: an announce from an address the
+   * address guard would refuse, allowed because it proved the key. If the engine stopped extracting
    * the key this would be a refusal, which is a failure this test can see and the suite otherwise
    * could not.
    */
@@ -323,7 +323,7 @@ describe('the publish key OME reads out of an admission', () => {
       assert.equal(
         (await announce(STRANGER, '')).allowed,
         false,
-        'and SEC-26 is still the rule that applies when nobody proved anything',
+        'and the address rule still applies when nobody proved anything',
       );
     });
   });
@@ -427,7 +427,7 @@ describe('the publish key SRS reads out of an on_publish', () => {
       assert.equal(await announce(BROADCASTER, null), 0);
       await liveStreamFedOnce(orchestrator);
 
-      assert.equal(await announce(STRANGER, null), 1, 'and SEC-26 is still the rule when nobody proved anything');
+      assert.equal(await announce(STRANGER, null), 1, 'and the address rule still applies when nobody proved anything');
     });
   });
 
@@ -471,19 +471,19 @@ describe('the publish key SRS reads out of an on_publish', () => {
    *
    * ⚠️ **It reports the disconnect where it used to finalize**, so what this reads is the session
    * being held and said to be waiting rather than the id going free. The credential rule is what the
-   * test is about and it is unchanged: a screened-clean unpublish is acted on, and the SEC-29 block
+   * test is about and it is unchanged: a screened-clean unpublish is acted on, and the stop-path block
    * below holds every refusal. What a held session then does is `ReconnectWindow.test.ts`.
    *
-   * **This test used to assert the opposite and its reasoning was wrong.** It was written for SEC-28
+   * **This test used to assert the opposite and its reasoning was wrong.** It was written for the publish key
    * as "does not require a key on an unpublish", arguing that screening the close path would strand
    * every stream whose broadcaster dropped, since the unpublish would be refused and the stream would
    * sit live until the recovery timeout. That rested on an unpublish carrying no key, and it was
    * driven with no `param` at all as "the strictest form of the claim". SRS sends no such thing. In a
    * capture on 2026-08-03 against `ossrs/srs:6`, killing the publisher produced an unpublish carrying
    * `param` identical to its own publish, key included, so the disconnect case screens clean and the
-   * stranding this was written to prevent cannot arise from a real engine. See SEC-29.
+   * stranding this was written to prevent cannot arise from a real engine.
    *
-   * The SEC-29 block below covers the refusals with a recording orchestrator, which answers whether
+   * The stop-path block below covers the refusals with a recording orchestrator, which answers whether
    * `stopStream` was called and not whether a stream actually finalizes. This one keeps that half.
    */
   it('acts on an unpublish carrying the key its publish carried', async () => {
@@ -645,14 +645,14 @@ describe('saying out loud when publisher authentication is off', () => {
     });
 
     assert.match(logged, /No PUBLISH_KEY_SECRET configured/);
-    assert.match(logged, /SEC-28/);
+    assert.match(logged, /judged only by the address/);
   });
 
   it('SRS warns when no secret is configured', () => {
     const logged = warningsWhileBuilding(() => createSrsEngine('/srv/media', { webhookToken: SRS_TOKEN }));
 
     assert.match(logged, /No PUBLISH_KEY_SECRET configured/);
-    assert.match(logged, /SEC-28/);
+    assert.match(logged, /judged only by the address/);
   });
 
   it('says nothing of the sort once a secret is configured', () => {
@@ -665,7 +665,7 @@ describe('saying out loud when publisher authentication is off', () => {
 });
 
 /**
- * That the publish key gates stopping a stream, not only starting one. See SEC-29.
+ * That the publish key gates stopping a stream, not only starting one.
  *
  * **What this is not.** It is not an unauthenticated takedown. Measured on 2026-08-03 against
  * `ossrs/srs:6`: a publish the hook rejects produces no `on_unpublish` at all, so a stranger cannot
@@ -673,7 +673,7 @@ describe('saying out loud when publisher authentication is off', () => {
  * carried the accepted session's own `client_id` and `param`. Both close paths also sit behind an
  * engine credential already, the webhook token here and the admission signature on the OME side.
  *
- * **What it is.** After SEC-28, starting a stream needs two credentials and stopping one needed only
+ * **What it is.** With a publish key, starting a stream needs two credentials and stopping one needed only
  * the engine's, so anything that could replay or forge an engine webhook could end a broadcast that
  * it could not have started. Both engines carry the key on the close webhook, so closing the gap
  * costs one comparison on a path that already had the value in hand.
@@ -683,7 +683,7 @@ describe('saying out loud when publisher authentication is off', () => {
  * a stream is still live, which is a race that reports the machine's load. `stops` answers the actual
  * question with no clock in it.
  */
-describe('the publish key on the path that stops a stream (SEC-29)', () => {
+describe('the publish key on the path that stops a stream', () => {
   /** Answers every playlist poll with a 404 so the puller an accepted announce starts stays quiet. */
   const silentFetcher = async (): Promise<Response> => new Response('', { status: 404 });
 
@@ -736,7 +736,7 @@ describe('the publish key on the path that stops a stream (SEC-29)', () => {
      * Stream ids the engine reported a disconnect for, in order.
      *
      * ⛔ **This is what an SRS unpublish now asks for, and it is what every assertion below reads.**
-     * The credential rule SEC-29 states is unchanged — a forged or keyless unpublish must not reach
+     * The credential rule is unchanged — a forged or keyless unpublish must not reach
      * the orchestrator at all — and only the call it makes when it does has moved. `stops` is kept
      * beside it so a build that went back to finalizing on this webhook fails rather than passes.
      */
@@ -828,7 +828,11 @@ describe('the publish key on the path that stops a stream (SEC-29)', () => {
         assert.equal((await announce('')).allowed, true);
 
         await close('');
-        assert.deepEqual(stops, [STREAM_ID], 'SEC-29 must not change a deployment that never opted in');
+        assert.deepEqual(
+          stops,
+          [STREAM_ID],
+          'screening the close path must not change a deployment that never opted in',
+        );
       });
     });
   });
@@ -882,7 +886,11 @@ describe('the publish key on the path that stops a stream (SEC-29)', () => {
         assert.equal(await announce(null), 0);
 
         await unpublish(null);
-        assert.deepEqual(disconnects, [STREAM_ID], 'SEC-29 must not change a deployment that never opted in');
+        assert.deepEqual(
+          disconnects,
+          [STREAM_ID],
+          'screening the close path must not change a deployment that never opted in',
+        );
         assert.deepEqual(stops, []);
       });
     });
@@ -890,22 +898,21 @@ describe('the publish key on the path that stops a stream (SEC-29)', () => {
 });
 
 /**
- * That a publish-key refusal reaches `msSinceAuthRejection`, which is what `/health` judges. See
- * OBS-15.
+ * That a publish-key refusal reaches `msSinceAuthRejection`, which is what `/health` judges.
  *
- * **Measured against the live deployment on 2026-08-03, not argued.** A keyless publish to the
- * `latbench` stack was refused, the uploader logged it, `activeStreams` stayed 0, and `/health` still
+ * **Measured against the live deployment on 2026-08-03, not argued.** A keyless publish to a
+ * bench stack was refused, the uploader logged it, `activeStreams` stayed 0, and `/health` still
  * reported `msSinceAuthRejection: null`. So a deployment being probed on the one credential that
  * separates a broadcaster from anyone who knows the stream name showed nothing at all.
  *
  * The cause is that `createAuthRejectionObserver` counts HTTP 401 and only that. OME's *signature*
- * refusal does set 401 and was therefore covered, which is why OBS-15's own note claims every gate is
+ * refusal does set 401 and was therefore covered, which is why the original design claims every gate is
  * covered by observing rather than self-reporting. Both publish-key refusals answer **200** carrying
  * an engine-protocol body, because that is what the engine's protocol requires of them, so the
  * observer never sees them. Observing the status code cannot be made to work here, and the refusal
  * sites report themselves instead.
  */
-describe('a refused publish key reaches the health signal (OBS-15)', () => {
+describe('a refused publish key reaches the health signal', () => {
   it('OME records a refused opening', async () => {
     await withOme(PUBLISH_SECRET, async ({ announce, orchestrator }) => {
       assert.equal(orchestrator.getHealthSignals().msSinceAuthRejection, null, 'nothing refused yet');
@@ -967,7 +974,7 @@ describe('a refused publish key reaches the health signal (OBS-15)', () => {
 });
 
 /**
- * Publisher authentication with the ladder on. See SEC-28.
+ * Publisher authentication with the ladder on.
  *
  * ABR had folded "is this a stream we publish" and "is this publisher allowed" into one `isPublishable`
  * gate that answered SRS_ACCEPT above the key check. With the ladder on, a real broadcaster lands on
@@ -980,7 +987,7 @@ describe('a refused publish key reaches the health signal (OBS-15)', () => {
  * rung, which SRS republishes from loopback onto the ABR vhost with no key, is admitted only by that
  * loopback origin and by its base stream having authenticated. No secret is written into any conf.
  */
-describe('the SRS publisher auth with the ladder on (SEC-28)', () => {
+describe('the SRS publisher auth with the ladder on', () => {
   const LADDER_SPEC = '720p:1280:720:2800 360p:640:360:700';
   const ABR_VHOST = 'abr';
   const INGEST_VHOST = '__defaultVhost__';
@@ -995,7 +1002,7 @@ describe('the SRS publisher auth with the ladder on (SEC-28)', () => {
     stops: string[];
     /** Stream ids the engine reported a disconnect for, which is what an unpublish now asks for. */
     disconnects: string[];
-    /** How many refusals reached `/health` through `recordAuthRejection`. See OBS-15. */
+    /** How many refusals reached `/health` through `recordAuthRejection`. */
     authRejections: number;
   }
 

@@ -64,7 +64,7 @@ const MAX_CHEQUEBOOK_RECHECK_MS = 3_600_000;
  * those batches could have carried, which is a gate failing closed on work it was never meant to
  * stop. The correction to an hour landed the same day and overshot the other way: an hour is
  * shorter than a single booked broadcast, so the gate would admit a batch that expires part way
- * through and takes the broadcast with it. The owner ruled twelve later that day, in the middle.
+ * through and takes the broadcast with it. Twelve, the shipped default, sits in the middle.
  */
 const DEFAULT_STAMP_MIN_TTL_HOURS = 12;
 const MAX_STAMP_MIN_TTL_HOURS = 24 * 365;
@@ -231,7 +231,7 @@ export const config = {
   /**
    * Which of the two startup gates stops the uploader when it cannot clear a node.
    *
-   * The owner ruled the two apart on 2026-09-17: the chequebook gate warns and the postage gate
+   * The two gates are treated apart: the chequebook gate warns and the postage gate
    * refuses a reading the node answered while warning on one it could not get, which is
    * `chequebook-warn` and the shipped default. `warn` is both warning, `refuse` is both refusing. See
    * `libs/StartGates.ts` for why a full batch is not the same risk as a low chequebook.
@@ -318,7 +318,7 @@ export const config = {
   orphanReapMs: optionalInt('ORPHAN_REAP_MS', 60000, { min: 1 }),
   // Deliberately far above anything reachable: what an engine can re-deliver is bounded by its
   // playlist window, which is single digits of segments. The number exists to bound memory, not to
-  // tune behaviour, so it is set where changing it can never change what is accepted. See CON-8.
+  // tune behaviour, so it is set where changing it can never change what is accepted.
   segmentDedupWindow: optionalInt('SEGMENT_DEDUP_WINDOW', 10000, { min: 1 }),
   /**
    * Erasure-coding parity on segment uploads. `0` turns parity off, which cuts upload bytes and,

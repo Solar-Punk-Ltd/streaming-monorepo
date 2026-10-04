@@ -109,7 +109,7 @@ async function refusalFrom(publishers: readonly StampedPublisher[]): Promise<str
  * id stays perfectly valid: it fills, or it expires. Both arrive as a failed upload mid-broadcast
  * rather than as anything an operator saw coming.
  *
- * Found 2026-08-31 when the owner asked what the new per-rung nodes would need. The shipped latbench
+ * Found 2026-08-31 when working out what the new per-rung nodes would need. The shipped
  * batch was measured that same hour at **90.6% used**, immutable, with nothing anywhere reading it.
  */
 describe('PostageGate', () => {
@@ -372,8 +372,8 @@ describe('PostageGate', () => {
 /**
  * ⛔ **One rung per boot is what the first-failure throw reports once the service starts anyway.**
  *
- * Stopping at the first refusal is right when the refusal stops the boot, and wrong from the owner's
- * ruling of 2026-09-17 onwards: under `warn` the uploader runs, so a stage with two exhausted batches
+ * Stopping at the first refusal is right when the refusal stops the boot, and wrong once the uploader starts anyway:
+ * under `warn` the uploader runs, so a stage with two exhausted batches
  * told an operator about one of them and kept the other until the next restart. Given somewhere to
  * put a refusal this reads every rung and hands each one over. The runner always hands one over, and
  * under `refuse` that collector throws at the first refusal, so the no-collector path below is a
@@ -483,7 +483,7 @@ describe('which node a postage refusal names', () => {
  * A 404 from `/stamps/<id>` is the node saying it does not hold this batch, and every upload on
  * that rung would fail the same way. A timeout, a 502 or an answer with nothing readable in it says
  * only that no reading arrived, which is what the live host hit on 2026-09-16 against a pool
- * address with no node behind it. The owner ruled on 2026-09-17 that the shipped mode refuses the
+ * address with no node behind it. The shipped mode refuses the
  * first and warns about the second, so the gate marks every refusal with which one it is and
  * `runStartGates` decides what the boot does about it.
  *

@@ -7,7 +7,7 @@ import { Rendition } from '../types.js';
  * cannot finish never will.** Measured live 2026-09-23: 1080p's postage batch filled, its closing
  * playlist and its recording were refused with 402, and the orchestrator force-stopped it two seconds
  * before 360p, 480p and 720p finalized. The catalog entry then said `live` with no index for good, so
- * viewers were shown a dead live broadcast and never the recording three rungs had made. Owner ruling:
+ * viewers were shown a dead live broadcast and never the recording three rungs had made. The rule:
  * the broadcast is listed as finished with the rungs that did finish, and a rung that finishes later is
  * added then.
  *

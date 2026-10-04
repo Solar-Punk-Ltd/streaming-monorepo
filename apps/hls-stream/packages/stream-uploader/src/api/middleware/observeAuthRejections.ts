@@ -9,7 +9,7 @@ const HTTP_UNAUTHORIZED = 401;
  * mounting point: `requireAuth` sits on `/stream` and `/metrics`, the SRS gate is mounted twice by
  * its own plugin, and OME signs the request body so its check cannot run until the body is parsed
  * and lives inside the router. That last one is the `on_publish` path, which is precisely the one
- * OBS-15 is about, so a wrapper around the mounted gates would have missed the case it was built for.
+ * the refused-ingest health signal is about, so a wrapper around the mounted gates would have missed the case it was built for.
  *
  * Mounted ahead of every gate, so the `finish` listener is attached before anything can answer 401.
  * `requestLogger` runs before it and only reads. Every 401 this service emits comes from a credential

@@ -248,8 +248,8 @@ describe('the environment contract', () => {
   });
 
   /**
-   * What the two startup gates do to a deployment that cannot answer them, which is the owner's
-   * ruling of 2026-09-17 in both its halves: the uploader starts whatever the chequebook says, and a
+   * What the two startup gates do to a deployment that cannot answer them, which is the shipped
+   * rule in both its halves: the uploader starts whatever the chequebook says, and a
    * postage batch that cannot carry a broadcast still stops it.
    */
   describe('the start gates', () => {

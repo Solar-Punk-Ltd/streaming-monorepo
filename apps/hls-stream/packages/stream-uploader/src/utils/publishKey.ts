@@ -2,7 +2,7 @@ import { derivePublishKey, PUBLISH_KEY_PARAM } from '@swarm-hls-stream/shared/pu
 import { timingSafeEqual } from 'node:crypto';
 
 /**
- * How a publish key presented by an engine is verified and extracted. See SEC-28.
+ * How a publish key presented by an engine is verified and extracted.
  *
  * **Naming and derivation moved to `@swarm-hls-stream/shared/publishKey`.** The operator CLI and the
  * e2e publisher have to derive exactly the value this verifies, and a second implementation of that
@@ -29,7 +29,7 @@ export {
  * An empty secret refuses everything rather than disabling the check. That guard is load-bearing and
  * not defensive: two empty strings encode to two zero-length buffers, which `timingSafeEqual` reports
  * as equal, so without it an unset secret would make the empty key valid for every stream at once.
- * Whether the feature is on at all is the caller's question, decided once at construction. See SEC-3.
+ * Whether the feature is on at all is the caller's question, decided once at construction.
  */
 export function hasValidPublishKey(secret: string, streamId: string, presented: string | null): boolean {
   if (!secret) {
@@ -50,7 +50,7 @@ export function hasValidPublishKey(secret: string, streamId: string, presented: 
  * ⛔ Both emptiness guards are load-bearing rather than defensive. Two empty strings encode to two
  * zero-length buffers, which `timingSafeEqual` reports as **equal**, so a draft that arrived without
  * a key would otherwise authenticate a broadcaster who presented none. `AdminApiClient.lookupByIngestId`
- * already refuses such a draft; this is the half that does not depend on it. See SEC-3.
+ * already refuses such a draft; this is the half that does not depend on it.
  */
 export function matchesPublishKey(expected: string, presented: string | null): boolean {
   if (!expected || !presented) {

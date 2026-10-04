@@ -28,7 +28,7 @@ export interface PullerOptions {
    * newest `#EXT-X-PROGRAM-DATE-TIME` observed for this stream before it was built. Both sides of the
    * comparison are parsed from the origin's own playlists, so a fixed offset between its clock and
    * this host's cancels. A playlist that omits the timezone is the exception, since RFC 8216 section
-   * 6.3.3 has a client read that as local time. See CON-20.
+   * 6.3.3 has a client read that as local time.
    */
   staleBefore?: number;
   /**
@@ -90,7 +90,7 @@ export interface PlaylistEntry {
 export interface OmeEngineOptions {
   admissionSecret?: string;
   /**
-   * Master secret every stream's publish key is derived from. See SEC-28.
+   * Master secret every stream's publish key is derived from.
    *
    * Empty **disables** publisher authentication, unlike `admissionSecret`, whose empty value rejects
    * every admission. The two guard different things: that one authenticates OME itself, which an
@@ -119,7 +119,7 @@ export interface OmeEngineOptions {
   /**
    * How long the engine remembers that a stream's session closed, so a repeat of that closing is not
    * acted on a second time. Injectable only so the expiry can be driven at all: at its default the
-   * record outlives any test worth writing. See CON-22.
+   * record outlives any test worth writing.
    */
   closedSessionTtlMs?: number;
 }
@@ -147,7 +147,7 @@ export interface OmeAdmissionRequest {
    * populated on every admission in the live SRT capture on 2026-08-01. Monotone across admissions,
    * which is what makes it a session discriminator the socket cannot be: a session's own closing is
    * issued after its opening, so a closing issued before the live session was admitted was sent for
-   * some earlier one, however the two sockets compare. See CON-23.
+   * some earlier one, however the two sockets compare.
    */
   time?: string;
   new_url?: string;
@@ -162,7 +162,7 @@ export interface OmeAdmissionPayload {
    *
    * `port` is the only session discriminator an admission carries: it matches its own session's
    * opening and closing and differs between two sessions of the same stream, where the stream id is
-   * identical for both. See CON-21.
+   * identical for both.
    */
   client?: { address?: string; port?: number; real_ip?: string };
   request: OmeAdmissionRequest;

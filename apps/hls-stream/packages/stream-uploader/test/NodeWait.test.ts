@@ -119,8 +119,7 @@ function failingInit(failures: number, error: () => Error, answer = 'ready') {
  * node. It simply was not answering yet, which is what a bee node that is still opening its database
  * looks like, and what a rung whose container starts a second later looks like.
  *
- * The owner ruled on 2026-09-17: "we should be able to start the uploader but maybe say its node not
- * available, try to reconnect or something". So the node-dependent half of the boot runs in here
+ * The uploader starts and says its node is not available, then tries to reconnect. So the node-dependent half of the boot runs in here
  * instead, and a failure that says the node is not answering costs a log line and a wait rather than
  * the process. A failure that says something else, a malformed feed or a key this deployment cannot
  * sign with, still ends the boot, because retrying it would loop for ever on something no amount of

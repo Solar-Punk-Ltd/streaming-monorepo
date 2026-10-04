@@ -118,7 +118,7 @@ function refusingGate(name: string, reason: string, reached: string[], refuses: 
  * refused. The reading was correct and the conclusion was not: nothing was wrong with the chequebook,
  * and the gate's refusal hid the address that was wrong.
  *
- * The owner ruled on 2026-09-17 that the uploader and the engine start whatever the chequebook says.
+ * The uploader and the engine start whatever the chequebook says.
  * So the reading still happens, on every boot, and the chequebook gate now says so as a warning
  * carrying its whole refusal, while the postage gate warns only on a reading it could not get and
  * still refuses one the node answered, which is the policy described below.
@@ -258,8 +258,8 @@ describe('the start gates', () => {
 
 /**
  * A mistyped mode is refused rather than read as the default. The uploader starting whatever the
- * chequebook says is the owner's ruling, and a deployment that asked for `refuse` and mistyped it
- * would otherwise get the ruling instead of the thing it asked for, with nothing in the log saying
+ * chequebook says is the default, and a deployment that asked for `refuse` and mistyped it
+ * would otherwise get the default instead of the thing it asked for, with nothing in the log saying
  * which of the two it was running.
  */
 describe('the start gate mode a deployment asks for', () => {
@@ -405,9 +405,9 @@ describe('a deployment with one node for everything', () => {
 });
 
 /**
- * ⛔⛔⛔ **The two gates are not the same risk, and the owner ruled them apart on 2026-09-17.**
+ * ⛔⛔⛔ **The two gates are not the same risk, and they are held apart.**
  *
- * A chequebook under its floor is a node that will publish slowly and noisily, and the ruling that
+ * A chequebook under its floor is a node that will publish slowly and noisily, and the rule that
  * opened this branch was that it must not stop a start. An immutable postage batch that is full, or
  * any batch that has expired, is different in kind: every write against it fails while the broadcast
  * looks live to the room, the viewer and the catalog, and the recording it was meant to keep is never
@@ -503,7 +503,7 @@ describe('a pass with one gate warning and one refusing', () => {
  * actually wrong. The second is the node itself saying the batch is not there, or is full, or has
  * expired, and every upload on that rung would fail the same way.
  *
- * So the owner ruled on 2026-09-17 that under the shipped `chequebook-warn` the postage gate
+ * So under the shipped `chequebook-warn` the postage gate
  * refuses only a refusal the node answered with, and warns when the batch could not be read at all.
  * `warn` and `refuse` are unchanged: one warns on both readings and the other refuses on both.
  */

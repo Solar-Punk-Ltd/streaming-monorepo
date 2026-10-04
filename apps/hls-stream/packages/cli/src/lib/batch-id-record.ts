@@ -40,7 +40,7 @@ function recoveryFileName(batchIdHex: string): string {
  * means the operator has paid for a batch they cannot address, so this never throws: it degrades
  * from `.env` to a recovery file next to `.env`, then to one in the temp directory, and reports an
  * empty `writtenTo` rather than failing if none of those work. The caller is responsible for
- * printing the id whatever happens, which is the one channel that cannot fail. See OPS-1.
+ * printing the id whatever happens, which is the one channel that cannot fail.
  */
 export function recordBatchId(envPath: string, batchIdHex: string): BatchIdRecord {
   const writtenTo: string[] = [];

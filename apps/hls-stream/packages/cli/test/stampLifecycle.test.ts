@@ -122,7 +122,7 @@ describe('stamp:setup end to end, real purchase and wait helpers, faked network 
 
     // The premise the whole lifecycle model rests on, and nothing pinned it. With waitForUsable
     // left at its default, bee-js blocks inside createPostageBatch for up to four minutes and then
-    // throws, so buyStamp never returns, the id is never recorded, and OPS-1 is back with the
+    // throws, so buyStamp never returns, the id is never recorded, and the lost batch id is back with the
     // money spent.
     assert.equal(
       fake.purchaseOptions()?.waitForUsable,

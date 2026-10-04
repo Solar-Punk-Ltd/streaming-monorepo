@@ -12,7 +12,7 @@ import { MAX_STREAM_ID_LENGTH, STREAM_ID_SEGMENT } from '../../utils/streamId.js
  * would produce names this refuses, so a stream the engine had started could not be named to
  * `POST /stream/stop`, `/stream/status` or the `x-stream-id` header, and the per-stream rate limit
  * keyed on that header never saw it. The premise is now enforced rather than asserted, by building
- * both ends out of the same segment rule. See SEC-25.
+ * both ends out of the same segment rule.
  */
 const STREAM_ID_PATTERN = new RegExp(`^${STREAM_ID_SEGMENT}(?:\\/${STREAM_ID_SEGMENT})*$`);
 

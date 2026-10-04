@@ -36,7 +36,7 @@ function missingConfigPath(): string {
   return join(dir, 'config.json');
 }
 
-describe('config.json parse failure (OPS-8)', () => {
+describe('config.json parse failure', () => {
   // The catch used to swallow everything and return `{ services: {} }`, and every resolver below
   // reads a missing service as localhost. So one trailing comma pointed `pnpm stamp:setup` at
   // localhost on a machine whose bee node is somewhere else, and bought the batch there.

@@ -35,7 +35,7 @@ export interface SrsEngineOptions {
   /** Shared secret SRS carries in its hook URL. Empty rejects every webhook, it does not disable the check. */
   webhookToken?: string;
   /**
-   * Master secret every stream's publish key is derived from. See SEC-28.
+   * Master secret every stream's publish key is derived from.
    *
    * Empty **disables** publisher authentication, which is the opposite of what `webhookToken` does
    * with the same value, and the difference is deliberate. That token is between two services an
@@ -98,7 +98,7 @@ interface SrsStreamPayload {
    */
   ip?: string;
   /**
-   * The publish URL's query string, which is where a broadcaster's publish key travels. See SEC-28.
+   * The publish URL's query string, which is where a broadcaster's publish key travels.
    *
    * Measured on 2026-08-03 against `ossrs/srs:6`, the image this deployment ran then: it arrives as
    * `?key=...`, **leading question mark included**, on `on_publish` and again on `on_unpublish`.
@@ -212,10 +212,10 @@ export function createSrsEngine(mediaRootPath: string, options: SrsEngineOptions
   } else {
     // Not an error, but it is the one control that separates a broadcaster from anyone who knows the
     // stream name, and the stream name is in every HLS URL. Silence here would leave an operator
-    // believing SEC-28 applies to a deployment where it does not.
+    // believing publisher authentication applies to a deployment where it does not.
     logger.warn(
       '[SRS] No PUBLISH_KEY_SECRET configured, so publishers are not authenticated and stream ownership ' +
-        'is judged only by the address SRS reports. See SEC-28.',
+        'is judged only by the address SRS reports.',
     );
   }
   if (webhookToken) {
@@ -249,13 +249,13 @@ export function createSrsEngine(mediaRootPath: string, options: SrsEngineOptions
       const router = Router();
 
       // Base streams that authenticated, so their rungs — republished onto the ABR vhost with no key
-      // of their own — can be admitted by that origin. Empty and unread without a ladder. See SEC-28.
+      // of their own — can be admitted by that origin. Empty and unread without a ladder.
       //
       // ⛔ A map rather than a set, because in admin mode the base carries the declaration its rungs
       // publish under: the source is what presents the key and is resolved against the admin, and the
       // rungs that follow it inherit that session without a lookup of their own. `null` is the
       // standalone deployment, where membership alone is the whole of what the base proved. Reading a
-      // base as "present" therefore still means exactly what it meant, which keeps SEC-28's rule, that
+      // base as "present" therefore still means exactly what it meant, which keeps the rule, that
       // a rung is admitted only because its base authenticated, unchanged. An entry is cleared only when
       // the last connection the source's hook accepted has left. See `PublisherConnections`.
       const authenticatedBases = new Map<string, AdminSession | null>();
@@ -333,7 +333,7 @@ function logMisroutedRendition(streamId: string, actualVhost: string, expectedVh
  * Loopback is where SRS dials its own transcode republishes: `engines/srs/entrypoint.sh` points every
  * rung's output at `rtmp://127.0.0.1`, so a rung's publisher address is a loopback one. A rung carries
  * no publish key, and this origin, together with its base stream having authenticated, is the whole of
- * what admits it. See SEC-28.
+ * what admits it.
  */
 const SRS_LOOPBACK_ADDRESSES = new Set(['127.0.0.1', '::1', '::ffff:127.0.0.1']);
 
@@ -343,7 +343,7 @@ function isLoopbackPublisher(payload: SrsStreamPayload): boolean {
 
 /**
  * How a stream webhook relates to the ladder, which is what decides how the publish authenticates and
- * whether the uploader ingests it. See SEC-28.
+ * whether the uploader ingests it.
  *
  * `single` the ladder is off. The publish authenticates by its own key, exactly as it always has.
  * `source` the untranscoded broadcast, which a real broadcaster sends to the ingest vhost. It
@@ -382,7 +382,7 @@ function classifyLadderStream(payload: SrsStreamPayload, streamId: string, abr?:
 }
 
 /**
- * Why a transcode republish may not be admitted, or null to admit it. See SEC-28.
+ * Why a transcode republish may not be admitted, or null to admit it.
  *
  * A rung carries no key: the transcode URL in `engines/srs/entrypoint.sh` has no `?key=`. Its base
  * stream having authenticated is what an attacker who merely knows the name cannot forge, and the
@@ -460,7 +460,7 @@ async function handleStreams(
 
     // `utils/streamId.ts` states this rule as belonging to both ends, the schema for ids an operator
     // sends over HTTP and this for names a media engine relays over a webhook. OME's `parseAppStream`
-    // has applied it since SEC-25. SRS never did, so the one engine that ships was the one admitting
+    // has applied it already. SRS never did, so the one engine that ships was the one admitting
     // whatever a publisher typed. An unpublish is answered rather than refused, for the same reason it
     // is everywhere else here: SRS reads any non-zero answer as a failure to retry, and the session an
     // unpublish names is already gone from its side.
@@ -472,7 +472,7 @@ async function handleStreams(
 
     // How this stream authenticates depends on what it is to the ladder. ABR had folded this decision
     // into a single `isPublishable` gate that answered SRS_ACCEPT above the key check, so a real
-    // broadcaster on the ingest vhost was admitted with no key whenever the ladder was on. See SEC-28.
+    // broadcaster on the ingest vhost was admitted with no key whenever the ladder was on.
     const role = classifyLadderStream(payload, streamId, abr);
 
     // ⛔⛔ **An unpublish reports a disconnect and ends nothing.** SRS closes a publish within seconds
@@ -508,7 +508,7 @@ async function handleStreams(
 
       // `single` or `source`: authenticated by the broadcaster's own key, which SRS repeats on the
       // unpublish. Extracted before anything is answered, so a `param` that cannot be parsed reaches
-      // the catch below with the response still unsent. See SEC-29.
+      // the catch below with the response still unsent.
       //
       // ⚠️ In admin mode `publishKeySecret` is blank, so this check is off and an unpublish is
       // gated only by the webhook token — exactly as it is for every deployment that never set
@@ -526,7 +526,7 @@ async function handleStreams(
       if (publishKeySecret && !isAuthenticated) {
         // Neither the key nor `param` is logged, only that one was missing or wrong.
         logger.warn(`[SRS] Ignored an unpublish of ${streamId} with a missing or invalid publish key`);
-        // Reported rather than observed, because this answers 200 and the observer counts 401. See OBS-15.
+        // Reported rather than observed, because this answers 200 and the observer counts 401.
         streamOrchestrator.recordAuthRejection();
         return;
       }
@@ -586,7 +586,7 @@ async function handleStreams(
         logger.warn(
           `[SRS] Refused ${streamId} on vhost '${payload.vhost}': a name the uploader never ingests, sent from off the host`,
         );
-        // Reported rather than observed. SRS_REJECT rides inside a 200. See OBS-15.
+        // Reported rather than observed. SRS_REJECT rides inside a 200.
         streamOrchestrator.recordAuthRejection();
         srsResponse(res, SRS_REJECT);
         return;
@@ -608,7 +608,7 @@ async function handleStreams(
       if (refusal) {
         logger.warn(`[SRS] Rejected a rung publish of ${streamId}: ${refusal}`);
         // Reported rather than observed. SRS_REJECT rides inside a 200, so the status-code observer
-        // never sees it. See OBS-15.
+        // never sees it.
         streamOrchestrator.recordAuthRejection();
         srsResponse(res, SRS_REJECT);
         return;
@@ -650,7 +650,7 @@ async function handleStreams(
       if (verdict.kind !== ADMIN_PUBLISH_ALLOWED) {
         if (isAuthRefusal(verdict.kind)) {
           // Reported rather than observed: SRS_REJECT rides inside a 200, so the status-code observer
-          // never sees it. See OBS-15.
+          // never sees it.
           streamOrchestrator.recordAuthRejection();
         }
         srsResponse(res, SRS_REJECT);
@@ -675,7 +675,7 @@ async function handleStreams(
         streamId,
         mediatype,
         // Proven by the declaration's own key, so the takeover rules in `reasonToRefuseTakeover`
-        // apply exactly as they do for a derived key. See SEC-26 and SEC-28.
+        // apply exactly as they do for a derived key.
         { address: publisherAddress(payload), isAuthenticated: true },
         verdict.session,
         { deferResume: connections.singles.timingFor(streamId, payload.client_id) === RESUME_DEFERRED },
@@ -688,14 +688,13 @@ async function handleStreams(
     }
 
     // `single` or `source`: a real broadcaster, authenticated by its own publish key. Parsed before
-    // any response so a `param` that cannot be parsed reaches the catch with the response unsent. See
-    // SEC-28 and SEC-29.
+    // any response so a `param` that cannot be parsed reaches the catch with the response unsent.
     const isAuthenticated = hasValidPublishKey(publishKeySecret, streamId, publishKeyFromParam(payload.param));
     if (publishKeySecret && !isAuthenticated) {
       // The key itself is never logged, and neither is `param`, which is where it lives.
       logger.warn(`[SRS] Rejected a publish of ${streamId} with a missing or invalid publish key`);
       // Reported rather than observed. `SRS_REJECT` rides inside a 200, so the status-code observer
-      // never sees it, and a live deployment refusing keyless publishes reported nothing. See OBS-15.
+      // never sees it, and a live deployment refusing keyless publishes reported nothing.
       streamOrchestrator.recordAuthRejection();
       srsResponse(res, SRS_REJECT);
       return;

@@ -417,7 +417,7 @@ export class OmeHlsPuller {
    * A replacement puller starts with no high-water and a duplicate filter the orchestrator has just
    * reset, so on a reconnect it would otherwise ingest whatever the origin still had up: measured
    * against a real OME as a full five-segment window of the previous broadcast, for the five seconds
-   * it takes the dropped SRT session to be reaped. See CON-20.
+   * it takes the dropped SRT session to be reaped.
    *
    * Nothing is skipped without a date-time to judge it by. That an origin publishes none is reported
    * by the engine when it builds the replacement, which is where the absence is knowable for the
@@ -562,7 +562,7 @@ export class OmeHlsPuller {
    * A 404 is only one of the ways an origin goes quiet, and it is not the likeliest. A restarting
    * container refuses the connection, and one behind a proxy answers 502 or 503, both of which reject
    * or throw rather than reaching a status check. Routing every one of them through here is what makes
-   * the two effects below cover the case they were written for. See CON-10 and OBS-18.
+   * the two effects below cover the case they were written for.
    */
   private noteOriginUnusable(target: string): boolean {
     if (this.isStopped) {

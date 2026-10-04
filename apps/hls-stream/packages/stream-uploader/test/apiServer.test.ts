@@ -468,7 +468,7 @@ describe('POST /stream/segment duration validation (gate on PR 52)', () => {
   });
 });
 
-describe('POST /stream/stop outcome (S2.5, OBS-3)', () => {
+describe('POST /stream/stop outcome (S2.5)', () => {
   const servers: ApiTestServer[] = [];
   after(async () => {
     await Promise.all(servers.map((server) => server.close()));
@@ -505,7 +505,7 @@ describe('POST /stream/stop outcome (S2.5, OBS-3)', () => {
   });
 
   /**
-   * The whole of OBS-3, read the way a caller would. The finalize cannot publish its VOD, and before
+   * The whole of it, read the way a caller would. The finalize cannot publish its VOD, and before
    * this the caller was told `ok`: `drainUploader` caught its own failure and returned normally, so
    * the rejection the route watches for never arrived either.
    */
@@ -560,7 +560,7 @@ describe('POST /stream/stop outcome (S2.5, OBS-3)', () => {
   });
 });
 
-describe('POST /stream/segment for a finalizing stream (CON-6)', () => {
+describe('POST /stream/segment for a finalizing stream', () => {
   const servers: ApiTestServer[] = [];
   after(async () => {
     await Promise.all(servers.map((server) => server.close()));
@@ -708,7 +708,7 @@ describe('GET /health status (S2.1)', () => {
    * and the live manifest publishes, and the broadcast is still unwatchable because nothing lists it.
    * That combination used to answer `200 ok`.
    */
-  it('reports degraded and 503 when a live stream never reaches the catalog (CON-3)', async () => {
+  it('reports degraded and 503 when a live stream never reaches the catalog', async () => {
     const refusingCatalog = makeFakeCatalog({
       addStream: async () => {
         throw new Error('catalog feed write refused');
@@ -740,7 +740,7 @@ describe('GET /health status (S2.1)', () => {
    * segment uploads, the manifest publishes, the catalog accepts it, and the only thing that has
    * happened is that a crash would now resume from state older than reality.
    */
-  it('reports degraded and 503 when a stream cannot persist its recovery state (OBS-4)', async () => {
+  it('reports degraded and 503 when a stream cannot persist its recovery state', async () => {
     const refusingStore = makeFakeRecoveryStore({
       save: () => {
         throw new Error('ENOSPC: no space left on device');
@@ -914,7 +914,7 @@ describe('GET /health status (S2.1)', () => {
   });
 
   it('reports degraded and 503 when the engine loses a segment it could never download', async () => {
-    // The OBS-11 shape: the segment never reaches the uploader at all, so no upload is attempted and
+    // The segment-loss shape: the segment never reaches the uploader at all, so no upload is attempted and
     // no manifest publish fails. Every signal stayed clean and health answered 200 while the manifest
     // grew a hole players are told is contiguous.
     const orchestrator = makeTestOrchestrator();

@@ -87,7 +87,7 @@ async function postAdmission(
    * `request.time`, which OME issues on every admission as ISO 8601 with an offset. It is the second
    * discriminator: a session's own closing is issued after its opening, so a closing issued before the
    * live session was admitted cannot be for it. That is what separates two sessions the socket cannot,
-   * which is any pair that reconnects on the same source port. See CON-23.
+   * which is any pair that reconnects on the same source port.
    */
   requestTime?: string,
 ): Promise<unknown> {
@@ -183,9 +183,9 @@ describe('createOmeEngine resumeRecoveredStream (F: OME crash recovery)', () => 
  * the process is new. The one that mattered is the other one: a puller still mapped for the stream
  * because it died without ever calling `onHalt`. `startPuller` used to early-return on exactly that,
  * so the resumed stream pulled nothing and was VOD-ed at the recovery timer, and nothing here could
- * see the difference. See CON-5.
+ * see the difference.
  */
-describe('createOmeEngine resumeRecoveredStream over a stale puller (CON-5)', () => {
+describe('createOmeEngine resumeRecoveredStream over a stale puller', () => {
   const SECRET = 'stale-puller-secret';
   const HLS_BASE = 'http://ome:8081';
   const STREAM_URL = 'srt://ome:10080/video/demo';
@@ -196,7 +196,7 @@ describe('createOmeEngine resumeRecoveredStream over a stale puller (CON-5)', ()
   const SEGMENTS = ['seg_0.ts', 'seg_1.ts'];
 
   /**
-   * Deliberately without `#EXT-X-PROGRAM-DATE-TIME`. The handover floor CON-20 added is what stops a
+   * Deliberately without `#EXT-X-PROGRAM-DATE-TIME`. The handover floor is what stops a
    * replacement puller re-ingesting the outgoing session's media, and it is keyed on that tag. Leaving
    * it out is what a resume after a crash actually sees, since the floor is recorded per stream in
    * memory and the process that recorded it is the one that died.
@@ -246,7 +246,7 @@ describe('createOmeEngine resumeRecoveredStream over a stale puller (CON-5)', ()
   });
 });
 
-describe('createOmeEngineFromEnv validation (OBS-12)', () => {
+describe('createOmeEngineFromEnv validation', () => {
   const OME_VARS = ['OME_ADMISSION_SECRET', 'OME_FETCH_TIMEOUT_MS', 'OME_HLS_POLL_INTERVAL_MS'] as const;
   let saved: Record<string, string | undefined>;
 
@@ -378,7 +378,7 @@ describe('createOmeEngineFromEnv fetch timeout plumbing (TEST-15)', () => {
   });
 });
 
-describe('createOmeEngine origin restart (CON-16)', () => {
+describe('createOmeEngine origin restart', () => {
   const RESTART_SECRET = 'restart-secret';
   const HLS_BASE = 'http://ome:8081';
   const STREAM_URL = 'srt://ome:10080/video/demo';
@@ -410,7 +410,7 @@ describe('createOmeEngine origin restart (CON-16)', () => {
    *
    * `shutDown` is the first half of a restart, for a test that has to say what the origin serves
    * between its old session going and the new one producing media: nothing, answered 404 until
-   * `restart`. A real OME whose session is gone answers its playlist with 404. See CON-20.
+   * `restart`. A real OME whose session is gone answers its playlist with 404.
    */
   function makeOrigin(): {
     fetcher: Fetcher;
@@ -568,7 +568,7 @@ describe('createOmeEngine origin restart (CON-16)', () => {
     // leaves the replaced puller polling an origin nothing has told the engine about, and its
     // high-water is below these indexes, so it delivers them into the session they replace. That
     // window is real but no signal closes it, since a jump from 3 to 9 is what rolling the playlist
-    // window forward looks like too. See CON-19.
+    // window forward looks like too.
     //
     // Down is what a restarted origin serves in between, and this test depends on it. The resumed puller
     // first polls on a zero-delay timer armed inside the announce, and this test restarts the origin
@@ -577,7 +577,7 @@ describe('createOmeEngine origin restart (CON-16)', () => {
     // session took the first run a second time: 24 seconds recorded where 16 were sent, on a loaded,
     // shared runner on 2026-09-23. No real OME serves that. A restarted one has no playlist yet,
     // and one still holding a dropped session stamps every segment with `#EXT-X-PROGRAM-DATE-TIME`,
-    // which the handover floor skips. See CON-20. The wait makes that early poll happen on every run.
+    // which the handover floor skips. The wait makes that early poll happen on every run.
     origin.shutDown();
     await postAdmission(engine, orchestrator, 'opening', RESTART_SECRET, STREAM_URL);
     // The replaced puller was stopped inside that announce, so every poll from here is the resumed one's.
@@ -586,7 +586,7 @@ describe('createOmeEngine origin restart (CON-16)', () => {
     origin.restart(RESTARTED_HIGH);
     // The closing stops the puller, so it waits for the restarted run to reach Bee first. Sent straight
     // after the restart it raced the resumed puller's next poll, and a closing handled first records the
-    // first run alone. Same condition the CON-20 tests below wait on.
+    // first run alone. Same condition the handover floor tests below wait on.
     await waitFor(() => uploadedFrom('s2') === RESTARTED_SEGMENTS, DELIVERY_TIMEOUT_MS);
     // Nothing may be finalized while the broadcast is still running, which is the whole of the
     // reconnect window: the closing below is what ends it.
@@ -657,7 +657,7 @@ describe('createOmeEngine origin restart (CON-16)', () => {
 });
 
 /**
- * The mirror image of CON-16, and measured against a real OvenMediaEngine rather than argued from the
+ * The mirror image of the origin restart case, and measured against a real OvenMediaEngine rather than argued from the
  * code. On an abrupt publisher drop OME keeps both the SRT session and its HLS output alive until the
  * peer-idle timeout, which took 5.0s on 2026-07-31 against `airensoft/ovenmediaengine:latest` with
  * this repo's own `Server.xml.template`. A reconnect inside that window is put to the admission
@@ -669,7 +669,7 @@ describe('createOmeEngine origin restart (CON-16)', () => {
  * opens with up to a full playlist window of the previous broadcast, and a VOD is paid for with
  * postage to record it.
  */
-describe('createOmeEngine reconnect inside the origin idle window (CON-20)', () => {
+describe('createOmeEngine reconnect inside the origin idle window', () => {
   const SECRET = 'reconnect-secret';
   const HLS_BASE = 'http://ome:8081';
   const STREAM_URL = 'srt://ome:10080/video/demo';
@@ -680,7 +680,7 @@ describe('createOmeEngine reconnect inside the origin idle window (CON-20)', () 
 
   /**
    * OME's own HLS output, including the per-segment `#EXT-X-PROGRAM-DATE-TIME` it emits by default and
-   * which the CON-16 fixtures leave out. Both sessions number from zero and reuse the same segment
+   * which the origin restart fixtures leave out. Both sessions number from zero and reuse the same segment
    * file names, because that is what OME does: it derives them from the app and stream name, so the
    * live capture showed `seg_917977731947844006_0_hls.ts` in two different broadcasts. That leaves the
    * date-time as the only thing in the playlist that tells the two apart.
@@ -860,7 +860,7 @@ describe('createOmeEngine reconnect inside the origin idle window (CON-20)', () 
   /**
    * A segment with no date-time under a floor is undecidable, not stale, and the two directions fail
    * very differently. Dropping it loses a live broadcast for as long as the origin keeps publishing
-   * that way, silently, which is the CON-16 failure this register rates worst. Delivering it costs at
+   * that way, silently, which is the origin restart failure that matters most. Delivering it costs at
    * most the stale window once. So the undecidable case degrades to the behaviour that predates the
    * floor, and it is pinned here because nothing else in the suite could tell the two apart.
    */
@@ -1032,7 +1032,7 @@ describe('createOmeEngine reconnect inside the origin idle window (CON-20)', () 
 });
 
 /**
- * CON-21: a `closing` carries no session identity, so a delayed one can finalize the session that
+ * A `closing` carries no session identity, so a delayed one can finalize the session that
  * replaced the session it was actually sent for.
  *
  * The `closing` branch keys on the stream URL alone and stops whatever currently holds that id. Two
@@ -1048,7 +1048,7 @@ describe('createOmeEngine reconnect inside the origin idle window (CON-20)', () 
  * own session's opening and closing while differing between sessions: 44546 for the first, 22138 for
  * the second. The interface declares that field optional; a real SRT publish always populates it.
  */
-describe('createOmeEngine reordered closing (CON-21)', () => {
+describe('createOmeEngine reordered closing', () => {
   const SECRET = 'session-identity-secret';
   const HLS_BASE = 'http://ome:8081';
   const STREAM_URL = 'srt://ome:10080/video/demo';
@@ -1225,7 +1225,7 @@ describe('createOmeEngine reordered closing (CON-21)', () => {
     // the closing share a port and differ only by address, so nothing but the address half can tell
     // them apart.
     //
-    // The two openings share an address deliberately. SEC-26 now refuses an opening from a different
+    // The two openings share an address deliberately. The takeover guard now refuses an opening from a different
     // address over a stream that is still producing, so a reconnect that changed address cannot reach
     // the live state this needs, and driving it that way would be testing the takeover guard instead
     // of this one.
@@ -1298,7 +1298,7 @@ describe('createOmeEngine reordered closing (CON-21)', () => {
   });
 
   /**
-   * CON-22: the guard was armed only while a session was recorded, and the accepted-closing path
+   * The guard was armed only while a session was recorded, and the accepted-closing path
    * deleted the record before doing anything else. From that instant until the next accepted opening
    * an absent record read as "no evidence", so a repeat of the closing just honoured was acted on
    * again: a second `stopStream` for a stream the first one had already drained and retired.
@@ -1420,7 +1420,7 @@ describe('createOmeEngine reordered closing (CON-21)', () => {
   });
 
   it('arms again for the session that opens after a closed one, and stops it when its own closing arrives', async () => {
-    // The other half of CON-22: remembering that a stream was closed must not become a stream that can
+    // The other half of the repeated-closing guard: remembering that a stream was closed must not become a stream that can
     // never be closed again. The session opening here is a different one on a different socket, which
     // is the ordinary reconnect.
     const origin = makePollCountingOrigin();
@@ -1473,15 +1473,15 @@ describe('createOmeEngine reordered closing (CON-21)', () => {
   });
 
   /**
-   * CON-23: the socket is not enough on its own. `address:port` compared for equality gives two
+   * The socket is not enough on its own. `address:port` compared for equality gives two
    * sessions one key whenever the second reconnects on the source port the first used, which a pinned
    * local port, an SRT rendezvous, or a NAT holding its mapping all produce. The guard then goes inert
-   * and CON-21 is back in full, without self-healing, because the live SRT session stays up and no
+   * and the reordered-closing hazard is back in full, without self-healing, because the live SRT session stays up and no
    * further admission arrives.
    *
    * Both times below are OME's own, so the comparison never touches this host's clock.
    */
-  describe('two sessions on one socket (CON-23)', () => {
+  describe('two sessions on one socket', () => {
     const SHARED_SOCKET = { address: '192.0.2.1', port: 44546 };
     const A_OPENED_AT = '2026-08-01T09:14:02.113+02:00';
     const A_CLOSED_AT = '2026-08-01T09:14:41.775+02:00';
@@ -1746,7 +1746,7 @@ describe('createOmeEngine admission decision (TEST-25)', () => {
   });
 
   /**
-   * SEC-25. These parse as URLs and used to admit, under the stream ids `undefined/undefined` and
+   * These parse as URLs and used to admit, under the stream ids `undefined/undefined` and
    * `video/undefined`. Both are collision points: every publish missing a stream name shared one,
    * so one broadcaster's closing ended another's session.
    */

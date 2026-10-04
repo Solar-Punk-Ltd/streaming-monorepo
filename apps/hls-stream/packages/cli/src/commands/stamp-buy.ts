@@ -74,7 +74,7 @@ export async function stampBuy(args: StampCommandArgs = {}, seams: StampBuySeams
 
   // Same guarantee as stamp:setup, for the same reason: this spends money and the batch id is the
   // only durable product of it. Printing "Add to .env: ..." and leaving the operator to copy it out
-  // of scrollback is how OPS-1 happened.
+  // of scrollback is how a paid batch id gets lost.
   try {
     assertEnvKeyWritable(envPath);
   } catch (err) {
@@ -93,20 +93,20 @@ export async function stampBuy(args: StampCommandArgs = {}, seams: StampBuySeams
 
   // The command used to print the amount and depth and buy. Neither number says what the purchase
   // costs or how long the batch lasts, and both are derived rather than looked up, so an operator
-  // typing a depth one digit out had nothing on screen that would have told them. See OPS-7.
+  // typing a depth one digit out had nothing on screen that would have told them.
   const quote = await quoteStamp(bee, options);
   printStampQuote(options, quote);
   console.log('');
 
   // The same affordability refusal `stamp:setup` makes, on the command that has no other guard at
-  // all. Showing a cost the wallet cannot pay and then asking to confirm it is OPS-5's harm with a
+  // all. Showing a cost the wallet cannot pay and then asking to confirm it is the harm of an unaffordable spend with a
   // prompt in front of it: the operator approves, and the transaction reverts after its gas is gone.
   // A balance the node cannot report is not a refusal here, because this command never promised to
   // check one, so it warns and lets the operator decide.
   //
   // The refusal is deliberately OUTSIDE the try. Inside it, `exit(1)` throws through the seam and is
   // caught by this very catch, downgraded to "could not check the balance", and the run carries on to
-  // buy. That is OPS-12's mistake exactly, and the test for this refusal is what caught it here.
+  // buy. That is the mistake of a failed check reading as a passed one, exactly, and the test for this refusal is what caught it here.
   let balance: BZZ | null = null;
   try {
     balance = (await bee.wallet.getBalance()).bzzBalance;

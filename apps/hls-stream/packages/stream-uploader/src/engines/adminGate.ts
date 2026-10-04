@@ -16,7 +16,7 @@ const logger = Logger.getInstance();
  * The engines disagree about everything around the credential: SRS relays a `param` query string on a
  * webhook, OME signs a body carrying a publish URL, one answers a numeric code and the other an
  * admission verdict. They agree exactly about what a publish has to prove, and the last time that
- * agreement was left implicit — SEC-26's publisher address — both call sites were wrong in the same
+ * agreement was left implicit, the publisher address, both call sites were wrong in the same
  * way for the whole life of the feature, because each looked correct beside the other's absence.
  *
  * ## What it refuses, in order
@@ -69,8 +69,7 @@ type AdminPublishVerdict =
   | { kind: AdminPublishRefusal };
 
 /**
- * Whether a refusal is one to count as an authentication rejection, which is what `/health` reports
- * and what OBS-15 exists for.
+ * Whether a refusal is one to count as an authentication rejection, which is what `/health` reports.
  *
  * The two credential refusals count. `unreachable` does not: it is this deployment failing, not a
  * caller failing to prove anything, and counting it would make an admin outage read as an attack.

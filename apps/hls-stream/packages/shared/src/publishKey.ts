@@ -1,7 +1,7 @@
 import { createHmac } from 'node:crypto';
 
 /**
- * How a stream's publish credential is named and derived. See SEC-28.
+ * How a stream's publish credential is named and derived.
  *
  * **Deliberately not re-exported from `index.ts`, and that is what the subpath export in
  * `package.json` is for.** `packages/client` is browser code and imports this package's barrel, so a
@@ -28,7 +28,7 @@ import { createHmac } from 'node:crypto';
  *   `#!::r=<app>/<stream>?key=<key>,m=publish`. Measured 2026-08-03.
  *
  * Both SRS spellings repeat `param` verbatim on `on_unpublish`, which is what lets the close path be
- * screened at all. See SEC-29.
+ * screened at all.
  *
  * The name is short because a broadcaster types it into a publish URL by hand. The contracts package holds it,
  * because the admin writes it into every publish URL it hands a broadcaster.

@@ -379,7 +379,7 @@ describe('an engine that restarts mid-broadcast and starts counting again', () =
 });
 
 /**
- * The dating a restart moves on to, which is the owner's decision of 2026-09-03.
+ * The dating a restart moves on to.
  *
  * ⛔ Before it, the date kept stepping from the instant the broadcast was admitted, so the media
  * after an engine restart carried a time behind real time by the whole length of the gap, without

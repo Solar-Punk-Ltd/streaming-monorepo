@@ -112,7 +112,7 @@ async function run(
   return { spends, output: captured.join('\n'), exitCode };
 }
 
-describe('stampBuy, OPS-1: the second command that spends money', () => {
+describe('stampBuy, the second command that spends money', () => {
   let dir: string;
   let envPath: string;
 
@@ -183,7 +183,7 @@ describe('stampBuy, OPS-1: the second command that spends money', () => {
 
   // The command used to print the amount and depth and buy. Neither says what the purchase costs or
   // how long the batch lasts, and both are derived rather than looked up, so an operator typing a
-  // depth one digit out had nothing on screen that would have told them. See OPS-7.
+  // depth one digit out had nothing on screen that would have told them.
   it('shows the cost and the lifetime, and shows them before it asks', async () => {
     let shownWhenAsked = '';
     const result = await run({
@@ -256,7 +256,7 @@ describe('stampBuy, OPS-1: the second command that spends money', () => {
   );
 
   // The affordability refusal `stamp:setup` has, on the command that had no guard at all. Showing a
-  // cost the wallet cannot pay and then asking to confirm it is OPS-5's harm with a prompt in front.
+  // cost the wallet cannot pay and then asking to confirm it is the harm of an unaffordable spend with a prompt in front.
   it('refuses a batch the wallet cannot pay for, without asking', async () => {
     let asked = 0;
     const result = await run({
