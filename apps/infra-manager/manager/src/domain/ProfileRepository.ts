@@ -691,6 +691,19 @@ export class ProfileRepository {
     return result.rowCount && result.rowCount > 0 ? result.rows[0]! : null;
   }
 
+  /** Replaces the stored pool string while it is still `expected`, so an edit saved meanwhile stands. */
+  async updatePoolString(name: string, expected: string, beePublishers: string): Promise<Profile | null> {
+    const result = await this.pool.query<Profile>(
+      `UPDATE profiles
+         SET bee_publishers = $3,
+             updated_at = NOW()
+       WHERE name = $1 AND bee_publishers = $2
+       RETURNING ${PROFILE_COLUMNS}`,
+      [name, expected, beePublishers],
+    );
+    return result.rowCount && result.rowCount > 0 ? result.rows[0]! : null;
+  }
+
   private async deleteProfile(
     name: string,
     claim: ProfileRemovalClaim,
