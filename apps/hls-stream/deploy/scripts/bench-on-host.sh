@@ -69,7 +69,7 @@
 # replace the host's harness copy, ledger included, before any gate could say no.
 #
 # Anything after `--` is passed to the container as environment, so a knob sweep reads:
-#   deploy/scripts/bench-on-host.sh --target <host> -- BENCH_GOP_SECONDS=4 BENCH_BITRATE_KBPS=1200
+#   deploy/scripts/bench-on-host.sh --target <host> --profile <profile> --portSlot <slot> -- BENCH_GOP_SECONDS=4 BENCH_BITRATE_KBPS=1200
 #
 # `--script` chooses which bench runs, so `bench:longrun` reuses the sync, the image and the container
 # arguments rather than copying them into a second script that could drift from this one.

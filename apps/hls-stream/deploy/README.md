@@ -364,12 +364,12 @@ Both subcommands also keep the uploader's container log before they redeploy, at
 ### bench-on-host.sh
 
 ```bash
-bench-on-host.sh --target <host> [--profile <profile>] [--portSlot 7] [--script bench:latency]
-bench-on-host.sh --target <host> --setup-only    # sync, build and install, then stop without running anything
-bench-on-host.sh --target <host> --no-setup      # reuse what is already on the host, which is what a sweep repeats
+bench-on-host.sh --target <host> --profile <profile> --portSlot <slot> [--script bench:latency]
+bench-on-host.sh --target <host> --profile <profile> --portSlot <slot> --setup-only    # sync, build and install, then stop without running anything
+bench-on-host.sh --target <host> --profile <profile> --portSlot <slot> --no-setup      # reuse what is already on the host, which is what a sweep repeats
 ```
 
-`--target` names the bench host, as an ssh alias or `user@host`, and has no default, so a launch that forgets it stops before it reaches any machine. `browser-on-host.sh`, `bench-sweep.sh` and `bench-profiles.sh` take it the same way.
+`--target` names the bench host, as an ssh alias or `user@host`, and has no default, so a launch that forgets it stops before it reaches any machine. `--profile` and `--portSlot` name the stage the run publishes into and are required the same way, with `--setup-only` and `--no-setup` too. `browser-on-host.sh`, `bench-sweep.sh` and `bench-profiles.sh` require all three as well.
 
 Runs a bench or a browser driver on the deployment host instead of on a workstation, so the capture and the fetch sit on one clock and the operator's uplink stays out of the reading. The checkout is synced, an image is built there, and one script runs inside a container over ssh.
 

@@ -60,10 +60,10 @@
  * shaper measured a curl from the container's own namespace, and this measures the node.
  *
  * Usage, on the deployment host. Arm 1, the emulated cap:
- *   deploy/scripts/browser-on-host.sh --target <host> --script browser:in-tab-throttle-probe
+ *   deploy/scripts/browser-on-host.sh --target <host> --profile <profile> --portSlot <slot> --script browser:in-tab-throttle-probe
  *
  * Arm 2, a real shaped link at the same rate:
- *   deploy/scripts/browser-on-host.sh --target <host> --own-network --shape-kbps 2800 \
+ *   deploy/scripts/browser-on-host.sh --target <host> --profile <profile> --portSlot <slot> --own-network --shape-kbps 2800 \
  *     --script browser:in-tab-throttle-probe -- PROBE_CAP_MODE=external PROBE_CAP_KBPS=2800
  *
  * @see the `in-tab-throttle-probe-prediction-2026-09-02` measurement (kept outside the repository), written before this existed.
