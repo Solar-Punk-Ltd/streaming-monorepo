@@ -100,6 +100,8 @@ export interface StreamOrchestratorConfig {
   /** How long a live stream may receive nothing before it is reaped as an orphan. */
   orphanReapMs: number;
   segmentStallMs: number;
+  /** How long a ladder source may wait for its first rung. See {@link StreamOrchestrator.awaitFirstRung}. */
+  firstRungDeadlineMs: number;
   /**
    * Nominal seconds of media per fragment, from `HLS_FRAGMENT`, which is the grid every segment's
    * `#EXT-X-PROGRAM-DATE-TIME` reads its media against. See {@link BroadcastAnchor}.
@@ -408,6 +410,10 @@ export class StreamOrchestrator {
    */
   private broadcastAnchors = new Map<string, BroadcastAnchor>();
   private streamBases = new Map<string, string>();
+  /** Per ladder source, the deadline its first rung is still due by. See {@link awaitFirstRung}. */
+  private firstRungDeadlines = new Map<string, Timer>();
+  /** Ladder sources whose deadline passed with no rung, for {@link HealthSignals.ladderNotStartedStreams}. */
+  private ladderNotStarted = new Set<string>();
   private logger = Logger.getInstance();
   private errorHandler = ErrorHandler.getInstance();
 
@@ -2369,6 +2375,58 @@ export class StreamOrchestrator {
   }
 
   /**
+   * A ladder source the engine accepted, whose transcoders now owe it a first rung.
+   *
+   * ⛔ **Nothing else can see a ladder that never starts.** The source starts no session of its own,
+   * so with every transcoder hung there is no stream to reap, nothing to stall and nothing on
+   * `/health`. Seen once on a test deployment: every encoder of an RTMP source that began on a slow
+   * link hung at its banner for minutes, the stream stayed published and viewers saw it scheduled.
+   *
+   * A source whose rungs are still live is not waiting for any, since SRS held them through the drop
+   * and they resume on {@link resumeHeldRungs}. A deadline already running is left to run, so a
+   * takeover does not push it back.
+   */
+  public awaitFirstRung(baseStreamId: string): void {
+    if (this.firstRungDeadlines.has(baseStreamId) || this.hasLiveRung(baseStreamId)) {
+      return;
+    }
+    const deadlineMs = this.config.firstRungDeadlineMs;
+    const timer = this.clock.setTimer(
+      () => {
+        this.firstRungDeadlines.delete(baseStreamId);
+        this.ladderNotStarted.add(baseStreamId);
+        this.logger.error(
+          `[StreamOrchestrator] Ladder source ${baseStreamId} was accepted ${deadlineMs}ms ago and no rung of it ` +
+            'has published. Its transcoders have not started, so viewers see nothing. Stop the broadcast for ' +
+            'longer than the encoder hold (about 15 s at the default), then start it again.',
+        );
+      },
+      deadlineMs,
+      { unref: true },
+    );
+    this.firstRungDeadlines.set(baseStreamId, timer);
+  }
+
+  /** A rung of this source has published, or the source has left. Either way it waits for nothing. */
+  public stopAwaitingFirstRung(baseStreamId: string): void {
+    this.firstRungDeadlines.get(baseStreamId)?.cancel();
+    this.firstRungDeadlines.delete(baseStreamId);
+    this.ladderNotStarted.delete(baseStreamId);
+  }
+
+  private hasLiveRung(baseStreamId: string): boolean {
+    return [...this.streamBases].some(([streamId, base]) => {
+      const uploader = this.activeStreams.get(streamId);
+      return (
+        base === baseStreamId &&
+        uploader !== undefined &&
+        !this.isDraining(streamId, uploader) &&
+        !this.streamDisconnectedAt.has(streamId)
+      );
+    });
+  }
+
+  /**
    * Every live stream whose encoder has gone and has not come back, for {@link HealthSignals}.
    *
    * Read out of `activeStreams` rather than off the map alone, so an entry that somehow outlived its
@@ -2453,6 +2511,7 @@ export class StreamOrchestrator {
       queueBacklogSeconds: this.getMetricsSnapshot().queueBacklogSeconds,
       msSinceAuthRejection: lastAuthRejectionAt === null ? null : Date.now() - lastAuthRejectionAt,
       disconnectedStreams: this.getDisconnectedStreams(),
+      ladderNotStartedStreams: [...this.ladderNotStarted],
       hasIngestedMedia: counters.segmentsUploadedTotal > 0,
       segmentsSkipped: counters.segmentsSkippedTotal,
       openingSegmentsWithheld: counters.openingSegmentsWithheldTotal,
@@ -2486,6 +2545,11 @@ export class StreamOrchestrator {
   }
 
   public async cleanup(): Promise<void> {
+    for (const timer of this.firstRungDeadlines.values()) {
+      timer.cancel();
+    }
+    this.firstRungDeadlines.clear();
+
     // Clear all recovery timers
     for (const timer of this.recoveryTimers.values()) {
       timer.cancel();

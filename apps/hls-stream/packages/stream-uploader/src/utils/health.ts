@@ -4,6 +4,7 @@ import {
   HEALTH_REASON_FRAGMENT_MISMATCH,
   HEALTH_REASON_FRAGMENT_PUBLISHER_GOP,
   HEALTH_REASON_INGEST_REFUSED,
+  HEALTH_REASON_LADDER_NOT_STARTED,
   HEALTH_REASON_NODE_UNAVAILABLE,
   HEALTH_REASON_POSTAGE_REFUSED,
   HEALTH_REASON_QUEUE_PRESSURE,
@@ -122,8 +123,8 @@ export function deriveHealthStatus(
     reasons.push(HEALTH_REASON_STATE_NOT_PERSISTED);
   }
 
-  // The one reason ABOUT THE MEDIA that can fire while nothing is registered and nothing has ever run,
-  // which is what every other reason below structurally cannot do. `node_unavailable` and
+  // A reason ABOUT THE MEDIA that can fire while nothing is registered and nothing has ever run, which
+  // only `ladder_not_started` below can also do. `node_unavailable` and
   // `start_gate_warned` above both fire there too, and both are about the boot rather than about a
   // stream: a credential wrong from startup means no
   // `on_publish` ever succeeds, so `activeStreams` stays 0, every counter stays 0, and no threshold
@@ -162,6 +163,12 @@ export function deriveHealthStatus(
   // on the cause: a stage cutting a length nobody declared sizes every gap entry wrong either way.
   if (signals.publisherGopStreams.length > 0) {
     reasons.push(HEALTH_REASON_FRAGMENT_PUBLISHER_GOP);
+  }
+
+  // The stall below cannot cover this: a ladder whose transcoders never published has no active
+  // stream to be stalled.
+  if (signals.ladderNotStartedStreams.length > 0) {
+    reasons.push(HEALTH_REASON_LADDER_NOT_STARTED);
   }
 
   const isStalled = signals.msSinceStreamActivity !== null && signals.msSinceStreamActivity > segmentStallMs;

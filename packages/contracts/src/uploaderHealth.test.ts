@@ -15,7 +15,7 @@ describe("the uploader's health page", () => {
     assert.equal(UPLOADER_STATUS_WAITING_FOR_NODE, 'waiting_for_node');
   });
 
-  it('names each reason with one of fourteen words', () => {
+  it('names each reason with one of fifteen words', () => {
     assert.deepEqual(UPLOADER_HEALTH_REASONS, [
       'stale_manifest',
       'segment_upload_failure',
@@ -31,6 +31,7 @@ describe("the uploader's health page", () => {
       'postage_refused',
       'node_unavailable',
       'start_gate_warned',
+      'ladder_not_started',
     ]);
     assert.equal(UPLOADER_REASON_NODE_UNAVAILABLE, 'node_unavailable');
     assert.equal(UPLOADER_REASON_START_GATE_WARNED, 'start_gate_warned');

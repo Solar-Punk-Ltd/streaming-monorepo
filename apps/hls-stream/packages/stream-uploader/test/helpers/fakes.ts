@@ -228,6 +228,8 @@ export function makeFakeOrchestrator(overrides: Record<string, unknown> = {}): S
     // The same trap one webhook along: a ladder source's publish calls this, and a missing method
     // turns the handler's catch into a refused publish.
     resumeHeldRungs: () => {},
+    awaitFirstRung: () => {},
+    stopAwaitingFirstRung: () => {},
     // And a single stream's unpublish calls one of these after a takeover.
     resumeDeferredReturn: () => {},
     dropDeferredReturn: () => {},
@@ -259,6 +261,7 @@ function makeHealthSignals(overrides: Partial<HealthSignals> = {}): HealthSignal
     queueBacklogSeconds: 0,
     msSinceAuthRejection: null,
     disconnectedStreams: [],
+    ladderNotStartedStreams: [],
     hasIngestedMedia: false,
     segmentsSkipped: 0,
     openingSegmentsWithheld: 0,
@@ -411,6 +414,7 @@ export function makeTestOrchestrator(
     recoveryTimeout: 60_000,
     orphanReapMs: 60_000,
     segmentStallMs: 30_000,
+    firstRungDeadlineMs: 45_000,
     fragmentSeconds: TEST_ANCHOR.fragmentSeconds,
     segmentDedupWindow: 10_000,
     segmentRedundancy: 1,

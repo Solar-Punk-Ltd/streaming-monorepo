@@ -308,6 +308,7 @@ services:
       MAX_QUEUE_SIZE: ${MAX_QUEUE_SIZE:-100}
       RECOVERY_TIMEOUT: ${RECOVERY_TIMEOUT:-60000}
       SEGMENT_STALL_MS: ${SEGMENT_STALL_MS:-30000}
+      FIRST_RUNG_DEADLINE_MS: ${FIRST_RUNG_DEADLINE_MS:-45000}
       # The same variable the SRS block below sets, and the same default on purpose: it is what the
       # engine is asked to cut at and what every segment's `#EXT-X-PROGRAM-DATE-TIME` steps by, so
       # the two reading different values would date a recording against a fragment length nothing
@@ -509,6 +510,7 @@ services:
       ABR_AUDIO_BITRATE: ${ABR_AUDIO_BITRATE:-128}
       ABR_VBV_SECONDS: ${ABR_VBV_SECONDS:-1}
       ABR_UNPUBLISH_HOLD: ${ABR_UNPUBLISH_HOLD:-12}
+      ABR_IO_TIMEOUT: ${ABR_IO_TIMEOUT:-}
       # Empty on purpose: the entrypoint defaults it to the resolved SRS_RTMP_PORT, the RTMP listener
       # the transcode republish dials. Pinning a fixed port here would re-break the ladder under --portSlot.
       ABR_RTMP_PORT: ${ABR_RTMP_PORT:-}

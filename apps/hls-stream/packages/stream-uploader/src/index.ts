@@ -170,6 +170,7 @@ async function start() {
       recoveryTimeout: config.recoveryTimeout,
       orphanReapMs: config.orphanReapMs,
       segmentStallMs: config.segmentStallMs,
+      firstRungDeadlineMs: config.firstRungDeadlineMs,
       fragmentSeconds: config.fragmentSeconds,
       segmentDedupWindow: config.segmentDedupWindow,
       segmentRedundancy: config.segmentRedundancy,

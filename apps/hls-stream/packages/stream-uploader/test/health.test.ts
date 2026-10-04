@@ -7,6 +7,7 @@ import {
   HEALTH_REASON_FRAGMENT_MISMATCH,
   HEALTH_REASON_FRAGMENT_PUBLISHER_GOP,
   HEALTH_REASON_INGEST_REFUSED,
+  HEALTH_REASON_LADDER_NOT_STARTED,
   HEALTH_REASON_NODE_UNAVAILABLE,
   HEALTH_REASON_POSTAGE_REFUSED,
   HEALTH_REASON_QUEUE_PRESSURE,
@@ -45,6 +46,7 @@ function signals(overrides: Partial<HealthSignals> = {}): HealthSignals {
     queueBacklogSeconds: 0,
     msSinceAuthRejection: null,
     disconnectedStreams: [],
+    ladderNotStartedStreams: [],
     // A service that has ingested media, so an unrelated case cannot pick up `ingest_refused` by
     // default. The refused-ingest cases below set both fields explicitly.
     hasIngestedMedia: true,
@@ -195,6 +197,7 @@ describe('health wire contract', () => {
         HEALTH_REASON_POSTAGE_REFUSED,
         HEALTH_REASON_NODE_UNAVAILABLE,
         HEALTH_REASON_START_GATE_WARNED,
+        HEALTH_REASON_LADDER_NOT_STARTED,
       ],
       [
         'segment_upload_failure',
@@ -211,6 +214,7 @@ describe('health wire contract', () => {
         'postage_refused',
         'node_unavailable',
         'start_gate_warned',
+        'ladder_not_started',
       ],
     );
   });
@@ -518,6 +522,25 @@ describe('deriveHealthStatus quarantined recovery entries', () => {
 
     assert.equal(report.status, HEALTH_DEGRADED);
     assert.deepEqual(report.reasons, [HEALTH_REASON_UNRECOVERABLE_STREAM]);
+  });
+});
+
+describe('deriveHealthStatus ladder not started', () => {
+  it('is ok while every accepted ladder source has a rung', () => {
+    const report = deriveHealthStatus(signals({ ladderNotStartedStreams: [] }), STALL_MS);
+
+    assert.equal(report.status, HEALTH_OK);
+  });
+
+  /** A source starts no stream of its own, so a ladder that never started has nothing active to stall. */
+  it('degrades with no stream active at all', () => {
+    const report = deriveHealthStatus(
+      signals({ ladderNotStartedStreams: ['video/abc'], activeStreams: 0, msSinceStreamActivity: null }),
+      STALL_MS,
+    );
+
+    assert.equal(report.status, HEALTH_DEGRADED);
+    assert.deepEqual(report.reasons, [HEALTH_REASON_LADDER_NOT_STARTED]);
   });
 });
 

@@ -125,6 +125,8 @@ describe('api server over http (S0.7 test layer)', () => {
         // invisible from outside before a disconnect stopped ending a broadcast. See
         // `ReconnectWindow.test.ts`.
         'disconnectedStreams',
+        // Every ladder source whose first rung never published. See `LadderFirstRungDeadline.test.ts`.
+        'ladderNotStartedStreams',
         'hasIngestedMedia',
         'segmentsSkipped',
         'openingSegmentsWithheld',
