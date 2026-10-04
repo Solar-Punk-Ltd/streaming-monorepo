@@ -228,8 +228,8 @@ into the admin (`docs/architecture/stages.md` at the repository root).
 - **The OBS details are the stage's.** `GET /streams/:id/ingest` builds the SRT
   line from the stage's public ingest address and SRT port, adds the RTMP
   server and stream key only where the stage's record says `rtmpPublic`,
-  which the manager says on no stage while RTMP is closed to the outside on
-  every stage, and answers
+  which the manager says of every SRS stage and of no OvenMediaEngine one, and
+  answers
   the stage's SRT passphrase, read from the `stages` table's own column for
   this one answer. RTMP has no passphrase, so its stream key crosses the
   network as readable text, and the console's OBS panel says so beside it. It names the stage (`stage: { stageId, name, retiredAt }`). With

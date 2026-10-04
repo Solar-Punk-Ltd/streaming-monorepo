@@ -75,8 +75,9 @@ export function ingestDetailsFor(stream: StreamRow, stage: StageSecretsRow | nul
 }
 
 /**
- * Only built where the stage opens RTMP ingest, so the stream key does not
- * travel a second time, in a form nobody can use, on a stage that closed it.
+ * Only built where the stage's record says it takes RTMP, which the manager
+ * says of every SRS stage, so the stream key does not travel a second time to
+ * an OvenMediaEngine stage that takes SRT alone.
  */
 function rtmpDetailsFor(stream: StreamRow, ingest: { host: string; rtmpPort: number }): IngestRtmpDetails {
   return {

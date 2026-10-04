@@ -5,7 +5,7 @@
  * is pinned here is the assembly: which part of the row becomes the app, which
  * becomes the stream name, that the address, the ports and the SRT passphrase
  * are the stage's, as the manager pushed them, rather than invented per stream,
- * that RTMP is sent only where the stage opened it, and that a stream with no
+ * that RTMP is sent only where the stage's record offers it, and that a stream with no
  * stage gets its own id and key and nowhere to send them.
  */
 import assert from 'node:assert/strict';
@@ -66,8 +66,16 @@ describe('ingestDetailsFor', () => {
     assert.match(details.srt!.url, new RegExp(`r=audio/${row.topic}`));
   });
 
-  it('sends no RTMP server or stream key where the stage keeps RTMP closed', async () => {
-    const { stage } = await stageWith({ rtmpPublic: false });
+  it('offers RTMP on an SRS stage, whose record the manager marks as taking RTMP', async () => {
+    const { stage } = await stageWith({ rtmpPublic: true }, { engine: 'srs' });
+    const details = ingestDetailsFor(streamRow(), stage);
+
+    assert.equal(details.rtmp?.server, 'rtmp://ingest.example.org:10062/video');
+    assert.ok(details.srt!.url.startsWith('srt://ingest.example.org:10061?'));
+  });
+
+  it('sends no RTMP server or stream key on an OvenMediaEngine stage, which takes SRT alone', async () => {
+    const { stage } = await stageWith({ rtmpPublic: false }, { engine: 'ome' });
     const details = ingestDetailsFor(streamRow(), stage);
 
     assert.equal(details.rtmp, null);

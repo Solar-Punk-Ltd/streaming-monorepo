@@ -353,71 +353,57 @@ password and can spend the node's postage and, with a whitelist, its money.
 Deploy as above, create the first user with the CLI, sign in through the tunnel
 and click around. Nothing below is worth doing until the gate is real.
 
-### 2. Bind the node and engine APIs off the public interface
+### 2. Check where the node and engine APIs answer
 
 Each deployment publishes the API of every Bee node it runs, on the ports
-ending 5 and 7 for its slot, and the three HTTP ports its engines serve, and the
-stack's own default for each is every interface.
+ending 5 and 7 for its slot, and the three HTTP ports its engines serve. None
+of them asks for a password, and Docker publishes a container port with rules
+of its own that a host firewall such as ufw never sees. So the stack's own
+deploy binds each of them to the host's Docker bridge address wherever its
+`*_BIND` setting is empty. It reads that address from the Docker daemon of the
+host that runs the stack, at every deploy, over ssh for another host, and it is
+`127.0.0.1` on Docker Desktop and wherever it could not be read. Containers on
+the host reach the bridge address through `host.docker.internal`, and nothing
+outside the host does. Which other ports are reachable is your firewall's job,
+step 3.
 
-The manager binds the Bee APIs itself. A deploy on this host
-writes the Docker bridge address into each Bee `*_API_BIND` that neither the
-base `.env` nor the deployment's own settings name: the address
-`host.docker.internal` resolves to inside the manager's `api` container, and
-only when the daemon reports that address as its own bridge gateway, which is
-the case on a Linux engine. Each deploy that writes a bind logs one line naming
-every key it wrote and the address it wrote there. Where the address is not the
-bridge, the manager logs a warning naming both addresses at the first deploy and
-binds nothing, and the Bee lines below are yours to set. A deployment on another
-host is never bound this way: the control host reaches its API there, and that
-host's firewall closes it. The three engine ports are not bound by the manager
-and stay yours to set.
+A deployment on another host is one the manager dials over the network, so for
+such a deployment the manager writes `0.0.0.0` into each Bee `*_API_BIND` and
+`*_API_LISTEN` that nothing names, and that host's firewall decides who reaches
+it.
 
-**Upgrading.** A deployment already running keeps its binding until its next
-deploy, which narrows its Bee APIs to the bridge. From then on each of those
-nodes answers on the bridge address alone, so three kinds of client stop
-reaching it:
-
-- anything on another host that reaches it by this host's public address, such
-  as an uploader on a pool rung here or a `BEE_URL` naming it
-- anything on this host that dials `localhost` or `127.0.0.1`, such as the
-  stack's own `health.sh`, `spend-ledger.sh`, `node-metrics.sh` and
-  `bench-on-host.sh`, and the reads the stack's e2e suite runs on this host over
-  ssh
-- a container on this host that dials the host's public or LAN address
-
-To keep a node open to them, set its key to `0.0.0.0` in the deployment's own
-settings, which the deploy leaves standing, and close the port with the firewall
-of step 3 instead. There is one key per Bee node of the stack:
-`BEE_UPLOADER_API_BIND` for the deployment's own node, which is the node a pool
-rung runs, `BEE_GATEWAY_API_BIND` for its gateway, and
+Anything that dials a Bee API on `localhost` or `127.0.0.1` on a Linux host,
+or by the host's public or LAN address, does not reach a node bound to the
+bridge. The stack's `health.sh` asks each one where it is bound. To keep a node
+open to such a client, set its key to `0.0.0.0` in the deployment's own
+settings, which the deploy leaves standing. There is one key per Bee node of
+the stack: `BEE_UPLOADER_API_BIND` for the deployment's own node, which is the
+node a pool rung runs, `BEE_GATEWAY_API_BIND` for its gateway, and
 `BEE_RUNG_480P_API_BIND`, `BEE_RUNG_720P_API_BIND` and `BEE_RUNG_1080P_API_BIND`
 for the stack's own per-rung nodes.
 
-**A firewall is no substitute for this**: Docker publishes a container port by
-rewriting the packet's destination and forwarding it, so a firewall's input
-rules never see it at all, and the forward rules of step 3 filter it one way in
-rather than closing it. The binding is the control.
-
 The eight settings live on the server, in
-`/opt/streaming/streaming-infra-manager-versions/bundled/.env`, and no deploy reads or writes
-that file. Edit it there with the editing script, as under "Where the streaming
-stack's settings live" above. Find the bridge address with
-`ip -4 addr show docker0` on the server, usually `172.17.0.1`. For the five Bee
-lines, leave them empty and the deploy writes the bridge address, or set them to
-name another address:
+`/opt/streaming/streaming-infra-manager-versions/bundled/.env`, and no deploy
+reads or writes that file. Edit it there with the editing script, as under
+"Where the streaming stack's settings live" above. Leave them empty for the
+bridge address, or name one, where `<bridge address>` is the address
+`docker network inspect bridge` reports as the gateway on the server:
 
 ```env
-BEE_UPLOADER_API_BIND=172.17.0.1
-BEE_GATEWAY_API_BIND=172.17.0.1
-BEE_RUNG_480P_API_BIND=172.17.0.1
-BEE_RUNG_720P_API_BIND=172.17.0.1
-BEE_RUNG_1080P_API_BIND=172.17.0.1
-SRS_HTTP_API_BIND=172.17.0.1
-SRS_HTTP_BIND=172.17.0.1
-OME_HTTP_BIND=172.17.0.1
+BEE_UPLOADER_API_BIND=<bridge address>
+BEE_GATEWAY_API_BIND=<bridge address>
+BEE_RUNG_480P_API_BIND=<bridge address>
+BEE_RUNG_720P_API_BIND=<bridge address>
+BEE_RUNG_1080P_API_BIND=<bridge address>
+SRS_HTTP_API_BIND=<bridge address>
+SRS_HTTP_BIND=<bridge address>
+OME_HTTP_BIND=<bridge address>
 ```
 
-What each one closes:
+`DOCKER_BRIDGE_ADDRESS` in the same file names the address every empty one of
+them takes, in place of the one the deploy reads.
+
+What each one covers:
 
 - **`BEE_UPLOADER_API_BIND`**, **`BEE_GATEWAY_API_BIND`**,
   **`BEE_RUNG_480P_API_BIND`**, **`BEE_RUNG_720P_API_BIND`** and
@@ -430,57 +416,43 @@ What each one closes:
   and a publish key are built from, along with every publisher's and every
   viewer's address.
 - **`SRS_HTTP_BIND`** is the SRS file server on 8080 and **`OME_HTTP_BIND`** is
-  OME's HLS port on 8081, and both serve the finished segments, so a broadcast
-  can be watched straight off the ingest host, bypassing the catalog, the
-  viewer and Swarm.
+  OME's HLS port on 8081, and both serve the finished segments.
 
-Not `127.0.0.1` for the Bee ports or for OME's HLS port, and not any other
-address the manager's `api` container cannot reach. The manager reaches a local
-node's API and that HLS port through `host.docker.internal`, which is that same
-bridge address, so loopback would cut off stamp management, and any address the
-container has no route to does the same without saying so: stamp reads, postage
-buys and chequebook operations stop for every deployment on this host and no
-message names the cause. If the address
-has to be something other than the bridge, set `BEE_LOCAL_HOST` in
-`manager/.env` to that same address, written bare as a host name or an IPv4
-address: no scheme, no port, no path. A value of any other shape, an IPv6
-address included for now, stops the manager at startup with the variable named.
-That is the one override the manager reads for it, and the stack file's own
-comments, which suggest a private interface here, are only safe with it set.
-The two SRS ports are the exception: the manager never reaches them, so they can
-go to `127.0.0.1` wherever every use of them is a curl run on the server itself.
+Not `127.0.0.1` for the Bee ports or for OME's HLS port on a Linux host, and not
+any other address the manager's `api` container cannot reach. The manager
+reaches a local node's API and that HLS port through `host.docker.internal`,
+which is the bridge address, so loopback would cut off stamp management, and
+any address the container has no route to does the same without saying so:
+stamp reads, postage buys and chequebook operations stop for every deployment
+on this host and no message names the cause. If the address has to be
+something other than the bridge, set `BEE_LOCAL_HOST` in `manager/.env` to that
+same address, written bare as a host name or an IPv4 address: no scheme, no
+port, no path. A value of any other shape, an IPv6 address included for now,
+stops the manager at startup with the variable named. The two SRS ports are the
+exception: the manager never reaches them.
 
 OME's port is worth one more line. After an engine config rollout the manager
 probes it on that same address to see whether OME came back up, so a binding it
 cannot reach turns a rollout that worked into a reported failure.
 
 An ABR node pool is worth one more again, because this address leaves the
-manager inside its pool string. Since 2026-09-17 the `BEE_PUBLISHERS` value a
-pool hands an uploader names every rung at this same bridge address, not at the
-host's public one, and that is what an uploader container on this host can
-actually reach when these ports are bound here and nowhere else. `BEE_LOCAL_HOST`
-overrides that too. An uploader on another machine is the Bee host's case
-instead: its rungs are named at that host's own address, and "A Bee host, made
-by hand" in `docs/self-hosting.md` at the repository root opens their API to the
-uploader's address alone, with a wider bind and the `--bee-api-source` flag of
-step 3. An uploader created before
-2026-09-17 still holds a string in the public form, which answers nowhere at
-all. Copy the pool string from the pool page again and paste it into the
-uploader's "Node pool string" field under Edit.
+manager inside its pool string. The `BEE_PUBLISHERS` value a pool hands an
+uploader names every rung at this same bridge address, not at the host's public
+one, and that is what an uploader container on this host can reach.
+`BEE_LOCAL_HOST` overrides that too. An uploader on another machine is the Bee
+host's case instead: its rungs are named at that host's own address, and "A Bee
+host, made by hand" in `docs/self-hosting.md` at the repository root opens their
+API to the uploader's address with a wider bind and the `--bee-api-source` flag
+of step 3.
 
 If this host runs the stack with `COMPOSE_NETWORK=host`, the keys that apply to
 the Bee APIs are the `*_API_LISTEN` ones instead, `BEE_UPLOADER_API_LISTEN` and
 `BEE_GATEWAY_API_LISTEN`, with `BEE_RUNG_480P_API_LISTEN`,
 `BEE_RUNG_720P_API_LISTEN` and `BEE_RUNG_1080P_API_LISTEN` for the stack's own
-per-rung nodes, and `*_API_BIND` does nothing there at all. So a deployment on
-host networking is not bound by the manager: the bind it writes does nothing
-there, and it writes no listen address, because a host-networked uploader
-reaches its own node on `localhost`. A deploy of such a deployment on this host
-logs a warning instead, naming the `*_API_LISTEN` of each of its Bee nodes that
-is left empty, since such a node listens on every address of the host. The
-engines have no such key, and their three settings do nothing under host
-networking either, which leaves the host firewall of step 3 to close those
-ports.
+per-rung nodes, and `*_API_BIND` does nothing there at all. Left empty, the
+stack's deploy gives each the bridge address, and points the uploader at it.
+The engines have no such key, and their three settings do nothing under host
+networking either, so there they answer on every address.
 
 Commit the edit, Update the bundled version from the Versions page so the next
 build captures it, then redeploy the deployments that should pick it up. A node
@@ -528,28 +500,20 @@ now closed like any other private port. The slot algebra still reserves them,
 which costs nothing and keeps the numbering free for a version that does run
 them.
 
-**RTMP stays closed.** RTMP is closed to the outside on every stage for now,
-and SRT is the ingest broadcasters use. No band opens `10002 + 10 × slot`, so
-the draft drops it like any other private port, stage records say
-`rtmpPublic: false`, and neither the manager nor the web2 admin offers RTMP to
-a broadcaster. SRS keeps its RTMP listener, because the ABR ladder republishes
-every rung to it over loopback. Upgrading a manager needs no new firewall draft
-for this: the port policy is still version 1.
+**RTMP.** This draft opens no band for SRS's RTMP port, `10002 + 10 × slot`,
+so it drops that port like any other private one. That is the draft's choice
+and nothing more: the consoles offer RTMP on every SRS stage, because which
+ports are reachable is the firewall's job, and an operator who wants
+broadcasters on RTMP opens the port in the host firewall. SRS allows play from
+its own container only, `SRS_PLAY_FROM` in the stack, because RTMP publishing
+and playback share one port and a firewall cannot tell them apart.
 
-Opening RTMP on a stage later needs three things first, and none of them is a
-firewall change alone. The stage must run a stack whose SRS allows play from
-loopback only, on image `6.0-r2-swarm.3`. RTMP needs a key of its own,
-separate from the key the SRT line carries. And the manager needs a per-stage
-switch that opens RTMP on that stage alone.
-
-RTMP is plain RTMP and is not encrypted. Wherever it is open, a broadcaster's
-stream key crosses the network as readable text, and anyone who reads it
-there can publish to that stream with it. Wherever keys are checked the stack
-lets a new RTMP publisher take over a live stream, so they can also replace a
-live broadcast, whichever protocol it came in over. While RTMP is open, the SRT
-passphrase keeps the picture private but not the key: SRT sends its stream id,
-key included, before encryption starts, so a key read off either protocol
-publishes over RTMP.
+RTMP is not encrypted. A broadcaster's stream key crosses the network as
+readable text, and a key read off the network publishes over RTMP, whichever
+protocol it was read from, because SRT sends its stream id, key included,
+before encryption starts. With the takeover on, which the stack sets wherever
+keys are checked, such a publisher can also replace a live broadcast. The SRT
+passphrase keeps the picture private but not the key.
 
 A Bee host whose rungs serve uploaders on other hosts needs one more door, and
 it is opened only on request. `--bee-api-source <address>/32`, repeated once
@@ -599,8 +563,8 @@ operator-approved application. Persist only the manager table through the
 host's existing firewall configuration. Replacing all of `/etc/nftables.conf`
 could discard unrelated policy.
 
-The Bee API bind in step 2 still closes those APIs at their published
-interface, except on a Bee host that binds them wider for the addresses it
+The Bee API bind of step 2 still keeps those APIs on the Docker bridge by
+default, except on a Bee host that binds them wider for the addresses it
 names with `--bee-api-source`, where this table is what admits those
 addresses alone. The input hook covers host listeners. The forward hook covers
 published container traffic. Host-network containers with unprovable bindings

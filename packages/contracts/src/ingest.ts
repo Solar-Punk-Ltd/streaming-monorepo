@@ -67,25 +67,21 @@ export const OBS_SRT_PASSPHRASE_FIELD_HELP =
 export type IngestOwner = 'stage' | 'deployment';
 
 /**
- * What a console says beside RTMP details, so every console tells a broadcaster the same thing, on a stage or
- * deployment where RTMP is open to the outside. RTMP has no passphrase, so the stream key crosses the network as
- * readable text. The stack lets a new RTMP publisher take over a live stream wherever keys are checked, so whoever
- * reads the key can replace a live broadcast, whichever protocol it arrived over. SRT sends its stream id, key
- * included, before its encryption starts, so while RTMP is open the SRT passphrase keeps the picture private but not
- * the key. `hasSrtPassphrase` says whether this owner's SRT ingest has a passphrase at all, so the text never offers
- * one that is not there.
+ * What a console says beside RTMP details, so every console tells a broadcaster the same thing. It states what RTMP
+ * does with a stream key and nothing about which ports are reachable, which is the operator's firewall. RTMP has no
+ * passphrase, so the stream key crosses the network as readable text. SRT sends its stream id, key included, before
+ * its encryption starts, so a key read off either protocol publishes over RTMP. The takeover setting decides whether
+ * such a publisher can also replace a live broadcast. `hasSrtPassphrase` says whether this owner's SRT ingest has a
+ * passphrase at all, so the text never offers one that is not there.
  */
 export function rtmpUnencryptedWarning(owner: IngestOwner, hasSrtPassphrase: boolean): string {
   const exposure =
-    'RTMP is not encrypted. Your stream key crosses the network as readable text, and anyone who reads it there can ' +
-    `publish to this stream with it. This ${owner} lets a new RTMP publisher with the key take over a live stream, ` +
-    'so they can also replace your live broadcast with theirs, whichever protocol you broadcast over.';
+    'RTMP is not encrypted, so your stream key crosses the network as readable text. A key read off the network ' +
+    'publishes to this stream over RTMP, whichever protocol it was read from, because SRT sends the key before its ' +
+    'encryption starts. With the takeover on, a publisher with the key can also replace your live broadcast with theirs.';
   const srt = hasSrtPassphrase
-    ? `SRT with this ${owner}'s passphrase keeps your picture private but not your key, because SRT sends the key ` +
-      'before encryption starts, and while RTMP is open a key read off either protocol publishes over RTMP.'
-    : 'Broadcasting over SRT does not help: SRT sends the key before any encryption starts, so while RTMP is open a ' +
-      `key read off either protocol publishes over RTMP, and this ${owner} has no SRT passphrase to keep the picture ` +
-      'private.';
+    ? `This ${owner}'s SRT passphrase keeps your picture private but not your key.`
+    : `This ${owner} has no SRT passphrase, so the picture is not private either.`;
   return `${exposure} ${srt}`;
 }
 

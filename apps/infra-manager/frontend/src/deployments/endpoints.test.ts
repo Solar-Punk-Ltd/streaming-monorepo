@@ -11,8 +11,6 @@
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 
-import { PUBLIC_PORT_ROLES } from '@streaming-infra-manager/common';
-
 import { endpointAddress, endpointKindOf } from './endpoints';
 
 describe('what a port is, by its key', () => {
@@ -67,37 +65,13 @@ describe('what a port is, by its key', () => {
     );
   });
 
-  it('does not call RTMP ingest public, because the firewall keeps it closed', () => {
-    // PUBLIC_PORT_ROLES carries no RTMP role, so the generated rules drop the
-    // port from outside. The cell said public anyway, which is the one thing an
-    // operator cannot check from the screen.
+  it('calls RTMP ingest public and offers its address, as SRT is, whatever the firewall draft opens', () => {
+    // Which ports are reachable is the operator's firewall. A console that hid RTMP because one
+    // generated ruleset leaves it closed took the feature away from every host that opens it.
     const kind = endpointKindOf('SRS_RTMP_PORT');
 
-    assert.equal(kind.audience, 'internal');
-    assert.match(kind.label, /the firewall does not open it/);
-  });
-
-  it('offers no RTMP address to copy while the firewall does not open RTMP', () => {
-    // An address the ingest cannot serve sends a streamer to a port that turns them away.
-    const kind = endpointKindOf('SRS_RTMP_PORT');
-
-    assert.equal(kind.offersAddress, false);
-    assert.equal(
-      PUBLIC_PORT_ROLES.some((role) => role.portVar === 'SRS_RTMP_PORT'),
-      false,
-      'the policy opens no RTMP port today',
-    );
-  });
-
-  it('offers the RTMP address once the firewall policy opens RTMP', () => {
-    const opened = [
-      ...PUBLIC_PORT_ROLES,
-      { group: 'rtmp_ingest', protocol: 'tcp', base: 10002, maxSlot: 100, portVar: 'SRS_RTMP_PORT', service: 'srs' },
-    ] as const;
-    const kind = endpointKindOf('SRS_RTMP_PORT', opened);
-
-    assert.equal(kind.offersAddress, true);
     assert.equal(kind.audience, 'public');
+    assert.equal(kind.offersAddress, true);
     assert.equal(kind.label, 'RTMP ingest, TCP, public');
   });
 

@@ -22,12 +22,14 @@ services:
     # The two HTTP ports take a bind address, the same knob and the same default as in
     # `deploy/docker-compose.yml`. The control API authenticates nobody and names every live stream
     # and every publisher's address, and the file server serves the segment directory. On this path
-    # the variables are read from `.env` beside this file rather than from the root one.
+    # the variables are read from `.env` beside this file rather than from the root one, and nothing
+    # reads the bridge address into DOCKER_BRIDGE_ADDRESS, so unless that file names one they answer
+    # on 127.0.0.1.
     ports:
-      - '${SRS_RTMP_PORT:-1935}:${SRS_RTMP_PORT:-1935}'
-      - '${SRS_HTTP_API_BIND:-0.0.0.0}:${SRS_HTTP_API_PORT:-1985}:${SRS_HTTP_API_PORT:-1985}'
-      - '${SRS_HTTP_BIND:-0.0.0.0}:${SRS_HTTP_PORT:-8080}:${SRS_HTTP_PORT:-8080}'
-      - '${SRS_SRT_PORT:-10080}:${SRS_SRT_PORT:-10080}/udp'
+      - '${SRS_RTMP_BIND:-0.0.0.0}:${SRS_RTMP_PORT:-1935}:${SRS_RTMP_PORT:-1935}'
+      - '${SRS_HTTP_API_BIND:-${DOCKER_BRIDGE_ADDRESS:-127.0.0.1}}:${SRS_HTTP_API_PORT:-1985}:${SRS_HTTP_API_PORT:-1985}'
+      - '${SRS_HTTP_BIND:-${DOCKER_BRIDGE_ADDRESS:-127.0.0.1}}:${SRS_HTTP_PORT:-8080}:${SRS_HTTP_PORT:-8080}'
+      - '${SRS_SRT_BIND:-0.0.0.0}:${SRS_SRT_PORT:-10080}:${SRS_SRT_PORT:-10080}/udp'
     # Enumerated rather than inherited, deliberately. This used to be `env_file: ../../.env`, which
     # fills the container with **every** root variable, including PUBLISH_KEY_SECRET: the master
     # secret every stream's publish key derives from, handed to the third-party publisher-facing
@@ -83,6 +85,8 @@ services:
       # `.env` carries neither, so here both stay off unless SRT_TAKEOVER or RTMP_TAKEOVER says otherwise.
       SRT_TAKEOVER: ${SRT_TAKEOVER:-}
       RTMP_TAKEOVER: ${RTMP_TAKEOVER:-}
+      # Who may play from SRS. Empty is this container alone, see entrypoint.sh.
+      SRS_PLAY_FROM: ${SRS_PLAY_FROM:-}
       UPLOADER_PUBLISH_KEYS: ${PUBLISH_KEY_SECRET:+yes}
       UPLOADER_ADMIN_MODE: ${ADMIN_API_URL:+yes}
       # The ABR ladder, read by this entrypoint. Off by default.

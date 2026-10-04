@@ -22,9 +22,8 @@ scope `@streaming-monorepo/`.
   server-wide SRT passphrase shown alongside. The RTMP server and stream key were
   shown only where the deployment opened RTMP ingest (`INGEST_RTMP_PUBLIC`), which
   was off by default, since ingest was SRT only then. That key left the admin's
-  env with phase 4 of the stages work. RTMP is now offered only where a stage's
-  record says `rtmpPublic`, which no stage does while RTMP stays closed to the
-  outside, below.
+  env with phase 4 of the stages work. RTMP is now offered where a stage's
+  record says `rtmpPublic`, which every SRS stage's does, below.
 - A real stream for a draft: the uploader (swarm-hls-stream `main-v3`) resolves
   the draft by ingest stream id through the admin's internal API, checks the
   key, publishes under the draft's topic and reports live and vod; the admin
@@ -390,47 +389,36 @@ Left open after the nine phases:
   pushes, on the admin's registrar token, and every uploader presents a token
   of its own (done in phases 5 and 9).
 
-## RTMP ingest beside SRT (2026-10-03)
+## RTMP ingest beside SRT
 
-**RTMP is closed to the outside on every stage for now, and SRT is the ingest
-broadcasters use.** Decided by the owner on 2026-10-03. This reverses
-the decision made earlier the same day to offer RTMP at the same level as SRT.
-It was taken because every stack that runs today lets anyone who reaches its
-RTMP port play any live broadcast with no key, and because an open RTMP port
-lets a key read off an SRT connection publish without the passphrase.
+**A stage whose engine is SRS offers RTMP beside SRT, in both consoles.** Which
+ports are reachable is the operator's firewall, so no console hides RTMP
+because one firewall draft leaves its port closed.
 
-- The manager's firewall keeps every RTMP port closed. Its port policy has no
-  RTMP band and stays at version 1, so the generated draft drops
-  `10002 + 10 × slot` over TCP as it always has.
-- A stage record says `rtmpPublic: false` on every engine. The web2 admin's OBS
-  panel and the manager's Publish card offer SRT alone, and Copy publish URL
-  copies the SRT line alone.
-- SRS keeps its RTMP listener, because the ABR ladder republishes every rung to
-  it over loopback. "Closed" means closed to the outside, not switched off
-  inside SRS.
-- The stack's RTMP work ships all the same: the RTMP takeover
-  (`RTMP_TAKEOVER`), the health check that covers the RTMP listener, the deploy
-  wait for it, play allowed from loopback only, and the RTMP end-to-end suites.
+- A stage record says `rtmpPublic` from its engine: true on SRS, false on
+  OvenMediaEngine, which takes SRT alone. The web2 admin's OBS panel and the
+  manager's Publish card offer both protocols on an SRS stage, and Copy
+  publish URL copies both.
+- The manager's firewall draft generator is unchanged. Its port policy has no
+  RTMP band, so the draft it writes drops `10002 + 10 × slot` over TCP, and an
+  operator who wants broadcasters on RTMP opens that port in the host firewall.
+- SRS allows play from its own container only, `SRS_PLAY_FROM`, because RTMP
+  publishing and playback share one port and a firewall cannot tell them apart.
+  The ABR ladder republishes every rung to SRS over loopback, which that rule
+  admits.
+- The RTMP takeover (`RTMP_TAKEOVER`), the health check that covers the RTMP
+  listener, the deploy wait for it and the RTMP end-to-end suites ship with it.
   The takeover settings take empty, `on` or `off` in the manager, because SRS
   will not start on anything else.
 
-Opening RTMP on a stage later is a separate piece of work and needs three
-things first. The stage must run a stack whose SRS allows play from loopback
-only, on image `6.0-r2-swarm.3`, which also accepts the RTMP takeover line in
-that stack's config. RTMP needs a key of its own, separate from the key the
-SRT line carries, so a key read off one protocol does not publish over the
-other. And the manager needs a per-stage switch that opens RTMP on that stage
-alone and sets its record's `rtmpPublic` from it.
-
-The shared warning beside RTMP already says what the stack does wherever RTMP
-is open. SRS 6 has no TLS on its RTMP listener, so there is no RTMPS. An RTMP
-stream key crosses the network as readable text, anyone who reads it there can
-publish to that stream with it, and wherever keys are checked the stack lets a
-new RTMP publisher take over a live stream, so they can replace a live
-broadcast too, whichever protocol it came in over. While RTMP is open, the SRT
-passphrase keeps the picture private but not the key, because SRT sends the key
-before encryption starts and a key read off either protocol publishes over
-RTMP.
+The shared warning beside RTMP states what the protocol does with a key. SRS 6
+has no TLS on its RTMP listener, so there is no RTMPS. An RTMP stream key
+crosses the network as readable text, and a key read off the network publishes
+over RTMP whichever protocol it was read from, because SRT sends the key before
+encryption starts. With the takeover on, such a publisher can replace a live
+broadcast too. The SRT passphrase keeps the picture private but not the key. A
+key of RTMP's own, separate from the SRT one, would close that last part, and
+is not built.
 
 ## Checkpoint 4: brand console
 

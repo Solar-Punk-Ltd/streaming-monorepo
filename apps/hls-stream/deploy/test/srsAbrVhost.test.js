@@ -268,6 +268,35 @@ describe('who may play from SRS and who may publish to it', () => {
 
     assertLoopbackPlayOpenPublish(vhostBlock(conf, INGEST_VHOST), 'the single-rendition ingest vhost');
   });
+
+  /** The addresses each vhost allows play from, in order. */
+  function playFrom(block) {
+    return securityOf(block)
+      .rules.filter((rule) => rule.startsWith('allow play '))
+      .map((rule) => rule.slice('allow play '.length));
+  }
+
+  it('takes the addresses play is allowed from out of SRS_PLAY_FROM, on both vhosts', () => {
+    const conf = renderLadderConf({ ...VALID, SRS_PLAY_FROM: '198.51.100.0/24 ::1' });
+
+    assert.deepEqual(playFrom(vhostBlock(conf, INGEST_VHOST)), ['198.51.100.0/24', '::1']);
+    assert.deepEqual(playFrom(vhostBlock(conf, LADDER_VHOST)), ['198.51.100.0/24', '::1']);
+    assert.ok(securityOf(vhostBlock(conf, INGEST_VHOST)).rules.includes('allow publish all'));
+  });
+
+  it('lets an operator allow play from every address with SRS_PLAY_FROM=all', () => {
+    const conf = renderLadderConf({
+      SRS_WEBHOOK_TOKEN: VALID.SRS_WEBHOOK_TOKEN,
+      ABR_ENABLED: 'false',
+      SRS_PLAY_FROM: 'all',
+    });
+
+    assert.deepEqual(playFrom(vhostBlock(conf, INGEST_VHOST)), ['all']);
+  });
+
+  it('refuses an SRS_PLAY_FROM entry that is not an address, rather than writing it into the config', () => {
+    assert.throws(() => renderLadderConf({ ...VALID, SRS_PLAY_FROM: '127.0.0.1; deny play all' }));
+  });
 });
 
 describe('the listen line the ladder input dials', () => {
