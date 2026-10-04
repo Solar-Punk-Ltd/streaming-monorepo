@@ -1,11 +1,11 @@
 /**
  * Where a probe reads and writes. READ_URL names the gateway's Bee API and WRITE_URL the uploader's.
- * Where one is unset it is derived from PORT_SLOT, the stage's `--portSlot`, on DOCKER_BRIDGE_ADDRESS.
- * That is the address deploy.sh binds a Bee API to when its own *_API_BIND is empty, and the one it
- * listens on under host networking, so a probe run with `--network host` beside the stage reaches it
- * there. `deploy/scripts/docker-bridge-address.sh` prints it on the host. Where DOCKER_BRIDGE_ADDRESS
- * is unset too, the probe dials 127.0.0.1, which is right only where the deploy could not read a
- * bridge address and so fell back to loopback.
+ * Where one is unset it is derived from PORT_SLOT, the stage's `--portSlot`, on the address the deploy
+ * bound that Bee API to, the way `deploy/scripts/bound-host.sh` resolves it: the node's own
+ * *_API_BIND, or *_API_LISTEN under COMPOSE_NETWORK=host, else DOCKER_BRIDGE_ADDRESS, else 127.0.0.1.
+ * A node bound to every address is dialled on 127.0.0.1. A probe run with `--network host` beside the
+ * stage reaches each of those there, and `deploy/scripts/docker-bridge-address.sh` prints the bridge
+ * address on the host.
  *
  * Plain ESM, like the probes that import it, so `node` runs them without a build. The slot arithmetic
  * mirrors `apply_port_slot` in `deploy/scripts/_lib.sh`, and the test compares it with `src/ports.ts`.
@@ -14,11 +14,24 @@
 const LOOPBACK = '127.0.0.1';
 const MAX_PORT_SLOT = 99;
 const PORT_SLOT_STRIDE = 10;
-const GATEWAY_BEE_API = { stock: 1733, base: 10007 };
-const UPLOADER_BEE_API = { stock: 1633, base: 10005 };
+const GATEWAY_BEE_API = { stock: 1733, base: 10007, prefix: 'BEE_GATEWAY' };
+const UPLOADER_BEE_API = { stock: 1633, base: 10005, prefix: 'BEE_UPLOADER' };
 
 /**
- * @param {{ stock: number, base: number }} port
+ * @param {string} prefix
+ * @param {Record<string, string | undefined>} env
+ * @returns {string}
+ */
+function boundHost(prefix, env) {
+  const bind = env[env.COMPOSE_NETWORK === 'host' ? `${prefix}_API_LISTEN` : `${prefix}_API_BIND`] || '';
+  if (bind === '') {
+    return env.DOCKER_BRIDGE_ADDRESS || LOOPBACK;
+  }
+  return ['0.0.0.0', '::', '[::]'].includes(bind) ? LOOPBACK : bind;
+}
+
+/**
+ * @param {{ stock: number, base: number, prefix: string }} port
  * @param {string} name
  * @param {Record<string, string | undefined>} env
  * @returns {string}
@@ -35,7 +48,7 @@ function slotUrl(port, name, env) {
   }
   const slot = Number(raw);
   const hostPort = slot === 0 ? port.stock : port.base + slot * PORT_SLOT_STRIDE;
-  return `http://${env.DOCKER_BRIDGE_ADDRESS || LOOPBACK}:${hostPort}`;
+  return `http://${boundHost(port.prefix, env)}:${hostPort}`;
 }
 
 /**
