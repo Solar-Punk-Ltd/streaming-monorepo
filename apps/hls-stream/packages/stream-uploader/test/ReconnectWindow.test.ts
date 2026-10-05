@@ -1371,7 +1371,11 @@ describe('a ladder that comes back in two returns, the first without 360p', () =
     return playlists;
   }
 
-  /** Every sequence two rungs both hold media at is dated within one fragment on both. */
+  /**
+   * Every sequence two rungs both hold media at is dated within half a fragment on both, the bound the
+   * e2e playlist reader holds a live broadcast to. A rung one sequence out of step is a whole segment
+   * apart.
+   */
   function assertOneTimeline(playlists: Map<string, PlaylistEntry[]>): void {
     const [reference, ...rest] = rungIds;
     const media = (streamId: string) => playlists.get(streamId)!.filter((entry) => entry.uri.startsWith('segment-'));
@@ -1381,7 +1385,7 @@ describe('a ladder that comes back in two returns, the first without 360p', () =
         if (twin === undefined) continue;
         const apart = Math.abs(entry.programDateTimeMs - twin.programDateTimeMs);
         assert.ok(
-          apart < SEGMENT_SECONDS * 1_000,
+          apart < (SEGMENT_SECONDS * 1_000) / 2,
           `sequence ${entry.sequence} is dated ${apart} ms apart on ${streamId} and ${reference}`,
         );
       }
