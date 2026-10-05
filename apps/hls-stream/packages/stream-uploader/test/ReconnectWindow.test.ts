@@ -1593,6 +1593,36 @@ describe('a ladder that comes back in two returns, the first without 360p', () =
     await assertResumedTogether(harness, 4, 0);
   });
 
+  /**
+   * The engine's disconnects for one outage can arrive after a sibling has already announced its
+   * return. A rung whose last media is older than the return is part of it however late its
+   * disconnect lands. Left out, it started a second return, and the two halves of one outage each
+   * agreed a point of their own, a sequence apart.
+   */
+  it('takes a rung into the return whose disconnect lands after a sibling announced it', async () => {
+    const harness = reconnectHarness({ ladder: true });
+    const deliver = driverFor(harness);
+    const [late, first] = rungIds;
+    for (const streamId of rungIds) harness.start(streamId);
+    for (let round = 0; round < 4; round++) {
+      for (const streamId of rungIds) await deliver(streamId, `a${round}`);
+      await harness.passTime(SEGMENT_SECONDS * 1_000);
+    }
+    await deliver(late, 'short', 0.28);
+    for (const streamId of rungIds.slice(1)) harness.orchestrator.noteDisconnect(streamId);
+    await harness.passTime(14_000);
+    harness.start(first);
+    harness.orchestrator.noteDisconnect(late);
+    for (const streamId of rungIds.filter((rung) => rung !== first)) harness.start(streamId);
+    await deliver(first, 'b0');
+    await harness.published(`${first}-b0`);
+    for (const streamId of rungIds.filter((rung) => rung !== first)) await deliver(streamId, 'b0');
+    await harness.passTime(SEGMENT_SECONDS * 1_000);
+    for (const streamId of rungIds) await deliver(streamId, 'b1');
+
+    await assertResumedTogether(harness, 5, 1);
+  });
+
   it('starts the next return for a rung that missed the last one and comes back first', async () => {
     const harness = reconnectHarness({ ladder: true });
     const [ahead, missed] = rungIds;

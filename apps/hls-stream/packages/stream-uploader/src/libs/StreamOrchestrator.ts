@@ -185,6 +185,8 @@ interface ActiveReturn {
    * back from something else. See {@link StreamOrchestrator.tokenForThisReturn}.
    */
   placedRungs: Set<string>;
+  /** The monotonic reading the return started at, held in memory only. */
+  startedAt?: number;
   /** The rungs that came back through `resumeHeldRungs`, which resume at their own count. */
   heldRungs: Set<string>;
   /**
@@ -837,6 +839,7 @@ export class StreamOrchestrator {
       token: crypto.randomUUID(),
       resumedRungs: new Set([streamId]),
       placedRungs: new Set(),
+      startedAt: this.clock.now(),
       heldRungs: new Set(held ? [streamId] : []),
       awaitedRungs: new Set([streamId, ...(awaited ?? this.rungsAwayFrom(base))]),
     };
@@ -867,8 +870,9 @@ export class StreamOrchestrator {
    * finished return and resumed at its point and on its dating line, a whole outage in the past.
    *
    * ⛔⛔ **Anything else is the same outage, and the return stays open.** A rung that announced and
-   * drops again before its first segment is still coming back from it, and rejoins it. Closed on it,
-   * one outage became two returns:
+   * drops again before its first segment is still coming back from it, and rejoins it. A rung whose
+   * disconnect lands after a sibling already announced, but whose last media is older than the return,
+   * was away when it started and is taken into it. Closed on either, one outage became two returns:
    * the rungs of the first fell back to their own count, and the second counted their resumed segments
    * and raised its rungs past them, which was worse than resuming each at its own count.
    */
@@ -883,8 +887,18 @@ export class StreamOrchestrator {
     if (!placedInIt && (inProgress.awaitedRungs?.has(streamId) ?? true)) {
       return;
     }
-    inProgress.closed = true;
+    if (!placedInIt && this.wentQuietBefore(streamId, inProgress.startedAt)) {
+      inProgress.awaitedRungs?.add(streamId);
+    } else {
+      inProgress.closed = true;
+    }
     this.rememberReturn(key, base, inProgress);
+  }
+
+  /** Whether this rung's last media arrived before `instant`, a monotonic reading. */
+  private wentQuietBefore(streamId: string, instant: number | undefined): boolean {
+    const lastMedia = this.streamIngestAt.get(streamId);
+    return instant !== undefined && lastMedia !== undefined && lastMedia < instant;
   }
 
   /** The return a ladder's group record says its rungs are coming back from, after a restart of this process. */

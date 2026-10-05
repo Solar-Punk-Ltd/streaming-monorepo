@@ -421,9 +421,11 @@ two rungs delivering one segment, whose copy on the later rung is media cut befo
 single rendition resumes at its own count as it always has, and so does every rung after the
 engine's own counter restarts.
 
-A return only takes in the rungs that were away when it started. A rung that kept publishing through
-it is not part of it, and a return is closed once a rung that is already back from it, or never left
-it, goes away again. A test deployment came back in two returns, the first without 360p, and 360p was
+A return only takes in the rungs that were away when it started, including one whose disconnect
+lands after a sibling announced but whose last media is older than the return. A rung that kept
+publishing through it is not part of it. A return is closed once a rung that has placed a segment of
+it, or never left it, goes away again, and a rung that drops before its first resumed segment rejoins
+the return it announced. A test deployment came back in two returns, the first without 360p, and 360p was
 handed the first return's name at the second: it resumed a sequence apart from its siblings and dated
 its media 24 seconds in the past.
 
