@@ -34,6 +34,10 @@ import { CatalogueDesignationRepository } from './domain/stages/CatalogueDesigna
 import { CatalogueDesignationService } from './domain/stages/CatalogueDesignationService.js';
 import { FundingInventoryService } from './domain/funding/FundingInventoryService.js';
 import { createFundingInventoryRouter } from './api/routes/adminFunding.js';
+import { createFundingChainRouter } from './api/routes/fundingChain.js';
+import { FundingChainService } from './domain/funding/FundingChainService.js';
+import { PostgresFundingTransferJournal } from './domain/funding/FundingTransferJournal.js';
+import { ChainRpc } from './domain/chequebook/ChainRpc.js';
 import { BeeClient } from './domain/BeeClient.js';
 import { CataloguePublisher } from './domain/stages/CataloguePublisher.js';
 import { UploaderHealthService } from './domain/UploaderHealthService.js';
@@ -93,6 +97,10 @@ function logStartupConfig(): void {
   logger.info(`[Boot]   database: ${redactDatabaseUrl(config.databaseUrl)}`);
   // Whether it is on, never the token.
   logger.info(`[Boot]   funding API: ${config.fundingApiToken ? 'on (FUNDING_API_TOKEN is set)' : 'off'}`);
+  // Which endpoint the funding API reads the chain through, by its variable alone: the address can carry a key.
+  logger.info(
+    `[Boot]   funding chain endpoint: ${config.fundingRpcUrl ? 'FUNDING_RPC_URL' : config.beeRpcEndpoint ? 'BEE_RPC_ENDPOINT' : 'none'}`,
+  );
   // The host alone, never the URL: an endpoint can carry an API key, and this
   // line goes to the log.
   logger.info(
@@ -460,6 +468,14 @@ async function main(): Promise<void> {
     },
     wallet: (apiUrl) => new BeeClient(apiUrl, FUNDING_WALLET_READ_MS).getWallet(),
   });
+  // The funding API's chain side: the brand account the admin signs from, the transfers it signs, and their state,
+  // journalled in funding_transfers before anything is broadcast.
+  const fundingRpc = config.fundingRpcUrl ?? config.beeRpcEndpoint;
+  const fundingChain = new FundingChainService({
+    chain: fundingRpc ? new ChainRpc(fundingRpc) : null,
+    journal: new PostgresFundingTransferJournal(database.pool),
+    inventory: fundingInventory,
+  });
   profileService.setPoolStringGuard((beePublishers) => catalogueService.segmentBatchProblem(beePublishers));
   // An ABR stage deploys with its pool's current batches, and a batch set on a rung reaches its stages' stored copy.
   const stagePoolStrings = new StagePoolStrings({
@@ -536,7 +552,10 @@ async function main(): Promise<void> {
       eventBus,
       metricsCollector,
       beeRpcEndpoint: config.beeRpcEndpoint,
-      funding: { token: config.fundingApiToken, routes: [createFundingInventoryRouter(fundingInventory)] },
+      funding: {
+        token: config.fundingApiToken,
+        routes: [createFundingInventoryRouter(fundingInventory), createFundingChainRouter(fundingChain)],
+      },
     },
     config.port,
     config.host,
