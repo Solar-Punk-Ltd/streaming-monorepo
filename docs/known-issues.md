@@ -18,6 +18,16 @@ copy under `bundled.builds/<commit>/.env`, made before the line was removed, so 
 refused until both are cleaned. To see it: set the key in `bundled/.env`, build, delete it from
 `bundled/.env` only, then rotate.
 
+**The viewer goes blank after the catalogue moves to a catalogue node (P2).** The viewer is built
+with the address of the catalogue feed's owner, and the manager hands it that address only from the
+viewer deployment's own feed owner setting. After the stages upgrade the catalogue is written by the
+catalogue node, so its owner changes, but the upgrade steps in [self-hosting.md](self-hosting.md)
+name only the viewer's feed topic. A viewer redeployed without the owner builds with none: the page
+stays empty and the browser console says `Missing env var: VITE_APP_OWNER`. The fix by hand is to
+save the owner the admin publishes at `/api/config` (its `feed.owner`, with `0x` in front) as the
+viewer deployment's feed owner, which redeploys it. To see it: designate a catalogue node, give the
+viewer the new topic only, redeploy it and open the page.
+
 **A stray file in a version folder spreads into every build and deploy (P3).** The manager copies a
 stack version's folder whole, so any extra file there, such as a backup of its `.env`, is copied into
 each build under `bundled.builds/<commit>/` and into each deploy's snapshot under
@@ -36,11 +46,39 @@ admin. To see it: broadcast 6 Mbit/s through a 3 Mbit/s link.
 
 **The admin shows "published" while nothing goes out (P3).** A broadcaster can be connected while
 the ladder encoders produce nothing. The admin keeps showing the stream as published, with no
-warning. Seen together with the encoder hang that is being fixed separately.
+warning. The uploader now reports such a ladder on `/health` as `ladder_not_started` after 45 s,
+but the admin does not show it.
+
+**A broadcast can start with nothing going out (P1, being fixed in our SRS fork).** SRS 6 can remove a
+new stream's source in the moment between the broadcaster connecting and starting to publish. The
+broadcaster then publishes into the removed source, which still takes its stream at full rate, while
+the ladder encoders are handed a second, empty source and produce nothing. The broadcaster looks
+live, no rung publishes, and only a reconnect of the broadcaster clears it. The window is the time
+from connecting to publishing, so a slow or jittery link makes it likely: about one RTMP start in
+three on such a link, and rarer on a good one. This is upstream
+[ossrs/srs#4755](https://github.com/ossrs/srs/issues/4755), unfixed in every SRS 6 release and fixed
+in SRS 7. To see it: start an RTMP broadcast through `tc netem delay 80ms 20ms`, then look in the SRS
+log for `Live: cleanup die source` between the publisher's `source url=` line and its
+`start publish`.
+
+**After a return the top rung can miss its first segments (P3).** When a broadcaster comes back
+inside the reconnect window, every rung resumes on the same sequence and dating line, but the
+slowest encoder can start a segment or two later. Those sequence numbers are then absent on that
+rung only. A player on that rung skips the gap, and the dates still line up across rungs. Seen once
+on the 1080p rung, two segments.
 
 **Segments inside a network fault carry decode errors (P3, expected).** During a squeeze or a
 blackout, three to four segments per rung decode with errors, and every other segment decodes
 clean. That is damage from packets SRT dropped on the way in, not from the stack.
+
+**Some segments carry repeated decode timestamps (P3).** About one segment in 10 to 50, on every
+rung at once, runs 2.025 s instead of 2.0 s, and about 40 of its frames carry a decode timestamp
+that does not move past the one before. ffmpeg reports each of them as "non monotonically increasing
+dts to muxer". All the frames are there and the picture decodes. A player could at most drop or
+stutter a frame there, and a browser viewer played through such segments without a stall. It shows
+on a normal network as much as during a fault, so some of the decode errors counted in the entry
+above are probably this, not damage. To see it: decode the segments of any recording with
+`ffmpeg -v error -i <segment> -f null -` and look for that message.
 
 **One damaged segment after an unclean takeover (P3, cause unknown).** One recording had a single
 segment per rung, about four seconds, with decode errors on every rung, so the source itself was
