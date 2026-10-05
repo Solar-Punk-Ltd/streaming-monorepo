@@ -56,6 +56,7 @@ for the whole design.
 | `pnpm build`                            | builds the shared packages and common, then `tsc` + copies `src/migrations` into `dist`                  |
 | `pnpm start`                            | `node --conditions=compiled dist/index.js`, which loads the shared packages' built `dist`                |
 | `pnpm user:add <name> [--admin]`        | add a user; `--password-stdin` reads it from a pipe. The only way to make the first one                  |
+| `pnpm wallet:export --i-understand`     | print the brand wallet's private key once, for the backup handed to the brand. Refuses without the flag  |
 | `pnpm test`                             | unit tests (`test/unit`), no database or network                                                         |
 | `pnpm test:integration`                 | starts a backend of its own and drives it over HTTP — see [test/integration](test/integration/README.md) |
 | `pnpm typecheck`                        | `tsc -p tsconfig.typecheck.json`, which includes `test/`                                                 |
@@ -845,6 +846,26 @@ chain connection of its own and the wallet's key never leaves it.
 `src/domain/funding/BrandWallet.ts` is the module. The funding service uses
 `BrandWallet.start`, which `src/index.ts` calls right after the migrations,
 and the wallet's `address()` and `signTransaction()`.
+
+### The backup at handover
+
+The brand's backup of the wallet is its private key. At handover it is printed
+once and handed to the brand, who can then move the funds from any wallet app,
+without this admin. It is also the way back to the funds should the secret be
+lost, since the wallet opens under no other.
+
+```bash
+pnpm wallet:export --i-understand
+docker compose exec -T api node dist/cli.js wallet:export --i-understand
+```
+
+The command refuses without `--i-understand`, since anyone who holds the key
+can move everything the wallet holds. It needs `BRAND_WALLET_SECRET` and the
+database, as the API does, and changes neither. The key goes to standard
+output alone, one line, so it can be piped straight into a password manager;
+the warning and the wallet's address go to standard error. Nothing is logged,
+and a wallet that cannot be opened prints nothing. The command for a server
+deployment is in [deploy/README.md](../deploy/README.md).
 
 ### The manager's address and token
 
