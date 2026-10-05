@@ -311,6 +311,12 @@ naming each service that is not up and the state Docker has for it, while a stop
 becomes `STOPPED` when nothing is up and `ERROR` naming what is still running
 otherwise. A daemon that cannot be reached leaves the row `ERROR` saying so.
 
+A stop that fails after it claimed the deployment and before its script
+started marks it `ERROR` with the reason at once, so it does not sit in
+`STOPPING` until the next boot. A stop of a deployment that was replaced since
+the request read it is refused as an instance change and leaves the replacement
+as it was.
+
 ### Why the uploader is held back
 
 A postage stamp is prepaid Swarm storage, bought on a running, funded Bee node.
