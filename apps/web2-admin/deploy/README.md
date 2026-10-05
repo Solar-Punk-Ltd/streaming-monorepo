@@ -254,6 +254,28 @@ console's sign-in page shows the shorter equivalent, `docker exec -it
 web2-admin-<profile>-api-1 node dist/cli.js user:add <username>`, to run on
 the host; `docker ps` shows the container's name.
 
+### The brand wallet's backup
+
+With `BRAND_WALLET_SECRET` set in the profile's env file, the API creates the
+brand wallet on its first start. At handover, print the wallet's private key
+once, for the brand's backup:
+
+```sh
+ssh admin-host 'cd /opt/streaming/streaming-monorepo && WEB2_ADMIN_ENV_FILE=../backend/.env.brand-a docker compose -p web2-admin-brand-a -f deploy/docker-compose.yml --env-file backend/.env.brand-a exec -T api node dist/cli.js wallet:export --i-understand'
+```
+
+There is no `-t` here, unlike the first user's command, which prompts: a
+terminal on the host merges standard error into standard output, and the
+warning would then travel with the key into a password manager. Without it,
+the key alone comes out on standard output and the warning on standard error.
+
+Anyone who holds the key can move everything the wallet holds, so it goes
+straight into the brand's password manager and nowhere else, and the command
+refuses without `--i-understand`. Keep `BRAND_WALLET_SECRET` with the
+profile's env file too: the wallet opens under no other secret, and the API
+refuses to start with the wrong one. See "Funding" in
+[backend/README.md](../backend/README.md).
+
 ### Running compose by hand
 
 `docker-compose.yml` needs `WEB2_ADMIN_ENV_FILE` (the env file's path relative
