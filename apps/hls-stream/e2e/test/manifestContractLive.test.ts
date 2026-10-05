@@ -17,6 +17,7 @@ import {
   publishedCountsOf,
   publishedFor,
   publishingRungFeedsOf,
+  returnAlignment,
   type RungFeed,
   rungFeedsOf,
   rungPlaylistParse,
@@ -227,24 +228,15 @@ describe('reading one rung playlist back', () => {
     assert.equal(rungPlaylistParse(feed, rungPlaylist([0, 1, 2, 3], { gaps: [1, 2] })).gaps, 2);
   });
 
-  /**
-   * Every rung of one return resumes at one sequence, so a rung that had counted less lists the
-   * sequences up to it as gap entries and breaks on the next. A suite asserting that a return lost
-   * nothing has to tell those apart from a hole.
-   */
-  it('counts the gap entries that end at a break as a rung lining up at a return', () => {
-    const lined = rungPlaylistParse(feed, rungPlaylist([0, 1, 2, 3, 4], { gaps: [2, 3], breaks: [4] }));
+  it('records each break with the sequence it opens and the gap entries right before it', () => {
+    const lined = rungPlaylistParse(feed, rungPlaylist([0, 1, 2, 3, 4, 5, 6], { gaps: [1, 4, 5], breaks: [3, 6] }));
 
-    assert.equal(lined.gaps, 2);
-    assert.equal(lined.gapsAtAReturn, 2);
-  });
-
-  it('counts a hole between two runs of media as no part of a return', () => {
-    const holed = rungPlaylistParse(feed, rungPlaylist([0, 1, 2, 3, 4, 5], { gaps: [1], breaks: [4] }));
-
-    assert.equal(holed.gaps, 1);
-    assert.equal(holed.gapsAtAReturn, 0);
-    assert.equal(rungPlaylistParse(feed, GATEWAY_ERROR_ENVELOPE).gapsAtAReturn, 0);
+    assert.deepEqual(lined.breaks, [
+      { sequence: 3, gapsBefore: 0 },
+      { sequence: 6, gapsBefore: 2 },
+    ]);
+    assert.equal(lined.lastSequence, 6);
+    assert.deepEqual(rungPlaylistParse(feed, GATEWAY_ERROR_ENVELOPE).breaks, []);
   });
 
   /**
@@ -666,6 +658,33 @@ describe('the one call a live suite makes', () => {
     assert.match(verdict.summary, /E2E_EXPECT_SEGMENT_S/);
   });
 
+  /**
+   * ⛔ Opt-in, because a rung whose engine counter restarted, or that SRS held through a drop, still
+   * resumes at its own count, and a suite that exercises those reads breaks that need not agree.
+   */
+  it('refuses rungs that break at different sequences when the suite asks for one return', async () => {
+    const byTopic = new Map([
+      [rungPlaylistParse(feedOf('360p', TOPIC_360), '').topicHex, rungPlaylist([0, 1, 2, 3], { breaks: [3] })],
+      [rungPlaylistParse(feedOf('1080p', TOPIC_1080), '').topicHex, rungPlaylist([0, 1, 2, 3], { breaks: [2] })],
+    ]);
+    const host = {
+      localText: async (_port: number, path: string) =>
+        [...byTopic].find(([topicHex]) => path.includes(topicHex))?.[1] ?? '',
+    } as unknown as Host;
+    const check = {
+      owner: OWNER,
+      rungs: [feedOf('360p', TOPIC_360), feedOf('1080p', TOPIC_1080)],
+      expectation: cfg.segmentExpectation,
+    };
+
+    const lenient = await checkPublishedTimeline(host, cfg, check);
+    const strict = await checkPublishedTimeline(host, cfg, { ...check, breaksAgreeAcrossRungs: true });
+
+    assert.equal(lenient.refusal, null);
+    assert.match(lenient.breakDisagreement ?? '', /360p breaks at 3/);
+    assert.match(strict.refusal ?? '', /1080p breaks at 2/);
+  });
+
   it('refuses a broadcast that announced no rung feed rather than reporting a pass', async () => {
     const verdict = await checkPublishedTimeline(stubHost(rungPlaylist([0]), []), cfg, {
       owner: OWNER,
@@ -781,5 +800,72 @@ describe('a recording glued across several sessions of one broadcast', () => {
     const continuing = rungPlaylist([0, 1, 2], { mediaSequence: 30, breaks: [0] });
 
     assert.deepEqual(readingOf(FEED, continuing, FIRST_PLAYLIST).failures, []);
+  });
+});
+
+/**
+ * ⛔⛔ Every rung of one return resumes at one sequence, so a rung that had counted less lists the
+ * sequences up to it as gap entries and breaks on the next. A suite asserting that a return lost
+ * nothing has to tell those apart from a hole, and must not excuse a return that invented the hole.
+ */
+describe('reading the rungs of one return together', () => {
+  const rung360 = feedOf('360p', TOPIC_360);
+  const rung1080 = feedOf('1080p', TOPIC_1080);
+
+  it('counts the gaps of a rung lining up with a sibling that broke at the same sequence having counted that far', () => {
+    const alignment = returnAlignment([
+      rungPlaylistParse(rung360, rungPlaylist([0, 1, 2, 3, 4, 5], { breaks: [4] })),
+      rungPlaylistParse(rung1080, rungPlaylist([0, 1, 2, 3, 4, 5], { gaps: [2, 3], breaks: [4] })),
+    ]);
+
+    assert.deepEqual(alignment, { gapsAtAReturn: 2, disagreement: null, stillLanding: false });
+  });
+
+  it('counts no gap as a return where every rung lists gaps before the break, which invents loss', () => {
+    const alignment = returnAlignment([
+      rungPlaylistParse(rung360, rungPlaylist([0, 1, 2, 3, 4], { gaps: [3], breaks: [4] })),
+      rungPlaylistParse(rung1080, rungPlaylist([0, 1, 2, 3, 4], { gaps: [2, 3], breaks: [4] })),
+    ]);
+
+    assert.equal(alignment.gapsAtAReturn, 0);
+    assert.match(alignment.disagreement ?? '', /sequence 4/);
+  });
+
+  it('says so when the rungs break at different sequences', () => {
+    const alignment = returnAlignment([
+      rungPlaylistParse(rung360, rungPlaylist([0, 1, 2, 3, 4, 5], { breaks: [5] })),
+      rungPlaylistParse(rung1080, rungPlaylist([0, 1, 2, 3, 4, 5], { breaks: [4] })),
+    ]);
+
+    assert.equal(alignment.gapsAtAReturn, 0);
+    assert.match(alignment.disagreement ?? '', /360p breaks at 5/);
+    assert.match(alignment.disagreement ?? '', /1080p breaks at 4/);
+  });
+
+  it('judges nothing a rung has not published yet, and says the return is still landing', () => {
+    const alignment = returnAlignment([
+      rungPlaylistParse(rung360, rungPlaylist([0, 1, 2, 3])),
+      rungPlaylistParse(rung1080, rungPlaylist([0, 1, 2, 3, 4, 5], { gaps: [2, 3], breaks: [4] })),
+    ]);
+
+    assert.deepEqual(alignment, { gapsAtAReturn: 0, disagreement: null, stillLanding: true });
+  });
+
+  it('counts a hole between two runs of media as no part of a return', () => {
+    const alignment = returnAlignment([
+      rungPlaylistParse(rung360, rungPlaylist([0, 1, 2, 3, 4, 5], { breaks: [4] })),
+      rungPlaylistParse(rung1080, rungPlaylist([0, 1, 2, 3, 4, 5], { gaps: [1], breaks: [4] })),
+    ]);
+
+    assert.deepEqual(alignment, { gapsAtAReturn: 0, disagreement: null, stillLanding: false });
+  });
+
+  it('reads past a rung whose feed answered no playlist', () => {
+    const alignment = returnAlignment([
+      rungPlaylistParse(rung360, GATEWAY_ERROR_ENVELOPE),
+      rungPlaylistParse(rung1080, rungPlaylist([0, 1, 2], { breaks: [2] })),
+    ]);
+
+    assert.deepEqual(alignment, { gapsAtAReturn: 0, disagreement: null, stillLanding: false });
   });
 });

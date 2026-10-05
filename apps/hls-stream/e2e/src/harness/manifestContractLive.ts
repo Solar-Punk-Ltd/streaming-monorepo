@@ -125,15 +125,15 @@ interface RungPlaylistParse {
    */
   gaps: number;
   /**
-   * How many of those gap entries sit in a run that ends at an entry opening a break, which is a rung
-   * lining up with its ladder at an encoder's return rather than media the broadcast lost.
+   * Every entry of this window that opens a break, with the gap entries right in front of it.
    *
-   * ⛔ Every rung of one return resumes at one sequence, the furthest any of them had counted, so a
-   * rung that stopped below its siblings lists the sequences up to that point as gap entries and then
-   * breaks. A loss is a hole between two runs of media with no break of its own, because a lost
-   * segment does not restart the encoder's clock.
+   * What {@link returnAlignment} reads the rungs of one return off together. A gap entry alone cannot
+   * say whether it is media the broadcast lost or a rung lining up with its ladder at a return, and
+   * only the siblings' breaks at the same sequence can.
    */
-  gapsAtAReturn: number;
+  breaks: readonly WindowBreak[];
+  /** The sequence of the window's last entry, gap entries included, or null where nothing was read. */
+  lastSequence: number | null;
   /** Whether the first media entry declares the seam of a session continuing an older feed head. */
   firstSegmentDiscontinuity: boolean;
   /**
@@ -158,6 +158,14 @@ interface RungPlaylistParse {
    * read as a recording would demand sequence 0 of a live window that has legitimately slid.
    */
   recording: boolean;
+}
+
+/** One `#EXT-X-DISCONTINUITY` a window carries. See {@link RungPlaylistParse.breaks}. */
+export interface WindowBreak {
+  /** The sequence of the entry the break opens. */
+  sequence: number;
+  /** How many gap entries run right up to it, which is 0 where media sits in front of it. */
+  gapsBefore: number;
 }
 
 /** One rung's playlist with the contract applied to it. */
@@ -295,16 +303,18 @@ export function rungPlaylistParse(feed: RungFeed, body: string): RungPlaylistPar
 
   const parsed = parseManifest(text);
   const dates = programDateTimesOf(text);
+  const mediaSequence = mediaSequenceOf(text);
 
   return {
     ...base,
     playlist: text,
     unreadable: null,
     segments: parsed.segments.filter((segment) => !segment.gap).length,
-    mediaSequence: mediaSequenceOf(text),
+    mediaSequence,
     discontinuities: tagCountOf(text, HLS_DISCONTINUITY),
     gaps: tagCountOf(text, HLS_GAP),
-    gapsAtAReturn: gapsBeforeABreak(parsed.segments),
+    breaks: mediaSequence === null ? [] : breaksOf(parsed.segments, mediaSequence),
+    lastSequence: mediaSequence === null ? null : mediaSequence + parsed.segments.length - 1,
     firstSegmentDiscontinuity: parsed.segments[0]?.discontinuity === true,
     discontinuitySequence: discontinuitySequenceOf(text),
     firstDate: isoOf(dates[0]),
@@ -323,21 +333,94 @@ function tagCountOf(text: string, tag: string): number {
   return text.split('\n').filter((line) => line.trim() === tag).length;
 }
 
-/** Gap entries in a run that the next media entry ends with a break. See {@link RungPlaylistParse.gapsAtAReturn}. */
-function gapsBeforeABreak(segments: readonly { gap?: boolean; discontinuity?: boolean }[]): number {
-  let total = 0;
+/** Every entry of a window that opens a break, numbered from its media sequence. See {@link RungPlaylistParse.breaks}. */
+function breaksOf(
+  segments: readonly { gap?: boolean; discontinuity?: boolean }[],
+  mediaSequence: number,
+): WindowBreak[] {
+  const breaks: WindowBreak[] = [];
   let run = 0;
-  for (const segment of segments) {
-    if (segment.gap === true) {
-      run++;
-      continue;
-    }
+  for (const [position, segment] of segments.entries()) {
     if (segment.discontinuity === true) {
-      total += run;
+      breaks.push({ sequence: mediaSequence + position, gapsBefore: run });
     }
-    run = 0;
+    run = segment.gap === true ? run + 1 : 0;
   }
-  return total;
+  return breaks;
+}
+
+/** What the rungs of a ladder say together about the returns their windows hold. See {@link returnAlignment}. */
+export interface ReturnAlignment {
+  /**
+   * Gap entries that line a rung up with its ladder at a return: a run right before a break at a
+   * sequence where a sibling breaks with no gap entries in front of it.
+   */
+  gapsAtAReturn: number;
+  /** Why the rungs' breaks do not describe one return each, or null. */
+  disagreement: string | null;
+  /** Whether a rung's window has not yet reached a break a sibling already declares. */
+  stillLanding: boolean;
+}
+
+/**
+ * What the rungs of one ladder say together about the returns their windows hold.
+ *
+ * ⛔⛔ **Bounded, so a return that invents loss cannot hide in it.** Every rung of one return resumes
+ * at one sequence, the furthest any of them had counted, so a rung that had counted less lists the
+ * sequences up to it as gap entries and breaks there. Two things are true of that and of nothing
+ * else. Every rung breaks at the same sequence. And at least one rung, the one that had counted
+ * furthest, breaks there with media right in front of it, so each rung's run of gap entries is the
+ * shared break sequence less its own last media sequence, less one. A run at a break no sibling
+ * reaches with media is a return resumed above every rung's own count, and it is counted as loss.
+ *
+ * Judged only over the sequences every rung's window holds, because a rung that has not yet published
+ * past a break cannot be said to disagree with it, and a break that has slid out of one window cannot
+ * be compared at all. A rung whose window has not yet reached a sibling's break makes
+ * {@link ReturnAlignment.stillLanding} true, which is what a suite waits on before it judges.
+ */
+export function returnAlignment(parses: readonly RungPlaylistParse[]): ReturnAlignment {
+  const read = parses.filter(
+    (parse): parse is RungPlaylistParse & { mediaSequence: number; lastSequence: number } =>
+      parse.mediaSequence !== null && parse.lastSequence !== null,
+  );
+  if (read.length === 0) {
+    return { gapsAtAReturn: 0, disagreement: null, stillLanding: false };
+  }
+
+  const from = Math.max(...read.map((parse) => parse.mediaSequence));
+  const to = Math.min(...read.map((parse) => parse.lastSequence));
+  const heldByEveryRung = (sequence: number) => sequence >= from && sequence <= to;
+  const stillLanding = read.some((parse) => parse.breaks.some((each) => each.sequence > to));
+
+  const problems: string[] = [];
+  const breakSequences = read.map((parse) =>
+    parse.breaks.filter((each) => heldByEveryRung(each.sequence)).map((each) => each.sequence),
+  );
+  if (new Set(breakSequences.map((sequences) => sequences.join(','))).size > 1) {
+    problems.push(
+      'the rungs break at different sequences, so a level switch across the return lands on the wrong side ' +
+        `of it: ${read.map((parse, i) => `${rungNameOf(parse)} breaks at ${breakSequences[i].join(', ') || 'none'}`).join(', ')}`,
+    );
+  }
+
+  let gapsAtAReturn = 0;
+  for (const parse of read) {
+    for (const lined of parse.breaks.filter((each) => each.gapsBefore > 0 && heldByEveryRung(each.sequence))) {
+      const reachedWithMedia = read.some((sibling) =>
+        sibling.breaks.some((each) => each.sequence === lined.sequence && each.gapsBefore === 0),
+      );
+      if (reachedWithMedia) {
+        gapsAtAReturn += lined.gapsBefore;
+      } else {
+        problems.push(
+          `${rungNameOf(parse)} lists ${lined.gapsBefore} gap entries before its break at sequence ${lined.sequence}, and ` +
+            'no rung reaches that break with media, so the return resumed above every rung’s own count',
+        );
+      }
+    }
+  }
+
+  return { gapsAtAReturn, disagreement: problems.length === 0 ? null : problems.join('\n'), stillLanding };
 }
 
 /** The fields a parse carries when the feed produced no playlist to read. */
@@ -347,7 +430,8 @@ const NOTHING_READ = {
   mediaSequence: null,
   discontinuities: 0,
   gaps: 0,
-  gapsAtAReturn: 0,
+  breaks: [],
+  lastSequence: null,
   firstSegmentDiscontinuity: false,
   discontinuitySequence: 0,
   firstDate: null,
@@ -533,6 +617,14 @@ interface TimelineCheck {
    * from the restart, or the retired session's segments make every recovered playlist look slid.
    */
   logAfterTheRead?: () => Promise<string>;
+  /**
+   * Refuse rungs whose breaks do not describe one return each. See {@link returnAlignment}.
+   *
+   * ⛔ Opt-in, because a rung whose engine counter restarted, or that SRS held through a drop, still
+   * resumes at its own count, so a suite exercising those reads breaks that need not agree. A suite
+   * whose rungs all come back through one announced return asks for it.
+   */
+  breaksAgreeAcrossRungs?: boolean;
 }
 
 /** What a suite prints and asserts on. */
@@ -565,8 +657,12 @@ interface TimelineVerdict {
    * never happened rather than a window holding no hole.
    */
   gapsSeen: number;
-  /** How many of those gap entries line a rung up with its ladder at a return. See {@link RungPlaylistParse.gapsAtAReturn}. */
+  /** How many of those gap entries line a rung up with its ladder at a return. See {@link returnAlignment}. */
   gapsAtAReturnSeen: number;
+  /** Why the rungs' breaks do not describe one return each, or null. See {@link returnAlignment}. */
+  breakDisagreement: string | null;
+  /** Whether a rung has not yet published past a break a sibling declares. See {@link returnAlignment}. */
+  breaksStillLanding: boolean;
 }
 
 /**
@@ -589,6 +685,8 @@ export async function checkPublishedTimeline(
       discontinuitiesSeen: 0,
       gapsSeen: 0,
       gapsAtAReturnSeen: 0,
+      breakDisagreement: null,
+      breaksStillLanding: false,
     };
   }
 
@@ -602,12 +700,21 @@ export async function checkPublishedTimeline(
     return byNow !== null && namesEverySegmentPublished(parse, byNow);
   });
 
+  const alignment = returnAlignment(parses);
+  const contractRefusal = rungPlaylistRefusal(readings);
+  const alignmentRefusal = check.breaksAgreeAcrossRungs === true ? alignment.disagreement : null;
+
   return {
     summary: describeRungPlaylists(parses),
-    refusal: rungPlaylistRefusal(readings),
+    refusal:
+      contractRefusal === null || alignmentRefusal === null
+        ? (contractRefusal ?? alignmentRefusal)
+        : `${contractRefusal}\n${alignmentRefusal}`,
     discontinuitiesSeen: parses.reduce((total, parse) => total + parse.discontinuities, 0),
     gapsSeen: parses.reduce((total, parse) => total + parse.gaps, 0),
-    gapsAtAReturnSeen: parses.reduce((total, parse) => total + parse.gapsAtAReturn, 0),
+    gapsAtAReturnSeen: alignment.gapsAtAReturn,
+    breakDisagreement: alignment.disagreement,
+    breaksStillLanding: alignment.stillLanding,
   };
 }
 
@@ -649,6 +756,10 @@ function lineFor(parse: RungPlaylistParse): string {
 }
 
 /** How a report names one feed: its rung, or what a deployment with no rungs is. */
+function rungNameOf({ rung }: Pick<RungFeed, 'rung'>): string {
+  return rung ?? 'single rendition';
+}
+
 function feedName({ rung, topic }: Pick<RungFeed, 'rung' | 'topic'>): string {
   return `${rung ?? 'single rendition'} (topic ${topic})`;
 }
