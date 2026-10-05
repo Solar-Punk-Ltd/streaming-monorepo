@@ -181,6 +181,13 @@ interface ActiveReturn {
   resumedRungs: Set<string>;
   /** The rungs that came back through `resumeHeldRungs`, which resume at their own count. */
   heldRungs: Set<string>;
+  /**
+   * The rungs that were away when the return started, which are the only ones that may join it.
+   * Undefined on a return written down before this was kept, which any rung may join.
+   */
+  awaitedRungs?: Set<string>;
+  /** Set once a rung that is already back, or never left, goes away again, which starts the next return. */
+  closed?: boolean;
   /** The published sequence its rungs resume at, once agreed. See {@link StreamOrchestrator.resumePointOf}. */
   resumeAt?: number;
 }
@@ -659,6 +666,7 @@ export class StreamOrchestrator {
     }
 
     this.streamDisconnectedAt.set(streamId, this.clock.now());
+    this.closeTheReturnThisRungIsNotAwaitedBy(streamId);
     this.ensureStallReaperArmed(streamId);
     this.logger.info(
       `[StreamOrchestrator] The encoder feeding ${streamId} disconnected. Holding the session open for ` +
@@ -732,8 +740,9 @@ export class StreamOrchestrator {
         );
       });
 
+    const awaited = new Set([...held, ...this.rungsAwayFrom(baseStreamId)]);
     for (const streamId of held) {
-      this.activeStreams.get(streamId)?.resumeAfterReconnect(this.tokenForThisReturn(streamId, true));
+      this.activeStreams.get(streamId)?.resumeAfterReconnect(this.tokenForThisReturn(streamId, true, awaited));
       this.holdTheReaperForAFirstSegment(streamId);
       this.ensureStallReaperArmed(streamId);
     }
@@ -771,11 +780,18 @@ export class StreamOrchestrator {
   /**
    * Which return of this broadcast the rung announcing now belongs to, minting a name for a new one.
    *
-   * ⛔ **A rung that has already said it is back starts the NEXT return.** That is the whole rule, and
-   * it holds whatever order the rungs come back in and whichever of them missed a return entirely: a
-   * rung joins the return in progress until it has joined it, and the moment it announces again the
-   * ladder is plainly coming back from something else. A rung that missed the previous return and
-   * arrives during this one simply joins this one, which is where its media belongs.
+   * ⛔ **A rung that has already said it is back starts the NEXT return.** A rung joins the return in
+   * progress until it has joined it, and the moment it announces again the ladder is plainly coming
+   * back from something else.
+   *
+   * ⛔⛔ **Only a rung that was away when the return started may join it.** A return records the rungs
+   * that were disconnected, or rebuilt and waiting for their engine, when it started. A rung that kept
+   * publishing through it is not part of it. Measured on a test deployment: three rungs were cut and
+   * came back while 360p kept going, then the whole ladder was cut, and 360p, announcing first, was
+   * handed the first return's name. It resumed at its own count while its siblings were raised one past
+   * it, and dated its media on the first return's line, 24 seconds in the past. A return is also closed
+   * the moment a rung that is already back from it, or never left it, goes away again, so a rung the
+   * return was still waiting for that comes back after that second outage starts the next one.
    *
    * ⛔ **A uuid rather than a counter.** The epochs this names ride in the recovery entry and in the
    * ladder group store, so they outlive the process: a count restarting at zero after a reboot would
@@ -792,12 +808,17 @@ export class StreamOrchestrator {
    * and one a sibling has yet to join carry the same kind of token, and only the set tells them apart.
    * A lone rendition needs none of it, since its only rung is always in the set.
    */
-  private tokenForThisReturn(streamId: string, held = false): string {
+  private tokenForThisReturn(streamId: string, held = false, awaited?: ReadonlySet<string>): string {
     const base = this.streamBases.get(streamId) ?? null;
     const key = this.datingKeyOf(streamId, base);
     const inProgress = this.returnsInProgress.get(key) ?? this.persistedReturnOf(base);
 
-    if (inProgress !== undefined && !inProgress.resumedRungs.has(streamId)) {
+    if (
+      inProgress !== undefined &&
+      inProgress.closed !== true &&
+      !inProgress.resumedRungs.has(streamId) &&
+      (inProgress.awaitedRungs?.has(streamId) ?? true)
+    ) {
       inProgress.resumedRungs.add(streamId);
       if (held) {
         inProgress.heldRungs.add(streamId);
@@ -810,9 +831,45 @@ export class StreamOrchestrator {
       token: crypto.randomUUID(),
       resumedRungs: new Set([streamId]),
       heldRungs: new Set(held ? [streamId] : []),
+      awaitedRungs: new Set([streamId, ...(awaited ?? this.rungsAwayFrom(base))]),
     };
     this.rememberReturn(key, base, started);
     return started.token;
+  }
+
+  /**
+   * The rungs of this ladder whose encoder is away: disconnected, or rebuilt after a restart of this
+   * process and still waiting for their engine. A lone rendition has no siblings to wait for.
+   */
+  private rungsAwayFrom(base: string | null): string[] {
+    if (base === null) {
+      return [];
+    }
+    return [...this.streamBases]
+      .filter(([, rungBase]) => rungBase === base)
+      .map(([streamId]) => streamId)
+      .filter((streamId) => this.streamDisconnectedAt.has(streamId) || this.recoveryTimers.has(streamId));
+  }
+
+  /**
+   * A rung that is already back from the return in progress, or that never left it, has gone away
+   * again, so whatever comes back next is the next return.
+   *
+   * ⛔ Without it a rung the return was still waiting for, announcing after this second outage, joined
+   * the finished return and resumed at its point and on its dating line, a whole outage in the past.
+   */
+  private closeTheReturnThisRungIsNotAwaitedBy(streamId: string): void {
+    const base = this.streamBases.get(streamId) ?? null;
+    const key = this.datingKeyOf(streamId, base);
+    const inProgress = this.returnsInProgress.get(key) ?? this.persistedReturnOf(base);
+    if (inProgress === undefined || inProgress.closed === true) {
+      return;
+    }
+    const stillAwaited = !inProgress.resumedRungs.has(streamId) && (inProgress.awaitedRungs?.has(streamId) ?? true);
+    if (!stillAwaited) {
+      inProgress.closed = true;
+      this.rememberReturn(key, base, inProgress);
+    }
   }
 
   /** The return a ladder's group record says its rungs are coming back from, after a restart of this process. */
@@ -824,6 +881,8 @@ export class StreamOrchestrator {
           token: persisted.token,
           resumedRungs: new Set(persisted.resumedRungs),
           heldRungs: new Set(persisted.heldRungs),
+          ...(persisted.awaitedRungs === undefined ? {} : { awaitedRungs: new Set(persisted.awaitedRungs) }),
+          ...(persisted.closed === true ? { closed: true } : {}),
           ...(persisted.resumeAt === undefined ? {} : { resumeAt: persisted.resumeAt }),
         };
   }
@@ -842,6 +901,8 @@ export class StreamOrchestrator {
           token: inProgress.token,
           resumedRungs: [...inProgress.resumedRungs],
           ...(inProgress.heldRungs.size === 0 ? {} : { heldRungs: [...inProgress.heldRungs] }),
+          ...(inProgress.awaitedRungs === undefined ? {} : { awaitedRungs: [...inProgress.awaitedRungs] }),
+          ...(inProgress.closed === true ? { closed: true as const } : {}),
           ...(inProgress.resumeAt === undefined ? {} : { resumeAt: inProgress.resumeAt }),
         },
       });

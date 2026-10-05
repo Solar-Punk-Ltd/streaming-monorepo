@@ -1225,12 +1225,14 @@ function entriesOf(playlist: string): PlaylistEntry[] {
 }
 
 /**
- * A ladder whose rungs had stopped at different sequences when the encoder went away.
+ * A ladder whose rungs had stopped at different sequences when the encoder went away, coming back in
+ * one clean return of all four rungs.
  *
- * Measured on a test deployment after a bandwidth squeeze, an 8 second blackout and a reconnect: 360p
- * had closed one extra short segment of 0.28 s and the other rungs stood a sequence or two below it.
- * Each rung resumed from its own count, so one sequence named two moments about 30 seconds apart and
- * the breaks sat at different sequences. A player switching quality across that seam jumps or stalls.
+ * ⚠️ A simplification of what was measured, kept because it isolates the counting. On a test
+ * deployment 360p had closed one extra short segment of 0.28 s and the other rungs stood a sequence or
+ * two below it, and each rung resuming from its own count put one sequence on two moments about 30
+ * seconds apart. The measured broadcast came back in two returns, not one. The shape it really had is
+ * the next describe, `a ladder that comes back in two returns, the first without 360p`.
  */
 describe('a ladder whose rungs stopped at different sequences before the outage', () => {
   const rungIds = RUNG_NAMES.map((rung) => `${LADDER_BASE}_${rung}`);
@@ -1336,6 +1338,198 @@ describe('a ladder whose rungs stopped at different sequences before the outage'
       }
     });
   }
+});
+
+/**
+ * The shape measured on a test deployment, after a bandwidth squeeze and a blackout past SRS's encoder
+ * hold. Three rungs were cut and came back while 360p kept publishing, which is one return without
+ * 360p in it. Then the whole ladder was cut, and all four came back, which is a second return.
+ *
+ * ⛔ A rung that stayed live through a return is not part of it. Handed that return's name when the
+ * whole ladder came back later, 360p resumed at its own count while its siblings were raised one past
+ * its first resumed segment, and it dated its return on the first return's line, 24 seconds early.
+ */
+describe('a ladder that comes back in two returns, the first without 360p', () => {
+  const rungIds = RUNG_NAMES.map((rung) => `${LADDER_BASE}_${rung}`);
+  const [rung360, ...others] = rungIds;
+  /** Past SRS's encoder hold, as measured, so every rung is cut rather than held. */
+  const BLACKOUT_MS = 26_000;
+
+  /** The sequence a media entry sits at, and the date it carries, per rung. */
+  async function timelines(harness: ReconnectHarness, lastLabel: string): Promise<Map<string, PlaylistEntry[]>> {
+    const playlists = new Map<string, PlaylistEntry[]>();
+    for (const streamId of rungIds) {
+      await harness.published(`${streamId}-${lastLabel}`);
+      const write = writesNaming(harness.writes, `${streamId}-${lastLabel}`).at(-1);
+      assert.ok(write, `${streamId} must have published ${lastLabel}`);
+      playlists.set(streamId, entriesOf(write.playlist));
+    }
+    return playlists;
+  }
+
+  /** Every sequence two rungs both hold media at is dated within one fragment on both. */
+  function assertOneTimeline(playlists: Map<string, PlaylistEntry[]>): void {
+    const [reference, ...rest] = rungIds;
+    const media = (streamId: string) => playlists.get(streamId)!.filter((entry) => entry.uri.startsWith('segment-'));
+    for (const streamId of rest) {
+      for (const entry of media(streamId)) {
+        const twin = media(reference).find((candidate) => candidate.sequence === entry.sequence);
+        if (twin === undefined) continue;
+        const apart = Math.abs(entry.programDateTimeMs - twin.programDateTimeMs);
+        assert.ok(
+          apart < SEGMENT_SECONDS * 1_000,
+          `sequence ${entry.sequence} is dated ${apart} ms apart on ${streamId} and ${reference}`,
+        );
+      }
+    }
+  }
+
+  for (const away of [3]) {
+    for (const order of ['360p places first', '360p places last'] as const) {
+      it(`keeps one timeline across both returns, the first ${away} segments long, when ${order}`, async () => {
+        const harness = reconnectHarness({ ladder: true });
+        const next = new Map(rungIds.map((streamId) => [streamId, 0]));
+        const deliver = async (streamId: string, label: string, seconds = SEGMENT_SECONDS) => {
+          const index = next.get(streamId)!;
+          await harness.segment(`${streamId}-${label}`, index, streamId, seconds);
+          next.set(streamId, index + 1);
+        };
+
+        for (const streamId of rungIds) harness.start(streamId);
+        for (let round = 0; round < 4; round++) {
+          for (const streamId of rungIds) await deliver(streamId, `a${round}`);
+          await harness.passTime(SEGMENT_SECONDS * 1_000);
+        }
+        for (const streamId of others) harness.orchestrator.noteDisconnect(streamId);
+        for (let round = 4; round < 4 + away; round++) {
+          await deliver(rung360, `a${round}`);
+          await harness.passTime(SEGMENT_SECONDS * 1_000);
+        }
+        for (const streamId of others) harness.start(streamId);
+        for (let round = 0; round < 2; round++) {
+          for (const streamId of others) await deliver(streamId, `c${round}`);
+          await deliver(rung360, `a${4 + away + round}`);
+          await harness.passTime(SEGMENT_SECONDS * 1_000);
+        }
+        await deliver(rung360, 'short', 0.28);
+
+        for (const streamId of rungIds) harness.orchestrator.noteDisconnect(streamId);
+        await harness.passTime(BLACKOUT_MS);
+        harness.start(rung360);
+        for (const streamId of others) harness.start(streamId);
+        if (order === '360p places first') {
+          await deliver(rung360, 'b0');
+          await harness.published(`${rung360}-b0`);
+          for (const streamId of others) await deliver(streamId, 'b0');
+        } else {
+          for (const streamId of others) await deliver(streamId, 'b0');
+          for (const streamId of others) await harness.published(`${streamId}-b0`);
+          await deliver(rung360, 'b0');
+        }
+        await harness.passTime(SEGMENT_SECONDS * 1_000);
+        for (const streamId of rungIds) await deliver(streamId, 'b1');
+
+        const playlists = await timelines(harness, 'b1');
+        const secondReturn = rungIds.map((streamId) =>
+          playlists.get(streamId)!.find((entry) => entry.uri === `segment-${streamId}-b0`)!,
+        );
+        assert.ok(
+          secondReturn.every((entry) => entry.opensABreak),
+          'every rung declares the second return',
+        );
+        assert.deepEqual(
+          secondReturn.map((entry) => entry.sequence),
+          rungIds.map(() => secondReturn[0].sequence),
+          `the rungs break at ${secondReturn.map((entry) => entry.sequence).join(', ')} at the second return`,
+        );
+        assertOneTimeline(playlists);
+      });
+    }
+  }
+
+  /**
+   * A rung the first return was still waiting for, that missed it and comes back first after the
+   * second outage, belongs to the second return. Joined to the first, it resumed at that return's point
+   * and on its dating line, a whole outage in the past.
+   */
+  /**
+   * A rung that kept publishing through a return and then announces again without a disconnect, which
+   * SRS does when a publisher replaces its own connection, is coming back from something else.
+   */
+  it('starts a return of its own for a rung that kept publishing through the one in progress', async () => {
+    const harness = reconnectHarness({ ladder: true });
+    let wallMs = TEST_ANCHOR.startedAtMs;
+    const pass = async (ms: number) => {
+      wallMs += ms;
+      await harness.passTime(ms);
+    };
+    for (const streamId of rungIds) harness.start(streamId);
+    for (let i = 0; i < 3; i++) {
+      for (const streamId of rungIds) await harness.segment(`${streamId}-a${i}`, i, streamId);
+      await pass(SEGMENT_SECONDS * 1_000);
+    }
+    for (const streamId of others) harness.orchestrator.noteDisconnect(streamId);
+    await pass(SEGMENT_SECONDS * 1_000);
+    await harness.segment(`${rung360}-a3`, 3, rung360);
+    for (const streamId of others) harness.start(streamId);
+    for (const streamId of others) await harness.segment(`${streamId}-c0`, 3, streamId);
+    await harness.segment(`${rung360}-a4`, 4, rung360);
+
+    await pass(10_000);
+    const announcedAgainAt = wallMs;
+    harness.start(rung360);
+    await harness.segment(`${rung360}-d0`, 5, rung360);
+    await harness.published(`${rung360}-d0`);
+    const write = writesNaming(harness.writes, `${rung360}-d0`).at(-1);
+    assert.ok(write);
+    const d0 = entriesOf(write.playlist).find((entry) => entry.uri === `segment-${rung360}-d0`)!;
+    assert.equal(d0.opensABreak, true);
+    assert.ok(
+      d0.programDateTimeMs >= announcedAgainAt,
+      `360p dated its return ${announcedAgainAt - d0.programDateTimeMs} ms before it announced, on its siblings' line`,
+    );
+  });
+
+  it('starts the next return for a rung that missed the last one and comes back first', async () => {
+    const harness = reconnectHarness({ ladder: true });
+    const [ahead, missed] = rungIds;
+    const pair = [ahead, missed];
+    // Short enough that the rung that missed the first return is still inside the reap window.
+    const OUTAGE = 10_000;
+    for (const streamId of pair) harness.start(streamId);
+    for (let i = 0; i < 3; i++) {
+      for (const streamId of pair) await harness.segment(`${streamId}-a${i}`, i, streamId);
+      await harness.passTime(SEGMENT_SECONDS * 1_000);
+    }
+    for (const streamId of pair) harness.orchestrator.noteDisconnect(streamId);
+    await harness.passTime(OUTAGE);
+    harness.start(ahead);
+    for (let i = 3; i < 6; i++) {
+      await harness.segment(`${ahead}-b${i}`, i, ahead);
+      await harness.passTime(SEGMENT_SECONDS * 1_000);
+    }
+
+    harness.orchestrator.noteDisconnect(ahead);
+    await harness.passTime(OUTAGE);
+    harness.start(missed);
+    harness.start(ahead);
+    await harness.segment(`${missed}-c0`, 3, missed);
+    await harness.segment(`${ahead}-c0`, 6, ahead);
+
+    const resumed = [];
+    for (const streamId of pair) {
+      await harness.published(`${streamId}-c0`);
+      const write = writesNaming(harness.writes, `${streamId}-c0`).at(-1);
+      assert.ok(write);
+      resumed.push(entriesOf(write.playlist).find((entry) => entry.uri === `segment-${streamId}-c0`)!);
+    }
+    assert.equal(resumed[0].sequence, resumed[1].sequence, 'the two rungs break at different sequences');
+    assert.equal(
+      new Date(resumed[1].programDateTimeMs).toISOString(),
+      new Date(resumed[0].programDateTimeMs).toISOString(),
+      'the rung that missed the first return dated the second on another line',
+    );
+  });
 });
 
 /**

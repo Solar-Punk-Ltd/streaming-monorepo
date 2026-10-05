@@ -419,6 +419,12 @@ two rungs delivering one segment, whose copy on the later rung is media cut befo
 single rendition resumes at its own count as it always has, and so does every rung after the
 engine's own counter restarts.
 
+A return only takes in the rungs that were away when it started. A rung that kept publishing through
+it is not part of it, and a return is closed once a rung that is already back from it, or never left
+it, goes away again. A test deployment came back in two returns, the first without 360p, and 360p was
+handed the first return's name at the second: it resumed a sequence apart from its siblings and dated
+its media 24 seconds in the past.
+
 Two sequence-shaped rules were tried before this one and both were wrong, which is worth knowing
 before anyone simplifies it. Recognising a return by the clock alone read a second outage on the same
 rung as a sibling crossing the first, because nothing advances while an encoder is away: four fifty

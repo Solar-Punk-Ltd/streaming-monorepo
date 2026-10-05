@@ -60,6 +60,13 @@ export interface ReturnInProgress {
    * at their own count. Absent when there are none. See `StreamOrchestrator.resumePointOf`.
    */
   heldRungs?: string[];
+  /**
+   * The rungs that were away when the return started, the only ones that may join it. Absent on a
+   * record written before this was kept, which any rung may join. See `StreamOrchestrator.tokenForThisReturn`.
+   */
+  awaitedRungs?: string[];
+  /** Present once a rung already back from this return, or never part of it, went away again. */
+  closed?: true;
 }
 
 /**
@@ -107,7 +114,7 @@ function readReturnInProgress(value: unknown): ReturnInProgress | undefined {
   if (value === null || typeof value !== 'object') {
     return undefined;
   }
-  const { token, resumedRungs, resumeAt, heldRungs } = value as Partial<ReturnInProgress>;
+  const { token, resumedRungs, resumeAt, heldRungs, awaitedRungs, closed } = value as Partial<ReturnInProgress>;
   if (typeof token !== 'string' || !isListOfNames(resumedRungs)) {
     return undefined;
   }
@@ -117,6 +124,8 @@ function readReturnInProgress(value: unknown): ReturnInProgress | undefined {
     resumedRungs,
     ...(Number.isInteger(resumeAt) ? { resumeAt } : {}),
     ...(isListOfNames(heldRungs) ? { heldRungs } : {}),
+    ...(isListOfNames(awaitedRungs) ? { awaitedRungs } : {}),
+    ...(closed === true ? { closed } : {}),
   };
 }
 
