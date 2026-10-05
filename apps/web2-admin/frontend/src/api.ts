@@ -20,6 +20,21 @@ import type {
   UserSummary,
 } from '@streaming-monorepo/web2-admin-common';
 
+import {
+  FUNDING_PATH,
+  FUNDING_PINS_PATH,
+  FUNDING_TRANSFERS_ADMIN_PATH,
+  fundingBulkPath,
+  type FundingBulkAnswer,
+  type FundingPinsAnswer,
+  type FundingPinsRequest,
+  type FundingTransferItem,
+  type FundingTransferItemRequest,
+  type FundingTransfersAnswer,
+  type FundingTransfersRequest,
+  type FundingView,
+} from '@streaming-monorepo/web2-admin-common';
+
 import { SIGN_IN_MESSAGES, tooManyAttempts } from './authMessages';
 import {
   apiFetch,
@@ -31,6 +46,7 @@ import {
   sendDelete,
   sendEmpty,
   sendJson,
+  sessionEnded,
   ApiError,
 } from './http';
 
@@ -278,6 +294,64 @@ export function startCatalogueMove(targetBatchId: string): Promise<CatalogueMove
 export async function fetchCatalogueWrite(): Promise<CatalogueWriteStatus> {
   const body = await getJson<CatalogueStampResponse>(`${API}/catalogue-stamp`);
   return body.catalogueWrite;
+}
+
+// --- funding ----------------------------------------------------------------
+
+/** The brand wallet and every stage's nodes with their balances and address checks, as the Funding page shows them. */
+export function fetchFunding(): Promise<FundingView> {
+  return getJson<FundingView>(FUNDING_PATH);
+}
+
+/**
+ * A funding write that carries the operator's own password. As with the password change, a 401 here is a wrong
+ * password and not a session that ended, unless the API says the session ended, and a 429 is the login limiter's
+ * lockout.
+ */
+async function sendWithPassword<T>(path: string, body: unknown, fallback: string): Promise<T> {
+  const res = await apiFetch(
+    path,
+    { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(body) },
+    { allowUnauthorized: true },
+  );
+  if (res.status === 401) {
+    const answer = (await res.json().catch(() => ({}))) as { error?: string };
+    if (answer.error === 'unauthenticated') sessionEnded();
+    throw new ApiError('That is not your password.', 'invalid_credentials', 401);
+  }
+  if (res.status === 429) throw new ApiError(tooManyAttempts(await retryAfterOf(res)), 'too_many_attempts', 429);
+  if (!res.ok) await failWith(res, fallback);
+  return (await res.json()) as T;
+}
+
+/** Confirms the wallet addresses the manager reports for these nodes now, the only ones a transfer may go to. */
+export function confirmFundingPins(password: string, nodeIds: string[]): Promise<FundingPinsAnswer> {
+  const body: FundingPinsRequest = { password, nodeIds };
+  return sendWithPassword(FUNDING_PINS_PATH, body, 'The addresses could not be confirmed.');
+}
+
+/** Sends these amounts from the brand wallet, one transfer each, and answers the bulk they went out under. */
+export function sendFundingTransfers(
+  password: string,
+  items: FundingTransferItemRequest[],
+): Promise<FundingTransfersAnswer> {
+  const body: FundingTransfersRequest = { password, items };
+  return sendWithPassword<FundingTransfersAnswer>(
+    FUNDING_TRANSFERS_ADMIN_PATH,
+    body,
+    'The transfers could not be sent.',
+  ).catch((e: unknown) => {
+    if (e instanceof ApiError && e.code === 'conflict') throw new ApiError(EARLIER_SEND_SETTLING, e.code, e.status);
+    throw e;
+  });
+}
+
+/** What a send says when the API refuses it, 409 `conflict`, because an earlier one has not settled yet. */
+export const EARLIER_SEND_SETTLING = 'An earlier send is still settling; check it again or wait.';
+
+/** Where each transfer of a bulk stands, as the admin last heard from the manager. */
+export async function fetchFundingTransfers(bulkId: string): Promise<FundingTransferItem[]> {
+  return (await getJson<FundingBulkAnswer>(fundingBulkPath(bulkId))).items;
 }
 
 // --- public config ----------------------------------------------------------
