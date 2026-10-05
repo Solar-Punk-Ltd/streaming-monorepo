@@ -147,6 +147,22 @@ export function adminLinkAllowPlainHttp(raw: string | undefined): boolean {
   throw new Error(`ADMIN_LINK_ALLOW_PLAIN_HTTP must be true or false, got: ${raw}`);
 }
 
+/**
+ * The chain endpoint the funding API reads balances, nonces, fees and receipts through and broadcasts the web2
+ * admin's transfers to, or null to use BEE_RPC_ENDPOINT. With neither, the funding API's chain routes answer 502
+ * `chain_unreachable`. Held to the shape rules of BEE_RPC_ENDPOINT, and like it treated as a secret: it may carry a
+ * provider key, so it is never logged or answered, and a refusal names the variable and never the value.
+ *
+ * Exported so the refusal can be tested without the process exiting.
+ */
+export function fundingRpcUrl(raw: string | undefined): string | null {
+  const value = raw?.trim();
+  if (!value) return null;
+  const problem = rpcEndpointProblem(value);
+  if (problem) throw new Error(`FUNDING_RPC_URL: ${problem}`);
+  return value;
+}
+
 /** The fewest characters a funding token may have. */
 export const FUNDING_API_TOKEN_MIN_LENGTH = 32;
 
@@ -193,6 +209,8 @@ export interface AppConfig {
   stackSources: readonly StackSource[];
   /** See `fundingApiToken`. Null when the funding API is off. */
   fundingApiToken: string | null;
+  /** See `fundingRpcUrl`. Null to use `beeRpcEndpoint`. */
+  fundingRpcUrl: string | null;
 }
 
 export const config: AppConfig = {
@@ -208,4 +226,5 @@ export const config: AppConfig = {
   adminLinkAllowPlainHttp: adminLinkAllowPlainHttp(process.env.ADMIN_LINK_ALLOW_PLAIN_HTTP),
   stackSources: parseStackSources(process.env.STACK_SOURCES),
   fundingApiToken: fundingApiToken(process.env.FUNDING_API_TOKEN),
+  fundingRpcUrl: fundingRpcUrl(process.env.FUNDING_RPC_URL),
 };

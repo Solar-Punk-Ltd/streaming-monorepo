@@ -69,6 +69,11 @@ export const FUNDING_ERROR_CODES = [
   'chain_unreachable',
   /** The request id is taken by another transfer. */
   'conflict',
+  /**
+   * No transfer was journalled under this request id: the manager never received it, so sending it again under the
+   * same id is safe.
+   */
+  'unknown_request',
 ] as const;
 export type FundingErrorCode = (typeof FUNDING_ERROR_CODES)[number];
 
@@ -83,6 +88,7 @@ export const FUNDING_ERROR_STATUS: Readonly<Record<FundingErrorCode, number>> = 
   bad_transaction: 422,
   chain_unreachable: 502,
   conflict: 409,
+  unknown_request: 404,
 };
 
 const someText = z.string().min(1);

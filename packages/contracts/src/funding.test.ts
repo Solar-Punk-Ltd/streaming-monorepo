@@ -100,10 +100,12 @@ describe('the closed lists', () => {
       'bad_transaction',
       'chain_unreachable',
       'conflict',
+      'unknown_request',
     ]);
     assert.deepEqual(Object.keys(FUNDING_ERROR_STATUS).sort(), [...FUNDING_ERROR_CODES].sort());
     assert.equal(FUNDING_ERROR_STATUS.funding_off, 404, 'an API that is off looks like no API');
     assert.equal(FUNDING_ERROR_STATUS.unauthorized, 401);
+    assert.equal(FUNDING_ERROR_STATUS.unknown_request, 404, 'a transfer the manager never received');
   });
 });
 
