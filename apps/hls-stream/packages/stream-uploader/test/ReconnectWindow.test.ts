@@ -1593,6 +1593,94 @@ describe('a ladder that comes back in two returns, the first without 360p', () =
     await assertResumedTogether(harness, 4, 0);
   });
 
+  /** Where `label` of `streamId` sits in its newest playlist, and the date it carries. */
+  async function entryOf(harness: ReconnectHarness, streamId: string, label: string): Promise<PlaylistEntry> {
+    await harness.published(`${streamId}-${label}`);
+    const write = writesNaming(harness.writes, `${streamId}-${label}`).at(-1);
+    assert.ok(write);
+    return entriesOf(write.playlist).find((entry) => entry.uri === `segment-${streamId}-${label}`)!;
+  }
+
+  /**
+   * ⛔ A rung that announced and dropped before its first segment rejoins its return only if it comes
+   * back soon. Back long after its siblings placed, it rejoined the old point and the old dating line,
+   * and dated every segment it published afterwards as far in the past as it had been away, which no
+   * check on the playlists can see because sequence and date still agree with its siblings.
+   *
+   * Thirty seconds is the longest this case can stay away inside the reap window. Away fifty, the rung
+   * is reaped and comes back as a new session, which is another path, on main as well.
+   */
+  for (const awayMs of [10_000, 30_000]) {
+    it(`dates a rung that drops before its first segment and is back ${awayMs / 1_000} s later at the clock`, async () => {
+      const harness = reconnectHarness({ ladder: true });
+      const deliver = driverFor(harness);
+      const late = rungIds[3];
+      let wallMs = TEST_ANCHOR.startedAtMs;
+      const pass = async (ms: number) => {
+        wallMs += ms;
+        await harness.passTime(ms);
+      };
+      for (const streamId of rungIds) harness.start(streamId);
+      for (let round = 0; round < 4; round++) {
+        for (const streamId of rungIds) await deliver(streamId, `a${round}`);
+        await pass(SEGMENT_SECONDS * 1_000);
+      }
+      for (const streamId of rungIds) harness.orchestrator.noteDisconnect(streamId);
+      await pass(14_000);
+      for (const streamId of rungIds) harness.start(streamId);
+      harness.orchestrator.noteDisconnect(late);
+      const rounds = awayMs / (SEGMENT_SECONDS * 1_000);
+      for (let round = 0; round < rounds; round++) {
+        for (const streamId of rungIds.slice(0, 3)) await deliver(streamId, `b${round}`);
+        await pass(SEGMENT_SECONDS * 1_000);
+      }
+      harness.start(late);
+      const placedAt = wallMs;
+      await deliver(late, 'back');
+
+      const back = await entryOf(harness, late, 'back');
+      assert.equal(back.opensABreak, true);
+      assert.ok(
+        Math.abs(back.programDateTimeMs - placedAt) < SEGMENT_SECONDS * 1_000,
+        `1080p dated its return ${(placedAt - back.programDateTimeMs) / 1_000} s before the clock it came back at`,
+      );
+    });
+  }
+
+  it('dates a held rung SRS cut after its siblings placed at the clock it came back at', async () => {
+    const harness = reconnectHarness({ ladder: true });
+    const deliver = driverFor(harness);
+    const late = rungIds[3];
+    let wallMs = TEST_ANCHOR.startedAtMs;
+    const pass = async (ms: number) => {
+      wallMs += ms;
+      await harness.passTime(ms);
+    };
+    for (const streamId of rungIds) harness.start(streamId);
+    for (let round = 0; round < 4; round++) {
+      for (const streamId of rungIds) await deliver(streamId, `a${round}`);
+      await pass(SEGMENT_SECONDS * 1_000);
+    }
+    await pass(11_000);
+    harness.orchestrator.resumeHeldRungs(LADDER_BASE);
+    for (const streamId of rungIds.slice(0, 3)) await deliver(streamId, 'b0');
+    harness.orchestrator.noteDisconnect(late);
+    for (let round = 1; round < 3; round++) {
+      await pass(SEGMENT_SECONDS * 1_000);
+      for (const streamId of rungIds.slice(0, 3)) await deliver(streamId, `b${round}`);
+    }
+    harness.start(late);
+    const placedAt = wallMs;
+    await deliver(late, 'back');
+
+    const back = await entryOf(harness, late, 'back');
+    assert.equal(back.opensABreak, true);
+    assert.ok(
+      Math.abs(back.programDateTimeMs - placedAt) < SEGMENT_SECONDS * 1_000,
+      `1080p dated its return ${(placedAt - back.programDateTimeMs) / 1_000} s before the clock it came back at`,
+    );
+  });
+
   /**
    * The engine's disconnects for one outage can arrive after a sibling has already announced its
    * return. A rung whose last media is older than the return is part of it however late its

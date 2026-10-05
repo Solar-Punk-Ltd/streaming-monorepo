@@ -96,6 +96,14 @@ const DRAIN_TIMEOUT_MS = 5 * 60 * 1000; // 5 minutes
 const FIRST_BROADCAST_SEQUENCE = 0;
 
 /**
+ * How long after its return's first placement, in fragments, a rung that announced and dropped before
+ * its first segment may still rejoin that return. One fragment: a flap inside it is the same moment as
+ * its siblings' first segment, and anything later is media from another moment. See
+ * `StreamOrchestrator.backInTimeToRejoin`.
+ */
+const REJOIN_WITHIN_FRAGMENTS = 1;
+
+/**
  * How long a settled stop stays readable through `getStreamStatus`. Comfortably longer than
  * `DRAIN_TIMEOUT_MS`, so a caller polling a stop that ran to its own deadline still finds the verdict
  * waiting, and short enough that the map is bounded by the poll window rather than by uptime.
@@ -187,6 +195,8 @@ interface ActiveReturn {
   placedRungs: Set<string>;
   /** The monotonic reading the return started at, held in memory only. */
   startedAt?: number;
+  /** The monotonic reading the first rung of the return placed a segment at, held in memory only. */
+  firstPlacedAt?: number;
   /** The rungs that came back through `resumeHeldRungs`, which resume at their own count. */
   heldRungs: Set<string>;
   /**
@@ -825,7 +835,8 @@ export class StreamOrchestrator {
       inProgress !== undefined &&
       inProgress.closed !== true &&
       !inProgress.placedRungs.has(streamId) &&
-      (inProgress.awaitedRungs?.has(streamId) ?? true)
+      (inProgress.awaitedRungs?.has(streamId) ?? true) &&
+      (!inProgress.resumedRungs.has(streamId) || this.backInTimeToRejoin(inProgress))
     ) {
       inProgress.resumedRungs.add(streamId);
       if (held) {
@@ -845,6 +856,27 @@ export class StreamOrchestrator {
     };
     this.rememberReturn(key, base, started);
     return started.token;
+  }
+
+  /**
+   * Whether a rung that announced this return and dropped again before its first segment is back soon
+   * enough to rejoin it: before any rung of it has placed, or within {@link REJOIN_WITHIN_FRAGMENTS}
+   * of the first that did.
+   *
+   * ⛔ **Rejoining takes the return's point and its dating line, which are true only for media from
+   * around the return.** A rung back thirty seconds after its siblings placed rejoined both and dated
+   * every segment it published afterwards thirty seconds in the past, and no check on the playlists
+   * can see it, because its sequences and dates still agree with its siblings'. Back that late it starts
+   * a return of its own, dated at the clock it came back at, and lines up with its siblings' live count.
+   * A return whose first placement this process did not see, because it was read back after a restart,
+   * is never rejoined late.
+   */
+  private backInTimeToRejoin(inProgress: ActiveReturn): boolean {
+    if (inProgress.placedRungs.size === 0) {
+      return true;
+    }
+    const window = REJOIN_WITHIN_FRAGMENTS * this.config.fragmentSeconds * 1_000;
+    return inProgress.firstPlacedAt !== undefined && this.clock.now() - inProgress.firstPlacedAt <= window;
   }
 
   /**
@@ -2843,6 +2875,7 @@ export class StreamOrchestrator {
     const inProgress = this.returnsInProgress.get(datingKey) ?? this.persistedReturnOf(base);
     if (inProgress?.token === returnToken && !inProgress.placedRungs.has(streamId)) {
       inProgress.placedRungs.add(streamId);
+      inProgress.firstPlacedAt ??= this.clock.now();
       this.rememberReturn(datingKey, base, inProgress);
     }
     if (base === null) {
