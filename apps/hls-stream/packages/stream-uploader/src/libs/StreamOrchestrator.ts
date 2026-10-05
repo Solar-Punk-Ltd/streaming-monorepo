@@ -803,7 +803,10 @@ export class StreamOrchestrator {
    * publisher that drops and returns before its first segment is still one return.
    *
    * ⛔⛔ **Only a rung that was away when the return started may join it.** A return records the rungs
-   * that were disconnected, or rebuilt and waiting for their engine, when it started. A rung that kept
+   * that were disconnected, or rebuilt and waiting for their engine, when it started. A rung with no
+   * disconnect on record whose last media is older than the return was away too: an engine that died
+   * outright re-announces its rungs with no unpublish in front of them, and each rung after the first
+   * minted a dating line of its own. A rung that kept
    * publishing through it is not part of it. Measured on a test deployment: three rungs were cut and
    * came back while 360p kept going, then the whole ladder was cut, and 360p, announcing first, was
    * handed the first return's name. It resumed at its own count while its siblings were raised one past
@@ -835,9 +838,10 @@ export class StreamOrchestrator {
       inProgress !== undefined &&
       inProgress.closed !== true &&
       !inProgress.placedRungs.has(streamId) &&
-      (inProgress.awaitedRungs?.has(streamId) ?? true) &&
+      ((inProgress.awaitedRungs?.has(streamId) ?? true) || this.wentQuietBefore(streamId, inProgress.startedAt)) &&
       (!inProgress.resumedRungs.has(streamId) || this.backInTimeToRejoin(inProgress))
     ) {
+      inProgress.awaitedRungs?.add(streamId);
       inProgress.resumedRungs.add(streamId);
       if (held) {
         inProgress.heldRungs.add(streamId);
