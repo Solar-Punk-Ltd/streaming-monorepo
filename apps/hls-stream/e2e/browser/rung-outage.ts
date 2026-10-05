@@ -146,7 +146,7 @@ async function main(): Promise<void> {
   const requests: RequestRecord[] = [];
   let byteSourceArm: ByteSourceArmSession | undefined;
   const stretches: SampledStretch[] = [];
-  let watchUrl = clientUrl;
+  let watchUrl: string;
   let silenced: LadderRung | null = null;
   let transcodes: readonly RungProcess[] = [];
   let quietedAtMs = 0;

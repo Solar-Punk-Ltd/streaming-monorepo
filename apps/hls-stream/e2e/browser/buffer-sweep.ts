@@ -178,7 +178,7 @@ async function main(): Promise<void> {
   const rebufferTotals: number[] = [];
   let gatewaySamples: GatewaySample[] = [];
   let firstTargetDurationS: number | null = null;
-  let watchUrl = clientUrl;
+  let watchUrl: string;
 
   const gatewaySampling = startGatewaySampling({
     read: gatewayReader(host, cfg),

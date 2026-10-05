@@ -137,7 +137,7 @@ async function main(): Promise<void> {
   let byteSourceArm: ByteSourceArmSession | undefined;
   let throttle: ThrottleHandle | undefined;
   const stretches: SampledStretch[] = [];
-  let watchUrl = clientUrl;
+  let watchUrl: string;
   let throttledAtMs = 0;
   let releasedAtMs = 0;
   let throttleKbps = 0;
