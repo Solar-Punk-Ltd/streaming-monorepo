@@ -2707,8 +2707,8 @@ export class StreamOrchestrator {
   /** The dating handed to one session, bound to its broadcast rather than to the session. */
   private datingFor(datingKey: string, base: string | null, streamId: string): BroadcastDating {
     return {
-      epochFrom: (resumeAt, notBeforeMs, returnToken) =>
-        this.reanchorBroadcast(datingKey, base, resumeAt, notBeforeMs, returnToken),
+      epochFrom: (resumeAt, notBeforeMs, returnToken, publishedResumeAt) =>
+        this.reanchorBroadcast(datingKey, base, resumeAt, notBeforeMs, returnToken, publishedResumeAt),
       resumePointFor: (returnToken, ownResumeAt) =>
         this.resumePointOf(streamId, datingKey, base, returnToken, ownResumeAt),
     };
@@ -2817,6 +2817,7 @@ export class StreamOrchestrator {
     resumeAt: number,
     notBeforeMs: number,
     returnToken?: string,
+    publishedResumeAt?: number,
   ): BroadcastEpoch {
     const anchor =
       this.broadcastAnchors.get(datingKey) ??
@@ -2826,6 +2827,7 @@ export class StreamOrchestrator {
       nowMs: this.wallClock(),
       notBeforeMs,
       returnToken,
+      publishedResumeAt,
     });
     const reanchored = withEpoch(anchor, epoch);
     this.broadcastAnchors.set(datingKey, reanchored);

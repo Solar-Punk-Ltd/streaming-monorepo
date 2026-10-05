@@ -198,6 +198,11 @@ interface ReanchorRequest {
    * ⛔ This is the whole of how siblings are recognised. See {@link BroadcastEpoch.returnToken}.
    */
   returnToken?: string;
+  /**
+   * The sequence `resumeAt` is published as, for a rung whose encoder came back. What a rung joining
+   * its return's line is placed on the line by. See {@link BroadcastEpoch.publishedFrom}.
+   */
+  publishedResumeAt?: number;
 }
 
 /**
@@ -213,8 +218,9 @@ export interface BroadcastDating {
    *
    * @param returnToken which return of the broadcast is asking, for a rung whose encoder came back.
    * Omitted where the engine's own counter restarted. See {@link BroadcastEpoch.returnToken}.
+   * @param publishedResumeAt the sequence `resumeAt` is published as, given with `returnToken`.
    */
-  epochFrom(resumeAt: number, notBeforeMs: number, returnToken?: string): BroadcastEpoch;
+  epochFrom(resumeAt: number, notBeforeMs: number, returnToken?: string, publishedResumeAt?: number): BroadcastEpoch;
 
   /**
    * The published sequence a rung coming back from this return resumes at, which is the same answer
@@ -368,7 +374,7 @@ interface ReanchorDecision {
  * it as a parsing error rather than as a restart, and a recording is sealed with it for ever.
  */
 export function reanchorDecision(anchor: BroadcastAnchor, request: ReanchorRequest): ReanchorDecision {
-  const { resumeAt, nowMs, notBeforeMs, returnToken } = request;
+  const { resumeAt, nowMs, notBeforeMs, returnToken, publishedResumeAt } = request;
   const held = anchor.epochs ?? [];
   const minted =
     returnToken === undefined
@@ -378,25 +384,46 @@ export function reanchorDecision(anchor: BroadcastAnchor, request: ReanchorReque
       : held.find((epoch) => epoch.returnToken === returnToken);
 
   if (minted !== undefined) {
-    const onTheSameLine = dateOnLine(minted, resumeAt, anchor.fragmentSeconds);
+    const onTheSameLine =
+      minted.publishedFrom !== undefined && publishedResumeAt !== undefined
+        ? dateOnLine(
+            { fromSequence: minted.publishedFrom, atMs: minted.atMs },
+            publishedResumeAt,
+            anchor.fragmentSeconds,
+          )
+        : dateOnLine(minted, resumeAt, anchor.fragmentSeconds);
     const sameRestart = returnToken !== undefined || Math.abs(onTheSameLine - nowMs) <= SAME_RESTART_TOLERANCE_MS;
     if (sameRestart) {
       return {
-        epoch: { fromSequence: resumeAt, atMs: Math.max(onTheSameLine, notBeforeMs), ...tokenOf(returnToken) },
+        epoch: {
+          fromSequence: resumeAt,
+          atMs: Math.max(onTheSameLine, notBeforeMs),
+          ...tokenOf(returnToken, publishedResumeAt),
+        },
         joined: true,
       };
     }
   }
 
   return {
-    epoch: { fromSequence: resumeAt, atMs: Math.max(nowMs, notBeforeMs), ...tokenOf(returnToken) },
+    epoch: {
+      fromSequence: resumeAt,
+      atMs: Math.max(nowMs, notBeforeMs),
+      ...tokenOf(returnToken, publishedResumeAt),
+    },
     joined: false,
   };
 }
 
 /** Kept off the epoch entirely when there is none, so a counter restart's line is byte-identical to before. */
-function tokenOf(returnToken: string | undefined): { returnToken?: string } {
-  return returnToken === undefined ? {} : { returnToken };
+function tokenOf(
+  returnToken: string | undefined,
+  publishedFrom: number | undefined,
+): { returnToken?: string; publishedFrom?: number } {
+  if (returnToken === undefined) {
+    return {};
+  }
+  return publishedFrom === undefined ? { returnToken } : { returnToken, publishedFrom };
 }
 
 /** {@link reanchorDecision} for a caller with no use for how the epoch was reached. */
@@ -413,8 +440,8 @@ export function reanchorEpoch(anchor: BroadcastAnchor, request: ReanchorRequest)
  */
 export function soleRungDating(anchorOf: () => BroadcastAnchor, wallClock: () => number = Date.now): BroadcastDating {
   return {
-    epochFrom: (resumeAt, notBeforeMs, returnToken) =>
-      reanchorEpoch(anchorOf(), { resumeAt, nowMs: wallClock(), notBeforeMs, returnToken }),
+    epochFrom: (resumeAt, notBeforeMs, returnToken, publishedResumeAt) =>
+      reanchorEpoch(anchorOf(), { resumeAt, nowMs: wallClock(), notBeforeMs, returnToken, publishedResumeAt }),
     // A rung with no siblings has nobody to agree a sequence with.
     resumePointFor: (_returnToken, ownResumeAt) => ownResumeAt,
   };

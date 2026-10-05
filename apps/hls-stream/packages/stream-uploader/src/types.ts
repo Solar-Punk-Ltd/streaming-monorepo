@@ -207,6 +207,17 @@ export interface BroadcastEpoch {
    * after a reboot join a line minted before it.
    */
   returnToken?: string;
+  /**
+   * The sequence `fromSequence` was published as, on an epoch a returning encoder minted. Absent on
+   * every other epoch, and on one written before it was kept.
+   *
+   * ⛔ **A rung joining its return's line is placed on it by this, never by `fromSequence`.** Each
+   * rung counts `fromSequence` from 0 at its own session's first segment, so a rung whose session was
+   * replaced earlier in the broadcast is many sequences below its siblings in that numbering while
+   * publishing the same sequence. Placed on the line by the raw number, it dated its return as many
+   * fragments before its siblings' as its session was younger.
+   */
+  publishedFrom?: number;
 }
 
 /** One rung of the encoder's ABR ladder, as configured via ABR_LADDER. */

@@ -1448,6 +1448,22 @@ describe('a ladder one of whose rungs was replaced earlier in the broadcast', ()
         assert.equal(gaps, 0, `${streamId} lists ${gaps} gap entries for media nobody lost`);
       }
     });
+
+    it(`dates the replaced rung's return where its siblings date it, ${openingSegments} segments in`, async () => {
+      const harness = reconnectHarness({ ladder: true });
+      await replacedThenBlackedOut(harness, openingSegments);
+
+      const [reference] = rungIds;
+      const { entry: referenceEntry } = await firstResumed(harness, reference);
+      for (const streamId of rungIds) {
+        const { entry } = await firstResumed(harness, streamId);
+        assert.equal(
+          new Date(entry.programDateTimeMs).toISOString(),
+          new Date(referenceEntry.programDateTimeMs).toISOString(),
+          `${streamId} dates its return apart from ${reference}`,
+        );
+      }
+    });
   }
 });
 

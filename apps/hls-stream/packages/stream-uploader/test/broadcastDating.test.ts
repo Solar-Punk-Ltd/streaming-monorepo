@@ -690,6 +690,40 @@ describe('the epoch a rung takes when its encoder came back', () => {
   });
 });
 
+describe("a rung joining its return's line from a session that numbers under another offset", () => {
+  const RETURN = 'one-return';
+  const RETURNED_AT_MS = STARTED_AT_MS + 600_000;
+  const minted = { fromSequence: 15, atMs: RETURNED_AT_MS, returnToken: RETURN, publishedFrom: 15 };
+
+  it('is placed on the line by the sequence it publishes, not by its own count', () => {
+    const decision = reanchorDecision(withEpoch(BROADCAST, minted), {
+      resumeAt: 3,
+      nowMs: RETURNED_AT_MS + 4_000,
+      notBeforeMs: 0,
+      returnToken: RETURN,
+      publishedResumeAt: 15,
+    });
+
+    assert.deepEqual(decision, {
+      epoch: { fromSequence: 3, atMs: RETURNED_AT_MS, returnToken: RETURN, publishedFrom: 15 },
+      joined: true,
+    });
+  });
+
+  it('falls back to its own count against a line written before the published sequence was kept', () => {
+    const { publishedFrom: _dropped, ...legacy } = minted;
+    const decision = reanchorDecision(withEpoch(BROADCAST, legacy), {
+      resumeAt: 14,
+      nowMs: RETURNED_AT_MS,
+      notBeforeMs: 0,
+      returnToken: RETURN,
+      publishedResumeAt: 26,
+    });
+
+    assert.equal(decision.epoch.atMs, RETURNED_AT_MS - FRAGMENT_SECONDS * 1_000);
+  });
+});
+
 describe('what a re-anchoring reports about how it reached its epoch', () => {
   const RESTARTED_AT_MS = STARTED_AT_MS + 600_000;
   const MINTED = withEpoch(BROADCAST, { fromSequence: 40, atMs: RESTARTED_AT_MS });

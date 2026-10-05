@@ -780,7 +780,12 @@ export class ManifestManager {
       resumeAt,
       newest === undefined ? null : this.placedMedia(newest),
     );
-    const epoch = this.dating.epochFrom(resumeAt, wouldHaveBeen, returnToken);
+    const epoch = this.dating.epochFrom(
+      resumeAt,
+      wouldHaveBeen,
+      returnToken,
+      returnToken === undefined ? undefined : this.published(resumeAt),
+    );
     this.anchor = withEpoch(this.anchor, epoch);
     const wasAt = new Date(wouldHaveBeen).toISOString();
     const nowAt = new Date(epoch.atMs).toISOString();

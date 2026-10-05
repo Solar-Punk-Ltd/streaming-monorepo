@@ -403,7 +403,9 @@ Every later rung of the return, a late one included, reads it back there and res
 `#EXT-X-DISCONTINUITY` on the same sequence. A rung that had counted less lists the sequences in
 between as gap entries. The point is agreed and kept in published numbers, because a rung whose
 session was replaced numbers its own media from 0 under the offset of the feed head it took over,
-and each rung takes its own offset off it when it places. Each rung is counted from what it was
+and each rung takes its own offset off it when it places. A rung joins its return's dating line by
+the sequence it publishes for the same reason, so a replaced rung dates its return where its siblings
+do rather than as many fragments earlier as its session is younger. Each rung is counted from what it was
 handed before its return, not only from what it has placed, because under a bandwidth squeeze a rung
 can be segments behind on its uploads when a sibling agrees the point. The point is never below a
 rung's own count, because a published sequence cannot be reused, so a rung the engine handed more
