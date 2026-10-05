@@ -46,7 +46,26 @@ admin. To see it: broadcast 6 Mbit/s through a 3 Mbit/s link.
 
 **The admin shows "published" while nothing goes out (P3).** A broadcaster can be connected while
 the ladder encoders produce nothing. The admin keeps showing the stream as published, with no
-warning. Seen together with the encoder hang that is being fixed separately.
+warning. The uploader now reports such a ladder on `/health` as `ladder_not_started` after 45 s,
+but the admin does not show it.
+
+**A broadcast can start with nothing going out (P1, being fixed in our SRS fork).** SRS 6 can remove a
+new stream's source in the moment between the broadcaster connecting and starting to publish. The
+broadcaster then publishes into the removed source, which still takes its stream at full rate, while
+the ladder encoders are handed a second, empty source and produce nothing. The broadcaster looks
+live, no rung publishes, and only a reconnect of the broadcaster clears it. The window is the time
+from connecting to publishing, so a slow or jittery link makes it likely: about one RTMP start in
+three on such a link, and rarer on a good one. This is upstream
+[ossrs/srs#4755](https://github.com/ossrs/srs/issues/4755), unfixed in every SRS 6 release and fixed
+in SRS 7. To see it: start an RTMP broadcast through `tc netem delay 80ms 20ms`, then look in the SRS
+log for `Live: cleanup die source` between the publisher's `source url=` line and its
+`start publish`.
+
+**After a return the top rung can miss its first segments (P3).** When a broadcaster comes back
+inside the reconnect window, every rung resumes on the same sequence and dating line, but the
+slowest encoder can start a segment or two later. Those sequence numbers are then absent on that
+rung only. A player on that rung skips the gap, and the dates still line up across rungs. Seen once
+on the 1080p rung, two segments.
 
 **Segments inside a network fault carry decode errors (P3, expected).** During a squeeze or a
 blackout, three to four segments per rung decode with errors, and every other segment decodes
