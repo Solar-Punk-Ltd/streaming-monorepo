@@ -4,7 +4,8 @@ A stage is a deployment that runs a stream uploader, of kind `abr-uploader` or
 `streamer`, with the node pool behind it. The web2 admin serves every stage of
 the brand, and learns each one from the manager: for every such deployment the
 manager builds a **stage record** and pushes it into the admin its web2 admin
-link names. The admin never calls the manager. The design is `docs/architecture/stages.md`
+link names. The admin calls the manager for nothing else than its funding API
+(`README.md`, "Funding API"). The design is `docs/architecture/stages.md`
 at the repository root; the record's shape is `stageRecordSchema` in
 `packages/contracts/src/stage.ts`.
 

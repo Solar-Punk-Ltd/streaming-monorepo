@@ -19,11 +19,11 @@ without `BEE_URL`, `POSTAGE_BATCH_ID` and `INGEST_HOST`.
 | --------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | What a stage is | A manager deployment that runs a stream uploader (kind `abr-uploader`, or `streamer`), with the node pool behind it. No new entity in the manager. Its id is the deployment's `instance_id`. |
 | Catalogue       | One per brand, signed by the brand key, listing the streams of every stage. One viewer per brand.                                                                                            |
-| Direction       | The manager **pushes** each stage's record into the admin. The admin never calls the manager, and the manager grows no machine login.                                                        |
+| Direction       | The manager **pushes** each stage's record into the admin. The admin calls one API of the manager's, the funding API, on a bearer token of its own, and nothing else.                        |
 | Binding         | A stream goes live only on its own stage. Every uploader gets a token of its own, and the admin answers a token only about its own stage's streams.                                          |
 | Keys            | Every stage signs its feeds with its own key. The brand key signs the catalogue alone and never leaves the admin.                                                                            |
 | Catalogue stamp | A batch of its own, immutable and deep, on a dedicated catalogue node the manager runs, pinned by id. Never a batch a rung stamps segments with.                                             |
-| Scope           | The admin reads. Top-ups, purchases and chequebooks stay in the manager's console.                                                                                                           |
+| Scope           | The admin reads stages and funds the node wallets ([funding.md](funding.md)). Buying batches stays in the manager; stamp top-ups, chequebook deposits and dilution come in later phases.     |
 | Engines         | SRS stages only. An OvenMediaEngine stage is listed and marked as not supported.                                                                                                             |
 
 ## Why these
@@ -31,7 +31,8 @@ without `BEE_URL`, `POSTAGE_BATCH_ID` and `INGEST_HOST`.
 - **Push.** The manager already holds the admin's address and a token for it (the admin link,
   migrations 041 and 042) and already calls the admin with them (Test connection). Pushing needs
   nothing new on the manager's side of the door, puts no manager address or credential in the
-  admin's env file, and scopes itself: each deployment is pushed to the admin it is linked to.
+  admin's env file for the stages, and scopes itself: each deployment is pushed to the admin it
+  is linked to.
 - **The admin caches.** The uploader's live and vod reports rewrite the catalogue during a
   broadcast. Every fact the admin needs to do that sits in its own database, so a manager that is
   down stops fresh readiness readings, and nothing else until the catalogue batch's last reading
@@ -520,4 +521,5 @@ admin keeps writing with A, and the log and the Stages page say which.
   learns it only from the manager linked to it.
 - The admin reaches the catalogue node's Bee API, which asks for no password, so the Bee host's
   firewall admits the control host. The dedicated node keeps that door to one node.
-- Brand separation inside one admin, and top-ups from the admin, stay open decisions.
+- Brand separation inside one admin stays an open decision. Funding from the admin is designed
+  in [funding.md](funding.md).
