@@ -105,6 +105,14 @@ not the host it dialled, so a broadcaster that dialled a host no vhost names is 
 ladder rung as the ABR vhost. Older images end the line at `pnt=`. The manager reads RTMP ingest health from this
 line, so on an older image it shows RTMP as not measured.
 
+`6.0-r2-swarm.4` keeps a new RTMP broadcast's source while its publisher is still getting ready to publish. Stock
+SRS 6 can drop that source in the gap between the publisher connecting and its `on_publish` hook answering, which
+upstream fixed only in SRS 7 ([ossrs/srs#4755](https://github.com/ossrs/srs/issues/4755)). The publisher then
+publishes into the dropped source while the ladder's encoders read a second, empty one, so the broadcaster looks
+live and no rung ever publishes until it reconnects. The uploader reports such a ladder as `ladder_not_started`.
+With the stack's config, a 300 ms hook and an RTMP publisher behind 80 ms of jitter, `6.0-r2-swarm.3` was stuck
+4 times in 30 starts and `6.0-r2-swarm.4` none in 30.
+
 The fork leaves both off by default, because with no `on_publish` hook every publisher is accepted and could replace a
 live one. The stack turns both on by itself wherever the uploader refuses a wrong publish key, which is when
 `PUBLISH_KEY_SECRET` or admin mode (`ADMIN_API_URL`) is configured, and leaves them off otherwise, because the uploader
@@ -141,8 +149,8 @@ configure flags of upstream's release (`--sanitizer=off --gb28181=on`), and push
 it. On 2026-10-01 that build image held the same ffmpeg 8.1.2 binary as the official `ossrs/srs:v6.0-r1` and
 `v6.0-r2` images, byte for byte.
 
-The compose files run `ghcr.io/solar-punk-ltd/swarm-srs:6.0-r2-swarm.3`, built from the fork's `main` at
-`5a388649`, and pin it by digest, so every deploy runs the same build.
+The compose files run `ghcr.io/solar-punk-ltd/swarm-srs:6.0-r2-swarm.4`, built from the fork's `main` at
+`5bc78d9f`, and pin it by digest, so every deploy runs the same build.
 
 **Going back to stock SRS** means going back to a stack version from before this change as well. The entrypoint writes
 `unpublish_hold` and `takeover`, and stock SRS refuses to start on a directive it does not know.
