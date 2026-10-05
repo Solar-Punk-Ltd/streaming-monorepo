@@ -86,11 +86,11 @@ export function writeEnvKey(envPath: string, key: string, value: string): void {
 
   const content = existsSync(envPath) ? readFileSync(envPath, 'utf-8') : '';
   const lines = content === '' ? [] : content.split('\n');
-  const pattern = new RegExp(`^${key}=`);
+  const prefix = `${key}=`;
   let found = false;
 
   const updated = lines.map((line) => {
-    if (pattern.test(line)) {
+    if (line.startsWith(prefix)) {
       found = true;
       return `${key}=${value}`;
     }
