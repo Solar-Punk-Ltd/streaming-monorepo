@@ -134,6 +134,13 @@ interface ReconnectHarness {
   published: (label: string) => Promise<void>;
   /** Move both clocks together, which is what an outage does. */
   passTime: (ms: number) => Promise<void>;
+  /**
+   * Hold every upload of this stream's segments until the returned release is called, which is a rung
+   * behind on its uploads under a bandwidth squeeze.
+   */
+  holdUploads: (streamId: string) => () => void;
+  /** Hand one segment over without waiting for its upload, for a stream whose uploads are held. */
+  handOver: (label: string, index: number, streamId: string) => void;
 }
 
 /**
@@ -153,6 +160,7 @@ function reconnectHarness(options: { ladder?: boolean } = {}): ReconnectHarness 
   const saved: StreamState[] = [];
   const uploadedSegments: string[] = [];
   const feeds = new Map<string, FakeFeedHead>();
+  const heldUploads = new Map<string, Promise<void>>();
 
   const adminApi = {
     describe: () => 'http://admin.test',
@@ -173,6 +181,10 @@ function reconnectHarness(options: { ladder?: boolean } = {}): ReconnectHarness 
     {
       uploadData: async (_stamp, data) => {
         const label = Buffer.from(data).toString('utf8');
+        const held = [...heldUploads].find(([streamId]) => label.startsWith(`${streamId}-`));
+        if (held !== undefined) {
+          await held[1];
+        }
         uploadedSegments.push(label);
         return { reference: { toHex: () => `segment-${label}` } };
       },
@@ -221,6 +233,26 @@ function reconnectHarness(options: { ladder?: boolean } = {}): ReconnectHarness 
     passTime: async (ms) => {
       wallMs += ms;
       await clock.advance(ms);
+    },
+    holdUploads: (streamId) => {
+      let release = () => {};
+      heldUploads.set(
+        streamId,
+        new Promise<void>((resolve) => {
+          release = resolve;
+        }),
+      );
+      return () => {
+        heldUploads.delete(streamId);
+        release();
+      };
+    },
+    handOver: (label, index, streamId) => {
+      assert.deepEqual(
+        orchestrator.handleSegment(streamId, index, SEGMENT_SECONDS, Buffer.from(label)),
+        { accepted: true },
+        `segment ${label} must be taken`,
+      );
     },
   };
 }
@@ -780,6 +812,8 @@ async function rebuildFrom(entry: StreamState, wallOffsetMs = OUTAGE_MS): Promis
       wallMs += ms;
       await clock.advance(ms);
     },
+    holdUploads: () => assert.fail('no case holds the uploads of a rebuilt session'),
+    handOver: () => assert.fail('the same'),
   };
 }
 
@@ -1302,6 +1336,54 @@ describe('a ladder whose rungs stopped at different sequences before the outage'
       }
     });
   }
+});
+
+/**
+ * Under a bandwidth squeeze a rung can be segments behind on its uploads when the ladder goes away, and
+ * a segment lands in the playlist only after its upload. The rung that is behind can also be the one
+ * that was handed the most.
+ */
+describe('a ladder one of whose rungs is still uploading segments from before the outage', () => {
+  const rungIds = RUNG_NAMES.map((rung) => `${LADDER_BASE}_${rung}`);
+  const behind = rungIds[3];
+  const siblings = rungIds.filter((rung) => rung !== behind);
+  const BLACKOUT_MS = 8_000;
+
+  it('counts the segments that rung was handed, so every rung resumes at one sequence', async () => {
+    const harness = reconnectHarness({ ladder: true });
+    for (const streamId of rungIds) harness.start(streamId);
+    for (let i = 0; i < 3; i++) {
+      for (const streamId of rungIds) await harness.segment(`${streamId}-a${i}`, i, streamId);
+      await harness.passTime(SEGMENT_SECONDS * 1_000);
+    }
+    const release = harness.holdUploads(behind);
+    for (const streamId of siblings) await harness.segment(`${streamId}-a3`, 3, streamId);
+    harness.handOver(`${behind}-a3`, 3, behind);
+    harness.handOver(`${behind}-a4`, 4, behind);
+
+    for (const streamId of rungIds) harness.orchestrator.noteDisconnect(streamId);
+    await harness.passTime(BLACKOUT_MS);
+    for (const streamId of rungIds) harness.start(streamId);
+    for (const streamId of siblings) await harness.segment(`${streamId}-b0`, 4, streamId);
+    release();
+    await harness.segment(`${behind}-b0`, 5, behind);
+
+    const resumedAt: number[] = [];
+    for (const streamId of rungIds) {
+      await harness.published(`${streamId}-b0`);
+      const write = writesNaming(harness.writes, `${streamId}-b0`).at(-1);
+      assert.ok(write);
+      const entry = entriesOf(write.playlist).find((candidate) => candidate.uri === `segment-${streamId}-b0`);
+      assert.ok(entry);
+      assert.equal(entry.opensABreak, true, `${streamId} declares the return`);
+      resumedAt.push(entry.sequence);
+    }
+    assert.deepEqual(
+      resumedAt,
+      rungIds.map(() => 5),
+      `the rungs resume at sequences ${resumedAt.join(', ')}`,
+    );
+  });
 });
 
 /**

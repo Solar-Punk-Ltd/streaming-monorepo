@@ -2757,7 +2757,7 @@ export class StreamOrchestrator {
       return ownResumeAt;
     }
     if (inProgress.resumeAt === undefined) {
-      inProgress.resumeAt = agreedResumePoint(ownResumeAt, this.ladderCountsOf(base));
+      inProgress.resumeAt = agreedResumePoint(ownResumeAt, this.siblingCountsOf(base, streamId));
       this.rememberReturn(datingKey, base, inProgress);
     }
     if (inProgress.heldRungs.has(streamId)) {
@@ -2780,13 +2780,18 @@ export class StreamOrchestrator {
     return decision.resumeAt;
   }
 
-  /** The published sequence each live rung of this ladder would resume at on its own. */
-  private ladderCountsOf(base: string): number[] {
+  /**
+   * The published sequence each other live rung of this ladder would resume at on its own, counting
+   * what it was handed before its return. See `StreamUploader.publishedCountBeforeReturn`.
+   */
+  private siblingCountsOf(base: string, askingStreamId: string): number[] {
     return [...this.streamBases]
-      .filter(([, rungBase]) => rungBase === base)
+      .filter(([streamId, rungBase]) => rungBase === base && streamId !== askingStreamId)
       .map(([streamId]) => {
         const uploader = this.activeStreams.get(streamId);
-        return uploader === undefined || this.isDraining(streamId, uploader) ? null : uploader.publishedNextSequence();
+        return uploader === undefined || this.isDraining(streamId, uploader)
+          ? null
+          : uploader.publishedCountBeforeReturn();
       })
       .filter((count) => count !== null);
   }

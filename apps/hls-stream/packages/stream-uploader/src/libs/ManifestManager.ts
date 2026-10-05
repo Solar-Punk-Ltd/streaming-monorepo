@@ -542,13 +542,39 @@ export class ManifestManager {
   }
 
   /**
-   * The published sequence this rung would resume at on its own after a return, one past the highest
-   * it has placed, or null before it has placed anything. What its siblings agree a return's resume
-   * point from, in published numbers because each rung adds its own {@link sequenceOffset}. See
-   * `agreedResumePoint`.
+   * The published sequence this rung would resume at on its own after a return, once the segments
+   * it has been handed and not yet placed have landed, or null while it has neither placed nor been
+   * handed anything. What its siblings agree a return's resume point from, in published numbers
+   * because each rung adds its own {@link sequenceOffset}. See `agreedResumePoint`.
+   *
+   * ⛔ **Counted from what the rung was handed, not only from what it placed.** A segment lands in
+   * the playlist after its upload, and under a bandwidth squeeze a rung can be several segments behind
+   * on its uploads when a sibling agrees the point. Read from its placed segments alone, that rung was
+   * counted short, and it later placed its backlog past the point and resumed above its siblings.
+   *
+   * Each pending index is placed the way {@link placeInBroadcast} would place it, in order, without
+   * touching anything.
+   *
+   * @param pendingIndexes the engine indexes handed over and still uploading, oldest first.
    */
-  public publishedNextSequence(): number | null {
-    return this.sequenceAnchor === null ? null : this.published(this.highestSequence() + 1);
+  public publishedNextSequenceAfter(pendingIndexes: readonly number[]): number | null {
+    let anchor = this.sequenceAnchor;
+    let highest = anchor === null ? null : this.highestSequence();
+    for (const index of pendingIndexes) {
+      if (anchor === null || highest === null) {
+        anchor = { index, sequence: 0 };
+        highest = 0;
+        continue;
+      }
+      const candidate = anchor.sequence + (index - anchor.index);
+      if (candidate > highest) {
+        highest = candidate;
+      } else {
+        highest += 1;
+        anchor = { index, sequence: highest };
+      }
+    }
+    return highest === null ? null : this.published(highest + 1);
   }
 
   /** The number `sequence` is written into a playlist as. See {@link sequenceOffset}. */

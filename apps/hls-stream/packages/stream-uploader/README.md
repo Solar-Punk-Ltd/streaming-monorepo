@@ -403,9 +403,12 @@ Every later rung of the return, a late one included, reads it back there and res
 `#EXT-X-DISCONTINUITY` on the same sequence. A rung that had counted less lists the sequences in
 between as gap entries. The point is agreed and kept in published numbers, because a rung whose
 session was replaced numbers its own media from 0 under the offset of the feed head it took over,
-and each rung takes its own offset off it when it places. The point is never below a rung's own
-count, because a published sequence cannot be reused, so a rung still placing segments from before
-the outage when the point was agreed resumes at its own count and the uploader logs a warning. Nor
+and each rung takes its own offset off it when it places. Each rung is counted from what it was
+handed before its return, not only from what it has placed, because under a bandwidth squeeze a rung
+can be segments behind on its uploads when a sibling agrees the point. The point is never below a
+rung's own count, because a published sequence cannot be reused, so a rung the engine handed more
+segments from before the outage after the point was agreed resumes at its own count and the uploader
+logs a warning. Nor
 does it raise a rung more than `MAX_RESUME_RAISE` sequences: a point further away is a count read
 wrongly rather than a ladder drifting apart, and the rung resumes at its own count with a warning. A
 rung SRS held through a short drop resumes at its own count too: its numbering never stopped, so its

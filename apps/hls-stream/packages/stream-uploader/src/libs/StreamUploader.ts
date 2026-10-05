@@ -334,6 +334,13 @@ export interface StreamUploaderOptions {
 
 export class StreamUploader {
   public readonly segmentQueue = new PQueue({ concurrency: 1 });
+  /** The engine index of every segment handed over whose upload has not finished, oldest first. */
+  private readonly unplacedIndexes: number[] = [];
+  /**
+   * How many of {@link unplacedIndexes} were handed over before the return now waiting in the queue,
+   * or null when no return is waiting. See {@link publishedCountBeforeReturn}.
+   */
+  private handedBeforeReturn: number | null = null;
   private manifestQueue = new PQueue({ concurrency: 1 });
   private logger = Logger.getInstance();
   private errorHandler = ErrorHandler.getInstance();
@@ -510,6 +517,7 @@ export class StreamUploader {
     this.queuedSeconds += duration;
     this.segmentsOffered += 1;
     recordSegment(this.bitrate, data.length, duration);
+    this.unplacedIndexes.push(segmentIndex);
     // uploadSegment answers a failed upload as a gap entry rather than rejecting.
     void this.segmentQueue.add(async () => {
       try {
@@ -526,6 +534,7 @@ export class StreamUploader {
 
   private async uploadSegment(segmentIndex: number, duration: number, data: Buffer): Promise<void> {
     const result = await this.uploadDataToBee(data);
+    this.settleOldestHanded();
     if (!result) {
       // Nothing landed within the retry window, so this segment's sequence stays empty and
       // `ManifestManager` lists it as a gap entry. No discontinuity: the encoder did not restart, so
@@ -646,7 +655,9 @@ export class StreamUploader {
    * of the run after it.
    */
   public resumeAfterReconnect(returnToken: string): void {
+    this.handedBeforeReturn ??= this.unplacedIndexes.length;
     this.queueAnnouncement(() => {
+      this.handedBeforeReturn = null;
       this.manifestManager.resumeAfterReconnect(returnToken);
       this.logger.info(
         `[StreamUploader] The encoder feeding ${this.streamId} is back, so the next segment it delivers ` +
@@ -1283,9 +1294,32 @@ export class StreamUploader {
     return this.consecutiveManifestFailures > 0;
   }
 
-  /** The published sequence this rung would resume at on its own. See `ManifestManager.publishedNextSequence`. */
-  public publishedNextSequence(): number | null {
-    return this.manifestManager.publishedNextSequence();
+  /**
+   * The published sequence this rung would resume at on its own, counting every segment it was handed
+   * before its return as already placed. What its siblings agree a return's point from. See
+   * `ManifestManager.publishedNextSequenceAfter`.
+   *
+   * ⛔ **A segment handed over after the return reached this rung is not counted.** It is media from
+   * after the outage, and counted, it would raise every sibling past the point this rung itself is
+   * about to resume at. So the segments still uploading count up to the return waiting in the queue,
+   * none count while the return is armed and unplaced, and all of them count otherwise.
+   */
+  public publishedCountBeforeReturn(): number | null {
+    const beforeReturn =
+      this.handedBeforeReturn !== null
+        ? this.unplacedIndexes.slice(0, this.handedBeforeReturn)
+        : this.manifestManager.armedReturn() === null
+          ? this.unplacedIndexes
+          : [];
+    return this.manifestManager.publishedNextSequenceAfter(beforeReturn);
+  }
+
+  /** The handed segment at the head of the queue has landed or been given up on. */
+  private settleOldestHanded(): void {
+    this.unplacedIndexes.shift();
+    if (this.handedBeforeReturn !== null && this.handedBeforeReturn > 0) {
+      this.handedBeforeReturn -= 1;
+    }
   }
 
   public getConsecutiveManifestFailures(): number {

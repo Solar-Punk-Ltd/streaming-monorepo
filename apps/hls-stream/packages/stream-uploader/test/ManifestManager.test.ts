@@ -2039,3 +2039,26 @@ describe('gluing the recording onto what was already on the feed', () => {
     assert.equal(glue.getTotalDuration(), plain.getTotalDuration());
   });
 });
+
+describe('the published sequence a rung would resume at, counting what it is still uploading', () => {
+  it('is null before anything is placed or handed over', () => {
+    assert.equal(new ManifestManager(TEST_ANCHOR).publishedNextSequenceAfter([]), null);
+  });
+
+  it('counts each pending segment where it would be placed, under the session offset', () => {
+    const manager = new ManifestManager(TEST_ANCHOR);
+    manager.continueFrom(40);
+    manager.addSegment(7, 2, 'ref-7');
+    manager.addSegment(8, 2, 'ref-8');
+
+    assert.equal(manager.publishedNextSequenceAfter([]), 42);
+    assert.equal(manager.publishedNextSequenceAfter([9, 10]), 44);
+    assert.equal(manager.publishedNextSequenceAfter([10]), 44, 'a lost index still leaves its sequence behind it');
+    assert.equal(manager.publishedNextSequenceAfter([0, 1]), 44, 'a restarted counter carries on above');
+    assert.equal(manager.publishedNextSequenceAfter([9]), 43, 'and nothing it counts is placed');
+  });
+
+  it('counts a session that has only been handed segments from its first one', () => {
+    assert.equal(new ManifestManager(TEST_ANCHOR).publishedNextSequenceAfter([5, 6, 7]), 3);
+  });
+});
