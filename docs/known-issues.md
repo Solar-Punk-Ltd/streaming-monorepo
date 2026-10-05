@@ -3,10 +3,9 @@
 Problems we have seen and decided not to fix for now. Each one says what happens, how much it
 matters, and how to see it again. Found in a live test round on a test deployment on 2026-10-04,
 where real broadcasts ran through delay, jitter, packet loss, blackouts, restarts, takeovers and
-crashes. Three other findings of that round are being fixed in their own pull requests: a stage
-that keeps expired postage batches after new ones are bought, quality rungs that lose their shared
-timeline after a long outage, and ladder encoders that can hang at the start of a broadcast with
-nobody told.
+crashes. Three other findings of that round are fixed: a stage that kept expired postage batches
+after new ones were bought, quality rungs that lost their shared timeline after a long outage, and
+ladder encoders that could hang at the start of a broadcast with nobody told.
 
 Priority: **P2** costs time or confusion in normal use, **P3** is rare or cosmetic.
 
@@ -18,6 +17,15 @@ refused while `ADMIN_API_TOKEN` is still set in the bundled stack's `.env`. The 
 copy under `bundled.builds/<commit>/.env`, made before the line was removed, so rotation stays
 refused until both are cleaned. To see it: set the key in `bundled/.env`, build, delete it from
 `bundled/.env` only, then rotate.
+
+**A stray file in a version folder spreads into every build and deploy (P3).** The manager copies a
+stack version's folder whole, so any extra file there, such as a backup of its `.env`, is copied into
+each build under `bundled.builds/<commit>/` and into each deploy's snapshot under
+`.executions/<id>/tree/`. One backup left beside a version's `.env` became four copies after two
+deploys, each holding the secrets of the file it backed up. Nothing reads these copies, but deleting
+the original does not remove them, and the folders belong to root, so the host account cannot delete
+them without the manager container or root. To see it: put a file beside `bundled/.env`, build and
+deploy twice, then search the versions folder for its name. Keep backups outside the versions folder.
 
 ## Broadcasting
 
