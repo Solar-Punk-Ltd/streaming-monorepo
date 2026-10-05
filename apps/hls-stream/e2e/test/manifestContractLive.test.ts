@@ -17,6 +17,7 @@ import {
   publishedCountsOf,
   publishedFor,
   publishingRungFeedsOf,
+  returnAlignment,
   type RungFeed,
   rungFeedsOf,
   rungPlaylistParse,
@@ -225,6 +226,17 @@ describe('reading one rung playlist back', () => {
   it('counts the gap entries a window declares, so a suite can tell a hole is in it', () => {
     assert.equal(rungPlaylistParse(feed, rungPlaylist([0, 1, 2, 3], { gaps: [2] })).gaps, 1);
     assert.equal(rungPlaylistParse(feed, rungPlaylist([0, 1, 2, 3], { gaps: [1, 2] })).gaps, 2);
+  });
+
+  it('records each break with the sequence it opens and the gap entries right before it', () => {
+    const lined = rungPlaylistParse(feed, rungPlaylist([0, 1, 2, 3, 4, 5, 6], { gaps: [1, 4, 5], breaks: [3, 6] }));
+
+    assert.deepEqual(lined.breaks, [
+      { sequence: 3, gapsBefore: 0 },
+      { sequence: 6, gapsBefore: 2 },
+    ]);
+    assert.equal(lined.lastSequence, 6);
+    assert.deepEqual(rungPlaylistParse(feed, GATEWAY_ERROR_ENVELOPE).breaks, []);
   });
 
   /**
@@ -646,6 +658,39 @@ describe('the one call a live suite makes', () => {
     assert.match(verdict.summary, /E2E_EXPECT_SEGMENT_S/);
   });
 
+  /**
+   * ⛔ Opt-in, because a rung whose engine counter restarted, or that SRS held through a drop, still
+   * resumes at its own count, and a suite that exercises those reads breaks that need not agree.
+   */
+  it('refuses rungs that break at different sequences when the suite asks for one return', async () => {
+    const byTopic = new Map([
+      [
+        rungPlaylistParse(feedOf('360p', TOPIC_360), '').topicHex,
+        rungPlaylist([0, 1, 2, 3], { breaks: [3], datedLater: { from: 3, byMs: 26_000 } }),
+      ],
+      [
+        rungPlaylistParse(feedOf('1080p', TOPIC_1080), '').topicHex,
+        rungPlaylist([0, 1, 2, 3], { breaks: [2], datedLater: { from: 2, byMs: 26_000 } }),
+      ],
+    ]);
+    const host = {
+      localText: async (_port: number, path: string) =>
+        [...byTopic].find(([topicHex]) => path.includes(topicHex))?.[1] ?? '',
+    } as unknown as Host;
+    const check = {
+      owner: OWNER,
+      rungs: [feedOf('360p', TOPIC_360), feedOf('1080p', TOPIC_1080)],
+      expectation: cfg.segmentExpectation,
+    };
+
+    const lenient = await checkPublishedTimeline(host, cfg, check);
+    const strict = await checkPublishedTimeline(host, cfg, { ...check, breaksAgreeAcrossRungs: true });
+
+    assert.equal(lenient.refusal, null);
+    assert.match(lenient.breakDisagreement ?? '', /sequence 2 is dated 26000 ms apart on 360p and 1080p/);
+    assert.match(strict.refusal ?? '', /sequence 2 is dated/);
+  });
+
   it('refuses a broadcast that announced no rung feed rather than reporting a pass', async () => {
     const verdict = await checkPublishedTimeline(stubHost(rungPlaylist([0]), []), cfg, {
       owner: OWNER,
@@ -761,5 +806,150 @@ describe('a recording glued across several sessions of one broadcast', () => {
     const continuing = rungPlaylist([0, 1, 2], { mediaSequence: 30, breaks: [0] });
 
     assert.deepEqual(readingOf(FEED, continuing, FIRST_PLAYLIST).failures, []);
+  });
+});
+
+/**
+ * ⛔⛔ Every rung of one return resumes at one sequence, so a rung that had counted less lists the
+ * sequences up to it as gap entries and breaks on the next. A suite asserting that a return lost
+ * nothing has to tell those apart from a hole, and must not excuse a return that invented the hole.
+ */
+describe('reading the rungs of one return together', () => {
+  const rung360 = feedOf('360p', TOPIC_360);
+  const rung1080 = feedOf('1080p', TOPIC_1080);
+  /** How long the fixture ladder was away, which is how far its dating moves at a return. */
+  const AWAY_MS = 26_000;
+  const read = (parses: Parameters<typeof returnAlignment>[0]) => returnAlignment(parses, FIXTURE_FRAGMENT_SECONDS);
+
+  it('counts the gaps of a rung lining up with a sibling that had counted that far', () => {
+    const alignment = read([
+      rungPlaylistParse(
+        rung360,
+        rungPlaylist([0, 1, 2, 3, 4, 5], { breaks: [4], datedLater: { from: 4, byMs: AWAY_MS } }),
+      ),
+      rungPlaylistParse(
+        rung1080,
+        rungPlaylist([0, 1, 2, 3, 4, 5], { gaps: [2, 3], breaks: [4], datedLater: { from: 4, byMs: AWAY_MS } }),
+      ),
+    ]);
+
+    assert.deepEqual(alignment, { gapsAtAReturn: 2, disagreement: null, stillLanding: false });
+  });
+
+  /**
+   * A partial return: 1080p was cut and came back while 360p kept publishing, so 360p carries no break
+   * at all and 1080p lines up with where 360p had counted to by then.
+   */
+  it('counts the gaps of rungs lining up with a sibling that kept publishing through the return', () => {
+    const alignment = read([
+      rungPlaylistParse(rung360, rungPlaylist([0, 1, 2, 3, 4, 5, 6, 7, 8])),
+      rungPlaylistParse(rung1080, rungPlaylist([0, 1, 2, 3, 4, 5, 6, 7, 8], { gaps: [4, 5, 6], breaks: [7] })),
+    ]);
+
+    assert.deepEqual(alignment, { gapsAtAReturn: 3, disagreement: null, stillLanding: false });
+  });
+
+  it('says so when a partial return resumes a rung where it stopped while its sibling counted on', () => {
+    const alignment = read([
+      rungPlaylistParse(rung360, rungPlaylist([0, 1, 2, 3, 4, 5, 6])),
+      rungPlaylistParse(
+        rung1080,
+        rungPlaylist([0, 1, 2, 3, 4, 5, 6], { breaks: [4], datedLater: { from: 4, byMs: 3 * 2_000 } }),
+      ),
+    ]);
+
+    assert.equal(alignment.gapsAtAReturn, 0);
+    assert.match(alignment.disagreement ?? '', /sequence 4 is dated 6000 ms apart/);
+  });
+
+  /**
+   * ⛔ A rung one sequence out of step dates each sequence one real segment apart from its sibling,
+   * and a real segment runs a hair under the configured fragment, 1999.667 ms against 2 s. A bound of
+   * a whole fragment let exactly that through.
+   */
+  it('says so when a rung is one sequence out of step, one segment just under a fragment apart', () => {
+    const alignment = read([
+      rungPlaylistParse(rung360, rungPlaylist([0, 1, 2, 3, 4, 5])),
+      rungPlaylistParse(rung1080, rungPlaylist([0, 1, 2, 3, 4, 5], { datedLater: { from: 0, byMs: -1_999 } })),
+    ]);
+
+    assert.match(alignment.disagreement ?? '', /sequence 0 is dated 1999 ms apart/);
+  });
+
+  it('lets through the rounding that separates rungs dating one segment', () => {
+    const alignment = read([
+      rungPlaylistParse(rung360, rungPlaylist([0, 1, 2, 3])),
+      rungPlaylistParse(rung1080, rungPlaylist([0, 1, 2, 3], { datedLater: { from: 0, byMs: 40 } })),
+    ]);
+
+    assert.equal(alignment.disagreement, null);
+  });
+
+  it('counts no gap as a return where no rung had counted that far, which invents loss', () => {
+    const alignment = read([
+      rungPlaylistParse(
+        rung360,
+        rungPlaylist([0, 1, 2, 3, 4], { gaps: [3], breaks: [4], datedLater: { from: 4, byMs: AWAY_MS } }),
+      ),
+      rungPlaylistParse(
+        rung1080,
+        rungPlaylist([0, 1, 2, 3, 4], { gaps: [2, 3], breaks: [4], datedLater: { from: 4, byMs: AWAY_MS } }),
+      ),
+    ]);
+
+    assert.equal(alignment.gapsAtAReturn, 0);
+    assert.match(alignment.disagreement ?? '', /break at sequence 4/);
+  });
+
+  it('says so when the rungs break at different sequences', () => {
+    const alignment = read([
+      rungPlaylistParse(
+        rung360,
+        rungPlaylist([0, 1, 2, 3, 4, 5], { breaks: [5], datedLater: { from: 5, byMs: AWAY_MS } }),
+      ),
+      rungPlaylistParse(
+        rung1080,
+        rungPlaylist([0, 1, 2, 3, 4, 5], { breaks: [4], datedLater: { from: 4, byMs: AWAY_MS } }),
+      ),
+    ]);
+
+    assert.equal(alignment.gapsAtAReturn, 0);
+    assert.match(alignment.disagreement ?? '', /sequence 4 is dated 26000 ms apart on 360p and 1080p/);
+  });
+
+  it('judges nothing a rung has not published yet, and says the return is still landing', () => {
+    const alignment = read([
+      rungPlaylistParse(rung360, rungPlaylist([0, 1, 2, 3])),
+      rungPlaylistParse(
+        rung1080,
+        rungPlaylist([0, 1, 2, 3, 4, 5], { gaps: [2, 3], breaks: [4], datedLater: { from: 4, byMs: AWAY_MS } }),
+      ),
+    ]);
+
+    assert.deepEqual(alignment, { gapsAtAReturn: 0, disagreement: null, stillLanding: true });
+  });
+
+  it('counts a hole between two runs of media as no part of a return', () => {
+    const alignment = read([
+      rungPlaylistParse(
+        rung360,
+        rungPlaylist([0, 1, 2, 3, 4, 5], { breaks: [4], datedLater: { from: 4, byMs: AWAY_MS } }),
+      ),
+      rungPlaylistParse(
+        rung1080,
+        rungPlaylist([0, 1, 2, 3, 4, 5], { gaps: [1], breaks: [4], datedLater: { from: 4, byMs: AWAY_MS } }),
+      ),
+    ]);
+
+    assert.deepEqual(alignment, { gapsAtAReturn: 0, disagreement: null, stillLanding: false });
+  });
+
+  it('reads past a rung whose feed answered no playlist', () => {
+    const alignment = read([
+      rungPlaylistParse(rung360, GATEWAY_ERROR_ENVELOPE),
+      rungPlaylistParse(rung1080, rungPlaylist([0, 1, 2], { breaks: [2] })),
+    ]);
+
+    assert.deepEqual(alignment, { gapsAtAReturn: 0, disagreement: null, stillLanding: false });
   });
 });

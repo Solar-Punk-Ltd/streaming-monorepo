@@ -392,6 +392,43 @@ when the line carries its own return's name, and mints one otherwise, whatever s
 is at. The name is a uuid rather than a count, because the epochs it labels ride in the recovery entry
 and the ladder group store and so outlive the process.
 
+⛔ **Every rung of one return resumes at one sequence.** The rungs stop at different counts before an
+outage: one closes a short partial segment the others do not, or one is a segment behind on its
+upload. A player switching quality picks the segment by its sequence, so a rung resuming at its own
+count put one sequence on two moments about 30 seconds apart on a test deployment, with the breaks
+four sequences apart. The first rung of a return to place a segment now agrees the point as the
+furthest any live rung of the ladder has counted (`agreedResumePoint` in
+`src/libs/broadcastDating.ts`), and it is kept with the return's name in the ladder group record.
+Every later rung of the return, a late one included, reads it back there and resumes at it, with its
+`#EXT-X-DISCONTINUITY` on the same sequence. A rung that had counted less lists the sequences in
+between as gap entries. The point is agreed and kept in published numbers, because a rung whose
+session was replaced numbers its own media from 0 under the offset of the feed head it took over,
+and each rung takes its own offset off it when it places. A rung joins its return's dating line by
+the sequence it publishes for the same reason, so a replaced rung dates its return where its siblings
+do rather than as many fragments earlier as its session is younger. Each rung is counted from what it was
+handed before its return, not only from what it has placed, because under a bandwidth squeeze a rung
+can be segments behind on its uploads when a sibling agrees the point. The point is never below a
+rung's own count, because a published sequence cannot be reused, so a rung the engine handed more
+segments from before the outage after the point was agreed resumes at its own count and the uploader
+logs a warning. Nor
+does it raise a rung further than the fragments it was away for plus `RESUME_RAISE_SLACK` sequences
+(`maxResumeRaise`). A rung that stayed live through a partial return counts on through its siblings'
+absence, so lining them up again takes that absence in fragments, eight on a test deployment. A point
+further away than that is a count read wrongly, and the rung resumes at its own count with a warning. A
+rung SRS held through a short drop resumes at its own count too: its numbering never stopped, so its
+sequence already names the same media as its siblings', and the source's return can land between
+two rungs delivering one segment, whose copy on the later rung is media cut before the drop. A
+single rendition resumes at its own count as it always has, and so does every rung after the
+engine's own counter restarts.
+
+A return only takes in the rungs that were away when it started, including one whose disconnect
+lands after a sibling announced but whose last media is older than the return. A rung that kept
+publishing through it is not part of it. A return is closed once a rung that has placed a segment of
+it, or never left it, goes away again, and a rung that drops before its first resumed segment rejoins
+the return it announced. A test deployment came back in two returns, the first without 360p, and 360p was
+handed the first return's name at the second: it resumed a sequence apart from its siblings and dated
+its media 24 seconds in the past.
+
 Two sequence-shaped rules were tried before this one and both were wrong, which is worth knowing
 before anyone simplifies it. Recognising a return by the clock alone read a second outage on the same
 rung as a sibling crossing the first, because nothing advances while an encoder is away: four fifty

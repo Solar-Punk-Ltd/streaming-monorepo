@@ -47,7 +47,16 @@ import { isUsableDuration, measureSegmentDuration, SegmentDurationReading } from
 import { AbrLadder } from './AbrLadder.js';
 import { AdminApiClient } from './AdminApiClient.js';
 import { BeePublisherPool, PublisherRoute } from './BeePublisherPool.js';
-import { BroadcastDating, reanchorDecision, withEpoch } from './broadcastDating.js';
+import {
+  agreedResumePoint,
+  BroadcastDating,
+  maxResumeRaise,
+  RAISE_REFUSED,
+  reanchorDecision,
+  RESUMED_ABOVE_THE_RETURN,
+  sharedResumePoint,
+  withEpoch,
+} from './broadcastDating.js';
 import { Clock, systemClock, Timer } from './Clock.js';
 import { DrainTimeoutError } from './DrainTimeoutError.js';
 import { ErrorHandler } from './ErrorHandler.js';
@@ -85,6 +94,14 @@ const DRAIN_TIMEOUT_MS = 5 * 60 * 1000; // 5 minutes
 
 /** Where every broadcast's playlists start numbering, and so where a replacement session starts again. */
 const FIRST_BROADCAST_SEQUENCE = 0;
+
+/**
+ * How long after its return's first placement, in fragments, a rung that announced and dropped before
+ * its first segment may still rejoin that return. One fragment: a flap inside it is the same moment as
+ * its siblings' first segment, and anything later is media from another moment. See
+ * `StreamOrchestrator.backInTimeToRejoin`.
+ */
+const REJOIN_WITHIN_FRAGMENTS = 1;
 
 /**
  * How long a settled stop stays readable through `getStreamStatus`. Comfortably longer than
@@ -165,6 +182,32 @@ interface StartStreamOptions {
    * live session resuming is held back: a new, replaced or recovered session starts as it would anyway.
    */
   deferResume?: boolean;
+}
+
+/** A return of a broadcast's encoder as it is held in memory. See `ReturnInProgress` for the persisted shape. */
+interface ActiveReturn {
+  token: string;
+  resumedRungs: Set<string>;
+  /**
+   * The rungs that have placed a segment of this return. Only such a rung announcing again is coming
+   * back from something else. See {@link StreamOrchestrator.tokenForThisReturn}.
+   */
+  placedRungs: Set<string>;
+  /** The monotonic reading the return started at, held in memory only. */
+  startedAt?: number;
+  /** The monotonic reading the first rung of the return placed a segment at, held in memory only. */
+  firstPlacedAt?: number;
+  /** The rungs that came back through `resumeHeldRungs`, which resume at their own count. */
+  heldRungs: Set<string>;
+  /**
+   * The rungs that were away when the return started, which are the only ones that may join it.
+   * Undefined on a return written down before this was kept, which any rung may join.
+   */
+  awaitedRungs?: Set<string>;
+  /** Set once a rung that is already back, or never left, goes away again, which starts the next return. */
+  closed?: boolean;
+  /** The published sequence its rungs resume at, once agreed. See {@link StreamOrchestrator.resumePointOf}. */
+  resumeAt?: number;
 }
 
 interface RetainedStopOutcome {
@@ -380,14 +423,17 @@ export class StreamOrchestrator {
    *
    * ⛔⛔ **This is how four webhooks are known to be one event, and nothing about the numbering can
    * say it.** A whole-encoder outage stops SRS's transcoders, so each rung announces its return
-   * separately, seconds apart, and the rungs of one ladder have to date the media they come back with
-   * identically or a level switch lands somewhere else. Two sequence-shaped rules were tried and both
-   * failed: a rung a segment behind its siblings resumes a LOWER sequence and a rung's own next
-   * return resumes a HIGHER one, and those overlap, so no arithmetic separates a sibling from a later
-   * return. The orchestrator is the only layer that sees the returns as they arrive, so it is the one
-   * that can name them. See {@link tokenForThisReturn} and {@link BroadcastEpoch.returnToken}.
+   * separately, seconds apart, and the rungs of one ladder have to resume at one sequence and date the
+   * media they come back with identically, or a level switch lands somewhere else. The name is what
+   * gives them both: the first rung of a return to place a segment fixes the sequence for all of them,
+   * and each later rung finds it on the epoch minted under the same name. See {@link resumePointOf}.
+   * Two sequence-shaped rules were tried for recognising the return and both failed, because the
+   * rungs had stopped at different counts and a rung's own next return resumes higher, so no
+   * arithmetic separated a sibling from a later return. The orchestrator is the only layer that sees
+   * the returns as they arrive, so it is the one that can name them. See {@link tokenForThisReturn}
+   * and {@link BroadcastEpoch.returnToken}.
    */
-  private returnsInProgress = new Map<string, { token: string; resumedRungs: Set<string> }>();
+  private returnsInProgress = new Map<string, ActiveReturn>();
   /** What became of each recently stopped stream, so a caller answered 202 can find out. */
   private stopOutcomes = new Map<string, RetainedStopOutcome>();
   /** Actual pending writes for topics shared across sessions, independently of bounded stop reports. */
@@ -638,6 +684,7 @@ export class StreamOrchestrator {
     }
 
     this.streamDisconnectedAt.set(streamId, this.clock.now());
+    this.closeTheReturnThisRungIsNotAwaitedBy(streamId);
     this.ensureStallReaperArmed(streamId);
     this.logger.info(
       `[StreamOrchestrator] The encoder feeding ${streamId} disconnected. Holding the session open for ` +
@@ -711,8 +758,9 @@ export class StreamOrchestrator {
         );
       });
 
+    const awaited = new Set([...held, ...this.rungsAwayFrom(baseStreamId)]);
     for (const streamId of held) {
-      this.activeStreams.get(streamId)?.resumeAfterReconnect(this.tokenForThisReturn(streamId));
+      this.activeStreams.get(streamId)?.resumeAfterReconnect(this.tokenForThisReturn(streamId, true, awaited));
       this.holdTheReaperForAFirstSegment(streamId);
       this.ensureStallReaperArmed(streamId);
     }
@@ -750,11 +798,21 @@ export class StreamOrchestrator {
   /**
    * Which return of this broadcast the rung announcing now belongs to, minting a name for a new one.
    *
-   * ⛔ **A rung that has already said it is back starts the NEXT return.** That is the whole rule, and
-   * it holds whatever order the rungs come back in and whichever of them missed a return entirely: a
-   * rung joins the return in progress until it has joined it, and the moment it announces again the
-   * ladder is plainly coming back from something else. A rung that missed the previous return and
-   * arrives during this one simply joins this one, which is where its media belongs.
+   * ⛔ **A rung that has placed a segment of the return starts the NEXT return when it announces
+   * again.** A rung that announced and has delivered nothing yet rejoins the return it announced, so a
+   * publisher that drops and returns before its first segment is still one return.
+   *
+   * ⛔⛔ **Only a rung that was away when the return started may join it.** A return records the rungs
+   * that were disconnected, or rebuilt and waiting for their engine, when it started. A rung with no
+   * disconnect on record whose last media is older than the return was away too: an engine that died
+   * outright re-announces its rungs with no unpublish in front of them, and each rung after the first
+   * minted a dating line of its own. A rung that kept
+   * publishing through it is not part of it. Measured on a test deployment: three rungs were cut and
+   * came back while 360p kept going, then the whole ladder was cut, and 360p, announcing first, was
+   * handed the first return's name. It resumed at its own count while its siblings were raised one past
+   * it, and dated its media on the first return's line, 24 seconds in the past. A return is also closed
+   * the moment a rung that is already back from it, or never left it, goes away again, so a rung the
+   * return was still waiting for that comes back after that second outage starts the next one.
    *
    * ⛔ **A uuid rather than a counter.** The epochs this names ride in the recovery entry and in the
    * ladder group store, so they outlive the process: a count restarting at zero after a reboot would
@@ -771,45 +829,151 @@ export class StreamOrchestrator {
    * and one a sibling has yet to join carry the same kind of token, and only the set tells them apart.
    * A lone rendition needs none of it, since its only rung is always in the set.
    */
-  private tokenForThisReturn(streamId: string): string {
+  private tokenForThisReturn(streamId: string, held = false, awaited?: ReadonlySet<string>): string {
     const base = this.streamBases.get(streamId) ?? null;
     const key = this.datingKeyOf(streamId, base);
     const inProgress = this.returnsInProgress.get(key) ?? this.persistedReturnOf(base);
 
-    if (inProgress !== undefined && !inProgress.resumedRungs.has(streamId)) {
+    if (
+      inProgress !== undefined &&
+      inProgress.closed !== true &&
+      !inProgress.placedRungs.has(streamId) &&
+      ((inProgress.awaitedRungs?.has(streamId) ?? true) || this.wentQuietBefore(streamId, inProgress.startedAt)) &&
+      (!inProgress.resumedRungs.has(streamId) || this.backInTimeToRejoin(inProgress))
+    ) {
+      inProgress.awaitedRungs?.add(streamId);
       inProgress.resumedRungs.add(streamId);
+      if (held) {
+        inProgress.heldRungs.add(streamId);
+      }
       this.rememberReturn(key, base, inProgress);
       return inProgress.token;
     }
 
-    const started = { token: crypto.randomUUID(), resumedRungs: new Set([streamId]) };
+    const started: ActiveReturn = {
+      token: crypto.randomUUID(),
+      resumedRungs: new Set([streamId]),
+      placedRungs: new Set(),
+      startedAt: this.clock.now(),
+      heldRungs: new Set(held ? [streamId] : []),
+      awaitedRungs: new Set([streamId, ...(awaited ?? this.rungsAwayFrom(base))]),
+    };
     this.rememberReturn(key, base, started);
     return started.token;
   }
 
+  /**
+   * Whether a rung that announced this return and dropped again before its first segment is back soon
+   * enough to rejoin it: before any rung of it has placed, or within {@link REJOIN_WITHIN_FRAGMENTS}
+   * of the first that did.
+   *
+   * ⛔ **Rejoining takes the return's point and its dating line, which are true only for media from
+   * around the return.** A rung back thirty seconds after its siblings placed rejoined both and dated
+   * every segment it published afterwards thirty seconds in the past, and no check on the playlists
+   * can see it, because its sequences and dates still agree with its siblings'. Back that late it starts
+   * a return of its own, dated at the clock it came back at, and lines up with its siblings' live count.
+   * A return whose first placement this process did not see, because it was read back after a restart,
+   * is never rejoined late.
+   */
+  private backInTimeToRejoin(inProgress: ActiveReturn): boolean {
+    if (inProgress.placedRungs.size === 0) {
+      return true;
+    }
+    const window = REJOIN_WITHIN_FRAGMENTS * this.config.fragmentSeconds * 1_000;
+    return inProgress.firstPlacedAt !== undefined && this.clock.now() - inProgress.firstPlacedAt <= window;
+  }
+
+  /**
+   * The rungs of this ladder whose encoder is away: disconnected, or rebuilt after a restart of this
+   * process and still waiting for their engine. A lone rendition has no siblings to wait for.
+   */
+  private rungsAwayFrom(base: string | null): string[] {
+    if (base === null) {
+      return [];
+    }
+    return [...this.streamBases]
+      .filter(([, rungBase]) => rungBase === base)
+      .map(([streamId]) => streamId)
+      .filter((streamId) => this.streamDisconnectedAt.has(streamId) || this.recoveryTimers.has(streamId));
+  }
+
+  /**
+   * A rung has gone away, so decide whether the return in progress is over.
+   *
+   * ⛔ **A rung that has placed a segment of the return, or kept publishing through it, going away is
+   * a new outage**, and the return is closed, so whatever comes back next starts the next one. Without
+   * it a rung the return was still waiting for, announcing after this second outage, joined the
+   * finished return and resumed at its point and on its dating line, a whole outage in the past.
+   *
+   * ⛔⛔ **Anything else is the same outage, and the return stays open.** A rung that announced and
+   * drops again before its first segment is still coming back from it, and rejoins it. A rung whose
+   * disconnect lands after a sibling already announced, but whose last media is older than the return,
+   * was away when it started and is taken into it. Closed on either, one outage became two returns:
+   * the rungs of the first fell back to their own count, and the second counted their resumed segments
+   * and raised its rungs past them, which was worse than resuming each at its own count.
+   */
+  private closeTheReturnThisRungIsNotAwaitedBy(streamId: string): void {
+    const base = this.streamBases.get(streamId) ?? null;
+    const key = this.datingKeyOf(streamId, base);
+    const inProgress = this.returnsInProgress.get(key) ?? this.persistedReturnOf(base);
+    if (inProgress === undefined || inProgress.closed === true) {
+      return;
+    }
+    const placedInIt = inProgress.placedRungs.has(streamId);
+    if (!placedInIt && (inProgress.awaitedRungs?.has(streamId) ?? true)) {
+      return;
+    }
+    if (!placedInIt && this.wentQuietBefore(streamId, inProgress.startedAt)) {
+      inProgress.awaitedRungs?.add(streamId);
+    } else {
+      inProgress.closed = true;
+    }
+    this.rememberReturn(key, base, inProgress);
+  }
+
+  /** Whether this rung's last media arrived before `instant`, a monotonic reading. */
+  private wentQuietBefore(streamId: string, instant: number | undefined): boolean {
+    const lastMedia = this.streamIngestAt.get(streamId);
+    return instant !== undefined && lastMedia !== undefined && lastMedia < instant;
+  }
+
   /** The return a ladder's group record says its rungs are coming back from, after a restart of this process. */
-  private persistedReturnOf(base: string | null): { token: string; resumedRungs: Set<string> } | undefined {
+  private persistedReturnOf(base: string | null): ActiveReturn | undefined {
     const persisted = base === null ? undefined : this.ladderGroups.get(base)?.returnInProgress;
     return persisted === undefined
       ? undefined
-      : { token: persisted.token, resumedRungs: new Set(persisted.resumedRungs) };
+      : {
+          token: persisted.token,
+          resumedRungs: new Set(persisted.resumedRungs),
+          // A record written before placements were kept says only who announced, which is what
+          // decided who starts the next return then.
+          placedRungs: new Set(persisted.placedRungs ?? persisted.resumedRungs),
+          heldRungs: new Set(persisted.heldRungs),
+          ...(persisted.awaitedRungs === undefined ? {} : { awaitedRungs: new Set(persisted.awaitedRungs) }),
+          ...(persisted.closed === true ? { closed: true } : {}),
+          ...(persisted.resumeAt === undefined ? {} : { resumeAt: persisted.resumeAt }),
+        };
   }
 
   /**
    * Hold the return in progress, and write it into the ladder's group record so a restart of this
    * process finds it. A lone rendition has no record and keeps it in memory only.
    */
-  private rememberReturn(
-    key: string,
-    base: string | null,
-    inProgress: { token: string; resumedRungs: Set<string> },
-  ): void {
+  private rememberReturn(key: string, base: string | null, inProgress: ActiveReturn): void {
     this.returnsInProgress.set(key, inProgress);
     const ladder = base === null ? undefined : this.ladderGroups.get(base);
     if (base !== null && ladder !== undefined) {
       this.rememberLadder(base, {
         ...ladder,
-        returnInProgress: { token: inProgress.token, resumedRungs: [...inProgress.resumedRungs] },
+        returnInProgress: {
+          token: inProgress.token,
+          resumedRungs: [...inProgress.resumedRungs],
+          placedRungs: [...inProgress.placedRungs],
+          ...(inProgress.heldRungs.size === 0 ? {} : { heldRungs: [...inProgress.heldRungs] }),
+          ...(inProgress.awaitedRungs === undefined ? {} : { awaitedRungs: [...inProgress.awaitedRungs] }),
+          ...(inProgress.closed === true ? { closed: true as const } : {}),
+          ...(inProgress.resumeAt === undefined ? {} : { resumeAt: inProgress.resumeAt }),
+        },
       });
     }
   }
@@ -1233,7 +1397,7 @@ export class StreamOrchestrator {
       mediatype,
       ladder,
       anchor,
-      dating: this.datingFor(datingKey, match?.baseStreamId ?? null),
+      dating: this.datingFor(datingKey, match?.baseStreamId ?? null, streamId),
       metrics: this.metrics,
       admin: this.adminReportingFor(admin?.id),
       predecessorDrained,
@@ -1912,7 +2076,7 @@ export class StreamOrchestrator {
       mediatype: state.mediatype,
       ladder: state.ladder,
       anchor,
-      dating: this.datingFor(datingKey, base),
+      dating: this.datingFor(datingKey, base, state.streamId),
       restoreState: {
         streamRawTopic: state.streamRawTopic,
         socIndex: state.socIndex,
@@ -2671,11 +2835,105 @@ export class StreamOrchestrator {
   }
 
   /** The dating handed to one session, bound to its broadcast rather than to the session. */
-  private datingFor(datingKey: string, base: string | null): BroadcastDating {
+  private datingFor(datingKey: string, base: string | null, streamId: string): BroadcastDating {
     return {
-      epochFrom: (resumeAt, notBeforeMs, returnToken) =>
-        this.reanchorBroadcast(datingKey, base, resumeAt, notBeforeMs, returnToken),
+      epochFrom: (resumeAt, notBeforeMs, returnToken, publishedResumeAt) =>
+        this.reanchorBroadcast(datingKey, base, resumeAt, notBeforeMs, returnToken, publishedResumeAt),
+      resumePointFor: (returnToken, ownResumeAt, ownResumeDatedAtMs) =>
+        this.resumePointOf(streamId, datingKey, base, returnToken, ownResumeAt, ownResumeDatedAtMs),
     };
+  }
+
+  /**
+   * The published sequence the asking rung of this return resumes at, agreeing the return's point
+   * first if no rung of it has placed a resumed segment yet. See `sharedResumePoint`.
+   *
+   * ⛔ Every live rung of the ladder counts towards the point, not only those that have said they are
+   * back. A rung whose return is late is still the one that may have counted furthest.
+   *
+   * ⛔ **Agreed once and kept with the return, in published numbers.** A rung placing later reads the
+   * point back rather than reading its siblings again, because a sibling that has already resumed has
+   * counted past it. It rides in the ladder group record with the return's name, so a rung coming back
+   * after a restart of this process resumes where its siblings did.
+   *
+   * ⛔⛔ **A rung SRS held through the drop resumes at its own count, and agrees nothing.** Its
+   * numbering never stopped, so its sequence already names the same media as its siblings'. The
+   * source's return can land between two rungs delivering the same segment, and a held rung's next
+   * segment is then media cut before the drop. Raised to a sibling's count, it was published a
+   * sequence late with a gap entry in front of it, and every segment after it with it, for the rest
+   * of the broadcast. It still agrees the point when it is the first of its return to place, so a
+   * rung SRS cut during the same drop breaks where its held siblings did. See {@link resumeHeldRungs}.
+   *
+   * A lone rendition resumes at its own count, as it always has: it has no sibling to agree with. So
+   * does a rung asking about a return that is no longer the one in progress, which a sibling that
+   * announced again has already replaced: its point went with it.
+   */
+  private resumePointOf(
+    streamId: string,
+    datingKey: string,
+    base: string | null,
+    returnToken: string,
+    ownResumeAt: number,
+    ownResumeDatedAtMs: number,
+  ): number {
+    const inProgress = this.returnsInProgress.get(datingKey) ?? this.persistedReturnOf(base);
+    if (inProgress?.token === returnToken && !inProgress.placedRungs.has(streamId)) {
+      inProgress.placedRungs.add(streamId);
+      inProgress.firstPlacedAt ??= this.clock.now();
+      this.rememberReturn(datingKey, base, inProgress);
+    }
+    if (base === null) {
+      return ownResumeAt;
+    }
+    if (inProgress?.token !== returnToken) {
+      this.logger.warn(
+        `[StreamOrchestrator] A rung of ${base} resumes at its own sequence ${ownResumeAt}, because the return ` +
+          'it was told of has been replaced by a newer one before it placed a segment',
+      );
+      return ownResumeAt;
+    }
+    if (inProgress.resumeAt === undefined) {
+      inProgress.resumeAt = agreedResumePoint(ownResumeAt, this.siblingCountsOf(base, streamId));
+      this.rememberReturn(datingKey, base, inProgress);
+    }
+    if (inProgress.heldRungs.has(streamId)) {
+      return ownResumeAt;
+    }
+    const decision = sharedResumePoint(
+      inProgress.resumeAt,
+      ownResumeAt,
+      maxResumeRaise(this.wallClock() - ownResumeDatedAtMs, this.config.fragmentSeconds),
+    );
+    if (decision.kind === RESUMED_ABOVE_THE_RETURN) {
+      this.logger.warn(
+        `[StreamOrchestrator] A rung of ${base} resumes at its own sequence ${ownResumeAt}, above the ` +
+          `${inProgress.resumeAt} the rest of its return took, because it placed more segments from before the ` +
+          'outage after that point was agreed',
+      );
+    } else if (decision.kind === RAISE_REFUSED) {
+      this.logger.warn(
+        `[StreamOrchestrator] A rung of ${base} resumes at its own sequence ${ownResumeAt} rather than at the ` +
+          `${inProgress.resumeAt} the rest of its return took, which is further above it than its own absence ` +
+          'explains, so its level switches across this return land off by the difference',
+      );
+    }
+    return decision.resumeAt;
+  }
+
+  /**
+   * The published sequence each other live rung of this ladder would resume at on its own, counting
+   * what it was handed before its return. See `StreamUploader.publishedCountBeforeReturn`.
+   */
+  private siblingCountsOf(base: string, askingStreamId: string): number[] {
+    return [...this.streamBases]
+      .filter(([streamId, rungBase]) => rungBase === base && streamId !== askingStreamId)
+      .map(([streamId]) => {
+        const uploader = this.activeStreams.get(streamId);
+        return uploader === undefined || this.isDraining(streamId, uploader)
+          ? null
+          : uploader.publishedCountBeforeReturn();
+      })
+      .filter((count) => count !== null);
   }
 
   /**
@@ -2699,6 +2957,7 @@ export class StreamOrchestrator {
     resumeAt: number,
     notBeforeMs: number,
     returnToken?: string,
+    publishedResumeAt?: number,
   ): BroadcastEpoch {
     const anchor =
       this.broadcastAnchors.get(datingKey) ??
@@ -2708,6 +2967,7 @@ export class StreamOrchestrator {
       nowMs: this.wallClock(),
       notBeforeMs,
       returnToken,
+      publishedResumeAt,
     });
     const reanchored = withEpoch(anchor, epoch);
     this.broadcastAnchors.set(datingKey, reanchored);

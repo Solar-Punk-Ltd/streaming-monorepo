@@ -52,6 +52,19 @@ type ReanchorCause = typeof COUNTER_RESTARTED | typeof ENCODER_RETURNED;
 export const LIVE_WINDOW_MAX_BYTES = 4096;
 
 /**
+ * The fewest media entries a live window names while the broadcast holds that many, whatever the
+ * budget says. Three because that is how many segments a player wants behind the live edge before it
+ * starts, `liveSyncDurationCount` in hls.js. See `ManifestManager.liveWindowLength`.
+ */
+export const MIN_LIVE_WINDOW_SEGMENTS = 3;
+
+/**
+ * The most bytes a live window may reach to for {@link MIN_LIVE_WINDOW_SEGMENTS}: the budget, and one
+ * budget's worth of gap entries more. Past it the window names fewer media entries than the floor.
+ */
+export const LIVE_WINDOW_FLOOR_MAX_BYTES = 2 * LIVE_WINDOW_MAX_BYTES;
+
+/**
  * The bytes a manifest of these lines occupies once joined, without joining them.
  *
  * `\n` separates every line and terminates the last, so each line costs its own length plus one.
@@ -508,19 +521,20 @@ export class ManifestManager {
 
   /**
    * The encoder that stopped feeding this session has come back, so the next segment opens a resumed
-   * run: it publishes one above everything already published whatever number its engine gives it,
-   * the numbering carries on from there, and the dating re-anchors at that sequence.
+   * run: it publishes at the sequence the whole return resumes at, whatever number its engine gives
+   * it, the numbering carries on from there, and the dating re-anchors at that sequence.
    *
    * ⛔ **Whatever the engine's counter did**, which is the whole reason this is told rather than
    * inferred. See {@link resumingAfterReconnect}.
    *
-   * ⛔ Publishing at the high-water mark plus one rather than at wherever the index lands is also
-   * what keeps a returning encoder from emitting gap entries across the reconnect: an index that
-   * jumped forward while nobody was listening would otherwise publish that far ahead, and every
-   * sequence in between would be listed as media a viewer cannot have. Nothing was lost — nothing
-   * was being produced — so there is nothing to say. See {@link placeResumed} for what a lower index
-   * of the resumed run arriving afterwards would do, which is a second break rather than a gap, and
-   * is pre-existing behaviour rather than a shape this path introduced.
+   * ⛔ Resuming at a point the return decides rather than at wherever the index lands is also what
+   * keeps a lone rung from emitting gap entries across the reconnect: an index that jumped forward
+   * while nobody was listening would otherwise publish that far ahead, and every sequence in between
+   * would be listed as media a viewer cannot have. On a ladder, a rung that stopped below its siblings
+   * does list the sequences up to the shared point as gap entries, because those sequences are media
+   * on the rung that got further. See {@link placeResumed} for what a lower index of the resumed run
+   * arriving afterwards would do, which is a second break rather than a gap, and is pre-existing
+   * behaviour rather than a shape this path introduced.
    *
    * @param returnToken which return this is, so the rungs of one ladder date it alike. See
    * {@link BroadcastEpoch.returnToken}.
@@ -538,6 +552,42 @@ export class ManifestManager {
    */
   public armedReturn(): string | null {
     return this.resumingAfterReconnect;
+  }
+
+  /**
+   * The published sequence this rung would resume at on its own after a return, once the segments
+   * it has been handed and not yet placed have landed, or null while it has neither placed nor been
+   * handed anything. What its siblings agree a return's resume point from, in published numbers
+   * because each rung adds its own {@link sequenceOffset}. See `agreedResumePoint`.
+   *
+   * ⛔ **Counted from what the rung was handed, not only from what it placed.** A segment lands in
+   * the playlist after its upload, and under a bandwidth squeeze a rung can be several segments behind
+   * on its uploads when a sibling agrees the point. Read from its placed segments alone, that rung was
+   * counted short, and it later placed its backlog past the point and resumed above its siblings.
+   *
+   * Each pending index is placed the way {@link placeInBroadcast} would place it, in order, without
+   * touching anything.
+   *
+   * @param pendingIndexes the engine indexes handed over and still uploading, oldest first.
+   */
+  public publishedNextSequenceAfter(pendingIndexes: readonly number[]): number | null {
+    let anchor = this.sequenceAnchor;
+    let highest = anchor === null ? null : this.highestSequence();
+    for (const index of pendingIndexes) {
+      if (anchor === null || highest === null) {
+        anchor = { index, sequence: 0 };
+        highest = 0;
+        continue;
+      }
+      const candidate = anchor.sequence + (index - anchor.index);
+      if (candidate > highest) {
+        highest = candidate;
+      } else {
+        highest += 1;
+        anchor = { index, sequence: highest };
+      }
+    }
+    return highest === null ? null : this.published(highest + 1);
   }
 
   /** The number `sequence` is written into a playlist as. See {@link sequenceOffset}. */
@@ -667,8 +717,17 @@ export class ManifestManager {
   }
 
   /**
-   * The first segment after the encoder came back, placed one above everything already published and
-   * dated at the clock it returned at. See {@link resumeAfterReconnect}.
+   * The first segment after the encoder came back, placed at the sequence every rung of the return
+   * resumes at and dated at the clock it returned at. See {@link resumeAfterReconnect}.
+   *
+   * ⛔⛔ **The sequence is the return's, not this rung's count.** The rungs of a ladder stop at
+   * different counts before an outage, and a player switching quality picks a segment by its
+   * sequence, so each resuming at its own count put one sequence on two moments about 30 seconds
+   * apart. The dating answers with the shared point, which is never below this rung's own count, and
+   * the sequences between are listed by {@link gapLines}. The point is agreed in published numbers,
+   * because a rung whose session was replaced numbers its own media from 0 under an offset its
+   * siblings do not have, so this rung's {@link sequenceOffset} comes off it here. See
+   * `sharedResumePoint`.
    *
    * ⛔ The same forward move {@link placeInBroadcast} makes for a restarted counter, taken without
    * asking whether the counter restarted. Inside the reconnect window it usually has not, because
@@ -696,10 +755,25 @@ export class ManifestManager {
       return { sequence: 0, reanchored: false };
     }
 
-    const resumeAt = this.highestSequence() + 1;
+    const ownResumeAt = this.highestSequence() + 1;
+    const resumeAt =
+      this.dating.resumePointFor(returnToken, this.published(ownResumeAt), this.dateIfNothingStopped(ownResumeAt)) -
+      this.sequenceOffset;
+    if (resumeAt > ownResumeAt) {
+      this.logger.info(
+        `[ManifestManager] Segment index ${index} resumes at sequence ${resumeAt} with the rest of its ladder ` +
+          `rather than at ${ownResumeAt}, so sequences ${ownResumeAt} to ${resumeAt - 1} are published as gaps`,
+      );
+    }
     this.sequenceAnchor = { index, sequence: resumeAt };
     this.reanchorDating(resumeAt, ENCODER_RETURNED, returnToken);
     return { sequence: resumeAt, reanchored: true };
+  }
+
+  /** The date `sequence` would carry had nothing stopped, stepping on from the newest segment placed. */
+  private dateIfNothingStopped(sequence: number): number {
+    const newest = this.segments[this.segments.length - 1];
+    return presentationMsOf(this.anchor, sequence, newest === undefined ? null : this.placedMedia(newest));
   }
 
   /**
@@ -721,13 +795,13 @@ export class ManifestManager {
    * break and each is written exactly once per break.
    */
   private reanchorDating(resumeAt: number, cause: ReanchorCause, returnToken?: string): void {
-    const newest = this.segments[this.segments.length - 1];
-    const wouldHaveBeen = presentationMsOf(
-      this.anchor,
+    const wouldHaveBeen = this.dateIfNothingStopped(resumeAt);
+    const epoch = this.dating.epochFrom(
       resumeAt,
-      newest === undefined ? null : this.placedMedia(newest),
+      wouldHaveBeen,
+      returnToken,
+      returnToken === undefined ? undefined : this.published(resumeAt),
     );
-    const epoch = this.dating.epochFrom(resumeAt, wouldHaveBeen, returnToken);
     this.anchor = withEpoch(this.anchor, epoch);
     const wasAt = new Date(wouldHaveBeen).toISOString();
     const nowAt = new Date(epoch.atMs).toISOString();
@@ -1018,6 +1092,8 @@ export class ManifestManager {
 
   /**
    * How many of the newest segments fit in {@link LIVE_WINDOW_MAX_BYTES}, and never fewer than one.
+   * Fewer than {@link MIN_LIVE_WINDOW_SEGMENTS} only where reaching them would pass
+   * {@link LIVE_WINDOW_FLOOR_MAX_BYTES}.
    *
    * Counted backwards from the live edge, so the work is the window's rather than the broadcast's:
    * `segments` holds every segment ever published, because the VOD manifest is built from the same
@@ -1032,9 +1108,20 @@ export class ManifestManager {
    * ⛔ Extending the window over a hole costs the hole's gap entries as well as the segment on the
    * far side of it, and both are charged here. Uncounted, a broadcast that lost a run of segments
    * would publish a window over one chunk and pay three round trips per segment for as long as the
-   * hole stayed inside it. A hole too wide to afford simply stops the window: the media before it is
-   * older than what a joining viewer needs, and the floor of one held segment is never reached by
-   * this, since a window of one segment has no pair to hold a hole between.
+   * hole stayed inside it. A hole too wide to afford stops the window, once it names
+   * {@link MIN_LIVE_WINDOW_SEGMENTS} segments or the floor's own limit is reached.
+   *
+   * ⛔⛔ **Never fewer than three media entries, even over budget.** A rung lining up with its ladder
+   * after a long partial return lists the whole absence as gap entries right before its break, sixty
+   * of them after a minute at one second fragments, and that run alone fills the budget. Stopped
+   * there, the window right after the return named one media entry, and a player joining or switching
+   * to that rung had nothing to buffer from.
+   *
+   * ⛔ **But never further back than {@link LIVE_WINDOW_FLOOR_MAX_BYTES}.** The floor applies to every
+   * stream and every hole, and a hole a node outage left can be minutes of gap entries: reaching all
+   * the way back made the first publishes after a five minute outage about fourteen kilobytes, several
+   * chunks each. Within the limit, going over the budget costs a publish one payload upload more than a
+   * chunk, for the few segments it takes the run to slide out.
    */
   private liveWindowLength(): number {
     // Reserved against the largest media sequence there could be, whose own digits are part of the
@@ -1054,7 +1141,9 @@ export class ManifestManager {
     // first reconnect seam slides out of the window, and the budget this feeds is one bee chunk.
     const mostBreaksBehind =
       this.inheritedDiscontinuities() + 1 + this.segments.filter((seg) => seg.discontinuity === true).length;
-    const budget = LIVE_WINDOW_MAX_BYTES - manifestBytes(this.liveHeaderLines(newestSequence, mostBreaksBehind));
+    const headerBytes = manifestBytes(this.liveHeaderLines(newestSequence, mostBreaksBehind));
+    const budget = LIVE_WINDOW_MAX_BYTES - headerBytes;
+    const floorBudget = LIVE_WINDOW_FLOOR_MAX_BYTES - headerBytes;
 
     let spent = 0;
     let length = 0;
@@ -1064,7 +1153,8 @@ export class ManifestManager {
       if (successor !== undefined) {
         spent += manifestBytes(this.gapLines(this.segments[i], successor));
       }
-      if (spent > budget && length > 0) {
+      const floorStillOwed = length < MIN_LIVE_WINDOW_SEGMENTS && spent <= floorBudget;
+      if (spent > budget && length > 0 && !floorStillOwed) {
         break;
       }
       length++;

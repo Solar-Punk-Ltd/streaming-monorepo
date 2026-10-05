@@ -115,6 +115,45 @@ describe('LadderGroupStore', () => {
     assert.deepEqual(storeIn(root).store.load(BASE), midReturn);
   });
 
+  it('keeps what a return agreed, who it waits for and whether it is closed, and drops a damaged field alone', () => {
+    const root = makeTempRoot();
+    const agreed: RememberedLadder = {
+      ...LADDER,
+      returnInProgress: {
+        token: 'return-1',
+        resumedRungs: ['video/livestream_360p', 'video/livestream_480p'],
+        placedRungs: ['video/livestream_360p'],
+        resumeAt: 331,
+        heldRungs: ['video/livestream_480p'],
+        awaitedRungs: ['video/livestream_360p', 'video/livestream_480p'],
+        closed: true,
+      },
+    };
+    storeIn(root).store.remember(BASE, agreed);
+
+    assert.deepEqual(storeIn(root).store.load(BASE), agreed);
+
+    const { filePath } = storeIn(root);
+    fs.writeFileSync(
+      filePath,
+      JSON.stringify({
+        [BASE]: {
+          ...LADDER,
+          returnInProgress: {
+            token: 'return-1',
+            resumedRungs: [],
+            resumeAt: 'far',
+            heldRungs: [3],
+            awaitedRungs: 'all',
+            closed: 'yes',
+          },
+        },
+      }),
+    );
+
+    assert.deepEqual(storeIn(root).store.load(BASE)?.returnInProgress, { token: 'return-1', resumedRungs: [] });
+  });
+
   it('drops a damaged return in progress and keeps the rest of the record', () => {
     const root = makeTempRoot();
     const { filePath } = storeIn(root);

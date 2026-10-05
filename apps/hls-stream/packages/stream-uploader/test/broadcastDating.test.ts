@@ -2,13 +2,20 @@ import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 
 import {
+  agreedResumePoint,
   datedDurationMs,
   DATING_SNAP_TOLERANCE,
+  maxResumeRaise,
   presentationMsOf,
   programDateTimeMsOf,
   reanchorDecision,
   reanchorEpoch,
+  RAISE_REFUSED,
+  RESUME_RAISE_SLACK,
+  RESUMED_ABOVE_THE_RETURN,
+  RESUMED_AT_THE_RETURN,
   SAME_RESTART_TOLERANCE_MS,
+  sharedResumePoint,
   withEpoch,
 } from '../src/libs/broadcastDating.js';
 import { FRAGMENT_TOLERANCE } from '../src/libs/fragmentAgreement.js';
@@ -273,6 +280,37 @@ describe('adding an epoch to a broadcast’s dating', () => {
     const renumbered = withEpoch(restarted, { fromSequence: 10, atMs: 90_000 });
 
     assert.deepEqual(renumbered.epochs, [{ fromSequence: 10, atMs: 90_000 }]);
+  });
+
+  /**
+   * A return's line is found by its name for as long as the return's rungs are still coming back, so
+   * another line written down at the same sequence must not take its name out of the list. The newer
+   * line still dates that sequence.
+   */
+  it('keeps a return’s line beside another written down at its sequence, dating from the newer', () => {
+    const returned = withEpoch(BROADCAST, { fromSequence: 10, atMs: 10_000, returnToken: 'one-return' });
+
+    const restartedThere = withEpoch(returned, { fromSequence: 10, atMs: 90_000 });
+
+    assert.deepEqual(restartedThere.epochs, [
+      { fromSequence: 10, atMs: 10_000, returnToken: 'one-return' },
+      { fromSequence: 10, atMs: 90_000 },
+    ]);
+    assert.equal(programDateTimeMsOf(restartedThere, 10), 90_000);
+    assert.equal(
+      reanchorDecision(restartedThere, { resumeAt: 10, nowMs: 95_000, notBeforeMs: 0, returnToken: 'one-return' })
+        .joined,
+      true,
+      'a late rung of the return no longer finds the line it belongs to',
+    );
+  });
+
+  it('replaces a return’s own line written down again at the same sequence', () => {
+    const returned = withEpoch(BROADCAST, { fromSequence: 10, atMs: 10_000, returnToken: 'one-return' });
+
+    const again = withEpoch(returned, { fromSequence: 10, atMs: 12_000, returnToken: 'one-return' });
+
+    assert.deepEqual(again.epochs, [{ fromSequence: 10, atMs: 12_000, returnToken: 'one-return' }]);
   });
 
   /**
@@ -684,6 +722,40 @@ describe('the epoch a rung takes when its encoder came back', () => {
   });
 });
 
+describe("a rung joining its return's line from a session that numbers under another offset", () => {
+  const RETURN = 'one-return';
+  const RETURNED_AT_MS = STARTED_AT_MS + 600_000;
+  const minted = { fromSequence: 15, atMs: RETURNED_AT_MS, returnToken: RETURN, publishedFrom: 15 };
+
+  it('is placed on the line by the sequence it publishes, not by its own count', () => {
+    const decision = reanchorDecision(withEpoch(BROADCAST, minted), {
+      resumeAt: 3,
+      nowMs: RETURNED_AT_MS + 4_000,
+      notBeforeMs: 0,
+      returnToken: RETURN,
+      publishedResumeAt: 15,
+    });
+
+    assert.deepEqual(decision, {
+      epoch: { fromSequence: 3, atMs: RETURNED_AT_MS, returnToken: RETURN, publishedFrom: 15 },
+      joined: true,
+    });
+  });
+
+  it('falls back to its own count against a line written before the published sequence was kept', () => {
+    const { publishedFrom: _dropped, ...legacy } = minted;
+    const decision = reanchorDecision(withEpoch(BROADCAST, legacy), {
+      resumeAt: 14,
+      nowMs: RETURNED_AT_MS,
+      notBeforeMs: 0,
+      returnToken: RETURN,
+      publishedResumeAt: 26,
+    });
+
+    assert.equal(decision.epoch.atMs, RETURNED_AT_MS - FRAGMENT_SECONDS * 1_000);
+  });
+});
+
 describe('what a re-anchoring reports about how it reached its epoch', () => {
   const RESTARTED_AT_MS = STARTED_AT_MS + 600_000;
   const MINTED = withEpoch(BROADCAST, { fromSequence: 40, atMs: RESTARTED_AT_MS });
@@ -742,5 +814,32 @@ describe('what a re-anchoring reports about how it reached its epoch', () => {
     });
 
     assert.deepEqual(decision, { epoch: { fromSequence: 42, atMs: secondRestartAtMs }, joined: false });
+  });
+});
+
+describe('the sequence every rung of one return resumes at', () => {
+  it('is agreed as the furthest any rung has counted', () => {
+    assert.equal(agreedResumePoint(331, [335, 331, 330]), 335);
+    assert.equal(agreedResumePoint(336, [335, 331]), 336);
+  });
+
+  it('is the agreed point for a rung that counted less', () => {
+    assert.deepEqual(sharedResumePoint(335, 331, 5), { resumeAt: 335, kind: RESUMED_AT_THE_RETURN });
+  });
+
+  it('never resumes a rung below its own count', () => {
+    assert.deepEqual(sharedResumePoint(335, 337, 5), { resumeAt: 337, kind: RESUMED_ABOVE_THE_RETURN });
+  });
+
+  it('raises a rung by at most the bound it is given, and resumes it at its own count past that', () => {
+    assert.deepEqual(sharedResumePoint(338, 330, 8), { resumeAt: 338, kind: RESUMED_AT_THE_RETURN });
+    assert.deepEqual(sharedResumePoint(339, 330, 8), { resumeAt: 330, kind: RAISE_REFUSED });
+  });
+
+  it(`bounds the raise by the fragments a rung was away for plus ${RESUME_RAISE_SLACK}`, () => {
+    assert.equal(maxResumeRaise(0, 2), RESUME_RAISE_SLACK);
+    assert.equal(maxResumeRaise(16_000, 2), RESUME_RAISE_SLACK + 8);
+    assert.equal(maxResumeRaise(15_001, 2), RESUME_RAISE_SLACK + 8, 'a part fragment away counts whole');
+    assert.equal(maxResumeRaise(-3_000, 2), RESUME_RAISE_SLACK, 'a dating ahead of the clock is no absence');
   });
 });

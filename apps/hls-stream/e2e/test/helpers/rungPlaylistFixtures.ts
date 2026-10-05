@@ -60,6 +60,11 @@ interface PlaylistOptions {
   recording?: boolean;
   /** The closing live playlist: an `#EXT-X-ENDLIST` and no playlist type, which is not a recording. */
   closed?: boolean;
+  /**
+   * Date every entry from this sequence on this much later, which is how a return re-anchors the
+   * dating at the wall clock it came back at.
+   */
+  datedLater?: { from: number; byMs: number };
 }
 
 /**
@@ -80,7 +85,11 @@ export function rungPlaylist(sequences: readonly number[], options: PlaylistOpti
     ...sequences.flatMap((sequence) => [
       ...(breaks.has(sequence) ? [HLS_DISCONTINUITY] : []),
       ...(gaps.has(sequence) ? [HLS_GAP] : []),
-      buildProgramDateTime(FIXTURE_ANCHOR_MS + sequence * FIXTURE_FRAGMENT_SECONDS * MS_PER_SECOND),
+      buildProgramDateTime(
+        FIXTURE_ANCHOR_MS +
+          sequence * FIXTURE_FRAGMENT_SECONDS * MS_PER_SECOND +
+          (options.datedLater !== undefined && sequence >= options.datedLater.from ? options.datedLater.byMs : 0),
+      ),
       buildExtinf(FIXTURE_FRAGMENT_SECONDS),
       gaps.has(sequence) ? `gap-${sequence}` : reference(sequence),
     ]),

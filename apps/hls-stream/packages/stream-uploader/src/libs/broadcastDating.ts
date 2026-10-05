@@ -152,13 +152,16 @@ export function presentationMsOf(anchor: BroadcastAnchor, sequence: number, prev
  * The dating with `epoch` in it, returned as a new anchor so a session still holding the old one
  * keeps the dates it published.
  *
- * ⛔ **An epoch at the same sequence is replaced; one at a different sequence is KEPT, whichever side
- * of the new one it falls.** The list is the whole ladder's, so a rung joining from a sequence below
+ * ⛔ **An epoch at the same sequence for the same return is replaced, and every other one is KEPT,
+ * whichever side of the new one it falls.** The list is the whole ladder's, so a rung joining from a sequence below
  * its siblings' is writing down its own point on their line, not superseding it — and dropping
  * everything above it left a third rung asking at the original sequence with nothing to join, so it
  * minted a line of its own and the ladder dated one instant two ways. Sorted by `fromSequence` and
  * complete, which is what makes {@link epochFor} unambiguous: it walks back to the newest epoch at or
- * below the sequence it is dating, so nothing dated before the join can move.
+ * below the sequence it is dating, so nothing dated before the join can move. A return's line and
+ * another written down at the same sequence, a counter restart's or a different return's, are both
+ * kept, the newer last so it dates that sequence: a rung of the return still to come finds its line by
+ * the return's name, and replacing it there sent that rung to mint a second line.
  *
  * ⛔⛔ **Except an epoch at sequence 0, which starts a new numbering and supersedes the whole list.**
  * Only a replacement session writes one (`reanchorReplacedBroadcast`): it publishes a fresh playlist
@@ -177,7 +180,9 @@ export function withEpoch(anchor: BroadcastAnchor, epoch: BroadcastEpoch): Broad
   if (epoch.fromSequence === RENUMBERED_FROM) {
     return { ...anchor, epochs: [epoch] };
   }
-  const kept = (anchor.epochs ?? []).filter((held) => held.fromSequence !== epoch.fromSequence);
+  const kept = (anchor.epochs ?? []).filter(
+    (held) => held.fromSequence !== epoch.fromSequence || held.returnToken !== epoch.returnToken,
+  );
   return { ...anchor, epochs: [...kept, epoch].sort((a, b) => a.fromSequence - b.fromSequence) };
 }
 
@@ -198,6 +203,11 @@ interface ReanchorRequest {
    * ⛔ This is the whole of how siblings are recognised. See {@link BroadcastEpoch.returnToken}.
    */
   returnToken?: string;
+  /**
+   * The sequence `resumeAt` is published as, for a rung whose encoder came back. What a rung joining
+   * its return's line is placed on the line by. See {@link BroadcastEpoch.publishedFrom}.
+   */
+  publishedResumeAt?: number;
 }
 
 /**
@@ -213,8 +223,111 @@ export interface BroadcastDating {
    *
    * @param returnToken which return of the broadcast is asking, for a rung whose encoder came back.
    * Omitted where the engine's own counter restarted. See {@link BroadcastEpoch.returnToken}.
+   * @param publishedResumeAt the sequence `resumeAt` is published as, given with `returnToken`.
    */
-  epochFrom(resumeAt: number, notBeforeMs: number, returnToken?: string): BroadcastEpoch;
+  epochFrom(resumeAt: number, notBeforeMs: number, returnToken?: string, publishedResumeAt?: number): BroadcastEpoch;
+
+  /**
+   * The published sequence a rung coming back from this return resumes at, which is the same answer
+   * for every rung of the return and never below `ownResumeAt`, the published sequence one past the
+   * highest the asking rung has placed. See {@link sharedResumePoint}.
+   *
+   * @param ownResumeDatedAtMs the date `ownResumeAt` would have carried had the rung never stopped,
+   * which says how long it was away. See {@link maxResumeRaise}.
+   */
+  resumePointFor(returnToken: string, ownResumeAt: number, ownResumeDatedAtMs: number): number;
+}
+
+/**
+ * How many sequences a return may raise a rung above its own count beyond the fragments the rung was
+ * away for. See {@link maxResumeRaise}.
+ *
+ * ⛔ **A bound on how wrong the agreement can be, not a measurement.** The rungs of one ladder are cut
+ * on one keyframe grid, so what separates their counts at a whole-ladder outage is a short partial
+ * segment one of them closed and the segments the engine had not yet handed over, a sequence or two
+ * on a test deployment, with the breaks four apart in the worst case measured. Five covers the
+ * measured four with one to spare.
+ */
+export const RESUME_RAISE_SLACK = 5;
+
+/**
+ * The most sequences a return may raise a rung above its own count: the fragments it was away for,
+ * plus {@link RESUME_RAISE_SLACK}. Above it the rung resumes at its own count instead.
+ *
+ * ⛔⛔ **Sized from how long the rung was away, because a sibling may have kept publishing.** When
+ * only some rungs are cut, the one that stayed counts on through their absence, and the raise that
+ * lines them up again is that absence in fragments: eight sequences on a test deployment, where three
+ * rungs resumed at 327 while 360p had reached 334. A fixed bound of five refused exactly that raise
+ * and left the three a whole absence behind for the rest of the broadcast.
+ *
+ * ⛔ **Still a bound.** A point further above a rung than its absence and the slack names media no
+ * rung could have counted, which is a count read wrongly, and every sequence of the raise is a gap
+ * entry spent from the live window's byte budget. The replaced rung that once read its siblings in
+ * another numbering was twelve sequences out after an eight second blackout, past the nine this
+ * allows.
+ *
+ * @param awayMs how long the rung was away, from the date its next segment would have carried to now.
+ */
+export function maxResumeRaise(awayMs: number, fragmentSeconds: number): number {
+  return RESUME_RAISE_SLACK + Math.ceil(Math.max(0, awayMs) / (fragmentSeconds * MS_PER_SECOND));
+}
+
+/** The rung resumed at the point its return agreed. */
+export const RESUMED_AT_THE_RETURN = 'at-the-return' as const;
+/** The rung had already counted past the point its return agreed, and resumed at its own count. */
+export const RESUMED_ABOVE_THE_RETURN = 'above-the-return' as const;
+/** The point its return agreed was more than {@link maxResumeRaise} above it, so it resumed at its own count. */
+export const RAISE_REFUSED = 'raise-refused' as const;
+
+/** Where one rung of a return resumes, and how that relates to the point the return agreed. */
+interface ResumeDecision {
+  resumeAt: number;
+  kind: typeof RESUMED_AT_THE_RETURN | typeof RESUMED_ABOVE_THE_RETURN | typeof RAISE_REFUSED;
+}
+
+/**
+ * The point every rung of one return resumes at, agreed once by the first rung of it to place a
+ * resumed segment: the furthest any rung of the ladder has counted, in published numbers.
+ *
+ * ⛔⛔ **One sequence names one moment on every rung, so a return resumes them all at one sequence.**
+ * The rungs stop at different counts before an outage. One closes a short partial segment the others
+ * do not, or one is a segment behind on its upload, and a player switching quality picks the segment
+ * by its sequence. Each rung resuming at its own count put sequence 331 about 30 seconds apart on two
+ * rungs of one broadcast measured on a test deployment, with the breaks four sequences apart.
+ *
+ * ⛔ **Published numbers, never a rung's own.** A rung whose session was replaced numbers its media
+ * from 0 again and publishes it above the feed head it took over, so its own count and its siblings'
+ * are in two different numberings. Compared raw, a replaced rung twelve segments into its new session
+ * either raised its siblings twelve sequences or was raised twelve itself.
+ *
+ * @param ownResumeAt the published sequence one past the highest the asking rung has placed.
+ * @param ladderCounts the published sequence each other live rung of the ladder would resume at.
+ */
+export function agreedResumePoint(ownResumeAt: number, ladderCounts: readonly number[]): number {
+  return Math.max(ownResumeAt, ...ladderCounts);
+}
+
+/**
+ * Where one rung of a return resumes, given the point its return agreed.
+ *
+ * ⚠️ **Never below the rung's own count**, because a number already published cannot be reused. A rung
+ * still placing segments from before the outage when its siblings agreed the point can pass it, and
+ * it then resumes at its own count, a sequence or more above them. **Never more than `maxRaise`
+ * above it either**, because a point that far away is not a rung lining up with its siblings but a
+ * count read wrongly, and it would list that many gap entries for media nobody lost. See
+ * {@link maxResumeRaise}.
+ *
+ * A rung below the point lists the sequences in between as gap entries, which is what a sequence
+ * nothing fills already publishes as. See `ManifestManager.placeResumed`.
+ */
+export function sharedResumePoint(agreed: number, ownResumeAt: number, maxRaise: number): ResumeDecision {
+  if (ownResumeAt > agreed) {
+    return { resumeAt: ownResumeAt, kind: RESUMED_ABOVE_THE_RETURN };
+  }
+  if (agreed - ownResumeAt > maxRaise) {
+    return { resumeAt: ownResumeAt, kind: RAISE_REFUSED };
+  }
+  return { resumeAt: agreed, kind: RESUMED_AT_THE_RETURN };
 }
 
 /** Which of the two ways a re-anchoring reached its epoch, alongside the epoch itself. */
@@ -235,12 +348,14 @@ interface ReanchorDecision {
  * The epoch a rung takes when its numbering resumes after a restart, reusing the line a sibling
  * already minted for that same restart, and which of those two things it did.
  *
- * ⭐ **What is shared across the ladder is the line, never the point it is written down at.** Rungs
- * cross a restart with their own numbering at their own places, so each one materialises the shared
- * line at its own `resumeAt`. A rung one sequence behind its siblings therefore lands one fragment
- * earlier on that line, which is the same function of sequence they are all reading. Handing it the
- * sibling's point unchanged would leave its own first post-restart segment on the old line, with the
- * whole jump landing on the segment after it, where no discontinuity marks it.
+ * ⭐ **What is shared across the ladder is the line, and each rung writes it down at the `resumeAt` it
+ * asks about.** After an encoder returns, every rung of the return asks at the same sequence, the one
+ * {@link sharedResumePoint} fixes, so they all land on one point of the line. After the engine's own
+ * counter restarts, which nothing outside the rung witnesses, each rung still resumes at its own
+ * count, and a rung one sequence behind its siblings lands one fragment earlier on that line, which is
+ * the same function of sequence they are all reading. Handing it the sibling's point unchanged would
+ * leave its own first post-restart segment on the old line, with the whole jump landing on the segment
+ * after it, where no discontinuity marks it.
  *
  * ⛔⛔ **A returning encoder's line is recognised by the RETURN it belongs to, and by nothing else.**
  * The orchestrator sees a whole-encoder return once per rung and is the only layer that can tell four
@@ -255,9 +370,10 @@ interface ReanchorDecision {
  *   four fifty second outages: the second return landed 48 seconds behind, the third 96.
  * - **At-or-below the minted sequence** fixed that for a lone rung and failed on a ladder, because
  *   the epoch list is the whole ladder's: the newest epoch is often a SIBLING's, so a rung a segment
- *   behind asks at a sequence below its sibling's line and joins the PREVIOUS return's, again dating
+ *   behind asked at a sequence below its sibling's line and joined the PREVIOUS return's, again dating
  *   its media a whole outage ago. Reproduced on two rungs one segment apart over two outages, about
- *   half the time depending on which rung came back first.
+ *   half the time depending on which rung came back first. The rungs of one return now ask at one
+ *   sequence, but a rung's own next return still asks higher, so the name stays the only test.
  *
  * A name cannot be confused either way: it is minted per return by the layer that witnesses the
  * return, and it is a uuid rather than a count, so it cannot collide with a line the anchor carried
@@ -286,7 +402,7 @@ interface ReanchorDecision {
  * it as a parsing error rather than as a restart, and a recording is sealed with it for ever.
  */
 export function reanchorDecision(anchor: BroadcastAnchor, request: ReanchorRequest): ReanchorDecision {
-  const { resumeAt, nowMs, notBeforeMs, returnToken } = request;
+  const { resumeAt, nowMs, notBeforeMs, returnToken, publishedResumeAt } = request;
   const held = anchor.epochs ?? [];
   const minted =
     returnToken === undefined
@@ -296,25 +412,46 @@ export function reanchorDecision(anchor: BroadcastAnchor, request: ReanchorReque
       : held.find((epoch) => epoch.returnToken === returnToken);
 
   if (minted !== undefined) {
-    const onTheSameLine = dateOnLine(minted, resumeAt, anchor.fragmentSeconds);
+    const onTheSameLine =
+      minted.publishedFrom !== undefined && publishedResumeAt !== undefined
+        ? dateOnLine(
+            { fromSequence: minted.publishedFrom, atMs: minted.atMs },
+            publishedResumeAt,
+            anchor.fragmentSeconds,
+          )
+        : dateOnLine(minted, resumeAt, anchor.fragmentSeconds);
     const sameRestart = returnToken !== undefined || Math.abs(onTheSameLine - nowMs) <= SAME_RESTART_TOLERANCE_MS;
     if (sameRestart) {
       return {
-        epoch: { fromSequence: resumeAt, atMs: Math.max(onTheSameLine, notBeforeMs), ...tokenOf(returnToken) },
+        epoch: {
+          fromSequence: resumeAt,
+          atMs: Math.max(onTheSameLine, notBeforeMs),
+          ...tokenOf(returnToken, publishedResumeAt),
+        },
         joined: true,
       };
     }
   }
 
   return {
-    epoch: { fromSequence: resumeAt, atMs: Math.max(nowMs, notBeforeMs), ...tokenOf(returnToken) },
+    epoch: {
+      fromSequence: resumeAt,
+      atMs: Math.max(nowMs, notBeforeMs),
+      ...tokenOf(returnToken, publishedResumeAt),
+    },
     joined: false,
   };
 }
 
 /** Kept off the epoch entirely when there is none, so a counter restart's line is byte-identical to before. */
-function tokenOf(returnToken: string | undefined): { returnToken?: string } {
-  return returnToken === undefined ? {} : { returnToken };
+function tokenOf(
+  returnToken: string | undefined,
+  publishedFrom: number | undefined,
+): { returnToken?: string; publishedFrom?: number } {
+  if (returnToken === undefined) {
+    return {};
+  }
+  return publishedFrom === undefined ? { returnToken } : { returnToken, publishedFrom };
 }
 
 /** {@link reanchorDecision} for a caller with no use for how the epoch was reached. */
@@ -331,7 +468,9 @@ export function reanchorEpoch(anchor: BroadcastAnchor, request: ReanchorRequest)
  */
 export function soleRungDating(anchorOf: () => BroadcastAnchor, wallClock: () => number = Date.now): BroadcastDating {
   return {
-    epochFrom: (resumeAt, notBeforeMs, returnToken) =>
-      reanchorEpoch(anchorOf(), { resumeAt, nowMs: wallClock(), notBeforeMs, returnToken }),
+    epochFrom: (resumeAt, notBeforeMs, returnToken, publishedResumeAt) =>
+      reanchorEpoch(anchorOf(), { resumeAt, nowMs: wallClock(), notBeforeMs, returnToken, publishedResumeAt }),
+    // A rung with no siblings has nobody to agree a sequence with.
+    resumePointFor: (_returnToken, ownResumeAt) => ownResumeAt,
   };
 }

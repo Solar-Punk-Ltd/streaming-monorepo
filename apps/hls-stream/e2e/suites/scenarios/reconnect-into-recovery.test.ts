@@ -125,8 +125,13 @@ import { sleep, waitFor } from '../../src/harness/wait.js';
  *   `ManifestManager.placeInBroadcast` re-anchors a restarted counter forwards with a break, and
  *   there are no `#EXT-X-GAP` entries, because the forgotten accounting index must not turn that
  *   counter restart into a hole the broadcast never had. A restart is one of the only two things
- *   that still arm a break since 2026-09-06, the other being the origin
- *   declaring one, and a lost segment is now said with gap entries instead.
+ *   that still arm a break since 2026-09-06, the other being the origin declaring one, and a lost
+ *   segment is now said with gap entries instead.
+ * - **Every rung keeps one timeline.** Every sequence two rungs both hold media at is dated within
+ *   half a fragment on both. The rungs of one return resume where the furthest of them had counted, so a
+ *   rung that had counted less lists the sequences up to that point as gap entries right before its
+ *   break. Those are the one exception to "no gap entries", and only where a sibling had counted that
+ *   far with media. See `returnAlignment`.
  *
  * ⛔ The uploader writes `Resumed recovering stream` when it takes the branch, but that line is not
  * part of the shared log contract in `packages/shared/src/uploaderLog.ts` and the deployed-log-shape
@@ -320,6 +325,8 @@ describe('M — the uploader dies while its engine restarts, then the broadcaste
         rungs: publishingRungFeedsOf(await log()),
         expectation: cfg.segmentExpectation,
         logAfterTheRead: log,
+        // Every rung comes back through one announced return here, so they break at one sequence.
+        breaksAgreeAcrossRungs: true,
       });
 
     let verdict = await timeline();
@@ -333,7 +340,9 @@ describe('M — the uploader dies while its engine restarts, then the broadcaste
         await waitFor(
           async () => {
             verdict = await timeline();
-            return verdict.discontinuitiesSeen >= 1;
+            // Every rung past the break, so a rung still to publish its first resumed segment is not
+            // judged as disagreeing with the siblings that already have.
+            return verdict.discontinuitiesSeen >= 1 && !verdict.breaksStillLanding;
           },
           {
             timeoutMs: TIMELINE_WAIT_MS,
@@ -343,7 +352,8 @@ describe('M — the uploader dies while its engine restarts, then the broadcaste
               'things that still arm one, because `placeInBroadcast` re-anchors the numbering and the dating ' +
               'forwards rather than reusing a sequence a viewer already holds. This run pinned a segment ' +
               'length, so the playlists really were read and this is the absence of a break rather than the ' +
-              'absence of a check',
+              'absence of a check. Or a break landed and some rung never published past it, which the summary ' +
+              'below shows as a rung whose last date is before its siblings’ break',
           },
         );
       }
@@ -363,11 +373,16 @@ describe('M — the uploader dies while its engine restarts, then the broadcaste
     // reader has to tell the fabricated hole apart from an honest one. A bee node that restarted
     // with everything else re-syncs its postage batch for tens of seconds, and a segment it refuses
     // in that window is a real loss with real gap entries, and nothing to do with this scenario.
+    //
+    // The gap entries a rung lists to line up with its ladder at the return are not loss, and only
+    // those are set aside: a run right before a break at a sequence a sibling had counted to with
+    // media. The refusal above already holds every rung to one timeline.
     const losses = parseUploaderLog(await log());
     assert.equal(
-      verdict.gapsSeen,
+      verdict.gapsSeen - verdict.gapsAtAReturnSeen,
       0,
-      `${verdict.gapsSeen} gap entries across the rungs. The uploader reported ` +
+      `${verdict.gapsSeen} gap entries across the rungs, ${verdict.gapsAtAReturnSeen} of them lining a rung up ` +
+        'with a sibling that had counted that far. The uploader reported ' +
         `${losses.inferredSegmentGaps} inferred skips and ${losses.discontinuitySegments.length} failed uploads ` +
         'in the same window. Zero of both beside gap entries is the counter restart being measured as a run of ' +
         'missing segments, which is the inference the recovery branch drops the accounting index to avoid. ' +

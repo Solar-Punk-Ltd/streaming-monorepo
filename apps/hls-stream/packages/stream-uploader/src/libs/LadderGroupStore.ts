@@ -44,9 +44,34 @@ export interface RememberedLadder {
 }
 
 /** A return of a ladder's encoder, named, with the rungs that have announced they are back from it. */
-interface ReturnInProgress {
+export interface ReturnInProgress {
   token: string;
   resumedRungs: string[];
+  /**
+   * The rungs that have placed a segment of this return. Absent on a record written before it was
+   * kept, which is read as every rung that announced. See `StreamOrchestrator.tokenForThisReturn`.
+   */
+  placedRungs?: string[];
+  /**
+   * The published sequence every rung of this return resumes at, once the first of them has placed
+   * a resumed segment. Absent until then. See `sharedResumePoint`.
+   *
+   * Persisted with the name for the name's own reason: the rungs of one return can straddle a restart
+   * of this process, and a rung coming back after it has to resume where its siblings already did.
+   */
+  resumeAt?: number;
+  /**
+   * The rungs that came back from this return because SRS held them through the drop, which resume
+   * at their own count. Absent when there are none. See `StreamOrchestrator.resumePointOf`.
+   */
+  heldRungs?: string[];
+  /**
+   * The rungs that were away when the return started, the only ones that may join it. Absent on a
+   * record written before this was kept, which any rung may join. See `StreamOrchestrator.tokenForThisReturn`.
+   */
+  awaitedRungs?: string[];
+  /** Present once a rung already back from this return, or never part of it, went away again. */
+  closed?: true;
 }
 
 /**
@@ -80,6 +105,10 @@ function readEpochs(epochs: unknown): BroadcastEpoch[] {
   );
 }
 
+function isListOfNames(value: unknown): value is string[] {
+  return Array.isArray(value) && value.every((name) => typeof name === 'string');
+}
+
 /**
  * The return a persisted record names, or undefined for one that names none or names it damaged.
  *
@@ -90,15 +119,21 @@ function readReturnInProgress(value: unknown): ReturnInProgress | undefined {
   if (value === null || typeof value !== 'object') {
     return undefined;
   }
-  const { token, resumedRungs } = value as Partial<ReturnInProgress>;
-  if (
-    typeof token !== 'string' ||
-    !Array.isArray(resumedRungs) ||
-    !resumedRungs.every((rung) => typeof rung === 'string')
-  ) {
+  const { token, resumedRungs, placedRungs, resumeAt, heldRungs, awaitedRungs, closed } =
+    value as Partial<ReturnInProgress>;
+  if (typeof token !== 'string' || !isListOfNames(resumedRungs)) {
     return undefined;
   }
-  return { token, resumedRungs };
+  // A damaged point or held list is dropped alone, which costs what a restart cost before either was kept.
+  return {
+    token,
+    resumedRungs,
+    ...(Number.isInteger(resumeAt) ? { resumeAt } : {}),
+    ...(isListOfNames(placedRungs) ? { placedRungs } : {}),
+    ...(isListOfNames(heldRungs) ? { heldRungs } : {}),
+    ...(isListOfNames(awaitedRungs) ? { awaitedRungs } : {}),
+    ...(closed === true ? { closed } : {}),
+  };
 }
 
 /**
