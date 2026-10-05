@@ -931,12 +931,12 @@ with the client, or with none while `MANAGER_FUNDING_URL` is unset.
 behind the same-site check as well. The answers are the types of
 `web2-admin-common`'s `funding.ts`.
 
-| Method | Path                                 | Answer                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                         |
-| ------ | ------------------------------------ | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| GET    | `/api/funding`                       | `FundingView`: `configured` (false while the manager funding settings are unset, and then the manager is not asked), the brand wallet's address and balances or null while there is none, `chainId` 100, every stage's nodes and the catalogue node, each with `pin` and `pinnedAddress` (below), `observedAt`, and `openBulkId`, the send that still has a `queued` or `submitted` item, or null, so the page resumes it after a reload or in another tab. It first refreshes the latest sends with an item still asked about, three at most ([Settling](#settling)). When the manager cannot be read, `managerError` says why in a sentence of the admin's own, never the manager's address or token, and the balances, the nodes and `observedAt` are empty |
-| POST   | `/api/funding/pins`                  | `{ password, nodeIds }` in: pins the address each node answers now, read from the manager's inventory, and answers `{ pinned }`. A node the inventory does not hold is `409 funding_refused`, `problem: "node"`; a node whose address could not be read is `400 validation_error` with the sentence, since there is no address to pin. Either way nothing is pinned                                                                                                                                                                                                                                                                                                                                                                                            |
-| POST   | `/api/funding/transfers`             | `{ password, items: [{ nodeId, kind, amount }] }` in, `202` with `{ bulkId, items }` out: each item's `requestId`, `nodeId`, `kind`, `amount`, `state`, `txHash`, `blockNumber` (null until it is mined) and `error`. The refusals below                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                       |
-| GET    | `/api/funding/transfers?bulkId=<id>` | `{ items }` of that send, as above, each refreshed from the manager first ([Settling](#settling)). `400` without a UUID, `404 bulk_not_found` for a send the admin never journalled                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                            |
+| Method | Path                                 | Answer                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                    |
+| ------ | ------------------------------------ | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| GET    | `/api/funding`                       | `FundingView`: `configured` (false while the manager funding settings are unset, and then the manager is not asked), the brand wallet's address and balances or null while there is none, `chainId` 100, every stage's nodes and the catalogue node, each with `pin` and `pinnedAddress` (below), `observedAt`, and `openBulkId`, the latest send that still has an item holding up a new one (`queued`, `submitted`, or `unknown` within the manager's 30 minutes), or null, so the page resumes it after a reload or in another tab. It first refreshes the latest sends with an item still asked about, three at most ([Settling](#settling)). When the manager cannot be read, `managerError` says why in a sentence of the admin's own, never the manager's address or token, and the balances, the nodes and `observedAt` are empty |
+| POST   | `/api/funding/pins`                  | `{ password, nodeIds }` in: pins the address each node answers now, read from the manager's inventory, and answers `{ pinned }`. A node the inventory does not hold is `409 funding_refused`, `problem: "node"`; a node whose address could not be read is `400 validation_error` with the sentence, since there is no address to pin. Either way nothing is pinned                                                                                                                                                                                                                                                                                                                                                                                                                                                                       |
+| POST   | `/api/funding/transfers`             | `{ password, items: [{ nodeId, kind, amount }] }` in, `202` with `{ bulkId, items }` out: each item's `requestId`, `nodeId`, `kind`, `amount`, `state`, `txHash`, `blockNumber` (null until it is mined), `error`, and the flags `settled` (it no longer holds up a new send) and `watched` (it is still asked about) ([Settling](#settling)). The refusals below                                                                                                                                                                                                                                                                                                                                                                                                                                                                         |
+| GET    | `/api/funding/transfers?bulkId=<id>` | `{ items }` of that send, as above, each refreshed from the manager first ([Settling](#settling)). `400` without a UUID, `404 bulk_not_found` for a send the admin never journalled                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                       |
 
 A node's `pin` is `pinned` when its pin is the address it answers now, `new`
 when it has none, and `changed` when it answers another. A node whose wallet
@@ -963,9 +963,10 @@ an amount that is a string of base units (wei, PLUR) above 0 and at most
    address than its pin, or whose address could not be read, so it cannot be
    checked against the pin: `409 funding_refused`, `problem: "node"`, with the
    sentence;
-5. an item of an earlier send still `queued` or `submitted`, after that send
-   was refreshed ([Settling](#settling)), or another send being signed at that
-   moment: `409 { "error": "conflict" }`;
+5. an item of an earlier send still `queued` or `submitted`, or `unknown`
+   within the manager's 30 minutes, after that send was refreshed
+   ([Settling](#settling)), or another send being signed at that moment:
+   `409 { "error": "conflict" }`;
 6. a fee or gas limit over the admin's own ceilings: `409 funding_refused`,
    `problem: "fee"`, with the sentence (below);
 7. a wallet that cannot pay for it: the account is read once from the manager,
@@ -999,9 +1000,13 @@ under a Postgres advisory lock taken with `pg_try_advisory_lock` on a
 connection of its own and released when they are over: a second send at the
 same moment, in this process or another, is refused at once with the same
 `409 conflict`, and once the first is journalled its items are `queued`, so
-check 5 refuses every later one until none is `queued` or `submitted`. Check 5
-refreshes the open sends first, three at most, and looks again, so a send
-whose page was closed never holds the wallet for good.
+check 5 refuses every later one until none holds it up any more. Check 5
+first refreshes the latest sends with an open or watched item, three at most,
+and the open ones, three at most, then looks: a send whose page was closed
+never holds the wallet for good, and an `unknown` item past its 30 minutes is
+asked about before a new send may reuse its nonce, since the manager answers it
+`submitted` if the chain's pool holds it after all. A client of the API that
+never reads the page gets the same check.
 
 **Signed, journalled, then relayed.** The items are signed in turn, chain id
 100, with consecutive nonces from the account's pending one and its fees: an
@@ -1021,27 +1026,78 @@ it `queued`, as journalled: the refresh relays them.
 #### Settling
 
 `queued` and `submitted` items are open: they hold up a new send, which would
-sign over their nonces. Every other state is settled for that gate:
+sign over their nonces, whatever their age. So does an `unknown` item for 30
+minutes counted from when the manager answered the relay
+(`FUNDING_UNKNOWN_SETTLES_AFTER_MS`,
+which mirrors the manager's `FUNDING_UNKNOWN_AFTER_MS` in
+`apps/infra-manager/manager/src/domain/funding/FundingChainService.ts` and must
+stay equal to it). The manager answers `unknown` in two cases: when the answer
+of `eth_sendRawTransaction` was lost, and the transaction may well sit in the
+chain's pool at its nonce; and when it has no receipt and the chain has not
+held the transaction for those 30 minutes. In the first case a send let
+through at once would read the next pending nonce, both would be mined, and the
+node would be paid twice; so a young `unknown` item counts as open until the
+manager finds it (`submitted`, then `confirmed` or `failed`) or the 30 minutes
+pass. The manager counts its 30 minutes from its own journal row, written when
+the relay reaches it, which may be long after the admin journalled the item
+(the manager was out of reach, or never received it and it was relayed again).
+So the admin counts from `relayed_at`, which it writes from the service's clock
+when it records the manager's first answer for an item: to a relay, whatever
+the state, the relay again after `unknown_request` included, or, when the
+answer of a relay was lost but the manager journalled it, to the status read
+that finds it while the item is still `queued`. Written once the answer is
+back, it is at or after the manager's own moment, so the admin's window never
+ends before the manager's: the safe side. A `submitted` item that the
+manager's 30-minute rule later turns `unknown` was answered more than 30
+minutes before, so it settles at once. `relayed_at` is null while an item is
+`queued`, and on one failed before the manager ever answered for it; the
+service never writes an `unknown` item without it, and `created_at` stands in
+only as a backstop for a row written otherwise, so that no item holds a send
+for good. Every other item is settled for that gate:
 
 - `confirmed`, and `failed` in a block (the transaction reverted): settled for
   good, never asked about again;
 - `failed` with no block: the chain's node refused it when the manager sent it.
-  The manager still reads such a transfer for a late receipt, so it is
-  watched: asked about again, and turned `confirmed` if the receipt comes. Its
+  The manager still reads such a transfer for a late receipt and for the
+  chain's pool, so it is watched: asked about again, turned `submitted`, open
+  again, if the chain holds it, and `confirmed` if the receipt comes. Its
   sentence says the chain's node refused it, that the row will say so if it is
   mined anyway, and to check the node's balance before sending to it again;
-- `unknown`: the manager has no receipt and the chain no longer holds it. It is
-  watched as well. Letting a new send past it is safe: the chain does not hold
-  it, so the next send reuses its nonce, and at most one of the two can ever
-  be mined;
+- `unknown` for longer than the 30 minutes: the manager has no receipt and the
+  chain no longer holds it. It is watched, as a young one is. Letting a new
+  send past it is safe: the chain does not hold it, so the next send reuses its
+  nonce, and at most one of the two can ever be mined;
 - `failed` by the admin or the manager before the chain saw it (a refusal at
   the relay, or never sent after one before it failed): settled for good.
 
 `blockNumber` tells the page a failure in a block (final) from one with no
 block (watched). Only open and watched items are written to: a late receipt
 moves a watched item, and nothing moves one settled for good. The journal's
-`watched` column says which items are watched, and the check of an open item
-reads exactly migration 016's partial index, `state IN ('queued', 'submitted')`.
+`watched` column says which items are watched. The check of an item that holds
+up a send asks for `state IN ('queued', 'submitted') OR (state = 'unknown' AND
+COALESCE(relayed_at, created_at) >= <now - 30 minutes>)`. A partial index cannot hold that cutoff,
+since its predicate cannot call `now()`, so migration 016's
+`funding_transfers_unsettled_idx` covers every `queued`, `submitted` and
+`unknown` row by `COALESCE(relayed_at, created_at)`: the check's predicate
+implies the index's, and the rows of those states are few, one open send and
+its watched items.
+
+Each item the API answers carries two flags, worked out in one place
+(`toFundingTransferItem`) from its state, block, `watched` column and the age
+of its relay's answer:
+
+| State                                        | `settled` | `watched` |
+| -------------------------------------------- | --------- | --------- |
+| `queued`, `submitted`                        | false     | false     |
+| `unknown`, relay answered at most 30 min ago | false     | true      |
+| `unknown`, older                             | true      | true      |
+| `failed` with no block, refused at the relay | true      | true      |
+| `confirmed`, `failed` in a block             | true      | false     |
+| `failed` before the chain saw it             | true      | false     |
+
+`settled` false holds up a new send; `watched` true says the item is still
+asked about and may still change. The page frees Send once every item is
+settled, and reads a send on while any item is not settled or is watched.
 
 **The refresh** reads, in nonce order, where each open or watched item of a
 send stands on the manager, and records it. An open item the manager never
@@ -1053,10 +1109,12 @@ sends anew. The refresh stops at the first item the manager cannot answer for
 and leaves it, and those after it, as they are. It runs:
 
 - for `GET /api/funding/transfers?bulkId=`, on that send;
-- for `GET /api/funding`, on the latest sends with an open or watched item,
+- for `GET /api/funding`, on the latest sends with an open or watched item (a
+  young `unknown` one is both),
   three at most (`FUNDING_REFRESH_LIMIT`); an older watched item is refreshed
   when its send is read by its id;
-- for a send refused for an open one (check 5), on the open sends, three at most.
+- for every send, before check 5: on the latest sends with an open or watched
+  item, three at most, and on the open sends, three at most.
 
 Overlapping refreshes of one send in the process share one run (a map of the
 refresh running per bulk id), so two polls at once relay nothing twice and
@@ -1066,10 +1124,10 @@ written once, when the item first comes to that state.
 The signed transaction is kept for that relay alone: no route answers it, and
 nothing logs or audits it.
 
-| Table               | What it holds                                                                                                                                                                                                                                                                                                                                                                    |
-| ------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `funding_transfers` | migration 016: one row per item of a send, by `request_id`, with `bulk_id`, the node's id and label, the address, kind, amount, nonce, the signed transaction, its hash, `state`, `error`, `block_number`, `watched` (only an `unknown` item, or a `failed` one with no block), the operator's id and name, and when. One item of each kind per node and one per nonce in a send |
-| `funding_node_pins` | migration 017: one row per pinned node, its address in lower case, when and by whom                                                                                                                                                                                                                                                                                              |
+| Table               | What it holds                                                                                                                                                                                                                                                                                                                                                                                                                                                                  |
+| ------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `funding_transfers` | migration 016: one row per item of a send, by `request_id`, with `bulk_id`, the node's id and label, the address, kind, amount, nonce, the signed transaction, its hash, `state`, `error`, `block_number`, `watched` (only an `unknown` item, or a `failed` one with no block), `relayed_at` (when the manager's answer to its last relay came back, by the service's clock), the operator's id and name, and when. One item of each kind per node and one per nonce in a send |
+| `funding_node_pins` | migration 017: one row per pinned node, its address in lower case, when and by whom                                                                                                                                                                                                                                                                                                                                                                                            |
 
 Without `MANAGER_FUNDING_URL` and `MANAGER_FUNDING_TOKEN` the page answers
 `configured: false`, and without `BRAND_WALLET_SECRET` it shows no wallet;

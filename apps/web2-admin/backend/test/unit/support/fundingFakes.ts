@@ -28,8 +28,8 @@ import type {
 import type { BrandWalletTransaction } from '../../../src/domain/funding/BrandWallet.js';
 import type { FundingManager, FundingWallet } from '../../../src/domain/funding/FundingService.js';
 import {
+  holdsSend,
   isAsked,
-  isOpen,
   type FundingTransferRow,
   type FundingTransferStore,
   type FundingTransferUpdate,
@@ -143,8 +143,8 @@ export class FakeFundingWallet implements FundingWallet {
 
 /**
  * The manager's funding API. By default it answers the inventory and the account above, takes every relay as
- * `submitted` and journals it, and answers a status read from that journal, `unknown_request` for an id it never took.
- * Each call can be made to fail, or to wait on a gate.
+ * `submitted` and journals it, and answers a status read from that journal, in the state the relay was answered with,
+ * `unknown_request` for an id it never took. Each call can be made to fail, or to wait on a gate.
  */
 export class FakeFundingManager implements FundingManager {
   inventoryAnswer: FundingInventory = fundingInventory();
@@ -169,6 +169,8 @@ export class FakeFundingManager implements FundingManager {
   readonly statusReads: string[] = [];
   /** What the manager journalled: each relay it took, by request id. */
   readonly journal = new Map<string, FundingTransferRequest>();
+  /** The state each relay it took was answered with, which a status read answers until told otherwise. */
+  readonly journalState = new Map<string, FundingTransferAnswer['state']>();
 
   async inventory(): Promise<FundingInventory> {
     this.calls.inventory += 1;
@@ -194,6 +196,7 @@ export class FakeFundingManager implements FundingManager {
     const error = this.relayErrorAlways ?? this.relayErrors.get(call);
     if (error) throw error;
     this.journal.set(transfer.requestId, { ...transfer });
+    this.journalState.set(transfer.requestId, this.relayState);
     return {
       requestId: transfer.requestId,
       state: this.relayState,
@@ -213,7 +216,7 @@ export class FakeFundingManager implements FundingManager {
     }
     return {
       requestId,
-      state: 'submitted',
+      state: this.journalState.get(requestId) ?? 'submitted',
       txHash: taken ? keccak256(taken.rawTransaction as Hex) : null,
       blockNumber: null,
       error: null,
@@ -242,12 +245,12 @@ export class InMemoryFundingTransferStore implements FundingTransferStore {
     }
   }
 
-  async hasUnsettled(): Promise<boolean> {
-    return [...this.rows.values()].some((row) => isOpen(row.state));
+  async hasUnsettled(now: Date): Promise<boolean> {
+    return [...this.rows.values()].some((row) => holdsSend(row, now.getTime()));
   }
 
-  async openBulkIds(limit: number): Promise<string[]> {
-    return this.bulkIdsWhere((row) => isOpen(row.state), limit);
+  async openBulkIds(limit: number, now: Date): Promise<string[]> {
+    return this.bulkIdsWhere((row) => holdsSend(row, now.getTime()), limit);
   }
 
   async askedBulkIds(limit: number): Promise<string[]> {
@@ -268,6 +271,7 @@ export class InMemoryFundingTransferStore implements FundingTransferStore {
   }
 
   async insertAll(items: readonly NewFundingTransfer[]): Promise<void> {
+    // The database's clock, as the SQL's NOW() writes it.
     const at = new Date();
     for (const item of items) {
       if (this.rows.has(item.requestId)) throw new Error(`duplicate request id ${item.requestId}`);
@@ -279,6 +283,7 @@ export class InMemoryFundingTransferStore implements FundingTransferStore {
         error: null,
         blockNumber: null,
         watched: false,
+        relayedAt: null,
         createdAt: at,
         updatedAt: at,
       });
@@ -301,6 +306,7 @@ export class InMemoryFundingTransferStore implements FundingTransferStore {
       error: update.error,
       blockNumber: update.blockNumber === undefined ? row.blockNumber : update.blockNumber,
       watched: update.watched,
+      relayedAt: update.relayedAt ?? row.relayedAt,
       updatedAt: new Date(),
     };
     // Migration 016's CHECK: only an unknown item, or a failed one with no block, is watched.
@@ -318,10 +324,14 @@ export class InMemoryFundingTransferStore implements FundingTransferStore {
   }
 
   /** Sets a row's state outside the service, as an earlier send would have left it. */
-  force(requestId: string, state: FundingTransferRow['state']): void {
+  force(
+    requestId: string,
+    state: FundingTransferRow['state'],
+    over: Partial<Pick<FundingTransferRow, 'blockNumber' | 'watched' | 'error' | 'relayedAt' | 'createdAt'>> = {},
+  ): void {
     const row = this.rows.get(requestId);
     if (!row) throw new Error(`no such row: ${requestId}`);
-    this.rows.set(requestId, { ...row, state });
+    this.rows.set(requestId, { ...row, state, ...over });
   }
 }
 

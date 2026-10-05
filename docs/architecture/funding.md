@@ -78,7 +78,12 @@ admin needs no chain connection of its own.
   next send and the Funding page refresh the open one, which the page resumes. Items the chain's
   node refused at the relay, and `unknown` ones, are watched. Nothing is resent but an item the
   manager never received (`unknown_request`), relayed byte for byte under the same request id. An
-  `unknown` item cannot pay twice: the chain does not hold it, so the next send reuses its nonce.
+  `unknown` item holds the next send back for the manager's 30 minutes, counted from when the
+  manager answered the relay: the manager also answers `unknown` when the answer of its broadcast
+  was lost, and the transaction may then sit in the pool at its nonce. Only after those 30 minutes,
+  when the chain no longer holds it, does the next send reuse its nonce, so it cannot pay twice.
+  Each item the admin answers says whether it still holds the next send back (`settled`) and
+  whether it is still watched (`watched`).
 
 ## Phases
 

@@ -88,11 +88,19 @@ const stages =
  * amount off the wallet at once and lands on the node when its transfer reads as confirmed, a few seconds later.
  * MOCK_FUNDING=off answers configured false, the page's "not set up" state. MOCK_FUNDING=refuse answers every
  * transfer as the chain's node refusing it at the relay, failed with no block, which frees a new send; it is mined
- * anyway when a sent one would be. The addresses are the repository's allow-listed fixtures.
+ * anyway when a sent one would be. MOCK_FUNDING=lost answers every transfer `unknown`, as the manager does when the
+ * answer of its broadcast was lost: within the manager's 30 minutes it holds up a new send, and a few seconds later the
+ * manager finds it in the pool and it turns `submitted`, then confirmed. Each item carries `settled` and `watched` by
+ * the API's rules. The addresses are the repository's allow-listed fixtures.
  */
 const FUNDING_CONFIGURED = process.env.MOCK_FUNDING !== 'off';
 const FUNDING_REFUSE = process.env.MOCK_FUNDING === 'refuse';
+const FUNDING_LOST = process.env.MOCK_FUNDING === 'lost';
 const FUNDING_CONFIRM_AFTER_MS = 6_000;
+/** How long a `lost` transfer stays `unknown` before the manager finds it in the pool. */
+const FUNDING_FOUND_AFTER_MS = 3_000;
+/** The API's FUNDING_UNKNOWN_SETTLES_AFTER_MS: how long an `unknown` item holds up a new send. */
+const FUNDING_UNKNOWN_SETTLES_AFTER_MS = 30 * 60 * 1000;
 
 /** The admin's sentence for a transfer the chain's node refused at the relay. */
 const FUNDING_REFUSED_AT_RELAY =
@@ -177,15 +185,29 @@ function fundingLandable(item) {
   return item.state === 'submitted' || (item.state === 'failed' && item.blockNumber === null);
 }
 
-/** Confirms every transfer sent long enough ago, in a block, and lands its amount on its node. */
+/**
+ * Whether an item holds up a new send, as the API decides it: queued or sent, or `unknown` and the manager answered
+ * its relay at most its 30 minutes ago. The mock relays at once, so that is when it was sent.
+ */
+function fundingHoldsSend(item, now = Date.now()) {
+  if (item.state === 'queued' || item.state === 'submitted') return true;
+  return item.state === 'unknown' && now - item.sentAt <= FUNDING_UNKNOWN_SETTLES_AFTER_MS;
+}
+
+/** Turns lost transfers sent, confirms every transfer sent long enough ago, and lands its amount on its node. */
 function settleFundingTransfers() {
   const now = Date.now();
   for (const items of fundingBulks.values()) {
     for (const item of items) {
+      if (item.state === 'unknown' && now - item.sentAt >= FUNDING_FOUND_AFTER_MS) {
+        item.state = 'submitted';
+        item.watched = false;
+      }
       if (!fundingLandable(item) || now - item.sentAt < FUNDING_CONFIRM_AFTER_MS) continue;
       item.state = 'confirmed';
       item.blockNumber = Math.floor(now / 5_000);
       item.error = null;
+      item.watched = false;
       const node = fundingNodes.get(item.nodeId);
       if (item.kind === 'xdai') node.xdaiWei += item.amount;
       else node.xbzzPlur += item.amount;
@@ -193,12 +215,13 @@ function settleFundingTransfers() {
   }
 }
 
-/** The send with a transfer still queued or sent, which holds up a new one, as the API names it, or null. */
+/** The latest send with a transfer that holds up a new one, as the API names it, or null. */
 function openFundingBulkId() {
+  let open = null;
   for (const [bulkId, items] of fundingBulks) {
-    if (items.some((item) => item.state === 'queued' || item.state === 'submitted')) return bulkId;
+    if (items.some((item) => fundingHoldsSend(item))) open = bulkId;
   }
-  return null;
+  return open;
 }
 
 function fundingView() {
@@ -237,7 +260,11 @@ function fundingView() {
   };
 }
 
-/** An item as the API answers it, on the send and on every read: its block number is null until it is mined. */
+/**
+ * An item as the API answers it, on the send and on every read: its block number is null until it is mined, `settled`
+ * is false while it holds up a new send, and `watched` is true while it is `unknown`, or failed at the relay with no
+ * block, and still asked about.
+ */
 function fundingItemAnswer(item) {
   return {
     requestId: item.requestId,
@@ -248,6 +275,8 @@ function fundingItemAnswer(item) {
     txHash: item.txHash,
     blockNumber: item.blockNumber,
     error: item.error,
+    settled: !fundingHoldsSend(item),
+    watched: item.watched,
   };
 }
 
@@ -700,8 +729,8 @@ async function handle(req, res) {
       return send(res, 200, { pinned: ids });
     }
 
-    // One send at a time: a second one while an earlier one is still queued or sent is refused, as the API refuses it.
-    // A transfer refused at the relay holds up no send.
+    // One send at a time: a second one while an earlier one still holds it up is refused, as the API refuses it. A
+    // transfer refused at the relay holds up no send; one not known yet does, for the manager's 30 minutes.
     settleFundingTransfers();
     if (openFundingBulkId() !== null) {
       return send(res, 409, { error: 'conflict', message: 'An earlier send has not settled yet.' });
@@ -734,10 +763,11 @@ async function handle(req, res) {
       nodeId: item.nodeId,
       kind: item.kind,
       amount: BigInt(item.amount),
-      state: FUNDING_REFUSE ? 'failed' : 'submitted',
+      state: FUNDING_REFUSE ? 'failed' : FUNDING_LOST ? 'unknown' : 'submitted',
       txHash: `0x${hex(32)}`,
       blockNumber: null,
       error: FUNDING_REFUSE ? FUNDING_REFUSED_AT_RELAY : null,
+      watched: FUNDING_REFUSE || FUNDING_LOST,
       sentAt: Date.now(),
     }));
     fundingBulks.set(bulkId, items);

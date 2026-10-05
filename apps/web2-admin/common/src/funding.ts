@@ -58,10 +58,11 @@ export type FundingPinState = (typeof FUNDING_PIN_STATES)[number];
 
 /**
  * Where one item of a send stands in the admin: `queued` once journalled and before the manager took it, then the
- * manager's own states (`FUNDING_TRANSFER_STATES`): `submitted`, `confirmed`, `failed` and `unknown`. Only `queued`
- * and `submitted` hold up a new send. A `failed` item with no block (the chain's node refused it at the relay) and an
- * `unknown` one are still watched for a late receipt, and may yet turn `confirmed`; a `failed` one with a block
- * reverted, and is final.
+ * manager's own states (`FUNDING_TRANSFER_STATES`): `submitted`, `confirmed`, `failed` and `unknown`. `queued`,
+ * `submitted`, and `unknown` within the manager's 30 minutes of it being journalled hold up a new send. A `failed`
+ * item with no block (the chain's node refused it at the relay) and an `unknown` one are still watched for a late
+ * receipt, and may yet turn `confirmed`; a `failed` one with a block reverted, and is final. Each item's `settled` and
+ * `watched` say which, as the admin works it out.
  */
 export const FUNDING_ITEM_STATES = ['queued', 'submitted', 'confirmed', 'failed', 'unknown'] as const;
 export type FundingItemState = (typeof FUNDING_ITEM_STATES)[number];
@@ -105,7 +106,7 @@ export interface FundingView {
   observedAt: string | null;
   managerError: string | null;
   /**
-   * The send that still has an item `queued` or `submitted`, which holds up a new one, or null. The page resumes its
+   * The latest send that still has an item which holds up a new one (`settled` false), or null. The page resumes its
    * progress from it after a reload or in another tab.
    */
   openBulkId: string | null;
@@ -157,6 +158,21 @@ export interface FundingTransferItem {
   blockNumber: number | null;
   /** Why it failed, in a sentence, or null. */
   error: string | null;
+  /**
+   * Whether it no longer holds up a new send. False while it is `queued` or `submitted`, and while it is `unknown`
+   * and the manager answered its relay at most 30 minutes ago: the manager answers `unknown` too when the answer of
+   * its broadcast was lost, and the transaction may then sit in the chain's pool at its nonce. True once it is `confirmed` or `failed`,
+   * and once it is `unknown` for longer than the manager's 30 minutes, after which the chain no longer holds it, so the
+   * next send reuses its nonce. Worked out by the admin when it answers.
+   */
+  settled: boolean;
+  /**
+   * Whether the admin still asks the manager about it although it has an outcome: true while it is `unknown`, of any
+   * age, and while it is `failed` with no block because the chain's node refused it at the relay; a late receipt may
+   * still turn either `confirmed`. False for `queued` and `submitted`, which are still under way, and for an item
+   * settled for good: `confirmed`, `failed` in a block, or `failed` before the chain saw it.
+   */
+  watched: boolean;
 }
 
 /** What `POST /api/funding/transfers` answers, with 202: the send's id and its items. */

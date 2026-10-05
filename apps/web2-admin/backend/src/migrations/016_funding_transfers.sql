@@ -10,12 +10,16 @@
 -- where the request id stands, and one it never received is relayed again,
 -- the same bytes under the same request id. Nothing is ever signed twice.
 -- While any item is queued or submitted, no new send starts, so two sends
--- never sign over the same nonces. An item failed by the chain's node at the
--- relay, with no block, and an item the manager answers unknown (the chain no
--- longer holds it) hold up no send, but stay watched: the refresh keeps asking
--- the manager about them, since a late receipt may still turn them confirmed.
--- That is safe for unknown: the chain does not hold it, so the next send
--- reuses its nonce, and at most one of the two can ever be mined.
+-- never sign over the same nonces. Nor while an item is unknown and the
+-- manager answered its relay at most 30 minutes ago, the manager's
+-- FUNDING_UNKNOWN_AFTER_MS, which the manager counts from its own journal row,
+-- written when the relay reaches it: the manager answers unknown when the
+-- answer of its broadcast was lost, and the transaction may then sit in the
+-- chain's pool at its nonce. An unknown item older than that (the chain no longer holds it, so the next send reuses
+-- its nonce and at most one of the two can ever be mined) and an item failed
+-- by the chain's node at the relay, with no block, hold up no send, but stay
+-- watched: the refresh keeps asking the manager about them, since a late
+-- receipt may still turn them confirmed.
 --
 --   request_id   the item's id, which the manager journals it under.
 --   bulk_id      the send it belongs to, which the page reads it back by.
@@ -40,8 +44,19 @@
 --   requested_by_user_id, requested_by
 --                the operator who sent it: the id, null once the user is
 --                removed, and the username at the time, which stays.
+--   relayed_at   when the admin recorded the manager's first answer for it,
+--                to a relay, or, for a relay whose answer was lost, to the
+--                status read that found it, by the service's clock. Written
+--                once that answer is back, so at or after the manager's own
+--                journal moment: an unknown item's 30 minutes count from it,
+--                and end no earlier than the manager's. Null while the item is
+--                queued, and on an item failed before the manager ever
+--                answered for it; every write that moves a queued item to one
+--                of the manager's states sets it. created_at stands in only as
+--                a backstop for a row written otherwise, so that no item holds
+--                a send for good.
 --   created_at, updated_at
---                the admin's own clock.
+--                the database's clock.
 --
 -- Going back to an older admin needs no step: it never reads the table. The
 -- items it holds are on the chain or with the manager whatever the admin runs.
@@ -63,6 +78,7 @@ CREATE TABLE funding_transfers (
   state                 TEXT NOT NULL CHECK (state IN ('queued', 'submitted', 'confirmed', 'failed', 'unknown')),
   error                 TEXT NULL,
   block_number          BIGINT NULL CHECK (block_number IS NULL OR block_number >= 0),
+  relayed_at            TIMESTAMPTZ NULL,
   watched               BOOLEAN NOT NULL DEFAULT FALSE CHECK (
     NOT watched OR state = 'unknown' OR (state = 'failed' AND block_number IS NULL)
   ),
@@ -76,10 +92,16 @@ CREATE TABLE funding_transfers (
 );
 
 -- A send is read back in nonce order through the unique index on (bulk_id,
--- nonce). The check that no item holds up a send reads only these rows, with
--- the same predicate, and the refresh reads these and the watched ones.
-CREATE INDEX funding_transfers_unsettled_idx ON funding_transfers (created_at)
-  WHERE state IN ('queued', 'submitted');
+-- nonce). The check that no item holds up a send asks for a queued or
+-- submitted item, or an unknown one whose relay the manager answered since a
+-- cutoff 30 minutes back: COALESCE(relayed_at, created_at) >= the cutoff. A
+-- partial index cannot hold that cutoff, since its predicate cannot call
+-- now(), so it covers every row of the three states, by that same moment: the
+-- check's predicate implies the index's, and the rows of those states are few,
+-- one open send and its watched items, whichever column the scan reads.
+CREATE INDEX funding_transfers_unsettled_idx
+  ON funding_transfers ((COALESCE(relayed_at, created_at)))
+  WHERE state IN ('queued', 'submitted', 'unknown');
 
 CREATE INDEX funding_transfers_watched_idx ON funding_transfers (created_at)
   WHERE watched;

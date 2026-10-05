@@ -268,8 +268,10 @@ describe('a send', () => {
         'kind',
         'nodeId',
         'requestId',
+        'settled',
         'state',
         'txHash',
+        'watched',
       ]);
       assert.match(item.txHash ?? '', /^0x[0-9a-f]{64}$/);
       assert.equal(item.blockNumber, null);
