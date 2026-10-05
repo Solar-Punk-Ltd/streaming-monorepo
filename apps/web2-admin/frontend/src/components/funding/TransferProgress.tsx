@@ -31,12 +31,20 @@ export const TRANSFER_POLL_MS = 3_000;
 export const TRANSFER_POLL_LIMIT_MS = 10 * 60_000;
 
 /**
- * Said under a transfer the manager answers `unknown`, one the chain no longer holds. A failed transfer has no such
- * line: the admin's own sentence says why it failed, and of one the chain's node refused, that it may still arrive and
- * to check the node's balance before sending again.
+ * Said under a transfer the manager answers `unknown` and the server counts as settled: one the manager has not seen
+ * on the chain for its 30 minutes. It says no more than that, since the chain may still hold it. A failed transfer has
+ * no such line: the admin's own sentence says why it failed, and of one the chain's node refused, that it may still
+ * arrive and to check the node's balance before sending again.
  */
 export const DROPPED_NOTE =
-  'The chain no longer holds it, so a new send reuses its nonce. At most one of the two can arrive.';
+  'The manager has not seen it on the chain for 30 minutes, so a new send reuses its nonce. At most one of the two can arrive.';
+
+/**
+ * Said under a transfer the manager answers `unknown` that is not settled yet: the answer of its broadcast was lost,
+ * and it may sit in the chain's pool, so Send waits until the manager can tell, or its 30 minutes pass.
+ */
+export const NOT_KNOWN_YET_NOTE =
+  'The manager cannot tell yet whether the chain took it, so Send waits until it can, 30 minutes at most.';
 
 type ChipColor = 'default' | 'info' | 'success' | 'error' | 'warning';
 
@@ -49,27 +57,18 @@ const STATES: Readonly<Record<string, { label: string; color: ChipColor }>> = {
 };
 
 /**
- * Whether a transfer no longer holds Send back: confirmed, failed, or `unknown`, which the chain no longer holds, so a
- * new send reuses its nonce. A transfer queued or sent holds it.
+ * Whether a transfer has come to an end that cannot change, so the page stops reading it: settled, and no longer
+ * watched. Both are the server's flags: `settled` false holds Send back, and `watched` says it may still change.
  */
-export function transferSettled(item: FundingTransferItem): boolean {
-  return item.state === 'confirmed' || item.state === 'failed' || item.state === 'unknown';
-}
-
-/**
- * Whether a transfer has come to an end that cannot change: confirmed, or failed in a block, which reverted. The page
- * stops reading it then. A failed one with no block, which the chain's node refused at the relay, and an `unknown` one
- * may still arrive, so the page reads them on. The send's own answer may leave the block out, which reads as none.
- */
-export function transferFinal(item: FundingTransferItem): boolean {
-  return item.state === 'confirmed' || (item.state === 'failed' && typeof item.blockNumber === 'number');
+function ended(item: FundingTransferItem): boolean {
+  return item.settled && !item.watched;
 }
 
 /** The line above the transfers: how far they are, and whether the page still reads them. */
 function summaryOf(items: readonly FundingTransferItem[], stopped: boolean): string {
   const halted = 'The page stopped reading them after 10 minutes.';
   if (items.length === 0) return stopped ? halted : 'Reading the transfers still on their way.';
-  const onTheWay = items.filter((item) => !transferSettled(item)).length;
+  const onTheWay = items.filter((item) => !item.settled).length;
   if (onTheWay > 0) {
     const reading = stopped ? halted : 'This page reads them again every few seconds.';
     return `${items.length - onTheWay} of ${items.length} done. ${reading}`;
@@ -89,7 +88,7 @@ function summaryOf(items: readonly FundingTransferItem[], stopped: boolean): str
     if (unknown > 0) parts.push(`${unknown} not known`);
     tally = parts.join(', ');
   }
-  const open = items.filter((item) => !transferFinal(item)).length;
+  const open = items.filter((item) => !ended(item)).length;
   if (open === 0) return `Done: ${tally}.`;
   const watching = stopped
     ? halted
@@ -99,9 +98,10 @@ function summaryOf(items: readonly FundingTransferItem[], stopped: boolean): str
 
 /**
  * The transfers of one send, item by item, each with its transaction on the block explorer once it has one, read again
- * every three seconds while any of them can still change. Send is free again once none is queued or sent; a transfer
- * refused at relay or no longer held by the chain is read on, since it may still arrive. After ten minutes the page
- * stops reading and offers Check again. A send the page resumed comes with no items and is read at once.
+ * every three seconds while any of them can still change. Send is free again once the server says every one is
+ * `settled`; one it still `watched` (refused at the relay, or not known) is read on, since it may still arrive. After
+ * ten minutes the page stops reading and offers Check again. A send the page resumed comes with no items and is read
+ * at once.
  */
 export function TransferProgress({
   bulkId,
@@ -124,8 +124,8 @@ export function TransferProgress({
   const [readError, setReadError] = useState<string | null>(null);
   // No items is a send the page resumed and has not read yet, never one that settled: it holds Send until it is read.
   const unread = items.length === 0;
-  const settled = !unread && items.every((item) => transferSettled(item));
-  const final = !unread && items.every((item) => transferFinal(item));
+  const settled = !unread && items.every((item) => item.settled);
+  const final = !unread && items.every((item) => ended(item));
 
   // One read of the bulk, for the interval and for Check again. A failed read is said, and forgotten once one succeeds.
   const read = useCallback(() => {
@@ -166,15 +166,15 @@ export function TransferProgress({
 
   // Said when Send is free again, and again whenever one more transfer ends after that, so the page reads the
   // balances again each time they can have moved.
-  const ended = items.filter((item) => transferFinal(item)).length;
+  const endedCount = items.filter((item) => ended(item)).length;
   const told = useRef<number | null>(null);
   useEffect(() => {
-    if (!settled || told.current === ended) return;
-    told.current = ended;
+    if (!settled || told.current === endedCount) return;
+    told.current = endedCount;
     onSettled();
-  }, [settled, ended, onSettled]);
+  }, [settled, endedCount, onSettled]);
 
-  const done = items.filter((item) => transferSettled(item)).length;
+  const done = items.filter((item) => item.settled).length;
 
   return (
     <Paper variant="outlined" sx={{ p: 2 }}>
@@ -233,7 +233,7 @@ export function TransferProgress({
                       ) : null}
                       {item.state === 'unknown' ? (
                         <Typography variant="caption" sx={{ color: 'text.secondary' }}>
-                          {DROPPED_NOTE}
+                          {item.settled ? DROPPED_NOTE : NOT_KNOWN_YET_NOTE}
                         </Typography>
                       ) : null}
                     </Stack>

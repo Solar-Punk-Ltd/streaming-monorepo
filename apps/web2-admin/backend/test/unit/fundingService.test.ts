@@ -49,6 +49,8 @@ let transfers: InMemoryFundingTransferStore;
 let pins: InMemoryFundingPinStore;
 let audit: InMemoryAuditLog;
 let service: FundingService;
+/** The service's clock, which a test moves by hand. */
+const clock = { now: 0 };
 
 function build(over: { wallet?: FakeFundingWallet | null; manager?: FakeFundingManager | null } = {}): FundingService {
   return new FundingService({
@@ -57,10 +59,12 @@ function build(over: { wallet?: FakeFundingWallet | null; manager?: FakeFundingM
     transfers,
     pins,
     audit,
+    now: () => clock.now,
   });
 }
 
 beforeEach(() => {
+  clock.now = Date.parse('2026-10-05T12:00:00.000Z');
   wallet = new FakeFundingWallet();
   manager = new FakeFundingManager();
   transfers = new InMemoryFundingTransferStore();
@@ -498,8 +502,10 @@ describe('signing, journalling and relaying a send', () => {
         'kind',
         'nodeId',
         'requestId',
+        'settled',
         'state',
         'txHash',
+        'watched',
       ]);
       assert.equal(item.state, 'submitted');
       assert.equal(item.blockNumber, null);
@@ -954,6 +960,8 @@ describe('settling', () => {
     manager.statusAnswers.set(requestId, { state: 'unknown', error: 'The chain has no receipt for it.' });
     assert.equal((await service.bulk(first.bulkId)).items[0]?.state, 'unknown');
 
+    // Unknown for the manager's 30 minutes: the chain no longer holds it, so a new send may reuse its nonce.
+    clock.now += 30 * 60 * 1000 + 1;
     const second = await service.send(TEST_OPERATOR, [xdai(NODE_B, 1n)]);
     assert.equal(second.items.length, 1);
 
@@ -989,5 +997,233 @@ describe('overlapping refreshes of one send', () => {
     assert.equal(audit.withAction('funding.transfer.sent').length, 1);
     assert.deepEqual(a, b);
     assert.equal(a.items[0]?.state, 'submitted');
+  });
+});
+
+describe("an unknown item younger than the manager's 30 minutes", () => {
+  beforeEach(pinAll);
+
+  const THIRTY_MINUTES = 30 * 60 * 1000;
+
+  it('holds up a new send while the answer of its relay was lost, and lets one through once the window passed', async () => {
+    manager.relayState = 'unknown';
+    const first = await service.send(TEST_OPERATOR, [xdai(NODE_A, 1n)]);
+    const requestId = first.items[0]!.requestId;
+    assert.equal(first.items[0]?.state, 'unknown');
+    // The manager still cannot tell: it may well sit in the pool at its nonce.
+    manager.statusAnswers.set(requestId, { state: 'unknown', error: 'Not confirmed yet.' });
+    manager.relayState = 'submitted';
+
+    const refused = await refusal(service.send(TEST_OPERATOR, [xdai(NODE_B, 1n)]));
+    assert.ok(refused instanceof FundingBusyError);
+    clock.now += THIRTY_MINUTES;
+    assert.ok((await refusal(service.send(TEST_OPERATOR, [xdai(NODE_B, 1n)]))) instanceof FundingBusyError);
+
+    clock.now += 1;
+    const second = await service.send(TEST_OPERATOR, [xdai(NODE_B, 1n)]);
+    assert.equal(second.items.length, 1);
+  });
+
+  it('becomes submitted once the manager finds it, and holds up a send until it is confirmed', async () => {
+    manager.relayState = 'unknown';
+    const first = await service.send(TEST_OPERATOR, [xdai(NODE_A, 1n)]);
+    const requestId = first.items[0]!.requestId;
+    manager.relayState = 'submitted';
+    manager.statusAnswers.set(requestId, { state: 'submitted', error: null });
+
+    assert.ok((await refusal(service.send(TEST_OPERATOR, [xdai(NODE_B, 1n)]))) instanceof FundingBusyError);
+    assert.equal(transfers.get(requestId)?.state, 'submitted');
+    assert.equal(transfers.get(requestId)?.watched, false);
+    clock.now += THIRTY_MINUTES + 1;
+    assert.ok(
+      (await refusal(service.send(TEST_OPERATOR, [xdai(NODE_B, 1n)]))) instanceof FundingBusyError,
+      'a submitted item holds up a send whatever its age',
+    );
+
+    manager.statusAnswers.set(requestId, { state: 'confirmed', blockNumber: 31, error: null });
+    const second = await service.send(TEST_OPERATOR, [xdai(NODE_B, 1n)]);
+    assert.equal(second.items.length, 1);
+  });
+
+  it('counts its 30 minutes from when the manager answered the relay, not from the journal', async () => {
+    // Journalled at t0 with the manager out of reach: the item stays queued.
+    manager.relayErrorAlways = managerFailure('unreachable', null);
+    const first = await service.send(TEST_OPERATOR, [xdai(NODE_A, 1n)]);
+    const requestId = first.items[0]!.requestId;
+    assert.equal(first.items[0]?.state, 'queued');
+
+    // 40 minutes on, the relay lands at last, and the answer of the broadcast is lost: unknown.
+    clock.now += 40 * 60 * 1000;
+    manager.relayErrorAlways = null;
+    manager.relayState = 'unknown';
+    const refreshed = await service.bulk(first.bulkId);
+    assert.deepEqual(
+      refreshed.items.map((item) => [item.state, item.settled, item.watched]),
+      [['unknown', false, true]],
+    );
+    manager.statusAnswers.set(requestId, { state: 'unknown', error: null });
+    manager.relayState = 'submitted';
+
+    assert.ok((await refusal(service.send(TEST_OPERATOR, [xdai(NODE_B, 1n)]))) instanceof FundingBusyError);
+    clock.now += THIRTY_MINUTES;
+    assert.ok((await refusal(service.send(TEST_OPERATOR, [xdai(NODE_B, 1n)]))) instanceof FundingBusyError);
+    clock.now += 1;
+    const second = await service.send(TEST_OPERATOR, [xdai(NODE_B, 1n)]);
+    assert.equal(second.items.length, 1);
+  });
+
+  it("settles at once when the manager's 30-minute rule turns a submitted item unknown", async () => {
+    const first = await service.send(TEST_OPERATOR, [xdai(NODE_A, 1n)]);
+    assert.equal(first.items[0]?.state, 'submitted');
+    clock.now += THIRTY_MINUTES + 60_000;
+    manager.statusAnswers.set(first.items[0]!.requestId, {
+      state: 'unknown',
+      error: 'The chain has no receipt for it and no longer holds it.',
+    });
+
+    const second = await service.send(TEST_OPERATOR, [xdai(NODE_B, 1n)]);
+
+    assert.equal(second.items.length, 1);
+    assert.equal(transfers.get(first.items[0]!.requestId)?.state, 'unknown');
+  });
+
+  it('counts its 30 minutes from the status read that first finds a relay whose answer timed out', async () => {
+    // The relay's answer times out, so the item stays queued; the manager did journal it, and ends up unknown.
+    manager.relayErrorAlways = managerFailure('timeout', null);
+    const first = await service.send(TEST_OPERATOR, [xdai(NODE_A, 1n)]);
+    const requestId = first.items[0]!.requestId;
+    transfers.force(requestId, 'queued', { createdAt: new Date(clock.now) });
+    manager.relayErrorAlways = null;
+    manager.statusAnswers.set(requestId, { state: 'unknown', error: null });
+
+    // The next look is 40 minutes after the journal: counted from the journal, the window would be over already.
+    clock.now += 40 * 60 * 1000;
+    assert.ok((await refusal(service.send(TEST_OPERATOR, [xdai(NODE_B, 1n)]))) instanceof FundingBusyError);
+    assert.equal(transfers.get(requestId)?.state, 'unknown');
+    assert.equal(transfers.get(requestId)?.relayedAt?.getTime(), clock.now);
+
+    clock.now += THIRTY_MINUTES;
+    assert.ok((await refusal(service.send(TEST_OPERATOR, [xdai(NODE_B, 1n)]))) instanceof FundingBusyError);
+    clock.now += 1;
+    const second = await service.send(TEST_OPERATOR, [xdai(NODE_B, 1n)]);
+    assert.equal(second.items.length, 1);
+  });
+
+  it('asks the manager again before letting a send past an aged unknown item, which may be in the pool after all', async () => {
+    manager.relayState = 'unknown';
+    const first = await service.send(TEST_OPERATOR, [xdai(NODE_A, 1n)]);
+    manager.relayState = 'submitted';
+    // The manager finds it in the pool; nothing on the page reads it in between.
+    manager.statusAnswers.set(first.items[0]!.requestId, { state: 'submitted', error: null });
+    clock.now += THIRTY_MINUTES + 60_000;
+
+    assert.ok((await refusal(service.send(TEST_OPERATOR, [xdai(NODE_B, 1n)]))) instanceof FundingBusyError);
+    assert.equal(transfers.get(first.items[0]!.requestId)?.state, 'submitted');
+  });
+
+  it("asks about an item the chain's node refused before a send, and holds the send once the pool holds it", async () => {
+    manager.relayState = 'failed';
+    const first = await service.send(TEST_OPERATOR, [xdai(NODE_A, 1n)]);
+    const requestId = first.items[0]!.requestId;
+    assert.deepEqual(
+      first.items.map((item) => [item.state, item.settled, item.watched]),
+      [['failed', true, true]],
+    );
+    manager.relayState = 'submitted';
+    // The manager finds it in the chain's pool after all: open again.
+    manager.statusAnswers.set(requestId, { state: 'submitted', error: null });
+
+    assert.ok((await refusal(service.send(TEST_OPERATOR, [xdai(NODE_B, 1n)]))) instanceof FundingBusyError);
+    assert.equal(transfers.get(requestId)?.state, 'submitted');
+    assert.equal(transfers.get(requestId)?.watched, false);
+  });
+
+  it('lets a send past an aged unknown item that the manager still cannot tell', async () => {
+    manager.relayState = 'unknown';
+    const first = await service.send(TEST_OPERATOR, [xdai(NODE_A, 1n)]);
+    manager.relayState = 'submitted';
+    manager.statusAnswers.set(first.items[0]!.requestId, { state: 'unknown', error: null });
+    clock.now += THIRTY_MINUTES + 60_000;
+    const reads = manager.calls.status;
+
+    const second = await service.send(TEST_OPERATOR, [xdai(NODE_B, 1n)]);
+
+    assert.equal(second.items.length, 1);
+    assert.equal(manager.calls.status, reads + 1, 'it was asked about first');
+  });
+
+  it('names its send as the open one on the Funding page', async () => {
+    manager.relayState = 'unknown';
+    const sent = await service.send(TEST_OPERATOR, [xdai(NODE_A, 1n)]);
+    manager.statusAnswers.set(sent.items[0]!.requestId, { state: 'unknown', error: null });
+
+    assert.equal((await service.view()).openBulkId, sent.bulkId);
+    clock.now += THIRTY_MINUTES + 1;
+    assert.equal((await service.view()).openBulkId, null);
+  });
+});
+
+describe('the settled and watched flags of an item', () => {
+  it('say for each state whether it holds up a send, and whether it is still watched', async () => {
+    const bulkId = '0b8f6a3e-2c4d-4e5f-8a9b-1c2d3e4f5a6b';
+    const cases = [
+      { name: 'queued', state: 'queued', settled: false, watched: false },
+      { name: 'submitted', state: 'submitted', settled: false, watched: false },
+      { name: 'confirmed', state: 'confirmed', blockNumber: 5, settled: true, watched: false },
+      { name: 'failed in a block', state: 'failed', blockNumber: 5, settled: true, watched: false },
+      { name: 'failed at the relay', state: 'failed', watchedColumn: true, settled: true, watched: true },
+      { name: 'failed, never sent', state: 'failed', settled: true, watched: false },
+      { name: 'young unknown', state: 'unknown', watchedColumn: true, settled: false, watched: true },
+      {
+        name: 'old unknown',
+        state: 'unknown',
+        watchedColumn: true,
+        ageMs: 31 * 60 * 1000,
+        settled: true,
+        watched: true,
+      },
+    ] as const;
+    await transfers.insertAll(
+      cases.map((one, index) => ({
+        requestId: `00000000-0000-4000-8000-00000000000${index}`,
+        bulkId,
+        nodeId: `stage-1:node-${index}`,
+        nodeLabel: one.name,
+        toAddress: WALLET_A,
+        kind: 'xdai' as const,
+        amount: '1',
+        nonce: index,
+        rawTransaction: '0x02',
+        txHash: `0x${'ab'.repeat(32)}`,
+        requestedByUserId: null,
+        requestedBy: 'test-operator',
+      })),
+    );
+    cases.forEach((one, index) =>
+      transfers.force(`00000000-0000-4000-8000-00000000000${index}`, one.state, {
+        blockNumber: 'blockNumber' in one ? one.blockNumber : null,
+        watched: 'watchedColumn' in one,
+        // The manager answered its relay this long ago.
+        relayedAt: new Date(clock.now - ('ageMs' in one ? one.ageMs : 0)),
+      }),
+    );
+
+    const { items } = await build({ manager: null }).bulk(bulkId);
+
+    assert.deepEqual(
+      items.map((item, index) => [cases[index]?.name, item.settled, item.watched]),
+      cases.map((one) => [one.name, one.settled, one.watched]),
+    );
+  });
+
+  it('are answered by a send as well', async () => {
+    pinAll();
+    manager.relayState = 'unknown';
+    const sent = await service.send(TEST_OPERATOR, [xdai(NODE_A, 1n)]);
+
+    assert.deepEqual(
+      sent.items.map((item) => [item.state, item.settled, item.watched]),
+      [['unknown', false, true]],
+    );
   });
 });

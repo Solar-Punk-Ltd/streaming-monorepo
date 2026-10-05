@@ -5,8 +5,9 @@
  *
  * What the in-memory stores of the unit tests cannot stand in for is the SQL: that the send lock is one across
  * connections, taken without waiting and released when the work is over, failed or not; that a send's items are
- * journalled together or not at all, and read back in nonce order with the signed bytes as they went in; that only a
- * queued or submitted item holds up a send, the predicate of migration 016's partial index; that an update writes only
+ * journalled together or not at all, and read back in nonce order with the signed bytes as they went in; that a
+ * queued or submitted item holds up a send, and an unknown one for 30 minutes from when the manager answered its relay
+ * (`relayed_at`, or the journal's moment without one), as read through migration 016's partial index; that an update writes only
  * while an item is open or watched, so a late receipt turns a watched failed item confirmed and nothing moves one
  * settled for good; that only an unknown item, or a failed one with no block, is watched; that the CHECKs and the
  * unique constraints refuse what the service never writes; and that a pin replaces the one before it.
@@ -199,30 +200,52 @@ describe('funding_transfers', () => {
     );
   });
 
-  it('holds up a send only for a queued or submitted item, and names the sends still asked about', async () => {
-    assert.equal(await transfers.hasUnsettled(), false);
+  it('holds up a send for a queued or submitted item, and for an unknown one within 30 minutes of its relay', async () => {
+    const journalled = new Date();
+    assert.equal(await transfers.hasUnsettled(journalled), false);
     const older = randomUUID();
     const [a, b] = [item(older, 1), item(older, 2)];
     await transfers.insertAll([a, b]);
-    assert.equal(await transfers.hasUnsettled(), true);
-    assert.deepEqual(await transfers.openBulkIds(3), [older]);
+    assert.equal(await transfers.hasUnsettled(journalled), true);
+    assert.deepEqual(await transfers.openBulkIds(3, journalled), [older]);
+    assert.equal((await transfers.listBulk(older))[0]?.relayedAt, null, 'not relayed yet');
 
-    await transfers.update(a.requestId, { state: 'confirmed', error: null, watched: false });
-    await transfers.update(b.requestId, { state: 'unknown', error: null, watched: true });
-    assert.equal(await transfers.hasUnsettled(), false, 'an unknown item holds up no send');
-    assert.deepEqual(await transfers.openBulkIds(3), []);
+    // The relay lands 40 minutes after the journal, and the answer of the broadcast is lost.
+    const relayed = new Date(journalled.getTime() + 40 * 60 * 1000);
+    await transfers.update(a.requestId, { state: 'confirmed', error: null, watched: false, relayedAt: relayed });
+    const unknown = await transfers.update(b.requestId, {
+      state: 'unknown',
+      error: null,
+      watched: true,
+      relayedAt: relayed,
+    });
+    assert.equal(unknown?.relayedAt?.getTime(), relayed.getTime());
+    assert.equal(await transfers.hasUnsettled(relayed), true, 'a young unknown item holds up a send');
+    assert.deepEqual(await transfers.openBulkIds(3, relayed), [older]);
+
+    const thirty = 30 * 60 * 1000;
+    assert.equal(await transfers.hasUnsettled(new Date(relayed.getTime() + thirty)), true, 'at 30 minutes, still');
+    const later = new Date(relayed.getTime() + thirty + 1);
+    assert.equal(await transfers.hasUnsettled(later), false, 'past 30 minutes, an unknown item holds up no send');
+    assert.deepEqual(await transfers.openBulkIds(3, later), []);
     assert.deepEqual(await transfers.askedBulkIds(3), [older], 'and is still asked about');
 
-    // A later send, journalled after the first: the latest comes first.
-    await database.pool.query("UPDATE funding_transfers SET created_at = NOW() - INTERVAL '1 hour'");
-    const newer = randomUUID();
-    await transfers.insertAll([item(newer, 3)]);
-    assert.deepEqual(await transfers.openBulkIds(3), [newer]);
-    assert.deepEqual(await transfers.askedBulkIds(3), [newer, older]);
-    assert.deepEqual(await transfers.askedBulkIds(1), [newer]);
+    // A status read moves it without a relay: relayed_at stays.
+    const read = await transfers.update(b.requestId, { state: 'unknown', error: 'still not known', watched: true });
+    assert.equal(read?.relayedAt?.getTime(), relayed.getTime());
 
+    // It reverts in a block: settled for good, asked about no more.
     await transfers.update(b.requestId, { state: 'failed', error: 'reverted', blockNumber: 4, watched: false });
-    assert.deepEqual(await transfers.askedBulkIds(3), [newer]);
+    assert.deepEqual(await transfers.askedBulkIds(3), []);
+
+    // An unknown item with no relay recorded counts from its journal, and never holds a send for good.
+    const fallback = randomUUID();
+    const c = item(fallback, 3);
+    await transfers.insertAll([c]);
+    await transfers.update(c.requestId, { state: 'unknown', error: null, watched: true });
+    assert.deepEqual(await transfers.openBulkIds(3, new Date()), [fallback]);
+    assert.deepEqual(await transfers.openBulkIds(3, new Date(Date.now() + thirty + 60_000)), []);
+    assert.deepEqual(await transfers.askedBulkIds(3), [fallback]);
   });
 });
 

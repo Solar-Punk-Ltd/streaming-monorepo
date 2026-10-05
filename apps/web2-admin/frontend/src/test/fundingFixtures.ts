@@ -58,7 +58,10 @@ export function makeView(over: Partial<FundingView> = {}): FundingView {
   };
 }
 
-/** One transfer of a send: 0.1 xDAI to the stage's uploader, sent and not in a block yet. */
+/**
+ * One transfer of a send: 0.1 xDAI to the stage's uploader, sent and not in a block yet, so it holds up a new send
+ * (`settled` false) and is under way rather than watched (`watched` false), as the API answers it.
+ */
 export function makeItem(over: Partial<FundingTransferItem> = {}): FundingTransferItem {
   return {
     requestId: 'request-1',
@@ -69,6 +72,8 @@ export function makeItem(over: Partial<FundingTransferItem> = {}): FundingTransf
     txHash: null,
     blockNumber: null,
     error: null,
+    settled: false,
+    watched: false,
     ...over,
   };
 }

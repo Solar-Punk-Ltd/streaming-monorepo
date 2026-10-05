@@ -39,6 +39,7 @@ import { Logger } from '../Logger.js';
 import type { BrandWallet, BrandWalletTransaction } from './BrandWallet.js';
 import type { FundingPinRow, FundingPinStore, NewFundingPin } from './FundingPinRepository.js';
 import {
+  holdsSend,
   isAsked,
   isOpen,
   type FundingTransferRow,
@@ -56,12 +57,14 @@ import { ManagerFundingError, type ManagerFundingClient } from './ManagerFunding
  *
  * A send is refused, in this order: a password that is wrong (the route checks it first); a node named twice for one
  * kind; funding not set up; a node not pinned, whose wallet is not the pinned one or could not be read; an earlier
- * send with an item still `queued` or `submitted`, once refreshed; a fee or gas limit over the admin's own ceilings; a
+ * send with an item that still holds it up (`queued`, `submitted`, or `unknown` within the manager's 30 minutes), once
+ * refreshed; a fee or gas limit over the admin's own ceilings; a
  * wallet that cannot pay for it, fees counted. Then every item is signed with consecutive nonces and journalled
  * (`funding_transfers`) before any is relayed, one send at a time under the store's send lock. What the manager does
  * not take for a reason that passes stays journalled, and `bulk` relays it again, the same bytes under the same
- * request id. Nothing is ever signed twice, and a failed item is never sent again. An `unknown` item, and a `failed`
- * one the chain's node refused with no block, hold up no send but stay watched for a late receipt.
+ * request id. Nothing is ever signed twice, and a failed item is never sent again. An `unknown` item older than the
+ * manager's 30 minutes, and a `failed` one the chain's node refused with no block, hold up no send but stay watched
+ * for a late receipt; a younger `unknown` one holds it up, since the chain may hold it at its nonce.
  *
  * Neither the signed transaction nor the wallet's key reaches an answer, a log line or the audit log.
  */
@@ -170,8 +173,13 @@ function nodeName(node: { label: string; nodeId: string }): string {
   return `${node.label} (${node.nodeId})`;
 }
 
-/** An item as the console reads it: never the signed transaction. */
-export function toFundingTransferItem(row: FundingTransferRow): FundingTransferItem {
+/**
+ * An item as the console reads it at `now`, never with the signed transaction. The one place `settled` and `watched`
+ * are worked out: `settled` is false while the item holds up a new send ({@link holdsSend}: open, or `unknown` within
+ * the manager's 30 minutes), and `watched` is the journal's own column, true while an `unknown` item, or a `failed` one
+ * the chain's node refused with no block, is still asked about for a late receipt.
+ */
+export function toFundingTransferItem(row: FundingTransferRow, now: number): FundingTransferItem {
   return {
     requestId: row.requestId,
     nodeId: row.nodeId,
@@ -181,6 +189,8 @@ export function toFundingTransferItem(row: FundingTransferRow): FundingTransferI
     txHash: row.txHash,
     blockNumber: row.blockNumber,
     error: row.error,
+    settled: !holdsSend(row, now),
+    watched: row.watched,
   };
 }
 
@@ -226,6 +236,11 @@ export interface FundingServiceDeps {
   audit: AuditLog;
   /** A new request id or bulk id: `randomUUID` by default. */
   newId?: () => string;
+  /**
+   * The admin's clock, in ms: `Date.now` by default, a fake in the unit tests. It stamps when the manager's answer to
+   * a relay came back (`relayed_at`), and an `unknown` item's 30 minutes are read against it.
+   */
+  now?: () => number;
 }
 
 export class FundingService {
@@ -235,6 +250,7 @@ export class FundingService {
   private readonly pins: FundingPinStore;
   private readonly audit: AuditLog;
   private readonly newId: () => string;
+  private readonly now: () => number;
   /** The refresh of each send running now, so overlapping reads of one send share it rather than relay twice. */
   private readonly refreshing = new Map<string, Promise<void>>();
 
@@ -245,6 +261,13 @@ export class FundingService {
     this.pins = deps.pins;
     this.audit = deps.audit;
     this.newId = deps.newId ?? randomUUID;
+    this.now = deps.now ?? Date.now;
+  }
+
+  /** The items of a send as the console reads them now. */
+  private async itemsOf(bulkId: string): Promise<FundingTransferItem[]> {
+    const now = this.now();
+    return (await this.transfers.listBulk(bulkId)).map((row) => toFundingTransferItem(row, now));
   }
 
   /**
@@ -261,7 +284,7 @@ export class FundingService {
         await this.refreshBulk(manager, bulkId);
       }
     }
-    const [openBulkId = null] = await this.transfers.openBulkIds(1);
+    const [openBulkId = null] = await this.transfers.openBulkIds(1, new Date(this.now()));
     const view: FundingView = {
       configured: this.manager !== null,
       wallet: address ? { address, xdaiWei: null, xbzzPlur: null } : null,
@@ -389,13 +412,15 @@ export class FundingService {
     const targets = this.targetsOf(items, nodesOf(inventory), await this.pins.all());
 
     const locked = await this.transfers.withSendLock(async () => {
-      if (await this.transfers.hasUnsettled()) {
-        // The page that sent it may be gone: the open send is refreshed here, so it never holds the wallet for good.
-        for (const openBulkId of await this.transfers.openBulkIds(FUNDING_REFRESH_LIMIT)) {
-          await this.refreshBulk(manager, openBulkId);
-        }
-        if (await this.transfers.hasUnsettled()) throw new FundingBusyError();
-      }
+      // Asked first, whatever the clock says: an `unknown` item past its 30 minutes may sit in the pool after all, and
+      // the manager then answers it `submitted`; a client that never reads the page would otherwise sign over its
+      // nonce. The page that sent an open one may be gone as well: refreshed here, it never holds the wallet for good.
+      const asked = new Set([
+        ...(await this.transfers.askedBulkIds(FUNDING_REFRESH_LIMIT)),
+        ...(await this.transfers.openBulkIds(FUNDING_REFRESH_LIMIT, new Date(this.now()))),
+      ]);
+      for (const bulkId of asked) await this.refreshBulk(manager, bulkId);
+      if (await this.transfers.hasUnsettled(new Date(this.now()))) throw new FundingBusyError();
       const account = await this.readAccount(manager, from);
       checkCeilings(account, targets);
       checkBalance(account, targets);
@@ -466,7 +491,7 @@ export class FundingService {
       if (outcome !== 'taken') stopped = outcome;
     }
 
-    return { bulkId, items: (await this.transfers.listBulk(bulkId)).map(toFundingTransferItem) };
+    return { bulkId, items: await this.itemsOf(bulkId) };
   }
 
   /**
@@ -477,7 +502,7 @@ export class FundingService {
     const rows = await this.transfers.listBulk(bulkId);
     if (rows.length === 0) throw new FundingBulkNotFoundError(bulkId);
     if (this.manager && rows.some(isAsked)) await this.refreshBulk(this.manager, bulkId);
-    return { items: (await this.transfers.listBulk(bulkId)).map(toFundingTransferItem) };
+    return { items: await this.itemsOf(bulkId) };
   }
 
   /**
@@ -553,6 +578,9 @@ export class FundingService {
           error,
           blockNumber: status.blockNumber,
           watched,
+          // A queued row the manager answers for was relayed after all, its answer lost: the manager journalled it no
+          // later than now, so an `unknown` item's window starts here, as after an answered relay.
+          ...(row.state === 'queued' ? { relayedAt: new Date(this.now()) } : {}),
         });
         if (updated) await this.auditMove(row, updated, FUNDING_SYSTEM, true);
       }
@@ -594,6 +622,8 @@ export class FundingService {
       state: answer.state,
       error: answer.state === 'failed' ? REFUSED_AT_RELAY : null,
       watched: answer.state === 'failed' || answer.state === 'unknown',
+      // Once the answer is back, so at or after the manager's own journal moment: an unknown item's window starts here.
+      relayedAt: new Date(this.now()),
     });
     if (updated) await this.auditMove(row, updated, actor, true);
     return answer.state === 'failed' ? 'failed' : 'taken';

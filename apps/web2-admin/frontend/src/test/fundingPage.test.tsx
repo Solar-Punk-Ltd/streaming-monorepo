@@ -7,10 +7,9 @@ import { EXPLORER_TX_URL } from '../components/funding/balance';
 import { FEE_NOTE } from '../components/funding/SendDialog';
 import {
   DROPPED_NOTE,
+  NOT_KNOWN_YET_NOTE,
   TRANSFER_POLL_LIMIT_MS,
   TRANSFER_POLL_MS,
-  transferFinal,
-  transferSettled,
 } from '../components/funding/TransferProgress';
 import { FUND_IT_TEXT } from '../components/funding/WalletCard';
 import { setUnauthorizedHandler } from '../http';
@@ -368,6 +367,8 @@ describe('sending from the brand wallet', () => {
                     kind: 'xdai',
                     amount: '500000000000000000',
                     state: 'submitted',
+                    settled: false,
+                    watched: false,
                   },
                   {
                     requestId: 'request-2',
@@ -375,6 +376,8 @@ describe('sending from the brand wallet', () => {
                     kind: 'xbzz',
                     amount: '25000000000000000',
                     state: 'submitted',
+                    settled: false,
+                    watched: false,
                   },
                 ],
               },
@@ -395,6 +398,8 @@ describe('sending from the brand wallet', () => {
                   txHash: TX_HASH,
                   blockNumber: state === 'confirmed' ? 1 : null,
                   error: null,
+                  settled: state === 'confirmed',
+                  watched: false,
                 },
                 {
                   requestId: 'request-2',
@@ -405,6 +410,8 @@ describe('sending from the brand wallet', () => {
                   txHash: OTHER_TX_HASH,
                   blockNumber: 7,
                   error: REVERTED,
+                  settled: true,
+                  watched: false,
                 },
               ],
             }),
@@ -511,7 +518,11 @@ describe('sending from the brand wallet', () => {
         },
         {
           path: TRANSFERS,
-          respond: () => jsonOk({ items: [{ ...item, state: 'unknown', txHash: TX_HASH, error: DROPPED }] }),
+          // Unknown for longer than the manager's 30 minutes: settled for Send, and still watched.
+          respond: () =>
+            jsonOk({
+              items: [{ ...item, state: 'unknown', txHash: TX_HASH, error: DROPPED, settled: true, watched: true }],
+            }),
         },
       ],
     );
@@ -526,6 +537,10 @@ describe('sending from the brand wallet', () => {
     expect(await row.findByText('Not known yet')).toBeInTheDocument();
     expect(row.getByText(DROPPED)).toBeInTheDocument();
     expect(row.getByText(DROPPED_NOTE)).toBeInTheDocument();
+    // It says only what is known: the manager has not seen it for its 30 minutes, not that the chain dropped it.
+    expect(DROPPED_NOTE).toBe(
+      'The manager has not seen it on the chain for 30 minutes, so a new send reuses its nonce. At most one of the two can arrive.',
+    );
     const reading =
       'Done: 0 confirmed, 1 not known. This page still reads the one that may yet arrive, every few seconds.';
     expect(screen.getByText(reading)).toBeInTheDocument();
@@ -558,7 +573,14 @@ describe('sending from the brand wallet', () => {
   it("says why the chain's node refused a transfer that reached no block, frees Send, and reads it until it arrives", async () => {
     vi.useFakeTimers({ shouldAdvanceTime: true });
     const sent = makeItem({ requestId: 'request-5' });
-    let item: FundingTransferItem = { ...sent, state: 'failed', txHash: TX_HASH, error: REFUSED_AT_RELAY };
+    let item: FundingTransferItem = {
+      ...sent,
+      state: 'failed',
+      txHash: TX_HASH,
+      error: REFUSED_AT_RELAY,
+      settled: true,
+      watched: true,
+    };
     const fetchMock = serve(
       () => makeView(),
       [
@@ -597,7 +619,7 @@ describe('sending from the brand wallet', () => {
 
     // Still watched: the manager finds its receipt after all, and the balances are read again.
     const viewsBefore = views();
-    item = { ...item, state: 'confirmed', blockNumber: 9, error: null };
+    item = { ...item, state: 'confirmed', blockNumber: 9, error: null, watched: false };
     await act(() => vi.advanceTimersByTimeAsync(TRANSFER_POLL_MS));
     expect(await row.findByText('Confirmed')).toBeInTheDocument();
     expect(row.queryByText(REFUSED_AT_RELAY)).not.toBeInTheDocument();
@@ -650,7 +672,7 @@ describe('a send still open', () => {
     expect(screen.getByRole('button', { name: 'Send' })).toBeDisabled();
     expect(screen.getByText(WAIT)).toBeInTheDocument();
 
-    item = { ...item, state: 'confirmed', blockNumber: 7 };
+    item = { ...item, state: 'confirmed', blockNumber: 7, settled: true };
     open = null;
     await act(() => vi.advanceTimersByTimeAsync(TRANSFER_POLL_MS));
     expect(await screen.findByText('Done: the transfer is confirmed.')).toBeInTheDocument();
@@ -681,29 +703,91 @@ describe('a send still open', () => {
   });
 });
 
-describe('when a transfer is settled', () => {
-  const onItsWay = [makeItem({ state: 'queued' }), makeItem({ state: 'submitted', txHash: TX_HASH })];
-  const confirmed = makeItem({ state: 'confirmed', txHash: TX_HASH, blockNumber: 7 });
-  const reverted = makeItem({ state: 'failed', txHash: TX_HASH, blockNumber: 7, error: REVERTED });
-  const refused = makeItem({ state: 'failed', txHash: TX_HASH, error: REFUSED_AT_RELAY });
-  const dropped = makeItem({ state: 'unknown', txHash: TX_HASH, error: DROPPED });
+describe("the server's settled and watched flags", () => {
+  const BULK = '2c3d4e5f-6a7b-4c8d-9e0f-1a2b3c4d5e6f';
 
-  it('holds Send while a transfer is queued or sent, and frees it once it is confirmed, failed or not known', () => {
-    expect(onItsWay.map((item) => transferSettled(item))).toEqual([false, false]);
-    expect([confirmed, reverted, refused, dropped].map((item) => transferSettled(item))).toEqual([
-      true,
-      true,
-      true,
-      true,
-    ]);
+  it('holds Send while an item is not settled, a young unknown one included, and frees it once all are', async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    // The manager lost the answer of its broadcast: unknown, within its 30 minutes, so not settled, and watched.
+    const lost = makeItem({ requestId: 'request-7', state: 'unknown', txHash: TX_HASH, settled: false, watched: true });
+    let item: FundingTransferItem = lost;
+    const fetchMock = serve(
+      () => makeView(),
+      [
+        { path: TRANSFERS, method: 'POST', respond: () => jsonOk({ bulkId: BULK, items: [lost] }, 202) },
+        { path: TRANSFERS, respond: () => jsonOk({ items: [item] }) },
+      ],
+    );
+    renderWithProviders(<FundingPage />);
+
+    const dialog = await openSend();
+    fireEvent.click(dialog.getByRole('button', { name: 'Send' }));
+    const row = within(await screen.findByRole('table', { name: 'Transfers sent' }));
+    expect(row.getByText('Not known yet')).toBeInTheDocument();
+    expect(row.getByText(NOT_KNOWN_YET_NOTE)).toBeInTheDocument();
+    expect(row.queryByText(DROPPED_NOTE)).not.toBeInTheDocument();
+    expect(screen.getByText('0 of 1 done. This page reads them again every few seconds.')).toBeInTheDocument();
+    enterAnotherSend();
+    expect(screen.getByRole('button', { name: 'Send' })).toBeDisabled();
+    expect(screen.getByText(WAIT)).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Dismiss' })).not.toBeInTheDocument();
+
+    // The manager finds it in the pool: sent, still not settled.
+    item = { ...lost, state: 'submitted', settled: false, watched: false };
+    await act(() => vi.advanceTimersByTimeAsync(TRANSFER_POLL_MS));
+    expect(await row.findByText('Sent')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Send' })).toBeDisabled();
+
+    item = { ...item, state: 'confirmed', blockNumber: 11, settled: true };
+    await act(() => vi.advanceTimersByTimeAsync(TRANSFER_POLL_MS));
+    expect(await screen.findByText('Done: the transfer is confirmed.')).toBeInTheDocument();
+    await waitFor(() => expect(screen.getByRole('button', { name: 'Send' })).toBeEnabled());
+    expect(screen.queryByText(WAIT)).not.toBeInTheDocument();
+
+    const ended = pollsOf(fetchMock);
+    await act(() => vi.advanceTimersByTimeAsync(TRANSFER_POLL_MS * 3));
+    expect(pollsOf(fetchMock)).toBe(ended);
   });
 
-  it('stops reading a transfer only at an end that cannot change: confirmed, or failed in a block', () => {
-    expect([confirmed, reverted].map((item) => transferFinal(item))).toEqual([true, true]);
-    expect([...onItsWay, refused, dropped].map((item) => transferFinal(item))).toEqual([false, false, false, false]);
-    // A send's own answer may leave the block out: a failed item without one reads as refused, and is read on.
-    const { blockNumber: _left, ...withoutBlock } = refused;
-    expect(transferFinal(withoutBlock as FundingTransferItem)).toBe(false);
+  it('keeps reading while any item is watched, and stops once none is', async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    const confirmed = makeItem({ state: 'confirmed', txHash: TX_HASH, blockNumber: 7, settled: true });
+    const refused = makeItem({
+      requestId: 'request-8',
+      nodeId: 'catalogue:bee',
+      state: 'failed',
+      txHash: OTHER_TX_HASH,
+      error: REFUSED_AT_RELAY,
+      settled: true,
+      watched: true,
+    });
+    let items: FundingTransferItem[] = [confirmed, refused];
+    const fetchMock = serve(
+      () => makeView(),
+      [
+        { path: TRANSFERS, method: 'POST', respond: () => jsonOk({ bulkId: BULK, items }, 202) },
+        { path: TRANSFERS, respond: () => jsonOk({ items }) },
+      ],
+    );
+    renderWithProviders(<FundingPage />);
+
+    const dialog = await openSend();
+    fireEvent.click(dialog.getByRole('button', { name: 'Send' }));
+    await screen.findByRole('heading', { name: 'Transfers' });
+    enterAnotherSend();
+    expect(screen.getByRole('button', { name: 'Send' })).toBeEnabled();
+
+    const before = pollsOf(fetchMock);
+    await act(() => vi.advanceTimersByTimeAsync(TRANSFER_POLL_MS * 2));
+    expect(pollsOf(fetchMock)).toBe(before + 2);
+
+    // The server stops watching it: a failure in a block, final.
+    items = [confirmed, { ...refused, blockNumber: 8, error: REVERTED, watched: false }];
+    await act(() => vi.advanceTimersByTimeAsync(TRANSFER_POLL_MS));
+    expect(await screen.findByText('Done: 1 confirmed, 1 failed.')).toBeInTheDocument();
+    const ended = pollsOf(fetchMock);
+    await act(() => vi.advanceTimersByTimeAsync(TRANSFER_POLL_MS * 3));
+    expect(pollsOf(fetchMock)).toBe(ended);
   });
 });
 
@@ -753,7 +837,13 @@ describe('what the password routes and the reading answer', () => {
           path: TRANSFERS,
           method: 'POST',
           respond: () =>
-            jsonOk({ bulkId: '8d5f2c4a-3e6f-4a71-8cbd-2e3f4a5b6c7d', items: [{ ...item, state: 'submitted' }] }, 202),
+            jsonOk(
+              {
+                bulkId: '8d5f2c4a-3e6f-4a71-8cbd-2e3f4a5b6c7d',
+                items: [{ ...item, state: 'submitted', settled: false, watched: false }],
+              },
+              202,
+            ),
         },
         { path: TRANSFERS, respond: () => jsonError(502, {}) },
       ],

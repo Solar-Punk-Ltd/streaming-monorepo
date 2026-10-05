@@ -121,10 +121,19 @@ describe('the answers', () => {
       txHash: null,
       blockNumber: null,
       error: "The chain's node refused it.",
+      settled: true,
+      watched: true,
     };
-    const reverted: FundingTransferItem = { ...refused, blockNumber: 12, error: 'The transaction reverted on chain.' };
+    const reverted: FundingTransferItem = {
+      ...refused,
+      blockNumber: 12,
+      error: 'The transaction reverted on chain.',
+      watched: false,
+    };
 
     assert.equal(refused.blockNumber, null);
     assert.equal(reverted.blockNumber, 12);
+    assert.equal(refused.watched, true, 'a refusal at the relay is watched for a late receipt');
+    assert.equal(reverted.watched, false, 'a revert is final');
   });
 });
