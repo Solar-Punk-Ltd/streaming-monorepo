@@ -408,6 +408,9 @@ count, because a published sequence cannot be reused, so a rung still placing se
 the outage when the point was agreed resumes at its own count and the uploader logs a warning. Nor
 does it raise a rung more than `MAX_RESUME_RAISE` sequences: a point further away is a count read
 wrongly rather than a ladder drifting apart, and the rung resumes at its own count with a warning. A
+rung SRS held through a short drop resumes at its own count too: its numbering never stopped, so its
+sequence already names the same media as its siblings', and the source's return can land between
+two rungs delivering one segment, whose copy on the later rung is media cut before the drop. A
 single rendition resumes at its own count as it always has, and so does every rung after the
 engine's own counter restarts.
 

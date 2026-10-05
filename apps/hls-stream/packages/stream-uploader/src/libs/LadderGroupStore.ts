@@ -55,6 +55,11 @@ export interface ReturnInProgress {
    * of this process, and a rung coming back after it has to resume where its siblings already did.
    */
   resumeAt?: number;
+  /**
+   * The rungs that came back from this return because SRS held them through the drop, which resume
+   * at their own count. Absent when there are none. See `StreamOrchestrator.resumePointOf`.
+   */
+  heldRungs?: string[];
 }
 
 /**
@@ -88,6 +93,10 @@ function readEpochs(epochs: unknown): BroadcastEpoch[] {
   );
 }
 
+function isListOfNames(value: unknown): value is string[] {
+  return Array.isArray(value) && value.every((name) => typeof name === 'string');
+}
+
 /**
  * The return a persisted record names, or undefined for one that names none or names it damaged.
  *
@@ -98,16 +107,17 @@ function readReturnInProgress(value: unknown): ReturnInProgress | undefined {
   if (value === null || typeof value !== 'object') {
     return undefined;
   }
-  const { token, resumedRungs, resumeAt } = value as Partial<ReturnInProgress>;
-  if (
-    typeof token !== 'string' ||
-    !Array.isArray(resumedRungs) ||
-    !resumedRungs.every((rung) => typeof rung === 'string')
-  ) {
+  const { token, resumedRungs, resumeAt, heldRungs } = value as Partial<ReturnInProgress>;
+  if (typeof token !== 'string' || !isListOfNames(resumedRungs)) {
     return undefined;
   }
-  // A damaged point is dropped alone, so the next rung to place agrees one again from its siblings.
-  return Number.isInteger(resumeAt) ? { token, resumedRungs, resumeAt } : { token, resumedRungs };
+  // A damaged point or held list is dropped alone, which costs what a restart cost before either was kept.
+  return {
+    token,
+    resumedRungs,
+    ...(Number.isInteger(resumeAt) ? { resumeAt } : {}),
+    ...(isListOfNames(heldRungs) ? { heldRungs } : {}),
+  };
 }
 
 /**

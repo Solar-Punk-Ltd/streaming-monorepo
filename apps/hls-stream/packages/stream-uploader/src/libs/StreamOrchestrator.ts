@@ -179,6 +179,8 @@ interface StartStreamOptions {
 interface ActiveReturn {
   token: string;
   resumedRungs: Set<string>;
+  /** The rungs that came back through `resumeHeldRungs`, which resume at their own count. */
+  heldRungs: Set<string>;
   /** The published sequence its rungs resume at, once agreed. See {@link StreamOrchestrator.resumePointOf}. */
   resumeAt?: number;
 }
@@ -731,7 +733,7 @@ export class StreamOrchestrator {
       });
 
     for (const streamId of held) {
-      this.activeStreams.get(streamId)?.resumeAfterReconnect(this.tokenForThisReturn(streamId));
+      this.activeStreams.get(streamId)?.resumeAfterReconnect(this.tokenForThisReturn(streamId, true));
       this.holdTheReaperForAFirstSegment(streamId);
       this.ensureStallReaperArmed(streamId);
     }
@@ -790,18 +792,25 @@ export class StreamOrchestrator {
    * and one a sibling has yet to join carry the same kind of token, and only the set tells them apart.
    * A lone rendition needs none of it, since its only rung is always in the set.
    */
-  private tokenForThisReturn(streamId: string): string {
+  private tokenForThisReturn(streamId: string, held = false): string {
     const base = this.streamBases.get(streamId) ?? null;
     const key = this.datingKeyOf(streamId, base);
     const inProgress = this.returnsInProgress.get(key) ?? this.persistedReturnOf(base);
 
     if (inProgress !== undefined && !inProgress.resumedRungs.has(streamId)) {
       inProgress.resumedRungs.add(streamId);
+      if (held) {
+        inProgress.heldRungs.add(streamId);
+      }
       this.rememberReturn(key, base, inProgress);
       return inProgress.token;
     }
 
-    const started = { token: crypto.randomUUID(), resumedRungs: new Set([streamId]) };
+    const started: ActiveReturn = {
+      token: crypto.randomUUID(),
+      resumedRungs: new Set([streamId]),
+      heldRungs: new Set(held ? [streamId] : []),
+    };
     this.rememberReturn(key, base, started);
     return started.token;
   }
@@ -814,6 +823,7 @@ export class StreamOrchestrator {
       : {
           token: persisted.token,
           resumedRungs: new Set(persisted.resumedRungs),
+          heldRungs: new Set(persisted.heldRungs),
           ...(persisted.resumeAt === undefined ? {} : { resumeAt: persisted.resumeAt }),
         };
   }
@@ -831,6 +841,7 @@ export class StreamOrchestrator {
         returnInProgress: {
           token: inProgress.token,
           resumedRungs: [...inProgress.resumedRungs],
+          ...(inProgress.heldRungs.size === 0 ? {} : { heldRungs: [...inProgress.heldRungs] }),
           ...(inProgress.resumeAt === undefined ? {} : { resumeAt: inProgress.resumeAt }),
         },
       });
@@ -1256,7 +1267,7 @@ export class StreamOrchestrator {
       mediatype,
       ladder,
       anchor,
-      dating: this.datingFor(datingKey, match?.baseStreamId ?? null),
+      dating: this.datingFor(datingKey, match?.baseStreamId ?? null, streamId),
       metrics: this.metrics,
       admin: this.adminReportingFor(admin?.id),
       predecessorDrained,
@@ -1935,7 +1946,7 @@ export class StreamOrchestrator {
       mediatype: state.mediatype,
       ladder: state.ladder,
       anchor,
-      dating: this.datingFor(datingKey, base),
+      dating: this.datingFor(datingKey, base, state.streamId),
       restoreState: {
         streamRawTopic: state.streamRawTopic,
         socIndex: state.socIndex,
@@ -2694,11 +2705,12 @@ export class StreamOrchestrator {
   }
 
   /** The dating handed to one session, bound to its broadcast rather than to the session. */
-  private datingFor(datingKey: string, base: string | null): BroadcastDating {
+  private datingFor(datingKey: string, base: string | null, streamId: string): BroadcastDating {
     return {
       epochFrom: (resumeAt, notBeforeMs, returnToken) =>
         this.reanchorBroadcast(datingKey, base, resumeAt, notBeforeMs, returnToken),
-      resumePointFor: (returnToken, ownResumeAt) => this.resumePointOf(datingKey, base, returnToken, ownResumeAt),
+      resumePointFor: (returnToken, ownResumeAt) =>
+        this.resumePointOf(streamId, datingKey, base, returnToken, ownResumeAt),
     };
   }
 
@@ -2714,11 +2726,25 @@ export class StreamOrchestrator {
    * counted past it. It rides in the ladder group record with the return's name, so a rung coming back
    * after a restart of this process resumes where its siblings did.
    *
+   * ⛔⛔ **A rung SRS held through the drop resumes at its own count, and agrees nothing.** Its
+   * numbering never stopped, so its sequence already names the same media as its siblings'. The
+   * source's return can land between two rungs delivering the same segment, and a held rung's next
+   * segment is then media cut before the drop. Raised to a sibling's count, it was published a
+   * sequence late with a gap entry in front of it, and every segment after it with it, for the rest
+   * of the broadcast. It still agrees the point when it is the first of its return to place, so a
+   * rung SRS cut during the same drop breaks where its held siblings did. See {@link resumeHeldRungs}.
+   *
    * A lone rendition resumes at its own count, as it always has: it has no sibling to agree with. So
    * does a rung asking about a return that is no longer the one in progress, which a sibling that
    * announced again has already replaced: its point went with it.
    */
-  private resumePointOf(datingKey: string, base: string | null, returnToken: string, ownResumeAt: number): number {
+  private resumePointOf(
+    streamId: string,
+    datingKey: string,
+    base: string | null,
+    returnToken: string,
+    ownResumeAt: number,
+  ): number {
     if (base === null) {
       return ownResumeAt;
     }
@@ -2733,6 +2759,9 @@ export class StreamOrchestrator {
     if (inProgress.resumeAt === undefined) {
       inProgress.resumeAt = agreedResumePoint(ownResumeAt, this.ladderCountsOf(base));
       this.rememberReturn(datingKey, base, inProgress);
+    }
+    if (inProgress.heldRungs.has(streamId)) {
+      return ownResumeAt;
     }
     const decision = sharedResumePoint(inProgress.resumeAt, ownResumeAt);
     if (decision.kind === RESUMED_ABOVE_THE_RETURN) {

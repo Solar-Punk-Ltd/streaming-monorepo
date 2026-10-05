@@ -1701,6 +1701,36 @@ describe('a ladder whose rungs SRS held through a short drop of its source', () 
     }
   });
 
+  /**
+   * SRS cuts the rungs on one keyframe grid but posts each rung's segment when that rung's transcoder
+   * closes it, so the source's return can land between two rungs delivering the same segment. A held
+   * rung's numbering never stopped, so the same index is the same media on every rung, and a segment
+   * cut before the drop keeps the sequence it would have had with no return at all.
+   */
+  it('keeps the same media at the same sequence on every rung when the return lands between two rungs delivering one segment', async () => {
+    const harness = reconnectHarness({ ladder: true });
+    const [rung360] = rungIds;
+    await ladderBeforeTheDrop(harness);
+    await harness.segment(`${rung360}-a2`, 2, rung360);
+    await harness.passTime(3_000);
+
+    harness.orchestrator.resumeHeldRungs(LADDER_BASE);
+    for (const streamId of rungIds.slice(1)) await harness.segment(`${streamId}-a2`, 2, streamId);
+    for (const streamId of rungIds) await harness.segment(`${streamId}-b3`, 3, streamId);
+
+    for (const streamId of rungIds) {
+      await harness.published(`${streamId}-b3`);
+      const write = writesNaming(harness.writes, `${streamId}-b3`).at(-1);
+      assert.ok(write);
+      const placed = entriesOf(write.playlist).map((entry) => `${entry.sequence}=${entry.uri}`);
+      assert.deepEqual(
+        placed,
+        [0, 1, 2].map((i) => `${i}=segment-${streamId}-a${i}`).concat(`3=segment-${streamId}-b3`),
+        `${streamId} placed ${placed.join(' ')}`,
+      );
+    }
+  });
+
   it('dates every held rung on one line, at the wall clock the source came back at', async () => {
     const harness = reconnectHarness({ ladder: true });
     await ladderBeforeTheDrop(harness);
