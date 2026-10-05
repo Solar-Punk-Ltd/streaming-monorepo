@@ -68,6 +68,20 @@ with the one and register stages with the other. A test install can keep them
 with `--allow-sample-secrets`, and the script then warns about each one and
 deploys.
 
+Funding from the admin has three keys of its own (see "Funding" in
+[backend/README.md](../backend/README.md)). `MANAGER_FUNDING_URL` sets it up,
+and with it the script refuses a missing `BRAND_WALLET_SECRET` and a
+`MANAGER_FUNDING_TOKEN` under 32 characters or with anything in it but
+printable ASCII, a space included, as the API refuses them. A
+`BRAND_WALLET_SECRET` is held to 64 hex characters whenever it is set, since
+the API's first start with one creates the brand wallet under it, and a token
+without the address is refused, as the API refuses it. The sample's
+placeholders for the secret and the token are refused as the published values
+above are, and `--allow-sample-secrets` lets a test install keep them. No
+value is printed. The address itself is the API's to judge: one that is not
+https, or plain http to this host, stops the API with a sentence in its log,
+which the deploy prints when the API does not come up.
+
 No Bee node or batch is set here either: the catalogue is written through the
 catalogue node and batch the manager designates and pushes. An env file that
 still sets `BEE_URL` or `POSTAGE_BATCH_ID` deploys as it did, with a warning
@@ -92,6 +106,10 @@ Things that differ from running the API on your laptop:
   container itself, so the manager has to name one the control host's
   containers reach.
 - `WEB2_ADMIN_WEB_PORT` sets the console's port when there is no port slot.
+- In `MANAGER_FUNDING_URL`, a loopback address is the api container itself. A
+  manager on the same host is `http://host.docker.internal:<port>`, which the
+  compose file maps to the host, provided the manager's API listens where the
+  host's containers reach it. Anywhere else, give its https address.
 
 The dev compose file (`backend/docker-compose.yml`, project `web2-admin`) is
 a different stack and neither file touches the other.
@@ -123,9 +141,10 @@ deploy.sh --host=<ssh-target> [--profile=<name>] [--portSlot=<N>] [--remote-path
 - `--remote-path` is an absolute path on the host, default
   `/opt/streaming/streaming-monorepo`. It is not accepted with
   `--host=localhost`.
-- `--allow-sample-secrets` deploys an env file whose `FEED_PRIVATE_KEY` or
-  `INTERNAL_API_TOKEN` is a published test value, with a warning for each. It is
-  for a test install only. Without it, either value refuses the deploy.
+- `--allow-sample-secrets` deploys an env file whose `FEED_PRIVATE_KEY`,
+  `INTERNAL_API_TOKEN`, `BRAND_WALLET_SECRET` or `MANAGER_FUNDING_TOKEN` is a
+  published test value, with a warning for each. It is for a test install
+  only. Without it, any of them refuses the deploy.
 - Services are `postgres`, `api` and `web`. None named means all three. Compose
   starts whatever a named service depends on.
 - Each flag with a value also takes it as the next word (`--host admin-host`), as
