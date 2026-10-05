@@ -4,6 +4,15 @@ import { PrivateKey } from '@ethersphere/bee-js';
 import { ADMIN_API_TOKEN_MIN_LENGTH } from '@streaming-monorepo/contracts';
 
 import { getErrorMessage } from './errorUtils.js';
+import {
+  BRAND_WALLET_SECRET_KEY,
+  brandWalletSecretProblem,
+  MANAGER_FUNDING_TOKEN_KEY,
+  MANAGER_FUNDING_URL_KEY,
+  managerFundingBaseUrl,
+  managerFundingTokenProblem,
+  managerFundingUrlProblem,
+} from './fundingSettings.js';
 
 function required(name: string): string {
   const value = process.env[name];
@@ -49,6 +58,14 @@ export type FeedGatewayKind = 'bee' | 'fake';
 
 const FEED_GATEWAY_KINDS: readonly FeedGatewayKind[] = ['bee', 'fake'];
 
+/** Where the manager's funding API is and the bearer token it takes, which come together or not at all. */
+export interface ManagerFundingSettings {
+  /** The manager's address, https or plain http to this host, with no trailing slash: the API's paths go after it. */
+  url: string;
+  /** The manager's `FUNDING_API_TOKEN`, the same value. Never logged. */
+  token: string;
+}
+
 export interface AppConfig {
   port: number;
   host: string;
@@ -67,6 +84,16 @@ export interface AppConfig {
    * Stages page. Off unless set, until the move has been tried on a real node (docs/architecture/stages.md).
    */
   catalogueMoveEnabled: boolean;
+  /**
+   * `BRAND_WALLET_SECRET`: the 32 bytes, as 64 hex characters, the brand wallet's key is encrypted under in the
+   * database, or null when it is unset, and then no wallet is created or opened. Never logged.
+   */
+  brandWalletSecret: string | null;
+  /**
+   * `MANAGER_FUNDING_URL` and `MANAGER_FUNDING_TOKEN`, or null when neither is set, and then funding is not set up
+   * (docs/architecture/funding.md).
+   */
+  managerFunding: ManagerFundingSettings | null;
 }
 
 function optionalFlag(name: string): boolean {
@@ -104,6 +131,42 @@ function feedPrivateKey(): string {
   return value;
 }
 
+/** `BRAND_WALLET_SECRET`, or null when it is unset. A value that is not 64 hex characters stops the start. */
+function brandWalletSecret(): string | null {
+  const value = optional(BRAND_WALLET_SECRET_KEY, '').trim();
+  if (value === '') return null;
+  const problem = brandWalletSecretProblem(value);
+  if (problem) throw new Error(`Env var ${problem}`);
+  return value;
+}
+
+/**
+ * `MANAGER_FUNDING_URL` with `MANAGER_FUNDING_TOKEN`, or null when neither is set. One without the other, an address
+ * the funding rules refuse, a token they refuse, or the address without `BRAND_WALLET_SECRET` stops the start, with a
+ * sentence that names the keys and never repeats a value. Funding signs every transfer with the brand wallet, so it
+ * is not set up without one.
+ */
+function managerFunding(): ManagerFundingSettings | null {
+  const url = optional(MANAGER_FUNDING_URL_KEY, '').trim();
+  const token = optional(MANAGER_FUNDING_TOKEN_KEY, '').trim();
+  if (url === '') {
+    if (token === '') return null;
+    throw new Error(
+      `Env var ${MANAGER_FUNDING_TOKEN_KEY} is set without ${MANAGER_FUNDING_URL_KEY}: set both to set funding up, or neither`,
+    );
+  }
+  const problem =
+    managerFundingUrlProblem(url) ??
+    (token === ''
+      ? `${MANAGER_FUNDING_TOKEN_KEY} is required with ${MANAGER_FUNDING_URL_KEY}: it is the manager's FUNDING_API_TOKEN`
+      : managerFundingTokenProblem(token)) ??
+    (optional(BRAND_WALLET_SECRET_KEY, '').trim() === ''
+      ? `${BRAND_WALLET_SECRET_KEY} is required with ${MANAGER_FUNDING_URL_KEY}: funding signs every transfer with the brand wallet, whose key is encrypted under it`
+      : null);
+  if (problem) throw new Error(`Env var ${problem}`);
+  return { url: managerFundingBaseUrl(url), token };
+}
+
 export const config: AppConfig = {
   port: optionalNumber('WEB2_ADMIN_PORT', 9877),
   host: optional('WEB2_ADMIN_HOST', '0.0.0.0'),
@@ -114,4 +177,6 @@ export const config: AppConfig = {
   viewerBaseUrl: optional('VIEWER_BASE_URL', ''),
   internalApiToken: requiredSecret('INTERNAL_API_TOKEN', INTERNAL_API_TOKEN_MIN_LENGTH),
   catalogueMoveEnabled: optionalFlag('CATALOGUE_MOVE_ENABLED'),
+  brandWalletSecret: brandWalletSecret(),
+  managerFunding: managerFunding(),
 };

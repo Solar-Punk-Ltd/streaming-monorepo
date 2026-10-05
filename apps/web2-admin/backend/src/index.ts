@@ -16,6 +16,8 @@ import { FeedBootCheckRunner } from './domain/feedBootCheck.js';
 import type { CatalogueRestamper, FeedGateway } from './domain/FeedGateway.js';
 import { feedIdentityFrom } from './domain/feedIdentity.js';
 import { FeedWriteRepository } from './domain/FeedWriteRepository.js';
+import { BrandWallet } from './domain/funding/BrandWallet.js';
+import { BrandWalletRepository } from './domain/funding/BrandWalletRepository.js';
 import { IngestService } from './domain/IngestService.js';
 import { LadderService } from './domain/LadderService.js';
 import { Logger } from './domain/Logger.js';
@@ -71,6 +73,15 @@ function logStartupConfig(owner: string, topicHex: string): void {
   logger.info(`[Boot]   viewer: ${config.viewerBaseUrl || '(unset → no player links)'}`);
   logger.info(`[Boot]   internal API token: ${redactSecret(config.internalApiToken)}`);
   logger.info(`[Boot]   catalogue move: ${config.catalogueMoveEnabled ? 'enabled' : 'off'}`);
+  // Neither the secret nor the token is logged, not even in part.
+  logger.info(
+    `[Boot]   brand wallet secret: ${config.brandWalletSecret === null ? '(unset → no brand wallet)' : 'set'}`,
+  );
+  logger.info(
+    `[Boot]   manager funding: ${
+      config.managerFunding ? `${config.managerFunding.url}, with its token` : '(unset → funding is not set up)'
+    }`,
+  );
   logger.info("[Boot]   ingest: from each stream's stage, as the manager pushed it");
   const retired = retiredEnvKeysSet();
   if (retired.length > 0) {
@@ -136,6 +147,11 @@ async function main(): Promise<void> {
 
   database = new Database(config.databaseUrl);
   await database.migrate();
+
+  // Right after the migrations, so a BRAND_WALLET_SECRET that does not open the stored wallet stops the start before
+  // anything else runs. The first start with a secret creates the wallet.
+  const brandWallet = await BrandWallet.start(new BrandWalletRepository(database.pool), config.brandWalletSecret);
+  logger.info(`[Boot] brand wallet: ${brandWallet.address() ?? '(none)'}`);
 
   const userRepository = new PostgresUserRepository(database.pool);
   const sessionRepository = new PostgresSessionRepository(database.pool);

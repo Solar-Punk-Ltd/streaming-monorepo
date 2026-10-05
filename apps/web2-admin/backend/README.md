@@ -15,8 +15,11 @@ a feed entry second.
   `@streaming-monorepo/web2-admin-common`
 - **@ethersphere/bee-js** — the only Swarm dependency, behind a `FeedGateway`
   interface (`src/domain/FeedGateway.ts`)
-- **node:crypto** — scrypt passwords, random session tokens stored as sha256.
-  No auth, session, CSRF or rate-limit dependency
+- **node:crypto** — scrypt passwords, random session tokens stored as sha256,
+  and AES-256-GCM for the brand wallet's key. No auth, session, CSRF or
+  rate-limit dependency
+- **viem** — the brand wallet's key and the transfers it signs
+  ([Funding](#funding))
 
 ## Quick start
 
@@ -88,6 +91,9 @@ reference; the summary:
 | `VIEWER_BASE_URL`                     | empty              | branded viewer built for this feed, for "open player catalogue" links                                                                          |
 | `INTERNAL_API_TOKEN`                  | required           | 32+ chars. The registrar token the manager pushes stages with on `/api/internal`. No uploader is given it, and the uploader's routes refuse it |
 | `CATALOGUE_MOVE_ENABLED`              | `false`            | `true` lets an operator move the catalogue's history onto another batch from the Stages page. Off until tried on a real node                   |
+| `BRAND_WALLET_SECRET`                 | empty              | 64 hex (32 bytes). The brand wallet's key is encrypted under it; the first start creates the wallet. Required with `MANAGER_FUNDING_URL`       |
+| `MANAGER_FUNDING_URL`                 | empty              | the manager's address for its funding API: https, or plain http to this host only. Empty: funding is not set up                                |
+| `MANAGER_FUNDING_TOKEN`               | with the URL       | 32+ chars, printable ASCII, no space: the manager's `FUNDING_API_TOKEN`. Refused without the URL. Never logged                                 |
 
 There is no ingest setting. Each stream's OBS details come from the stage it
 is broadcast on, as the manager pushed it: see [A stream's stage](#a-streams-stage).
@@ -103,7 +109,10 @@ and `POSTAGE_BATCH_ID` are no longer read; an env file that still sets them
 starts as it did, and the boot log names them with the ingest keys.
 
 Startup logs the resolved configuration with the feed key and the internal API
-token redacted.
+token redacted. The brand wallet secret and the manager funding token are not
+logged at all, not even in part: the log says only whether each is set. A
+funding key set wrong stops the start with a sentence that names the key and
+never the value.
 
 ### FEED_GATEWAY=fake
 
@@ -795,6 +804,67 @@ curl -sS -X DELETE http://127.0.0.1:9877/api/internal/stages/5f0c2a8e-1b2c-4d3e-
 # {"retired":true}
 ```
 
+## Funding
+
+The Funding page sends xDAI and xBZZ from the brand wallet to the wallets of
+the brand's nodes, through the infra manager's funding API
+([docs/architecture/funding.md](../../../docs/architecture/funding.md)). The
+admin signs each transfer and the manager sends it, so the admin needs no
+chain connection of its own and the wallet's key never leaves it.
+
+### The brand wallet
+
+- **Created once.** The first start with `BRAND_WALLET_SECRET` set creates the
+  wallet: a new key from viem's `generatePrivateKey`, stored in `brand_wallet`
+  (migration `015`) encrypted with AES-256-GCM under the secret, with a random
+  12-byte IV and GCM's 16-byte tag. The address is stored in clear, in lower
+  case, for the page to show. The creation is logged, and every start logs the
+  address (`[Boot] brand wallet: 0x…`).
+- **Opened at every start.** A start decrypts the key once, checks it is the
+  key of the stored address, drops it and keeps the address alone. A secret
+  that does not open it, or a row changed outside the admin, stops the start
+  with a sentence that carries neither the key nor the secret. Keep the secret
+  with the env file: a wallet created under one secret opens under no other.
+  There is no way yet to change the secret of an existing wallet. A secret
+  that leaked, or the sample's that a test install kept, means exporting the
+  key with `wallet:export` and storing it, then moving the funds to a wallet
+  made under a new secret: delete the row of `brand_wallet`, start the API
+  with the new secret, which makes the new wallet, and send the funds to it
+  from any wallet app with the exported key. A rekey command can come later.
+- **Decrypted only to sign.** `signTransaction` reads the row, decrypts the key
+  for that one signature, an EIP-1559 transaction serialized as
+  `eth_sendRawTransaction` takes it, and drops it when it returns. It refuses
+  a transaction that is not one before it reads the key. Nothing holds the key
+  between calls, and neither the key nor the secret is logged, answered or put
+  in an error.
+- **Without the secret** there is no wallet: nothing is created, and a wallet
+  already stored is left as it is, not shown, and named in a warning at boot.
+  Nor can funding be set up: the API refuses to start with
+  `MANAGER_FUNDING_URL` and no secret.
+
+`src/domain/funding/BrandWallet.ts` is the module. The funding service uses
+`BrandWallet.start`, which `src/index.ts` calls right after the migrations,
+and the wallet's `address()` and `signTransaction()`.
+
+### The manager's address and token
+
+`MANAGER_FUNDING_URL` and `MANAGER_FUNDING_TOKEN` come together or not at all;
+with neither, funding is not set up. With them, `BRAND_WALLET_SECRET` is
+required as well, since funding signs every transfer with the brand wallet:
+the API refuses to start with the address and no secret. Every request
+carries the token, so the address is https, or plain http only to this
+host: a loopback address (`127.0.0.0/8`, `[::1]`, `localhost`),
+`host.docker.internal`, which the deploy compose file maps to the host for
+the api, or a Docker service name with no dot, such as `manager`. It is the
+idea of the rule the manager holds its web2 admin link to, judged here by
+the text alone, with nothing resolved, so plain http to a name with no dot is
+taken as a Docker service on this host. The container's DNS search domains
+could still resolve such a name to another host, so give the https address of
+any manager that is not on this host. Plain http anywhere else, a user
+name or password, or a `?` or `#` part stops the
+start. The token is the manager's `FUNDING_API_TOKEN`: 32 characters or more,
+printable ASCII with no space, since it travels in a header.
+
 ## Migrations
 
 `src/migrations/NNN_name.sql`, applied in order inside a transaction at every
@@ -804,7 +874,7 @@ file for a change, and never change an applied one's SQL; a corrected comment
 is harmless. `001_init.sql` carries the rationale for each table in its
 header. `pnpm build` copies the directory into `dist`. `007_audit_log.sql` is
 the audit log below, and `008_streams_user_id_set_null.sql` stops removing a
-user from deleting the streams they drafted. The latest six are
+user from deleting the streams they drafted. The latest seven are
 `009_stages.sql`, the `stages` table (the record without the passphrase and
 the token, the passphrase and the token hash in columns of their own, when the
 record was observed and received, and the retirement's moment and arrival) and
@@ -816,9 +886,11 @@ a stream is broadcast on, with a foreign key to `stages` and an index,
 is looked up by, `013_catalogue_writes.sql`, the batch the catalogue is
 written with on `catalogue_stamp` and the exact bytes and batch of every write
 on `feed_writes` ([Where the catalogue is written](#where-the-catalogue-is-written)),
-and `014_catalogue_moves.sql`, a move's progress in `catalogue_moves` and the
+`014_catalogue_moves.sql`, a move's progress in `catalogue_moves` and the
 batch each write and each thumbnail was last uploaded under
-([Moving the catalogue to another batch](#moving-the-catalogue-to-another-batch)).
+([Moving the catalogue to another batch](#moving-the-catalogue-to-another-batch)),
+and `015_brand_wallet.sql`, the single-row `brand_wallet`: the wallet's address
+and its key, encrypted ([The brand wallet](#the-brand-wallet)).
 
 ## Audit log
 
