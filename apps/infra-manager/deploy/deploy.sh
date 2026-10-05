@@ -78,6 +78,14 @@ if ! grep -q "POSTGRES_PASSWORD=.\+" "$ENV_FILE"; then
     echo "ERROR: POSTGRES_PASSWORD is missing or empty in $ENV_FILE." >&2
     exit 1
 fi
+# The funding API's bearer token is optional, but a short one stops the manager
+# at startup, so it is refused here before anything reaches the host. The value
+# is never printed.
+FUNDING_API_TOKEN_SETTING="$(sed -n 's/^FUNDING_API_TOKEN=//p' "$ENV_FILE" | tail -n 1 | tr -d '\r"' | tr -d "'")"
+if [ -n "$FUNDING_API_TOKEN_SETTING" ] && { [ "${#FUNDING_API_TOKEN_SETTING}" -lt 32 ] || [[ "$FUNDING_API_TOKEN_SETTING" =~ [[:space:]] ]]; }; then
+    echo "ERROR: FUNDING_API_TOKEN in $ENV_FILE must be 32 characters or more with no space inside, or left unset to turn the funding API off." >&2
+    exit 1
+fi
 # Read the way compose reads the env file, which interpolates the same key into
 # the compose file on the host: the last assignment wins, and a carriage return
 # and surrounding quotes are not part of the value.

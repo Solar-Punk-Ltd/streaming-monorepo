@@ -32,6 +32,9 @@ import { beeApiUrlFor, beePublisherUrlFor, StampService } from './domain/StampSe
 import { localPublisherHost } from './domain/localHost.js';
 import { CatalogueDesignationRepository } from './domain/stages/CatalogueDesignationRepository.js';
 import { CatalogueDesignationService } from './domain/stages/CatalogueDesignationService.js';
+import { FundingInventoryService } from './domain/funding/FundingInventoryService.js';
+import { createFundingInventoryRouter } from './api/routes/adminFunding.js';
+import { BeeClient } from './domain/BeeClient.js';
 import { CataloguePublisher } from './domain/stages/CataloguePublisher.js';
 import { UploaderHealthService } from './domain/UploaderHealthService.js';
 import { UploaderStartGate } from './domain/UploaderStartGate.js';
@@ -66,6 +69,9 @@ import { resolveServerHost } from './utils/serverHost.js';
 
 const logger = Logger.getInstance();
 
+/** How long the funding inventory waits for one node's wallet, so one silent node does not hold the whole answer. */
+const FUNDING_WALLET_READ_MS = 5_000;
+
 function redactDatabaseUrl(url: string): string {
   try {
     const parsed = new URL(url);
@@ -85,6 +91,8 @@ function logStartupConfig(): void {
   logger.info(`[Boot]   logLevel: ${config.logLevel}`);
   logger.info(`[Boot]   chequebookFloor: ${plurToBzz(config.chequebookFloorPlur)} BZZ`);
   logger.info(`[Boot]   database: ${redactDatabaseUrl(config.databaseUrl)}`);
+  // Whether it is on, never the token.
+  logger.info(`[Boot]   funding API: ${config.fundingApiToken ? 'on (FUNDING_API_TOKEN is set)' : 'off'}`);
   // The host alone, never the URL: an endpoint can carry an API key, and this
   // line goes to the log.
   logger.info(
@@ -437,6 +445,21 @@ async function main(): Promise<void> {
     changed: () => void catalogue.pushNow(),
     nodeUrls: async (profile) => [beeApiUrlFor(profile), beePublisherUrlFor(profile, await localPublisherHost())],
   });
+  // The web2 admin's funding API reads every stage's nodes and the catalogue node with it. A node's address stays
+  // here: the inventory names each node by an opaque id.
+  const fundingInventory = new FundingInventoryService({
+    profiles: profileRepository,
+    catalogue: catalogueDesignation,
+    uploaderApiUrl: beeApiUrlFor,
+    gatewayApiUrl: async (profile) => {
+      const port = (await orchestrator.nextEnvFor(profile)).env.BEE_GATEWAY_API_PORT ?? '';
+      if (!/^\d{1,5}$/.test(port)) throw new Error('the next deploy gives the gateway no API port');
+      const url = new URL(beeApiUrlFor(profile));
+      url.port = port;
+      return url.origin;
+    },
+    wallet: (apiUrl) => new BeeClient(apiUrl, FUNDING_WALLET_READ_MS).getWallet(),
+  });
   profileService.setPoolStringGuard((beePublishers) => catalogueService.segmentBatchProblem(beePublishers));
   // An ABR stage deploys with its pool's current batches, and a batch set on a rung reaches its stages' stored copy.
   const stagePoolStrings = new StagePoolStrings({
@@ -513,6 +536,7 @@ async function main(): Promise<void> {
       eventBus,
       metricsCollector,
       beeRpcEndpoint: config.beeRpcEndpoint,
+      funding: { token: config.fundingApiToken, routes: [createFundingInventoryRouter(fundingInventory)] },
     },
     config.port,
     config.host,

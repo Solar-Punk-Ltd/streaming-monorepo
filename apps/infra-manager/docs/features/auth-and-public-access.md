@@ -157,8 +157,17 @@ CREATE INDEX sessions_user_idx ON sessions (user_id);
 | POST   | `/auth/users/:id/revoke-sessions` |                                  | 204 for your own id, and for anyone's if you are an admin, otherwise 403 `admin_required`. 404 no such user            |
 
 Middleware `requireSession` in `manager/src/api/middleware/requireSession.ts` runs before every
-router in `server.ts` except the two open routes, attaches `req.user`, refreshes `last_seen_at`.
-`requireSameSite` runs on every non-GET. The request logger logs the username, never the token.
+router in `server.ts` except the two open routes and the funding API below, attaches `req.user`,
+refreshes `last_seen_at`. `requireSameSite` runs on every non-GET outside the funding API. The
+request logger logs the username, never the token.
+
+**A second credential, for the web2 admin's funding API** (2026-10-05, `feat/funds`). The routes
+under `/api/admin-funding` take `Authorization: Bearer <FUNDING_API_TOKEN>` and refuse a session
+cookie, and while that setting is unset they answer 404 `funding_off`. They are mounted ahead of
+`requireSameSite` and `requireSession`, since the admin calls them server to server.
+`refuseFundingBearer`, mounted right after them, makes every other route refuse a request that
+carries a bearer, `/health` and `/auth` included, so neither credential opens the other's routes.
+The rules and the routes are "Funding API" in [manager/README.md](../../manager/README.md#funding-api-the-web2-admins-on-a-bearer-token).
 
 **Who can manage users.** Since `7346d880` on 2026-09-07 a user may be an admin, `isAdmin` in the
 answers above. Through the API only an admin adds a user, removes one or signs someone else
@@ -375,8 +384,10 @@ moved and are marked where they do.
 
 ## Done means
 
-- Every route except `/health`, `/auth/login` and `/auth/logout` answers 401 without a session,
-  including both SSE streams. A sign-out without one answers 204 and clears the cookie.
+- Every route except `/health`, `/auth/login`, `/auth/logout` and the funding API under
+  `/api/admin-funding` answers 401 without a session, including both SSE streams. A sign-out without
+  one answers 204 and clears the cookie. The funding API takes its own bearer and refuses a session
+  (2026-10-05).
 - Passwords are scrypt hashes with recorded parameters. No plaintext password or session token
   appears in any file, log line, environment variable or the browser's JavaScript.
 - Brute force locks and is logged. Cross-site POSTs are refused.

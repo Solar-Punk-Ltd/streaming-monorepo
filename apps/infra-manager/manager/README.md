@@ -45,7 +45,11 @@ Until that last command has been run once, every route but `/health` and
 
 Every route needs a session except two: `GET /health`, which answers
 `{"status":"ok"}` and nothing more, and `POST /auth/login`. That includes both
-Server-Sent Events streams, `/config`, `/metrics` and `/profiles`.
+Server-Sent Events streams, `/config`, `/metrics` and `/profiles`. The web2
+admin's funding API under `/api/admin-funding` is apart from all of them: it
+takes a bearer token of its own and refuses a session, and every other route
+refuses a bearer. [Funding API](#funding-api-the-web2-admins-on-a-bearer-token)
+has the rules.
 
 No Docker healthcheck reads `/health`, as of 2026-09-23 at `87673c99`: the
 `api` service in `docker-compose.yml` has none and neither Dockerfile declares
@@ -842,6 +846,29 @@ are not removed (409 `catalogue_node_designated`), and a create or update whose
 | DELETE | `/manager-settings/catalogue-node`         | `{ expectedRevision }`                              | The answer as it stands after. A pending move stays. 400 `validation_error` when nothing is designated, 409 `manager_settings_changed` for an older revision                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                              |
 | POST   | `/manager-settings/catalogue-node/release` | `{ expectedRevision }`                              | The answer as it stands after, with `movingFrom` null and `lastRelease` set: the batch moved from and its node are kept no more. 400 `validation_error` when no move is pending, 409 `manager_settings_changed` for an older revision                                                                                                                                                                                                                                                                                                                                                                                                                                     |
 
+### Funding API: the web2 admin's, on a bearer token
+
+The web2 admin funds a brand's stages from its brand wallet through these
+routes, and has no chain connection of its own (`docs/architecture/funding.md`
+at the repository root). They are mounted at `/api/admin-funding`, ahead of the
+cross-site and session gates, and the console's nginx sends that path to the
+api. The shapes are `packages/contracts/src/funding.ts`; added 2026-10-05.
+
+- `FUNDING_API_TOKEN` unset: the API is off, and every path under it answers
+  404 `{ error: "funding_off" }`, whatever is presented.
+- Set: a request needs `Authorization: Bearer <FUNDING_API_TOKEN>` and no
+  session cookie, or it is 401 `unauthorized`. Both tokens are sha256'd and
+  compared with `timingSafeEqual`, and neither is logged or answered.
+- Every other route refuses a request carrying a bearer, 401, so the token
+  opens nothing but this API and a session opens nothing of it.
+- A refusal is `{ error, message }` with the code's status from the contract:
+  `funding_off` 404, `unauthorized` 401, `unknown_node` 404, `bad_transaction`
+  422, `chain_unreachable` 502, `conflict` 409.
+
+| Method | Path                           | Answer                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                      |
+| ------ | ------------------------------ | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| GET    | `/api/admin-funding/inventory` | `{ observedAt, chain: { chainId, bzzToken }, stages: [{ stageId, name, nodes }], catalogue }`, `no-store`. A stage's nodes are its own Bee node, its gateway when that runs light, and its pool's rungs run by this manager, lowest first; `catalogue` is the designated catalogue node or null. Each node is `{ nodeId, label, role, walletAddress, xdaiWei, xbzzPlur, readError }`: an opaque `<instance_id>:<service>` id, its wallet from `GET /wallet` read now (five seconds at most each), amounts in wei and PLUR as decimal strings, or nulls and a sentence saying why it could not be read. The chain is Gnosis Chain, 100, and its BZZ token; a node on another chain has no wallet answered. Never a Bee API address, an RPC endpoint or a key |
+
 ### Engine control
 
 The media server of one deployment: what it is configured with, and the two
@@ -1337,6 +1364,7 @@ numbers and how much it logs:
 | `HOST_ROOTFS`                 | `/host/rootfs`, then `/`                          | Where the resource monitor reads the host's disk, mounted read-only the same way, with the same fallback.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                   |
 | `LOG_LEVEL`                   | `info`                                            | How much the api writes to its console, applied from startup. One of `trace`, `debug`, `info`, `warn` or `error`, in either case, and each writes its own lines and those of every level after it. `error` is failures alone, `warn` adds what an operator should look at, `info` adds what the manager did, such as its boot lines, deploys and pushes, and `debug` adds each read that failed and was answered for anyway, a host or container metric, a disk usage, an uploader health address, an SRS log or an ssh alias, which repeat on every poll. `trace` writes what `debug` does, since nothing logs below it. Any other value stops the manager at startup. The command line, `node dist/cli.js`, writes at `info` whatever this says.                                                                                                                                                                          |
 | `ADMIN_LINK_ALLOW_PLAIN_HTTP` | `false`                                           | Whether the web2 admin link may be plain http to another host than the manager's own. Off, the manager takes plain http only to a loopback address, `host.docker.internal` or the bridge address it resolves to, or a name that resolves into a Docker network of the api container, and refuses to save anything else or to send to it: a link saved before this rule says `refused-plain-http` until it is given https or this is `true`. Set it only for a test setup: every push carries the registrar token and each stage's SRT passphrase. Any value but `true` or `false` stops the manager at startup.                                                                                                                                                                                                                                                                                                             |
+| `FUNDING_API_TOKEN`           | none, which turns the API off                     | The bearer token of the web2 admin's funding API under `/api/admin-funding`, the same value as the admin's `MANAGER_FUNDING_TOKEN`. Unset, every path under that API answers 404 `funding_off`. 32 characters or more with no space inside, or the manager stops at startup naming the variable and not the value. Never logged; the boot lines say only whether the API is on. See [Funding API](#funding-api-the-web2-admins-on-a-bearer-token).                                                                                                                                                                                                                                                                                                                                                                                                                                                                          |
 
 The first two are bind-mounted into the api container at the same absolute path
 they have on the host, because the docker daemon runs on the host and reads
