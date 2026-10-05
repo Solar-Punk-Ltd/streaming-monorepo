@@ -127,8 +127,8 @@ import { sleep, waitFor } from '../../src/harness/wait.js';
  *   counter restart into a hole the broadcast never had. A restart is one of the only two things
  *   that still arm a break since 2026-09-06, the other being the origin declaring one, and a lost
  *   segment is now said with gap entries instead.
- * - **Every rung keeps one timeline.** Every sequence two rungs both hold media at is dated within one
- *   fragment on both. The rungs of one return resume where the furthest of them had counted, so a
+ * - **Every rung keeps one timeline.** Every sequence two rungs both hold media at is dated within
+ *   half a fragment on both. The rungs of one return resume where the furthest of them had counted, so a
  *   rung that had counted less lists the sequences up to that point as gap entries right before its
  *   break. Those are the one exception to "no gap entries", and only where a sibling had counted that
  *   far with media. See `returnAlignment`.

@@ -862,6 +862,29 @@ describe('reading the rungs of one return together', () => {
     assert.match(alignment.disagreement ?? '', /sequence 4 is dated 6000 ms apart/);
   });
 
+  /**
+   * ⛔ A rung one sequence out of step dates each sequence one real segment apart from its sibling,
+   * and a real segment runs a hair under the configured fragment, 1999.667 ms against 2 s. A bound of
+   * a whole fragment let exactly that through.
+   */
+  it('says so when a rung is one sequence out of step, one segment just under a fragment apart', () => {
+    const alignment = read([
+      rungPlaylistParse(rung360, rungPlaylist([0, 1, 2, 3, 4, 5])),
+      rungPlaylistParse(rung1080, rungPlaylist([0, 1, 2, 3, 4, 5], { datedLater: { from: 0, byMs: -1_999 } })),
+    ]);
+
+    assert.match(alignment.disagreement ?? '', /sequence 0 is dated 1999 ms apart/);
+  });
+
+  it('lets through the rounding that separates rungs dating one segment', () => {
+    const alignment = read([
+      rungPlaylistParse(rung360, rungPlaylist([0, 1, 2, 3])),
+      rungPlaylistParse(rung1080, rungPlaylist([0, 1, 2, 3], { datedLater: { from: 0, byMs: 40 } })),
+    ]);
+
+    assert.equal(alignment.disagreement, null);
+  });
+
   it('counts no gap as a return where no rung had counted that far, which invents loss', () => {
     const alignment = read([
       rungPlaylistParse(

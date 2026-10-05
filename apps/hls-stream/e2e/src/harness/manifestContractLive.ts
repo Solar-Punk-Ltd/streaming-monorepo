@@ -386,6 +386,16 @@ export interface ReturnAlignment {
 
 const MS_PER_SECOND = 1000;
 
+/**
+ * How far apart, in fragments, two rungs may date one sequence before they are out of step.
+ *
+ * ⛔ Half, not one. A rung one sequence out of step dates each sequence one real segment apart from its
+ * sibling, and a real segment runs a hair under the configured fragment, 1999.667 ms against 2 s, so a
+ * bound of a whole fragment let the commonest misalignment through. What separates rungs that agree
+ * is tick rounding, milliseconds.
+ */
+const OUT_OF_STEP_FRACTION = 0.5;
+
 /** How many disagreements a refusal names before it stops, so a whole window out of step stays readable. */
 const DISAGREEMENTS_NAMED = 3;
 
@@ -394,7 +404,7 @@ const DISAGREEMENTS_NAMED = 3;
  *
  * ⛔⛔ **One sequence names one moment on every rung.** That is the property a return has to keep, and
  * it is read off the playlists directly: every sequence two rungs both hold media at is dated within
- * one fragment on both. A rung that resumed a sequence apart from its siblings across an outage dates
+ * half a fragment on both. A rung that resumed a sequence apart from its siblings across an outage dates
  * the same sequence an outage apart, so this catches a whole return out of step and a partial one,
  * where a rung that kept publishing carries no break at all, alike.
  *
@@ -432,7 +442,7 @@ export function returnAlignment(parses: readonly RungPlaylistParse[], fragmentSe
           continue;
         }
         const apart = Math.abs(entry.dateMs - twin.dateMs);
-        if (apart >= fragmentSeconds * MS_PER_SECOND) {
+        if (apart >= fragmentSeconds * MS_PER_SECOND * OUT_OF_STEP_FRACTION) {
           problems.push(
             `sequence ${entry.sequence} is dated ${apart} ms apart on ${rungNameOf(parse)} and ` +
               `${rungNameOf(sibling)}, so a level switch there lands on another moment`,
