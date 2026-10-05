@@ -74,6 +74,14 @@ services:
       # the deploying user, because Docker would create a missing bind source
       # as a root-owned directory nobody can write a key into.
       - ${MANAGER_SSH_DIR:-/opt/streaming/manager-ssh}:/root/.ssh
+    # /health runs a query, so healthy means the database answers too. Every
+    # request is logged, so the check runs every 30 s rather than every 5 s.
+    healthcheck:
+      test: ['CMD-SHELL', 'wget -q -O /dev/null http://127.0.0.1:9876/health']
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 60s
 
   web:
     build:
