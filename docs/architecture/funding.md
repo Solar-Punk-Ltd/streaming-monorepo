@@ -1,8 +1,9 @@
 # Funding from the admin: brand wallet, stamps and chequebooks
 
-Draft plan, 2026-10-05. Nothing here is built. It lets a brand keep its stages alive after handover,
-from the web2 admin: fund the nodes, top up the batches, fill the chequebooks, and later dilute.
-Every funding operation goes through the infra manager.
+Plan, 2026-10-05. Phase 1, the brand wallet, the Balance tab and sends to node wallets, is built
+on `feat/funds`; phases 2 to 4 are not. It lets a brand keep its stages alive after handover, from
+the web2 admin: fund the nodes, top up the batches, fill the chequebooks, and later dilute. Every
+funding operation goes through the infra manager.
 
 ## The flow
 
@@ -73,22 +74,24 @@ admin needs no chain connection of its own.
 - **Who may fund**: every operator, for now. The password is asked again before every send from
   the brand wallet; stamp and chequebook operations take a confirm dialog.
 - Every operation and every send gets an audit entry with its transaction hash.
+- **Settling**: one send at a time, enforced on the server. A lost tab leaves no send stuck: the
+  next send and the Funding page refresh the open one, which the page resumes. Items the chain's
+  node refused at the relay, and `unknown` ones, are watched. Nothing is resent but an item the
+  manager never received (`unknown_request`), relayed byte for byte under the same request id. An
+  `unknown` item cannot pay twice: the chain does not hold it, so the next send reuses its nonce.
 
 ## Phases
 
-| #   | What                                                                                          | Size |
-| --- | --------------------------------------------------------------------------------------------- | ---- |
+| #   | What                                                                                         | Size |
+| --- | -------------------------------------------------------------------------------------------- | ---- |
 | 1   | Brand wallet and Balance tab: the manager API's inventory and balances, send to node wallets | M    |
-| 2   | Stamps tab: bulk top-up through the manager, the days slider, the "short of xBZZ" shortcut    | M    |
-| 3   | Chequebooks tab: bulk deposit through the manager                                             | S    |
-| 4   | Dilute through the manager                                                                    | M    |
+| 2   | Stamps tab: bulk top-up through the manager, the days slider, the "short of xBZZ" shortcut   | M    |
+| 3   | Chequebooks tab: bulk deposit through the manager                                            | S    |
+| 4   | Dilute through the manager                                                                   | M    |
 
 The UI follows msrs-client's bulk stamp pages: ticked lists, a days slider, and per-item
 progress. Before a brand relies on it, the owner tries each phase once on a scratch setup with
-small amounts. The manager's own top-up and dilute have never run against a real node. The pages
-that say the admin never calls the manager or touches a wallet (stages.md:22 and :26,
-web2-admin.md, apps/web2-admin/AGENTS.md) change in phase 1's pull request, with the ROADMAP's open
-decision.
+small amounts. The manager's own top-up and dilute have never run against a real node.
 
 ## Decided, 2026-10-05
 

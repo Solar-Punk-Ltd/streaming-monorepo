@@ -829,9 +829,12 @@ chain connection of its own and the wallet's key never leaves it.
   There is no way yet to change the secret of an existing wallet. A secret
   that leaked, or the sample's that a test install kept, means exporting the
   key with `wallet:export` and storing it, then moving the funds to a wallet
-  made under a new secret: delete the row of `brand_wallet`, start the API
-  with the new secret, which makes the new wallet, and send the funds to it
-  from any wallet app with the exported key. A rekey command can come later.
+  made under a new secret. Before anything is deleted, import the exported key
+  into a wallet app and check that the address it shows is the Funding page's:
+  once the row is gone, that key is the only way to the funds. Then delete the
+  row of `brand_wallet`, start the API with the new secret, which makes the new
+  wallet, and send the funds to it from the wallet app. A rekey command can
+  come later.
 - **Decrypted only to sign.** `signTransaction` reads the row, decrypts the key
   for that one signature, an EIP-1559 transaction serialized as
   `eth_sendRawTransaction` takes it, and drops it when it returns. It refuses
