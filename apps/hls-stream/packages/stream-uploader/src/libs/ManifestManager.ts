@@ -52,6 +52,13 @@ type ReanchorCause = typeof COUNTER_RESTARTED | typeof ENCODER_RETURNED;
 export const LIVE_WINDOW_MAX_BYTES = 4096;
 
 /**
+ * The fewest media entries a live window names while the broadcast holds that many, whatever the
+ * budget says. Three because that is how many segments a player wants behind the live edge before it
+ * starts, `liveSyncDurationCount` in hls.js. See `ManifestManager.liveWindowLength`.
+ */
+export const MIN_LIVE_WINDOW_SEGMENTS = 3;
+
+/**
  * The bytes a manifest of these lines occupies once joined, without joining them.
  *
  * `\n` separates every line and terminates the last, so each line costs its own length plus one.
@@ -1078,7 +1085,8 @@ export class ManifestManager {
   }
 
   /**
-   * How many of the newest segments fit in {@link LIVE_WINDOW_MAX_BYTES}, and never fewer than one.
+   * How many of the newest segments fit in {@link LIVE_WINDOW_MAX_BYTES}, and never fewer than
+   * {@link MIN_LIVE_WINDOW_SEGMENTS} while that many are held.
    *
    * Counted backwards from the live edge, so the work is the window's rather than the broadcast's:
    * `segments` holds every segment ever published, because the VOD manifest is built from the same
@@ -1093,9 +1101,15 @@ export class ManifestManager {
    * ⛔ Extending the window over a hole costs the hole's gap entries as well as the segment on the
    * far side of it, and both are charged here. Uncounted, a broadcast that lost a run of segments
    * would publish a window over one chunk and pay three round trips per segment for as long as the
-   * hole stayed inside it. A hole too wide to afford simply stops the window: the media before it is
-   * older than what a joining viewer needs, and the floor of one held segment is never reached by
-   * this, since a window of one segment has no pair to hold a hole between.
+   * hole stayed inside it. A hole too wide to afford stops the window, once it names
+   * {@link MIN_LIVE_WINDOW_SEGMENTS} segments.
+   *
+   * ⛔⛔ **Never fewer than three media entries, even over budget.** A rung lining up with its ladder
+   * after a long partial return lists the whole absence as gap entries right before its break, sixty
+   * of them after a minute at one second fragments, and that run alone fills the budget. Stopped
+   * there, the window right after the return named one media entry, and a player joining or switching
+   * to that rung had nothing to buffer from. Over budget costs that publish two more round trips, for
+   * the few segments it takes the run to slide out, which is the cheaper failure.
    */
   private liveWindowLength(): number {
     // Reserved against the largest media sequence there could be, whose own digits are part of the
@@ -1125,7 +1139,7 @@ export class ManifestManager {
       if (successor !== undefined) {
         spent += manifestBytes(this.gapLines(this.segments[i], successor));
       }
-      if (spent > budget && length > 0) {
+      if (spent > budget && length >= MIN_LIVE_WINDOW_SEGMENTS) {
         break;
       }
       length++;

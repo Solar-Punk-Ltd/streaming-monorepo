@@ -9,6 +9,7 @@ import {
   inheritedTimeline,
   LIVE_WINDOW_MAX_BYTES,
   ManifestManager,
+  MIN_LIVE_WINDOW_SEGMENTS,
 } from '../src/libs/ManifestManager.js';
 import { BroadcastAnchor } from '../src/types.js';
 
@@ -876,12 +877,12 @@ describe('the live window is bounded by bytes rather than by a segment count', (
    * This used to reach the same state through a 4KB `MANIFEST_ACCESS_URL`. That variable is gone,
    * and the path that remains is the one external input can actually reach.
    */
-  it('still emits a segment when the header alone overruns the budget', () => {
-    const manager = withSegments(3, 2);
+  it('still emits the fewest segments a player can start from when the header alone overruns the budget', () => {
+    const manager = withSegments(5, 2);
     const { segments } = manager.getState();
     manager.restoreState(segments, ['#EXTM3U', `#EXT-X-SESSION-DATA:${'p'.repeat(LIVE_WINDOW_MAX_BYTES)}`]);
 
-    assert.equal(segmentUris(manager.buildLiveManifest()).length, 1);
+    assert.equal(segmentUris(manager.buildLiveManifest()).length, MIN_LIVE_WINDOW_SEGMENTS);
   });
 
   it('leaves the VOD manifest whole, since it is published once rather than per segment', () => {
@@ -2060,5 +2061,31 @@ describe('the published sequence a rung would resume at, counting what it is sti
 
   it('counts a session that has only been handed segments from its first one', () => {
     assert.equal(new ManifestManager(TEST_ANCHOR).publishedNextSequenceAfter([5, 6, 7]), 3);
+  });
+});
+
+/**
+ * ⛔ A rung that lines up with its ladder after a long partial return lists the whole absence as gap
+ * entries, and gap entries are spent from the same byte budget as media. Sixty of them alone fill it,
+ * so the window right after the return held one media entry and a player had nothing to buffer from.
+ */
+describe('a live window right after a return that lists many gap entries', () => {
+  it('still names at least three media entries', () => {
+    const raised: BroadcastDating = {
+      epochFrom: (resumeAt, notBeforeMs) => ({ fromSequence: resumeAt, atMs: notBeforeMs }),
+      resumePointFor: (_returnToken, ownResumeAt) => ownResumeAt + 60,
+    };
+    const manager = new ManifestManager(TEST_ANCHOR, raised);
+    for (let index = 0; index < 10; index++) {
+      manager.addSegment(index, 2, `ref-${index}`);
+    }
+    manager.resumeAfterReconnect('a-return');
+    manager.addSegment(10, 2, 'ref-10');
+
+    const live = manager.buildLiveManifest();
+    const media = live.split('\n').filter((line) => line.startsWith('ref-'));
+
+    assert.ok(media.length >= 3, `the window names ${media.length} media entries: ${media.join(', ')}`);
+    assert.ok(live.includes('ref-10'));
   });
 });
