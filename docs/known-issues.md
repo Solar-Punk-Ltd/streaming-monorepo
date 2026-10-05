@@ -49,6 +49,17 @@ the ladder encoders produce nothing. The admin keeps showing the stream as publi
 warning. The uploader now reports such a ladder on `/health` as `ladder_not_started` after 45 s,
 but the admin does not show it.
 
+**A takeover by a second live encoder splits one segment across rungs (P3).** When a second encoder
+with the same key takes over while the first is still sending, SRS keeps the ladder's encoders
+running, so no rung disconnects. Rungs that had already delivered the old encoder's last segment
+start the new dating line one sequence later than the others. That one sequence then holds the old
+encoder's last segment on some rungs and the new encoder's first on the others, about one segment
+apart in time, with the discontinuity one sequence apart too. From the next sequence on every rung
+agrees again. A viewer who switches quality exactly there sees about two seconds skipped or
+repeated. A crash followed by a reconnect, and a clean stop and restart, keep every rung on one
+seam. To see it: while a broadcast is live, start a second encoder with the same key, then compare
+the playlists of all rungs around the seam.
+
 **After a return the top rung can miss its first segments (P3).** When a broadcaster comes back
 inside the reconnect window, every rung resumes on the same sequence and dating line, but the
 slowest encoder can start a segment or two later. Those sequence numbers are then absent on that
