@@ -1604,9 +1604,13 @@ describe('a ladder whose uploader restarts in the middle of its encoder coming b
   /** The wall clock the second process starts at, past the return, so a rung minting its own line is late. */
   const RESTART_TAKES_MS = 5_000;
 
+  /** The sequence the return agrees, one past `ahead`'s last segment, which `behind` stopped a segment short of. */
+  const AGREED_SEQUENCE = 3;
+
   /**
-   * Both rungs publish, the encoder goes away, and only `ahead` comes back and places its first
-   * segment before the process dies. Hands over the disk and the instant `ahead` returned at.
+   * Both rungs publish, `ahead` one segment more than `behind`, the encoder goes away, and only
+   * `ahead` comes back and places its first segment before the process dies, which agrees the point
+   * the return resumes at. Hands over the disk and the instant `ahead` returned at.
    */
   async function crashedBetweenTheRungsOfOneReturn(): Promise<{ disk: RestartDisk; returnedAt: number }> {
     const disk = restartDisk();
@@ -1617,6 +1621,8 @@ describe('a ladder whose uploader restarts in the middle of its encoder coming b
       await one.segment(`${streamId}-a1`, 1, streamId);
       await one.published(`${streamId}-a1`);
     }
+    await one.segment(`${ahead}-a2`, 2, ahead);
+    await one.published(`${ahead}-a2`);
 
     for (const streamId of pair) {
       one.orchestrator.noteDisconnect(streamId);
@@ -1625,12 +1631,12 @@ describe('a ladder whose uploader restarts in the middle of its encoder coming b
     const returnedAt = one.wallNow();
 
     one.start(ahead);
-    await one.segment(`${ahead}-b0`, 2, ahead);
+    await one.segment(`${ahead}-b0`, AGREED_SEQUENCE, ahead);
     await one.published(`${ahead}-b0`);
     // The crash lands once both entries say what they published, which is what the next boot reads.
     await waitFor(
       () =>
-        disk.entries.get(fileIdOf(ahead))?.segments.length === 3 &&
+        disk.entries.get(fileIdOf(ahead))?.segments.length === 4 &&
         disk.entries.get(fileIdOf(behind))?.segments.length === 2,
       SETTLE_CEILING_MS,
     );
@@ -1651,7 +1657,13 @@ describe('a ladder whose uploader restarts in the middle of its encoder coming b
 
       const write = writesNaming(two.writes, `${behind}-b0`).at(-1);
       assert.ok(write);
-      // Both rungs resume at sequence 2, so one line dates them identically.
+      const resumed = entriesOf(write.playlist).find((entry) => entry.uri === `segment-${behind}-b0`);
+      assert.equal(
+        resumed?.sequence,
+        AGREED_SEQUENCE,
+        'the rung that came back after the restart did not resume where its return had already agreed',
+      );
+      // Both rungs resume at one sequence, so one line dates them identically.
       assert.equal(
         dateOfSegment(write.playlist, `${behind}-b0`),
         new Date(returnedAt).toISOString(),
@@ -1672,7 +1684,7 @@ describe('a ladder whose uploader restarts in the middle of its encoder coming b
     await two.segment(`${behind}-b0`, 2, behind);
     await two.published(`${behind}-b0`);
     // `ahead`'s encoder was already back, so its media simply carries on into the new process.
-    await two.segment(`${ahead}-b1`, 3, ahead);
+    await two.segment(`${ahead}-b1`, AGREED_SEQUENCE + 1, ahead);
     await two.published(`${ahead}-b1`);
 
     for (const streamId of pair) {
@@ -1681,7 +1693,7 @@ describe('a ladder whose uploader restarts in the middle of its encoder coming b
     await two.passTime(OUTAGE_MS);
     const secondReturnAt = two.wallNow();
     two.start(ahead);
-    await two.segment(`${ahead}-c0`, 4, ahead);
+    await two.segment(`${ahead}-c0`, AGREED_SEQUENCE + 2, ahead);
     await two.published(`${ahead}-c0`);
     two.start(behind);
     await two.segment(`${behind}-c0`, 3, behind);
