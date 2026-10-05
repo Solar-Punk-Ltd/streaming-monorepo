@@ -413,6 +413,11 @@ services:
       # override CLIENT_BEE_GATEWAY_HOST/PORT in .env.<profile> to proxy elsewhere.
       BEE_GATEWAY_HOST: ${CLIENT_BEE_GATEWAY_HOST:-bee-gateway}
       BEE_GATEWAY_PORT: ${CLIENT_BEE_GATEWAY_PORT:-${BEE_GATEWAY_API_PORT:-1733}}
+    healthcheck:
+      test: ['CMD-SHELL', 'wget -q -O /dev/null http://127.0.0.1:80/']
+      interval: 30s
+      timeout: 3s
+      retries: 3
 
   # --- SRS Media Server ---
 

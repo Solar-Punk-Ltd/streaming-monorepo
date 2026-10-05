@@ -82,7 +82,7 @@ def summary_of(path):
     return None
 
 
-def bench_dir(root):
+def bench_dir():
     """Where the driver's per-arm watch summaries landed.
 
     The driver logs the container's own `/repo/bench-results/...` path, which is this checkout's
@@ -320,7 +320,7 @@ def requested_size(log_path):
 def cmd_table(root):
     log_path = root / "byte-source-arms.log"
     metrics = root / "node-metrics"
-    bench = bench_dir(root)
+    bench = bench_dir()
     wanted = requested_size(log_path)
     kept, refused, truncated = {}, [], []
     header = (f"{'arm':>3} {'rnd':>3} {'cond':<8} {'kept':<7} {'retrievals':>11} {'cores':>6}"
@@ -476,7 +476,7 @@ def off_profile(root):
     figure from a discarded arm ends up beside one from a kept arm.
     """
     log = root / "byte-source-arms.log"
-    bench, wanted = bench_dir(root), requested_size(log)
+    bench, wanted = bench_dir(), requested_size(log)
     verdicts = {}
     for arm in arms_from_log(log):
         if arm["round"] <= WARMUP_ROUNDS:

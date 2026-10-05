@@ -117,7 +117,7 @@ async function main(): Promise<void> {
 
   const requests: RequestRecord[] = [];
   let watched: SampledStretch | undefined;
-  let watchUrl = clientUrl;
+  let watchUrl: string;
   let arm: ArmCondition | undefined;
   let byteSourceArm: ByteSourceArmSession | undefined;
   let latencyTarget: ArmSetup | undefined;
