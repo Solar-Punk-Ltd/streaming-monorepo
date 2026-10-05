@@ -26,6 +26,7 @@
     "dotenv": "17.4.2",
     "express": "5.2.1",
     "pg": "8.23.0",
+    "viem": "2.56.5",
     "yup": "1.7.1"
   },
   "devDependencies": {
