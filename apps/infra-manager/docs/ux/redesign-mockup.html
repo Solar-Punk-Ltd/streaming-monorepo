@@ -3331,7 +3331,6 @@
           const err = wizError(state.wizard);
           const btn = document.querySelector('[data-action=wizNext]');
           if (btn) btn.disabled = !!err;
-          const msg = document.querySelector('.mf span span');
           const holder = document.querySelector('.mf > span');
           if (holder) holder.innerHTML = err ? `<span style="color:var(--warn)">${esc(err)}</span>` : '';
           const nm = document.getElementById('namePreview');

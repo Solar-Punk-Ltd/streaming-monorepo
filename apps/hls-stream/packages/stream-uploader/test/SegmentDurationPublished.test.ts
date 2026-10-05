@@ -79,7 +79,8 @@ describe('what a playlist tells a viewer a segment lasts', () => {
     const manifest = published[published.length - 1];
 
     assert.ok(manifest.includes(MEASURED_EXTINF), `expected the measured duration, got:\n${manifest}`);
-    assert.ok(!manifest.includes('0.32'), `the engine's claim must not reach a viewer, got:\n${manifest}`);
+    // Read the duration lines alone: the program date-time line carries wall-clock digits that can spell 0.32.
+    assert.ok(!/^#EXTINF:0\.320*,/m.test(manifest), `the engine's claim must not reach a viewer, got:\n${manifest}`);
 
     await orch.stopStream(STREAM_ID);
   });

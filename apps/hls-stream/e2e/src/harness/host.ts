@@ -428,7 +428,7 @@ export class Host {
   private async curl(target: ServiceTarget, path: string, timeoutS: number): Promise<RunResult> {
     // Keep the ssh run bound above curl's own deadline so --max-time is what fires first on a slow reply.
     const runTimeoutMs = Math.max(DEFAULT_RUN_TIMEOUT_MS, (timeoutS + 5) * 1_000);
-    const url = `http://${await this.dialAddress(target)}:${portOf(target)}${path}`;
+    const url = shellQuoted(`http://${await this.dialAddress(target)}:${portOf(target)}${path}`);
     return this.run(`curl -s --max-time ${timeoutS} ${url}`, runTimeoutMs);
   }
 }

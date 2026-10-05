@@ -1,7 +1,6 @@
 import type { ForwardChild, ForwardChildState, ForwardPathIdentity, SshForwardCleanup } from './sshForwardResources.js';
 import type { SshDockerForwardCommand } from '../domain/chequebook/sshDockerForwardCommand.js';
 import {
-  isForwardStop,
   NS_PER_MS,
   privateForwardIdentity,
   sameForwardIdentity,
@@ -308,8 +307,8 @@ export function runSshForwardSupervisor(
       return;
     }
     if (attempted) {
-      if (validated && isForwardStop(input, validated.start.leaseId)) close();
-      else close();
+      // One start per forward: a stop or any other message after it ends the lease.
+      close();
       return;
     }
     attempted = true;

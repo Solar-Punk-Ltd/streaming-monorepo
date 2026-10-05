@@ -335,6 +335,9 @@ interface JobConfig {
 
   allowedFrom?: readonly ProfileStatus[];
 
+  /** The instance the caller read. A row replaced since then belongs to its replacement and is not claimed. */
+  expectedInstanceId?: string;
+
   /**
    * Addresses this job's own output must not carry whole.
    *
@@ -1555,6 +1558,7 @@ export class DeploymentOrchestrator {
       args: this.buildScriptArgs(profile, services ?? []),
       transitionTo: 'STOPPING',
       allowedFrom: ['RUNNING', 'ERROR'],
+      expectedInstanceId: profile.instance_id,
       afterClaim: async () => {
         await this.operatorActed(profile, 'Stopped by the operator before the file was verified.');
       },
@@ -1739,16 +1743,26 @@ export class DeploymentOrchestrator {
     await this.ensureStackDefaults(cfg.paths);
 
     if (cfg.transitionTo && cfg.allowedFrom) {
-      const transitioned = await this.profiles.transitionStatus(cfg.profileName, cfg.transitionTo, cfg.allowedFrom);
+      const transitioned = await this.profiles.transitionStatus(
+        cfg.profileName,
+        cfg.transitionTo,
+        cfg.allowedFrom,
+        cfg.expectedInstanceId,
+      );
       if (!transitioned) {
         const current = await this.profiles.findByName(cfg.profileName);
+        if (current && cfg.expectedInstanceId && current.instance_id !== cfg.expectedInstanceId) {
+          throw new ProfileInstanceChangedError(cfg.profileName);
+        }
         throw new ProfileBusyError(cfg.profileName, current?.status ?? 'REMOVING');
       }
       await this.publishChanged(transitioned);
-      await cfg.afterClaim?.();
     }
 
+    // Nothing else settles a claim this job took, so a throw before the script
+    // starts marks it failed rather than leaving it in its transition status.
     try {
+      if (cfg.transitionTo && cfg.allowedFrom) await cfg.afterClaim?.();
       await cfg.beforeRun?.();
     } catch (err) {
       if (cfg.transitionTo) await this.markFailed(cfg.profileName, getErrorMessage(err), cfg.deployFailure);

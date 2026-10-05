@@ -56,6 +56,16 @@ describe('writeEnvKey', () => {
     assert.match(readFileSync(envPath, 'utf-8'), /^STAMP=abc123$/m);
   });
 
+  it('matches the key literally, so a dot in it does not match another key', () => {
+    writeFileSync(envPath, 'AXB=keep\n');
+
+    writeEnvKey(envPath, 'A.B', 'new');
+
+    const written = readFileSync(envPath, 'utf-8');
+    assert.match(written, /^AXB=keep$/m);
+    assert.match(written, /^A\.B=new$/m);
+  });
+
   it('replaces an existing key without disturbing its neighbours', () => {
     writeFileSync(envPath, 'STREAM_KEY=aaa\nSTAMP=old\nAPI_AUTH_TOKEN=bbb\n');
 

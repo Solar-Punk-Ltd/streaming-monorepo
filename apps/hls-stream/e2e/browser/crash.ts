@@ -165,7 +165,7 @@ async function main(): Promise<void> {
   const requests: RequestRecord[] = [];
   let byteSourceArm: ByteSourceArmSession | undefined;
   const stretches: SampledStretch[] = [];
-  let watchUrl = clientUrl;
+  let watchUrl: string;
   let injectedAtMs = 0;
   let liftedAtMs = 0;
   let servingAtMs: number | null = null;

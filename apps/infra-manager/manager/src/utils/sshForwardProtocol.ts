@@ -134,12 +134,3 @@ export function validateForwardStart(input: unknown, now: bigint, uid: number): 
     throw new DockerBeeAcquisitionError();
   }
 }
-
-export function isForwardStop(value: unknown, leaseId: string): boolean {
-  try {
-    const record = exact(value, 'leaseId,type');
-    return record.type === 'stop' && record.leaseId === leaseId;
-  } catch {
-    return false;
-  }
-}
