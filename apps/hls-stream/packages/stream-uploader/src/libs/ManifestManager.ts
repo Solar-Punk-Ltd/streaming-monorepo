@@ -743,7 +743,9 @@ export class ManifestManager {
     }
 
     const ownResumeAt = this.highestSequence() + 1;
-    const resumeAt = this.dating.resumePointFor(returnToken, this.published(ownResumeAt)) - this.sequenceOffset;
+    const resumeAt =
+      this.dating.resumePointFor(returnToken, this.published(ownResumeAt), this.dateIfNothingStopped(ownResumeAt)) -
+      this.sequenceOffset;
     if (resumeAt > ownResumeAt) {
       this.logger.info(
         `[ManifestManager] Segment index ${index} resumes at sequence ${resumeAt} with the rest of its ladder ` +
@@ -753,6 +755,12 @@ export class ManifestManager {
     this.sequenceAnchor = { index, sequence: resumeAt };
     this.reanchorDating(resumeAt, ENCODER_RETURNED, returnToken);
     return { sequence: resumeAt, reanchored: true };
+  }
+
+  /** The date `sequence` would carry had nothing stopped, stepping on from the newest segment placed. */
+  private dateIfNothingStopped(sequence: number): number {
+    const newest = this.segments[this.segments.length - 1];
+    return presentationMsOf(this.anchor, sequence, newest === undefined ? null : this.placedMedia(newest));
   }
 
   /**
@@ -774,12 +782,7 @@ export class ManifestManager {
    * break and each is written exactly once per break.
    */
   private reanchorDating(resumeAt: number, cause: ReanchorCause, returnToken?: string): void {
-    const newest = this.segments[this.segments.length - 1];
-    const wouldHaveBeen = presentationMsOf(
-      this.anchor,
-      resumeAt,
-      newest === undefined ? null : this.placedMedia(newest),
-    );
+    const wouldHaveBeen = this.dateIfNothingStopped(resumeAt);
     const epoch = this.dating.epochFrom(
       resumeAt,
       wouldHaveBeen,

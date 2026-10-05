@@ -411,8 +411,10 @@ can be segments behind on its uploads when a sibling agrees the point. The point
 rung's own count, because a published sequence cannot be reused, so a rung the engine handed more
 segments from before the outage after the point was agreed resumes at its own count and the uploader
 logs a warning. Nor
-does it raise a rung more than `MAX_RESUME_RAISE` sequences: a point further away is a count read
-wrongly rather than a ladder drifting apart, and the rung resumes at its own count with a warning. A
+does it raise a rung further than the fragments it was away for plus `RESUME_RAISE_SLACK` sequences
+(`maxResumeRaise`). A rung that stayed live through a partial return counts on through its siblings'
+absence, so lining them up again takes that absence in fragments, eight on a test deployment. A point
+further away than that is a count read wrongly, and the rung resumes at its own count with a warning. A
 rung SRS held through a short drop resumes at its own count too: its numbering never stopped, so its
 sequence already names the same media as its siblings', and the source's return can land between
 two rungs delivering one segment, whose copy on the later rung is media cut before the drop. A

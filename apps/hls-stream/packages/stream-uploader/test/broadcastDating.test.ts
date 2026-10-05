@@ -5,12 +5,13 @@ import {
   agreedResumePoint,
   datedDurationMs,
   DATING_SNAP_TOLERANCE,
-  MAX_RESUME_RAISE,
+  maxResumeRaise,
   presentationMsOf,
   programDateTimeMsOf,
   reanchorDecision,
   reanchorEpoch,
   RAISE_REFUSED,
+  RESUME_RAISE_SLACK,
   RESUMED_ABOVE_THE_RETURN,
   RESUMED_AT_THE_RETURN,
   SAME_RESTART_TOLERANCE_MS,
@@ -823,18 +824,22 @@ describe('the sequence every rung of one return resumes at', () => {
   });
 
   it('is the agreed point for a rung that counted less', () => {
-    assert.deepEqual(sharedResumePoint(335, 331), { resumeAt: 335, kind: RESUMED_AT_THE_RETURN });
+    assert.deepEqual(sharedResumePoint(335, 331, 5), { resumeAt: 335, kind: RESUMED_AT_THE_RETURN });
   });
 
   it('never resumes a rung below its own count', () => {
-    assert.deepEqual(sharedResumePoint(335, 337), { resumeAt: 337, kind: RESUMED_ABOVE_THE_RETURN });
+    assert.deepEqual(sharedResumePoint(335, 337, 5), { resumeAt: 337, kind: RESUMED_ABOVE_THE_RETURN });
   });
 
-  it(`raises a rung by at most ${MAX_RESUME_RAISE} sequences, and resumes it at its own count past that`, () => {
-    assert.deepEqual(sharedResumePoint(330 + MAX_RESUME_RAISE, 330), {
-      resumeAt: 330 + MAX_RESUME_RAISE,
-      kind: RESUMED_AT_THE_RETURN,
-    });
-    assert.deepEqual(sharedResumePoint(331 + MAX_RESUME_RAISE, 330), { resumeAt: 330, kind: RAISE_REFUSED });
+  it('raises a rung by at most the bound it is given, and resumes it at its own count past that', () => {
+    assert.deepEqual(sharedResumePoint(338, 330, 8), { resumeAt: 338, kind: RESUMED_AT_THE_RETURN });
+    assert.deepEqual(sharedResumePoint(339, 330, 8), { resumeAt: 330, kind: RAISE_REFUSED });
+  });
+
+  it(`bounds the raise by the fragments a rung was away for plus ${RESUME_RAISE_SLACK}`, () => {
+    assert.equal(maxResumeRaise(0, 2), RESUME_RAISE_SLACK);
+    assert.equal(maxResumeRaise(16_000, 2), RESUME_RAISE_SLACK + 8);
+    assert.equal(maxResumeRaise(15_001, 2), RESUME_RAISE_SLACK + 8, 'a part fragment away counts whole');
+    assert.equal(maxResumeRaise(-3_000, 2), RESUME_RAISE_SLACK, 'a dating ahead of the clock is no absence');
   });
 });

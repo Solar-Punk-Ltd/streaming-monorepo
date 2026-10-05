@@ -141,6 +141,8 @@ interface ReconnectHarness {
   holdUploads: (streamId: string) => () => void;
   /** Hand one segment over without waiting for its upload, for a stream whose uploads are held. */
   handOver: (label: string, index: number, streamId: string) => void;
+  /** The head of every feed, by topic, which a case may write to stand in for an earlier session. */
+  feeds: Map<string, FakeFeedHead>;
 }
 
 /**
@@ -205,6 +207,7 @@ function reconnectHarness(options: { ladder?: boolean } = {}): ReconnectHarness 
     writes,
     adminStates,
     saved,
+    feeds,
     start: (streamId = STREAM_ID) => {
       assert.equal(
         orchestrator.startStream(streamId, MEDIA_TYPE_AUDIO, undefined, DECLARATION),
@@ -797,6 +800,7 @@ async function rebuildFrom(entry: StreamState, wallOffsetMs = OUTAGE_MS): Promis
     writes,
     adminStates,
     saved,
+    feeds,
     start: () => assert.fail('a recovered session is resumed by its engine′s segments, not by an announce'),
     announce: () => assert.fail('the same'),
     published: async (label) => {
@@ -1384,7 +1388,7 @@ describe('a ladder that comes back in two returns, the first without 360p', () =
     }
   }
 
-  for (const away of [3]) {
+  for (const away of [3, 8]) {
     for (const order of ['360p places first', '360p places last'] as const) {
       it(`keeps one timeline across both returns, the first ${away} segments long, when ${order}`, async () => {
         const harness = reconnectHarness({ ladder: true });

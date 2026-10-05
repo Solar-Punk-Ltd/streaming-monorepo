@@ -50,6 +50,7 @@ import { BeePublisherPool, PublisherRoute } from './BeePublisherPool.js';
 import {
   agreedResumePoint,
   BroadcastDating,
+  maxResumeRaise,
   RAISE_REFUSED,
   reanchorDecision,
   RESUMED_ABOVE_THE_RETURN,
@@ -2770,8 +2771,8 @@ export class StreamOrchestrator {
     return {
       epochFrom: (resumeAt, notBeforeMs, returnToken, publishedResumeAt) =>
         this.reanchorBroadcast(datingKey, base, resumeAt, notBeforeMs, returnToken, publishedResumeAt),
-      resumePointFor: (returnToken, ownResumeAt) =>
-        this.resumePointOf(streamId, datingKey, base, returnToken, ownResumeAt),
+      resumePointFor: (returnToken, ownResumeAt, ownResumeDatedAtMs) =>
+        this.resumePointOf(streamId, datingKey, base, returnToken, ownResumeAt, ownResumeDatedAtMs),
     };
   }
 
@@ -2805,6 +2806,7 @@ export class StreamOrchestrator {
     base: string | null,
     returnToken: string,
     ownResumeAt: number,
+    ownResumeDatedAtMs: number,
   ): number {
     if (base === null) {
       return ownResumeAt;
@@ -2824,7 +2826,11 @@ export class StreamOrchestrator {
     if (inProgress.heldRungs.has(streamId)) {
       return ownResumeAt;
     }
-    const decision = sharedResumePoint(inProgress.resumeAt, ownResumeAt);
+    const decision = sharedResumePoint(
+      inProgress.resumeAt,
+      ownResumeAt,
+      maxResumeRaise(this.wallClock() - ownResumeDatedAtMs, this.config.fragmentSeconds),
+    );
     if (decision.kind === RESUMED_ABOVE_THE_RETURN) {
       this.logger.warn(
         `[StreamOrchestrator] A rung of ${base} resumes at its own sequence ${ownResumeAt}, above the ` +
@@ -2834,8 +2840,8 @@ export class StreamOrchestrator {
     } else if (decision.kind === RAISE_REFUSED) {
       this.logger.warn(
         `[StreamOrchestrator] A rung of ${base} resumes at its own sequence ${ownResumeAt} rather than at the ` +
-          `${inProgress.resumeAt} the rest of its return took, which is further above it than a ladder's rungs ` +
-          'drift apart, so its level switches across this return land off by the difference',
+          `${inProgress.resumeAt} the rest of its return took, which is further above it than its own absence ` +
+          'explains, so its level switches across this return land off by the difference',
       );
     }
     return decision.resumeAt;

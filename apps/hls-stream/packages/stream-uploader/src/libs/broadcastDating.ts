@@ -231,29 +231,52 @@ export interface BroadcastDating {
    * The published sequence a rung coming back from this return resumes at, which is the same answer
    * for every rung of the return and never below `ownResumeAt`, the published sequence one past the
    * highest the asking rung has placed. See {@link sharedResumePoint}.
+   *
+   * @param ownResumeDatedAtMs the date `ownResumeAt` would have carried had the rung never stopped,
+   * which says how long it was away. See {@link maxResumeRaise}.
    */
-  resumePointFor(returnToken: string, ownResumeAt: number): number;
+  resumePointFor(returnToken: string, ownResumeAt: number, ownResumeDatedAtMs: number): number;
 }
 
 /**
- * How many sequences a return may raise a rung above its own count. Above it the rung resumes at its
- * own count instead.
+ * How many sequences a return may raise a rung above its own count beyond the fragments the rung was
+ * away for. See {@link maxResumeRaise}.
  *
  * ⛔ **A bound on how wrong the agreement can be, not a measurement.** The rungs of one ladder are cut
- * on one keyframe grid, so what separates their counts at an outage is a short partial segment one of
- * them closed and the segments the engine had not yet handed over, a sequence or two on a test
- * deployment, with the breaks four apart in the worst case measured. A point further above a rung
- * than that names media the rung never
- * had, and every sequence of the raise is a gap entry spent from the live window's byte budget, so a
- * runaway point would push media out of the window. Five covers the measured four with one to spare.
+ * on one keyframe grid, so what separates their counts at a whole-ladder outage is a short partial
+ * segment one of them closed and the segments the engine had not yet handed over, a sequence or two
+ * on a test deployment, with the breaks four apart in the worst case measured. Five covers the
+ * measured four with one to spare.
  */
-export const MAX_RESUME_RAISE = 5;
+export const RESUME_RAISE_SLACK = 5;
+
+/**
+ * The most sequences a return may raise a rung above its own count: the fragments it was away for,
+ * plus {@link RESUME_RAISE_SLACK}. Above it the rung resumes at its own count instead.
+ *
+ * ⛔⛔ **Sized from how long the rung was away, because a sibling may have kept publishing.** When
+ * only some rungs are cut, the one that stayed counts on through their absence, and the raise that
+ * lines them up again is that absence in fragments: eight sequences on a test deployment, where three
+ * rungs resumed at 327 while 360p had reached 334. A fixed bound of five refused exactly that raise
+ * and left the three a whole absence behind for the rest of the broadcast.
+ *
+ * ⛔ **Still a bound.** A point further above a rung than its absence and the slack names media no
+ * rung could have counted, which is a count read wrongly, and every sequence of the raise is a gap
+ * entry spent from the live window's byte budget. The replaced rung that once read its siblings in
+ * another numbering was twelve sequences out after an eight second blackout, past the nine this
+ * allows.
+ *
+ * @param awayMs how long the rung was away, from the date its next segment would have carried to now.
+ */
+export function maxResumeRaise(awayMs: number, fragmentSeconds: number): number {
+  return RESUME_RAISE_SLACK + Math.ceil(Math.max(0, awayMs) / (fragmentSeconds * MS_PER_SECOND));
+}
 
 /** The rung resumed at the point its return agreed. */
 export const RESUMED_AT_THE_RETURN = 'at-the-return' as const;
 /** The rung had already counted past the point its return agreed, and resumed at its own count. */
 export const RESUMED_ABOVE_THE_RETURN = 'above-the-return' as const;
-/** The point its return agreed was more than {@link MAX_RESUME_RAISE} above it, so it resumed at its own count. */
+/** The point its return agreed was more than {@link maxResumeRaise} above it, so it resumed at its own count. */
 export const RAISE_REFUSED = 'raise-refused' as const;
 
 /** Where one rung of a return resumes, and how that relates to the point the return agreed. */
@@ -289,19 +312,19 @@ export function agreedResumePoint(ownResumeAt: number, ladderCounts: readonly nu
  *
  * ⚠️ **Never below the rung's own count**, because a number already published cannot be reused. A rung
  * still placing segments from before the outage when its siblings agreed the point can pass it, and
- * it then resumes at its own count, a sequence or more above them. **Never more than
- * {@link MAX_RESUME_RAISE} above it either**, because a point that far away is not a rung lining up
- * with its siblings but a count read wrongly, and it would list that many gap entries for media
- * nobody lost.
+ * it then resumes at its own count, a sequence or more above them. **Never more than `maxRaise`
+ * above it either**, because a point that far away is not a rung lining up with its siblings but a
+ * count read wrongly, and it would list that many gap entries for media nobody lost. See
+ * {@link maxResumeRaise}.
  *
  * A rung below the point lists the sequences in between as gap entries, which is what a sequence
  * nothing fills already publishes as. See `ManifestManager.placeResumed`.
  */
-export function sharedResumePoint(agreed: number, ownResumeAt: number): ResumeDecision {
+export function sharedResumePoint(agreed: number, ownResumeAt: number, maxRaise: number): ResumeDecision {
   if (ownResumeAt > agreed) {
     return { resumeAt: ownResumeAt, kind: RESUMED_ABOVE_THE_RETURN };
   }
-  if (agreed - ownResumeAt > MAX_RESUME_RAISE) {
+  if (agreed - ownResumeAt > maxRaise) {
     return { resumeAt: ownResumeAt, kind: RAISE_REFUSED };
   }
   return { resumeAt: agreed, kind: RESUMED_AT_THE_RETURN };
