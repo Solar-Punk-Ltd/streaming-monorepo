@@ -147,6 +147,28 @@ export function adminLinkAllowPlainHttp(raw: string | undefined): boolean {
   throw new Error(`ADMIN_LINK_ALLOW_PLAIN_HTTP must be true or false, got: ${raw}`);
 }
 
+/** The fewest characters a funding token may have. */
+export const FUNDING_API_TOKEN_MIN_LENGTH = 32;
+
+/**
+ * The bearer token the web2 admin presents to the funding API under /api/admin-funding, or null when none is set,
+ * which turns that API off: every path under it then answers 404. A value shorter than 32 characters, or with a space
+ * inside, stops the manager at startup, as a malformed BEE_LOCAL_HOST does. The refusal names the variable and never
+ * the value.
+ *
+ * Exported so the refusal can be tested without the process exiting.
+ */
+export function fundingApiToken(raw: string | undefined): string | null {
+  const value = raw?.trim() ?? '';
+  if (value === '') return null;
+  if (value.length < FUNDING_API_TOKEN_MIN_LENGTH || /\s/.test(value)) {
+    throw new Error(
+      `FUNDING_API_TOKEN must be ${FUNDING_API_TOKEN_MIN_LENGTH} characters or more with no space inside, or unset to turn the funding API off`,
+    );
+  }
+  return value;
+}
+
 export interface AppConfig {
   port: number;
   host: string;
@@ -169,6 +191,8 @@ export interface AppConfig {
   adminLinkAllowPlainHttp: boolean;
   /** The repositories stack versions are built from, the first for a new version. See `parseStackSources`. */
   stackSources: readonly StackSource[];
+  /** See `fundingApiToken`. Null when the funding API is off. */
+  fundingApiToken: string | null;
 }
 
 export const config: AppConfig = {
@@ -183,4 +207,5 @@ export const config: AppConfig = {
   beeLocalHost: beeLocalHost(process.env.BEE_LOCAL_HOST),
   adminLinkAllowPlainHttp: adminLinkAllowPlainHttp(process.env.ADMIN_LINK_ALLOW_PLAIN_HTTP),
   stackSources: parseStackSources(process.env.STACK_SOURCES),
+  fundingApiToken: fundingApiToken(process.env.FUNDING_API_TOKEN),
 };
