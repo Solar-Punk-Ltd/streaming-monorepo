@@ -127,10 +127,11 @@ import { sleep, waitFor } from '../../src/harness/wait.js';
  *   counter restart into a hole the broadcast never had. A restart is one of the only two things
  *   that still arm a break since 2026-09-06, the other being the origin declaring one, and a lost
  *   segment is now said with gap entries instead.
- * - **Every rung breaks at one sequence.** The rungs of one return resume where the furthest of them
- *   had counted, so a rung that had counted less lists the sequences up to that point as gap entries
- *   right before its break. Those are the one exception to "no gap entries", and only where a sibling
- *   breaks at the same sequence with media in front of it. See `returnAlignment`.
+ * - **Every rung keeps one timeline.** Every sequence two rungs both hold media at is dated within one
+ *   fragment on both. The rungs of one return resume where the furthest of them had counted, so a
+ *   rung that had counted less lists the sequences up to that point as gap entries right before its
+ *   break. Those are the one exception to "no gap entries", and only where a sibling had counted that
+ *   far with media. See `returnAlignment`.
  *
  * ⛔ The uploader writes `Resumed recovering stream` when it takes the branch, but that line is not
  * part of the shared log contract in `packages/shared/src/uploaderLog.ts` and the deployed-log-shape
@@ -374,14 +375,14 @@ describe('M — the uploader dies while its engine restarts, then the broadcaste
     // in that window is a real loss with real gap entries, and nothing to do with this scenario.
     //
     // The gap entries a rung lists to line up with its ladder at the return are not loss, and only
-    // those are set aside: a run right before a break that a sibling reaches at the same sequence with
-    // media in front of it. The refusal above already holds every rung to one break sequence.
+    // those are set aside: a run right before a break at a sequence a sibling had counted to with
+    // media. The refusal above already holds every rung to one timeline.
     const losses = parseUploaderLog(await log());
     assert.equal(
       verdict.gapsSeen - verdict.gapsAtAReturnSeen,
       0,
       `${verdict.gapsSeen} gap entries across the rungs, ${verdict.gapsAtAReturnSeen} of them lining a rung up ` +
-        'with a sibling that broke at the same sequence having counted that far. The uploader reported ' +
+        'with a sibling that had counted that far. The uploader reported ' +
         `${losses.inferredSegmentGaps} inferred skips and ${losses.discontinuitySegments.length} failed uploads ` +
         'in the same window. Zero of both beside gap entries is the counter restart being measured as a run of ' +
         'missing segments, which is the inference the recovery branch drops the accounting index to avoid. ' +
