@@ -169,7 +169,7 @@ interface RungPlaylistParse {
 }
 
 /** One `#EXT-X-DISCONTINUITY` a window carries. See {@link RungPlaylistParse.breaks}. */
-export interface WindowBreak {
+interface WindowBreak {
   /** The sequence of the entry the break opens. */
   sequence: number;
   /** How many gap entries run right up to it, which is 0 where media sits in front of it. */
@@ -372,7 +372,7 @@ function mediaOf(
 }
 
 /** What the rungs of a ladder say together about the returns their windows hold. See {@link returnAlignment}. */
-export interface ReturnAlignment {
+interface ReturnAlignment {
   /**
    * Gap entries that line a rung up with its ladder at a return: a run right before a break at a
    * sequence a sibling had counted to with media.

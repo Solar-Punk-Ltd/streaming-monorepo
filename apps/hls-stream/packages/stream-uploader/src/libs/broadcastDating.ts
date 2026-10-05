@@ -280,7 +280,7 @@ export const RESUMED_ABOVE_THE_RETURN = 'above-the-return' as const;
 export const RAISE_REFUSED = 'raise-refused' as const;
 
 /** Where one rung of a return resumes, and how that relates to the point the return agreed. */
-export interface ResumeDecision {
+interface ResumeDecision {
   resumeAt: number;
   kind: typeof RESUMED_AT_THE_RETURN | typeof RESUMED_ABOVE_THE_RETURN | typeof RAISE_REFUSED;
 }
