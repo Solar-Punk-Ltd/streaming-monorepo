@@ -1283,9 +1283,9 @@ export class StreamUploader {
     return this.consecutiveManifestFailures > 0;
   }
 
-  /** The sequence this rung would resume at on its own. See `ManifestManager.nextSequence`. */
-  public nextSequence(): number | null {
-    return this.manifestManager.nextSequence();
+  /** The published sequence this rung would resume at on its own. See `ManifestManager.publishedNextSequence`. */
+  public publishedNextSequence(): number | null {
+    return this.manifestManager.publishedNextSequence();
   }
 
   public getConsecutiveManifestFailures(): number {

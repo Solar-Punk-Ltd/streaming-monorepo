@@ -217,48 +217,83 @@ export interface BroadcastDating {
   epochFrom(resumeAt: number, notBeforeMs: number, returnToken?: string): BroadcastEpoch;
 
   /**
-   * The sequence a rung coming back from this return resumes at, which is the same answer for every
-   * rung of the return and never below `ownResumeAt`, the one past the highest sequence the asking
-   * rung has placed. See {@link sharedResumePoint}.
+   * The published sequence a rung coming back from this return resumes at, which is the same answer
+   * for every rung of the return and never below `ownResumeAt`, the published sequence one past the
+   * highest the asking rung has placed. See {@link sharedResumePoint}.
    */
   resumePointFor(returnToken: string, ownResumeAt: number): number;
 }
 
 /**
- * The sequence every rung of one return resumes at: the point the return already took, or the
- * furthest any rung of the ladder has counted, whichever is higher.
+ * How many sequences a return may raise a rung above its own count. Above it the rung resumes at its
+ * own count instead.
+ *
+ * ⛔ **A bound on how wrong the agreement can be, not a measurement.** The rungs of one ladder are cut
+ * on one keyframe grid, so what separates their counts at an outage is a short partial segment one of
+ * them closed and the segments the engine had not yet handed over, a sequence or two on a test
+ * deployment, with the breaks four apart in the worst case measured. A point further above a rung
+ * than that names media the rung never
+ * had, and every sequence of the raise is a gap entry spent from the live window's byte budget, so a
+ * runaway point would push media out of the window. Five covers the measured four with one to spare.
+ */
+export const MAX_RESUME_RAISE = 5;
+
+/** The rung resumed at the point its return agreed. */
+export const RESUMED_AT_THE_RETURN = 'at-the-return' as const;
+/** The rung had already counted past the point its return agreed, and resumed at its own count. */
+export const RESUMED_ABOVE_THE_RETURN = 'above-the-return' as const;
+/** The point its return agreed was more than {@link MAX_RESUME_RAISE} above it, so it resumed at its own count. */
+export const RAISE_REFUSED = 'raise-refused' as const;
+
+/** Where one rung of a return resumes, and how that relates to the point the return agreed. */
+export interface ResumeDecision {
+  resumeAt: number;
+  kind: typeof RESUMED_AT_THE_RETURN | typeof RESUMED_ABOVE_THE_RETURN | typeof RAISE_REFUSED;
+}
+
+/**
+ * The point every rung of one return resumes at, agreed once by the first rung of it to place a
+ * resumed segment: the furthest any rung of the ladder has counted, in published numbers.
  *
  * ⛔⛔ **One sequence names one moment on every rung, so a return resumes them all at one sequence.**
  * The rungs stop at different counts before an outage. One closes a short partial segment the others
  * do not, or one is a segment behind on its upload, and a player switching quality picks the segment
  * by its sequence. Each rung resuming at its own count put sequence 331 about 30 seconds apart on two
- * rungs of one broadcast measured on a test deployment, with the breaks four sequences apart. A rung
- * that is behind the shared point fills the hole with gap entries, which is what a sequence nothing
- * fills already publishes as.
+ * rungs of one broadcast measured on a test deployment, with the breaks four sequences apart.
  *
- * The first rung of the return to place a segment fixes the point from every rung's count, its
- * siblings' included, and writes it down as the `fromSequence` of the epoch it mints for the return.
- * A rung placing later reads it back off that epoch, through the broadcast's anchor, which is what
- * keeps the point across a restart of this process: the epoch rides in the ladder group store and in
- * every rung's recovery entry. Once the point is taken the siblings' counts are not read again,
- * because a sibling that has already resumed has counted past it.
+ * ⛔ **Published numbers, never a rung's own.** A rung whose session was replaced numbers its media
+ * from 0 again and publishes it above the feed head it took over, so its own count and its siblings'
+ * are in two different numberings. Compared raw, a replaced rung twelve segments into its new session
+ * either raised its siblings twelve sequences or was raised twelve itself.
  *
- * ⚠️ **Never below the asking rung's own count**, because a number already published cannot be
- * reused. A rung still placing segments from before the outage when its siblings fixed the point can
- * pass it, and it then resumes at its own count, a sequence or more above them. See
- * `ManifestManager.placeResumed`.
- *
- * @param ownResumeAt one past the highest sequence the asking rung has placed.
- * @param ladderCounts the sequence each live rung of the ladder would resume at on its own.
+ * @param ownResumeAt the published sequence one past the highest the asking rung has placed.
+ * @param ladderCounts the published sequence each other live rung of the ladder would resume at.
  */
-export function sharedResumePoint(
-  epochs: readonly BroadcastEpoch[],
-  returnToken: string,
-  ownResumeAt: number,
-  ladderCounts: readonly number[],
-): number {
-  const taken = epochs.find((epoch) => epoch.returnToken === returnToken);
-  return taken === undefined ? Math.max(ownResumeAt, ...ladderCounts) : Math.max(ownResumeAt, taken.fromSequence);
+export function agreedResumePoint(ownResumeAt: number, ladderCounts: readonly number[]): number {
+  return Math.max(ownResumeAt, ...ladderCounts);
+}
+
+/**
+ * Where one rung of a return resumes, given the point its return agreed.
+ *
+ * ⚠️ **Never below the rung's own count**, because a number already published cannot be reused. A rung
+ * still placing segments from before the outage when its siblings agreed the point can pass it, and
+ * it then resumes at its own count, a sequence or more above them. **Never more than
+ * {@link MAX_RESUME_RAISE} above it either**, because a point that far away is not a rung lining up
+ * with its siblings but a count read wrongly, and it would list that many gap entries for media
+ * nobody lost.
+ *
+ * A rung below the point lists the sequences in between as gap entries, which is what a sequence
+ * nothing fills already publishes as. See `ManifestManager.placeResumed`.
+ */
+export function sharedResumePoint(agreed: number, ownResumeAt: number): ResumeDecision {
+  if (ownResumeAt > agreed) {
+    return { resumeAt: ownResumeAt, kind: RESUMED_ABOVE_THE_RETURN };
+  }
+  if (agreed - ownResumeAt > MAX_RESUME_RAISE) {
+    return { resumeAt: ownResumeAt, kind: RAISE_REFUSED };
+  }
+  return { resumeAt: agreed, kind: RESUMED_AT_THE_RETURN };
 }
 
 /** Which of the two ways a re-anchoring reached its epoch, alongside the epoch itself. */

@@ -115,6 +115,27 @@ describe('LadderGroupStore', () => {
     assert.deepEqual(storeIn(root).store.load(BASE), midReturn);
   });
 
+  it('keeps the sequence a return agreed its rungs resume at, and drops a damaged one alone', () => {
+    const root = makeTempRoot();
+    const agreed: RememberedLadder = {
+      ...LADDER,
+      returnInProgress: { token: 'return-1', resumedRungs: ['video/livestream_360p'], resumeAt: 331 },
+    };
+    storeIn(root).store.remember(BASE, agreed);
+
+    assert.deepEqual(storeIn(root).store.load(BASE), agreed);
+
+    const { filePath } = storeIn(root);
+    fs.writeFileSync(
+      filePath,
+      JSON.stringify({
+        [BASE]: { ...LADDER, returnInProgress: { token: 'return-1', resumedRungs: [], resumeAt: 'far' } },
+      }),
+    );
+
+    assert.deepEqual(storeIn(root).store.load(BASE)?.returnInProgress, { token: 'return-1', resumedRungs: [] });
+  });
+
   it('drops a damaged return in progress and keeps the rest of the record', () => {
     const root = makeTempRoot();
     const { filePath } = storeIn(root);

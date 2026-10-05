@@ -2,12 +2,17 @@ import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 
 import {
+  agreedResumePoint,
   datedDurationMs,
   DATING_SNAP_TOLERANCE,
+  MAX_RESUME_RAISE,
   presentationMsOf,
   programDateTimeMsOf,
   reanchorDecision,
   reanchorEpoch,
+  RAISE_REFUSED,
+  RESUMED_ABOVE_THE_RETURN,
+  RESUMED_AT_THE_RETURN,
   SAME_RESTART_TOLERANCE_MS,
   sharedResumePoint,
   withEpoch,
@@ -747,33 +752,24 @@ describe('what a re-anchoring reports about how it reached its epoch', () => {
 });
 
 describe('the sequence every rung of one return resumes at', () => {
-  const RETURN = 'one-return';
-
-  it('is the furthest any rung has counted, before the return has taken a point', () => {
-    assert.equal(sharedResumePoint([], RETURN, 331, [335, 331, 330]), 335);
+  it('is agreed as the furthest any rung has counted', () => {
+    assert.equal(agreedResumePoint(331, [335, 331, 330]), 335);
+    assert.equal(agreedResumePoint(336, [335, 331]), 336);
   });
 
-  it('is the point the return already took, for a rung that counted less', () => {
-    const epochs = [{ fromSequence: 335, atMs: 1, returnToken: RETURN }];
-
-    assert.equal(sharedResumePoint(epochs, RETURN, 331, []), 335);
-  });
-
-  it('reads no sibling again once the return has taken a point, since a sibling that resumed counted past it', () => {
-    const epochs = [{ fromSequence: 335, atMs: 1, returnToken: RETURN }];
-
-    assert.equal(sharedResumePoint(epochs, RETURN, 331, [338]), 335);
+  it('is the agreed point for a rung that counted less', () => {
+    assert.deepEqual(sharedResumePoint(335, 331), { resumeAt: 335, kind: RESUMED_AT_THE_RETURN });
   });
 
   it('never resumes a rung below its own count', () => {
-    const epochs = [{ fromSequence: 335, atMs: 1, returnToken: RETURN }];
-
-    assert.equal(sharedResumePoint(epochs, RETURN, 337, []), 337);
+    assert.deepEqual(sharedResumePoint(335, 337), { resumeAt: 337, kind: RESUMED_ABOVE_THE_RETURN });
   });
 
-  it('ignores the point an earlier return took', () => {
-    const epochs = [{ fromSequence: 335, atMs: 1, returnToken: 'an-earlier-return' }];
-
-    assert.equal(sharedResumePoint(epochs, RETURN, 340, [341]), 341);
+  it(`raises a rung by at most ${MAX_RESUME_RAISE} sequences, and resumes it at its own count past that`, () => {
+    assert.deepEqual(sharedResumePoint(330 + MAX_RESUME_RAISE, 330), {
+      resumeAt: 330 + MAX_RESUME_RAISE,
+      kind: RESUMED_AT_THE_RETURN,
+    });
+    assert.deepEqual(sharedResumePoint(331 + MAX_RESUME_RAISE, 330), { resumeAt: 330, kind: RAISE_REFUSED });
   });
 });

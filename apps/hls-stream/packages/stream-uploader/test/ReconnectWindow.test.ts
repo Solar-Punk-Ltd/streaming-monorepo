@@ -1304,6 +1304,71 @@ describe('a ladder whose rungs stopped at different sequences before the outage'
   }
 });
 
+/**
+ * A rung whose session was replaced earlier in the broadcast numbers its own media from 0 and
+ * publishes it above the feed head it took over, so its own count and its siblings' are in two
+ * different numberings until something adds its offset back.
+ */
+describe('a ladder one of whose rungs was replaced earlier in the broadcast', () => {
+  const rungIds = RUNG_NAMES.map((rung) => `${LADDER_BASE}_${rung}`);
+  const replaced = rungIds[3];
+  const AFTER_THE_REPLACEMENT = 3;
+  const BLACKOUT_MS = 8_000;
+
+  /** Every rung publishes the same run, one rung is stopped and started again, and the whole ladder goes away. */
+  async function replacedThenBlackedOut(harness: ReconnectHarness, openingSegments: number): Promise<void> {
+    for (const streamId of rungIds) harness.start(streamId);
+    for (let i = 0; i < openingSegments; i++) {
+      for (const streamId of rungIds) await harness.segment(`${streamId}-a${i}`, i, streamId);
+      await harness.passTime(SEGMENT_SECONDS * 1_000);
+    }
+    await harness.published(`${replaced}-a${openingSegments - 1}`);
+    await harness.orchestrator.stopStream(replaced);
+    harness.start(replaced);
+    const resumedIndex = openingSegments + AFTER_THE_REPLACEMENT;
+    for (let i = openingSegments; i < resumedIndex; i++) {
+      for (const streamId of rungIds) await harness.segment(`${streamId}-r${i}`, i, streamId);
+      await harness.passTime(SEGMENT_SECONDS * 1_000);
+    }
+    for (const streamId of rungIds) await harness.published(`${streamId}-r${resumedIndex - 1}`);
+    for (const streamId of rungIds) harness.orchestrator.noteDisconnect(streamId);
+    await harness.passTime(BLACKOUT_MS);
+    for (const streamId of rungIds) harness.start(streamId);
+    for (const streamId of rungIds) await harness.segment(`${streamId}-b0`, resumedIndex, streamId);
+  }
+
+  /** The entry naming this rung's first resumed segment, read off the newest playlist that names it. */
+  async function firstResumed(
+    harness: ReconnectHarness,
+    streamId: string,
+  ): Promise<{ entry: PlaylistEntry; gaps: number }> {
+    await harness.published(`${streamId}-b0`);
+    const write = writesNaming(harness.writes, `${streamId}-b0`).at(-1);
+    assert.ok(write, `${streamId} must have published its first resumed segment`);
+    const entries = entriesOf(write.playlist);
+    const entry = entries.find((candidate) => candidate.uri === `segment-${streamId}-b0`);
+    assert.ok(entry);
+    return { entry, gaps: entries.filter((candidate) => candidate.uri.startsWith('gap-')).length };
+  }
+
+  // Twelve segments before the replacement puts the two numberings further apart than a return may
+  // raise a rung, and three puts them inside it, where only the published numbering tells them apart.
+  for (const openingSegments of [12, 3]) {
+    it(`resumes the replaced rung with its siblings, with no gap entries, ${openingSegments} segments in`, async () => {
+      const harness = reconnectHarness({ ladder: true });
+      await replacedThenBlackedOut(harness, openingSegments);
+
+      const owed = openingSegments + AFTER_THE_REPLACEMENT;
+      for (const streamId of rungIds) {
+        const { entry, gaps } = await firstResumed(harness, streamId);
+        assert.equal(entry.sequence, owed, `${streamId} resumes at published ${entry.sequence}`);
+        assert.equal(entry.opensABreak, true, `${streamId} declares the return`);
+        assert.equal(gaps, 0, `${streamId} lists ${gaps} gap entries for media nobody lost`);
+      }
+    });
+  }
+});
+
 /** What two uploader processes share across a restart: what is on disk, and what is on the feeds. */
 interface RestartDisk {
   /** The recovery entries, keyed by the file id `RecoveryStore` names them by. */

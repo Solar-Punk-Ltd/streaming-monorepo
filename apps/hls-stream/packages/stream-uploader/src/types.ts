@@ -181,9 +181,10 @@ export interface BroadcastAnchor {
  * ⛔ **Minted once for the whole ladder, by whichever rung crosses the restart first.** Every other
  * rung materialises that same line at the sequence it resumes at, so the mapping from sequence to
  * date stays one function for the ladder. That is the property the tag is here for. After an encoder
- * returns, every rung of the return resumes at one sequence, the epoch's `fromSequence`, so they all
- * write it down at one point. After the engine's own counter restarts, each rung resumes at its own
- * count and writes the line down there.
+ * returns, every rung of the return resumes at the one published sequence the return agreed, so they
+ * write it down at one point unless a rung's session was replaced and numbers under another offset.
+ * After the engine's own counter restarts, each rung resumes at its own count and writes the line
+ * down there.
  */
 export interface BroadcastEpoch {
   /** The first playlist sequence this epoch dates. Everything below it keeps the epoch it had. */
@@ -197,8 +198,8 @@ export interface BroadcastEpoch {
    *
    * ⛔ **The rungs of one ladder share a line and a resume point because they share this, not because
    * their numbers look alike.** A whole-encoder return reaches the orchestrator once per rung and it
-   * is the orchestrator that can see they are one event. The epoch minted under this name carries the
-   * sequence the whole return resumes at, which is how a rung placing after its siblings finds it. See
+   * is the orchestrator that can see they are one event. The point the whole return resumes at is
+   * kept beside the same name, with the return in progress. See
    * `StreamOrchestrator.tokenForThisReturn` and `sharedResumePoint`.
    *
    * Unique per return rather than counted, because the epoch list survives a process restart inside

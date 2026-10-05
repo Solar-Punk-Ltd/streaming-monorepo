@@ -47,7 +47,15 @@ import { isUsableDuration, measureSegmentDuration, SegmentDurationReading } from
 import { AbrLadder } from './AbrLadder.js';
 import { AdminApiClient } from './AdminApiClient.js';
 import { BeePublisherPool, PublisherRoute } from './BeePublisherPool.js';
-import { BroadcastDating, reanchorDecision, sharedResumePoint, withEpoch } from './broadcastDating.js';
+import {
+  agreedResumePoint,
+  BroadcastDating,
+  RAISE_REFUSED,
+  reanchorDecision,
+  RESUMED_ABOVE_THE_RETURN,
+  sharedResumePoint,
+  withEpoch,
+} from './broadcastDating.js';
 import { Clock, systemClock, Timer } from './Clock.js';
 import { DrainTimeoutError } from './DrainTimeoutError.js';
 import { ErrorHandler } from './ErrorHandler.js';
@@ -165,6 +173,14 @@ interface StartStreamOptions {
    * live session resuming is held back: a new, replaced or recovered session starts as it would anyway.
    */
   deferResume?: boolean;
+}
+
+/** A return of a broadcast's encoder as it is held in memory. See `ReturnInProgress` for the persisted shape. */
+interface ActiveReturn {
+  token: string;
+  resumedRungs: Set<string>;
+  /** The published sequence its rungs resume at, once agreed. See {@link StreamOrchestrator.resumePointOf}. */
+  resumeAt?: number;
 }
 
 interface RetainedStopOutcome {
@@ -390,7 +406,7 @@ export class StreamOrchestrator {
    * the returns as they arrive, so it is the one that can name them. See {@link tokenForThisReturn}
    * and {@link BroadcastEpoch.returnToken}.
    */
-  private returnsInProgress = new Map<string, { token: string; resumedRungs: Set<string> }>();
+  private returnsInProgress = new Map<string, ActiveReturn>();
   /** What became of each recently stopped stream, so a caller answered 202 can find out. */
   private stopOutcomes = new Map<string, RetainedStopOutcome>();
   /** Actual pending writes for topics shared across sessions, independently of bounded stop reports. */
@@ -791,28 +807,32 @@ export class StreamOrchestrator {
   }
 
   /** The return a ladder's group record says its rungs are coming back from, after a restart of this process. */
-  private persistedReturnOf(base: string | null): { token: string; resumedRungs: Set<string> } | undefined {
+  private persistedReturnOf(base: string | null): ActiveReturn | undefined {
     const persisted = base === null ? undefined : this.ladderGroups.get(base)?.returnInProgress;
     return persisted === undefined
       ? undefined
-      : { token: persisted.token, resumedRungs: new Set(persisted.resumedRungs) };
+      : {
+          token: persisted.token,
+          resumedRungs: new Set(persisted.resumedRungs),
+          ...(persisted.resumeAt === undefined ? {} : { resumeAt: persisted.resumeAt }),
+        };
   }
 
   /**
    * Hold the return in progress, and write it into the ladder's group record so a restart of this
    * process finds it. A lone rendition has no record and keeps it in memory only.
    */
-  private rememberReturn(
-    key: string,
-    base: string | null,
-    inProgress: { token: string; resumedRungs: Set<string> },
-  ): void {
+  private rememberReturn(key: string, base: string | null, inProgress: ActiveReturn): void {
     this.returnsInProgress.set(key, inProgress);
     const ladder = base === null ? undefined : this.ladderGroups.get(base);
     if (base !== null && ladder !== undefined) {
       this.rememberLadder(base, {
         ...ladder,
-        returnInProgress: { token: inProgress.token, resumedRungs: [...inProgress.resumedRungs] },
+        returnInProgress: {
+          token: inProgress.token,
+          resumedRungs: [...inProgress.resumedRungs],
+          ...(inProgress.resumeAt === undefined ? {} : { resumeAt: inProgress.resumeAt }),
+        },
       });
     }
   }
@@ -2683,36 +2703,63 @@ export class StreamOrchestrator {
   }
 
   /**
-   * The sequence every rung of this return resumes at, from the point the return already took and
-   * the count of every rung of the ladder that is still publishing. See `sharedResumePoint`.
+   * The published sequence the asking rung of this return resumes at, agreeing the return's point
+   * first if no rung of it has placed a resumed segment yet. See `sharedResumePoint`.
    *
-   * ⛔ Every live rung of the ladder counts, not only those that have said they are back. A rung whose
-   * return is late is still the one that may have counted furthest, and the first rung to place a
-   * segment fixes the point for the whole return.
+   * ⛔ Every live rung of the ladder counts towards the point, not only those that have said they are
+   * back. A rung whose return is late is still the one that may have counted furthest.
    *
-   * A lone rendition resumes at its own count, as it always has: it has no sibling to agree with.
+   * ⛔ **Agreed once and kept with the return, in published numbers.** A rung placing later reads the
+   * point back rather than reading its siblings again, because a sibling that has already resumed has
+   * counted past it. It rides in the ladder group record with the return's name, so a rung coming back
+   * after a restart of this process resumes where its siblings did.
+   *
+   * A lone rendition resumes at its own count, as it always has: it has no sibling to agree with. So
+   * does a rung asking about a return that is no longer the one in progress, which a sibling that
+   * announced again has already replaced: its point went with it.
    */
   private resumePointOf(datingKey: string, base: string | null, returnToken: string, ownResumeAt: number): number {
     if (base === null) {
       return ownResumeAt;
     }
-    const epochs = this.broadcastAnchors.get(datingKey)?.epochs ?? [];
-    const taken = epochs.find((epoch) => epoch.returnToken === returnToken);
-    const ladderCounts = [...this.streamBases]
+    const inProgress = this.returnsInProgress.get(datingKey) ?? this.persistedReturnOf(base);
+    if (inProgress?.token !== returnToken) {
+      this.logger.warn(
+        `[StreamOrchestrator] A rung of ${base} resumes at its own sequence ${ownResumeAt}, because the return ` +
+          'it was told of has been replaced by a newer one before it placed a segment',
+      );
+      return ownResumeAt;
+    }
+    if (inProgress.resumeAt === undefined) {
+      inProgress.resumeAt = agreedResumePoint(ownResumeAt, this.ladderCountsOf(base));
+      this.rememberReturn(datingKey, base, inProgress);
+    }
+    const decision = sharedResumePoint(inProgress.resumeAt, ownResumeAt);
+    if (decision.kind === RESUMED_ABOVE_THE_RETURN) {
+      this.logger.warn(
+        `[StreamOrchestrator] A rung of ${base} resumes at its own sequence ${ownResumeAt}, above the ` +
+          `${inProgress.resumeAt} the rest of its return took, because it placed more segments from before the ` +
+          'outage after that point was agreed',
+      );
+    } else if (decision.kind === RAISE_REFUSED) {
+      this.logger.warn(
+        `[StreamOrchestrator] A rung of ${base} resumes at its own sequence ${ownResumeAt} rather than at the ` +
+          `${inProgress.resumeAt} the rest of its return took, which is further above it than a ladder's rungs ` +
+          'drift apart, so its level switches across this return land off by the difference',
+      );
+    }
+    return decision.resumeAt;
+  }
+
+  /** The published sequence each live rung of this ladder would resume at on its own. */
+  private ladderCountsOf(base: string): number[] {
+    return [...this.streamBases]
       .filter(([, rungBase]) => rungBase === base)
       .map(([streamId]) => {
         const uploader = this.activeStreams.get(streamId);
-        return uploader === undefined || this.isDraining(streamId, uploader) ? null : uploader.nextSequence();
+        return uploader === undefined || this.isDraining(streamId, uploader) ? null : uploader.publishedNextSequence();
       })
       .filter((count) => count !== null);
-    if (taken !== undefined && taken.fromSequence < ownResumeAt) {
-      this.logger.warn(
-        `[StreamOrchestrator] A rung of ${base} resumes at its own sequence ${ownResumeAt}, above the ` +
-          `${taken.fromSequence} the rest of its return took, because it placed more segments from before the ` +
-          'outage after that point was fixed',
-      );
-    }
-    return sharedResumePoint(epochs, returnToken, ownResumeAt, ladderCounts);
   }
 
   /**

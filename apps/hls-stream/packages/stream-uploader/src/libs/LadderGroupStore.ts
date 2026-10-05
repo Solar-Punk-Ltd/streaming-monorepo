@@ -44,9 +44,17 @@ export interface RememberedLadder {
 }
 
 /** A return of a ladder's encoder, named, with the rungs that have announced they are back from it. */
-interface ReturnInProgress {
+export interface ReturnInProgress {
   token: string;
   resumedRungs: string[];
+  /**
+   * The published sequence every rung of this return resumes at, once the first of them has placed
+   * a resumed segment. Absent until then. See `sharedResumePoint`.
+   *
+   * Persisted with the name for the name's own reason: the rungs of one return can straddle a restart
+   * of this process, and a rung coming back after it has to resume where its siblings already did.
+   */
+  resumeAt?: number;
 }
 
 /**
@@ -90,7 +98,7 @@ function readReturnInProgress(value: unknown): ReturnInProgress | undefined {
   if (value === null || typeof value !== 'object') {
     return undefined;
   }
-  const { token, resumedRungs } = value as Partial<ReturnInProgress>;
+  const { token, resumedRungs, resumeAt } = value as Partial<ReturnInProgress>;
   if (
     typeof token !== 'string' ||
     !Array.isArray(resumedRungs) ||
@@ -98,7 +106,8 @@ function readReturnInProgress(value: unknown): ReturnInProgress | undefined {
   ) {
     return undefined;
   }
-  return { token, resumedRungs };
+  // A damaged point is dropped alone, so the next rung to place agrees one again from its siblings.
+  return Number.isInteger(resumeAt) ? { token, resumedRungs, resumeAt } : { token, resumedRungs };
 }
 
 /**

@@ -542,12 +542,13 @@ export class ManifestManager {
   }
 
   /**
-   * The sequence this rung would resume at on its own after a return, one past the highest it has
-   * placed, or null before it has placed anything. What its siblings fix a shared resume point from.
-   * See `sharedResumePoint`.
+   * The published sequence this rung would resume at on its own after a return, one past the highest
+   * it has placed, or null before it has placed anything. What its siblings agree a return's resume
+   * point from, in published numbers because each rung adds its own {@link sequenceOffset}. See
+   * `agreedResumePoint`.
    */
-  public nextSequence(): number | null {
-    return this.sequenceAnchor === null ? null : this.highestSequence() + 1;
+  public publishedNextSequence(): number | null {
+    return this.sequenceAnchor === null ? null : this.published(this.highestSequence() + 1);
   }
 
   /** The number `sequence` is written into a playlist as. See {@link sequenceOffset}. */
@@ -684,7 +685,10 @@ export class ManifestManager {
    * different counts before an outage, and a player switching quality picks a segment by its
    * sequence, so each resuming at its own count put one sequence on two moments about 30 seconds
    * apart. The dating answers with the shared point, which is never below this rung's own count, and
-   * the sequences between are listed by {@link gapLines}. See `sharedResumePoint`.
+   * the sequences between are listed by {@link gapLines}. The point is agreed in published numbers,
+   * because a rung whose session was replaced numbers its own media from 0 under an offset its
+   * siblings do not have, so this rung's {@link sequenceOffset} comes off it here. See
+   * `sharedResumePoint`.
    *
    * ⛔ The same forward move {@link placeInBroadcast} makes for a restarted counter, taken without
    * asking whether the counter restarted. Inside the reconnect window it usually has not, because
@@ -713,7 +717,7 @@ export class ManifestManager {
     }
 
     const ownResumeAt = this.highestSequence() + 1;
-    const resumeAt = this.dating.resumePointFor(returnToken, ownResumeAt);
+    const resumeAt = this.dating.resumePointFor(returnToken, this.published(ownResumeAt)) - this.sequenceOffset;
     if (resumeAt > ownResumeAt) {
       this.logger.info(
         `[ManifestManager] Segment index ${index} resumes at sequence ${resumeAt} with the rest of its ladder ` +
