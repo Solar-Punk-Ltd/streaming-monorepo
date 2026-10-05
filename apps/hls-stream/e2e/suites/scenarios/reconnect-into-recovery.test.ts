@@ -124,11 +124,13 @@ import { sleep, waitFor } from '../../src/harness/wait.js';
  *   one `#EXT-X-DISCONTINUITY` is there because the engine's counter restarted and
  *   `ManifestManager.placeInBroadcast` re-anchors a restarted counter forwards with a break, and
  *   there are no `#EXT-X-GAP` entries, because the forgotten accounting index must not turn that
- *   counter restart into a hole the broadcast never had. The one exception is a rung that had
- *   counted less than its siblings when the stack went down: every rung of the return resumes at one
- *   sequence, so that rung lists the sequences up to it as gap entries right before its break. A restart is one of the only two things
- *   that still arm a break since 2026-09-06, the other being the origin
- *   declaring one, and a lost segment is now said with gap entries instead.
+ *   counter restart into a hole the broadcast never had. A restart is one of the only two things
+ *   that still arm a break since 2026-09-06, the other being the origin declaring one, and a lost
+ *   segment is now said with gap entries instead.
+ * - **Every rung breaks at one sequence.** The rungs of one return resume where the furthest of them
+ *   had counted, so a rung that had counted less lists the sequences up to that point as gap entries
+ *   right before its break. Those are the one exception to "no gap entries", and only where a sibling
+ *   breaks at the same sequence with media in front of it. See `returnAlignment`.
  *
  * ⛔ The uploader writes `Resumed recovering stream` when it takes the branch, but that line is not
  * part of the shared log contract in `packages/shared/src/uploaderLog.ts` and the deployed-log-shape
