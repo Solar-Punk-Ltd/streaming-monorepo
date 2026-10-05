@@ -282,6 +282,37 @@ describe('adding an epoch to a broadcast’s dating', () => {
   });
 
   /**
+   * A return's line is found by its name for as long as the return's rungs are still coming back, so
+   * another line written down at the same sequence must not take its name out of the list. The newer
+   * line still dates that sequence.
+   */
+  it('keeps a return’s line beside another written down at its sequence, dating from the newer', () => {
+    const returned = withEpoch(BROADCAST, { fromSequence: 10, atMs: 10_000, returnToken: 'one-return' });
+
+    const restartedThere = withEpoch(returned, { fromSequence: 10, atMs: 90_000 });
+
+    assert.deepEqual(restartedThere.epochs, [
+      { fromSequence: 10, atMs: 10_000, returnToken: 'one-return' },
+      { fromSequence: 10, atMs: 90_000 },
+    ]);
+    assert.equal(programDateTimeMsOf(restartedThere, 10), 90_000);
+    assert.equal(
+      reanchorDecision(restartedThere, { resumeAt: 10, nowMs: 95_000, notBeforeMs: 0, returnToken: 'one-return' })
+        .joined,
+      true,
+      'a late rung of the return no longer finds the line it belongs to',
+    );
+  });
+
+  it('replaces a return’s own line written down again at the same sequence', () => {
+    const returned = withEpoch(BROADCAST, { fromSequence: 10, atMs: 10_000, returnToken: 'one-return' });
+
+    const again = withEpoch(returned, { fromSequence: 10, atMs: 12_000, returnToken: 'one-return' });
+
+    assert.deepEqual(again.epochs, [{ fromSequence: 10, atMs: 12_000, returnToken: 'one-return' }]);
+  });
+
+  /**
    * ⛔⛔ **A replacement session's epoch at sequence 0 supersedes every epoch its predecessor
    * minted.** It publishes a fresh playlist numbered from zero again, so it will number straight
    * through the sequences those epochs name. Kept, they are reached: `epochFor` returns the highest

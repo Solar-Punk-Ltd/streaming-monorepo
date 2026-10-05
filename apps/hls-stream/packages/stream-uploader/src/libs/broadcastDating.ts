@@ -152,13 +152,16 @@ export function presentationMsOf(anchor: BroadcastAnchor, sequence: number, prev
  * The dating with `epoch` in it, returned as a new anchor so a session still holding the old one
  * keeps the dates it published.
  *
- * ⛔ **An epoch at the same sequence is replaced; one at a different sequence is KEPT, whichever side
- * of the new one it falls.** The list is the whole ladder's, so a rung joining from a sequence below
+ * ⛔ **An epoch at the same sequence for the same return is replaced, and every other one is KEPT,
+ * whichever side of the new one it falls.** The list is the whole ladder's, so a rung joining from a sequence below
  * its siblings' is writing down its own point on their line, not superseding it — and dropping
  * everything above it left a third rung asking at the original sequence with nothing to join, so it
  * minted a line of its own and the ladder dated one instant two ways. Sorted by `fromSequence` and
  * complete, which is what makes {@link epochFor} unambiguous: it walks back to the newest epoch at or
- * below the sequence it is dating, so nothing dated before the join can move.
+ * below the sequence it is dating, so nothing dated before the join can move. A return's line and
+ * another written down at the same sequence, a counter restart's or a different return's, are both
+ * kept, the newer last so it dates that sequence: a rung of the return still to come finds its line by
+ * the return's name, and replacing it there sent that rung to mint a second line.
  *
  * ⛔⛔ **Except an epoch at sequence 0, which starts a new numbering and supersedes the whole list.**
  * Only a replacement session writes one (`reanchorReplacedBroadcast`): it publishes a fresh playlist
@@ -177,7 +180,9 @@ export function withEpoch(anchor: BroadcastAnchor, epoch: BroadcastEpoch): Broad
   if (epoch.fromSequence === RENUMBERED_FROM) {
     return { ...anchor, epochs: [epoch] };
   }
-  const kept = (anchor.epochs ?? []).filter((held) => held.fromSequence !== epoch.fromSequence);
+  const kept = (anchor.epochs ?? []).filter(
+    (held) => held.fromSequence !== epoch.fromSequence || held.returnToken !== epoch.returnToken,
+  );
   return { ...anchor, epochs: [...kept, epoch].sort((a, b) => a.fromSequence - b.fromSequence) };
 }
 
