@@ -642,20 +642,44 @@ describe('what the review pinned', () => {
     assert.equal((await service.status(REQUEST)).state, 'submitted');
   });
 
-  it('settles a transfer refused at the broadcast by its receipt only, and never drifts it to unknown', async () => {
+  it('settles a transfer refused at the broadcast by its receipt, and never drifts it to unknown', async () => {
     const { chain, journal, service, advance } = setup();
     chain.sendAnswer = async () => ({ kind: 'refused', reason: 'other' });
     const refused = await service.transfer(await xdaiRequest());
     assert.equal(refused.state, 'failed');
+    const recorded = { ...journal.rows.get(REQUEST)! };
     advance(FUNDING_UNKNOWN_AFTER_MS + 10_000);
     const still = await service.status(REQUEST);
-    assert.equal(still.state, 'failed', 'no receipt leaves it as the refusal recorded it');
-    assert.equal(still.error, journal.rows.get(REQUEST)?.error);
+    assert.equal(still.state, 'failed', 'no receipt and not in the pool leaves it as the refusal recorded it');
+    assert.equal(still.blockNumber, null);
+    assert.equal(still.error, recorded.error);
+    assert.deepEqual(journal.rows.get(REQUEST), recorded, 'the journal row is not touched');
     chain.receipts.set(refused.txHash!, receipt(refused.txHash!, 'success'));
     advance(5_000);
     const mined = await service.status(REQUEST);
     assert.equal(mined.state, 'confirmed', 'the refusal was a node’s word; the chain mined it anyway');
     assert.equal(mined.blockNumber, 39_000_000);
+  });
+
+  it('answers submitted for a transfer refused at the broadcast that the chain holds in its pool', async () => {
+    const { chain, journal, service } = setup();
+    chain.sendAnswer = async () => ({ kind: 'refused', reason: 'other' });
+    const refused = await service.transfer(await xdaiRequest());
+    assert.equal(refused.state, 'failed');
+    // The node answered with an error yet kept the transaction: a failed item with no block would open the admin's
+    // one-send gate, and its next send would take the next nonce while this one is still mined.
+    chain.pending.add(refused.txHash!);
+    assert.deepEqual(await service.status(REQUEST), {
+      requestId: REQUEST,
+      state: 'submitted',
+      txHash: refused.txHash,
+      blockNumber: null,
+      error: null,
+    });
+    const row = journal.rows.get(REQUEST);
+    assert.equal(row?.state, 'submitted', 'the journal keeps what the pool said');
+    assert.equal(row?.error, null);
+    assert.equal(row?.blockNumber, null);
   });
 
   it('keeps the hash it worked out when the chain answers another, and warns with the two hashes', async (t) => {

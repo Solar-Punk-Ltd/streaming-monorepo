@@ -240,10 +240,12 @@ export class FundingChainService {
    * Where a transfer stands, refreshed from the chain while it is `submitted` or `unknown`: its receipt settles it,
    * `confirmed` on status 1 and `failed` on 0. Without a receipt, one the chain still holds is `submitted`, and one it
    * no longer knows {@link FUNDING_UNKNOWN_AFTER_MS} after it was journalled is `unknown`. A transfer a node refused
-   * at the broadcast, `failed` with no block, is read for its receipt alone: a node's refusal may not be the chain's
-   * last word, and a receipt settles it, while without one it stays as recorded. The chain is read at most once
-   * every {@link FUNDING_STATUS_READ_MS} for a request id; in between, and when the chain does not answer or answers
-   * something it cannot read, the journalled state is answered as it is.
+   * at the broadcast, `failed` with no block, is read for its receipt and for the pool: a node's refusal may not be
+   * the chain's last word, since a node can answer with an error and keep the transaction all the same. A receipt
+   * settles it, one the chain holds is `submitted` again, and one it neither mined nor holds stays as recorded, never
+   * drifting to `unknown`. The chain is read at most once every {@link FUNDING_STATUS_READ_MS} for a request id; in
+   * between, and when the chain does not answer or answers something it cannot read, the journalled state is
+   * answered as it is.
    */
   async status(requestId: string): Promise<FundingTransferStatus> {
     const row = await this.deps.journal.find(requestId);
@@ -274,7 +276,6 @@ export class FundingChainService {
     let next: Pick<FundingTransferRow, 'state' | 'error' | 'blockNumber'>;
     try {
       const receipt = await chain.receipt(row.txHash);
-      if (!receipt && refusedAtBroadcast) return row;
       if (receipt) {
         next =
           receipt.status === 'success'
@@ -285,7 +286,10 @@ export class FundingChainService {
                 blockNumber: Number(receipt.blockNumber),
               };
       } else if (await chain.transaction(row.txHash)) {
+        // A node may answer a broadcast with an error and keep the transaction in its pool all the same.
         next = { state: 'submitted', error: null, blockNumber: null };
+      } else if (refusedAtBroadcast) {
+        return row;
       } else if (this.now() - row.createdAt.getTime() > FUNDING_UNKNOWN_AFTER_MS) {
         next = {
           state: 'unknown',
