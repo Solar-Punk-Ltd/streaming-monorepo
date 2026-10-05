@@ -1494,6 +1494,50 @@ describe('a ladder that comes back in two returns, the first without 360p', () =
     );
   });
 
+  /**
+   * The bound on a raise is the rung's own absence plus a little, so a point agreed from a count that
+   * absence cannot explain is refused. Here one rung's feed head held a session a hundred sequences
+   * long, so its published numbering is a hundred ahead of its siblings' for the same media.
+   */
+  it('refuses a raise further than the rung was away, and says so', async () => {
+    const harness = reconnectHarness({ ladder: true });
+    const lines: string[] = [];
+    const previous = Logger.getInstance().configure({ sink: (_level, line) => void lines.push(line) });
+    try {
+      const ahead = rungIds[3];
+      for (const streamId of rungIds) harness.start(streamId);
+      for (let i = 0; i < 3; i++) {
+        for (const streamId of rungIds) await harness.segment(`${streamId}-a${i}`, i, streamId);
+        await harness.passTime(SEGMENT_SECONDS * 1_000);
+      }
+      await harness.published(`${ahead}-a2`);
+      const topic = writesNaming(harness.writes, `${ahead}-a2`).at(-1)!.topic;
+      await harness.orchestrator.stopStream(ahead);
+      harness.feeds.set(topic, {
+        index: 50,
+        manifest: ['#EXTM3U', '#EXT-X-VERSION:3', '#EXT-X-MEDIA-SEQUENCE:100', '#EXTINF:2.000,', 'earlier'].join('\n'),
+      });
+      harness.start(ahead);
+      for (const streamId of rungIds) await harness.segment(`${streamId}-r3`, 3, streamId);
+      for (const streamId of rungIds) await harness.published(`${streamId}-r3`);
+
+      for (const streamId of rungIds) harness.orchestrator.noteDisconnect(streamId);
+      await harness.passTime(8_000);
+      for (const streamId of rungIds) harness.start(streamId);
+      await harness.segment(`${rung360}-b0`, 4, rung360);
+      await harness.published(`${rung360}-b0`);
+
+      const write = writesNaming(harness.writes, `${rung360}-b0`).at(-1);
+      assert.ok(write);
+      const entries = entriesOf(write.playlist);
+      assert.equal(entries.find((entry) => entry.uri === `segment-${rung360}-b0`)?.sequence, 4);
+      assert.equal(entries.filter((entry) => entry.uri.startsWith('gap-')).length, 0);
+      assert.equal(lines.filter((line) => line.includes('further above it than its own absence')).length, 1);
+    } finally {
+      Logger.getInstance().configure(previous);
+    }
+  });
+
   it('starts the next return for a rung that missed the last one and comes back first', async () => {
     const harness = reconnectHarness({ ladder: true });
     const [ahead, missed] = rungIds;
