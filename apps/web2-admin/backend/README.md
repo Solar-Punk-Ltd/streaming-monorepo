@@ -917,6 +917,161 @@ which the funding service uses.
   the id: the relay never reached it, so relaying again under the same request
   id is safe, while `unknown_node` refuses the node.
 
+### Funding transfers
+
+The funding service reads the nodes, the wallet's balances, nonce and fees and
+every transfer's state from the manager through the client above, and signs
+with the brand wallet. `src/index.ts` builds it with the wallet it started and
+with the client, or with none while `MANAGER_FUNDING_URL` is unset.
+`src/domain/funding/FundingService.ts` is the service, and
+`src/api/routes/funding.ts` its routes, behind the session; the writes are
+behind the same-site check as well. The answers are the types of
+`web2-admin-common`'s `funding.ts`.
+
+| Method | Path                                 | Answer                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                         |
+| ------ | ------------------------------------ | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| GET    | `/api/funding`                       | `FundingView`: `configured` (false while the manager funding settings are unset, and then the manager is not asked), the brand wallet's address and balances or null while there is none, `chainId` 100, every stage's nodes and the catalogue node, each with `pin` and `pinnedAddress` (below), `observedAt`, and `openBulkId`, the send that still has a `queued` or `submitted` item, or null, so the page resumes it after a reload or in another tab. It first refreshes the latest sends with an item still asked about, three at most ([Settling](#settling)). When the manager cannot be read, `managerError` says why in a sentence of the admin's own, never the manager's address or token, and the balances, the nodes and `observedAt` are empty |
+| POST   | `/api/funding/pins`                  | `{ password, nodeIds }` in: pins the address each node answers now, read from the manager's inventory, and answers `{ pinned }`. A node the inventory does not hold is `409 funding_refused`, `problem: "node"`; a node whose address could not be read is `400 validation_error` with the sentence, since there is no address to pin. Either way nothing is pinned                                                                                                                                                                                                                                                                                                                                                                                            |
+| POST   | `/api/funding/transfers`             | `{ password, items: [{ nodeId, kind, amount }] }` in, `202` with `{ bulkId, items }` out: each item's `requestId`, `nodeId`, `kind`, `amount`, `state`, `txHash`, `blockNumber` (null until it is mined) and `error`. The refusals below                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                       |
+| GET    | `/api/funding/transfers?bulkId=<id>` | `{ items }` of that send, as above, each refreshed from the manager first ([Settling](#settling)). `400` without a UUID, `404 bulk_not_found` for a send the admin never journalled                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                            |
+
+A node's `pin` is `pinned` when its pin is the address it answers now, `new`
+when it has none, and `changed` when it answers another. A node whose wallet
+could not be read keeps the state its pin gives it, `pinned` or `new`, never
+`changed`, and its `readError` says why; it takes no send until it is read.
+
+Both writes ask for the operator's password again, checked exactly as a
+password change checks the current one (`AuthService.confirmPassword`), behind
+the same limiter and on the same count: `401 invalid_credentials` when it is
+wrong, `429 too_many_attempts` with `Retry-After` and `retryAfterSeconds` once
+locked out. A guess spent on a send is a guess less for the password change.
+
+A send's body is checked first, `400 validation_error`: at least one item and
+at most 200, a node id as the contract takes it, `kind` `xdai` or `xbzz`, and
+an amount that is a string of base units (wei, PLUR) above 0 and at most
+2^256 - 1. Then it is refused, in this order, nothing signed:
+
+1. a wrong password: `401` or `429`, as above;
+2. a node named twice for one kind: `400 validation_error` with the sentence;
+3. funding not set up (no manager settings or no brand wallet), or a manager
+   on another chain than Gnosis Chain: `409 funding_refused`, `problem`
+   `not_set_up` or `chain`;
+4. a node not in the manager's inventory, never pinned, answering another
+   address than its pin, or whose address could not be read, so it cannot be
+   checked against the pin: `409 funding_refused`, `problem: "node"`, with the
+   sentence;
+5. an item of an earlier send still `queued` or `submitted`, after that send
+   was refreshed ([Settling](#settling)), or another send being signed at that
+   moment: `409 { "error": "conflict" }`;
+6. a fee or gas limit over the admin's own ceilings: `409 funding_refused`,
+   `problem: "fee"`, with the sentence (below);
+7. a wallet that cannot pay for it: the account is read once from the manager,
+   and the xDAI sent plus, for every item, its gas limit (`gasNative` for xDAI,
+   `gasBzzTransfer` for xBZZ) at `maxFeePerGasWei` must fit the xDAI balance,
+   and the xBZZ sent the xBZZ balance. Otherwise `409 funding_refused`,
+   `problem: "insufficient_funds"`, with a sentence naming each shortfall in
+   xDAI and xBZZ. 409 rather than 422: the balance is a state that changes, as
+   the admin's other refusals of a state are 409.
+
+**The admin's ceilings.** The manager suggests the fees and the gas limits,
+and holds a transfer to three times its own suggestion, which guards it
+against a hostile admin. Only the admin's own ceilings guard the brand wallet
+against a hostile or broken manager, so nothing is signed over them
+(`FundingService.ts`, `checkCeilings`):
+
+| Ceiling                     | Constant                       | Value                    |
+| --------------------------- | ------------------------------ | ------------------------ |
+| fee cap, `maxFeePerGas`     | `FUNDING_MAX_FEE_PER_GAS_WEI`  | at most 100 gwei         |
+| tip, `maxPriorityFeePerGas` |                                | at most the fee cap      |
+| gas of an xDAI transfer     | `FUNDING_GAS_NATIVE`           | exactly 21000            |
+| gas of an xBZZ transfer     | `FUNDING_MAX_GAS_BZZ_TRANSFER` | from 1 to at most 100000 |
+
+The gas of a kind is held to its ceiling only when the send carries that kind.
+
+A manager that cannot be read for the inventory or the account is
+`502 manager_unavailable` with the admin's own sentence.
+
+**One send at a time.** Checks 5 to 7, the signatures and the journal run
+under a Postgres advisory lock taken with `pg_try_advisory_lock` on a
+connection of its own and released when they are over: a second send at the
+same moment, in this process or another, is refused at once with the same
+`409 conflict`, and once the first is journalled its items are `queued`, so
+check 5 refuses every later one until none is `queued` or `submitted`. Check 5
+refreshes the open sends first, three at most, and looks again, so a send
+whose page was closed never holds the wallet for good.
+
+**Signed, journalled, then relayed.** The items are signed in turn, chain id
+100, with consecutive nonces from the account's pending one and its fees: an
+xDAI item is a plain transfer of the amount to the node's pinned wallet with
+`gasNative`; an xBZZ item is a call of the BZZ token the inventory names,
+`transfer(wallet, amount)` with no value and `gasBzzTransfer`. Every item is
+written to `funding_transfers`, `queued`, with its request id, the send's
+bulk id, the signed transaction and its hash, before any is relayed. Then they
+are relayed in nonce order, and the manager's answer recorded. A relay the
+manager refuses for good (`bad_transaction`, `unknown_node`, `conflict`) fails
+its item with the manager's sentence, and the items after it are not relayed
+and fail as well, since their nonces would wait behind one never used. Any
+other failure (the manager or the chain out of reach, the funding API off, the
+token refused, an answer that cannot be read) leaves the item and those after
+it `queued`, as journalled: the refresh relays them.
+
+#### Settling
+
+`queued` and `submitted` items are open: they hold up a new send, which would
+sign over their nonces. Every other state is settled for that gate:
+
+- `confirmed`, and `failed` in a block (the transaction reverted): settled for
+  good, never asked about again;
+- `failed` with no block: the chain's node refused it when the manager sent it.
+  The manager still reads such a transfer for a late receipt, so it is
+  watched: asked about again, and turned `confirmed` if the receipt comes. Its
+  sentence says the chain's node refused it, that the row will say so if it is
+  mined anyway, and to check the node's balance before sending to it again;
+- `unknown`: the manager has no receipt and the chain no longer holds it. It is
+  watched as well. Letting a new send past it is safe: the chain does not hold
+  it, so the next send reuses its nonce, and at most one of the two can ever
+  be mined;
+- `failed` by the admin or the manager before the chain saw it (a refusal at
+  the relay, or never sent after one before it failed): settled for good.
+
+`blockNumber` tells the page a failure in a block (final) from one with no
+block (watched). Only open and watched items are written to: a late receipt
+moves a watched item, and nothing moves one settled for good. The journal's
+`watched` column says which items are watched, and the check of an open item
+reads exactly migration 016's partial index, `state IN ('queued', 'submitted')`.
+
+**The refresh** reads, in nonce order, where each open or watched item of a
+send stands on the manager, and records it. An open item the manager never
+received (`unknown_request`) is relayed again: the journalled bytes, byte for
+byte, under the same request id, never signed again; unless an item before it
+failed or was lost, and then it fails as never sent. A watched item is only
+read, never relayed again, and a failed one is never sent again: the operator
+sends anew. The refresh stops at the first item the manager cannot answer for
+and leaves it, and those after it, as they are. It runs:
+
+- for `GET /api/funding/transfers?bulkId=`, on that send;
+- for `GET /api/funding`, on the latest sends with an open or watched item,
+  three at most (`FUNDING_REFRESH_LIMIT`); an older watched item is refreshed
+  when its send is read by its id;
+- for a send refused for an open one (check 5), on the open sends, three at most.
+
+Overlapping refreshes of one send in the process share one run (a map of the
+refresh running per bulk id), so two polls at once relay nothing twice and
+write no audit row twice. A `funding.transfer.confirmed` or `.failed` row is
+written once, when the item first comes to that state.
+
+The signed transaction is kept for that relay alone: no route answers it, and
+nothing logs or audits it.
+
+| Table               | What it holds                                                                                                                                                                                                                                                                                                                                                                    |
+| ------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `funding_transfers` | migration 016: one row per item of a send, by `request_id`, with `bulk_id`, the node's id and label, the address, kind, amount, nonce, the signed transaction, its hash, `state`, `error`, `block_number`, `watched` (only an `unknown` item, or a `failed` one with no block), the operator's id and name, and when. One item of each kind per node and one per nonce in a send |
+| `funding_node_pins` | migration 017: one row per pinned node, its address in lower case, when and by whom                                                                                                                                                                                                                                                                                              |
+
+Without `MANAGER_FUNDING_URL` and `MANAGER_FUNDING_TOKEN` the page answers
+`configured: false`, and without `BRAND_WALLET_SECRET` it shows no wallet;
+either way every send is refused as not set up, and a pin needs the manager.
+
 ## Migrations
 
 `src/migrations/NNN_name.sql`, applied in order inside a transaction at every
@@ -944,6 +1099,10 @@ batch each write and each thumbnail was last uploaded under
 and `015_brand_wallet.sql`, the single-row `brand_wallet`: the wallet's address
 and its key, encrypted ([The brand wallet](#the-brand-wallet)).
 
+`016_funding_transfers.sql` is the journal of the sends from the brand wallet,
+`funding_transfers`, and `017_funding_node_pins.sql` the node wallets an
+operator confirmed, `funding_node_pins` ([Funding transfers](#funding-transfers)).
+
 ## Audit log
 
 Every signed-in user can act on every stream, so each mutation leaves a row in
@@ -962,8 +1121,8 @@ into the log for any reader, nor reorder what its line appears to say.
 | Column                          | What it holds                                                                                                                                                                                                                                                                                                                                  |
 | ------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `at`                            | when the row was written, just after the mutation                                                                                                                                                                                                                                                                                              |
-| `actor_kind`                    | `operator` (a signed-in user), `uploader` (the uploader's internal routes), `manager` (the manager's stage routes, since migration 009) or `system` (the boot repair, the CLI)                                                                                                                                                                 |
-| `actor_user_id`, `actor_name`   | the operator's id and username at the time; the id goes null if the user is removed, the name stays. For `system`, `actor_name` is the reason (`boot`, `cli`); for the uploader and the manager it is null                                                                                                                                     |
+| `actor_kind`                    | `operator` (a signed-in user), `uploader` (the uploader's internal routes), `manager` (the manager's stage routes, since migration 009) or `system` (the boot repair, the CLI, a funding refresh)                                                                                                                                              |
+| `actor_user_id`, `actor_name`   | the operator's id and username at the time; the id goes null if the user is removed, the name stays. For `system`, `actor_name` is the reason (`boot`, `cli`, `funding`); for the uploader and the manager it is null                                                                                                                          |
 | `action`                        | see below                                                                                                                                                                                                                                                                                                                                      |
 | `stream_id`, `topic`            | the stream, with no foreign key so a deleted stream's history stays                                                                                                                                                                                                                                                                            |
 | `status_before`, `status_after` | the stream's status before and after the action. Every stream action fills both, with the same status on both sides when nothing moved (an edit, a thumbnail, a key rotation, a republish, a rendition report), except that `stream.create` has no before and `stream.delete` no after. `feed.reconcile` and the `user.*` rows leave both null |
@@ -1027,6 +1186,18 @@ at debug and write no row. A retirement or clear the admin does not take
 because it holds a newer record, and one kept for a stage or stamp it never
 stored, log at info and write no row either: nothing it held moved. The stage
 is in `details.stageId`; the rows have no `stream_id`.
+
+The Funding page's actions ([Funding transfers](#funding-transfers)):
+`funding.pin` (one row per pin request, `details.pins` with each node's id,
+label, the address pinned and the one it replaced), `funding.transfer.request`
+(one row per send, with its `bulkId`, the wallet it is sent from and each
+item's request id, node, label, kind, amount, address, nonce and hash),
+`funding.transfer.sent` (an item the manager took), `funding.transfer.confirmed`
+and `funding.transfer.failed`, each with the item's send, request id, node,
+label, kind, amount, address, nonce, hash, state, error and block. The operator
+is the actor of a pin, a request, and of whatever their send's relays learned;
+`system` with the reason `funding` is the actor of what a refresh learned. No
+row carries the password, a signed transaction or a key.
 
 **A failed audit write never fails the operation.** The row is written after
 the mutation it describes, which has already happened by then; the failure is

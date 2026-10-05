@@ -58,7 +58,10 @@ export type FundingPinState = (typeof FUNDING_PIN_STATES)[number];
 
 /**
  * Where one item of a send stands in the admin: `queued` once journalled and before the manager took it, then the
- * manager's own states (`FUNDING_TRANSFER_STATES`): `submitted`, `confirmed`, `failed` and `unknown`.
+ * manager's own states (`FUNDING_TRANSFER_STATES`): `submitted`, `confirmed`, `failed` and `unknown`. Only `queued`
+ * and `submitted` hold up a new send. A `failed` item with no block (the chain's node refused it at the relay) and an
+ * `unknown` one are still watched for a late receipt, and may yet turn `confirmed`; a `failed` one with a block
+ * reverted, and is final.
  */
 export const FUNDING_ITEM_STATES = ['queued', 'submitted', 'confirmed', 'failed', 'unknown'] as const;
 export type FundingItemState = (typeof FUNDING_ITEM_STATES)[number];
@@ -101,6 +104,11 @@ export interface FundingView {
   /** When the manager read the nodes, ISO 8601, or null when it was not read. */
   observedAt: string | null;
   managerError: string | null;
+  /**
+   * The send that still has an item `queued` or `submitted`, which holds up a new one, or null. The page resumes its
+   * progress from it after a reload or in another tab.
+   */
+  openBulkId: string | null;
 }
 
 /** `POST /api/funding/pins`: confirm the current addresses of these nodes, behind the operator's password. */
@@ -142,6 +150,11 @@ export interface FundingTransferItem {
   state: FundingItemState;
   /** The transaction hash once the admin signed it, or null. */
   txHash: string | null;
+  /**
+   * The block it was mined in, or null until it is. Tells a `failed` item the chain reverted (a block, final) from one
+   * the chain's node refused at the relay (no block, still watched for a late receipt).
+   */
+  blockNumber: number | null;
   /** Why it failed, in a sentence, or null. */
   error: string | null;
 }
