@@ -51,4 +51,6 @@ ENV NODE_ENV=production
 # condition points every node process here, the CLI included, at the compiled copy.
 ENV NODE_OPTIONS=--conditions=compiled
 EXPOSE 9877
+# The server writes nothing to disk, so it needs none of root's rights. The node image ships this user.
+USER node
 CMD ["node", "dist/index.js"]
