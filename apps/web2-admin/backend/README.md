@@ -886,6 +886,37 @@ name or password, or a `?` or `#` part stops the
 start. The token is the manager's `FUNDING_API_TOKEN`: 32 characters or more,
 printable ASCII with no space, since it travels in a header.
 
+### The client of the manager's funding API
+
+`src/domain/funding/ManagerFundingClient.ts` calls the manager's funding API
+(`packages/contracts/src/funding.ts`), typed and parsed by the contract:
+`inventory()`, `account(address)`, `relay(transfer)` and `status(requestId)`,
+which the funding service uses.
+
+- Every request carries `Authorization: Bearer <MANAGER_FUNDING_TOKEN>`, to the
+  manager's address alone: the client holds the address to the rule above as
+  well, and follows no redirect. It logs nothing, and no error carries the
+  token.
+- Each call has a deadline, 10 seconds by default, which covers the answer
+  read whole, and reads at most 2 MiB of it.
+- Every answer is parsed by the contract's schema, so a field the contract
+  does not name is dropped, and an answer that does not parse is an error,
+  never a crash. A relay sends the contract's fields of the transfer and
+  nothing else.
+- Every failure is a `ManagerFundingError` with a `code` and a `status`. When
+  the manager refused, the code is the contract's (`funding_off`,
+  `unauthorized`, `unknown_node`, `bad_transaction`, `chain_unreachable`,
+  `conflict`, `unknown_request`), with the status it answered and its
+  sentence. Otherwise it is `unreachable` or `timeout`, with no status,
+  `not_json`, or `bad_answer`: JSON that is not the route's answer, an error
+  without one of the contract's codes, an answer over the limit, or a
+  redirect. After a relay, `unreachable` and `timeout` leave it unknown whether
+  the manager took the transfer; relayed again under the same request id, it
+  answers its state, and the manager never sends it twice. A status read that
+  answers `unknown_request` (404) says the manager journalled no transfer under
+  the id: the relay never reached it, so relaying again under the same request
+  id is safe, while `unknown_node` refuses the node.
+
 ## Migrations
 
 `src/migrations/NNN_name.sql`, applied in order inside a transaction at every
