@@ -24,6 +24,13 @@
  * starts with none, which is the Stages page's empty state and a picker with
  * nothing to pick.
  *
+ * The Funding page has a brand wallet and the mock stage's nodes, one of each
+ * address state, and a send confirms a few seconds after it is made. The view
+ * names the send still on its way, so a reload resumes it.
+ * MOCK_FUNDING=off answers the page as not set up, and MOCK_FUNDING=refuse
+ * has the chain's node refuse every transfer at the relay, which is then mined
+ * anyway.
+ *
  * No dependencies: plain node:http, plain node:crypto.
  */
 
@@ -74,6 +81,175 @@ const stages =
           retiredAt: null,
         },
       ];
+
+/**
+ * The Funding page's API, phase 1 of docs/architecture/funding.md: the brand wallet, every stage's nodes with their
+ * wallet balances, confirming their addresses, and sends from the wallet. Nothing reaches a chain. A send takes its
+ * amount off the wallet at once and lands on the node when its transfer reads as confirmed, a few seconds later.
+ * MOCK_FUNDING=off answers configured false, the page's "not set up" state. MOCK_FUNDING=refuse answers every
+ * transfer as the chain's node refusing it at the relay, failed with no block, which frees a new send; it is mined
+ * anyway when a sent one would be. The addresses are the repository's allow-listed fixtures.
+ */
+const FUNDING_CONFIGURED = process.env.MOCK_FUNDING !== 'off';
+const FUNDING_REFUSE = process.env.MOCK_FUNDING === 'refuse';
+const FUNDING_CONFIRM_AFTER_MS = 6_000;
+
+/** The admin's sentence for a transfer the chain's node refused at the relay. */
+const FUNDING_REFUSED_AT_RELAY =
+  "The chain's node refused it when the manager sent it. If it is mined anyway, this row will say so: check the node's balance before sending to it again.";
+const fundingWallet = {
+  address: '0x7e5f4552091a69125d5dfcb7b8c2659029395bdf',
+  xdaiWei: 1_500_000_000_000_000_000n,
+  xbzzPlur: 125_000_000_000_000_000n,
+};
+
+function fundingNode(nodeId, label, role, walletAddress, pinnedAddress, readError = null) {
+  return {
+    nodeId,
+    label,
+    role,
+    walletAddress,
+    pinnedAddress,
+    readError,
+    xdaiWei: 200_000_000_000_000_000n,
+    xbzzPlur: 50_000_000_000_000_000n,
+  };
+}
+
+/** The catalogue node, then the mock stage's nodes: one confirmed, one new, one changed and one the manager could not read. */
+const fundingNodes = new Map(
+  [
+    fundingNode(
+      'catalogue:bee-uploader',
+      'catalogue-node',
+      'uploader',
+      '0x1234567890123456789012345678901234567890',
+      '0x1234567890123456789012345678901234567890',
+    ),
+    fundingNode(
+      `${MOCK_STAGE_ID}:bee-uploader`,
+      'mock-stage-uploader',
+      'uploader',
+      '0x1111111111111111111111111111111111111111',
+      '0x1111111111111111111111111111111111111111',
+    ),
+    fundingNode(`${MOCK_STAGE_ID}:360p`, 'mock-pool-360p', 'rung', '0x2222222222222222222222222222222222222222', null),
+    fundingNode(
+      `${MOCK_STAGE_ID}:720p`,
+      'mock-pool-720p',
+      'rung',
+      '0x4f0e1c2b3a49586772635441302f1e0d0c0b0a09',
+      '0x3f1a9c2b4d5e6f708192a3b4c5d6e7f809a1b2c3',
+    ),
+    fundingNode(`${MOCK_STAGE_ID}:gateway`, 'mock-gateway', 'gateway', null, null, 'The node did not answer.'),
+  ].map((node) => [node.nodeId, node]),
+);
+
+/** bulkId -> the transfers one send asked for. */
+const fundingBulks = new Map();
+
+/** userId -> wrong passwords in a row on the funding routes, and until when they are locked, as the API throttles them. */
+const fundingFailures = new Map();
+const fundingLockedUntil = new Map();
+
+function pinOf(node) {
+  if (node.pinnedAddress === null) return 'new';
+  return node.pinnedAddress === node.walletAddress ? 'pinned' : 'changed';
+}
+
+function adminFundingNode(node) {
+  const read = node.walletAddress !== null;
+  return {
+    nodeId: node.nodeId,
+    label: node.label,
+    role: node.role,
+    walletAddress: node.walletAddress,
+    xdaiWei: read ? node.xdaiWei.toString() : null,
+    xbzzPlur: read ? node.xbzzPlur.toString() : null,
+    readError: node.readError,
+    pin: pinOf(node),
+    pinnedAddress: node.pinnedAddress,
+  };
+}
+
+/** Whether a transfer may still be mined: sent, or refused at the relay with no block. */
+function fundingLandable(item) {
+  return item.state === 'submitted' || (item.state === 'failed' && item.blockNumber === null);
+}
+
+/** Confirms every transfer sent long enough ago, in a block, and lands its amount on its node. */
+function settleFundingTransfers() {
+  const now = Date.now();
+  for (const items of fundingBulks.values()) {
+    for (const item of items) {
+      if (!fundingLandable(item) || now - item.sentAt < FUNDING_CONFIRM_AFTER_MS) continue;
+      item.state = 'confirmed';
+      item.blockNumber = Math.floor(now / 5_000);
+      item.error = null;
+      const node = fundingNodes.get(item.nodeId);
+      if (item.kind === 'xdai') node.xdaiWei += item.amount;
+      else node.xbzzPlur += item.amount;
+    }
+  }
+}
+
+/** The send with a transfer still queued or sent, which holds up a new one, as the API names it, or null. */
+function openFundingBulkId() {
+  for (const [bulkId, items] of fundingBulks) {
+    if (items.some((item) => item.state === 'queued' || item.state === 'submitted')) return bulkId;
+  }
+  return null;
+}
+
+function fundingView() {
+  const observedAt = new Date().toISOString();
+  if (!FUNDING_CONFIGURED) {
+    return {
+      configured: false,
+      wallet: null,
+      chainId: 100,
+      stages: [],
+      catalogue: null,
+      observedAt,
+      managerError: null,
+      openBulkId: null,
+    };
+  }
+  settleFundingTransfers();
+  const nodesOf = (stageId) => [...fundingNodes.values()].filter((node) => node.nodeId.startsWith(`${stageId}:`));
+  return {
+    configured: true,
+    wallet: {
+      address: fundingWallet.address,
+      xdaiWei: fundingWallet.xdaiWei.toString(),
+      xbzzPlur: fundingWallet.xbzzPlur.toString(),
+    },
+    chainId: 100,
+    stages: stages.map((stage) => ({
+      stageId: stage.stageId,
+      name: stage.name,
+      nodes: nodesOf(stage.stageId).map(adminFundingNode),
+    })),
+    catalogue: adminFundingNode(fundingNodes.get('catalogue:bee-uploader')),
+    observedAt,
+    managerError: null,
+    openBulkId: openFundingBulkId(),
+  };
+}
+
+/** An item as the API answers it, on the send and on every read: its block number is null until it is mined. */
+function fundingItemAnswer(item) {
+  return {
+    requestId: item.requestId,
+    nodeId: item.nodeId,
+    kind: item.kind,
+    amount: item.amount.toString(),
+    state: item.state,
+    txHash: item.txHash,
+    blockNumber: item.blockNumber,
+    error: item.error,
+  };
+}
 
 /** A stage a stream may be put on, as the API decides it: known, not retired, supported. */
 function assignable(stageId) {
@@ -480,6 +656,92 @@ async function handle(req, res) {
       if (id === user.id && token !== keep) sessions.delete(token);
     }
     return send(res, 200, { user });
+  }
+
+  if (path === '/api/funding' && method === 'GET') return send(res, 200, fundingView());
+
+  if (path === '/api/funding/transfers' && method === 'GET') {
+    const items = fundingBulks.get(url.searchParams.get('bulkId') ?? '');
+    if (!items) return send(res, 404, { error: 'not_found', path });
+    settleFundingTransfers();
+    return send(res, 200, { items: items.map(fundingItemAnswer) });
+  }
+
+  if ((path === '/api/funding/pins' || path === '/api/funding/transfers') && method === 'POST') {
+    if (!FUNDING_CONFIGURED) return send(res, 404, { error: 'not_found', path });
+    const body = await readJson(req);
+    const lockedFor = Math.ceil(((fundingLockedUntil.get(user.id) ?? 0) - Date.now()) / 1000);
+    if (lockedFor > 0) {
+      return send(
+        res,
+        429,
+        { error: 'too_many_attempts', retryAfterSeconds: lockedFor },
+        { 'retry-after': String(lockedFor) },
+      );
+    }
+    if (passwords.get(user.id) !== body.password) {
+      const failed = (fundingFailures.get(user.id) ?? 0) + 1;
+      fundingFailures.set(user.id, failed);
+      if (failed >= LOCKOUT_FREE_ATTEMPTS) {
+        fundingFailures.delete(user.id);
+        fundingLockedUntil.set(user.id, Date.now() + LOCKOUT_SECONDS * 1000);
+      }
+      return send(res, 401, { error: 'invalid_credentials' });
+    }
+    fundingFailures.delete(user.id);
+
+    if (path === '/api/funding/pins') {
+      const ids = Array.isArray(body.nodeIds) ? body.nodeIds : [];
+      const nodes = ids.map((id) => fundingNodes.get(id));
+      if (nodes.length === 0 || nodes.some((node) => !node || node.walletAddress === null)) {
+        return send(res, 400, { error: 'validation_error', errors: ['nodeIds must name nodes with a wallet address'] });
+      }
+      for (const node of nodes) node.pinnedAddress = node.walletAddress;
+      return send(res, 200, { pinned: ids });
+    }
+
+    // One send at a time: a second one while an earlier one is still queued or sent is refused, as the API refuses it.
+    // A transfer refused at the relay holds up no send.
+    settleFundingTransfers();
+    if (openFundingBulkId() !== null) {
+      return send(res, 409, { error: 'conflict', message: 'An earlier send has not settled yet.' });
+    }
+    const asked = Array.isArray(body.items) ? body.items : [];
+    const valid = asked.every(
+      (item) =>
+        fundingNodes.has(item?.nodeId) && ['xdai', 'xbzz'].includes(item.kind) && /^[1-9]\d*$/.test(item.amount),
+    );
+    if (asked.length === 0 || !valid) {
+      return send(res, 400, {
+        error: 'validation_error',
+        errors: ['items must name nodes, a kind and an amount in base units'],
+      });
+    }
+    const unpinned = asked.map((item) => fundingNodes.get(item.nodeId)).find((node) => pinOf(node) !== 'pinned');
+    if (unpinned) {
+      return send(res, 409, { error: 'node_not_pinned', message: `Confirm the address of ${unpinned.label} first.` });
+    }
+    const total = (kind) =>
+      asked.filter((item) => item.kind === kind).reduce((sum, item) => sum + BigInt(item.amount), 0n);
+    if (total('xdai') > fundingWallet.xdaiWei || total('xbzz') > fundingWallet.xbzzPlur) {
+      return send(res, 409, { error: 'insufficient_balance', message: 'That is more than the brand wallet holds.' });
+    }
+    fundingWallet.xdaiWei -= total('xdai');
+    fundingWallet.xbzzPlur -= total('xbzz');
+    const bulkId = randomUUID();
+    const items = asked.map((item) => ({
+      requestId: randomUUID(),
+      nodeId: item.nodeId,
+      kind: item.kind,
+      amount: BigInt(item.amount),
+      state: FUNDING_REFUSE ? 'failed' : 'submitted',
+      txHash: `0x${hex(32)}`,
+      blockNumber: null,
+      error: FUNDING_REFUSE ? FUNDING_REFUSED_AT_RELAY : null,
+      sentAt: Date.now(),
+    }));
+    fundingBulks.set(bulkId, items);
+    return send(res, 202, { bulkId, items: items.map(fundingItemAnswer) });
   }
 
   // No manager pushes into the mock, so its stages are fixed and it has no
