@@ -59,6 +59,12 @@ export const LIVE_WINDOW_MAX_BYTES = 4096;
 export const MIN_LIVE_WINDOW_SEGMENTS = 3;
 
 /**
+ * The most bytes a live window may reach to for {@link MIN_LIVE_WINDOW_SEGMENTS}: the budget, and one
+ * budget's worth of gap entries more. Past it the window names fewer media entries than the floor.
+ */
+export const LIVE_WINDOW_FLOOR_MAX_BYTES = 2 * LIVE_WINDOW_MAX_BYTES;
+
+/**
  * The bytes a manifest of these lines occupies once joined, without joining them.
  *
  * `\n` separates every line and terminates the last, so each line costs its own length plus one.
@@ -1085,8 +1091,9 @@ export class ManifestManager {
   }
 
   /**
-   * How many of the newest segments fit in {@link LIVE_WINDOW_MAX_BYTES}, and never fewer than
-   * {@link MIN_LIVE_WINDOW_SEGMENTS} while that many are held.
+   * How many of the newest segments fit in {@link LIVE_WINDOW_MAX_BYTES}, and never fewer than one.
+   * Fewer than {@link MIN_LIVE_WINDOW_SEGMENTS} only where reaching them would pass
+   * {@link LIVE_WINDOW_FLOOR_MAX_BYTES}.
    *
    * Counted backwards from the live edge, so the work is the window's rather than the broadcast's:
    * `segments` holds every segment ever published, because the VOD manifest is built from the same
@@ -1102,14 +1109,19 @@ export class ManifestManager {
    * far side of it, and both are charged here. Uncounted, a broadcast that lost a run of segments
    * would publish a window over one chunk and pay three round trips per segment for as long as the
    * hole stayed inside it. A hole too wide to afford stops the window, once it names
-   * {@link MIN_LIVE_WINDOW_SEGMENTS} segments.
+   * {@link MIN_LIVE_WINDOW_SEGMENTS} segments or the floor's own limit is reached.
    *
    * ⛔⛔ **Never fewer than three media entries, even over budget.** A rung lining up with its ladder
    * after a long partial return lists the whole absence as gap entries right before its break, sixty
    * of them after a minute at one second fragments, and that run alone fills the budget. Stopped
    * there, the window right after the return named one media entry, and a player joining or switching
-   * to that rung had nothing to buffer from. Over budget costs that publish two more round trips, for
-   * the few segments it takes the run to slide out, which is the cheaper failure.
+   * to that rung had nothing to buffer from.
+   *
+   * ⛔ **But never further back than {@link LIVE_WINDOW_FLOOR_MAX_BYTES}.** The floor applies to every
+   * stream and every hole, and a hole a node outage left can be minutes of gap entries: reaching all
+   * the way back made the first publishes after a five minute outage about fourteen kilobytes, several
+   * chunks each. Within the limit, going over the budget costs a publish one payload upload more than a
+   * chunk, for the few segments it takes the run to slide out.
    */
   private liveWindowLength(): number {
     // Reserved against the largest media sequence there could be, whose own digits are part of the
@@ -1129,7 +1141,9 @@ export class ManifestManager {
     // first reconnect seam slides out of the window, and the budget this feeds is one bee chunk.
     const mostBreaksBehind =
       this.inheritedDiscontinuities() + 1 + this.segments.filter((seg) => seg.discontinuity === true).length;
-    const budget = LIVE_WINDOW_MAX_BYTES - manifestBytes(this.liveHeaderLines(newestSequence, mostBreaksBehind));
+    const headerBytes = manifestBytes(this.liveHeaderLines(newestSequence, mostBreaksBehind));
+    const budget = LIVE_WINDOW_MAX_BYTES - headerBytes;
+    const floorBudget = LIVE_WINDOW_FLOOR_MAX_BYTES - headerBytes;
 
     let spent = 0;
     let length = 0;
@@ -1139,7 +1153,8 @@ export class ManifestManager {
       if (successor !== undefined) {
         spent += manifestBytes(this.gapLines(this.segments[i], successor));
       }
-      if (spent > budget && length >= MIN_LIVE_WINDOW_SEGMENTS) {
+      const floorStillOwed = length < MIN_LIVE_WINDOW_SEGMENTS && spent <= floorBudget;
+      if (spent > budget && length > 0 && !floorStillOwed) {
         break;
       }
       length++;

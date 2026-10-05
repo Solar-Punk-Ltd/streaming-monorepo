@@ -9,6 +9,7 @@ import {
   inheritedTimeline,
   LIVE_WINDOW_MAX_BYTES,
   ManifestManager,
+  LIVE_WINDOW_FLOOR_MAX_BYTES,
   MIN_LIVE_WINDOW_SEGMENTS,
 } from '../src/libs/ManifestManager.js';
 import { BroadcastAnchor } from '../src/types.js';
@@ -2087,5 +2088,23 @@ describe('a live window right after a return that lists many gap entries', () =>
 
     assert.ok(media.length >= 3, `the window names ${media.length} media entries: ${media.join(', ')}`);
     assert.ok(live.includes('ref-10'));
+  });
+
+  /**
+   * The floor reaches back over a hole of any cause, and a hole a node outage left can be minutes of
+   * gap entries. Reaching all the way back made the first publishes after a five minute outage about
+   * fourteen kilobytes, several chunks each.
+   */
+  it(`reaches back over no more than ${LIVE_WINDOW_FLOOR_MAX_BYTES} bytes for it`, () => {
+    const manager = new ManifestManager(TEST_ANCHOR);
+    for (let index = 0; index < 10; index++) {
+      manager.addSegment(index, 2, `ref-${index}`);
+    }
+    manager.addSegment(160, 2, 'ref-160');
+
+    const live = manager.buildLiveManifest();
+
+    assert.ok(Buffer.byteLength(live, 'utf-8') <= LIVE_WINDOW_FLOOR_MAX_BYTES, `${Buffer.byteLength(live)} bytes`);
+    assert.ok(live.includes('ref-160'));
   });
 });
