@@ -357,7 +357,7 @@ describe('the address a bridge-bound port is dialled on', () => {
     const journal = sandbox.invocations().join('\n');
     assert.equal(journal.match(/docker network inspect bridge/g)?.length, 1);
     assert.deepEqual(
-      [...journal.matchAll(/http:\/\/\S+/g)].map(([url]) => url),
+      [...journal.matchAll(/http:\/\/[^\s']+/g)].map(([url]) => url),
       ['http://172.17.0.1:11737/health', 'http://172.17.0.1:11737/status'],
     );
   });
