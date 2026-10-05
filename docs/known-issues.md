@@ -52,6 +52,15 @@ warning. Seen together with the encoder hang that is being fixed separately.
 blackout, three to four segments per rung decode with errors, and every other segment decodes
 clean. That is damage from packets SRT dropped on the way in, not from the stack.
 
+**Some segments carry repeated decode timestamps (P3).** About one segment in 10 to 50, on every
+rung at once, runs 2.025 s instead of 2.0 s, and about 40 of its frames carry a decode timestamp
+that does not move past the one before. ffmpeg reports each of them as "non monotonically increasing
+dts to muxer". All the frames are there and the picture decodes. A player could at most drop or
+stutter a frame there, and a browser viewer played through such segments without a stall. It shows
+on a normal network as much as during a fault, so some of the decode errors counted in the entry
+above are probably this, not damage. To see it: decode the segments of any recording with
+`ffmpeg -v error -i <segment> -f null -` and look for that message.
+
 **One damaged segment after an unclean takeover (P3, cause unknown).** One recording had a single
 segment per rung, about four seconds, with decode errors on every rung, so the source itself was
 damaged. It sat a few seconds after a frozen old broadcaster was released during a takeover test.
