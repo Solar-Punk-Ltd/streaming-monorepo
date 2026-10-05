@@ -502,7 +502,7 @@ export class StackVersionService {
     await mkdir(buildsRootFor(this.versionsRoot, version.name), { recursive: true });
     const buildId = await this.freeBuildId(version.name, current.manifest.commit);
     const built = buildDirFor(this.versionsRoot, version.name, buildId);
-    let sharing: BuildTreeSharing = 'linked';
+    let sharing: BuildTreeSharing;
     try {
       const cloned = await cloneBuildTree(
         from,
