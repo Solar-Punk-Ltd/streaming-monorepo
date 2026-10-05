@@ -48,6 +48,11 @@ export interface ReturnInProgress {
   token: string;
   resumedRungs: string[];
   /**
+   * The rungs that have placed a segment of this return. Absent on a record written before it was
+   * kept, which is read as every rung that announced. See `StreamOrchestrator.tokenForThisReturn`.
+   */
+  placedRungs?: string[];
+  /**
    * The published sequence every rung of this return resumes at, once the first of them has placed
    * a resumed segment. Absent until then. See `sharedResumePoint`.
    *
@@ -114,7 +119,8 @@ function readReturnInProgress(value: unknown): ReturnInProgress | undefined {
   if (value === null || typeof value !== 'object') {
     return undefined;
   }
-  const { token, resumedRungs, resumeAt, heldRungs, awaitedRungs, closed } = value as Partial<ReturnInProgress>;
+  const { token, resumedRungs, placedRungs, resumeAt, heldRungs, awaitedRungs, closed } =
+    value as Partial<ReturnInProgress>;
   if (typeof token !== 'string' || !isListOfNames(resumedRungs)) {
     return undefined;
   }
@@ -123,6 +129,7 @@ function readReturnInProgress(value: unknown): ReturnInProgress | undefined {
     token,
     resumedRungs,
     ...(Number.isInteger(resumeAt) ? { resumeAt } : {}),
+    ...(isListOfNames(placedRungs) ? { placedRungs } : {}),
     ...(isListOfNames(heldRungs) ? { heldRungs } : {}),
     ...(isListOfNames(awaitedRungs) ? { awaitedRungs } : {}),
     ...(closed === true ? { closed } : {}),

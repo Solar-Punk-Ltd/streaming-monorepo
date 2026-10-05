@@ -1538,6 +1538,61 @@ describe('a ladder that comes back in two returns, the first without 360p', () =
     }
   });
 
+  /** A driver that hands each rung its next engine index. */
+  function driverFor(harness: ReconnectHarness) {
+    const next = new Map(rungIds.map((streamId) => [streamId, 0]));
+    return async (streamId: string, label: string, seconds = SEGMENT_SECONDS) => {
+      const index = next.get(streamId)!;
+      await harness.segment(`${streamId}-${label}`, index, streamId, seconds);
+      next.set(streamId, index + 1);
+    };
+  }
+
+  /**
+   * Every rung's first resumed segment, `b0`, sits at `owed` and opens the break, and a rung lists no
+   * more gap entries than `lining` sequences it had to line up by.
+   */
+  async function assertResumedTogether(harness: ReconnectHarness, owed: number, lining: number): Promise<void> {
+    const playlists = await timelines(harness, 'b1');
+    for (const streamId of rungIds) {
+      const entries = playlists.get(streamId)!;
+      const b0 = entries.find((entry) => entry.uri === `segment-${streamId}-b0`)!;
+      assert.equal(b0.sequence, owed, `${streamId} resumes at ${b0.sequence}`);
+      assert.equal(b0.opensABreak, true, `${streamId} declares the return`);
+      const gaps = entries.filter((entry) => entry.uri.startsWith('gap-')).length;
+      assert.ok(gaps <= lining, `${streamId} lists ${gaps} gap entries for media nobody lost`);
+    }
+    assertOneTimeline(playlists);
+  }
+
+  /**
+   * A rung that drops again after announcing, before it delivered anything, is still coming back from
+   * the same outage. Treated as a rung already back, it closed the return and started a second one,
+   * which counted its siblings' resumed segments and raised it two sequences past them.
+   */
+  it('keeps a rung that drops again before its first segment in the same return', async () => {
+    const harness = reconnectHarness({ ladder: true });
+    const deliver = driverFor(harness);
+    const flapping = rungIds[3];
+    for (const streamId of rungIds) harness.start(streamId);
+    for (let round = 0; round < 4; round++) {
+      for (const streamId of rungIds) await deliver(streamId, `a${round}`);
+      await harness.passTime(SEGMENT_SECONDS * 1_000);
+    }
+    for (const streamId of rungIds) harness.orchestrator.noteDisconnect(streamId);
+    await harness.passTime(14_000);
+    for (const streamId of rungIds) harness.start(streamId);
+    harness.orchestrator.noteDisconnect(flapping);
+    harness.start(flapping);
+    for (const streamId of rungIds.slice(0, 3)) await deliver(streamId, 'b0');
+    for (const streamId of rungIds.slice(0, 3)) await harness.published(`${streamId}-b0`);
+    await deliver(flapping, 'b0');
+    await harness.passTime(SEGMENT_SECONDS * 1_000);
+    for (const streamId of rungIds) await deliver(streamId, 'b1');
+
+    await assertResumedTogether(harness, 4, 0);
+  });
+
   it('starts the next return for a rung that missed the last one and comes back first', async () => {
     const harness = reconnectHarness({ ladder: true });
     const [ahead, missed] = rungIds;

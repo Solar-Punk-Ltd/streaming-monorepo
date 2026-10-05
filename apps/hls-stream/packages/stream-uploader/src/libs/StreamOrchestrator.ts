@@ -180,6 +180,11 @@ interface StartStreamOptions {
 interface ActiveReturn {
   token: string;
   resumedRungs: Set<string>;
+  /**
+   * The rungs that have placed a segment of this return. Only such a rung announcing again is coming
+   * back from something else. See {@link StreamOrchestrator.tokenForThisReturn}.
+   */
+  placedRungs: Set<string>;
   /** The rungs that came back through `resumeHeldRungs`, which resume at their own count. */
   heldRungs: Set<string>;
   /**
@@ -781,9 +786,9 @@ export class StreamOrchestrator {
   /**
    * Which return of this broadcast the rung announcing now belongs to, minting a name for a new one.
    *
-   * ⛔ **A rung that has already said it is back starts the NEXT return.** A rung joins the return in
-   * progress until it has joined it, and the moment it announces again the ladder is plainly coming
-   * back from something else.
+   * ⛔ **A rung that has placed a segment of the return starts the NEXT return when it announces
+   * again.** A rung that announced and has delivered nothing yet rejoins the return it announced, so a
+   * publisher that drops and returns before its first segment is still one return.
    *
    * ⛔⛔ **Only a rung that was away when the return started may join it.** A return records the rungs
    * that were disconnected, or rebuilt and waiting for their engine, when it started. A rung that kept
@@ -817,7 +822,7 @@ export class StreamOrchestrator {
     if (
       inProgress !== undefined &&
       inProgress.closed !== true &&
-      !inProgress.resumedRungs.has(streamId) &&
+      !inProgress.placedRungs.has(streamId) &&
       (inProgress.awaitedRungs?.has(streamId) ?? true)
     ) {
       inProgress.resumedRungs.add(streamId);
@@ -831,6 +836,7 @@ export class StreamOrchestrator {
     const started: ActiveReturn = {
       token: crypto.randomUUID(),
       resumedRungs: new Set([streamId]),
+      placedRungs: new Set(),
       heldRungs: new Set(held ? [streamId] : []),
       awaitedRungs: new Set([streamId, ...(awaited ?? this.rungsAwayFrom(base))]),
     };
@@ -853,11 +859,18 @@ export class StreamOrchestrator {
   }
 
   /**
-   * A rung that is already back from the return in progress, or that never left it, has gone away
-   * again, so whatever comes back next is the next return.
+   * A rung has gone away, so decide whether the return in progress is over.
    *
-   * ⛔ Without it a rung the return was still waiting for, announcing after this second outage, joined
-   * the finished return and resumed at its point and on its dating line, a whole outage in the past.
+   * ⛔ **A rung that has placed a segment of the return, or kept publishing through it, going away is
+   * a new outage**, and the return is closed, so whatever comes back next starts the next one. Without
+   * it a rung the return was still waiting for, announcing after this second outage, joined the
+   * finished return and resumed at its point and on its dating line, a whole outage in the past.
+   *
+   * ⛔⛔ **Anything else is the same outage, and the return stays open.** A rung that announced and
+   * drops again before its first segment is still coming back from it, and rejoins it. Closed on it,
+   * one outage became two returns:
+   * the rungs of the first fell back to their own count, and the second counted their resumed segments
+   * and raised its rungs past them, which was worse than resuming each at its own count.
    */
   private closeTheReturnThisRungIsNotAwaitedBy(streamId: string): void {
     const base = this.streamBases.get(streamId) ?? null;
@@ -866,11 +879,12 @@ export class StreamOrchestrator {
     if (inProgress === undefined || inProgress.closed === true) {
       return;
     }
-    const stillAwaited = !inProgress.resumedRungs.has(streamId) && (inProgress.awaitedRungs?.has(streamId) ?? true);
-    if (!stillAwaited) {
-      inProgress.closed = true;
-      this.rememberReturn(key, base, inProgress);
+    const placedInIt = inProgress.placedRungs.has(streamId);
+    if (!placedInIt && (inProgress.awaitedRungs?.has(streamId) ?? true)) {
+      return;
     }
+    inProgress.closed = true;
+    this.rememberReturn(key, base, inProgress);
   }
 
   /** The return a ladder's group record says its rungs are coming back from, after a restart of this process. */
@@ -881,6 +895,9 @@ export class StreamOrchestrator {
       : {
           token: persisted.token,
           resumedRungs: new Set(persisted.resumedRungs),
+          // A record written before placements were kept says only who announced, which is what
+          // decided who starts the next return then.
+          placedRungs: new Set(persisted.placedRungs ?? persisted.resumedRungs),
           heldRungs: new Set(persisted.heldRungs),
           ...(persisted.awaitedRungs === undefined ? {} : { awaitedRungs: new Set(persisted.awaitedRungs) }),
           ...(persisted.closed === true ? { closed: true } : {}),
@@ -901,6 +918,7 @@ export class StreamOrchestrator {
         returnInProgress: {
           token: inProgress.token,
           resumedRungs: [...inProgress.resumedRungs],
+          placedRungs: [...inProgress.placedRungs],
           ...(inProgress.heldRungs.size === 0 ? {} : { heldRungs: [...inProgress.heldRungs] }),
           ...(inProgress.awaitedRungs === undefined ? {} : { awaitedRungs: [...inProgress.awaitedRungs] }),
           ...(inProgress.closed === true ? { closed: true as const } : {}),
@@ -2808,10 +2826,14 @@ export class StreamOrchestrator {
     ownResumeAt: number,
     ownResumeDatedAtMs: number,
   ): number {
+    const inProgress = this.returnsInProgress.get(datingKey) ?? this.persistedReturnOf(base);
+    if (inProgress?.token === returnToken && !inProgress.placedRungs.has(streamId)) {
+      inProgress.placedRungs.add(streamId);
+      this.rememberReturn(datingKey, base, inProgress);
+    }
     if (base === null) {
       return ownResumeAt;
     }
-    const inProgress = this.returnsInProgress.get(datingKey) ?? this.persistedReturnOf(base);
     if (inProgress?.token !== returnToken) {
       this.logger.warn(
         `[StreamOrchestrator] A rung of ${base} resumes at its own sequence ${ownResumeAt}, because the return ` +

@@ -122,6 +122,7 @@ describe('LadderGroupStore', () => {
       returnInProgress: {
         token: 'return-1',
         resumedRungs: ['video/livestream_360p', 'video/livestream_480p'],
+        placedRungs: ['video/livestream_360p'],
         resumeAt: 331,
         heldRungs: ['video/livestream_480p'],
         awaitedRungs: ['video/livestream_360p', 'video/livestream_480p'],
