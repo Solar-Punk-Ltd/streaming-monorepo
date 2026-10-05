@@ -9,6 +9,10 @@ import {
   CatalogueStampUnavailableError,
   CrossSiteRequestError,
   FeedOwnerMismatchError,
+  FundingBulkNotFoundError,
+  FundingBusyError,
+  FundingManagerUnavailableError,
+  FundingRefusedError,
   InvalidCredentialsError,
   InvalidStateError,
   InvalidStateTransitionError,
@@ -210,6 +214,23 @@ export function errorHandler(err: unknown, req: Request, res: Response, next: Ne
     // 503: the admin cannot write the catalogue until the manager designates a usable batch, which is a state that
     // ends, not a request that was wrong. The uploader retries a 5xx, and a state report refused here must be retried.
     res.status(503).json({ error: 'catalogue_stamp_unavailable', problem: err.problem, message: err.message });
+    return;
+  }
+  if (err instanceof FundingBusyError) {
+    // Exactly this, as the Funding page's contract says: the console knows the one reason it has.
+    res.status(409).json({ error: 'conflict' });
+    return;
+  }
+  if (err instanceof FundingRefusedError) {
+    res.status(409).json({ error: 'funding_refused', problem: err.problem, message: err.message });
+    return;
+  }
+  if (err instanceof FundingManagerUnavailableError) {
+    res.status(502).json({ error: 'manager_unavailable', message: err.message });
+    return;
+  }
+  if (err instanceof FundingBulkNotFoundError) {
+    res.status(404).json({ error: 'bulk_not_found', bulkId: err.bulkId });
     return;
   }
   if (err instanceof PublishFailedError) {

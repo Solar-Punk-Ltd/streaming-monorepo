@@ -10,6 +10,8 @@ import {
   XBZZ_DECIMALS,
   XDAI_DECIMALS,
   formatBaseUnits,
+  type FundingTransferItem,
+  type FundingView,
   fundingBulkPath,
   parseBaseUnits,
   sumBaseUnits,
@@ -88,5 +90,41 @@ describe('base units', () => {
     assert.equal(sumBaseUnits([]), '0');
     assert.equal(sumBaseUnits(['900000000000000000', '200000000000000000']), '1100000000000000000');
     assert.equal(sumBaseUnits(['9007199254740993', '1']), '9007199254740994');
+  });
+});
+
+describe('the answers', () => {
+  it('name the open send on the Funding page, so a reload resumes it', () => {
+    const view: FundingView = {
+      configured: true,
+      wallet: null,
+      chainId: 100,
+      stages: [],
+      catalogue: null,
+      observedAt: null,
+      managerError: null,
+      openBulkId: BULK_ID,
+    };
+    const idle: FundingView = { ...view, openBulkId: null };
+
+    assert.equal(view.openBulkId, BULK_ID);
+    assert.equal(idle.openBulkId, null);
+  });
+
+  it("carry an item's block, null until it is mined, so a refusal at the relay reads apart from a revert", () => {
+    const refused: FundingTransferItem = {
+      requestId: BULK_ID,
+      nodeId: 'stage-1:uploader',
+      kind: 'xdai',
+      amount: '1',
+      state: 'failed',
+      txHash: null,
+      blockNumber: null,
+      error: "The chain's node refused it.",
+    };
+    const reverted: FundingTransferItem = { ...refused, blockNumber: 12, error: 'The transaction reverted on chain.' };
+
+    assert.equal(refused.blockNumber, null);
+    assert.equal(reverted.blockNumber, 12);
   });
 });

@@ -1,5 +1,6 @@
 import http from 'node:http';
 
+import { FUNDING_PATH } from '@streaming-monorepo/web2-admin-common';
 import express from 'express';
 
 import { AuthService } from '../domain/auth/AuthService.js';
@@ -7,6 +8,7 @@ import type { CatalogueBatchService } from '../domain/CatalogueBatch.js';
 import type { CatalogueMoveService } from '../domain/CatalogueMove.js';
 import { Database } from '../domain/Database.js';
 import type { FeedIdentity } from '../domain/feedIdentity.js';
+import type { FundingService } from '../domain/funding/FundingService.js';
 import { IngestService } from '../domain/IngestService.js';
 import { LadderService } from '../domain/LadderService.js';
 import { Logger } from '../domain/Logger.js';
@@ -25,6 +27,7 @@ import { requestLogger } from './middleware/requestLogger.js';
 import { createAuthRouter } from './routes/auth.js';
 import { createConfigRouter } from './routes/config.js';
 import { createFeedRouter } from './routes/feed.js';
+import { createFundingRouter } from './routes/funding.js';
 import { createHealthRouter } from './routes/health.js';
 import { createInternalRouter } from './routes/internal.js';
 import { createCatalogueStampRouter, createStagesRouter } from './routes/stages.js';
@@ -46,6 +49,8 @@ export interface ApiDeps {
   catalogueBatch: CatalogueBatchService;
   /** Moving the catalogue's history onto another batch, started from the Stages page. */
   catalogueMove: CatalogueMoveService;
+  /** The Funding page: the brand wallet, the nodes' pins, and sends relayed through the manager. */
+  fundingService: FundingService;
   /**
    * The registrar token: the only one the manager's routes under /api/internal take. An uploader's routes refuse it.
    * Never accepted anywhere else.
@@ -132,6 +137,11 @@ export function startApiServer(deps: ApiDeps, port: number, host: string): ApiSe
       catalogueMove: deps.catalogueMove,
       requireAuth,
     }),
+  );
+
+  app.use(
+    FUNDING_PATH,
+    createFundingRouter({ fundingService: deps.fundingService, authService: deps.authService, requireAuth }),
   );
 
   app.use(notFound);
