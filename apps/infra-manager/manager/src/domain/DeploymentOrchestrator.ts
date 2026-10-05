@@ -461,11 +461,18 @@ export type BeforeUploaderStart = (profile: Profile) => Promise<void>;
  */
 export type RemovalGuard = (profileName: string) => Promise<void>;
 
+/**
+ * The deployment with the pool string its deploy writes: an ABR stage's pool's current one, where the stage has a
+ * pool on this manager. Throws to refuse the deploy. Implemented by `StagePoolStrings.withCurrentBatches`.
+ */
+export type PoolStringSource = (profile: Profile) => Promise<Profile>;
+
 export class DeploymentOrchestrator {
   private beforeUploaderStart: BeforeUploaderStart | null = null;
   /** The manager's web2 admin link, whose address a token of a deployment's own is generated for. */
   private managerAdminLink: Pick<ManagerAdminLinkStore, 'read'> | null = null;
   private removalGuard: RemovalGuard | null = null;
+  private poolStrings: PoolStringSource | null = null;
 
   constructor(
     private readonly profiles: ProfileRepository,
@@ -512,6 +519,11 @@ export class DeploymentOrchestrator {
   /** Sets what a removal asks before it claims the deployment, a setter for the same reason as the one above. */
   setRemovalGuard(guard: RemovalGuard | null): void {
     this.removalGuard = guard;
+  }
+
+  /** Sets where a deploy takes an ABR stage's pool string from. Left unset, the stored one is written. */
+  setPoolStrings(source: PoolStringSource | null): void {
+    this.poolStrings = source;
   }
 
   /** The hook, where this deploy starts an uploader. A failure is a warning and never holds the deploy. */
@@ -1415,7 +1427,8 @@ export class DeploymentOrchestrator {
       };
       const stored = await this.operatorSettingsFor(profile, version, reservation.host);
       await this.assertAdminTokenStaysHome(profile, stored, paths.root, engine);
-      const values = this.profileEnvValuesOf(profile, version, engine, {
+      const deployed = this.poolStrings ? await this.poolStrings(profile) : profile;
+      const values = this.profileEnvValuesOf(deployed, version, engine, {
         secrets,
         stackSecrets: await this.stackSecretsFor(profile, version, paths.root, engine, stored),
         engineConfigFile,
@@ -1427,7 +1440,7 @@ export class DeploymentOrchestrator {
 
       const services = [...reservation.services];
       // After the env file is written, so the record carries the token the uploader is about to be given.
-      await this.runBeforeUploaderStart(profile, services);
+      await this.runBeforeUploaderStart(deployed, services);
       return await this.runJob({
         profileName: profile.name,
         target: targetAlias(reservation.host ?? profile.host),

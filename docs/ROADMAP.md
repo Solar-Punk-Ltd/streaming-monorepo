@@ -410,6 +410,17 @@ because one firewall draft leaves its port closed.
   listener, the deploy wait for it and the RTMP end-to-end suites ship with it.
   The takeover settings take empty, `on` or `off` in the manager, because SRS
   will not start on anything else.
+- A ladder whose encoders never start is no longer silent. Seen once on a test
+  deployment, every rung encoder of an RTMP source that began on a slow link
+  hung for minutes. Each encoder now exits on an input or output that stalls
+  for `ABR_IO_TIMEOUT` and SRS starts it again. If no rung publishes within
+  `FIRST_RUNG_DEADLINE_MS` of the source being accepted, the uploader logs an
+  error naming the stream and reports `ladder_not_started` on `/health`. The
+  uploader has no channel to SRS's HTTP API, so it does not drop the source
+  itself: the broadcaster has to stop the broadcast for longer than the encoder
+  hold (about 15 s at the default) and start it again to get fresh encoders.
+  A quicker reconnect meets the same hung encoders. Dropping the source from the
+  uploader is not built and stays open.
 
 The shared warning beside RTMP states what the protocol does with a key. SRS 6
 has no TLS on its RTMP listener, so there is no RTMPS. An RTMP stream key

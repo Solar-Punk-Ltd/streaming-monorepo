@@ -227,6 +227,16 @@ broadcast gets no rungs while SRS and the uploader both look healthy. Keep the p
 sides of any forward in front of RTMP. An SRT source carries no RTMP port and its input dials 1935,
 which the entrypoint makes SRS listen on from loopback whenever its RTMP listener is on another port.
 
+**A rung encoder whose input or output stalls exits, and SRS starts it again.** Each engine carries
+ffmpeg's `rw_timeout`, in `perfile` for the input, which SRS puts before `-i`, and in `vparams` for the
+output, which SRS puts after it. `ABR_IO_TIMEOUT` sets it in seconds, and unset it is the hold plus 8,
+20 seconds at the default hold, and never below 18. The entrypoint refuses one no longer than the larger of the hold plus SRS's 3 second
+check and 17 seconds, because a held encoder reads nothing while the broadcaster is away and SRS cuts an
+idle rung publish about 16 seconds after the last packet. Seen once on a test
+deployment, every encoder of a source that began on a slow link hung at its banner for minutes and
+no rung ever published. If the transcoders still never start, the uploader reports `ladder_not_started`
+on `/health` after `FIRST_RUNG_DEADLINE_MS`, and the broadcaster has to stop the broadcast for longer than the encoder hold (about 15 s at the default) and then start it again. A quicker reconnect meets the same hung encoders.
+
 ⛔⛔⛔ **`HLS_FRAGMENT` also sets how fast SRS has to announce, and that has a ceiling.** SRS fires
 `on_hls` once per closed segment per rung, so a ladder asks for `rungs / HLS_FRAGMENT` announcements
 a second. Measured on the deployment host 2026-08-31, SRS sustains about **6.7 a second** while its

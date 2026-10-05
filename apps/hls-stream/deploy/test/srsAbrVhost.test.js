@@ -213,6 +213,101 @@ describe('the generated transcode block', () => {
 });
 
 /**
+ * How long a rung encoder's input or output may stall before ffmpeg gives up and exits, so SRS starts it again.
+ *
+ * Seen once on a test deployment: every encoder of a source that began on a slow link hung at its banner for
+ * minutes and never published a rung. Nothing timed out because nothing was told to. `perfile` is what SRS puts
+ * before `-i`, so it reaches the input, and `vparams` is what it puts after, so it reaches the output.
+ */
+describe('the I/O timeout of each rung encoder', () => {
+  /** Each `engine <name> { ... }` block of the transcode, by brace depth. */
+  function engineBlocks(conf) {
+    const blocks = [];
+    for (const match of conf.matchAll(/engine\s+(\S+)\s*\{/g)) {
+      let depth = 0;
+      for (let i = match.index + match[0].length - 1; i < conf.length; i += 1) {
+        depth += conf[i] === '{' ? 1 : conf[i] === '}' ? -1 : 0;
+        if (depth === 0) {
+          blocks.push({ name: match[1], block: conf.slice(match.index, i + 1) });
+          break;
+        }
+      }
+    }
+    return blocks;
+  }
+
+  /** The `rw_timeout` inside one named section of an engine block, or undefined when it has none. */
+  function timeoutIn(engine, section) {
+    const body = engine.match(new RegExp(`${section}\\s*\\{([^}]*)\\}`))?.[1] ?? '';
+    return body.match(/^\s*rw_timeout\s+(\d+);/m)?.[1];
+  }
+
+  it('bounds the input and the output of every rung at 20 seconds by default, in microseconds', () => {
+    const engines = engineBlocks(renderLadderConf({ ...VALID, ABR_IO_TIMEOUT: '' }));
+    assert.equal(engines.length, 4, 'one engine per rung of the default ladder');
+    for (const { name, block } of engines) {
+      assert.equal(timeoutIn(block, 'perfile'), '20000000', `rung ${name} has no input timeout`);
+      assert.equal(timeoutIn(block, 'vparams'), '20000000', `rung ${name} has no output timeout`);
+    }
+  });
+
+  it('follows a longer hold when it is not set', () => {
+    for (const { block } of engineBlocks(
+      renderLadderConf({ ...VALID, ABR_UNPUBLISH_HOLD: '30', ABR_IO_TIMEOUT: '' }),
+    )) {
+      assert.equal(timeoutIn(block, 'perfile'), '38000000');
+      assert.equal(timeoutIn(block, 'vparams'), '38000000');
+    }
+  });
+
+  it('is never below 18 seconds when the hold is short or off', () => {
+    for (const hold of ['0', '5']) {
+      for (const { block } of engineBlocks(
+        renderLadderConf({ ...VALID, ABR_UNPUBLISH_HOLD: hold, ABR_IO_TIMEOUT: '' }),
+      )) {
+        assert.equal(timeoutIn(block, 'perfile'), '18000000');
+      }
+    }
+  });
+
+  it('carries a configured timeout', () => {
+    for (const { block } of engineBlocks(renderLadderConf({ ...VALID, ABR_IO_TIMEOUT: '30' }))) {
+      assert.equal(timeoutIn(block, 'perfile'), '30000000');
+      assert.equal(timeoutIn(block, 'vparams'), '30000000');
+    }
+  });
+
+  it('refuses a timeout that is not a whole number of seconds', () => {
+    assert.throws(() => renderLadderConf({ ...VALID, ABR_IO_TIMEOUT: '2.5' }), /ABR_IO_TIMEOUT/);
+  });
+
+  /**
+   * A held encoder reads nothing while the broadcaster is away, SRS ends the hold up to 3 seconds late,
+   * and SRS cuts an idle rung publish about 16 seconds after the last packet. So the timeout must be
+   * longer than max(hold + 3, 17).
+   */
+  it('refuses a timeout that would end held encoders before their hold does', () => {
+    assert.throws(
+      () => renderLadderConf({ ...VALID, ABR_UNPUBLISH_HOLD: '30', ABR_IO_TIMEOUT: '33' }),
+      /ABR_IO_TIMEOUT/,
+    );
+    assert.doesNotThrow(() => renderLadderConf({ ...VALID, ABR_UNPUBLISH_HOLD: '30', ABR_IO_TIMEOUT: '34' }));
+  });
+
+  it('refuses a timeout of 17 seconds or less even for a short hold', () => {
+    assert.throws(
+      () => renderLadderConf({ ...VALID, ABR_UNPUBLISH_HOLD: '12', ABR_IO_TIMEOUT: '17' }),
+      /ABR_IO_TIMEOUT/,
+    );
+    assert.throws(
+      () => renderLadderConf({ ...VALID, ABR_UNPUBLISH_HOLD: '5', ABR_IO_TIMEOUT: '12' }),
+      /ABR_IO_TIMEOUT/,
+    );
+    assert.doesNotThrow(() => renderLadderConf({ ...VALID, ABR_UNPUBLISH_HOLD: '12', ABR_IO_TIMEOUT: '18' }));
+  });
+});
+
+/**
  * Who may play a stream out of SRS, and who may publish one into it.
  *
  * Once RTMP is a public ingest, its port is open to everyone, and SRS lets anyone who reaches it PLAY any stream it

@@ -1825,6 +1825,8 @@ describe('what an SRS unpublish or source publish asks the orchestrator to do', 
         calls.resumed.push(baseStreamId);
         calls.resumedAt.push(postAt);
       },
+      awaitFirstRung: () => undefined,
+      stopAwaitingFirstRung: () => undefined,
       recordAuthRejection: () => undefined,
     } as unknown as StreamOrchestrator;
 

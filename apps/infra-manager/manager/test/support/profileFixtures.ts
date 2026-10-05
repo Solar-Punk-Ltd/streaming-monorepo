@@ -599,6 +599,12 @@ export class InMemoryProfiles {
     return this.write(name, { stamp_id: stampId });
   }
 
+  /** A compare-and-set, as the real UPDATE is. */
+  async updatePoolString(name: string, expected: string, beePublishers: string): Promise<Profile | null> {
+    if (this.rows.get(name)?.bee_publishers !== expected) return null;
+    return this.write(name, { bee_publishers: beePublishers });
+  }
+
   async setLastFullDeployCommit(name: string, commit: string): Promise<void> {
     this.write(name, { last_full_deploy_commit: commit });
   }

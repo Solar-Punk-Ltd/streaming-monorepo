@@ -285,6 +285,12 @@ export const config = {
    * value and not one of its own.
    */
   segmentStallMs: optionalInt('SEGMENT_STALL_MS', 30000, { min: 1 }),
+  /**
+   * How long a ladder source SRS accepted may go without any of its rungs publishing before the
+   * uploader says so on `/health` as `ladder_not_started` and logs an error naming the stream. Long
+   * enough for transcoders that start slowly but healthily.
+   */
+  firstRungDeadlineMs: optionalInt('FIRST_RUNG_DEADLINE_MS', 45000, { min: 1 }),
   fragmentSeconds: optionalNumber('HLS_FRAGMENT', DEFAULT_HLS_FRAGMENT_SECONDS, {
     min: MIN_HLS_FRAGMENT_SECONDS,
     max: MAX_HLS_FRAGMENT_SECONDS,

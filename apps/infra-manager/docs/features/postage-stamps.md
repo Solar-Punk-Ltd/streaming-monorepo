@@ -131,8 +131,10 @@ manager polls it every three seconds for up to fifteen minutes and sets it on
 the deployment once it is usable, unless another batch was set with **Use**
 meanwhile. Setting a batch redeploys nothing: a running uploader goes on paying
 with the batch its env file named until the deployment is deployed again, and
-a pool rung's new batch reaches its ABR uploader only through the pool string
-pasted into it again.
+a pool rung's new batch reaches an ABR uploader on this manager that publishes
+to its pool at that uploader's next deploy, which writes the pool's current
+string (since 2026-10-04, [abr-ladder.md](abr-ladder.md)). An uploader handed
+the string from another manager still needs it pasted again.
 
 ### Use
 
