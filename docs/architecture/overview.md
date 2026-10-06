@@ -53,6 +53,29 @@ viewer <--HTTP-- Bee gateway <-- Swarm
 viewer <--light node in the tab-- Swarm
 ```
 
+## Time windows on Swarm
+
+Live playlists are moving off feeds onto time windows, the convention the chat already uses for
+its slot notes. Asking Bee for a chunk before it exists makes Bee skip its peers for that address
+for about a minute, so polling the next feed index delays the update it waits for. A window chunk
+sits at an address computed from the clock and is asked for once, after it is due. The convention
+lives once, in `apps/hls-stream/packages/shared/src/windows.ts`. Nothing reads or writes it yet.
+
+- **The window.** Window `w` of length `windowMs` covers `[w * windowMs, (w + 1) * windowMs)` of
+  Unix milliseconds. The writer writes window `w` once, at its end. A reader asks for it once, at
+  its end plus a margin of 1 s to start, and never again.
+- **The identifier.** keccak256 of the UTF-8 text `<topic>/<kind>/<windowMs>/<w>`, numbers in plain
+  decimal. The kinds are `live`, a quality's live playlist every 2 s window, and `note`, a feed's
+  newest index in the chat's own format: the stream list in 10 s windows, the chat in 2 s windows.
+- **The address.** keccak256 of the identifier's 32 bytes followed by the owner's 20 bytes, the
+  single owner chunk rule. Readers ask `GET /chunks/<address>`, which public gateways serve.
+- **The `note` payload.** The UTF-8 JSON `{"v":1,"newest":<index>,"writtenAt":<ms>}` with the keys
+  in that order, at most 256 bytes. `newest` is -1 when nothing is written yet. For this kind the
+  identifier, the address and the payload are byte for byte those of swarm-chat-js 7.2.0.
+- **The `live` payload.** The quality's HLS live playlist with `#EXT-X-SWARM-WRITTEN-AT:<ms>` as its
+  second line, the Unix milliseconds the writer wrote it. At most 4096 bytes, a hard limit: the
+  floor rule that lets a feed playlist reach 8192 bytes does not apply to a window chunk.
+
 ## The three kinds of host
 
 A host is a Linux machine with Docker on it. One machine can carry every role, or each role can have
