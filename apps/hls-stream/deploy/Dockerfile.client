@@ -69,6 +69,7 @@ RUN pnpm --filter @swarm-hls-stream/client build
 ARG CLIENT_BUILD_CLIENT_TREE=
 ARG CLIENT_BUILD_SHARED_TREE=
 ARG CLIENT_BUILD_CONTRACTS_TREE=
+ARG CLIENT_BUILD_SWARM_WINDOWS_TREE=
 ARG CLIENT_BUILD_HEAD=
 ARG CLIENT_BUILD_DIRTY=0
 ARG CLIENT_BUILD_AT=
@@ -81,10 +82,11 @@ ARG CLIENT_BUILD_AT=
 # ⚠️ `dirty` is written as a JSON boolean, because the gate refuses on it and a quoted "0" would be
 # truthy on the way in. An image built by a deploy script that passes none of these args still
 # builds, and the empty clientTree is what the gate then refuses on, which asks for a redeploy.
-RUN printf '{"clientTree":"%s","sharedTree":"%s","contractsTree":"%s","head":"%s","dirty":%s,"builtAt":"%s","fetchBackend":"%s","exposePlayer":"%s"}\n' \
+RUN printf '{"clientTree":"%s","sharedTree":"%s","contractsTree":"%s","swarmWindowsTree":"%s","head":"%s","dirty":%s,"builtAt":"%s","fetchBackend":"%s","exposePlayer":"%s"}\n' \
       "$CLIENT_BUILD_CLIENT_TREE" \
       "$CLIENT_BUILD_SHARED_TREE" \
       "$CLIENT_BUILD_CONTRACTS_TREE" \
+      "$CLIENT_BUILD_SWARM_WINDOWS_TREE" \
       "$CLIENT_BUILD_HEAD" \
       "$(if [ "$CLIENT_BUILD_DIRTY" = "1" ]; then echo true; else echo false; fi)" \
       "$CLIENT_BUILD_AT" \

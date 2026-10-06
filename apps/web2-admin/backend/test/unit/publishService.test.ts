@@ -57,18 +57,23 @@ const feed: FeedIdentity = {
 /** Who drafted a stream when it was not the fakes' TEST_USER_ID. */
 const ANOTHER_OPERATOR = '00000000-0000-4000-8000-0000000000ff';
 
+const RECORDING = 'ab'.repeat(32);
+const RECORDING_OTHER = 'cd'.repeat(32);
+const RECORDING_360 = 'a1'.repeat(32);
+const RECORDING_720 = 'b2'.repeat(32);
+
 /** A stream id no row has. */
 const UNKNOWN_STREAM = 'ffffffff-ffff-4fff-8fff-ffffffffffff';
 
-/** One rung of a ladder, as the uploader reports it; `index` set marks it finished. */
-const rung = (name: string, height: number, index?: number) => ({
+/** One rung of a ladder, as the uploader reports it; `recording` set marks it finished. */
+const rung = (name: string, height: number, recording?: string) => ({
   name,
   width: (height * 16) / 9,
   height,
   topic: `bbbbbbbb-0000-4000-8000-0000000${String(height).padStart(5, '0')}`,
   bandwidth: height * 4000,
   avgBandwidth: height * 3000,
-  ...(index === undefined ? {} : { index, duration: 61 }),
+  ...(recording === undefined ? {} : { recording, duration: 61 }),
 });
 
 function setup(gateway = new FakeFeedGateway()) {
@@ -582,10 +587,10 @@ describe('PublishService and a republish with nothing to write', () => {
     assert.equal(entriesOf(gateway)[0]!.state, 'live');
   });
 
-  it('writes nothing for a recording republished by hand unchanged, and keeps its index and duration', async () => {
+  it('writes nothing for a recording republished by hand unchanged, and keeps its recording and duration', async () => {
     const { store, gateway, service } = setup();
     const row = store.add(
-      streamRow({ status: 'vod', manifest_index: 7, duration_seconds: 61, published_feed_index: 0 }),
+      streamRow({ status: 'vod', recording_ref: RECORDING, duration_seconds: 61, published_feed_index: 0 }),
     );
     await service.publish(TEST_OPERATOR, row.id);
 
@@ -594,9 +599,9 @@ describe('PublishService and a republish with nothing to write', () => {
     assert.equal(again.written, false);
     assert.equal(gateway.writes.length, 1);
     assert.equal(again.stream.status, 'vod');
-    assert.equal(again.stream.manifest_index, 7);
+    assert.equal(again.stream.recording_ref, RECORDING);
     assert.equal(again.stream.duration_seconds, 61);
-    assert.deepEqual(again.entryRecording, { index: 7, duration: 61 });
+    assert.deepEqual(again.entryRecording, { recording: RECORDING, duration: 61 });
   });
 
   it('writes a live stream republished by hand after a failed write, although the entry looks the same', async () => {
@@ -648,12 +653,12 @@ describe('PublishService republishing a stream that has gone live', () => {
     assert.equal(store.get(row.id).status, 'live', 'never claimed');
   });
 
-  it('carries the manifest index and duration onto a vod entry', async () => {
+  it('carries the recording and duration onto a vod entry', async () => {
     const { store, service, gateway } = setup();
     const row = store.add(
       streamRow({
         status: 'vod',
-        manifest_index: 412,
+        recording_ref: RECORDING,
         duration_seconds: 3725.5,
         published_feed_index: 3,
       }),
@@ -663,7 +668,7 @@ describe('PublishService republishing a stream that has gone live', () => {
 
     const [entry] = entriesOf(gateway);
     assert.equal(entry!.state, 'vod');
-    assert.equal(entry!.index, 412);
+    assert.equal(entry!.recording, RECORDING);
     assert.equal(entry!.duration, 3725.5);
   });
 
@@ -750,12 +755,12 @@ describe('PublishService republishing a stream that has gone live', () => {
     assert.equal(entriesOf(gateway)[0]!.state, 'live');
   });
 
-  it('republishes a recording as vod, by hand, with its index intact', async () => {
+  it('republishes a recording as vod, by hand, with its recording intact', async () => {
     const { store, gateway, service } = setup();
     const row = store.add(
       streamRow({
         status: 'vod',
-        manifest_index: 7,
+        recording_ref: RECORDING,
         duration_seconds: 61,
         published_feed_index: 1,
       }),
@@ -764,7 +769,7 @@ describe('PublishService republishing a stream that has gone live', () => {
     const outcome = await service.publish(TEST_OPERATOR, row.id);
 
     assert.equal(outcome.stream.status, 'vod');
-    assert.equal(entriesOf(gateway)[0]!.index, 7);
+    assert.equal(entriesOf(gateway)[0]!.recording, RECORDING);
     assert.equal(entriesOf(gateway)[0]!.duration, 61);
   });
 
@@ -774,36 +779,36 @@ describe('PublishService republishing a stream that has gone live', () => {
     const { store, renditions, gateway, service } = setup();
     const row = store.add(
       streamRow({
-        manifest_index: 7,
+        recording_ref: RECORDING,
         duration_seconds: 61,
         live_since: new Date('2026-09-11T10:01:00.000Z'),
         ended_at: new Date('2026-09-11T10:02:01.000Z'),
       }),
     );
-    await renditions.upsert(row.id, rung('720p', 720, 12));
+    await renditions.upsert(row.id, rung('720p', 720, RECORDING_720));
 
     const outcome = await service.publish(TEST_OPERATOR, row.id);
 
     assert.equal(outcome.stream.status, 'vod');
     assert.equal(outcome.stream.published_feed_index, outcome.feed.index);
-    assert.equal(outcome.stream.manifest_index, 7);
+    assert.equal(outcome.stream.recording_ref, RECORDING);
     const [entry] = entriesOf(gateway);
     assert.equal(entry!.state, 'vod');
-    assert.equal(entry!.index, 7);
+    assert.equal(entry!.recording, RECORDING);
     assert.equal(entry!.duration, 61);
-    assert.equal(entry!.renditions?.[0]?.index, 12);
+    assert.equal(entry!.renditions?.[0]?.recording, RECORDING_720);
   });
 
   it('puts a draft holding a recording back to draft, recording intact, when the write fails', async () => {
     const { store, gateway, service } = setup();
-    const row = store.add(streamRow({ manifest_index: 7, duration_seconds: 61 }));
+    const row = store.add(streamRow({ recording_ref: RECORDING, duration_seconds: 61 }));
     gateway.failNextWrite = new Error('bee unreachable');
 
     await assert.rejects(() => service.publish(TEST_OPERATOR, row.id), PublishFailedError);
 
     const after = store.get(row.id);
     assert.equal(after.status, 'draft');
-    assert.equal(after.manifest_index, 7);
+    assert.equal(after.recording_ref, RECORDING);
     assert.equal(after.duration_seconds, 61);
     assert.equal(after.publish_error, 'bee unreachable');
   });
@@ -889,10 +894,10 @@ describe('PublishService and the ABR ladder', () => {
     assert.deepEqual(first.renditions, entriesOf(gateway)[0]!.renditions);
     assert.deepEqual(first.previousRenditions, [], 'nothing on the feed yet');
 
-    await renditions.upsert(row.id, rung('720p', 720, 12));
+    await renditions.upsert(row.id, rung('720p', 720, RECORDING_720));
     const second = await service.publish(TEST_OPERATOR, row.id);
     assert.deepEqual(second.previousRenditions, first.renditions);
-    assert.equal(second.renditions[1]!.index, 12);
+    assert.equal(second.renditions[1]!.recording, RECORDING_720);
 
     const gone = await service.unpublish(TEST_OPERATOR, row.id);
     assert.deepEqual(gone.renditions, [], 'nothing written for the stream');
@@ -906,13 +911,13 @@ describe('PublishService and the ABR ladder', () => {
     const row = store.add(
       streamRow({
         status: 'vod',
-        manifest_index: 9,
+        recording_ref: RECORDING_OTHER,
         duration_seconds: 61,
         published_feed_index: 0,
       }),
     );
-    await renditions.upsert(row.id, rung('360p', 360, 10));
-    await renditions.upsert(row.id, rung('720p', 720, 12));
+    await renditions.upsert(row.id, rung('360p', 360, RECORDING_360));
+    await renditions.upsert(row.id, rung('720p', 720, RECORDING_720));
     await service.publish(TEST_OPERATOR, row.id);
     const listed = entriesOf(gateway)[0]!;
 
@@ -1021,7 +1026,7 @@ describe('PublishService.unpublish', () => {
     store.add({
       ...store.get(row.id),
       status: 'vod',
-      manifest_index: 4,
+      recording_ref: RECORDING_OTHER,
       duration_seconds: 3540,
       live_since: liveSince,
       ended_at: endedAt,
@@ -1032,7 +1037,7 @@ describe('PublishService.unpublish', () => {
     assert.equal(outcome.stream.status, 'draft');
     assert.deepEqual(entriesOf(gateway), []);
     assert.equal(outcome.stream.published_feed_index, null, 'off the catalogue');
-    assert.equal(outcome.stream.manifest_index, 4, 'where the recording is');
+    assert.equal(outcome.stream.recording_ref, RECORDING_OTHER, 'where the recording is');
     assert.equal(outcome.stream.duration_seconds, 3540, 'how long it runs');
     assert.deepEqual(outcome.stream.live_since, liveSince);
     assert.deepEqual(outcome.stream.ended_at, endedAt);
@@ -1284,7 +1289,7 @@ describe('PublishService.reconcile', () => {
       ...store.get(row.id),
       title: 'Edited after the entry was written',
       status: 'vod',
-      manifest_index: 412,
+      recording_ref: RECORDING,
       duration_seconds: 61,
     });
 
@@ -1294,7 +1299,7 @@ describe('PublishService.reconcile', () => {
     const [entry] = entriesOf(gateway);
     assert.equal(entry!.title, 'Edited after the entry was written');
     assert.equal(entry!.state, 'vod');
-    assert.equal(entry!.index, 412);
+    assert.equal(entry!.recording, RECORDING);
     assert.equal(entry!.duration, 61);
   });
 
@@ -1446,7 +1451,7 @@ describe('PublishService and the edited-since-published notice', () => {
     const row = store.add(
       streamRow({
         status: 'vod',
-        manifest_index: 7,
+        recording_ref: RECORDING,
         duration_seconds: 61,
         published_at: REBUILT_AT,
         published_feed_index: 1,

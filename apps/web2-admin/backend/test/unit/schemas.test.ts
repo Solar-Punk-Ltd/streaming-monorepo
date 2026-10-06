@@ -21,6 +21,8 @@ import { PASSWORD_MAX_LENGTH } from '@streaming-monorepo/web2-admin-common';
 import { changePasswordSchema, createUserSchema, loginSchema } from '../../src/schemas/auth.js';
 import { streamIdParamSchema, streamInputSchema } from '../../src/schemas/stream.js';
 
+const RECORDING = 'ab'.repeat(32);
+
 const validate = <T>(
   schema: {
     validate: (value: unknown, options: object) => Promise<T>;
@@ -333,39 +335,48 @@ describe('streamStateSchema', () => {
     assert.deepEqual(value, { state: 'live' });
   });
 
-  it('accepts a vod report with its index and duration', () => {
+  it('accepts a vod report with its recording and duration', () => {
     const value = read(streamStateSchema, {
       state: 'vod',
-      index: 412,
+      recording: RECORDING,
       duration: 3725.5,
     });
-    assert.deepEqual(value, { state: 'vod', index: 412, duration: 3725.5 });
+    assert.deepEqual(value, { state: 'vod', recording: RECORDING, duration: 3725.5 });
   });
 
-  it('requires both numbers with vod', () => {
+  it('requires both with vod', () => {
     assert.deepEqual(problemsOf(streamStateSchema, { state: 'vod' }), [
-      'index is required when state is vod',
+      'recording is required when state is vod',
       'duration is required when state is vod',
     ]);
   });
 
   it('refuses them with live, rather than dropping them quietly', () => {
-    // A live report carrying an index is the uploader sending the wrong
-    // thing; swallowing it would put a stale index on the next entry written.
-    assert.deepEqual(problemsOf(streamStateSchema, { state: 'live', index: 4 }), ['index is only sent with state vod']);
+    // A live report carrying a recording is the uploader sending the wrong
+    // thing, and swallowing it would put a stale recording on the next entry written.
+    assert.deepEqual(problemsOf(streamStateSchema, { state: 'live', recording: RECORDING }), [
+      'recording is only sent with state vod',
+    ]);
   });
 
-  it('refuses a negative or fractional index and a negative duration', () => {
+  it('refuses a recording that is not a reference and a negative duration', () => {
     const errors = problemsOf(streamStateSchema, {
       state: 'vod',
-      index: -1.5,
+      recording: 'not-a-reference',
       duration: -2,
     });
     assert.deepEqual(errors.sort(), [
       'duration must not be negative',
-      'index must be a whole number',
-      'index must not be negative',
+      'recording must be a Swarm reference of 64 lowercase hex digits',
     ]);
+  });
+
+  it('refuses a feed index, which no longer names a recording', () => {
+    const message = 'index is no longer taken: a recording is named by its reference';
+    assert.deepEqual(problemsOf(streamStateSchema, { state: 'vod', index: 412, recording: RECORDING, duration: 1 }), [
+      message,
+    ]);
+    assert.deepEqual(problemsOf(streamStateSchema, { state: 'live', index: 4 }), [message]);
   });
 
   it('refuses a state this backend owns', () => {
@@ -392,27 +403,33 @@ describe('renditionReportSchema', () => {
   it('accepts a rung that has finalized', () => {
     const value = read(renditionReportSchema, {
       ...goodRung,
-      index: 42,
+      recording: RECORDING,
       duration: 61.5,
     });
-    assert.deepEqual(value, { ...goodRung, index: 42, duration: 61.5 });
+    assert.deepEqual(value, { ...goodRung, recording: RECORDING, duration: 61.5 });
   });
 
-  it('refuses one of index and duration without the other', () => {
-    // A ladder is finished when every rung has an index, and an index with no
+  it('refuses one of recording and duration without the other', () => {
+    // A ladder is finished when every rung has a recording, and a recording with no
     // duration would finish it with nothing to put on the entry's seek bar.
-    const message = 'index and duration are sent together, or neither is';
-    assert.deepEqual(problemsOf(renditionReportSchema, { ...goodRung, index: 42 }), [message]);
+    const message = 'recording and duration are sent together, or neither is';
+    assert.deepEqual(problemsOf(renditionReportSchema, { ...goodRung, recording: RECORDING }), [message]);
     assert.deepEqual(problemsOf(renditionReportSchema, { ...goodRung, duration: 61.5 }), [message]);
   });
 
-  it('accepts index 0 with duration 0, which is not "absent"', () => {
+  it('refuses a feed index on a rung', () => {
+    assert.deepEqual(problemsOf(renditionReportSchema, { ...goodRung, index: 42 }), [
+      'index is no longer taken: a recording is named by its reference',
+    ]);
+  });
+
+  it('accepts a duration of 0 with a recording, which is not "absent"', () => {
     const value = read(renditionReportSchema, {
       ...goodRung,
-      index: 0,
+      recording: RECORDING,
       duration: 0,
     });
-    assert.equal(value.index, 0);
+    assert.equal(value.recording, RECORDING);
     assert.equal(value.duration, 0);
   });
 

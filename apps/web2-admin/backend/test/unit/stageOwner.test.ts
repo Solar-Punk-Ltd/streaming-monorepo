@@ -47,6 +47,7 @@ const feed: FeedIdentity = {
 };
 
 /** `STAGE_ID` signs with a key of its own. */
+const RECORDING = 'ab'.repeat(32);
 const OWN_OWNER = '0x3f1a9c2b4d5e6f708192a3b4c5d6e7f809a1b2c3';
 /** A stage still signing as the brand key, as every stage did before each had its own. */
 const BRAND_STAGE = '8c3f5d1b-4e5f-4061-9c73-3d4e5f607182';
@@ -102,7 +103,7 @@ const onOwnStage = (over: Parameters<typeof streamRow>[0] = {}) =>
   streamRow({ stage_id: STAGE_ID, owner: asFeedOwner(OWN_OWNER), ...over });
 
 /** A draft older than stages that holds a recording: the brand key's, and no stage. */
-const recordedBeforeStages = () => streamRow({ stage_id: null, manifest_index: 7, duration_seconds: 61 });
+const recordedBeforeStages = () => streamRow({ stage_id: null, recording_ref: RECORDING, duration_seconds: 61 });
 
 function answer(err: unknown): { status: number; body: unknown } {
   const sent = { status: 0, body: undefined as unknown };
@@ -168,7 +169,7 @@ describe('a stream takes its stage’s owner', () => {
 describe('a row that holds a recording keeps its owner', () => {
   it('and its stage, whatever it is moved to', async () => {
     const { store, streams } = await setup();
-    const row = store.add(onOwnStage({ manifest_index: 7, duration_seconds: 61 }));
+    const row = store.add(onOwnStage({ recording_ref: RECORDING, duration_seconds: 61 }));
 
     await assert.rejects(
       () => streams.update(TEST_OPERATOR, row.id, { ...FORM, stageId: BRAND_STAGE }),
@@ -245,7 +246,7 @@ describe('publishing on a stage with a key of its own', () => {
 
   it('refuses a recorded draft whose stage now signs as another key, and writes nothing', async () => {
     const { stages, store, gateway, publish } = await setup();
-    const row = store.add(onOwnStage({ manifest_index: 7, duration_seconds: 61 }));
+    const row = store.add(onOwnStage({ recording_ref: RECORDING, duration_seconds: 61 }));
     await rotate(stages);
 
     await assert.rejects(
@@ -267,7 +268,7 @@ describe('publishing on a stage with a key of its own', () => {
 
   it('publishes a recorded draft under the owner it was recorded as, while its stage still signs as that', async () => {
     const { store, gateway, publish } = await setup();
-    const row = store.add(onOwnStage({ manifest_index: 7, duration_seconds: 61 }));
+    const row = store.add(onOwnStage({ recording_ref: RECORDING, duration_seconds: 61 }));
 
     const outcome = await publish.publish(TEST_OPERATOR, row.id);
 

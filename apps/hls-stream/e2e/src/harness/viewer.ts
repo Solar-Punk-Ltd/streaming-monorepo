@@ -26,8 +26,6 @@ export interface CatalogEntry {
   owner: string;
   topic: string;
   state: StreamState;
-  /** Where a recording written on feeds is. A writer on time windows names `recording` instead. */
-  index?: number;
   /** The reference of a finished broadcast's recording playlist, read with `GET /bytes/<recording>`. */
   recording?: string;
   duration?: number;

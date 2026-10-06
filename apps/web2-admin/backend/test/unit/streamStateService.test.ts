@@ -44,7 +44,7 @@ const feed: FeedIdentity = {
  * declared topic and the rung name, so it is the same across sessions — what
  * makes the merge keep a finished record rather than drop it.
  */
-function rung(name: string, height: number, final?: { index: number; duration: number }): Rendition {
+function rung(name: string, height: number, final?: { recording: string; duration: number }): Rendition {
   return {
     name,
     width: (height * 16) / 9,
@@ -56,10 +56,15 @@ function rung(name: string, height: number, final?: { index: number; duration: n
   };
 }
 
+const RECORDING_360 = 'a1'.repeat(32);
+const RECORDING_720 = 'b2'.repeat(32);
+const RECORDING_MASTER = 'c3'.repeat(32);
+const RECORDING_LATER = 'd4'.repeat(32);
+
 const LIVE_360 = rung('360p', 360);
 const LIVE_720 = rung('720p', 720);
-const FINAL_360 = rung('360p', 360, { index: 10, duration: 61 });
-const FINAL_720 = rung('720p', 720, { index: 12, duration: 62.5 });
+const FINAL_360 = rung('360p', 360, { recording: RECORDING_360, duration: 61 });
+const FINAL_720 = rung('720p', 720, { recording: RECORDING_720, duration: 62.5 });
 
 async function setup() {
   const renditions = new FakeRenditionStore();
@@ -97,7 +102,7 @@ async function broadcast(
   ladder: LadderService,
   state: StreamStateService,
   id: string,
-  vod: { index: number; duration: number },
+  vod: { recording: string; duration: number },
 ) {
   await state.report(id, { state: 'live' }, ON_STAGE);
   await ladder.report(id, LIVE_360, ON_STAGE);
@@ -120,48 +125,48 @@ describe('StreamStateService.report', () => {
 
   it('un-finishes the row when a broadcast goes live again', async () => {
     const { store, state, ladder, stream } = await setup();
-    await broadcast(ladder, state, stream.id, { index: 7, duration: 62.5 });
+    await broadcast(ladder, state, stream.id, { recording: RECORDING_MASTER, duration: 62.5 });
 
     const ended = store.get(stream.id);
     assert.equal(ended.status, 'vod');
-    assert.equal(ended.manifest_index, 7);
+    assert.equal(ended.recording_ref, RECORDING_MASTER);
     assert.ok(ended.ended_at);
 
     await state.report(stream.id, { state: 'live' }, ON_STAGE);
 
     const resumed = store.get(stream.id);
     assert.equal(resumed.status, 'live');
-    assert.equal(resumed.manifest_index, null, 'the recording is superseded');
+    assert.equal(resumed.recording_ref, null, 'the recording is superseded');
     assert.equal(resumed.duration_seconds, null);
     assert.equal(resumed.ended_at, null);
     assert.ok(resumed.live_since, 'a fresh live run, stamped as one');
   });
 
-  it('un-finishes every rung with it, index and duration together', async () => {
+  it('un-finishes every rung with it, recording and duration together', async () => {
     const { renditions, state, ladder, stream } = await setup();
-    await broadcast(ladder, state, stream.id, { index: 7, duration: 62.5 });
+    await broadcast(ladder, state, stream.id, { recording: RECORDING_MASTER, duration: 62.5 });
     assert.deepEqual(
-      (await renditions.listByStream(stream.id)).map((r) => r.manifest_index),
-      [10, 12],
+      (await renditions.listByStream(stream.id)).map((r) => r.recording_ref),
+      [RECORDING_360, RECORDING_720],
     );
 
     await state.report(stream.id, { state: 'live' }, ON_STAGE);
 
     for (const row of await renditions.listByStream(stream.id)) {
-      assert.equal(row.manifest_index, null, row.name);
+      assert.equal(row.recording_ref, null, row.name);
       assert.equal(row.duration_seconds, null, row.name);
     }
   });
 
-  it('republishes the entry as live, with no index on it or on its rungs', async () => {
+  it('republishes the entry as live, with no recording on it or on its rungs', async () => {
     const { gateway, state, ladder, stream } = await setup();
-    await broadcast(ladder, state, stream.id, { index: 7, duration: 62.5 });
+    await broadcast(ladder, state, stream.id, { recording: RECORDING_MASTER, duration: 62.5 });
 
     const outcome = await state.report(stream.id, { state: 'live' }, ON_STAGE);
 
     const entry = entryAt(gateway, outcome.feed.index, stream.topic);
     assert.equal(entry.state, 'live');
-    assert.equal(entry.index, undefined);
+    assert.equal(entry.recording, undefined);
     assert.equal(entry.duration, undefined);
     assert.deepEqual(entry.renditions, [LIVE_360, LIVE_720]);
   });
@@ -178,8 +183,8 @@ describe('StreamStateService.report', () => {
 
     assert.deepEqual(store.get(stream.id).live_since, liveSince);
     assert.deepEqual(
-      (await renditions.listByStream(stream.id)).map((r) => r.manifest_index),
-      [10],
+      (await renditions.listByStream(stream.id)).map((r) => r.recording_ref),
+      [RECORDING_360],
     );
   });
 
@@ -188,16 +193,16 @@ describe('StreamStateService.report', () => {
     // own condition, so two reports racing cannot both win. A write that loses
     // that race must leave the recording and the ladder exactly as they were.
     const { store, renditions, state, ladder, stream } = await setup();
-    await broadcast(ladder, state, stream.id, { index: 7, duration: 62.5 });
+    await broadcast(ladder, state, stream.id, { recording: RECORDING_MASTER, duration: 62.5 });
 
     const refused = await store.markLive(stream.id, ['published', 'live']);
 
     assert.equal(refused, null);
     assert.equal(store.get(stream.id).status, 'vod');
-    assert.equal(store.get(stream.id).manifest_index, 7);
+    assert.equal(store.get(stream.id).recording_ref, RECORDING_MASTER);
     assert.deepEqual(
-      (await renditions.listByStream(stream.id)).map((r) => r.manifest_index),
-      [10, 12],
+      (await renditions.listByStream(stream.id)).map((r) => r.recording_ref),
+      [RECORDING_360, RECORDING_720],
     );
   });
 });
@@ -234,7 +239,11 @@ describe('StreamStateService audit', () => {
     await state.report(stream.id, { state: 'live' }, ON_STAGE);
     audit.entries.length = 0;
 
-    const outcome = await state.report(stream.id, { state: 'vod', index: 7, duration: 62.5 }, ON_STAGE);
+    const outcome = await state.report(
+      stream.id,
+      { state: 'vod', recording: RECORDING_MASTER, duration: 62.5 },
+      ON_STAGE,
+    );
 
     assert.deepEqual(audit.entries, [
       {
@@ -245,11 +254,11 @@ describe('StreamStateService audit', () => {
         statusBefore: 'live',
         statusAfter: 'vod',
         details: {
-          index: 7,
+          recording: RECORDING_MASTER,
           duration: 62.5,
           feedIndex: outcome.feed.index,
           entryStatus: 'vod',
-          entryRecording: { index: 7, duration: 62.5 },
+          entryRecording: { recording: RECORDING_MASTER, duration: 62.5 },
         },
       },
     ]);
@@ -264,7 +273,7 @@ describe('StreamStateService audit', () => {
     const markLive = store.markLive.bind(store);
     store.markLive = async (id, allowedFrom) => {
       const row = await markLive(id, allowedFrom);
-      await store.markVod(id, ['live'], 7, 62.5);
+      await store.markVod(id, ['live'], RECORDING_MASTER, 62.5);
       return row;
     };
     audit.entries.length = 0;
@@ -280,7 +289,11 @@ describe('StreamStateService audit', () => {
         topic: stream.topic,
         statusBefore: 'published',
         statusAfter: 'live',
-        details: { feedIndex: outcome.feed.index, entryStatus: 'vod', entryRecording: { index: 7, duration: 62.5 } },
+        details: {
+          feedIndex: outcome.feed.index,
+          entryStatus: 'vod',
+          entryRecording: { recording: RECORDING_MASTER, duration: 62.5 },
+        },
       },
     ]);
   });
@@ -293,7 +306,7 @@ describe('StreamStateService audit', () => {
     const write = gateway.write.bind(gateway);
     gateway.write = async (entries, index) => {
       const reference = await write(entries, index);
-      await store.markVod(stream.id, ['live'], 7, 62.5);
+      await store.markVod(stream.id, ['live'], RECORDING_MASTER, 62.5);
       return reference;
     };
     audit.entries.length = 0;
@@ -307,24 +320,32 @@ describe('StreamStateService audit', () => {
   });
 
   it('records the recording its write published when a later vod report lands before the write reads the row', async () => {
-    // A re-broadcast ends twice in quick succession: recording 7 is stored,
-    // then recording 9, and only then does the first report's republish read
-    // the row. Its write lists recording 9, as the catalogue should; the
-    // first report's entry names that write, beside its own 7.
+    // A re-broadcast ends twice in quick succession: the first recording is stored,
+    // then a later one, and only then does the first report's republish read
+    // the row. Its write lists the later one, as the catalogue should; the
+    // first report's entry names that write, beside its own recording.
     const { store, gateway, audit, state, stream } = await setup();
     await state.report(stream.id, { state: 'live' }, ON_STAGE);
     const markVod = store.markVod.bind(store);
-    store.markVod = async (id, allowedFrom, manifestIndex, durationSeconds) => {
-      const row = await markVod(id, allowedFrom, manifestIndex, durationSeconds);
-      await markVod(id, ['vod'], 9, 70);
+    store.markVod = async (id, allowedFrom, recordingRef, durationSeconds) => {
+      const row = await markVod(id, allowedFrom, recordingRef, durationSeconds);
+      await markVod(id, ['vod'], RECORDING_LATER, 70);
       return row;
     };
     audit.entries.length = 0;
 
-    const outcome = await state.report(stream.id, { state: 'vod', index: 7, duration: 62.5 }, ON_STAGE);
+    const outcome = await state.report(
+      stream.id,
+      { state: 'vod', recording: RECORDING_MASTER, duration: 62.5 },
+      ON_STAGE,
+    );
 
     const written = entryAt(gateway, outcome.feed.index, stream.topic);
-    assert.deepEqual([written.index, written.duration], [9, 70], 'the catalogue lists the later recording');
+    assert.deepEqual(
+      [written.recording, written.duration],
+      [RECORDING_LATER, 70],
+      'the catalogue lists the later recording',
+    );
     assert.deepEqual(audit.entries, [
       {
         actor: { kind: 'uploader' },
@@ -334,11 +355,11 @@ describe('StreamStateService audit', () => {
         statusBefore: 'live',
         statusAfter: 'vod',
         details: {
-          index: 7,
+          recording: RECORDING_MASTER,
           duration: 62.5,
           feedIndex: outcome.feed.index,
           entryStatus: 'vod',
-          entryRecording: { index: 9, duration: 70 },
+          entryRecording: { recording: RECORDING_LATER, duration: 70 },
         },
       },
     ]);

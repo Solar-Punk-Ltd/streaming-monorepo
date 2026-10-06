@@ -204,7 +204,7 @@ into the admin (`docs/architecture/stages.md` at the repository root).
   publishing fixes it: the catalogue entry and every viewer link carry the
   stage's owner. A change to a stream in any other status is
   `409 stage_locked` with `reason: 'published'`: unpublish, change it, publish
-  again. A draft that holds a recording (`manifest_index` set) keeps its
+  again. A draft that holds a recording (`recording_ref` set) keeps its
   stage, `409 stage_locked` with `reason: 'recording'`, since the recording
   lives under that stage's owner; a recorded draft from before stages, which
   has none, may be given its first, and only one that signs as the
@@ -623,28 +623,28 @@ in flight that may still fail back to `draft`. Every refusal is the same
 `404 stream_not_found`, so a token holder probing ingest addresses learns
 nothing from the difference. A malformed app or topic is `400`.
 
-**The state report** is `{state:'live'}` or `{state:'vod', index, duration}` —
-both numbers required with `vod`, refused with `live`. An uploader on time
-windows sends `{state:'vod', recording, duration}` instead, `recording` being
-the reference of the recording playlist it uploaded once at the end, 64
-lowercase hex digits, and never sent with `index`. `live` sets `status`,
+**The state report** is `{state:'live'}` or `{state:'vod', recording, duration}`,
+`recording` being the reference of the recording playlist the uploader uploaded
+once at the end, 64 lowercase hex digits. Both are required with `vod` and
+refused with `live`, and a report that sends a feed `index` is refused, since a
+recording is named by its reference alone. `live` sets `status`,
 stamps `live_since` (kept as it is when the stream is already live, because the
-uploader retries) and clears `ended_at`, and `vod` sets `status`, `manifest_index`
-or `recording_ref` (the other one cleared), `duration_seconds` and `ended_at`. Allowed: `published → live`, `live → live`,
+uploader retries) and clears `ended_at`, and `vod` sets `status`,
+`recording_ref`, `duration_seconds` and `ended_at`. Allowed: `published → live`, `live → live`,
 `live → vod`, `vod → vod`, `published → vod` for a broadcast that ended before
 its `live` report ever got through, and `vod → live` for a broadcast that goes
 live again. Every feed of a declared stream outlives the sessions written to
 it, so a reconnected encoder continues them above the previous head; that
-`live` therefore clears `manifest_index`, `recording_ref` and
-`duration_seconds` on the row and on every rung in the same statement, and the entry lists the latest recording
+`live` therefore clears `recording_ref` and `duration_seconds` on the row and
+on every rung in the same statement, and the entry lists the latest recording
 once the next `vod` arrives. Anything else is
 `409 invalid_state_transition` with `from` and `to`. The rule is enforced twice
 — once to answer the 409, once as the `WHERE status = ANY(...)` of the UPDATE
 itself, so two reports racing cannot both win.
 
 Each accepted report then rewrites the catalogue entry through the same
-single-writer publish path, with `state` set accordingly and `index` or
-`recording`, and `duration`, on a `vod` entry. **The state is persisted first and the feed
+single-writer publish path, with `state` set accordingly and `recording` and
+`duration` on a `vod` entry. An entry never carries a feed index. **The state is persisted first and the feed
 written second**, deliberately: a feed write can fail for reasons that have
 nothing to do with this stream, and the uploader retries. A failure answers
 `502 publish_failed` with `publish_error` recorded and the state intact, so the
@@ -656,21 +656,20 @@ and in admin mode the master's topic _is_ the stream's declared topic — so the
 ladder's merge state, which swarm-hls-stream keeps inside the catalogue feed it
 writes for itself, has to live here instead. Each rung POSTs its own
 `Rendition` (`name`, `width`, `height`, `topic`, `bandwidth`, `avgBandwidth`,
-plus `index` and `duration`, both or neither, once it finalizes, or
-`recording` and `duration` from an uploader on time windows) and gets
+plus `recording` and `duration`, both or neither, once it finalizes, and never
+an `index`) and gets
 back the merged ladder, ascending by height, with `ladder { finished,
 flippedToFinished, duration }`.
 
 The merge keeps one record per `(stream, name)`. The incoming report replaces
-the stored one, except that a rung which already reported an `index` or a
-`recording` keeps it and its `duration` when the incoming report has neither
-**and arrives on the same `topic`**, taking only geometry and bandwidths from it. A rung's topic is
+the stored one, except that a rung which already reported a `recording` keeps
+it and its `duration` when the incoming report has neither **and arrives on the
+same `topic`**, taking only geometry and bandwidths from it. A rung's topic is
 derived from the stream's declared topic and the rung name, so every report for
-a rung arrives on the feed that rung's recordings already sit on, and an
-indexless one is that rung delivering again — recovered from a crash, or a new
-session above the previous head. Either way the recording it finished last
-stays addressable until that rung's next final report replaces it, which is
-what keeps the master playlist a viewer seeks with on the entry. The rule is
+a rung arrives on that rung's topic, and one with no recording is that rung
+delivering again, recovered from a crash or a new session. Either way the
+recording it finished last stays named until that rung's next final report
+replaces it, which keeps it on the entry for a viewer to play. The rule is
 `StreamCatalog.keepingWhatFinished` from the uploader, where it was learned;
 the topic test is true for every rung of a well-formed ladder, and a report
 naming some other feed is taken as it arrived. Un-finishing a ladder is the
@@ -680,8 +679,8 @@ naming some other feed is taken as it arrived. Un-finishing a ladder is the
 the entry, adding `renditions` and `group` (= the stream's topic) whenever the
 stream has at least one rung — an entry for a single-rendition stream is
 exactly what it was before ABR existed. `live` and `vod` still come from the
-state route, and `vod.index` for a ladder is the _master's_ feed index, not a
-rung's; the rung indexes ride inside `renditions`. `flippedToFinished` is what
+state route, and each rung's own recording rides inside `renditions`.
+`flippedToFinished` is what
 tells the uploader to send that one `vod`. The ladder, `finished` and
 `flippedToFinished` in the answer are all read from the catalogue write itself,
 under the publish mutex — the ladder the write put on the entry, judged against
@@ -704,7 +703,7 @@ the stream takes them with it through the foreign key.
   `409 media_type_locked`, and the schedule joins it with `409 stream_locked`:
   it is a promise viewers have already read off the entry.
 - `POST /streams/:id/publish` on a live or recorded stream republishes it _as
-  it is_ — the entry keeps its state and its index and duration — rather than
+  it is_, the entry keeping its state, its recording and its duration, rather than
   claiming the row into `publishing` and returning it as `published`, which
   would quietly tell every viewer the broadcast had stopped. One whose entry
   the catalogue already carries writes nothing, as for a published stream
@@ -847,8 +846,11 @@ on `feed_writes` ([Where the catalogue is written](#where-the-catalogue-is-writt
 batch each write and each thumbnail was last uploaded under
 ([Moving the catalogue to another batch](#moving-the-catalogue-to-another-batch)),
 and `015_recording_reference.sql`, `recording_ref` on `streams` and on
-`stream_renditions`, a recording named by reference beside the feed index,
-never both ([The internal API](#the-internal-api)).
+`stream_renditions`, a recording named by reference ([The internal API](#the-internal-api)),
+and `016_recording_reference_only.sql`, which drops the checks that tied the
+reference to the old `manifest_index` columns, since nothing reads or writes
+those any more. The columns and the indexes they hold stay: dropping them is
+the owner's call.
 
 ## Audit log
 
@@ -896,16 +898,14 @@ of its own. That republish reads the row and the ladder again when its turn at t
 publish mutex comes, so a later report stored in the meantime is what it
 publishes, as it should be. Beside `feedIndex` the row therefore says what
 the write published. A state report's row has `entryStatus`, the status the
-entry was written with, and `entryRecording`, the `index` and `duration` the
-entry lists, with `recording` when the entry names its recording by reference,
-null unless it is `vod`. A report that sent `recording` records it where an
-index report records `index`. A rendition report's row has
+entry was written with, and `entryRecording`, the `recording` and `duration`
+the entry lists, null unless it is `vod`. A rendition report's row has
 `entryRung`, the report's rung as the write carried it. Where these differ
-from what the report itself carried (`status_after`, or `index` and
+from what the report itself carried (`status_after`, or `recording` and
 `duration`), the write published something stored after the report, with one
-exception: a finished rung that reports again without an index, on the same
-topic, keeps the index and duration it finished with (the merge above), so
-its row shows `index` and `duration` null beside a finished `entryRung`
+exception: a finished rung that reports again without a recording, on the same
+topic, keeps the recording and duration it finished with (the merge above), so
+its row shows `recording` and `duration` null beside a finished `entryRung`
 although nothing came after it. A rendition report never moves the status,
 so its row names one status on both sides: the one its write saw, or, when
 the write failed, the one the row had when the report arrived. A repeated

@@ -38,7 +38,10 @@ const IDENTITY: LadderIdentity = {
   adminStreamId: ADMIN_STREAM_ID,
 };
 
-const rung = (name: string, height: number, final?: { index: number; duration: number }): Rendition => ({
+const FINISHED_RECORDING = 'd4'.repeat(32);
+const recordingFor = (seed: number): string => seed.toString(16).padStart(2, '0').repeat(32);
+
+const rung = (name: string, height: number, final?: { recording: string; duration: number }): Rendition => ({
   name,
   width: (height * 16) / 9,
   height,
@@ -109,7 +112,7 @@ describe('what a rendition announce does in admin mode', () => {
   });
 
   it('hands back the flip and the ladder′s duration exactly as the admin reported them', async () => {
-    const finished = [rung('360p', 360, { index: 9, duration: 12 })];
+    const finished = [rung('360p', 360, { recording: FINISHED_RECORDING, duration: 12 })];
     const harness = makeRegistry({
       answer: () =>
         new Response(merged(finished, { finished: true, flippedToFinished: true, duration: 12 }), { status: 200 }),
@@ -117,7 +120,7 @@ describe('what a rendition announce does in admin mode', () => {
 
     const announced = await harness.registry.upsertRendition(IDENTITY, finished[0]);
 
-    assert.deepEqual(announced, { recording: null, flippedToFinished: true, duration: 12 });
+    assert.deepEqual(announced, { recording: FINISHED_RECORDING, flippedToFinished: true, duration: 12 });
   });
 
   /**
@@ -127,7 +130,7 @@ describe('what a rendition announce does in admin mode', () => {
    * so a finished ladder the admin still holds as anything but `vod` is a flip to report.
    */
   it('reports a finished ladder as flipped while the admin still holds the stream as live', async () => {
-    const finished = [rung('360p', 360, { index: 9, duration: 12 })];
+    const finished = [rung('360p', 360, { recording: FINISHED_RECORDING, duration: 12 })];
     const harness = makeRegistry({
       answer: () =>
         new Response(merged(finished, { finished: true, flippedToFinished: false, duration: 12 }, 'live'), {
@@ -137,11 +140,11 @@ describe('what a rendition announce does in admin mode', () => {
 
     const announced = await harness.registry.upsertRendition(IDENTITY, finished[0]);
 
-    assert.deepEqual(announced, { recording: null, flippedToFinished: true, duration: 12 });
+    assert.deepEqual(announced, { recording: FINISHED_RECORDING, flippedToFinished: true, duration: 12 });
   });
 
   it('does not report a finished ladder again once the admin holds the stream as vod', async () => {
-    const finished = [rung('360p', 360, { index: 9, duration: 12 })];
+    const finished = [rung('360p', 360, { recording: FINISHED_RECORDING, duration: 12 })];
     const harness = makeRegistry({
       answer: () =>
         new Response(merged(finished, { finished: true, flippedToFinished: false, duration: 12 }, 'vod'), {
@@ -222,12 +225,16 @@ describe('what a rendition announce does in admin mode', () => {
  * ⛔⛔⛔ 2026-09-23, admin mode's half. The admin counts a ladder finished only when every rung it
  * holds has a recording, and its rendition route refuses any field it does not know, so a rung that
  * will not finish cannot be told to it. These pin what this side decides instead. The rungs here
- * finish with a feed index, which is what the admin answer's contract reads today.
+ * finish with a recording reference, which is what the admin answer's contract reads today.
  */
 describe('a rung that will not finish, in admin mode', () => {
   const TOP_RUNG = rung('1080p', 1080);
   const THE_OTHER_THREE = [rung('360p', 360), rung('480p', 480), rung('720p', 720)];
-  const finalOf = (live: Rendition, index: number): Rendition => ({ ...live, index, duration: 12 });
+  const finalOf = (live: Rendition, seed: number): Rendition => ({
+    ...live,
+    recording: recordingFor(seed),
+    duration: 12,
+  });
 
   /** The status the admin holds, which a case moves the way a `live` or `vod` report would. */
   interface AdminStatus {
@@ -236,18 +243,18 @@ describe('a rung that will not finish, in admin mode', () => {
 
   interface MergingAdmin {
     answer: (rendition: Rendition) => Response;
-    /** What a `live` report over a recording does to the ladder the admin holds: every index goes. */
+    /** What a `live` report over a recording does to the ladder the admin holds: every recording goes. */
     goLiveAgain: () => void;
   }
 
   /**
-   * An admin that merges by its own rule: a report without an index keeps the index held for that rung,
+   * An admin that merges by its own rule: a report without a recording keeps the recording held for that rung,
    * the ladder is finished once every rung it holds has one, and the flip is judged against the ladder
    * before the report. Every answer carries the status the case says the admin holds.
    */
   function mergingAdmin(status: AdminStatus): MergingAdmin {
     const held = new Map<string, Rendition>();
-    const isFinished = (ladder: Rendition[]) => ladder.length > 0 && ladder.every((r) => r.index !== undefined);
+    const isFinished = (ladder: Rendition[]) => ladder.length > 0 && ladder.every((r) => r.recording !== undefined);
     const ladderNow = () => [...held.values()].sort((a, b) => a.height - b.height);
     let feedIndex = 0;
 
@@ -257,8 +264,8 @@ describe('a rung that will not finish, in admin mode', () => {
         const stored = held.get(rendition.name);
         held.set(
           rendition.name,
-          rendition.index === undefined && stored?.index !== undefined
-            ? { ...rendition, index: stored.index, duration: stored.duration }
+          rendition.recording === undefined && stored?.recording !== undefined
+            ? { ...rendition, recording: stored.recording, duration: stored.duration }
             : rendition,
         );
         const ladder = ladderNow();
@@ -275,7 +282,7 @@ describe('a rung that will not finish, in admin mode', () => {
         );
       },
       goLiveAgain: () => {
-        for (const [name, { index: _index, duration: _duration, ...live }] of held) {
+        for (const [name, { recording: _recording, duration: _duration, ...live }] of held) {
           held.set(name, live);
         }
       },
@@ -294,11 +301,11 @@ describe('a rung that will not finish, in admin mode', () => {
 
   async function finishTheOtherThree(
     registry: AdminLadderRegistry,
-    firstIndex: number,
+    firstSeed: number,
   ): Promise<RenditionAnnouncement[]> {
     const announces: RenditionAnnouncement[] = [];
     for (const [at, live] of THE_OTHER_THREE.entries()) {
-      announces.push(await registry.upsertRendition(IDENTITY, finalOf(live, firstIndex + at)));
+      announces.push(await registry.upsertRendition(IDENTITY, finalOf(live, firstSeed + at)));
     }
     return announces;
   }
@@ -371,7 +378,7 @@ describe('a rung that will not finish, in admin mode', () => {
     await finishTheOtherThree(harness.registry, 7);
 
     // The next broadcast's first announce lands while the admin still holds the last one's recording,
-    // then its `live` report clears every index the admin holds.
+    // then its `live` report clears every recording the admin holds.
     status.current = 'vod';
     await harness.registry.upsertRendition(IDENTITY, TOP_RUNG);
     status.current = 'live';

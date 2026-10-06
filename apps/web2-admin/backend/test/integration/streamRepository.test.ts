@@ -148,6 +148,11 @@ describe('resetOrphanedPublishing', () => {
   });
 });
 
+const RUNG_360_RECORDING = 'a1'.repeat(32);
+const RUNG_720_RECORDING = 'b2'.repeat(32);
+const MASTER_RECORDING = 'c3'.repeat(32);
+const NEWER_RECORDING = 'd4'.repeat(32);
+
 /** A finished two-rung ladder on a stream whose recording is final. */
 async function recordedLadder(): Promise<string> {
   const row = await streams.insert({
@@ -170,7 +175,7 @@ async function recordedLadder(): Promise<string> {
     topic: randomUUID(),
     bandwidth: 800_000,
     avgBandwidth: 700_000,
-    index: 10,
+    recording: RUNG_360_RECORDING,
     duration: 61,
   });
   await renditions.upsert(row.id, {
@@ -180,11 +185,11 @@ async function recordedLadder(): Promise<string> {
     topic: randomUUID(),
     bandwidth: 2_800_000,
     avgBandwidth: 2_500_000,
-    index: 12,
+    recording: RUNG_720_RECORDING,
     duration: 62.5,
   });
   await streams.markLive(row.id, ['published', 'live', 'vod']);
-  await streams.markVod(row.id, ['published', 'live', 'vod'], 7, 62.5);
+  await streams.markVod(row.id, ['published', 'live', 'vod'], MASTER_RECORDING, 62.5);
   return row.id;
 }
 
@@ -195,14 +200,14 @@ describe('markLive un-finishes a broadcast that comes back', () => {
     const live = await streams.markLive(id, ['published', 'live', 'vod']);
 
     assert.equal(live?.status, 'live');
-    assert.equal(live?.manifest_index ?? null, null, 'no recording while live');
+    assert.equal(live?.recording_ref ?? null, null, 'no recording while live');
     assert.equal(live?.duration_seconds ?? null, null);
     assert.equal(live?.ended_at ?? null, null);
 
     const rungs = await renditions.listByStream(id);
     assert.equal(rungs.length, 2, 'the rungs themselves survive');
     for (const rung of rungs) {
-      assert.equal(rung.manifest_index ?? null, null, `${rung.name} no longer points at the previous recording`);
+      assert.equal(rung.recording_ref ?? null, null, `${rung.name} no longer points at the previous recording`);
       assert.equal(rung.duration_seconds ?? null, null, `${rung.name} duration`);
     }
   });
@@ -219,7 +224,7 @@ describe('markLive un-finishes a broadcast that comes back', () => {
       topic: randomUUID(),
       bandwidth: 800_000,
       avgBandwidth: 700_000,
-      index: 99,
+      recording: NEWER_RECORDING,
       duration: 5,
     });
 
@@ -227,7 +232,7 @@ describe('markLive un-finishes a broadcast that comes back', () => {
 
     const rungs = await renditions.listByStream(id);
     const low = rungs.find((r) => r.name === '360p');
-    assert.equal(Number(low?.manifest_index), 99, 'a repeated live report must not throw away what finished since');
+    assert.equal(low?.recording_ref, NEWER_RECORDING, 'a repeated live report must not throw away what finished since');
     assert.equal(Number(low?.duration_seconds), 5);
   });
 
@@ -240,7 +245,7 @@ describe('markLive un-finishes a broadcast that comes back', () => {
     const row = await streams.findById(id);
     assert.equal(row?.status, 'vod', 'still the recording it was');
     const rungs = await renditions.listByStream(id);
-    assert.equal(Number(rungs.find((r) => r.name === '720p')?.manifest_index), 12);
+    assert.equal(rungs.find((r) => r.name === '720p')?.recording_ref, RUNG_720_RECORDING);
   });
 });
 
@@ -253,17 +258,17 @@ describe('an unpublish keeps the recording for the next publish', () => {
     assert.equal(draft?.status, 'draft');
     assert.equal(draft?.published_at, null, 'no longer announced');
     assert.equal(draft?.published_feed_index, null);
-    assert.equal(draft?.manifest_index, 7, 'where the recording is');
+    assert.equal(draft?.recording_ref, MASTER_RECORDING, 'where the recording is');
     assert.equal(draft?.duration_seconds, 62.5, 'how long it runs');
     assert.ok(draft?.live_since, 'when it went live');
     assert.ok(draft?.ended_at, 'when it ended');
 
     const rungs = await renditions.listByStream(id);
     assert.deepEqual(
-      rungs.map((r) => [r.name, Number(r.manifest_index), Number(r.duration_seconds)]),
+      rungs.map((r) => [r.name, r.recording_ref, Number(r.duration_seconds)]),
       [
-        ['360p', 10, 61],
-        ['720p', 12, 62.5],
+        ['360p', RUNG_360_RECORDING, 61],
+        ['720p', RUNG_720_RECORDING, 62.5],
       ],
       'every rung, finished as it was',
     );
@@ -279,7 +284,7 @@ describe('an unpublish keeps the recording for the next publish', () => {
     assert.equal(listed?.status, 'vod');
     assert.equal(listed?.published_feed_index, 2);
     assert.ok(listed?.published_at);
-    assert.equal(listed?.manifest_index, 7);
+    assert.equal(listed?.recording_ref, MASTER_RECORDING);
   });
 });
 
@@ -363,52 +368,55 @@ describe('a recording named by reference (migration 015)', () => {
     ...over,
   });
 
-  it('stores a vod reference in place of the index, and clears it with every rung when the broadcast comes back', async () => {
+  it('stores a vod reference, and clears it with every rung when the broadcast comes back', async () => {
     const row = await publishedStream();
     await renditions.upsert(row.id, rung({ recording: RUNG_REFERENCE, duration: 61 }));
     await streams.markLive(row.id, ['published', 'live', 'vod']);
 
-    const vod = await streams.markVod(row.id, ['published', 'live', 'vod'], null, 61.5, REFERENCE);
+    const vod = await streams.markVod(row.id, ['published', 'live', 'vod'], REFERENCE, 61.5);
     assert.equal(vod?.recording_ref, REFERENCE);
-    assert.equal(vod?.manifest_index, null);
     assert.equal(vod?.duration_seconds, 61.5);
     const [stored] = await renditions.listByStream(row.id);
-    assert.deepEqual(
-      [stored?.recording_ref, stored?.manifest_index, stored?.duration_seconds],
-      [RUNG_REFERENCE, null, 61],
-    );
+    assert.deepEqual([stored?.recording_ref, stored?.duration_seconds], [RUNG_REFERENCE, 61]);
 
     const live = await streams.markLive(row.id, ['published', 'live', 'vod']);
     assert.equal(live?.recording_ref, null);
     const [cleared] = await renditions.listByStream(row.id);
-    assert.deepEqual([cleared?.recording_ref, cleared?.manifest_index, cleared?.duration_seconds], [null, null, null]);
+    assert.deepEqual([cleared?.recording_ref, cleared?.duration_seconds], [null, null]);
   });
 
-  it('replaces an index recording with a reference, never holding both', async () => {
+  it('leaves the retired manifest_index column untouched, whatever recording it stores', async () => {
     const row = await publishedStream();
-    await streams.markVod(row.id, ['published', 'live', 'vod'], 7, 61);
+    await renditions.upsert(row.id, rung({ recording: RUNG_REFERENCE, duration: 61 }));
+    await streams.markVod(row.id, ['published', 'live', 'vod'], REFERENCE, 61);
 
-    const again = await streams.markVod(row.id, ['vod'], null, 62, REFERENCE);
-
-    assert.deepEqual([again?.manifest_index, again?.recording_ref], [null, REFERENCE]);
+    const columns = await database.pool.query<{ stream: string | null; rung: string | null }>(
+      `SELECT s.manifest_index AS stream, r.manifest_index AS rung
+         FROM streams s JOIN stream_renditions r ON r.stream_id = s.id
+        WHERE s.id = $1`,
+      [row.id],
+    );
+    assert.deepEqual(columns.rows, [{ stream: null, rung: null }]);
   });
 
-  it('refuses a rung with both kinds of recording, one without its duration, and a malformed reference', async () => {
+  it('replaces a recording with a later one', async () => {
     const row = await publishedStream();
-    await assert.rejects(renditions.upsert(row.id, rung({ index: 3, recording: RUNG_REFERENCE, duration: 61 })));
+    await streams.markVod(row.id, ['published', 'live', 'vod'], REFERENCE, 61);
+
+    const again = await streams.markVod(row.id, ['vod'], RUNG_REFERENCE, 62);
+
+    assert.deepEqual([again?.recording_ref, again?.duration_seconds], [RUNG_REFERENCE, 62]);
+  });
+
+  it('refuses a rung with a recording and no duration, and a malformed reference', async () => {
+    const row = await publishedStream();
     await assert.rejects(renditions.upsert(row.id, rung({ recording: RUNG_REFERENCE })));
     await assert.rejects(renditions.upsert(row.id, rung({ recording: RUNG_REFERENCE.toUpperCase(), duration: 61 })));
-    await assert.rejects(
-      database.pool.query('UPDATE streams SET manifest_index = 1, recording_ref = $2 WHERE id = $1', [
-        row.id,
-        REFERENCE,
-      ]),
-    );
   });
 
-  it('keeps the owner of a row holding a reference recording, as of one holding an index', async () => {
+  it('keeps the owner of a row holding a recording', async () => {
     const row = await publishedStream();
-    await streams.markVod(row.id, ['published', 'live', 'vod'], null, 61, REFERENCE);
+    await streams.markVod(row.id, ['published', 'live', 'vod'], REFERENCE, 61);
 
     const kept = await streams.update(row.id, { ...sameValues(row), owner: 'f'.repeat(40) }, EDITABLE_STATUSES);
 
@@ -423,7 +431,7 @@ describe('which writes count as a console edit (migration 006)', () => {
     assert.equal(row.entry_content_edited_at, null);
 
     await streams.markLive(row.id, ['published', 'live', 'vod']);
-    await streams.markVod(row.id, ['published', 'live', 'vod'], 7, 61);
+    await streams.markVod(row.id, ['published', 'live', 'vod'], MASTER_RECORDING, 61);
     await streams.rotatePublishKey(row.id, newPublishKey());
     await streams.recordThumbnailRef(row.id, 'a'.repeat(64));
     await streams.recordPublishError(row.id, 'bee unreachable');

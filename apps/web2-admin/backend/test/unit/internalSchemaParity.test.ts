@@ -130,13 +130,12 @@ describe("the contract reads the internal routes' requests as their yup schemas 
     assert.ok(counts.accepted > 2 && counts.refused > 2, JSON.stringify(counts));
   });
 
+  // A recording is named by its reference since 2026-10-07, which the yup schemas never knew, and an index is
+  // refused. So the state and rung reports are compared on every other field, and the recording has tests of its own.
   it('a state report', async () => {
-    const inputs = [
-      ...variations({ state: 'live' }, ['state', 'index', 'duration']),
-      ...variations({ state: 'vod', index: 3, duration: 12.5 }, ['state', 'index', 'duration']),
-    ];
+    const inputs = variations({ state: 'live' }, ['state']);
     const counts = await assertSameReading(streamStateSchema, streamStateReportSchema, inputs);
-    assert.ok(counts.accepted > 10 && counts.refused > 10, JSON.stringify(counts));
+    assert.ok(counts.accepted > 2 && counts.refused > 10, JSON.stringify(counts));
   });
 
   it('a rung report', async () => {
@@ -148,8 +147,7 @@ describe("the contract reads the internal routes' requests as their yup schemas 
       bandwidth: 2_800_000,
       avgBandwidth: 2_500_000,
     };
-    const inputs = [...variations(rung, ['index', 'duration']), ...variations({ ...rung, index: 0, duration: 0 })];
-    const counts = await assertSameReading(renditionReportSchema, renditionReportContract, inputs);
+    const counts = await assertSameReading(renditionReportSchema, renditionReportContract, variations(rung));
     assert.ok(counts.accepted > 10 && counts.refused > 10, JSON.stringify(counts));
   });
 });

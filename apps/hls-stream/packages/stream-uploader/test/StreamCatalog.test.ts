@@ -33,6 +33,9 @@ interface CapturedWrite {
 const beeStatusError = (status: number, message: string) =>
   new BeeResponseError('GET', '/feeds', message, undefined, status, message);
 
+/** A recording reference, 64 lowercase hex, distinct for each seed below 256. */
+const recordingFor = (seed: number): string => seed.toString(16).padStart(2, '0').repeat(32);
+
 /** What a boot lookup throws when the feed topic has never been written to. */
 const FEED_NOT_FOUND = beeStatusError(404, 'Not Found.');
 
@@ -766,7 +769,7 @@ describe('StreamCatalog ladder write path', () => {
    * not already VOD". So the question these two cases settle is which of the two things a second
    * line means: a genuine second finalize, or a first finalize the guard could not see.
    */
-  const finishedRung = { ...rung, index: 7, duration: 12 };
+  const finishedRung = { ...rung, recording: recordingFor(7), duration: 12 };
 
   /** A ladder entry as the feed holds it. `CatalogEntry` is the single-rendition shape. */
   const ladderEntries = (write: CapturedWrite) =>
@@ -912,7 +915,7 @@ describe('StreamCatalog ladder write path', () => {
       ...rung,
       name,
       topic: `rung-${name}`,
-      index: 7 + i,
+      recording: recordingFor(7 + i),
       duration: 12,
     }));
 
@@ -948,16 +951,16 @@ describe('StreamCatalog ladder write path', () => {
    *
    * The guard asks whether the entry is already VOD. It was, at 05:58:04. So something put it back
    * to `live` in between, and the only writer in that window is the recovering rung re-announcing
-   * itself before it finalizes: a rendition with no `index` makes `renditions.every(r => r.index)`
+   * itself before it finalizes: a rendition with no `recording` makes `renditions.every(r => r.recording)`
    * false, and the whole finished ladder reopens as live.
    */
-  it('does not reopen a finished recording as live when one rung re-announces without an index', async () => {
+  it('does not reopen a finished recording as live when one rung re-announces without a recording', async () => {
     const writes: CapturedWrite[] = [];
     const ladder = ['360p', '480p', '720p', '1080p'].map((name, i) => ({
       ...rung,
       name,
       topic: `rung-${name}`,
-      index: 7 + i,
+      recording: recordingFor(7 + i),
       duration: 12,
     }));
 
@@ -969,7 +972,7 @@ describe('StreamCatalog ladder write path', () => {
     assert.equal(lastLadderEntry(writes).state, 'vod', 'the ladder finished');
 
     // What a recovered 1080p announces on its way back up, before its own finalize runs.
-    const { index: _dropped, duration: _also, ...reannounced } = ladder[3];
+    const { recording: _dropped, duration: _also, ...reannounced } = ladder[3];
     await catalog.upsertRendition(identity, reannounced);
 
     const entry = lastLadderEntry(writes);
@@ -979,13 +982,13 @@ describe('StreamCatalog ladder write path', () => {
       'a finished recording was advertised as live again because one rung re-announced itself',
     );
 
-    // The index names a position inside the feed the topic addresses, so they survive together or
-    // the entry points at a place in the wrong feed.
-    const recovered = (entry.renditions as Array<{ name: string; index?: number; topic: string }>).find(
+    // The recording belongs to the rung's own topic, so they survive together or
+    // the entry points at another rung's recording.
+    const recovered = (entry.renditions as Array<{ name: string; recording?: string; topic: string }>).find(
       (r) => r.name === '1080p',
     );
-    assert.equal(recovered?.index, 10, 'the finished rung kept the index its recording lives at');
-    assert.equal(recovered?.topic, 'rung-1080p', 'and the topic that index is an index into');
+    assert.equal(recovered?.recording, recordingFor(10), 'the finished rung kept its recording');
+    assert.equal(recovered?.topic, 'rung-1080p', 'and its own topic');
   });
 
   /** The reboot the deployment actually performs: the store saved an index on every write. */
@@ -995,7 +998,7 @@ describe('StreamCatalog ladder write path', () => {
       ...rung,
       name,
       topic: `rung-${name}`,
-      index: 7 + i,
+      recording: recordingFor(7 + i),
       duration: 12,
     }));
 
@@ -1025,7 +1028,7 @@ describe('StreamCatalog ladder write path', () => {
  * ⛔⛔⛔ 2026-09-23: 1080p's batch refused its recording and the ladder stayed `live` for good. The
  * orchestrator end of it is `FinishWithoutFailedRung.test.ts`. These pin what the entry does with the
  * mark afterwards, which is where scenario H lives: a rung recovered at the next boot announces itself
- * without an index before it finalizes.
+ * without a recording before it finalizes.
  */
 describe('StreamCatalog and a rung that will not finish', () => {
   const identity = { title: 'title', owner: 'owner', group: 'group-1', mediatype: MEDIA_TYPE_VIDEO };
@@ -1043,12 +1046,16 @@ describe('StreamCatalog and a rung that will not finish', () => {
       avgBandwidth: height * 4000,
     };
   };
-  const finished = (name: string, index: number): Rendition => ({ ...live(name), index, duration: 12 });
+  const finished = (name: string, seed: number): Rendition => ({
+    ...live(name),
+    recording: recordingFor(seed),
+    duration: 12,
+  });
 
   /** A ladder entry as a reader parses it back out of the feed. */
   interface LadderEntry {
     state: string;
-    index?: number;
+    recording?: string;
     renditions?: Rendition[];
     unfinishedRungs?: string[];
   }
@@ -1089,7 +1096,7 @@ describe('StreamCatalog and a rung that will not finish', () => {
     assert.deepEqual(entryIn(writes).unfinishedRungs, [TOP_RUNG]);
   });
 
-  it('keeps the recording finished when that rung re-announces without an index, as a recovered rung does', async () => {
+  it('keeps the recording finished when that rung re-announces without a recording, as a recovered rung does', async () => {
     const { catalog, writes } = await recordingWithoutTheTopRung();
 
     const lines = await logLinesDuring(() => catalog.upsertRendition(identity, live(TOP_RUNG)));
@@ -1100,7 +1107,11 @@ describe('StreamCatalog and a rung that will not finish', () => {
       entry.renditions?.map((rendition) => rendition.name),
       THE_OTHER_THREE,
     );
-    assert.deepEqual(entry.unfinishedRungs, [TOP_RUNG], 'the mark has to survive an announce that carries no index');
+    assert.deepEqual(
+      entry.unfinishedRungs,
+      [TOP_RUNG],
+      'the mark has to survive an announce that carries no recording',
+    );
     assert.equal(lines.filter((line) => line.includes('finalized to VOD')).length, 0);
   });
 
@@ -1136,10 +1147,10 @@ describe('StreamCatalog and a rung that will not finish', () => {
     const entry = entryIn(writes);
     assert.equal(entry.state, 'vod');
     assert.deepEqual(
-      entry.renditions?.map((rendition) => [rendition.name, rendition.index]),
+      entry.renditions?.map((rendition) => [rendition.name, rendition.recording]),
       [
-        ['360p', 7],
-        [TOP_RUNG, 9],
+        ['360p', recordingFor(7)],
+        [TOP_RUNG, recordingFor(9)],
       ],
     );
     assert.equal(entry.unfinishedRungs, undefined);

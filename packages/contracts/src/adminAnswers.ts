@@ -39,8 +39,8 @@ const REFERENCE_PATTERN = /^[0-9a-f]{64}$/;
 /**
  * One rung of the ladder a rung report is answered with, as the uploader reads it. The name and the topic are text
  * with something in it, and the sizes and bandwidths are finite numbers. A finished rung says where its recording is
- * the way a rung report does: a numeric `index` with its duration, or a `recording` reference with its duration, never
- * both. Every field is kept as sent.
+ * the way a rung report does, a `recording` reference with its duration. A feed index is refused, since only an admin
+ * from before time windows answers with one. Every other field is kept as sent.
  */
 export const renditionAnswerRungSchema = z
   .looseObject({
@@ -50,15 +50,11 @@ export const renditionAnswerRungSchema = z
     topic: someText,
     bandwidth: z.number(),
     avgBandwidth: z.number(),
-    index: anyNumber.optional(),
+    index: z.undefined().optional(),
     recording: z.string().regex(REFERENCE_PATTERN).optional(),
     duration: anyNumber.optional(),
   })
-  .refine((rung) =>
-    rung.recording === undefined
-      ? (rung.index === undefined) === (rung.duration === undefined)
-      : rung.index === undefined && rung.duration !== undefined,
-  );
+  .refine((rung) => (rung.recording === undefined) === (rung.duration === undefined));
 
 export type RenditionAnswerRung = z.infer<typeof renditionAnswerRungSchema>;
 

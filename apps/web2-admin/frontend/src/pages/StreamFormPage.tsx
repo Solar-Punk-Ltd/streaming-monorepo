@@ -125,9 +125,9 @@ function stageLockOf(stream: Stream | null): string | null {
   return null;
 }
 
-/** A recording by its feed index or by its playlist's reference, as the API's `holdsRecording` asks. */
+/** A recording, named by its playlist's reference, as the API's `holdsRecording` asks. */
 function holdsRecording(stream: Stream): boolean {
-  return stream.manifestIndex != null || stream.recording != null;
+  return stream.recording != null;
 }
 
 export function StreamFormPage() {

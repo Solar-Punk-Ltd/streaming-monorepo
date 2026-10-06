@@ -3,10 +3,10 @@ import { Rendition } from '../types.js';
 /**
  * When a ladder counts as a recording, and which of its rungs that recording names.
  *
- * ⛔⛔⛔ **A ladder used to be a recording only once every rung carried an index, and a rung that
+ * ⛔⛔⛔ **A ladder used to be a recording only once every rung carried its recording, and a rung that
  * cannot finish never will.** Measured live 2026-09-23: 1080p's postage batch filled, its closing
  * playlist and its recording were refused with 402, and the orchestrator force-stopped it two seconds
- * before 360p, 480p and 720p finalized. The catalog entry then said `live` with no index for good, so
+ * before 360p, 480p and 720p finalized. The catalog entry then said `live` with no recording for good, so
  * viewers were shown a dead live broadcast and never the recording three rungs had made. The rule:
  * the broadcast is listed as finished with the rungs that did finish, and a rung that finishes later is
  * added then.
@@ -15,12 +15,9 @@ import { Rendition } from '../types.js';
  * ladder's merge lives on.
  */
 
-/**
- * Whether this rung has published its recording: a reference on its record from a writer on time
- * windows, or a feed index from a writer on feeds, which a list written before windows still holds.
- */
+/** Whether this rung has published its recording: the reference of its recording playlist. */
 export function hasRecording(rendition: Rendition): boolean {
-  return rendition.recording !== undefined || rendition.index !== undefined;
+  return rendition.recording !== undefined;
 }
 
 /** The rungs a recording can offer a viewer: those with a recording, in the ladder's own order. */

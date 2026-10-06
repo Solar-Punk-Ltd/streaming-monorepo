@@ -22,9 +22,8 @@ export interface StateStreamStore {
   markVod(
     id: string,
     allowedFrom: readonly StreamStatus[],
-    manifestIndex: number | null,
+    recordingRef: string,
     durationSeconds: number,
-    recordingRef?: string | null,
   ): Promise<StreamRow | null>;
 }
 
@@ -118,10 +117,11 @@ export class StreamStateService {
     logger.info(
       `[State] ${describeActor(UPLOADER)} reported ${report.state} for ${describeStream(updated)}: ${existing.status} → ${
         updated.status
-      }${report.state === 'vod' ? ` (${recordingText(report)}, ${String(report.duration)}s)` : ''}`,
+      }${report.state === 'vod' ? ` (recording ${String(report.recording)}, ${String(report.duration)}s)` : ''}`,
     );
 
-    const recording = report.state === 'vod' ? reportedRecording(report) : {};
+    const recording =
+      report.state === 'vod' ? { recording: report.recording ?? '', duration: report.duration ?? 0 } : {};
     const entry = {
       actor: UPLOADER,
       action: report.state === 'live' ? 'stream.state.live' : 'stream.state.vod',
@@ -160,22 +160,7 @@ export class StreamStateService {
       // and the next final reports flip it again.
       return this.streams.markLive(existing.id, allowedFrom);
     }
-    // The schema has already established that a `vod` report carries a
-    // duration and exactly one of an index and a recording reference.
-    if (report.recording !== undefined) {
-      return this.streams.markVod(existing.id, allowedFrom, null, report.duration ?? 0, report.recording);
-    }
-    return this.streams.markVod(existing.id, allowedFrom, report.index ?? 0, report.duration ?? 0);
+    // The schema has already established that a `vod` report carries both.
+    return this.streams.markVod(existing.id, allowedFrom, report.recording ?? '', report.duration ?? 0);
   }
-}
-
-/** What a `vod` report said about its recording, for the audit row: the index as before, or the reference. */
-function reportedRecording(report: StreamStateReport): Record<string, number | string> {
-  const duration = report.duration ?? 0;
-  if (report.recording !== undefined) return { recording: report.recording, duration };
-  return { index: report.index ?? 0, duration };
-}
-
-function recordingText(report: StreamStateReport): string {
-  return report.recording !== undefined ? `recording ${report.recording}` : `index ${String(report.index)}`;
 }

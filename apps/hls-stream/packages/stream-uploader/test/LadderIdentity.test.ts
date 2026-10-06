@@ -315,6 +315,8 @@ describe('a ladder keeps its identity across a restart of the uploader', () => {
  * `(owner, group)`, so holding the group is the whole of the difference between updating a recording
  * and buying a second one.
  */
+const RECOVERED_RECORDING = 'e5'.repeat(32);
+
 describe('the tail of a broadcast after a crash goes into the recording already listed', () => {
   const identity: LadderIdentity = {
     title: '29/08/2026',
@@ -361,11 +363,11 @@ describe('the tail of a broadcast after a crash goes into the recording already 
     const finalized = buildLadderEntry(
       identity,
       [recovered],
-      rendition('360p', 360, { topic: '360p-recovered', index: 42, duration: 61 }),
+      rendition('360p', 360, { topic: '360p-recovered', recording: RECOVERED_RECORDING, duration: 61 }),
     );
 
     assert.equal(finalized.state, 'vod');
-    assert.equal(finalized.index, 42);
+    assert.equal(finalized.recording, RECOVERED_RECORDING);
     assert.equal(finalized.renditions?.length, 1);
   });
 

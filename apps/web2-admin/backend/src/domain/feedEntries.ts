@@ -149,7 +149,6 @@ export function buildFeedEntry(
     timestamp,
   };
   if (state === 'vod') {
-    if (stream.manifest_index !== null) entry.index = stream.manifest_index;
     if (stream.recording_ref !== null) entry.recording = stream.recording_ref;
     if (stream.duration_seconds !== null) {
       entry.duration = stream.duration_seconds;
