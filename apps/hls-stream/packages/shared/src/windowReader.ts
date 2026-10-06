@@ -1,6 +1,7 @@
 /**
  * The window reader core: follows one topic and kind of the window convention (`windows.ts`),
- * asking each window once, after it is due, and never again.
+ * asking each window once, after it is due, and never again while that ask could still be on Bee's
+ * skip list.
  *
  * **The cost that shapes it.** Asking Bee for a chunk before it exists makes Bee skip its peers for
  * that address for about a minute, on the gateway and on the nodes that forwarded the ask, so one
@@ -57,6 +58,16 @@ export interface WindowFound<T> {
   readonly receivedAt: number;
 }
 
+/**
+ * How long Bee keeps a peer on its skip list for an address it asked that peer for and did not get,
+ * one minute: `skiplistDur` in Bee's `pkg/retrieval/retrieval.go`, re-read in v2.8.2. An ask made
+ * this long before another is off the list by then, so asking the window again does no harm.
+ */
+export const BEE_SKIP_LIST_MS = 60_000;
+
+/** The most asks one window ever gets: the first, and one more once the first is off the skip list. */
+export const WINDOW_MAX_ASKS = 2;
+
 /** Windows a `live` reader scans back on opening, newest first. */
 export const LIVE_OPEN_SCAN_WINDOWS = 8;
 
@@ -82,7 +93,7 @@ export const WINDOW_MARGIN_SHRINK_AFTER_FOUND = 5;
  */
 export const WINDOW_CATCH_UP_LIMIT = 2;
 
-/** How many asked windows are remembered one by one. Older ones count as asked, so none is ever asked again. */
+/** How many asked windows are remembered one by one. Older ones count as closed, so none is asked again. */
 const ASKED_MEMORY = 4096;
 
 /** The cadence of what a kind's writer writes, which is what decides which absent windows are evidence. */
@@ -104,6 +115,7 @@ export interface WindowReaderBaseOptions<T extends { readonly writtenAt: number 
    * not, absent windows are no evidence about the clock and no misses.
    */
   readonly isLive?: () => boolean;
+  /** The reader's clock in whole Unix milliseconds, `Date.now` unless set. `windowOf` refuses fractions. */
   readonly now?: () => number;
   readonly setTimeout?: (callback: () => void, ms: number) => unknown;
   readonly clearTimeout?: (handle: unknown) => void;
@@ -140,6 +152,14 @@ type Evidence =
     }
   | { readonly kind: 'absent'; readonly askedAt: number; readonly windowEnd: number };
 
+/** What is known of one asked window, which decides whether it may be asked again. */
+interface AskedWindow {
+  readonly firstAskedAt: number;
+  readonly asks: number;
+  /** Null while the ask is still out. */
+  answer: WindowAskAnswer | null;
+}
+
 /** The reader's timer as set, to tell a wall clock jump or a sleep from the timer's own wait. */
 interface TimerSet {
   readonly setAt: number;
@@ -149,9 +169,23 @@ interface TimerSet {
 
 /**
  * Follows one topic and kind: opens by scanning back and calibrating the shared clock, then asks each
- * window once at `windowEnd + margin + correction` by the reader's clock, in order, never again.
+ * window once at `windowEnd + margin + correction` by the reader's clock, in order. A window is asked
+ * a second time only when it was not found and its first ask came more than {@link BEE_SKIP_LIST_MS}
+ * before it is due by the current calibration, which is how the windows a fast clock asked while
+ * opening, minutes before they were written, are still read when they come due. Never a third time.
  *
- * A silence does not open the scan again. Every window it would scan has already been asked once, and
+ * **A known limit: opening during an outage.** A reader opened while no windows are being written, and
+ * told the stream is live, cannot tell the outage from a clock running ahead by as long. It takes the
+ * newest window it finds, from before the outage, as the newest there is, and may stay that late until
+ * reloaded, since a correction never comes back below an early ask. Pass `isLive` from the stream list
+ * so absent windows teach the clock nothing while the stream is not live. A direct clock reading from
+ * the gateway is the likely fix, a later phase's decision.
+ *
+ * **Notes alone calibrate slowly.** A note reader learns about its clock only from heartbeat windows,
+ * one a minute, so alone with a fast clock it may make one harmful heartbeat ask after its first
+ * minutes. Sharing the clock with a live reader removes that.
+ *
+ * A silence does not open the scan again. Every window it would scan has already been asked, and
  * a clock that stepped forward, which looks exactly like a silence, is caught by the follow loop's own
  * timer instead: a timer that fires late by its own measure is a jump forward or a sleep.
  */
@@ -169,7 +203,7 @@ export class WindowReader<T extends { readonly writtenAt: number }> {
 
   private current: WindowReaderState = 'idle';
   private margin: number;
-  private readonly asked = new Set<number>();
+  private readonly asked = new Map<number, AskedWindow>();
   private forgottenBelow = 0;
   /** The newest window the follow loop has passed, asked or skipped. */
   private followed = -1;
@@ -291,7 +325,7 @@ export class WindowReader<T extends { readonly writtenAt: number }> {
       const batch = distances
         .slice(i, i + WINDOW_OPEN_BATCH)
         .map((distance) => origin - distance)
-        .filter((window) => window >= 0 && !this.isAsked(window));
+        .filter((window) => window >= 0 && !this.isClosed(window));
       if (batch.length > 0 && !(await askAll(batch))) {
         break;
       }
@@ -336,7 +370,7 @@ export class WindowReader<T extends { readonly writtenAt: number }> {
       if (jump.kind === 'forward') {
         // A sleep and a jump forward look alike: ask only the newest due window, then open again from it.
         const newest = this.newestDue();
-        if (newest > this.followed && !this.isAsked(newest)) {
+        if (newest > this.followed && !this.isClosed(newest)) {
           this.followed = newest;
           void this.open('wake', newest);
           return;
@@ -358,7 +392,7 @@ export class WindowReader<T extends { readonly writtenAt: number }> {
       }
       const from = probing || newest - this.followed > WINDOW_CATCH_UP_LIMIT ? newest : this.followed + 1;
       for (let window = from; window <= newest; window++) {
-        if (!this.isAsked(window)) {
+        if (!this.isClosed(window)) {
           this.followAsksInFlight += 1;
           this.lastFollowAskAt = this.now();
           // ask catches the read's failures, so this rejects only if a caller's callback throws.
@@ -442,14 +476,14 @@ export class WindowReader<T extends { readonly writtenAt: number }> {
   }
 
   /**
-   * Asks one window, never twice. Evidence about the clock goes to `held` when given, otherwise to the
+   * Asks one window, which {@link isClosed} allowed. Evidence about the clock goes to `held` when given, otherwise to the
    * clock at once. Absent windows count only when they must exist and the stream should be live, and
    * not while silent, when every window is absent and none says anything about the clock.
    */
   private async ask(window: number, purpose: WindowAskPurpose, held: Evidence[] | null): Promise<Answered<T> | null> {
     const generation = this.generation;
-    this.remember(window);
     const askedAt = this.now();
+    const record = this.remember(window, askedAt);
     const { topic, kind, windowMs } = this.options;
     let result: WindowReadResult;
     try {
@@ -465,6 +499,7 @@ export class WindowReader<T extends { readonly writtenAt: number }> {
     const mustExist = window % this.mustExistEvery === 0;
     const value = result.kind === 'found' ? this.options.parse(result.payload) : null;
     const answer: WindowAskAnswer = result.kind === 'found' ? (value === null ? 'refused' : 'found') : result.kind;
+    record.answer = answer;
     let evidence: Evidence | null = null;
     if (answer === 'found' || answer === 'refused') {
       evidence = {
@@ -527,7 +562,7 @@ export class WindowReader<T extends { readonly writtenAt: number }> {
   private unaskedBackFrom(newest: number, count: number, oldest: number): number[] {
     const windows: number[] = [];
     for (let window = newest; window >= Math.max(0, oldest) && windows.length < count; window--) {
-      if (!this.isAsked(window)) {
+      if (!this.isClosed(window)) {
         windows.push(window);
       }
     }
@@ -545,21 +580,48 @@ export class WindowReader<T extends { readonly writtenAt: number }> {
     }
   }
 
-  private isAsked(window: number): boolean {
-    return window < this.forgottenBelow || this.asked.has(window);
+  /**
+   * Whether a window may not be asked now: it was found, its ask is still out, it was asked twice, or
+   * its one ask could still be on Bee's skip list when the window is due.
+   */
+  private isClosed(window: number): boolean {
+    if (window < this.forgottenBelow) {
+      return true;
+    }
+    const record = this.asked.get(window);
+    if (record === undefined) {
+      return false;
+    }
+    if (
+      record.asks >= WINDOW_MAX_ASKS ||
+      record.answer === null ||
+      record.answer === 'found' ||
+      record.answer === 'refused'
+    ) {
+      return true;
+    }
+    return this.dueAt(window) - record.firstAskedAt <= BEE_SKIP_LIST_MS;
   }
 
-  private remember(window: number): void {
-    this.asked.add(window);
+  private remember(window: number, askedAt: number): AskedWindow {
+    const known = this.asked.get(window);
+    const record: AskedWindow = {
+      firstAskedAt: known?.firstAskedAt ?? askedAt,
+      asks: (known?.asks ?? 0) + 1,
+      answer: null,
+    };
+    this.asked.set(window, record);
     if (this.asked.size > ASKED_MEMORY) {
-      const sorted = [...this.asked].sort((a, b) => a - b);
-      const keep = sorted.slice(sorted.length - ASKED_MEMORY / 2);
-      this.forgottenBelow = keep[0] ?? this.forgottenBelow;
-      this.asked.clear();
-      for (const kept of keep) {
-        this.asked.add(kept);
+      const sorted = [...this.asked.keys()].sort((a, b) => a - b);
+      const keep = new Set(sorted.slice(sorted.length - ASKED_MEMORY / 2));
+      this.forgottenBelow = Math.min(...keep);
+      for (const old of sorted) {
+        if (!keep.has(old)) {
+          this.asked.delete(old);
+        }
       }
     }
+    return record;
   }
 }
 

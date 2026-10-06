@@ -21,10 +21,10 @@ import {
   windowEnd,
   type WindowSlot,
 } from '../src/windows.js';
-import type { WindowReadResult } from '../src/windowReader.js';
+import { BEE_SKIP_LIST_MS, type WindowReadResult } from '../src/windowReader.js';
 
-/** Bee's skip list for an address asked too early, measured on the chat at about a minute. */
-export const POISON_MS = 60_000;
+/** Bee's skip list for an address asked too early, the reader's own constant so the two cannot drift. */
+export const POISON_MS = BEE_SKIP_LIST_MS;
 
 /** A fixed true start, a whole number of 10 s windows, so runs are reproducible. */
 export const SIM_START_MS = 1_793_793_600_000;
