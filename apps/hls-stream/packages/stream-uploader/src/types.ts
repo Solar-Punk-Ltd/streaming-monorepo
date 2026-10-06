@@ -354,6 +354,8 @@ export {
   UPLOADER_STATUS_DEGRADED as HEALTH_DEGRADED,
   UPLOADER_STATUS_OK as HEALTH_OK,
   UPLOADER_STATUS_WAITING_FOR_NODE as HEALTH_WAITING_FOR_NODE,
+  UPLOADER_REASON_CLOCK_UNCHECKED as HEALTH_REASON_CLOCK_UNCHECKED,
+  UPLOADER_REASON_CLOCK_UNTRUSTED as HEALTH_REASON_CLOCK_UNTRUSTED,
   UPLOADER_REASON_FRAGMENT_MISMATCH as HEALTH_REASON_FRAGMENT_MISMATCH,
   UPLOADER_REASON_FRAGMENT_PUBLISHER_GOP as HEALTH_REASON_FRAGMENT_PUBLISHER_GOP,
   UPLOADER_REASON_INGEST_REFUSED as HEALTH_REASON_INGEST_REFUSED,
@@ -409,6 +411,47 @@ export interface NodeWaitReport {
   readonly waitingSince: string;
   readonly attempts: number;
   readonly lastError?: string;
+}
+
+/** The first round of the clock check has not finished, so nothing is known yet and nothing is refused. */
+export const CLOCK_PENDING = 'pending' as const;
+/** The last round put the host's clock within `CLOCK_MAX_ERROR_MS` of a time server. */
+export const CLOCK_TRUSTED = 'trusted' as const;
+/**
+ * A round measured it more than that off whatever the path, and the uploader refuses to publish windows.
+ * It stands until a later round measures the clock within the limit.
+ */
+export const CLOCK_UNTRUSTED = 'untrusted' as const;
+/**
+ * The last round was inconclusive: no time server answered, or the answer came too slowly to judge. Nothing
+ * is refused on it, because it says nothing about the clock, and it never lifts an untrusted verdict.
+ */
+export const CLOCK_UNCHECKED = 'unchecked' as const;
+
+export type ClockVerdict =
+  | typeof CLOCK_PENDING
+  | typeof CLOCK_TRUSTED
+  | typeof CLOCK_UNTRUSTED
+  | typeof CLOCK_UNCHECKED;
+
+/**
+ * The clock check as `/health` reports it under `clock`, from its last finished round.
+ *
+ * The measured fields are the estimate that round kept, the answer with the shortest round trip, and
+ * all of them are null when no server answered. Milliseconds throughout, and `offsetMs` is how far
+ * the time server is ahead of this host, so a host whose clock runs fast reads negative.
+ */
+export interface ClockCheckReport {
+  readonly verdict: ClockVerdict;
+  /** When the last round finished, by this host's clock. Null until the first one has. */
+  readonly checkedAt: string | null;
+  readonly server: string | null;
+  readonly offsetMs: number | null;
+  readonly delayMs: number | null;
+  /** `|offsetMs| + delayMs / 2`, the most the host's clock can be off given that answer. */
+  readonly errorBoundMs: number | null;
+  /** The bound past which publishing is refused. */
+  readonly maxErrorMs: number;
 }
 
 export const RECOVERY_ENTRY_MISSING = 'missing' as const;

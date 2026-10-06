@@ -1,7 +1,7 @@
 import { Request, Response, Router } from 'express';
 
 import { StreamOrchestrator } from '../../libs/StreamOrchestrator.js';
-import { HEALTH_OK, NodeWaitReport } from '../../types.js';
+import { ClockCheckReport, HEALTH_OK, NodeWaitReport } from '../../types.js';
 import { deriveHealthStatus } from '../../utils/health.js';
 
 const HTTP_OK = 200;
@@ -21,13 +21,16 @@ export function createHealthRouter(
    * listened ahead of its node, and every test but the two about the wait.
    */
   waitingForNode: () => NodeWaitReport | null = () => null,
+  /** Absent is a service with no clock check, and its body then carries no `clock` field. */
+  clockReport?: () => ClockCheckReport,
 ): Router {
   const router = Router();
 
   router.get('/', (_req: Request, res: Response) => {
     const waiting = waitingForNode();
     const signals = streamOrchestrator.getHealthSignals();
-    const { status, reasons } = deriveHealthStatus(signals, streamOrchestrator.getSegmentStallMs(), waiting);
+    const clock = clockReport?.() ?? null;
+    const { status, reasons } = deriveHealthStatus(signals, streamOrchestrator.getSegmentStallMs(), waiting, clock);
 
     res.status(status === HEALTH_OK ? HTTP_OK : HTTP_SERVICE_UNAVAILABLE).json({
       status,
@@ -51,6 +54,9 @@ export function createHealthRouter(
       // Which of those has stopped paying, beside the list of all of them, because `postage_refused`
       // on its own leaves an operator four rungs to go and read. Empty on a healthy service.
       refusedPublishers: streamOrchestrator.refusedPublishers(),
+      // The last round's offset, round trip, server and time, whatever its verdict, so a page can show
+      // how close the clock is to its limit before it is refused.
+      ...(clock === null ? {} : { clock }),
     });
   });
 

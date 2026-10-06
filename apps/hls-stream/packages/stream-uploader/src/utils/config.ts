@@ -2,6 +2,7 @@ import { ADMIN_API_TOKEN_KEY, ADMIN_API_URL_KEY } from '@swarm-hls-stream/shared
 
 import { assertUsableAdminApiToken } from '../libs/AdminApiClient.js';
 import { parsePublisherSpecs, PublisherSpec } from '../libs/BeePublisherPool.js';
+import { parseClockServers } from '../libs/sntp.js';
 import { gatePolicyFor, parseStartGateMode, START_GATE_CHEQUEBOOK_WARN } from '../libs/StartGates.js';
 
 import { readAbrConfig } from './abrConfig.js';
@@ -160,6 +161,15 @@ const DEFAULT_START_GATE_TIMEOUT_MS = 20_000;
 const MAX_START_GATE_TIMEOUT_MS = 600_000;
 
 /**
+ * The time servers the clock check asks, every one of them in each round.
+ *
+ * Three public services run by different operators, so one of them being off or unreachable still
+ * leaves a round an answer to keep. A round keeps the quickest answer and compares nothing. A host with
+ * time servers of its own, or a firewall that allows UDP 123 only to some, names its own list.
+ */
+const DEFAULT_CLOCK_CHECK_SERVERS = 'time.cloudflare.com,time.google.com,pool.ntp.org';
+
+/**
  * One Bee node per rung, or empty for the single-node deployment described by BEE_URL and STAMP.
  *
  * Parsed eagerly and allowed to throw, for the same reason ABR_LADDER is: a publisher list that
@@ -255,6 +265,8 @@ export const config = {
     min: MIN_CHEQUEBOOK_RECHECK_MS,
     max: MAX_CHEQUEBOOK_RECHECK_MS,
   }),
+  /** The servers the clock check asks. See `libs/ClockCheck.ts`. */
+  clockCheckServers: parseClockServers(optional('CLOCK_CHECK_SERVERS', DEFAULT_CLOCK_CHECK_SERVERS)),
   stampMinTtlHours: optionalNumber('STAMP_MIN_TTL_HOURS', DEFAULT_STAMP_MIN_TTL_HOURS, {
     min: 0,
     max: MAX_STAMP_MIN_TTL_HOURS,

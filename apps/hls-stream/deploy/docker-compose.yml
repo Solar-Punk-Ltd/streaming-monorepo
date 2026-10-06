@@ -273,6 +273,9 @@ services:
       START_GATE_TIMEOUT_MS: ${START_GATE_TIMEOUT_MS:-20000}
       CHEQUEBOOK_MIN_BZZ: ${CHEQUEBOOK_MIN_BZZ:-0.5}
       CHEQUEBOOK_RECHECK_MS: ${CHEQUEBOOK_RECHECK_MS:-60000}
+      # The time servers the clock check asks over UDP 123, at start and every 10 minutes. More than
+      # 250 ms off them and the uploader refuses to publish windows. See `libs/ClockCheck.ts`.
+      CLOCK_CHECK_SERVERS: ${CLOCK_CHECK_SERVERS:-time.cloudflare.com,time.google.com,pool.ntp.org}
       # The other two thresholds `PostageGate` reads a batch against, and they belong here for the
       # same reason CHEQUEBOOK_MIN_BZZ does. Neither reached the container before, so the gate ran on its
       # compiled 24 and 0.9 whatever an operator wrote in .env, which is the ORPHAN_REAP_MS shape

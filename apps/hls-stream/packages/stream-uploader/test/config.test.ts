@@ -335,9 +335,10 @@ describe('the environment contract', () => {
 
   /**
    * Names read by `config.ts` whose value is not a scalar, so the table above cannot carry them.
-   * `UPLOADER_START_GATES` reaches config as the pair of gate policies it resolves to.
+   * `UPLOADER_START_GATES` reaches config as the pair of gate policies it resolves to, and
+   * `CLOCK_CHECK_SERVERS` as the list of servers it names.
    */
-  const DECLARED_ONLY = ['UPLOADER_START_GATES'];
+  const DECLARED_ONLY = ['UPLOADER_START_GATES', 'CLOCK_CHECK_SERVERS'];
 
   // Without this the pair can drift apart silently and in the direction that looks fine: the service
   // starts, every default applies, and the operator's setting is read from a name nothing sets.
@@ -366,6 +367,28 @@ describe('the environment contract', () => {
  * matters here is not that a name reaches a field but that a half-configured admin deployment
  * **refuses to start** rather than quietly running as a standalone one.
  */
+describe('the time servers the clock check asks', () => {
+  it('are three public services when CLOCK_CHECK_SERVERS is absent', async () => {
+    const config = await loadConfig(requiredEnv());
+    assert.deepEqual(
+      config.clockCheckServers.map((server) => `${server.host}:${server.port}`),
+      ['time.cloudflare.com:123', 'time.google.com:123', 'pool.ntp.org:123'],
+    );
+  });
+
+  it('are the list CLOCK_CHECK_SERVERS names, each with its own port if it gives one', async () => {
+    const config = await loadConfig({ ...requiredEnv(), CLOCK_CHECK_SERVERS: 'ntp.example.com,192.0.2.7:1123' });
+    assert.deepEqual(config.clockCheckServers, [
+      { host: 'ntp.example.com', port: 123 },
+      { host: '192.0.2.7', port: 1123 },
+    ]);
+  });
+
+  it('refuse to start on a list with a port that is not one', async () => {
+    await assert.rejects(loadConfig({ ...requiredEnv(), CLOCK_CHECK_SERVERS: 'ntp.example.com:ntp' }), /port/);
+  });
+});
+
 describe('admin mode', () => {
   const ADMIN_URL = 'http://admin.internal:9877';
   const ADMIN_TOKEN = 'admin-api-token-0123456789abcdef';

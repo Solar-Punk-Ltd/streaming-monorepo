@@ -19,6 +19,7 @@ import { BeePublisherPool, safeUrl } from './libs/BeePublisherPool.js';
 import { CatalogIndexStore } from './libs/CatalogIndexStore.js';
 import { bzzToPlur, ChequebookGate, ChequebookNode, FundingLogger } from './libs/ChequebookGate.js';
 import { ChequebookRecheck } from './libs/ChequebookRecheck.js';
+import { ClockCheck } from './libs/ClockCheck.js';
 import { LadderGroupStore } from './libs/LadderGroupStore.js';
 import { LadderRegistry } from './libs/LadderRegistry.js';
 import { Logger } from './libs/Logger.js';
@@ -164,6 +165,18 @@ async function start() {
       );
     }
 
+    // Started here, beside the boot rather than as a start gate: the start gates are questions about a
+    // Bee node, read again on every attempt of the node wait, and holding the boot for a round would buy
+    // nothing, because the window writer asks `isTrusted` before every write. Its first round has
+    // finished long before the node wait is over, and until then it refuses nothing.
+    //
+    // ⛔ Not yet handed to the orchestrator. The window writer's `clockTrusted` option reaches the
+    // orchestrator with the uploader's window publishing, and connects here as
+    // `clockTrusted: () => clockCheck.isTrusted()` once both have landed.
+    const clockCheck = new ClockCheck({ servers: config.clockCheckServers, logger });
+    clockCheck.start();
+    lifecycle.trackClockCheck(clockCheck);
+
     const streamOrchestrator = new StreamOrchestrator(publishers, streamCatalog, recoveryStore, {
       streamKey: config.streamKey,
       maxQueueSize: config.maxQueueSize,
@@ -208,6 +221,7 @@ async function start() {
       authToken: config.apiAuthToken,
       engines,
       waitingForNode: () => nodeWait,
+      clockReport: () => clockCheck.report(),
     });
     lifecycle.trackApiServer(apiServer);
 

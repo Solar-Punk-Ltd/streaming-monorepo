@@ -449,6 +449,32 @@ dates.
 outage rather than a whole number of fragments. The harness contract allows a forward step of any
 size there and refuses one that does not move forwards.
 
+### The clock check
+
+A live window's address comes from the uploader's clock, and a viewer asks for it a second after the
+window's end by its own. An uploader whose clock is off writes every window where nobody looks. So the
+uploader checks its clock against time servers, `CLOCK_CHECK_SERVERS`, over SNTP: every server at start,
+then every 10 minutes. Each answer gives an offset and a round trip, the one with the shortest round
+trip is kept, and the clock is off by somewhere between that offset minus half the round trip and that
+offset plus half of it.
+
+- **Trusted** while the offset plus half the round trip is 250 ms or less. Phase 0 measured the stage
+  hosts within 2.5 ms, so this is the normal state.
+- **Untrusted** when the offset minus half the round trip is above 250 ms, so the clock is off whatever
+  the path. The uploader refuses to publish windows, `/health` reports `clock_untrusted`, and it checks
+  again every 30 s. The refusal stands until a later round measures the clock within the limit, so
+  publishing resumes within half a minute of the clock being fixed.
+- **Unchecked** when no server answered, or when the answer came too slowly to judge either way. That
+  says nothing about the clock, so nothing new is refused, and `/health` reports `clock_unchecked`. It
+  checks again every 30 s. After an untrusted round an unchecked one changes nothing: the refusal and
+  its numbers stay.
+
+Until the first check finishes the verdict is `pending` and nothing is refused. The check runs beside
+the boot rather than as a start gate, and its first round is over long before the Bee node wait is.
+`/health` carries the last round under `clock`: the verdict, `checkedAt`, `server`, `offsetMs`,
+`delayMs`, `errorBoundMs` and `maxErrorMs`. A positive offset is a server ahead of this host. The host
+must allow outbound UDP 123 to the servers it names. See `libs/ClockCheck.ts` and `libs/sntp.ts`.
+
 ### One Bee node per rung
 
 A feed's address is a pure function of its signing key and topic — `makeFeedIdentifier` is
@@ -526,6 +552,7 @@ The API server starts on port 3000 (default).
 | `START_GATE_TIMEOUT_MS`  | `20000`              | How long one startup gate's read of one node may take, 600000 at most. Separate from `BEE_REQUEST_TIMEOUT_MS`, which the upload loop derives                                                                                                       |
 | `CHEQUEBOOK_MIN_BZZ`     | `0.5`                | Available chequebook balance every node must hold for the chequebook gate to call it funded, 1000 at most                                                                                                                                          |
 | `CHEQUEBOOK_RECHECK_MS`  | `60000`              | How long to wait between reads of a chequebook the boot warned about, 1000 to 3600000. The warning leaves `/health` on the first read that finds every node funded, and nothing is read while no chequebook warning stands                         |
+| `CLOCK_CHECK_SERVERS`    | three public servers | Time servers the clock check asks, `host` or `host:port` separated by commas: `time.cloudflare.com`, `time.google.com` and `pool.ntp.org` by default. The host must allow outbound UDP 123 to them. See the clock check above                      |
 | `STAMP_MIN_TTL_HOURS`    | `12`                 | Hours a postage batch must have left for the postage gate to call it usable                                                                                                                                                                        |
 | `STAMP_MAX_UTILIZATION`  | `0.9`                | How full an immutable batch may be, as a ratio, for the postage gate to call it usable. A mutable batch overwrites its oldest chunks when full rather than refusing, so it is never held to this                                                   |
 | `BEE_REQUEST_TIMEOUT_MS` | `4000`               | Per-request deadline on every upload-loop call to a Bee node, derived from the retry windows                                                                                                                                                       |
@@ -582,28 +609,32 @@ they deliberately outlive the streams they count, which is the one thing `/healt
 do: `/health` describes the streams registered right now, so at the moment a live session is wrongly
 killed it answers `ok` with `activeStreams: 0`.
 
-| Metric                                      | Type    | Meaning                                                     |
-| ------------------------------------------- | ------- | ----------------------------------------------------------- |
-| `swarm_hls_segments_uploaded_total`         | counter | Segments whose payload reached Swarm                        |
-| `swarm_hls_rung_segments_uploaded_total`    | counter | The same, by ABR rung. Empty with no ladder, see below      |
-| `swarm_hls_segments_dropped_total`          | counter | Segments never stored: window spent, or bee refused it      |
-| `swarm_hls_rung_segments_dropped_total`     | counter | The same, by ABR rung. Empty with no ladder, see below      |
-| `swarm_hls_segments_lost_total`             | counter | Segments the engine never obtained, or never posted at all  |
-| `swarm_hls_segments_skipped_total`          | counter | Segments discarded on purpose at a puller handover          |
-| `swarm_hls_opening_segments_withheld_total` | counter | Opening segments held back until the broadcast showed video |
-| `swarm_hls_segments_never_named_total`      | counter | Segments in Swarm that no published manifest named          |
-| `swarm_hls_auth_rejections_total`           | counter | Requests refused by a credential gate                       |
-| `swarm_hls_takeovers_refused_total`         | counter | Announces refused because a live session still holds the id |
-| `swarm_hls_manifest_publish_failures_total` | counter | Live manifest publishes that failed                         |
-| `swarm_hls_streams_finalized_total`         | counter | Stops that published a VOD                                  |
-| `swarm_hls_streams_failed_total`            | counter | Stops that did not. Those broadcasts have no recording      |
-| `swarm_hls_streams_reaped_total`            | counter | Broadcasts finalized because their engine went silent       |
-| `swarm_hls_segment_durations_unread_total`  | counter | Segments published on the engine's word, unreadable here    |
-| `swarm_hls_postage_refused_publishers`      | gauge   | Rungs whose postage batch bee has refused. Never clears     |
-| `swarm_hls_last_segment_timestamp_seconds`  | gauge   | Unix time of the newest segment that landed, 0 while none   |
-| `swarm_hls_active_streams`                  | gauge   | Streams registered and expected to be producing             |
-| `swarm_hls_queue_depth`                     | gauge   | Segments waiting to upload across every stream              |
-| `swarm_hls_queue_backlog_seconds`           | gauge   | Playing time still queued for the worst stream              |
+| Metric                                      | Type    | Meaning                                                       |
+| ------------------------------------------- | ------- | ------------------------------------------------------------- |
+| `swarm_hls_segments_uploaded_total`         | counter | Segments whose payload reached Swarm                          |
+| `swarm_hls_rung_segments_uploaded_total`    | counter | The same, by ABR rung. Empty with no ladder, see below        |
+| `swarm_hls_segments_dropped_total`          | counter | Segments never stored: window spent, or bee refused it        |
+| `swarm_hls_rung_segments_dropped_total`     | counter | The same, by ABR rung. Empty with no ladder, see below        |
+| `swarm_hls_segments_lost_total`             | counter | Segments the engine never obtained, or never posted at all    |
+| `swarm_hls_segments_skipped_total`          | counter | Segments discarded on purpose at a puller handover            |
+| `swarm_hls_opening_segments_withheld_total` | counter | Opening segments held back until the broadcast showed video   |
+| `swarm_hls_segments_never_named_total`      | counter | Segments in Swarm that no published manifest named            |
+| `swarm_hls_auth_rejections_total`           | counter | Requests refused by a credential gate                         |
+| `swarm_hls_takeovers_refused_total`         | counter | Announces refused because a live session still holds the id   |
+| `swarm_hls_manifest_publish_failures_total` | counter | Live manifest publishes that failed                           |
+| `swarm_hls_streams_finalized_total`         | counter | Stops that published a VOD                                    |
+| `swarm_hls_streams_failed_total`            | counter | Stops that did not. Those broadcasts have no recording        |
+| `swarm_hls_streams_reaped_total`            | counter | Broadcasts finalized because their engine went silent         |
+| `swarm_hls_segment_durations_unread_total`  | counter | Segments published on the engine's word, unreadable here      |
+| `swarm_hls_postage_refused_publishers`      | gauge   | Rungs whose postage batch bee has refused. Never clears       |
+| `swarm_hls_last_segment_timestamp_seconds`  | gauge   | Unix time of the newest segment that landed, 0 while none     |
+| `swarm_hls_active_streams`                  | gauge   | Streams registered and expected to be producing               |
+| `swarm_hls_queue_depth`                     | gauge   | Segments waiting to upload across every stream                |
+| `swarm_hls_queue_backlog_seconds`           | gauge   | Playing time still queued for the worst stream                |
+| `swarm_hls_clock_untrusted`                 | gauge   | 1 while publishing is refused on a clock measured 250 ms off  |
+| `swarm_hls_clock_unchecked`                 | gauge   | 1 while the last check had no answer or one too slow to judge |
+| `swarm_hls_clock_offset_seconds`            | gauge   | How far the kept time server is ahead of this host, or NaN    |
+| `swarm_hls_clock_error_bound_seconds`       | gauge   | Offset plus half the round trip, refused above 0.25, or NaN   |
 
 **The per-rung breakdowns are empty on a single-rendition deployment, and that is not zero uploads.** A
 stream with no ABR ladder has no rung to attribute a segment to, so it is counted in
@@ -716,6 +747,8 @@ empty feed, so the finalize is deferred to the next boot rather than risking a s
 | `postage_refused`        | Bee refused a paid write on a rung's postage batch with a status nothing retries, usually because the batch has filled or expired. Latched for the life of the process and never cleared by a segment that lands, because the batch a rung spends is read once at start: only a restart clears it, so redeploy once the batch pays again, a new batch or the same one diluted or topped up                                                                                                                                                                                                                                                                                                                              |
 | `node_unavailable`       | The boot has not finished, because the half of it that needs a Bee node is still waiting for one to answer. The only reason that is not a reading about this process at all, and the only one reported alone by construction: the waiting branch returns it before any other signal is looked at. See the waiting state below                                                                                                                                                                                                                                                                                                                                                                                           |
 | `start_gate_warned`      | A startup gate could not clear a node and the uploader started anyway, which is what `UPLOADER_START_GATES` asks for on that gate. Latched from the pass that finished the boot, and `startGateWarnings` on the same body names which gate and which rung. A postage warning stays until a restart. A chequebook warning is read again every `CHEQUEBOOK_RECHECK_MS` and goes by itself once every node holds its floor. The gate's own message is in the log and deliberately not here: this endpoint takes no credential and those messages carry node URLs and batch ids                                                                                                                                             |
+| `clock_untrusted`        | The last clock check put this host more than 250 ms off its time servers, so publishing windows is refused: a reader would ask for each window at the wrong time. `clock` on the same body carries the offset, the round trip, the server and when it was checked. Checked again every 30 s, and it stands until a later check measures the clock within the limit, then clears with no restart. A check with no answer, or one too slow to judge, leaves it standing. Fix the host's time sync                                                                                                                                                                                                                         |
+| `clock_unchecked`        | The last clock check was inconclusive: no time server answered, or the quickest answer came too slowly to judge the clock either way. Nothing is known about the clock and publishing goes on. Usually a firewall that drops outbound UDP 123, `CLOCK_CHECK_SERVERS` naming servers this host cannot reach, or an uplink so loaded the round trip passes half a second. Checked again every 30 s                                                                                                                                                                                                                                                                                                                        |
 
 **The waiting state, `status: "waiting_for_node"`** (the owner on 2026-09-17: "we should be
 able to start the uploader but maybe say its node not available, try to reconnect or something"). The API
