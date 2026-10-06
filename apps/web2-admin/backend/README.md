@@ -268,6 +268,12 @@ address and the batch of the catalogue stamp the manager pushed
 env file or held in memory, so a new designation or a moved node takes effect on
 the next write.
 
+Each version of the list is uploaded direct, so a write returns on the storer's
+receipt rather than once the admin's node alone holds it. The admin does not
+write the list's window notes yet, which the uploader's own list writer does
+when it runs without an admin (`docs/architecture/overview.md`, "The stream
+list's notes").
+
 The admin keeps the batch it actually writes with, since a batch stamps the
 chunks it wrote and the feed's history is those chunks. Migration `013` adds
 `active_batch_id`, `active_record` and `active_pinned_at` to `catalogue_stamp`:
@@ -601,24 +607,27 @@ in flight that may still fail back to `draft`. Every refusal is the same
 nothing from the difference. A malformed app or topic is `400`.
 
 **The state report** is `{state:'live'}` or `{state:'vod', index, duration}` —
-both numbers required with `vod`, refused with `live`. `live` sets `status`,
+both numbers required with `vod`, refused with `live`. An uploader on time
+windows sends `{state:'vod', recording, duration}` instead, `recording` being
+the reference of the recording playlist it uploaded once at the end, 64
+lowercase hex digits, and never sent with `index`. `live` sets `status`,
 stamps `live_since` (kept as it is when the stream is already live, because the
-uploader retries) and clears `ended_at`; `vod` sets `status`, `manifest_index`,
-`duration_seconds` and `ended_at`. Allowed: `published → live`, `live → live`,
+uploader retries) and clears `ended_at`, and `vod` sets `status`, `manifest_index`
+or `recording_ref` (the other one cleared), `duration_seconds` and `ended_at`. Allowed: `published → live`, `live → live`,
 `live → vod`, `vod → vod`, `published → vod` for a broadcast that ended before
 its `live` report ever got through, and `vod → live` for a broadcast that goes
 live again. Every feed of a declared stream outlives the sessions written to
 it, so a reconnected encoder continues them above the previous head; that
-`live` therefore clears `manifest_index` and `duration_seconds` on the row and
-on every rung in the same statement, and the entry lists the latest recording
+`live` therefore clears `manifest_index`, `recording_ref` and
+`duration_seconds` on the row and on every rung in the same statement, and the entry lists the latest recording
 once the next `vod` arrives. Anything else is
 `409 invalid_state_transition` with `from` and `to`. The rule is enforced twice
 — once to answer the 409, once as the `WHERE status = ANY(...)` of the UPDATE
 itself, so two reports racing cannot both win.
 
 Each accepted report then rewrites the catalogue entry through the same
-single-writer publish path, with `state` set accordingly and `index` /
-`duration` on a `vod` entry. **The state is persisted first and the feed
+single-writer publish path, with `state` set accordingly and `index` or
+`recording`, and `duration`, on a `vod` entry. **The state is persisted first and the feed
 written second**, deliberately: a feed write can fail for reasons that have
 nothing to do with this stream, and the uploader retries. A failure answers
 `502 publish_failed` with `publish_error` recorded and the state intact, so the
@@ -630,14 +639,15 @@ and in admin mode the master's topic _is_ the stream's declared topic — so the
 ladder's merge state, which swarm-hls-stream keeps inside the catalogue feed it
 writes for itself, has to live here instead. Each rung POSTs its own
 `Rendition` (`name`, `width`, `height`, `topic`, `bandwidth`, `avgBandwidth`,
-plus `index` and `duration` — both or neither — once it finalizes) and gets
+plus `index` and `duration`, both or neither, once it finalizes, or
+`recording` and `duration` from an uploader on time windows) and gets
 back the merged ladder, ascending by height, with `ladder { finished,
 flippedToFinished, duration }`.
 
 The merge keeps one record per `(stream, name)`. The incoming report replaces
-the stored one, except that a rung which already reported an `index` keeps its
-`index` and `duration` when the incoming report has none **and arrives on the
-same `topic`**, taking only geometry and bandwidths from it. A rung's topic is
+the stored one, except that a rung which already reported an `index` or a
+`recording` keeps it and its `duration` when the incoming report has neither
+**and arrives on the same `topic`**, taking only geometry and bandwidths from it. A rung's topic is
 derived from the stream's declared topic and the rung name, so every report for
 a rung arrives on the feed that rung's recordings already sit on, and an
 indexless one is that rung delivering again — recovered from a crash, or a new
@@ -816,9 +826,12 @@ a stream is broadcast on, with a foreign key to `stages` and an index,
 is looked up by, `013_catalogue_writes.sql`, the batch the catalogue is
 written with on `catalogue_stamp` and the exact bytes and batch of every write
 on `feed_writes` ([Where the catalogue is written](#where-the-catalogue-is-written)),
-and `014_catalogue_moves.sql`, a move's progress in `catalogue_moves` and the
+`014_catalogue_moves.sql`, a move's progress in `catalogue_moves` and the
 batch each write and each thumbnail was last uploaded under
-([Moving the catalogue to another batch](#moving-the-catalogue-to-another-batch)).
+([Moving the catalogue to another batch](#moving-the-catalogue-to-another-batch)),
+and `015_recording_reference.sql`, `recording_ref` on `streams` and on
+`stream_renditions`, a recording named by reference beside the feed index,
+never both ([The internal API](#the-internal-api)).
 
 ## Audit log
 
@@ -867,7 +880,9 @@ publish mutex comes, so a later report stored in the meantime is what it
 publishes, as it should be. Beside `feedIndex` the row therefore says what
 the write published. A state report's row has `entryStatus`, the status the
 entry was written with, and `entryRecording`, the `index` and `duration` the
-entry lists, null unless it is `vod`. A rendition report's row has
+entry lists, with `recording` when the entry names its recording by reference,
+null unless it is `vod`. A report that sent `recording` records it where an
+index report records `index`. A rendition report's row has
 `entryRung`, the report's rung as the write carried it. Where these differ
 from what the report itself carried (`status_after`, or `index` and
 `duration`), the write published something stored after the report, with one

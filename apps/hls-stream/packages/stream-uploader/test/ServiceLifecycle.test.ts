@@ -66,6 +66,36 @@ describe('ServiceLifecycle', () => {
     assert.deepEqual(recorded.exits, [0]);
   });
 
+  /**
+   * The streams' last catalog writes land during their cleanup, so the list's note writer stops after
+   * them and before the api closes. A note writer left running would hold the process open and keep
+   * writing notes for a service that has stopped.
+   */
+  it('stops the list notes after the streams and before the api server', async () => {
+    const { lifecycle, recorded } = lifecycleUnderTest();
+    lifecycle.trackOrchestrator(orchestratorThat(async () => void recorded.order.push('streams stopped')));
+    lifecycle.trackListNotes({ stopNotes: async () => void recorded.order.push('notes stopped') });
+    lifecycle.trackApiServer(apiServerThat(async () => void recorded.order.push('api closed')));
+
+    await lifecycle.shutdown('SIGTERM');
+
+    assert.deepEqual(recorded.order, ['streams stopped', 'notes stopped', 'api closed']);
+    assert.deepEqual(recorded.exits, [0]);
+  });
+
+  it('stops the clock check after the list notes, whose last windows are judged by it too', async () => {
+    const { lifecycle, recorded } = lifecycleUnderTest();
+    lifecycle.trackOrchestrator(orchestratorThat(async () => void recorded.order.push('streams stopped')));
+    lifecycle.trackListNotes({ stopNotes: async () => void recorded.order.push('notes stopped') });
+    lifecycle.trackClockCheck({ stop: () => void recorded.order.push('clock check stopped') });
+    lifecycle.trackApiServer(apiServerThat(async () => void recorded.order.push('api closed')));
+
+    await lifecycle.shutdown('SIGTERM');
+
+    assert.deepEqual(recorded.order, ['streams stopped', 'notes stopped', 'clock check stopped', 'api closed']);
+    assert.deepEqual(recorded.exits, [0]);
+  });
+
   it('names the signal it is acting on', async () => {
     const { lifecycle, recorded } = lifecycleUnderTest();
 

@@ -115,7 +115,9 @@ export function feedEntryState(status: StreamStatus): FeedStreamEntry['state'] {
  * had and swarm-hls-stream dropped ride alongside.
  *
  * `index` and `duration` are what a viewer needs to play a recording: the feed
- * index of the final manifest, and how long it runs. They are written only for
+ * index of the final manifest, and how long it runs. An uploader on time
+ * windows names the recording playlist by reference instead, and the entry
+ * carries that as `recording` in place of `index`. They are written only for
  * a `vod` entry and only once the uploader has reported them — an entry that
  * carries neither is a live or scheduled stream, exactly as swarm-hls-stream's
  * reader expects.
@@ -148,6 +150,7 @@ export function buildFeedEntry(
   };
   if (state === 'vod') {
     if (stream.manifest_index !== null) entry.index = stream.manifest_index;
+    if (stream.recording_ref !== null) entry.recording = stream.recording_ref;
     if (stream.duration_seconds !== null) {
       entry.duration = stream.duration_seconds;
     }

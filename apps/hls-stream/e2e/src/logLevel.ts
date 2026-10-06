@@ -51,9 +51,12 @@ interface ParsedLine {
  */
 export const PARSED_LINES: readonly ParsedLine[] = [
   {
-    what: 'the catalog feed location (owner + topicHex)',
+    what: 'the catalog feed location (owner + topic name + topicHex)',
     level: 'debug',
-    emittedBy: { file: 'libs/StreamCatalog.ts', fragment: 'owner=${ownerAddr} topicHex=' },
+    emittedBy: {
+      file: 'libs/StreamCatalog.ts',
+      fragment: 'owner=${ownerAddr} topic="${this.feedTopicName}" topicHex=',
+    },
     neededBy: 'discoverCatalogFeed, so scenario F and service/catalog-via-gateway cannot start',
   },
   {

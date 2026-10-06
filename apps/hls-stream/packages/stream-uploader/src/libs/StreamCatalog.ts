@@ -1,5 +1,15 @@
 import { FeedIndex, PrivateKey, Topic } from '@ethersphere/bee-js';
-import { catalogStateLost, ladderFinalized } from '@swarm-hls-stream/shared';
+import {
+  catalogStateLost,
+  createNoteWindowWriter,
+  ladderFinalized,
+  STREAM_LIST_HEARTBEAT_MS,
+  STREAM_LIST_NOTE_WINDOW_MS,
+  windowIdentifier,
+  type WindowSlot,
+  type WindowWriteEvent,
+  type WindowWriterClock,
+} from '@swarm-hls-stream/shared';
 import PQueue from 'p-queue';
 
 import { MediaType, Rendition, STREAM_STATUS_LIVE, STREAM_STATUS_VOD, StreamStatus } from '../types.js';
@@ -72,11 +82,16 @@ export class StreamCatalog implements LadderRegistry {
   private publishers: BeePublisherPool;
   private signer: PrivateKey;
   private feedTopic: Topic;
+  /** The text the feed topic is made from, and the topic of the list's notes, which readers compute from it. */
+  private readonly feedTopicName: string;
   private indexStore?: CatalogIndexStore;
   private feedIndex: FeedIndex | null = null;
   private queue = new PQueue({ concurrency: 1 });
   private logger = Logger.getInstance();
   private errorHandler = ErrorHandler.getInstance();
+
+  /** Running while this process writes the list, which is standalone only. See {@link startNotes}. */
+  private notes?: ReturnType<typeof createNoteWindowWriter>;
 
   /**
    * Set when boot resumed to an index whose state it never read — the head was below the persisted
@@ -214,6 +229,7 @@ export class StreamCatalog implements LadderRegistry {
     this.publishers = publishers;
     this.signer = new PrivateKey(streamKey);
     this.feedTopic = Topic.fromString(feedTopic);
+    this.feedTopicName = feedTopic;
     this.indexStore = indexStore;
     this.masterWriter = masterWriter;
     this.rewrites = new MasterRewriteSchedule(now);
@@ -233,6 +249,68 @@ export class StreamCatalog implements LadderRegistry {
    */
   public getMsSinceIndexSaveFailed(): number | null {
     return this.indexStore?.getMsSinceSaveFailed() ?? null;
+  }
+
+  /**
+   * Starts writing the list's notes: in each 10 s window that saw a new version, and in every aligned
+   * heartbeat window once a minute, a note naming the newest index this process has stored. A viewer
+   * reads one note a window instead of polling the next feed index, which is the early ask that makes
+   * Bee skip its peers for that address. See "Time windows on Swarm" in the architecture overview.
+   *
+   * Only after {@link init}, which settles the index a note names, and only where this process writes
+   * the list. In admin mode the admin writes the list and its notes, and a second writer here would
+   * sign different notes at the same addresses.
+   *
+   * @param clock the writer's clock and timers, the system's unless a test hands its own.
+   */
+  public startNotes(clock?: WindowWriterClock): void {
+    if (this.notes !== undefined) {
+      return;
+    }
+    this.notes = createNoteWindowWriter({
+      topic: this.feedTopicName,
+      windowMs: STREAM_LIST_NOTE_WINDOW_MS,
+      heartbeatMs: STREAM_LIST_HEARTBEAT_MS,
+      newestStored: () => this.newestStored(),
+      write: (slot, payload) => this.writeNote(slot, payload),
+      onEvent: (event) => this.logNoteEvent(event),
+      clock,
+    });
+    this.notes.start();
+  }
+
+  /** Stops the note writer. Settles once the notes already being written have finished. */
+  public async stopNotes(): Promise<void> {
+    await this.notes?.stop();
+  }
+
+  /**
+   * The newest feed index whose own write finished, or -1 before any has. `feedIndex` moves only after
+   * a write's receipt, and at boot it is the head the node answered or the last index this uploader
+   * persisted after a write of its own, both stored.
+   */
+  private newestStored(): number {
+    return this.feedIndex === null ? -1 : Number(this.feedIndex.toBigInt());
+  }
+
+  /** One note, signed by the list's key over the window's identifier, direct and tried once. */
+  private async writeNote(slot: WindowSlot, payload: Uint8Array): Promise<void> {
+    const publisher = this.publisher;
+    await publisher.bee.soc
+      .makeWriter(this.signer)
+      .upload(publisher.stamp, windowIdentifier(slot), payload, { deferred: false });
+  }
+
+  private logNoteEvent(event: WindowWriteEvent): void {
+    if (event.outcome === 'failed') {
+      this.logger.warn(
+        `[StreamCatalog] List note for window ${event.window} not written, the next window carries it: ${getErrorMessage(event.error)}`,
+      );
+    } else if (event.outcome === 'written') {
+      this.logger.debug(`[StreamCatalog] List note written window=${event.window} in ${event.durationMs}ms`);
+    } else if (event.outcome === 'missed') {
+      this.logger.warn(`[StreamCatalog] List note windows ${event.fromWindow} to ${event.toWindow} passed unwritten`);
+    }
   }
 
   /**
@@ -586,8 +664,12 @@ export class StreamCatalog implements LadderRegistry {
 
     const payload = JSON.stringify(state);
     const result = await retryUntilDeadlineAsync(
-      // deferred for the same reason as the manifest feed: a direct SOC write blocks on push-sync.
-      () => feedWriter.uploadPayload(publisher.stamp, payload, { index: nextIndex, deferred: true }),
+      // Direct, so the write returns on the storer's receipt and a note may name this index at once.
+      // It was deferred to avoid blocking on push-sync, the reason the manifest feed once had too. A
+      // deferred version is only on this node when the write returns, so a note naming it would send
+      // a viewer to an index the network may not hold yet. Phase 0 measured direct receipts 84 ms after
+      // a window end at the median, 2026-10-06.
+      () => feedWriter.uploadPayload(publisher.stamp, payload, { index: nextIndex, deferred: false }),
       CATALOG_RETRY_WINDOW_MS,
     );
 
@@ -601,7 +683,7 @@ export class StreamCatalog implements LadderRegistry {
     this.logger.debug(
       `[StreamCatalog] Feed updated index=${nextIndex.toString()} entries=${state.length} bytes=${payload.length} ref=${
         result?.reference?.toHex?.() ?? '?'
-      } owner=${ownerAddr} topicHex=${this.feedTopic.toString()}`,
+      } owner=${ownerAddr} topic="${this.feedTopicName}" topicHex=${this.feedTopic.toString()}`,
     );
   }
 

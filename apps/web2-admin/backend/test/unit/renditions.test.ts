@@ -41,6 +41,7 @@ function renditionRow(over: Partial<StreamRenditionRow> = {}): StreamRenditionRo
     bandwidth: 2_800_000,
     avg_bandwidth: 2_400_000,
     manifest_index: null,
+    recording_ref: null,
     duration_seconds: null,
     updated_at: new Date('2026-09-11T11:00:00.000Z'),
     ...over,
@@ -48,7 +49,7 @@ function renditionRow(over: Partial<StreamRenditionRow> = {}): StreamRenditionRo
 }
 
 describe('toRendition', () => {
-  it('renames the two nullable columns and leaves them off when null', () => {
+  it('renames the nullable columns and leaves them off when null', () => {
     const value = toRendition(renditionRow());
 
     assert.deepEqual(value, {
@@ -61,6 +62,7 @@ describe('toRendition', () => {
     });
     assert.ok(!('index' in value), 'an unfinished rung has no index');
     assert.ok(!('duration' in value), 'and no duration');
+    assert.ok(!('recording' in value), 'and no recording');
   });
 
   it('carries index 0, which is a feed index like any other', () => {
