@@ -63,7 +63,7 @@ export class RecordingStore {
       }
       const parsed = JSON.parse(fs.readFileSync(this.filePath, 'utf-8')) as unknown;
       if (parsed === null || typeof parsed !== 'object' || Array.isArray(parsed)) {
-        this.logger.error(`[RecordingStore] ${this.filePath} does not hold a recording mapping; ignoring it`);
+        this.logger.error(`[RecordingStore] ${this.filePath} does not hold a recording mapping, so it is ignored`);
         return recordings;
       }
       for (const [topic, reference] of Object.entries(parsed)) {
