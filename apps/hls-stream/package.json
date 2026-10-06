@@ -40,7 +40,7 @@
     "e2e:batch-drain": "pnpm --filter @swarm-hls-stream/e2e test:e2e:batch-drain",
     "e2e:batch-drain-viewer": "pnpm --filter @swarm-hls-stream/e2e test:e2e:batch-drain-viewer",
     "e2e:abr-ladder": "pnpm --filter @swarm-hls-stream/e2e test:e2e:abr-ladder",
-    "e2e:master-rungs": "pnpm --filter @swarm-hls-stream/e2e test:e2e:master-rungs",
+    "e2e:list-rungs": "pnpm --filter @swarm-hls-stream/e2e test:e2e:list-rungs",
     "e2e:ladder-restored": "pnpm --filter @swarm-hls-stream/e2e test:e2e:ladder-restored",
     "e2e:rtmp": "pnpm --filter @swarm-hls-stream/e2e test:e2e:rtmp",
     "bench:latency": "pnpm --filter @swarm-hls-stream/e2e bench:latency",

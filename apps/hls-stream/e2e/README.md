@@ -252,12 +252,11 @@ deploy/scripts/drain-stage.sh --profile=<p> --portSlot=<n> --rung=1080p arm --ba
 pnpm e2e:batch-drain                # scenario L, the uploader side
 pnpm e2e:batch-drain-viewer         # V11, a viewer watching the same fault
 deploy/scripts/drain-stage.sh --profile=<p> --portSlot=<n> --rung=1080p restore
-pnpm e2e:ladder-restored            # all four rungs publish again AND the master offers all four
+pnpm e2e:ladder-restored            # all four rungs publish again AND the stream list offers all four
 ```
 
-⛔ **Run the last step from a shell that does not carry `E2E_DRAIN_ARMED`.** On an armed stage the
-master is correctly down a rung, so `master-offers-every-rung` skips rather than reporting the
-feature the drain suites exist to prove as a failure.
+The stream list keeps every rung until the broadcast ends, so `list-offers-every-rung` reads the same
+on an armed stage as on a restored one. Dropping a rung whose windows stopped is the player's.
 
 ⛔ **The agent never buys anything.** Step 1 prints a command and stops. The owner runs it from their
 own shell, and the id it returns is what step 2 takes.
@@ -346,14 +345,14 @@ runs the gates and M alone, which is the cheapest way to read it after a change 
 
 Service coverage, no faults:
 
-| file                               | proves                                                                    |
-| ---------------------------------- | ------------------------------------------------------------------------- |
-| `service/happy-path`               | gapless segments and an advancing manifest, nothing lost or broken        |
-| `service/health-endpoint`          | `/health` across live → idle                                              |
-| `service/catalog-via-gateway`      | player-visible: a `live` entry through the bee-gateway, flipping to `vod` |
-| `service/multi-stream-concurrent`  | two concurrent streams, distinct topics, each finalizing to its own VOD   |
-| `service/abr-ladder`               | every configured rung publishes, under one ladder, gapless                |
-| `service/master-offers-every-rung` | the ladder's master offers every rung the broadcast announced             |
+| file                              | proves                                                                    |
+| --------------------------------- | ------------------------------------------------------------------------- |
+| `service/happy-path`              | gapless segments and an advancing manifest, nothing lost or broken        |
+| `service/health-endpoint`         | `/health` across live → idle                                              |
+| `service/catalog-via-gateway`     | player-visible: a `live` entry through the bee-gateway, flipping to `vod` |
+| `service/multi-stream-concurrent` | two concurrent streams, distinct topics, each finalizing to its own VOD   |
+| `service/abr-ladder`              | every configured rung publishes, under one ladder, gapless                |
+| `service/list-offers-every-rung`  | the ladder's list entry offers every rung the broadcast announced         |
 
 Ingest over RTMP. Every other suite publishes over SRT unless the run sets `E2E_INGEST_PROTOCOL=rtmp`, so these are
 what sends RTMP through a real SRS in every full sitting. The publisher dials the server and stream key the admin hands

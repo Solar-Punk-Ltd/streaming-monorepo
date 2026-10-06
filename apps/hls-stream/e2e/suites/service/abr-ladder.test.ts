@@ -7,6 +7,7 @@ import {
   announcedRungs,
   isContiguous,
   ladderRungs,
+  liveWindowsWrittenByStream,
   parseUploaderLog,
   publishedRenditions,
   segmentUploads,
@@ -23,18 +24,18 @@ import { waitFor } from '../../src/harness/wait.js';
  * The baseline the ABR fault scenarios deviate from, and the counterpart to `happy-path.test.ts`,
  * which covers the single-rendition case. One publisher pushes one source stream; SRS transcodes it
  * into the configured rungs on the ABR vhost and the uploader ingests each rung as its own stream,
- * writing each to its own feed and grouping them into one ladder.
+ * writing each one's live playlist to its own time windows and grouping them into one ladder.
  *
  * ## What this can see, and what it cannot
  *
  * The uploader's own log is the assertion source for everything about the ladder's SHAPE, as it is
  * for every upload-side suite here. That makes the observable facts "which rungs published" and "did
- * their segments stay gapless". The master playlist is written to a feed rather than logged, so
- * **this suite does not assert that the master is correct**. `packages/shared/test/masterPlaylist.test.ts`
- * owns the master's text and `packages/client/test/ladderSource.test.ts` owns reading it back. Saying
- * so here rather than implying broader coverage than there is.
+ * their segments stay gapless". No master playlist is published any more: a player builds it from the
+ * renditions the stream list names, which `list-offers-every-rung` reads. Saying so here rather than
+ * implying broader coverage than there is.
  *
- * ⭐ The last case is the exception, and it reads the rung playlists themselves. Every rung of one
+ * ⭐ The last case is the exception, and it reads the rung playlists themselves, from each rung's newest
+ * live window. Every rung of one
  * ladder derives its media sequence and its `#EXT-X-PROGRAM-DATE-TIME` from a single anchor, so that
  * segment N of 360p and segment N of 1080p cover the same interval and a level switch lands where the
  * player expects. Nothing in the log can show that, because the log names each rung's own engine
@@ -153,11 +154,24 @@ describe('service — ABR ladder: every rung publishes and stays gapless', { ski
     );
   });
 
+  /** A rung that uploads segments and writes no window is a rung no viewer can find. */
+  it('writes live windows on every rung, which is what a viewer reads while the ladder is live', async () => {
+    const text = await log();
+    const windows = liveWindowsWrittenByStream(text);
+    const streamOf = new Map(announcedRungs(text).map((announce) => [announce.rung, announce.streamId]));
+
+    for (const rung of cfg.abrRungs) {
+      const streamId = streamOf.get(rung);
+      assert.ok(streamId !== undefined, `rung ${rung} never announced`);
+      assert.ok((windows.get(streamId) ?? 0) > 0, `rung ${rung} uploaded segments and wrote no live window`);
+    }
+  });
+
   /**
    * Every rung's playlist declares a sound timeline of its own, which is what makes them one ladder.
    *
    * ⛔ Last in the file on purpose. The cases above have already waited for every rung to upload
-   * several segments, so by here each rung's feed holds a playlist rather than nothing, and a rung
+   * several segments, so by here each rung's windows hold a playlist rather than nothing, and a rung
    * that is merely announced cannot make this red for a reason the suite is not about.
    *
    * ⛔ Nothing here is judged on the clock. Whether a live window still starts at the broadcast's

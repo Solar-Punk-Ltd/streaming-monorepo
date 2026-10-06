@@ -1,6 +1,6 @@
 /**
- * The playlists a broadcast actually published, fetched from its own feeds and held against the
- * manifest contract.
+ * The playlists a broadcast actually published, fetched from its own live windows and held against
+ * the manifest contract.
  *
  * `manifestContract.ts` is the rulebook and it reads text. This is what finds the text on a live
  * deployment, so a suite can assert the contract on the playlists a paid broadcast wrote instead of
@@ -10,22 +10,20 @@
  *
  * `docs/e2e-coverage.md` recorded, correctly for the log lines it looked at, that a ladder announce
  * carries the topic and the group and no owner, and concluded that either the uploader had to log
- * one or the harness had to hold `STREAM_KEY`. Neither is so. **There is one feed owner for the whole
- * uploader**: `StreamCatalog`, `MasterFeedWriter` and every `StreamUploader` build their signer from
- * the same `STREAM_KEY` (`packages/stream-uploader/src/index.ts`), so the address
- * `discoverCatalogFeed` already reads out of the `[StreamCatalog]` line owns every rung's playlist
- * feed as well. The topic comes from the rung announce, and the read is the one `e2e/browser/vod.ts`
- * already makes:
- *
- *   `GET /feeds/{owner}/{feedTopicHexOf(rawTopic)}` on the bee gateway, which answers the m3u8 itself.
+ * one or the harness had to hold `STREAM_KEY`. Neither is so. **There is one owner for the whole
+ * uploader**: `StreamCatalog` and every `StreamUploader` build their signer from the same `STREAM_KEY`
+ * (`packages/stream-uploader/src/index.ts`), so the address `discoverCatalogFeed` already reads out of
+ * the `[StreamCatalog]` line owns every rung's live windows as well. The topic comes from the rung
+ * announce, and the read is the newest window of that topic, as `liveWindows.ts` finds it.
  *
  * ## What one read covers
  *
- * The live playlist and the recording are the same feed at different indices, because `finalize`
- * publishes the closing live playlist and then the VOD manifest to the stream's own manifest feed. A
- * feed read answers with the head, so a suite reading mid-broadcast gets the live playlist and one
- * reading after the finalize gets the recording. {@link RungPlaylistParse.recording} says which
- * arrived rather than leaving a reader to guess.
+ * The live playlist only. A rung writes one window chunk every two seconds while it broadcasts and a
+ * closing one with `#EXT-X-ENDLIST` when it ends, and its recording is uploaded apart from them and
+ * named by reference in the stream list. So a read after the finalize finds the closing window while
+ * it is still within the lookback and nothing after that, and a suite that wants the recording reads
+ * it by its reference instead. {@link RungPlaylistParse.recording} still says which arrived, because
+ * a window holding a recording would be a writer fault this check should name.
  *
  * ## ⛔ Why fetching and judging are two steps
  *
@@ -54,6 +52,7 @@ import type { E2EConfig } from '../config.js';
 import { SEGMENT_ANY, type SegmentExpectation } from '../segmentLength.js';
 
 import type { Host } from './host.js';
+import { readNewestLiveWindow } from './liveWindows.js';
 import { announcedLiveTopics, announcedRungs, segmentIndicesByStream } from './logwatch.js';
 import {
   discontinuitySequenceOf,
@@ -182,12 +181,10 @@ export interface RungPlaylistReading extends RungPlaylistParse {
   failures: readonly string[];
 }
 
-/** How long one feed read is given before the parse records what the gateway did answer. */
-const PLAYLIST_READ_TIMEOUT_S = 15;
 /**
  * How long a rung is given to answer with a playlist at all, across retries.
  *
- * Spent only by a rung whose feed answered nothing usable. A gateway that is restarting answers its
+ * Spent only by a rung whose windows answered nothing usable. A gateway that is restarting answers its
  * own error envelope for a few seconds, and a suite failing on that would name the transport rather
  * than the product.
  */
@@ -518,14 +515,13 @@ async function readOneRungPlaylist(
   owner: string,
   feed: RungFeed,
 ): Promise<RungPlaylistParse> {
-  const route = `/feeds/${owner}/${feedTopicHexOf(feed.topic)}`;
   const deadline = Date.now() + PLAYLIST_RETRY_WINDOW_MS;
 
   for (;;) {
-    const body = await host
-      .localText(cfg.ports.beeGatewayApi, route, PLAYLIST_READ_TIMEOUT_S)
-      .catch((error: Error) => `no answer from the gateway: ${error.message}`);
-    const parse = rungPlaylistParse(feed, body);
+    const read = await readNewestLiveWindow(host, cfg.ports.beeGatewayApi, owner, feed.topic, Date.now()).catch(
+      (error: Error) => ({ reason: `no answer from the gateway: ${error.message}` }),
+    );
+    const parse = rungPlaylistParse(feed, 'reason' in read ? read.reason : read.playlist);
 
     if (parse.playlist !== null || Date.now() >= deadline) {
       return parse;
