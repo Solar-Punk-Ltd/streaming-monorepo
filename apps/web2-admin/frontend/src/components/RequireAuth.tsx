@@ -6,8 +6,10 @@ import { AppShell } from './AppShell';
 
 /**
  * Guards every authenticated route. The auth provider drops the user on any
- * 401, which lands here on the next render and sends the operator to /login
- * with the path they wanted so they resume where they were.
+ * 401, including the one its session check gets when the operator comes back
+ * to a tab whose session was revoked elsewhere. That lands here on the next
+ * render and sends the operator to /login with the path they wanted, so they
+ * resume where they were.
  */
 export function RequireAuth() {
   const { user, loading } = useAuth();

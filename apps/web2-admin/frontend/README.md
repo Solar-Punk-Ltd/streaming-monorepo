@@ -37,7 +37,15 @@ manual copy.
 The router is a `HashRouter`, so the console can be served from any path
 without server rewrites. Every fetch is relative (`/api/...`) and carries
 `credentials: 'same-origin'`; any unexpected 401 clears the user and the route
-guard sends the operator to `#/login`.
+guard sends the operator to `#/login`. An idle tab finds out too: while someone
+is signed in, the console asks `GET /api/auth/me` again on window focus and when
+the tab becomes visible, at most once every five seconds, so a session revoked
+from another browser shows "Your session ended. Log in again." the next time
+the operator looks at the tab. There is no timer, because every gated request
+keeps the session's idle clock running. Other tabs of the same browser are told
+at once over a `BroadcastChannel`, and a reload after a revoke shows the same
+notice. On the change-password form a 401 `unauthenticated` signs out too; only
+`invalid_credentials` means the current password was wrong.
 
 ## Running it
 
@@ -110,7 +118,7 @@ node ../../tools/app-workspace/in-copy.mjs --app apps/web2-admin -- docker build
 src/
   main.tsx      dark MUI theme + CssBaseline
   App.tsx       routes
-  auth.tsx      session context; drops the user on any 401
+  auth.tsx      session context; re-checks on focus, drops the user on any 401
   api.ts        one function per endpoint
   http.ts       getJson / sendJson / sendBytes / extractApiError
   errors.ts     snake_case API codes → sentences
