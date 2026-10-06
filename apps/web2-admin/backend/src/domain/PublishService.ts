@@ -155,7 +155,6 @@ export interface FeedWriteLog {
 /** The slice of CatalogueBatchService publishing needs: where a write goes, and where the boot check reads. */
 export type CatalogueTargets = Pick<CatalogueBatchService, 'forWrite' | 'forRead'>;
 
-/** A recording as a `vod` entry lists it: its final manifest's feed index, and how long it runs. */
 /** Where the entry says its recording is: `index` from an uploader on feeds, `recording` from one on time windows. */
 export interface EntryRecording {
   index: number | null;

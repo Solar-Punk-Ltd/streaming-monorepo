@@ -21,9 +21,10 @@ COPY packages/stream-uploader/package.json packages/stream-uploader/
 # the install dies with ERR_PNPM_WORKSPACE_PKG_NOT_FOUND. Its sources are never needed: the copy that
 # ships is the one `vendor-shared.mjs` compiled into `dist/node_modules`.
 COPY packages/shared/package.json packages/shared/
-# The same, one link further: shared links the contracts package every app shares, which the cut
-# carries into `workspace-packages/`. Its compiled copy is vendored beside shared's.
+# The same, one link further: shared links the contracts and swarm-windows packages every app shares,
+# which the cut carries into `workspace-packages/`. Their compiled copies are vendored beside shared's.
 COPY workspace-packages/contracts/package.json workspace-packages/contracts/
+COPY workspace-packages/swarm-windows/package.json workspace-packages/swarm-windows/
 
 # Two passes, because only one of them refuses.
 #

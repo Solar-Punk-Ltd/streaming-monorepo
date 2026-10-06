@@ -59,8 +59,9 @@ Live playlists are moving off feeds onto time windows, the convention the chat a
 its slot notes. Asking Bee for a chunk before it exists makes Bee skip its peers for that address
 for about a minute, so polling the next feed index delays the update it waits for. A window chunk
 sits at an address computed from the clock and is asked for once, after it is due. The convention
-lives once, in `apps/hls-stream/packages/shared/src/windows.ts`. The standalone uploader's stream list
-writes its notes on it, and nothing reads it yet.
+lives once, in `packages/swarm-windows/src/windows.ts`, a package the stack's shared package
+re-exports and the web2 admin depends on directly. Both writers of the stream list write its notes
+on it, and nothing reads it yet.
 
 - **The window.** Window `w` of length `windowMs` covers `[w * windowMs, (w + 1) * windowMs)` of
   Unix milliseconds. The writer writes window `w` once, at its end. A reader asks for it at its end
@@ -79,7 +80,7 @@ writes its notes on it, and nothing reads it yet.
 
 ### Writing windows
 
-`apps/hls-stream/packages/shared/src/windowWriter.ts` holds the writer, as pure logic with the
+`packages/swarm-windows/src/windowWriter.ts` holds the writer, as pure logic with the
 clock, the timers and the write injected. The caller's write signs the chunk and uploads it direct.
 
 - **Two writers on one schedule.** The `live` writer publishes the composed playlist in every window
@@ -116,9 +117,14 @@ key and uploaded direct. The note names the newest index whose own write finishe
 the same name from its own setting, `VITE_APP_RAW_TOPIC` in the monorepo's client and
 `catalog.topic` in the event viewer's config.
 
+The web2 admin writes the list at an event and runs the same writer from `ListNotes.ts`: the topic
+is its `FEED_TOPIC`, the key its `FEED_PRIVATE_KEY`, the newest index the highest one its
+`feed_writes` recorded, and each note goes through the node and batch the catalogue is written with.
+The admin has no clock check, so its notes trust its clock.
+
 ### Reading windows
 
-The reader core is `apps/hls-stream/packages/shared/src/windowReader.ts`, and the clock calibration
+The reader core is `packages/swarm-windows/src/windowReader.ts`, and the clock calibration
 it shares is `windowClock.ts` beside it. Both are pure logic: the read, the clock and the timers are
 injected, and the caller checks the owner's signature before a payload reaches them.
 

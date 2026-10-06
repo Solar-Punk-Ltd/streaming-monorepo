@@ -14,7 +14,4 @@ export * from './segmentSpan.js';
 export * from './streamStatus.js';
 export * from './uploaderHealth.js';
 export * from './uploaderLog.js';
-export * from './windowClock.js';
-export * from './windowReader.js';
-export * from './windows.js';
-export * from './windowWriter.js';
+export * from '@streaming-monorepo/swarm-windows';

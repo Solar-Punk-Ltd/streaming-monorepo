@@ -347,6 +347,9 @@ importers:
       '@streaming-monorepo/contracts':
         specifier: workspace:*
         version: link:../../../../packages/contracts
+      '@streaming-monorepo/swarm-windows':
+        specifier: workspace:*
+        version: link:../../../../packages/swarm-windows
       cafe-utility:
         specifier: 36.3.0
         version: 36.3.0
@@ -542,6 +545,9 @@ importers:
       '@streaming-monorepo/db-migrate':
         specifier: workspace:*
         version: link:../../../packages/db-migrate
+      '@streaming-monorepo/swarm-windows':
+        specifier: workspace:*
+        version: link:../../../packages/swarm-windows
       '@streaming-monorepo/web-auth':
         specifier: workspace:*
         version: link:../../../packages/web-auth
@@ -688,6 +694,25 @@ importers:
       '@types/pg':
         specifier: 8.23.1
         version: 8.23.1
+      tsx:
+        specifier: 4.23.13
+        version: 4.23.13
+      typescript:
+        specifier: 7.0.2
+        version: 7.0.2
+
+  packages/swarm-windows:
+    dependencies:
+      '@ethersphere/bee-js':
+        specifier: 13.1.0
+        version: 13.1.0(supports-color@7.2.0)
+      cafe-utility:
+        specifier: 36.3.0
+        version: 36.3.0
+    devDependencies:
+      '@types/node':
+        specifier: 24.13.4
+        version: 24.13.4
       tsx:
         specifier: 4.23.13
         version: 4.23.13

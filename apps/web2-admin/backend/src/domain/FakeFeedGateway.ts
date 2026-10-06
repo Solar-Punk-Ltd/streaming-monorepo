@@ -1,5 +1,7 @@
 import { createHash } from 'node:crypto';
 
+import type { WindowSlot } from '@streaming-monorepo/swarm-windows';
+
 import type {
   CatalogueRestamper,
   CatalogueTarget,
@@ -71,6 +73,9 @@ export class FakeFeedGateway implements FeedGateway, CatalogueRestamper {
   failNextThumbnail: Error | null = null;
   failNextHasReference: Error | null = null;
   failNextRestamp: Error | null = null;
+  failNextNote: Error | null = null;
+  /** Every window note of the list, in order. */
+  readonly notes: { slot: WindowSlot; payload: Uint8Array; target: CatalogueTarget | null }[] = [];
   /** Every slot and thumbnail uploaded again by a catalogue move, in order. */
   readonly restamps: { index: number; payloadText: string; target: CatalogueTarget }[] = [];
   readonly restampedThumbnails: { reference: string; fromAdmin: boolean; target: CatalogueTarget }[] = [];
@@ -128,6 +133,15 @@ export class FakeFeedGateway implements FeedGateway, CatalogueRestamper {
     const reference = createHash('sha256').update(bytes).digest('hex');
     this.references.add(reference);
     return reference;
+  }
+
+  async writeNote(slot: WindowSlot, payload: Uint8Array, target: CatalogueTarget | null): Promise<void> {
+    const failure = this.failNextNote;
+    if (failure) {
+      this.failNextNote = null;
+      throw failure;
+    }
+    this.notes.push({ slot, payload: new Uint8Array(payload), target });
   }
 
   async hasReference(reference: string): Promise<boolean> {
