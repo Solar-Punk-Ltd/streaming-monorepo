@@ -683,7 +683,7 @@ export class StreamCatalog implements LadderRegistry {
     this.logger.debug(
       `[StreamCatalog] Feed updated index=${nextIndex.toString()} entries=${state.length} bytes=${payload.length} ref=${
         result?.reference?.toHex?.() ?? '?'
-      } owner=${ownerAddr} topicHex=${this.feedTopic.toString()}`,
+      } owner=${ownerAddr} topic="${this.feedTopicName}" topicHex=${this.feedTopic.toString()}`,
     );
   }
 

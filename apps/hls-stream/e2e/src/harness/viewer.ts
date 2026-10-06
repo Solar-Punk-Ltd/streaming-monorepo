@@ -1,3 +1,12 @@
+import { FeedIndex, Identifier, Topic } from '@ethersphere/bee-js';
+import {
+  parseWindowNote,
+  STREAM_LIST_NOTE_WINDOW_MS,
+  windowIdentifier,
+  type WindowNote,
+} from '@swarm-hls-stream/shared';
+import { Binary } from 'cafe-utility';
+
 import { containerName, type E2EConfig } from '../config.js';
 
 import type { Host } from './host.js';
@@ -47,10 +56,19 @@ export function entryCarriesTopic(entry: CatalogEntry, topics: ReadonlySet<strin
 export interface CatalogFeed {
   owner: string;
   topicHex: string;
+  /**
+   * The text the topic is made from, which the list's notes are addressed by. Present only when the
+   * line that named the feed also named it, and it hashes to `topicHex`.
+   */
+  topicName?: string;
 }
 
-/** Both `[StreamCatalog]` log variants print `owner=<40hex> … topicHex=<64hex>` in that order. */
-const RE_CATALOG_FEED = /\[StreamCatalog\][^\n]*owner=([0-9a-f]{40})[^\n]*topicHex=([0-9a-f]{64})/g;
+/**
+ * Both `[StreamCatalog]` log variants print `owner=<40hex> … topicHex=<64hex>` in that order, and
+ * the newer ones `topic="<name>"` between the two.
+ */
+const RE_CATALOG_FEED =
+  /\[StreamCatalog\][^\n]*owner=([0-9a-f]{40})(?:[^\n]*?topic="([^"\n]*)")?[^\n]*topicHex=([0-9a-f]{64})/g;
 
 /**
  * How much further back to look when the recent log holds no catalog line.
@@ -76,7 +94,69 @@ export async function discoverCatalogFeed(host: Host, cfg: E2EConfig, tail: numb
         '— cannot locate the catalog feed. The uploader has never announced a stream, or its log has rotated.',
     );
   }
-  return { owner: match[1], topicHex: match[2] };
+  const [, owner, topicName, topicHex] = match;
+  if (topicName !== undefined && Topic.fromString(topicName).toHex() === topicHex) {
+    return { owner, topicHex, topicName };
+  }
+  return { owner, topicHex };
+}
+
+/** Bee answers `GET /soc/{owner}/{identifier}` with the chunk's payload, joined when it wraps more. */
+function socPath(feed: CatalogFeed, identifier: Identifier): string {
+  return `/soc/${feed.owner}/${identifier.toHex()}`;
+}
+
+function topicNameOf(feed: CatalogFeed): string {
+  if (feed.topicName === undefined) {
+    throw new Error(
+      'the stream list topic name was not in the uploader log, so its notes cannot be addressed. ' +
+        'An uploader from before the list notes logs none.',
+    );
+  }
+  return feed.topicName;
+}
+
+/**
+ * The stream list's note in one 10 s window, read through the gateway, or null when that window
+ * holds none. Ask a window only after its end plus a margin: an earlier ask makes Bee skip its
+ * peers for that address for about a minute, which is the delay the notes exist to avoid.
+ */
+export async function fetchListNote(
+  host: Host,
+  cfg: E2EConfig,
+  feed: CatalogFeed,
+  window: number,
+): Promise<WindowNote | null> {
+  const identifier = windowIdentifier({
+    topic: topicNameOf(feed),
+    kind: 'note',
+    windowMs: STREAM_LIST_NOTE_WINDOW_MS,
+    window,
+  });
+  const body = await host.localText(cfg.ports.beeGatewayApi, socPath(feed, identifier), 8);
+  return parseWindowNote(new TextEncoder().encode(body));
+}
+
+/** One version of the list, the one at feed index `index`, as a note names it. */
+export async function fetchCatalogAt(
+  host: Host,
+  cfg: E2EConfig,
+  feed: CatalogFeed,
+  index: number,
+): Promise<CatalogEntry[]> {
+  const identifier = new Identifier(
+    Binary.keccak256(
+      Binary.concatBytes(
+        Topic.fromString(topicNameOf(feed)).toUint8Array(),
+        FeedIndex.fromBigInt(BigInt(index)).toUint8Array(),
+      ),
+    ),
+  );
+  const body = JSON.parse(await host.localText(cfg.ports.beeGatewayApi, socPath(feed, identifier), 8)) as unknown;
+  if (!Array.isArray(body)) {
+    throw new Error(`the list version at index ${index} is not an array: ${JSON.stringify(body)?.slice(0, 200)}`);
+  }
+  return body as CatalogEntry[];
 }
 
 /**

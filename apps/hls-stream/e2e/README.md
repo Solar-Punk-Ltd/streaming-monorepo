@@ -350,7 +350,7 @@ Service coverage, no faults:
 | ---------------------------------- | ------------------------------------------------------------------------- |
 | `service/happy-path`               | gapless segments and an advancing manifest, nothing lost or broken        |
 | `service/health-endpoint`          | `/health` across live → idle                                              |
-| `service/catalog-via-gateway`      | player-visible: a `live` entry through the bee-gateway, flipping to `vod` |
+| `service/catalog-via-gateway`      | player-visible: a gateway `live` entry flips to `vod`, list notes name it |
 | `service/multi-stream-concurrent`  | two concurrent streams, distinct topics, each finalizing to its own VOD   |
 | `service/abr-ladder`               | every configured rung publishes, under one ladder, gapless                |
 | `service/master-offers-every-rung` | the ladder's master offers every rung the broadcast announced             |
