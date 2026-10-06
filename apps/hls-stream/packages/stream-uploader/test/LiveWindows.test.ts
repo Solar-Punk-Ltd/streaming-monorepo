@@ -582,7 +582,6 @@ describe('the end of a broadcast', () => {
     const vod = entries.at(-1)!;
     assert.equal(vod.state, 'vod');
     assert.equal(vod.recording, contentReference(recordingUpload.data));
-    assert.equal(vod.index, undefined, 'a recording on windows is named by reference, never by a feed index');
     assert.equal(vod.duration, 6);
   });
 
@@ -649,7 +648,6 @@ describe('the end of a broadcast', () => {
     const reference = contentReference(fake.segmentUploads.at(-1)!.data);
     assert.equal(renditions.at(-1)?.recording, reference);
     assert.equal(renditions.at(-1)?.duration, 4);
-    assert.equal(renditions.at(-1)?.index, undefined);
     assert.deepEqual(reports.at(-1), { state: 'vod', recording: reference, duration: 4 });
   });
 });

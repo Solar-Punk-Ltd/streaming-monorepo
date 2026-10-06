@@ -49,11 +49,9 @@ export interface StreamEntry {
   state: StreamStatus;
   mediatype: MediaType;
   timestamp: number;
-  /** Where the recording is, in an entry a writer on feeds wrote: its final manifest's feed index. */
-  index?: number;
   /**
-   * Where the recording is, in an entry a writer on time windows wrote: the reference of its recording
-   * playlist, read with `GET /bytes/<recording>`. For a ladder, its lowest finished rung's.
+   * Where the recording is: the reference of its recording playlist, read with `GET /bytes/<recording>`.
+   * For a ladder, its lowest finished rung's.
    */
   recording?: string;
   duration?: number;
@@ -592,12 +590,7 @@ export function buildLadderEntry(
   }
 
   if (finished) {
-    if (primary.recording !== undefined) {
-      entry.recording = primary.recording;
-    } else {
-      // A rung a writer on feeds finished, in a list written before windows.
-      entry.index = primary.index;
-    }
+    entry.recording = primary.recording;
     entry.duration = recordingDuration(renditions);
   }
 
@@ -607,7 +600,7 @@ export function buildLadderEntry(
 /**
  * The rungs still known not to finish once this merge is in.
  *
- * ⛔ The mark survives every later merge of its rung that carries no index, because that is what a rung
+ * ⛔ The mark survives every later merge of its rung that carries no recording, because that is what a rung
  * recovered at the next boot sends before it finalizes, and dropping the mark there would turn a
  * finished recording back into a live broadcast. It goes only once the rung has a recording to point
  * at. A rung that already has one is never marked, since the ladder can offer that recording.
@@ -646,14 +639,14 @@ function mergeRendition(existing: Rendition[], incoming: Rendition): Rendition[]
  * ⛔⛔⛔ Scenario H, caused 2026-09-01 after being an open red since 2026-08-31. A rung recovered
  * from a crash announces itself before it finalizes, and that announcement carries no recording
  * because it has not uploaded one yet. The merge replaced the finished rendition
- * wholesale, so the index recorded when the rung DID finalize was thrown away,
- * `renditions.every(r => r.index !== undefined)` went false, and **the whole finished ladder went
+ * wholesale, so what the rung recorded when it DID finalize was thrown away, the check that every
+ * rung had finished went false, and **the whole finished ladder went
  * back to `live` in the catalog**. Read off the host log: ladder `fdbd7167` finalized at 05:58:04,
  * was killed, rebooted with a clean catalog read, and finalized again at 05:59:08 when the recovery
  * timer fired. For that minute a recording that had ended was advertised as a live broadcast, and
  * the second flip paid for another catalog write.
  *
- * `recording`, `index`, `duration` and `topic` move together or not at all: they are one finished
+ * `recording`, `duration` and `topic` move together or not at all: they are one finished
  * recording of one rung, and keeping part of it would describe two. Everything the re-announce
  * genuinely knows better, the measured bitrates, is taken from it.
  *
@@ -675,7 +668,6 @@ function keepingWhatFinished(previous: Rendition | undefined, incoming: Renditio
     ...incoming,
     topic: previous.topic,
     recording: previous.recording,
-    index: previous.index,
     duration: previous.duration,
   };
 }

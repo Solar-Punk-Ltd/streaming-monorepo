@@ -43,8 +43,7 @@ export interface LadderIdentity {
 export interface RenditionAnnouncement {
   /**
    * The reference of the ladder's recording when it is one: its lowest finished rung's recording, which
-   * is what the stream list entry's own `recording` names. Null while the ladder is live, and for a
-   * finished rung that named its recording only by a feed index.
+   * is what the stream list entry's own `recording` names. Null while the ladder is live.
    */
   recording: string | null;
   /**

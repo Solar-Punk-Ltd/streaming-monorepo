@@ -877,7 +877,6 @@ describe('a rung of a declared ladder', () => {
     );
     assert.equal(session.upserts.length, 2, 'the rung still announced itself finished, which is what flips the ladder');
     assert.equal(session.upserts[1].rendition.recording, fakeRecordingReference(session.recordings[0]));
-    assert.equal(session.upserts[1].rendition.index, undefined, 'a recording on windows is never a feed index');
   });
 
   /**

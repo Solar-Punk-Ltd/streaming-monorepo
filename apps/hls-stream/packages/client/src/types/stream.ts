@@ -5,13 +5,19 @@ export {
   MEDIA_TYPE_AUDIO,
   MEDIA_TYPE_VIDEO,
   type MediaType,
-  type Rendition,
   STREAM_STATUS_LIVE,
   STREAM_STATUS_SCHEDULED,
   STREAM_STATUS_VOD,
 } from '@swarm-hls-stream/shared';
 
-import type { MediaType, Rendition } from '@swarm-hls-stream/shared';
+import type { MediaType, Rendition as WrittenRendition } from '@swarm-hls-stream/shared';
+
+/**
+ * A rung as this viewer reads it. No writer names a recording by feed index any more, but this viewer still
+ * reads the `index` older list versions carry, until it moves onto recordings in its own phase.
+ * Temporary: phase 3 removes this shim when the client reads recordings.
+ */
+export type Rendition = WrittenRendition & { index?: number };
 
 /** Known values are `StreamStatus`. Future publisher values remain valid and are treated as not-live. */
 export type StreamState = string;
