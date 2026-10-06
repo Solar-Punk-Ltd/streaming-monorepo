@@ -146,10 +146,16 @@ export function createProfile(body: CreateProfileBody, signal?: AbortSignal): Pr
 // carrying them in this type would only promise something the manager ignores.
 export type UpdateProfileBody = Omit<
   CreateProfileBody,
-  'name' | 'host' | 'srt_passphrase' | 'engine_settings' | 'stack_settings'
+  'name' | 'host' | 'feed_topic' | 'srt_passphrase' | 'engine_settings' | 'stack_settings'
 > & {
   /** The revision the drawer loaded the notes at, sent along with an edited note. */
   notes_revision?: number;
+  /**
+   * The PUT replaces it as it does every editable field, so absent and null
+   * both put the deployment back on its stack version's own topic. The drawer
+   * sends the one it holds, and null for a field the operator emptied.
+   */
+  feed_topic?: string | null;
   /**
    * Absent keeps the passphrase the deployment holds, because no page is given
    * the value and so no page can send it back. An explicit null is the
@@ -169,6 +175,8 @@ export interface CreateGroupBody {
   host?: string;
   components?: string[];
   feed_owner?: string;
+  /** Absent is the stack version's own topic. */
+  feed_topic?: string;
   private_key?: string;
   public_key?: string;
   stamp_id?: string;
@@ -192,7 +200,11 @@ export function createDeploymentGroup(body: CreateGroupBody, signal?: AbortSigna
 export interface UpdateGroupConfigBody {
   notes?: string | null;
   feed_owner?: string;
-  feed_topic?: string;
+  /**
+   * `null` puts every member back on its stack version's own topic, which only
+   * an explicit null does: the PATCH reads `undefined` as "leave it alone".
+   */
+  feed_topic?: string | null;
   stamp_id?: string;
   /**
    * `null` puts the group back on the host-wide passphrase.

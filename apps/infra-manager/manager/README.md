@@ -165,6 +165,20 @@ to `POST /groups`, where it makes the group an ABR node pool, and a create body
 carrying it is refused. `manager/src/schemas/profile.ts` is the whole contract
 and its rules are the ones the route enforces.
 
+`feed_topic` is the topic of the deployment's feed. The stack's deploy script
+writes it as `STREAM_LIST_TOPIC`, which an uploader publishes its stream list
+under, and as `VITE_APP_RAW_TOPIC`, which a player builds into its bundle
+beside the owner in `feed_owner`. `POST /profiles`, `PUT /profiles/:name`,
+`POST /groups` and `PATCH /groups/:id/config` hold it to the shape that script
+holds `--feed-topic` to, `^[A-Za-z0-9._-]{1,64}$` (`FEED_TOPIC_RE` in
+`common/src/feedTopic.ts`, which the UI checks too), and answer any other with
+`400 validation_error` and one sentence. Absent or null leaves the deployment
+on its stack version's own topic, `swarm-stream` unless the version sets
+another. A `PUT` clears it when the body leaves it out or sends null, as it
+does every editable field, and the group `PATCH` clears it on null alone. Both
+edits redeploy every service, so a changed or cleared topic is in the player's
+bundle once the deploy lands. True on 2026-10-06.
+
 `GET /profiles/:name/uploader-health` is read by the deployment page every ten
 seconds and, since 2026-09-25, by the overview and the Deployments page every
 thirty seconds for each running deployment with an uploader container, so their
