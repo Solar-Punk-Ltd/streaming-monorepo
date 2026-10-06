@@ -135,6 +135,16 @@ export async function signIn(username: string, password: string): Promise<SignIn
   };
 }
 
+/**
+ * Whether the session is still alive, asked again when the operator comes back
+ * to the tab. Behind the gate on purpose: a 401 here is a session that ended,
+ * so it goes through the fetch wrapper's sign-out like any other.
+ */
+export async function checkSession(): Promise<User> {
+  const body = await getJson<MeResponse>(`${API}/auth/me`);
+  return body.user;
+}
+
 export function logout(): Promise<void> {
   return sendEmpty(`${API}/auth/logout`);
 }
