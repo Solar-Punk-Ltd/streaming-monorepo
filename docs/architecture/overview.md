@@ -60,8 +60,8 @@ its slot notes. Asking Bee for a chunk before it exists makes Bee skip its peers
 for about a minute, so polling the next feed index delays the update it waits for. A window chunk
 sits at an address computed from the clock and is asked for once, after it is due. The convention
 lives once, in `packages/swarm-windows/src/windows.ts`, a package the stack's shared package
-re-exports and the web2 admin depends on directly. The standalone uploader's stream list
-writes its notes on it, and nothing reads it yet.
+re-exports and the web2 admin depends on directly. Both writers of the stream list write its notes
+on it, and nothing reads it yet.
 
 - **The window.** Window `w` of length `windowMs` covers `[w * windowMs, (w + 1) * windowMs)` of
   Unix milliseconds. The writer writes window `w` once, at its end. A reader asks for it at its end
@@ -116,6 +116,11 @@ list's topic name (`STREAM_LIST_TOPIC`, the text the feed topic is made from), s
 key and uploaded direct. The note names the newest index whose own write finished. A reader takes
 the same name from its own setting, `VITE_APP_RAW_TOPIC` in the monorepo's client and
 `catalog.topic` in the event viewer's config.
+
+The web2 admin writes the list at an event and runs the same writer from `ListNotes.ts`: the topic
+is its `FEED_TOPIC`, the key its `FEED_PRIVATE_KEY`, the newest index the highest one its
+`feed_writes` recorded, and each note goes through the node and batch the catalogue is written with.
+The admin has no clock check, so its notes trust its clock.
 
 ### Reading windows
 

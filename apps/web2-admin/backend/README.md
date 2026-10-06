@@ -269,10 +269,27 @@ env file or held in memory, so a new designation or a moved node takes effect on
 the next write.
 
 Each version of the list is uploaded direct, so a write returns on the storer's
-receipt rather than once the admin's node alone holds it. The admin does not
-write the list's window notes yet, which the uploader's own list writer does
-when it runs without an admin (`docs/architecture/overview.md`, "The stream
+receipt rather than once the admin's node alone holds it. Then a note names it:
+`src/domain/ListNotes.ts` runs one note writer from
+`@streaming-monorepo/swarm-windows` for the list, the same code the standalone
+uploader's list writer runs (`docs/architecture/overview.md`, "The stream
 list's notes").
+
+- A note is a single owner chunk in a 10 s window, signed by `FEED_PRIVATE_KEY`
+  like the list, at the identifier `<FEED_TOPIC>/note/10000/<window>`, with the
+  payload `{"v":1,"newest":<index>,"writtenAt":<ms>}`. It goes through the node
+  and batch the catalogue is written with, read before each note, and is
+  uploaded direct and tried once.
+- `newest` is the highest index recorded in `feed_writes` by this feed's
+  writes: read once at boot, after the boot check, then moved by every record.
+  A version whose write or record failed is never named, and it is -1 while
+  nothing is recorded.
+- A note is written at the end of a window that saw a new version, and in every
+  sixth window as a heartbeat with no change. A failed note is not retried at
+  its address, and the next window carries the same news.
+- It starts with the admin once the boot check has run and stops on shutdown
+  after the API closes. With no catalogue stamp to write through it writes
+  nothing and logs each window it could not write.
 
 The admin keeps the batch it actually writes with, since a batch stamps the
 chunks it wrote and the feed's history is those chunks. Migration `013` adds
@@ -971,3 +988,9 @@ SELECT at, action, details FROM audit_log
   unchanged one at debug.
 - **Sessions are unbounded per user** and pruned on sign-in and by a daily
   sweep.
+- **The list's notes trust the admin's clock.** The window convention asks a
+  writer to hold its windows while its clock is more than 250 ms off the time
+  servers, and the admin has no such check, so its note writer is given none
+  and writes whatever its clock says. A
+  clock that runs fast or slow puts every note in another window than readers
+  ask for, and a note in the wrong window looks like a list that is not moving.

@@ -13,6 +13,13 @@ import { after, before, beforeEach, describe, it } from 'node:test';
 
 import { Bee, Bytes, ChunkSplitter, Identifier, PrivateKey } from '@ethersphere/bee-js';
 
+import {
+  encodeWindowNote,
+  parseWindowNote,
+  STREAM_LIST_NOTE_WINDOW_MS,
+  windowAddress,
+} from '@streaming-monorepo/swarm-windows';
+
 import { BeeFeedGateway } from '../../src/domain/BeeFeedGateway.js';
 import { encodeFeedPayload } from '../../src/domain/FeedGateway.js';
 
@@ -215,5 +222,32 @@ describe('write', () => {
 
     assert.ok(bee.deferredHeaders.length >= 3, 'two slots and the data the larger one wraps');
     assert.deepEqual(new Set(bee.deferredHeaders), new Set(['false']));
+  });
+});
+
+/**
+ * A stream list note: a single owner chunk signed by the feed key over the window's identifier, stamped with the
+ * catalogue target's batch and uploaded direct, at the address every reader computes from the list's topic name.
+ */
+describe('writeNote', () => {
+  it('uploads the note direct, as the feed key, at the window address of the list topic', async () => {
+    bee.deferredHeaders.length = 0;
+    const slot = {
+      topic: 'swarm-stream',
+      kind: 'note' as const,
+      windowMs: STREAM_LIST_NOTE_WINDOW_MS,
+      window: 179379366,
+    };
+    const payload = encodeWindowNote({ newest: 214, writtenAt: 1793793670012 });
+
+    await gateway.writeNote(slot, payload, old());
+
+    const owner = new PrivateKey(KEY).publicKey().address();
+    const [upload] = bee.under(OLD, 'soc');
+    assert.equal(upload?.address, windowAddress(slot, owner).toHex());
+    assert.deepEqual(bee.deferredHeaders, ['false']);
+    // A stored single owner chunk is its identifier (32), its signature (65), the span (8) and the payload.
+    const note = parseWindowNote(upload!.bytes.slice(32 + 65 + 8));
+    assert.deepEqual(note, { newest: 214, writtenAt: 1793793670012 });
   });
 });

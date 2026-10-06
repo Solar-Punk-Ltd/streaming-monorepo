@@ -1,6 +1,8 @@
+import type { WindowSlot } from '@streaming-monorepo/swarm-windows';
+
 /**
  * Everything this backend does to Swarm, behind one interface: read the stream
- * list feed, write it back, upload a thumbnail. The bee-js implementation is
+ * list feed, write it back, write the list's window notes, upload a thumbnail. The bee-js implementation is
  * BeeFeedGateway; FakeFeedGateway is an in-memory stand-in for unit tests and
  * for local runs with FEED_GATEWAY=fake.
  */
@@ -104,6 +106,13 @@ export interface FeedGateway {
    * reference hex.
    */
   write(payloadText: string, index: number, target: CatalogueTarget | null): Promise<string>;
+  /**
+   * Writes one window note of the list: a single owner chunk signed by the feed
+   * key over the window's identifier, stamped with the target's batch and
+   * uploaded direct, so it resolves on the storer's receipt. Tried once, since a
+   * window is never written twice.
+   */
+  writeNote(slot: WindowSlot, payload: Uint8Array, target: CatalogueTarget | null): Promise<void>;
   /** Uploads image bytes, stamped with the target's batch, and returns the Swarm reference hex. */
   uploadThumbnail(
     bytes: Uint8Array,

@@ -545,6 +545,9 @@ importers:
       '@streaming-monorepo/db-migrate':
         specifier: workspace:*
         version: link:../../../packages/db-migrate
+      '@streaming-monorepo/swarm-windows':
+        specifier: workspace:*
+        version: link:../../../packages/swarm-windows
       '@streaming-monorepo/web-auth':
         specifier: workspace:*
         version: link:../../../packages/web-auth

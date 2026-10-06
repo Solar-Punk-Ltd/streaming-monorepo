@@ -1,5 +1,7 @@
 import { Bee, BeeResponseError, Bytes, FeedIndex, Identifier, PrivateKey, Reference, Topic } from '@ethersphere/bee-js';
 
+import { windowIdentifier, type WindowSlot } from '@streaming-monorepo/swarm-windows';
+
 import { getErrorMessage } from '../utils/errorUtils.js';
 
 import { withoutCatalogueNode } from './catalogueNodeText.js';
@@ -116,6 +118,13 @@ export class BeeFeedGateway implements FeedGateway, CatalogueRestamper {
       `[BeeFeedGateway] Wrote feed index=${index} bytes=${payload.length} batch=${batchId.slice(0, 8)}… ref=${result.reference.toHex()}`,
     );
     return result.reference.toHex();
+  }
+
+  async writeNote(slot: WindowSlot, payload: Uint8Array, target: CatalogueTarget | null): Promise<void> {
+    const { batchId } = required(target);
+    await this.bee(target)
+      .soc.makeWriter(this.signer)
+      .upload(batchId, windowIdentifier(slot), payload, { deferred: false });
   }
 
   async uploadThumbnail(

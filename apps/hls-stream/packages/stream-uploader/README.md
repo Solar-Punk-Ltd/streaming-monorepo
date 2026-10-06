@@ -512,7 +512,9 @@ which is the early ask that makes Bee skip its peers for that address for about 
 - A version whose write failed is never named. A note whose write failed is not retried at its
   address, and the next window carries the same news.
 - The note writer starts once the boot has read the feed head and stops on shutdown after the
-  streams. In admin mode it never starts, because the admin writes the list.
+  streams. In admin mode it never starts, because the admin writes the list and its notes with the
+  same writer, from `@streaming-monorepo/swarm-windows`, which this package reaches through
+  `@swarm-hls-stream/shared`.
 
 ## Prerequisites
 
