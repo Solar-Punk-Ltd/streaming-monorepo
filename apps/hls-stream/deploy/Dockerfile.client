@@ -36,19 +36,22 @@ RUN corepack enable && corepack prepare pnpm@12.4.1+sha512.2e81e399d73fe8390dab2
 
 # Workspace lockfile + just the package manifests first, for layer caching. The trailing "..." in
 # the filter below means "and its workspace dependencies", so the shared manifest has to be here
-# too or the install resolves a link target that does not exist. So does the manifest of the
-# contracts package shared links, which the cut carries into `workspace-packages/`.
+# too or the install resolves a link target that does not exist. So do the manifests of the
+# contracts and swarm-windows packages shared links, which the cut carries into `workspace-packages/`.
 COPY package.json pnpm-lock.yaml pnpm-workspace.yaml ./
 COPY packages/client/package.json packages/client/
 COPY packages/shared/package.json packages/shared/
 COPY workspace-packages/contracts/package.json workspace-packages/contracts/
+COPY workspace-packages/swarm-windows/package.json workspace-packages/swarm-windows/
 
 RUN pnpm install --frozen-lockfile --filter "@swarm-hls-stream/client..."
 
 # Now the sources, separate layer so manifest-only changes don't bust install. Shared is consumed
 # as TypeScript, with no build of its own, so vite compiles it as part of the client bundle. Contracts
-# is read the same way, through its `default` export condition, which names its sources.
+# and swarm-windows are read the same way, through their `default` export condition, which names
+# their sources.
 COPY workspace-packages/contracts workspace-packages/contracts
+COPY workspace-packages/swarm-windows workspace-packages/swarm-windows
 COPY packages/shared packages/shared
 COPY packages/client packages/client
 
