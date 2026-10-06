@@ -40,6 +40,7 @@ import { ContainersCard } from './ContainersCard';
 import { DeploymentHeader } from './DeploymentHeader';
 import { DeploymentSettingsCard } from './DeploymentSettingsCard';
 import { EngineCard } from './EngineCard';
+import { versionFeedTopic } from './feedTopicText';
 import { usePublishUrl } from './usePublishUrl';
 import { useIngestHealth } from './useIngestHealth';
 import { useUploaderHealth } from './useUploaderHealth';
@@ -172,6 +173,7 @@ function DeploymentBody({ profile, focus, bee }: { profile: Profile; focus: Depl
   const watchUrl = clientUrl(profile, serverHost);
   const streamers = streamersOf(profiles ?? []);
   const streamer = streamerFor(profile.feed_owner, streamers);
+  const versionTopic = versionFeedTopic(settings.catalog?.entries);
 
   const checklistInput: ChecklistInput = {
     profile,
@@ -290,7 +292,13 @@ function DeploymentBody({ profile, focus, bee }: { profile: Profile; focus: Depl
           <DeploymentSettingsCard profile={profile} load={settings} onSaved={reload} reveal={settingsReveal} />
 
           {watchUrl && (
-            <WatchCard url={watchUrl} feedOwner={profile.feed_owner} streamerName={streamer?.name ?? null} />
+            <WatchCard
+              url={watchUrl}
+              feedOwner={profile.feed_owner}
+              feedTopic={profile.feed_topic}
+              versionTopic={versionTopic}
+              streamerName={streamer?.name ?? null}
+            />
           )}
 
           {bee && (
@@ -322,6 +330,7 @@ function DeploymentBody({ profile, focus, bee }: { profile: Profile; focus: Depl
             hostPassphrase={hostPassphrase}
             beeRpcEndpoint={beeRpcEndpoint}
             streamerName={streamer?.name ?? null}
+            versionTopic={versionTopic}
             stampHealth={stampHealth}
           />
 

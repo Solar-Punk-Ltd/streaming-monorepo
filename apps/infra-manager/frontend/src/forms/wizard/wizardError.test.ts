@@ -140,6 +140,35 @@ describe('what is wrong with the segment length', () => {
   });
 });
 
+describe('what is wrong with the feed topic', () => {
+  const OWNER = '0x1111111111111111111111111111111111111111';
+  const SHAPE = 'Feed topic must be letters, digits, dot, underscore or hyphen, at most 64 characters';
+
+  const settings = (goal: 'viewer' | 'custom' | 'stream', feedTopic: string): WizardState => ({
+    ...initialWizardState({ goal }, context),
+    step: 3,
+    name: 'watch1',
+    feedMode: 'paste',
+    feedOwner: OWNER,
+    feedTopic,
+  });
+
+  it('stops the operator moving on, in one sentence, on a topic the stack would refuse', () => {
+    assert.equal(wizardError(settings('viewer', 'my stream'), context), SHAPE);
+    assert.equal(wizardError(settings('viewer', 'a'.repeat(65)), context), SHAPE);
+  });
+
+  it('lets an empty field through, which is the stack version’s own topic', () => {
+    assert.equal(wizardError(settings('viewer', ''), context), null);
+    assert.equal(wizardError(settings('viewer', 'brand.catalog_1'), context), null);
+  });
+
+  it('asks it of a custom deployment that runs the client, and not of a stream, which runs none', () => {
+    assert.equal(wizardError(settings('custom', 'my stream'), context), SHAPE);
+    assert.equal(wizardError(settings('stream', 'my stream'), context), null);
+  });
+});
+
 describe('the footer while a deployment is being created', () => {
   it('stops claiming the name is taken by the deployment being created', () => {
     // The manager announces a created deployment on the events stream before

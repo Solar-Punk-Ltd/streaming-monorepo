@@ -8,6 +8,7 @@ import {
 
 import {
   addressProblem,
+  feedTopicProblem,
   groupSizeProblem,
   hostProblem,
   nameProblem,
@@ -164,6 +165,8 @@ function settingsError(state: WizardState, context: WizardContext): string | nul
       const problem = addressProblem(state.feedOwner);
       if (problem) return problem;
     }
+    const topic = feedTopicProblem(state.feedTopic);
+    if (topic) return topic;
   }
 
   if (offersSegmentLength(state)) {

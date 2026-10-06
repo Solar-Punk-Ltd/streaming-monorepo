@@ -83,6 +83,8 @@ export interface WizardState {
   /** Profile name of the stream to follow, when it is one on this manager. */
   feedStreamer: string;
   feedOwner: string;
+  /** The topic that stream's feed is under. Empty sends none, which is the stack version's own. */
+  feedTopic: string;
   poolMode: SourceChoice;
   poolId: number | null;
   poolString: string;
@@ -234,6 +236,7 @@ export function initialWizardState(prefill: WizardPrefill | undefined, context: 
     feedMode: prefill?.feedStreamer || streams.length > 0 ? 'pick' : 'paste',
     feedStreamer: prefilledStream,
     feedOwner: '',
+    feedTopic: '',
     poolMode: prefilledPool != null ? 'pick' : 'paste',
     poolId: prefilledPool,
     poolString: '',

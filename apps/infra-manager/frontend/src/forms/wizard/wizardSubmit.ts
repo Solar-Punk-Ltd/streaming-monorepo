@@ -109,6 +109,12 @@ function feedOwnerOf(state: WizardState, context: WizardContext): string | undef
   return streamer?.public_key ?? undefined;
 }
 
+/** The topic of that feed, or nothing for the stack version's own. */
+function feedTopicOf(state: WizardState): string | undefined {
+  if (!needsFeedOwner(state)) return undefined;
+  return state.feedTopic.trim() || undefined;
+}
+
 /**
  * The stack settings a create sends: the ones typed under Advanced settings,
  * then the Web2 admin group's keys. A token of the deployment's own is the
@@ -131,6 +137,7 @@ function sharedBody(state: WizardState, context: WizardContext) {
   return {
     notes: notesOf(state),
     feed_owner: feedOwnerOf(state, context),
+    feed_topic: feedTopicOf(state),
     private_key: key || undefined,
     public_key: (key && addressOfStreamKey(key)) || undefined,
     srt_passphrase: passphrase ?? undefined,
@@ -181,6 +188,7 @@ function kindBody(state: WizardState, context: WizardContext): Omit<CreateProfil
       ...shapeBody(state),
       notes: shared.notes,
       feed_owner: shared.feed_owner,
+      feed_topic: shared.feed_topic,
       stack_version_id: shared.stack_version_id,
       stack_settings: shared.stack_settings,
     };

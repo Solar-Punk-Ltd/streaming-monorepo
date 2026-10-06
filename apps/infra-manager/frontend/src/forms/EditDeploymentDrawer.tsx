@@ -25,6 +25,7 @@ import {
   type DeploymentEdits,
 } from './deploymentEdits';
 import { EditDrawerFrame } from './EditDrawerFrame';
+import { FeedTopicField } from './FeedTopicField';
 import { FixedAtCreation } from './FixedAtCreation';
 import { FormField, messageIdFor } from './FormField';
 import { PassphraseField } from './PassphraseField';
@@ -219,6 +220,10 @@ export function EditDeploymentDrawer({ name, onClose }: { name: string; onClose:
             }}
           />
         </FormField>
+      )}
+
+      {shown.feedTopic && (
+        <FeedTopicField id="edit-feed-topic" value={edits.feedTopic} onChange={(feedTopic) => update({ feedTopic })} />
       )}
 
       <FormField label="Notes" error={notesProblem(edits.notes)} htmlFor="edit-notes">

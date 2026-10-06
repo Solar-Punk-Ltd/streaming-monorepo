@@ -68,7 +68,9 @@ The user supplies a group name (e.g. `loadtest`). Members are named `${groupName
 All form fields filled in group mode are applied verbatim to every member:
 
 - `kind`, `components`, `host`, `notes`
-- `feed_owner`, `feed_topic` (when `client` is selected)
+- `feed_owner`, `feed_topic` (when `client` is selected). The topic is optional and held to the
+  stack's `^[A-Za-z0-9._-]{1,64}$`. Since 2026-10-06 **Edit shared settings** asks for it too, and
+  emptying it there sends null, which puts every member back on its version's own topic
 - `private_key`, `stamp_id` (when `stream-uploader` is selected), and `public_key` is derived
 - `srt_passphrase`, so every member takes the same SRT passphrase
 - `node_mode`, `rpc_endpoint_source` and `rpc_endpoint`, one chain answer for the whole group. A
