@@ -98,7 +98,10 @@ describe('a state report, as the admin reads it', () => {
   });
 
   it('reads a duration sent as text or as a one-element list as that number, as the admin always has', () => {
-    assert.equal(streamStateReportSchema.parse({ state: 'vod', recording: RECORDING, duration: '12.5' }).duration, 12.5);
+    assert.equal(
+      streamStateReportSchema.parse({ state: 'vod', recording: RECORDING, duration: '12.5' }).duration,
+      12.5,
+    );
     assert.equal(streamStateReportSchema.parse({ state: 'vod', recording: RECORDING, duration: [3] }).duration, 3);
   });
 
