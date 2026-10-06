@@ -6,6 +6,7 @@
  * reconnect, and a build that accepts every one is the takeover hole itself.
  */
 
+import { LIVE_PLAYLIST_WINDOW_MS } from '@swarm-hls-stream/shared';
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 
@@ -15,11 +16,14 @@ import { ANONYMOUS_CLAIMANT, MEDIA_TYPE_VIDEO, REJECT_DRAINING, STREAM_STATUS_VO
 
 import { FakeClock } from './helpers/fakeClock.js';
 import {
+  advanceUntil,
   makeFakeRecoveryStore,
   makeRecordingCatalog,
   makeRecoveredState,
   makeTestOrchestrator,
+  onTheFakeClock,
   toRecoveryFileId,
+  untilSettled,
 } from './helpers/fakes.js';
 import { waitAndConfirmNothingHappened, waitFor } from './helpers/waiting.js';
 
@@ -48,22 +52,50 @@ interface PublishedEntry {
 
 interface Harness {
   orch: StreamOrchestrator;
+  /** The clock the orchestrator and its live windows share, or none for a case on real time. */
+  clock?: FakeClock;
   /** Every catalog write, so a finalize of the live session is observable as the VOD it publishes. */
   published: PublishedEntry[];
   /** Every persisted state. Each session owns a fresh feed topic, which is what tells their writes apart. */
   saved: StreamState[];
 }
 
+/**
+ * The orchestrator's timers and its live windows on one fake clock, at the real window length,
+ * because several cases jump ten stall windows at once and at the test length that one jump fires
+ * more window timers than the fake clock's runaway ceiling allows.
+ */
+function onTheClock(clock: FakeClock | undefined): Partial<ReturnType<typeof onTheFakeClock>> {
+  return clock ? onTheFakeClock(clock, LIVE_PLAYLIST_WINDOW_MS) : {};
+}
+
 function makeHarness(clock?: FakeClock): Harness {
   const published: PublishedEntry[] = [];
   const saved: StreamState[] = [];
   const orch = makeTestOrchestrator(
-    { segmentStallMs: STALL_MS, orphanReapMs: NEVER_REAP_MS, clock },
+    { segmentStallMs: STALL_MS, orphanReapMs: NEVER_REAP_MS, ...onTheClock(clock) },
     {},
     makeFakeRecoveryStore({ save: (_streamId: string, state: StreamState) => saved.push(state) }),
     makeRecordingCatalog(published as unknown[]),
   );
-  return { orch, published, saved };
+  return { orch, clock, published, saved };
+}
+
+/**
+ * Wait until `condition` holds: by stepping the harness's fake clock a window at a time, since a
+ * finalize there waits on a window that ends only when the clock moves, or on real time without one.
+ */
+async function settled({ clock }: Harness, condition: () => boolean): Promise<void> {
+  if (clock) {
+    await advanceUntil(clock, condition, LIVE_PLAYLIST_WINDOW_MS);
+    return;
+  }
+  await waitFor(condition, SETTLE_CEILING_MS);
+}
+
+/** Stop every stream, stepping the fake clock for the closing windows the finalizes wait on. */
+async function finish({ orch, clock }: Harness): Promise<void> {
+  await (clock ? untilSettled(clock, orch.cleanup(), LIVE_PLAYLIST_WINDOW_MS) : orch.cleanup());
 }
 
 function hasFinalized(published: readonly PublishedEntry[]): boolean {
@@ -89,7 +121,7 @@ describe('taking over a stream id that is already being published', () => {
     const { orch, published } = harness;
 
     assert.equal(orch.startStream(STREAM_ID, MEDIA_TYPE_VIDEO, { address: BROADCASTER }), true);
-    await waitFor(() => orch.getActiveStreamCount() === 1, SETTLE_CEILING_MS);
+    await settled(harness, () => orch.getActiveStreamCount() === 1);
     const broadcasterTopic = await publishOneSegment(harness, 0);
 
     assert.equal(
@@ -109,7 +141,7 @@ describe('taking over a stream id that is already being published', () => {
       'the session still publishing under this id must be the one that was there first',
     );
 
-    await orch.cleanup();
+    await finish(harness);
   });
 
   /**
@@ -127,7 +159,7 @@ describe('taking over a stream id that is already being published', () => {
     const { orch, published } = harness;
 
     assert.equal(orch.startStream(STREAM_ID, MEDIA_TYPE_VIDEO, { address: BROADCASTER }), true);
-    await waitFor(() => orch.getActiveStreamCount() === 1, SETTLE_CEILING_MS);
+    await settled(harness, () => orch.getActiveStreamCount() === 1);
     const firstTopic = await publishOneSegment(harness, 0);
 
     assert.equal(
@@ -144,7 +176,7 @@ describe('taking over a stream id that is already being published', () => {
     );
     await waitAndConfirmNothingHappened(() => !hasFinalized(published), NOTHING_HAPPENED_MS);
 
-    await orch.cleanup();
+    await finish(harness);
   });
 
   /**
@@ -161,7 +193,7 @@ describe('taking over a stream id that is already being published', () => {
     const { orch, published } = harness;
 
     assert.equal(orch.startStream(STREAM_ID, MEDIA_TYPE_VIDEO, { address: BROADCASTER }), true);
-    await waitFor(() => orch.getActiveStreamCount() === 1, SETTLE_CEILING_MS);
+    await settled(harness, () => orch.getActiveStreamCount() === 1);
     const firstTopic = await publishOneSegment(harness, 0);
 
     await clock.advance(STALL_MS + 1);
@@ -176,14 +208,14 @@ describe('taking over a stream id that is already being published', () => {
     // the incumbent coming back, so the incumbent's session is finalized and the newcomer publishes
     // into a recording of its own. Joining instead would put one publisher's media inside another's
     // recording, which is what the window is least entitled to do.
-    await waitFor(() => hasFinalized(published), SETTLE_CEILING_MS);
+    await settled(harness, () => hasFinalized(published));
     assert.notEqual(
       await publishOneSegment(harness, 1),
       firstTopic,
       'the newcomer carried on the incumbent’s broadcast rather than starting one of its own',
     );
 
-    await orch.cleanup();
+    await finish(harness);
   });
 
   /**
@@ -193,10 +225,11 @@ describe('taking over a stream id that is already being published', () => {
    */
   it('still refuses a stranger one millisecond short of the stall window', async () => {
     const clock = new FakeClock();
-    const { orch } = makeHarness(clock);
+    const harness = makeHarness(clock);
+    const { orch } = harness;
 
     assert.equal(orch.startStream(STREAM_ID, MEDIA_TYPE_VIDEO, { address: BROADCASTER }), true);
-    await waitFor(() => orch.getActiveStreamCount() === 1, SETTLE_CEILING_MS);
+    await settled(harness, () => orch.getActiveStreamCount() === 1);
 
     await clock.advance(STALL_MS - 1);
 
@@ -206,7 +239,7 @@ describe('taking over a stream id that is already being published', () => {
       'the stall window must be reached before a stranger may take the id',
     );
 
-    await orch.cleanup();
+    await finish(harness);
   });
 
   /**
@@ -224,14 +257,14 @@ describe('taking over a stream id that is already being published', () => {
     const { orch, published } = harness;
 
     assert.equal(orch.startStream(STREAM_ID, MEDIA_TYPE_VIDEO), true);
-    await waitFor(() => orch.getActiveStreamCount() === 1, SETTLE_CEILING_MS);
+    await settled(harness, () => orch.getActiveStreamCount() === 1);
     const firstTopic = await publishOneSegment(harness, 0);
 
     assert.equal(orch.startStream(STREAM_ID, MEDIA_TYPE_VIDEO), true, 'no evidence must not mean refused');
     assert.equal(await publishOneSegment(harness, 1), firstTopic, 'and the announce joined the live session');
     await waitAndConfirmNothingHappened(() => !hasFinalized(published), NOTHING_HAPPENED_MS);
 
-    await orch.cleanup();
+    await finish(harness);
   });
 
   /**
@@ -251,14 +284,14 @@ describe('taking over a stream id that is already being published', () => {
     const { orch, published } = harness;
 
     assert.equal(orch.startStream(STREAM_ID, MEDIA_TYPE_VIDEO), true);
-    await waitFor(() => orch.getActiveStreamCount() === 1, SETTLE_CEILING_MS);
+    await settled(harness, () => orch.getActiveStreamCount() === 1);
     const firstTopic = await publishOneSegment(harness, 0);
 
     assert.equal(orch.startStream(STREAM_ID, MEDIA_TYPE_VIDEO, { address: BROADCASTER }), true);
     assert.equal(await publishOneSegment(harness, 1), firstTopic, 'and the announce joined the live session');
     await waitAndConfirmNothingHappened(() => !hasFinalized(published), NOTHING_HAPPENED_MS);
 
-    await orch.cleanup();
+    await finish(harness);
   });
 
   it('allows a takeover when only the incumbent was named', async () => {
@@ -266,14 +299,14 @@ describe('taking over a stream id that is already being published', () => {
     const { orch, published } = harness;
 
     assert.equal(orch.startStream(STREAM_ID, MEDIA_TYPE_VIDEO, { address: BROADCASTER }), true);
-    await waitFor(() => orch.getActiveStreamCount() === 1, SETTLE_CEILING_MS);
+    await settled(harness, () => orch.getActiveStreamCount() === 1);
     const firstTopic = await publishOneSegment(harness, 0);
 
     assert.equal(orch.startStream(STREAM_ID, MEDIA_TYPE_VIDEO, { address: null }), true);
     assert.equal(await publishOneSegment(harness, 1), firstTopic, 'and the announce joined the live session');
     await waitAndConfirmNothingHappened(() => !hasFinalized(published), NOTHING_HAPPENED_MS);
 
-    await orch.cleanup();
+    await finish(harness);
   });
 
   /**
@@ -290,7 +323,7 @@ describe('taking over a stream id that is already being published', () => {
     const { orch } = harness;
 
     assert.equal(orch.startStream(STREAM_ID, MEDIA_TYPE_VIDEO, { address: BROADCASTER }), true);
-    await waitFor(() => orch.getActiveStreamCount() === 1, SETTLE_CEILING_MS);
+    await settled(harness, () => orch.getActiveStreamCount() === 1);
     await publishOneSegment(harness, 0);
 
     // Well past the window, with a duplicate arriving inside every one of its spans. A duplicate is
@@ -306,7 +339,7 @@ describe('taking over a stream id that is already being published', () => {
       'segments still arriving means the publisher is still there, whatever the uploader did with them',
     );
 
-    await orch.cleanup();
+    await finish(harness);
   });
 
   /**
@@ -320,7 +353,7 @@ describe('taking over a stream id that is already being published', () => {
     const { orch } = harness;
 
     assert.equal(orch.startStream(STREAM_ID, MEDIA_TYPE_VIDEO, { address: BROADCASTER }), true);
-    await waitFor(() => orch.getActiveStreamCount() === 1, SETTLE_CEILING_MS);
+    await settled(harness, () => orch.getActiveStreamCount() === 1);
     await publishOneSegment(harness, 0);
 
     const draining = orch.stopStream(STREAM_ID);
@@ -337,7 +370,7 @@ describe('taking over a stream id that is already being published', () => {
     );
 
     await draining;
-    await orch.cleanup();
+    await finish(harness);
   });
 
   /**
@@ -353,10 +386,11 @@ describe('taking over a stream id that is already being published', () => {
    */
   it('measures a session that has sent nothing from the clock it was registered on', async () => {
     const clock = new FakeClock();
-    const { orch } = makeHarness(clock);
+    const harness = makeHarness(clock);
+    const { orch } = harness;
 
     assert.equal(orch.startStream(STREAM_ID, MEDIA_TYPE_VIDEO, { address: BROADCASTER }), true);
-    await waitFor(() => orch.getActiveStreamCount() === 1, SETTLE_CEILING_MS);
+    await settled(harness, () => orch.getActiveStreamCount() === 1);
 
     await clock.advance(STALL_MS + 1);
 
@@ -366,7 +400,7 @@ describe('taking over a stream id that is already being published', () => {
       'a session that announced and then sent nothing must age out on the injected clock',
     );
 
-    await orch.cleanup();
+    await finish(harness);
   });
 
   /**
@@ -381,13 +415,13 @@ describe('taking over a stream id that is already being published', () => {
     const { orch } = harness;
 
     assert.equal(orch.startStream(STREAM_ID, MEDIA_TYPE_VIDEO, { address: BROADCASTER }), true);
-    await waitFor(() => orch.getActiveStreamCount() === 1, SETTLE_CEILING_MS);
+    await settled(harness, () => orch.getActiveStreamCount() === 1);
     await publishOneSegment(harness, 0);
 
     // Setup, not the assertion: the stranger only gets in because the incumbent went quiet.
     await clock.advance(STALL_MS + 1);
     assert.equal(orch.startStream(STREAM_ID, MEDIA_TYPE_VIDEO, { address: STRANGER }), true);
-    await waitFor(() => orch.getActiveStreamCount() === 1, SETTLE_CEILING_MS);
+    await settled(harness, () => orch.getActiveStreamCount() === 1);
     await publishOneSegment(harness, 1);
 
     assert.equal(
@@ -396,7 +430,7 @@ describe('taking over a stream id that is already being published', () => {
       'the session that was displaced must not still be the one the guard protects',
     );
 
-    await orch.cleanup();
+    await finish(harness);
   });
 
   /**
@@ -416,12 +450,12 @@ describe('taking over a stream id that is already being published', () => {
     const { orch } = harness;
 
     assert.equal(orch.startStream(STREAM_ID, MEDIA_TYPE_VIDEO, { address: BROADCASTER }), true);
-    await waitFor(() => orch.getActiveStreamCount() === 1, SETTLE_CEILING_MS);
+    await settled(harness, () => orch.getActiveStreamCount() === 1);
     await publishOneSegment(harness, 0);
 
     void orch.stopStream(STREAM_ID);
     assert.equal(orch.startStream(STREAM_ID, MEDIA_TYPE_VIDEO, { address: BROADCASTER }), true);
-    await waitFor(() => orch.getActiveStreamCount() === 1, SETTLE_CEILING_MS);
+    await settled(harness, () => orch.getActiveStreamCount() === 1);
     await publishOneSegment(harness, 1);
 
     assert.equal(
@@ -430,14 +464,14 @@ describe('taking over a stream id that is already being published', () => {
       'the replacement is live and being fed, whatever its predecessor is doing under the same id',
     );
 
-    await orch.cleanup();
+    await finish(harness);
   });
 
   function makeRecoveringHarness(clock: FakeClock): Harness {
     const published: PublishedEntry[] = [];
     const saved: StreamState[] = [];
     const orch = makeTestOrchestrator(
-      { segmentStallMs: STALL_MS, recoveryTimeout: 60_000, orphanReapMs: NEVER_REAP_MS, clock },
+      { segmentStallMs: STALL_MS, recoveryTimeout: 60_000, orphanReapMs: NEVER_REAP_MS, ...onTheClock(clock) },
       {},
       makeFakeRecoveryStore({
         listActive: () => [toRecoveryFileId(STREAM_ID)],
@@ -446,7 +480,7 @@ describe('taking over a stream id that is already being published', () => {
       }),
       makeRecordingCatalog(published as unknown[]),
     );
-    return { orch, published, saved };
+    return { orch, clock, published, saved };
   }
 
   /**
@@ -477,7 +511,7 @@ describe('taking over a stream id that is already being published', () => {
     );
     assert.equal(orch.getMetricsSnapshot().takeoversRefusedTotal, 1);
 
-    await orch.cleanup();
+    await finish(harness);
   });
 
   /**
@@ -496,7 +530,7 @@ describe('taking over a stream id that is already being published', () => {
 
     assert.equal(orch.startStream(STREAM_ID, MEDIA_TYPE_VIDEO, { address: BROADCASTER }), true);
 
-    await orch.cleanup();
+    await finish(harness);
   });
 
   /**
@@ -505,7 +539,8 @@ describe('taking over a stream id that is already being published', () => {
    */
   it('makes the session that resumed a recovered stream the incumbent', async () => {
     const clock = new FakeClock();
-    const { orch } = makeRecoveringHarness(clock);
+    const harness = makeRecoveringHarness(clock);
+    const { orch } = harness;
 
     await orch.recoverStreams();
     assert.equal(orch.getActiveStreamCount(), 1, 'the recovered stream is waiting for its engine');
@@ -521,7 +556,7 @@ describe('taking over a stream id that is already being published', () => {
       'the session that resumed it holds it, so the next announce is judged',
     );
 
-    await orch.cleanup();
+    await finish(harness);
   });
 
   /**
@@ -534,7 +569,7 @@ describe('taking over a stream id that is already being published', () => {
     const { orch } = harness;
 
     assert.equal(orch.startStream(STREAM_ID, MEDIA_TYPE_VIDEO, { address: BROADCASTER }), true);
-    await waitFor(() => orch.getActiveStreamCount() === 1, SETTLE_CEILING_MS);
+    await settled(harness, () => orch.getActiveStreamCount() === 1);
     await publishOneSegment(harness, 0);
 
     assert.equal(orch.startStream(STREAM_ID, MEDIA_TYPE_VIDEO, { address: STRANGER }), false);
@@ -544,7 +579,7 @@ describe('taking over a stream id that is already being published', () => {
       'a second attempt from the same stranger must be refused for the same reason as the first',
     );
 
-    await orch.cleanup();
+    await finish(harness);
   });
 });
 
@@ -573,7 +608,7 @@ describe('taking over a stream id with a proven publish key', () => {
     const { orch, published } = harness;
 
     assert.equal(orch.startStream(STREAM_ID, MEDIA_TYPE_VIDEO, { address: BROADCASTER }), true);
-    await waitFor(() => orch.getActiveStreamCount() === 1, SETTLE_CEILING_MS);
+    await settled(harness, () => orch.getActiveStreamCount() === 1);
     const firstTopic = await publishOneSegment(harness, 0);
 
     // No clock advance. The incumbent is being fed right now, which is what refuses every unproven
@@ -586,14 +621,14 @@ describe('taking over a stream id with a proven publish key', () => {
     // A key against an incumbent that proved nothing is proof they are different publishers, so the
     // incumbent's broadcast is finalized rather than continued. The key holder taking over an
     // incumbent that ALSO proved the key is the same publisher and resumes; that case is below.
-    await waitFor(() => hasFinalized(published), SETTLE_CEILING_MS);
+    await settled(harness, () => hasFinalized(published));
     assert.notEqual(
       await publishOneSegment(harness, 1),
       firstTopic,
       'the key holder carried on an unproven incumbent’s broadcast rather than starting one of its own',
     );
 
-    await orch.cleanup();
+    await finish(harness);
   });
 
   /**
@@ -616,7 +651,7 @@ describe('taking over a stream id with a proven publish key', () => {
       const { orch } = harness;
 
       assert.equal(orch.startStream(STREAM_ID, MEDIA_TYPE_VIDEO, { address: STRANGER }), true);
-      await waitFor(() => orch.getActiveStreamCount() === 1, SETTLE_CEILING_MS);
+      await settled(harness, () => orch.getActiveStreamCount() === 1);
       await publishOneSegment(harness, 0);
 
       orch.startStream(STREAM_ID, MEDIA_TYPE_VIDEO, { address: BROADCASTER, isAuthenticated: true });
@@ -630,7 +665,7 @@ describe('taking over a stream id with a proven publish key', () => {
       assert.ok(said.includes(BROADCASTER), 'the line does not name who took it');
       assert.ok(said.includes(STRANGER), 'the line does not name who it was taken from');
 
-      await orch.cleanup();
+      await finish(harness);
     } finally {
       logger.configure(previous);
     }
@@ -642,11 +677,11 @@ describe('taking over a stream id with a proven publish key', () => {
     const { orch } = harness;
 
     assert.equal(orch.startStream(STREAM_ID, MEDIA_TYPE_VIDEO, { address: STRANGER }), true);
-    await waitFor(() => orch.getActiveStreamCount() === 1, SETTLE_CEILING_MS);
+    await settled(harness, () => orch.getActiveStreamCount() === 1);
     const squatterTopic = await publishOneSegment(harness, 0);
 
     assert.equal(orch.startStream(STREAM_ID, MEDIA_TYPE_VIDEO, { address: BROADCASTER, isAuthenticated: true }), true);
-    await waitFor(() => orch.getActiveStreamCount() === 1, SETTLE_CEILING_MS);
+    await settled(harness, () => orch.getActiveStreamCount() === 1);
     assert.notEqual(
       await publishOneSegment(harness, 1),
       squatterTopic,
@@ -660,7 +695,7 @@ describe('taking over a stream id with a proven publish key', () => {
       'the id is held by whoever proved the key, which is the whole of the eviction',
     );
 
-    await orch.cleanup();
+    await finish(harness);
   });
 
   /**
@@ -678,7 +713,7 @@ describe('taking over a stream id with a proven publish key', () => {
     const { orch } = harness;
 
     assert.equal(orch.startStream(STREAM_ID, MEDIA_TYPE_VIDEO, { address: BROADCASTER, isAuthenticated: true }), true);
-    await waitFor(() => orch.getActiveStreamCount() === 1, SETTLE_CEILING_MS);
+    await settled(harness, () => orch.getActiveStreamCount() === 1);
     await publishOneSegment(harness, 0);
 
     await clock.advance(STALL_MS * 10);
@@ -690,7 +725,7 @@ describe('taking over a stream id with a proven publish key', () => {
     );
     assert.equal(orch.getMetricsSnapshot().takeoversRefusedTotal, 1, 'the refusal must still be countable');
 
-    await orch.cleanup();
+    await finish(harness);
   });
 
   /**
@@ -706,7 +741,7 @@ describe('taking over a stream id with a proven publish key', () => {
     const { orch, published } = harness;
 
     assert.equal(orch.startStream(STREAM_ID, MEDIA_TYPE_VIDEO, { address: BROADCASTER, isAuthenticated: true }), true);
-    await waitFor(() => orch.getActiveStreamCount() === 1, SETTLE_CEILING_MS);
+    await settled(harness, () => orch.getActiveStreamCount() === 1);
     const firstTopic = await publishOneSegment(harness, 0);
 
     assert.equal(
@@ -717,7 +752,7 @@ describe('taking over a stream id with a proven publish key', () => {
     assert.equal(await publishOneSegment(harness, 1), firstTopic, 'and the announce joined the live session');
     await waitAndConfirmNothingHappened(() => !hasFinalized(published), NOTHING_HAPPENED_MS);
 
-    await orch.cleanup();
+    await finish(harness);
   });
 
   /**
@@ -731,7 +766,7 @@ describe('taking over a stream id with a proven publish key', () => {
     const published: PublishedEntry[] = [];
     const saved: StreamState[] = [];
     const orch = makeTestOrchestrator(
-      { segmentStallMs: STALL_MS, recoveryTimeout: 60_000, orphanReapMs: NEVER_REAP_MS, clock },
+      { segmentStallMs: STALL_MS, recoveryTimeout: 60_000, orphanReapMs: NEVER_REAP_MS, ...onTheClock(clock) },
       {},
       makeFakeRecoveryStore({
         listActive: () => [toRecoveryFileId(STREAM_ID)],
@@ -740,7 +775,7 @@ describe('taking over a stream id with a proven publish key', () => {
       }),
       makeRecordingCatalog(published as unknown[]),
     );
-    const harness: Harness = { orch, published, saved };
+    const harness: Harness = { orch, clock, published, saved };
 
     await orch.recoverStreams();
     await publishOneSegment(harness, 99);
@@ -752,7 +787,7 @@ describe('taking over a stream id with a proven publish key', () => {
     );
     assert.equal(orch.getMetricsSnapshot().takeoversRefusedTotal, 0);
 
-    await orch.cleanup();
+    await finish(harness);
   });
 
   /**
@@ -766,7 +801,7 @@ describe('taking over a stream id with a proven publish key', () => {
     const { orch } = harness;
 
     assert.equal(orch.startStream(STREAM_ID, MEDIA_TYPE_VIDEO, { address: BROADCASTER, isAuthenticated: true }), true);
-    await waitFor(() => orch.getActiveStreamCount() === 1, SETTLE_CEILING_MS);
+    await settled(harness, () => orch.getActiveStreamCount() === 1);
     await publishOneSegment(harness, 0);
     await clock.advance(STALL_MS * 10);
 
@@ -777,7 +812,7 @@ describe('taking over a stream id with a proven publish key', () => {
       'the second attempt must be refused for the same reason as the first',
     );
 
-    await orch.cleanup();
+    await finish(harness);
   });
 
   /**
@@ -796,7 +831,7 @@ describe('taking over a stream id with a proven publish key', () => {
     const { orch } = harness;
 
     assert.equal(orch.startStream(STREAM_ID, MEDIA_TYPE_VIDEO, { address: BROADCASTER, isAuthenticated: true }), true);
-    await waitFor(() => orch.getActiveStreamCount() === 1, SETTLE_CEILING_MS);
+    await settled(harness, () => orch.getActiveStreamCount() === 1);
     await publishOneSegment(harness, 0);
 
     const draining = orch.stopStream(STREAM_ID);
@@ -813,7 +848,7 @@ describe('taking over a stream id with a proven publish key', () => {
     );
 
     await draining;
-    await orch.cleanup();
+    await finish(harness);
   });
 
   /**
@@ -828,13 +863,13 @@ describe('taking over a stream id with a proven publish key', () => {
     const { orch } = harness;
 
     assert.equal(orch.startStream(STREAM_ID, MEDIA_TYPE_VIDEO, { address: BROADCASTER, isAuthenticated: true }), true);
-    await waitFor(() => orch.getActiveStreamCount() === 1, SETTLE_CEILING_MS);
+    await settled(harness, () => orch.getActiveStreamCount() === 1);
     await publishOneSegment(harness, 0);
     await clock.advance(STALL_MS * 10);
 
     assert.equal(orch.startStream(STREAM_ID, MEDIA_TYPE_VIDEO, { address: STRANGER }), false);
 
-    await orch.cleanup();
+    await finish(harness);
   });
 
   /**
@@ -861,7 +896,7 @@ describe('taking over a stream id with a proven publish key', () => {
         orch.startStream(STREAM_ID, MEDIA_TYPE_VIDEO, { address: BROADCASTER, isAuthenticated: true }),
         true,
       );
-      await waitFor(() => orch.getActiveStreamCount() === 1, SETTLE_CEILING_MS);
+      await settled(harness, () => orch.getActiveStreamCount() === 1);
       await publishOneSegment(harness, 0);
       await clock.advance(STALL_MS * 10);
 
@@ -871,11 +906,11 @@ describe('taking over a stream id with a proven publish key', () => {
       assert.match(provenRefusal, /proven publish key/);
       assert.doesNotMatch(provenRefusal, /stall window/, 'nothing about this refusal involved the stall window');
 
-      await orch.cleanup();
+      await finish(harness);
 
       const second = makeHarness(new FakeClock());
       assert.equal(second.orch.startStream(STREAM_ID, MEDIA_TYPE_VIDEO, { address: BROADCASTER }), true);
-      await waitFor(() => second.orch.getActiveStreamCount() === 1, SETTLE_CEILING_MS);
+      await settled(second, () => second.orch.getActiveStreamCount() === 1);
       await publishOneSegment(second, 0);
 
       lines.length = 0;
@@ -884,7 +919,7 @@ describe('taking over a stream id with a proven publish key', () => {
       assert.match(unprovenRefusal, /stall window/);
       assert.doesNotMatch(unprovenRefusal, /proven publish key/, 'this incumbent proved nothing');
 
-      await second.orch.cleanup();
+      await finish(second);
     } finally {
       logger.configure(previous);
     }
@@ -908,7 +943,7 @@ describe('taking over a stream id with a proven publish key', () => {
     const { orch } = harness;
 
     assert.equal(orch.startStream(STREAM_ID, MEDIA_TYPE_VIDEO, { address: BROADCASTER, isAuthenticated: true }), true);
-    await waitFor(() => orch.getActiveStreamCount() === 1, SETTLE_CEILING_MS);
+    await settled(harness, () => orch.getActiveStreamCount() === 1);
     await publishOneSegment(harness, 0);
     await clock.advance(STALL_MS * 10);
 
@@ -918,6 +953,6 @@ describe('taking over a stream id with a proven publish key', () => {
       'the operator start path is not an override for a stream whose owner proved it',
     );
 
-    await orch.cleanup();
+    await finish(harness);
   });
 });
