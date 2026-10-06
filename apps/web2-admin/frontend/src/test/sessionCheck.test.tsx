@@ -2,9 +2,10 @@ import { act, fireEvent, screen } from '@testing-library/react';
 import { Route, Routes } from 'react-router';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
+import { SESSION_CHECK_MIN_GAP_MS, useAuth } from '../auth';
 import { RequireAuth } from '../components/RequireAuth';
 import { LoginPage } from '../pages/LoginPage';
-import { jsonError, jsonOk, makeUser, mockFetch, renderWithAuth } from './helpers';
+import { jsonError, jsonOk, makeUser, mockFetch, noContent, renderWithAuth } from './helpers';
 
 const SESSION = '/api/auth/session';
 const ME = '/api/auth/me';
@@ -147,5 +148,177 @@ describe('the session check when the operator comes back to the tab', () => {
 
     expect(await screen.findByText(ENDED)).toBeInTheDocument();
     expect(screen.queryByText('streams page')).not.toBeInTheDocument();
+  });
+});
+
+describe('the session check, how often and when', () => {
+  beforeEach(() => {
+    setVisibility('visible');
+  });
+
+  afterEach(() => {
+    delete (document as { visibilityState?: unknown }).visibilityState;
+  });
+
+  function alwaysAlive() {
+    return mockFetch([
+      { path: SESSION, respond: () => jsonOk({ user: makeUser() }) },
+      { path: ME, respond: () => jsonOk({ user: makeUser() }) },
+    ]);
+  }
+
+  it('asks once for focus and visibilitychange arriving together', async () => {
+    const fetchMock = alwaysAlive();
+    renderConsole();
+    await signedInAndListening();
+
+    await act(async () => {
+      regainFocus();
+      becomeVisible();
+      regainFocus();
+    });
+    await vi.waitFor(() => expect(checksOf(fetchMock)).toBe(1));
+
+    laterBy(SESSION_CHECK_MIN_GAP_MS + 1);
+    await act(async () => regainFocus());
+    await vi.waitFor(() => expect(checksOf(fetchMock)).toBe(2));
+  });
+
+  it('does not ask when the tab is hidden', async () => {
+    const fetchMock = alwaysAlive();
+    renderConsole();
+    await signedInAndListening();
+
+    setVisibility('hidden');
+    await act(async () => fireEvent(document, new Event('visibilitychange')));
+
+    expect(checksOf(fetchMock)).toBe(0);
+  });
+
+  it('does not ask while nobody is signed in', async () => {
+    const fetchMock = mockFetch([{ path: SESSION, respond: () => jsonError(401, { error: 'unauthenticated' }) }]);
+    renderConsole();
+    await screen.findByLabelText('Username');
+
+    await act(async () => {
+      regainFocus();
+      becomeVisible();
+    });
+
+    expect(checksOf(fetchMock)).toBe(0);
+  });
+
+  it('stops listening once the console is gone', async () => {
+    const fetchMock = alwaysAlive();
+    const { unmount } = renderConsole();
+    await signedInAndListening();
+
+    unmount();
+    regainFocus();
+    becomeVisible();
+
+    expect(checksOf(fetchMock)).toBe(0);
+  });
+
+  it('leaves the page alone when the check cannot reach the server', async () => {
+    const fetchMock = mockFetch([
+      { path: SESSION, respond: () => jsonOk({ user: makeUser() }) },
+      {
+        path: ME,
+        respond: () => {
+          throw new TypeError('Failed to fetch');
+        },
+      },
+    ]);
+    renderConsole();
+    await signedInAndListening();
+
+    await act(async () => regainFocus());
+    await vi.waitFor(() => expect(checksOf(fetchMock)).toBe(1));
+
+    expect(screen.getByText('streams page')).toBeInTheDocument();
+  });
+});
+
+describe('a reload after the session ended', () => {
+  const signedOut = () => jsonError(401, { error: 'unauthenticated' });
+
+  function SignOutButton() {
+    const { logOut } = useAuth();
+    return (
+      <button type="button" onClick={() => void logOut()}>
+        sign out
+      </button>
+    );
+  }
+
+  it('says the session ended when this browser was signed in before', async () => {
+    mockFetch([{ path: SESSION, respond: () => jsonOk({ user: makeUser() }) }]);
+    const first = renderConsole();
+    await signedInAndListening();
+    first.unmount();
+
+    // Revoked from another browser while this one was closed; the reload asks again.
+    mockFetch([{ path: SESSION, respond: signedOut }]);
+    renderConsole();
+
+    expect(await screen.findByText(ENDED)).toBeInTheDocument();
+  });
+
+  it('says it only once, not on every reload after', async () => {
+    mockFetch([{ path: SESSION, respond: () => jsonOk({ user: makeUser() }) }]);
+    const first = renderConsole();
+    await signedInAndListening();
+    first.unmount();
+
+    mockFetch([{ path: SESSION, respond: signedOut }]);
+    const second = renderConsole();
+    await screen.findByText(ENDED);
+    second.unmount();
+
+    renderConsole();
+    await screen.findByLabelText('Username');
+    expect(screen.queryByText(ENDED)).not.toBeInTheDocument();
+  });
+
+  it('says nothing after the operator signed out on purpose', async () => {
+    mockFetch([
+      { path: SESSION, respond: () => jsonOk({ user: makeUser() }) },
+      { method: 'POST', path: '/api/auth/logout', respond: () => noContent() },
+    ]);
+    const first = renderWithAuth(<SignOutButton />);
+    await vi.waitFor(() => expect(localStorage.length).toBe(1));
+    fireEvent.click(screen.getByRole('button', { name: 'sign out' }));
+    await vi.waitFor(() => expect(localStorage.length).toBe(0));
+    first.unmount();
+
+    mockFetch([{ path: SESSION, respond: signedOut }]);
+    renderConsole();
+
+    await screen.findByLabelText('Username');
+    expect(screen.queryByText(ENDED)).not.toBeInTheDocument();
+  });
+
+  it('keeps the mark while the server cannot be reached, and says it ended once it answers', async () => {
+    mockFetch([{ path: SESSION, respond: () => jsonOk({ user: makeUser() }) }]);
+    const first = renderConsole();
+    await signedInAndListening();
+    first.unmount();
+
+    mockFetch([
+      {
+        path: SESSION,
+        respond: () => {
+          throw new TypeError('Failed to fetch');
+        },
+      },
+    ]);
+    const offline = renderConsole();
+    await screen.findByText('The server did not answer. Check that it is running, then try again.');
+    offline.unmount();
+
+    mockFetch([{ path: SESSION, respond: signedOut }]);
+    renderConsole();
+    expect(await screen.findByText(ENDED)).toBeInTheDocument();
   });
 });
