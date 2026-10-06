@@ -120,7 +120,7 @@ announces every closed segment over `on_hls`, once per rung, so a ladder asks fo
 shows up as announcements falling behind the media at 0.46s per second of video until the lag passes
 `HLS_WINDOW`, after which **SRS deletes each segment before announcing it**: the uploader gets a
 callback naming a file that is already gone, and the tallest rung is unpublished mid-broadcast while
-the master feed goes on advertising it.
+the stream list goes on naming it.
 
 | profile               | segments | ladder asks | against ~6.7/s | outcome                                 |
 | --------------------- | -------- | ----------- | -------------- | --------------------------------------- |
@@ -274,8 +274,7 @@ refuses when there is nothing recorded rather than guessing.
 
 ⛔ **`E2E_DRAIN_RUNG` names the rung, and never the coordinator.** It defaults to `1080p`, which is
 the isolated case and the fastest to fill. 360p is the pool's coordinator, so its batch also writes
-the catalog and every master playlist, and draining it would stop the master being rewritten for all
-four rungs at once. The suites refuse it by name and `docs/e2e-batch-drain-plan.md` files that as a
+the catalog, and draining it would stop the catalog being written at all. The suites refuse it by name and `docs/e2e-batch-drain-plan.md` files that as a
 known product gap.
 
 Three refusals keep a drain sitting apart from an ordinary one, and the first two point in opposite

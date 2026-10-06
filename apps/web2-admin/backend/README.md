@@ -651,9 +651,9 @@ nothing to do with this stream, and the uploader retries. A failure answers
 retry has only the write left to do.
 
 **The rendition report** is how an ABR ladder reaches the catalogue. With
-`ABR_ENABLED` the uploader publishes a master playlist plus one feed per rung,
-and in admin mode the master's topic _is_ the stream's declared topic — so the
-ladder's merge state, which swarm-hls-stream keeps inside the catalogue feed it
+`ABR_ENABLED` the uploader writes one live window per rung and no master
+playlist, and in admin mode the stream's declared topic is the ladder's group
+id, so the ladder's merge state, which swarm-hls-stream keeps inside the catalogue feed it
 writes for itself, has to live here instead. Each rung POSTs its own
 `Rendition` (`name`, `width`, `height`, `topic`, `bandwidth`, `avgBandwidth`,
 plus `recording` and `duration`, both or neither, once it finalizes, and never

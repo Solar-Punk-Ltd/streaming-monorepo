@@ -42,8 +42,8 @@ const MIN_LEVELS_TO_DROP_ONE = 2;
  * ⚠️ Its accepted cost: two rungs failing genuinely separately in one broadcast leaves the second
  * dead one in the ladder, and a viewer sitting on it can freeze.
  *
- * **Kept the same as the uploader's `MAX_RUNGS_DROPPED_AT_ONCE`**, which decides what the master
- * advertises. `e2e/test/rungDeathAgreement.test.ts` pins the pair that must move together.
+ * The uploader no longer writes a master, so this cap is the only one: dropping a dead quality is
+ * the player's job.
  */
 const MAX_RUNGS_DROPPED_PER_LADDER = 1;
 
