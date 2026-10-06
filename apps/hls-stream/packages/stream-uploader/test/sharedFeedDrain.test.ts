@@ -1,4 +1,4 @@
-import { parseLiveWindowPayload } from '@swarm-hls-stream/shared';
+import { LIVE_PLAYLIST_WINDOW_MS, parseLiveWindowPayload } from '@swarm-hls-stream/shared';
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 
@@ -8,18 +8,21 @@ import { AdminSession, MEDIA_TYPE_AUDIO, STOP_FAILURE_DRAIN_TIMEOUT, STREAM_LIFE
 
 import { FakeClock } from './helpers/fakeClock.js';
 import {
+  advanceUntil,
   fakeRecordingReference,
   makeFakeRecoveryStore,
   makeRecoveredState,
   makeTestOrchestrator,
+  onTheFakeClock,
 } from './helpers/fakes.js';
-import { waitAndConfirmNothingHappened, waitFor } from './helpers/waiting.js';
+import { waitFor } from './helpers/waiting.js';
 
 const STREAM_ID = 'audio/declared-stream';
 const DECLARATION: AdminSession = { id: 'admin-stream-id', topic: 'declared-topic' };
 const DRAIN_TIMEOUT_MS = 5 * 60 * 1000;
 const SETTLE_CEILING_MS = 4_000;
-const QUIET_WINDOW_MS = 100;
+/** Windows of the fake clock a gated successor is watched across, enough for a held window to have escaped. */
+const QUIET_WINDOWS = 5;
 
 /** One live window written, its playlist without the written-at line. */
 interface WindowWrite {
@@ -54,12 +57,19 @@ function sharedTopicHarness(options: { recovered?: boolean } = {}): {
   recordingsLanded: () => number;
   start: () => void;
   segment: (label: string, index: number) => Promise<void>;
+  /** Step the fake clock a window at a time until `condition` holds. */
+  settle: (condition: () => boolean) => Promise<void>;
+  /** Step the fake clock across {@link QUIET_WINDOWS} windows, for a case that asserts nothing moved. */
+  quiet: () => Promise<void>;
+  /** Step the fake clock until `work` has settled, then await it, so a stop never hangs on a window. */
+  untilSettled: (work: Promise<void>) => Promise<void>;
 } {
   const clock = new FakeClock();
   const firstRecording = deferred();
   const windows: WindowWrite[] = [];
   const uploadedSegments: string[] = [];
   const stored = new Map<string, Uint8Array>();
+  const recordings = new Map<string, string>();
   let reads = 0;
   let blockFirstRecording = true;
   let recordingStarted = false;
@@ -86,7 +96,8 @@ function sharedTopicHarness(options: { recovered?: boolean } = {}): {
   const orchestrator = makeTestOrchestrator(
     {
       adminApi,
-      clock,
+      // The real window length, since every case jumps through the five minute drain deadline at once.
+      ...onTheFakeClock(clock, LIVE_PLAYLIST_WINDOW_MS),
       // Advancing through the five minute drain deadline must not reap the live successor.
       orphanReapMs: DRAIN_TIMEOUT_MS * 4,
     },
@@ -113,8 +124,11 @@ function sharedTopicHarness(options: { recovered?: boolean } = {}): {
         }
         recordingsLanded += 1;
         const reference = fakeRecordingReference(playlist);
+        recordings.set(reference, playlist);
         return { reference: { toHex: () => reference } };
       },
+      // An unknown reference answers undefined, which the fake bee turns into a 404.
+      downloadRecording: async (reference) => recordings.get(reference) as string,
     },
     recoveryStore,
   );
@@ -138,6 +152,16 @@ function sharedTopicHarness(options: { recovered?: boolean } = {}): {
     segment: async (label, index) => {
       assert.deepEqual(orchestrator.handleSegment(STREAM_ID, index, 2, Buffer.from(label)), { accepted: true });
       await waitFor(() => uploadedSegments.includes(label), SETTLE_CEILING_MS);
+    },
+    settle: (condition) => advanceUntil(clock, condition, LIVE_PLAYLIST_WINDOW_MS),
+    quiet: () => clock.advance(QUIET_WINDOWS * LIVE_PLAYLIST_WINDOW_MS),
+    untilSettled: async (work) => {
+      let settled = false;
+      const following = work.finally(() => {
+        settled = true;
+      });
+      await advanceUntil(clock, () => settled, LIVE_PLAYLIST_WINDOW_MS);
+      await following;
     },
   };
 }
@@ -171,19 +195,24 @@ function entryCount(playlist: string): number {
 async function beginBlockedRecording(harness: Harness): Promise<{ stopping: Promise<void> }> {
   harness.start();
   await harness.segment('a0', 0);
-  await waitFor(() => windowsNaming(harness.windows, 'a0').length > 0, SETTLE_CEILING_MS);
+  await harness.settle(() => windowsNaming(harness.windows, 'a0').length > 0);
   // ⛔ The successor is registered in the same turn the stop is, which is the interleaving the
   // deployment produces: `stopStream` registers its drain before its first await, so the announce
   // that follows it takes the replacement branch and is handed the predecessor's write completion.
   const stopping = harness.orchestrator.stopStream(STREAM_ID);
   harness.start();
-  await waitFor(harness.firstRecordingStarted, SETTLE_CEILING_MS);
+  // The predecessor's closing window comes before its recording, and it ends only as the clock moves.
+  await harness.settle(harness.firstRecordingStarted);
   return { stopping };
 }
 
 /**
  * Let the predecessor's recording land, and show the successor then continues from the closing
  * window its predecessor left rather than numbering over it.
+ *
+ * Where the case first ran out the five minute drain deadline, the closing window is older than the
+ * minute a successor's opening scan reads back, so the numbering comes from the predecessor's
+ * recording, which ends at the same sequence. That is the path a deployment takes after such a wait.
  */
 async function releaseAndWriteSuccessor(
   harness: Harness,
@@ -191,10 +220,10 @@ async function releaseAndWriteSuccessor(
   successorIndex: number,
 ): Promise<void> {
   harness.releaseFirstRecording();
-  await waitFor(() => harness.recordingsLanded() > 0, SETTLE_CEILING_MS);
+  await harness.settle(() => harness.recordingsLanded() > 0);
   await new Promise((resolve) => setImmediate(resolve));
   await harness.segment(successorSegment, successorIndex);
-  await waitFor(() => windowsNaming(harness.windows, successorSegment).length > 0, SETTLE_CEILING_MS);
+  await harness.settle(() => windowsNaming(harness.windows, successorSegment).length > 0);
 
   const closing = harness.windows.find((write) => write.playlist.includes('#EXT-X-ENDLIST'));
   const successor = windowsNaming(harness.windows, successorSegment)[0];
@@ -221,15 +250,14 @@ describe('a shared topic waits for every outstanding predecessor write', () => {
       await harness.clock.advance(DRAIN_TIMEOUT_MS + 1);
       await harness.segment('b1', 1);
 
-      await waitAndConfirmNothingHappened(
-        () => harness.scanReads() === readsBeforeDeadline && windowsNaming(harness.windows, 'b0').length === 0,
-        QUIET_WINDOW_MS,
-      );
+      await harness.quiet();
+      assert.equal(harness.scanReads(), readsBeforeDeadline, 'the successor scanned the topic while gated');
+      assert.deepEqual(windowsNaming(harness.windows, 'b0'), [], 'and wrote a window');
 
       await releaseAndWriteSuccessor(harness, 'b2', 2);
     } finally {
       await releaseOutstandingRecording(harness);
-      await stopping;
+      await harness.untilSettled(stopping);
     }
   });
 
@@ -238,12 +266,12 @@ describe('a shared topic waits for every outstanding predecessor write', () => {
     try {
       harness.start();
       await harness.segment('a0', 0);
-      await waitFor(() => windowsNaming(harness.windows, 'a0').length > 0, SETTLE_CEILING_MS);
+      await harness.settle(() => windowsNaming(harness.windows, 'a0').length > 0);
 
       const stopped = harness.orchestrator.stopStream(STREAM_ID);
-      await waitFor(harness.firstRecordingStarted, SETTLE_CEILING_MS);
+      await harness.settle(harness.firstRecordingStarted);
       await harness.clock.advance(DRAIN_TIMEOUT_MS + 1);
-      await stopped;
+      await harness.untilSettled(stopped);
 
       const timedOutStatus = harness.orchestrator.getStreamStatus(STREAM_ID);
       assert.equal(timedOutStatus.state, STREAM_LIFECYCLE_FAILED);
@@ -253,10 +281,9 @@ describe('a shared topic waits for every outstanding predecessor write', () => {
       const readsBeforeSuccessor = harness.scanReads();
       await harness.segment('b0', 0);
 
-      await waitAndConfirmNothingHappened(
-        () => harness.scanReads() === readsBeforeSuccessor && windowsNaming(harness.windows, 'b0').length === 0,
-        QUIET_WINDOW_MS,
-      );
+      await harness.quiet();
+      assert.equal(harness.scanReads(), readsBeforeSuccessor, 'the successor scanned the topic while gated');
+      assert.deepEqual(windowsNaming(harness.windows, 'b0'), [], 'and wrote a window');
 
       await releaseAndWriteSuccessor(harness, 'b1', 1);
     } finally {
@@ -270,9 +297,9 @@ describe('a shared topic waits for every outstanding predecessor write', () => {
       assert.deepEqual(await harness.orchestrator.recoverStreams(), [STREAM_ID]);
 
       const stopped = harness.orchestrator.stopStream(STREAM_ID);
-      await waitFor(harness.firstRecordingStarted, SETTLE_CEILING_MS);
+      await harness.settle(harness.firstRecordingStarted);
       await harness.clock.advance(DRAIN_TIMEOUT_MS + 1);
-      await stopped;
+      await harness.untilSettled(stopped);
 
       const timedOutStatus = harness.orchestrator.getStreamStatus(STREAM_ID);
       assert.equal(timedOutStatus.state, STREAM_LIFECYCLE_FAILED);
@@ -282,10 +309,9 @@ describe('a shared topic waits for every outstanding predecessor write', () => {
       const readsBeforeSuccessor = harness.scanReads();
       await harness.segment('b0', 0);
 
-      await waitAndConfirmNothingHappened(
-        () => harness.scanReads() === readsBeforeSuccessor && windowsNaming(harness.windows, 'b0').length === 0,
-        QUIET_WINDOW_MS,
-      );
+      await harness.quiet();
+      assert.equal(harness.scanReads(), readsBeforeSuccessor, 'the successor scanned the topic while gated');
+      assert.deepEqual(windowsNaming(harness.windows, 'b0'), [], 'and wrote a window');
 
       await releaseAndWriteSuccessor(harness, 'b1', 1);
     } finally {
@@ -304,21 +330,21 @@ describe('a shared topic waits for every outstanding predecessor write', () => {
       // through a middle session that never completed one of its own.
       const stoppingB = harness.orchestrator.stopStream(STREAM_ID);
       harness.start();
-      await stoppingB;
+      // B's finalize gives up on its closing window after the windows it allows, so the clock moves it.
+      await harness.untilSettled(stoppingB);
       // ⚠️ At least one rather than exactly one, because A's own stop is in flight throughout.
-      await waitFor(() => harness.orchestrator.getMetricsSnapshot().streamsFailedTotal >= 1, SETTLE_CEILING_MS);
+      await harness.settle(() => harness.orchestrator.getMetricsSnapshot().streamsFailedTotal >= 1);
 
       const readsBeforeC = harness.scanReads();
       await harness.segment('c0', 0);
-      await waitAndConfirmNothingHappened(
-        () => harness.scanReads() === readsBeforeC && windowsNaming(harness.windows, 'c0').length === 0,
-        QUIET_WINDOW_MS,
-      );
+      await harness.quiet();
+      assert.equal(harness.scanReads(), readsBeforeC, 'C scanned the topic while gated');
+      assert.deepEqual(windowsNaming(harness.windows, 'c0'), [], 'and wrote a window');
 
       await releaseAndWriteSuccessor(harness, 'c1', 1);
     } finally {
       await releaseOutstandingRecording(harness);
-      await stopping;
+      await harness.untilSettled(stopping);
     }
   });
 });
