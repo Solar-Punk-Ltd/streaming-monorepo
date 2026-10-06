@@ -80,6 +80,7 @@ export type WindowWriteEvent = WindowWritten | WindowWriteFailed | WindowSkipped
 
 /** The clock and timers, `Date.now` and the global timers unless the caller hands its own. */
 export interface WindowWriterClock {
+  /** Unix milliseconds. A fraction is rounded down by the writer, so `performance`-style clocks are fine. */
   now(): number;
   setTimeout(callback: () => void, delayMs: number): unknown;
   clearTimeout(handle: unknown): void;
@@ -223,7 +224,14 @@ function assertWindowMs(windowMs: number): void {
 
 function scheduleWindows(options: ScheduleOptions): WindowWriter {
   const { topic, kind, windowMs, write, contentFor } = options;
-  const clock = options.clock ?? systemClock;
+  const injected = options.clock ?? systemClock;
+  const clock: WindowWriterClock = {
+    now: () => Math.floor(injected.now()),
+    setTimeout: (callback, delayMs) => injected.setTimeout(callback, delayMs),
+    clearTimeout: (handle) => {
+      injected.clearTimeout(handle);
+    },
+  };
   const lateLimitMs = options.lateLimitMs ?? WINDOW_WRITE_LATE_LIMIT_MS;
   const maxInFlight = options.maxInFlight ?? WINDOW_WRITE_MAX_IN_FLIGHT;
   const clockTrusted = options.clockTrusted ?? (() => true);

@@ -410,6 +410,29 @@ describe('the live window writer', () => {
     assert.equal(clock.pendingTimers, 0);
   });
 
+  it('writes its windows normally on a clock that reads fractions of a millisecond', async () => {
+    const clock = new FakeClock(START_MS);
+    const fractional: WindowWriterClock = {
+      now: () => clock.now() + 0.7,
+      setTimeout: clock.setTimeout,
+      clearTimeout: clock.clearTimeout,
+    };
+    const { calls, write } = recordingWrite(clock);
+    const { writer, events } = liveWriter(clock, write, { clock: fractional });
+    writer.start();
+    await clock.advance(FIRST_DUE_MS + 2 * WINDOW_MS);
+
+    assert.deepEqual(windowsOf(calls), [FIRST, FIRST + 1, FIRST + 2]);
+    assert.deepEqual(
+      events.map((event) => event.outcome),
+      ['written', 'written', 'written'],
+    );
+    for (const call of calls) {
+      assert.ok(Number.isInteger(parseLiveWindowPayload(call.payload)?.writtenAt));
+    }
+    await writer.stop();
+  });
+
   it('starts once however often start is called', async () => {
     const clock = new FakeClock(START_MS);
     const { calls, write } = recordingWrite(clock);

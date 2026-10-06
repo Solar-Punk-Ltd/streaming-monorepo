@@ -115,7 +115,7 @@ export interface WindowReaderBaseOptions<T extends { readonly writtenAt: number 
    * not, absent windows are no evidence about the clock and no misses.
    */
   readonly isLive?: () => boolean;
-  /** The reader's clock in whole Unix milliseconds, `Date.now` unless set. `windowOf` refuses fractions. */
+  /** The reader's clock in Unix milliseconds, `Date.now` unless set. Fractions are rounded down. */
   readonly now?: () => number;
   readonly setTimeout?: (callback: () => void, ms: number) => unknown;
   readonly clearTimeout?: (handle: unknown) => void;
