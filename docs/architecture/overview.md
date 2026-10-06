@@ -96,6 +96,14 @@ clock, the timers and the write injected. The caller's write signs the chunk and
 - **Every window gets one event**: written with the write's duration, failed with the error, or
   skipped with its reason (nothing to write, busy, late, clock not trusted, too large, stopped).
   Nothing is written after `stop()` returns.
+- **Callbacks must not throw.** `onEvent` runs inside promise handlers, so a throw becomes an
+  unhandled rejection. The same holds for the reader's found, state and ask callbacks.
+- **The late limit and the clock's write slack are tied.** The late limit (500 ms) plus a write
+  (about 120 ms measured) plus propagation (about 300 ms) must stay under the base read margin of
+  1000 ms, or a reader with an accurate clock asks too early. Both constants say so where they are
+  defined.
+- **Named seams.** `maxInFlight` bounds the writes running at once, and `clockTrusted` lets the
+  caller hold writes while it does not trust its own clock. Both skip a window and say why.
 
 ### Reading windows
 
@@ -138,6 +146,13 @@ little late and keeps its early asks rare.
   forward jump or a sleep, which look alike: only the newest due window is asked, the correction stays,
   so a sleep costs nothing, and the bracket opens upward, so an absent answer reads as the clock having
   moved and the reader scans back from that window for one not yet asked.
+- **A forward step of the wall clock is not a sleep.** A sleep stops the timers too, so the reader
+  sees it as a late timer and asks nothing early. A step moves the clock under timers that kept
+  running, so the reader asks early by the step until it recalibrates: scenario 5 measured 2 harmful
+  asks for a 10 s step, and a step of a minute or more can make one second ask harmful.
+- **What a read can answer.** `failed` is neither evidence nor a miss, since a gateway that cannot
+  answer says nothing about the window. A refused payload proves the chunk exists and carries no
+  news, so it counts as evidence about the clock and as no miss.
 - **Silence.** No chunk for 30 s on `live`, or for the heartbeat plus two windows plus the margin on
   `note`, reports the stream paused or down. The reader keeps asking one window per window, which
   costs nothing for a window nobody writes, and reports live on the next found chunk. A silence does
@@ -155,7 +170,9 @@ little late and keeps its early asks rare.
 - **Known limit: a note reader alone calibrates slowly.** It learns about its clock only from
   heartbeat windows, one a minute. With a clock 3 s ahead it made one harmful heartbeat ask in its
   first 3 minutes, and in 36 of 200 simulated runs one or two more later. A note reader sharing the
-  clock with a live reader made none once the live reader settled.
+  clock with a live reader made none once the live reader settled. A note reader also asks every
+  window, news windows included, before its clock settles, so a fast clock may poison a few news
+  notes in its first minutes: 0 to 4 harmful asks over 200 simulated runs.
 
 ## The three kinds of host
 

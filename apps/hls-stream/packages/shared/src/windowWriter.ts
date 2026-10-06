@@ -31,6 +31,10 @@ import {
 /**
  * How long after a window's end its write may still start. Past this the window is skipped as late,
  * since a reader first asks at the end plus 1 s and a write needs time to land.
+ *
+ * Tied to `WINDOW_WRITE_SLACK_MS` in `windowClock.ts`: this limit plus a write (about 120 ms measured)
+ * plus propagation (about 300 ms) must stay under the base read margin, `WINDOW_READ_MARGIN_MS`
+ * (1000 ms), or a reader with an accurate clock asks before the chunk is readable.
  */
 export const WINDOW_WRITE_LATE_LIMIT_MS = 500;
 
@@ -99,6 +103,7 @@ export type WindowWrite = (slot: WindowSlot, payload: Uint8Array) => Promise<voi
 export interface WindowWriterOptions {
   readonly topic: string;
   readonly write: WindowWrite;
+  /** Must not throw: a throw becomes an unhandled rejection. */
   readonly onEvent?: (event: WindowWriteEvent) => void;
   /** Asked before each write. While it answers false, windows are skipped. */
   readonly clockTrusted?: () => boolean;

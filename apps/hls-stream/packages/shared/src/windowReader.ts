@@ -119,6 +119,7 @@ export interface WindowReaderBaseOptions<T extends { readonly writtenAt: number 
   readonly now?: () => number;
   readonly setTimeout?: (callback: () => void, ms: number) => unknown;
   readonly clearTimeout?: (handle: unknown) => void;
+  /** The three callbacks below must not throw: a throw becomes an unhandled rejection. */
   readonly onFound?: (found: WindowFound<T>) => void;
   readonly onState?: (state: WindowReaderState) => void;
   readonly onAsk?: (ask: WindowAsk) => void;

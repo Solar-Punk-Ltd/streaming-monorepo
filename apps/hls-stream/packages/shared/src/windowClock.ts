@@ -38,6 +38,9 @@ import { STREAM_LIST_NOTE_WINDOW_MS, WINDOW_READ_MARGIN_MS } from './windows.js'
  * How long after a window's end its chunk may take to become readable: the writer's delay and Bee's
  * propagation together. An absent window asked later than this past its end means the reader's clock
  * runs ahead. It must stay below the base margin, or a correct clock would ask too early.
+ *
+ * Tied to `WINDOW_WRITE_LATE_LIMIT_MS` in `windowWriter.ts`: that limit plus a write (about 120 ms
+ * measured) plus propagation (about 300 ms) must stay under the base margin of 1000 ms.
  */
 export const WINDOW_WRITE_SLACK_MS = 500;
 
