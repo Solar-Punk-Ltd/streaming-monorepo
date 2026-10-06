@@ -19,7 +19,13 @@ import {
 import { deriveHealthStatus } from '../src/utils/health.js';
 
 import { FakeClock } from './helpers/fakeClock.js';
-import { makeFakeCatalog, makeFakeRecoveryStore, makeTestOrchestrator, neverSettles, onTheFakeClock } from './helpers/fakes.js';
+import {
+  makeFakeCatalog,
+  makeFakeRecoveryStore,
+  makeTestOrchestrator,
+  neverSettles,
+  onTheFakeClock,
+} from './helpers/fakes.js';
 import { waitFor } from './helpers/waiting.js';
 
 /** Wide enough that a queue can land on either pressure threshold exactly rather than near it. */
