@@ -4,12 +4,12 @@ import {
   datingReanchored,
   encoderReturned,
   engineSkippedSegments,
-  finalizeResumed,
   ladderFinalized,
-  manifestUploaded,
+  liveWindowWritten,
   omeSegmentLossReported,
   originDeclaredDiscontinuity,
   publishingRendition,
+  recordingUploaded,
   replacedSessionFinalized,
   rungAnnounced,
   rungBatchRefused,
@@ -89,9 +89,15 @@ const cfg = loadConfig();
  */
 const PARSED_MESSAGES: readonly DeployedMessage[] = [
   deployedMessage(
-    'manifest publishes',
-    (stream, index) => manifestUploaded(stream, index),
-    'service/happy-path and the freeze regression guard in bee-outage-long',
+    'live windows written',
+    (stream, index) => liveWindowWritten(stream, index),
+    'scenarios/publish-stop-to-vod and service/abr-ladder, which hold every stream that uploaded ' +
+      'segments to having written the live playlist a viewer reads',
+  ),
+  deployedMessage(
+    'recordings uploaded',
+    (stream) => recordingUploaded(stream, stream),
+    'scenarios/publish-stop-to-vod, which holds every finalized stream to having uploaded its recording',
   ),
   deployedMessage(
     'per-segment uploads',
@@ -242,13 +248,6 @@ const PARSED_MESSAGES: readonly DeployedMessage[] = [
     (stream, index) => catalogStateLost(stream, index),
     "finalize-crash's discriminator, which is the only thing separating a genuine second finalize " +
       'from a first one the catalog guard was blind to',
-  ),
-  deployedMessage(
-    'a finalize resuming rather than republishing after a crash',
-    (stream, index) => finalizeResumed(stream, index),
-    "resumedFinalizeCount, which reports whether finalize-crash's kill landed inside the window it " +
-      'aims at and was answered there. A deployment that cannot write this line still passes the ' +
-      'scenario, and passes it without anyone being able to say the window was ever exercised',
   ),
   deployedMessage(
     'a segment the uploader could not read a duration out of',
