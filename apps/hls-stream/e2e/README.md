@@ -109,7 +109,9 @@ An in-tab node admits about one segment per second whatever its peer count, so a
 two admissions a second and can never catch up. The gateway's number is publisher-side by
 construction, because a segment cannot be uploaded until it is complete, so a shorter one is quicker.
 `profiles/in-browser.env` declares `2` and `profiles/light-client.env` declares `1.0`, and **that
-difference is deliberate**. Do not reconcile them.
+difference is deliberate**. Do not reconcile them. These are the lengths a sitting expects of its
+stage, not the product's default, which is 2s everywhere (`HLS_FRAGMENT` in `.env.sample` and the
+compose files).
 
 ⛔⛔⛔ **A third constraint arrived on 2026-09-01 and it overrides the gateway's optimum.** SRS
 announces every closed segment over `on_hls`, once per rung, so a ladder asks for

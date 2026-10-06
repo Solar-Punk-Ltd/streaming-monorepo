@@ -143,7 +143,8 @@ ever. That is what the media term fixes.
 ⛔ It is still never an arrival time. Four rung uploaders stamping the clock they received a segment
 at would disagree by their upload jitter, and hls.js reads that disagreement as the rungs covering
 different media. The millisecond precision is what a sub-second fragment needs: at `HLS_FRAGMENT=0.5`
-a whole-second stamp would give two consecutive segments the same instant.
+a whole-second stamp would give two consecutive segments the same instant, and a deployment that sets
+it that low does so on purpose, since the default is 2.
 
 ⚠️ **It was therefore nominal when this rule was written, and the operating rule that keeps it
 honest is about the source's keyframe interval.** Decided by the owner on 2026-09-03: accepted as it
@@ -337,7 +338,7 @@ whatever number a warm engine's counter is on and there is nothing to measure a 
 
 ⚠️ **A stamp costs the live window about 50 bytes per segment.** The window is a byte budget against
 one bee chunk (`LIVE_WINDOW_MAX_BYTES`), so it now holds roughly 30 segments where it held about 50,
-which at `HLS_FRAGMENT=1.0` is still well past both the engine's own `HLS_WINDOW` and the player's
+which at the default `HLS_FRAGMENT=2` is still well past both the engine's own `HLS_WINDOW` and the player's
 `liveSyncDuration`.
 
 ### After an engine restart the dating re-anchors on the clock
@@ -528,7 +529,7 @@ The API server starts on port 3000 (default).
 | `STAMP_MIN_TTL_HOURS`    | `12`                 | Hours a postage batch must have left for the postage gate to call it usable                                                                                                                                                                        |
 | `STAMP_MAX_UTILIZATION`  | `0.9`                | How full an immutable batch may be, as a ratio, for the postage gate to call it usable. A mutable batch overwrites its oldest chunks when full rather than refusing, so it is never held to this                                                   |
 | `BEE_REQUEST_TIMEOUT_MS` | `4000`               | Per-request deadline on every upload-loop call to a Bee node, derived from the retry windows                                                                                                                                                       |
-| `HLS_FRAGMENT`           | `0.5`                | Nominal seconds per fragment, the grid a segment's date snaps to within one percent. Same variable the engine reads                                                                                                                                |
+| `HLS_FRAGMENT`           | `2`                  | Nominal seconds per fragment, the grid a segment's date snaps to within one percent. Same variable the engine reads                                                                                                                                |
 | `SEGMENT_DEDUP_WINDOW`   | `10000`              | Segment indexes remembered per stream, twice this many held at most                                                                                                                                                                                |
 | `SEGMENT_REDUNDANCY`     | `1`                  | Erasure-coding parity on segment uploads, `0` turns it off                                                                                                                                                                                         |
 | `ENGINE`                 | _(empty)_            | Engine plugin to load (`srs`, `ome` or empty)                                                                                                                                                                                                      |
@@ -610,7 +611,7 @@ stream with no ABR ladder has no rung to attribute a segment to, so it is counte
 at once: a ladder broadcast and a single-rendition one running together contribute to the total, and
 only the first to the breakdown. Difference two scrapes to get a rate. Each rung needs
 `1 / HLS_FRAGMENT` uploads a second and the ladder needs `rungs / HLS_FRAGMENT` between them, so
-1.00 each and 4.00 total at the 1.0s a four-rung ladder runs.
+0.50 each and 2.00 total at the 2s default of a four-rung ladder.
 
 **`swarm_hls_rung_segments_dropped_total` is the same breakdown for what a rung lost**, and it is read
 against the uploads on the same label. Each rung publishes through its own bee with its own prepaid
@@ -629,7 +630,8 @@ of four lost everything or all four lost a little, which is what the breakdown s
 ⭐⭐⭐ **One rung reading zero while the others hold is the signature to watch for**, and it is
 invisible in `swarm_hls_segments_uploaded_total`. It means SRS is deleting that rung's segments
 before it announces them, because the ladder is asking for more announcements a second than SRS can
-deliver. That is why the ladder runs at 1.0s and not the 0.5s the gateway path measures best at. See
+deliver. That ceiling is why a ladder cannot run at the 0.5s the gateway path measures best at, and why 2s is
+comfortably inside it. See
 the block above `HLS_FRAGMENT` in `engines/srs/entrypoint.sh`.
 
 **Who may take a stream id that is already live.** An announce for an id a live session holds is

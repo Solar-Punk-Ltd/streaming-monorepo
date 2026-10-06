@@ -71,8 +71,9 @@ services:
       # ⛔ The ratio is 5.0 rather than the 4.2 that held the product at SRS's own 2.1s ceiling,
       # because the ceiling has to clear `GOP + 0.135s` and not the GOP: a segment overshoots its
       # settled length by that constant before ramping back down. At 2.1 the common 2.0s GOP was
-      # force-closed intermittently. 0.5 * 5.0 = 2.5s, the ceiling the stages have always run.
-      HLS_FRAGMENT: ${HLS_FRAGMENT:-0.5}
+      # force-closed intermittently. The ceiling is 2.5s, the one the stages have always run, and it is
+      # held in seconds, so it stays 2.5s at the default 2s fragment (a derived ratio of 1.25).
+      HLS_FRAGMENT: ${HLS_FRAGMENT:-2}
       # In seconds, and derived into SRS's own ratio by the entrypoint. Set HLS_AOF_RATIO to drive
       # that ratio directly instead, which the deploy/scripts probes do.
       HLS_SEGMENT_MAX: ${HLS_SEGMENT_MAX:-2.5}

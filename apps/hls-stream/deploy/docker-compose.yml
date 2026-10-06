@@ -312,9 +312,9 @@ services:
       # The same variable the SRS block below sets, and the same default on purpose: it is what the
       # engine is asked to cut at and what every segment's `#EXT-X-PROGRAM-DATE-TIME` steps by, so
       # the two reading different values would date a recording against a fragment length nothing
-      # produced. Absent here the uploader falls back to the same 0.5, which is right for a
+      # produced. Absent here the uploader falls back to the same 2, which is right for a
       # deployment that never overrode it and wrong for every one that did.
-      HLS_FRAGMENT: ${HLS_FRAGMENT:-0.5}
+      HLS_FRAGMENT: ${HLS_FRAGMENT:-2}
       SEGMENT_DEDUP_WINDOW: ${SEGMENT_DEDUP_WINDOW:-10000}
       ORPHAN_REAP_MS: ${ORPHAN_REAP_MS:-60000}
       SEGMENT_REDUNDANCY: ${SEGMENT_REDUNDANCY:-1}
@@ -474,12 +474,14 @@ services:
       #
       # ⛔ `HLS_FRAGMENT` is NOT the segment length. Measured over 20 arms and replicated to three
       # decimals, the segment is `ceil(HLS_FRAGMENT / GOP) * GOP`, so the publisher's keyframe
-      # interval decides it and the fragment only sets a floor. This was 1.0, which put the floor
-      # above the 0.5s GOP that a funded sitting found best and silently produced 1.0s segments for a
-      # broadcaster who asked for 0.5s ones. See the `gop-vs-fragment-2026-08-12` measurement (kept outside the repository).
-      HLS_FRAGMENT: ${HLS_FRAGMENT:-0.5}
+      # interval decides it and the fragment only sets a floor. The default is 2, the product's
+      # segment length since 2026-10-06, so a broadcaster's keyframe every 2s gives 2s segments and a
+      # shorter one is rounded up to a whole number of its own intervals. See the
+      # `gop-vs-fragment-2026-08-12` measurement (kept outside the repository).
+      HLS_FRAGMENT: ${HLS_FRAGMENT:-2}
       # SRS force-closes a segment at `HLS_FRAGMENT * HLS_AOF_RATIO` regardless of keyframes, so this
-      # is the ceiling on the pair rather than a detail.
+      # is the ceiling on the pair rather than a detail. It is held in seconds below, so moving the
+      # fragment to 2 left the ceiling at 2.5s, which still clears the 2.135s a 2.0s GOP needs.
       #
       # ⛔ The ceiling has to clear `GOP + 0.135s`, not the GOP. Measured 2026-08-12: a segment
       # overshoots its settled length by a **constant ~0.135s** and ramps back down, at every GOP
