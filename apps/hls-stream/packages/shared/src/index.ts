@@ -14,4 +14,5 @@ export * from './segmentSpan.js';
 export * from './streamStatus.js';
 export * from './uploaderHealth.js';
 export * from './uploaderLog.js';
+export * from './windowClock.js';
 export * from './windows.js';
