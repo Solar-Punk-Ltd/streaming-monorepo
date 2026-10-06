@@ -1694,7 +1694,7 @@ export class StreamUploader {
   private async uploadDataAsSoc(index: number, data: Uint8Array) {
     try {
       const { uploadPayload } = this.bee.feed.makeWriter(Topic.fromString(this.streamRawTopic), this.streamSigner);
-      // NOT deferred, unlike the segment write below, and the asymmetry is deliberate.
+      // NOT deferred, like the segment write below.
       //
       // Deferred means bee acks the SOC from its own local store and push-syncs it in the
       // background, so the publish reports success while the chunk is still only local and a
@@ -1720,10 +1720,15 @@ export class StreamUploader {
     }
   }
 
+  /**
+   * A segment's bytes, uploaded direct. Decision 23 of the windows plan, measured in phase 0: a
+   * direct segment is named 309 ms sooner at the median and readable from other nodes 0.35 to 0.39 s
+   * sooner than a deferred one, because the playlist names it as soon as this upload returns.
+   */
   private async uploadDataToBee(data: Uint8Array) {
     try {
       return await retryUntilDeadlineAsync(
-        () => this.bee.data.upload(this.stamp, data, { redundancyLevel: this.redundancyLevel, deferred: true }),
+        () => this.bee.data.upload(this.stamp, data, { redundancyLevel: this.redundancyLevel, deferred: false }),
         SEGMENT_UPLOAD_RETRY_WINDOW_MS,
         UPLOAD_RETRY_BASE_MS,
         UPLOAD_RETRY_CAP_MS,
