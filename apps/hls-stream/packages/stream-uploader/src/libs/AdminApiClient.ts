@@ -154,16 +154,6 @@ export interface RenditionReportResponse {
    * see that the ladder is finished and the admin still says `live`, and report `vod` after all.
    */
   streamStatus: string | null;
-  /**
-   * The index of the catalog feed write this report caused, or null when the body did not carry one.
-   *
-   * The admin serialises every catalog write on one mutex and answers each report from inside it, so
-   * this number orders answers the way the admin merged them. Four rungs report concurrently and
-   * their answers can arrive here in another order; `AdminLadderRegistry` compares this before letting an
-   * answer replace the ladder it holds, so an older merge arriving late cannot write a master missing
-   * a rung a newer answer already named.
-   */
-  feedIndex: number | null;
   ladder: {
     /** Every rendition on record carries an index, and there is at least one. */
     finished: boolean;
