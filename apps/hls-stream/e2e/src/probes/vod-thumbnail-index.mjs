@@ -1,23 +1,15 @@
 /**
- * Whether a VOD catalog entry's published index actually addresses the manifest its thumbnail wants.
+ * Whether each VOD catalog entry's recording, named by its reference, is a finished playlist a thumbnail can be
+ * taken from, and how long that one read takes.
  *
- * `StreamPreview` resolves `/feeds/{owner}/{topic}` once per card to find a VOD manifest whose SOC
- * index the catalog entry already carries. Fix 2 in `docs/reviews/catalog-off-the-head-lookup.md`
- * proposes reading that slot by address instead. Two things have to hold for that to be a fix rather
- * than a regression, and only one of them is about speed:
+ * This probe once compared an entry's feed index with its feed head, for fix 2 of
+ * `docs/reviews/catalog-off-the-head-lookup.md`. A recording is now named by its reference alone and read with
+ * `GET /bytes/<recording>`, so the question left is whether that read answers a playlist carrying
+ * `#EXT-X-ENDLIST`. The file keeps its name so the review's link still resolves.
  *
- *   1. **The bytes are the same.** If the head of a finished stream's feed is newer than the index the
- *      catalog recorded, an index-addressed thumbnail shows an older manifest than today's does. That
- *      would refute the change outright, and it is the reason this probe compares payloads rather than
- *      just timing them.
- *   2. The explicit read is faster, which is the point.
- *
- * Reads the real catalog, so it needs no deploy and no broadcast. Round robin per entry, because this
- * environment drifts between sittings and an all-heads-then-all-slots ordering would attribute that
- * drift to the arm.
+ * Reads the real catalog, so it needs no deploy and no broadcast.
  */
-import { FeedIndex, Identifier, Topic } from '@ethersphere/bee-js';
-import { Binary } from 'cafe-utility';
+import { Topic } from '@ethersphere/bee-js';
 
 import { probeReadUrl } from './bee-urls.mjs';
 
@@ -27,21 +19,14 @@ const APP_RAW_TOPIC = process.env.APP_RAW_TOPIC;
 const MAX_ENTRIES = Number(process.env.MAX_ENTRIES ?? 12);
 const REQUEST_TIMEOUT_MS = 30_000;
 
-function slotUrl(owner, topic, index) {
-  const identifier = new Identifier(
-    Binary.keccak256(Binary.concatBytes(topic.toUint8Array(), FeedIndex.fromBigInt(BigInt(index)).toUint8Array())),
-  );
-  return `${READ_URL}/soc/${owner}/${identifier.toString()}`;
-}
-
 async function timed(url) {
   const startedAt = Date.now();
   try {
     const response = await fetch(url, { signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS) });
     const body = await response.text();
-    return { ms: Date.now() - startedAt, status: response.status, body, headers: response.headers };
+    return { ms: Date.now() - startedAt, status: response.status, body };
   } catch {
-    return { ms: Date.now() - startedAt, status: 0, body: '', headers: new Headers() };
+    return { ms: Date.now() - startedAt, status: 0, body: '' };
   }
 }
 
@@ -53,11 +38,11 @@ function stats(v) {
   return { n: s.length, min: s[0], median: s[Math.floor(s.length / 2)], max: s[s.length - 1] };
 }
 
-/** First line of a manifest body, for a readable mismatch report. */
+/** A playlist body in a few words, for a readable report. */
 function shape(body) {
   const segments = (body.match(/^#EXTINF/gm) ?? []).length;
   const vod = body.includes('#EXT-X-ENDLIST');
-  return `${body.length}B ${segments}seg ${vod ? 'VOD' : 'live'}`;
+  return `${body.length}B ${segments}seg ${vod ? 'VOD' : 'not finished'}`;
 }
 
 const appTopic = Topic.fromString(APP_RAW_TOPIC);
@@ -68,64 +53,33 @@ if (catalog.status !== 200) {
 }
 
 const entries = JSON.parse(catalog.body);
-const withIndex = entries.filter((e) => typeof e.index === 'number');
-console.log(`catalog: ${entries.length} entries, ${withIndex.length} carry an index, sampling ${MAX_ENTRIES}\n`);
+const withRecording = entries.filter((e) => e.state === 'vod' && typeof e.recording === 'string');
+console.log(`catalog: ${entries.length} entries, ${withRecording.length} name a recording, sampling ${MAX_ENTRIES}\n`);
 
-const sample = withIndex.slice(-MAX_ENTRIES);
-const headMs = [];
-const slotMs = [];
-let sameBytes = 0;
-let mismatched = 0;
-let slotMissing = 0;
+const sample = withRecording.slice(-MAX_ENTRIES);
+const readMs = [];
+let finished = 0;
+let unfinished = 0;
+let missing = 0;
 
 for (const entry of sample) {
-  const topic = Topic.fromString(entry.topic);
-  const head = await timed(`${READ_URL}/feeds/${entry.owner}/${topic.toString()}`);
-  const slot = await timed(slotUrl(entry.owner, topic, entry.index));
+  const read = await timed(`${READ_URL}/bytes/${entry.recording}`);
+  readMs.push(read.ms);
 
-  headMs.push(head.ms);
-  slotMs.push(slot.ms);
-
-  const headIndexHeader = head.headers.get('swarm-feed-index');
-  const headIndex = headIndexHeader ? Number.parseInt(headIndexHeader.trim(), 16) : null;
-
-  if (slot.status !== 200) {
-    slotMissing += 1;
-    console.log(
-      `MISS  ${entry.topic.slice(0, 8)} state=${entry.state} index=${entry.index} head=${headIndex} slot status ${
-        slot.status
-      }`,
-    );
+  if (read.status !== 200) {
+    missing += 1;
+    console.log(`MISS  ${entry.topic.slice(0, 8)} recording ${entry.recording.slice(0, 12)} status ${read.status}`);
     continue;
   }
-  if (slot.body === head.body) {
-    sameBytes += 1;
-    console.log(
-      `same  ${entry.topic.slice(0, 8)} state=${entry.state} index=${entry.index} head=${headIndex} ${shape(
-        slot.body,
-      )} head ${head.ms}ms slot ${slot.ms}ms`,
-    );
+  if (read.body.includes('#EXT-X-ENDLIST')) {
+    finished += 1;
+    console.log(`ok    ${entry.topic.slice(0, 8)} ${shape(read.body)} in ${read.ms}ms`);
     continue;
   }
-  mismatched += 1;
-  console.log(
-    `DIFF  ${entry.topic.slice(0, 8)} state=${entry.state} index=${entry.index} head=${headIndex} head[${shape(
-      head.body,
-    )}] slot[${shape(slot.body)}]`,
-  );
+  unfinished += 1;
+  console.log(`OPEN  ${entry.topic.slice(0, 8)} ${shape(read.body)}`);
 }
 
-const h = stats(headMs);
-const s = stats(slotMs);
-console.log(`\n${'arm'.padEnd(26)}${'min'.padStart(8)}${'median'.padStart(9)}${'max'.padStart(9)}`);
-console.log(
-  `${'head lookup (today)'.padEnd(26)}${`${h.min}ms`.padStart(8)}${`${h.median}ms`.padStart(9)}${`${h.max}ms`.padStart(
-    9,
-  )}`,
-);
-console.log(
-  `${'slot by published index'.padEnd(26)}${`${s.min}ms`.padStart(8)}${`${s.median}ms`.padStart(
-    9,
-  )}${`${s.max}ms`.padStart(9)}`,
-);
-console.log(`\nsame bytes ${sameBytes}, different ${mismatched}, slot missing ${slotMissing}, of ${sample.length}`);
+const r = stats(readMs);
+console.log(`\nread by reference: min ${r.min}ms, median ${r.median}ms, max ${r.max}ms`);
+console.log(`\nfinished ${finished}, not finished ${unfinished}, missing ${missing}, of ${sample.length}`);
