@@ -542,7 +542,7 @@ function windowClockOn(clock: FakeClock): WindowWriterClock {
 export function onTheFakeClock(
   clock: FakeClock,
   windowMs: number = TEST_LIVE_WINDOW_MS,
-): Pick<StreamOrchestratorConfig, 'clock' | 'windowClock' | 'liveWindowMs'> {
+): Required<Pick<StreamOrchestratorConfig, 'clock' | 'windowClock' | 'liveWindowMs'>> {
   return { clock, windowClock: windowClockOn(clock), liveWindowMs: windowMs };
 }
 
