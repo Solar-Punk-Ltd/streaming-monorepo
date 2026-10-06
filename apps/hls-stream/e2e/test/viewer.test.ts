@@ -221,7 +221,6 @@ describe('fetchCatalog', () => {
       owner: `0x${OWNER}`,
       topic: 'topic-a',
       state: 'live',
-      index: 3,
       mediatype: 'video',
       timestamp: 1786000445123,
     },
@@ -248,7 +247,7 @@ describe('fetchCatalog', () => {
 });
 
 describe('entryCarriesTopic', () => {
-  const base = { title: 't', owner: 'o', index: 0, mediatype: 'video', timestamp: 1 };
+  const base = { title: 't', owner: 'o', mediatype: 'video', timestamp: 1 };
 
   it('matches a single-rendition entry by its own topic', () => {
     const entry: CatalogEntry = { ...base, topic: 'session-1', state: 'live' };
