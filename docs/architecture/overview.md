@@ -76,6 +76,50 @@ lives once, in `apps/hls-stream/packages/shared/src/windows.ts`. Nothing reads o
   second line, the Unix milliseconds the writer wrote it. At most 4096 bytes, a hard limit: the
   floor rule that lets a feed playlist reach 8192 bytes does not apply to a window chunk.
 
+### Reading windows
+
+The reader core is `apps/hls-stream/packages/shared/src/windowReader.ts`, and the clock calibration
+it shares is `windowClock.ts` beside it. Both are pure logic: the read, the clock and the timers are
+injected, and the caller checks the owner's signature before a payload reaches them.
+
+**Why early asks are the cost that matters.** Asking Bee for a chunk before it exists makes Bee skip
+its peers for that address for about a minute, on the gateway and on the nodes that forwarded the
+ask. The skip list belongs to the node, so one viewer whose clock runs fast delays that window for
+every viewer on the gateway. Being late only costs the viewer who is late. So the reader may run a
+little late and keeps its early asks rare.
+
+- **Opening.** Ask the newest window due by the corrected clock and the ones before it, newest first,
+  4 at a time: at most 8 windows for `live`, and for `note` the heartbeat in windows plus 2. If none
+  is found, ask further back at doubling distances until one is, or the clock limit is passed, so a
+  reader whose clock runs 5 minutes ahead still finds the stream. The newest found chunk is handed on.
+  What the first opening learns about the clock counts only once something is found, because a stream
+  that is not running looks exactly like a clock far ahead.
+- **Following.** Each window is asked once, at its end plus the margin plus the correction, and never
+  again, whatever came back. When several are due at once only the newest is asked, since it carries
+  what the others would. While the clock is still calibrating, one ask is out at a time.
+- **Margin and correction are kept apart.** The margin, 1 s to start, is how long propagation takes
+  and belongs to one reader: three windows that must exist absent in a row, with the clock not to
+  blame, double it, capped at 8 s, and five found in a row halve it back. The correction is how far
+  the reader's clock runs ahead and belongs to the client.
+- **One clock per client.** `WindowClock` is shared by every reader in a client, so the live reader's
+  answer every 2 s also protects the stream list's note reader, which asks once every 10 s. Each found
+  chunk bounds how far ahead the clock can be, by its received time less its written time. Each absent
+  window that must exist bounds how far ahead it is at least. The correction moves up at once on an
+  early ask, then descends from the best found ask an eighth of the way to the floor per found window,
+  and once settled steps down 250 ms per 10 found windows, never below where an early ask last
+  happened. It is limited to 5 minutes and 10 s either way.
+- **Jumps.** A timer that fires early by its own measure is a backward jump, and the whole calibration
+  moves by it, so no window is asked twice and the pace stays the same. A timer that fires late is a
+  forward jump or a sleep, which look alike: only the newest due window is asked, the correction stays,
+  so a sleep costs nothing, and the bracket opens upward, so an absent answer reads as the clock having
+  moved and the reader opens again from there.
+- **Silence.** No chunk for 30 s on `live`, or for the heartbeat plus two windows plus the margin on
+  `note`, reports the stream paused or down. The reader keeps asking one window per window, which
+  costs nothing for a window nobody writes, and reports live on the next found chunk.
+- **A clock running behind cannot be detected.** A reader 5 minutes behind asks windows written 5
+  minutes earlier, finds every one, and plays 5 minutes late. Finding out would mean asking windows
+  its own clock says are not due yet, which is the early ask that hurts everyone.
+
 ## The three kinds of host
 
 A host is a Linux machine with Docker on it. One machine can carry every role, or each role can have
