@@ -95,8 +95,12 @@ little late and keeps its early asks rare.
   What the first opening learns about the clock counts only once something is found, because a stream
   that is not running looks exactly like a clock far ahead.
 - **Following.** Each window is asked once, at its end plus the margin plus the correction, and never
-  again, whatever came back. When several are due at once only the newest is asked, since it carries
-  what the others would. While the clock is still calibrating, one ask is out at a time.
+  again while that ask could still be on Bee's skip list. A window that was not found, and whose
+  first ask came more than the skip list's minute (`BEE_SKIP_LIST_MS`, Bee's `skiplistDur`) before it
+  is due by the current calibration, is asked once more when due, never a third time. That is how a
+  reader whose clock ran minutes ahead still reads the windows its opening asked too soon. When
+  several are due at once only the newest is asked, since it carries what the others would. While
+  the clock is still calibrating, one ask is out at a time.
 - **Margin and correction are kept apart.** The margin, 1 s to start, is how long propagation takes
   and belongs to one reader: three windows that must exist absent in a row, with the clock not to
   blame, double it, capped at 8 s, and five found in a row halve it back. The correction is how far
@@ -112,13 +116,25 @@ little late and keeps its early asks rare.
   moves by it, so no window is asked twice and the pace stays the same. A timer that fires late is a
   forward jump or a sleep, which look alike: only the newest due window is asked, the correction stays,
   so a sleep costs nothing, and the bracket opens upward, so an absent answer reads as the clock having
-  moved and the reader opens again from there.
+  moved and the reader scans back from that window for one not yet asked.
 - **Silence.** No chunk for 30 s on `live`, or for the heartbeat plus two windows plus the margin on
   `note`, reports the stream paused or down. The reader keeps asking one window per window, which
-  costs nothing for a window nobody writes, and reports live on the next found chunk.
+  costs nothing for a window nobody writes, and reports live on the next found chunk. A silence does
+  not open the scan again. A clock that stepped forward looks exactly like a silence, and the follow
+  loop's timer catches it instead, as a jump.
 - **A clock running behind cannot be detected.** A reader 5 minutes behind asks windows written 5
   minutes earlier, finds every one, and plays 5 minutes late. Finding out would mean asking windows
   its own clock says are not due yet, which is the early ask that hurts everyone.
+- **Known limit: opening during an outage.** A reader opened while no windows are being written, and
+  told the stream is live, cannot tell the outage from a clock running ahead by as long. It may stay
+  that late until reloaded: opened 60 s into an outage, it followed 65 to 67 s late in the
+  simulation. The player should pass `isLive` from the stream list, and with it the same reader
+  settles at the normal delay once the stream resumes. A direct clock reading from the gateway is the
+  likely fix, a later phase's decision.
+- **Known limit: a note reader alone calibrates slowly.** It learns about its clock only from
+  heartbeat windows, one a minute. With a clock 3 s ahead it made one harmful heartbeat ask in its
+  first 3 minutes, and in 36 of 200 simulated runs one or two more later. A note reader sharing the
+  clock with a live reader made none once the live reader settled.
 
 ## The three kinds of host
 
