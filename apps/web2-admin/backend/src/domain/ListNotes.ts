@@ -81,6 +81,7 @@ export class ListNotes implements FeedWriteLog {
       heartbeatMs: STREAM_LIST_HEARTBEAT_MS,
       newestStored: () => this.newest,
       write: async (slot, payload) => {
+        // forRead, not forWrite: a note is its own chunk, never a catalogue write, so it takes the current node and batch without the publish lock.
         const read = await this.targets.forRead();
         if ('skipped' in read) throw new Error(read.skipped);
         await this.gateway.writeNote(slot, payload, read.target);
