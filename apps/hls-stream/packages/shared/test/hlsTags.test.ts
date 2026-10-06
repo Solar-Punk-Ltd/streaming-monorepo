@@ -29,6 +29,8 @@ const RFC_8216_TAGS: Record<keyof typeof tags, string> = {
   HLS_PLAYLIST_TYPE_EVENT: '#EXT-X-PLAYLIST-TYPE:EVENT',
   HLS_MEDIA_SEQUENCE_ZERO: '#EXT-X-MEDIA-SEQUENCE:0',
   HLS_PLAYLIST_TYPE_VOD: '#EXT-X-PLAYLIST-TYPE:VOD',
+  // Not in RFC 8216. This stack's own tag on a live window chunk, pinned here so a rename still fails.
+  HLS_SWARM_WRITTEN_AT: '#EXT-X-SWARM-WRITTEN-AT',
 };
 
 describe('HLS tag spellings (ARCH-1)', () => {

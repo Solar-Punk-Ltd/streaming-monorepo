@@ -44,3 +44,10 @@ export const HLS_MEDIA_SEQUENCE_ZERO = `${HLS_MEDIA_SEQUENCE}:0`;
 
 /** The value `#EXT-X-PLAYLIST-TYPE` carries on a finished recording. */
 export const HLS_PLAYLIST_TYPE_VOD = `${HLS_PLAYLIST_TYPE}:VOD`;
+
+/**
+ * The Unix milliseconds at which the writer wrote a live window chunk. Not an RFC 8216 tag: it is
+ * this stack's own, carried as the second line of a `live` window's playlist so a reader can tell how
+ * far its clock runs ahead. hls.js ignores tags it does not know.
+ */
+export const HLS_SWARM_WRITTEN_AT = '#EXT-X-SWARM-WRITTEN-AT';
