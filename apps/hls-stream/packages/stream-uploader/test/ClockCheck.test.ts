@@ -105,11 +105,26 @@ describe('the verdict of one round', () => {
     assert.equal(judgeClock([sample('a', -300, 4)]).verdict, CLOCK_UNTRUSTED);
   });
 
-  it('counts half the round trip into the error, as phase 0 judged it', () => {
-    // 200 off is inside 250, and 120 of round trip puts the bound at 260, outside it.
+  it('trusts a clock whose whole bound, offset plus half the round trip, is inside the limit', () => {
+    assert.equal(judgeClock([sample('a', 10, 20)]).verdict, CLOCK_TRUSTED);
     assert.equal(judgeClock([sample('a', 200, 100)]).verdict, CLOCK_TRUSTED);
-    assert.equal(judgeClock([sample('a', 200, 120)]).verdict, CLOCK_UNTRUSTED);
     assert.equal(CLOCK_MAX_ERROR_MS, 250);
+  });
+
+  it('distrusts a clock only when it is off by more than the limit whatever the path', () => {
+    // 400 off with 100 of round trip is at least 350 off, so the clock is wrong.
+    assert.equal(judgeClock([sample('a', 400, 100)]).verdict, CLOCK_UNTRUSTED);
+  });
+
+  it('cannot judge an answer whose round trip leaves the clock on either side of the limit', () => {
+    // A perfect clock behind a slow path, which a broadcaster's own upload can make.
+    const slow = judgeClock([sample('a', 0, 600)]);
+    assert.equal(slow.verdict, CLOCK_UNCHECKED);
+    assert.equal(slow.estimate?.server, 'a', 'the answer is kept for the report');
+    assert.equal(slow.errorBoundMs, 300);
+    // Somewhere between 200 and 400 off: neither inside the limit nor surely outside it.
+    assert.equal(judgeClock([sample('a', 300, 200)]).verdict, CLOCK_UNCHECKED);
+    assert.equal(judgeClock([sample('a', 200, 120)]).verdict, CLOCK_UNCHECKED);
   });
 
   it('takes the answer with the shortest round trip, whatever the others say', () => {
@@ -174,6 +189,24 @@ describe('the clock check', () => {
     assert.ok(warning, 'an untrusted clock is a warning');
     assert.match(warning.message, /300\.0 ms behind a\.time\.test/);
     assert.match(warning.message, /refus/);
+    check.stop();
+  });
+
+  it('reports a round whose answer came too slowly as unchecked, with that answer and a log line saying why', async () => {
+    const { check, logged } = harness({ 'a.time.test': sample('a.time.test', 0, 600) });
+
+    check.start();
+    await settle();
+
+    assert.equal(check.isTrusted(), true);
+    const report = check.report();
+    assert.equal(report.verdict, CLOCK_UNCHECKED);
+    assert.equal(report.server, 'a.time.test');
+    assert.equal(report.delayMs, 600);
+    assert.ok(
+      logged.some((line) => line.level === 'warn' && /round trip was too long to judge/.test(line.message)),
+      'the warning says the round trip was too long',
+    );
     check.stop();
   });
 

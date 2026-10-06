@@ -64,8 +64,14 @@ interface ClockCheckOptions {
 }
 
 /**
- * The verdict of one round: the answer with the shortest round trip is the estimate, and its error bound
- * is `|offset| + delay / 2`, which is how phase 0's clock tool judged a host.
+ * The verdict of one round. The answer with the shortest round trip is the estimate, and the host's
+ * clock is somewhere between `|offset| - delay / 2` and `|offset| + delay / 2` off, because the server
+ * read its clock at an unknown point of that round trip.
+ *
+ * Trusted when even the far end of that range is inside the limit, which is how phase 0's clock tool
+ * judged a host. Untrusted only when even the near end is outside it, so a measurement shows the clock
+ * off whatever the path. Anything between is unchecked: the answer came too slowly to tell, and a
+ * perfect clock behind a congested uplink must not be refused for it.
  *
  * The shortest round trip rather than the smallest offset, because a long round trip is the one whose
  * offset can be wrong by the most, and an estimate chosen by its offset would pick whichever server
@@ -76,8 +82,15 @@ export function judgeClock(samples: readonly ClockSample[]): ClockRound {
   if (!estimate) {
     return { verdict: CLOCK_UNCHECKED };
   }
-  const errorBoundMs = Math.abs(estimate.offsetMs) + Math.max(0, estimate.delayMs) / 2;
-  return { verdict: errorBoundMs > CLOCK_MAX_ERROR_MS ? CLOCK_UNTRUSTED : CLOCK_TRUSTED, estimate, errorBoundMs };
+  const halfPathMs = Math.max(0, estimate.delayMs) / 2;
+  const errorBoundMs = Math.abs(estimate.offsetMs) + halfPathMs;
+  if (errorBoundMs <= CLOCK_MAX_ERROR_MS) {
+    return { verdict: CLOCK_TRUSTED, estimate, errorBoundMs };
+  }
+  if (Math.abs(estimate.offsetMs) - halfPathMs > CLOCK_MAX_ERROR_MS) {
+    return { verdict: CLOCK_UNTRUSTED, estimate, errorBoundMs };
+  }
+  return { verdict: CLOCK_UNCHECKED, estimate, errorBoundMs };
 }
 
 /**
@@ -183,7 +196,12 @@ export class ClockCheck {
       `${Math.abs(estimate.offsetMs).toFixed(1)} ms ${direction} ${estimate.server}, round trip ` +
       `${estimate.delayMs.toFixed(1)} ms, at most ${errorBoundMs.toFixed(1)} ms off against a limit of ${CLOCK_MAX_ERROR_MS} ms`;
 
-    if (round.verdict === CLOCK_UNTRUSTED) {
+    if (round.verdict === CLOCK_UNCHECKED) {
+      this.options.logger.warn(
+        `[ClockCheck] the round trip was too long to judge the clock: ${reading}. Publishing goes on, ` +
+          `asking again in ${CLOCK_RETRY_INTERVAL_MS / 1_000} s`,
+      );
+    } else if (round.verdict === CLOCK_UNTRUSTED) {
       this.options.logger.warn(
         `[ClockCheck] the host's clock is ${reading}, so publishing windows is refused until it is fixed. ` +
           `Asking again in ${CLOCK_RETRY_INTERVAL_MS / 1_000} s`,
