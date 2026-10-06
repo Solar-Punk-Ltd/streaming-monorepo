@@ -294,7 +294,9 @@ describe('the clock check', () => {
       assert.equal(report.offsetMs, 400, "the report keeps the untrusted round's numbers");
       assert.equal(report.delayMs, 6);
       assert.ok(
-        logged.some((line) => line.level === 'warn' && /no conclusive answer/.test(line.message) && /refused/.test(line.message)),
+        logged.some(
+          (line) => line.level === 'warn' && /no conclusive answer/.test(line.message) && /refused/.test(line.message),
+        ),
         'the log says publishing stays refused',
       );
 
