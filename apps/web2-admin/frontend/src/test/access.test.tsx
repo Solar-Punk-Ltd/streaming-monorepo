@@ -1,7 +1,10 @@
 import { fireEvent, screen, waitFor, within } from '@testing-library/react';
+import { Route, Routes } from 'react-router';
 import { describe, expect, it } from 'vitest';
 
+import { RequireAuth } from '../components/RequireAuth';
 import { AccessPage } from '../pages/AccessPage';
+import { LoginPage } from '../pages/LoginPage';
 import { jsonError, jsonOk, makeUser, makeUserSummary, mockFetch, noContent, renderWithAuth } from './helpers';
 
 const SESSION = '/api/auth/session';
@@ -314,5 +317,51 @@ describe('changing my own password', () => {
     expect(await screen.findByText('That is not your current password.')).toBeInTheDocument();
     // Still on the page: a 401 here is an answer, not an eviction.
     expect(screen.getByLabelText('Current password')).toBeInTheDocument();
+  });
+
+  /** The page behind the route guard, with the login page it falls back to. */
+  function renderGuardedAccess(passwordAnswer: () => Response) {
+    mockFetch([
+      { path: SESSION, respond: () => jsonOk({ user: makeUser({ username: 'root' }) }) },
+      { path: USERS, respond: () => jsonOk({ users: [ADMIN, KIM] }) },
+      { method: 'POST', path: '/api/auth/password', respond: passwordAnswer },
+    ]);
+    renderWithAuth(
+      <Routes>
+        <Route path="/login" element={<LoginPage />} />
+        <Route element={<RequireAuth />}>
+          <Route path="/access" element={<AccessPage />} />
+        </Route>
+      </Routes>,
+      { route: '/access' },
+    );
+  }
+
+  async function submitChange(current: string) {
+    await screen.findByText('kim');
+    type('Current password', current);
+    type('New password', 'a-long-enough-one');
+    type('Repeat new password', 'a-long-enough-one');
+    fireEvent.click(screen.getByRole('button', { name: 'Change password' }));
+  }
+
+  it('signs you out when the API says the session itself has ended', async () => {
+    renderGuardedAccess(() => jsonError(401, { error: 'unauthenticated' }));
+
+    await submitChange('whatever-it-was');
+
+    expect(await screen.findByText('Your session ended. Log in again.')).toBeInTheDocument();
+    expect(screen.queryByLabelText('Current password')).not.toBeInTheDocument();
+    expect(screen.queryByText('That is not your current password.')).not.toBeInTheDocument();
+  });
+
+  it('keeps you signed in behind the route guard when only the password was wrong', async () => {
+    renderGuardedAccess(() => jsonError(401, { error: 'invalid_credentials' }));
+
+    await submitChange('not-the-right-one');
+
+    expect(await screen.findByText('That is not your current password.')).toBeInTheDocument();
+    expect(screen.getByLabelText('Current password')).toBeInTheDocument();
+    expect(screen.queryByText('Your session ended. Log in again.')).not.toBeInTheDocument();
   });
 });
