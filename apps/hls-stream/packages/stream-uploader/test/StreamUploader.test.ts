@@ -391,7 +391,6 @@ describe('StreamUploader discontinuity lifecycle', () => {
       {
         restoreState: {
           streamRawTopic: 'topic-abc',
-          socIndex: 5,
           segments: [{ index: 0, duration: 2, ref: 'ref0', discontinuity: false }],
           hlsHeaders: ['#EXTM3U', '#EXT-X-VERSION:3'],
           isFirstSegmentReady: true,
@@ -1602,7 +1601,6 @@ describe('StreamUploader restoring an impossible recovery entry', () => {
       {
         restoreState: {
           streamRawTopic: 'topic-abc',
-          socIndex: 5,
           segments: [{ index: 0, duration: 2, ref: 'ref0', discontinuity: false }],
           hlsHeaders: ['#EXTM3U', '#EXT-X-VERSION:3'],
           ...readiness,

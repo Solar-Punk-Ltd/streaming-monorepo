@@ -1055,10 +1055,7 @@ export class ManifestManager {
    */
   public restoreState(segments: SegmentEntry[], hlsHeaders: string[], inherited?: InheritedTimeline): void {
     if (inherited !== undefined) {
-      // ⛔ Re-derived off the lines rather than trusted. An entry written before gap entries stopped
-      // counting as media carries a duration that includes them, and the lines are verbatim, so the
-      // media they hold is exactly recoverable. See `mediaSecondsOf`.
-      this.inherited = { ...inherited, durationSeconds: mediaSecondsOf(inherited.lines) };
+      this.inherited = inherited;
     }
     const firstIndex = segments[0]?.index ?? 0;
     const renumbered = segments.map((seg) => ({ ...seg, sequence: seg.sequence ?? seg.index - firstIndex }));

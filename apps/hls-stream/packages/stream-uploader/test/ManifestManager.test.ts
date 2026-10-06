@@ -2000,23 +2000,6 @@ describe('gluing the recording onto what was already on the feed', () => {
       assert.deepEqual(manager.inheritedPrefix(), parsed);
       assert.equal(new ManifestManager(TEST_ANCHOR).inheritedPrefix(), null);
     });
-
-    /**
-     * An entry written before gap entries stopped counting as media carries a duration that includes
-     * them. The lines it carries are verbatim, so the media they hold is recovered from them rather
-     * than the stale number trusted.
-     */
-    it('re-derives the inherited duration off the lines, not the number an older entry carries', () => {
-      const one = withHole(3, 2, 3);
-      one.buildLiveManifest();
-      const parsed = inheritedTimeline(one.buildVODManifest())!;
-      const written = { ...parsed, durationSeconds: parsed.durationSeconds + 4 };
-
-      const recovered = new ManifestManager(TEST_ANCHOR);
-      recovered.restoreState([], [], written);
-
-      assert.equal(recovered.getTotalDuration(), one.getTotalDuration());
-    });
   });
 
   /**

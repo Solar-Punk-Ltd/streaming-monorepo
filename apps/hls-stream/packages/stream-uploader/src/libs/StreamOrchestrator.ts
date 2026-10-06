@@ -266,6 +266,11 @@ function isRebuildableStreamState(state: StreamState): boolean {
   return Array.isArray(state.segments);
 }
 
+/** Whether an entry was written by the uploader on feeds, which kept its feed index as `socIndex`. */
+function isPreWindowEntry(state: StreamState): boolean {
+  return 'socIndex' in state;
+}
+
 /**
  * The engine index of the newest segment a recovery entry holds, or null for an entry holding none.
  *
@@ -2014,6 +2019,17 @@ export class StreamOrchestrator {
             '(its segment list is missing or is not an array); quarantining it so it is not retried forever',
         );
         this.recoveryStore.quarantine(fileId);
+        continue;
+      }
+
+      // The uploader on feeds wrote its feed index into every entry, and this one neither writes nor
+      // reads a feed, so nothing in such an entry is a position it could continue from.
+      if (isPreWindowEntry(state)) {
+        this.logger.warn(
+          `[StreamOrchestrator] Recovery entry ${fileId} was written before live windows, so it is ` +
+            'dropped and the stream starts fresh',
+        );
+        this.recoveryStore.remove(fileId);
         continue;
       }
 
