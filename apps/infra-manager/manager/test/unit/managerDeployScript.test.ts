@@ -21,7 +21,7 @@ import {
   writeFileSync,
 } from 'node:fs';
 import { tmpdir } from 'node:os';
-import { dirname, join, relative } from 'node:path';
+import { basename, dirname, join, relative } from 'node:path';
 import { describe, it } from 'node:test';
 import { fileURLToPath } from 'node:url';
 
@@ -154,8 +154,25 @@ describe('deploy/deploy.sh', () => {
     assert.equal(script.includes('uuidgen'), false, 'a shipment has no id because there is no shipment');
   });
 
-  it('ships one rsync, the repository, and no package beside it', () => {
-    assert.equal(rsyncs().length, 1, 'the repository is the only thing copied to the host');
+  /**
+   * Two since 2026-10-06, and still no package beside them. The repository's rsync leaves every
+   * env file in manager/ but the sample out, so that no host is sent another host's settings, and
+   * rsync never writes or deletes a path it excludes, --delete or not. So the host's manager/.env
+   * is replaced by a transfer of its own, of the profile's env file alone, which runs second, into
+   * the folder the first one makes on a new host.
+   */
+  it("ships two rsyncs, the repository and then the profile's env file alone, and no package beside them", () => {
+    const [repository = '', envFile = '', ...more] = rsyncs();
+    assert.deepEqual(more, [], 'nothing else is copied to the host');
+    assert.ok(repository.includes('"${SSH_TARGET}:${REMOTE_PATH}/"'), 'the repository first');
+    const samples = repository.indexOf("--include '.env.sample'");
+    const envFiles = repository.indexOf("--exclude '.env*'");
+    assert.notEqual(samples, -1, 'with every .env.sample in the tree');
+    assert.ok(envFiles > samples, 'and without every other env file in it, the samples let through first');
+    assert.ok(
+      envFile.includes('"$ENV_FILE" "${SSH_TARGET}:${REMOTE_PATH}/manager/.env"'),
+      "then the profile's env file, as the host's manager/.env",
+    );
   });
 
   it('interpolates no identity it had to check first, because the seal that produced them is gone', () => {
@@ -261,10 +278,12 @@ describe('deploy/deploy.sh', () => {
   });
 
   it('refuses an ssh target that would read as an option to ssh', () => {
-    const taken = script.indexOf('SSH_TARGET="${1:-');
+    const taken = script.indexOf('SSH_TARGET="$1"');
     const checked = script.indexOf('if [[ "$SSH_TARGET" == -* ]]');
+    assert.notEqual(taken, -1, 'the target is taken from the arguments, alone or after --host');
     assert.notEqual(checked, -1, 'a leading dash makes the target an ssh flag');
     assert.ok(checked > taken, 'after the argument is taken');
+    assert.ok(checked < script.indexOf('rsync -avz'), 'before rsync is given it');
     assert.ok(checked < script.indexOf('ssh "$SSH_TARGET"'), 'and before ssh is given it');
   });
 
@@ -366,9 +385,16 @@ describe('deploy/deploy.sh, run against a repository on this disk', () => {
 
   interface Deployed {
     status: number | null;
+    stdout: string;
     stderr: string;
     /** Whether the rsync to the host was reached. */
     shipped: boolean;
+    /** The arguments of each rsync call, in the order they were made. */
+    rsync: string[][];
+    /** The target each ssh call was given, in order. */
+    ssh: string[];
+    /** Each ls-remote git was asked, with how it was asked. */
+    remote: string[];
     pin: string | null;
   }
 
@@ -430,14 +456,31 @@ describe('deploy/deploy.sh, run against a repository on this disk', () => {
     cpSync(CUT_TOOL, join(work, 'tools', 'app-workspace'), { recursive: true });
   }
 
+  /**
+   * The lines every rsync stand-in starts with: the arguments of this call, NUL separated, in a
+   * file of its own under rsync-calls, numbered in the order of the calls.
+   */
+  function recordsRsyncCall(root: string): string[] {
+    const calls = join(root, 'rsync-calls');
+    return [`mkdir -p '${calls}'`, `printf '%s\\0' "$@" > '${calls}/'"$(ls '${calls}' | wc -l | tr -d ' ')"`];
+  }
+
+  /** The arguments of each rsync call the stand-ins recorded, in the order they were made. */
+  function rsyncCalls(root: string): string[][] {
+    const calls = join(root, 'rsync-calls');
+    if (!existsSync(calls)) return [];
+    return readdirSync(calls)
+      .sort((a, b) => Number(a) - Number(b))
+      .map((call) => readFileSync(join(calls, call), 'utf8').split('\0').slice(0, -1));
+  }
+
   /** An rsync that writes down its arguments and keeps a copy of every source folder but the manager's own. */
   function recordingRsync(root: string): void {
     writeFileSync(
       join(root, 'bin', 'rsync'),
       [
-        '#!/bin/sh',
-        `touch '${join(root, 'rsync-ran')}'`,
-        `printf '%s\\n' "$@" > '${join(root, 'rsync-args')}'`,
+        '#!/bin/bash',
+        ...recordsRsyncCall(root),
         'for arg in "$@"; do',
         `  case "$arg" in */) [ "$arg" != ./ ] && [ -d "$arg" ] && cp -R "$arg" '${join(root, 'rsync-extra-source')}' ;; esac`,
         'done',
@@ -456,9 +499,10 @@ describe('deploy/deploy.sh, run against a repository on this disk', () => {
 
   /**
    * An rsync that runs the real one, a host:/path destination landing at the same path under
-   * `hostRoot`. It keeps its arguments as given, NUL separated, and a copy of the destination as the
-   * real rsync left it. openrsync, macOS's rsync, starts its receiving side as `rsync --server` from
-   * PATH, which goes straight on to the real one.
+   * `hostRoot`, which is '' for a host whose paths are this machine's own. It keeps the arguments of
+   * each call as given, and refuses a destination outside the test's folder, so a host path that
+   * went wrong is never written on this machine. openrsync, macOS's rsync, starts its receiving side
+   * as `rsync --server` from PATH, which goes straight on to the real one.
    */
   function realRsync(root: string, hostRoot: string): void {
     writeFileSync(
@@ -466,18 +510,37 @@ describe('deploy/deploy.sh, run against a repository on this disk', () => {
       [
         '#!/bin/bash',
         `if [ "\${1:-}" = --server ]; then exec '${REAL_RSYNC}' "$@"; fi`,
-        `touch '${join(root, 'rsync-ran')}'`,
-        `printf '%s\\0' "$@" > '${join(root, 'rsync-argv')}'`,
+        ...recordsRsyncCall(root),
         'args=()',
         'for arg in "$@"; do',
         `  if [[ "$arg" =~ ^[A-Za-z0-9._@-]+:(/.*)$ ]]; then args+=('${hostRoot}'"\${BASH_REMATCH[1]}"); else args+=("$arg"); fi`,
         'done',
-        `'${REAL_RSYNC}' "\${args[@]}"`,
-        'status=$?',
-        `if [ "$status" -eq 0 ]; then cp -R "\${args[\${#args[@]}-1]}" '${join(root, 'rsync-after')}'; fi`,
-        'exit "$status"',
+        'destination="${args[${#args[@]}-1]}"',
+        `case "$destination" in '${root}'/*) ;; *) echo "rsync stand-in: $destination is outside the test" >&2; exit 99 ;; esac`,
+        `exec '${REAL_RSYNC}' "\${args[@]}"`,
         '',
       ].join('\n'),
+      { mode: 0o755 },
+    );
+  }
+
+  /**
+   * An ssh that runs its command on this machine, joined the way ssh hands it to the login shell of
+   * the host, for a test whose host paths are folders of its own.
+   */
+  function sshRunningHere(root: string): void {
+    writeFileSync(
+      join(root, 'bin', 'ssh'),
+      ['#!/bin/sh', `printf '%s\\n' "$1" >> '${join(root, 'ssh-targets')}'`, 'shift', 'exec sh -c "$*"', ''].join('\n'),
+      { mode: 0o755 },
+    );
+  }
+
+  /** A docker that says how it was called and fails, so a host script run here stops at its first docker command. */
+  function dockerStoppingHere(root: string): void {
+    writeFileSync(
+      join(root, 'bin', 'docker'),
+      ['#!/bin/sh', 'echo "[docker stand-in] $*" >&2', 'exit 97', ''].join('\n'),
       { mode: 0o755 },
     );
   }
@@ -505,15 +568,23 @@ describe('deploy/deploy.sh, run against a repository on this disk', () => {
     return tree;
   }
 
-  /** The folders the rsync was given to send, in order: every word that is no option, no option's value and no destination. */
-  function rsyncSources(root: string): string[] {
-    const args = readFileSync(join(root, 'rsync-args'), 'utf8').trim().split('\n');
+  /** What one rsync call was given to send, in order: every word that is no option, no option's value and no destination. */
+  function sourcesOf(args: string[] = []): string[] {
     const sources: string[] = [];
     for (let index = 0; index < args.length - 1; index += 1) {
-      if (args[index] === '--exclude') index += 1;
+      if (args[index] === '--exclude' || args[index] === '--include') index += 1;
       else if (!args[index].startsWith('-')) sources.push(args[index]);
     }
     return sources;
+  }
+
+  /** That a refused deploy stopped before git asked the remote, before the pin was written, and before rsync and ssh. */
+  function stoppedBeforeAnything(refused: Deployed): void {
+    assert.equal(refused.status, 1, refused.stderr);
+    assert.deepEqual(refused.remote, [], 'git asked no remote');
+    assert.equal(refused.pin, null, 'no pin was written');
+    assert.equal(refused.shipped, false, 'nothing was copied to the host');
+    assert.deepEqual(refused.ssh, [], 'and nothing ran there');
   }
 
   function checkout(
@@ -544,8 +615,12 @@ describe('deploy/deploy.sh, run against a repository on this disk', () => {
 
     const bin = join(root, 'bin');
     mkdirSync(bin);
-    writeFileSync(join(bin, 'rsync'), `#!/bin/sh\ntouch '${join(root, 'rsync-ran')}'\n`, { mode: 0o755 });
-    writeFileSync(join(bin, 'ssh'), '#!/bin/sh\ncat > /dev/null\n', { mode: 0o755 });
+    writeFileSync(join(bin, 'rsync'), ['#!/bin/bash', ...recordsRsyncCall(root), ''].join('\n'), { mode: 0o755 });
+    writeFileSync(
+      join(bin, 'ssh'),
+      `#!/bin/sh\nprintf '%s\\n' "$1" >> '${join(root, 'ssh-targets')}'\ncat > /dev/null\n`,
+      { mode: 0o755 },
+    );
     gitAnswering(root, bin, lsRemote);
     return { work, manager, stackCommit, environment: { ...process.env, PATH: `${bin}:${process.env.PATH ?? ''}` } };
   }
@@ -559,16 +634,36 @@ describe('deploy/deploy.sh, run against a repository on this disk', () => {
     return git(work, 'rev-parse', 'HEAD');
   }
 
-  function deploy(root: string, manager: string, environment: NodeJS.ProcessEnv): Deployed {
-    const run = spawnSync('bash', [join(manager, 'deploy', 'deploy.sh'), 'fixture-host'], {
+  /** Lines of a file the stand-ins append to, none when it was never written. */
+  const linesOf = (path: string): string[] => (existsSync(path) ? readFileSync(path, 'utf8').trim().split('\n') : []);
+
+  /**
+   * Runs the deploy with `args`, an ssh target unless a test says otherwise, and answers what this
+   * one run did: what the stand-ins recorded and the pin are cleared before it starts.
+   */
+  function deploy(
+    root: string,
+    manager: string,
+    environment: NodeJS.ProcessEnv,
+    args: string[] = ['fixture-host'],
+  ): Deployed {
+    const pin = join(manager, 'manager', STACK_COMMIT_FILE);
+    for (const record of [join(root, 'rsync-calls'), join(root, 'ssh-targets'), join(root, 'ls-remote-calls'), pin]) {
+      rmSync(record, { recursive: true, force: true });
+    }
+    const run = spawnSync('bash', [join(manager, 'deploy', 'deploy.sh'), ...args], {
       env: environment,
       encoding: 'utf8',
     });
-    const pin = join(manager, 'manager', STACK_COMMIT_FILE);
+    const rsync = rsyncCalls(root);
     return {
       status: run.status,
+      stdout: run.stdout,
       stderr: run.stderr,
-      shipped: existsSync(join(root, 'rsync-ran')),
+      shipped: rsync.length > 0,
+      rsync,
+      ssh: linesOf(join(root, 'ssh-targets')),
+      remote: linesOf(join(root, 'ls-remote-calls')),
       pin: existsSync(pin) ? readFileSync(pin, 'utf8').trim() : null,
     };
   }
@@ -590,7 +685,7 @@ describe('deploy/deploy.sh, run against a repository on this disk', () => {
       const deployed = deploy(root, manager, { ...environment, TMPDIR: tmp });
 
       assert.equal(deployed.status, 0, deployed.stderr);
-      const sources = rsyncSources(root);
+      const sources = sourcesOf(deployed.rsync[0]);
       assert.equal(sources.length, 2, `the manager's folder and the cut: ${sources.join(' ')}`);
       assert.equal(sources[0], './');
       const expected = join(root, 'expected');
@@ -620,9 +715,9 @@ describe('deploy/deploy.sh, run against a repository on this disk', () => {
   /**
    * The same deploy through the machine's own rsync, into a host seeded as an earlier deploy left it:
    * the manager's own lockfile, a file the checkout no longer has, and the bundled tree the engines
-   * mount, which the rsync leaves alone. The same rsync run again without the cut folder, into an
-   * identical host, is what --delete does from the manager's folder alone. The two hosts may differ
-   * by the pair and nothing else.
+   * mount, which the rsync leaves alone. The repository's rsync run again without the cut folder,
+   * into an identical host, is what --delete does from the manager's folder alone. The two hosts may
+   * differ by the pair, and by the env file the second rsync sends, and nothing else.
    */
   it("leaves the host as rsync --delete leaves it from the manager's folder alone, and the manager's pair besides", () => {
     const root = mkdtempSync(join(tmpdir(), 'manager-deploy-real-rsync-'));
@@ -643,7 +738,7 @@ describe('deploy/deploy.sh, run against a repository on this disk', () => {
       const deployed = deploy(root, manager, { ...environment, TMPDIR: tmp });
 
       assert.equal(deployed.status, 0, deployed.stderr);
-      const argv = readFileSync(join(root, 'rsync-argv'), 'utf8').split('\0').slice(0, -1);
+      const [argv = []] = deployed.rsync;
       const cutSources = argv.filter((arg) => arg.startsWith(tmp));
       assert.equal(cutSources.length, 1, `one source under TMPDIR, the cut: ${argv.join(' ')}`);
       const alone = join(root, 'alone');
@@ -669,11 +764,13 @@ describe('deploy/deploy.sh, run against a repository on this disk', () => {
         expected,
       ]);
       const withoutPair = treeOf(alone);
-      assert.deepEqual(treeOf(join(root, 'rsync-after')), {
+      assert.deepEqual(treeOf(join(hostRoot, HOST_PATH)), {
         ...withoutPair,
         'pnpm-lock.yaml': readFileSync(join(expected, 'pnpm-lock.yaml'), 'utf8'),
         'pnpm-workspace.yaml': readFileSync(join(expected, 'pnpm-workspace.yaml'), 'utf8'),
+        'manager/.env': readFileSync(join(manager, 'manager', '.env'), 'utf8'),
       });
+      assert.equal(withoutPair['manager/.env'], undefined, 'the repository rsync carries no env file');
       assert.equal(withoutPair['stale.txt'], undefined, '--delete removed what the checkout no longer has');
       assert.equal(withoutPair['pnpm-lock.yaml'], undefined, "alone, --delete would have removed the host's lockfile");
       assert.equal(withoutPair['manager/swarm-hls-stream/README.md'], earlier['manager/swarm-hls-stream/README.md']);
@@ -691,7 +788,7 @@ describe('deploy/deploy.sh, run against a repository on this disk', () => {
       const deployed = deploy(root, manager, environment);
 
       assert.equal(deployed.status, 0, deployed.stderr);
-      assert.deepEqual(rsyncSources(root), ['./']);
+      assert.deepEqual(sourcesOf(deployed.rsync[0]), ['./']);
     } finally {
       rmSync(root, { recursive: true, force: true });
     }
@@ -807,6 +904,514 @@ describe('deploy/deploy.sh, run against a repository on this disk', () => {
 
       assert.equal(deployed.status, 0, deployed.stderr);
       assert.equal(deployed.pin, stackCommit, 'the change was outside the stack, so the pin stays');
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
+  });
+
+  /**
+   * Without --profile the deploy is what it was: manager/.env, to the target given alone, or now
+   * after --host. With one it is the profile's own file, to the host named with it, in either order.
+   * Each flag takes its value after = or as the next word, as web2-admin's deploy.sh does.
+   */
+  it('deploys manager/.env to the target given alone or after --host, and a profile to the host named with it, with = or a space', () => {
+    const root = mkdtempSync(join(tmpdir(), 'manager-deploy-targets-'));
+    try {
+      const { manager, environment } = checkout(root);
+      writeFileSync(join(manager, 'manager', '.env.dev'), 'POSTGRES_PASSWORD=synthetic-dev-not-a-secret\n');
+
+      for (const [args, profile, envFile] of [
+        [['fixture-host'], 'default', 'manager/.env'],
+        [['--host=fixture-host'], 'default', 'manager/.env'],
+        [['--host', 'fixture-host'], 'default', 'manager/.env'],
+        [['--profile=dev', 'fixture-host'], 'dev', 'manager/.env.dev'],
+        [['--profile', 'dev', 'fixture-host'], 'dev', 'manager/.env.dev'],
+        [['--host', 'fixture-host', '--profile', 'dev'], 'dev', 'manager/.env.dev'],
+        [['--profile', 'dev', '--host=fixture-host'], 'dev', 'manager/.env.dev'],
+      ] as const) {
+        const deployed = deploy(root, manager, environment, [...args]);
+
+        assert.equal(deployed.status, 0, deployed.stderr);
+        assert.ok(
+          deployed.stdout.includes(`==> Deploying profile ${profile} to fixture-host\n==> Checking ${envFile}\n`),
+          `${args.join(' ')} says which profile and which file: ${deployed.stdout}`,
+        );
+        const [repository = [], sent = [], ...more] = deployed.rsync;
+        assert.deepEqual(more, [], 'two rsyncs and no more');
+        assert.equal(repository.at(-1), `fixture-host:${HOST_PATH}/`, 'the repository to the target');
+        assert.deepEqual(sourcesOf(sent), [envFile], 'then the one env file');
+        assert.equal(sent.at(-1), `fixture-host:${HOST_PATH}/manager/.env`, "as the host's manager/.env");
+        assert.deepEqual(deployed.ssh, ['fixture-host']);
+      }
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
+  });
+
+  /**
+   * With no arguments at all the target is viewer and the file manager/.env, as before. The file
+   * here holds no password, so the run stops at its check, before anything could reach viewer, an
+   * alias a real ~/.ssh/config can hold.
+   */
+  it('checks manager/.env for viewer, the default target, when it is given no arguments', () => {
+    const root = mkdtempSync(join(tmpdir(), 'manager-deploy-default-target-'));
+    try {
+      const { manager, environment } = checkout(root);
+      writeFileSync(join(manager, 'manager', '.env'), 'LOG_LEVEL=info\n');
+
+      const refused = deploy(root, manager, environment, []);
+
+      stoppedBeforeAnything(refused);
+      assert.ok(
+        refused.stdout.includes('==> Deploying profile default to viewer\n==> Checking manager/.env\n'),
+        refused.stdout,
+      );
+      assert.match(refused.stderr, /POSTGRES_PASSWORD is missing or empty in manager\/\.env\./);
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
+  });
+
+  /**
+   * The arguments are read as the usage line has them, each at most once, and anything else stops
+   * the deploy where it starts. A target is handed to ssh, and written into the host's script, so
+   * it is a plain ssh name or nothing.
+   */
+  it('refuses an unknown flag, a target given twice, or one that is no plain ssh name, before anything runs', () => {
+    const root = mkdtempSync(join(tmpdir(), 'manager-deploy-arguments-'));
+    try {
+      const { manager, environment } = checkout(root);
+
+      for (const [args, refusal] of [
+        [['--force', 'fixture-host'], /unknown option --force\. Usage: deploy\.sh /],
+        [['--hosts', 'fixture-host'], /unknown option --hosts\. /],
+        [['-oProxyCommand=sh', 'fixture-host'], /unknown option -oProxyCommand=sh\. /],
+        [['--host=-oProxyCommand=sh'], /the ssh target must not start with a dash \(got: -oProxyCommand=sh\)/],
+        [['fixture-host', 'other-host'], /the ssh target is given twice \(the second: other-host\)/],
+        [['--host=fixture-host', 'other-host'], /the ssh target is given twice \(the second: other-host\)/],
+        [['--host', 'fixture-host', 'other-host'], /the ssh target is given twice \(the second: other-host\)/],
+        [['other-host', '--host', 'fixture-host'], /the ssh target is given twice \(the second: fixture-host\)/],
+        [['--host=fixture-host', '--profile=dev', '--profile=qa'], /--profile is given twice \(the second: qa\)/],
+        [['--host=fixture-host', '--profile', 'dev', '--profile=qa'], /--profile is given twice \(the second: qa\)/],
+        [['--host='], /the ssh target must be an ssh alias/],
+        [['--host', ''], /the ssh target must be an ssh alias/],
+        [['fixture host'], /the ssh target must be an ssh alias/],
+        [['--host', 'fixture host'], /the ssh target must be an ssh alias/],
+        [['fixture-host:/tmp'], /the ssh target must be an ssh alias/],
+      ] as const) {
+        const refused = deploy(root, manager, environment, [...args]);
+
+        stoppedBeforeAnything(refused);
+        assert.match(refused.stderr, refusal, args.join(' '));
+      }
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
+  });
+
+  /**
+   * A flag written with a space takes the next word as its value. When there is none, or the next
+   * word is another flag, the flag has no value, and the refusal says so rather than reading the
+   * next flag as a profile name or a target and refusing that instead.
+   */
+  it('refuses --host or --profile with no value after it, rather than take the next flag as one', () => {
+    const root = mkdtempSync(join(tmpdir(), 'manager-deploy-missing-value-'));
+    try {
+      const { manager, environment } = checkout(root);
+      writeFileSync(join(manager, 'manager', '.env.dev'), 'POSTGRES_PASSWORD=synthetic-dev-not-a-secret\n');
+
+      for (const [args, flag] of [
+        [['--profile'], '--profile'],
+        [['fixture-host', '--profile'], '--profile'],
+        [['--profile', '--host=fixture-host'], '--profile'],
+        [['--profile', '-x', 'fixture-host'], '--profile'],
+        [['--host'], '--host'],
+        [['--profile=dev', '--host'], '--host'],
+        [['--host', '--profile=dev'], '--host'],
+        [['--host', '-oProxyCommand=sh'], '--host'],
+      ] as const) {
+        const refused = deploy(root, manager, environment, [...args]);
+
+        stoppedBeforeAnything(refused);
+        assert.ok(
+          refused.stderr.includes(`ERROR: ${flag} requires a value, as ${flag}=<value> or ${flag} <value>\n`),
+          `${args.join(' ')}: ${refused.stderr}`,
+        );
+      }
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
+  });
+
+  /**
+   * The name becomes part of a file name, so it is held to the manager's own rule for a profile
+   * name. Each file here exists, so only the name can be what refuses it. The sample is refused
+   * too: its values are public, and its POSTGRES_PASSWORD would lock the api out of the database.
+   */
+  it('refuses a profile name the manager would not take, and the sample, before anything runs', () => {
+    const root = mkdtempSync(join(tmpdir(), 'manager-deploy-profile-name-'));
+    try {
+      const { manager, environment } = checkout(root);
+      writeInto(join(manager, 'manager'), {
+        '.env.Dev': 'POSTGRES_PASSWORD=synthetic-not-a-secret\n',
+        '.env.-dev': 'POSTGRES_PASSWORD=synthetic-not-a-secret\n',
+        '.env.dev.qa': 'POSTGRES_PASSWORD=synthetic-not-a-secret\n',
+        '.env.dev_qa': 'POSTGRES_PASSWORD=synthetic-not-a-secret\n',
+        '.env.': 'POSTGRES_PASSWORD=synthetic-not-a-secret\n',
+        [`.env.${'a'.repeat(32)}`]: 'POSTGRES_PASSWORD=synthetic-not-a-secret\n',
+        '.env.sample': 'POSTGRES_PASSWORD=pwd\n',
+      });
+
+      for (const name of ['Dev', '-dev', 'dev.qa', 'dev_qa', '', 'a'.repeat(32), '../manager/.env']) {
+        const refused = deploy(root, manager, environment, ['--host=fixture-host', `--profile=${name}`]);
+
+        stoppedBeforeAnything(refused);
+        assert.match(refused.stderr, /invalid profile name/, `--profile=${name}`);
+      }
+      const spaced = deploy(root, manager, environment, ['--host', 'fixture-host', '--profile', 'dev.qa']);
+
+      stoppedBeforeAnything(spaced);
+      assert.match(spaced.stderr, /invalid profile name: dev\.qa/, 'the same rule for --profile <name>');
+      for (const args of [
+        ['--host=fixture-host', '--profile=sample'],
+        ['--host', 'fixture-host', '--profile', 'sample'],
+      ]) {
+        const sample = deploy(root, manager, environment, args);
+
+        stoppedBeforeAnything(sample);
+        assert.match(sample.stderr, /sample is not a profile/, args.join(' '));
+      }
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
+  });
+
+  /**
+   * A profile always means its own file. Falling back to manager/.env would give the profile's host
+   * the default host's settings, its database password among them.
+   */
+  it('refuses a profile whose env file is missing, though manager/.env is there, and names the file and the sample', () => {
+    const root = mkdtempSync(join(tmpdir(), 'manager-deploy-profile-missing-'));
+    try {
+      const { manager, environment } = checkout(root);
+      assert.ok(existsSync(join(manager, 'manager', '.env')), 'the default profile has its file');
+
+      const refused = deploy(root, manager, environment, ['--host=fixture-host', '--profile=dev']);
+
+      stoppedBeforeAnything(refused);
+      assert.match(
+        refused.stderr,
+        /manager\/\.env\.dev not found\. Copy manager\/\.env\.sample to manager\/\.env\.dev /,
+      );
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
+  });
+
+  /**
+   * With no host named the deploy goes to viewer, and a profile is one host's settings, so it is
+   * refused rather than sent there, even the default one named as such. Neither file holds a
+   * password, so a deploy that went past the refusal would stop at its check, before anything
+   * could reach viewer.
+   */
+  it('refuses a profile without the host named, because the default target would get its settings', () => {
+    const root = mkdtempSync(join(tmpdir(), 'manager-deploy-profile-no-host-'));
+    try {
+      const { manager, environment } = checkout(root);
+      writeInto(join(manager, 'manager'), { '.env': 'LOG_LEVEL=info\n', '.env.dev': 'LOG_LEVEL=info\n' });
+
+      for (const profile of ['dev', 'default']) {
+        for (const args of [[`--profile=${profile}`], ['--profile', profile]]) {
+          const refused = deploy(root, manager, environment, args);
+
+          stoppedBeforeAnything(refused);
+          assert.match(refused.stderr, new RegExp(`--profile=${profile} needs the host named`), args.join(' '));
+          assert.match(refused.stderr, /would give that profile's settings to viewer, the default target/);
+        }
+      }
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
+  });
+
+  /**
+   * Every setting the deploy reads before anything leaves comes from the profile's file: the
+   * password the host needs, the host's folder, and the repository the host fetches the stack from.
+   */
+  it("reads every check from the profile's env file, and none from manager/.env", () => {
+    const root = mkdtempSync(join(tmpdir(), 'manager-deploy-profile-checks-'));
+    try {
+      const { manager, environment } = checkout(root);
+      const devSettings =
+        'MANAGER_ROOT=/srv/dev-manager\nSTACK_SOURCES=https://github.com/example/dev-fork.git#apps/hls-stream\n';
+      writeInto(join(manager, 'manager'), {
+        '.env': 'POSTGRES_PASSWORD=synthetic-not-a-secret\nMANAGER_ROOT=/srv/default-manager\n',
+        '.env.dev': devSettings,
+      });
+
+      const refused = deploy(root, manager, environment, ['--host=fixture-host', '--profile=dev']);
+
+      stoppedBeforeAnything(refused);
+      assert.match(refused.stderr, /POSTGRES_PASSWORD is missing or empty in manager\/\.env\.dev\./);
+
+      writeInto(join(manager, 'manager'), {
+        '.env': 'MANAGER_ROOT=/srv/default-manager\n',
+        '.env.dev': `POSTGRES_PASSWORD=synthetic-dev-not-a-secret\n${devSettings}`,
+      });
+      const deployed = deploy(root, manager, environment, ['--host=fixture-host', '--profile=dev']);
+
+      assert.equal(deployed.status, 0, deployed.stderr);
+      assert.match(deployed.remote[0] ?? '', /ls-remote https:\/\/github\.com\/example\/dev-fork\.git HEAD/);
+      const [repository = [], sent = []] = deployed.rsync;
+      assert.equal(repository.at(-1), 'fixture-host:/srv/dev-manager/');
+      assert.equal(sent.at(-1), 'fixture-host:/srv/dev-manager/manager/.env');
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
+  });
+
+  /** Writes the dev profile's env file with `managerRoot` as its MANAGER_ROOT, and deploys it. */
+  function deployWithManagerRoot(
+    root: string,
+    manager: string,
+    environment: NodeJS.ProcessEnv,
+    managerRoot: string,
+  ): Deployed {
+    writeFileSync(
+      join(manager, 'manager', '.env.dev'),
+      `POSTGRES_PASSWORD=synthetic-dev-not-a-secret\nMANAGER_ROOT=${managerRoot}\n`,
+    );
+    return deploy(root, manager, environment, ['--host=fixture-host', '--profile=dev']);
+  }
+
+  /** That the deploy refused `managerRoot` as MANAGER_ROOT, in the words web2-admin uses for its remote path, before anything ran. */
+  function refusedManagerRoot(refused: Deployed, managerRoot: string): void {
+    stoppedBeforeAnything(refused);
+    assert.match(refused.stderr, /MANAGER_ROOT must be an absolute path .*, without empty, \. or \.\. segments /);
+    assert.ok(refused.stderr.includes(`(got: ${managerRoot})`), refused.stderr);
+  }
+
+  /**
+   * MANAGER_ROOT names the folder the host's cd, the upgrade's --compose-file and --mutable-root and
+   * the printed rm all work in, and it now comes from a profile's file. A . or .. segment would send
+   * every one of them somewhere the value does not plainly name, so it is refused before anything
+   * runs, as web2-admin refuses such a remote path. A dot inside a name is a name like any other.
+   */
+  it('refuses a MANAGER_ROOT with a . or .. segment, and takes dots inside a name', () => {
+    const root = mkdtempSync(join(tmpdir(), 'manager-deploy-root-dots-'));
+    try {
+      const { manager, environment } = checkout(root);
+
+      for (const managerRoot of ['/opt/streaming/../etc', '/opt/streaming/..', '/..', '/opt/./streaming']) {
+        refusedManagerRoot(deployWithManagerRoot(root, manager, environment, managerRoot), managerRoot);
+      }
+      const deployed = deployWithManagerRoot(root, manager, environment, '/srv/my.manager/x..y');
+
+      assert.equal(deployed.status, 0, deployed.stderr);
+      assert.equal(deployed.rsync[0]?.at(-1), 'fixture-host:/srv/my.manager/x..y/');
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
+  });
+
+  /** An empty segment, //, is refused the same way, wherever it is in the path. */
+  it('refuses a MANAGER_ROOT with an empty segment', () => {
+    const root = mkdtempSync(join(tmpdir(), 'manager-deploy-root-empty-'));
+    try {
+      const { manager, environment } = checkout(root);
+
+      for (const managerRoot of ['/opt//streaming', '//opt/streaming', '/opt/streaming//streaming-infra-manager']) {
+        refusedManagerRoot(deployWithManagerRoot(root, manager, environment, managerRoot), managerRoot);
+      }
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
+  });
+
+  /**
+   * Until 2026-10-06 the repository's rsync carried every env file in the manager's folder, so
+   * each host was sent the settings of every other. Through the machine's own rsync, into a host an
+   * earlier deploy left a qa file, an .envrc, a root .env and a frontend .env.local on: the
+   * profile's file arrives as the host's manager/.env, and no other env file arrives from anywhere
+   * in the tree. Not manager/'s other files, nor the copies an editor or a hand leaves beside them,
+   * which can hold the same secrets, nor the .env at the folder's own root, the credentials a
+   * session is handed for the running instance, nor the frontend's, common/'s or deploy/'s. What
+   * the host already had is neither replaced nor deleted. Every .env.sample still arrives,
+   * manager/'s and the test fixtures'.
+   */
+  it("sends the profile's env file alone, which the host keeps as manager/.env, and no other env file", () => {
+    const root = mkdtempSync(join(tmpdir(), 'manager-deploy-profile-sends-'));
+    try {
+      const { manager, environment } = checkout(root);
+      const hostRoot = join(root, 'host');
+      writeInto(join(hostRoot, HOST_PATH), {
+        'manager/.env': 'POSTGRES_PASSWORD=synthetic-an-earlier-deploy\n',
+        'manager/.env.qa': 'POSTGRES_PASSWORD=synthetic-qa-as-an-earlier-deploy-left-it\n',
+        'manager/.envrc': 'export POSTGRES_PASSWORD=synthetic-envrc-as-an-earlier-deploy-left-it\n',
+        '.env': 'MANAGER_TOKEN=synthetic-session-as-an-earlier-deploy-left-it\n',
+        'frontend/.env.local': 'VITE_SETTING=synthetic-as-an-earlier-deploy-left-it\n',
+      });
+      writeInto(manager, {
+        '.env': 'MANAGER_TOKEN=synthetic-session-not-a-secret\n',
+        'frontend/.env.local': 'VITE_SETTING=synthetic-not-a-secret\n',
+        'frontend/.env': 'VITE_OTHER_SETTING=synthetic-not-a-secret\n',
+        'common/.env': 'COMMON_SETTING=synthetic-not-a-secret\n',
+        'deploy/.env.local': 'DEPLOY_SETTING=synthetic-not-a-secret\n',
+      });
+      writeInto(join(manager, 'manager'), {
+        '.env.dev': 'POSTGRES_PASSWORD=synthetic-dev-not-a-secret\n',
+        '.env.qa': 'POSTGRES_PASSWORD=synthetic-qa-not-a-secret\n',
+        '.env.sample': 'POSTGRES_PASSWORD=\n',
+        '.env~': 'POSTGRES_PASSWORD=synthetic-editor-backup-not-a-secret\n',
+        '.envrc': 'export POSTGRES_PASSWORD=synthetic-envrc-not-a-secret\n',
+        '.env-old': 'POSTGRES_PASSWORD=synthetic-old-not-a-secret\n',
+        '.env_backup': 'POSTGRES_PASSWORD=synthetic-backup-not-a-secret\n',
+        'test/fixtures/stack/v3/.env.sample': 'A_STACK_SETTING=\n',
+        'test/fixtures/stack/v3/engines/srs/.env.sample': 'AN_ENGINE_SETTING=\n',
+      });
+      realRsync(root, hostRoot);
+
+      const deployed = deploy(root, manager, environment, ['--host=fixture-host', '--profile=dev']);
+
+      assert.equal(deployed.status, 0, deployed.stderr);
+      const host = treeOf(join(hostRoot, HOST_PATH));
+      assert.equal(host['manager/.env'], 'POSTGRES_PASSWORD=synthetic-dev-not-a-secret\n', "the profile's file");
+      assert.equal(
+        host['manager/.env.qa'],
+        'POSTGRES_PASSWORD=synthetic-qa-as-an-earlier-deploy-left-it\n',
+        "the checkout's qa file was not sent, and the host's was not deleted",
+      );
+      assert.equal(
+        host['manager/.envrc'],
+        'export POSTGRES_PASSWORD=synthetic-envrc-as-an-earlier-deploy-left-it\n',
+        "nor was the checkout's .envrc, and the host's stays",
+      );
+      assert.equal(host['manager/.env.sample'], 'POSTGRES_PASSWORD=\n', 'the sample was sent');
+      assert.deepEqual(
+        Object.keys(host)
+          .filter((path) => path.startsWith('manager/.env'))
+          .sort(),
+        ['manager/.env', 'manager/.env.qa', 'manager/.env.sample', 'manager/.envrc'],
+        'and no other env file arrived, .env~, .env-old and .env_backup among them',
+      );
+      assert.equal(
+        host['.env'],
+        'MANAGER_TOKEN=synthetic-session-as-an-earlier-deploy-left-it\n',
+        "the folder's own .env was not sent, and the host's stays",
+      );
+      assert.equal(
+        host['frontend/.env.local'],
+        'VITE_SETTING=synthetic-as-an-earlier-deploy-left-it\n',
+        "nor the frontend's .env.local",
+      );
+      assert.equal(host['frontend/.env'], undefined, "nor the frontend's .env");
+      assert.equal(host['common/.env'], undefined, "nor common/'s .env");
+      assert.equal(host['deploy/.env.local'], undefined, "nor deploy/'s .env.local");
+      assert.equal(
+        host['manager/test/fixtures/stack/v3/.env.sample'],
+        'A_STACK_SETTING=\n',
+        'a fixture sample arrived',
+      );
+      assert.equal(host['manager/test/fixtures/stack/v3/engines/srs/.env.sample'], 'AN_ENGINE_SETTING=\n');
+      assert.deepEqual(
+        Object.keys(host)
+          .filter((path) => basename(path).startsWith('.env'))
+          .sort(),
+        [
+          '.env',
+          'frontend/.env.local',
+          'manager/.env',
+          'manager/.env.qa',
+          'manager/.env.sample',
+          'manager/.envrc',
+          'manager/test/fixtures/stack/v3/.env.sample',
+          'manager/test/fixtures/stack/v3/engines/srs/.env.sample',
+        ],
+        "anywhere in the tree, the host holds the profile's file, the samples and what it had, and no other env file",
+      );
+      const [repository = [], sent = [], ...more] = deployed.rsync;
+      assert.deepEqual(more, []);
+      assert.deepEqual(sourcesOf(repository), ['./']);
+      assert.deepEqual(sourcesOf(sent), ['manager/.env.dev']);
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
+  });
+
+  /**
+   * A host deployed before 2026-10-06 can still hold the env files of other profiles, and the
+   * copies left beside them such as .env~ or .envrc, which rsync never deletes, being excluded. The
+   * deploy names every one of them on the host before the build, with the command that removes
+   * them, and removes none itself. The host is folders of this test's own: an ssh that runs its
+   * command here, the machine's own rsync, and a docker that stops the host's script at its first
+   * docker command, the build.
+   */
+  it('names on the host, before the build, the env files earlier deploys left there, with the command that removes them', () => {
+    const root = mkdtempSync(join(tmpdir(), 'manager-deploy-leftovers-'));
+    try {
+      const { manager, environment } = checkout(root);
+      const managerRoot = join(root, 'host', 'streaming-infra-manager');
+      writeInto(join(manager, 'manager'), {
+        '.env.dev': `POSTGRES_PASSWORD=synthetic-dev-not-a-secret\nMANAGER_ROOT=${managerRoot}\n`,
+        '.env.sample': 'POSTGRES_PASSWORD=\n',
+      });
+      writeInto(join(managerRoot, 'manager'), {
+        '.env': 'POSTGRES_PASSWORD=synthetic-as-an-earlier-deploy-left-it\n',
+        '.env.dev': 'POSTGRES_PASSWORD=synthetic-dev-as-an-earlier-deploy-left-it\n',
+        '.env.old backup': 'POSTGRES_PASSWORD=synthetic-old-not-a-secret\n',
+        '.env.viewer': 'POSTGRES_PASSWORD=synthetic-viewer-not-a-secret\n',
+        '.env~': 'POSTGRES_PASSWORD=synthetic-editor-backup-not-a-secret\n',
+        '.envrc': 'export POSTGRES_PASSWORD=synthetic-envrc-not-a-secret\n',
+        '.env.sample': 'POSTGRES_PASSWORD=\n',
+      });
+      realRsync(root, '');
+      sshRunningHere(root);
+      dockerStoppingHere(root);
+      const envFiles = (): string[] =>
+        readdirSync(join(managerRoot, 'manager'))
+          .filter((name) => name.startsWith('.env'))
+          .sort();
+
+      const deployed = deploy(root, manager, environment, ['--host=fixture-host', '--profile=dev']);
+
+      assert.equal(deployed.status, 97, `the docker stand-in stopped it at the build: ${deployed.stderr}`);
+      const lines = deployed.stderr.split('\n');
+      const warned = lines.findIndex((line) => line.includes('env files that earlier deploys copied there'));
+      assert.notEqual(warned, -1, deployed.stderr);
+      const warning = lines[warned] ?? '';
+      const named =
+        /^\[deploy\] WARNING: (.+)\/manager on this host still has env files that earlier deploys copied there, and nothing reads them: (.+)\. The manager runs on \.env alone, /.exec(
+          warning,
+        );
+      assert.ok(named, warning);
+      assert.equal(named[1], managerRoot);
+      // The words of a shell line, a backslash keeping the character after it in its word. The
+      // host's glob lists the files in the order of its locale, so they are compared as a set.
+      const shellWords = (line: string): string[] => (line.match(/(?:\\.|[^\s\\])+/g) ?? []).sort();
+      const leftovers = ['.env.dev', '.env.old\\ backup', '.env.viewer', '.env~', '.envrc'].sort();
+      assert.deepEqual(
+        shellWords(named[2]),
+        leftovers,
+        `each one named, the sample and the .env it runs on not among them: ${warning}`,
+      );
+      assert.ok(lines.indexOf('[docker stand-in] compose build') > warned, 'before the build');
+      const command = (lines[warned + 1] ?? '').replace(/^\[deploy\] {3}/, '');
+      const prefix = `ssh fixture-host 'cd ${managerRoot}/manager && rm `;
+      assert.ok(command.startsWith(prefix) && command.endsWith("'"), command);
+      assert.deepEqual(shellWords(command.slice(prefix.length, -1)), leftovers, 'the command names the same files');
+      assert.deepEqual(
+        envFiles(),
+        ['.env', '.env.dev', '.env.old backup', '.env.sample', '.env.viewer', '.env~', '.envrc'].sort(),
+        'the deploy removed none of them',
+      );
+
+      const removed = spawnSync('bash', ['-c', command], { env: environment, encoding: 'utf8' });
+
+      assert.equal(removed.status, 0, removed.stderr);
+      assert.deepEqual(envFiles(), ['.env', '.env.sample'], 'the command removes them and nothing else');
+      const again = deploy(root, manager, environment, ['--host=fixture-host', '--profile=dev']);
+      assert.equal(again.status, 97, again.stderr);
+      assert.equal(again.stderr.includes('earlier deploys copied there'), false, 'a host without them is not warned');
     } finally {
       rmSync(root, { recursive: true, force: true });
     }
