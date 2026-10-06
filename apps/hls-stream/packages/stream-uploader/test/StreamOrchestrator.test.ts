@@ -1,4 +1,9 @@
-import { engineSkippedSegments, engineSkippedSegmentsPattern, segmentUploadedPattern } from '@swarm-hls-stream/shared';
+import {
+  engineSkippedSegments,
+  engineSkippedSegmentsPattern,
+  LIVE_PLAYLIST_WINDOW_MS,
+  segmentUploadedPattern,
+} from '@swarm-hls-stream/shared';
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 import { setTimeout as sleep } from 'node:timers/promises';
@@ -26,6 +31,7 @@ import {
 
 import { FakeClock } from './helpers/fakeClock.js';
 import {
+  advanceUntil,
   FakeUploads,
   makeFakeCatalog,
   makeFakeRecoveryStore,
@@ -33,9 +39,11 @@ import {
   makeRecoveredState,
   makeTestOrchestrator,
   neverSettles,
+  onTheFakeClock,
   rejectImmediately,
   TEST_ANCHOR,
   toRecoveryFileId,
+  untilSettled,
 } from './helpers/fakes.js';
 import { audioOnlySegment, FRAME_TICKS, videoSegment } from './helpers/transportStream.js';
 import { waitAndConfirmNothingHappened, waitFor } from './helpers/waiting.js';
@@ -49,6 +57,8 @@ const RECOVERY_TIMEOUT_MS = 80;
  * costs nothing on the passing path.
  */
 const SETTLE_CEILING_MS = 4_000;
+/** Windows of a fake clock a case watches for something that must not happen, enough for it to have landed. */
+const QUIET_WINDOWS = 5;
 
 /**
  * A window in which something must NOT happen, which is the opposite instrument to the ceiling above
@@ -89,8 +99,25 @@ async function waitForTopic(saved: StreamState[], after = 0): Promise<string> {
   return saved[saved.length - 1].streamRawTopic;
 }
 
-function makeOrchestrator(recovery: RecoveryStore = makeFakeRecoveryStore(), clock?: FakeClock): StreamOrchestrator {
-  return makeTestOrchestrator({ recoveryTimeout: RECOVERY_TIMEOUT_MS, clock }, {}, recovery);
+/**
+ * Live windows on a fake clock of their own, beside the orchestrator's `clock`, for a case that counts
+ * or intercepts `clock`'s timers. Both are fake, so nothing moves on real time, and a window timer is
+ * never one of the timers the case is counting.
+ */
+function windowsBeside(clock: FakeClock, windows: FakeClock): ReturnType<typeof onTheFakeClock> {
+  return { ...onTheFakeClock(windows), clock };
+}
+
+function makeOrchestrator(
+  recovery: RecoveryStore = makeFakeRecoveryStore(),
+  clock?: FakeClock,
+  windows: FakeClock | undefined = clock,
+): StreamOrchestrator {
+  return makeTestOrchestrator(
+    { recoveryTimeout: RECOVERY_TIMEOUT_MS, ...(clock && windows ? windowsBeside(clock, windows) : {}) },
+    {},
+    recovery,
+  );
 }
 
 describe('recovery file id sanitizing', () => {
@@ -127,9 +154,11 @@ describe('StreamOrchestrator recovery-timer cancellation (F: uploader crash reco
   it('keeps a recovered stream alive when segments resume before on_publish (cancels the finalize timer)', async () => {
     const id = 'live/stream';
     const clock = new FakeClock();
+    const windows = new FakeClock();
     const orch = makeOrchestrator(
       makeFakeRecoveryStore({ listActive: () => [toRecoveryFileId(id)], load: () => makeRecoveredState(id) }),
       clock,
+      windows,
     );
 
     await orch.recoverStreams();
@@ -147,7 +176,7 @@ describe('StreamOrchestrator recovery-timer cancellation (F: uploader crash reco
       1,
       'segments resuming must cancel the recovery timer so the stream is not VOD-ed mid-broadcast',
     );
-    await orch.cleanup();
+    await untilSettled(windows, orch.cleanup());
   });
 
   /**
@@ -203,14 +232,16 @@ describe('StreamOrchestrator recovery-timer cancellation (F: uploader crash reco
     const vodPublishing = new Promise<void>((resolve) => {
       releaseVod = resolve;
     });
+    let vodStarted = false;
 
     const orch = makeTestOrchestrator(
-      { recoveryTimeout: RECOVERY_TIMEOUT_MS, clock },
+      { recoveryTimeout: RECOVERY_TIMEOUT_MS, ...onTheFakeClock(clock) },
       // Holds the recording upload open, which is what keeps the drain running long enough for a
       // segment to land inside it. Without this the finalize completes in the same turn and the
       // window under test never exists.
       {
         uploadRecording: async () => {
+          vodStarted = true;
           await vodPublishing;
           return { reference: { toHex: () => 'recording' } };
         },
@@ -220,7 +251,10 @@ describe('StreamOrchestrator recovery-timer cancellation (F: uploader crash reco
 
     await orch.recoverStreams();
     await clock.advance(RECOVERY_TIMEOUT_MS);
-    await waitFor(() => orch.getStreamStatus(id).state === STREAM_LIFECYCLE_DRAINING, SETTLE_CEILING_MS);
+    // The finalize writes its closing window before the recording, and that window ends only as the
+    // clock moves, so the clock is stepped until the drain is held where this case means it to be.
+    await advanceUntil(clock, () => vodStarted);
+    assert.equal(orch.getStreamStatus(id).state, STREAM_LIFECYCLE_DRAINING);
 
     const late = orch.handleSegment(id, 42, 2, Buffer.from('late-seg'));
 
@@ -231,7 +265,7 @@ describe('StreamOrchestrator recovery-timer cancellation (F: uploader crash reco
     );
 
     releaseVod();
-    await waitFor(() => orch.getActiveStreamCount() === 0, SETTLE_CEILING_MS);
+    await advanceUntil(clock, () => orch.getActiveStreamCount() === 0);
     await orch.cleanup();
   });
 
@@ -266,6 +300,7 @@ describe('StreamOrchestrator recovery-timer cancellation (F: uploader crash reco
     const broken = 'live/late-failure';
     const healthy = 'live/healthy';
     const clock = new FakeClock();
+    const windows = new FakeClock();
     const realSetTimer = clock.setTimer.bind(clock);
     clock.setTimer = ((fn: () => void, ms: number) => {
       if (orch.getActiveStreamCount() > 0 && !seenFirstTimer) {
@@ -283,12 +318,13 @@ describe('StreamOrchestrator recovery-timer cancellation (F: uploader crash reco
           fileId === toRecoveryFileId(broken) ? makeRecoveredState(broken) : makeRecoveredState(healthy),
       }),
       clock,
+      windows,
     );
 
     const recovered = await orch.recoverStreams();
 
     assert.deepEqual(recovered, [healthy], 'a throw after construction took the stream behind it down with it');
-    await orch.cleanup();
+    await untilSettled(windows, orch.cleanup());
   });
 
   // ARCH-3, end to end. An entry claiming the catalog announce happened before the first segment
@@ -948,6 +984,11 @@ describe('StreamOrchestrator re-announce (E: engine restart)', () => {
 
 describe('StreamOrchestrator recovery finalization on an injected clock (S0.5)', () => {
   const RECOVERY_TIMEOUT_60S = 60_000;
+  /**
+   * The real window length, in the fake time these cases step. One case feeds a stream across ten
+   * minutes, and at the test length that is thirty thousand windows to write before it can end.
+   */
+  const WINDOW_MS = LIVE_PLAYLIST_WINDOW_MS;
 
   interface CatalogEntry {
     state: string;
@@ -963,7 +1004,7 @@ describe('StreamOrchestrator recovery finalization on an injected clock (S0.5)',
     });
 
     return makeTestOrchestrator(
-      { recoveryTimeout: RECOVERY_TIMEOUT_60S, clock },
+      { recoveryTimeout: RECOVERY_TIMEOUT_60S, ...onTheFakeClock(clock, WINDOW_MS) },
       {},
       recovery,
       makeRecordingCatalog(catalogEntries),
@@ -982,7 +1023,7 @@ describe('StreamOrchestrator recovery finalization on an injected clock (S0.5)',
 
     // One step past a minute. Real time does not move, so this costs no wall clock.
     await clock.advance(RECOVERY_TIMEOUT_60S);
-    await waitFor(() => orch.getActiveStreamCount() === 0, SETTLE_CEILING_MS);
+    await advanceUntil(clock, () => orch.getActiveStreamCount() === 0, WINDOW_MS);
 
     assert.equal(orch.getActiveStreamCount(), 0, 'the timer fired and the stream was finalized');
     // TEST-4: the old assertion stopped at the count above, which passes even if nothing was published.
@@ -1009,7 +1050,7 @@ describe('StreamOrchestrator recovery finalization on an injected clock (S0.5)',
       5_000,
       'the age comes from the clock, so stepping it must move the /health stall signal',
     );
-    await orch.cleanup();
+    await untilSettled(clock, orch.cleanup(), WINDOW_MS);
   });
 
   it('does not fire the recovery timer one millisecond early', async () => {
@@ -1021,7 +1062,7 @@ describe('StreamOrchestrator recovery finalization on an injected clock (S0.5)',
 
     assert.equal(orch.getActiveStreamCount(), 1, 'the stream is still waiting just short of the timeout');
     assert.equal(clock.pendingCount(), 1, 'and its timer is still pending');
-    await orch.cleanup();
+    await untilSettled(clock, orch.cleanup(), WINDOW_MS);
   });
 
   it('cancels the recovery timer when the engine re-announces, so advancing time does nothing', async () => {
@@ -1043,13 +1084,13 @@ describe('StreamOrchestrator recovery finalization on an injected clock (S0.5)',
       orch.handleSegment('live/stream', elapsed, 2, Buffer.from(`seg${elapsed}`));
       await clock.advance(RECOVERY_TIMEOUT_60S / 2);
     }
-    // advance yields a macrotask per fired timer, so a finalize that wrongly started has had room to
-    // land by now. Asserting immediately after a synchronous advance could not see it at all.
-    await waitAndConfirmNothingHappened(() => catalogEntries.length === 0, 200);
+    // A finalize that wrongly started waits for its closing window, which ends only as the clock moves,
+    // so a few more windows of it give such a finalize room to land before the assertions read.
+    await clock.advance(QUIET_WINDOWS * WINDOW_MS);
 
     assert.equal(orch.getActiveStreamCount(), 1, 'a resumed stream is never VOD-ed by the timer it cancelled');
     assert.deepEqual(catalogEntries, [], 'and nothing is published as VOD');
-    await orch.cleanup();
+    await untilSettled(clock, orch.cleanup(), WINDOW_MS);
   });
 
   // The recovery timer's only input was whether a segment arrived, and after a crash the engine that
@@ -1080,7 +1121,7 @@ describe('StreamOrchestrator recovery finalization on an injected clock (S0.5)',
     // The deferral is only ever as long as the last keepalive bought. Stopping is what a puller does
     // when it gives up, and the finalize has to arrive on its own after that, not wait for the halt.
     await clock.advance(RECOVERY_TIMEOUT_60S);
-    await waitFor(() => orch.getActiveStreamCount() === 0, SETTLE_CEILING_MS);
+    await advanceUntil(clock, () => orch.getActiveStreamCount() === 0, WINDOW_MS);
     assert.deepEqual(
       catalogEntries.map((entry) => entry.state),
       ['vod'],
@@ -1105,7 +1146,7 @@ describe('StreamOrchestrator recovery finalization on an injected clock (S0.5)',
     const uploaded: string[] = [];
     const id = 'live/stream';
     const orch = makeTestOrchestrator(
-      { clock, recoveryTimeout: RECOVERY_TIMEOUT_MS },
+      { ...onTheFakeClock(clock, WINDOW_MS), recoveryTimeout: RECOVERY_TIMEOUT_MS },
       {
         uploadData: async (_stamp: string, data: Uint8Array) => {
           uploaded.push(new TextDecoder().decode(data));
@@ -1128,7 +1169,7 @@ describe('StreamOrchestrator recovery finalization on an injected clock (S0.5)',
       ['genuinely new'],
       'a restored index was uploaded again, so a resumed stream pays twice for media it already published',
     );
-    await orch.cleanup();
+    await untilSettled(clock, orch.cleanup(), WINDOW_MS);
   });
 
   /**
@@ -1237,7 +1278,7 @@ describe('StreamOrchestrator recovery finalization on an injected clock (S0.5)',
       'a live stream is not recovering, and a keepalive that silently does nothing reads exactly like one that worked',
     );
     assert.equal(orch.keepAlive('live/never-started'), false, 'and a stream nothing registered has nothing to defer');
-    await orch.cleanup();
+    await untilSettled(clock, orch.cleanup(), WINDOW_MS);
   });
 });
 
@@ -1287,7 +1328,7 @@ describe('StreamOrchestrator segment loss', () => {
    */
   it('does not report a dead session’s loss against the stream that replaces it', async () => {
     const clock = new FakeClock();
-    const orchestrator = makeTestOrchestrator({ clock });
+    const orchestrator = makeTestOrchestrator(onTheFakeClock(clock));
 
     orchestrator.startStream('live/one', MEDIA_TYPE_VIDEO);
     orchestrator.handleSegmentLoss('live/one', 0, 1);
@@ -1331,7 +1372,7 @@ describe('StreamOrchestrator segment loss', () => {
 
   it('does not count a loss as stream activity, so a stream losing everything still stalls', async () => {
     const clock = new FakeClock();
-    const orchestrator = makeTestOrchestrator({ clock, segmentStallMs: 1_000 });
+    const orchestrator = makeTestOrchestrator({ ...onTheFakeClock(clock), segmentStallMs: 1_000 });
 
     orchestrator.startStream('live/one', MEDIA_TYPE_VIDEO);
     await clock.advance(5_000);
@@ -1455,7 +1496,7 @@ describe('StreamOrchestrator inferring a loss from a skipped index', () => {
   it('infers nothing after a loss the engine reported, and does not read that report as activity', async () => {
     await withCapturedLog(async (lines) => {
       const clock = new FakeClock();
-      const orch = makeTestOrchestrator({ clock, segmentStallMs: 1_000 });
+      const orch = makeTestOrchestrator({ ...onTheFakeClock(clock), segmentStallMs: 1_000 });
 
       orch.startStream(STREAM, MEDIA_TYPE_VIDEO);
       orch.handleSegment(STREAM, 0, 2, Buffer.from('seg0'));
@@ -1471,7 +1512,7 @@ describe('StreamOrchestrator inferring a loss from a skipped index', () => {
         0,
         'segment 5 is progress, whatever the report before it did to the accounting',
       );
-      await orch.cleanup();
+      await untilSettled(clock, orch.cleanup());
     });
   });
 
@@ -1837,7 +1878,7 @@ describe('StreamOrchestrator drain that outlives its deadline', () => {
     });
 
     const orch = makeTestOrchestrator(
-      { clock, recoveryTimeout: RECOVERY_TIMEOUT_MS },
+      { ...onTheFakeClock(clock), recoveryTimeout: RECOVERY_TIMEOUT_MS },
       // Accepted the write and went silent, so the drain can only end on its deadline. Released later,
       // because a Bee that never answers also never lets the abandoned finalize do any damage, and the
       // damage is the point.
@@ -1887,7 +1928,7 @@ describe('StreamOrchestrator stall signal during a drain', () => {
     const id = 'live/stream';
     const clock = new FakeClock();
     const orch = makeTestOrchestrator(
-      { clock, recoveryTimeout: RECOVERY_TIMEOUT_MS },
+      { ...onTheFakeClock(clock), recoveryTimeout: RECOVERY_TIMEOUT_MS },
       { uploadRecording: () => neverSettles() },
     );
 
@@ -2486,7 +2527,7 @@ describe('a settled stop expires from the status map (TEST-32)', () => {
   const TTL_MS = 60_000;
 
   async function stopAndSettle(clock: FakeClock) {
-    const orch = makeTestOrchestrator({ clock, stopOutcomeTtlMs: TTL_MS });
+    const orch = makeTestOrchestrator({ ...onTheFakeClock(clock), stopOutcomeTtlMs: TTL_MS });
     orch.startStream(STREAM_ID, MEDIA_TYPE_VIDEO);
     await orch.stopStream(STREAM_ID);
     return orch;
