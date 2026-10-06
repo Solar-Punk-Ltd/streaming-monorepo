@@ -142,9 +142,12 @@ export class StreamCatalog implements LadderRegistry {
    * the list. In admin mode the admin writes the list and its notes, and a second writer here would
    * sign different notes at the same addresses.
    *
-   * @param clock the writer's clock and timers, the system's unless a test hands its own.
+   * @param options.clock the writer's clock and timers, the system's unless a test hands its own.
+   * @param options.clockTrusted asked before each note, the clock check's verdict in production. A note
+   * dated by a wrong clock sits at an address no reader asks, so an untrusted clock skips it and the
+   * news waits for the next window the clock is trusted in.
    */
-  public startNotes(clock?: WindowWriterClock): void {
+  public startNotes(options: { clock?: WindowWriterClock; clockTrusted?: () => boolean } = {}): void {
     if (this.notes !== undefined) {
       return;
     }
@@ -155,7 +158,8 @@ export class StreamCatalog implements LadderRegistry {
       newestStored: () => this.newestStored(),
       write: (slot, payload) => this.writeNote(slot, payload),
       onEvent: (event) => this.logNoteEvent(event),
-      clock,
+      clock: options.clock,
+      clockTrusted: options.clockTrusted,
     });
     this.notes.start();
   }

@@ -155,12 +155,11 @@ async function start() {
     // nothing, because the window writer asks `isTrusted` before every write. Its first round has
     // finished long before the node wait is over, and until then it refuses nothing.
     //
-    // ⛔ Not yet handed to the orchestrator. The window writer's `clockTrusted` option reaches the
-    // orchestrator with the uploader's window publishing, and connects here as
-    // `clockTrusted: () => clockCheck.isTrusted()` once both have landed.
+    // The live windows and the list notes ask the same check, so a clock it distrusts skips both.
     const clockCheck = new ClockCheck({ servers: config.clockCheckServers, logger });
     clockCheck.start();
     lifecycle.trackClockCheck(clockCheck);
+    const clockTrusted = (): boolean => clockCheck.isTrusted();
 
     const streamOrchestrator = new StreamOrchestrator(publishers, streamCatalog, recoveryStore, {
       streamKey: config.streamKey,
@@ -176,6 +175,7 @@ async function start() {
       ladderGroupStore,
       adminApi,
       ladderRegistry,
+      clockTrusted,
     });
 
     lifecycle.trackOrchestrator(streamOrchestrator);
@@ -267,7 +267,7 @@ async function start() {
     // After init, which settles the index the first note names. Standalone only: in admin mode the
     // admin writes the list and its notes, and notes from here would collide with its own.
     if (!config.admin) {
-      streamCatalog.startNotes();
+      streamCatalog.startNotes({ clockTrusted });
       lifecycle.trackListNotes(streamCatalog);
     }
 

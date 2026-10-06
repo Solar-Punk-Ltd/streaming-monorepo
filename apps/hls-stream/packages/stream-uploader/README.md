@@ -449,7 +449,8 @@ offset plus half of it.
 - **Trusted** while the offset plus half the round trip is 250 ms or less. Phase 0 measured the stage
   hosts within 2.5 ms, so this is the normal state.
 - **Untrusted** when the offset minus half the round trip is above 250 ms, so the clock is off whatever
-  the path. The uploader refuses to publish windows, `/health` reports `clock_untrusted`, and it checks
+  the path. The uploader refuses to publish live windows, and the list's notes too when it writes the
+  list itself. `/health` reports `clock_untrusted`, and it checks
   again every 30 s. The refusal stands until a later round measures the clock within the limit, so
   publishing resumes within half a minute of the clock being fixed.
 - **Unchecked** when no server answered, or when the answer came too slowly to judge either way. That

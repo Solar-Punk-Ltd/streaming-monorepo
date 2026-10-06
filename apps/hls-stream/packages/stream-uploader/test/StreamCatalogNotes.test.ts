@@ -149,12 +149,12 @@ const liveEntry = (topic: string) => ({
   timestamp: 0,
 });
 
-async function startedCatalog(options: NotesBeeOptions = {}) {
+async function startedCatalog(options: NotesBeeOptions = {}, clockTrusted?: () => boolean) {
   const recorded: Recorded = { feed: [], notes: [] };
   const catalog = new StreamCatalog(makePublishers(notesBee(recorded, options)), TEST_STREAM_KEY, LIST_TOPIC);
   await catalog.init();
   const { timers, clock } = windowClock();
-  catalog.startNotes(clock);
+  catalog.startNotes({ clock, clockTrusted });
   return { catalog, recorded, timers };
 }
 
@@ -272,6 +272,28 @@ describe('StreamCatalog writes the list direct, then a note naming it', () => {
     assert.ok(
       recorded.notes.every((note) => note.note?.newest === -1),
       'a note named a version that was never stored',
+    );
+  });
+
+  it('skips the note while the clock check distrusts the clock, and carries the news once it trusts it', async () => {
+    let trusted = false;
+    const { catalog, recorded, timers } = await startedCatalog({}, () => trusted);
+
+    await catalog.addStream(liveEntry('a'));
+    await advance(timers, FIRST_END_MS);
+    assert.equal(
+      recorded.notes.length,
+      0,
+      'a note dated by a clock the check distrusts would sit at the wrong address',
+    );
+
+    trusted = true;
+    await advance(timers, STREAM_LIST_NOTE_WINDOW_MS);
+    await catalog.stopNotes();
+
+    assert.deepEqual(
+      recorded.notes.map((note) => [note.identifier, note.note?.newest]),
+      [[noteIdentifier(FIRST + 1), 0]],
     );
   });
 
