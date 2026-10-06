@@ -60,7 +60,8 @@ import { BroadcastDating } from './broadcastDating.js';
 import { ErrorHandler } from './ErrorHandler.js';
 import { LadderIdentity, LadderRegistry, RenditionAnnouncement } from './LadderRegistry.js';
 import { Logger } from './Logger.js';
-import { continuesFrom, ManifestManager } from './ManifestManager.js';
+import { continuesFrom, inheritedTimeline, ManifestManager } from './ManifestManager.js';
+import { RecordingStore } from './RecordingStore.js';
 import { RecoveryStore } from './RecoveryStore.js';
 import { ServiceMetrics } from './ServiceMetrics.js';
 import { StreamCatalog } from './StreamCatalog.js';
@@ -68,6 +69,12 @@ import { StreamCatalog } from './StreamCatalog.js';
 const SEGMENT_UPLOAD_RETRY_WINDOW_MS = 15_000;
 /** How long the recording playlist's upload keeps trying at the end, the same as a segment's. */
 const RECORDING_UPLOAD_RETRY_WINDOW_MS = 15_000;
+/**
+ * How long the opening keeps trying to download the topic's last recording, the same as a segment's
+ * upload. The session's windows wait for it, since the numbering is settled in the same step, and past
+ * it the session opens without the prefix rather than holding the broadcast any longer.
+ */
+const GLUE_DOWNLOAD_RETRY_WINDOW_MS = 15_000;
 const UPLOAD_RETRY_BASE_MS = 350;
 const UPLOAD_RETRY_CAP_MS = 2_000;
 
@@ -110,6 +117,14 @@ const WINDOW_TIMERS: WindowWriterClock = {
 /** Bee's answers for a single owner chunk nobody wrote, which the opening scan reads as no window. */
 function isChunkAbsent(error: unknown): boolean {
   return error instanceof BeeResponseError && (error.status === 404 || error.status === 500);
+}
+
+/** The later of two media sequences a session could continue from, either of which may be unknown. */
+function newerSequence(a: number | null, b: number | null): number | null {
+  if (a === null) {
+    return b;
+  }
+  return b === null ? a : Math.max(a, b);
 }
 
 /** What one window's playlist named when it was composed, applied only once that window is stored. */
@@ -176,7 +191,7 @@ interface RestoreState {
   anchor?: BroadcastAnchor;
   /** Absent on an entry written before a rung's feed outlived its session. See {@link StreamState}. */
   sequenceOffset?: number;
-  /** Absent on an entry written before recordings were glued, and on a session over an empty feed. */
+  /** Absent on a session that glued no recording. See {@link StreamState}. */
   inherited?: InheritedTimeline;
   /**
    * Absent on an entry written before a disconnect held a session open, and on every session whose
@@ -278,6 +293,12 @@ export interface StreamUploaderOptions {
    */
   liveWindowMs?: number;
   windowClock?: WindowWriterClock;
+  /**
+   * Where a finished session on a shared topic leaves its recording's reference, and where the next
+   * session on that topic finds the recording to open its own with. Shared by every session of one
+   * process, and an in-memory one of this session's own when absent.
+   */
+  recordingStore?: RecordingStore;
 }
 
 /** The live window writer, as `createLiveWindowWriter` returns it. */
@@ -391,6 +412,8 @@ export class StreamUploader {
    * {@link StreamUploaderOptions.predecessorDrained} and {@link topicOutlivesThisSession}.
    */
   private predecessorHasDrained = true;
+  /** See {@link StreamUploaderOptions.recordingStore}. */
+  private readonly recordingStore: RecordingStore;
 
   private manifestManager: ManifestManager;
 
@@ -412,6 +435,7 @@ export class StreamUploader {
     this.catalogAnnounceRetryMs = options.catalogAnnounceRetryMs ?? CATALOG_ANNOUNCE_RETRY_MS;
     this.metrics = options.metrics;
     this.admin = options.admin;
+    this.recordingStore = options.recordingStore ?? new RecordingStore();
     // The orchestrator normalizes expected drain failures, so the catch is a backstop for a rejection
     // no current caller produces. Every window is composed empty while it is pending, so a stuck
     // predecessor holds this session's windows and nothing else: segments keep uploading.
@@ -787,6 +811,12 @@ export class StreamUploader {
       throw new Error(`Failed to upload the recording of stream ${this.streamId}`);
     }
     this.logger.log(recordingUploaded(this.streamId, recording));
+    // Before anything reports the end, so the next session on this topic, which waits for this one to
+    // stop writing, always finds this recording rather than the one before it. A topic minted for this
+    // session alone is never opened again, so it is not kept.
+    if (this.topicIsShared()) {
+      this.recordingStore.remember(this.streamRawTopic, recording);
+    }
 
     return this.completeFinalize(recording);
   }
@@ -944,7 +974,12 @@ export class StreamUploader {
    * {@link StreamState.sequenceOffset}.
    */
   private topicOutlivesThisSession(): boolean {
-    return (this.admin !== undefined || this.ladder !== undefined) && !this.resumedFromCrash;
+    return this.topicIsShared() && !this.resumedFromCrash;
+  }
+
+  /** Whether later sessions open on this topic: a declared stream's or a ladder rung's, recovered or not. */
+  private topicIsShared(): boolean {
+    return this.admin !== undefined || this.ladder !== undefined;
   }
 
   /**
@@ -962,8 +997,12 @@ export class StreamUploader {
    * the playlist they are playing, and hls.js reads a media sequence that moved backwards as a parsing
    * error rather than as a new broadcast. See {@link continuesFrom}.
    *
-   * What a window holds is a live window and not a recording, so nothing of the last session's media
-   * is carried into this session's recording: each session's recording is its own.
+   * ⛔ **And the topic's last recording, glued ahead of this session's own.** A window holds a live
+   * playlist and never a recording, so the media the topic already carries is found by the reference
+   * the last session on it left in the {@link RecordingStore}. Its timeline goes in verbatim, one
+   * `#EXT-X-DISCONTINUITY` after it, then this session's media, so the recording this session
+   * finalizes plays the whole broadcast. A download that does not land opens the session without it.
+   * See {@link glueTopicRecording}.
    */
   private settlePosition(): void {
     if (this.positionKnown || this.settling !== undefined) {
@@ -989,7 +1028,13 @@ export class StreamUploader {
         );
         return;
       }
-      const continueAt = newest === null ? null : continuesFrom(newest);
+      const recording = await this.glueTopicRecording();
+      // The later of the two, so the numbering never moves backwards: the closing window and the
+      // recording of one session end at the same sequence, and either can be missing alone.
+      const continueAt = newerSequence(
+        newest === null ? null : continuesFrom(newest),
+        recording === null ? null : continuesFrom(recording),
+      );
       if (continueAt !== null) {
         this.manifestManager.continueFrom(continueAt);
       }
@@ -1044,6 +1089,51 @@ export class StreamUploader {
       throw failed.reason;
     }
     return null;
+  }
+
+  /**
+   * Download the recording the last session on this topic finished with and open this session's
+   * recording with it, answering the recording's playlist, or null when there is none to glue.
+   *
+   * Asked only once every predecessor has stopped writing, which is also when the newest of them has
+   * left its reference in the store: a session that asked earlier would glue an older recording, or
+   * none. Never throws. A download that does not land within {@link GLUE_DOWNLOAD_RETRY_WINDOW_MS}
+   * opens this session without the prefix and says so, in the log and in
+   * `recordings_unglued_total`, because a broadcast held for a recording is worse than a recording
+   * that starts late, and the earlier recording is still listed under its own entry.
+   */
+  private async glueTopicRecording(): Promise<string | null> {
+    const reference = this.recordingStore.recordingOf(this.streamRawTopic);
+    if (reference === null) {
+      return null;
+    }
+    let playlist: string;
+    try {
+      const bytes = await retryUntilDeadlineAsync(
+        () => this.bee.data.download(reference),
+        GLUE_DOWNLOAD_RETRY_WINDOW_MS,
+        UPLOAD_RETRY_BASE_MS,
+        UPLOAD_RETRY_CAP_MS,
+      );
+      playlist = bytes.toUtf8();
+    } catch (error) {
+      this.metrics?.recordRecordingUnglued();
+      this.logger.warn(
+        `[StreamUploader] Stream ${this.streamId} opens its recording without its topic's last recording ` +
+          `${reference}, which did not download: ${getErrorMessage(error)}`,
+      );
+      return null;
+    }
+    const prefix = inheritedTimeline(playlist);
+    if (prefix === null) {
+      return null;
+    }
+    this.manifestManager.inherit(prefix);
+    this.logger.info(
+      `[StreamUploader] Stream ${this.streamId} opens its recording with ${prefix.durationSeconds.toFixed(3)}s ` +
+        `of media from its topic's last recording ${reference}, so the recording it finalizes carries the whole broadcast`,
+    );
+    return playlist;
   }
 
   /** Whether this session may compose a window: every predecessor stopped and its numbering known. */
@@ -1252,8 +1342,8 @@ export class StreamUploader {
       // already been handed, and a recovered session that lost it would publish this broadcast's
       // history again from a number a viewer has already been handed.
       sequenceOffset: this.manifestManager.publishedSequenceOffset(),
-      // Carried for an entry written by a session on feeds, which glued the recording it inherited from
-      // the feed head in front of its own. A session on windows inherits nothing, so this is absent.
+      // The topic's last recording this session glued ahead of its own. A recovered session never
+      // downloads it again, so this entry is the only place it survives a crash.
       inherited: this.manifestManager.inheritedPrefix() ?? undefined,
       // Read off the manifest manager rather than mirrored here, so there is one holder of the one
       // shot and a crash between the encoder returning and its first segment landing comes back with

@@ -26,6 +26,7 @@ import { Logger } from './libs/Logger.js';
 import { assertNodeReachable, waitForNode } from './libs/NodeWait.js';
 import { PostageGate } from './libs/PostageGate.js';
 import { registerCrashHandlers, registerShutdownSignals } from './libs/processSignals.js';
+import { RecordingStore } from './libs/RecordingStore.js';
 import { RecoveryStore } from './libs/RecoveryStore.js';
 import { ServiceLifecycle } from './libs/ServiceLifecycle.js';
 import { runStartGates, StartGate } from './libs/StartGates.js';
@@ -134,6 +135,10 @@ async function start() {
       ? new LadderGroupStore(path.join(config.stateDir, 'ladder', 'groups.json'))
       : undefined;
 
+    // In a subdirectory for the same reason. Kept across restarts so the next broadcast on a declared
+    // topic or a rung's topic glues the recording the one before it finished with.
+    const recordingStore = new RecordingStore(path.join(config.stateDir, 'recordings', 'by-topic.json'));
+
     const streamCatalog = new StreamCatalog(publishers, config.streamKey, config.streamListTopic, catalogIndexStore);
 
     // Where a ladder rung's rendition record goes. Standalone, the catalog: it merges four rungs into
@@ -176,6 +181,7 @@ async function start() {
       adminApi,
       ladderRegistry,
       clockTrusted,
+      recordingStore,
     });
 
     lifecycle.trackOrchestrator(streamOrchestrator);

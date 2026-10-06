@@ -33,8 +33,8 @@ ladder's group id and the rung's name** (`src/utils/rungTopic.ts`, a version-5 U
 therefore outlives any one session: a rung that restarts mid-broadcast, SRS bouncing a transcoder or an
 encoder reconnecting, comes back onto the topic the stream list already names, finds its newest window
 in one opening scan, and numbers its playlist on from there with a single `#EXT-X-DISCONTINUITY` at the
-seam. Each session's recording is its own: a window is a live playlist, so there is no earlier
-recording to open with. The rungs are tied back together in one place:
+seam. Its recording opens with the topic's last one, see [Recordings across sessions](#recordings-across-sessions).
+The rungs are tied back together in one place:
 
 - The four rungs merge into a **single catalog entry**, keyed by a shared group id rather than by
   topic. Four uploaders write that entry concurrently, which is safe only because every catalog
@@ -215,7 +215,7 @@ in it.
 | What the encoder does        | What a viewer gets                                                                                                                                                                                                                                                                                          |
 | ---------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | Comes back inside the window | The same session, the same recording and the same feed, with one `#EXT-X-DISCONTINUITY` at the seam and the dating re-anchored on the clock it returned at. No `#EXT-X-ENDLIST` was written in between, so a player following the feed head is handed the next update of the playlist it is already playing |
-| Does not come back           | The reaper finalizes the broadcast one window after its last segment: closing playlist, recording, and `vod` to the admin. An encoder returning after that starts a **new** session, which inherits the recording at the feed head, so the recording a viewer opens still carries every session             |
+| Does not come back           | The reaper finalizes the broadcast one window after its last segment: closing playlist, recording, and `vod` to the admin. An encoder returning after that starts a **new** session, which glues the topic's last recording ahead of its own, so the recording a viewer opens still carries every session   |
 
 So **the admin shows `live` for up to one window after the encoder leaves**, and a clean stop reaches
 its recording about a window later than it used to. That is the cost of the row above it, and it is
@@ -505,6 +505,27 @@ which is the early ask that makes Bee skip its peers for that address for about 
   same writer, from `@streaming-monorepo/swarm-windows`, which this package reaches through
   `@swarm-hls-stream/shared`.
 
+### Recordings across sessions
+
+A declared stream's topic and a ladder rung's topic outlive a session, so one broadcast can be several
+sessions on one topic: a rung SRS restarted, or an encoder that came back after the reaper ended the
+session it left. The recording a viewer opens carries every one of them.
+
+- A session that finalizes on such a topic keeps the reference of the recording it uploaded, one per
+  topic, the newest winning, in `<STATE_DIR>/recordings/by-topic.json`, so a restart of this service
+  between two sessions keeps it.
+- The next session on that topic waits until every session before it has stopped writing, then
+  downloads that recording by reference and opens its own with it: the earlier media verbatim, one
+  `#EXT-X-DISCONTINUITY`, then its own. Its numbering carries on from where the earlier one ended, and
+  the duration it reports is the whole broadcast. The earlier recording is itself glued, so the chain
+  goes back to the broadcast's first session.
+- A download that does not land within 15 s opens the session without it. The broadcast is never held
+  for it: the log says so and `swarm_hls_recordings_unglued_total` counts it, and the earlier recording
+  is still listed under its own entry.
+- A session rebuilt after a crash takes its glued prefix back from its recovery entry, never from a
+  second download. A recovery entry written by the uploader that published on feeds is dropped at boot
+  with one line, and that stream starts fresh.
+
 ## Prerequisites
 
 - Node.js 24+
@@ -634,6 +655,7 @@ killed it answers `ok` with `activeStreams: 0`.
 | `swarm_hls_streams_finalized_total`         | counter | Stops that published a VOD                                    |
 | `swarm_hls_streams_failed_total`            | counter | Stops that did not. Those broadcasts have no recording        |
 | `swarm_hls_streams_reaped_total`            | counter | Broadcasts finalized because their engine went silent         |
+| `swarm_hls_recordings_unglued_total`        | counter | Sessions whose recording opened without the topic's last one  |
 | `swarm_hls_segment_durations_unread_total`  | counter | Segments published on the engine's word, unreadable here      |
 | `swarm_hls_postage_refused_publishers`      | gauge   | Rungs whose postage batch bee has refused. Never clears       |
 | `swarm_hls_last_segment_timestamp_seconds`  | gauge   | Unix time of the newest segment that landed, 0 while none     |

@@ -75,13 +75,12 @@ export interface StreamState {
    */
   sequenceOffset?: number;
   /**
-   * The previous session's recording, which this session's own recording opens with. Absent means
-   * the feed was empty, which is every entry written before recordings were glued.
+   * The topic's last recording, which this session's own recording opens with. Absent means the topic
+   * had none, or it did not download. See `StreamUploader.glueTopicRecording`.
    *
-   * ⛔ Persisted for the same reason {@link StreamState.sequenceOffset} is, and it is the same head
-   * that both were read off. By the time a recovered session runs, the feed head is this session's
-   * own live playlist, so re-reading it would glue this session's own window in front of itself.
-   * See `ManifestManager.inherit`.
+   * ⛔ Persisted for the same reason {@link StreamState.sequenceOffset} is. A recovered session never
+   * downloads it again, and by then the topic's newest recording in the store may be this session's
+   * own, so this entry is the only record of what it opened with. See `ManifestManager.inherit`.
    *
    * ⚠️ **What it costs, measured rather than estimated.** `RecoveryStore` writes this whole entry
    * synchronously once per segment, and the prefix grows by a session every time the broadcaster

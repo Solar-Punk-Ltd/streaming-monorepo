@@ -80,6 +80,7 @@ describe('metrics exposition format', () => {
     streamsFinalizedTotal: 1,
     streamsFailedTotal: 1,
     streamsReapedTotal: 2,
+    recordingsUngluedTotal: 1,
     segmentDurationsUnreadTotal: 3,
     authRejectionsTotal: 4,
     takeoversRefusedTotal: 6,
@@ -95,10 +96,10 @@ describe('metrics exposition format', () => {
   };
 
   /**
-   * 18 unlabelled metrics about the media and 4 about the clock check, plus the two per-rung families,
+   * 19 unlabelled metrics about the media and 4 about the clock check, plus the two per-rung families,
    * whose series are one sample line each.
    */
-  const UNLABELLED = 22;
+  const UNLABELLED = 23;
   const LABELLED_FAMILIES = 2;
   const FAMILIES = UNLABELLED + LABELLED_FAMILIES;
   const RUNGS_IN_SNAPSHOT = 4;

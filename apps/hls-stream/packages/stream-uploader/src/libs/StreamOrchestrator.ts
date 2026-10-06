@@ -76,6 +76,7 @@ import { LadderGroupStore, RememberedLadder } from './LadderGroupStore.js';
 import { LadderRegistry } from './LadderRegistry.js';
 import { Logger } from './Logger.js';
 import { RecentSegmentIndexes } from './RecentSegmentIndexes.js';
+import { RecordingStore } from './RecordingStore.js';
 import { RecoveryStore } from './RecoveryStore.js';
 import { MetricsSnapshot, ServiceMetrics } from './ServiceMetrics.js';
 import { StreamCatalog } from './StreamCatalog.js';
@@ -176,6 +177,12 @@ export interface StreamOrchestratorConfig {
    */
   liveWindowMs?: number;
   windowClock?: WindowWriterClock;
+  /**
+   * The newest recording of each shared topic, handed to every uploader so the next session on a topic
+   * glues it. Absent is one kept in memory for the life of this orchestrator, which a restart loses.
+   * See `StreamUploaderOptions.recordingStore`.
+   */
+  recordingStore?: RecordingStore;
 }
 
 /**
@@ -489,7 +496,10 @@ export class StreamOrchestrator {
     this.clock = config.clock ?? systemClock;
     this.wallClock = config.wallClock ?? Date.now;
     this.stopOutcomeTtlMs = config.stopOutcomeTtlMs ?? DEFAULT_STOP_OUTCOME_TTL_MS;
+    this.recordingStore = config.recordingStore ?? new RecordingStore();
   }
+
+  private readonly recordingStore: RecordingStore;
 
   private readonly clock: Clock;
   private readonly wallClock: () => number;
@@ -1440,12 +1450,19 @@ export class StreamOrchestrator {
     this.logger.info(`[StreamOrchestrator] Started stream: ${streamId}`);
   }
 
-  /** What every uploader is handed about its live windows, the same for every session this process runs. */
-  private windowOptions(): Pick<StreamUploaderOptions, 'clockTrusted' | 'liveWindowMs' | 'windowClock'> {
+  /**
+   * What every uploader is handed about its live windows and its topic's recordings, the same for every
+   * session this process runs.
+   */
+  private windowOptions(): Pick<
+    StreamUploaderOptions,
+    'clockTrusted' | 'liveWindowMs' | 'windowClock' | 'recordingStore'
+  > {
     return {
       clockTrusted: this.config.clockTrusted,
       liveWindowMs: this.config.liveWindowMs,
       windowClock: this.config.windowClock,
+      recordingStore: this.recordingStore,
     };
   }
 
@@ -2130,8 +2147,8 @@ export class StreamOrchestrator {
         // numbering it is resuming had already got. Dropping it republishes the
         // broadcast from a media sequence viewers were handed minutes ago.
         sequenceOffset: state.sequenceOffset,
-        // Carried for an entry a session on feeds wrote, whose recording opened with the media that
-        // was on the feed before it. See `ManifestManager.inherit`.
+        // The topic's last recording the session had glued ahead of its own, which a recovered
+        // session never downloads again. See `ManifestManager.inherit`.
         inherited: state.inherited,
         // Carried because the crash can land in the one interval where this is set: between an
         // encoder announcing its return and the first segment of that return arriving, which is an
@@ -2394,13 +2411,16 @@ export class StreamOrchestrator {
    *
    * The ladder groups joined this in 2026-09-16, having been the one store with no alarm. A
    * directory with mixed ownership is the realistic way to lose that one alone, and a container job
-   * running as root is how a state directory acquires one.
+   * running as root is how a state directory acquires one. The topics' recordings join it for the
+   * same reason: lost, the next broadcast on a topic after a restart opens without the one before.
    */
   public getMsSinceStatePersistFailed(): number | null {
     let oldest = this.streamCatalog.getMsSinceIndexSaveFailed();
-    const ladderGroups = this.config.ladderGroupStore?.getMsSinceSaveFailed() ?? null;
-    if (ladderGroups !== null && (oldest === null || ladderGroups > oldest)) {
-      oldest = ladderGroups;
+    for (const store of [this.config.ladderGroupStore, this.recordingStore]) {
+      const age = store?.getMsSinceSaveFailed() ?? null;
+      if (age !== null && (oldest === null || age > oldest)) {
+        oldest = age;
+      }
     }
     for (const uploader of this.activeStreams.values()) {
       const age = uploader.getMsSinceStatePersistFailed();

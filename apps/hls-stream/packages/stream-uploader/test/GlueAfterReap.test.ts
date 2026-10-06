@@ -1,5 +1,5 @@
 /**
- * The broadcast after one the **stall reaper** ended, on the same topic.
+ * One glued recording when the broadcast before it on the same topic was ended by the **stall reaper**.
  *
  * ## Why this path and not the re-announce one
  *
@@ -16,18 +16,24 @@
  * - a successor that announces after the drain has finished is an **ordinary fresh start**,
  * - a successor that announces while that drain is still running is the takeover branch again, but
  *   over a session the reaper gave up on,
- * - and the newest window either of them finds is the closing window the reaper wrote.
+ * - and what either of them glues is the recording the reaper uploaded, named by the reference the
+ *   finalize left in the recording store for that topic.
  *
  * ## What each case pins
  *
  * 1. The reaper really is what ends A: nothing here calls `stopStream`, and `streams_reaped_total`
- *    counts the decision. Its ending is a closing window and then a recording.
- * 2. B continues the numbering A's closing window left, with the seam declared on B's own first
- *    segment, so a viewer following the topic is handed a media sequence that moves forwards.
- * 3. B's recording is B's own, since a window carries no recording to inherit.
+ *    counts the decision. Its ending is a closing window, then a recording, then that recording's
+ *    reference remembered for the topic.
+ * 2. B continues the numbering A left, with the seam declared on B's own first segment, so a viewer
+ *    following the topic is handed a media sequence that moves forwards.
+ * 3. B's recording is A's recording verbatim, one `#EXT-X-DISCONTINUITY`, then B's own media, and the
+ *    length reported for it is the whole broadcast rather than B's share.
  * 4. The same, for a **ladder rung**, whose topic is derived rather than declared.
- * 5. And the race: B announced while the reaper's recording upload is still in flight writes no
- *    window and scans nothing until that finalize is done, then continues from A's closing window.
+ * 5. And the race: B announced while the reaper's recording upload is still in flight scans nothing,
+ *    downloads nothing and writes no window until that finalize is done, then glues that recording.
+ *
+ * Then the two the store adds: a restart of this process between A and B, through the store's file,
+ * and a download that does not succeed, which starts B unglued rather than holding the broadcast.
  *
  * Every clock that ends a broadcast here is a `FakeClock` stepped by the case. The windows run on real
  * time at the test window length. Nothing asserts how long anything took, see the e2e rule in `AGENTS.md`.
@@ -35,7 +41,10 @@
 
 import { parseLiveWindowPayload } from '@swarm-hls-stream/shared';
 import assert from 'node:assert/strict';
-import { describe, it } from 'node:test';
+import fs from 'node:fs';
+import os from 'node:os';
+import path from 'node:path';
+import { after, describe, it } from 'node:test';
 
 import { AbrLadder, DEFAULT_LADDER_SPEC } from '../src/libs/AbrLadder.js';
 import {
@@ -44,6 +53,8 @@ import {
   AdminStateReport,
   STATE_REPORT_ACCEPTED,
 } from '../src/libs/AdminApiClient.js';
+import { Logger } from '../src/libs/Logger.js';
+import { RecordingStore } from '../src/libs/RecordingStore.js';
 import { StreamOrchestrator } from '../src/libs/StreamOrchestrator.js';
 import { AdminSession, MEDIA_TYPE_AUDIO } from '../src/types.js';
 
@@ -82,6 +93,19 @@ interface WindowWrite {
   playlist: string;
 }
 
+/**
+ * What Swarm holds, shared by every harness built over it, so a second process started over the same
+ * one finds what the first wrote: window chunks by identifier and recordings by reference.
+ */
+interface FakeSwarm {
+  chunks: Map<string, Uint8Array>;
+  recordings: Map<string, string>;
+}
+
+function emptySwarm(): FakeSwarm {
+  return { chunks: new Map(), recordings: new Map() };
+}
+
 /** One promise a test controls without exposing its resolver before construction. */
 function deferred(): { promise: Promise<void>; resolve: () => void } {
   let resolve = (): void => {};
@@ -91,7 +115,26 @@ function deferred(): { promise: Promise<void>; resolve: () => void } {
   return { promise, resolve };
 }
 
-interface ReapHarness {
+/** A store that remembers what the finalize told it, so a case can say which reference it was handed. */
+class RememberingStore extends RecordingStore {
+  public readonly remembered: [string, string][] = [];
+
+  public override remember(topic: string, reference: string): void {
+    this.remembered.push([topic, reference]);
+    super.remember(topic, reference);
+  }
+}
+
+interface GlueHarnessOptions {
+  blockRecording?: boolean;
+  ladder?: boolean;
+  swarm?: FakeSwarm;
+  recordingStore?: RecordingStore;
+  /** Asked before each recording download. An error is thrown instead of the download. */
+  downloadFails?: () => Error | null;
+}
+
+interface GlueHarness {
   orchestrator: StreamOrchestrator;
   clock: FakeClock;
   streamId: string;
@@ -99,6 +142,8 @@ interface ReapHarness {
   windows: WindowWrite[];
   /** Every recording uploaded, in order. */
   recordings: string[];
+  /** Every recording reference a session asked to download, in order. */
+  downloads: string[];
   /** How many window reads any session's opening scan made. */
   scanReads: () => number;
   /** Every length the admin was told a finished recording plays for, in order. */
@@ -117,15 +162,16 @@ interface ReapHarness {
 }
 
 /**
- * A declared stream in admin mode, optionally as one rung of a ladder, over a fake bee that keeps every
- * window chunk at its identifier, so a successor's opening scan finds exactly what its predecessor
- * wrote and nothing that a different topic wrote.
+ * A declared stream in admin mode, optionally as one rung of a ladder, over a fake Swarm that keeps
+ * every window chunk at its identifier and every recording at its reference, so a successor finds
+ * exactly what its predecessor wrote and nothing that a different topic wrote.
  */
-function reapHarness(options: { blockRecording?: boolean; ladder?: boolean } = {}): ReapHarness {
+function glueHarness(options: GlueHarnessOptions = {}): GlueHarness {
   const clock = new FakeClock();
+  const swarm = options.swarm ?? emptySwarm();
   const windows: WindowWrite[] = [];
   const recordings: string[] = [];
-  const stored = new Map<string, Uint8Array>();
+  const downloads: string[] = [];
   const uploadedSegments: string[] = [];
   const reportedRecordingSeconds: number[] = [];
   const heldRecording = deferred();
@@ -149,6 +195,7 @@ function reapHarness(options: { blockRecording?: boolean; ladder?: boolean } = {
       adminApi,
       clock,
       orphanReapMs: REAP_MS,
+      ...(options.recordingStore ? { recordingStore: options.recordingStore } : {}),
       ...(options.ladder ? { ladder: AbrLadder.parse(DEFAULT_LADDER_SPEC) } : {}),
     },
     {
@@ -159,12 +206,12 @@ function reapHarness(options: { blockRecording?: boolean; ladder?: boolean } = {
       },
       uploadWindow: async (identifier, payload) => {
         windows.push({ identifier, playlist: parseLiveWindowPayload(payload)?.playlist ?? '' });
-        stored.set(identifier, payload);
+        swarm.chunks.set(identifier, payload);
         return { reference: { toHex: () => 'window' } };
       },
       windowAt: (identifier) => {
         scanReads += 1;
-        return stored.get(identifier) ?? null;
+        return swarm.chunks.get(identifier) ?? null;
       },
       uploadRecording: async (playlist) => {
         if (blockRecording) {
@@ -174,7 +221,20 @@ function reapHarness(options: { blockRecording?: boolean; ladder?: boolean } = {
         }
         recordings.push(playlist);
         const reference = fakeRecordingReference(playlist);
+        swarm.recordings.set(reference, playlist);
         return { reference: { toHex: () => reference } };
+      },
+      downloadRecording: async (reference) => {
+        downloads.push(reference);
+        const failure = options.downloadFails?.();
+        if (failure) {
+          throw failure;
+        }
+        const playlist = swarm.recordings.get(reference);
+        if (playlist === undefined) {
+          throw Object.assign(new Error('Not Found'), { status: 404 });
+        }
+        return playlist;
       },
     },
   );
@@ -185,6 +245,7 @@ function reapHarness(options: { blockRecording?: boolean; ladder?: boolean } = {
     streamId,
     windows,
     recordings,
+    downloads,
     scanReads: () => scanReads,
     reportedRecordingSeconds,
     start: () => {
@@ -242,21 +303,77 @@ function entryCount(playlist: string): number {
   return playlist.split('\n').filter((line) => line.startsWith('#EXTINF:')).length;
 }
 
+/**
+ * A recording's media, as text: everything between the blank line that ends its header block and its
+ * `#EXT-X-ENDLIST`.
+ *
+ * Read out of the playlist by hand rather than through `inheritedTimeline`, so that the expectation a
+ * case checks is not built by the same function the behaviour under test used to build it.
+ */
+function recordedMediaOf(recording: string): string {
+  const headersEnd = recording.indexOf('\n\n');
+  const endList = recording.indexOf(ENDLIST_TAG);
+  assert.ok(headersEnd !== -1, 'a playlist separates its header block from its media with a blank line');
+  assert.ok(endList > headersEnd, 'a recording ends its playlist');
+  return recording.slice(headersEnd + 2, endList);
+}
+
+function segmentUris(playlist: string): string[] {
+  return playlist
+    .split('\n')
+    .map((line) => line.trim())
+    .filter((line) => line.startsWith('segment-'));
+}
+
+/** The second recording carries the first verbatim, then one seam, then its own media, in order. */
+function assertGlued(first: string, second: string): void {
+  assert.ok(
+    second.includes(`${recordedMediaOf(first)}${DISCONTINUITY_TAG}\n`),
+    'the earlier recording′s entries go in verbatim, and the seam directly after them',
+  );
+  assert.equal(seamCount(second), 1, 'one join between the two broadcasts, never two');
+  assert.equal(
+    entryCount(second),
+    A_SEGMENTS.length + B_SEGMENTS.length,
+    'every segment of both broadcasts is named, and none of them twice',
+  );
+  assert.equal(
+    mediaSequenceOf(second),
+    mediaSequenceOf(first),
+    'the recording starts where the broadcast started, not where this session joined it',
+  );
+  assert.deepEqual(
+    segmentUris(second),
+    [...A_SEGMENTS, ...B_SEGMENTS].map((label) => `segment-${label}`),
+    'in the order the broadcast played',
+  );
+  assert.ok(second.trimEnd().endsWith(ENDLIST_TAG), 'and it is a finished playlist');
+}
+
+/** Run with the shared logger's lines captured, restoring whatever was configured before. */
+async function withCapturedLog<T>(run: (lines: string[]) => Promise<T>): Promise<T> {
+  const lines: string[] = [];
+  const logger = Logger.getInstance();
+  const previous = logger.configure({ sink: (_level, line) => void lines.push(line) });
+  try {
+    return await run(lines);
+  } finally {
+    logger.configure(previous);
+  }
+}
+
 interface ReapedScenario {
-  harness: ReapHarness;
+  harness: GlueHarness;
   /** The closing window the reaper wrote for the first broadcast. */
   aClosing: WindowWrite;
+  /** The recording the reaper uploaded for the first broadcast. */
+  aRecording: string;
   /** The first window the second broadcast wrote, which a viewer is handed next. */
   bFirstLive: WindowWrite;
 }
 
-/**
- * The whole path: a broadcast fed and then abandoned, ended by the reaper, and a second broadcast
- * announced afterwards on the same declared or derived topic and fed in its turn.
- *
- * Deliberately no `stopStream` anywhere. The only thing that ends the first broadcast is the timer.
- */
-async function reapedThenSucceeded(harness: ReapHarness): Promise<ReapedScenario> {
+/** A broadcast fed and then abandoned, and ended by the reaper. Nothing calls `stopStream`. */
+async function reapedFirstBroadcast(harness: GlueHarness): Promise<void> {
   harness.start();
   for (const [index, label] of A_SEGMENTS.entries()) {
     await harness.segment(label, index);
@@ -266,26 +383,50 @@ async function reapedThenSucceeded(harness: ReapHarness): Promise<ReapedScenario
   await harness.reap();
   await waitFor(() => harness.recordings.length === 1, SETTLE_CEILING_MS);
   // The drain is over only once the id has left the live maps, and that is also when the shared-topic
-  // entry the successor would have waited on has been cleared. Waiting for it keeps this helper's
-  // successor an ordinary fresh start rather than a sometimes-gated one.
+  // entry the successor would have waited on has been cleared. Waiting for it keeps the successor an
+  // ordinary fresh start rather than a sometimes-gated one.
   await waitFor(() => harness.orchestrator.getActiveStreamCount() === 0, SETTLE_CEILING_MS);
+}
 
+/** The second broadcast on the same declared or derived topic, fed until its last segment is in a window. */
+async function secondBroadcast(harness: GlueHarness): Promise<void> {
   harness.start();
   for (const [index, label] of B_SEGMENTS.entries()) {
     await harness.segment(label, index);
   }
   await harness.written(B_SEGMENTS[B_SEGMENTS.length - 1]);
+}
 
+async function reapedThenSucceeded(harness: GlueHarness): Promise<ReapedScenario> {
+  await reapedFirstBroadcast(harness);
+  await secondBroadcast(harness);
   return {
     harness,
     aClosing: closingWindows(harness.windows)[0],
+    aRecording: harness.recordings[0],
     bFirstLive: windowsNaming(harness.windows, B_SEGMENTS[0])[0],
   };
 }
 
+/** Stop the second broadcast and hand back its recording. */
+async function finishSecond(harness: GlueHarness): Promise<string> {
+  await harness.orchestrator.stopStream(harness.streamId);
+  await waitFor(() => harness.recordings.length === 2, SETTLE_CEILING_MS);
+  return harness.recordings[1];
+}
+
+const tempRoots: string[] = [];
+
+after(() => {
+  for (const root of tempRoots) {
+    fs.rmSync(root, { recursive: true, force: true });
+  }
+});
+
 describe('a broadcast the stall reaper ended, and the one that follows it on the same topic', () => {
-  it('ends the first broadcast from the reaper alone, with a closing window and then a recording', async () => {
-    const harness = reapHarness();
+  it('ends the first broadcast from the reaper alone, and remembers its recording for the topic', async () => {
+    const store = new RememberingStore();
+    const harness = glueHarness({ recordingStore: store });
 
     harness.start();
     await harness.segment(A_SEGMENTS[0], 0);
@@ -294,21 +435,31 @@ describe('a broadcast the stall reaper ended, and the one that follows it on the
 
     await harness.reap();
     await waitFor(() => harness.recordings.length === 1, SETTLE_CEILING_MS);
+    await waitFor(() => store.remembered.length === 1, SETTLE_CEILING_MS);
 
     const snapshot = harness.orchestrator.getMetricsSnapshot();
     assert.equal(snapshot.streamsReapedTotal, 1, 'the reaper is what decided this broadcast was over');
     assert.equal(snapshot.streamsFinalizedTotal, 1, 'and its finalize uploaded the recording');
     assert.equal(closingWindows(harness.windows).length, 1, 'one closing window ends the live playlist');
-    assert.ok(harness.windows.at(-1)?.playlist.includes(ENDLIST_TAG), 'and nothing is written after it');
+    assert.equal(
+      store.remembered[0][1],
+      fakeRecordingReference(harness.recordings[0]),
+      'the reference remembered is the recording this finalize uploaded',
+    );
   });
 
-  it('numbers the successor′s first window on from the closing window the reaper left, and seams it', async () => {
-    const { aClosing, bFirstLive } = await reapedThenSucceeded(reapHarness());
+  it('numbers the successor′s first window on from what the reaper left, and seams it', async () => {
+    const { aClosing, aRecording, bFirstLive } = await reapedThenSucceeded(glueHarness());
 
     assert.equal(
       mediaSequenceOf(bFirstLive.playlist),
       mediaSequenceOf(aClosing.playlist) + entryCount(aClosing.playlist),
       'a media sequence that moved backwards is what hls.js reports as a fatal parsing error',
+    );
+    assert.equal(
+      mediaSequenceOf(bFirstLive.playlist),
+      mediaSequenceOf(aRecording) + entryCount(aRecording),
+      'and the window and the recording agree where the broadcast had got to',
     );
     assert.equal(seamCount(bFirstLive.playlist), 1, 'the join between the two broadcasts is declared once');
 
@@ -322,30 +473,28 @@ describe('a broadcast the stall reaper ended, and the one that follows it on the
     );
   });
 
-  /**
-   * ⛔ A window is a live playlist and never a recording, so nothing of the first broadcast reaches the
-   * second's recording. Each broadcast's recording is its own, and the length reported is its own.
-   */
-  it('finalizes the successor as a recording of its own media', async () => {
-    const { harness } = await reapedThenSucceeded(reapHarness());
+  it('finalizes the successor as one recording carrying both broadcasts', async () => {
+    const { harness, aRecording } = await reapedThenSucceeded(glueHarness());
 
-    await harness.orchestrator.stopStream(harness.streamId);
-    await waitFor(() => harness.recordings.length === 2, SETTLE_CEILING_MS);
+    const bRecording = await finishSecond(harness);
 
-    const bRecording = harness.recordings[1];
-    const uris = bRecording
-      .split('\n')
-      .map((line) => line.trim())
-      .filter((line) => line.startsWith('segment-'));
-    assert.deepEqual(
-      uris,
-      B_SEGMENTS.map((label) => `segment-${label}`),
+    assertGlued(aRecording, bRecording);
+    assert.deepEqual(harness.downloads, [fakeRecordingReference(aRecording)], 'glued by the reference it was left');
+  });
+
+  it('reports the whole broadcast′s length for the glued recording', async () => {
+    const { harness } = await reapedThenSucceeded(glueHarness());
+
+    await finishSecond(harness);
+    await waitFor(() => harness.reportedRecordingSeconds.length === 2, SETTLE_CEILING_MS);
+
+    const [reaped, glued] = harness.reportedRecordingSeconds;
+    assert.equal(reaped, A_SEGMENTS.length * SEGMENT_SECONDS, 'the reaper reported the broadcast it ended');
+    assert.equal(
+      glued,
+      reaped + B_SEGMENTS.length * SEGMENT_SECONDS,
+      'and the glued recording is reported as both, since that is what a viewer is handed',
     );
-    assert.ok(bRecording.trimEnd().endsWith(ENDLIST_TAG), 'and it is a finished playlist');
-    assert.deepEqual(harness.reportedRecordingSeconds, [
-      A_SEGMENTS.length * SEGMENT_SECONDS,
-      B_SEGMENTS.length * SEGMENT_SECONDS,
-    ]);
   });
 
   /**
@@ -353,10 +502,11 @@ describe('a broadcast the stall reaper ended, and the one that follows it on the
    * `on_unpublish` reported that and ended nothing, and nothing came back inside the window.
    *
    * ⛔ **A disconnect must reach the reaper's own path rather than a shorter one.** It ends nothing
-   * itself, so what finalizes the broadcast is the same timer that finalizes one whose engine died.
+   * itself, so what finalizes the broadcast is the same timer that finalizes one whose engine died,
+   * and the glue on the far side of it has to be identical, since a viewer cannot tell the two apart.
    */
-  it('continues from the closing window the reaper wrote after the encoder disconnected', async () => {
-    const harness = reapHarness();
+  it('glues onto a recording the reaper uploaded after the encoder disconnected', async () => {
+    const harness = glueHarness();
 
     harness.start();
     for (const [index, label] of A_SEGMENTS.entries()) {
@@ -371,32 +521,22 @@ describe('a broadcast the stall reaper ended, and the one that follows it on the
     await waitFor(() => harness.recordings.length === 1, SETTLE_CEILING_MS);
     await waitFor(() => harness.orchestrator.getActiveStreamCount() === 0, SETTLE_CEILING_MS);
 
-    // The encoder comes back, too late. That is a new broadcast on the same topic.
-    harness.start();
-    for (const [index, label] of B_SEGMENTS.entries()) {
-      await harness.segment(label, index);
-    }
-    await harness.written(B_SEGMENTS[B_SEGMENTS.length - 1]);
-
-    const aClosing = closingWindows(harness.windows)[0];
+    // The encoder comes back, too late. That is a new broadcast, and it opens with the one before it.
+    await secondBroadcast(harness);
     const bFirstLive = windowsNaming(harness.windows, B_SEGMENTS[0])[0];
-    assert.equal(
-      mediaSequenceOf(bFirstLive.playlist),
-      mediaSequenceOf(aClosing.playlist) + entryCount(aClosing.playlist),
-      'the returning broadcast numbered on from the window the reaper left',
-    );
     assert.equal(seamCount(bFirstLive.playlist), 1, 'with the join declared once');
+
+    assertGlued(harness.recordings[0], await finishSecond(harness));
   });
 
   /**
    * ⛔ A rung′s topic is derived from its ladder group and its rung name rather than declared, so it
    * is stable across the two sessions for a different reason from the single declared stream above,
    * and the reaper releases the ladder on its way out, so the successor derives the topic again from
-   * the declaration rather than finding it remembered.
+   * the declaration rather than finding it remembered. Same glue, different route to one topic.
    */
-  it('continues a ladder rung whose topic is derived rather than declared', async () => {
-    const harness = reapHarness({ ladder: true });
-    const { aClosing, bFirstLive } = await reapedThenSucceeded(harness);
+  it('glues a ladder rung whose topic is derived rather than declared', async () => {
+    const { harness, aClosing, aRecording, bFirstLive } = await reapedThenSucceeded(glueHarness({ ladder: true }));
 
     assert.equal(
       mediaSequenceOf(bFirstLive.playlist),
@@ -404,6 +544,8 @@ describe('a broadcast the stall reaper ended, and the one that follows it on the
       'the rung came back onto the topic it was already writing, which is what deriving the topic buys',
     );
     assert.equal(seamCount(bFirstLive.playlist), 1, 'with the restart declared as a break');
+
+    assertGlued(aRecording, await finishSecond(harness));
   });
 
   /**
@@ -415,11 +557,12 @@ describe('a broadcast the stall reaper ended, and the one that follows it on the
    * production sequence, SRS reconnecting a publisher after the reaper has fired but while Bee is still
    * taking the recording.
    *
-   * The successor must write no window and, more sharply, must **not scan the topic at all** while the
-   * finalize runs: a scan that happened would prove the gate had been passed.
+   * The successor must write no window and, more sharply, must **neither scan the topic nor ask for a
+   * recording** while the finalize runs: the recording store does not name A's recording yet, so a
+   * successor that looked would open with no prefix, or with an older one.
    */
   it('holds a successor announced while the reaper′s recording upload is still in flight', async () => {
-    const harness = reapHarness({ blockRecording: true });
+    const harness = glueHarness({ blockRecording: true });
     try {
       harness.start();
       await harness.segment(A_SEGMENTS[0], 0);
@@ -433,7 +576,10 @@ describe('a broadcast the stall reaper ended, and the one that follows it on the
       await harness.segment(B_SEGMENTS[0], 0);
 
       await waitAndConfirmNothingHappened(
-        () => harness.scanReads() === readsBefore && windowsNaming(harness.windows, B_SEGMENTS[0]).length === 0,
+        () =>
+          harness.scanReads() === readsBefore &&
+          harness.downloads.length === 0 &&
+          windowsNaming(harness.windows, B_SEGMENTS[0]).length === 0,
         QUIET_WINDOW_MS,
       );
     } finally {
@@ -441,12 +587,14 @@ describe('a broadcast the stall reaper ended, and the one that follows it on the
     }
   });
 
-  it('lets the held successor continue from the closing window once that finalize is done', async () => {
-    const harness = reapHarness({ blockRecording: true });
+  it('lets the held successor glue the reaper′s recording once that finalize is done', async () => {
+    const harness = glueHarness({ blockRecording: true });
     try {
       harness.start();
-      await harness.segment(A_SEGMENTS[0], 0);
-      await harness.written(A_SEGMENTS[0]);
+      for (const [index, label] of A_SEGMENTS.entries()) {
+        await harness.segment(label, index);
+      }
+      await harness.written(A_SEGMENTS[A_SEGMENTS.length - 1]);
 
       await harness.reap();
       await waitFor(harness.recordingUploadStarted, SETTLE_CEILING_MS);
@@ -456,18 +604,91 @@ describe('a broadcast the stall reaper ended, and the one that follows it on the
 
       harness.releaseRecording();
       await waitFor(() => harness.recordings.length === 1, SETTLE_CEILING_MS);
-      await harness.written(B_SEGMENTS[0]);
+      await harness.segment(B_SEGMENTS[1], 1);
+      await harness.written(B_SEGMENTS[1]);
 
-      const aClosing = closingWindows(harness.windows)[0];
+      const aRecording = harness.recordings[0];
       const bFirstLive = windowsNaming(harness.windows, B_SEGMENTS[0])[0];
       assert.equal(
         mediaSequenceOf(bFirstLive.playlist),
-        mediaSequenceOf(aClosing.playlist) + entryCount(aClosing.playlist),
-        'so its numbering carries on from the window that ended the first broadcast',
+        mediaSequenceOf(aRecording) + entryCount(aRecording),
+        'so its numbering carries on from where the first broadcast ended',
       );
       assert.equal(seamCount(bFirstLive.playlist), 1);
+
+      assertGlued(aRecording, await finishSecond(harness));
     } finally {
       harness.releaseRecording();
     }
+  });
+});
+
+describe('the recording a topic ended with, across a restart and a failed download', () => {
+  it('glues across a restart of this process, through the store′s file', async () => {
+    const root = fs.mkdtempSync(path.join(os.tmpdir(), 'glue-restart-'));
+    tempRoots.push(root);
+    const storeFile = path.join(root, 'recordings', 'by-topic.json');
+    const swarm = emptySwarm();
+
+    const before = glueHarness({ swarm, recordingStore: new RecordingStore(storeFile) });
+    await reapedFirstBroadcast(before);
+    await before.orchestrator.cleanup();
+
+    // A new process: nothing in memory, the same Swarm and the same state directory.
+    const restarted = glueHarness({ swarm, recordingStore: new RecordingStore(storeFile) });
+    await secondBroadcast(restarted);
+
+    await restarted.orchestrator.stopStream(restarted.streamId);
+    await waitFor(() => restarted.recordings.length === 1, SETTLE_CEILING_MS);
+
+    assertGlued(before.recordings[0], restarted.recordings[0]);
+  });
+
+  it('reports a store that cannot save as state failing to persist, so the loss shows before a restart', async () => {
+    const root = fs.mkdtempSync(path.join(os.tmpdir(), 'glue-unwritable-'));
+    tempRoots.push(root);
+    const blocker = path.join(root, 'blocker');
+    fs.writeFileSync(blocker, 'not a directory');
+    const harness = glueHarness({ recordingStore: new RecordingStore(path.join(blocker, 'by-topic.json')) });
+    assert.equal(harness.orchestrator.getMsSinceStatePersistFailed(), null);
+
+    await withCapturedLog(async () => reapedFirstBroadcast(harness));
+
+    assert.notEqual(harness.orchestrator.getMsSinceStatePersistFailed(), null);
+  });
+
+  it('retries a download that failed, and glues once it lands', async () => {
+    let failuresLeft = 1;
+    const harness = glueHarness({
+      downloadFails: () => (failuresLeft-- > 0 ? new Error('socket hang up') : null),
+    });
+    const { aRecording } = await reapedThenSucceeded(harness);
+
+    assertGlued(aRecording, await finishSecond(harness));
+    assert.equal(harness.downloads.length, 2, 'one failed attempt, then the one that landed');
+  });
+
+  it('starts unglued when the recording cannot be had, says so, and never holds the broadcast', async () => {
+    await withCapturedLog(async (lines) => {
+      const harness = glueHarness({
+        downloadFails: () => Object.assign(new Error('Bad Request'), { status: 400 }),
+      });
+      const { aClosing, bFirstLive } = await reapedThenSucceeded(harness);
+
+      assert.equal(
+        mediaSequenceOf(bFirstLive.playlist),
+        mediaSequenceOf(aClosing.playlist) + entryCount(aClosing.playlist),
+        'the numbering still carries on, since it comes from the window and not the recording',
+      );
+      assert.equal(harness.orchestrator.getMetricsSnapshot().recordingsUngluedTotal, 1);
+      assert.equal(lines.filter((line) => line.includes('opens its recording without')).length, 1);
+
+      const bRecording = await finishSecond(harness);
+      assert.deepEqual(
+        segmentUris(bRecording),
+        B_SEGMENTS.map((label) => `segment-${label}`),
+        'its recording is its own media alone',
+      );
+    });
   });
 });

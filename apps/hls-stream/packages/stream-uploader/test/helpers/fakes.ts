@@ -82,6 +82,12 @@ export interface FakeUploads {
    * Swarm does. A test holds a finalize open by not settling it.
    */
   uploadRecording?: (playlist: string) => Promise<unknown>;
+  /**
+   * A recording playlist's download by reference, which a session opening on a topic makes to glue
+   * the topic's last recording ahead of its own. Defaults to the recordings this fake took through
+   * the default {@link uploadRecording}, and a 404 for any other reference.
+   */
+  downloadRecording?: (reference: string) => Promise<string>;
 }
 
 /** Whether a `/bytes` upload is a recording playlist rather than a segment. */
@@ -203,6 +209,7 @@ export function neverSettles(): Promise<never> {
 
 export function makeFakeBee(uploads: FakeUploads = {}): Bee {
   let refCounter = 0;
+  const recordings = new Map<string, string>();
   return {
     data: {
       upload: async (stamp: string, data: Uint8Array) => {
@@ -212,11 +219,20 @@ export function makeFakeBee(uploads: FakeUploads = {}): Bee {
             return uploads.uploadRecording(playlist);
           }
           const reference = fakeRecordingReference(playlist);
+          recordings.set(reference, playlist);
           return { reference: { toHex: () => reference } };
         }
         return uploads.uploadData
           ? uploads.uploadData(stamp, data)
           : { reference: { toHex: () => `ref${refCounter++}` } };
+      },
+      download: async (reference: string | { toHex(): string }) => {
+        const hex = typeof reference === 'string' ? reference : reference.toHex();
+        const playlist = uploads.downloadRecording ? await uploads.downloadRecording(hex) : recordings.get(hex);
+        if (playlist === undefined) {
+          throw new BeeResponseError('GET', '/bytes', 'Not Found', undefined, 404, 'Not Found');
+        }
+        return { toUtf8: () => playlist };
       },
     },
     soc: {
@@ -394,6 +410,7 @@ export function makeMetricsSnapshot(overrides: Partial<MetricsSnapshot> = {}): M
     streamsFinalizedTotal: 0,
     streamsFailedTotal: 0,
     streamsReapedTotal: 0,
+    recordingsUngluedTotal: 0,
     segmentDurationsUnreadTotal: 0,
     authRejectionsTotal: 0,
     takeoversRefusedTotal: 0,

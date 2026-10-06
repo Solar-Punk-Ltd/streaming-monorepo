@@ -119,6 +119,12 @@ function describe(snapshot: MetricsSnapshot): RenderedMetric[] {
       value: snapshot.streamsReapedTotal,
     },
     {
+      name: 'recordings_unglued_total',
+      type: 'counter',
+      help: 'Sessions on a topic with an earlier recording that could not download it, so their recording starts without the broadcast before them. The earlier recording is still there under its own reference.',
+      value: snapshot.recordingsUngluedTotal,
+    },
+    {
       name: 'segment_durations_unread_total',
       type: 'counter',
       help: "Segments published with the engine's declared duration because their own timestamps could not be read. Both shipped engines deliver MPEG-TS, so this is expected to stay at zero. Any rise means those segments' durations are the engine's claim, which on SRS measured 20 to 25% long.",

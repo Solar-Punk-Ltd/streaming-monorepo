@@ -166,8 +166,8 @@ function headerNumber(lines: readonly string[], tag: string, fallback: number): 
 }
 
 /**
- * Everything the playlist at a feed head holds, as the prefix a session opening over it glues its own
- * recording behind. Null where the playlist names no media.
+ * Everything a topic's last recording holds, as the prefix a session opening on that topic glues its
+ * own recording behind. Null where the playlist names no media.
  *
  * ⛔⛔ **The lines come back verbatim.** From the first timeline tag to the entry before
  * `#EXT-X-ENDLIST`, in the order the previous session wrote them, discontinuities, gap entries and
@@ -177,12 +177,10 @@ function headerNumber(lines: readonly string[], tag: string, fallback: number): 
  * publish a different history from the one the previous session already published at its own index.
  * Blank lines are the only thing dropped, because the recording writes its own separator.
  *
- * ⚠️ **Only the head is inherited, so a head without `#EXT-X-ENDLIST` yields only its window.** That
- * is a previous session that was killed before it finalized: the last thing it published is a live
- * playlist holding the newest segments that fit the byte budget, and the media that slid out of that
- * window is not on the head to read. It is deliberately not worked around here. The killed session's
- * own recovery entry is the path that recovers its whole recording, and a session that went looking
- * back through earlier feed indices would be guessing at which of them belonged to which broadcast.
+ * ⚠️ **Only a finished recording is inherited.** A previous session killed before it finalized left
+ * no recording, so the session after it glues the one before that, or none. The killed session's own
+ * recovery entry is the path that finalizes its recording, and that recording then becomes the
+ * topic's newest for the session after it.
  *
  * ⚠️ **Only the timeline is carried, so an initialization or key header would be lost.**
  * `#EXT-X-MAP` and `#EXT-X-KEY` sit above the first timeline tag and are dropped with the rest of the
@@ -190,8 +188,6 @@ function headerNumber(lines: readonly string[], tag: string, fallback: number): 
  * initialization section, and nothing here encrypts. A deployment that started publishing fMP4 or
  * encrypted segments would have to carry them.
  *
- * Works on a recording, a closing playlist and a live window alike, because any of the three can be
- * the head.
  */
 export function inheritedTimeline(manifest: string): InheritedTimeline | null {
   const lines = manifest.split('\n').map((line) => line.trim());
@@ -490,16 +486,15 @@ export class ManifestManager {
   }
 
   /**
-   * Open this session's recording with the playlist that was at the feed head, so the head recording
-   * carries the whole broadcast rather than the last session of it.
+   * Open this session's recording with the topic's last recording, so the recording this session
+   * finalizes carries the whole broadcast rather than the last session of it.
    *
-   * Called once, before the first playlist is published, with what {@link inheritedTimeline} read off
-   * the same head {@link continueFrom} took its number from, and again beside {@link restoreState}
-   * for a session rebuilt off disk. After a crash the head is this session's own live playlist, so
-   * the prefix is taken back off the recovery entry rather than re-read — exactly as the offset is.
+   * Called once, before the first window is composed, with what {@link inheritedTimeline} read off
+   * that recording, and again beside {@link restoreState} for a session rebuilt off disk, which takes
+   * the prefix back off its recovery entry rather than downloading it again, exactly as the offset is.
    *
-   * ⛔ Chaining is what makes the head recording whole, and it costs nothing: the playlist this
-   * inherits is itself a glued recording, so session three's prefix already carries session one.
+   * ⛔ Chaining is what makes the recording whole, and it costs nothing: the recording this inherits
+   * is itself a glued recording, so session three's prefix already carries session one.
    */
   public inherit(timeline: InheritedTimeline): void {
     this.inherited = timeline;
