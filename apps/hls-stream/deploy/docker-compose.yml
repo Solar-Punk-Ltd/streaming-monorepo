@@ -53,9 +53,9 @@ services:
   # that could not have kept up whatever it did. `BEE_PUBLISHERS` has existed, built and unit-tested,
   # the whole time; there were simply no nodes for it to name.
   #
-  # ⭐ `bee-uploader` above is the 360p rung as well as the shared default, because the catalog and
-  # each ladder's master playlist go through the LOWEST rung's node (see `.env.sample`), and those two
-  # feeds are the only addresses a viewer needs to open a stage.
+  # ⭐ `bee-uploader` above is the 360p rung as well as the shared default, because the catalog goes
+  # through the LOWEST rung's node (see `.env.sample`), and it is the one address a viewer needs to
+  # open a stage.
   #
   # ⚠️ Each of these is a separate Swarm node: its own wallet, its own chequebook and its own postage
   # batch. Four nodes is four things to fund and four batches to watch, which is the cost of the
@@ -298,12 +298,12 @@ services:
       # empty leaves the deployment standalone, exactly as it was. The token is required whenever the
       # URL is set, so a half-configured admin deployment refuses to start rather than running as a
       # standalone one. Both default to empty so an existing deployment upgrades unchanged.
-      # With ABR_ENABLED as well, the declared topic is the ladder's master playlist feed and each
-      # rung publishes on a topic derived from the group and its rung name, so a rung's feed outlives
-      # its session: a restarted rung or a reconnected encoder continues the same feed with a
-      # discontinuity, recordings sit back to back on it and the entry names the latest, which is why
-      # the admin accepts `live` after `vod`. The admin merges the rungs and the uploader writes the
-      # master from what it hands back. See the uploader README's "Admin mode".
+      # With ABR_ENABLED as well, the declared topic is the ladder's group and each rung writes its
+      # live windows on a topic derived from the group and its rung name, so a rung's topic outlives
+      # its session: a restarted rung or a reconnected encoder continues it with a discontinuity, and
+      # the entry names the latest recording, which is why the admin accepts `live` after `vod`. The
+      # admin merges the rungs into the renditions a player builds the master from. See the uploader
+      # README's "Admin mode".
       ADMIN_API_URL: ${ADMIN_API_URL:-}
       ADMIN_API_TOKEN: ${ADMIN_API_TOKEN:-}
       API_PORT: ${API_PORT:-3000}
@@ -324,8 +324,8 @@ services:
       ENGINE: ${ENGINE:-srs}
       SRS_MEDIA_PATH: /media
       # The uploader reads the same ladder the engine was configured with: SRS's webhooks carry
-      # the stream name and nothing else, so width, height and the encoder's target bitrate — all
-      # of which the master playlist needs — only exist here.
+      # the stream name and nothing else, so width, height and the encoder's target bitrate, all of
+      # which a rung's rendition needs, only exist here.
       ABR_ENABLED: ${ABR_ENABLED:-false}
       ABR_LADDER: ${ABR_LADDER:-}
       ABR_VHOST: ${ABR_VHOST:-abr}

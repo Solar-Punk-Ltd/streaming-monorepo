@@ -59,9 +59,9 @@ function orchestratorPublishingInto(published: string[], recoveryStore = makeFak
   return makeTestOrchestrator(
     {},
     {
-      uploadPayload: async (index, payload) => {
-        published.push(String(payload));
-        return { reference: { toHex: () => `soc${index}` } };
+      uploadWindow: async (_identifier, payload) => {
+        published.push(Buffer.from(payload).toString('utf-8'));
+        return { reference: { toHex: () => 'window' } };
       },
     },
     recoveryStore,

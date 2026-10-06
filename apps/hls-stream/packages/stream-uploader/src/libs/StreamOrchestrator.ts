@@ -3,6 +3,7 @@ import {
   rungAnnounced,
   segmentDurationUnread,
   streamStopped,
+  type WindowWriterClock,
 } from '@swarm-hls-stream/shared';
 import crypto from 'crypto';
 
@@ -78,7 +79,7 @@ import { RecentSegmentIndexes } from './RecentSegmentIndexes.js';
 import { RecoveryStore } from './RecoveryStore.js';
 import { MetricsSnapshot, ServiceMetrics } from './ServiceMetrics.js';
 import { StreamCatalog } from './StreamCatalog.js';
-import { StreamUploader } from './StreamUploader.js';
+import { StreamUploader, StreamUploaderOptions } from './StreamUploader.js';
 
 /**
  * How much media a broadcast may withhold while waiting for its first video frame, before it is
@@ -164,6 +165,17 @@ export interface StreamOrchestratorConfig {
    * built with, which is the standalone deployment. See {@link LadderRegistry}.
    */
   ladderRegistry?: LadderRegistry;
+  /**
+   * Whether this host's clock may name a live window right now, handed to every uploader. Absent is
+   * always. See `StreamUploaderOptions.clockTrusted`.
+   */
+  clockTrusted?: () => boolean;
+  /**
+   * The live window's length and the clock its windows are timed on, handed to every uploader.
+   * Injectable only so a test can run windows at test speed. See `StreamUploaderOptions.liveWindowMs`.
+   */
+  liveWindowMs?: number;
+  windowClock?: WindowWriterClock;
 }
 
 /**
@@ -1401,6 +1413,7 @@ export class StreamOrchestrator {
       metrics: this.metrics,
       admin: this.adminReportingFor(admin?.id),
       predecessorDrained,
+      ...this.windowOptions(),
     });
 
     if (sharedFeedTopic) {
@@ -1420,6 +1433,15 @@ export class StreamOrchestrator {
     }
     this.armStallReaper(streamId);
     this.logger.info(`[StreamOrchestrator] Started stream: ${streamId}`);
+  }
+
+  /** What every uploader is handed about its live windows, the same for every session this process runs. */
+  private windowOptions(): Pick<StreamUploaderOptions, 'clockTrusted' | 'liveWindowMs' | 'windowClock'> {
+    return {
+      clockTrusted: this.config.clockTrusted,
+      liveWindowMs: this.config.liveWindowMs,
+      windowClock: this.config.windowClock,
+    };
   }
 
   /**
@@ -2079,7 +2101,6 @@ export class StreamOrchestrator {
       dating: this.datingFor(datingKey, base, state.streamId),
       restoreState: {
         streamRawTopic: state.streamRawTopic,
-        socIndex: state.socIndex,
         segments: state.segments,
         hlsHeaders: state.hlsHeaders,
         isFirstSegmentReady: state.isFirstSegmentReady,
@@ -2088,14 +2109,13 @@ export class StreamOrchestrator {
         bitrate: state.bitrate,
         anchor: state.anchor,
         // ⛔ Carried for the same reason the anchor is, and it is load-bearing:
-        // a recovered session never reads its feed head (`topicOutlivesThisSession`
+        // a recovered session never scans its topic's windows (`topicOutlivesThisSession`
         // is false for one), so this entry is the only record of how far the
         // numbering it is resuming had already got. Dropping it republishes the
         // broadcast from a media sequence viewers were handed minutes ago.
         sequenceOffset: state.sequenceOffset,
-        // Carried for exactly that reason too: the recording this session finalizes opens with the
-        // media that was on the feed before it, and a recovered session cannot re-read it, because
-        // by now the head is its own live playlist. See `ManifestManager.inherit`.
+        // Carried for an entry a session on feeds wrote, whose recording opened with the media that
+        // was on the feed before it. See `ManifestManager.inherit`.
         inherited: state.inherited,
         // Carried because the crash can land in the one interval where this is set: between an
         // encoder announcing its return and the first segment of that return arriving, which is an
@@ -2108,6 +2128,7 @@ export class StreamOrchestrator {
       // this is the only surviving record of which declaration it belongs to. Absent on an entry
       // written before admin mode, and on every entry written outside it.
       admin: this.adminReportingFor(state.adminStreamId),
+      ...this.windowOptions(),
     });
 
     if (state.ladder || (state.adminStreamId && this.config.adminApi)) {

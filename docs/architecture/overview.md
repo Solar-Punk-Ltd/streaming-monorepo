@@ -36,12 +36,16 @@ A stage is a manager deployment that runs a stream uploader, with the node pool 
 1. The encoder sends SRT to the ingest engine on a stage host.
 2. The engine writes each closed segment to a media volume it shares with the uploader and calls the
    uploader's webhook. With the ladder on, it writes one segment per rung.
-3. The uploader stamps each segment with its rung's postage batch and uploads it through that rung's
-   own Bee node. It then rewrites the rung's playlist, uploads that, and moves the rung's feed to it.
-4. The master feed names every rung that is publishing. A rung that stops is dropped from it, so a
-   viewer is never sent to a quality that has died.
-5. The viewer reads the catalog to find a stream, follows its master feed, and plays the rung its
-   bandwidth allows. Segments come from a Bee gateway over HTTP, or from a light node in the tab.
+3. The uploader stamps each segment with its rung's postage batch and uploads it direct through that
+   rung's own Bee node. Every 2 s it writes the rung's live playlist, naming the segments whose upload
+   finished, as that rung's window chunk for the 2 s that just ended. When the broadcast ends it writes a
+   closing window and uploads the rung's recording playlist once, named by its reference.
+4. The stream list entry names every rung with its topic, its size and its bandwidth, which is all a
+   player needs to build the ladder's master playlist. No master playlist is written to Swarm.
+5. The viewer reads the catalog to find a stream, builds the master from the entry's renditions, and
+   plays the rung its bandwidth allows, reading that rung's windows. Segments come from a Bee gateway
+   over HTTP, or from a light node in the tab. The player moves onto windows in phase 3 of the windows
+   plan, and until then it follows feeds this uploader no longer writes.
 
 The manager and the web2 admin are not on this path. A running broadcast carries on while either of
 them is down. They decide what runs where and who owns which stream.
@@ -60,8 +64,8 @@ its slot notes. Asking Bee for a chunk before it exists makes Bee skip its peers
 for about a minute, so polling the next feed index delays the update it waits for. A window chunk
 sits at an address computed from the clock and is asked for once, after it is due. The convention
 lives once, in `packages/swarm-windows/src/windows.ts`, a package the stack's shared package
-re-exports and the web2 admin depends on directly. Both writers of the stream list write its notes
-on it, and nothing reads it yet.
+re-exports and the web2 admin depends on directly. The uploader writes each quality's `live`
+windows on it, and both writers of the stream list write its notes. Nothing reads them yet.
 
 - **The window.** Window `w` of length `windowMs` covers `[w * windowMs, (w + 1) * windowMs)` of
   Unix milliseconds. The writer writes window `w` once, at its end. A reader asks for it at its end
@@ -106,6 +110,14 @@ clock, the timers and the write injected. The caller's write signs the chunk and
   defined.
 - **Named seams.** `maxInFlight` bounds the writes running at once, and `clockTrusted` lets the
   caller hold writes while it does not trust its own clock. Both skip a window and say why.
+- **The uploader is the `live` writer.** `StreamUploader` writes a quality's live playlist every 2 s
+  window on the topic the stream list's rendition names, from its first segment on, through any pause
+  in the media, until the end, when windows carry `#EXT-X-ENDLIST` until one is written. Its
+  `clockTrusted` comes from the uploader's own option and holds every window while it answers false. A
+  session on a topic an earlier session wrote waits until that session has stopped writing, then reads
+  the topic's windows of the last minute once, newest first, and continues the media sequence the
+  newest one left. Segments and the recording are uploaded direct, and the recording is named by its
+  reference rather than a feed index.
 
 ### The stream list's notes
 

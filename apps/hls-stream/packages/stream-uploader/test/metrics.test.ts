@@ -387,7 +387,7 @@ describe('GET /metrics (S2.7)', () => {
   });
 
   it('counts a stop whose finalize never published as a failed stream', async () => {
-    const api = await start(makeTestOrchestrator({}, { uploadPayload: rejectImmediately }));
+    const api = await start(makeTestOrchestrator({}, { uploadRecording: rejectImmediately }));
 
     await startStream(api);
     await api.requestUntil('/metrics', hasSample('swarm_hls_active_streams', 1), SETTLE_CEILING_MS);

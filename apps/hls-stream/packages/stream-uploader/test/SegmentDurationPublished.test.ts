@@ -65,9 +65,9 @@ describe('what a playlist tells a viewer a segment lasts', () => {
     const orch = makeTestOrchestrator(
       {},
       {
-        uploadPayload: async (index, payload) => {
-          published.push(String(payload));
-          return { reference: { toHex: () => `soc${index}` } };
+        uploadWindow: async (_identifier, payload) => {
+          published.push(Buffer.from(payload).toString('utf-8'));
+          return { reference: { toHex: () => 'window' } };
         },
       },
     );
@@ -90,9 +90,9 @@ describe('what a playlist tells a viewer a segment lasts', () => {
     const orch = makeTestOrchestrator(
       {},
       {
-        uploadPayload: async (index, payload) => {
-          published.push(String(payload));
-          return { reference: { toHex: () => `soc${index}` } };
+        uploadWindow: async (_identifier, payload) => {
+          published.push(Buffer.from(payload).toString('utf-8'));
+          return { reference: { toHex: () => 'window' } };
         },
       },
     );

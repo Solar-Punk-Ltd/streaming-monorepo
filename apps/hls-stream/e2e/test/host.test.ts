@@ -748,3 +748,46 @@ describe('how long a suite waits for the uploader to go idle', () => {
     );
   });
 });
+
+/**
+ * A stub `curl` that answers like Bee's `/chunks/` route: the chunk's bytes written where `-o` points
+ * and the status printed for `-w`. The 105 bytes ahead of the payload stand in for a single owner
+ * chunk's identifier, signature and span.
+ */
+function stubChunkCurl(status: number, payload: string): void {
+  const dir = mkdtempSync(join(tmpdir(), 'e2e-chunk-curl-'));
+  sandboxes.push(dir);
+  const body = join(dir, 'body');
+  writeFileSync(body, Buffer.concat([Buffer.alloc(105, 7), Buffer.from(payload, 'utf8')]));
+  const path = join(dir, 'curl');
+  writeFileSync(
+    path,
+    [
+      '#!/bin/bash',
+      'out=""',
+      'while [ $# -gt 0 ]; do [ "$1" = "-o" ] && out="$2"; shift; done',
+      `[ ${status} -eq 200 ] && cp ${JSON.stringify(body)} "$out"`,
+      `printf '%s' ${status}`,
+    ].join('\n'),
+  );
+  chmodSync(path, 0o755);
+  process.env.PATH = `${dir}:${REAL_PATH}`;
+}
+
+describe('reading a single owner chunk through the gateway', () => {
+  it('hands back the payload after the chunk header, line breaks kept', async () => {
+    stubChunkCurl(200, '#EXTM3U\n#EXT-X-VERSION:3\n');
+
+    const read = await new Host(LOCAL_TARGET).localChunkPayload(10_074, '/chunks/ab');
+
+    assert.deepEqual(read, { status: 200, payload: '#EXTM3U\n#EXT-X-VERSION:3\n' });
+  });
+
+  it('says the status and no payload for a chunk the gateway does not have', async () => {
+    stubChunkCurl(404, '');
+
+    const read = await new Host(LOCAL_TARGET).localChunkPayload(10_074, '/chunks/ab');
+
+    assert.deepEqual(read, { status: 404, payload: null });
+  });
+});

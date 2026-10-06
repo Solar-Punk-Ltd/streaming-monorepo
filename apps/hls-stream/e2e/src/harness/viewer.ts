@@ -26,24 +26,28 @@ export interface CatalogEntry {
   owner: string;
   topic: string;
   state: StreamState;
-  index: number;
+  /** Where a recording written on feeds is. A writer on time windows names `recording` instead. */
+  index?: number;
+  /** The reference of a finished broadcast's recording playlist, read with `GET /bytes/<recording>`. */
+  recording?: string;
   duration?: number;
   mediatype: string;
   timestamp: number;
   /**
-   * Present on a ladder entry: one per rung, each with its own session topic. On a finished entry, only
-   * the rungs that recorded, since a rung whose stop failed moves to `unfinishedRungs`.
+   * Present on a ladder entry: one per rung, each with its own session topic and what a player builds
+   * the ladder's master playlist from. On a finished entry, only the rungs that recorded, since a rung
+   * whose stop failed moves to `unfinishedRungs`.
    */
-  renditions?: { name: string; topic: string }[];
+  renditions?: { name: string; topic: string; width?: number; height?: number; bandwidth?: number }[];
 }
 
 /**
  * Whether an entry belongs to a broadcast identified by its announced session topics.
  *
- * A single-rendition entry's own `topic` is the session topic. A ladder entry's own `topic` is the
- * MASTER feed's, which is the ladder group and survives engine deaths and recoveries, so the session
- * identity lives in the rung topics under `renditions`. Matching on `entry.topic` alone therefore
- * finds single-rendition broadcasts and is blind to ladders (found live 2026-08-27, twice).
+ * A single-rendition entry's own `topic` is the session topic. A ladder entry's own `topic` is its
+ * lowest rung's, so the identity of every other rung lives in the rung topics under `renditions`.
+ * Matching on `entry.topic` alone therefore finds single-rendition broadcasts and most of a ladder
+ * only by luck (found live 2026-08-27, twice, when the entry's topic was a master feed's).
  */
 export function entryCarriesTopic(entry: CatalogEntry, topics: ReadonlySet<string>): boolean {
   if (topics.has(entry.topic)) {

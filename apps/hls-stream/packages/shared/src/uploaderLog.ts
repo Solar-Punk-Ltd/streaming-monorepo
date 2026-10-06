@@ -95,6 +95,39 @@ export function manifestUploadedPattern(flags = ''): RegExp {
 }
 
 /**
+ * Written once per live window a quality's playlist was written to, which is how the harness counts
+ * windows per rung. Carries the stream for the reason {@link manifestUploaded} does: a ladder is four
+ * writers, and four interleaved lines naming only a window are one unreadable sequence.
+ *
+ * The window is the window number of the convention, `floor(unixMs / windowMs)`, so two rungs writing
+ * the same 2 s window log the same number.
+ */
+export function liveWindowWritten(streamId: string, window: number): string {
+  return `Live window of ${streamId} written at window ${window}`;
+}
+
+/** {@link liveWindowWritten} as a matcher, the stream and the window as capture groups 1 and 2. */
+export function liveWindowWrittenPattern(flags = ''): RegExp {
+  const escaped = liveWindowWritten(STREAM_SLOT, INDEX_SLOT).replace(REGEX_SPECIAL, '\\$&');
+  return new RegExp(escaped.replace(STREAM_SLOT, '(\\S+)').replace(String(INDEX_SLOT), '(\\d+)'), flags);
+}
+
+/**
+ * Written once when a quality's recording playlist has been uploaded at the end, with the reference
+ * the stream list or the admin is then told. Uploading the same recording again gives the same
+ * reference, so two of these for one stream after a crash name one recording.
+ */
+export function recordingUploaded(streamId: string, reference: string): string {
+  return `Recording of ${streamId} uploaded as ${reference}`;
+}
+
+/** {@link recordingUploaded} as a matcher, the stream and the reference as capture groups 1 and 2. */
+export function recordingUploadedPattern(flags = ''): RegExp {
+  const escaped = recordingUploaded(STREAM_SLOT, TOPIC_SLOT).replace(REGEX_SPECIAL, '\\$&');
+  return new RegExp(escaped.replace(STREAM_SLOT, '(\\S+)').replace(TOPIC_SLOT, '([0-9a-f]+)'), flags);
+}
+
+/**
  * Written once when a rung is grouped into its ladder, at session start. Byte-identical to the line
  * `StreamOrchestrator` wrote before this composer existed, so the derived pattern also reads logs
  * from deployments that predate it.

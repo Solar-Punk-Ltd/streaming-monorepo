@@ -52,7 +52,6 @@ export interface StreamState {
   streamId: string;
   streamRawTopic: string;
   mediatype: MediaType;
-  socIndex: number | null;
   segments: SegmentEntry[];
   hlsHeaders: string[];
   isFirstSegmentReady: boolean;

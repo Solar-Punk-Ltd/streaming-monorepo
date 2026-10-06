@@ -66,10 +66,6 @@ function hasActiveStreams(count: number): (body: unknown) => boolean {
   return (body) => (body as HealthBody).activeStreams === count;
 }
 
-function hasManifestFailures(count: number): (body: unknown) => boolean {
-  return (body) => (body as HealthBody).maxConsecutiveManifestFailures === count;
-}
-
 function startStream(api: ApiTestServer, streamId = STREAM_ID): Promise<unknown> {
   return api.request('/stream/start', {
     method: 'POST',
@@ -507,12 +503,12 @@ describe('POST /stream/stop outcome (S2.5)', () => {
   });
 
   /**
-   * The whole of it, read the way a caller would. The finalize cannot publish its VOD, and before
-   * this the caller was told `ok`: `drainUploader` caught its own failure and returned normally, so
-   * the rejection the route watches for never arrived either.
+   * The whole of it, read the way a caller would. The finalize cannot upload its recording, and
+   * before this the caller was told `ok`: `drainUploader` caught its own failure and returned
+   * normally, so the rejection the route watches for never arrived either.
    */
   it('reports a finalize that never published, where it used to answer ok', async () => {
-    const api = await start(makeTestOrchestrator({}, { uploadPayload: rejectImmediately }));
+    const api = await start(makeTestOrchestrator({}, { uploadRecording: rejectImmediately }));
 
     await startStream(api);
     await api.requestUntil('/health', hasActiveStreams(1));
@@ -677,27 +673,20 @@ describe('GET /health status (S2.1)', () => {
     assert.deepEqual((body as HealthBody).reasons, [HEALTH_REASON_QUEUE_PRESSURE]);
   });
 
-  it('reports degraded and 503 after three consecutive live-manifest publish failures', async () => {
-    // Segment uploads succeed and only the manifest SOC write is refused, which is the state that
-    // used to report ok: segments land in Swarm while the live playlist stops advancing.
-    const api = await start(makeTestOrchestrator({}, { uploadPayload: rejectImmediately }));
+  it('reports degraded and 503 after three consecutive live windows were not written', async () => {
+    // Segment uploads succeed and only the window write is refused, which is the state that used to
+    // report ok: segments land in Swarm while the live playlist stops advancing. A window is written
+    // every window whether or not a segment arrived, so the failures climb on their own.
+    const api = await start(makeTestOrchestrator({}, { uploadWindow: rejectImmediately }));
 
     await startStream(api);
     await api.requestUntil('/health', hasActiveStreams(1));
+    await postSegment(api, 0);
 
-    for (let failures = 1; failures <= MANIFEST_FAILURE_THRESHOLD; failures++) {
-      await postSegment(api, failures - 1);
-      // One segment at a time: a manifest publish already queued is not queued twice, so feeding
-      // segments in a batch would not produce one failure each.
-      const { status, body } = await api.requestUntil('/health', hasManifestFailures(failures));
-
-      if (failures < MANIFEST_FAILURE_THRESHOLD) {
-        assert.equal(status, 200, `${failures} failure(s) self-heal on the next segment, so health holds at ok`);
-        assert.equal((body as HealthBody).status, HEALTH_OK);
-      }
-    }
-
-    const { status, body } = await api.request('/health');
+    const { status, body } = await api.requestUntil(
+      '/health',
+      (health) => ((health as HealthBody).maxConsecutiveManifestFailures ?? 0) >= MANIFEST_FAILURE_THRESHOLD,
+    );
 
     assert.equal(status, 503);
     assert.equal((body as HealthBody).status, HEALTH_DEGRADED);
@@ -832,10 +821,10 @@ describe('GET /health status (S2.1)', () => {
   });
 
   it('does not report a stall against a stream that is draining', async () => {
-    // notifyStop hangs on the VOD manifest write, so the stream stays registered for the whole drain.
+    // notifyStop hangs on the recording upload, so the stream stays registered for the whole drain.
     // A drain accepts no segments by design, and DRAIN_TIMEOUT_MS is 5 minutes against this window.
     const clock = new FakeClock();
-    const api = await start(makeStallingOrchestrator(clock, { uploadPayload: neverSettles }));
+    const api = await start(makeStallingOrchestrator(clock, { uploadRecording: neverSettles }));
 
     await startStream(api);
     await api.requestUntil('/health', hasActiveStreams(1));

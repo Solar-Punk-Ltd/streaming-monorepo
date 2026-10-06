@@ -83,7 +83,7 @@ const DEFAULT_REPORT_TIMEOUT_MS = 10_000;
 export const MAX_STATE_REPORT_ATTEMPTS = 3;
 export const STATE_REPORT_BACKOFF_MS = [1_000, 3_000] as const;
 
-/** The states a report may claim. `live` on the first published manifest, `vod` once the recording is in the feed. */
+/** The states a report may claim. `live` on the first written window, `vod` once the recording is uploaded. */
 export const ADMIN_STATE_LIVE = 'live' as const;
 export const ADMIN_STATE_VOD = 'vod' as const;
 
@@ -91,8 +91,8 @@ export type AdminStateReport =
   | { state: typeof ADMIN_STATE_LIVE }
   | {
       state: typeof ADMIN_STATE_VOD;
-      /** Feed index of the final manifest, which is what a viewer is pointed at. */
-      index: number;
+      /** The reference of the recording playlist, which is what a viewer is pointed at. */
+      recording: string;
       /** Playing time of the recording in seconds. */
       duration: number;
     };

@@ -115,7 +115,7 @@ a second limit appears that a single rendition never meets: SRS announces each c
 Measured on the deployment host 2026-08-31, SRS sustains about **6.7 a second** while its own
 encoders were producing 8.0. Nothing errors. Announcements fall behind the media at 0.46s per second
 of video until the lag passes `HLS_WINDOW`, after which SRS deletes each segment before announcing
-it, the tallest rung is unpublished about two minutes in, and the master feed goes on advertising it.
+it, and the tallest rung is unpublished about two minutes in.
 
 | rungs | fragment |      asks | against ~6.7/s                                     |
 | ----: | -------: | --------: | -------------------------------------------------- |

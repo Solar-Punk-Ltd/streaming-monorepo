@@ -114,8 +114,7 @@ const MAX_HLS_FRAGMENT_SECONDS = 3600;
  *
  * **The default is derived, not chosen.** Every bee call the service makes sits inside
  * `retryUntilDeadlineAsync`, and the shortest window any of them gets is 10s: `CATALOG_RETRY_WINDOW_MS`
- * in `StreamCatalog.ts` and `MASTER_RETRY_WINDOW_MS` in `MasterFeedWriter.ts`, against 15s for the
- * three in `StreamUploader.ts`. The first backoff is 350ms before jitter halves it, so two whole
+ * in `StreamCatalog.ts`, against 15s for the two in `StreamUploader.ts`. The first backoff is 350ms before jitter halves it, so two whole
  * attempts fit inside 10s for any timeout up to 4825ms. 4s is that with room left over, and it keeps a
  * retry worth having: shorten a window below 8.35s and this becomes the wrong number, which is why
  * `test/config.test.ts` reads those windows out of the files that declare them and re-derives it.

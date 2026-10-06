@@ -29,6 +29,8 @@ export const STAMP_READY_TIMEOUT_MS = 60_000;
 const DEFAULT_CONNECT_TIMEOUT_S = 10;
 const DEFAULT_RUN_TIMEOUT_MS = 30_000;
 const MAX_BUFFER_BYTES = 16 * 1024 * 1024;
+/** A single owner chunk's identifier, signature and span, in that order, ahead of its payload. */
+const SOC_HEADER_BYTES = 32 + 65 + 8;
 /** ssh transport failure (couldn't connect / connection dropped) — distinct from a remote command's own exit code. */
 const SSH_TRANSPORT_EXIT = 255;
 
@@ -413,6 +415,37 @@ export class Host {
     );
     const [status, bytes] = stdout.trim().split(/\s+/).map(Number);
     return { status, bytes };
+  }
+
+  /**
+   * The payload of a single owner chunk read through the gateway's `/chunks/` route, as text, and the
+   * status it answered with. The payload is null for any status other than 200.
+   *
+   * Bee answers such a chunk as its identifier, signature and span ahead of the payload, so those
+   * {@link SOC_HEADER_BYTES} are cut on the deployment host and only the payload crosses ssh. The
+   * status is printed after it on a line of its own, which tells an absent chunk from a transport
+   * failure: curl prints `000` for the second.
+   */
+  async localChunkPayload(
+    target: ServiceTarget,
+    path: string,
+    timeoutS: number = 5,
+  ): Promise<{ status: number; payload: string | null }> {
+    const runTimeoutMs = Math.max(DEFAULT_RUN_TIMEOUT_MS, (timeoutS + 5) * 1_000);
+    const url = shellQuoted(`http://${await this.dialAddress(target)}:${portOf(target)}${path}`);
+    const { stdout } = await this.run(
+      [
+        'body=$(mktemp)',
+        `status=$(curl -s -o "$body" -w '%{http_code}' --max-time ${timeoutS} ${url})`,
+        `if [ "$status" = 200 ]; then tail -c +${SOC_HEADER_BYTES + 1} "$body"; fi`,
+        'rm -f "$body"',
+        `printf '\\n%s' "$status"`,
+      ].join('; '),
+      runTimeoutMs,
+    );
+    const split = stdout.lastIndexOf('\n');
+    const status = Number(stdout.slice(split + 1).trim());
+    return { status, payload: status === 200 ? stdout.slice(0, split) : null };
   }
 
   private async curlJson<T>(target: ServiceTarget, path: string, timeoutS: number): Promise<T> {

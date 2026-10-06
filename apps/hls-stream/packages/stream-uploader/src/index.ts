@@ -23,7 +23,6 @@ import { ClockCheck } from './libs/ClockCheck.js';
 import { LadderGroupStore } from './libs/LadderGroupStore.js';
 import { LadderRegistry } from './libs/LadderRegistry.js';
 import { Logger } from './libs/Logger.js';
-import { MasterFeedWriter } from './libs/MasterFeedWriter.js';
 import { assertNodeReachable, waitForNode } from './libs/NodeWait.js';
 import { PostageGate } from './libs/PostageGate.js';
 import { registerCrashHandlers, registerShutdownSignals } from './libs/processSignals.js';
@@ -129,39 +128,25 @@ async function start() {
     // In a subdirectory so RecoveryStore's *.json scan of stateDir never picks it up as a stream.
     const catalogIndexStore = new CatalogIndexStore(path.join(config.stateDir, 'catalog', 'feed-index.json'));
 
-    // Only with the ladder on. A single-rendition stream has nothing to be multivariant about, and
-    // publishing a one-entry master for it would buy a second feed and no choice.
-    const masterWriter = config.abr ? new MasterFeedWriter(publishers, new PrivateKey(config.streamKey)) : undefined;
-
     // Also ladder-only, and in a subdirectory for the same reason the catalog index is: RecoveryStore
     // scans stateDir for `*.json` and would otherwise offer this file up as a stream to recover.
     const ladderGroupStore = config.abr
       ? new LadderGroupStore(path.join(config.stateDir, 'ladder', 'groups.json'))
       : undefined;
 
-    const streamCatalog = new StreamCatalog(
-      publishers,
-      config.streamKey,
-      config.streamListTopic,
-      catalogIndexStore,
-      // ⛔ Withheld in admin mode, where this catalog writes nothing at all: the master belongs to the
-      // ladder registry below, and a catalog holding a writer it must never reach is a catalog a
-      // later change can make write one. Nothing would call it today. The wiring says so anyway.
-      config.admin ? undefined : masterWriter,
-    );
+    const streamCatalog = new StreamCatalog(publishers, config.streamKey, config.streamListTopic, catalogIndexStore);
 
     // Where a ladder rung's rendition record goes. Standalone, the catalog: it merges four rungs into
-    // one entry on the stream list feed and writes the master from it. In admin mode the merge moves
-    // into the admin. The declared topic becomes the master feed's topic, each rung reports its own
-    // record, and the admin writes `renditions` into the catalog entry it already owns. See
+    // one entry on the stream list feed. In admin mode the merge moves into the admin: each rung
+    // reports its own record, and the admin writes `renditions` into the catalog entry it already
+    // owns. A player builds the ladder's master playlist from those renditions. See
     // `libs/AdminLadderRegistry.ts` and the "Admin mode" section of the package README.
     const ladderRegistry: LadderRegistry =
-      adminApi && masterWriter ? new AdminLadderRegistry({ client: adminApi, masterWriter }) : streamCatalog;
-    if (adminApi && masterWriter) {
+      adminApi && config.abr ? new AdminLadderRegistry({ client: adminApi }) : streamCatalog;
+    if (adminApi && config.abr) {
       logger.info(
-        '[Admin] ABR ladder in admin mode: the declared topic is the ladder master feed, each rung publishes ' +
-          'to a topic derived from the group and its rung name, and the ladder the master is written from is ' +
-          'the one the admin merges',
+        '[Admin] ABR ladder in admin mode: the declared topic is the ladder group, each rung writes its ' +
+          'windows on a topic derived from the group and its rung name, and the admin merges the ladder',
       );
     }
 

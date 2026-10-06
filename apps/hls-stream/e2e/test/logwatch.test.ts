@@ -3,7 +3,9 @@ import {
   engineSkippedSegments,
   finalizeResumed,
   ladderFinalized,
+  liveWindowWritten,
   manifestUploaded,
+  recordingUploaded,
   rungBatchRefused,
   segmentUploaded,
 } from '@swarm-hls-stream/shared';
@@ -20,7 +22,9 @@ import {
   manifestIndicesByStream,
   messageText,
   newIndices,
+  liveWindowsWrittenByStream,
   parseUploaderLog,
+  recordingsUploaded,
   resumedFinalizeCount,
 } from '../src/harness/logwatch.js';
 
@@ -759,5 +763,34 @@ describe('the catalog giving up on its own previous state', () => {
 
   it('is zero on a log where nothing went wrong', () => {
     assert.equal(catalogContinuedEmpty(textLine('log', MANIFEST(3))), 0);
+  });
+});
+
+describe('the live windows and recordings a log says were written', () => {
+  const RECORDING = 'cd'.repeat(32);
+
+  it('counts the windows each stream wrote, in either log format', () => {
+    const text = [
+      textLine('log', liveWindowWritten('live/stream_360p', 900)),
+      jsonLine('log', liveWindowWritten('live/stream_360p', 901)),
+      textLine('log', liveWindowWritten('live/stream_1080p', 901)),
+      textLine('log', UPLOADED(3)),
+    ].join('\n');
+
+    assert.deepEqual(
+      [...liveWindowsWrittenByStream(text)],
+      [
+        ['live/stream_360p', 2],
+        ['live/stream_1080p', 1],
+      ],
+    );
+  });
+
+  it('names each recording uploaded with the stream it belongs to', () => {
+    const text = [textLine('log', recordingUploaded('live/stream_360p', RECORDING)), textLine('log', MANIFEST(3))].join(
+      '\n',
+    );
+
+    assert.deepEqual(recordingsUploaded(text), [{ streamId: 'live/stream_360p', reference: RECORDING }]);
   });
 });

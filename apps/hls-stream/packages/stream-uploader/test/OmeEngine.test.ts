@@ -490,9 +490,9 @@ describe('createOmeEngine origin restart', () => {
           uploaded.push(new TextDecoder().decode(data));
           return { reference: { toHex: () => `ref${uploaded.length}` } };
         },
-        uploadPayload: async (index: number) => {
+        uploadRecording: async () => {
           await sleep(FINALIZE_LATENCY_MS);
-          return { reference: { toHex: () => `soc${index}` } };
+          return { reference: { toHex: () => 'recording' } };
         },
       },
       undefined,
@@ -550,9 +550,9 @@ describe('createOmeEngine origin restart', () => {
           uploaded.push(new TextDecoder().decode(data));
           return { reference: { toHex: () => `ref${uploaded.length}` } };
         },
-        uploadPayload: async (index: number) => {
+        uploadRecording: async () => {
           await sleep(FINALIZE_LATENCY_MS);
-          return { reference: { toHex: () => `soc${index}` } };
+          return { reference: { toHex: () => 'recording' } };
         },
       },
       undefined,
@@ -781,9 +781,9 @@ describe('createOmeEngine reconnect inside the origin idle window', () => {
           uploaded.push(new TextDecoder().decode(data));
           return { reference: { toHex: () => `ref${uploaded.length}` } };
         },
-        uploadPayload: async (index: number) => {
+        uploadRecording: async () => {
           await sleep(FINALIZE_LATENCY_MS);
-          return { reference: { toHex: () => `soc${index}` } };
+          return { reference: { toHex: () => 'recording' } };
         },
       },
       undefined,
@@ -886,9 +886,9 @@ describe('createOmeEngine reconnect inside the origin idle window', () => {
           uploaded.push(new TextDecoder().decode(data));
           return { reference: { toHex: () => `ref${uploaded.length}` } };
         },
-        uploadPayload: async (index: number) => {
+        uploadRecording: async () => {
           await sleep(FINALIZE_LATENCY_MS);
-          return { reference: { toHex: () => `soc${index}` } };
+          return { reference: { toHex: () => 'recording' } };
         },
       },
       undefined,
@@ -963,9 +963,9 @@ describe('createOmeEngine reconnect inside the origin idle window', () => {
           uploaded.push(new TextDecoder().decode(data));
           return { reference: { toHex: () => `ref${uploaded.length}` } };
         },
-        uploadPayload: async (index: number) => {
+        uploadRecording: async () => {
           await sleep(FINALIZE_LATENCY_MS);
-          return { reference: { toHex: () => `soc${index}` } };
+          return { reference: { toHex: () => 'recording' } };
         },
       },
       undefined,

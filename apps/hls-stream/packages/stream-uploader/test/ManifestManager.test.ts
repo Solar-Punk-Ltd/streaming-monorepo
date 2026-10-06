@@ -1,3 +1,4 @@
+import { encodeLiveWindowPayload, WINDOW_CHUNK_MAX_BYTES } from '@swarm-hls-stream/shared';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
@@ -9,8 +10,6 @@ import {
   inheritedTimeline,
   LIVE_WINDOW_MAX_BYTES,
   ManifestManager,
-  LIVE_WINDOW_FLOOR_MAX_BYTES,
-  MIN_LIVE_WINDOW_SEGMENTS,
 } from '../src/libs/ManifestManager.js';
 import { BroadcastAnchor } from '../src/types.js';
 
@@ -878,12 +877,12 @@ describe('the live window is bounded by bytes rather than by a segment count', (
    * This used to reach the same state through a 4KB `MANIFEST_ACCESS_URL`. That variable is gone,
    * and the path that remains is the one external input can actually reach.
    */
-  it('still emits the fewest segments a player can start from when the header alone overruns the budget', () => {
+  it('still emits the newest segment when the header alone overruns the budget', () => {
     const manager = withSegments(5, 2);
     const { segments } = manager.getState();
     manager.restoreState(segments, ['#EXTM3U', `#EXT-X-SESSION-DATA:${'p'.repeat(LIVE_WINDOW_MAX_BYTES)}`]);
 
-    assert.equal(segmentUris(manager.buildLiveManifest()).length, MIN_LIVE_WINDOW_SEGMENTS);
+    assert.deepEqual(segmentUris(manager.buildLiveManifest()), [ref(4)]);
   });
 
   it('leaves the VOD manifest whole, since it is published once rather than per segment', () => {
@@ -2065,46 +2064,56 @@ describe('the published sequence a rung would resume at, counting what it is sti
   });
 });
 
-/**
- * ⛔ A rung that lines up with its ladder after a long partial return lists the whole absence as gap
- * entries, and gap entries are spent from the same byte budget as media. Sixty of them alone fill it,
- * so the window right after the return held one media entry and a player had nothing to buffer from.
- */
-describe('a live window right after a return that lists many gap entries', () => {
-  it('still names at least three media entries', () => {
+// A live playlist is written as one window chunk, and a window chunk is at most
+// WINDOW_CHUNK_MAX_BYTES, a hard limit: the writer refuses anything larger and the window goes
+// unwritten. So the budget holds the written-at line the window adds and the ENDLIST the closing
+// window adds, and the rule that let a feed playlist reach twice the budget for three media entries
+// is gone. A player keeps every segment it has seen, so a window naming fewer loses nothing.
+describe('a live window fits one window chunk', () => {
+  // The largest written-at time there can be, so no real one makes a payload longer.
+  const LATEST_WRITTEN_AT = Number.MAX_SAFE_INTEGER;
+
+  function payloadBytes(playlist: string): number {
+    return encodeLiveWindowPayload(playlist, LATEST_WRITTEN_AT).length;
+  }
+
+  for (const duration of SHIPPED_SEGMENT_DURATIONS_S) {
+    it(`fits, written-at line and ENDLIST included, at a ${duration}s segment however long the broadcast`, () => {
+      const manager = withSegments(500, duration);
+
+      assert.ok(payloadBytes(manager.buildLiveManifest()) <= WINDOW_CHUNK_MAX_BYTES);
+      assert.ok(payloadBytes(manager.buildClosingLiveManifest()) <= WINDOW_CHUNK_MAX_BYTES);
+    });
+  }
+
+  it('fits when a return right after an absence lists a long run of gap entries', () => {
     const raised: BroadcastDating = {
       epochFrom: (resumeAt, notBeforeMs) => ({ fromSequence: resumeAt, atMs: notBeforeMs }),
       resumePointFor: (_returnToken, ownResumeAt) => ownResumeAt + 60,
     };
     const manager = new ManifestManager(TEST_ANCHOR, raised);
     for (let index = 0; index < 10; index++) {
-      manager.addSegment(index, 2, `ref-${index}`);
+      manager.addSegment(index, 2, ref(index));
     }
     manager.resumeAfterReconnect('a-return');
-    manager.addSegment(10, 2, 'ref-10');
+    manager.addSegment(10, 2, ref(10));
 
-    const live = manager.buildLiveManifest();
-    const media = live.split('\n').filter((line) => line.startsWith('ref-'));
+    const closing = manager.buildClosingLiveManifest();
 
-    assert.ok(media.length >= 3, `the window names ${media.length} media entries: ${media.join(', ')}`);
-    assert.ok(live.includes('ref-10'));
+    assert.ok(payloadBytes(closing) <= WINDOW_CHUNK_MAX_BYTES, `${payloadBytes(closing)} bytes`);
+    assert.ok(closing.includes(ref(10)), 'the newest segment is always named');
   });
 
-  /**
-   * The floor reaches back over a hole of any cause, and a hole a node outage left can be minutes of
-   * gap entries. Reaching all the way back made the first publishes after a five minute outage about
-   * fourteen kilobytes, several chunks each.
-   */
-  it(`reaches back over no more than ${LIVE_WINDOW_FLOOR_MAX_BYTES} bytes for it`, () => {
+  it('fits a playlist whose whole budget could go on gap entries, by naming fewer media entries', () => {
     const manager = new ManifestManager(TEST_ANCHOR);
     for (let index = 0; index < 10; index++) {
-      manager.addSegment(index, 2, `ref-${index}`);
+      manager.addSegment(index, 2, ref(index));
     }
-    manager.addSegment(160, 2, 'ref-160');
+    manager.addSegment(160, 2, ref(160));
 
-    const live = manager.buildLiveManifest();
+    const closing = manager.buildClosingLiveManifest();
 
-    assert.ok(Buffer.byteLength(live, 'utf-8') <= LIVE_WINDOW_FLOOR_MAX_BYTES, `${Buffer.byteLength(live)} bytes`);
-    assert.ok(live.includes('ref-160'));
+    assert.ok(payloadBytes(closing) <= WINDOW_CHUNK_MAX_BYTES, `${payloadBytes(closing)} bytes`);
+    assert.deepEqual(segmentUris(closing), [ref(160)]);
   });
 });

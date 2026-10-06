@@ -15,9 +15,12 @@ import { Rendition } from '../types.js';
  * ladder's merge lives on.
  */
 
-/** Whether this rung has published its recording, which is exactly what an index on its record says. */
+/**
+ * Whether this rung has published its recording: a reference on its record from a writer on time
+ * windows, or a feed index from a writer on feeds, which a list written before windows still holds.
+ */
 export function hasRecording(rendition: Rendition): boolean {
-  return rendition.index !== undefined;
+  return rendition.recording !== undefined || rendition.index !== undefined;
 }
 
 /** The rungs a recording can offer a viewer: those with a recording, in the ladder's own order. */

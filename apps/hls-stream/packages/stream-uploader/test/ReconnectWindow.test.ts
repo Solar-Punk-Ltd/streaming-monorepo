@@ -35,6 +35,7 @@
  *   the one case here is that a stranger is refused during the window exactly as before.
  */
 
+import { encodeLiveWindowPayload, parseLiveWindowPayload, windowIdentifier } from '@swarm-hls-stream/shared';
 import express from 'express';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
@@ -56,9 +57,17 @@ import { LadderGroupStore } from '../src/libs/LadderGroupStore.js';
 import { Logger } from '../src/libs/Logger.js';
 import { StreamOrchestrator } from '../src/libs/StreamOrchestrator.js';
 import { AdminSession, MEDIA_TYPE_AUDIO, StreamState } from '../src/types.js';
+import { rungTopicFor } from '../src/utils/rungTopic.js';
 
 import { FakeClock } from './helpers/fakeClock.js';
-import { FakeFeedHead, makeFakeRecoveryStore, makeTestOrchestrator, TEST_ANCHOR } from './helpers/fakes.js';
+import {
+  fakeRecordingReference,
+  FakeUploads,
+  makeFakeRecoveryStore,
+  makeTestOrchestrator,
+  TEST_ANCHOR,
+  TEST_LIVE_WINDOW_MS,
+} from './helpers/fakes.js';
 import { listenOnLoopback } from './helpers/loopbackServer.js';
 import { waitAndConfirmNothingHappened, waitFor } from './helpers/waiting.js';
 
@@ -101,11 +110,75 @@ const GAP_TAG = '#EXT-X-GAP';
 const MEDIA_SEQUENCE_TAG = '#EXT-X-MEDIA-SEQUENCE';
 const PROGRAM_DATE_TIME_TAG = '#EXT-X-PROGRAM-DATE-TIME';
 
-/** One SOC write the uploader made, and the feed it made it to. */
+/** One live window or recording the uploader wrote, in order, and the topic a window was written on. */
 interface ManifestWrite {
   index: number;
   playlist: string;
+  /** The topic a window was written on, or `recording` for the recording playlist uploaded at the end. */
   topic: string;
+}
+
+/** Every window chunk written, at its identifier, which is what a session opening on a topic scans. */
+type WindowStore = Map<string, Uint8Array>;
+
+/** Every topic a session in these cases writes on: the declaration's, and each rung's derived from it. */
+const TOPICS = [DECLARATION.topic, ...RUNG_NAMES.map((rung) => rungTopicFor(DECLARATION.topic, rung))];
+
+/**
+ * How many windows back a write may have been for, counted from when it was written: the writer's
+ * late limit is 500 ms, so a window is written within 25 test windows of its end.
+ */
+const LATE_WINDOWS = 30;
+
+/** Which of {@link TOPICS} a window chunk was written on, read off its identifier and its written-at time. */
+function topicOfWindow(identifier: string, writtenAt: number): string {
+  const newest = Math.floor(writtenAt / TEST_LIVE_WINDOW_MS);
+  for (const topic of TOPICS) {
+    for (let window = newest; window >= newest - LATE_WINDOWS; window--) {
+      if (windowIdentifier({ topic, kind: 'live', windowMs: TEST_LIVE_WINDOW_MS, window }).toHex() === identifier) {
+        return topic;
+      }
+    }
+  }
+  return 'unknown';
+}
+
+/**
+ * Puts a playlist in every recent window of a topic, standing in for an earlier session that wrote it,
+ * so a session opening on that topic now finds it as the topic's newest window.
+ */
+function plantWindow(store: WindowStore, topic: string, playlist: string): void {
+  const now = Date.now();
+  const payload = encodeLiveWindowPayload(playlist, now);
+  const current = Math.floor(now / TEST_LIVE_WINDOW_MS);
+  for (let window = current - 1; window >= current - 100; window--) {
+    store.set(windowIdentifier({ topic, kind: 'live', windowMs: TEST_LIVE_WINDOW_MS, window }).toHex(), payload);
+  }
+}
+
+/**
+ * The fake bee's window and recording halves over one store: every window kept at its identifier and
+ * logged with its topic, every recording logged as a write of its own.
+ */
+function windowUploads(writes: ManifestWrite[], store: WindowStore): FakeUploads {
+  return {
+    uploadWindow: async (identifier, payload) => {
+      const parsed = parseLiveWindowPayload(payload);
+      writes.push({
+        index: writes.length,
+        playlist: parsed?.playlist ?? '',
+        topic: topicOfWindow(identifier, parsed?.writtenAt ?? Date.now()),
+      });
+      store.set(identifier, payload);
+      return { reference: { toHex: () => 'window' } };
+    },
+    windowAt: (identifier) => store.get(identifier) ?? null,
+    uploadRecording: async (playlist) => {
+      writes.push({ index: writes.length, playlist, topic: 'recording' });
+      const reference = fakeRecordingReference(playlist);
+      return { reference: { toHex: () => reference } };
+    },
+  };
 }
 
 interface ReconnectHarness {
@@ -141,8 +214,8 @@ interface ReconnectHarness {
   holdUploads: (streamId: string) => () => void;
   /** Hand one segment over without waiting for its upload, for a stream whose uploads are held. */
   handOver: (label: string, index: number, streamId: string) => void;
-  /** The head of every feed, by topic, which a case may write to stand in for an earlier session. */
-  feeds: Map<string, FakeFeedHead>;
+  /** Every window chunk at its identifier, which a case may plant to stand in for an earlier session. */
+  windows: WindowStore;
 }
 
 /**
@@ -161,7 +234,7 @@ function reconnectHarness(options: { ladder?: boolean } = {}): ReconnectHarness 
   const adminStates: string[] = [];
   const saved: StreamState[] = [];
   const uploadedSegments: string[] = [];
-  const feeds = new Map<string, FakeFeedHead>();
+  const windows: WindowStore = new Map();
   const heldUploads = new Map<string, Promise<void>>();
 
   const adminApi = {
@@ -190,13 +263,7 @@ function reconnectHarness(options: { ladder?: boolean } = {}): ReconnectHarness 
         uploadedSegments.push(label);
         return { reference: { toHex: () => `segment-${label}` } };
       },
-      feedHead: (topic) => feeds.get(topic) ?? null,
-      uploadPayload: async (index, payload, topic) => {
-        const playlist = String(payload);
-        writes.push({ index, playlist, topic });
-        feeds.set(topic, { index, manifest: playlist });
-        return { reference: { toHex: () => `soc-${index}` } };
-      },
+      ...windowUploads(writes, windows),
     },
     makeFakeRecoveryStore({ save: (_streamId: string, state: StreamState) => saved.push(state) }),
   );
@@ -207,7 +274,7 @@ function reconnectHarness(options: { ladder?: boolean } = {}): ReconnectHarness 
     writes,
     adminStates,
     saved,
-    feeds,
+    windows,
     start: (streamId = STREAM_ID) => {
       assert.equal(
         orchestrator.startStream(streamId, MEDIA_TYPE_AUDIO, undefined, DECLARATION),
@@ -371,16 +438,16 @@ describe('an encoder that disconnects and comes back inside the window', () => {
         assert.equal(recordings(harness.writes).length, 0, 'nothing was finalized across the gap');
         assert.equal(closingPlaylists(harness.writes).length, 0, 'and no playlist was ended');
         assert.deepEqual(harness.adminStates, [ADMIN_STATE_LIVE], 'the admin never heard about the gap at all');
-        assert.equal(
-          new Set(harness.writes.map((write) => write.topic)).size,
-          1,
-          'both runs published to one feed, which is what makes them one broadcast',
+        assert.deepEqual(
+          [...new Set(harness.writes.map((write) => write.topic))],
+          [DECLARATION.topic],
+          'both runs wrote on one topic, which is what makes them one broadcast',
         );
         assert.ok(
           mediaSequenceOf(afterGap.playlist) >= mediaSequenceOf(beforeGap.playlist),
           'a media sequence that moved backwards is what hls.js reports as a fatal parsing error',
         );
-        assert.ok(afterGap.index > beforeGap.index, 'and the feed itself carried on above where it was');
+        assert.ok(afterGap.index > beforeGap.index, 'and the windows carried on after where they were');
       });
 
       it('declares exactly one break, on the first segment of the returning run', async () => {
@@ -759,7 +826,7 @@ async function rebuildFrom(entry: StreamState, wallOffsetMs = OUTAGE_MS): Promis
   const adminStates: string[] = [];
   const saved: StreamState[] = [];
   const uploadedSegments: string[] = [];
-  const feeds = new Map<string, FakeFeedHead>();
+  const windows: WindowStore = new Map();
 
   const adminApi = {
     describe: () => 'http://admin.test',
@@ -777,13 +844,7 @@ async function rebuildFrom(entry: StreamState, wallOffsetMs = OUTAGE_MS): Promis
         uploadedSegments.push(label);
         return { reference: { toHex: () => `segment-${label}` } };
       },
-      feedHead: (topic) => feeds.get(topic) ?? null,
-      uploadPayload: async (index, payload, topic) => {
-        const playlist = String(payload);
-        writes.push({ index, playlist, topic });
-        feeds.set(topic, { index, manifest: playlist });
-        return { reference: { toHex: () => `soc-${index}` } };
-      },
+      ...windowUploads(writes, windows),
     },
     makeFakeRecoveryStore({
       listActive: () => [entry.streamId.replace(/[/\\]/g, '_')],
@@ -800,7 +861,7 @@ async function rebuildFrom(entry: StreamState, wallOffsetMs = OUTAGE_MS): Promis
     writes,
     adminStates,
     saved,
-    feeds,
+    windows,
     start: () => assert.fail('a recovered session is resumed by its engine′s segments, not by an announce'),
     announce: () => assert.fail('the same'),
     published: async (label) => {
@@ -835,7 +896,6 @@ describe('a session rebuilt after a crash, whose encoder then announces again', 
       streamId: STREAM_ID,
       streamRawTopic: DECLARATION.topic,
       mediatype: MEDIA_TYPE_AUDIO,
-      socIndex: 1,
       segments: [
         { index: 40, duration: SEGMENT_SECONDS, ref: 'segment-a0', sequence: 0 },
         { index: 41, duration: SEGMENT_SECONDS, ref: 'segment-a1', sequence: 1 },
@@ -885,7 +945,6 @@ describe('a session rebuilt after a crash, whose encoder then announces again', 
       streamId: STREAM_ID,
       streamRawTopic: DECLARATION.topic,
       mediatype: MEDIA_TYPE_AUDIO,
-      socIndex: 1,
       segments: [
         { index: 40, duration: SEGMENT_SECONDS, ref: 'segment-a0', sequence: 0 },
         { index: 41, duration: SEGMENT_SECONDS, ref: 'segment-a1', sequence: 1 },
@@ -957,10 +1016,8 @@ describe('a whole ladder whose encoder disconnects together', () => {
   }
 
   /**
-   * ⚠️ What the master then advertises is deliberately NOT asserted here, because nothing in this
-   * harness writes one: `LadderLiveness.test.ts` holds that rule directly, including the case this
-   * one creates — a ladder that goes quiet together keeps every rung, because the rule counts
-   * segments and an outage advances none of them.
+   * A ladder that goes quiet together keeps every rung in its list entry. Dropping a rung whose
+   * windows stopped arriving is the player's, so nothing about a dropped rung is asserted here.
    */
   it('holds every rung live, and finalizes nothing', async () => {
     const harness = reconnectHarness({ ladder: true });
@@ -1517,10 +1574,11 @@ describe('a ladder that comes back in two returns, the first without 360p', () =
       await harness.published(`${ahead}-a2`);
       const topic = writesNaming(harness.writes, `${ahead}-a2`).at(-1)!.topic;
       await harness.orchestrator.stopStream(ahead);
-      harness.feeds.set(topic, {
-        index: 50,
-        manifest: ['#EXTM3U', '#EXT-X-VERSION:3', '#EXT-X-MEDIA-SEQUENCE:100', '#EXTINF:2.000,', 'earlier'].join('\n'),
-      });
+      plantWindow(
+        harness.windows,
+        topic,
+        ['#EXTM3U', '#EXT-X-VERSION:3', '#EXT-X-MEDIA-SEQUENCE:100', '#EXTINF:2.000,', 'earlier', ''].join('\n'),
+      );
       harness.start(ahead);
       for (const streamId of rungIds) await harness.segment(`${streamId}-r3`, 3, streamId);
       for (const streamId of rungIds) await harness.published(`${streamId}-r3`);
@@ -1892,7 +1950,8 @@ interface RestartDisk {
   entries: Map<string, StreamState>;
   /** A real group store over a temp file, because what it drops and keeps is part of the case. */
   groupsFile: string;
-  feeds: Map<string, FakeFeedHead>;
+  /** Every window chunk either process wrote, which is what Swarm holds across the restart. */
+  windows: WindowStore;
 }
 
 /** One uploader process over a {@link RestartDisk}. */
@@ -1915,7 +1974,7 @@ function fileIdOf(streamId: string): string {
 
 function restartDisk(): RestartDisk {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), 'reconnect-restart-'));
-  return { entries: new Map(), groupsFile: path.join(root, 'ladder-groups.json'), feeds: new Map() };
+  return { entries: new Map(), groupsFile: path.join(root, 'ladder-groups.json'), windows: new Map() };
 }
 
 /**
@@ -1953,13 +2012,7 @@ async function ladderProcess(
         uploadedSegments.push(label);
         return { reference: { toHex: () => `segment-${label}` } };
       },
-      feedHead: (topic) => disk.feeds.get(topic) ?? null,
-      uploadPayload: async (index, payload, topic) => {
-        const playlist = String(payload);
-        writes.push({ index, playlist, topic });
-        disk.feeds.set(topic, { index, manifest: playlist });
-        return { reference: { toHex: () => `soc-${index}` } };
-      },
+      ...windowUploads(writes, disk.windows),
     },
     makeFakeRecoveryStore({
       save: (streamId: string, state: StreamState) => disk.entries.set(fileIdOf(streamId), structuredClone(state)),
