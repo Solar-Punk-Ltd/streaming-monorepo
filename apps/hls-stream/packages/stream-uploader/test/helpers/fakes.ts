@@ -5,7 +5,7 @@ import { after } from 'node:test';
 import { viewerCatalogEntrySchema } from '@swarm-hls-stream/shared';
 
 import { BeePublisher, BeePublisherPool, shortBatchId, SINGLE_PUBLISHER } from '../../src/libs/BeePublisherPool.js';
-import { Clock, systemClock } from '../../src/libs/Clock.js';
+import { Clock, systemClock, Timer } from '../../src/libs/Clock.js';
 import { RecoveryStore } from '../../src/libs/RecoveryStore.js';
 import { MetricsSnapshot } from '../../src/libs/ServiceMetrics.js';
 import { StreamCatalog } from '../../src/libs/StreamCatalog.js';
@@ -20,6 +20,8 @@ import {
   STREAM_LIFECYCLE_UNKNOWN,
   StreamState,
 } from '../../src/types.js';
+
+import { FakeClock } from './fakeClock.js';
 
 const TEST_STREAM_KEY = '0'.repeat(63) + '1';
 
@@ -509,6 +511,57 @@ const detachedClock: Clock = {
   setTimer: (handler, delayMs) => systemClock.setTimer(handler, delayMs, { unref: true }),
 };
 
+/** Where a test's fake window clock starts, an arbitrary instant so window numbers look like real ones. */
+const FAKE_WINDOW_EPOCH_MS = 1_800_000_000_000;
+
+/**
+ * The window writer's clock over a test's `FakeClock`, so windows end only when the test moves time.
+ *
+ * ⛔ An orchestrator on a `FakeClock` with windows on real time is two clocks, and how many windows
+ * fall between two steps of the fake one then depends on how busy the machine is. A loaded runner
+ * passed windows over and each one logged a warning, so a test counting warnings went red on the box
+ * and green on a laptop.
+ */
+export function windowClockOn(clock: FakeClock): WindowWriterClock {
+  return {
+    now: () => FAKE_WINDOW_EPOCH_MS + clock.now(),
+    setTimeout: (callback, delayMs) => clock.setTimer(callback, delayMs),
+    clearTimeout: (handle) => {
+      (handle as Timer).cancel();
+    },
+  };
+}
+
+/** The orchestrator config that puts its timers and its live windows on one `FakeClock`. */
+export function onTheFakeClock(clock: FakeClock): Pick<StreamOrchestratorConfig, 'clock' | 'windowClock'> {
+  return { clock, windowClock: windowClockOn(clock) };
+}
+
+/** How many window lengths {@link advanceUntil} steps before it gives up. */
+const ADVANCE_UNTIL_STEP_LIMIT = 500;
+
+/**
+ * Step `clock` one test window at a time until `condition` holds, for work that waits on a window,
+ * such as a finalize waiting for its closing window.
+ *
+ * @throws when the condition still does not hold after {@link ADVANCE_UNTIL_STEP_LIMIT} windows.
+ */
+export async function advanceUntil(clock: FakeClock, condition: () => boolean): Promise<void> {
+  for (let step = 0; step < ADVANCE_UNTIL_STEP_LIMIT; step++) {
+    if (condition()) {
+      return;
+    }
+    await clock.advance(TEST_LIVE_WINDOW_MS);
+  }
+  if (!condition()) {
+    throw new Error(`the condition did not hold within ${ADVANCE_UNTIL_STEP_LIMIT} windows of the fake clock`);
+  }
+}
+
+/**
+ * An orchestrator over a fake bee, its live windows on real time at {@link TEST_LIVE_WINDOW_MS} unless
+ * `config.windowClock` says otherwise. A harness on a `FakeClock` hands it {@link windowClockOn}.
+ */
 export function makeTestOrchestrator(
   config: Partial<StreamOrchestratorConfig> = {},
   uploads: FakeUploads = {},

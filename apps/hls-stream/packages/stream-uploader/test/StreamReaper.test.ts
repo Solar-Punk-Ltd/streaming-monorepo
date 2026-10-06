@@ -22,11 +22,13 @@ import { MEDIA_TYPE_VIDEO, STREAM_STATUS_VOD, StreamState } from '../src/types.j
 
 import { FakeClock } from './helpers/fakeClock.js';
 import {
+  advanceUntil,
   makeFakeCatalog,
   makeFakeRecoveryStore,
   makeRecordingCatalog,
   makeRecoveredState,
   makeTestOrchestrator,
+  onTheFakeClock,
   toRecoveryFileId,
 } from './helpers/fakes.js';
 import { waitAndConfirmNothingHappened, waitFor } from './helpers/waiting.js';
@@ -61,7 +63,7 @@ function makeHarness(): Harness {
   const published: PublishedEntry[] = [];
   const saved: StreamState[] = [];
   const orch = makeTestOrchestrator(
-    { orphanReapMs: REAP_MS, recoveryTimeout: RECOVERY_MS, segmentStallMs: STALL_MS, clock },
+    { ...onTheFakeClock(clock), orphanReapMs: REAP_MS, recoveryTimeout: RECOVERY_MS, segmentStallMs: STALL_MS },
     {},
     makeFakeRecoveryStore({ save: (_streamId: string, state: StreamState) => saved.push(state) }),
     makeRecordingCatalog(published as unknown[]),
@@ -121,7 +123,7 @@ describe('a live stream whose engine dies without saying so', () => {
       },
     });
     const orch = makeTestOrchestrator(
-      { orphanReapMs: REAP_MS, recoveryTimeout: RECOVERY_MS, segmentStallMs: STALL_MS, clock },
+      { ...onTheFakeClock(clock), orphanReapMs: REAP_MS, recoveryTimeout: RECOVERY_MS, segmentStallMs: STALL_MS },
       {},
       makeFakeRecoveryStore({ save: (_streamId: string, state: StreamState) => saved.push(state) }),
       catalog,
@@ -206,7 +208,13 @@ describe('a live stream whose engine dies without saying so', () => {
 
     orch.startStream(STREAM_ID, MEDIA_TYPE_VIDEO);
     await startAndFeed(harness, 0);
-    await orch.stopStream(STREAM_ID);
+    let stopped = false;
+    const stopping = orch.stopStream(STREAM_ID).finally(() => {
+      stopped = true;
+    });
+    // The finalize waits for its closing window, which ends only when the fake clock moves.
+    await advanceUntil(clock, () => stopped);
+    await stopping;
 
     const finalizedByStop = published.filter((entry) => entry.state === STREAM_STATUS_VOD).length;
     assert.equal(finalizedByStop, 1, 'the explicit stop publishes exactly one VOD');
@@ -446,7 +454,7 @@ describe('a live stream whose engine dies without saying so', () => {
     const published: PublishedEntry[] = [];
     const saved: StreamState[] = [];
     const orch = makeTestOrchestrator(
-      { orphanReapMs: REAP_MS, recoveryTimeout: RECOVERY_MS, segmentStallMs: STALL_MS, clock },
+      { ...onTheFakeClock(clock), orphanReapMs: REAP_MS, recoveryTimeout: RECOVERY_MS, segmentStallMs: STALL_MS },
       {},
       makeFakeRecoveryStore({
         listActive: () => [toRecoveryFileId(STREAM_ID)],
@@ -516,12 +524,7 @@ describe('what a reap says about why the broadcast ended', () => {
       await waitFor(() => hasFinalized(published), SETTLE_CEILING_MS);
     });
 
-    // The live windows run on real time in these tests, and a loaded runner passes one over now and
-    // then, which is a warning about the windows and not about the encoder.
-    const warnings = linesAboutTheStream(lines, LOG_LEVEL_WARN).filter(
-      (captured) => !captured.line.includes('Live window for stream'),
-    );
-    assert.deepEqual(warnings, [], 'an encoder that left is not a warning');
+    assert.deepEqual(linesAboutTheStream(lines, LOG_LEVEL_WARN), [], 'an encoder that left is not a warning');
     assert.ok(
       linesAboutTheStream(lines, LOG_LEVEL_INFO).some((captured) => captured.line.includes(`${REAP_MS / 1000}s`)),
       'the end is logged with the reconnect window the encoder did not come back inside',

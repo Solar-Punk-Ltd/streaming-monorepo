@@ -35,8 +35,8 @@
  * Then the two the store adds: a restart of this process between A and B, through the store's file,
  * and a download that does not succeed, which starts B unglued rather than holding the broadcast.
  *
- * Every clock that ends a broadcast here is a `FakeClock` stepped by the case. The windows run on real
- * time at the test window length. Nothing asserts how long anything took, see the e2e rule in `AGENTS.md`.
+ * Every clock here is a `FakeClock` stepped by the case, the live windows' included, so nothing depends
+ * on how busy the machine is. Nothing asserts how long anything took, see the e2e rule in `AGENTS.md`.
  */
 
 import { parseLiveWindowPayload } from '@swarm-hls-stream/shared';
@@ -59,8 +59,14 @@ import { StreamOrchestrator } from '../src/libs/StreamOrchestrator.js';
 import { AdminSession, MEDIA_TYPE_AUDIO } from '../src/types.js';
 
 import { FakeClock } from './helpers/fakeClock.js';
-import { fakeRecordingReference, makeTestOrchestrator } from './helpers/fakes.js';
-import { waitAndConfirmNothingHappened, waitFor } from './helpers/waiting.js';
+import {
+  advanceUntil,
+  fakeRecordingReference,
+  makeTestOrchestrator,
+  onTheFakeClock,
+  TEST_LIVE_WINDOW_MS,
+} from './helpers/fakes.js';
+import { waitFor } from './helpers/waiting.js';
 
 /** The silence a broadcast may go quiet for before the reaper ends it. Short, since the clock is fake. */
 const REAP_MS = 60_000;
@@ -68,8 +74,8 @@ const REAP_MS = 60_000;
 /** A ceiling on a hung wait, not a measurement. The same constant and reason as in `StreamReaper.test.ts`. */
 const SETTLE_CEILING_MS = 4_000;
 
-/** Long enough for a held window to have escaped, short enough that a case meant to reach it stays cheap. */
-const QUIET_WINDOW_MS = 100;
+/** Windows of the fake clock a held session is watched across, enough for a held window to have escaped. */
+const QUIET_WINDOWS = 5;
 
 /** What each test segment declares, so the arithmetic in an assertion is legible. */
 const SEGMENT_SECONDS = 2;
@@ -151,10 +157,14 @@ interface GlueHarness {
   start: () => void;
   /** Hand one segment to the orchestrator and wait for its bytes to reach the fake bee. */
   segment: (label: string, index: number) => Promise<void>;
-  /** Wait for a written window that names this segment. */
+  /** Step the fake clock a window at a time until a written window names this segment. */
   written: (label: string) => Promise<void>;
+  /** Step the fake clock a window at a time until `condition` holds. */
+  settle: (condition: () => boolean) => Promise<void>;
   /** Advance past the reap window and wait for the reaper to have decided. Nothing calls `stopStream`. */
   reap: () => Promise<void>;
+  /** Stop the stream, stepping the fake clock for the closing window its finalize waits on. */
+  stop: () => Promise<void>;
   /** Whether the held recording upload has been entered, so a case knows the gate is really armed. */
   recordingUploadStarted: () => boolean;
   /** Let the held recording upload complete. Safe to call when nothing is held. */
@@ -193,7 +203,7 @@ function glueHarness(options: GlueHarnessOptions = {}): GlueHarness {
   const orchestrator = makeTestOrchestrator(
     {
       adminApi,
-      clock,
+      ...onTheFakeClock(clock),
       orphanReapMs: REAP_MS,
       ...(options.recordingStore ? { recordingStore: options.recordingStore } : {}),
       ...(options.ladder ? { ladder: AbrLadder.parse(DEFAULT_LADDER_SPEC) } : {}),
@@ -262,13 +272,22 @@ function glueHarness(options: GlueHarnessOptions = {}): GlueHarness {
       await waitFor(() => uploadedSegments.includes(label), SETTLE_CEILING_MS);
     },
     written: async (label) => {
-      await waitFor(() => windowsNaming(windows, label).length > 0, SETTLE_CEILING_MS);
+      await advanceUntil(clock, () => windowsNaming(windows, label).length > 0);
     },
+    settle: (condition) => advanceUntil(clock, condition),
     reap: async () => {
       const decidedBefore = orchestrator.getMetricsSnapshot().streamsReapedTotal;
       // The engine dies here. Nothing calls stopStream, because nothing knows.
       await clock.advance(REAP_MS + 1);
-      await waitFor(() => orchestrator.getMetricsSnapshot().streamsReapedTotal > decidedBefore, SETTLE_CEILING_MS);
+      await advanceUntil(clock, () => orchestrator.getMetricsSnapshot().streamsReapedTotal > decidedBefore);
+    },
+    stop: async () => {
+      let stopped = false;
+      const stopping = orchestrator.stopStream(streamId).finally(() => {
+        stopped = true;
+      });
+      await advanceUntil(clock, () => stopped);
+      await stopping;
     },
     recordingUploadStarted: () => recordingUploadStarted,
     releaseRecording: heldRecording.resolve,
@@ -381,11 +400,11 @@ async function reapedFirstBroadcast(harness: GlueHarness): Promise<void> {
   await harness.written(A_SEGMENTS[A_SEGMENTS.length - 1]);
 
   await harness.reap();
-  await waitFor(() => harness.recordings.length === 1, SETTLE_CEILING_MS);
+  await harness.settle(() => harness.recordings.length === 1);
   // The drain is over only once the id has left the live maps, and that is also when the shared-topic
   // entry the successor would have waited on has been cleared. Waiting for it keeps the successor an
   // ordinary fresh start rather than a sometimes-gated one.
-  await waitFor(() => harness.orchestrator.getActiveStreamCount() === 0, SETTLE_CEILING_MS);
+  await harness.settle(() => harness.orchestrator.getActiveStreamCount() === 0);
 }
 
 /** The second broadcast on the same declared or derived topic, fed until its last segment is in a window. */
@@ -410,8 +429,7 @@ async function reapedThenSucceeded(harness: GlueHarness): Promise<ReapedScenario
 
 /** Stop the second broadcast and hand back its recording. */
 async function finishSecond(harness: GlueHarness): Promise<string> {
-  await harness.orchestrator.stopStream(harness.streamId);
-  await waitFor(() => harness.recordings.length === 2, SETTLE_CEILING_MS);
+  await harness.stop();
   return harness.recordings[1];
 }
 
@@ -434,8 +452,7 @@ describe('a broadcast the stall reaper ended, and the one that follows it on the
     assert.equal(harness.orchestrator.getActiveStreamCount(), 1, 'the broadcast is live before the engine dies');
 
     await harness.reap();
-    await waitFor(() => harness.recordings.length === 1, SETTLE_CEILING_MS);
-    await waitFor(() => store.remembered.length === 1, SETTLE_CEILING_MS);
+    await harness.settle(() => harness.recordings.length === 1 && store.remembered.length === 1);
 
     const snapshot = harness.orchestrator.getMetricsSnapshot();
     assert.equal(snapshot.streamsReapedTotal, 1, 'the reaper is what decided this broadcast was over');
@@ -486,7 +503,7 @@ describe('a broadcast the stall reaper ended, and the one that follows it on the
     const { harness } = await reapedThenSucceeded(glueHarness());
 
     await finishSecond(harness);
-    await waitFor(() => harness.reportedRecordingSeconds.length === 2, SETTLE_CEILING_MS);
+    await harness.settle(() => harness.reportedRecordingSeconds.length === 2);
 
     const [reaped, glued] = harness.reportedRecordingSeconds;
     assert.equal(reaped, A_SEGMENTS.length * SEGMENT_SECONDS, 'the reaper reported the broadcast it ended');
@@ -515,11 +532,12 @@ describe('a broadcast the stall reaper ended, and the one that follows it on the
     await harness.written(A_SEGMENTS[A_SEGMENTS.length - 1]);
 
     harness.orchestrator.noteDisconnect(SINGLE_STREAM_ID);
-    await waitAndConfirmNothingHappened(() => harness.recordings.length === 0, QUIET_WINDOW_MS);
+    await harness.clock.advance(QUIET_WINDOWS * TEST_LIVE_WINDOW_MS);
+    assert.equal(harness.recordings.length, 0, 'a disconnect alone finalizes nothing');
 
     await harness.reap();
-    await waitFor(() => harness.recordings.length === 1, SETTLE_CEILING_MS);
-    await waitFor(() => harness.orchestrator.getActiveStreamCount() === 0, SETTLE_CEILING_MS);
+    await harness.settle(() => harness.recordings.length === 1);
+    await harness.settle(() => harness.orchestrator.getActiveStreamCount() === 0);
 
     // The encoder comes back, too late. That is a new broadcast, and it opens with the one before it.
     await secondBroadcast(harness);
@@ -569,19 +587,16 @@ describe('a broadcast the stall reaper ended, and the one that follows it on the
       await harness.written(A_SEGMENTS[0]);
 
       await harness.reap();
-      await waitFor(harness.recordingUploadStarted, SETTLE_CEILING_MS);
+      await harness.settle(harness.recordingUploadStarted);
       const readsBefore = harness.scanReads();
 
       harness.start();
       await harness.segment(B_SEGMENTS[0], 0);
+      await harness.clock.advance(QUIET_WINDOWS * TEST_LIVE_WINDOW_MS);
 
-      await waitAndConfirmNothingHappened(
-        () =>
-          harness.scanReads() === readsBefore &&
-          harness.downloads.length === 0 &&
-          windowsNaming(harness.windows, B_SEGMENTS[0]).length === 0,
-        QUIET_WINDOW_MS,
-      );
+      assert.equal(harness.scanReads(), readsBefore, 'the successor scanned the topic before its predecessor stopped');
+      assert.deepEqual(harness.downloads, [], 'and asked for a recording the store could not yet name');
+      assert.deepEqual(windowsNaming(harness.windows, B_SEGMENTS[0]), [], 'and wrote a window');
     } finally {
       harness.releaseRecording();
     }
@@ -597,13 +612,13 @@ describe('a broadcast the stall reaper ended, and the one that follows it on the
       await harness.written(A_SEGMENTS[A_SEGMENTS.length - 1]);
 
       await harness.reap();
-      await waitFor(harness.recordingUploadStarted, SETTLE_CEILING_MS);
+      await harness.settle(harness.recordingUploadStarted);
 
       harness.start();
       await harness.segment(B_SEGMENTS[0], 0);
 
       harness.releaseRecording();
-      await waitFor(() => harness.recordings.length === 1, SETTLE_CEILING_MS);
+      await harness.settle(() => harness.recordings.length === 1);
       await harness.segment(B_SEGMENTS[1], 1);
       await harness.written(B_SEGMENTS[1]);
 
@@ -638,8 +653,7 @@ describe('the recording a topic ended with, across a restart and a failed downlo
     const restarted = glueHarness({ swarm, recordingStore: new RecordingStore(storeFile) });
     await secondBroadcast(restarted);
 
-    await restarted.orchestrator.stopStream(restarted.streamId);
-    await waitFor(() => restarted.recordings.length === 1, SETTLE_CEILING_MS);
+    await restarted.stop();
 
     assertGlued(before.recordings[0], restarted.recordings[0]);
   });
@@ -662,9 +676,18 @@ describe('the recording a topic ended with, across a restart and a failed downlo
     const harness = glueHarness({
       downloadFails: () => (failuresLeft-- > 0 ? new Error('socket hang up') : null),
     });
-    const { aRecording } = await reapedThenSucceeded(harness);
+    await reapedFirstBroadcast(harness);
 
-    assertGlued(aRecording, await finishSecond(harness));
+    harness.start();
+    for (const [index, label] of B_SEGMENTS.entries()) {
+      await harness.segment(label, index);
+    }
+    // The retry's backoff sleeps on real time, as an upload retry's does, so it is waited for on real
+    // time before the fake clock is stepped on to the windows that depend on it.
+    await waitFor(() => harness.downloads.length === 2, SETTLE_CEILING_MS);
+    await harness.written(B_SEGMENTS[B_SEGMENTS.length - 1]);
+
+    assertGlued(harness.recordings[0], await finishSecond(harness));
     assert.equal(harness.downloads.length, 2, 'one failed attempt, then the one that landed');
   });
 
