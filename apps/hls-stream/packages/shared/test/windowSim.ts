@@ -18,7 +18,6 @@ import {
   encodeLiveWindowPayload,
   encodeWindowNote,
   isHeartbeatWindow,
-  LIVE_PLAYLIST_WINDOW_MS,
   windowEnd,
   type WindowSlot,
 } from '../src/windows.js';
@@ -272,5 +271,3 @@ function before(a: SimEvent, b: SimEvent): boolean {
 function settle(): Promise<void> {
   return new Promise((resolve) => setImmediate(resolve));
 }
-
-export const LIVE_MS = LIVE_PLAYLIST_WINDOW_MS;

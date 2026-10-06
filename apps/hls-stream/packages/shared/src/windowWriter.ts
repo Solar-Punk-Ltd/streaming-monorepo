@@ -52,10 +52,10 @@ export const WINDOW_WRITE_MAX_IN_FLIGHT = 2;
  * news in a window that is not a heartbeat. `tooLarge` is a live playlist over the window chunk limit,
  * which the caller shortens.
  */
-export type WindowSkipReason = 'nothing' | 'busy' | 'late' | 'clockUntrusted' | 'tooLarge' | 'stopped';
+type WindowSkipReason = 'nothing' | 'busy' | 'late' | 'clockUntrusted' | 'tooLarge' | 'stopped';
 
 /** The window's chunk was stored. `durationMs` runs from the start of the write to the storer's receipt. */
-export interface WindowWritten {
+interface WindowWritten {
   readonly outcome: 'written';
   readonly window: number;
   readonly writtenAt: number;
@@ -63,14 +63,14 @@ export interface WindowWritten {
 }
 
 /** The write rejected, or the payload could not be made. The window is never tried again. */
-export interface WindowWriteFailed {
+interface WindowWriteFailed {
   readonly outcome: 'failed';
   readonly window: number;
   readonly error: unknown;
   readonly durationMs: number;
 }
 
-export interface WindowSkipped {
+interface WindowSkipped {
   readonly outcome: 'skipped';
   readonly window: number;
   readonly reason: WindowSkipReason;
@@ -80,7 +80,7 @@ export interface WindowSkipped {
  * Windows passed over in one go when the clock jumped forward or the process stalled, reported once
  * rather than as a burst of stale writes. Both ends are included.
  */
-export interface WindowsMissed {
+interface WindowsMissed {
   readonly outcome: 'missed';
   readonly fromWindow: number;
   readonly toWindow: number;
@@ -98,9 +98,9 @@ export interface WindowWriterClock {
 }
 
 /** Signs and uploads one window's chunk direct, resolving on the storer's receipt, rejecting on any failure. */
-export type WindowWrite = (slot: WindowSlot, payload: Uint8Array) => Promise<void>;
+type WindowWrite = (slot: WindowSlot, payload: Uint8Array) => Promise<void>;
 
-export interface WindowWriterOptions {
+interface WindowWriterOptions {
   readonly topic: string;
   readonly write: WindowWrite;
   /** Must not throw: a throw becomes an unhandled rejection. */
@@ -114,7 +114,7 @@ export interface WindowWriterOptions {
   readonly clock?: WindowWriterClock;
 }
 
-export interface LiveWindowWriterOptions extends WindowWriterOptions {
+interface LiveWindowWriterOptions extends WindowWriterOptions {
   /** Defaults to {@link LIVE_PLAYLIST_WINDOW_MS}. */
   readonly windowMs?: number;
   /**
@@ -124,7 +124,7 @@ export interface LiveWindowWriterOptions extends WindowWriterOptions {
   readonly compose: (window: number) => string | null;
 }
 
-export interface NoteWindowWriterOptions extends WindowWriterOptions {
+interface NoteWindowWriterOptions extends WindowWriterOptions {
   /** The stream list's or the chat's note window length. */
   readonly windowMs: number;
   /** A positive whole multiple of `windowMs`. Every window whose number is a multiple of the ratio carries a note. */
@@ -133,7 +133,7 @@ export interface NoteWindowWriterOptions extends WindowWriterOptions {
   readonly newestStored: () => number;
 }
 
-export interface WindowWriter {
+interface WindowWriter {
   /** Schedules the end of the current window. Calling it while started does nothing. */
   start(): void;
   /**

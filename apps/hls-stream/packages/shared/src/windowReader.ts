@@ -35,10 +35,10 @@ export type WindowReadResult =
 export type WindowReaderState = 'idle' | 'opening' | 'live' | 'silent' | 'stopped';
 
 /** Why a window was asked: the opening scan, the steady follow, or the one ask after a sleep or a jump forward. */
-export type WindowAskPurpose = 'open' | 'follow' | 'wake';
+type WindowAskPurpose = 'open' | 'follow' | 'wake';
 
 /** `refused` is a chunk that exists but whose payload the parser refused, which is neither news nor a miss. */
-export type WindowAskAnswer = 'found' | 'refused' | 'absent' | 'failed';
+type WindowAskAnswer = 'found' | 'refused' | 'absent' | 'failed';
 
 /** One ask, as reported to {@link WindowReaderOptions.onAsk} when it is answered. Times by the reader's clock. */
 export interface WindowAsk {
@@ -66,41 +66,41 @@ export interface WindowFound<T> {
 export const BEE_SKIP_LIST_MS = 60_000;
 
 /** The most asks one window ever gets: the first, and one more once the first is off the skip list. */
-export const WINDOW_MAX_ASKS = 2;
+const WINDOW_MAX_ASKS = 2;
 
 /** Windows a `live` reader scans back on opening, newest first. */
-export const LIVE_OPEN_SCAN_WINDOWS = 8;
+const LIVE_OPEN_SCAN_WINDOWS = 8;
 
 /** Windows asked at once while opening, as the chat's scan does. */
-export const WINDOW_OPEN_BATCH = 4;
+const WINDOW_OPEN_BATCH = 4;
 
 /** No `live` chunk for this long means the stream is paused or down. */
-export const LIVE_SILENCE_MS = 30_000;
+const LIVE_SILENCE_MS = 30_000;
 
 /** Must-exist windows absent in a row, unexplained by the clock, before the margin grows. */
-export const WINDOW_MARGIN_GROW_AFTER_MISSES = 3;
+const WINDOW_MARGIN_GROW_AFTER_MISSES = 3;
 
 /** The most the margin grows to. Propagation slower than this is a gateway problem, not a margin to wait out. */
-export const WINDOW_READ_MARGIN_MAX_MS = 8000;
+const WINDOW_READ_MARGIN_MAX_MS = 8000;
 
 /** Found windows in a row before a grown margin halves back toward its base. */
-export const WINDOW_MARGIN_SHRINK_AFTER_FOUND = 5;
+const WINDOW_MARGIN_SHRINK_AFTER_FOUND = 5;
 
 /**
  * More windows than this due at once, after the correction dropped or the timer ran late, and only the
  * newest is asked. A `live` chunk holds the whole playlist and a note names the newest index, so the
  * newest window carries what the skipped ones would.
  */
-export const WINDOW_CATCH_UP_LIMIT = 2;
+const WINDOW_CATCH_UP_LIMIT = 2;
 
 /** How many asked windows are remembered one by one. Older ones count as closed, so none is asked again. */
 const ASKED_MEMORY = 4096;
 
 /** The cadence of what a kind's writer writes, which is what decides which absent windows are evidence. */
-export type WindowCadence = { readonly kind: 'live' } | { readonly kind: 'note'; readonly heartbeatMs: number };
+type WindowCadence = { readonly kind: 'live' } | { readonly kind: 'note'; readonly heartbeatMs: number };
 
 /** What a reader needs: what to follow, the shared clock, and the injected read and timers. */
-export interface WindowReaderBaseOptions<T extends { readonly writtenAt: number }> {
+interface WindowReaderBaseOptions<T extends { readonly writtenAt: number }> {
   readonly topic: string;
   readonly windowMs: number;
   readonly clock: WindowClock;
@@ -130,7 +130,7 @@ export interface WindowReaderBaseOptions<T extends { readonly writtenAt: number 
  * writes a window with news and every aligned heartbeat window, one whose number is a multiple of
  * `heartbeatMs / windowMs`, so only those must exist.
  */
-export type WindowReaderOptions<T extends { readonly writtenAt: number }> = WindowReaderBaseOptions<T> & WindowCadence;
+type WindowReaderOptions<T extends { readonly writtenAt: number }> = WindowReaderBaseOptions<T> & WindowCadence;
 
 /** One answered ask, with what the reader needs to act on it. */
 interface Answered<T> {

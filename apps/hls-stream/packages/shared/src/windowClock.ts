@@ -54,7 +54,7 @@ export const WINDOW_CLOCK_LIMIT_MS = 5 * 60_000 + STREAM_LIST_NOTE_WINDOW_MS;
 export const WINDOW_CLOCK_SAFETY_STEP_MS = 250;
 
 /** A bracket of this width or less between the floor and the best found ask is settled. */
-export const WINDOW_CLOCK_SETTLE_WIDTH_MS = 4 * WINDOW_CLOCK_SAFETY_STEP_MS;
+const WINDOW_CLOCK_SETTLE_WIDTH_MS = 4 * WINDOW_CLOCK_SAFETY_STEP_MS;
 
 /**
  * While unsettled, each found window moves the correction this fraction of the way from the best found
@@ -62,7 +62,7 @@ export const WINDOW_CLOCK_SETTLE_WIDTH_MS = 4 * WINDOW_CLOCK_SAFETY_STEP_MS;
  * close under it: a crossing is at most an eighth of the bracket deep. A reader that finds a window
  * rarely, such as a note reader alone, descends that much more slowly in time.
  */
-export const WINDOW_CLOCK_DESCENT_FRACTION = 1 / 8;
+const WINDOW_CLOCK_DESCENT_FRACTION = 1 / 8;
 
 /** Found windows in a row, across every reader sharing the clock, before a settled correction steps down. */
 export const WINDOW_CLOCK_SHRINK_AFTER_FOUND = 10;
@@ -84,10 +84,10 @@ const JUMP_HISTORY = 16;
 export type AbsentVerdict = 'clock' | 'writer';
 
 /** What a timer reading showed about the wall clock, in milliseconds it moved beyond the timer's own wait. */
-export type ClockJump = { readonly kind: 'none' } | { readonly kind: 'backward' | 'forward'; readonly ms: number };
+type ClockJump = { readonly kind: 'none' } | { readonly kind: 'backward' | 'forward'; readonly ms: number };
 
 /** A chunk found, all times by the reader's clock except `writtenAt`, which is the writer's. */
-export interface FoundEvidence {
+interface FoundEvidence {
   readonly askedAt: number;
   readonly receivedAt: number;
   readonly windowEnd: number;
@@ -96,13 +96,13 @@ export interface FoundEvidence {
 }
 
 /** A window that must exist, asked and absent. */
-export interface AbsentEvidence {
+interface AbsentEvidence {
   readonly askedAt: number;
   readonly windowEnd: number;
 }
 
 /** A timer as one reader set it and saw it fire, for jump detection. */
-export interface TimerReading {
+interface TimerReading {
   /** {@link WindowClock.epoch} when the timer was set. */
   readonly epoch: number;
   /** What the timer was set for. */
@@ -111,7 +111,7 @@ export interface TimerReading {
   readonly elapsedMs: number;
 }
 
-export interface WindowClockOptions {
+interface WindowClockOptions {
   /** The base margin the correction is held against, the smallest margin any reader sharing it uses. */
   readonly baseMarginMs?: number;
   readonly writeSlackMs?: number;
