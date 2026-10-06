@@ -146,8 +146,13 @@ if (contradiction !== null) {
 // Module scope, so an undeclared run fails the file during import rather than skipping into silence.
 // ⛔ `drainNotDeclared` first, and before the gate that throws: a full suite globs this file out of
 // suites/viewer and has armed nothing, so it has to skip rather than refuse.
+const NO_MASTER_REASON =
+  'the uploader writes no master playlist since phase 2, and the drained rung is handled by the player from phase 3';
 const skip =
-  drainNotDeclared() || viewerGate(cfg.viewerExpectation, backend, cfg.browserRepoDir) || abrOff(cfg.abrEnabled);
+  NO_MASTER_REASON ||
+  drainNotDeclared() ||
+  viewerGate(cfg.viewerExpectation, backend, cfg.browserRepoDir) ||
+  abrOff(cfg.abrEnabled);
 // Module scope for the same reason: a run aimed at the coordinator must fail before a broadcast starts.
 const drainedRung = drainRung(process.env);
 
