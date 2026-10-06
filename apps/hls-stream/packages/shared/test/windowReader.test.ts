@@ -543,6 +543,8 @@ describe('WindowReader on a simulated network, notes of 10 s with a 60 s heartbe
   // asserted is the measured one. A note reader alone learns about its clock only from heartbeat
   // windows, one a minute, so 3 minutes give it 3 probes, too few to narrow the first bracket to the
   // half second a crossing must land in. Sharing the clock with a live reader removes it, see 14.
+  // It asks every window, news windows too, before its clock settles, so a few of those are harmful
+  // as well: 0 to 4 over 200 seeds, and the bound asserted is 4.
   it('13. notes alone, a clock 3 s ahead: at most 3 harmful heartbeat asks in the first 3 minutes, at most 2 after', async (t) => {
     for (const seed of SEEDS) {
       const { world } = await runNotes(seed, 3000, false);
@@ -555,6 +557,7 @@ describe('WindowReader on a simulated network, notes of 10 s with a 60 s heartbe
       report(t, `seed ${seed}`, numbers);
       assert.ok(numbers.firstThree <= 3, `harmful ${numbers.firstThree}`);
       assert.ok(numbers.after <= 2, `harmful after 3 minutes ${numbers.after}`);
+      assert.ok(numbers.newsHarmful <= 4, `harmful news asks ${numbers.newsHarmful}`);
     }
   });
 
