@@ -19,6 +19,7 @@ import { hasUnpublishedEdits } from '../../src/domain/unpublishedEdits.js';
 
 import { streamRow } from './support/fakes.js';
 
+const RECORDING = 'ab'.repeat(32);
 const PUBLISHED_AT = new Date('2026-09-24T10:00:00.000Z');
 const EDITED_AT = new Date('2026-09-24T10:05:00.000Z');
 
@@ -30,7 +31,7 @@ describe('hasUnpublishedEdits', () => {
       published_feed_index: 4,
       live_since: new Date('2026-09-24T10:01:00.000Z'),
       ended_at: new Date('2026-09-24T11:30:00.000Z'),
-      manifest_index: 412,
+      recording_ref: RECORDING,
       duration_seconds: 5340,
       // The live and vod reports moved this, and nothing else did.
       updated_at: new Date('2026-09-24T11:30:00.000Z'),

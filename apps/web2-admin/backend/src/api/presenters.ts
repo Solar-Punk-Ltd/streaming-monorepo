@@ -50,7 +50,6 @@ export function toStream(row: StreamRow): Stream {
     publishedAt: iso(row.published_at),
     publishedFeedIndex: row.published_feed_index,
     publishError: row.publish_error,
-    manifestIndex: row.manifest_index,
     recording: row.recording_ref,
     durationSeconds: row.duration_seconds,
     liveSince: iso(row.live_since),

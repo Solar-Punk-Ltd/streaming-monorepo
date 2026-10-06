@@ -49,6 +49,11 @@ import {
   uploaderCall,
 } from './helpers.js';
 
+const RECORDING = 'ab'.repeat(32);
+const RECORDING_360 = 'a1'.repeat(32);
+const RECORDING_720 = 'b2'.repeat(32);
+const RECORDING_MASTER = 'c3'.repeat(32);
+
 const draft = {
   title: 'itest internal',
   description: 'Created by the web2-admin internal API suite.',
@@ -77,7 +82,7 @@ after(async () => {
     // below; end it first so the row can be cleaned up like any other.
     const stream = await raw('GET', `/api/streams/${id}`);
     if ((stream.body as Stream | undefined)?.status === 'live') {
-      await reportState(id, { state: 'vod', index: 0, duration: 1 });
+      await reportState(id, { state: 'vod', recording: RECORDING, duration: 1 });
     }
     await raw('POST', `/api/streams/${id}/unpublish`);
     await raw('DELETE', `/api/streams/${id}`);
@@ -333,6 +338,8 @@ describe('internal state reports', () => {
   it('rejects a body the contract does not allow', async () => {
     const both = await Promise.all([
       reportState(stream.id, { state: 'vod' }),
+      reportState(stream.id, { state: 'live', recording: RECORDING }),
+      reportState(stream.id, { state: 'vod', index: 412, recording: RECORDING, duration: 1 }),
       reportState(stream.id, { state: 'live', index: 3 }),
       reportState(stream.id, { state: 'published' }),
     ]);
@@ -357,7 +364,7 @@ describe('internal state reports', () => {
     const entry = await catalogueEntry(stream.topic);
     assert.equal(entry.state, 'live');
     assert.equal(entry.title, 'itest internal live');
-    assert.ok(!('index' in entry), 'nothing to play back yet');
+    assert.ok(!('recording' in entry), 'nothing to play back yet');
   });
 
   it('takes a repeated live report as a no-op', async () => {
@@ -422,14 +429,14 @@ describe('internal state reports', () => {
     assert.equal(entry.title, 'itest internal live, edited');
   });
 
-  it('ends: the entry carries the manifest index and the duration', async () => {
+  it('ends: the entry carries the recording and the duration', async () => {
     const result = await api<StreamStateResponse>('POST', `/api/internal/streams/${stream.id}/state`, {
       ...uploaderCall(),
-      body: { state: 'vod', index: 412, duration: 3725.5 },
+      body: { state: 'vod', recording: RECORDING, duration: 3725.5 },
     });
 
     assert.equal(result.stream.status, 'vod');
-    assert.equal(result.stream.manifestIndex, 412);
+    assert.equal(result.stream.recording, RECORDING);
     assert.equal(result.stream.durationSeconds, 3725.5);
     assert.ok(result.stream.endedAt, 'endedAt is stamped');
     assert.ok(result.stream.liveSince, 'and liveSince is kept');
@@ -441,7 +448,7 @@ describe('internal state reports', () => {
 
     const entry = await catalogueEntry(stream.topic);
     assert.equal(entry.state, 'vod');
-    assert.equal(entry.index, 412);
+    assert.equal(entry.recording, RECORDING);
     assert.equal(entry.duration, 3725.5);
   });
 
@@ -449,28 +456,28 @@ describe('internal state reports', () => {
     // The broadcast continues on the feeds it already owns, so a reconnecting
     // encoder resumes this stream rather than needing a new one. What it must
     // not keep is the previous recording: the entry would point a viewer at a
-    // finished manifest while a new session writes over its head.
+    // finished recording while a new session writes over its head.
     const result = await api<StreamStateResponse>('POST', `/api/internal/streams/${stream.id}/state`, {
       ...uploaderCall(),
       body: { state: 'live' },
     });
 
     assert.equal(result.stream.status, 'live');
-    assert.equal(result.stream.manifestIndex ?? null, null);
+    assert.equal(result.stream.recording ?? null, null);
     assert.equal(result.stream.durationSeconds ?? null, null);
     assert.equal(result.stream.endedAt ?? null, null);
     assert.ok(result.stream.liveSince, 'a fresh live run is stamped');
 
     const entry = await catalogueEntry(stream.topic);
     assert.equal(entry.state, 'live');
-    assert.equal(entry.index ?? null, null, 'no recording while it is live');
+    assert.equal(entry.recording ?? null, null, 'no recording while it is live');
     assert.equal(entry.duration ?? null, null);
 
     // And back to a recording, which is the state the rest of this sequence
     // starts from.
     const ended = await api<StreamStateResponse>('POST', `/api/internal/streams/${stream.id}/state`, {
       ...uploaderCall(),
-      body: { state: 'vod', index: 412, duration: 3725.5 },
+      body: { state: 'vod', recording: RECORDING, duration: 3725.5 },
     });
     assert.equal(ended.stream.status, 'vod');
   });
@@ -479,7 +486,7 @@ describe('internal state reports', () => {
     const result = await api<PublishResult>('POST', `/api/streams/${stream.id}/unpublish`);
     assert.equal(result.stream.status, 'draft');
     assert.equal(result.stream.publishedFeedIndex ?? null, null);
-    assert.equal(result.stream.manifestIndex, 412, 'where the recording is');
+    assert.equal(result.stream.recording, RECORDING, 'where the recording is');
     assert.equal(result.stream.durationSeconds, 3725.5, 'how long it runs');
     assert.ok(result.stream.liveSince, 'when it went live');
     assert.ok(result.stream.endedAt, 'when it ended');
@@ -489,11 +496,11 @@ describe('internal state reports', () => {
   it('publishes it again as the recording, never as a stream that has not started', async () => {
     const result = await api<PublishResult>('POST', `/api/streams/${stream.id}/publish`);
     assert.equal(result.stream.status, 'vod');
-    assert.equal(result.stream.manifestIndex, 412);
+    assert.equal(result.stream.recording, RECORDING);
 
     const entry = await catalogueEntry(stream.topic);
     assert.equal(entry.state, 'vod');
-    assert.equal(entry.index, 412);
+    assert.equal(entry.recording, RECORDING);
     assert.equal(entry.duration, 3725.5);
   });
 });
@@ -546,8 +553,9 @@ describe('internal rendition reports', () => {
 
   it('rejects a body the contract does not allow', async () => {
     const bad = await Promise.all([
-      reportRendition(stream.id, { ...rung('720p', 720), index: 4 }),
+      reportRendition(stream.id, { ...rung('720p', 720), recording: RECORDING }),
       reportRendition(stream.id, { ...rung('720p', 720), duration: 61 }),
+      reportRendition(stream.id, { ...rung('720p', 720), index: 4, recording: RECORDING, duration: 61 }),
       reportRendition(stream.id, { ...rung('720_p', 720) }),
       reportRendition(stream.id, { ...rung('720p', 720), topic: 'not-a-uuid' }),
     ]);
@@ -593,15 +601,15 @@ describe('internal rendition reports', () => {
   });
 
   it('is not finished while any rung is still delivering', async () => {
-    const result = await report(rung('720p', 720, { index: 41, duration: 61.2 }));
+    const result = await report(rung('720p', 720, { recording: RECORDING_720, duration: 61.2 }));
 
     assert.equal(result.ladder.finished, false, '360p has not finalized');
     assert.equal(result.ladder.duration, null);
-    assert.equal(result.renditions.find((r) => r.name === '720p')?.index, 41);
+    assert.equal(result.renditions.find((r) => r.name === '720p')?.recording, RECORDING_720);
   });
 
   it('flips to finished once the last rung finalizes, with the longest duration', async () => {
-    const result = await report(rung('360p', 360, { index: 12, duration: 60.8 }));
+    const result = await report(rung('360p', 360, { recording: RECORDING_360, duration: 60.8 }));
 
     assert.deepEqual(result.ladder, {
       finished: true,
@@ -611,11 +619,11 @@ describe('internal rendition reports', () => {
 
     const entry = await catalogueEntry(stream.topic);
     assert.equal(entry.renditions?.length, 2);
-    assert.equal(entry.renditions?.[0]?.index, 12);
-    assert.equal(entry.renditions?.[1]?.index, 41);
+    assert.equal(entry.renditions?.[0]?.recording, RECORDING_360);
+    assert.equal(entry.renditions?.[1]?.recording, RECORDING_720);
   });
 
-  it('keeps a finished rung finished when it comes back without an index', async () => {
+  it('keeps a finished rung finished when it comes back without a recording', async () => {
     // A rung recovered from a crash announces itself before it finalizes
     // again. Replacing it wholesale would un-finish the ladder and tell the
     // uploader to report `vod` a second time.
@@ -624,7 +632,7 @@ describe('internal rendition reports', () => {
     assert.equal(result.ladder.finished, true);
     assert.equal(result.ladder.flippedToFinished, false, 'it was already finished, so nothing flipped');
     const kept = result.renditions.find((r) => r.name === '720p');
-    assert.equal(kept?.index, 41, 'the recording it already closed');
+    assert.equal(kept?.recording, RECORDING_720, 'the recording it already closed');
     assert.equal(kept?.duration, 61.2);
     assert.equal(kept?.bandwidth, 9_000_000, 'but the new bitrate');
   });
@@ -634,7 +642,7 @@ describe('internal rendition reports', () => {
     // in a well-formed ladder every report for a rung names the feed its
     // recordings already sit on. A report naming some other feed describes a
     // recording this ladder has nothing to say about, so nothing is carried
-    // over: keeping the stored index would leave the master advertising a feed
+    // over: keeping the stored recording would leave the master advertising a feed
     // the report did not mention.
     const freshTopic = 'cccccccc-0000-4000-8000-000000000720';
     const result = await report(rung('720p', 720, { topic: freshTopic }));
@@ -645,10 +653,10 @@ describe('internal rendition reports', () => {
 
     const foreign = result.renditions.find((r) => r.name === '720p');
     assert.equal(foreign?.topic, freshTopic);
-    assert.equal(foreign?.index, undefined, 'nothing was carried over');
+    assert.equal(foreign?.recording, undefined, 'nothing was carried over');
     assert.equal(
-      result.renditions.find((r) => r.name === '360p')?.index,
-      12,
+      result.renditions.find((r) => r.name === '360p')?.recording,
+      RECORDING_360,
       'the rung that stayed on its own feed keeps its recording',
     );
 
@@ -663,13 +671,13 @@ describe('internal rendition reports', () => {
   it('carries the ladder through a state report and a hand republish', async () => {
     const ended = await api<StreamStateResponse>('POST', `/api/internal/streams/${stream.id}/state`, {
       ...uploaderCall(),
-      body: { state: 'vod', index: 9, duration: 61.2 },
+      body: { state: 'vod', recording: RECORDING_MASTER, duration: 61.2 },
     });
     assert.equal(ended.stream.status, 'vod');
 
     const afterState = await catalogueEntry(stream.topic);
     assert.equal(afterState.state, 'vod');
-    assert.equal(afterState.index, 9, 'the master, not a rung');
+    assert.equal(afterState.recording, RECORDING_MASTER, 'the master, not a rung');
     assert.equal(afterState.renditions?.length, 2, 'the ladder is still there');
 
     await api<PublishResult>('POST', `/api/streams/${stream.id}/publish`);
@@ -679,7 +687,7 @@ describe('internal rendition reports', () => {
 
   it('un-finishes every rung when the broadcast goes live again', async () => {
     // Each rung continues on the feed it already owns, so the ladder survives
-    // the resume — but not the indexes, which address the recording that just
+    // the resume — but not the recordings, which name the take that just
     // ended. They come back one final report at a time.
     const live = await api<StreamStateResponse>('POST', `/api/internal/streams/${stream.id}/state`, {
       ...uploaderCall(),
@@ -689,16 +697,16 @@ describe('internal rendition reports', () => {
 
     const rows = await pool.query<{
       name: string;
-      manifest_index: string | null;
+      recording_ref: string | null;
       duration_seconds: string | null;
     }>(
-      `SELECT name, manifest_index, duration_seconds FROM stream_renditions
+      `SELECT name, recording_ref, duration_seconds FROM stream_renditions
         WHERE stream_id = $1 ORDER BY name`,
       [stream.id],
     );
     assert.equal(rows.rowCount, 2, 'the rungs themselves stay');
     for (const row of rows.rows) {
-      assert.equal(row.manifest_index, null, `${row.name} index`);
+      assert.equal(row.recording_ref, null, `${row.name} recording`);
       assert.equal(row.duration_seconds, null, `${row.name} duration`);
     }
 
@@ -706,7 +714,7 @@ describe('internal rendition reports', () => {
     assert.equal(entry.state, 'live');
     assert.equal(entry.renditions?.length, 2);
     assert.equal(
-      entry.renditions?.every((r) => r.index === undefined),
+      entry.renditions?.every((r) => r.recording === undefined),
       true,
       'and the catalogue advertises none of the old recordings',
     );
@@ -714,7 +722,7 @@ describe('internal rendition reports', () => {
     // Back to a recording for the unpublish that follows.
     await api<StreamStateResponse>('POST', `/api/internal/streams/${stream.id}/state`, {
       ...uploaderCall(),
-      body: { state: 'vod', index: 9, duration: 61.2 },
+      body: { state: 'vod', recording: RECORDING_MASTER, duration: 61.2 },
     });
   });
 
@@ -731,7 +739,7 @@ describe('internal rendition reports', () => {
     assert.equal(republished.stream.status, 'vod');
     const entry = await catalogueEntry(stream.topic);
     assert.equal(entry.state, 'vod');
-    assert.equal(entry.index, 9, 'the master, as before');
+    assert.equal(entry.recording, RECORDING_MASTER, 'the master, as before');
     assert.equal(entry.group, stream.topic);
     assert.equal(entry.renditions?.length, 2);
   });

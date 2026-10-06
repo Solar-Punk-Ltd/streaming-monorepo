@@ -358,7 +358,7 @@ export class StreamRepository {
    * repeated report (the uploader retries) must not keep moving it, and a
    * stream that goes live after having been announced gets a fresh one.
    * `ended_at` is cleared, so a stream that is live is never also ended, and
-   * so are `manifest_index`, `recording_ref` and `duration_seconds`: a stream
+   * so are `recording_ref` and `duration_seconds`: a stream
    * that is live has no finished recording, and a broadcast coming back after
    * `vod` would otherwise keep listing the previous one while the new session
    * writes over its head.
@@ -395,7 +395,6 @@ export class StreamRepository {
                   WHEN status = 'live' AND live_since IS NOT NULL THEN live_since
                   ELSE NOW()
                 END,
-                manifest_index = NULL,
                 recording_ref = NULL,
                 duration_seconds = NULL,
                 ended_at = NULL,
@@ -405,8 +404,7 @@ export class StreamRepository {
           RETURNING ${STREAM_COLUMNS}
        ), unfinished AS (
          UPDATE stream_renditions
-            SET manifest_index = NULL,
-                recording_ref = NULL,
+            SET recording_ref = NULL,
                 duration_seconds = NULL,
                 updated_at = NOW()
           WHERE stream_id IN (
@@ -424,30 +422,24 @@ export class StreamRepository {
    * The uploader's `vod` report: the broadcast stopped, and this is where the
    * recording is. `live_since` is left alone — it is when this recording
    * started, and the console shows both ends.
-   *
-   * The recording is a feed index or a reference, and the one not given is
-   * cleared, so a stream that changed uploaders between two recordings never
-   * carries both (migration 015).
    */
   async markVod(
     id: string,
     allowedFrom: readonly StreamStatus[],
-    manifestIndex: number | null,
+    recordingRef: string,
     durationSeconds: number,
-    recordingRef: string | null = null,
   ): Promise<StreamRow | null> {
     const result = await this.pool.query<StreamRow>(
       `UPDATE streams
           SET status = 'vod',
-              manifest_index = $3,
-              recording_ref = $5,
+              recording_ref = $3,
               duration_seconds = $4,
               ended_at = NOW(),
               publish_error = NULL,
               updated_at = NOW()
         WHERE id = $1 AND status = ANY($2::text[])
         RETURNING ${STREAM_COLUMNS}`,
-      [id, allowedFrom, manifestIndex, durationSeconds, recordingRef],
+      [id, allowedFrom, recordingRef, durationSeconds],
     );
     return this.one(result.rows, result.rowCount);
   }

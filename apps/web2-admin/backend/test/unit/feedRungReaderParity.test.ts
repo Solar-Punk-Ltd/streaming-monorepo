@@ -43,7 +43,7 @@ const RUNG = {
 describe("the contract reads a rung off the catalog as the admin's own reader did", () => {
   it('a rung', () => {
     const inputs: unknown[] = [RUNG, { ...RUNG, unknown: 1 }, null, [], 'text', 3, [RUNG]];
-    for (const field of [...Object.keys(RUNG), 'index', 'duration']) {
+    for (const field of [...Object.keys(RUNG), 'recording', 'duration']) {
       for (const value of PALETTE) inputs.push({ ...RUNG, [field]: value });
     }
     let accepted = 0;

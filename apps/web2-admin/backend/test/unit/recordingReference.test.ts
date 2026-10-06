@@ -1,10 +1,8 @@
 /**
- * A recording named by reference: an uploader on time windows uploads each recording playlist once as bytes and
- * reports its reference as `recording`, where an uploader on feeds reports the final manifest's feed `index`. Unit
- * test against the in-memory ports, no Bee and no database. `pnpm test`.
+ * A recording named by reference: the uploader uploads each recording playlist once as bytes and reports its
+ * reference as `recording`. Unit test against the in-memory ports, no Bee and no database. `pnpm test`.
  *
- * Both kinds of report are taken until the last uploader on feeds is gone, so the second half of this file pins that
- * an `index` report reads, stores and lists exactly as it did before `recording` existed.
+ * The last part pins that a feed index, which uploaders on feeds once reported, is no recording at all now.
  */
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
@@ -18,7 +16,9 @@ import type { FeedIdentity } from '../../src/domain/feedIdentity.js';
 import { LadderService } from '../../src/domain/LadderService.js';
 import { PublishService } from '../../src/domain/PublishService.js';
 import { stageFitsRecording, stageLockFor } from '../../src/domain/StreamService.js';
+import { isLadderFinished, mergeRendition } from '../../src/domain/renditions.js';
 import { publishedStatusFor } from '../../src/domain/streamState.js';
+import { STREAM_COLUMNS, STREAM_RENDITION_COLUMNS } from '../../src/domain/streamSql.js';
 import { StreamStateService } from '../../src/domain/StreamStateService.js';
 
 import {
@@ -43,7 +43,7 @@ const RECORDING = 'ab'.repeat(32);
 const RECORDING_360 = 'c3'.repeat(32);
 const RECORDING_720 = 'c7'.repeat(32);
 
-function rung(name: string, height: number, final?: Partial<Pick<Rendition, 'index' | 'recording' | 'duration'>>) {
+function rung(name: string, height: number, final?: Partial<Pick<Rendition, 'recording' | 'duration'>>) {
   return {
     name,
     width: (height * 16) / 9,
@@ -95,7 +95,6 @@ describe('a state report naming its recording by reference', () => {
     const row = store.rows.get(stream.id)!;
     assert.equal(row.status, 'vod');
     assert.equal(row.recording_ref, RECORDING);
-    assert.equal(row.manifest_index, null);
     assert.equal(row.duration_seconds, 61.5);
     const entry = entryAt(gateway, outcome.feed.index, stream.topic);
     assert.equal(entry.state, 'vod');
@@ -119,7 +118,7 @@ describe('a state report naming its recording by reference', () => {
           duration: 61.5,
           feedIndex: outcome.feed.index,
           entryStatus: 'vod',
-          entryRecording: { index: null, recording: RECORDING, duration: 61.5 },
+          entryRecording: { recording: RECORDING, duration: 61.5 },
         },
       ],
     );
@@ -168,10 +167,10 @@ describe('a rendition report naming its recording by reference', () => {
     assert.deepEqual(last.ladder, { finished: true, flippedToFinished: true, duration: 62.5 });
     const rows = await renditions.listByStream(stream.id);
     assert.deepEqual(
-      rows.map((row) => [row.name, row.recording_ref, row.manifest_index, row.duration_seconds]),
+      rows.map((row) => [row.name, row.recording_ref, row.duration_seconds]),
       [
-        ['360p', RECORDING_360, null, 61],
-        ['720p', RECORDING_720, null, 62.5],
+        ['360p', RECORDING_360, 61],
+        ['720p', RECORDING_720, 62.5],
       ],
     );
     const listed = entryAt(gateway, last.publish.feed.index, stream.topic).renditions ?? [];
@@ -229,25 +228,35 @@ describe('a rendition report naming its recording by reference', () => {
 
     const rows = await renditions.listByStream(stream.id);
     assert.deepEqual(
-      rows.map((row) => [row.recording_ref, row.manifest_index, row.duration_seconds]),
-      [[null, null, null]],
+      rows.map((row) => [row.recording_ref, row.duration_seconds]),
+      [[null, null]],
     );
   });
 });
 
-describe('an index report, unchanged', () => {
-  it('stores and lists the index as before, with no recording anywhere', async () => {
+describe('a feed index, no longer a recording', () => {
+  it('is neither read from nor written to the database', () => {
+    assert.doesNotMatch(STREAM_COLUMNS, /manifest_index/);
+    assert.doesNotMatch(STREAM_RENDITION_COLUMNS, /manifest_index/);
+  });
+
+  it('does not finish a rung or a ladder, and a re-announce does not keep it', () => {
+    const indexed = { ...rung('360p', 360), index: 10, duration: 61 } as Rendition;
+
+    assert.equal(isLadderFinished([indexed]), false);
+    assert.equal('index' in mergeRendition(indexed, rung('360p', 360)), false);
+  });
+
+  it('is never written onto a catalogue entry or its rungs, nor shown to the console', async () => {
     const { store, gateway, ladder, state, stream } = await setup();
     await state.report(stream.id, { state: 'live' }, ON_STAGE);
-    await ladder.report(stream.id, rung('360p', 360, { index: 10, duration: 61 }), ON_STAGE);
+    await ladder.report(stream.id, rung('360p', 360, { recording: RECORDING_360, duration: 61 }), ON_STAGE);
 
-    const outcome = await state.report(stream.id, { state: 'vod', index: 7, duration: 61 }, ON_STAGE);
+    const outcome = await state.report(stream.id, { state: 'vod', recording: RECORDING, duration: 61 }, ON_STAGE);
 
-    assert.equal(store.rows.get(stream.id)!.recording_ref, null);
     const entry = entryAt(gateway, outcome.feed.index, stream.topic);
-    assert.equal(entry.index, 7);
-    assert.equal('recording' in entry, false);
-    assert.deepEqual(entry.renditions?.[0], rung('360p', 360, { index: 10, duration: 61 }));
-    assert.equal(toStream(store.rows.get(stream.id)!).recording, null);
+    assert.equal('index' in entry, false);
+    assert.equal('index' in (entry.renditions?.[0] ?? {}), false);
+    assert.equal('manifestIndex' in toStream(store.rows.get(stream.id)!), false);
   });
 });

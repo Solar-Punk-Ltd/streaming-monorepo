@@ -94,7 +94,6 @@ export function streamRow(over: Partial<StreamRow> = {}): StreamRow {
     publish_error: null,
     publish_key: '0123456789abcdef0123456789abcdef',
     publish_key_rotated_at: null,
-    manifest_index: null,
     recording_ref: null,
     duration_seconds: null,
     live_since: null,
@@ -131,7 +130,6 @@ export class FakeRenditionStore implements PublishRenditionStore, LadderRenditio
       topic: rendition.topic,
       bandwidth: rendition.bandwidth,
       avg_bandwidth: rendition.avgBandwidth,
-      manifest_index: rendition.index ?? null,
       recording_ref: rendition.recording ?? null,
       duration_seconds: rendition.duration ?? null,
       updated_at: new Date('2026-09-11T11:00:00.000Z'),
@@ -143,8 +141,8 @@ export class FakeRenditionStore implements PublishRenditionStore, LadderRenditio
 
   /**
    * Un-finishes every rung, as the CTE in `markLive` does for a stream coming
-   * back from `vod`. Index and duration go together, which is the migration's
-   * CHECK and the reason nothing here clears one of them alone.
+   * back from `vod`. A recording and its duration go together, which is the
+   * migrations' CHECK and the reason nothing here clears one of them alone.
    */
   clearLadderIndexes(streamId: string): void {
     const rows = this.rows.get(streamId);
@@ -153,7 +151,6 @@ export class FakeRenditionStore implements PublishRenditionStore, LadderRenditio
       streamId,
       rows.map((row) => ({
         ...row,
-        manifest_index: null,
         recording_ref: null,
         duration_seconds: null,
       })),
@@ -315,7 +312,7 @@ export class FakeStreamStore
   /**
    * The `live` report, conditional exactly as the SQL is. A row coming back
    * from `vod` is un-finished in the same step: the recording columns, and
-   * every rung's index and duration through the linked ladder.
+   * every rung's recording and duration through the linked ladder.
    *
    * ⚠️ That the rungs are cleared at all is a property of the CTE in
    * `markLive`, and no fake can stand in for it — a statement that clears none
@@ -333,7 +330,6 @@ export class FakeStreamStore
       status: 'live',
       live_since:
         row.status === 'live' && row.live_since !== null ? row.live_since : new Date('2026-09-11T11:00:00.000Z'),
-      manifest_index: null,
       recording_ref: null,
       duration_seconds: null,
       ended_at: null,
@@ -345,15 +341,13 @@ export class FakeStreamStore
   async markVod(
     id: string,
     allowedFrom: readonly StreamStatus[],
-    manifestIndex: number | null,
+    recordingRef: string,
     durationSeconds: number,
-    recordingRef: string | null = null,
   ): Promise<StreamRow | null> {
     const row = this.rows.get(id);
     if (!row || !allowedFrom.includes(row.status)) return null;
     return this.patch(id, {
       status: 'vod',
-      manifest_index: manifestIndex,
       recording_ref: recordingRef,
       duration_seconds: durationSeconds,
       ended_at: new Date('2026-09-11T11:00:00.000Z'),

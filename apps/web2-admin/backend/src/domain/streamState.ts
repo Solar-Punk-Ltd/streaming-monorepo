@@ -56,12 +56,12 @@ export function hasGoneLive(status: StreamStatus): boolean {
 export type PublishedStatus = Extract<StreamStatus, 'published' | 'vod'>;
 
 /**
- * Whether the row holds a finished recording: the feed index of its final
- * manifest, or the reference of its recording playlist. An unpublish keeps
- * it, so a draft can hold one too. `NO_RECORDING_SQL` asks the same in SQL.
+ * Whether the row holds a finished recording: the reference of its recording
+ * playlist. An unpublish keeps it, so a draft can hold one too.
+ * `NO_RECORDING_SQL` asks the same in SQL.
  */
-export function holdsRecording(stream: Pick<StreamRow, 'manifest_index' | 'recording_ref'>): boolean {
-  return stream.manifest_index !== null || stream.recording_ref !== null;
+export function holdsRecording(stream: Pick<StreamRow, 'recording_ref'>): boolean {
+  return stream.recording_ref !== null;
 }
 
 /**

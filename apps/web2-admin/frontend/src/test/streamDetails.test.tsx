@@ -17,6 +17,9 @@ import {
   renderWithProviders,
 } from './helpers';
 
+/** A made-up Swarm reference, built rather than written out. */
+const RECORDING = 'ab'.repeat(32);
+
 const ID = 'stream-under-test';
 
 const EDITED_SINCE_PUBLISH = 'Edited since it was published. Republish to update the feed.';
@@ -265,7 +268,7 @@ describe('StreamDetailsPage', () => {
           liveSince: '2026-10-01T09:01:00.000Z',
           endedAt: '2026-10-01T10:02:05.000Z',
           durationSeconds: 3725.5,
-          manifestIndex: 412,
+          recording: RECORDING,
         }),
       ),
     );
@@ -276,14 +279,23 @@ describe('StreamDetailsPage', () => {
     expect(screen.getByText('Ended')).toBeInTheDocument();
     expect(screen.getByText('Duration')).toBeInTheDocument();
     expect(screen.getByText('1:02:06')).toBeInTheDocument();
-    expect(screen.getByText('Manifest index')).toBeInTheDocument();
-    expect(screen.getByText('412')).toBeInTheDocument();
+    expect(screen.getByText('Recording')).toBeInTheDocument();
+    expect(screen.getByText(RECORDING)).toBeInTheDocument();
 
     // A recording can be taken off the feed like any published stream. Nobody
     // edited this one, so the catalogue already carries it and there is
     // nothing to republish.
     expect(screen.getByRole('button', { name: 'Unpublish' })).toBeEnabled();
     expect(screen.getByRole('button', { name: 'Republish' })).toBeDisabled();
+  });
+
+  it('shows no feed index, even when an older answer still carries one', async () => {
+    mockFetch(routesFor({ ...recordingStream(), manifestIndex: 412 } as ReturnType<typeof recordingStream>));
+
+    renderDetails();
+
+    expect(await screen.findByText('Recording')).toBeInTheDocument();
+    expect(screen.queryByText('Manifest index')).not.toBeInTheDocument();
   });
 
   it('leaves the reported fields off a stream nobody has streamed yet', async () => {
@@ -296,7 +308,7 @@ describe('StreamDetailsPage', () => {
     expect(await screen.findByText('Feed owner')).toBeInTheDocument();
     expect(screen.queryByText('Live since')).not.toBeInTheDocument();
     expect(screen.queryByText('Duration')).not.toBeInTheDocument();
-    expect(screen.queryByText('Manifest index')).not.toBeInTheDocument();
+    expect(screen.queryByText('Recording')).not.toBeInTheDocument();
   });
 
   it('tells the catalogue’s owner from the stream’s feed owner once it has published', async () => {
@@ -439,7 +451,7 @@ describe('StreamDetailsPage', () => {
       expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
     });
     expect(unpublishCalls(fetchMock)).toBe(0);
-    expect(screen.getByText('Manifest index')).toBeInTheDocument();
+    expect(screen.getByText('Recording')).toBeInTheDocument();
   });
 
   it('still shows the recording once it is unpublished back to a draft', async () => {
@@ -462,8 +474,8 @@ describe('StreamDetailsPage', () => {
     await waitFor(() => {
       expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
     });
-    expect(screen.getByText('Manifest index')).toBeInTheDocument();
-    expect(screen.getByText('412')).toBeInTheDocument();
+    expect(screen.getByText('Recording')).toBeInTheDocument();
+    expect(screen.getByText(RECORDING)).toBeInTheDocument();
     expect(screen.getByText('Duration')).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Publish' })).toBeEnabled();
   });
@@ -552,7 +564,7 @@ function recordingStream(): Stream {
     liveSince: '2026-09-11T10:01:00.000Z',
     endedAt: '2026-09-11T11:00:00.000Z',
     durationSeconds: 3540,
-    manifestIndex: 412,
+    recording: RECORDING,
     stageId: MAIN_STAGE_ID,
   });
 }

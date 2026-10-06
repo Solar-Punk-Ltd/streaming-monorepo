@@ -155,11 +155,9 @@ export interface FeedWriteLog {
 /** The slice of CatalogueBatchService publishing needs: where a write goes, and where the boot check reads. */
 export type CatalogueTargets = Pick<CatalogueBatchService, 'forWrite' | 'forRead'>;
 
-/** Where the entry says its recording is: `index` from an uploader on feeds, `recording` from one on time windows. */
+/** Where the entry says its recording is, and how long it runs. */
 export interface EntryRecording {
-  index: number | null;
-  /** Present only when the entry names its recording by reference. */
-  recording?: string;
+  recording: string | null;
   duration: number | null;
 }
 
@@ -268,15 +266,13 @@ function headCarrying(row: StreamRow, snapshot: FeedSnapshot, entry: FeedStreamE
 }
 
 /**
- * The recording an entry lists: its `index` and `duration` when it is `vod`,
+ * The recording an entry lists: its `recording` and `duration` when it is `vod`,
  * null for any other. Read back off the entry `buildFeedEntry` built, rather
  * than worked out again from the row.
  */
 function recordingOn(entry: FeedStreamEntry): EntryRecording | null {
   if (entry.state !== 'vod') return null;
-  const listed: EntryRecording = { index: entry.index ?? null, duration: entry.duration ?? null };
-  if (entry.recording !== undefined) listed.recording = entry.recording;
-  return listed;
+  return { recording: entry.recording ?? null, duration: entry.duration ?? null };
 }
 
 /** Where a feed write landed, once the gateway has taken it; null until then. */

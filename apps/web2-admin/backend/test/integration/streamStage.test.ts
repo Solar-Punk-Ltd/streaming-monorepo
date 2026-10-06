@@ -83,10 +83,10 @@ async function stream(stageId: string | null, set: { status?: string; recording?
     await database.pool.query(
       `UPDATE streams
           SET status = COALESCE($2, status),
-              manifest_index = CASE WHEN $3 THEN 7 ELSE manifest_index END,
+              recording_ref = CASE WHEN $3 THEN $4 ELSE recording_ref END,
               duration_seconds = CASE WHEN $3 THEN 61 ELSE duration_seconds END
         WHERE id = $1`,
-      [row.id, set.status ?? null, set.recording ?? false],
+      [row.id, set.status ?? null, set.recording ?? false, 'ab'.repeat(32)],
     );
   }
   return (await streams.findById(row.id))!;
