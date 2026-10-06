@@ -7,9 +7,9 @@ import { mediaTypeSchema } from './mediaType.js';
  * without an admin, and the admin both rewrite whole. Each reader checks what it reads, and each keeps its own
  * reading, so there is one schema per reader here rather than one for the catalog.
  *
- * A finished broadcast says where its recording is in one of two ways. Writers on feeds name the feed `index` of the
- * final manifest. Writers on time windows upload the recording playlist once as bytes and name its reference in
- * `recording`, read with `GET /bytes/<recording>`. Readers take both until the last writer on feeds is gone.
+ * A finished broadcast names its recording by reference: the writer uploads the recording playlist once as bytes and
+ * names it in `recording`, read with `GET /bytes/<recording>`. The viewer schemas below still read an `index` beside
+ * it, because the viewers move off it in later phases. No writer writes one.
  */
 
 /** A rung of an entry's quality ladder as the viewer reads it: every number finite, and fields it does not know kept. */
@@ -51,7 +51,7 @@ const anyNumber = z.custom<number>((value) => typeof value === 'number');
 
 /**
  * A rung as the admin reads it back off the catalog before it rewrites an entry: the six fields every rung carries,
- * each only of its kind, and an index or a duration of any number when present.
+ * each only of its kind, and a recording reference and a duration of any number when present.
  */
 export const adminFeedRungSchema = z.looseObject({
   name: z.string(),
@@ -60,7 +60,6 @@ export const adminFeedRungSchema = z.looseObject({
   height: anyNumber,
   bandwidth: anyNumber,
   avgBandwidth: anyNumber,
-  index: anyNumber.optional(),
   recording: z.string().optional(),
   duration: anyNumber.optional(),
 });
