@@ -40,10 +40,12 @@ A stage is a manager deployment that runs a stream uploader, with the node pool 
    rung's own Bee node. Every 2 s it writes the rung's live playlist, naming the segments whose upload
    finished, as that rung's window chunk for the 2 s that just ended. When the broadcast ends it writes a
    closing window and uploads the rung's recording playlist once, named by its reference.
-4. The master feed names every rung that is publishing. A rung that stops is dropped from it, so a
-   viewer is never sent to a quality that has died.
-5. The viewer reads the catalog to find a stream, follows its master feed, and plays the rung its
-   bandwidth allows. Segments come from a Bee gateway over HTTP, or from a light node in the tab.
+4. The stream list entry names every rung with its topic, its size and its bandwidth, which is all a
+   player needs to build the ladder's master playlist. No master playlist is written to Swarm.
+5. The viewer reads the catalog to find a stream, builds the master from the entry's renditions, and
+   plays the rung its bandwidth allows, reading that rung's windows. Segments come from a Bee gateway
+   over HTTP, or from a light node in the tab. The player moves onto windows in phase 3 of the windows
+   plan, and until then it follows feeds this uploader no longer writes.
 
 The manager and the web2 admin are not on this path. A running broadcast carries on while either of
 them is down. They decide what runs where and who owns which stream.

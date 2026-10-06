@@ -532,12 +532,6 @@ export class StreamUploader {
       this.consecutiveSegmentFailures += 1;
       this.logger.error(segmentUploadFailed(this.streamId, segmentIndex));
       this.metrics?.recordSegmentDropped(this.ladder?.rung.name);
-      if (this.ladder) {
-        // The other half of `recordRungDelivered` below. Without it the master takes a rung whose
-        // uploads are being refused back on every segment that happens to land. See
-        // `RUNG_READMIT_AFTER_SEGMENTS`.
-        this.ladderRegistry.recordRungUploadFailed(this.ladder.group, this.ladder.rung.name);
-      }
       this.persistState();
       return;
     }
@@ -551,11 +545,6 @@ export class StreamUploader {
     this.logger.log(segmentUploaded(this.streamId, segmentIndex, ref));
 
     this.metrics?.recordSegmentUploaded(Date.now(), this.ladder?.rung.name);
-    if (this.ladder) {
-      // Beside the metric and not instead of it: the metric is an observation, this decides what the
-      // master is allowed to advertise. Both want the same moment, which is a segment that landed.
-      this.ladderRegistry.recordRungDelivered(this.ladder.group, this.ladder.rung.name);
-    }
     await this.refreshBandwidthIfDrifted();
     this.persistState();
   }
@@ -683,12 +672,12 @@ export class StreamUploader {
   public async notifyStart(): Promise<void> {
     if (this.admin && this.ladder) {
       // ⛔ The rung first and the ladder's state second, which is the same ordering as everywhere
-      // else here: the master a viewer opens has to exist before anything says the broadcast is live.
-      // `live` is a statement about the LADDER, so it waits for a master to have landed rather than
-      // for this rung's own manifest — and it may be said more than once, by each rung in turn and
-      // again after a restart, which is why the admin accepts `live -> live`.
+      // else here: the rendition a player builds its master from has to be in the ladder before
+      // anything says the broadcast is live. `live` is a statement about the LADDER, and it may be
+      // said more than once, by each rung in turn and again after a restart, which is why the admin
+      // accepts `live -> live`.
       const announced = await this.announceRendition();
-      if (announced && announced.masterIndex !== null) {
+      if (announced !== null) {
         await this.reportAdminState(
           { state: ADMIN_STATE_LIVE },
           'so the admin will go on showing it as a draft until the next attempt',

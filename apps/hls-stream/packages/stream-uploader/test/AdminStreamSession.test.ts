@@ -690,7 +690,6 @@ describe('a rung of a declared ladder', () => {
     upserts: Upsert[];
     /** Every record of this rung registered as one that will not finish. */
     unfinished: Upsert[];
-    delivered: string[];
   }
 
   interface LadderSessionOptions {
@@ -706,13 +705,11 @@ describe('a rung of a declared ladder', () => {
   }
 
   const LIVE_ANSWER: RenditionAnnouncement = {
-    masterIndex: 0,
     recording: null,
     flippedToFinished: false,
     duration: null,
   };
   const NOTHING_ANSWER: RenditionAnnouncement = {
-    masterIndex: null,
     recording: null,
     flippedToFinished: false,
     duration: null,
@@ -725,7 +722,6 @@ describe('a rung of a declared ladder', () => {
     const reports: AdminStateReport[] = [];
     const upserts: Upsert[] = [];
     const unfinished: Upsert[] = [];
-    const delivered: string[] = [];
 
     const bee = makeFakeBee({
       uploadWindow: async (identifier, payload) => {
@@ -754,10 +750,6 @@ describe('a rung of a declared ladder', () => {
         upserts.push(upsert);
         return options.announce?.(upsert, upserts.length) ?? LIVE_ANSWER;
       },
-      recordRungDelivered: (_group, rung) => {
-        delivered.push(rung);
-      },
-      recordRungUploadFailed: () => {},
       recordRungUnfinished: async (identity, rendition) => {
         const upsert = { adminStreamId: identity.adminStreamId, group: identity.group, rendition };
         unfinished.push(upsert);
@@ -788,7 +780,7 @@ describe('a rung of a declared ladder', () => {
       ...TEST_WINDOWS,
     });
 
-    return { uploader, windows, recordings, catalogEntries, reports, upserts, unfinished, delivered };
+    return { uploader, windows, recordings, catalogEntries, reports, upserts, unfinished };
   }
 
   /**
@@ -852,7 +844,7 @@ describe('a rung of a declared ladder', () => {
       announce: (upsert) =>
         upsert.rendition.recording === undefined
           ? LIVE_ANSWER
-          : { masterIndex: 4, recording: LADDER_RECORDING, flippedToFinished: true, duration: 12 },
+          : { recording: LADDER_RECORDING, flippedToFinished: true, duration: 12 },
     });
 
     await feedOneSegment(session.uploader, 0);
@@ -914,7 +906,7 @@ describe('a rung of a declared ladder', () => {
      */
     it('reports vod with the ladder′s recording, once, when marking it is what finishes the ladder', async () => {
       const session = newLadderSession({
-        unfinished: () => ({ masterIndex: 6, recording: LADDER_RECORDING, flippedToFinished: true, duration: 12 }),
+        unfinished: () => ({ recording: LADDER_RECORDING, flippedToFinished: true, duration: 12 }),
       });
       await feedOneSegment(session.uploader, 0);
       session.uploader.retire();
@@ -949,7 +941,7 @@ describe('a rung of a declared ladder', () => {
     /** Reported only after the report landed, as a finalize's flip is: a line claiming it first is a flip nobody took. */
     it('does not say the ladder finalized when the vod report could not be delivered', async () => {
       const session = newLadderSession({
-        unfinished: () => ({ masterIndex: 6, recording: LADDER_RECORDING, flippedToFinished: true, duration: 12 }),
+        unfinished: () => ({ recording: LADDER_RECORDING, flippedToFinished: true, duration: 12 }),
         reportOutcome: (report) => (report.state === ADMIN_STATE_VOD ? STATE_REPORT_FAILED : STATE_REPORT_ACCEPTED),
       });
       await feedOneSegment(session.uploader, 0);
@@ -996,15 +988,6 @@ describe('a rung of a declared ladder', () => {
       [ADMIN_STATE_LIVE],
     );
     assert.equal(session.uploader.getMsSinceCatalogAnnounceFailed(), null, 'and the signal clears once it lands');
-  });
-
-  it('counts each delivery against the ladder', async () => {
-    const session = newLadderSession();
-
-    await feedOneSegment(session.uploader, 0);
-    await feedOneSegment(session.uploader, 1);
-
-    assert.deepEqual(session.delivered, ['720p', '720p']);
   });
 
   /**

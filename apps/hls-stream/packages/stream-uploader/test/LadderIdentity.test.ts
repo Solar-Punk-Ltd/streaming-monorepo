@@ -423,16 +423,13 @@ describe('a ladder in admin mode', () => {
       registry: {
         upsertRendition: async (identity, rendition) => {
           announces.push({ identity, rendition });
-          return { masterIndex: null, recording: null, flippedToFinished: false, duration: null };
+          return { recording: null, flippedToFinished: false, duration: null };
         },
         recordRungUnfinished: async () => ({
-          masterIndex: null,
           recording: null,
           flippedToFinished: false,
           duration: null,
         }),
-        recordRungDelivered: () => {},
-        recordRungUploadFailed: () => {},
       },
     };
   }

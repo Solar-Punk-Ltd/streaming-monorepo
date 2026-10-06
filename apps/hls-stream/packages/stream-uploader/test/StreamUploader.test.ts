@@ -1356,50 +1356,6 @@ describe('segments the live window outran before anything published them', () =>
   });
 
   /**
-   * ⛔⛔⛔ **The one call the whole dead-rung mechanism hangs off, and a mutation run found nothing
-   * watching it.** Turning `if (this.ladder)` to false left every test in this package green, and
-   * that call is how the catalog learns a rung is still delivering. Without it no rung ever looks
-   * alive, so the master is never rewritten: a rung that goes quiet is never dropped from it, and a
-   * rung that comes back is never restored. Both drain suites and the viewer arm read the master for their
-   * verdict, so a paid broadcast would report the product on a live line nobody made.
-   *
-   * ⭐ A single-rendition stream deliberately records nothing, because a stream with no ladder has no
-   * rung to be the liveness of, and the catalog would have nothing to key it by.
-   */
-  it("tells the catalog its rung delivered, which is what keeps a rung in the ladder's master", async () => {
-    const delivered: Array<[string, string]> = [];
-    const watching = makeFakeCatalog({
-      recordRungDelivered: (group: string, rung: string) => {
-        delivered.push([group, rung]);
-      },
-    });
-    const uploader = uploaderWith(makeBee({}), {
-      streamCatalog: watching,
-      ladder: { group: 'group-1', rung: { name: '720p', width: 1280, height: 720, configuredKbps: 2800 } },
-    });
-
-    uploader.handleSegment(0, 2, Buffer.from('a'));
-    await drain(uploader);
-
-    assert.deepEqual(delivered, [['group-1', '720p']], 'a landed segment is what marks its rung alive');
-  });
-
-  it('tells the catalog nothing about a rung on a stream that has no ladder', async () => {
-    const delivered: string[] = [];
-    const watching = makeFakeCatalog({
-      recordRungDelivered: (_group: string, rung: string) => {
-        delivered.push(rung);
-      },
-    });
-    const uploader = uploaderWith(makeBee({}), { streamCatalog: watching });
-
-    uploader.handleSegment(0, 2, Buffer.from('a'));
-    await drain(uploader);
-
-    assert.deepEqual(delivered, [], 'a single-rendition stream has no rung whose liveness this could be');
-  });
-
-  /**
    * ⛔ What a drained postage batch costs, per rung. `segmentsDroppedTotal` climbs whether one rung of
    * four lost everything or all four lost a little, so on a ladder it cannot say which quality a
    * viewer stopped being offered. The refusal line names the batch, this names the loss.
@@ -1421,44 +1377,6 @@ describe('segments the live window outran before anything published them', () =>
     assert.equal(counters.segmentsDroppedTotal, 1);
     assert.deepEqual(counters.segmentsDroppedByRung, { '1080p': 1 });
     assert.deepEqual(counters.segmentsUploadedByRung, {}, 'a dropped segment must not also count as one that landed');
-  });
-
-  /**
-   * ⛔ The other half of telling the catalog a rung delivered. Without it the master takes a rung whose
-   * uploads are being refused back on every segment that happens to land, which is what rewrote it 793
-   * times on 2026-09-23. See `RUNG_READMIT_AFTER_SEGMENTS`.
-   */
-  it('tells the catalog its rung dropped a segment, so a refused rung is not taken back on a stray success', async () => {
-    const dropped: Array<[string, string]> = [];
-    const watching = makeFakeCatalog({
-      recordRungUploadFailed: (group: string, rung: string) => {
-        dropped.push([group, rung]);
-      },
-    });
-    const uploader = uploaderWith(makeBee({ fail: permanentError }), {
-      streamCatalog: watching,
-      ladder: { group: 'group-1', rung: { name: '1080p', width: 1920, height: 1080, configuredKbps: 6000 } },
-    });
-
-    uploader.handleSegment(0, 2, Buffer.from('a'));
-    await drain(uploader);
-
-    assert.deepEqual(dropped, [['group-1', '1080p']]);
-  });
-
-  it('tells the catalog nothing about a dropped segment on a stream that has no ladder', async () => {
-    const dropped: string[] = [];
-    const watching = makeFakeCatalog({
-      recordRungUploadFailed: (_group: string, rung: string) => {
-        dropped.push(rung);
-      },
-    });
-    const uploader = uploaderWith(makeBee({ fail: permanentError }), { streamCatalog: watching });
-
-    uploader.handleSegment(0, 2, Buffer.from('a'));
-    await drain(uploader);
-
-    assert.deepEqual(dropped, [], 'a single-rendition stream has no rung whose uploads this could be about');
   });
 
   /** Under no rung, for the reason the uploaded breakdown leaves a rung-less segment out of its own. */
@@ -1775,7 +1693,6 @@ describe('StreamUploader catalog failures on the segment path', () => {
       upsertRendition: async () => {
         throw new Error('catalog feed read failed after the retry window');
       },
-      recordRungDelivered: () => {},
     } as unknown as StreamCatalog;
 
     try {
@@ -1806,7 +1723,6 @@ describe('StreamUploader catalog failures on the segment path', () => {
       upsertRendition: async () => {
         throw new Error('catalog feed read failed after the retry window');
       },
-      recordRungDelivered: () => {},
     } as unknown as StreamCatalog;
 
     const uploader = uploaderWithCatalog(catalog);
@@ -1826,7 +1742,6 @@ describe('StreamUploader catalog failures on the segment path', () => {
       upsertRendition: async (_identity: unknown, rendition: { bandwidth: number }) => {
         announced.push(rendition.bandwidth);
       },
-      recordRungDelivered: () => {},
     } as unknown as StreamCatalog;
 
     const uploader = uploaderWithCatalog(catalog);
@@ -1858,7 +1773,6 @@ describe('StreamUploader ladder finalize metrics', () => {
     const catalog = {
       addStream: async () => {},
       upsertRendition: async () => {},
-      recordRungDelivered: () => {},
     } as unknown as StreamCatalog;
 
     return new StreamUploader({
@@ -1937,7 +1851,6 @@ describe('StreamUploader ladder re-announce safety', () => {
       upsertRendition: async (_identity: unknown, rendition: { name: string; topic: string }) => {
         rungsByName.set(rendition.name, { name: rendition.name, topic: rendition.topic });
       },
-      recordRungDelivered: () => {},
     } as unknown as StreamCatalog;
 
     // The outgoing session for the 360p rung, on its own feed topic. Publishing a segment gives it a

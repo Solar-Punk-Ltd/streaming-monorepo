@@ -13,7 +13,7 @@
  *
  * Driven through the orchestrator, because the failure is a property of the whole chain: a rung's
  * stop failing is known only to the orchestrator, and what the ladder does about it is only visible
- * in the catalog entry and the master a viewer resolves.
+ * in the catalog entry a viewer resolves.
  */
 
 import { Bee, FeedIndex } from '@ethersphere/bee-js';
@@ -25,9 +25,7 @@ import { AbrLadder, DEFAULT_LADDER_SPEC } from '../src/libs/AbrLadder.js';
 import { ADMIN_STATE_LIVE, ADMIN_STATE_VOD, AdminApiClient, AdminStateReport } from '../src/libs/AdminApiClient.js';
 import { AdminLadderRegistry } from '../src/libs/AdminLadderRegistry.js';
 import { BeePublisherPool, SINGLE_PUBLISHER } from '../src/libs/BeePublisherPool.js';
-import { RememberedLadder } from '../src/libs/LadderGroupStore.js';
 import { Logger } from '../src/libs/Logger.js';
-import { MasterFeedWriter } from '../src/libs/MasterFeedWriter.js';
 import { StreamCatalog } from '../src/libs/StreamCatalog.js';
 import { StreamOrchestrator, StreamOrchestratorConfig } from '../src/libs/StreamOrchestrator.js';
 import { AdminSession, MEDIA_TYPE_VIDEO, Rendition, STREAM_LIFECYCLE_FAILED } from '../src/types.js';
@@ -40,7 +38,7 @@ const SETTLE_CEILING_MS = 4_000;
 
 const BASE = 'live/stream';
 const FAILING_RUNG = '1080p';
-/** Lowest first, which is the order a finished entry and a master list them in. */
+/** Lowest first, which is the order a finished entry lists them in. */
 const SIBLINGS = ['360p', '480p', '720p'];
 const RUNGS = [...SIBLINGS, FAILING_RUNG];
 
@@ -62,25 +60,6 @@ interface LadderEntry {
   duration?: number;
   renditions?: Rendition[];
   unfinishedRungs?: string[];
-}
-
-/** One master playlist the ladder published, as the rung names it offered and where it landed. */
-interface MasterWrite {
-  rungs: string[];
-  index: number;
-}
-
-/** A master feed that accepts every write and remembers what each one named. */
-function recordingMasterWriter(masters: MasterWrite[]): MasterFeedWriter {
-  return {
-    publish: async (group: string, renditions: Rendition[]) => {
-      if (renditions.length === 0) {
-        return null;
-      }
-      masters.push({ rungs: renditions.map((rendition) => rendition.name), index: masters.length });
-      return { topic: group, index: masters.length - 1 };
-    },
-  } as unknown as MasterFeedWriter;
 }
 
 /** A catalog feed that hands back whatever was last written to it, which is what four rungs merging need. */
@@ -109,16 +88,10 @@ function catalogFeed(payloads: string[]): Bee {
   } as unknown as Bee;
 }
 
-async function standaloneCatalog(payloads: string[], masters: MasterWrite[]): Promise<StreamCatalog> {
+async function standaloneCatalog(payloads: string[]): Promise<StreamCatalog> {
   const publisher = { rung: SINGLE_PUBLISHER, url: 'http://fake-bee:1633', stamp: 'stamp', bee: catalogFeed(payloads) };
   const publishers = { coordinator: () => publisher, forRung: () => publisher } as unknown as BeePublisherPool;
-  const catalog = new StreamCatalog(
-    publishers,
-    TEST_STREAM_KEY,
-    'catalog-topic',
-    undefined,
-    recordingMasterWriter(masters),
-  );
+  const catalog = new StreamCatalog(publishers, TEST_STREAM_KEY, 'catalog-topic');
   await catalog.init();
   return catalog;
 }
@@ -130,14 +103,6 @@ function ladderEntry(payloads: string[]): LadderEntry | undefined {
     ? undefined
     : (JSON.parse(newest) as LadderEntry[]).find((entry) => entry.group !== undefined);
 }
-
-/** Reaches the ladder maps directly, because the group id has no behavioural signal to observe. */
-interface LadderMaps {
-  ladderGroups: Map<string, RememberedLadder>;
-}
-
-const groupOf = (orch: StreamOrchestrator): string | undefined =>
-  (orch as unknown as LadderMaps).ladderGroups.get(BASE)?.group;
 
 /**
  * An orchestrator running the default four rung ladder, where the node paying for 1080p refuses the
@@ -221,16 +186,12 @@ describe('a standalone ladder whose 1080p rung could not finish', () => {
   for (const [when, order] of Object.entries(ORDERS)) {
     it(`is listed as a recording of the three rungs that finished, when 1080p stops ${when}`, async () => {
       const payloads: string[] = [];
-      const masters: MasterWrite[] = [];
-      const orch = orchestratorWhose1080pCannotFinish(await standaloneCatalog(payloads, masters));
+      const orch = orchestratorWhose1080pCannotFinish(await standaloneCatalog(payloads));
 
       try {
-        let group: string | undefined;
         const lines = await logLinesDuring(async () => {
           broadcastOneSegmentPerRung(orch);
           await waitFor(() => ladderEntry(payloads)?.renditions?.length === RUNGS.length, SETTLE_CEILING_MS);
-          // Read while the ladder is up: the orchestrator lets the group go with the last rung to stop.
-          group = groupOf(orch);
           await stopInOrder(orch, order);
         });
 
@@ -261,10 +222,7 @@ describe('a standalone ladder whose 1080p rung could not finish', () => {
           'the entry names its lowest rung′s recording',
         );
         assert.deepEqual(entry?.unfinishedRungs, [FAILING_RUNG], 'and it says which rung the recording lacks');
-
-        const finalMaster = masters.at(-1);
-        assert.deepEqual(finalMaster?.rungs, SIBLINGS, 'the recording′s master offers a rung that has no recording');
-        assert.equal(entry?.topic, group, 'the entry points a viewer at the master');
+        assert.equal(entry?.topic, entry?.renditions?.[0]?.topic, 'the entry points a bare client at its lowest rung');
 
         assert.equal(flipsIn(lines), 1, 'one broadcast ended, so the flip is announced exactly once');
       } finally {
@@ -375,13 +333,9 @@ describe('a ladder in admin mode whose 1080p rung could not finish', () => {
       { todo: ANSWER_REFUSES_RECORDINGS },
       async () => {
         const admin = fakeAdmin();
-        const masters: MasterWrite[] = [];
         const orch = orchestratorWhose1080pCannotFinish(undefined, {
           adminApi: admin.client,
-          ladderRegistry: new AdminLadderRegistry({
-            client: admin.client,
-            masterWriter: recordingMasterWriter(masters),
-          }),
+          ladderRegistry: new AdminLadderRegistry({ client: admin.client }),
         });
 
         try {
@@ -408,8 +362,6 @@ describe('a ladder in admin mode whose 1080p rung could not finish', () => {
             `the admin was told the broadcast became a recording ${recordings.length} times, and one broadcast ended`,
           );
 
-          const finalMaster = masters.at(-1);
-          assert.deepEqual(finalMaster?.rungs, SIBLINGS, 'the recording′s master offers a rung that has no recording');
           const [recording] = recordings;
           assert.equal(
             recording.state === ADMIN_STATE_VOD ? recording.recording : null,

@@ -619,20 +619,16 @@ describe('the end of a broadcast', () => {
         renditions.push(rendition);
         const finished = rendition.recording !== undefined;
         return {
-          masterIndex: 0,
           recording: finished ? (rendition.recording ?? null) : null,
           flippedToFinished: finished,
           duration: finished ? (rendition.duration ?? null) : null,
         } as RenditionAnnouncement;
       },
       recordRungUnfinished: async () => ({
-        masterIndex: null,
         recording: null,
         flippedToFinished: false,
         duration: null,
       }),
-      recordRungDelivered: () => {},
-      recordRungUploadFailed: () => {},
     } as unknown as LadderRegistry;
     const client = {
       reportState: async (_id: string, report: AdminStateReport) => {

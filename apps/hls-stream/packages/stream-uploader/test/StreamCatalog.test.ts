@@ -5,13 +5,10 @@ import { describe, it } from 'node:test';
 import { BeePublisherPool, SINGLE_PUBLISHER } from '../src/libs/BeePublisherPool.js';
 import { CatalogIndexStore } from '../src/libs/CatalogIndexStore.js';
 import { Logger } from '../src/libs/Logger.js';
-import { MasterFeedWriter } from '../src/libs/MasterFeedWriter.js';
 import { NodeUnreachableError } from '../src/libs/NodeUnreachableError.js';
 import { isNodeUnavailable } from '../src/libs/NodeWait.js';
-import { MASTER_REWRITE_RETRY_MS, StreamCatalog, TREAT_STATE_AS_LOST_AFTER } from '../src/libs/StreamCatalog.js';
+import { StreamCatalog, TREAT_STATE_AS_LOST_AFTER } from '../src/libs/StreamCatalog.js';
 import { MEDIA_TYPE_VIDEO, Rendition, STREAM_STATUS_LIVE } from '../src/types.js';
-
-import { waitAndConfirmNothingHappened, waitFor } from './helpers/waiting.js';
 
 const TEST_STREAM_KEY = '0'.repeat(63) + '1';
 const TEST_TOPIC = 'test-topic';
@@ -744,46 +741,20 @@ describe('StreamCatalog ladder write path', () => {
     avgBandwidth: 700_000,
   };
 
-  it('publishes the master before the catalog entry that points at it, and repoints the entry at the master', async () => {
-    // The catalog entry carries the master's location, so the master has to exist first. Record the
-    // order the two writes land in and assert the master precedes the catalog entry.
-    const events: string[] = [];
+  it('points the ladder entry at its lowest rung and names every rung under renditions', async () => {
     const writes: CapturedWrite[] = [];
-    const publishedGroups: string[] = [];
+    const bee = makeCatalogBee(writes, { lookupThrows: FEED_NOT_FOUND });
 
-    const bee = makeCatalogBee(writes, {
-      lookupThrows: FEED_NOT_FOUND,
-      holdWrite: () => {
-        events.push('catalog');
-        return Promise.resolve();
-      },
-    });
-
-    const masterWriter = {
-      publish: async (group: string) => {
-        events.push('master');
-        publishedGroups.push(group);
-        return { topic: 'master-topic', index: 4 };
-      },
-    } as unknown as MasterFeedWriter;
-
-    const catalog = new StreamCatalog(makePublishers(bee), TEST_STREAM_KEY, TEST_TOPIC, undefined, masterWriter);
+    const catalog = new StreamCatalog(makePublishers(bee), TEST_STREAM_KEY, TEST_TOPIC);
     await catalog.init();
 
     await catalog.upsertRendition(identity, rung);
 
-    assert.deepEqual(
-      events,
-      ['master', 'catalog'],
-      'the master must be published before the catalog entry that names it',
-    );
-    assert.deepEqual(publishedGroups, ['group-1']);
-
     const written = JSON.parse(writes[0].payload) as Array<{ topic: string; group: string; renditions: unknown[] }>;
     assert.equal(written.length, 1);
     assert.equal(written[0].group, 'group-1');
-    assert.equal(written[0].topic, 'master-topic', 'the catalog entry must point at the master, not the lowest rung');
-    assert.equal(written[0].renditions.length, 1, 'the rung it still carries for a client without master support');
+    assert.equal(written[0].topic, 'rung-topic', 'the entry points at the rung a bare client can play');
+    assert.equal(written[0].renditions.length, 1, 'the rungs a player builds the master from');
   });
 
   /**
@@ -1046,23 +1017,6 @@ describe('StreamCatalog ladder write path', () => {
     assert.equal(entry.state, 'vod', 'and it must still be a finished recording');
     assert.ok(writes.length > before, 'the re-announce still wrote, so this is not passing by doing nothing');
   });
-
-  it('falls back to pointing the entry at the lowest rung when no master writer is configured', async () => {
-    const writes: CapturedWrite[] = [];
-    const bee = makeCatalogBee(writes, { lookupThrows: FEED_NOT_FOUND });
-
-    const catalog = new StreamCatalog(makePublishers(bee), TEST_STREAM_KEY, TEST_TOPIC);
-    await catalog.init();
-
-    await catalog.upsertRendition(identity, rung);
-
-    const written = JSON.parse(writes[0].payload) as Array<{ topic: string }>;
-    assert.equal(
-      written[0].topic,
-      'rung-topic',
-      'without a master the entry points at the rung a bare client can play',
-    );
-  });
 });
 
 /**
@@ -1103,27 +1057,12 @@ describe('StreamCatalog and a rung that will not finish', () => {
   interface Recording {
     catalog: StreamCatalog;
     writes: CapturedWrite[];
-    /** The rung names of every master written, in order. */
-    masters: string[][];
   }
 
   /** Four rungs live, then 1080p recorded as one that will not finish and the other three finalized. */
   async function recordingWithoutTheTopRung(): Promise<Recording> {
     const writes: CapturedWrite[] = [];
-    const masters: string[][] = [];
-    const masterWriter = {
-      publish: async (group: string, renditions: Rendition[]) => {
-        masters.push(renditions.map((rendition) => rendition.name));
-        return { topic: group, index: masters.length - 1 };
-      },
-    } as unknown as MasterFeedWriter;
-    const catalog = new StreamCatalog(
-      makePublishers(feedbackBee(writes)),
-      TEST_STREAM_KEY,
-      TEST_TOPIC,
-      undefined,
-      masterWriter,
-    );
+    const catalog = new StreamCatalog(makePublishers(feedbackBee(writes)), TEST_STREAM_KEY, TEST_TOPIC);
     await catalog.init();
 
     for (const name of [...THE_OTHER_THREE, TOP_RUNG]) {
@@ -1134,7 +1073,7 @@ describe('StreamCatalog and a rung that will not finish', () => {
       await catalog.upsertRendition(identity, finished(name, 7 + at));
     }
     assert.equal(entryIn(writes).state, 'vod', 'the fixture was supposed to leave a finished recording');
-    return { catalog, writes, masters };
+    return { catalog, writes };
   }
 
   it('stays live while a sibling that can still finish has not', async () => {
@@ -1151,7 +1090,7 @@ describe('StreamCatalog and a rung that will not finish', () => {
   });
 
   it('keeps the recording finished when that rung re-announces without an index, as a recovered rung does', async () => {
-    const { catalog, writes, masters } = await recordingWithoutTheTopRung();
+    const { catalog, writes } = await recordingWithoutTheTopRung();
 
     const lines = await logLinesDuring(() => catalog.upsertRendition(identity, live(TOP_RUNG)));
 
@@ -1162,12 +1101,11 @@ describe('StreamCatalog and a rung that will not finish', () => {
       THE_OTHER_THREE,
     );
     assert.deepEqual(entry.unfinishedRungs, [TOP_RUNG], 'the mark has to survive an announce that carries no index');
-    assert.deepEqual(masters.at(-1), THE_OTHER_THREE, 'the recording′s master offered a rung with no recording');
     assert.equal(lines.filter((line) => line.includes('finalized to VOD')).length, 0);
   });
 
   it('adds the rung to the recording when it finishes after all, without a second flip', async () => {
-    const { catalog, writes, masters } = await recordingWithoutTheTopRung();
+    const { catalog, writes } = await recordingWithoutTheTopRung();
 
     const lines = await logLinesDuring(() => catalog.upsertRendition(identity, finished(TOP_RUNG, 20)));
 
@@ -1178,8 +1116,6 @@ describe('StreamCatalog and a rung that will not finish', () => {
       [...THE_OTHER_THREE, TOP_RUNG],
     );
     assert.equal(entry.unfinishedRungs, undefined, 'a rung with a recording is not one the recording lacks');
-    assert.deepEqual(masters.at(-1), [...THE_OTHER_THREE, TOP_RUNG]);
-    assert.equal(entry.index, masters.length - 1, 'the entry follows the master that names the fourth rung');
     assert.equal(
       lines.filter((line) => line.includes('finalized to VOD')).length,
       0,
@@ -1228,245 +1164,7 @@ describe('StreamCatalog and a rung that will not finish', () => {
     const announced = await catalog.recordRungUnfinished(identity, live(TOP_RUNG));
 
     assert.deepEqual(writes, [], 'an entry written now would list a broadcast nobody announced');
-    assert.deepEqual(announced, { masterIndex: null, recording: null, flippedToFinished: false, duration: null });
-  });
-});
-
-/**
- * A rung dying is corrected by rewriting the master from the segment path, and that write can fail
- * like any other. What must not happen is that the failure is recorded as a correction: the shape a
- * rewrite was attempted for used to be stamped as advertised before the write ran, so a master that
- * never reached the feed left the catalog believing it had, and nothing tried again. The docstring
- * leaned on the next transition or the next announce, and a steady broadcast produces neither, so a
- * viewer joining was offered a dead rung for the rest of the broadcast.
- */
-describe('StreamCatalog master rewrite retry', () => {
-  const identity = { title: 'title', owner: 'owner', group: 'group-1', mediatype: MEDIA_TYPE_VIDEO };
-
-  /** Ascending, and the order rungs are announced and fed in, so the shape strings line up. */
-  const LADDER: Rendition[] = [
-    { name: '360p', width: 640, height: 360, topic: 'topic-360p', bandwidth: 800_000, avgBandwidth: 700_000 },
-    { name: '480p', width: 854, height: 480, topic: 'topic-480p', bandwidth: 1_400_000, avgBandwidth: 1_200_000 },
-    { name: '720p', width: 1280, height: 720, topic: 'topic-720p', bandwidth: 2_800_000, avgBandwidth: 2_500_000 },
-    { name: '1080p', width: 1920, height: 1080, topic: 'topic-1080p', bandwidth: 5_000_000, avgBandwidth: 4_500_000 },
-  ];
-
-  const HEALTHY = LADDER.slice(0, 3).map((rendition) => rendition.name);
-  const DYING = LADDER[3].name;
-
-  /**
-   * Enough rounds of the healthy rungs for the ladder to leave the quiet one
-   * `RUNG_DEATH_LAG_SEGMENTS` behind, plus the two warmup rounds that get every rung onto the
-   * tracker in the first place.
-   */
-  const WARMUP_ROUNDS = 2;
-  const ROUNDS_TO_KILL_A_RUNG = 4;
-
-  /** A budget for a fire-and-forget rewrite to land, not a measurement of how long one takes. */
-  const SETTLE_CEILING_MS = 4_000;
-
-  interface FakeMaster {
-    writer: MasterFeedWriter;
-    /** The rung names of every publish that was allowed through, in order. */
-    accepted: string[][];
-    /** Every publish, including the ones that threw, so a suppressed retry is visible. */
-    attempts: number;
-    /** How many further publishes throw before one is accepted. */
-    failing: number;
-    /** Awaited inside publish, so a test can hold one write open while it delivers into it. */
-    hold?: () => Promise<void>;
-  }
-
-  function fakeMaster(): FakeMaster {
-    const master: FakeMaster = { accepted: [], attempts: 0, failing: 0, writer: null as unknown as MasterFeedWriter };
-    master.writer = {
-      publish: async (_group: string, renditions: Rendition[]) => {
-        master.attempts += 1;
-        await master.hold?.();
-        if (master.failing > 0) {
-          master.failing -= 1;
-          throw new Error('the master feed refused the write');
-        }
-        master.accepted.push(renditions.map((rendition) => rendition.name));
-        return { topic: 'master-topic', index: master.accepted.length };
-      },
-    } as unknown as MasterFeedWriter;
-    return master;
-  }
-
-  interface Ladder {
-    catalog: StreamCatalog;
-    master: FakeMaster;
-    /** Moves the injected reading forward, which is the only way the backoff elapses. */
-    advance: (ms: number) => void;
-    /** One segment on each of these rungs, in the order given. */
-    deliver: (rungs: readonly string[], rounds?: number) => void;
-  }
-
-  /**
-   * A four rung ladder mid-broadcast, with every rung announced and fed, and nothing in flight.
-   *
-   * ⚠️ Fed before it is announced, which is the opposite of the order a broadcast takes and is what
-   * makes the fixture deterministic. A rung reaching the liveness tracker changes the ladder's shape,
-   * so warming up after the announces leaves four fire-and-forget rewrites racing whatever the test
-   * does next. Before them the rewrite path returns at its own `lastIdentity` guard, writing nothing,
-   * and the announces then leave the advertised shape agreeing with the tracker.
-   */
-  async function announcedLadder(): Promise<Ladder> {
-    const writes: CapturedWrite[] = [];
-    const master = fakeMaster();
-    let nowMs = 0;
-    const catalog = new StreamCatalog(
-      makePublishers(feedbackBee(writes)),
-      TEST_STREAM_KEY,
-      TEST_TOPIC,
-      undefined,
-      master.writer,
-      () => nowMs,
-    );
-    await catalog.init();
-
-    const deliver = (rungs: readonly string[], rounds = 1): void => {
-      for (let round = 0; round < rounds; round++) {
-        for (const rung of rungs) {
-          catalog.recordRungDelivered(identity.group, rung);
-        }
-      }
-    };
-
-    deliver(
-      LADDER.map((rendition) => rendition.name),
-      WARMUP_ROUNDS,
-    );
-    for (const rendition of LADDER) {
-      await catalog.upsertRendition(identity, rendition);
-    }
-
-    assert.equal(master.attempts, LADDER.length, 'the fixture is only settled if nothing is still being rewritten');
-    return {
-      catalog,
-      master,
-      deliver,
-      advance: (ms) => {
-        nowMs += ms;
-      },
-    };
-  }
-
-  it('rewrites the master on the first delivery after the backoff, when the write for a rung death failed', async () => {
-    const { master, advance, deliver } = await announcedLadder();
-    const acceptedBeforeTheDeath = master.accepted.length;
-    master.failing = 1;
-
-    deliver(HEALTHY, ROUNDS_TO_KILL_A_RUNG);
-    await waitFor(() => master.attempts > 0 && master.failing === 0, SETTLE_CEILING_MS);
-    assert.equal(
-      master.accepted.length,
-      acceptedBeforeTheDeath,
-      'the rewrite was supposed to fail, so this case is not about a retry unless it did',
-    );
-
-    advance(MASTER_REWRITE_RETRY_MS + 1);
-    deliver(HEALTHY);
-
-    await waitFor(() => master.accepted.length > acceptedBeforeTheDeath, SETTLE_CEILING_MS);
-    assert.deepEqual(
-      master.accepted[master.accepted.length - 1],
-      HEALTHY,
-      'the retry has to write the shape the ladder is actually in, without the rung that stopped',
-    );
-    assert.ok(
-      !master.accepted[master.accepted.length - 1].includes(DYING),
-      'a viewer joining is still offered the rung that stopped producing',
-    );
-  });
-
-  it('queues one rewrite for a burst of deliveries across one transition', async () => {
-    const { master, deliver } = await announcedLadder();
-    const attemptsBeforeTheDeath = master.attempts;
-    let release = (): void => {};
-    master.hold = () =>
-      new Promise<void>((resolve) => {
-        release = resolve;
-      });
-
-    deliver(HEALTHY, ROUNDS_TO_KILL_A_RUNG);
-    await waitFor(() => master.attempts > attemptsBeforeTheDeath, SETTLE_CEILING_MS);
-    deliver(HEALTHY, ROUNDS_TO_KILL_A_RUNG);
-    await waitAndConfirmNothingHappened(() => master.attempts === attemptsBeforeTheDeath + 1, 150);
-
-    master.hold = undefined;
-    release();
-    await waitFor(() => master.accepted.length > 0, SETTLE_CEILING_MS);
-    assert.equal(
-      master.attempts,
-      attemptsBeforeTheDeath + 1,
-      'every delivery across one transition queued its own master write',
-    );
-  });
-
-  it('does not retry a writer that keeps failing more often than the backoff', async () => {
-    const { master, advance, deliver } = await announcedLadder();
-    const attemptsBeforeTheDeath = master.attempts;
-    master.failing = Number.MAX_SAFE_INTEGER;
-
-    deliver(HEALTHY, ROUNDS_TO_KILL_A_RUNG);
-    await waitFor(() => master.attempts > attemptsBeforeTheDeath, SETTLE_CEILING_MS);
-
-    deliver(HEALTHY, ROUNDS_TO_KILL_A_RUNG);
-    advance(MASTER_REWRITE_RETRY_MS - 1);
-    deliver(HEALTHY, ROUNDS_TO_KILL_A_RUNG);
-    await waitAndConfirmNothingHappened(() => master.attempts === attemptsBeforeTheDeath + 1, 150);
-
-    advance(2);
-    deliver(HEALTHY);
-    await waitFor(() => master.attempts === attemptsBeforeTheDeath + 2, SETTLE_CEILING_MS);
-    assert.equal(
-      master.attempts,
-      attemptsBeforeTheDeath + 2,
-      'a failing writer is asked once per backoff period, not once per delivery',
-    );
-  });
-
-  it('keeps the newer in-flight mark when a superseded rewrite finishes first', async () => {
-    const { master, deliver } = await announcedLadder();
-    const attemptsBeforeTheDeaths = master.attempts;
-    const releases: Array<() => void> = [];
-    master.hold = () =>
-      new Promise<void>((resolve) => {
-        releases.push(resolve);
-      });
-
-    // The rewrite for the first death is held open. While it is, the dead rung comes back and a
-    // different rung stops, so a rewrite for a second shape queues behind the first. A second rung
-    // merely dying would not do: past one stopped rung the rule drops none, which is the shape the
-    // announces already advertised.
-    deliver(HEALTHY, ROUNDS_TO_KILL_A_RUNG);
-    await waitFor(() => master.attempts === attemptsBeforeTheDeaths + 1, SETTLE_CEILING_MS);
-    deliver([DYING]);
-    const WITHOUT_720P = [HEALTHY[0], HEALTHY[1], DYING];
-    deliver(WITHOUT_720P, ROUNDS_TO_KILL_A_RUNG);
-
-    releases[0]();
-    await waitFor(() => master.attempts === attemptsBeforeTheDeaths + 2, SETTLE_CEILING_MS);
-
-    // With the second rewrite still open, a delivery in its shape must find it marked in flight.
-    deliver(WITHOUT_720P);
-    master.hold = undefined;
-    releases[1]();
-
-    await waitFor(() => master.accepted.length >= attemptsBeforeTheDeaths + 2, SETTLE_CEILING_MS);
-    await waitAndConfirmNothingHappened(() => master.attempts === attemptsBeforeTheDeaths + 2, 150);
-    assert.deepEqual(
-      master.accepted.slice(-2),
-      [HEALTHY, WITHOUT_720P],
-      'the two transitions were supposed to land as two writes, in order',
-    );
-    assert.equal(
-      master.attempts,
-      attemptsBeforeTheDeaths + 2,
-      'the earlier rewrite finishing cleared the mark of the one still in flight, so a delivery queued a duplicate',
-    );
+    assert.deepEqual(announced, { recording: null, flippedToFinished: false, duration: null });
   });
 });
 

@@ -34,52 +34,34 @@ therefore outlives any one session: a rung that restarts mid-broadcast, SRS boun
 encoder reconnecting, comes back onto the topic the stream list already names, finds its newest window
 in one opening scan, and numbers its playlist on from there with a single `#EXT-X-DISCONTINUITY` at the
 seam. Each session's recording is its own: a window is a live playlist, so there is no earlier
-recording to open with. Two things then tie the rungs back together:
+recording to open with. The rungs are tied back together in one place:
 
 - The four rungs merge into a **single catalog entry**, keyed by a shared group id rather than by
   topic. Four uploaders write that entry concurrently, which is safe only because every catalog
-  write goes through one serialized queue.
-- That same point is where the ladder's **master playlist** is written, to a fifth feed whose topic
-  is the group id — it is the only place the whole ladder is known, since each uploader holds just
-  its own rung. The catalog entry's `topic` points at the master, so one URL yields every rung.
+  write goes through one serialized queue. The entry's `renditions` name every rung with its topic,
+  its size and its bandwidth, which is everything a player builds the ladder's master playlist from,
+  and the entry's own `topic` is the lowest rung's, which a player that knows nothing of renditions
+  plays. No master playlist is written to Swarm.
 
 The ladder becomes a recording once every rung has either finalized or stopped without a recording,
 and at least one of them finalized. A rung stops without one when its stop fails, as 1080p's did on
 2026-09-23 when its full postage batch refused its recording: before this, the entry stayed `live`
-with no index for good. The finished entry and its master then name only the rungs that have a
-recording, and `unfinishedRungs` names the rest. A rung that finishes later, when its recovery entry
+with no recording for good. The finished entry then names only the rungs that have a recording, and
+`unfinishedRungs` names the rest. A rung that finishes later, when its recovery entry
 is retried at the next boot, is added to the recording then, and nothing announces a second ending.
 
-Each rung's `BANDWIDTH` in the master is measured from real segments rather than copied from the
+Each rung's bandwidth on its rendition is measured from real segments rather than copied from the
 encoder's target, and is re-announced when it drifts more than 15% (at most every 30s, since the
 catalog is one feed shared by every stream). What tells a player that two rungs share a timeline is
 the pair of numbers on every segment line, and they are the subject of the next section.
 
-The master also stops advertising a rung that has stopped being produced. A rung the ladder has
-delivered four segments past is dropped from the next master write, and it is put back the moment it
-delivers again, unless its uploads were being refused, which the next paragraph covers. So a viewer
-joining during an outage is not offered a quality with nothing behind it. Measured live on
-2026-09-01: dropped 6.9s after the rung went down, restored 11.3s after it came back. The rule is
-`LadderLiveness`, and how it drops a rung is deliberately a copy of the player's own rule in
-`packages/client/src/components/SwarmHlsPlayer/feedState.ts` rather than a second independent one.
-That file took eight attempts to get right and all three of its properties are load bearing: count
-delivered segments rather than read a clock, compare against a middle rung rather than the leader,
-and measure each rung's lag from where the ladder stood at its own last delivery. A master naming no
-renditions at all is never written, because that is an unplayable stream rather than a degraded one.
-
-The one place the two rules differ is taking a rung back, which the player never does. A rung that
-fell behind while its uploads were being refused, a full postage batch being the measured cause,
-comes back into the master only after landing eight segments in a row (`RUNG_READMIT_AFTER_SEGMENTS`).
-On 2026-09-23 each stray segment such a rung landed put it back, and the master was rewritten 793
-times in four hours, flipping between three rungs and four.
-
-⛔ A rung dying is not a rendition announcement, so nothing on the announce path asks this question.
-The segment path asks it on every delivery and rewrites the master only when the set of live rungs
-actually changes. A version of this filter shipped correct, tested and deployed, and never ran once,
-because only `upsertRendition` wrote a master.
+A rung that stops being produced stays in the entry until the broadcast ends. The player finds it
+out itself: switching to a rung whose newest window is absent or old is refused, and that rung is
+dropped from the player's own ladder. The master playlist that used to be rewritten within seconds
+of a rung stopping, and `LadderLiveness` behind it, went with the master feed.
 
 With `ADMIN_API_URL` set as well, everything above still happens, but the merge moves out of the
-catalog feed and into the admin and the master's topic is the declared one — see
+catalog feed and into the admin, and the declared topic is the ladder's group. See
 [Admin mode](#admin-mode).
 
 ### The manifest contract: timestamps and continuous published numbering
@@ -471,10 +453,9 @@ Because nothing about an address depends on the node, all four rungs still publi
 key and therefore one owner. Rungs differ only by topic, and moving a rung to a different node later
 changes nothing a viewer sees.
 
-The catalog and every master playlist are written through **the lowest rung's node**: its batch
-outlives the others by roughly 7×, and those two feeds are the only addresses a viewer needs to open
-a stage. Riding them on the 1080p node would take discovery down first, while three rungs were still
-publishing fine.
+The catalog is written through **the lowest rung's node**: its batch outlives the others by roughly
+7×, and the catalog is the one address a viewer needs to open a stage. Riding it on the 1080p node
+would take discovery down first, while three rungs were still publishing fine.
 
 ## Prerequisites
 
@@ -954,7 +935,7 @@ mints the feed topic and the publish key; this service stops deciding either:
 | A lone rendition mints a random topic              | A lone rendition writes on the declared topic, continuing its newest window |
 | This service writes the Swarm stream catalog       | It writes none, and reports `live` then `vod` to the admin instead          |
 | `PUBLISH_KEY_SECRET` authenticates publishers      | `PUBLISH_KEY_SECRET` is ignored                                             |
-| A ladder merges its rungs in the catalog feed      | The admin merges them, and the declared topic is the ladder's master feed   |
+| A ladder merges its rungs in the catalog feed      | The admin merges them, and the declared topic is the ladder's group         |
 
 A publish is refused when the ingest `app/stream` is not declared, when the admin cannot be reached,
 when the presented `key=` is not the declaration's, when the declaration is owned by a feed key this
@@ -992,12 +973,11 @@ about: an uploader the manager did not deploy linked to the admin cannot report 
 ### The ABR ladder in admin mode
 
 `ABR_ENABLED` and `ADMIN_API_URL` run together, and what reconciles them is that **the declared topic
-becomes the ladder's master playlist feed**. It has to be: the master's feed topic is the group id,
-and the declared topic is the one address the admin hands a viewer before anything has published.
+becomes the ladder's group**, the one identifier the admin hands out before anything has published.
 
-Everything else follows. Each rung publishes its own media playlists on a topic **derived from the
-group and its rung name** — four rungs sharing the master's feed would write over each other and over
-the master, and a rung's feed has to be found again by name after a restart rather than re-minted.
+Everything else follows. Each rung writes its own live windows on a topic **derived from the group and
+its rung name**: four rungs sharing one topic would write over each other, and a rung's topic has to
+be found again by name after a restart rather than re-minted.
 That topic is stable for the life of the declaration, so a rung that restarts continues the
 numbering its last session's newest window left. **The admin therefore accepts `live` after `vod`**: a
 broadcaster who stops and comes back is
@@ -1008,15 +988,12 @@ The ladder's merge state, one record per rung, moves out of the catalog feed and
 `Rendition` to `POST /api/internal/streams/:id/renditions` (bearer `ADMIN_API_TOKEN`, the same
 internal-route auth as the state route, and **the admin must serve it**), the admin merges it by the
 same "a rung that has already finished stays finished" rule `StreamCatalog.keepingWhatFinished`
-states — additionally requiring the report to name the rung's own feed, which is true of every
-report a well-formed ladder sends — writes `renditions` into the catalog entry it already owns, and
-answers with the merged ladder. The uploader writes the master from that answer, filtered by the same `LadderLiveness` rule
-as ever, and rewrites it when a rung stops without asking the admin again. Answers are applied in the
-order the admin merged them, by the catalog write index each one carries, so four rungs whose answers
-land out of order cannot leave an older merge on the master.
+states, additionally requiring the report to name the rung's own topic, which is true of every report
+a well-formed ladder sends, writes `renditions` into the catalog entry it already owns, and answers
+with the merged ladder, which is what this service judges the flip from.
 
 `live` and `vod` are then reported for the **ladder** rather than for a rung. `live` goes out once the
-first master has landed, which may be said more than once and is accepted. `vod` goes out from the
+rung's report has landed, which may be said more than once and is accepted. `vod` goes out from the
 rung whose own report finished the ladder, or from the failed stop of a rung that could not finish
 when that is what finishes it. The admin cannot hold that a rung will not finish, because its
 rendition route refuses fields it does not know, so this service judges such a ladder itself. Its
@@ -1024,15 +1001,15 @@ rendition route refuses fields it does not know, so this service judges such a l
 the merge answered it, which is what the stream list entry names too. Each rung's own recording is on
 its rendition. Its `duration` is the ladder's. It is said again by any later announce that finds the ladder
 finished while the admin still holds the stream as anything but `vod`: the admin answers the flip
-once, and if the master write behind that one report failed, the next announce is the only chance
-left to list the recording. `vod -> vod` is accepted, so the repeat is harmless.
+once, and if that one answer was lost on its way back, the next announce is the only chance left to
+list the recording. `vod -> vod` is accepted, so the repeat is harmless.
 
 Two things a declared stream does that a **standalone single-rendition** stream does not: continue its
 media sequence from its topic's newest window, and write no window until a re-announced predecessor
 has drained. Both exist because two sessions share one topic there, and two writers on one window
 address are as bad as two on one feed index. A rung owes both as well, in either deployment, because
 its derived topic outlives its session in exactly the same way. The standalone lone rendition, whose
-topic is a fresh uuid per session, is the only one that owes neither. The master feed writer still establishes its own index.
+topic is a fresh uuid per session, is the only one that owes neither.
 
 ### Local loop with the admin API
 
@@ -1184,19 +1161,16 @@ curl -G http://localhost:3000/stream/status \
 
 ## Core Components
 
-| Module               | Description                                                                      |
-| -------------------- | -------------------------------------------------------------------------------- |
-| `StreamOrchestrator` | Central coordinator — manages stream lifecycle, queue, backpressure, recovery    |
-| `StreamUploader`     | Per-stream upload session: uploads segments, writes the live window every 2 s    |
-| `StreamCatalog`      | Maintains the stream directory as a Swarm feed                                   |
-| `RecoveryStore`      | Persists stream state to disk for crash recovery                                 |
-| `ManifestManager`    | Builds and updates HLS manifests                                                 |
-| `AbrLadder`          | The rung list from `ABR_LADDER`, and what maps a stream name back to its rung    |
-| `BeePublisherPool`   | Which Bee node and postage batch each rung publishes through                     |
-| `MasterPlaylist`     | Builds a ladder's multivariant playlist                                          |
-| `MasterFeedWriter`   | Publishes that master to a feed per ladder, topic = the ladder's group id        |
-| `BitrateMeter`       | Measures each rung's real bitrate, which becomes the master's `BANDWIDTH`        |
-| `LadderLiveness`     | Which rungs are still producing, so the master stops advertising one that is not |
+| Module               | Description                                                                   |
+| -------------------- | ----------------------------------------------------------------------------- |
+| `StreamOrchestrator` | Central coordinator — manages stream lifecycle, queue, backpressure, recovery |
+| `StreamUploader`     | Per-stream upload session: uploads segments, writes the live window every 2 s |
+| `StreamCatalog`      | Maintains the stream directory as a Swarm feed                                |
+| `RecoveryStore`      | Persists stream state to disk for crash recovery                              |
+| `ManifestManager`    | Builds and updates HLS manifests                                              |
+| `AbrLadder`          | The rung list from `ABR_LADDER`, and what maps a stream name back to its rung |
+| `BeePublisherPool`   | Which Bee node and postage batch each rung publishes through                  |
+| `BitrateMeter`       | Measures each rung's real bitrate, which becomes its rendition's bandwidth    |
 
 ## Scripts
 

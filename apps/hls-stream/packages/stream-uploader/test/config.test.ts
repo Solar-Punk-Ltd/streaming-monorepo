@@ -212,7 +212,6 @@ describe('the environment contract', () => {
     const WINDOW_SOURCES = [
       'packages/stream-uploader/src/libs/StreamUploader.ts',
       'packages/stream-uploader/src/libs/StreamCatalog.ts',
-      'packages/stream-uploader/src/libs/MasterFeedWriter.ts',
     ];
 
     /** `backoffDelayMs(0)` with the shipped base, before jitter takes it down to somewhere in [175, 350). */
