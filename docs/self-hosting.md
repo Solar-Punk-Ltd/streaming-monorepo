@@ -92,12 +92,21 @@ with the admin. [architecture/stages.md](architecture/stages.md) is the design.
    ```
 
    ```sh
-   ./deploy/deploy.sh <control-host>
+   ./deploy/deploy.sh --host=<control-host>
    ```
 
    It worked when the deploy ends without an error and `http://localhost:8080` shows the manager's
    sign-in page while `ssh <control-host>` is open. The first deploy takes a while, because the host
    builds the stack version the manager bundles.
+
+   A second manager host gets an env file of its own, `manager/.env.<name>` made from the same
+   sample, and `--profile=<name>` deploys it to the host named with it. A deploy sends only the file
+   it uses, and every host keeps it as `manager/.env`. Both flags also take their value as the next
+   word, as in `--host <control-host>`.
+
+   ```sh
+   ./deploy/deploy.sh --host=<second-control-host> --profile=<name>
+   ```
 
    Every Bee API and engine HTTP port the stack runs answers on the host's Docker bridge address
    wherever its own `*_BIND` setting is empty, because the API asks for no password and Docker

@@ -1,13 +1,23 @@
 #!/usr/bin/env bash
 # Deploy the streaming-infra-manager to a server via rsync + remote build.
 #
-#   ./deploy/deploy.sh [ssh-target]
+#   ./deploy/deploy.sh [--host=<ssh-target> | <ssh-target>] [--profile=<name>]
+#
+# Each flag also takes its value as the next word, as in --host <ssh-target>
+# --profile <name>, the way web2-admin's deploy.sh does.
 #
 # ssh-target defaults to `viewer` (configure in ~/.ssh/config). Example:
 #   Host viewer
 #     HostName <ip>
 #     User <deploy user>
 #     LocalForward 8080 localhost:8080
+#
+# --profile=<name> deploys manager/.env.<name> in place of manager/.env, for a
+# host with settings of its own, and only to a host named with it, because the
+# default target would get that profile's settings. "default" is manager/.env.
+# The file must exist: a profile never falls back to manager/.env. Whatever its
+# name here, the host keeps it as manager/.env, so the host's folder, compose
+# project and volumes are the same for every profile.
 #
 # What it does:
 #   1. Writes the stack pin into manager/.stack-commit: the last commit that
@@ -19,13 +29,18 @@
 #      GitHub and builds its apps/hls-stream there if it has no complete build
 #      of it, through the same path a version added in the UI takes.
 #   2. rsyncs the repo to the manager's folder on the host, MANAGER_ROOT in
-#      manager/.env or /opt/streaming/streaming-infra-manager, without
-#      manager/swarm-hls-stream: the tree the engines of existing deployments
-#      mount is never written over again, so a container restart keeps the
-#      files it was started with. Excludes node_modules, build caches and
-#      .git. The manager's .env DOES ship, and --delete means this checkout
-#      is the only source of truth for it.
-#   3. Builds the images on the server, decides there whether this host has
+#      the profile's env file or /opt/streaming/streaming-infra-manager,
+#      without manager/swarm-hls-stream: the tree the engines of existing
+#      deployments mount is never written over again, so a container restart
+#      keeps the files it was started with. Excludes node_modules, build
+#      caches, .git, and every env file in the tree, every name that starts
+#      with .env, but the .env.sample files. The profile's env file follows on
+#      its own, to manager/.env on the host, so no host gets another's
+#      settings, and this checkout is the only source of truth for the one it
+#      gets.
+#   3. Names, on the host, the env files earlier deploys left in its manager/
+#      folder, with the command that removes them, and removes none. Then
+#      builds the images on the server, decides there whether this host has
 #      ever run the manager, and then runs `manager:upgrade` in a one-off
 #      container of the image just built. The first use question is answered
 #      before that container exists, because preparing it can create the
@@ -44,15 +59,88 @@
 
 set -euo pipefail
 
-SSH_TARGET="${1:-viewer}"
+# Each argument at most once, however it is written: the ssh target, as
+# --host=<ssh-target>, --host <ssh-target> or on its own, and the profile, as
+# --profile=<name> or --profile <name>. Any other word that starts with a dash
+# is refused.
+SSH_TARGET="viewer"
+TARGET_GIVEN=false
+PROFILE="default"
+PROFILE_GIVEN=false
+take_target() {
+    if [ "$TARGET_GIVEN" = true ]; then
+        echo "ERROR: the ssh target is given twice (the second: $1)" >&2
+        exit 1
+    fi
+    SSH_TARGET="$1"
+    TARGET_GIVEN=true
+}
+take_profile() {
+    if [ "$PROFILE_GIVEN" = true ]; then
+        echo "ERROR: --profile is given twice (the second: $1)" >&2
+        exit 1
+    fi
+    PROFILE="$1"
+    PROFILE_GIVEN=true
+}
+while [ $# -gt 0 ]; do
+    case "$1" in
+        --host=*) take_target "${1#--host=}" ;;
+        --profile=*) take_profile "${1#--profile=}" ;;
+        --host | --profile)
+            # The value is the next word. One that starts with a dash is the
+            # next flag, and taking it as the value would hide that this flag
+            # has none.
+            if [ $# -lt 2 ] || [[ "$2" == -* ]]; then
+                echo "ERROR: $1 requires a value, as $1=<value> or $1 <value>" >&2
+                exit 1
+            fi
+            if [ "$1" = --host ]; then take_target "$2"; else take_profile "$2"; fi
+            shift
+            ;;
+        -*)
+            echo "ERROR: unknown option $1. Usage: deploy.sh [--host=<ssh-target> | <ssh-target>] [--profile=<name>], each flag also with its value as the next word" >&2
+            exit 1
+            ;;
+        # The target on its own. An empty one is taken here and refused below.
+        *) take_target "$1" ;;
+    esac
+    shift
+done
+# A profile is one host's settings, its database password among them, and the
+# default target would get them, so a profile goes only to a host named with it.
+if [ "$PROFILE_GIVEN" = true ] && [ "$TARGET_GIVEN" = false ]; then
+    echo "ERROR: --profile=$PROFILE needs the host named, as --host=<ssh-target> or <ssh-target>. Without one the deploy would give that profile's settings to $SSH_TARGET, the default target." >&2
+    exit 1
+fi
 # It is handed to ssh as the destination, where a leading dash is an option.
 if [[ "$SSH_TARGET" == -* ]]; then
     echo "ERROR: the ssh target must not start with a dash (got: $SSH_TARGET)" >&2
     exit 1
 fi
-# Where the manager lives on the host when manager/.env names no MANAGER_ROOT.
-# The data, the stack versions and the ssh identity sit beside it, in the same
-# parent folder, unless manager/.env names them too.
+# It is written into the script the host runs too, in the command the warning
+# about leftover env files prints, so it is held to the manager's own rule for
+# a deploy target (targetAlias): an ssh alias, a host name or an address, with
+# or without user@ in front.
+if ! [[ "$SSH_TARGET" =~ ^[A-Za-z0-9][A-Za-z0-9._@-]{0,127}$ ]]; then
+    echo "ERROR: the ssh target must be an ssh alias, a host name or address, or user@host: letters, digits, dot, underscore, @ and hyphen (got: $SSH_TARGET)" >&2
+    exit 1
+fi
+# The name becomes part of a file name, and the manager's own rule for a
+# profile name keeps that file inside manager/.
+if ! [[ "$PROFILE" =~ ^[a-z0-9][a-z0-9-]{0,30}$ ]]; then
+    echo "ERROR: invalid profile name: $PROFILE (must match ^[a-z0-9][a-z0-9-]{0,30}\$)" >&2
+    exit 1
+fi
+# manager/.env.sample is the file every profile is copied from, and its
+# values are public.
+if [ "$PROFILE" = "sample" ]; then
+    echo "ERROR: sample is not a profile: manager/.env.sample is the file each profile's env file is copied from." >&2
+    exit 1
+fi
+# Where the manager lives on the host when the profile's env file names no
+# MANAGER_ROOT. The data, the stack versions and the ssh identity sit beside it,
+# in the same parent folder, unless that file names them too.
 readonly DEFAULT_REMOTE_PATH="/opt/streaming/streaming-infra-manager"
 # How long the upgrade waits for the host to fetch and build the pinned stack
 # commit before it reports a failure. A first build on a cold host pulls the
@@ -68,10 +156,18 @@ fi
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "$REPO_ROOT"
 
-echo "==> Checking manager/.env"
-ENV_FILE="manager/.env"
+# The profile's env file, the only one this deploy sends, and the one every
+# check below reads. A profile always means its own file: falling back to
+# manager/.env would give this host another host's settings.
+if [ "$PROFILE" = "default" ]; then
+    ENV_FILE="manager/.env"
+else
+    ENV_FILE="manager/.env.$PROFILE"
+fi
+echo "==> Deploying profile ${PROFILE} to ${SSH_TARGET}"
+echo "==> Checking ${ENV_FILE}"
 if [ ! -f "$ENV_FILE" ]; then
-    echo "ERROR: $ENV_FILE not found. Copy manager/.env.sample and fill in the required values." >&2
+    echo "ERROR: $ENV_FILE not found. Copy manager/.env.sample to $ENV_FILE and fill in the required values." >&2
     exit 1
 fi
 if ! grep -q "POSTGRES_PASSWORD=.\+" "$ENV_FILE"; then
@@ -84,9 +180,13 @@ fi
 MANAGER_ROOT_SETTING="$(sed -n 's/^MANAGER_ROOT=//p' "$ENV_FILE" | tail -n 1 | tr -d '\r"' | tr -d "'")"
 REMOTE_PATH="${MANAGER_ROOT_SETTING:-$DEFAULT_REMOTE_PATH}"
 # It is interpolated into the remote heredoc, so it is held to an absolute path
-# of plain characters.
-if ! [[ "$REMOTE_PATH" =~ ^/[A-Za-z0-9._/-]+$ ]] || [[ "$REMOTE_PATH" == */ ]]; then
-    echo "ERROR: MANAGER_ROOT must be an absolute path of letters, digits, dots, dashes, underscores and slashes, with no trailing slash (got: $REMOTE_PATH)" >&2
+# of plain characters. It names the folder the host's cd, the upgrade's
+# --compose-file and --mutable-root and the printed rm all work in, so it is
+# also held, as web2-admin holds its remote path, to no . or .. segment and no
+# empty one: a profile's file must not be able to point the deploy anywhere
+# but the folder it names.
+if ! [[ "$REMOTE_PATH" =~ ^/[A-Za-z0-9._/-]+$ ]] || [[ "$REMOTE_PATH" =~ (^|/)\.\.?(/|$) ]] || [[ "$REMOTE_PATH" == *//* ]] || [[ "$REMOTE_PATH" == */ ]]; then
+    echo "ERROR: MANAGER_ROOT must be an absolute path of letters, digits, dots, dashes, underscores and slashes, without empty, . or .. segments and with no trailing slash (got: $REMOTE_PATH)" >&2
     exit 1
 fi
 HOST_ROOT="$(dirname "$REMOTE_PATH")"
@@ -115,9 +215,9 @@ fi
 # database before the bundled build fails, so it is asked the same way here first:
 # no credential helper, no prompt, and none of this machine's git configuration,
 # which could hold a helper or rewrite the address. The address is the first
-# repository STACK_SOURCES in manager/.env lists, read the way the manager reads
-# it, or the manager's MONOREPO_STACK_SOURCE when it lists none, and a test
-# holds the two to each other.
+# repository STACK_SOURCES in the profile's env file lists, read the way the
+# manager reads it, or the manager's MONOREPO_STACK_SOURCE when it lists none,
+# and a test holds the two to each other.
 STACK_SOURCES_SETTING="$(sed -n 's/^STACK_SOURCES=//p' "$ENV_FILE" | tail -n 1 | tr -d '\r"' | tr -d "'")"
 STACK_REPO_URL="${STACK_SOURCES_SETTING%%,*}"
 STACK_REPO_URL="${STACK_REPO_URL%%#*}"
@@ -147,10 +247,11 @@ MANAGER_DIGEST="$(git ls-tree -r HEAD | shasum -a 256 | cut -c1-64)"
 # pnpm-workspace.yaml at its root. A checkout of the one workspace holds them
 # only at the repository root, so the manager's own pair is cut out of the
 # root's by tools/app-workspace into a folder under TMPDIR, removed when this
-# script exits however it exits, and given to the one rsync as a second source:
-# the pair lands where the manager's own went, and --delete keeps it. A checkout
-# whose manager keeps its own pair ships it as it always did. The empty second
-# source expands to nothing under set -u in bash 3.2 through the + form.
+# script exits however it exits, and given to the repository's rsync as a
+# second source: the pair lands where the manager's own went, and --delete
+# keeps it. A checkout whose manager keeps its own pair ships it as it always
+# did. The empty second source expands to nothing under set -u in bash 3.2
+# through the + form.
 CUT_SOURCE=()
 WORKSPACE_ROOT="$(git rev-parse --show-toplevel)"
 if [ ! -f pnpm-lock.yaml ] && [ -f "$WORKSPACE_ROOT/pnpm-lock.yaml" ]; then
@@ -162,6 +263,15 @@ if [ ! -f pnpm-lock.yaml ] && [ -f "$WORKSPACE_ROOT/pnpm-lock.yaml" ]; then
 fi
 
 echo "==> rsync → ${SSH_TARGET}:${REMOTE_PATH} (manager/swarm-hls-stream left as it is)"
+# The first rule that matches a path wins: every .env.sample is sent, wherever
+# it is, manager/'s and the test fixtures' alike, and every other name in the
+# tree that starts with .env is neither sent nor, being excluded, deleted on
+# the host. That is manager/.env and each manager/.env.<profile>, this
+# folder's own .env, the credentials a session is handed for the running
+# instance, the frontend's such as Vite's .env.local, and the copies an editor
+# or a hand leaves beside any of them, .envrc, .env~ or .env-old, which can
+# hold the same secrets. Until 2026-10-06 all of them were sent, which gave
+# every host the settings of every other, database passwords and all.
 rsync -avz --delete \
     --exclude '.git/' \
     --exclude 'node_modules/' \
@@ -170,7 +280,17 @@ rsync -avz --delete \
     --exclude '**/dist/.tsbuildinfo' \
     --exclude '*.tsbuildinfo' \
     --exclude '.DS_Store' \
+    --include '.env.sample' \
+    --exclude '.env*' \
     ./ ${CUT_SOURCE[@]+"${CUT_SOURCE[@]}"} "${SSH_TARGET}:${REMOTE_PATH}/"
+
+echo "==> ${ENV_FILE} → ${SSH_TARGET}:${REMOTE_PATH}/manager/.env"
+# The profile's env file, on its own, becomes the host's manager/.env, the file
+# compose and the block below read. The rsync above excludes that path, so it
+# neither writes nor deletes it, and this transfer is what replaces it. It runs
+# second because the first one makes manager/ on a new host. --copy-links sends
+# what a link points at, which is what the checks above read.
+rsync -avz --copy-links "$ENV_FILE" "${SSH_TARGET}:${REMOTE_PATH}/manager/.env"
 
 echo "==> Remote build + upgrade"
 # Detect the server's primary IP on the host (the manager runs in a container,
@@ -179,6 +299,27 @@ echo "==> Remote build + upgrade"
 ssh "$SSH_TARGET" bash -s <<REMOTE
 set -euo pipefail
 cd ${REMOTE_PATH}/manager
+
+# Until 2026-10-06 a deploy sent every file in manager/ whose name starts with
+# .env, so this folder can still hold other profiles' files, and copies such as
+# .envrc or .env~, beside the .env it runs on. Every one of them but .env and
+# .env.sample is named here: this folder is where the profiles' files were.
+# Nothing reads them: compose reads .env alone. But each keeps the settings it
+# was sent with, a database password among them, and .dockerignore leaves out
+# only .env and .env.*, so the api image build is handed the rest. rsync never
+# deletes a file it excludes, and removing them is the operator's call, so they
+# are named here with the command that removes them. printf %q escapes each
+# name, so one with a space or a glob in it is still removed as itself.
+LEFTOVER_ENV_FILES=""
+for leftover in .env*; do
+    if [ -f "\${leftover}" ] && [ "\${leftover}" != .env ] && [ "\${leftover}" != .env.sample ]; then
+        LEFTOVER_ENV_FILES="\${LEFTOVER_ENV_FILES} \$(printf '%q' "\${leftover}")"
+    fi
+done
+if [ -n "\${LEFTOVER_ENV_FILES}" ]; then
+    echo "[deploy] WARNING: ${REMOTE_PATH}/manager on this host still has env files that earlier deploys copied there, and nothing reads them:\${LEFTOVER_ENV_FILES}. The manager runs on .env alone, but each of these keeps the settings it was copied with, a database password among them. Remove them when you are ready:" >&2
+    echo "[deploy]   ssh ${SSH_TARGET} 'cd ${REMOTE_PATH}/manager && rm\${LEFTOVER_ENV_FILES}'" >&2
+fi
 
 # The || true is what keeps this line from ending the whole remote block: it runs
 # under pipefail, so a host without ip, or a route that cannot be read, would
