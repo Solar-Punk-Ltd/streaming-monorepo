@@ -475,7 +475,7 @@ describe('renditionReportSchema', () => {
     ]);
   });
 
-  it('requires every field a master playlist entry needs', () => {
+  it('requires every field a ladder rendition needs', () => {
     const errors = problemsOf(renditionReportSchema, {});
     assert.equal(errors.length, 6, errors.join('; '));
   });

@@ -65,7 +65,7 @@ const RECORDING_720 = 'b2'.repeat(32);
 /** A stream id no row has. */
 const UNKNOWN_STREAM = 'ffffffff-ffff-4fff-8fff-ffffffffffff';
 
-/** One rung of a ladder, as the uploader reports it; `recording` set marks it finished. */
+/** One rung of a ladder, as the uploader reports it. `recording` set marks it finished. */
 const rung = (name: string, height: number, recording?: string) => ({
   name,
   width: (height * 16) / 9,

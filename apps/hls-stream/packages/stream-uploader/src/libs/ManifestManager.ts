@@ -187,7 +187,6 @@ function headerNumber(lines: readonly string[], tag: string, fallback: number): 
  * header. Neither applies to this project: segments are self-contained MPEG-TS with no
  * initialization section, and nothing here encrypts. A deployment that started publishing fMP4 or
  * encrypted segments would have to carry them.
- *
  */
 export function inheritedTimeline(manifest: string): InheritedTimeline | null {
   const lines = manifest.split('\n').map((line) => line.trim());

@@ -687,7 +687,7 @@ describe('internal rendition reports', () => {
 
   it('un-finishes every rung when the broadcast goes live again', async () => {
     // Each rung continues on the feed it already owns, so the ladder survives
-    // the resume — but not the recordings, which name the take that just
+    // the resume, but not the recordings, which name the take that just
     // ended. They come back one final report at a time.
     const live = await api<StreamStateResponse>('POST', `/api/internal/streams/${stream.id}/state`, {
       ...uploaderCall(),

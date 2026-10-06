@@ -12,7 +12,7 @@ import { makeRecoveredState } from './helpers/recoveredState.js';
  *
  * Its numbering is a feed index and its glued prefix came off a feed head, neither of which this
  * uploader writes or reads. It is not rebuilt: the entry is dropped with one line and the stream id is
- * free for a fresh broadcast. Levi's ruling of 2026-10-07, no path built around the old design.
+ * free for a fresh broadcast. the owner's ruling of 2026-10-06, no path built around the old design.
  */
 describe('a recovery entry from the uploader on feeds', () => {
   const PRE_WINDOW = 'live/pre-window';
