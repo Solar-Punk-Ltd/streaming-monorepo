@@ -64,11 +64,18 @@ class CatalogFetchError extends Error {
  * routing both through `nextFeedRequest` is deliberate: the last time this rule existed twice the two
  * copies diverged.
  *
- * **A miss is cheap, which is what makes this work for a mostly idle feed.** A walking reader asks
- * for a slot that does not exist yet on almost every poll, since broadcasts are rare. Measured
- * 2026-08-05: that 404 costs 4ms at the median, indistinguishable from a hit. It has a real tail,
- * about one in twenty taking 1.4s, which is invisible at a five second cadence and is the reason
- * `MAX_WALK_PER_READ` exists rather than an unbounded walk. See the `feed-miss-cost` measurement (kept outside the repository).
+ * **A miss is the ordinary answer, and it is not always cheap.** A walking reader asks for a slot that
+ * does not exist yet on almost every poll, since broadcasts are rare. Measured 2026-08-05 on a single
+ * node that wrote the catalog itself, that 404 cost 4ms at the median, with about one in twenty taking
+ * 1.4s. Now that the catalog is written on another node, a miss on the gateway takes about a second,
+ * with a tail past six seconds under load, and some end in a timeout or a status other than 404
+ * rather than a clean miss. See the `feed-miss-cost` measurement (kept outside the repository).
+ *
+ * ⛔ **So once the head has answered, a slot read that times out or is refused means "nothing new
+ * yet", never an error.** Raising it put the page's poll into SWR's error state, which skips the
+ * regular reads and backs off, and one slow miss held an open page behind until a reload. Only a head
+ * lookup that fails, or a gateway that cannot be reached at all, is raised. `MAX_WALK_PER_READ` still
+ * bounds how long one read can walk.
  */
 export class CatalogFeedReader {
   private index: FeedIndex | null = null;
@@ -172,8 +179,8 @@ export class CatalogFeedReader {
       }
 
       if (response.status === SLOT_NOT_WRITTEN_YET) {
-        // The expected case on an idle catalog, and the cheap one. The walk stops rather than
-        // retrying here, since the poll comes round again.
+        // The expected case on an idle catalog. The walk stops rather than retrying here, since the
+        // poll comes round again.
         break;
       }
       if (!response.ok) {
