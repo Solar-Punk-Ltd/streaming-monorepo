@@ -559,6 +559,39 @@ describe('the note window writer', () => {
     await writer.stop();
   });
 
+  it('does not write a redundant note when an older news write finishes after a newer one', async () => {
+    const clock = new FakeClock(START_MS);
+    let releaseOlder: () => void = () => {};
+    const { calls, write } = recordingWrite(clock, (slot) =>
+      slot.window === firstHeartbeat + 1
+        ? new Promise<void>((resolve) => {
+            releaseOlder = resolve;
+          })
+        : Promise.resolve(),
+    );
+    let newest = -1;
+    const { writer } = noteWriter(clock, write, () => newest);
+    writer.start();
+    await clock.advance(windowEnd(firstHeartbeat, NOTE_WINDOW_MS) - START_MS);
+    newest = 1;
+    await clock.advance(NOTE_WINDOW_MS);
+    newest = 2;
+    await clock.advance(2 * NOTE_WINDOW_MS);
+    releaseOlder();
+    await clock.advance(NOTE_WINDOW_MS);
+
+    assert.deepEqual(
+      notesOf(calls).map((entry) => [entry.window, entry.note?.newest]),
+      [
+        [firstHeartbeat, -1],
+        [firstHeartbeat + 1, 1],
+        [firstHeartbeat + 2, 2],
+        [firstHeartbeat + 3, 2],
+      ],
+    );
+    await writer.stop();
+  });
+
   it("writes a failed news note again in the following window, at that window's address", async () => {
     const clock = new FakeClock(START_MS);
     const news = firstHeartbeat + 1;

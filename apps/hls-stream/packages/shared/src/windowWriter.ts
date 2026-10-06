@@ -216,7 +216,7 @@ export function createNoteWindowWriter(options: NoteWindowWriterOptions): Window
         payload: encodeWindowNote({ newest, writtenAt: now }),
         writtenAt: now,
         onWritten: () => {
-          announced = newest;
+          announced = Math.max(announced, newest);
         },
       };
     },
