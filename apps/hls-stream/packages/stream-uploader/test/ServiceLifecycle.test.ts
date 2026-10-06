@@ -54,6 +54,18 @@ describe('ServiceLifecycle', () => {
     assert.match(recorded.said.join(' '), /All streams stopped/, 'nothing said the streams had been stopped');
   });
 
+  it('stops the clock check once the streams are stopped, so the last windows are still judged by it', async () => {
+    const { lifecycle, recorded } = lifecycleUnderTest();
+    lifecycle.trackOrchestrator(orchestratorThat(async () => void recorded.order.push('streams stopped')));
+    lifecycle.trackClockCheck({ stop: () => void recorded.order.push('clock check stopped') });
+    lifecycle.trackApiServer(apiServerThat(async () => void recorded.order.push('api closed')));
+
+    await lifecycle.shutdown('SIGTERM');
+
+    assert.deepEqual(recorded.order, ['streams stopped', 'clock check stopped', 'api closed']);
+    assert.deepEqual(recorded.exits, [0]);
+  });
+
   it('names the signal it is acting on', async () => {
     const { lifecycle, recorded } = lifecycleUnderTest();
 

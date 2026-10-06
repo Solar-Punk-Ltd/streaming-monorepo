@@ -8,6 +8,10 @@ Config-driven deployment for the Swarm HLS Stream stack.
 - Node.js 24+ and pnpm
 - [jq](https://jqlang.github.io/jq/download/)
 - SSH access for remote targets
+- Outbound UDP 123 from the publishing host to the time servers in `CLOCK_CHECK_SERVERS`. The
+  uploader checks its clock against them at start and every 10 minutes. More than 250 ms off and it
+  refuses to publish windows and reports `clock_untrusted` on `/health`. No answer at all is
+  `clock_unchecked`, which refuses nothing. See "The clock check" in the uploader's README
 
 ## First-time Setup
 

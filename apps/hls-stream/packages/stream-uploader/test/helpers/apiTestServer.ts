@@ -7,7 +7,7 @@ import { RequestLimits } from '../../src/api/requestLimits.js';
 import { createApiApp } from '../../src/api/server.js';
 import { EnginePlugin } from '../../src/engines/types.js';
 import { StreamOrchestrator } from '../../src/libs/StreamOrchestrator.js';
-import { NodeWaitReport } from '../../src/types.js';
+import { ClockCheckReport, NodeWaitReport } from '../../src/types.js';
 
 import { LOOPBACK_HOST } from './loopbackServer.js';
 
@@ -203,9 +203,11 @@ export async function startTestApi(
    * listened ahead of its node assumes.
    */
   waitingForNode?: () => NodeWaitReport | null,
+  /** Omitted is a service with no clock check, whose `/health` carries no `clock` field. */
+  clockReport?: () => ClockCheckReport,
 ): Promise<ApiTestServer> {
   const server = http.createServer(
-    createApiApp(streamOrchestrator, { authToken: TEST_AUTH_TOKEN, engines, limits, waitingForNode }),
+    createApiApp(streamOrchestrator, { authToken: TEST_AUTH_TOKEN, engines, limits, waitingForNode, clockReport }),
   );
 
   await new Promise<void>((resolve, reject) => {

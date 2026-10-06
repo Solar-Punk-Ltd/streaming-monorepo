@@ -1,6 +1,7 @@
 import { Request, Response, Router } from 'express';
 
 import { StreamOrchestrator } from '../../libs/StreamOrchestrator.js';
+import { ClockCheckReport } from '../../types.js';
 import { METRICS_CONTENT_TYPE, renderPrometheusMetrics } from '../../utils/metricsFormat.js';
 
 /**
@@ -10,11 +11,16 @@ import { METRICS_CONTENT_TYPE, renderPrometheusMetrics } from '../../utils/metri
  * segment landed and how many broadcasts have run, which is more than a liveness probe needs to give
  * away, and a scraper authenticates with one line of configuration.
  */
-export function createMetricsRouter(streamOrchestrator: StreamOrchestrator): Router {
+export function createMetricsRouter(
+  streamOrchestrator: StreamOrchestrator,
+  clockReport?: () => ClockCheckReport,
+): Router {
   const router = Router();
 
   router.get('/', (_req: Request, res: Response) => {
-    res.type(METRICS_CONTENT_TYPE).send(renderPrometheusMetrics(streamOrchestrator.getMetricsSnapshot()));
+    res
+      .type(METRICS_CONTENT_TYPE)
+      .send(renderPrometheusMetrics(streamOrchestrator.getMetricsSnapshot(), clockReport?.()));
   });
 
   return router;

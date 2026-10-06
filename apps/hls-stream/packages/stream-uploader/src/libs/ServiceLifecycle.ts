@@ -7,6 +7,11 @@ export interface StreamCleanup {
   cleanup(): Promise<void>;
 }
 
+/** The clock check, as shutdown needs it. */
+interface StoppableCheck {
+  stop(): void;
+}
+
 /**
  * How the process ends. Injected because the alternative is a module that calls `process.exit` and can
  * therefore only be run once, by the process it kills.
@@ -33,6 +38,7 @@ export class ServiceLifecycle {
   private isShuttingDown = false;
   private orchestrator: StreamCleanup | undefined;
   private apiServer: ApiServerHandle | undefined;
+  private clockCheck: StoppableCheck | undefined;
 
   constructor(
     private readonly exit: ExitProcess,
@@ -49,6 +55,10 @@ export class ServiceLifecycle {
     this.apiServer = apiServer;
   }
 
+  public trackClockCheck(clockCheck: StoppableCheck): void {
+    this.clockCheck = clockCheck;
+  }
+
   public async shutdown(signal: string): Promise<void> {
     if (this.isShuttingDown) {
       this.logger.warn('Shutdown already in progress...');
@@ -63,6 +73,10 @@ export class ServiceLifecycle {
         await this.orchestrator.cleanup();
         this.logger.info('All streams stopped');
       }
+
+      // After the streams, because their last windows are written during that stop and are still
+      // asked whether the clock may be trusted.
+      this.clockCheck?.stop();
 
       if (this.apiServer) {
         await this.apiServer.close();

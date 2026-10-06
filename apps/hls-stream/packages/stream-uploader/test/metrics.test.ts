@@ -3,7 +3,7 @@ import { readFileSync } from 'node:fs';
 import { after, describe, it } from 'node:test';
 import { fileURLToPath } from 'node:url';
 
-import { MEDIA_TYPE_VIDEO } from '../src/types.js';
+import { CLOCK_PENDING, CLOCK_UNCHECKED, CLOCK_UNTRUSTED, MEDIA_TYPE_VIDEO } from '../src/types.js';
 import { renderPrometheusMetrics } from '../src/utils/metricsFormat.js';
 
 import { ApiTestServer, startTestApi } from './helpers/apiTestServer.js';
@@ -94,8 +94,11 @@ describe('metrics exposition format', () => {
     segmentsDroppedByRung: { '1080p': 2 },
   };
 
-  /** 18 unlabelled metrics, plus the two per-rung families, whose series are one sample line each. */
-  const UNLABELLED = 18;
+  /**
+   * 18 unlabelled metrics about the media and 4 about the clock check, plus the two per-rung families,
+   * whose series are one sample line each.
+   */
+  const UNLABELLED = 22;
   const LABELLED_FAMILIES = 2;
   const FAMILIES = UNLABELLED + LABELLED_FAMILIES;
   const RUNGS_IN_SNAPSHOT = 4;
@@ -399,5 +402,49 @@ describe('GET /metrics (S2.7)', () => {
     const samples = await scrape(api);
 
     assert.equal(samples.get('swarm_hls_streams_finalized_total'), 0, 'a broadcast with no VOD counted as finalized');
+  });
+});
+
+describe('the clock check on /metrics', () => {
+  const report = {
+    verdict: CLOCK_UNTRUSTED,
+    checkedAt: '2026-10-06T12:00:00.000Z',
+    server: 'time.example.com',
+    offsetMs: -300,
+    delayMs: 8,
+    errorBoundMs: 304,
+    maxErrorMs: 250,
+  };
+
+  it('says publishing is refused and how far off the clock was, in seconds', () => {
+    const samples = parseExposition(renderPrometheusMetrics(makeMetricsSnapshot(), report));
+    assert.equal(samples.get('swarm_hls_clock_untrusted'), 1);
+    assert.equal(samples.get('swarm_hls_clock_unchecked'), 0);
+    assert.equal(samples.get('swarm_hls_clock_offset_seconds'), -0.3);
+    assert.equal(samples.get('swarm_hls_clock_error_bound_seconds'), 0.304);
+  });
+
+  it('says unchecked apart from untrusted, with no offset to report', () => {
+    const unchecked = {
+      ...report,
+      verdict: CLOCK_UNCHECKED,
+      server: null,
+      offsetMs: null,
+      delayMs: null,
+      errorBoundMs: null,
+    };
+    const samples = parseExposition(renderPrometheusMetrics(makeMetricsSnapshot(), unchecked));
+    assert.equal(samples.get('swarm_hls_clock_untrusted'), 0);
+    assert.equal(samples.get('swarm_hls_clock_unchecked'), 1);
+    assert.ok(Number.isNaN(samples.get('swarm_hls_clock_offset_seconds')), 'no measurement is NaN, never 0');
+  });
+
+  it('reads as not yet checked when no report is handed in', () => {
+    const body = renderPrometheusMetrics(makeMetricsSnapshot());
+    const samples = parseExposition(body);
+    assert.equal(samples.get('swarm_hls_clock_untrusted'), 0);
+    assert.equal(samples.get('swarm_hls_clock_unchecked'), 0);
+    assert.ok(Number.isNaN(samples.get('swarm_hls_clock_error_bound_seconds')));
+    assert.equal(CLOCK_PENDING, 'pending');
   });
 });
