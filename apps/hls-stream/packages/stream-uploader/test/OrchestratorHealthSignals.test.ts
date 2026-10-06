@@ -19,7 +19,7 @@ import {
 import { deriveHealthStatus } from '../src/utils/health.js';
 
 import { FakeClock } from './helpers/fakeClock.js';
-import { makeFakeCatalog, makeFakeRecoveryStore, makeTestOrchestrator, neverSettles } from './helpers/fakes.js';
+import { makeFakeCatalog, makeFakeRecoveryStore, makeTestOrchestrator, neverSettles, onTheFakeClock } from './helpers/fakes.js';
 import { waitFor } from './helpers/waiting.js';
 
 /** Wide enough that a queue can land on either pressure threshold exactly rather than near it. */
@@ -92,7 +92,7 @@ function registerReadings(orchestrator: StreamOrchestrator, streams: [string, Pa
 }
 
 function makePressureOrchestrator(maxQueueSize = QUEUE_CEILING): StreamOrchestrator {
-  return makeTestOrchestrator({ clock: new FakeClock(), maxQueueSize }, { uploadData: neverSettles });
+  return makeTestOrchestrator({ ...onTheFakeClock(new FakeClock()), maxQueueSize }, { uploadData: neverSettles });
 }
 
 /**
@@ -284,7 +284,7 @@ describe('StreamOrchestrator catalog announce age', () => {
 describe('StreamOrchestrator stream activity age', () => {
   it('reports the stream that has been quiet longest, wherever it falls in the walk', async () => {
     const clock = new FakeClock();
-    const orch = makeTestOrchestrator({ clock });
+    const orch = makeTestOrchestrator(onTheFakeClock(clock));
 
     orch.startStream('live/walked-first', MEDIA_TYPE_VIDEO);
     orch.startStream('live/quietest', MEDIA_TYPE_VIDEO);
@@ -318,7 +318,7 @@ describe('a stream waiting out its reconnect window is not a stall', () => {
   const INSIDE_THE_WINDOW_MS = STALL_MS + 5_000;
 
   function makeWindowOrchestrator(clock: FakeClock): StreamOrchestrator {
-    return makeTestOrchestrator({ clock, segmentStallMs: STALL_MS, orphanReapMs: REAP_MS });
+    return makeTestOrchestrator({ ...onTheFakeClock(clock), segmentStallMs: STALL_MS, orphanReapMs: REAP_MS });
   }
 
   function reportsAStall(orch: StreamOrchestrator): boolean {
@@ -399,7 +399,7 @@ describe('a stream waiting out its reconnect window is not a stall', () => {
 describe('StreamOrchestrator segment loss age', () => {
   it('reports the freshest loss as an age, wherever it falls in the walk', async () => {
     const clock = new FakeClock();
-    const orch = makeTestOrchestrator({ clock });
+    const orch = makeTestOrchestrator(onTheFakeClock(clock));
 
     orch.startStream('live/walked-first', MEDIA_TYPE_VIDEO);
     orch.startStream('live/freshest', MEDIA_TYPE_VIDEO);
