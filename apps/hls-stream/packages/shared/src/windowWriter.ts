@@ -19,6 +19,7 @@
 import {
   encodeLiveWindowPayload,
   encodeWindowNote,
+  isHeartbeatWindow,
   LIVE_PLAYLIST_WINDOW_MS,
   WindowChunkTooLargeError,
   windowEnd,
@@ -196,14 +197,13 @@ export function createNoteWindowWriter(options: NoteWindowWriterOptions): Window
       `A heartbeat must be a positive whole multiple of the ${windowMs} ms window, got ${heartbeatMs}`,
     );
   }
-  const windowsPerHeartbeat = heartbeatMs / windowMs;
   let announced = -1;
   return scheduleWindows({
     ...options,
     kind: 'note',
     contentFor: (window, now) => {
       const newest = newestStored();
-      if (newest === announced && window % windowsPerHeartbeat !== 0) {
+      if (newest === announced && !isHeartbeatWindow(window, windowMs, heartbeatMs)) {
         return { skip: 'nothing' };
       }
       return {

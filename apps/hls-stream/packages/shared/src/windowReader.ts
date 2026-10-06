@@ -19,7 +19,7 @@
  */
 
 import { WINDOW_CLOCK_LIMIT_MS, type AbsentVerdict, type WindowClock } from './windowClock.js';
-import { WINDOW_READ_MARGIN_MS, type WindowKind, type WindowSlot, windowEnd } from './windows.js';
+import { isHeartbeatWindow, WINDOW_READ_MARGIN_MS, type WindowKind, type WindowSlot, windowEnd } from './windows.js';
 
 /**
  * What one read of a window's chunk came back with. `absent` is Bee's 404 or 500 for a single owner
@@ -196,8 +196,8 @@ export class WindowReader<T extends { readonly writtenAt: number }> {
   private readonly setTimer: (callback: () => void, ms: number) => unknown;
   private readonly clearTimer: (handle: unknown) => void;
   private readonly isLive: () => boolean;
-  /** Windows between two heartbeat windows, or 1 when every window must exist. */
-  private readonly mustExistEvery: number;
+  /** Whether a window must exist: every window of a live reader, the heartbeat windows of a note reader. */
+  private readonly mustExistWindow: (window: number) => boolean;
   private readonly scanWindows: number;
   private readonly silenceMs: number;
 
@@ -241,11 +241,12 @@ export class WindowReader<T extends { readonly writtenAt: number }> {
           `A heartbeat must be a whole number of windows, got ${options.heartbeatMs} for ${options.windowMs}`,
         );
       }
-      this.mustExistEvery = options.heartbeatMs / options.windowMs;
+      const { windowMs, heartbeatMs } = options;
+      this.mustExistWindow = (window) => isHeartbeatWindow(window, windowMs, heartbeatMs);
       this.scanWindows = Math.ceil(options.heartbeatMs / options.windowMs) + 2;
       this.silenceMs = options.heartbeatMs + 2 * options.windowMs + this.baseMarginMs;
     } else {
-      this.mustExistEvery = 1;
+      this.mustExistWindow = () => true;
       this.scanWindows = LIVE_OPEN_SCAN_WINDOWS;
       this.silenceMs = LIVE_SILENCE_MS;
     }
@@ -496,7 +497,7 @@ export class WindowReader<T extends { readonly writtenAt: number }> {
     }
     const receivedAt = this.now();
     const end = windowEnd(window, windowMs);
-    const mustExist = window % this.mustExistEvery === 0;
+    const mustExist = this.mustExistWindow(window);
     const value = result.kind === 'found' ? this.options.parse(result.payload) : null;
     const answer: WindowAskAnswer = result.kind === 'found' ? (value === null ? 'refused' : 'found') : result.kind;
     record.answer = answer;

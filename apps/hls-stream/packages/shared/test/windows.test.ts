@@ -8,6 +8,7 @@ import {
   CHAT_NOTE_WINDOW_MS,
   encodeLiveWindowPayload,
   encodeWindowNote,
+  isHeartbeatWindow,
   LIVE_PLAYLIST_WINDOW_MS,
   parseLiveWindowPayload,
   parseWindowNote,
@@ -32,6 +33,23 @@ const OWNER_B = 'ff'.repeat(20);
 
 const utf8 = (text: string): Uint8Array => new TextEncoder().encode(text);
 const text = (bytes: Uint8Array): string => new TextDecoder().decode(bytes);
+
+describe('the heartbeat rule', () => {
+  it('holds for windows that are multiples of the heartbeat length in windows', () => {
+    assert.equal(isHeartbeatWindow(0, 10000, 60000), true);
+    assert.equal(isHeartbeatWindow(6, 10000, 60000), true);
+    assert.equal(isHeartbeatWindow(12, 10000, 60000), true);
+    assert.equal(isHeartbeatWindow(7, 10000, 60000), false);
+    assert.equal(isHeartbeatWindow(5, 2000, 2000), true);
+  });
+
+  it('refuses a heartbeat that is not a positive whole multiple of the window', () => {
+    for (const heartbeatMs of [5000, 0, -6000, 1000, 6000.5, Number.NaN]) {
+      assert.throws(() => isHeartbeatWindow(3, 2000, heartbeatMs), RangeError, `heartbeatMs ${heartbeatMs}`);
+    }
+    assert.throws(() => isHeartbeatWindow(3, 0, 6000), RangeError);
+  });
+});
 
 describe('window arithmetic', () => {
   it('puts the first instant of a window in that window and the instant before it in the one before', () => {

@@ -126,6 +126,24 @@ export function windowStart(window: number, windowMs: number): number {
 }
 
 /**
+ * Whether a window is a heartbeat window of a `note` topic: its number is a multiple of
+ * `heartbeatMs / windowMs`. A note writer writes every such window and a note reader expects every one.
+ *
+ * @throws RangeError when `windowMs` is not a positive safe integer, `window` is not a non-negative
+ * safe integer, or `heartbeatMs` is not a positive whole multiple of `windowMs`.
+ */
+export function isHeartbeatWindow(window: number, windowMs: number, heartbeatMs: number): boolean {
+  assertWindowMs(windowMs);
+  assertNonNegativeSafeInteger('A window number', window);
+  if (!Number.isSafeInteger(heartbeatMs) || heartbeatMs <= 0 || heartbeatMs % windowMs !== 0) {
+    throw new RangeError(
+      `A heartbeat must be a positive whole multiple of the ${windowMs} ms window, got ${heartbeatMs}`,
+    );
+  }
+  return window % (heartbeatMs / windowMs) === 0;
+}
+
+/**
  * The end of a window, `(window + 1) * windowMs`, which is the first instant of the next one. A writer
  * writes the window here, and a reader asks for it here plus its margin.
  *

@@ -17,6 +17,7 @@
 import {
   encodeLiveWindowPayload,
   encodeWindowNote,
+  isHeartbeatWindow,
   LIVE_PLAYLIST_WINDOW_MS,
   windowEnd,
   type WindowSlot,
@@ -171,7 +172,7 @@ export class SimWorld {
           payload: encodeLiveWindowPayload(playlist, writtenAt),
         });
       } else {
-        const heartbeat = w % (plan.heartbeatMs / windowMs) === 0;
+        const heartbeat = isHeartbeatWindow(w, windowMs, plan.heartbeatMs);
         const news = plan.news.has(w);
         if (news) {
           newest += 1;
