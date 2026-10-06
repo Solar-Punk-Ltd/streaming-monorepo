@@ -34,6 +34,12 @@ import {
  */
 export const WINDOW_WRITE_LATE_LIMIT_MS = 500;
 
+/**
+ * The longest a single timer is armed for. Node fires a timer longer than about 24.8 days after 1 ms,
+ * which would turn a large clock step back into a tight loop. An early fire re-arms.
+ */
+const MAX_TIMER_MS = 60_000;
+
 /** How many window writes may run at once before a window is skipped as busy. */
 export const WINDOW_WRITE_MAX_IN_FLIGHT = 2;
 
@@ -260,7 +266,7 @@ function scheduleWindows(options: ScheduleOptions): WindowWriter {
         timer = undefined;
         onWindowEnd(next);
       },
-      windowEnd(next, windowMs) - now,
+      Math.min(windowEnd(next, windowMs) - now, MAX_TIMER_MS),
     );
   };
 

@@ -311,6 +311,39 @@ describe('the live window writer', () => {
     await writer.stop();
   });
 
+  it('does not spin when the clock steps back 30 days, and writes again once the clock passes the last window', async () => {
+    const clock = new FakeClock(START_MS);
+    const NODE_TIMER_LIMIT_MS = 2 ** 31 - 1;
+    let armed = 0;
+    // Node fires a timer longer than its limit after 1 ms, which a plain fake would not.
+    const nodeLike: WindowWriterClock = {
+      now: clock.now,
+      setTimeout: (callback, delayMs) => {
+        armed++;
+        return clock.setTimeout(callback, delayMs > NODE_TIMER_LIMIT_MS ? 1 : delayMs);
+      },
+      clearTimeout: clock.clearTimeout,
+    };
+    const { calls, write } = recordingWrite(clock);
+    const { writer, events } = liveWriter(clock, write, { clock: nodeLike });
+    writer.start();
+    await clock.advance(FIRST_DUE_MS);
+    assert.deepEqual(windowsOf(calls), [FIRST]);
+
+    const thirtyDays = 30 * 24 * 60 * 60 * 1000;
+    clock.jump(-thirtyDays);
+    const before = armed;
+    await clock.advance(60000);
+    assert.ok(armed - before <= 5, `armed ${armed - before} timers in a minute`);
+    assert.deepEqual(windowsOf(calls), [FIRST]);
+
+    clock.jump(thirtyDays + 5000);
+    await clock.advance(70000);
+    assert.ok(windowsOf(calls).length >= 2, 'writes again');
+    assert.ok(events.every((event) => event.outcome !== 'failed'));
+    await writer.stop();
+  });
+
   it('writes only the window that just ended after the clock jumps forward 60 s, and reports the rest once', async () => {
     const clock = new FakeClock(START_MS);
     const { calls, write } = recordingWrite(clock);
