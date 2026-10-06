@@ -9,9 +9,10 @@
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 
+import { renditionReportAnswerSchema } from '@streaming-monorepo/contracts';
 import type { FeedStreamEntry, Rendition } from '@streaming-monorepo/web2-admin-common';
 
-import { toStream } from '../../src/api/presenters.js';
+import { toRenditionReportResponse, toStream } from '../../src/api/presenters.js';
 import { FakeFeedGateway } from '../../src/domain/FakeFeedGateway.js';
 import type { FeedIdentity } from '../../src/domain/feedIdentity.js';
 import { LadderService } from '../../src/domain/LadderService.js';
@@ -176,6 +177,27 @@ describe('a rendition report naming its recording by reference', () => {
     const listed = entryAt(gateway, last.publish.feed.index, stream.topic).renditions ?? [];
     assert.deepEqual(
       listed.map((r) => [r.name, r.recording, r.duration, 'index' in r]),
+      [
+        ['360p', RECORDING_360, 61, false],
+        ['720p', RECORDING_720, 62.5, false],
+      ],
+    );
+  });
+
+  it('answers the uploader with each finished rung reference, in a shape the uploader takes', async () => {
+    const { ladder, state, stream } = await setup();
+    await state.report(stream.id, { state: 'live' }, ON_STAGE);
+    await ladder.report(stream.id, rung('360p', 360, { recording: RECORDING_360, duration: 61 }), ON_STAGE);
+
+    const outcome = await ladder.report(
+      stream.id,
+      rung('720p', 720, { recording: RECORDING_720, duration: 62.5 }),
+      ON_STAGE,
+    );
+
+    const read = renditionReportAnswerSchema.parse(toRenditionReportResponse(outcome));
+    assert.deepEqual(
+      read.renditions.map((r) => [r.name, r.recording, r.duration, 'index' in r]),
       [
         ['360p', RECORDING_360, 61, false],
         ['720p', RECORDING_720, 62.5, false],

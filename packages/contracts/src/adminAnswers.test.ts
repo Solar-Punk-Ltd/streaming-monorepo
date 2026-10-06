@@ -122,6 +122,29 @@ describe('one rung of a merged ladder, as the uploader reads it', () => {
   it('takes an index and a duration that are numbers of any kind, infinite and NaN included', () => {
     assert.equal(accepts(renditionAnswerRungSchema, { ...RUNG, index: NaN, duration: Infinity }), true);
   });
+
+  it('takes a finished rung that names its recording by reference, with its duration', () => {
+    const recording = 'ab'.repeat(32);
+
+    assert.deepEqual(renditionAnswerRungSchema.parse({ ...RUNG, recording, duration: 12 }), {
+      ...RUNG,
+      recording,
+      duration: 12,
+    });
+  });
+
+  it('refuses a recording without a duration, beside an index, or that is no reference', () => {
+    const recording = 'ab'.repeat(32);
+    for (const change of [
+      { recording },
+      { recording, index: 9, duration: 12 },
+      { recording: 'AB'.repeat(32), duration: 12 },
+      { recording: 'ab'.repeat(31), duration: 12 },
+      { recording: 7, duration: 12 },
+    ]) {
+      assert.equal(accepts(renditionAnswerRungSchema, { ...RUNG, ...change }), false, JSON.stringify(change));
+    }
+  });
 });
 
 describe('a rung report answer, as the uploader reads it', () => {

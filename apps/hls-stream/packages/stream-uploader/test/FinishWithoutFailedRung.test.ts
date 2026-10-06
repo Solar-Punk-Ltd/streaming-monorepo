@@ -317,63 +317,54 @@ function fakeAdmin(): FakeAdmin {
 }
 
 /**
- * ⛔ Held as a todo, not passing. The admin answers a rendition report with the ladder it holds, and
- * the contract's `renditionAnswerRungSchema` (packages/contracts) refuses a rung that names its
- * recording and its duration without a feed index. So once a rung on windows has finished, the answer
- * the uploader reads is refused whole, and the ladder never flips. The contract is not this branch's
- * to change: the fix is that schema taking `recording` beside `index`, as the report schemas do.
+ * The admin answers each rendition report with the ladder it holds, and a finished rung there names its
+ * recording by reference. An answer the contract refused would leave the ladder unflipped, so these
+ * cases hold the uploader and `renditionAnswerRungSchema` (packages/contracts) to the same shape.
  */
-const ANSWER_REFUSES_RECORDINGS =
-  'the contract refuses a rung that names its recording without an index in the admin answer';
-
 describe('a ladder in admin mode whose 1080p rung could not finish', () => {
   for (const [when, order] of Object.entries(ORDERS)) {
-    it(
-      `tells the admin the broadcast became a recording exactly once, when 1080p stops ${when}`,
-      { todo: ANSWER_REFUSES_RECORDINGS },
-      async () => {
-        const admin = fakeAdmin();
-        const orch = orchestratorWhose1080pCannotFinish(undefined, {
-          adminApi: admin.client,
-          ladderRegistry: new AdminLadderRegistry({ client: admin.client }),
+    it(`tells the admin the broadcast became a recording exactly once, when 1080p stops ${when}`, async () => {
+      const admin = fakeAdmin();
+      const orch = orchestratorWhose1080pCannotFinish(undefined, {
+        adminApi: admin.client,
+        ladderRegistry: new AdminLadderRegistry({ client: admin.client }),
+      });
+
+      try {
+        const lines = await logLinesDuring(async () => {
+          broadcastOneSegmentPerRung(orch, DECLARED);
+          await waitFor(
+            () =>
+              admin.ladder.size === RUNGS.length && admin.states.some((report) => report.state === ADMIN_STATE_LIVE),
+            SETTLE_CEILING_MS,
+          );
+          await stopInOrder(orch, order);
         });
 
-        try {
-          const lines = await logLinesDuring(async () => {
-            broadcastOneSegmentPerRung(orch, DECLARED);
-            await waitFor(
-              () =>
-                admin.ladder.size === RUNGS.length && admin.states.some((report) => report.state === ADMIN_STATE_LIVE),
-              SETTLE_CEILING_MS,
-            );
-            await stopInOrder(orch, order);
-          });
+        assert.equal(
+          orch.getStreamStatus(rungId(FAILING_RUNG)).state,
+          STREAM_LIFECYCLE_FAILED,
+          'the fixture was supposed to force-stop 1080p without a recording, so nothing here is tested',
+        );
 
-          assert.equal(
-            orch.getStreamStatus(rungId(FAILING_RUNG)).state,
-            STREAM_LIFECYCLE_FAILED,
-            'the fixture was supposed to force-stop 1080p without a recording, so nothing here is tested',
-          );
+        const recordings = admin.states.filter((report) => report.state === ADMIN_STATE_VOD);
+        assert.equal(
+          recordings.length,
+          1,
+          `the admin was told the broadcast became a recording ${recordings.length} times, and one broadcast ended`,
+        );
 
-          const recordings = admin.states.filter((report) => report.state === ADMIN_STATE_VOD);
-          assert.equal(
-            recordings.length,
-            1,
-            `the admin was told the broadcast became a recording ${recordings.length} times, and one broadcast ended`,
-          );
+        const [recording] = recordings;
+        assert.equal(
+          recording.state === ADMIN_STATE_VOD ? recording.recording : null,
+          admin.ladder.get(SIBLINGS[0])?.recording,
+          'the admin is told the ladder′s recording, its lowest finished rung′s',
+        );
 
-          const [recording] = recordings;
-          assert.equal(
-            recording.state === ADMIN_STATE_VOD ? recording.recording : null,
-            admin.ladder.get(SIBLINGS[0])?.recording,
-            'the admin is told the ladder′s recording, its lowest finished rung′s',
-          );
-
-          assert.equal(flipsIn(lines), 1, 'one broadcast ended, so the flip is announced exactly once');
-        } finally {
-          await orch.cleanup();
-        }
-      },
-    );
+        assert.equal(flipsIn(lines), 1, 'one broadcast ended, so the flip is announced exactly once');
+      } finally {
+        await orch.cleanup();
+      }
+    });
   }
 });

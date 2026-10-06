@@ -33,10 +33,14 @@ export type IngestLookupAnswer = z.infer<typeof ingestLookupAnswerSchema>;
 /** A number of any kind, NaN and the infinities included, where a reader asks only that it is one. */
 const anyNumber = z.custom<number>((value) => typeof value === 'number');
 
+/** A Swarm reference as an uploader names content it uploaded: 64 lowercase hex digits, unencrypted. */
+const REFERENCE_PATTERN = /^[0-9a-f]{64}$/;
+
 /**
  * One rung of the ladder a rung report is answered with, as the uploader reads it. The name and the topic are text
- * with something in it, the sizes and bandwidths are finite numbers, and a finished rung carries a numeric index and
- * duration together. Every field is kept as sent.
+ * with something in it, and the sizes and bandwidths are finite numbers. A finished rung says where its recording is
+ * the way a rung report does: a numeric `index` with its duration, or a `recording` reference with its duration, never
+ * both. Every field is kept as sent.
  */
 export const renditionAnswerRungSchema = z
   .looseObject({
@@ -47,9 +51,14 @@ export const renditionAnswerRungSchema = z
     bandwidth: z.number(),
     avgBandwidth: z.number(),
     index: anyNumber.optional(),
+    recording: z.string().regex(REFERENCE_PATTERN).optional(),
     duration: anyNumber.optional(),
   })
-  .refine((rung) => (rung.index === undefined) === (rung.duration === undefined));
+  .refine((rung) =>
+    rung.recording === undefined
+      ? (rung.index === undefined) === (rung.duration === undefined)
+      : rung.index === undefined && rung.duration !== undefined,
+  );
 
 export type RenditionAnswerRung = z.infer<typeof renditionAnswerRungSchema>;
 
