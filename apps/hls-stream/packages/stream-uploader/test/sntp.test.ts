@@ -120,6 +120,11 @@ describe('the server list', () => {
     assert.throws(() => parseClockServers('time.example.com:123x'), /port/);
     assert.throws(() => parseClockServers('time.example.com:65536'), /port/);
   });
+
+  it('refuses an IPv6 address, which the IPv4 socket the check asks through can never reach', () => {
+    assert.throws(() => parseClockServers('time.example.com,2001:db8::1'), /CLOCK_CHECK_SERVERS names 2001:db8::1, an IPv6/);
+    assert.throws(() => parseClockServers('[2001:db8::1]:123'), /CLOCK_CHECK_SERVERS names \[2001:db8::1\]:123, an IPv6/);
+  });
 });
 
 describe('one SNTP query on the loopback', () => {

@@ -136,8 +136,13 @@ export function parseClockServers(list: string): ClockServer[] {
 
   return entries.map((entry) => {
     const colon = entry.lastIndexOf(':');
-    // One colon is a port. None is a bare host, and more than one is an IPv6 literal with no port.
-    if (colon === -1 || entry.indexOf(':') !== colon) {
+    // More than one colon, or a bracket, is an IPv6 address, and `querySntp` asks over an IPv4 socket
+    // that can never reach one. Refused here, where an operator reads it, rather than as a round that
+    // never gets an answer.
+    if (entry.startsWith('[') || entry.indexOf(':') !== colon) {
+      throw new Error(`CLOCK_CHECK_SERVERS names ${entry}, an IPv6 address, and the clock check asks over IPv4 only`);
+    }
+    if (colon === -1) {
       return { host: entry, port: SNTP_PORT };
     }
     const portText = entry.slice(colon + 1);
