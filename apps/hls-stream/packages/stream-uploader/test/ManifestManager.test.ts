@@ -2064,7 +2064,6 @@ describe('the published sequence a rung would resume at, counting what it is sti
   });
 });
 
-
 // A live playlist is written as one window chunk, and a window chunk is at most
 // WINDOW_CHUNK_MAX_BYTES, a hard limit: the writer refuses anything larger and the window goes
 // unwritten. So the budget holds the written-at line the window adds and the ENDLIST the closing

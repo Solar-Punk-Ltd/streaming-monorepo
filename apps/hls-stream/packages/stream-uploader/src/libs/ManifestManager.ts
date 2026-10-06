@@ -40,7 +40,6 @@ const ENCODER_RETURNED = 'encoder-returned' as const;
 /** Why a broadcast's numbering and dating moved forward without the media doing so. */
 type ReanchorCause = typeof COUNTER_RESTARTED | typeof ENCODER_RETURNED;
 
-
 /**
  * The bytes a manifest of these lines occupies once joined, without joining them.
  *
