@@ -32,7 +32,7 @@ const CHUNK_READ_TIMEOUT_S = 10;
 const ABSENT_STATUSES: ReadonlySet<number> = new Set([404, 500]);
 
 /** The newest live window of a topic that held a playlist. */
-export interface LiveWindowRead {
+interface LiveWindowRead {
   readonly window: number;
   /** The playlist as the uploader composed it, without the written-at line. */
   readonly playlist: string;
