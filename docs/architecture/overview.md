@@ -76,6 +76,27 @@ lives once, in `apps/hls-stream/packages/shared/src/windows.ts`. Nothing reads o
   second line, the Unix milliseconds the writer wrote it. At most 4096 bytes, a hard limit: the
   floor rule that lets a feed playlist reach 8192 bytes does not apply to a window chunk.
 
+### Writing windows
+
+`apps/hls-stream/packages/shared/src/windowWriter.ts` holds the writer, as pure logic with the
+clock, the timers and the write injected. The caller's write signs the chunk and uploads it direct.
+
+- **Two writers on one schedule.** The `live` writer publishes the composed playlist in every window
+  that has one. The `note` writer names the newest stored feed index when it changed since the last
+  note that was stored, and in every heartbeat window, a window whose number is a multiple of the
+  heartbeat over the window length. So an empty feed still carries notes, and a reader can compute
+  which windows must hold one.
+- **Once, at the end.** Window `w` is written at its end, scheduled from the clock each time. It is
+  never written twice and never retried. A failed write is reported, and the next window carries the
+  same news at its own address.
+- **Late, busy and stale windows are skipped.** A window whose timer fires more than 500 ms after
+  its end is skipped, since readers ask 1 s after it. At most two writes run at once. A clock that
+  moves back waits until it passes the last window reached. A clock jump forward or a stall writes
+  only the window that just ended and reports the windows passed over as one event.
+- **Every window gets one event**: written with the write's duration, failed with the error, or
+  skipped with its reason (nothing to write, busy, late, clock not trusted, too large, stopped).
+  Nothing is written after `stop()` returns.
+
 ## The three kinds of host
 
 A host is a Linux machine with Docker on it. One machine can carry every role, or each role can have
