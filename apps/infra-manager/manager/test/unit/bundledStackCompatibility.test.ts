@@ -62,7 +62,7 @@ describe('the bundled stack contract', () => {
     assert.deepEqual(contract.requiredSecrets, ['API_AUTH_TOKEN', 'SRS_WEBHOOK_TOKEN', 'OME_ADMISSION_SECRET']);
     assert.deepEqual(contract.engineConfig, { srs: true, ome: true });
     assert.equal(contract.features.sharedImageTags, false);
-    assert.equal(contract.engineDefaults.HLS_FRAGMENT, '0.5');
+    assert.equal(contract.engineDefaults.HLS_FRAGMENT, '2');
     assert.equal(contract.engineDefaults.HLS_SEGMENT_DURATION, '2');
     assert.equal(
       contract.engineDefaults.SRT_LATENCY,

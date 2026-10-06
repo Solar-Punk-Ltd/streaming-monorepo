@@ -96,7 +96,7 @@ const DEFAULT_STAMP_MAX_UTILIZATION = 0.9;
  * The bounds are the range SRS itself will work in: below a frame the entrypoint refuses the GOP
  * arithmetic outright, and an hour is `isUsableDuration`'s own ceiling on a segment.
  */
-const DEFAULT_HLS_FRAGMENT_SECONDS = 0.5;
+const DEFAULT_HLS_FRAGMENT_SECONDS = 2;
 const MIN_HLS_FRAGMENT_SECONDS = 0.01;
 const MAX_HLS_FRAGMENT_SECONDS = 3600;
 

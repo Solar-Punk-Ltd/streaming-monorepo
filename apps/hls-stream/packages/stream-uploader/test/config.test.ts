@@ -53,6 +53,7 @@ const OPTIONAL_ENV: OptionalEnvVar[] = [
     refused: ['0', '-1'],
   },
   { name: 'ENGINE', field: 'engine', sample: 'ome', fallback: '', refused: [] },
+  { name: 'HLS_FRAGMENT', field: 'fragmentSeconds', sample: '1.5', fallback: 2, refused: ['half', '0', '3601'] },
   {
     name: 'CHEQUEBOOK_MIN_BZZ',
     field: 'chequebookMinBzz',

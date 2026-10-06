@@ -144,7 +144,7 @@ const VALID = { SRS_WEBHOOK_TOKEN: 'x'.repeat(64) };
  * The engine cannot set this, since nothing here transcodes. It is a number the config has to be
  * able to *accept*, which is what the range test below checks.
  */
-const RECOMMENDED_GOP_SECONDS = 0.5;
+const RECOMMENDED_GOP_SECONDS = 2;
 
 /**
  * How far a segment runs past its settled length before ramping back down to it.
@@ -193,19 +193,19 @@ describe('the SRS latency knobs', () => {
   it('falls back to the documented defaults when none is set', () => {
     const conf = renderSrsConf({ ...VALID, HLS_FRAGMENT: '', HLS_WINDOW: '', SRT_LATENCY: '' });
 
-    // 0.5 from the 2026-08-12 funded sittings, which bounded the segment on both sides: a 0.5s GOP
-    // beats a 2.0s one by 2.34s of latency and takes confirmed feed stalls from 3-of-3 to 0-of-3,
-    // and a 0.25s GOP loses 18-21% of live-edge reads to 404. The fragment is a FLOOR on the segment
-    // rather than the segment, so it has to sit at or below the GOP broadcasters are told to
-    // publish, or their request is silently rounded up.
-    assert.match(conf, /hls_fragment\s+0\.5;/);
+    // 2 since the owner ruled 2s segments the default everywhere on 2026-10-06. The 2026-08-12 funded
+    // sittings found 0.5 faster on latency, and a deployment may still choose it, but the shipped
+    // default is the product's segment length. The fragment is a FLOOR on the segment rather than
+    // the segment, so it has to sit at or below the GOP broadcasters are told to publish, or their
+    // request is silently rounded up.
+    assert.match(conf, /hls_fragment\s+2;/);
     // The ceiling is 2.5s, and it is set in seconds now rather than as the ratio SRS takes, so what
     // is asserted is the product. It was 2.1s for weeks, which turned out to be 35ms short of what a
     // 2.0s GOP needs. See the overshoot test below. The ratio read here is derived from
     // HLS_SEGMENT_MAX's own default by the block the harness replays, so moving that default moves
     // this number, which is what the dead `:-5.0` in the sed line used to hide.
     const shippedRatio = Number(conf.match(/hls_aof_ratio\s+([\d.]+);/)[1]);
-    assert.equal(Number((0.5 * shippedRatio).toFixed(3)), 2.5);
+    assert.equal(Number((2 * shippedRatio).toFixed(3)), 2.5);
     assert.match(conf, /hls_window\s+15;/);
     // 2000ms since 2026-09-23. At 200 an outside broadcaster's uplink lost 5 to 8.5% of its packets
     // on 2026-09-22, SRT resent nearly all of them, and SRS dropped the resends as too late, so every
