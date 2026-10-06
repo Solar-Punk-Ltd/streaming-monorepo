@@ -311,7 +311,9 @@ their log lines unchanged.
 segments actually held, so `#EXT-X-MEDIA-SEQUENCE` is always a held segment's own sequence and a hole
 behind the window's first held segment is not emitted. The window budgets the gap lines against
 `LIVE_WINDOW_MAX_BYTES` too, and a hole too wide to afford stops the window at it rather than pushing
-the published manifest past one bee chunk.
+the playlist past one window chunk. There is no floor of three media entries any more: a window chunk
+is at most 4096 bytes with no exception, and the player keeps every segment it has seen, so a window
+right after a long run of gap entries may name only the newest segment.
 
 ⭐ `#EXT-X-VERSION` stays at 3. RFC 8216bis §8 lists no minimum protocol version for `#EXT-X-GAP`.
 
@@ -336,7 +338,8 @@ from an entry holding no segments infers nothing on its first arrival, because a
 whatever number a warm engine's counter is on and there is nothing to measure a hole from.
 
 ⚠️ **A stamp costs the live window about 50 bytes per segment.** The window is a byte budget against
-one bee chunk (`LIVE_WINDOW_MAX_BYTES`), so it now holds roughly 30 segments where it held about 50,
+one window chunk (`LIVE_WINDOW_MAX_BYTES`, the chunk's 4096 bytes less the written-at line and the
+`#EXT-X-ENDLIST` the closing window adds), so it now holds roughly 30 segments where it held about 50,
 which at `HLS_FRAGMENT=1.0` is still well past both the engine's own `HLS_WINDOW` and the player's
 `liveSyncDuration`.
 
