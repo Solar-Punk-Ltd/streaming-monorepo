@@ -153,7 +153,7 @@ if grep -q "^${CACHE_KEY}=" "${ENV_FILE}"; then
   BASELINE_CACHE="$(grep "^${CACHE_KEY}=" "${ENV_FILE}" | cut -d= -f2)"
 else
   CACHE_WAS_PRESENT=0
-  BASELINE_CACHE=0 # the compose default
+  BASELINE_CACHE=1000000 # the compose default since 2026-10-06, bee's own
 fi
 # What the gateway is meant to be running right now. Both the env file and the compose call below are
 # told it, and the two are kept in step here rather than at each call site.
