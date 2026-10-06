@@ -572,6 +572,23 @@ export async function advanceUntil(
 }
 
 /**
+ * Step `clock` one window at a time until `work` has settled, then await it, for a stop or a cleanup
+ * whose finalize waits on a closing window. Awaiting such work directly on a fake clock never returns.
+ */
+export async function untilSettled(
+  clock: FakeClock,
+  work: Promise<unknown>,
+  windowMs: number = TEST_LIVE_WINDOW_MS,
+): Promise<void> {
+  let settled = false;
+  const following = work.finally(() => {
+    settled = true;
+  });
+  await advanceUntil(clock, () => settled, windowMs);
+  await following;
+}
+
+/**
  * An orchestrator over a fake bee, its live windows on real time at {@link TEST_LIVE_WINDOW_MS} unless
  * `config.windowClock` says otherwise. A test on a `FakeClock` hands it {@link onTheFakeClock}.
  */

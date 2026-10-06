@@ -14,6 +14,7 @@ import {
   makeRecoveredState,
   makeTestOrchestrator,
   onTheFakeClock,
+  untilSettled,
 } from './helpers/fakes.js';
 import { waitFor } from './helpers/waiting.js';
 
@@ -155,14 +156,7 @@ function sharedTopicHarness(options: { recovered?: boolean } = {}): {
     },
     settle: (condition) => advanceUntil(clock, condition, LIVE_PLAYLIST_WINDOW_MS),
     quiet: () => clock.advance(QUIET_WINDOWS * LIVE_PLAYLIST_WINDOW_MS),
-    untilSettled: async (work) => {
-      let settled = false;
-      const following = work.finally(() => {
-        settled = true;
-      });
-      await advanceUntil(clock, () => settled, LIVE_PLAYLIST_WINDOW_MS);
-      await following;
-    },
+    untilSettled: (work) => untilSettled(clock, work, LIVE_PLAYLIST_WINDOW_MS),
   };
 }
 
