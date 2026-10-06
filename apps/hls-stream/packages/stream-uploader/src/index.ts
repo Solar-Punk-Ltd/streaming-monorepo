@@ -265,6 +265,13 @@ async function start() {
     // Only now, so nothing reaches an orchestrator whose catalog has never been read.
     nodeWait = null;
 
+    // After init, which settles the index the first note names. Standalone only: in admin mode the
+    // admin writes the list and its notes, and notes from here would collide with its own.
+    if (!config.admin) {
+      streamCatalog.startNotes();
+      lifecycle.trackListNotes(streamCatalog);
+    }
+
     // Only once the boot is over, because until then the node wait reads the gates again on every
     // attempt of its own. A chequebook warning that pass left is read again until the chequebook is
     // funded, so the warning leaves /health without a restart. See `libs/ChequebookRecheck.ts`.

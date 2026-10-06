@@ -7,6 +7,11 @@ export interface StreamCleanup {
   cleanup(): Promise<void>;
 }
 
+/** The stream list's note writer, as shutdown needs it. Only the standalone uploader runs one. */
+interface ListNotes {
+  stopNotes(): Promise<void>;
+}
+
 /**
  * How the process ends. Injected because the alternative is a module that calls `process.exit` and can
  * therefore only be run once, by the process it kills.
@@ -32,6 +37,7 @@ type ExitProcess = (code: number) => void;
 export class ServiceLifecycle {
   private isShuttingDown = false;
   private orchestrator: StreamCleanup | undefined;
+  private listNotes: ListNotes | undefined;
   private apiServer: ApiServerHandle | undefined;
 
   constructor(
@@ -43,6 +49,14 @@ export class ServiceLifecycle {
    *  registered before either exists and a signal may arrive in between. */
   public trackOrchestrator(orchestrator: StreamCleanup): void {
     this.orchestrator = orchestrator;
+  }
+
+  /**
+   * Stopped after the streams, whose cleanup writes their last catalog versions, so the notes stop
+   * with the list's writer rather than holding the process open.
+   */
+  public trackListNotes(listNotes: ListNotes): void {
+    this.listNotes = listNotes;
   }
 
   public trackApiServer(apiServer: ApiServerHandle): void {
@@ -62,6 +76,10 @@ export class ServiceLifecycle {
       if (this.orchestrator) {
         await this.orchestrator.cleanup();
         this.logger.info('All streams stopped');
+      }
+
+      if (this.listNotes) {
+        await this.listNotes.stopNotes();
       }
 
       if (this.apiServer) {

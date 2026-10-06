@@ -469,6 +469,24 @@ outlives the others by roughly 7×, and those two feeds are the only addresses a
 a stage. Riding them on the 1080p node would take discovery down first, while three rungs were still
 publishing fine.
 
+### The stream list is written direct, then named in a note
+
+Without an admin this service writes the stream list, the catalog feed under `STREAM_LIST_TOPIC`.
+Each new version of the list is the next feed index, uploaded direct, so the write returns only once
+the storer has taken it. Then a note names that index, so a viewer never has to poll the next index,
+which is the early ask that makes Bee skip its peers for that address for about a minute.
+
+- A note is a single owner chunk in a 10 s window, signed by `STREAM_KEY` like the list, at the
+  identifier `<STREAM_LIST_TOPIC>/note/10000/<window>`. Its payload is
+  `{"v":1,"newest":<index>,"writtenAt":<ms>}`, the newest index whose write finished, -1 for a list
+  never written. See "Time windows on Swarm" in `docs/architecture/overview.md`.
+- A note is written at the end of a window that saw a new version, and in every sixth window as a
+  heartbeat with no change, so a list that is not moving still has a note a minute.
+- A version whose write failed is never named. A note whose write failed is not retried at its
+  address, and the next window carries the same news.
+- The note writer starts once the boot has read the feed head and stops on shutdown after the
+  streams. In admin mode it never starts, because the admin writes the list.
+
 ## Prerequisites
 
 - Node.js 24+
@@ -1183,7 +1201,7 @@ curl -G http://localhost:3000/stream/status \
 | -------------------- | -------------------------------------------------------------------------------- |
 | `StreamOrchestrator` | Central coordinator — manages stream lifecycle, queue, backpressure, recovery    |
 | `StreamUploader`     | Per-stream upload session — uploads segments, updates manifests via Swarm feeds  |
-| `StreamCatalog`      | Maintains the stream directory as a Swarm feed                                   |
+| `StreamCatalog`      | Maintains the stream directory as a Swarm feed, and its notes                    |
 | `RecoveryStore`      | Persists stream state to disk for crash recovery                                 |
 | `ManifestManager`    | Builds and updates HLS manifests                                                 |
 | `AbrLadder`          | The rung list from `ABR_LADDER`, and what maps a stream name back to its rung    |

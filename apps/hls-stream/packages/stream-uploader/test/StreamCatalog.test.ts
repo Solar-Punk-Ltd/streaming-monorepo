@@ -218,7 +218,7 @@ function fakeIndexStore(
 }
 
 describe('StreamCatalog Swarm write options', () => {
-  it('requests a deferred upload for the catalog feed write', async () => {
+  it('requests a direct upload for the catalog feed write', async () => {
     const writes: CapturedWrite[] = [];
     const catalog = new StreamCatalog(
       makePublishers(makeCatalogBee(writes, { lookupThrows: FEED_NOT_FOUND })),
@@ -229,7 +229,7 @@ describe('StreamCatalog Swarm write options', () => {
     await catalog.addStream(liveEntry());
 
     assert.equal(writes.length, 1);
-    assert.equal(writes[0].deferred, true);
+    assert.equal(writes[0].deferred, false);
   });
 });
 

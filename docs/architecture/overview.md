@@ -59,7 +59,8 @@ Live playlists are moving off feeds onto time windows, the convention the chat a
 its slot notes. Asking Bee for a chunk before it exists makes Bee skip its peers for that address
 for about a minute, so polling the next feed index delays the update it waits for. A window chunk
 sits at an address computed from the clock and is asked for once, after it is due. The convention
-lives once, in `apps/hls-stream/packages/shared/src/windows.ts`. Nothing reads or writes it yet.
+lives once, in `apps/hls-stream/packages/shared/src/windows.ts`. The standalone uploader's stream list
+writes its notes on it, and nothing reads it yet.
 
 - **The window.** Window `w` of length `windowMs` covers `[w * windowMs, (w + 1) * windowMs)` of
   Unix milliseconds. The writer writes window `w` once, at its end. A reader asks for it at its end
@@ -104,6 +105,16 @@ clock, the timers and the write injected. The caller's write signs the chunk and
   defined.
 - **Named seams.** `maxInFlight` bounds the writes running at once, and `clockTrusted` lets the
   caller hold writes while it does not trust its own clock. Both skip a window and say why.
+
+### The stream list's notes
+
+The stream list stays a feed, so every version is kept in order. The uploader's `StreamCatalog`,
+when it runs without an admin, writes each new version as the next feed index with a direct upload,
+then runs one `note` writer for the list: 10 s windows, a heartbeat every 60 s, the topic being the
+list's topic name (`STREAM_LIST_TOPIC`, the text the feed topic is made from), signed by the list's
+key and uploaded direct. The note names the newest index whose own write finished. A reader takes
+the same name from its own setting, `VITE_APP_RAW_TOPIC` in the monorepo's client and
+`catalog.topic` in the event viewer's config.
 
 ### Reading windows
 
