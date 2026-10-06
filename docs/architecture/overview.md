@@ -116,8 +116,11 @@ clock, the timers and the write injected. The caller's write signs the chunk and
   `clockTrusted` comes from the uploader's own option and holds every window while it answers false. A
   session on a topic an earlier session wrote waits until that session has stopped writing, then reads
   the topic's windows of the last minute once, newest first, and continues the media sequence the
-  newest one left. Segments and the recording are uploaded direct, and the recording is named by its
-  reference rather than a feed index.
+  newest one left. Segments and the recording are uploaded direct.
+- **A recording is its reference.** At the end each quality uploads its recording playlist once as
+  bytes, and the stream list's rendition, the entry and the reports to the web2 admin name it by that
+  reference, `recording`, and by nothing else. No writer names a recording by a feed index, and the
+  admin refuses a report that does.
 
 ### The stream list's notes
 

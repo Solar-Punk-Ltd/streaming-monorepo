@@ -1055,7 +1055,8 @@ when that is what finishes it. The admin cannot hold that a rung will not finish
 rendition route refuses fields it does not know, so this service judges such a ladder itself. Its
 `recording` is **the ladder's recording**, the reference of its lowest finished rung's recording as
 the merge answered it, which is what the stream list entry names too. Each rung's own recording is on
-its rendition. Its `duration` is the ladder's. It is said again by any later announce that finds the ladder
+its rendition. A recording is named by its reference and nothing else: no report, rendition or entry
+carries a feed index, and the admin refuses a report that does. Its `duration` is the ladder's. It is said again by any later announce that finds the ladder
 finished while the admin still holds the stream as anything but `vod`: the admin answers the flip
 once, and if that one answer was lost on its way back, the next announce is the only chance left to
 list the recording. `vod -> vod` is accepted, so the repeat is harmless.
