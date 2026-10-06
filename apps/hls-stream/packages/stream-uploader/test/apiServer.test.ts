@@ -38,6 +38,7 @@ import {
   makeRecoveredState,
   makeTestOrchestrator,
   neverSettles,
+  onTheFakeClock,
   rejectImmediately,
   toRecoveryFileId,
 } from './helpers/fakes.js';
@@ -626,7 +627,7 @@ describe('GET /health status (S2.1)', () => {
     recoveryStore: RecoveryStore = makeFakeRecoveryStore(),
   ): StreamOrchestrator {
     return makeTestOrchestrator(
-      { segmentStallMs: STALL_WINDOW_MS, recoveryTimeout: RECOVERY_TIMEOUT_MS, clock },
+      { segmentStallMs: STALL_WINDOW_MS, recoveryTimeout: RECOVERY_TIMEOUT_MS, ...onTheFakeClock(clock) },
       uploads,
       recoveryStore,
     );
