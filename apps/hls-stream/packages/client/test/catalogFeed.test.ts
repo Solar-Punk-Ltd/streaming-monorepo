@@ -252,6 +252,29 @@ describe('CatalogFeedReader', () => {
     expect(reader.getIndex()?.toBigInt()).toBe(8n);
   });
 
+  /**
+   * ⛔ The position used to move before anyone parsed the body. The reader committed the slot as soon
+   * as the gateway answered, and the caller parsed it afterwards, so a body that arrived cut short
+   * failed the poll and was never asked for again: the next poll read the slot after it. Each slot
+   * carries the whole catalog, so a change announced only in that slot never reached the page.
+   */
+  it('keeps its position when a slot body does not parse, and reads that slot again next time', async () => {
+    const { urls, fetcher } = stubFetcher([
+      respond({ headers: headerFor(7), text: '[]' }),
+      respond({ text: '[{"live":tr' }),
+      respond({ text: '[{"live":true}]' }),
+      respond({ ok: false, status: 404 }),
+    ]);
+    const reader = new CatalogFeedReader(OWNER, TOPIC, fetcher);
+
+    await reader.read('http://gw');
+
+    expect(await reader.read('http://gw')).toBeNull();
+    expect(reader.getIndex()?.toBigInt()).toBe(7n);
+    expect(await reader.read('http://gw')).toEqual({ body: '[{"live":true}]', slot: 8n });
+    expect(urls[2]).toBe(urls[1]);
+  });
+
   it('still raises when the first step of a walk throws, so a dead gateway is not read as an idle catalog', async () => {
     const { fetcher } = stubFetcher([respond({ headers: headerFor(7) }), new Error('socket hang up') as never]);
     const reader = new CatalogFeedReader(OWNER, TOPIC, fetcher);
