@@ -97,10 +97,12 @@ export function judgeClock(samples: readonly ClockSample[]): ClockRound {
  * Checks the host's clock against time servers at start and on a schedule, and answers whether windows
  * may be published by it.
  *
- * Only a measured offset refuses. A round no server answered is unchecked: it reports degraded on
- * `/health` with its own reason and does not refuse, because a firewall dropping UDP 123 says nothing
- * about the clock and refusing on it would stop every broadcast on a host whose time is fine. That holds
- * after an untrusted round too: the refusal lasts while a measurement says the clock is off. Before the first round has finished the verdict is pending, which refuses nothing either.
+ * Only a measured offset refuses. A round with no answer, or with an answer too slow to judge, is
+ * unchecked: it reports degraded on `/health` with its own reason and does not refuse, because a
+ * firewall dropping UDP 123 or a congested uplink says nothing about the clock and refusing on it would
+ * stop every broadcast on a host whose time is fine. After an untrusted round the refusal stands until
+ * a later round measures the clock within the limit, and an unchecked round leaves it standing. Before
+ * the first round has finished the verdict is pending, which refuses nothing either.
  *
  * Rounds never overlap: the next is scheduled when one has finished, every 10 minutes while the clock
  * is trusted and every 30 s while it is not, or while nothing answers.
@@ -138,7 +140,7 @@ export class ClockCheck {
     this.timer = null;
   }
 
-  /** What the window writer asks before each write: false only while the last round found the clock off. */
+  /** What the window writer asks before each write: false from an untrusted round until a trusted one. */
   public isTrusted(): boolean {
     return this.verdict !== CLOCK_UNTRUSTED;
   }
@@ -179,6 +181,17 @@ export class ClockCheck {
 
   private record(round: ClockRound, failures: readonly string[]): void {
     const previous = this.verdict;
+
+    // The refusal stands until a measurement lifts it. An inconclusive round says nothing new about a
+    // clock already measured off, so the verdict and the numbers it was reached on stay as they were.
+    if (previous === CLOCK_UNTRUSTED && round.verdict === CLOCK_UNCHECKED) {
+      this.options.logger.warn(
+        `[ClockCheck] no conclusive answer from any time server, so publishing windows stays refused on the ` +
+          `last measurement. Asking again in ${CLOCK_RETRY_INTERVAL_MS / 1_000} s. ${failures.join('. ')}`,
+      );
+      return;
+    }
+
     this.verdict = round.verdict;
     this.lastRound = { finishedAtMs: this.now(), round };
 

@@ -274,6 +274,41 @@ describe('the clock check', () => {
     check.stop();
   });
 
+  for (const [what, inconclusive] of [
+    ['no server answers', {}],
+    ['the answer comes too slowly to judge', { 'a.time.test': sample('a.time.test', 0, 600) }],
+  ] as const) {
+    it(`keeps refusing after an untrusted round when ${what}, until a measurement lifts it`, async () => {
+      const { check, clock, asked, answer, logged } = harness({ 'a.time.test': sample('a.time.test', 400, 6) });
+
+      check.start();
+      await settle();
+      assert.equal(check.isTrusted(), false);
+
+      answer(inconclusive);
+      await clock.advance(CLOCK_RETRY_INTERVAL_MS);
+      assert.equal(asked.length, 6);
+      assert.equal(check.isTrusted(), false, 'an inconclusive round does not lift the refusal');
+      const report = check.report();
+      assert.equal(report.verdict, CLOCK_UNTRUSTED);
+      assert.equal(report.offsetMs, 400, "the report keeps the untrusted round's numbers");
+      assert.equal(report.delayMs, 6);
+      assert.ok(
+        logged.some((line) => line.level === 'warn' && /no conclusive answer/.test(line.message) && /refused/.test(line.message)),
+        'the log says publishing stays refused',
+      );
+
+      await clock.advance(CLOCK_RETRY_INTERVAL_MS);
+      assert.equal(asked.length, 9, 'still retrying every 30 s');
+
+      answer({ 'a.time.test': sample('a.time.test', 3, 5) });
+      await clock.advance(CLOCK_RETRY_INTERVAL_MS);
+      assert.equal(check.isTrusted(), true, 'a trusted round lifts it');
+      assert.equal(check.report().verdict, CLOCK_TRUSTED);
+      check.stop();
+    });
+  }
+
   it('checks again after 30 s when no server answered', async () => {
     const { check, clock, asked, answer } = harness({});
 
