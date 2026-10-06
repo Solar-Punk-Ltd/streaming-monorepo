@@ -33,8 +33,8 @@ import { armState } from './helpers/browserArmFixtures.js';
  * `pnpm verify` runs and which costs nothing.
  *
  * Read out of the source rather than imported: a suite file registers its tests at import time and
- * expects a deployment. Same mirror-and-prove arrangement as `rungDeathAgreement.test.ts` for the
- * two rung-death limits and `logLevel.test.ts` for the uploader's own call sites.
+ * expects a deployment. Same mirror-and-prove arrangement as `logLevel.test.ts` for the uploader's
+ * own call sites.
  *
  * ## ⚠️ What each half proves, and the one thing neither can
  *

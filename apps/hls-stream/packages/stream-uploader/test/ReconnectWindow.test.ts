@@ -1016,10 +1016,8 @@ describe('a whole ladder whose encoder disconnects together', () => {
   }
 
   /**
-   * ⚠️ What the master then advertises is deliberately NOT asserted here, because nothing in this
-   * harness writes one: `LadderLiveness.test.ts` holds that rule directly, including the case this
-   * one creates — a ladder that goes quiet together keeps every rung, because the rule counts
-   * segments and an outage advances none of them.
+   * A ladder that goes quiet together keeps every rung in its list entry. Dropping a rung whose
+   * windows stopped arriving is the player's, so nothing about a dropped rung is asserted here.
    */
   it('holds every rung live, and finalizes nothing', async () => {
     const harness = reconnectHarness({ ladder: true });
