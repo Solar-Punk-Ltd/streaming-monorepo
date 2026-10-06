@@ -163,9 +163,9 @@ const MAX_START_GATE_TIMEOUT_MS = 600_000;
 /**
  * The time servers the clock check asks, every one of them in each round.
  *
- * Three public services run by different operators, so one of them being off or unreachable leaves two
- * to compare against, and the round keeps whichever answered quickest. A host with time servers of its
- * own, or a firewall that allows UDP 123 only to some, names its own list.
+ * Three public services run by different operators, so one of them being off or unreachable still
+ * leaves a round an answer to keep. A round keeps the quickest answer and compares nothing. A host with
+ * time servers of its own, or a firewall that allows UDP 123 only to some, names its own list.
  */
 const DEFAULT_CLOCK_CHECK_SERVERS = 'time.cloudflare.com,time.google.com,pool.ntp.org';
 

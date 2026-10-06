@@ -417,9 +417,15 @@ export interface NodeWaitReport {
 export const CLOCK_PENDING = 'pending' as const;
 /** The last round put the host's clock within `CLOCK_MAX_ERROR_MS` of a time server. */
 export const CLOCK_TRUSTED = 'trusted' as const;
-/** The last round put it further off than that, and the uploader refuses to publish windows. */
+/**
+ * A round measured it more than that off whatever the path, and the uploader refuses to publish windows.
+ * It stands until a later round measures the clock within the limit.
+ */
 export const CLOCK_UNTRUSTED = 'untrusted' as const;
-/** No time server answered the last round. Nothing is refused, because an unanswered check says nothing about the clock. */
+/**
+ * The last round was inconclusive: no time server answered, or the answer came too slowly to judge. Nothing
+ * is refused on it, because it says nothing about the clock, and it never lifts an untrusted verdict.
+ */
 export const CLOCK_UNCHECKED = 'unchecked' as const;
 
 export type ClockVerdict =

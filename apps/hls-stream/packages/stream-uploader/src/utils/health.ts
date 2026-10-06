@@ -83,8 +83,9 @@ export function deriveHealthStatus(
 
   // Beside the boot's reasons, because both are about this host rather than about a stream. Untrusted
   // is the one reason that stops publishing by itself: every window is skipped while it stands, so
-  // nothing a viewer can read is being written. Unchecked refuses nothing and is reported so that a
-  // host whose firewall drops UDP 123 is seen rather than trusted by default for good.
+  // nothing a viewer can read is being written, and it stands until a later round measures the clock
+  // within the limit. Unchecked covers no answer and an answer too slow to judge. It refuses nothing and
+  // is reported so that a host whose firewall drops UDP 123 is seen rather than trusted by default.
   if (clock?.verdict === CLOCK_UNTRUSTED) {
     reasons.push(HEALTH_REASON_CLOCK_UNTRUSTED);
   } else if (clock?.verdict === CLOCK_UNCHECKED) {

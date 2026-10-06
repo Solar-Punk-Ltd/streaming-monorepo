@@ -167,13 +167,13 @@ function describeClock(clock: ClockCheckReport | undefined): RenderedMetric[] {
     {
       name: 'clock_untrusted',
       type: 'gauge',
-      help: 'One while the last clock check put this host more than 250 ms off its time servers, which is when publishing windows is refused. Zero otherwise, including before the first check and while no server answers.',
+      help: 'One while publishing windows is refused because a clock check measured this host more than 250 ms off its time servers. It stays one until a later check measures the clock within the limit. Zero otherwise, including before the first check.',
       value: clock?.verdict === CLOCK_UNTRUSTED ? 1 : 0,
     },
     {
       name: 'clock_unchecked',
       type: 'gauge',
-      help: 'One while no time server answered the last clock check. Publishing goes on, and the host must allow outbound UDP 123 for the check to mean anything.',
+      help: 'One while the last clock check was inconclusive, because no time server answered or the answer came too slowly to judge. Publishing goes on unless a refusal already stands, and the host must allow outbound UDP 123 for the check to mean anything.',
       value: clock?.verdict === CLOCK_UNCHECKED ? 1 : 0,
     },
     {

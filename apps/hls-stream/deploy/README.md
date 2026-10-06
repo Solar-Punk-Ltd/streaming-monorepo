@@ -10,8 +10,9 @@ Config-driven deployment for the Swarm HLS Stream stack.
 - SSH access for remote targets
 - Outbound UDP 123 from the publishing host to the time servers in `CLOCK_CHECK_SERVERS`. The
   uploader checks its clock against them at start and every 10 minutes. More than 250 ms off and it
-  refuses to publish windows and reports `clock_untrusted` on `/health`. No answer at all is
-  `clock_unchecked`, which refuses nothing. See "The clock check" in the uploader's README
+  refuses to publish windows and reports `clock_untrusted` on `/health` until a later check measures it
+  within the limit. No answer, or an answer too slow to judge, is `clock_unchecked`, which refuses
+  nothing new. See "The clock check" in the uploader's README
 
 ## First-time Setup
 

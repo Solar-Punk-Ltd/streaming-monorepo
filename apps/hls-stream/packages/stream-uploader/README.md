@@ -454,14 +454,19 @@ A live window's address comes from the uploader's clock, and a viewer asks for i
 window's end by its own. An uploader whose clock is off writes every window where nobody looks. So the
 uploader checks its clock against time servers, `CLOCK_CHECK_SERVERS`, over SNTP: every server at start,
 then every 10 minutes. Each answer gives an offset and a round trip, the one with the shortest round
-trip is kept, and the most the clock can be off is that offset plus half the round trip.
+trip is kept, and the clock is off by somewhere between that offset minus half the round trip and that
+offset plus half of it.
 
-- **Trusted** while that is 250 ms or less. Phase 0 measured the stage hosts within 2.5 ms, so this is
-  the normal state.
-- **Untrusted** above it. The uploader refuses to publish windows, `/health` reports `clock_untrusted`,
-  and it checks again every 30 s, so publishing resumes within half a minute of the clock being fixed.
-- **Unchecked** when no server answered. That says nothing about the clock, so nothing is refused, and
-  `/health` reports `clock_unchecked`. It checks again every 30 s.
+- **Trusted** while the offset plus half the round trip is 250 ms or less. Phase 0 measured the stage
+  hosts within 2.5 ms, so this is the normal state.
+- **Untrusted** when the offset minus half the round trip is above 250 ms, so the clock is off whatever
+  the path. The uploader refuses to publish windows, `/health` reports `clock_untrusted`, and it checks
+  again every 30 s. The refusal stands until a later round measures the clock within the limit, so
+  publishing resumes within half a minute of the clock being fixed.
+- **Unchecked** when no server answered, or when the answer came too slowly to judge either way. That
+  says nothing about the clock, so nothing new is refused, and `/health` reports `clock_unchecked`. It
+  checks again every 30 s. After an untrusted round an unchecked one changes nothing: the refusal and
+  its numbers stay.
 
 Until the first check finishes the verdict is `pending` and nothing is refused. The check runs beside
 the boot rather than as a start gate, and its first round is over long before the Bee node wait is.
@@ -625,8 +630,8 @@ killed it answers `ok` with `activeStreams: 0`.
 | `swarm_hls_active_streams`                  | gauge   | Streams registered and expected to be producing               |
 | `swarm_hls_queue_depth`                     | gauge   | Segments waiting to upload across every stream                |
 | `swarm_hls_queue_backlog_seconds`           | gauge   | Playing time still queued for the worst stream                |
-| `swarm_hls_clock_untrusted`                 | gauge   | 1 while publishing is refused on a clock more than 250 ms off |
-| `swarm_hls_clock_unchecked`                 | gauge   | 1 while no time server answered the last clock check          |
+| `swarm_hls_clock_untrusted`                 | gauge   | 1 while publishing is refused on a clock measured 250 ms off  |
+| `swarm_hls_clock_unchecked`                 | gauge   | 1 while the last check had no answer or one too slow to judge |
 | `swarm_hls_clock_offset_seconds`            | gauge   | How far the kept time server is ahead of this host, or NaN    |
 | `swarm_hls_clock_error_bound_seconds`       | gauge   | Offset plus half the round trip, refused above 0.25, or NaN   |
 
@@ -740,8 +745,8 @@ empty feed, so the finalize is deferred to the next boot rather than risking a s
 | `postage_refused`        | Bee refused a paid write on a rung's postage batch with a status nothing retries, usually because the batch has filled or expired. Latched for the life of the process and never cleared by a segment that lands, because the batch a rung spends is read once at start: only a restart clears it, so redeploy once the batch pays again, a new batch or the same one diluted or topped up                                                                                                                                                                                                                                                                                                                              |
 | `node_unavailable`       | The boot has not finished, because the half of it that needs a Bee node is still waiting for one to answer. The only reason that is not a reading about this process at all, and the only one reported alone by construction: the waiting branch returns it before any other signal is looked at. See the waiting state below                                                                                                                                                                                                                                                                                                                                                                                           |
 | `start_gate_warned`      | A startup gate could not clear a node and the uploader started anyway, which is what `UPLOADER_START_GATES` asks for on that gate. Latched from the pass that finished the boot, and `startGateWarnings` on the same body names which gate and which rung. A postage warning stays until a restart. A chequebook warning is read again every `CHEQUEBOOK_RECHECK_MS` and goes by itself once every node holds its floor. The gate's own message is in the log and deliberately not here: this endpoint takes no credential and those messages carry node URLs and batch ids                                                                                                                                             |
-| `clock_untrusted`        | The last clock check put this host more than 250 ms off its time servers, so publishing windows is refused: a reader would ask for each window at the wrong time. `clock` on the same body carries the offset, the round trip, the server and when it was checked. Checked again every 30 s, and it clears on the first check that finds the clock within the limit, with no restart. Fix the host's time sync                                                                                                                                                                                                                                                                                                          |
-| `clock_unchecked`        | No time server answered the last clock check, so nothing is known about the clock and publishing goes on. Usually a firewall that drops outbound UDP 123, or `CLOCK_CHECK_SERVERS` naming servers this host cannot reach. Checked again every 30 s                                                                                                                                                                                                                                                                                                                                                                                                                                                                      |
+| `clock_untrusted`        | The last clock check put this host more than 250 ms off its time servers, so publishing windows is refused: a reader would ask for each window at the wrong time. `clock` on the same body carries the offset, the round trip, the server and when it was checked. Checked again every 30 s, and it stands until a later check measures the clock within the limit, then clears with no restart. A check with no answer, or one too slow to judge, leaves it standing. Fix the host's time sync                                                                                                                                                                                                                         |
+| `clock_unchecked`        | The last clock check was inconclusive: no time server answered, or the quickest answer came too slowly to judge the clock either way. Nothing is known about the clock and publishing goes on. Usually a firewall that drops outbound UDP 123, `CLOCK_CHECK_SERVERS` naming servers this host cannot reach, or an uplink so loaded the round trip passes half a second. Checked again every 30 s                                                                                                                                                                                                                                                                                                                        |
 
 **The waiting state, `status: "waiting_for_node"`** (the owner on 2026-09-17: "we should be
 able to start the uploader but maybe say its node not available, try to reconnect or something"). The API
