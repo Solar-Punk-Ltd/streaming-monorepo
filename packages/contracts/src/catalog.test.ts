@@ -17,6 +17,8 @@ const RUNG = {
   avgBandwidth: 2_500_000,
 };
 const ENTRY = { owner: '0xowner', topic: 'topic', title: 'A broadcast', timestamp: 1, mediatype: 'video' };
+/** A made-up Swarm reference, built rather than written out. */
+const RECORDING = 'ab'.repeat(32);
 
 const accepts = (schema: { safeParse(value: unknown): { success: boolean } }, value: unknown): boolean =>
   schema.safeParse(value).success;
@@ -93,6 +95,22 @@ describe('a catalog entry, as the viewer reads it', () => {
   it('keeps the whole entry as written', () => {
     const entry = { ...ENTRY, legacyField: { kept: true } };
     assert.deepEqual(viewerCatalogEntrySchema.parse(entry), entry);
+  });
+});
+
+describe('a recording named by reference, as a writer on time windows writes it', () => {
+  it('is kept on a rung and on an entry, and read back by the admin', () => {
+    const rung = { ...RUNG, recording: RECORDING, duration: 30 };
+    assert.deepEqual(viewerCatalogRungSchema.parse(rung), rung);
+    const entry = { ...ENTRY, state: 'vod', recording: RECORDING, duration: 30, renditions: [rung] };
+    assert.deepEqual(viewerCatalogEntrySchema.parse(entry), entry);
+    assert.deepEqual(adminFeedRungSchema.parse(rung), rung);
+  });
+
+  it('is refused when it is not text', () => {
+    assert.equal(accepts(viewerCatalogRungSchema, { ...RUNG, recording: 5 }), false);
+    assert.equal(accepts(viewerCatalogEntrySchema, { ...ENTRY, recording: 5 }), false);
+    assert.equal(accepts(adminFeedRungSchema, { ...RUNG, recording: null }), false);
   });
 });
 

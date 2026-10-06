@@ -11,6 +11,8 @@ import {
 
 const TOPIC = '1867808f-7b1c-4e46-b437-f7423b466b39';
 const RUNG = { name: '720p', width: 1280, height: 720, topic: TOPIC, bandwidth: 2_800_000, avgBandwidth: 2_500_000 };
+/** A made-up Swarm reference, built rather than written out. */
+const RECORDING = 'ab'.repeat(32);
 
 const accepts = (schema: { safeParse(value: unknown): { success: boolean } }, value: unknown): boolean =>
   schema.safeParse(value).success;
@@ -109,6 +111,46 @@ describe('a state report, as the admin reads it', () => {
 
   it('lets an infinite duration through, as the admin always has', () => {
     assert.equal(streamStateReportSchema.parse({ state: 'vod', index: 1, duration: Infinity }).duration, Infinity);
+  });
+});
+
+describe('a state report naming its recording by reference, as an uploader on time windows sends it', () => {
+  it('takes an ended broadcast with the reference of its recording playlist and its duration', () => {
+    assert.deepEqual(streamStateReportSchema.parse({ state: 'vod', recording: RECORDING, duration: 12.5 }), {
+      state: 'vod',
+      recording: RECORDING,
+      duration: 12.5,
+    });
+  });
+
+  it('refuses a reference without its duration, beside an index, with live, or not 64 lowercase hex digits', () => {
+    assert.equal(accepts(streamStateReportSchema, { state: 'vod', recording: RECORDING }), false);
+    assert.equal(
+      accepts(streamStateReportSchema, { state: 'vod', recording: RECORDING, index: 3, duration: 1 }),
+      false,
+    );
+    assert.equal(accepts(streamStateReportSchema, { state: 'live', recording: RECORDING }), false);
+    assert.equal(
+      accepts(streamStateReportSchema, { state: 'vod', recording: RECORDING.toUpperCase(), duration: 1 }),
+      false,
+    );
+    assert.equal(accepts(streamStateReportSchema, { state: 'vod', recording: RECORDING.slice(2), duration: 1 }), false);
+    assert.equal(accepts(streamStateReportSchema, { state: 'vod', recording: `${RECORDING}aa`, duration: 1 }), false);
+  });
+});
+
+describe('a rung report naming its recording by reference', () => {
+  it('takes a finished rung with the reference of its recording playlist and its duration', () => {
+    assert.deepEqual(renditionReportSchema.parse({ ...RUNG, recording: RECORDING, duration: 30 }), {
+      ...RUNG,
+      recording: RECORDING,
+      duration: 30,
+    });
+  });
+
+  it('refuses a reference without its duration, and a reference beside an index', () => {
+    assert.equal(accepts(renditionReportSchema, { ...RUNG, recording: RECORDING }), false);
+    assert.equal(accepts(renditionReportSchema, { ...RUNG, recording: RECORDING, index: 3, duration: 30 }), false);
   });
 });
 

@@ -50,6 +50,14 @@ const notNegative =
 
 const bodyText = (name: string) => z.preprocess(readAsText, z.string({ error: fieldError(name, 'text') }));
 
+/** A Swarm reference as an uploader names content it uploaded: 64 lowercase hex digits, unencrypted. */
+const REFERENCE_PATTERN = /^[0-9a-f]{64}$/;
+
+const swarmReference = (name: string) =>
+  bodyText(name).pipe(
+    z.string().regex(REFERENCE_PATTERN, `${name} must be a Swarm reference of 64 lowercase hex digits`),
+  );
+
 /**
  * `GET /api/internal/streams/by-ingest/:app/:stream`: the ingest stream id split in two, both checked as sent. A route
  * has no other parameters, and any other key is left as it is.
@@ -74,24 +82,36 @@ export function ingestLookupPath(ingestId: string): string {
 export const STREAM_STATE_REPORTS = ['live', 'vod'] as const;
 
 /**
- * `POST /api/internal/streams/:id/state`: the broadcast is running, or it has ended and its recording is at `index`
- * with `duration` seconds. The index and the duration belong to a recording and to nothing else, so both are required
- * with `vod` and refused with `live`.
+ * `POST /api/internal/streams/:id/state`: the broadcast is running, or it has ended and its recording runs `duration`
+ * seconds. Where the recording is comes one of two ways: `recording`, the reference of the recording playlist an
+ * uploader on time windows uploads once at the end, or `index`, the feed index of the final manifest an uploader on
+ * feeds reports. They belong to a recording and to nothing else, so they are refused with `live`, and `vod` takes the
+ * duration and exactly one of them. A report without either is told the index is missing, as before `recording`.
  */
 export const streamStateReportSchema = z
   .object({
     state: z.enum(STREAM_STATE_REPORTS, 'state must be one of live, vod'),
     index: notNegative('index')(wholeNumber('index')).optional(),
+    recording: swarmReference('recording').optional(),
     duration: notNegative('duration')(bodyNumber('duration')).optional(),
   })
   .superRefine((report, context) => {
-    for (const name of ['index', 'duration'] as const) {
-      if (report.state === 'vod' && report[name] === undefined) {
-        context.addIssue({ code: 'custom', path: [name], message: `${name} is required when state is vod` });
+    if (report.state !== 'vod') {
+      for (const name of ['index', 'recording', 'duration'] as const) {
+        if (report[name] !== undefined) {
+          context.addIssue({ code: 'custom', path: [name], message: `${name} is only sent with state vod` });
+        }
       }
-      if (report.state !== 'vod' && report[name] !== undefined) {
-        context.addIssue({ code: 'custom', path: [name], message: `${name} is only sent with state vod` });
-      }
+      return;
+    }
+    if (report.index === undefined && report.recording === undefined) {
+      context.addIssue({ code: 'custom', path: ['index'], message: 'index is required when state is vod' });
+    }
+    if (report.duration === undefined) {
+      context.addIssue({ code: 'custom', path: ['duration'], message: 'duration is required when state is vod' });
+    }
+    if (report.index !== undefined && report.recording !== undefined) {
+      context.addIssue({ code: 'custom', path: ['recording'], message: 'recording and index are not sent together' });
     }
   });
 
@@ -104,8 +124,10 @@ export type StreamStateReport = z.infer<typeof streamStateReportSchema>;
 export const RENDITION_NAME_PATTERN = /^[A-Za-z0-9.-]{1,32}$/;
 
 /**
- * `POST /api/internal/streams/:id/renditions`: one rung of a quality ladder. `index` and `duration` are the rung's
- * final manifest and its length, one fact: a finished rung carries both, a rung still delivering carries neither.
+ * `POST /api/internal/streams/:id/renditions`: one rung of a quality ladder. A finished rung says where its recording
+ * is and how long it runs, one fact: `index`, its final manifest's feed index from an uploader on feeds, or
+ * `recording`, the reference of its recording playlist from an uploader on time windows, with `duration`. A rung
+ * still delivering carries none of them.
  */
 export const renditionReportSchema = z
   .object({
@@ -118,11 +140,21 @@ export const renditionReportSchema = z
     bandwidth: notNegative('bandwidth')(wholeNumber('bandwidth')),
     avgBandwidth: notNegative('avgBandwidth')(wholeNumber('avgBandwidth')),
     index: notNegative('index')(wholeNumber('index')).optional(),
+    recording: swarmReference('recording').optional(),
     duration: notNegative('duration')(bodyNumber('duration')).optional(),
   })
   .refine(
-    (rung) => (rung.index === undefined) === (rung.duration === undefined),
+    (rung) => rung.recording !== undefined || (rung.index === undefined) === (rung.duration === undefined),
     'index and duration are sent together, or neither is',
-  );
+  )
+  .superRefine((rung, context) => {
+    if (rung.recording === undefined) return;
+    if (rung.duration === undefined) {
+      context.addIssue({ code: 'custom', path: ['duration'], message: 'recording and duration are sent together' });
+    }
+    if (rung.index !== undefined) {
+      context.addIssue({ code: 'custom', path: ['recording'], message: 'recording and index are not sent together' });
+    }
+  });
 
 export type RenditionReport = z.infer<typeof renditionReportSchema>;

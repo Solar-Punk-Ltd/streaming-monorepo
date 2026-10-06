@@ -6,6 +6,10 @@ import { mediaTypeSchema } from './mediaType.js';
  * The catalog is the list of broadcasts a viewer shows: one JSON array on a feed that the uploader, when it runs
  * without an admin, and the admin both rewrite whole. Each reader checks what it reads, and each keeps its own
  * reading, so there is one schema per reader here rather than one for the catalog.
+ *
+ * A finished broadcast says where its recording is in one of two ways. Writers on feeds name the feed `index` of the
+ * final manifest. Writers on time windows upload the recording playlist once as bytes and name its reference in
+ * `recording`, read with `GET /bytes/<recording>`. Readers take both until the last writer on feeds is gone.
  */
 
 /** A rung of an entry's quality ladder as the viewer reads it: every number finite, and fields it does not know kept. */
@@ -17,6 +21,7 @@ export const viewerCatalogRungSchema = z.looseObject({
   bandwidth: z.number(),
   avgBandwidth: z.number(),
   index: z.number().optional(),
+  recording: z.string().optional(),
   duration: z.number().optional(),
 });
 
@@ -33,6 +38,7 @@ export const viewerCatalogEntrySchema = z.looseObject({
   state: z.string().optional(),
   duration: z.union([z.string(), z.number()]).optional(),
   index: z.number().optional(),
+  recording: z.string().optional(),
   thumbnail: z.string().optional(),
   scheduledStartTime: z.union([z.string(), z.number()]).nullable().optional(),
   renditions: z.array(viewerCatalogRungSchema).optional(),
@@ -55,5 +61,6 @@ export const adminFeedRungSchema = z.looseObject({
   bandwidth: anyNumber,
   avgBandwidth: anyNumber,
   index: anyNumber.optional(),
+  recording: z.string().optional(),
   duration: anyNumber.optional(),
 });
