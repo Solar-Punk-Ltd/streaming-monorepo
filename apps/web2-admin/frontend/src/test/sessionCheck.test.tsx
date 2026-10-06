@@ -2,7 +2,7 @@ import { act, fireEvent, screen } from '@testing-library/react';
 import { Route, Routes } from 'react-router';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
-import { SESSION_CHECK_MIN_GAP_MS, useAuth } from '../auth';
+import { SESSION_CHANNEL, SESSION_CHECK_MIN_GAP_MS, useAuth } from '../auth';
 import { RequireAuth } from '../components/RequireAuth';
 import { LoginPage } from '../pages/LoginPage';
 import { jsonError, jsonOk, makeUser, mockFetch, noContent, renderWithAuth } from './helpers';
@@ -102,6 +102,16 @@ function regainFocus() {
 function laterBy(ms: number) {
   const now = Date.now();
   vi.spyOn(Date, 'now').mockReturnValue(now + ms);
+}
+
+/** A deliberate sign-out, without the menu around it. */
+function SignOutButton() {
+  const { logOut } = useAuth();
+  return (
+    <button type="button" onClick={() => void logOut()}>
+      sign out
+    </button>
+  );
 }
 
 const checksOf = (fetchMock: ReturnType<typeof mockFetch>) =>
@@ -240,17 +250,65 @@ describe('the session check, how often and when', () => {
   });
 });
 
+describe('the other tabs of the same browser', () => {
+  /** Stands in for another tab: its own channel on the console's name. */
+  function otherTab() {
+    const channel = new BroadcastChannel(SESSION_CHANNEL);
+    const heard: unknown[] = [];
+    channel.onmessage = (event: MessageEvent) => heard.push(event.data);
+    return { channel, heard };
+  }
+
+  it('asks the server at once when another tab says the session ended', async () => {
+    const fetchMock = mockFetch([
+      { path: SESSION, respond: () => jsonOk({ user: makeUser() }) },
+      { path: ME, respond: () => jsonError(401, { error: 'unauthenticated' }) },
+    ]);
+    renderConsole();
+    await signedInAndListening();
+    const tab = otherTab();
+
+    try {
+      // A BroadcastChannel takes no target origin; the rule is written for window.postMessage.
+      // oxlint-disable-next-line unicorn/require-post-message-target-origin
+      tab.channel.postMessage('ended');
+      expect(await screen.findByText(ENDED)).toBeInTheDocument();
+      expect(checksOf(fetchMock)).toBe(1);
+    } finally {
+      tab.channel.close();
+    }
+  });
+
+  it('tells them when this tab finds its session ended, and when it signs out', async () => {
+    const tab = otherTab();
+    try {
+      mockFetch([
+        { path: SESSION, respond: () => jsonOk({ user: makeUser() }) },
+        { path: ME, respond: () => jsonError(401, { error: 'unauthenticated' }) },
+      ]);
+      const first = renderConsole();
+      await signedInAndListening();
+      await act(async () => regainFocus());
+      await screen.findByText(ENDED);
+      await vi.waitFor(() => expect(tab.heard).toEqual(['ended']));
+      first.unmount();
+
+      mockFetch([
+        { path: SESSION, respond: () => jsonOk({ user: makeUser() }) },
+        { method: 'POST', path: '/api/auth/logout', respond: () => noContent() },
+      ]);
+      renderWithAuth(<SignOutButton />);
+      await vi.waitFor(() => expect(localStorage.length).toBe(1));
+      fireEvent.click(screen.getByRole('button', { name: 'sign out' }));
+      await vi.waitFor(() => expect(tab.heard).toEqual(['ended', 'signedOut']));
+    } finally {
+      tab.channel.close();
+    }
+  });
+});
+
 describe('a reload after the session ended', () => {
   const signedOut = () => jsonError(401, { error: 'unauthenticated' });
-
-  function SignOutButton() {
-    const { logOut } = useAuth();
-    return (
-      <button type="button" onClick={() => void logOut()}>
-        sign out
-      </button>
-    );
-  }
 
   it('says the session ended when this browser was signed in before', async () => {
     mockFetch([{ path: SESSION, respond: () => jsonOk({ user: makeUser() }) }]);

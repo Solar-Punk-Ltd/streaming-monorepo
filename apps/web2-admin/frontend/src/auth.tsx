@@ -37,6 +37,9 @@ export const SESSION_CHECK_MIN_GAP_MS = 5_000;
  */
 const SIGNED_IN_MARK = 'web2-admin.signedIn';
 
+/** Where one tab tells the others in the same browser that the session ended. */
+export const SESSION_CHANNEL = 'web2-admin.session';
+
 function markSignedIn(signedIn: boolean): void {
   try {
     if (signedIn) localStorage.setItem(SIGNED_IN_MARK, '1');
@@ -116,6 +119,23 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     };
   }, [apply]);
 
+  // The other tabs of this browser share the cookie, so when this one learns
+  // the session is over it tells them, and each asks the server for itself
+  // rather than taking the message's word for it.
+  const channelRef = useRef<BroadcastChannel | null>(null);
+  useEffect(() => {
+    if (typeof BroadcastChannel !== 'function') return undefined;
+    const channel = new BroadcastChannel(SESSION_CHANNEL);
+    channel.onmessage = () => {
+      if (userRef.current) api.checkSession().catch(() => undefined);
+    };
+    channelRef.current = channel;
+    return () => {
+      channelRef.current = null;
+      channel.close();
+    };
+  }, []);
+
   // Any 401 from any endpoint means the session is gone. Dropping the user
   // here is enough: the route guard sees a null user and redirects to /login.
   useEffect(() => {
@@ -123,7 +143,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       // Only a session that was working counts as ended; a 401 with nobody
       // logged in is just the guard doing its job, and saying "your session
       // ended" to someone who never had one is a lie.
-      if (userRef.current) setReason('ended');
+      if (userRef.current) {
+        setReason('ended');
+        channelRef.current?.postMessage('ended');
+      }
       setUser(null);
       markSignedIn(false);
     });
@@ -180,6 +203,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       return;
     }
     markSignedIn(false);
+    channelRef.current?.postMessage('signedOut');
     setUser(null);
     setReason('notSignedIn');
   }, []);
