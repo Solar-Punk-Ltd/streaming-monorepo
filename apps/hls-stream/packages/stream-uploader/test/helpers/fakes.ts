@@ -584,6 +584,9 @@ export async function untilSettled(
   const following = work.finally(() => {
     settled = true;
   });
+  // Handled here as well as below, so work that rejects while the clock is stepped is not reported
+  // as an unhandled rejection before the await below reads it.
+  following.catch(() => {});
   await advanceUntil(clock, () => settled, windowMs);
   await following;
 }
