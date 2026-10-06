@@ -6,6 +6,13 @@ import { WATCH_VIEW_NOT_STARTED, WATCH_VIEW_UNAVAILABLE, WatchPageView } from '@
  * One number for both pages that poll: the browse page always, and the watch page while what it shows
  * depends on the catalog. Both use the same SWR key, so a viewer moving between the two pages never
  * has two polls running against the gateway.
+ *
+ * ⛔ **It is also the wait after a read that failed.** A miss on the catalog's next slot is no longer
+ * the 4ms it was when the gateway wrote the catalog itself: it takes about a second, with a tail past
+ * six seconds, and some fail outright. SWR's default answer to a failure is to stop polling and back
+ * off, which held an open page minutes behind, so `useCatalogPoll` retries after this same interval,
+ * and the catalog reader reads a slot that timed out or was refused as nothing new rather than an
+ * error.
  */
 export const CATALOG_POLL_INTERVAL_MS = 5_000;
 
