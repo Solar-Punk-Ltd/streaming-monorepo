@@ -21,7 +21,7 @@ import { deriveHealthStatus } from '../src/utils/health.js';
 import { derivePublishKey, PUBLISH_KEY_PARAM } from '../src/utils/publishKey.js';
 
 import { FakeClock } from './helpers/fakeClock.js';
-import { makeTestOrchestrator } from './helpers/fakes.js';
+import { makeTestOrchestrator, onTheFakeClock } from './helpers/fakes.js';
 import { listenOnLoopback } from './helpers/loopbackServer.js';
 
 const APP = 'video';
@@ -87,7 +87,7 @@ async function onStage(drive: (stage: Stage) => Promise<void>): Promise<void> {
   const clock = new FakeClock();
   const ladder = AbrLadder.parse(DEFAULT_LADDER_SPEC);
   const orchestrator = makeTestOrchestrator({
-    clock,
+    ...onTheFakeClock(clock),
     ladder,
     segmentStallMs: SEGMENT_STALL_MS,
     firstRungDeadlineMs: FIRST_RUNG_DEADLINE_MS,

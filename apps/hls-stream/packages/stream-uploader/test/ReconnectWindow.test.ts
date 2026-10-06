@@ -35,7 +35,12 @@
  *   the one case here is that a stranger is refused during the window exactly as before.
  */
 
-import { encodeLiveWindowPayload, parseLiveWindowPayload, windowIdentifier } from '@swarm-hls-stream/shared';
+import {
+  encodeLiveWindowPayload,
+  LIVE_PLAYLIST_WINDOW_MS,
+  parseLiveWindowPayload,
+  windowIdentifier,
+} from '@swarm-hls-stream/shared';
 import express from 'express';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
@@ -61,15 +66,17 @@ import { rungTopicFor } from '../src/utils/rungTopic.js';
 
 import { FakeClock } from './helpers/fakeClock.js';
 import {
+  advanceUntil,
   fakeRecordingReference,
   FakeUploads,
   makeFakeRecoveryStore,
   makeTestOrchestrator,
+  onTheFakeClock,
   TEST_ANCHOR,
-  TEST_LIVE_WINDOW_MS,
+  untilSettled,
 } from './helpers/fakes.js';
 import { listenOnLoopback } from './helpers/loopbackServer.js';
-import { waitAndConfirmNothingHappened, waitFor } from './helpers/waiting.js';
+import { waitFor } from './helpers/waiting.js';
 
 /** The silence a broadcast may go quiet for before the reaper ends it. Stepped, never waited for. */
 const REAP_MS = 60_000;
@@ -77,8 +84,16 @@ const REAP_MS = 60_000;
 /** A ceiling on a hung wait, not a measurement. The same constant and reason as in `StreamReaper.test.ts`. */
 const SETTLE_CEILING_MS = 4_000;
 
-/** Long enough for a publish to have escaped, short enough that a case meant to reach it stays cheap. */
-const QUIET_WINDOW_MS = 60;
+/**
+ * The live window length every harness here runs at, in fake time on its own `FakeClock`.
+ *
+ * The real length rather than the test one, because a ladder's four writers across a fifty second
+ * outage would fire more window timers in one step than the fake clock's runaway ceiling allows.
+ */
+const WINDOW_MS = LIVE_PLAYLIST_WINDOW_MS;
+
+/** Windows of the fake clock a held session is watched across, enough for a held ending to have escaped. */
+const QUIET_WINDOWS = 3;
 
 /** What each test segment declares, so the arithmetic in an assertion is legible. */
 const SEGMENT_SECONDS = 2;
@@ -125,17 +140,17 @@ type WindowStore = Map<string, Uint8Array>;
 const TOPICS = [DECLARATION.topic, ...RUNG_NAMES.map((rung) => rungTopicFor(DECLARATION.topic, rung))];
 
 /**
- * How many windows back a write may have been for, counted from when it was written: the writer's
- * late limit is 500 ms, so a window is written within 25 test windows of its end.
+ * How many windows back a write may have been for, counted from when it was written: on the fake
+ * clock a window is written at its end, and the writer's late limit of 500 ms is under one window.
  */
-const LATE_WINDOWS = 30;
+const LATE_WINDOWS = 2;
 
 /** Which of {@link TOPICS} a window chunk was written on, read off its identifier and its written-at time. */
 function topicOfWindow(identifier: string, writtenAt: number): string {
-  const newest = Math.floor(writtenAt / TEST_LIVE_WINDOW_MS);
+  const newest = Math.floor(writtenAt / WINDOW_MS);
   for (const topic of TOPICS) {
     for (let window = newest; window >= newest - LATE_WINDOWS; window--) {
-      if (windowIdentifier({ topic, kind: 'live', windowMs: TEST_LIVE_WINDOW_MS, window }).toHex() === identifier) {
+      if (windowIdentifier({ topic, kind: 'live', windowMs: WINDOW_MS, window }).toHex() === identifier) {
         return topic;
       }
     }
@@ -143,16 +158,18 @@ function topicOfWindow(identifier: string, writtenAt: number): string {
   return 'unknown';
 }
 
+/** How many windows back {@link plantWindow} fills, the minute a session opening on a topic scans. */
+const PLANTED_WINDOWS = Math.ceil(60_000 / WINDOW_MS);
+
 /**
  * Puts a playlist in every recent window of a topic, standing in for an earlier session that wrote it,
- * so a session opening on that topic now finds it as the topic's newest window.
+ * so a session opening on that topic at `now`, on the windows' clock, finds it as the topic's newest.
  */
-function plantWindow(store: WindowStore, topic: string, playlist: string): void {
-  const now = Date.now();
+function plantWindow(store: WindowStore, topic: string, playlist: string, now: number): void {
   const payload = encodeLiveWindowPayload(playlist, now);
-  const current = Math.floor(now / TEST_LIVE_WINDOW_MS);
-  for (let window = current - 1; window >= current - 100; window--) {
-    store.set(windowIdentifier({ topic, kind: 'live', windowMs: TEST_LIVE_WINDOW_MS, window }).toHex(), payload);
+  const current = Math.floor(now / WINDOW_MS);
+  for (let window = current - 1; window >= current - PLANTED_WINDOWS; window--) {
+    store.set(windowIdentifier({ topic, kind: 'live', windowMs: WINDOW_MS, window }).toHex(), payload);
   }
 }
 
@@ -167,7 +184,7 @@ function windowUploads(writes: ManifestWrite[], store: WindowStore): FakeUploads
       writes.push({
         index: writes.length,
         playlist: parsed?.playlist ?? '',
-        topic: topicOfWindow(identifier, parsed?.writtenAt ?? Date.now()),
+        topic: topicOfWindow(identifier, parsed?.writtenAt ?? 0),
       });
       store.set(identifier, payload);
       return { reference: { toHex: () => 'window' } };
@@ -207,6 +224,12 @@ interface ReconnectHarness {
   published: (label: string) => Promise<void>;
   /** Move both clocks together, which is what an outage does. */
   passTime: (ms: number) => Promise<void>;
+  /** Step the fake clock a window at a time until `condition` holds, without moving the wall clock. */
+  settle: (condition: () => boolean) => Promise<void>;
+  /** Stop a stream, stepping the fake clock for the closing window its finalize waits on. */
+  stop: (streamId?: string) => Promise<void>;
+  /** Now on the clock the live windows are numbered by, for a case that plants a window. */
+  windowNow: () => number;
   /**
    * Hold every upload of this stream's segments until the returned release is called, which is a rung
    * behind on its uploads under a bandwidth squeeze.
@@ -245,10 +268,11 @@ function reconnectHarness(options: { ladder?: boolean } = {}): ReconnectHarness 
     },
   } as unknown as AdminApiClient;
 
+  const onTheClock = onTheFakeClock(clock, WINDOW_MS);
   const orchestrator = makeTestOrchestrator(
     {
       adminApi,
-      clock,
+      ...onTheClock,
       wallClock: () => wallMs,
       orphanReapMs: REAP_MS,
       ...(options.ladder ? { ladder: AbrLadder.parse(DEFAULT_LADDER_SPEC) } : {}),
@@ -298,12 +322,15 @@ function reconnectHarness(options: { ladder?: boolean } = {}): ReconnectHarness 
       await waitFor(() => uploadedSegments.includes(label), SETTLE_CEILING_MS);
     },
     published: async (label) => {
-      await waitFor(() => writesNaming(writes, label).length > 0, SETTLE_CEILING_MS);
+      await advanceUntil(clock, () => writesNaming(writes, label).length > 0, WINDOW_MS);
     },
     passTime: async (ms) => {
       wallMs += ms;
       await clock.advance(ms);
     },
+    settle: (condition) => advanceUntil(clock, condition, WINDOW_MS),
+    stop: (streamId = STREAM_ID) => untilSettled(clock, orchestrator.stopStream(streamId), WINDOW_MS),
+    windowNow: () => onTheClock.windowClock.now(),
     holdUploads: (streamId) => {
       let release = () => {};
       heldUploads.set(
@@ -412,10 +439,9 @@ describe('an encoder that disconnects and comes back inside the window', () => {
 
     harness.orchestrator.noteDisconnect(STREAM_ID);
     await harness.passTime(OUTAGE_MS);
-    await waitAndConfirmNothingHappened(
-      () => recordings(harness.writes).length === 0 && closingPlaylists(harness.writes).length === 0,
-      QUIET_WINDOW_MS,
-    );
+    await harness.clock.advance(QUIET_WINDOWS * WINDOW_MS);
+    assert.equal(recordings(harness.writes).length, 0, 'a disconnect finalized the broadcast');
+    assert.equal(closingPlaylists(harness.writes).length, 0, 'or ended its live playlist');
 
     assert.equal(harness.orchestrator.getActiveStreamCount(), 1, 'the broadcast is still live during the gap');
     assert.deepEqual(
@@ -515,8 +541,8 @@ describe('an encoder that disconnects and comes back inside the window', () => {
         await disconnectedAndReturned(harness, returningIndex);
         await harness.segment('b1', returningIndex + 1);
 
-        await harness.orchestrator.stopStream(STREAM_ID);
-        await waitFor(() => recordings(harness.writes).length === 1, SETTLE_CEILING_MS);
+        await harness.stop();
+        await harness.settle(() => recordings(harness.writes).length === 1);
 
         const recording = recordings(harness.writes)[0].playlist;
         assert.deepEqual(
@@ -556,8 +582,8 @@ describe('an encoder that disconnects and comes back inside the window', () => {
       await harness.segment(`b${index}`, index);
     }
 
-    await harness.orchestrator.stopStream(STREAM_ID);
-    await waitFor(() => recordings(harness.writes).length === 1, SETTLE_CEILING_MS);
+    await harness.stop();
+    await harness.settle(() => recordings(harness.writes).length === 1);
     assert.deepEqual(
       entryUris(recordings(harness.writes)[0].playlist),
       ['segment-a0', 'segment-a1', 'segment-a2', 'segment-b0', 'segment-b1'],
@@ -585,8 +611,8 @@ describe('an encoder that disconnects and comes back inside the window', () => {
     assert.deepEqual(harness.adminStates, [ADMIN_STATE_LIVE], 'the admin state never left live across any of them');
     assert.equal(recordings(harness.writes).length, 0, 'and no recording was published while the broadcast ran');
 
-    await harness.orchestrator.stopStream(STREAM_ID);
-    await waitFor(() => recordings(harness.writes).length === 1, SETTLE_CEILING_MS);
+    await harness.stop();
+    await harness.settle(() => recordings(harness.writes).length === 1);
 
     const recording = recordings(harness.writes)[0].playlist;
     assert.equal(recordings(harness.writes).length, 1, 'four outages produced one recording, not five');
@@ -632,8 +658,8 @@ describe('an encoder that disconnects and comes back inside the window', () => {
     }
 
     const recordingWrite = await (async (): Promise<string> => {
-      await harness.orchestrator.stopStream(STREAM_ID);
-      await waitFor(() => recordings(harness.writes).length === 1, SETTLE_CEILING_MS);
+      await harness.stop();
+      await harness.settle(() => recordings(harness.writes).length === 1);
       return recordings(harness.writes)[0].playlist;
     })();
 
@@ -836,8 +862,9 @@ async function rebuildFrom(entry: StreamState, wallOffsetMs = OUTAGE_MS): Promis
     },
   } as unknown as AdminApiClient;
 
+  const onTheClock = onTheFakeClock(clock, WINDOW_MS);
   const orchestrator = makeTestOrchestrator(
-    { adminApi, clock, wallClock: () => wallMs, orphanReapMs: REAP_MS },
+    { adminApi, ...onTheClock, wallClock: () => wallMs, orphanReapMs: REAP_MS },
     {
       uploadData: async (_stamp, data) => {
         const label = Buffer.from(data).toString('utf8');
@@ -865,7 +892,7 @@ async function rebuildFrom(entry: StreamState, wallOffsetMs = OUTAGE_MS): Promis
     start: () => assert.fail('a recovered session is resumed by its engine′s segments, not by an announce'),
     announce: () => assert.fail('the same'),
     published: async (label) => {
-      await waitFor(() => writes.some((write) => write.playlist.includes(`segment-${label}`)), SETTLE_CEILING_MS);
+      await advanceUntil(clock, () => writes.some((write) => write.playlist.includes(`segment-${label}`)), WINDOW_MS);
     },
     segment: async (label, index, streamId = entry.streamId) => {
       assert.deepEqual(orchestrator.handleSegment(streamId, index, SEGMENT_SECONDS, Buffer.from(label)), {
@@ -877,6 +904,9 @@ async function rebuildFrom(entry: StreamState, wallOffsetMs = OUTAGE_MS): Promis
       wallMs += ms;
       await clock.advance(ms);
     },
+    settle: (condition) => advanceUntil(clock, condition, WINDOW_MS),
+    stop: (streamId = entry.streamId) => untilSettled(clock, orchestrator.stopStream(streamId), WINDOW_MS),
+    windowNow: () => onTheClock.windowClock.now(),
     holdUploads: () => assert.fail('no case holds the uploads of a rebuilt session'),
     handOver: () => assert.fail('the same'),
   };
@@ -984,10 +1014,16 @@ describe('an operator stop is unchanged by the window', () => {
     harness.start();
     await harness.segment('a0', 0);
 
-    await harness.orchestrator.stopStream(STREAM_ID);
+    const stoppedFrom = harness.clock.now();
+    await harness.stop();
 
     assert.equal(recordings(harness.writes).length, 1, 'the recording is published by the stop itself');
-    assert.equal(harness.orchestrator.getActiveStreamCount(), 0, 'and the id is free without any clock moving');
+    assert.equal(harness.orchestrator.getActiveStreamCount(), 0, 'and the id is free');
+    // The stop waits for its closing window, which ends only as the fake clock moves, and nothing else.
+    assert.ok(
+      harness.clock.now() - stoppedFrom <= 2 * WINDOW_MS,
+      `the stop took ${harness.clock.now() - stoppedFrom} ms of the clock, more than its closing window`,
+    );
     assert.deepEqual(harness.adminStates, [ADMIN_STATE_LIVE, ADMIN_STATE_VOD], 'the admin is told immediately');
   });
 });
@@ -1177,9 +1213,9 @@ describe('a whole ladder whose encoder disconnects together', () => {
       }
 
       for (const streamId of pair) {
-        await harness.orchestrator.stopStream(streamId);
+        await harness.stop(streamId);
       }
-      await waitFor(() => recordings(harness.writes).length === pair.length, SETTLE_CEILING_MS);
+      await harness.settle(() => recordings(harness.writes).length === pair.length);
 
       const datedAt = pair.map((streamId, index) => {
         const recording = recordings(harness.writes)[index].playlist;
@@ -1573,11 +1609,12 @@ describe('a ladder that comes back in two returns, the first without 360p', () =
       }
       await harness.published(`${ahead}-a2`);
       const topic = writesNaming(harness.writes, `${ahead}-a2`).at(-1)!.topic;
-      await harness.orchestrator.stopStream(ahead);
+      await harness.stop(ahead);
       plantWindow(
         harness.windows,
         topic,
         ['#EXTM3U', '#EXT-X-VERSION:3', '#EXT-X-MEDIA-SEQUENCE:100', '#EXTINF:2.000,', 'earlier', ''].join('\n'),
+        harness.windowNow(),
       );
       harness.start(ahead);
       for (const streamId of rungIds) await harness.segment(`${streamId}-r3`, 3, streamId);
@@ -1882,7 +1919,7 @@ describe('a ladder one of whose rungs was replaced earlier in the broadcast', ()
       await harness.passTime(SEGMENT_SECONDS * 1_000);
     }
     await harness.published(`${replaced}-a${openingSegments - 1}`);
-    await harness.orchestrator.stopStream(replaced);
+    await harness.stop(replaced);
     harness.start(replaced);
     const resumedIndex = openingSegments + AFTER_THE_REPLACEMENT;
     for (let i = openingSegments; i < resumedIndex; i++) {
@@ -1962,6 +1999,7 @@ interface LadderProcess {
   segment: (label: string, index: number, streamId: string) => Promise<void>;
   published: (label: string) => Promise<void>;
   passTime: (ms: number) => Promise<void>;
+  settle: (condition: () => boolean) => Promise<void>;
   wallNow: () => number;
 }
 
@@ -2000,7 +2038,7 @@ async function ladderProcess(
   const orchestrator = makeTestOrchestrator(
     {
       adminApi,
-      clock,
+      ...onTheFakeClock(clock, WINDOW_MS),
       wallClock: () => wallMs,
       orphanReapMs: REAP_MS,
       ladder: AbrLadder.parse(DEFAULT_LADDER_SPEC),
@@ -2053,12 +2091,13 @@ async function ladderProcess(
       await waitFor(() => uploadedSegments.includes(label), SETTLE_CEILING_MS);
     },
     published: async (label) => {
-      await waitFor(() => writesNaming(writes, label).length > 0, SETTLE_CEILING_MS);
+      await advanceUntil(clock, () => writesNaming(writes, label).length > 0, WINDOW_MS);
     },
     passTime: async (ms) => {
       wallMs += ms;
       await clock.advance(ms);
     },
+    settle: (condition) => advanceUntil(clock, condition, WINDOW_MS),
     wallNow: () => wallMs,
   };
 }

@@ -532,30 +532,63 @@ function windowClockOn(clock: FakeClock): WindowWriterClock {
   };
 }
 
-/** The orchestrator config that puts its timers and its live windows on one `FakeClock`. */
-export function onTheFakeClock(clock: FakeClock): Pick<StreamOrchestratorConfig, 'clock' | 'windowClock'> {
-  return { clock, windowClock: windowClockOn(clock) };
+/**
+ * The orchestrator config that puts its timers and its live windows on one `FakeClock`.
+ *
+ * `windowMs` is the window length in fake time. A case that jumps minutes at once, such as through a
+ * drain deadline, passes the real length, because at the test length one jump would fire more window
+ * timers than the fake clock's runaway ceiling allows.
+ */
+export function onTheFakeClock(
+  clock: FakeClock,
+  windowMs: number = TEST_LIVE_WINDOW_MS,
+): Required<Pick<StreamOrchestratorConfig, 'clock' | 'windowClock' | 'liveWindowMs'>> {
+  return { clock, windowClock: windowClockOn(clock), liveWindowMs: windowMs };
 }
 
 /** How many window lengths {@link advanceUntil} steps before it gives up. */
 const ADVANCE_UNTIL_STEP_LIMIT = 500;
 
 /**
- * Step `clock` one test window at a time until `condition` holds, for work that waits on a window,
- * such as a finalize waiting for its closing window.
+ * Step `clock` one window at a time until `condition` holds, for work that waits on a window, such as
+ * a finalize waiting for its closing window. `windowMs` is the length {@link onTheFakeClock} was given.
  *
  * @throws when the condition still does not hold after {@link ADVANCE_UNTIL_STEP_LIMIT} windows.
  */
-export async function advanceUntil(clock: FakeClock, condition: () => boolean): Promise<void> {
+export async function advanceUntil(
+  clock: FakeClock,
+  condition: () => boolean,
+  windowMs: number = TEST_LIVE_WINDOW_MS,
+): Promise<void> {
   for (let step = 0; step < ADVANCE_UNTIL_STEP_LIMIT; step++) {
     if (condition()) {
       return;
     }
-    await clock.advance(TEST_LIVE_WINDOW_MS);
+    await clock.advance(windowMs);
   }
   if (!condition()) {
     throw new Error(`the condition did not hold within ${ADVANCE_UNTIL_STEP_LIMIT} windows of the fake clock`);
   }
+}
+
+/**
+ * Step `clock` one window at a time until `work` has settled, then await it, for a stop or a cleanup
+ * whose finalize waits on a closing window. Awaiting such work directly on a fake clock never returns.
+ */
+export async function untilSettled(
+  clock: FakeClock,
+  work: Promise<unknown>,
+  windowMs: number = TEST_LIVE_WINDOW_MS,
+): Promise<void> {
+  let settled = false;
+  const following = work.finally(() => {
+    settled = true;
+  });
+  // Handled here as well as below, so work that rejects while the clock is stepped is not reported
+  // as an unhandled rejection before the await below reads it.
+  following.catch(() => {});
+  await advanceUntil(clock, () => settled, windowMs);
+  await following;
 }
 
 /**
