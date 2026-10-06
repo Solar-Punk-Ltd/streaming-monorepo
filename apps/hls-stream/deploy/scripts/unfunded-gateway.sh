@@ -71,9 +71,11 @@ UNFUNDED_RPC_ENDPOINT="${UNFUNDED_RPC_ENDPOINT-}"
 #
 # ⭐ `--cache-capacity` and `--cache-retrieval` decide whether the node keeps what it fetched, which
 # is the single largest lever on a second read. Two arms disagreeing on it would not be a funding
-# comparison at all.
+# comparison at all. The capacity is the stack's default since 2026-10-06, bee's own 1000000; a
+# funded gateway started before then, or whose env file sets the key, carries another value, so
+# read it off `docker inspect` and match it.
 MATCHED_FLAGS=(
-  --cache-capacity=0
+  --cache-capacity=1000000
   --cache-retrieval=true
   '--cors-allowed-origins=*'
   --verbosity=4
