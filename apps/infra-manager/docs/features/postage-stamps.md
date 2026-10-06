@@ -225,8 +225,8 @@ batch keeps its id. A diluted batch takes uploads again once its node has the
 new depth. An uploader that has already reported `postage_refused` goes on
 reporting it until it is deployed again, because the stack's uploader keeps
 that reason for the life of its process (the stack's
-`packages/stream-uploader/README.md` at `v3.4`), and a ladder takes a rung that
-fell behind back into its master playlist once eight segments in a row land.
+`packages/stream-uploader/README.md` at `v3.4`), and a rung that fell behind is
+written into the stream list again once the player takes it back, from phase 3.
 
 ## What the manager refuses before Bee is asked
 

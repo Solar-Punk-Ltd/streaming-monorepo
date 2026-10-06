@@ -139,9 +139,12 @@ const cfg = loadConfig();
 // broadcast has started. See `drainRung`.
 const drainedRung = drainRung(process.env);
 
+const NO_MASTER_REASON =
+  'the uploader writes no master playlist since phase 2, and the drained rung is handled by the player from phase 3';
+
 describe(
   "L, one rung's postage runs dry and the other three carry the broadcast",
-  { skip: drainNotDeclared() || abrOff(cfg) },
+  { skip: NO_MASTER_REASON || drainNotDeclared() || abrOff(cfg) },
   () => {
     const host = makeHost(cfg);
     const uploader = containerName(cfg, 'stream-uploader');

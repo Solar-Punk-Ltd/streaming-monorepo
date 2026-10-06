@@ -322,7 +322,7 @@ describe('StreamStateService audit', () => {
   it('records the recording its write published when a later vod report lands before the write reads the row', async () => {
     // A re-broadcast ends twice in quick succession: the first recording is stored,
     // then a later one, and only then does the first report's republish read
-    // the row. Its write lists the later one, as the catalogue should; the
+    // the row. Its write lists the later one, as the catalogue should. The
     // first report's entry names that write, beside its own recording.
     const { store, gateway, audit, state, stream } = await setup();
     await state.report(stream.id, { state: 'live' }, ON_STAGE);

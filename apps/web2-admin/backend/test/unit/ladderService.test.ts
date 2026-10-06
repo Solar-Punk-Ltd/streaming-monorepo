@@ -342,7 +342,7 @@ describe('LadderService audit', () => {
   it('records the rung as its write published it when a later report for that rung lands first', async () => {
     // This report stores 720p still live, then 720p's final report is stored
     // before the republish reads the ladder. The write carries the final
-    // rung, as the catalogue should; the entry pairs this report's recording and
+    // rung, as the catalogue should. The entry pairs this report's recording and
     // duration with that write, so it has to say what the write carried.
     const { renditions, audit, service, stream } = await setup();
     const upsert = renditions.upsert.bind(renditions);

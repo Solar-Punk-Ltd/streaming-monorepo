@@ -1242,7 +1242,7 @@ curl -G http://localhost:3000/stream/status \
 
 | Module               | Description                                                                   |
 | -------------------- | ----------------------------------------------------------------------------- |
-| `StreamOrchestrator` | Central coordinator — manages stream lifecycle, queue, backpressure, recovery |
+| `StreamOrchestrator` | Central coordinator: manages stream lifecycle, queue, backpressure, recovery  |
 | `StreamUploader`     | Per-stream upload session: uploads segments, writes the live window every 2 s |
 | `StreamCatalog`      | Maintains the stream directory as a Swarm feed, and its notes                 |
 | `RecoveryStore`      | Persists stream state to disk for crash recovery                              |

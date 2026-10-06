@@ -94,9 +94,9 @@ import { requireByteSource, viewerGate } from '../../src/viewerCoverage.js';
  * published, the assertion says that, and whether the rewrite happened while this viewer was still
  * watching is printed as an observation beside their figures.
  *
- * ⛔ **At most one rung is dropped, read where it is decided.** `MAX_RUNGS_DROPPED_AT_ONCE` in the
- * uploader and `MAX_RUNGS_DROPPED_PER_LADDER` in the client are both 1, and
- * `test/rungDeathAgreement.test.ts` holds them against each other. What no unit test can show is
+ * ⛔ **At most one rung is dropped, read where it is decided.** `MAX_RUNGS_DROPPED_PER_LADDER` in
+ * the client is 1. The uploader no longer writes a master and this suite is skipped until it is
+ * rewritten for the player's drop in phase 3. What no unit test can show is
  * what a live master ended up offering, and that is the reading here: three rungs, not two and not
  * four. A master down to two has taken a healthy rung out from under viewers who were watching it,
  * which is the failure that capping the drop at one exists to prevent.
@@ -146,8 +146,13 @@ if (contradiction !== null) {
 // Module scope, so an undeclared run fails the file during import rather than skipping into silence.
 // ⛔ `drainNotDeclared` first, and before the gate that throws: a full suite globs this file out of
 // suites/viewer and has armed nothing, so it has to skip rather than refuse.
+const NO_MASTER_REASON =
+  'the uploader writes no master playlist since phase 2, and the drained rung is handled by the player from phase 3';
 const skip =
-  drainNotDeclared() || viewerGate(cfg.viewerExpectation, backend, cfg.browserRepoDir) || abrOff(cfg.abrEnabled);
+  NO_MASTER_REASON ||
+  drainNotDeclared() ||
+  viewerGate(cfg.viewerExpectation, backend, cfg.browserRepoDir) ||
+  abrOff(cfg.abrEnabled);
 // Module scope for the same reason: a run aimed at the coordinator must fail before a broadcast starts.
 const drainedRung = drainRung(process.env);
 

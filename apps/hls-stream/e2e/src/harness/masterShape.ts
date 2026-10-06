@@ -31,8 +31,8 @@
  *
  * The feed topic **is** the ladder's group id, which is the identifier every rung already agrees on
  * and the catalog already carries. So a suite that has read the group off a rung announce needs
- * nothing further to find the master. See `MasterFeedWriter` for why that is deliberate rather than
- * convenient.
+ * nothing further to find the master. The uploader no longer writes a master since phase 2, so this
+ * reading has nothing to read until the suites that use it are rewritten.
  *
  * The parse and the verdict are pure so `test/masterShape.test.ts` covers them under `pnpm verify`,
  * which nothing under `suites/` is. {@link readLadderMaster} is the only wiring.
@@ -224,7 +224,7 @@ export function masterRungRefusal(read: MasterRungs, expected: readonly string[]
 }
 
 /**
- * Read one ladder's published master playlist off the gateway, the way the client reads it.
+ * Read one ladder's published master playlist off the gateway, the way the client read it before phase 2.
  *
  * Retried rather than read once, for the reason `readOneRungPlaylist` records: a gateway that is
  * restarting answers its own error envelope for a few seconds, and failing on that would name the
@@ -232,7 +232,7 @@ export function masterRungRefusal(read: MasterRungs, expected: readonly string[]
  * refusal is about the body rather than about a throw.
  *
  * @param owner the signer's address, as `discoverCatalogFeed` reads it off the `[StreamCatalog]` line
- * @param group the ladder group, which is also the master feed's topic. See `MasterFeedWriter`
+ * @param group the ladder group, which was also the master feed's topic
  */
 export async function readLadderMaster(host: Host, cfg: E2EConfig, owner: string, group: string): Promise<string> {
   const route = `/feeds/${owner}/${feedTopicHexOf(group)}`;

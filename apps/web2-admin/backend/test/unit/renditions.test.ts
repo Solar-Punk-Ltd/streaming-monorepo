@@ -3,7 +3,7 @@
  *
  * The merge is the one with a bug behind it. swarm-hls-stream's scenario H: a
  * rung dies and comes back, announces itself before it has finalized again,
- * and a wholesale replace throws away the recording it already reported — which
+ * and a wholesale replace throws away the recording it already reported, which
  * un-finishes a ladder that was finished and leaves the viewer a master
  * playlist it cannot seek. Every case below is a shape that report can arrive
  * in.
