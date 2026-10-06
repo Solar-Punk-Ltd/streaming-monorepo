@@ -522,7 +522,7 @@ const FAKE_WINDOW_EPOCH_MS = 1_800_000_000_000;
  * passed windows over and each one logged a warning, so a test counting warnings went red on the box
  * and green on a laptop.
  */
-export function windowClockOn(clock: FakeClock): WindowWriterClock {
+function windowClockOn(clock: FakeClock): WindowWriterClock {
   return {
     now: () => FAKE_WINDOW_EPOCH_MS + clock.now(),
     setTimeout: (callback, delayMs) => clock.setTimer(callback, delayMs),
@@ -560,7 +560,7 @@ export async function advanceUntil(clock: FakeClock, condition: () => boolean): 
 
 /**
  * An orchestrator over a fake bee, its live windows on real time at {@link TEST_LIVE_WINDOW_MS} unless
- * `config.windowClock` says otherwise. A harness on a `FakeClock` hands it {@link windowClockOn}.
+ * `config.windowClock` says otherwise. A test on a `FakeClock` hands it {@link onTheFakeClock}.
  */
 export function makeTestOrchestrator(
   config: Partial<StreamOrchestratorConfig> = {},
