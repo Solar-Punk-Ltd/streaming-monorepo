@@ -15,3 +15,4 @@ export * from './streamStatus.js';
 export * from './uploaderHealth.js';
 export * from './uploaderLog.js';
 export * from './windows.js';
+export * from './windowWriter.js';
