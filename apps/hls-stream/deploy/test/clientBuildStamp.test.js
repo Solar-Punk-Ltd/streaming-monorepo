@@ -31,6 +31,7 @@ const CLIENT_STAMP_KEYS = [
   'CLIENT_BUILD_CLIENT_TREE',
   'CLIENT_BUILD_SHARED_TREE',
   'CLIENT_BUILD_CONTRACTS_TREE',
+  'CLIENT_BUILD_SWARM_WINDOWS_TREE',
   'CLIENT_BUILD_HEAD',
   'CLIENT_BUILD_DIRTY',
   'CLIENT_BUILD_AT',
@@ -53,6 +54,9 @@ const CLIENT_SOURCE_PATHS = [
  * the workspace root rather than from the stack.
  */
 const CONTRACTS_PACKAGE = 'packages/contracts';
+
+/** The window convention, which the stack's shared package re-exports too, at the same root. */
+const SWARM_WINDOWS_PACKAGE = 'packages/swarm-windows';
 
 async function deployClientRemotely(env = {}) {
   const sandbox = makeSandbox({ config: ALL_REMOTE, project: 'default' });
@@ -400,6 +404,8 @@ function commitWorkspaceFixture({ contracts = true } = {}) {
   if (contracts) {
     mkdirSync(join(repo, CONTRACTS_PACKAGE, 'src'), { recursive: true });
     writeFileSync(join(repo, CONTRACTS_PACKAGE, 'src', 'index.ts'), 'export const contract = 1;\n');
+    mkdirSync(join(repo, SWARM_WINDOWS_PACKAGE, 'src'), { recursive: true });
+    writeFileSync(join(repo, SWARM_WINDOWS_PACKAGE, 'src', 'index.ts'), 'export const window = 1;\n');
   }
   gitIn(repo, 'init', '-q');
   gitIn(repo, 'add', '-A');
@@ -411,9 +417,9 @@ function commitWorkspaceFixture({ contracts = true } = {}) {
  * The contracts tree `bench-on-host.sh` expects, from the functions it ships run with `REPO_ROOT` at
  * `stack` and `WORKSPACE_ROOT` at `workspaceRoot`.
  */
-function expectedContractsTreeFrom(stack, workspaceRoot) {
+function expectedContractsTreeFrom(stack, workspaceRoot, pkg = CONTRACTS_PACKAGE) {
   const lifted = liftFrom('bench-on-host.sh', [EXPECTED_TREE_FUNCTION, EXPECTED_WORKSPACE_TREE_FUNCTION]);
-  return execFileSync('bash', ['-c', `${lifted.join('\n')}\nworkspace_tree_or_empty "$1"`, 'bash', CONTRACTS_PACKAGE], {
+  return execFileSync('bash', ['-c', `${lifted.join('\n')}\nworkspace_tree_or_empty "$1"`, 'bash', pkg], {
     encoding: 'utf8',
     env: { ...machineEnv(), REPO_ROOT: stack, WORKSPACE_ROOT: workspaceRoot },
   });
@@ -469,6 +475,23 @@ describe('the contracts tree, read by a real git from the root of the one worksp
     const { repo, stack } = commitWorkspaceFixture();
 
     assert.equal(expectedContractsTreeFrom(stack, repo), gitIn(repo, 'rev-parse', `HEAD:${CONTRACTS_PACKAGE}`));
+  });
+
+  /** The window convention reaches the bundle through the shared package the same way the contracts do. */
+  it('stamps the swarm-windows tree of the root package, and bench-on-host.sh expects the same', () => {
+    const { repo, stack } = commitWorkspaceFixture();
+    const tree = gitIn(repo, 'rev-parse', `HEAD:${SWARM_WINDOWS_PACKAGE}`);
+
+    assert.equal(stampFrom(stack, { WORKSPACE_ROOT: repo }).CLIENT_BUILD_SWARM_WINDOWS_TREE, tree);
+    assert.equal(expectedContractsTreeFrom(stack, repo, SWARM_WINDOWS_PACKAGE), tree);
+    assert.match(readFileSync(join(SCRIPTS, 'bench-on-host.sh'), 'utf8'), /E2E_EXPECT_SWARM_WINDOWS_TREE/);
+  });
+
+  it('flags the build dirty for an uncommitted change under the swarm-windows package alone', () => {
+    const { repo, stack } = commitWorkspaceFixture();
+    writeFileSync(join(repo, SWARM_WINDOWS_PACKAGE, 'src', 'index.ts'), 'export const window = 2;\n');
+
+    assert.equal(stampFrom(stack, { WORKSPACE_ROOT: repo }).CLIENT_BUILD_DIRTY, '1');
   });
 
   it('has bench-on-host.sh expect no contracts tree where there is no workspace root or no package', () => {

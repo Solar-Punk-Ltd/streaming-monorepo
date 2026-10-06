@@ -12,6 +12,7 @@ import {
   EXPECT_CLIENT_DIRTY,
   EXPECT_CLIENT_TREE,
   EXPECT_CONTRACTS_TREE,
+  EXPECT_SWARM_WINDOWS_TREE,
   EXPECT_SHARED_TREE,
   parseClientBuildStamp,
   readClientShapeExpectation,
@@ -28,11 +29,13 @@ const CLIENT_TREE = 'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa';
 const SHARED_TREE = 'bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb';
 const HEAD = 'cccccccccccccccccccccccccccccccccccccccc';
 const CONTRACTS_TREE = 'eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee';
+const SWARM_WINDOWS_TREE = 'f'.repeat(40);
 
 const EXPECTED: ClientShapeExpectation = {
   clientTree: CLIENT_TREE,
   sharedTree: SHARED_TREE,
   contractsTree: CONTRACTS_TREE,
+  swarmWindowsTree: SWARM_WINDOWS_TREE,
   dirty: false,
   source: 'the run script',
 };
@@ -42,6 +45,7 @@ function stamp(overrides: Record<string, unknown> = {}): string {
     clientTree: CLIENT_TREE,
     sharedTree: SHARED_TREE,
     contractsTree: CONTRACTS_TREE,
+    swarmWindowsTree: SWARM_WINDOWS_TREE,
     head: HEAD,
     dirty: false,
     builtAt: '2026-09-03T10:00:00Z',
@@ -104,6 +108,7 @@ describe('where the expectation comes from', () => {
     clientTree: 'g'.repeat(40),
     sharedTree: 'h'.repeat(40),
     contractsTree: 'i'.repeat(40),
+    swarmWindowsTree: 'j'.repeat(40),
     dirty: false,
   });
 
@@ -236,6 +241,23 @@ describe('refusing a stage whose served client is not this checkout', () => {
    * What an image from before the contracts tree meets: its stamp has no such key, which reads as an
    * empty tree, and that differs from any expectation that names one, exactly as for the shared tree.
    */
+  /** The window convention reaches the bundle through the shared package the same way the contracts do. */
+  it('refuses a client built against a stale swarm-windows package, and names those sources', () => {
+    const refusal = clientShapeRefusal(EXPECTED, stamp({ swarmWindowsTree: 'd'.repeat(40) }));
+
+    assert.ok(refusal, 'a bundle compiled from other window sources was accepted');
+    assert.match(refusal, /swarm-windows sources: serving d{40}/);
+  });
+
+  it('reads the swarm-windows tree the run script measured', () => {
+    const expectation = readClientShapeExpectation(
+      { [EXPECT_CLIENT_TREE]: CLIENT_TREE, [EXPECT_SWARM_WINDOWS_TREE]: SWARM_WINDOWS_TREE },
+      () => null,
+    );
+
+    assert.equal(expectation?.swarmWindowsTree, SWARM_WINDOWS_TREE);
+  });
+
   it('refuses a stamp with no contracts tree against an expectation that names one', () => {
     const refusal = clientShapeRefusal(EXPECTED, stamp({ contractsTree: undefined }));
 

@@ -35,6 +35,7 @@ import { execFileSync } from 'node:child_process';
 export const EXPECT_CLIENT_TREE = 'E2E_EXPECT_CLIENT_TREE';
 export const EXPECT_SHARED_TREE = 'E2E_EXPECT_SHARED_TREE';
 export const EXPECT_CONTRACTS_TREE = 'E2E_EXPECT_CONTRACTS_TREE';
+export const EXPECT_SWARM_WINDOWS_TREE = 'E2E_EXPECT_SWARM_WINDOWS_TREE';
 export const EXPECT_CLIENT_DIRTY = 'E2E_EXPECT_CLIENT_DIRTY';
 
 /** Where the client image serves its stamp, on the viewer's own origin. */
@@ -51,6 +52,9 @@ const STACK_SOURCE_PATHS = [
 /** The contracts package, from the repository root, where the one workspace keeps it. */
 const CONTRACTS_SOURCE_PATH = 'packages/contracts';
 
+/** The window convention, which the shared package re-exports too, from the repository root as well. */
+const SWARM_WINDOWS_SOURCE_PATH = 'packages/swarm-windows';
+
 /** How much of a hash a summary line prints, enough to tell two builds apart at a glance. */
 const SHORT_HASH_LENGTH = 12;
 
@@ -64,6 +68,7 @@ interface ClientBuildStamp {
   readonly clientTree: string;
   readonly sharedTree: string;
   readonly contractsTree: string;
+  readonly swarmWindowsTree: string;
   readonly head: string;
   readonly dirty: boolean;
   readonly builtAt: string;
@@ -71,11 +76,12 @@ interface ClientBuildStamp {
   readonly exposePlayer: string;
 }
 
-/** The three tree hashes and the dirty flag, from whichever side could answer. */
+/** The four tree hashes and the dirty flag, from whichever side could answer. */
 interface ClientTrees {
   readonly clientTree: string;
   readonly sharedTree: string;
   readonly contractsTree: string;
+  readonly swarmWindowsTree: string;
   readonly dirty: boolean;
 }
 
@@ -122,6 +128,7 @@ export function parseClientBuildStamp(body: string): ClientBuildStamp | null {
     clientTree: stamp.clientTree,
     sharedTree: isNonEmptyString(stamp.sharedTree) ? stamp.sharedTree : '',
     contractsTree: isNonEmptyString(stamp.contractsTree) ? stamp.contractsTree : '',
+    swarmWindowsTree: isNonEmptyString(stamp.swarmWindowsTree) ? stamp.swarmWindowsTree : '',
     head: isNonEmptyString(stamp.head) ? stamp.head : '',
     dirty: stamp.dirty === true,
     builtAt: isNonEmptyString(stamp.builtAt) ? stamp.builtAt : '',
@@ -147,6 +154,7 @@ export function readClientShapeExpectation(
       clientTree: fromScript,
       sharedTree: env[EXPECT_SHARED_TREE] ?? '',
       contractsTree: env[EXPECT_CONTRACTS_TREE] ?? '',
+      swarmWindowsTree: env[EXPECT_SWARM_WINDOWS_TREE] ?? '',
       dirty: env[EXPECT_CLIENT_DIRTY] === '1',
       source: 'the run script',
     };
@@ -213,9 +221,10 @@ export function readGitClientTrees(stackDir: string, env: NodeJS.ProcessEnv = pr
       clientTree: git(['rev-parse', 'HEAD:./packages/client']),
       sharedTree: git(['rev-parse', 'HEAD:./packages/shared']),
       contractsTree: treeOrEmpty(`HEAD:${CONTRACTS_SOURCE_PATH}`),
+      swarmWindowsTree: treeOrEmpty(`HEAD:${SWARM_WINDOWS_SOURCE_PATH}`),
       dirty:
         git(['status', '--porcelain', '--', ...STACK_SOURCE_PATHS]).length > 0 ||
-        git(['status', '--porcelain', '--', `:/${CONTRACTS_SOURCE_PATH}`]).length > 0,
+        git(['status', '--porcelain', '--', `:/${CONTRACTS_SOURCE_PATH}`, `:/${SWARM_WINDOWS_SOURCE_PATH}`]).length > 0,
     };
   } catch {
     return null;
@@ -225,7 +234,7 @@ export function readGitClientTrees(stackDir: string, env: NodeJS.ProcessEnv = pr
 const NO_EXPECTATION =
   'This run cannot say which client sources it expects, so it refuses rather than passing: an ' +
   'unknown expectation is not a match. A run launched through `deploy/scripts/bench-on-host.sh` ' +
-  `carries ${EXPECT_CLIENT_TREE}, ${EXPECT_SHARED_TREE}, ${EXPECT_CONTRACTS_TREE} and ` +
+  `carries ${EXPECT_CLIENT_TREE}, ${EXPECT_SHARED_TREE}, ${EXPECT_CONTRACTS_TREE}, ${EXPECT_SWARM_WINDOWS_TREE} and ` +
   `${EXPECT_CLIENT_DIRTY} into the ` +
   'container, and a run from a checkout reads them out of git. This one had neither, so either ' +
   'launch it through that script or run it from a checkout with its history.';
@@ -251,7 +260,8 @@ function dirtyRefusal(expectation: ClientShapeExpectation, stamp: ClientBuildSta
     'They can match exactly and still mean nothing, which is why this refuses on a match. ' +
     'Please commit or stash the changes to `packages/client`, `packages/shared`, ' +
     '`deploy/Dockerfile.client` or `deploy/client-nginx.conf.template` in the stack, or to ' +
-    '`packages/contracts` at the repository root, then redeploy the client and resync the harness.'
+    '`packages/contracts` or `packages/swarm-windows` at the repository root, then redeploy the client and resync ' +
+    'the harness.'
   );
 }
 
@@ -260,6 +270,7 @@ function staleRefusal(expectation: ClientShapeExpectation, stamp: ClientBuildSta
     `  - client sources: serving ${stamp.clientTree}, ${expectation.source} has ${expectation.clientTree}`,
     `  - shared sources: serving ${stamp.sharedTree}, ${expectation.source} has ${expectation.sharedTree}`,
     `  - contracts sources: serving ${stamp.contractsTree}, ${expectation.source} has ${expectation.contractsTree}`,
+    `  - swarm-windows sources: serving ${stamp.swarmWindowsTree}, ${expectation.source} has ${expectation.swarmWindowsTree}`,
     `  - the serving client was built at commit ${stamp.head} on ${stamp.builtAt}`,
   ].join('\n');
 
@@ -288,7 +299,8 @@ export function clientShapeRefusal(expectation: ClientShapeExpectation | null, s
   if (
     stamp.clientTree !== expectation.clientTree ||
     stamp.sharedTree !== expectation.sharedTree ||
-    stamp.contractsTree !== expectation.contractsTree
+    stamp.contractsTree !== expectation.contractsTree ||
+    stamp.swarmWindowsTree !== expectation.swarmWindowsTree
   ) {
     return staleRefusal(expectation, stamp);
   }
