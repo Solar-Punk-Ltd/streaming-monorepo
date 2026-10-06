@@ -31,6 +31,7 @@ import {
   sendDelete,
   sendEmpty,
   sendJson,
+  sessionEnded,
   ApiError,
 } from './http';
 
@@ -150,8 +151,10 @@ export function logout(): Promise<void> {
 }
 
 /**
- * A 401 here means the current password was wrong, not that the session has
- * gone, so it is answered rather than turned into a sign-out.
+ * A 401 here usually means the current password was wrong, not that the
+ * session has gone, so it is answered rather than turned into a sign-out. The
+ * exception is a 401 whose body says `unauthenticated`: the session itself
+ * ended, and the console signs out as it would for any other request.
  *
  * Answers the updated user when the API returns one, so the console can show
  * the new `passwordChangedAt` without another round trip.
@@ -168,6 +171,8 @@ export async function changePassword(body: ChangePasswordRequest): Promise<User 
   );
 
   if (res.status === 401) {
+    const answer = (await res.json().catch(() => ({}))) as { error?: string };
+    if (answer.error === 'unauthenticated') sessionEnded();
     throw new ApiError('That is not your current password.', 'invalid_credentials', 401);
   }
   if (!res.ok) await failWith(res, 'Could not change the password.');
