@@ -17,6 +17,8 @@ import {
   finalizeResumedPattern,
   ladderFinalized,
   ladderFinalizedPattern,
+  liveWindowWritten,
+  liveWindowWrittenPattern,
   manifestUploaded,
   manifestUploadedPattern,
   omeSegmentLossReported,
@@ -25,6 +27,8 @@ import {
   originDeclaredDiscontinuityPattern,
   publishingRendition,
   publishingRenditionPattern,
+  recordingUploaded,
+  recordingUploadedPattern,
   replacedSessionFinalizedPattern,
   rungAnnounced,
   rungAnnouncedPattern,
@@ -757,5 +761,40 @@ describe('the message for a postage batch bee refused', () => {
     ]) {
       assert.equal(rungBatchRefusedPattern().test(message), false, message);
     }
+  });
+});
+
+describe('the live window message', () => {
+  it('round-trips the stream and the window through the derived pattern', () => {
+    const found = liveWindowWrittenPattern().exec(liveWindowWritten('live/stream_720p', 889_123_456));
+
+    assert.ok(found, 'the pattern does not match the message it was derived from');
+    assert.equal(found[1], 'live/stream_720p');
+    assert.equal(found[2], '889123456');
+  });
+
+  it('scopes windows to one rung across an interleaved ladder log', () => {
+    const log = [
+      liveWindowWritten('live/stream_1080p', 10),
+      liveWindowWritten('live/stream_360p', 10),
+      liveWindowWritten('live/stream_1080p', 11),
+    ].join('\n');
+
+    const of1080p = [...log.matchAll(liveWindowWrittenPattern('g'))]
+      .filter((m) => m[1] === 'live/stream_1080p')
+      .map((m) => Number(m[2]));
+
+    assert.deepEqual(of1080p, [10, 11]);
+  });
+});
+
+describe('the recording upload message', () => {
+  it('round-trips the stream and the reference through the derived pattern', () => {
+    const reference = 'ab'.repeat(32);
+    const found = recordingUploadedPattern().exec(recordingUploaded('live/stream_720p', reference));
+
+    assert.ok(found, 'the pattern does not match the message it was derived from');
+    assert.equal(found[1], 'live/stream_720p');
+    assert.equal(found[2], reference);
   });
 });

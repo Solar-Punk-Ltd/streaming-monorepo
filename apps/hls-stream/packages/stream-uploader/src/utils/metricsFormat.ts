@@ -96,7 +96,7 @@ function describe(snapshot: MetricsSnapshot): RenderedMetric[] {
     {
       name: 'manifest_publish_failures_total',
       type: 'counter',
-      help: 'Live manifest publishes that failed. Retried at the same index when the next segment arrives.',
+      help: 'Live windows that were due and not written: refused, skipped or passed over. Never retried, the next window carries the news.',
       value: snapshot.manifestPublishFailuresTotal,
     },
     {

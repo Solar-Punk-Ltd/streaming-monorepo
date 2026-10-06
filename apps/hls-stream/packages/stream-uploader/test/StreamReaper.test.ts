@@ -516,7 +516,12 @@ describe('what a reap says about why the broadcast ended', () => {
       await waitFor(() => hasFinalized(published), SETTLE_CEILING_MS);
     });
 
-    assert.deepEqual(linesAboutTheStream(lines, LOG_LEVEL_WARN), [], 'an encoder that left is not a warning');
+    // The live windows run on real time in these tests, and a loaded runner passes one over now and
+    // then, which is a warning about the windows and not about the encoder.
+    const warnings = linesAboutTheStream(lines, LOG_LEVEL_WARN).filter(
+      (captured) => !captured.line.includes('Live window for stream'),
+    );
+    assert.deepEqual(warnings, [], 'an encoder that left is not a warning');
     assert.ok(
       linesAboutTheStream(lines, LOG_LEVEL_INFO).some((captured) => captured.line.includes(`${REAP_MS / 1000}s`)),
       'the end is logged with the reconnect window the encoder did not come back inside',

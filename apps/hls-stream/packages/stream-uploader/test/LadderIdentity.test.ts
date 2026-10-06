@@ -1,3 +1,4 @@
+import { parseLiveWindowPayload } from '@swarm-hls-stream/shared';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import os from 'node:os';
@@ -14,7 +15,7 @@ import { buildLadderEntry, LadderIdentity, StreamEntry } from '../src/libs/Strea
 import { StreamOrchestrator } from '../src/libs/StreamOrchestrator.js';
 import { MEDIA_TYPE_VIDEO, Rendition, StreamState } from '../src/types.js';
 
-import { makeFakeRecoveryStore, makeTestOrchestrator } from './helpers/fakes.js';
+import { fakeRecordingReference, makeFakeRecoveryStore, makeTestOrchestrator } from './helpers/fakes.js';
 import { waitFor } from './helpers/waiting.js';
 
 /**
@@ -422,9 +423,14 @@ describe('a ladder in admin mode', () => {
       registry: {
         upsertRendition: async (identity, rendition) => {
           announces.push({ identity, rendition });
-          return { masterIndex: null, flippedToFinished: false, duration: null };
+          return { masterIndex: null, recording: null, flippedToFinished: false, duration: null };
         },
-        recordRungUnfinished: async () => ({ masterIndex: null, flippedToFinished: false, duration: null }),
+        recordRungUnfinished: async () => ({
+          masterIndex: null,
+          recording: null,
+          flippedToFinished: false,
+          duration: null,
+        }),
         recordRungDelivered: () => {},
         recordRungUploadFailed: () => {},
       },
@@ -574,7 +580,6 @@ describe('a ladder in admin mode', () => {
       streamId: RUNG_720P,
       streamRawTopic: 'rung-topic-0001',
       mediatype: MEDIA_TYPE_VIDEO,
-      socIndex: 3,
       segments: [{ index: 0, duration: 2, ref: 'ref0' }],
       hlsHeaders: ['#EXTM3U', '#EXT-X-VERSION:3'],
       isFirstSegmentReady: true,
@@ -598,7 +603,7 @@ describe('a ladder in admin mode', () => {
       assert.equal(groupOf(orch, BASE), DECLARED_TOPIC, 'the group store is rewritten from the entry that survived');
 
       // Nothing re-announces a recovered stream, so the first record it registers is its finalize, the
-      // announce that carries the recording's index. It goes through the same registry a fresh
+      // announce that carries the recording's reference. It goes through the same registry a fresh
       // session's does, under the same declaration, or the recovered tail of the broadcast is merged
       // into nothing the admin holds.
       const errors = await errorsDuring(async () => {
@@ -607,7 +612,7 @@ describe('a ladder in admin mode', () => {
       });
       assert.equal(announces[0].identity.adminStreamId, ADMIN_SESSION.id);
       assert.equal(announces[0].identity.group, DECLARED_TOPIC);
-      assert.notEqual(announces[0].rendition.index, undefined, 'a finalize announces where the recording ended');
+      assert.notEqual(announces[0].rendition.recording, undefined, 'a finalize announces where the recording is');
       assert.deepEqual(errors, []);
     } finally {
       await orch.cleanup();
@@ -629,17 +634,17 @@ describe('a ladder in admin mode', () => {
    */
   it('holds a rung announced mid-drain until its predecessor has drained, then continues above it', async () => {
     const root = makeTempRoot();
-    /** Every SOC write, in order, with what it carried, so a media playlist can be told from a master. */
-    const writes: { index: number; payload: string }[] = [];
-    const mediaPlaylists = () => writes.filter((write) => !write.payload.includes('#EXT-X-STREAM-INF'));
+    /** Every live window written, in order, and every window chunk at its identifier for a scan to find. */
+    const windows: string[] = [];
+    const stored = new Map<string, Uint8Array>();
 
     /** Held open so the retired session's finalize cannot settle until the test lets it. */
     let releaseTheDrain = () => {};
     const drainHeld = new Promise<void>((resolve) => {
       releaseTheDrain = resolve;
     });
-    /** The retired session's recording, which is the last thing it writes before its drain settles. */
-    let vodIndex: number | null = null;
+    /** Whether the retired session has reached its recording, the last thing it uploads before its drain settles. */
+    let recordingStarted = false;
 
     const orch = makeTestOrchestrator(
       {
@@ -652,20 +657,18 @@ describe('a ladder in admin mode', () => {
         }),
       },
       {
-        uploadPayload: async (index, data) => {
-          const payload = String(data);
-          if (payload.includes('#EXT-X-PLAYLIST-TYPE:VOD')) {
-            vodIndex = index;
-            await drainHeld;
-          }
-          writes.push({ index, payload });
-          return { reference: { toHex: () => `soc${index}` } };
+        uploadWindow: async (identifier, payload) => {
+          windows.push(parseLiveWindowPayload(payload)?.playlist ?? '');
+          stored.set(identifier, payload);
+          return { reference: { toHex: () => 'window' } };
         },
-        // The feed answers with whatever was last written to it, which is what the replacement reads
-        // to find where it continues from.
-        feedHead: () => {
-          const newest = writes[writes.length - 1];
-          return newest === undefined ? null : { index: newest.index, manifest: newest.payload };
+        // The topic answers with whatever window was written at an address, which is what the
+        // replacement scans to find where it continues from.
+        windowAt: (identifier) => stored.get(identifier) ?? null,
+        uploadRecording: async (playlist) => {
+          recordingStarted = true;
+          await drainHeld;
+          return { reference: { toHex: () => fakeRecordingReference(playlist) } };
         },
       },
     );
@@ -673,37 +676,35 @@ describe('a ladder in admin mode', () => {
     try {
       orch.startStream(RUNG_720P, MEDIA_TYPE_VIDEO, undefined, ADMIN_SESSION);
       orch.handleSegment(RUNG_720P, 0, 2, Buffer.from('seg'));
-      await waitFor(() => mediaPlaylists().length > 0, SETTLE_CEILING_MS);
+      await waitFor(() => windows.length > 0, SETTLE_CEILING_MS);
 
       // ⚠️ **The stop is what makes two sessions, and it has to come first.** A bare re-announce of a
       // live rung resumes the session it finds, which is the encoder-reconnect path and has no
       // predecessor to wait for. Two sessions hold one derived topic only while a stop of that id is
-      // still finalizing, which is the window this gate exists for: the retired session's closing and
-      // VOD playlists are SOC writes onto the very feed the replacement is about to publish into.
+      // still finalizing, which is the window this gate exists for.
       const stopping = orch.stopStream(RUNG_720P);
-      // The retired session gets as far as its recording and stops there, holding the drain open.
-      await waitFor(() => vodIndex !== null, SETTLE_CEILING_MS);
+      // The retired session writes its closing window, reaches its recording and stops there.
+      await waitFor(() => recordingStarted, SETTLE_CEILING_MS);
+      const closing = windows[windows.length - 1];
+      assert.ok(closing.includes('#EXT-X-ENDLIST'), 'the retired session ended its playlist first');
 
       // The transcoder comes back inside that drain and is registered as a replacement, onto the same
       // derived topic.
       orch.startStream(RUNG_720P, MEDIA_TYPE_VIDEO, undefined, ADMIN_SESSION);
       orch.handleSegment(RUNG_720P, 1, 2, Buffer.from('seg'));
-      const heldAt = mediaPlaylists().length;
       orch.handleSegment(RUNG_720P, 2, 2, Buffer.from('seg'));
+      const heldAt = windows.length;
       await new Promise((resolve) => setTimeout(resolve, 100));
-      assert.equal(
-        mediaPlaylists().length,
-        heldAt,
-        'the replacement published onto a feed its predecessor had not finished writing',
-      );
+      assert.equal(windows.length, heldAt, 'the replacement wrote on a topic its predecessor had not finished writing');
 
-      // The predecessor finishes, and the next segment is the one that re-attempts. The replacement
-      // reads the head its predecessor left and writes above it rather than over it.
+      // The predecessor finishes, and the replacement continues from the closing window it left.
       releaseTheDrain();
-      await waitFor(() => vodIndex !== null && writes.some((write) => write.index === vodIndex), SETTLE_CEILING_MS);
       await stopping;
-      orch.handleSegment(RUNG_720P, 3, 2, Buffer.from('seg'));
-      await waitFor(() => mediaPlaylists().some((write) => write.index > vodIndex!), SETTLE_CEILING_MS);
+      await waitFor(() => windows.length > heldAt, SETTLE_CEILING_MS);
+      const continued = windows[heldAt];
+      const sequenceOf = (playlist: string) => Number(/#EXT-X-MEDIA-SEQUENCE:(\d+)/.exec(playlist)?.[1]);
+      const entriesOf = (playlist: string) => playlist.split('\n').filter((line) => line.startsWith('#EXTINF')).length;
+      assert.equal(sequenceOf(continued), sequenceOf(closing) + entriesOf(closing), 'numbered on, never over');
     } finally {
       releaseTheDrain();
       await orch.cleanup();

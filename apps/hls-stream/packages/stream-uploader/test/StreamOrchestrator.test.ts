@@ -206,13 +206,13 @@ describe('StreamOrchestrator recovery-timer cancellation (F: uploader crash reco
 
     const orch = makeTestOrchestrator(
       { recoveryTimeout: RECOVERY_TIMEOUT_MS, clock },
-      // Holds the VOD manifest publish open, which is what keeps the drain running long enough for a
+      // Holds the recording upload open, which is what keeps the drain running long enough for a
       // segment to land inside it. Without this the finalize completes in the same turn and the
       // window under test never exists.
       {
-        uploadPayload: async (index: number) => {
+        uploadRecording: async () => {
           await vodPublishing;
-          return { reference: { toHex: () => `soc${index}` } };
+          return { reference: { toHex: () => 'recording' } };
         },
       },
       makeFakeRecoveryStore({ listActive: () => [toRecoveryFileId(id)], load: () => makeRecoveredState(id) }),
@@ -1641,16 +1641,16 @@ describe('StreamOrchestrator inferring a loss from a skipped index', () => {
       const orch = makeTestOrchestrator(
         {},
         {
-          uploadPayload: async () => {
+          uploadRecording: async () => {
             socWrites += 1;
             const write = socWrites;
-            // The predecessor's VOD commit, held open so the reconnect lands inside its drain.
-            if (write === 2) {
+            // The predecessor's recording, held open so the reconnect lands inside its drain.
+            if (write === 1) {
               await new Promise<void>((resolve) => {
                 releasePredecessor = resolve;
               });
             }
-            return { reference: { toHex: () => `soc${write}` } };
+            return { reference: { toHex: () => `recording${write}` } };
           },
         },
       );
@@ -1842,9 +1842,9 @@ describe('StreamOrchestrator drain that outlives its deadline', () => {
       // because a Bee that never answers also never lets the abandoned finalize do any damage, and the
       // damage is the point.
       {
-        uploadPayload: async (index: number) => {
+        uploadRecording: async () => {
           await beeAnswers;
-          return { reference: { toHex: () => `soc${index}` } };
+          return { reference: { toHex: () => 'recording' } };
         },
       },
       makeFakeRecoveryStore({
@@ -1888,7 +1888,7 @@ describe('StreamOrchestrator stall signal during a drain', () => {
     const clock = new FakeClock();
     const orch = makeTestOrchestrator(
       { clock, recoveryTimeout: RECOVERY_TIMEOUT_MS },
-      { uploadPayload: () => neverSettles() },
+      { uploadRecording: () => neverSettles() },
     );
 
     orch.startStream(id, MEDIA_TYPE_VIDEO);
@@ -1962,39 +1962,41 @@ describe('StreamOrchestrator duplicate filter', () => {
 });
 
 describe('StreamOrchestrator draining stream', () => {
-  /** The first segment publishes a live manifest at SOC index 0, so the VOD manifest lands at 1. */
-  const LIVE_SOC_INDEX = 0;
-  const VOD_SOC_INDEX = 1;
-
   interface HeldVodCommit {
     uploads: FakeUploads;
-    /** SOC indexes in commit order, so a manifest published above the VOD's index is visible. */
-    socWrites: number[];
+    /** Live windows written so far. */
+    windows: () => number;
+    /** Whether the recording upload has started, which is where the drain is held. */
+    recordingStarted: () => boolean;
     release: () => void;
   }
 
   /**
-   * Holds the drain open inside the VOD manifest commit, which is the only place it can be held that
-   * is past `segmentQueue.onIdle()`. That is the window: the queue barrier the drain waits on has
-   * already resolved, so anything enqueued from here on is uploaded into a manifest that is finished.
+   * Holds the drain open inside the recording upload, which is past `segmentQueue.onIdle()` and past
+   * the closing window. That is the window: the queue barrier the drain waits on has already
+   * resolved, so anything enqueued from here on is uploaded into a recording that is finished.
    */
   function holdTheVodCommit(): HeldVodCommit {
-    const socWrites: number[] = [];
+    let windows = 0;
+    let recordingStarted = false;
     let releaseVodCommit = () => {};
     const vodCommitHeld = new Promise<void>((resolve) => {
       releaseVodCommit = resolve;
     });
 
     return {
-      socWrites,
+      windows: () => windows,
+      recordingStarted: () => recordingStarted,
       release: () => releaseVodCommit(),
       uploads: {
-        uploadPayload: async (index: number) => {
-          socWrites.push(index);
-          if (index === VOD_SOC_INDEX) {
-            await vodCommitHeld;
-          }
-          return { reference: { toHex: () => `soc${index}` } };
+        uploadWindow: async () => {
+          windows += 1;
+          return { reference: { toHex: () => 'window' } };
+        },
+        uploadRecording: async () => {
+          recordingStarted = true;
+          await vodCommitHeld;
+          return { reference: { toHex: () => 'recording' } };
         },
       },
     };
@@ -2010,28 +2012,27 @@ describe('StreamOrchestrator draining stream', () => {
 
     orch.startStream(id, MEDIA_TYPE_VIDEO);
     assert.deepEqual(orch.handleSegment(id, 0, 2, Buffer.from('seg0')), { accepted: true });
-    await waitFor(() => held.socWrites.includes(LIVE_SOC_INDEX), SETTLE_CEILING_MS);
+    await waitFor(() => held.windows() > 0, SETTLE_CEILING_MS);
 
     return orch;
   }
 
   it('refuses a segment once the drain is past the queue barrier, so the engine keeps its copy', async () => {
-    // Accepted, it was uploaded and paid for and then added to a manifest already built and committed,
-    // so it reached no player. Worse than lost: the publish it triggers commits a live manifest at a
-    // SOC index above the VOD's, leaving the feed's newest entry a live playlist for a finished
-    // broadcast, and the state it persists restores a recovery entry `notifyStop` had just deleted.
+    // Accepted, it was uploaded and paid for and then added to a recording already built and uploaded,
+    // so it reached no player. Worse than lost: the state it persists restores a recovery entry
+    // `notifyStop` had just deleted.
     const id = 'live/stream';
     const published: unknown[] = [];
     const held = holdTheVodCommit();
     const orch = await startedWithOneSegment(id, held, published);
 
     const stopped = orch.stopStream(id);
-    await waitFor(() => held.socWrites.includes(VOD_SOC_INDEX), SETTLE_CEILING_MS);
+    await waitFor(() => held.recordingStarted(), SETTLE_CEILING_MS);
 
     assert.deepEqual(
       orch.handleSegment(id, 1, 2, Buffer.from('seg1')),
       { accepted: false, reason: REJECT_DRAINING },
-      'a segment the finalized manifest can no longer carry must be refused, not accepted and dropped',
+      'a segment the finished recording can no longer carry must be refused, not accepted and dropped',
     );
     assert.equal(
       orch.handleSegmentLoss(id, 2, 1),
@@ -2053,7 +2054,7 @@ describe('StreamOrchestrator draining stream', () => {
     const orch = await startedWithOneSegment(id, held, published);
 
     const stopped = orch.stopStream(id);
-    await waitFor(() => held.socWrites.includes(VOD_SOC_INDEX), SETTLE_CEILING_MS);
+    await waitFor(() => held.recordingStarted(), SETTLE_CEILING_MS);
 
     assert.equal(orch.startStream(id, MEDIA_TYPE_VIDEO), true, 'the reconnect is accepted');
     assert.deepEqual(
@@ -2077,7 +2078,7 @@ describe('StreamOrchestrator stop outcome', () => {
    * nothing left to reject. A failed stop and a successful one were the same event at every layer.
    */
   it('reports a finalize that never published as failed, not as a stop that worked', async () => {
-    const orch = makeTestOrchestrator({}, { uploadPayload: rejectImmediately });
+    const orch = makeTestOrchestrator({}, { uploadRecording: rejectImmediately });
 
     orch.startStream(id, MEDIA_TYPE_VIDEO);
     await waitFor(() => orch.getActiveStreamCount() === 1, SETTLE_CEILING_MS);
@@ -2118,7 +2119,7 @@ describe('StreamOrchestrator stop outcome', () => {
    * signal would report a stream that had already ended, for the life of the process.
    */
   it('retires the stream from the live maps even when the finalize failed', async () => {
-    const orch = makeTestOrchestrator({}, { uploadPayload: rejectImmediately });
+    const orch = makeTestOrchestrator({}, { uploadRecording: rejectImmediately });
 
     orch.startStream(id, MEDIA_TYPE_VIDEO);
     await waitFor(() => orch.getActiveStreamCount() === 1, SETTLE_CEILING_MS);
@@ -2158,23 +2159,23 @@ describe('StreamOrchestrator stop outcome under a reconnect (gate on PR 52)', ()
     const orch = makeTestOrchestrator(
       {},
       {
-        uploadPayload: async () => {
+        uploadRecording: async () => {
           socWrites += 1;
           // Captured before the await. Read after it, this is the *shared* counter, which has moved
-          // on by then, so the predecessor's own commit answered for the replacement's write and
-          // failed with it. That made the test pass against the defect it was written to catch.
+          // on by then, so the predecessor's own upload answered for the replacement's and failed
+          // with it. That made the test pass against the defect it was written to catch.
           const write = socWrites;
-          // The predecessor's VOD commit, held open so the reconnect lands inside its drain.
-          if (write === 2) {
+          // The predecessor's recording, held open so the reconnect lands inside its drain.
+          if (write === 1) {
             await new Promise<void>((resolve) => {
               releasePredecessor = resolve;
             });
           }
-          // The replacement's VOD commit, refused, so its own stop is a real `failed`.
-          if (write >= 4) {
+          // The replacement's recording, refused, so its own stop is a real `failed`.
+          if (write >= 2) {
             return null;
           }
-          return { reference: { toHex: () => `soc${write}` } };
+          return { reference: { toHex: () => `recording${write}` } };
         },
       },
       makeFakeRecoveryStore(),
@@ -2220,14 +2221,14 @@ describe('StreamOrchestrator stop outcome under a reconnect (gate on PR 52)', ()
     const orch = makeTestOrchestrator(
       {},
       {
-        uploadPayload: async () => {
+        uploadRecording: async () => {
           socWrites += 1;
-          if (socWrites === 2) {
+          if (socWrites === 1) {
             await new Promise<void>((resolve) => {
               releasePredecessor = resolve;
             });
           }
-          return { reference: { toHex: () => `soc${socWrites}` } };
+          return { reference: { toHex: () => `recording${socWrites}` } };
         },
       },
       makeFakeRecoveryStore(),
@@ -2273,15 +2274,15 @@ describe('StreamOrchestrator status during a handover (gate on PR 52)', () => {
     const orch = makeTestOrchestrator(
       {},
       {
-        uploadPayload: async () => {
+        uploadRecording: async () => {
           socWrites += 1;
           const write = socWrites;
-          if (write === 2) {
+          if (write === 1) {
             await new Promise<void>((resolve) => {
               releasePredecessor = resolve;
             });
           }
-          return { reference: { toHex: () => `soc${write}` } };
+          return { reference: { toHex: () => `recording${write}` } };
         },
       },
     );
@@ -2313,15 +2314,15 @@ describe('StreamOrchestrator status during a handover (gate on PR 52)', () => {
     const orch = makeTestOrchestrator(
       {},
       {
-        uploadPayload: async () => {
+        uploadRecording: async () => {
           socWrites += 1;
           const write = socWrites;
-          if (write === 2) {
+          if (write === 1) {
             await new Promise<void>((resolve) => {
               releaseDrain = resolve;
             });
           }
-          return { reference: { toHex: () => `soc${write}` } };
+          return { reference: { toHex: () => `recording${write}` } };
         },
       },
     );
@@ -2637,9 +2638,9 @@ describe('the dating a broadcast re-anchors to across an engine restart', () => 
 
   function capturingPlaylists(published: string[]): FakeUploads {
     return {
-      uploadPayload: async (index: number, payload: unknown) => {
-        published.push(String(payload));
-        return { reference: { toHex: () => `soc${index}` } };
+      uploadWindow: async (_identifier: string, payload: Uint8Array) => {
+        published.push(Buffer.from(payload).toString('utf-8'));
+        return { reference: { toHex: () => 'window' } };
       },
     };
   }
@@ -2945,6 +2946,12 @@ describe('the dating a broadcast re-anchors to across an engine restart', () => 
           orch.handleSegment(rung, 100, 2, Buffer.from('one'));
         }
         await waitFor(() => uploadedIndexes(lines, 100).length === rungs.length, SETTLE_CEILING_MS);
+        // And a window written by each rung, which is what publishes the sequence. Before that an index
+        // below it is a segment arriving out of order rather than a counter that restarted.
+        await waitFor(
+          () => rungs.every((rung) => lines.some((line) => line.includes(`Live window of ${rung} written`))),
+          SETTLE_CEILING_MS,
+        );
 
         nowMs = RESTARTED_AT_MS;
         for (const rung of rungs) {

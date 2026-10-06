@@ -1,4 +1,7 @@
 import { Bee, BeeResponseError, FeedIndex, Topic } from '@ethersphere/bee-js';
+import { type WindowWriterClock } from '@swarm-hls-stream/shared';
+import { createHash } from 'node:crypto';
+import { after } from 'node:test';
 import { viewerCatalogEntrySchema } from '@swarm-hls-stream/shared';
 
 import { BeePublisher, BeePublisherPool, shortBatchId, SINGLE_PUBLISHER } from '../../src/libs/BeePublisherPool.js';
@@ -10,7 +13,6 @@ import { StreamOrchestrator, StreamOrchestratorConfig } from '../../src/libs/Str
 import {
   BroadcastAnchor,
   HealthSignals,
-  MEDIA_TYPE_VIDEO,
   PRESSURE_LOW,
   RECOVERY_ENTRY_LOADED,
   RECOVERY_ENTRY_MISSING,
@@ -41,7 +43,7 @@ export const TEST_ANCHOR: BroadcastAnchor = {
 const NON_RETRYABLE_STATUS = 400;
 
 /** What a manifest feed currently holds at its head, in the terms a test states it in. */
-export interface FakeFeedHead {
+interface FakeFeedHead {
   index: number;
   manifest: string;
 }
@@ -64,7 +66,82 @@ export interface FakeUploads {
    * Returning `null` is bee answering 404. The default is {@link CRASHED_MID_BROADCAST}.
    */
   feedHead?: (topic: string) => FakeFeedHead | null;
+  /**
+   * A live window's single owner chunk write, called with the window's identifier in hex and the
+   * payload. Defaults to resolving, which is a window stored.
+   */
+  uploadWindow?: (identifier: string, payload: Uint8Array) => Promise<unknown>;
+  /**
+   * What a window's chunk holds when a session opening on a topic asks for it, by identifier in hex.
+   * Null, the default, is Bee answering 404 for a window nobody wrote.
+   */
+  windowAt?: (identifier: string) => Uint8Array | null;
+  /**
+   * The recording playlist's upload at the end, called with the playlist's text. Defaults to a
+   * reference made from the text, so the same recording uploaded twice answers the same reference as
+   * Swarm does. A test holds a finalize open by not settling it.
+   */
+  uploadRecording?: (playlist: string) => Promise<unknown>;
 }
+
+/** Whether a `/bytes` upload is a recording playlist rather than a segment. */
+function isPlaylist(data: Uint8Array): boolean {
+  return Buffer.from(data).toString('utf-8').startsWith('#EXTM3U');
+}
+
+/** A made-up reference for a recording, the same for the same text, built rather than written out. */
+export function fakeRecordingReference(playlist: string): string {
+  return createHash('sha256').update(playlist).digest('hex');
+}
+
+/**
+ * The live window length every orchestrator and uploader in these tests runs at, so the window a
+ * catalog announce and a finalize wait for is milliseconds of real time rather than two seconds.
+ */
+export const TEST_LIVE_WINDOW_MS = 20;
+
+const windowTimers = new Set<ReturnType<typeof setTimeout>>();
+let windowTimersStopped = false;
+
+/**
+ * Real time for the window writers in these tests, with every timer stopped once the file's tests
+ * have all run.
+ *
+ * ⛔ A session a test does not finalize goes on writing a window every few milliseconds, and each one
+ * logs a line. Unreferenced timers alone do not let the process end then, because each window's log
+ * write is pending on the pipe when the next timer fires, so a test file would never exit. The root
+ * hook below arms no timer after the last test and clears the ones armed.
+ */
+const testWindowClock: WindowWriterClock = {
+  now: () => Date.now(),
+  setTimeout: (callback, delayMs) => {
+    if (windowTimersStopped) {
+      return undefined;
+    }
+    const timer = setTimeout(() => {
+      windowTimers.delete(timer);
+      callback();
+    }, delayMs);
+    timer.unref();
+    windowTimers.add(timer);
+    return timer;
+  },
+  clearTimeout: (handle) => {
+    clearTimeout(handle as ReturnType<typeof setTimeout>);
+    windowTimers.delete(handle as ReturnType<typeof setTimeout>);
+  },
+};
+
+after(() => {
+  windowTimersStopped = true;
+  for (const timer of windowTimers) {
+    clearTimeout(timer);
+  }
+  windowTimers.clear();
+});
+
+/** The window options every uploader and orchestrator in these tests is built with. */
+export const TEST_WINDOWS = { liveWindowMs: TEST_LIVE_WINDOW_MS, windowClock: testWindowClock } as const;
 
 /**
  * Which feed a read or a write is addressed to, as the one string a test can key a map on.
@@ -128,7 +205,36 @@ export function makeFakeBee(uploads: FakeUploads = {}): Bee {
   let refCounter = 0;
   return {
     data: {
-      upload: uploads.uploadData ?? (async () => ({ reference: { toHex: () => `ref${refCounter++}` } })),
+      upload: async (stamp: string, data: Uint8Array) => {
+        if (isPlaylist(data)) {
+          const playlist = Buffer.from(data).toString('utf-8');
+          if (uploads.uploadRecording) {
+            return uploads.uploadRecording(playlist);
+          }
+          const reference = fakeRecordingReference(playlist);
+          return { reference: { toHex: () => reference } };
+        }
+        return uploads.uploadData
+          ? uploads.uploadData(stamp, data)
+          : { reference: { toHex: () => `ref${refCounter++}` } };
+      },
+    },
+    soc: {
+      makeWriter: () => ({
+        upload: async (_stamp: string, identifier: { toHex(): string }, payload: Uint8Array) =>
+          uploads.uploadWindow
+            ? uploads.uploadWindow(identifier.toHex(), payload)
+            : { reference: { toHex: () => 'soc' } },
+      }),
+      makeReader: () => ({
+        download: async (identifier: { toHex(): string }) => {
+          const payload = uploads.windowAt?.(identifier.toHex()) ?? null;
+          if (payload === null) {
+            throw new BeeResponseError('GET', '/chunks', 'Not Found', undefined, 404, 'Not Found');
+          }
+          return { payload: { toUint8Array: () => payload } };
+        },
+      }),
     },
     feed: {
       makeReader: (topic: Topic) => ({
@@ -179,9 +285,14 @@ export function makeFakeCatalog(overrides: Record<string, unknown> = {}): Stream
     // master written and no flip, which is the real catalog's answer for a rung it holds no entry
     // for. Missing, every rung announce in every orchestrator test died with a TypeError the error
     // handler swallowed, and fifteen tests passed over it — the fourth time this fake went stale.
-    upsertRendition: async () => ({ masterIndex: null, flippedToFinished: false, duration: null }),
+    upsertRendition: async () => ({ masterIndex: null, recording: null, flippedToFinished: false, duration: null }),
     // Called by the orchestrator for a rung whose stop failed. The same neutral answer, for the same reason.
-    recordRungUnfinished: async () => ({ masterIndex: null, flippedToFinished: false, duration: null }),
+    recordRungUnfinished: async () => ({
+      masterIndex: null,
+      recording: null,
+      flippedToFinished: false,
+      duration: null,
+    }),
     ...overrides,
   } as unknown as StreamCatalog;
 }
@@ -323,22 +434,7 @@ export function makeFakeRecoveryStore(overrides: Partial<Record<keyof RecoverySt
   } as unknown as RecoveryStore;
 }
 
-/** A stream state as RecoveryStore.load would return it, for exercising the recovery path. */
-export function makeRecoveredState(streamId: string): StreamState {
-  return {
-    streamId,
-    streamRawTopic: 'topic-xyz',
-    mediatype: MEDIA_TYPE_VIDEO,
-    socIndex: 3,
-    segments: [{ index: 0, duration: 2, ref: 'ref0', discontinuity: false }],
-    hlsHeaders: ['#EXTM3U', '#EXT-X-VERSION:3'],
-    isFirstSegmentReady: true,
-    isFirstManifestReady: true,
-    pendingDiscontinuity: false,
-    liveManifestStale: false,
-    updatedAt: Date.now(),
-  };
-}
+export { makeRecoveredState } from './recoveredState.js';
 
 /**
  * What `RecoveryStore.listActive` hands back for an entry written before ids were escaped, which is
@@ -418,6 +514,7 @@ export function makeTestOrchestrator(
     fragmentSeconds: TEST_ANCHOR.fragmentSeconds,
     segmentDedupWindow: 10_000,
     segmentRedundancy: 1,
+    ...TEST_WINDOWS,
     ...config,
   });
 }

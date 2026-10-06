@@ -2,7 +2,7 @@ import { Rendition } from '../types.js';
 import { getErrorMessage } from '../utils/common.js';
 
 import { ADMIN_STATE_VOD, AdminApiClient, RenditionReportResponse } from './AdminApiClient.js';
-import { isFinishedLadder, recordedRungs, recordingDuration } from './LadderCompletion.js';
+import { hasRecording, isFinishedLadder, recordedRungs, recordingDuration } from './LadderCompletion.js';
 import { advertisableRenditions, LadderLivenessBook } from './LadderLiveness.js';
 import { LadderIdentity, LadderRegistry, RenditionAnnouncement } from './LadderRegistry.js';
 import { Logger } from './Logger.js';
@@ -178,7 +178,7 @@ export class AdminLadderRegistry implements LadderRegistry {
     }
 
     const { group } = identity;
-    if (rendition.index !== undefined) {
+    if (hasRecording(rendition)) {
       this.unfinished.get(group)?.delete(rendition.name);
     }
     this.adopt(group, rendition.name, report);
@@ -198,7 +198,11 @@ export class AdminLadderRegistry implements LadderRegistry {
   }
 
   /**
-   * Whether this answer is the moment the ladder became a recording, and how long the recording plays.
+   * Whether this answer is the moment the ladder became a recording, how long the recording plays, and
+   * which recording names it.
+   *
+   * The ladder's recording is its lowest finished rung's, as the stream list entry's own `recording`
+   * is, since the admin answers the rungs ascending by height.
    *
    * The admin raises `flippedToFinished` on the report that completed ITS merge, where every rung has an
    * index, and it cannot see a rung that will not finish. So the flip is read off `LadderCompletion`'s
@@ -210,7 +214,7 @@ export class AdminLadderRegistry implements LadderRegistry {
   private recordingOf(
     report: RenditionReportResponse,
     group: string,
-  ): Pick<RenditionAnnouncement, 'flippedToFinished' | 'duration'> {
+  ): Pick<RenditionAnnouncement, 'flippedToFinished' | 'duration' | 'recording'> {
     const heldAsRecording = report.streamStatus === ADMIN_STATE_VOD;
     const finished = isFinishedLadder(report.renditions, this.markedUnfinished(group));
     // A finished ladder not yet `vod` at the admin is owed a report whether or not this is the announce
@@ -223,6 +227,7 @@ export class AdminLadderRegistry implements LadderRegistry {
         finished && !report.ladder.finished
           ? recordingDuration(recordedRungs(report.renditions))
           : report.ladder.duration,
+      recording: finished || report.ladder.finished ? lowestRecording(report.renditions) : null,
     };
   }
 
@@ -340,4 +345,10 @@ export class AdminLadderRegistry implements LadderRegistry {
       this.rewrites.endRewrite(group, shape);
     }
   }
+}
+
+/** The recording reference of the lowest rung that names one, or null when none does. */
+function lowestRecording(renditions: readonly Rendition[]): string | null {
+  const named = renditions.find((rendition) => typeof rendition.recording === 'string');
+  return named?.recording ?? null;
 }

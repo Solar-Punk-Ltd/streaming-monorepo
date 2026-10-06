@@ -1228,7 +1228,7 @@ describe('StreamCatalog and a rung that will not finish', () => {
     const announced = await catalog.recordRungUnfinished(identity, live(TOP_RUNG));
 
     assert.deepEqual(writes, [], 'an entry written now would list a broadcast nobody announced');
-    assert.deepEqual(announced, { masterIndex: null, flippedToFinished: false, duration: null });
+    assert.deepEqual(announced, { masterIndex: null, recording: null, flippedToFinished: false, duration: null });
   });
 });
 

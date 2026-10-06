@@ -36,8 +36,10 @@ A stage is a manager deployment that runs a stream uploader, with the node pool 
 1. The encoder sends SRT to the ingest engine on a stage host.
 2. The engine writes each closed segment to a media volume it shares with the uploader and calls the
    uploader's webhook. With the ladder on, it writes one segment per rung.
-3. The uploader stamps each segment with its rung's postage batch and uploads it through that rung's
-   own Bee node. It then rewrites the rung's playlist, uploads that, and moves the rung's feed to it.
+3. The uploader stamps each segment with its rung's postage batch and uploads it direct through that
+   rung's own Bee node. Every 2 s it writes the rung's live playlist, naming the segments whose upload
+   finished, as that rung's window chunk for the 2 s that just ended. When the broadcast ends it writes a
+   closing window and uploads the rung's recording playlist once, named by its reference.
 4. The master feed names every rung that is publishing. A rung that stops is dropped from it, so a
    viewer is never sent to a quality that has died.
 5. The viewer reads the catalog to find a stream, follows its master feed, and plays the rung its
@@ -59,7 +61,8 @@ Live playlists are moving off feeds onto time windows, the convention the chat a
 its slot notes. Asking Bee for a chunk before it exists makes Bee skip its peers for that address
 for about a minute, so polling the next feed index delays the update it waits for. A window chunk
 sits at an address computed from the clock and is asked for once, after it is due. The convention
-lives once, in `apps/hls-stream/packages/shared/src/windows.ts`. Nothing reads or writes it yet.
+lives once, in `apps/hls-stream/packages/shared/src/windows.ts`. The uploader writes each quality's
+`live` windows. Nothing reads them yet.
 
 - **The window.** Window `w` of length `windowMs` covers `[w * windowMs, (w + 1) * windowMs)` of
   Unix milliseconds. The writer writes window `w` once, at its end. A reader asks for it at its end
@@ -104,6 +107,14 @@ clock, the timers and the write injected. The caller's write signs the chunk and
   defined.
 - **Named seams.** `maxInFlight` bounds the writes running at once, and `clockTrusted` lets the
   caller hold writes while it does not trust its own clock. Both skip a window and say why.
+- **The uploader is the `live` writer.** `StreamUploader` writes a quality's live playlist every 2 s
+  window on the topic the stream list's rendition names, from its first segment on, through any pause
+  in the media, until the end, when windows carry `#EXT-X-ENDLIST` until one is written. Its
+  `clockTrusted` comes from the uploader's own option and holds every window while it answers false. A
+  session on a topic an earlier session wrote waits until that session has stopped writing, then reads
+  the topic's windows of the last minute once, newest first, and continues the media sequence the
+  newest one left. Segments and the recording are uploaded direct, and the recording is named by its
+  reference rather than a feed index.
 
 ### Reading windows
 

@@ -43,7 +43,13 @@ export interface StreamEntry {
   state: StreamStatus;
   mediatype: MediaType;
   timestamp: number;
+  /** Where the recording is, in an entry a writer on feeds wrote: its final manifest's feed index. */
   index?: number;
+  /**
+   * Where the recording is, in an entry a writer on time windows wrote: the reference of its recording
+   * playlist, read with `GET /bytes/<recording>`. For a ladder, its lowest finished rung's.
+   */
+  recording?: string;
   duration?: number;
   /**
    * Ladder identity, absent on single-rendition streams. Present, it — not `topic` — is what
@@ -457,6 +463,7 @@ export class StreamCatalog implements LadderRegistry {
     let shapeThatLanded: string | null = null;
     let masterIndex: number | null = null;
     let duration: number | null = null;
+    let recording: string | null = null;
 
     await this.queue.add(async () => {
       await this.writeFeed(async (previous) => {
@@ -482,6 +489,7 @@ export class StreamCatalog implements LadderRegistry {
         );
         flippedToVod = entry.state === STREAM_STATUS_VOD && !wasVod;
         duration = entry.duration ?? null;
+        recording = entry.recording ?? null;
         // ⛔ A master naming a rung nothing is producing offers a viewer a quality with nothing
         // behind it. The player moves them off within about seven seconds, so this is the last few
         // seconds of that harm rather than all of it, and it is harm a stream need not cause.
@@ -521,7 +529,7 @@ export class StreamCatalog implements LadderRegistry {
       }
     });
 
-    return { masterIndex, flippedToFinished: flippedToVod, duration };
+    return { masterIndex, recording, flippedToFinished: flippedToVod, duration };
   }
 
   /**
@@ -660,8 +668,8 @@ export class StreamCatalog implements LadderRegistry {
  * at least one of them finalized. See `LadderCompletion`. Doing it per rung would flip the whole entry
  * to VOD on the first one to drain, and the other three are still live.
  *
- * ⛔ A finished entry's `renditions` names only rungs that have a recording, and `topic`, `index` and
- * `duration` are all read off those, so nothing in it or built from it offers a viewer a rung with
+ * ⛔ A finished entry's `renditions` names only rungs that have a recording, and `topic`, `recording`
+ * and `duration` are all read off those, so nothing in it or built from it offers a viewer a rung with
  * nothing to play. A rung that did not finish is named in `unfinishedRungs` instead.
  */
 export function buildLadderEntry(
@@ -696,7 +704,12 @@ export function buildLadderEntry(
   }
 
   if (finished) {
-    entry.index = primary.index;
+    if (primary.recording !== undefined) {
+      entry.recording = primary.recording;
+    } else {
+      // A rung a writer on feeds finished, in a list written before windows.
+      entry.index = primary.index;
+    }
     entry.duration = recordingDuration(renditions);
   }
 
@@ -762,8 +775,8 @@ function mergeRendition(existing: Rendition[], incoming: Rendition): Rendition[]
  * A rung that has already finished stays finished when it announces itself again.
  *
  * ⛔⛔⛔ Scenario H, caused 2026-09-01 after being an open red since 2026-08-31. A rung recovered
- * from a crash announces itself before it finalizes, and that announcement carries no `index`
- * because it has not published its recording yet. The merge replaced the finished rendition
+ * from a crash announces itself before it finalizes, and that announcement carries no recording
+ * because it has not uploaded one yet. The merge replaced the finished rendition
  * wholesale, so the index recorded when the rung DID finalize was thrown away,
  * `renditions.every(r => r.index !== undefined)` went false, and **the whole finished ladder went
  * back to `live` in the catalog**. Read off the host log: ladder `fdbd7167` finalized at 05:58:04,
@@ -771,9 +784,9 @@ function mergeRendition(existing: Rendition[], incoming: Rendition): Rendition[]
  * timer fired. For that minute a recording that had ended was advertised as a live broadcast, and
  * the second flip paid for another catalog write.
  *
- * `index`, `duration` and `topic` move together or not at all: the index names a position inside the
- * feed the topic addresses, so keeping one without the other would point at a place in the wrong
- * feed. Everything the re-announce genuinely knows better — the measured bitrates — is taken from it.
+ * `recording`, `index`, `duration` and `topic` move together or not at all: they are one finished
+ * recording of one rung, and keeping part of it would describe two. Everything the re-announce
+ * genuinely knows better, the measured bitrates, is taken from it.
  *
  * ⛔ **A rung's topic is stable, and this rule is written for that and NOT against it.** Since a
  * rung's feed topic is derived from its ladder group and its rung name, the re-announce carries the
@@ -781,13 +794,19 @@ function mergeRendition(existing: Rendition[], incoming: Rendition): Rendition[]
  * again on the same feed. That is not a reason to compare topics here. The question this answers is
  * whether a recording that has been published is still the one to point at, and until the returning
  * session finalizes there is nothing else to point at: its own recording does not exist yet, and the
- * previous one is whole at the index kept here. The next finalize arrives WITH an index and replaces
- * the record wholesale, which is the first branch below and which is how the entry comes to name the
- * latest of however many recordings that feed holds.
+ * previous one is whole as kept here. The next finalize arrives WITH a recording and replaces the
+ * record wholesale, which is the first branch below and which is how the entry comes to name the
+ * latest of however many recordings that rung has made.
  */
 function keepingWhatFinished(previous: Rendition | undefined, incoming: Rendition): Rendition {
-  if (previous?.index === undefined || incoming.index !== undefined) {
+  if (previous === undefined || !hasRecording(previous) || hasRecording(incoming)) {
     return incoming;
   }
-  return { ...incoming, topic: previous.topic, index: previous.index, duration: previous.duration };
+  return {
+    ...incoming,
+    topic: previous.topic,
+    recording: previous.recording,
+    index: previous.index,
+    duration: previous.duration,
+  };
 }

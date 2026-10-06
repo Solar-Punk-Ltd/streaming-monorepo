@@ -30,7 +30,7 @@ import { StreamCatalog } from '../src/libs/StreamCatalog.js';
 import { StreamUploader } from '../src/libs/StreamUploader.js';
 import { MEDIA_TYPE_VIDEO, Rendition } from '../src/types.js';
 
-import { makeFakeBee, makeFakeRecoveryStore, TEST_ANCHOR, testPublisher } from './helpers/fakes.js';
+import { makeFakeBee, makeFakeRecoveryStore, TEST_ANCHOR, TEST_WINDOWS, testPublisher } from './helpers/fakes.js';
 
 const TEST_STREAM_KEY = `${'0'.repeat(63)}1`;
 const GROUP = 'group-1';
@@ -104,7 +104,7 @@ interface Queued {
   queue: { onIdle(): Promise<void> };
 }
 interface UploaderQueues {
-  manifestQueue: { onIdle(): Promise<void> };
+  announceQueue: { onIdle(): Promise<void> };
 }
 
 interface Ladder {
@@ -158,12 +158,13 @@ async function announcedLadder(): Promise<Ladder> {
     streamId: `live/stream_${REFUSED_RUNG.name}`,
     streamTopic: REFUSED_RUNG_TOPIC,
     mediatype: MEDIA_TYPE_VIDEO,
+    ...TEST_WINDOWS,
     ladder: { group: GROUP, rung: REFUSED_RUNG },
   });
 
   const settle = async (): Promise<void> => {
     await uploader.segmentQueue.onIdle();
-    await (uploader as unknown as UploaderQueues).manifestQueue.onIdle();
+    await (uploader as unknown as UploaderQueues).announceQueue.onIdle();
     await (catalog as unknown as Queued).queue.onIdle();
     await new Promise((resolve) => {
       setImmediate(resolve);

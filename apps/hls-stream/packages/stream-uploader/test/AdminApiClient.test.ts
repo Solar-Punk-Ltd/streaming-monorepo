@@ -218,11 +218,12 @@ describe('the admin API client, reporting where a broadcast got to', () => {
     });
   });
 
-  it('carries the feed index and the duration on a vod report', async () => {
+  it('carries the recording reference and the duration on a vod report', async () => {
     await withAdmin(always(200), async ({ client, received }) => {
-      const report = { state: ADMIN_STATE_VOD, index: 42, duration: 137.5 } as const;
+      const recording = 'ab'.repeat(32);
+      const report = { state: ADMIN_STATE_VOD, recording, duration: 137.5 } as const;
       assert.equal(await client.reportState(ADMIN_STREAM_ID, report), STATE_REPORT_ACCEPTED);
-      assert.deepEqual(received[0].body, { state: 'vod', index: 42, duration: 137.5 });
+      assert.deepEqual(received[0].body, { state: 'vod', recording, duration: 137.5 });
     });
   });
 
@@ -268,7 +269,11 @@ describe('the admin API client, reporting where a broadcast got to', () => {
           ? res.status(409).json({ error: 'invalid_state_transition', from: 'live', to: 'vod' })
           : res.status(200).json({}),
       async ({ client, received }) => {
-        const outcome = await client.reportState(ADMIN_STREAM_ID, { state: ADMIN_STATE_VOD, index: 3, duration: 10 });
+        const outcome = await client.reportState(ADMIN_STREAM_ID, {
+          state: ADMIN_STATE_VOD,
+          recording: 'ab'.repeat(32),
+          duration: 10,
+        });
         assert.equal(outcome, STATE_REPORT_ACCEPTED);
         assert.equal(received.length, 2);
       },
@@ -306,7 +311,7 @@ describe('the admin API client, reporting where a broadcast got to', () => {
     await withAdmin(always(500), async ({ client, received, sleeps }) => {
       const outcome = await client.reportState(ADMIN_STREAM_ID, {
         state: ADMIN_STATE_VOD,
-        index: 3,
+        recording: 'ab'.repeat(32),
         duration: 10,
       });
 
