@@ -58,7 +58,7 @@ export interface StreamRow {
   publish_key: string;
   publish_key_rotated_at: Date | null;
   /**
-   * What the uploader reported back; null until an encoder connects. A recording is `manifest_index`, its final
+   * What the uploader reported back, null until an encoder connects. A recording is `manifest_index`, its final
    * manifest's feed index from an uploader on feeds, or `recording_ref`, its playlist's reference from an uploader
    * on time windows (migration 015), never both.
    */

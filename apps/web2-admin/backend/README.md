@@ -612,7 +612,7 @@ windows sends `{state:'vod', recording, duration}` instead, `recording` being
 the reference of the recording playlist it uploaded once at the end, 64
 lowercase hex digits, and never sent with `index`. `live` sets `status`,
 stamps `live_since` (kept as it is when the stream is already live, because the
-uploader retries) and clears `ended_at`; `vod` sets `status`, `manifest_index`
+uploader retries) and clears `ended_at`, and `vod` sets `status`, `manifest_index`
 or `recording_ref` (the other one cleared), `duration_seconds` and `ended_at`. Allowed: `published → live`, `live → live`,
 `live → vod`, `vod → vod`, `published → vod` for a broadcast that ended before
 its `live` report ever got through, and `vod → live` for a broadcast that goes
@@ -639,7 +639,7 @@ and in admin mode the master's topic _is_ the stream's declared topic — so the
 ladder's merge state, which swarm-hls-stream keeps inside the catalogue feed it
 writes for itself, has to live here instead. Each rung POSTs its own
 `Rendition` (`name`, `width`, `height`, `topic`, `bandwidth`, `avgBandwidth`,
-plus `index` and `duration` — both or neither — once it finalizes, or
+plus `index` and `duration`, both or neither, once it finalizes, or
 `recording` and `duration` from an uploader on time windows) and gets
 back the merged ladder, ascending by height, with `ladder { finished,
 flippedToFinished, duration }`.

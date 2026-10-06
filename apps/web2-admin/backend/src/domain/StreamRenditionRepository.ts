@@ -37,7 +37,7 @@ export class StreamRenditionRepository {
   /**
    * Stores one rung, replacing whatever that name held. The caller has already
    * merged the incoming report into the stored one, so what arrives here is
-   * the whole row as it should now stand — including a null index, recording
+   * the whole row as it should now stand, including a null index, recording
    * and duration for a rung that has not finalized.
    */
   async upsert(streamId: string, rendition: Rendition): Promise<StreamRenditionRow> {
