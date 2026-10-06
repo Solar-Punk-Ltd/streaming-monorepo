@@ -268,6 +268,12 @@ address and the batch of the catalogue stamp the manager pushed
 env file or held in memory, so a new designation or a moved node takes effect on
 the next write.
 
+Each version of the list is uploaded direct, so a write returns on the storer's
+receipt rather than once the admin's node alone holds it. The admin does not
+write the list's window notes yet, which the uploader's own list writer does
+when it runs without an admin (`docs/architecture/overview.md`, "The stream
+list's notes").
+
 The admin keeps the batch it actually writes with, since a batch stamps the
 chunks it wrote and the feed's history is those chunks. Migration `013` adds
 `active_batch_id`, `active_record` and `active_pinned_at` to `catalogue_stamp`:

@@ -105,9 +105,13 @@ export class BeeFeedGateway implements FeedGateway, CatalogueRestamper {
     // title is then counted as one unit but takes more than one byte, so a
     // list just under the limit would be rejected by the node.
     const payload = new TextEncoder().encode(payloadText);
+    // Direct, so this returns on the storer's receipt rather than once this node alone holds the
+    // chunk. bee-js defaults to deferred, which the catalogue inherited and never chose. The stream
+    // list's window notes name a version only once its write has returned (the architecture
+    // overview's "The stream list's notes"), so that return has to mean the network holds it.
     const result = await this.bee(target)
       .feed.makeWriter(this.topic, this.signer)
-      .uploadPayload(batchId, payload, { index: FeedIndex.fromBigInt(BigInt(index)) });
+      .uploadPayload(batchId, payload, { index: FeedIndex.fromBigInt(BigInt(index)), deferred: false });
     logger.info(
       `[BeeFeedGateway] Wrote feed index=${index} bytes=${payload.length} batch=${batchId.slice(0, 8)}… ref=${result.reference.toHex()}`,
     );

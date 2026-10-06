@@ -201,3 +201,19 @@ describe('restampThumbnail', () => {
     assert.deepEqual(held(NEW, 'file'), held(OLD, 'file'));
   });
 });
+
+/**
+ * A version of the catalogue goes out direct, so `write` returns on the storer's receipt rather than once the node
+ * alone holds it. A note naming that index is then never ahead of the network, and a viewer asking for it finds it.
+ */
+describe('write', () => {
+  it('uploads each catalogue version direct, wrapped data included', async () => {
+    bee.deferredHeaders.length = 0;
+
+    await gateway.write(payloadOf(300), 0, old());
+    await gateway.write(payloadOf(6000), 1, old());
+
+    assert.ok(bee.deferredHeaders.length >= 3, 'two slots and the data the larger one wraps');
+    assert.deepEqual(new Set(bee.deferredHeaders), new Set(['false']));
+  });
+});

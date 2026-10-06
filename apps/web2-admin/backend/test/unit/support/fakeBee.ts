@@ -56,6 +56,8 @@ export class FakeBee {
   readonly files = new Map<string, { bytes: Uint8Array; name: string; contentType: string }>();
   beforeAnswer: ((upload: FakeUpload) => Promise<void> | void) | null = null;
   failNext: { kind: FakeUpload['kind']; status: number; batch?: string } | null = null;
+  /** The `swarm-deferred-upload` header of every chunk upload, null where none was sent, which Bee reads as deferred. */
+  readonly deferredHeaders: (string | null)[] = [];
   private server: http.Server | null = null;
 
   async start(): Promise<this> {
@@ -161,6 +163,9 @@ export class FakeBee {
       res.end(JSON.stringify(answer));
     };
     const parts = url.pathname.split('/').filter(Boolean);
+    if (req.method === 'POST' && (parts[0] === 'soc' || url.pathname === '/bytes')) {
+      this.deferredHeaders.push((req.headers['swarm-deferred-upload'] as string | undefined) ?? null);
+    }
 
     if (req.method === 'POST' && parts[0] === 'soc' && parts.length === 3) {
       const data = await body(req);
