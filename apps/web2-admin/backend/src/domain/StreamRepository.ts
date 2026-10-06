@@ -5,7 +5,7 @@ import type { StreamRow, ThumbnailRow } from '../types/index.js';
 
 import { SUPPORTED_STAGE_ENGINES } from './StageService.js';
 import type { PublishedStatus } from './streamState.js';
-import { CONTENT_EDITED_NOW, FEED_OWNER_SQL, SAME_OWNER_SQL, STREAM_COLUMNS } from './streamSql.js';
+import { CONTENT_EDITED_NOW, FEED_OWNER_SQL, NO_RECORDING_SQL, SAME_OWNER_SQL, STREAM_COLUMNS } from './streamSql.js';
 
 export interface StreamInsertData {
   /**
@@ -172,7 +172,7 @@ export class StreamRepository {
               END,
               stage_id = CASE WHEN $9 THEN $8::uuid ELSE stage_id END,
               owner = CASE
-                WHEN $11::text IS NOT NULL AND manifest_index IS NULL THEN $11::text
+                WHEN $11::text IS NOT NULL AND ${NO_RECORDING_SQL()} THEN $11::text
                 ELSE owner
               END,
               updated_at = NOW()
@@ -182,7 +182,7 @@ export class StreamRepository {
             OR stage_id IS NOT DISTINCT FROM $8::uuid
             OR (
               status = 'draft'
-              AND (manifest_index IS NULL OR stage_id IS NULL)
+              AND (${NO_RECORDING_SQL()} OR stage_id IS NULL)
               AND (
                 $8::uuid IS NULL
                 OR EXISTS (
@@ -191,7 +191,7 @@ export class StreamRepository {
                      AND stages.retired_observed_at IS NULL
                      AND stages.engine = ANY($10::text[])
                      AND (
-                       streams.manifest_index IS NULL
+                       ${NO_RECORDING_SQL()}
                        OR ${SAME_OWNER_SQL('stages.owner', 'streams.owner')}
                      )
                 )
@@ -358,10 +358,10 @@ export class StreamRepository {
    * repeated report (the uploader retries) must not keep moving it, and a
    * stream that goes live after having been announced gets a fresh one.
    * `ended_at` is cleared, so a stream that is live is never also ended, and
-   * so are `manifest_index` and `duration_seconds`: a stream that is live has
-   * no finished recording, and a broadcast coming back after `vod` would
-   * otherwise keep listing the previous one while the new session writes over
-   * its head.
+   * so are `manifest_index`, `recording_ref` and `duration_seconds`: a stream
+   * that is live has no finished recording, and a broadcast coming back after
+   * `vod` would otherwise keep listing the previous one while the new session
+   * writes over its head.
    *
    * The ladder is un-finished with it, in this one statement rather than
    * through StreamRenditionRepository: a crash between two statements would
@@ -396,6 +396,7 @@ export class StreamRepository {
                   ELSE NOW()
                 END,
                 manifest_index = NULL,
+                recording_ref = NULL,
                 duration_seconds = NULL,
                 ended_at = NULL,
                 publish_error = NULL,
@@ -405,6 +406,7 @@ export class StreamRepository {
        ), unfinished AS (
          UPDATE stream_renditions
             SET manifest_index = NULL,
+                recording_ref = NULL,
                 duration_seconds = NULL,
                 updated_at = NOW()
           WHERE stream_id IN (
@@ -422,24 +424,30 @@ export class StreamRepository {
    * The uploader's `vod` report: the broadcast stopped, and this is where the
    * recording is. `live_since` is left alone — it is when this recording
    * started, and the console shows both ends.
+   *
+   * The recording is a feed index or a reference, and the one not given is
+   * cleared, so a stream that changed uploaders between two recordings never
+   * carries both (migration 015).
    */
   async markVod(
     id: string,
     allowedFrom: readonly StreamStatus[],
-    manifestIndex: number,
+    manifestIndex: number | null,
     durationSeconds: number,
+    recordingRef: string | null = null,
   ): Promise<StreamRow | null> {
     const result = await this.pool.query<StreamRow>(
       `UPDATE streams
           SET status = 'vod',
               manifest_index = $3,
+              recording_ref = $5,
               duration_seconds = $4,
               ended_at = NOW(),
               publish_error = NULL,
               updated_at = NOW()
         WHERE id = $1 AND status = ANY($2::text[])
         RETURNING ${STREAM_COLUMNS}`,
-      [id, allowedFrom, manifestIndex, durationSeconds],
+      [id, allowedFrom, manifestIndex, durationSeconds, recordingRef],
     );
     return this.one(result.rows, result.rowCount);
   }
@@ -517,7 +525,7 @@ export class StreamRepository {
       `UPDATE streams
           SET status = 'publishing',
               owner = CASE
-                WHEN $3 AND status = 'draft' AND manifest_index IS NULL THEN COALESCE(
+                WHEN $3 AND status = 'draft' AND ${NO_RECORDING_SQL()} THEN COALESCE(
                   (SELECT ${FEED_OWNER_SQL('stages.owner')} FROM stages WHERE stages.stage_id = streams.stage_id),
                   owner
                 )
@@ -527,7 +535,7 @@ export class StreamRepository {
         WHERE id = $1 AND status = ANY($2::text[])
           AND (NOT $3 OR status <> 'draft' OR stage_id IS NOT NULL)
           AND (
-            NOT $3 OR status <> 'draft' OR manifest_index IS NULL OR stage_id IS NULL
+            NOT $3 OR status <> 'draft' OR ${NO_RECORDING_SQL()} OR stage_id IS NULL
             OR EXISTS (
               SELECT 1 FROM stages
                WHERE stages.stage_id = streams.stage_id

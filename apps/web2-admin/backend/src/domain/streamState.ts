@@ -57,10 +57,11 @@ export type PublishedStatus = Extract<StreamStatus, 'published' | 'vod'>;
 
 /**
  * Whether the row holds a finished recording: the feed index of its final
- * manifest. An unpublish keeps it, so a draft can hold one too.
+ * manifest, or the reference of its recording playlist. An unpublish keeps
+ * it, so a draft can hold one too. `NO_RECORDING_SQL` asks the same in SQL.
  */
-function holdsRecording(stream: StreamRow): boolean {
-  return stream.manifest_index !== null;
+export function holdsRecording(stream: Pick<StreamRow, 'manifest_index' | 'recording_ref'>): boolean {
+  return stream.manifest_index !== null || stream.recording_ref !== null;
 }
 
 /**

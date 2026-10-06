@@ -233,6 +233,23 @@ describe('the stream form stage picker', () => {
     expect(screen.getByText(STAGE_LOCKED.recording)).toBeInTheDocument();
   });
 
+  it('locks the stage of a draft whose recording is named by reference', async () => {
+    renderEdit(
+      makeStream({
+        id: 'ref-id',
+        status: 'draft',
+        stageId: MAIN_STAGE_ID,
+        manifestIndex: null,
+        recording: 'ab'.repeat(32),
+        durationSeconds: 61,
+      }),
+      [makeStage()],
+    );
+
+    await waitFor(() => expect(stageSelect()).toBeDisabled());
+    expect(screen.getByText(STAGE_LOCKED.recording)).toBeInTheDocument();
+  });
+
   it('warns that the first stage of a recording from before stages is final, and asks before saving it', async () => {
     const sent: Record<string, unknown>[] = [];
     const recorded = makeStream({

@@ -350,6 +350,72 @@ async function setEditStamp(id: string, at: string): Promise<void> {
   await database.pool.query('UPDATE streams SET content_edited_at = $2 WHERE id = $1', [id, at]);
 }
 
+describe('a recording named by reference (migration 015)', () => {
+  const REFERENCE = 'ab'.repeat(32);
+  const RUNG_REFERENCE = 'cd'.repeat(32);
+  const rung = (over: Record<string, unknown>) => ({
+    name: '360p',
+    width: 640,
+    height: 360,
+    topic: randomUUID(),
+    bandwidth: 800_000,
+    avgBandwidth: 700_000,
+    ...over,
+  });
+
+  it('stores a vod reference in place of the index, and clears it with every rung when the broadcast comes back', async () => {
+    const row = await publishedStream();
+    await renditions.upsert(row.id, rung({ recording: RUNG_REFERENCE, duration: 61 }));
+    await streams.markLive(row.id, ['published', 'live', 'vod']);
+
+    const vod = await streams.markVod(row.id, ['published', 'live', 'vod'], null, 61.5, REFERENCE);
+    assert.equal(vod?.recording_ref, REFERENCE);
+    assert.equal(vod?.manifest_index, null);
+    assert.equal(vod?.duration_seconds, 61.5);
+    const [stored] = await renditions.listByStream(row.id);
+    assert.deepEqual(
+      [stored?.recording_ref, stored?.manifest_index, stored?.duration_seconds],
+      [RUNG_REFERENCE, null, 61],
+    );
+
+    const live = await streams.markLive(row.id, ['published', 'live', 'vod']);
+    assert.equal(live?.recording_ref, null);
+    const [cleared] = await renditions.listByStream(row.id);
+    assert.deepEqual([cleared?.recording_ref, cleared?.manifest_index, cleared?.duration_seconds], [null, null, null]);
+  });
+
+  it('replaces an index recording with a reference, never holding both', async () => {
+    const row = await publishedStream();
+    await streams.markVod(row.id, ['published', 'live', 'vod'], 7, 61);
+
+    const again = await streams.markVod(row.id, ['vod'], null, 62, REFERENCE);
+
+    assert.deepEqual([again?.manifest_index, again?.recording_ref], [null, REFERENCE]);
+  });
+
+  it('refuses a rung with both kinds of recording, one without its duration, and a malformed reference', async () => {
+    const row = await publishedStream();
+    await assert.rejects(renditions.upsert(row.id, rung({ index: 3, recording: RUNG_REFERENCE, duration: 61 })));
+    await assert.rejects(renditions.upsert(row.id, rung({ recording: RUNG_REFERENCE })));
+    await assert.rejects(renditions.upsert(row.id, rung({ recording: RUNG_REFERENCE.toUpperCase(), duration: 61 })));
+    await assert.rejects(
+      database.pool.query('UPDATE streams SET manifest_index = 1, recording_ref = $2 WHERE id = $1', [
+        row.id,
+        REFERENCE,
+      ]),
+    );
+  });
+
+  it('keeps the owner of a row holding a reference recording, as of one holding an index', async () => {
+    const row = await publishedStream();
+    await streams.markVod(row.id, ['published', 'live', 'vod'], null, 61, REFERENCE);
+
+    const kept = await streams.update(row.id, { ...sameValues(row), owner: 'f'.repeat(40) }, EDITABLE_STATUSES);
+
+    assert.equal(kept?.owner, OWNER, 'the recording is signed as the owner it was made under');
+  });
+});
+
 describe('which writes count as a console edit (migration 006)', () => {
   it('starts with nothing to republish, and neither the uploader nor the bookkeeping adds any', async () => {
     const row = await publishedStream();

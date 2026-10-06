@@ -31,7 +31,7 @@ import {
 import { asFeedOwner, type FeedIdentity } from './feedIdentity.js';
 import { Logger } from './Logger.js';
 import { describeStage, stageTakesStreams } from './StageService.js';
-import { isScheduleLocked } from './streamState.js';
+import { holdsRecording, isScheduleLocked } from './streamState.js';
 import type { ClearedThumbnail, StreamInsertData, StreamUpdateData } from './StreamRepository.js';
 
 const logger = Logger.getInstance();
@@ -97,7 +97,7 @@ export function stageUnavailability(stage: StageRow | null): StageUnavailableRea
 export function stageLockFor(stream: StreamRow, stageId: string | null): StageLockReason | null {
   if (stageId === stream.stage_id) return null;
   if (stream.status !== 'draft') return 'published';
-  if (stream.manifest_index !== null && stream.stage_id !== null) return 'recording';
+  if (holdsRecording(stream) && stream.stage_id !== null) return 'recording';
   return null;
 }
 
@@ -109,7 +109,7 @@ export function stageLockFor(stream: StreamRow, stageId: string | null): StageLo
  * stage that takes streams.
  */
 export function stageFitsRecording(stream: StreamRow, stage: Pick<StageRow, 'owner'>): boolean {
-  return stream.manifest_index === null || sameFeedOwner(stream.owner, stage.owner);
+  return !holdsRecording(stream) || sameFeedOwner(stream.owner, stage.owner);
 }
 
 /**
@@ -247,7 +247,7 @@ export class StreamService {
       if (lock) throw new StageLockedError(id, lock);
       const stage = stageId !== null ? await this.assignableStage(stageId) : null;
       if (stage && !stageFitsRecording(existing, stage)) throw new StageLockedError(id, 'owner');
-      if (existing.manifest_index === null) owner = ownerOnStage(stage, this.feed.owner);
+      if (!holdsRecording(existing)) owner = ownerOnStage(stage, this.feed.owner);
     }
 
     const updated = await this.streams.update(

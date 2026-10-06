@@ -35,7 +35,7 @@ import type {
 } from '../../../src/domain/StreamRepository.js';
 import type { StreamServiceStore } from '../../../src/domain/StreamService.js';
 import type { StateStreamStore } from '../../../src/domain/StreamStateService.js';
-import type { PublishedStatus } from '../../../src/domain/streamState.js';
+import { holdsRecording, type PublishedStatus } from '../../../src/domain/streamState.js';
 import type { StreamRenditionRow, StreamRow, ThumbnailRow } from '../../../src/types/index.js';
 
 import { STAGE_ID } from './stageFakes.js';
@@ -95,6 +95,7 @@ export function streamRow(over: Partial<StreamRow> = {}): StreamRow {
     publish_key: '0123456789abcdef0123456789abcdef',
     publish_key_rotated_at: null,
     manifest_index: null,
+    recording_ref: null,
     duration_seconds: null,
     live_since: null,
     ended_at: null,
@@ -131,6 +132,7 @@ export class FakeRenditionStore implements PublishRenditionStore, LadderRenditio
       bandwidth: rendition.bandwidth,
       avg_bandwidth: rendition.avgBandwidth,
       manifest_index: rendition.index ?? null,
+      recording_ref: rendition.recording ?? null,
       duration_seconds: rendition.duration ?? null,
       updated_at: new Date('2026-09-11T11:00:00.000Z'),
     };
@@ -152,6 +154,7 @@ export class FakeRenditionStore implements PublishRenditionStore, LadderRenditio
       rows.map((row) => ({
         ...row,
         manifest_index: null,
+        recording_ref: null,
         duration_seconds: null,
       })),
     );
@@ -212,12 +215,12 @@ export class FakeStreamStore
     const row = this.rows.get(id);
     if (!row || !allowedFrom.includes(row.status)) return null;
     const stageMoves = data.stage_id !== undefined && data.stage_id !== row.stage_id;
-    if (stageMoves && !(row.status === 'draft' && (row.manifest_index === null || row.stage_id === null))) {
+    if (stageMoves && !(row.status === 'draft' && (!holdsRecording(row) || row.stage_id === null))) {
       return null;
     }
     if (stageMoves && data.stage_id && this.stages && !this.stages.takesStreams(data.stage_id)) return null;
     // A row that holds a recording takes only a stage that signs as its owner.
-    if (stageMoves && data.stage_id && this.stages && row.manifest_index !== null) {
+    if (stageMoves && data.stage_id && this.stages && holdsRecording(row)) {
       const stageOwner = this.stages.ownerOf(data.stage_id);
       if (stageOwner === null || !sameFeedOwner(stageOwner, row.owner)) return null;
     }
@@ -236,7 +239,7 @@ export class FakeStreamStore
       scheduled_start_time: scheduled,
       ...(changed ? { content_edited_at: new Date('2026-09-11T11:00:00.000Z') } : {}),
       ...(data.stage_id !== undefined ? { stage_id: data.stage_id } : {}),
-      ...(data.owner !== undefined && row.manifest_index === null ? { owner: data.owner } : {}),
+      ...(data.owner !== undefined && !holdsRecording(row) ? { owner: data.owner } : {}),
     });
   }
 
@@ -331,6 +334,7 @@ export class FakeStreamStore
       live_since:
         row.status === 'live' && row.live_since !== null ? row.live_since : new Date('2026-09-11T11:00:00.000Z'),
       manifest_index: null,
+      recording_ref: null,
       duration_seconds: null,
       ended_at: null,
       publish_error: null,
@@ -341,14 +345,16 @@ export class FakeStreamStore
   async markVod(
     id: string,
     allowedFrom: readonly StreamStatus[],
-    manifestIndex: number,
+    manifestIndex: number | null,
     durationSeconds: number,
+    recordingRef: string | null = null,
   ): Promise<StreamRow | null> {
     const row = this.rows.get(id);
     if (!row || !allowedFrom.includes(row.status)) return null;
     return this.patch(id, {
       status: 'vod',
       manifest_index: manifestIndex,
+      recording_ref: recordingRef,
       duration_seconds: durationSeconds,
       ended_at: new Date('2026-09-11T11:00:00.000Z'),
       publish_error: null,
@@ -410,14 +416,14 @@ export class FakeStreamStore
     if (!row || !allowedFrom.includes(row.status)) return null;
     if (draftNeedsStage && row.status === 'draft' && row.stage_id === null) return null;
     // A recorded draft is claimed only while its stage signs as its owner.
-    if (draftNeedsStage && row.status === 'draft' && row.manifest_index !== null && row.stage_id !== null) {
+    if (draftNeedsStage && row.status === 'draft' && holdsRecording(row) && row.stage_id !== null) {
       const stageOwner = this.stages?.ownerOf(row.stage_id) ?? null;
       if (stageOwner !== null && !sameFeedOwner(stageOwner, row.owner)) return null;
     }
     // A draft with no recording takes its stage's owner as the stages table
     // holds it now, as the SQL does in the same statement.
     const stageOwner =
-      draftNeedsStage && row.status === 'draft' && row.manifest_index === null && row.stage_id !== null
+      draftNeedsStage && row.status === 'draft' && !holdsRecording(row) && row.stage_id !== null
         ? (this.stages?.ownerOf(row.stage_id) ?? null)
         : null;
     return this.patch(id, { status: 'publishing', ...(stageOwner !== null ? { owner: asFeedOwner(stageOwner) } : {}) });
