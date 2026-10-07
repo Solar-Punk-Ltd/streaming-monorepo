@@ -3,11 +3,10 @@ import { describe, expect, it } from 'vitest';
 import {
   beeBaseUrlFromTypedAddress,
   describeProbeFailure,
-  gatewayLabel,
   isBlockedAsMixedContent,
-  isDefaultGateway,
   probeFailureHelp,
   probeGateway,
+  sourceAddressFromTyped,
 } from '@/components/DomainSelector/gatewayProbe';
 import {
   corsHelp,
@@ -355,25 +354,16 @@ describe('describeProbeFailure', () => {
   });
 });
 
-describe('the way back to the default gateway', () => {
-  it('knows a viewer is on the default, so the way back is offered only when it does something', () => {
-    expect(isDefaultGateway('/bee', '/bee')).toBe(true);
-    expect(isDefaultGateway('http://localhost:1633', '/bee')).toBe(false);
+describe('the address of a source a viewer adds', () => {
+  it('takes a gateway typed without a scheme as https, and a Bee node as http', () => {
+    expect(sourceAddressFromTyped('gateway', ' gateway.example.com/ ')).toBe('https://gateway.example.com');
+    expect(sourceAddressFromTyped('bee-node', 'localhost:1633')).toBe('http://localhost:1633');
   });
 
-  it('still knows the default when the saved value lost a trailing slash the env var carries', () => {
-    expect(isDefaultGateway('https://gateway.example', 'https://gateway.example/')).toBe(true);
-  });
-
-  it('names the default rather than showing a path a viewer has never seen', () => {
-    expect(gatewayLabel('/bee', '/bee')).toBe('Default gateway');
-  });
-
-  it('shows a viewer their own node as its host, which is what they typed', () => {
-    expect(gatewayLabel('http://localhost:1633', '/bee')).toBe('localhost:1633');
-  });
-
-  it('falls back to the raw value when it is not a URL', () => {
-    expect(gatewayLabel('/other-proxy', '/bee')).toBe('/other-proxy');
+  it('keeps a scheme as typed and a path on this site for either, and nothing for a blank', () => {
+    expect(sourceAddressFromTyped('gateway', 'http://192.0.2.10:1633')).toBe('http://192.0.2.10:1633');
+    expect(sourceAddressFromTyped('gateway', '/bee/')).toBe('/bee');
+    expect(sourceAddressFromTyped('bee-node', '/bee')).toBe('/bee');
+    expect(sourceAddressFromTyped('gateway', '   ')).toBe('');
   });
 });

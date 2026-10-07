@@ -10,6 +10,7 @@ import { addressSpaceOf, supportsLocalNetworkRequests } from '@/swarm/addressSpa
 import { createSwarmClient } from '@/swarm/createSwarmClient';
 import { type NotReadyReason, PROBE_TIMEOUT_MS, type ProbeResult, type ReadOptions } from '@/swarm/provider';
 import { type GatewaySetting, OWN_GATEWAY_ID, type SwarmSettings } from '@/swarm/settings';
+import type { SourceType } from '@/swarm/sources';
 
 import {
   type Help,
@@ -47,6 +48,19 @@ export function beeBaseUrlFromTypedAddress(input: string): string {
     return trimmed;
   }
   return `http://${trimmed}`;
+}
+
+/**
+ * What a viewer typed for a source they add, as a base URL, or an empty string. A gateway is an https
+ * address, so one typed without a scheme is taken as https, and a Bee node as {@link beeBaseUrlFromTypedAddress}
+ * reads it. A path such as `/bee` is kept for both, and nothing here limits how far the address may be.
+ */
+export function sourceAddressFromTyped(type: SourceType, input: string): string {
+  const trimmed = withoutTrailingSlash(input.trim());
+  if (type === 'gateway' && trimmed !== '' && !trimmed.startsWith('/') && !/^[a-z][a-z0-9+.-]*:\/\//i.test(trimmed)) {
+    return `https://${trimmed}`;
+  }
+  return beeBaseUrlFromTypedAddress(trimmed);
 }
 
 /**
@@ -251,33 +265,5 @@ export function probeFailureHelp(failure: GatewayProbeFailure, origin: string): 
       return failure.awaitingLocalNetwork ? unreachableHelp({ kind: 'unreachable-local' }, origin) : null;
     default:
       return null;
-  }
-}
-
-/**
- * Whether a viewer is already on the gateway the build ships with, which is what decides whether a way
- * back to it is worth offering.
- *
- * Compared without trailing slashes, because a saved address has had them stripped, while the build's own value comes from an environment variable that may carry one. A
- * strict comparison would offer a viewer a way back to where they already are.
- */
-export function isDefaultGateway(gatewayUrl: string, defaultGatewayUrl: string): boolean {
-  return withoutTrailingSlash(gatewayUrl) === withoutTrailingSlash(defaultGatewayUrl);
-}
-
-/**
- * What the header shows beside the picker, so a viewer can see whose node is serving them without
- * opening anything. The default is named rather than shown, because a deployed build's default is
- * `/bee` or an environment value the viewer has never seen. Their own node shows as its host, which
- * is what they typed and will recognise.
- */
-export function gatewayLabel(gatewayUrl: string, defaultGatewayUrl: string): string {
-  if (isDefaultGateway(gatewayUrl, defaultGatewayUrl)) {
-    return 'Default gateway';
-  }
-  try {
-    return new URL(gatewayUrl).host;
-  } catch {
-    return gatewayUrl;
   }
 }

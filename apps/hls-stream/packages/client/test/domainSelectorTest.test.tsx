@@ -16,6 +16,9 @@ import type { SwarmClient } from '../src/swarm/client';
 const EVENT = 'https://event.example.com';
 const BACKUP = 'https://backup.example.com';
 
+const THIRD = 'https://third.example.com';
+const ADDED = 'https://gw.example.com';
+
 const TWO_GATEWAYS = JSON.stringify({
   gateways: [
     { id: 'event', kind: 'bee-http', label: 'Event gateway', url: EVENT },
@@ -24,14 +27,25 @@ const TWO_GATEWAYS = JSON.stringify({
   default: 'event',
 });
 
+const THREE_GATEWAYS = JSON.stringify({
+  gateways: [
+    { id: 'event', kind: 'bee-http', label: 'Event gateway', url: EVENT },
+    { id: 'backup', kind: 'bee-http', label: 'Backup gateway', url: BACKUP },
+    { id: 'third', kind: 'bee-http', label: 'Third gateway', url: THIRD },
+  ],
+  default: 'event',
+  fallback: ['backup', 'third'],
+});
+
 const realFetch = globalThis.fetch;
 let root: Root | null = null;
 let copied: string | null = null;
 let swarm: SwarmClient | null = null;
+let parts: Record<string, string> | null = null;
 
-/** The picker inside the app, as a build with two gateways starts it, opened. */
-async function open() {
-  vi.stubEnv('VITE_SWARM_PROVIDERS', TWO_GATEWAYS);
+/** The picker inside the app, as a build with these gateways starts it, opened. */
+async function open(providers = TWO_GATEWAYS) {
+  vi.stubEnv('VITE_SWARM_PROVIDERS', providers);
   vi.resetModules();
   const app = await import('../src/providers/App');
   const { DomainSelector } = await import('../src/components/DomainSelector/DomainSelector');
@@ -40,6 +54,7 @@ async function open() {
   root = createRoot(host);
   function Probe() {
     swarm = app.useAppContext().swarm;
+    parts = { ...app.useAppContext().parts };
     return null;
   }
   act(() =>
@@ -50,7 +65,7 @@ async function open() {
     ),
   );
   await settle();
-  click(buttonNamed(/^Bee node/));
+  click(buttonNamed(/^Sources/));
 }
 
 async function settle(): Promise<void> {
@@ -90,26 +105,54 @@ function buttonNamed(name: RegExp | string, within: ParentNode = document): HTML
   return found;
 }
 
-/** The list item of one gateway among the ones the picker can test. */
+/** The list item of one source. */
 function row(name: string): HTMLElement {
-  const found = [...document.querySelectorAll<HTMLElement>('[data-gateway-row]')].find((item) =>
-    item.textContent?.includes(name),
+  const found = [...document.querySelectorAll<HTMLElement>('[data-source-row]')].find(
+    (item) => item.querySelector('.gateway-tools-name')?.textContent === name,
   );
   if (!found) {
-    throw new Error(`no gateway row for ${name}`);
+    throw new Error(`no source row for ${name}`);
   }
   return found;
 }
 
 const text = () => document.body.textContent ?? '';
 
-/** Types into the picker's address field as a viewer does, through the setter React listens behind. */
-function typeAddress(value: string): void {
-  const input = document.querySelector<HTMLInputElement>('.gateway-modal-input')!;
+function labelled<T extends Element>(label: string): T {
+  const found = document.querySelector<T>(`[aria-label="${label}"]`);
+  if (!found) {
+    throw new Error(`nothing labelled ${label}`);
+  }
+  return found;
+}
+
+/** Types into a field as a viewer does, through the setter React listens behind. */
+function typeInto(label: string, value: string): void {
+  const input = labelled<HTMLInputElement>(label);
   act(() => {
     Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value')?.set?.call(input, value);
     input.dispatchEvent(new Event('input', { bubbles: true }));
   });
+}
+
+function typeAddress(value: string): void {
+  typeInto('Address', value);
+}
+
+function pick(label: string, value: string): void {
+  const select = labelled<HTMLSelectElement>(label);
+  act(() => {
+    Object.getOwnPropertyDescriptor(HTMLSelectElement.prototype, 'value')?.set?.call(select, value);
+    select.dispatchEvent(new Event('change', { bubbles: true }));
+  });
+}
+
+/** Adds a Bee node of the viewer's own through the form, as a viewer does. */
+function addBeeNode(name: string, address: string): void {
+  pick('Type', 'bee-node');
+  typeInto('Name', name);
+  typeAddress(address);
+  click(buttonNamed('Check and add'));
 }
 
 beforeEach(() => {
@@ -137,14 +180,14 @@ afterEach(() => {
 });
 
 describe("the node picker's tools", () => {
-  it('lists every gateway the build offers, the one in use and the one behind it', async () => {
+  it('lists every source the build offers, the one in use marked', async () => {
     await open();
 
     expect(row('Event gateway').textContent).toContain('in use');
     expect(row('Backup gateway').textContent).not.toContain('in use');
   });
 
-  it("names every row's Test button with that row's gateway, for a screen reader", async () => {
+  it("names every row's Test button with that row's source, for a screen reader", async () => {
     await open();
 
     const named = (label: string) => document.querySelector<HTMLButtonElement>(`button[aria-label="${label}"]`);
@@ -176,14 +219,13 @@ describe("the node picker's tools", () => {
     await waitFor(() => row('Backup gateway').textContent?.includes(CONNECTED_BY_CONTENT) ?? false, 'the test');
     expect(asked.filter((url) => url.endsWith('/health'))).toEqual([]);
 
-    typeAddress('http://localhost:1633');
-    click(buttonNamed('Check and use'));
-    await waitFor(() => document.querySelector('.gateway-modal') === null, 'the picker to close on the own node');
-    click(buttonNamed(/^Bee node/));
+    addBeeNode('Desk node', 'http://localhost:1633');
+    await waitFor(() => document.querySelector('[data-source-row="added-1"]') !== null, 'the node to be added');
     asked.length = 0;
-    click(buttonNamed('Test', row('Your own node')));
-    await waitFor(() => row('Your own node').textContent?.includes('The gateway answered in') ?? false, 'the test');
-    expect(asked.filter((url) => url.endsWith('/health'))).toEqual(['http://localhost:1633/health']);
+    click(buttonNamed('Test', row('Desk node')));
+    await waitFor(() => row('Desk node').textContent?.includes('The gateway answered in') ?? false, 'the test');
+    // The row's status dot is checked again with the Test, by the same probe, so the health may be asked twice.
+    expect(new Set(asked.filter((url) => url.endsWith('/health')))).toEqual(new Set(['http://localhost:1633/health']));
     expect(asked).toContain('http://localhost:1633/readiness');
   });
 
@@ -195,8 +237,7 @@ describe("the node picker's tools", () => {
       throw new TypeError('Failed to fetch');
     }) as typeof fetch;
     await open();
-    typeAddress('http://localhost:1633');
-    click(buttonNamed('Check and use'));
+    addBeeNode('', 'localhost:1633');
     await waitFor(() => text().includes(UNREACHABLE_SENTENCES['cors-refused']), 'the CORS sentence');
 
     const picker = document.querySelector('.gateway-modal')?.textContent ?? '';
@@ -215,28 +256,119 @@ describe("the node picker's tools", () => {
       throw new TypeError('Failed to fetch');
     }) as typeof fetch;
     await open();
-    click(buttonNamed('Test', row('Your own node')));
+    click(buttonNamed('Test', row('My Bee node')));
     await waitFor(
-      () => row('Your own node').textContent?.includes(UNREACHABLE_SENTENCES['cors-refused']) ?? false,
+      () => row('My Bee node').textContent?.includes(UNREACHABLE_SENTENCES['cors-refused']) ?? false,
       'the test',
     );
 
-    expect(row('Your own node').textContent).toContain(`BEE_CORS_ALLOWED_ORIGINS=${window.location.origin}`);
+    expect(row('My Bee node').textContent).toContain(`BEE_CORS_ALLOWED_ORIGINS=${window.location.origin}`);
   });
 
-  it("says a node of the viewer's own is still starting rather than switching to it", async () => {
+  it("says a node of the viewer's own is still starting rather than adding it", async () => {
     const answer = globalThis.fetch;
     globalThis.fetch = ((input: RequestInfo | URL, init?: RequestInit) =>
       String(input).endsWith('/readiness')
         ? Promise.resolve(Response.json({ status: 'notReady' }, { status: 400 }))
         : answer(input, init)) as typeof fetch;
     await open();
-    typeAddress('http://localhost:1633');
-    click(buttonNamed('Check and use'));
+    addBeeNode('Desk node', 'http://localhost:1633');
     await waitFor(() => text().includes(NODE_NOT_READY.starting), 'the not ready sentence');
 
-    expect(document.querySelector('.gateway-modal')).not.toBeNull();
+    expect(document.querySelector('[data-source-row="added-1"]')).toBeNull();
     expect(localStorage.length).toBe(0);
+  });
+
+  it('adds a gateway at an https address once its Test connects, and reads from it at once', async () => {
+    await open();
+    pick('Type', 'gateway');
+    typeInto('Name', 'My gateway');
+    typeAddress('gw.example.com');
+    click(buttonNamed('Check and add'));
+    await waitFor(() => document.querySelector('[data-source-row="added-1"]') !== null, 'the gateway to be added');
+
+    expect(row('My gateway').textContent).toContain('gw.example.com, in use');
+    expect(row('My gateway').textContent).toContain('Connection: passed');
+    expect(parts).toEqual({ player: 'added-1', 'stream-list': 'added-1', previews: 'added-1' });
+    expect(JSON.parse(localStorage.getItem('swarm-sources') ?? '[]')).toEqual([
+      { id: 'added-1', type: 'gateway', name: 'My gateway', url: ADDED },
+    ]);
+  });
+
+  it('refuses a gateway whose connection fails, with its sentence', async () => {
+    globalThis.fetch = (async (input: RequestInfo | URL) => {
+      if (String(input).startsWith(ADDED)) {
+        throw new TypeError('Failed to fetch');
+      }
+      return new Response('', { status: 404 });
+    }) as typeof fetch;
+    await open();
+    pick('Type', 'gateway');
+    typeAddress(ADDED);
+    click(buttonNamed('Check and add'));
+    const said = () => labelled('Add a source').querySelector('[role="status"]')?.textContent ?? '';
+    await waitFor(() => said() !== '' && !said().endsWith('...'), 'the check to end');
+
+    expect(said()).toContain('Could not reach');
+    expect(document.querySelector('[data-source-row="added-1"]')).toBeNull();
+    expect(localStorage.getItem('swarm-sources')).toBeNull();
+  });
+
+  it('renames and removes a source the viewer added, and moves the parts it fed back to the default', async () => {
+    await open();
+    addBeeNode('Desk node', 'http://localhost:1633');
+    await waitFor(() => document.querySelector('[data-source-row="added-1"]') !== null, 'the node to be added');
+    expect(row('Event gateway').querySelector('button[aria-label^="Rename"]')).toBeNull();
+    expect(row('Event gateway').querySelector('button[aria-label^="Remove"]')).toBeNull();
+
+    click(buttonNamed('Rename', row('Desk node')));
+    typeInto('New name for Desk node', 'Laptop');
+    act(() => labelled<HTMLInputElement>('New name for Desk node').form?.requestSubmit());
+    await settle();
+    expect(row('Laptop').textContent).toContain('in use');
+
+    click(buttonNamed('Remove', row('Laptop')));
+    await settle();
+    expect(document.querySelector('[data-source-row="added-1"]')).toBeNull();
+    expect(row('Event gateway').textContent).toContain('in use');
+    expect(parts?.player).toBe('event');
+  });
+
+  it('reads each part from its own source per part, video and stream list linked until unlinked', async () => {
+    await open();
+    click(labelled<HTMLInputElement>('Per part'));
+    pick('Previews and pictures', 'backup');
+    expect(parts).toEqual({ player: 'event', 'stream-list': 'event', previews: 'backup' });
+
+    pick('Stream list', 'backup');
+    expect(parts).toEqual({ player: 'backup', 'stream-list': 'backup', previews: 'backup' });
+
+    click(labelled<HTMLInputElement>('Link video and stream list'));
+    expect(text()).toContain('Live timing may slip while video and stream list differ');
+    pick('Video', 'event');
+    expect(parts).toEqual({ player: 'event', 'stream-list': 'backup', previews: 'backup' });
+  });
+
+  it("shows the fallback order and keeps the viewer's own, the default gateway always last", async () => {
+    await open(THREE_GATEWAYS);
+    expect(labelled('Fallback').textContent).toContain('Backup gateway, then Third gateway, then Event gateway');
+    expect(labelled('Fallback').querySelector('button[aria-label="Move Event gateway up"]')).toBeNull();
+
+    click(labelled<HTMLButtonElement>('Move Backup gateway down'));
+
+    expect(labelled('Fallback').textContent).toContain('Third gateway, then Backup gateway, then Event gateway');
+    expect(JSON.parse(localStorage.getItem('swarm-fallback-order') ?? '[]')).toEqual(['third', 'backup', 'event']);
+    expect(swarm?.activity()[0].fallbackOrder).toEqual(['third', 'backup']);
+  });
+
+  it('puts a status dot on every source, with the time a gateway took to answer', async () => {
+    await open();
+    await waitFor(
+      () => row('Backup gateway').querySelector('[data-health="ok"]') !== null,
+      'the light check of the backup',
+    );
+
+    expect(row('Backup gateway').querySelector('.source-status')?.textContent).toMatch(/^\d+ ms$/);
   });
 
   it('forgets a Test the viewer stopped by closing the picker, so it can be run again', async () => {
@@ -253,15 +385,15 @@ describe("the node picker's tools", () => {
     click(buttonNamed('Test', row('Backup gateway')));
     expect(row('Backup gateway').textContent).toContain('Testing...');
 
-    click(buttonNamed('Cancel'));
+    click(buttonNamed('Close'));
     await settle();
-    click(buttonNamed(/^Bee node/));
+    click(buttonNamed(/^Sources/));
 
     expect(row('Backup gateway').textContent).not.toContain('Testing');
     expect(buttonNamed('Test', row('Backup gateway')).disabled).toBe(false);
   });
 
-  it('marks the Bee node button while the fallback serves the video, with the picker closed', async () => {
+  it('marks the Sources button while the fallback serves the video, with the picker closed', async () => {
     const VIDEO_OWNER = 'a'.repeat(40);
     globalThis.fetch = (async (input: RequestInfo | URL) => {
       const url = String(input);
@@ -271,18 +403,15 @@ describe("the node picker's tools", () => {
       return new Response('', { status: url.startsWith(BACKUP) && url.includes(VIDEO_OWNER) ? 502 : 404 });
     }) as typeof fetch;
     await open();
-    const input = document.querySelector<HTMLInputElement>('.gateway-modal-input')!;
-    act(() => {
-      Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value')?.set?.call(input, BACKUP);
-      input.dispatchEvent(new Event('input', { bubbles: true }));
-    });
-    click(buttonNamed('Check and use'));
-    await waitFor(() => document.querySelector('.gateway-modal') === null, 'the picker to close on the backup');
-    expect(buttonNamed(/^Bee node/).textContent).not.toContain('Using fallback');
+    click(labelled<HTMLInputElement>('Use Backup gateway'));
+    click(buttonNamed('Close'));
+    await settle();
+    expect(buttonNamed(/^Sources/).textContent).toContain('Backup gateway');
+    expect(buttonNamed(/^Sources/).textContent).not.toContain('Using fallback');
 
     await swarm?.reader('player').readFeedEntry(VIDEO_OWNER, Topic.fromString('a-rung'), 0);
 
-    await waitFor(() => buttonNamed(/^Bee node/).textContent?.includes('Using fallback') ?? false, 'the marker', 20);
+    await waitFor(() => buttonNamed(/^Sources/).textContent?.includes('Using fallback') ?? false, 'the marker', 20);
   });
 
   it('shows who answered each feature in the last minute', async () => {

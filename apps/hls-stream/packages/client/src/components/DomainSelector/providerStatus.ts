@@ -5,7 +5,7 @@
 import type { AnswerKind } from '@/swarm/answers';
 import type { FeatureActivity, ProviderHealth, SwarmFeature } from '@/swarm/client';
 
-const FEATURE_LABELS: Readonly<Record<SwarmFeature, string>> = {
+export const FEATURE_LABELS: Readonly<Record<SwarmFeature, string>> = {
   'stream-list': 'Stream list',
   player: 'Video',
   previews: 'Previews and pictures',
