@@ -25,8 +25,9 @@ sudo install -d -o deploy -g deploy /opt/streaming
 # log out and back in so the group takes effect
 ```
 
-On your machine you need bash, ssh, rsync and git, and a Host block for the
-server in `~/.ssh/config`:
+On your machine you need bash, ssh, rsync, git and Node 24 or later, which runs
+`tools/release/version.mjs` to name the build, and a Host block for the server
+in `~/.ssh/config`:
 
 ```
 Host admin-host
@@ -78,6 +79,11 @@ manager pushes it. An env file that still sets `INGEST_HOST`,
 `INGEST_SRT_PORT`, `INGEST_RTMP_PORT`, `INGEST_RTMP_PUBLIC`,
 `INGEST_SRT_PASSPHRASE` or `INGEST_KEY_VERIFIED` deploys as it did, with a
 warning naming each one; remove them when convenient.
+
+Nor does the file name the build: `deploy.sh` builds `WEB2_ADMIN_VERSION` and
+`WEB2_ADMIN_COMMIT` into the api image (see "The version" below). An env file
+that sets either one, even to nothing, is refused, since its value would win
+over the image's and the console would name a build nobody made.
 
 Things that differ from running the API on your laptop:
 
@@ -137,8 +143,9 @@ deploy.sh --host=<ssh-target> [--profile=<name>] [--portSlot=<N>] [--remote-path
 A deploy:
 
 1. checks the arguments and the env file;
-2. writes the commit into `deploy/.deployed-commit`, with `-dirty` appended
-   when the working tree has changes;
+2. names the build with `tools/release/version.mjs`, and in a terminal offers
+   the tag script first when the commit has no tag (see "The version" below);
+   then writes the commit into `deploy/.deployed-commit`;
 3. refuses a `--remote-path` that is a non-empty directory but not a checkout
    of this repository, since `--delete` would empty it;
 4. rsyncs `apps/web2-admin` to the host with `--delete`, leaving out `.git`,
@@ -150,8 +157,11 @@ A deploy:
    `tools/app-workspace/cut.mjs` into a folder outside the checkout that is
    removed when the deploy exits;
 5. over one ssh session, runs `docker compose up -d --build` for the profile's
-   project, waits for each service's healthcheck, then asks for `/api/health`
-   through nginx from inside the console container.
+   project with the version exported to it, waits for each service's
+   healthcheck, asks for `/api/health` through nginx from inside the console
+   container, and checks that the api container reports the version just
+   built;
+6. ends with `deployed <label> (<short commit>)`.
 
 With `--host=localhost` nothing is sent, and when the root keeps the one
 lockfile the two images build from a copy of `apps/web2-admin` made outside the
@@ -168,6 +178,54 @@ shared checkout was last synced to.
 The deploy exits non-zero on any failure. When the stack does not come up in
 time it prints `docker compose ps` and the last log lines of the services it
 deployed before exiting.
+
+### The version
+
+Before a release the operator tags the commit with the tag script, step 1 of
+[docs/releasing.md](../../../docs/releasing.md). A deploy names its build with
+`tools/release/version.mjs --app apps/web2-admin` (see
+[tools/release](../../../tools/release/README.md)):
+
+- the label is the tag on the commit; on a commit without one, the nearest tag
+  before it and how many commits past it, `QA-build-2026-10-07+3`, or the short
+  commit when no tag is behind it; and `-dirty` ends it when `apps/web2-admin`,
+  `packages/` or the root's `package.json`, `pnpm-lock.yaml` or
+  `pnpm-workspace.yaml` hold changes not yet committed;
+- the commit is the full one, which `deploy/.deployed-commit` and the
+  containers' `web2-admin.commit` label carry, without `-dirty`: that mark is
+  the version label's alone.
+
+Both are held to their patterns before anything leaves your machine: the
+commit to 40 lowercase hex characters, the label to 1 to 96 letters, digits
+and `. _ + / -`. Anything else is refused, as is a failure of `version.mjs`,
+before anything is sent or built.
+
+Run with standard input and output both a terminal, a deploy of a commit with
+no tag says `This commit has no tag.` and asks
+`Run the tag script now? [y/N]`. On `y` it runs `tools/release/tag.mjs`, then
+names the build again and deploys that, whatever the tag script did. On
+anything else, and in every run without a terminal, it says in one line that
+the commit has no tag and which label it deploys as, and goes on. Nothing is
+asked of a run without a terminal, the manager's among them.
+
+The label and the commit reach compose as `WEB2_ADMIN_VERSION` and
+`WEB2_ADMIN_COMMIT`, on the host and with `--host=localhost` alike, from the
+checkout or from the copy `in-copy.mjs` makes. Compose passes them to both
+images as build arguments. The api image keeps them in its environment, where
+the API reads them once at boot and answers them, to signed-in users only, at
+`GET /api/version`; the console shows them beside the signed-in account. Both
+images carry them as the labels `org.opencontainers.image.version` and
+`org.opencontainers.image.revision`. They come last in each Dockerfile, so a
+new version rebuilds no layer above them.
+
+Because the version is in the image, a container compose did not replace goes
+on reporting the build it runs. Once the stack is healthy the deploy reads the
+running api container's `WEB2_ADMIN_VERSION` and `WEB2_ADMIN_COMMIT`, and
+fails, saying what it found and what it built, when they are not the build
+just made. A deploy that names services without `api` leaves it unchecked and
+says so. The last line of a deploy names the build: `deployed <label> (<short
+commit>)`, or `deployed <label>` when the label already starts with the short
+commit, as an untagged build's does.
 
 ### One checkout, many profiles
 
@@ -542,9 +600,10 @@ deploy.sh --profile=<name> --portSlot=<N> --host=<target> [service...]
 with `--host=localhost` for a profile on the manager's own host. This script
 takes exactly that and:
 
-- never prompts. ssh runs with `BatchMode=yes` whenever standard input is not a
-  terminal, so a missing key or an unknown host key fails at once instead of
-  waiting;
+- never prompts without a terminal: the tag offer needs standard input and
+  output both to be one. ssh runs with `BatchMode=yes` whenever standard input
+  is not a terminal, so a missing key or an unknown host key fails at once
+  instead of waiting;
 - prefixes its own lines with `[deploy]`, errors with `[deploy] ERROR:` on
   standard error, and exits non-zero on every failure;
 - refuses a bad argument or env file before any ssh or rsync;
@@ -563,8 +622,12 @@ beside `deploy.sh`, which this repo does not have.
 `test/` runs `deploy.sh` and `edge.sh` in a throwaway checkout, beside a
 folder that stands in for the host. Stubs for ssh, rsync, docker, curl, dig
 and git come first on `PATH`, so nothing leaves the machine, and the ssh stub
-runs commands only in that stand-in host. No package script runs these tests
-yet. From the repository root:
+runs commands only in that stand-in host. The docker stub keeps the version
+each `up` was given and answers it as the api container's environment.
+`tools/release/version.mjs` and `tag.mjs` are stand-ins in the throwaway
+checkout too, except in the tests that run the real `version.mjs` against a
+scratch repository, whose git reads none of the machine's settings. The
+admin's `test` script runs them, and from the repository root:
 
 ```sh
 node --test 'apps/web2-admin/deploy/test/*.test.mjs'

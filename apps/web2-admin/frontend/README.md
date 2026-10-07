@@ -47,6 +47,16 @@ at once over a `BroadcastChannel`, and a reload after a revoke shows the same
 notice. On the change-password form a 401 `unauthenticated` signs out too; only
 `invalid_credentials` means the current password was wrong.
 
+Beside the signed-in account, a small muted line names the build the API runs:
+`Version <label> (<short commit>)`, or the label alone when it already starts
+with the short commit, as an untagged build's does, and `Version development
+build` when the API carries no version. The full commit is the line's title.
+It is asked once after each sign-in, from `GET /api/version`, which answers
+signed-in users only, and the sign-in page shows nothing of it. An API that
+cannot say shows no line, and neither does a screen narrower than a tablet,
+where it would push the console's name onto a second line. `versionText` in
+`src/format.ts` is the rule, the same in every console.
+
 ## Running it
 
 ```bash
@@ -74,7 +84,8 @@ node frontend/scripts/mock-api.mjs                     # listens on 127.0.0.1:98
 pnpm --filter @streaming-monorepo/web2-admin-frontend dev
 ```
 
-or, from this package, `pnpm mock-api`. Log in as `admin` / `admin1234`. It
+or, from this package, `pnpm mock-api`. Log in as `admin` / `admin1234`.
+Nothing deployed it, so its build line reads `Version development build`. It
 honours a few env vars:
 
 | Var                   | Default                  | What                                                                                                                                         |
@@ -123,7 +134,7 @@ src/
   http.ts       getJson / sendJson / sendBytes / extractApiError
   errors.ts     snake_case API codes → sentences
   format.ts     dates, datetime-local conversion, hex elision
-  components/   app shell, route guard, snackbar, chips, copy button, form fields, OBS panel
+  components/   app shell, build line, route guard, snackbar, chips, copy button, form fields, OBS panel
   pages/        one file per screen
   test/         vitest suites and their helpers
 ```

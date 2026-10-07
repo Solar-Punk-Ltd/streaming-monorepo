@@ -5,6 +5,7 @@ import AccountCircleIcon from '@mui/icons-material/AccountCircle';
 import type { ReactNode } from 'react';
 
 import { useAuth } from '../auth';
+import { BuildVersion } from './BuildVersion';
 import { useSnackbar } from './Snackbar';
 
 export const APP_NAME = 'Stream Admin';
@@ -47,6 +48,7 @@ export function AppShell({ children }: { children: ReactNode }) {
           </Typography>
           {user ? (
             <>
+              <BuildVersion />
               <Button color="inherit" startIcon={<AccountCircleIcon />} onClick={open} aria-haspopup="menu">
                 {user.username}
               </Button>

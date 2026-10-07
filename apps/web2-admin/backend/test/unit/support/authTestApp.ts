@@ -2,7 +2,7 @@
  * The console's gate on a random port, wired exactly as `src/api/server.ts`
  * wires it: /api/internal first with its own body parser, the cross-site check
  * over everything after it and ahead of the JSON parser, /api/health,
- * /api/auth and the session gate behind them.
+ * /api/auth, /api/version and the session gate behind them.
  *
  * `/api/streams` here stands in for the rest of the API. It answers with the
  * signed-in username so a test can tell a real pass from an accidental one.
@@ -13,6 +13,8 @@ import {
   REQUESTED_WITH_HEADER,
   REQUESTED_WITH_VALUE,
   SESSION_COOKIE_NAME,
+  VERSION_PATH,
+  type VersionInfo,
 } from '@streaming-monorepo/web2-admin-common';
 import type { LoginLimiter } from '@streaming-monorepo/web-auth';
 import express from 'express';
@@ -23,6 +25,7 @@ import { createRequireAuth, requireUser } from '../../../src/api/middleware/requ
 import { createRequireInternalToken } from '../../../src/api/middleware/requireInternalToken.js';
 import { requireSameSite } from '../../../src/api/middleware/requireSameSite.js';
 import { createAuthRouter } from '../../../src/api/routes/auth.js';
+import { createVersionRouter } from '../../../src/api/routes/version.js';
 import { AuthService } from '../../../src/domain/auth/AuthService.js';
 
 import { InMemoryCredentialRepository, InMemorySessionRepository, InMemoryUserRepository } from './authFixtures.js';
@@ -40,7 +43,18 @@ export interface AuthTestApp {
   close(): Promise<void>;
 }
 
-export async function startAuthTestApp(limiter?: LoginLimiter): Promise<AuthTestApp> {
+/** What an image built outside a deploy carries: no version. */
+const NO_VERSION: VersionInfo = { label: null, commit: null };
+
+export interface AuthTestAppOptions {
+  /** The build GET /api/version answers with, as the config read it. */
+  version?: VersionInfo;
+}
+
+export async function startAuthTestApp(
+  limiter?: LoginLimiter,
+  { version = NO_VERSION }: AuthTestAppOptions = {},
+): Promise<AuthTestApp> {
   const users = new InMemoryUserRepository();
   const sessions = new InMemorySessionRepository(users);
   const audit = new InMemoryAuditLog();
@@ -69,6 +83,7 @@ export async function startAuthTestApp(limiter?: LoginLimiter): Promise<AuthTest
     res.json({ status: 'ok' });
   });
   app.use('/api/auth', createAuthRouter(authService, requireAuth));
+  app.use(VERSION_PATH, createVersionRouter({ version, requireAuth }));
 
   app.use(requireAuth);
   app.get('/api/streams', (req, res) => {

@@ -1,5 +1,6 @@
 import http from 'node:http';
 
+import { VERSION_PATH, type VersionInfo } from '@streaming-monorepo/web2-admin-common';
 import express from 'express';
 
 import { AuthService } from '../domain/auth/AuthService.js';
@@ -29,6 +30,7 @@ import { createHealthRouter } from './routes/health.js';
 import { createInternalRouter } from './routes/internal.js';
 import { createCatalogueStampRouter, createStagesRouter } from './routes/stages.js';
 import { createStreamsRouter } from './routes/streams.js';
+import { createVersionRouter } from './routes/version.js';
 
 const logger = Logger.getInstance();
 
@@ -55,6 +57,8 @@ export interface ApiDeps {
   uploaderTokens: UploaderTokenStore;
   feed: FeedIdentity;
   viewerBaseUrl: string;
+  /** The build this process runs, as the deploy built it into the image. */
+  version: VersionInfo;
 }
 
 export interface ApiServerHandle {
@@ -107,6 +111,7 @@ export function startApiServer(deps: ApiDeps, port: number, host: string): ApiSe
   app.use('/api/health', createHealthRouter(deps.database));
   app.use('/api/config', createConfigRouter(deps.feed, deps.viewerBaseUrl));
   app.use('/api/auth', createAuthRouter(deps.authService, requireAuth));
+  app.use(VERSION_PATH, createVersionRouter({ version: deps.version, requireAuth }));
   app.use(
     '/api/feed',
     createFeedRouter({

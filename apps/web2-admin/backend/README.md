@@ -88,6 +88,8 @@ reference; the summary:
 | `VIEWER_BASE_URL`                     | empty              | branded viewer built for this feed, for "open player catalogue" links                                                                          |
 | `INTERNAL_API_TOKEN`                  | required           | 32+ chars. The registrar token the manager pushes stages with on `/api/internal`. No uploader is given it, and the uploader's routes refuse it |
 | `CATALOGUE_MOVE_ENABLED`              | `false`            | `true` lets an operator move the catalogue's history onto another batch from the Stages page. Off until tried on a real node                   |
+| `WEB2_ADMIN_VERSION`                  | unset              | the build's label, which `deploy/deploy.sh` builds into the image. Never in the env file: [The build it runs](#the-build-it-runs)              |
+| `WEB2_ADMIN_COMMIT`                   | unset              | the build's commit, built in the same way. `GET /api/version` answers both                                                                     |
 
 There is no ingest setting. Each stream's OBS details come from the stage it
 is broadcast on, as the manager pushed it: see [A stream's stage](#a-streams-stage).
@@ -148,6 +150,27 @@ normal and not a divergence.
   the last admin; the user's streams stay, with `user_id` set to null) and
   `POST /api/auth/users/:id/revoke` (admin, or anyone for themselves) are the
   Access page.
+
+## The build it runs
+
+`GET /api/version` answers `VersionInfo`, `{ label, commit }`, for signed-in
+users only: behind the session like every console route, and never on
+`/api/config` or `/api/health`, which anyone can read. The console shows it
+beside the signed-in account. It is sent `no-store`, as the manager's
+`GET /version` is, because a redeploy replaces the answer and a page should
+never show the build it was loaded with.
+
+The values are `WEB2_ADMIN_VERSION` and `WEB2_ADMIN_COMMIT`, read once at
+boot. `deploy/deploy.sh` names the build with `tools/release/version.mjs` and
+builds both into the image's environment, so a container that was not
+replaced goes on answering the build it runs ([deploy/README.md](../deploy/README.md#the-version)).
+A label is the tag the build was deployed from, `<tag>+<commits past it>`, or
+the short commit, with `-dirty` for changes that were not committed. A label
+that is not 1 to 96 letters, digits and `. _ + / -`, or a commit that is not
+40 lowercase hex characters, is answered as `null`, and so is an unset one:
+an image built by hand or `pnpm dev` answers `{ "label": null, "commit": null }`,
+which the console calls a development build. The boot log names the build on
+its `[Boot]   version:` line.
 
 ## Publishing
 
