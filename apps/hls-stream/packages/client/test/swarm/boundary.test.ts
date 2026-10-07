@@ -59,3 +59,66 @@ describe('the Swarm layer', () => {
     expect(files.flatMap(appImportsOf)).toEqual([]);
   });
 });
+
+/**
+ * What reaching Swarm directly looks like in a source line: a gateway joined onto a Bee path, a call
+ * of the global fetch, a Bee client of its own, and the two ways a page loads a URL without fetch. A
+ * method that is merely named `fetch` is not one.
+ */
+const DIRECT_SWARM_ACCESS: readonly { readonly what: string; readonly pattern: RegExp }[] = [
+  { what: 'builds a Bee URL', pattern: /\$\{[^}]+\}\/(?:feeds|soc|chunks|bytes|bzz|health)\b/ },
+  { what: 'calls fetch', pattern: /(?:^|[^.\w])fetch\s*\(|\b(?:window|globalThis|self)\s*\.\s*fetch\s*\(/ },
+  { what: 'makes a Bee client', pattern: /\bnew\s+Bee\s*\(/ },
+  { what: 'loads a URL by hand', pattern: /\bXMLHttpRequest\b|\bnew\s+Image\s*\(/ },
+];
+
+/** A line with its module specifiers and method definitions taken out, which name things rather than call them. */
+function codeOf(line: string): string {
+  return line.replace(/(?:\bfrom\s*|\bimport\s*\(?\s*)['"][^'"]+['"]/g, '').replace(/\basync\s+fetch\s*\(/g, '');
+}
+
+function directAccessIn(file: string): string[] {
+  return readFileSync(file, 'utf8')
+    .split('\n')
+    .flatMap((line, at) =>
+      DIRECT_SWARM_ACCESS.filter(({ pattern }) => pattern.test(codeOf(line))).map(
+        ({ what }) => `${relative(ROOT, file)}:${at + 1} ${what}: ${line.trim()}`,
+      ),
+    );
+}
+
+/**
+ * Everything outside the Swarm layer reaches Swarm only through the client: the app, and the
+ * utilities it shares with the layer. The in-tab node behind `fetchBackend` is reached through
+ * weeb-3's own calls and never by URL, so it is no exception.
+ */
+describe('everything outside the Swarm layer', () => {
+  it('reads Swarm only through the Swarm client, never by URL or fetch of its own', () => {
+    const files = sourceFiles(SRC).filter((file) => !file.startsWith(`${SWARM}/`));
+
+    expect(files.length).toBeGreaterThan(0);
+    expect(files.flatMap(directAccessIn)).toEqual([]);
+  });
+
+  it.each([
+    ['const url = `${gatewayUrl}/bytes/${reference}`;', 'builds a Bee URL'],
+    ['return `${this.base}/feeds/${owner}/${topic}`;', 'builds a Bee URL'],
+    ['const response = await fetch(url);', 'calls fetch'],
+    ['await window.fetch(url)', 'calls fetch'],
+    ['const bee = new Bee(url);', 'makes a Bee client'],
+    ['const picture = new Image();', 'loads a URL by hand'],
+  ])('catches %s', (line, what) => {
+    expect(DIRECT_SWARM_ACCESS.filter(({ pattern }) => pattern.test(codeOf(line))).map((rule) => rule.what)).toEqual([
+      what,
+    ]);
+  });
+
+  it.each([
+    'async fetch(url: string): Promise<string> {',
+    'manifestFetcher.fetch(context.url)',
+    "import { FetchTimeoutError } from '@/utils/fetchTimeoutError';",
+    "if (uri.startsWith('/bytes/')) {",
+  ])('leaves alone %s', (line) => {
+    expect(DIRECT_SWARM_ACCESS.filter(({ pattern }) => pattern.test(codeOf(line)))).toEqual([]);
+  });
+});
