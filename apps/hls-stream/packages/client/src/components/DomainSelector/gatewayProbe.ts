@@ -3,25 +3,12 @@
  *
  * The picker used to save whatever was typed and close. A viewer who mistyped a port, or whose node
  * refused this site's origin, then saw a browse page with nothing on it and no way to tell which of
- * those had happened. Everything here is pure or takes an injected fetcher, because this package runs
+ * those had happened. Everything here is pure or takes an injected prober, because this package runs
  * vitest without a DOM and a rule left inside the component is a rule nothing covers.
  */
-import { FetchTimeoutError, fetchWithTimeout } from '@/utils/fetchWithTimeout';
-
-/**
- * Long enough for a cold local node, short enough that a wrong port does not feel like a hang.
- *
- * Exported so the test asserts the window the picker actually uses. Asserting only that it is above
- * zero passes for ten minutes, which is a picker held open rather than a bounded wait.
- */
-export const PROBE_TIMEOUT_MS = 5_000;
-
-/**
- * Bee answers this on its API port with `{"status":"ok",...}` in every version this project has
- * targeted, and the deployed nginx `/bee/` proxy forwards it unchanged, so one path covers the
- * default gateway and a viewer's own node alike.
- */
-export const BEE_PROBE_PATH = '/health';
+import { PROBE_TIMEOUT_MS, type ProbeResult, type ReadOptions } from '@/swarm/provider';
+import { PROVIDER_REGISTRY } from '@/swarm/registry';
+import { OWN_GATEWAY_ID } from '@/swarm/settings';
 
 /** Both a viewer's typing and a saved address, since every caller joins with a path of its own. */
 function withoutTrailingSlash(url: string): string {
@@ -99,9 +86,16 @@ type GatewayProbeOutcome =
   /** No answer at all: connection refused, wrong port, DNS miss, or the node blocked this site. */
   | { kind: 'unreachable' };
 
+/** What can ask an address whether a Swarm node is there: a provider's own probe. */
+type Prober = (gatewayUrl: string) => { probe(options?: ReadOptions): Promise<ProbeResult> };
+
+/** A Bee node over HTTP at the address, which is the kind of node the picker offers to use. */
+const beeHttpProber: Prober = (gatewayUrl) =>
+  PROVIDER_REGISTRY['bee-http'].create({ id: OWN_GATEWAY_ID, kind: 'bee-http', url: gatewayUrl }, {});
+
 interface GatewayProbeOptions {
-  /** Injected only by tests. Production always uses the bounded fetcher. */
-  fetcher?: typeof fetchWithTimeout;
+  /** Injected only by tests. Production asks the Bee HTTP provider the picker would switch to. */
+  prober?: Prober;
   /**
    * The scheme this page is served over. Injected only by tests, and read lazily in production
    * because this package runs vitest with no DOM, where touching `window` at module load is a
@@ -116,16 +110,17 @@ function currentPageProtocol(): string {
 }
 
 /**
- * Ask an address whether a Bee node is behind it. Never throws: every failure is an outcome.
+ * Ask an address whether a Bee node is behind it, through the `probe()` of the provider that would
+ * read from it. Never throws: every failure is an outcome.
  *
- * The window is `fetchWithTimeout`'s, which covers headers and body together. A node that accepts the
- * connection and answers nothing is therefore a `timed-out` rather than a picker held open, and it
- * reaches a viewer as its own message: that node exists and is slow, which is a different next step
- * from one that cannot be reached at all.
+ * The window covers headers and body together. A node that accepts the connection and answers
+ * nothing is therefore a `timed-out` rather than a picker held open, and it reaches a viewer as its
+ * own message: that node exists and is slow, which is a different next step from one that cannot be
+ * reached at all.
  */
 export async function probeGateway(
   gatewayUrl: string,
-  { fetcher = fetchWithTimeout, pageProtocol = currentPageProtocol() }: GatewayProbeOptions = {},
+  { prober = beeHttpProber, pageProtocol = currentPageProtocol() }: GatewayProbeOptions = {},
 ): Promise<GatewayProbeOutcome> {
   // Asked before the fetch, because this is the one failure that is knowable without one and the
   // only one whose cause survives: once the browser has refused it, what reaches this code is
@@ -134,30 +129,19 @@ export async function probeGateway(
     return { kind: 'mixed-content' };
   }
 
-  try {
-    const response = await fetcher(`${gatewayUrl}${BEE_PROBE_PATH}`, { timeoutMs: PROBE_TIMEOUT_MS });
-    if (!response.ok) {
-      return { kind: 'rejected', status: response.status };
-    }
-    return looksLikeBeeHealth(response.text) ? { kind: 'ok' } : { kind: 'not-bee' };
-  } catch (error) {
-    // A browser reports a CORS refusal, a closed port and a DNS miss identically, as a rejected fetch
-    // with no status, so everything that is not the bounded wait running out lands in one outcome.
-    return error instanceof FetchTimeoutError ? { kind: 'timed-out' } : { kind: 'unreachable' };
-  }
-}
-
-/**
- * Bee's `/health` body is `{"status":"ok","version":...,"apiVersion":...}` and has been since the API
- * was versioned. Only the shape is read, not the value: a node reporting `nok` is still a Bee node,
- * and a viewer is better served by pointing at it than by being told it is not there.
- */
-function looksLikeBeeHealth(body: string): boolean {
-  try {
-    const parsed: unknown = JSON.parse(body);
-    return typeof parsed === 'object' && parsed !== null && typeof (parsed as { status?: unknown }).status === 'string';
-  } catch {
-    return false;
+  // A browser reports a CORS refusal, a closed port and a DNS miss identically, as a rejected fetch
+  // with no status, so the probe finds every one of them unreachable.
+  const found = await prober(gatewayUrl).probe({ timeoutMs: PROBE_TIMEOUT_MS });
+  switch (found.kind) {
+    case 'ok':
+      return { kind: 'ok' };
+    case 'not-swarm':
+      return { kind: 'not-bee' };
+    case 'rejected':
+      return { kind: 'rejected', status: found.status };
+    case 'timed-out':
+    case 'unreachable':
+      return { kind: found.kind };
   }
 }
 

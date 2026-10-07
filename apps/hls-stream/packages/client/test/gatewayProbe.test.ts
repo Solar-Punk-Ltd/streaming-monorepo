@@ -1,16 +1,15 @@
 import { describe, expect, it } from 'vitest';
 
 import {
-  BEE_PROBE_PATH,
   beeBaseUrlFromTypedAddress,
   describeProbeFailure,
   gatewayLabel,
   isBlockedAsMixedContent,
   isDefaultGateway,
-  PROBE_TIMEOUT_MS,
   probeGateway,
 } from '@/components/DomainSelector/gatewayProbe';
-import { FetchTimeoutError, fetchWithTimeout } from '@/utils/fetchWithTimeout';
+import { PROBE_TIMEOUT_MS, type ProbeResult, type ReadOptions } from '@/swarm/provider';
+import { BeeHttpProvider } from '@/swarm/providers/bee-http/beeHttpProvider';
 
 /**
  * That the Bee node picker reads an address before it saves it, and says what it found in words a
@@ -21,9 +20,9 @@ import { FetchTimeoutError, fetchWithTimeout } from '@/utils/fetchWithTimeout';
  * anything other than an empty catalog. A browser reports a CORS refusal exactly like a closed port,
  * so the copy has to name both.
  *
- * The wait belongs to `fetchWithTimeout`, which owns the window and has its own test for it, so
- * nothing here re-checks that a timer fires. What these check is the reading the probe takes from
- * what comes back, including the one case the primitive hands over as an error of its own.
+ * The asking belongs to the provider's `probe()`, which owns the window and has its own test for it,
+ * so nothing here re-checks that a timer fires. What these check is the window the picker asks for
+ * and the reading it takes from what the probe found.
  */
 
 const BEE_HEALTH = '{"status":"ok","version":"2.8.2","apiVersion":"7.3.0"}';
@@ -31,22 +30,25 @@ const BEE_HEALTH = '{"status":"ok","version":"2.8.2","apiVersion":"7.3.0"}';
 /** A single-page app answers every path with its index page and a 200, this project's own client included. */
 const SPA_INDEX = '<!doctype html><html><head><title>Multimedia Streaming over Swarm</title></head></html>';
 
-function answering(status: number, text = BEE_HEALTH): typeof fetchWithTimeout {
-  return async () => ({ ok: status >= 200 && status < 300, status, headers: new Headers(), text });
+/** A Bee node over HTTP at the address the picker probes, answered by `fetcher`. */
+function beeAnsweredBy(fetcher: typeof fetch) {
+  return (url: string) => new BeeHttpProvider({ baseUrl: url, fetcher });
+}
+
+function answering(status: number, text = BEE_HEALTH) {
+  return beeAnsweredBy((async () => new Response(text, { status })) as typeof fetch);
 }
 
 /** One rejection stands for a closed port, a DNS miss and a CORS refusal, which a browser never tells apart. */
-function refusing(): typeof fetchWithTimeout {
-  return async () => {
+function refusing() {
+  return beeAnsweredBy((async () => {
     throw new TypeError('Failed to fetch');
-  };
+  }) as typeof fetch);
 }
 
-/** A node that accepts the connection and then goes quiet, which the primitive turns into an error of its own. */
-function silent(): typeof fetchWithTimeout {
-  return async (url, options) => {
-    throw new FetchTimeoutError(url, options?.timeoutMs ?? 0);
-  };
+/** A node that accepts the connection and then goes quiet, which the provider's probe finds as timed out. */
+function silent() {
+  return () => ({ probe: async (): Promise<ProbeResult> => ({ kind: 'timed-out' }) });
 }
 
 describe('beeBaseUrlFromTypedAddress', () => {
@@ -75,24 +77,27 @@ describe('beeBaseUrlFromTypedAddress', () => {
 describe('probeGateway', () => {
   it('asks the health endpoint under the address it was given', async () => {
     let asked = '';
-    const fetcher: typeof fetchWithTimeout = async (url, options) => {
-      asked = url;
-      return answering(200)(url, options);
-    };
+    const prober = beeAnsweredBy((async (input: RequestInfo | URL) => {
+      asked = String(input);
+      return new Response(BEE_HEALTH);
+    }) as typeof fetch);
 
-    await probeGateway('http://localhost:1633', { fetcher });
+    await probeGateway('http://localhost:1633', { prober });
 
-    expect(asked).toBe(`http://localhost:1633${BEE_PROBE_PATH}`);
+    // Bee's health document, which a /bee proxy on this site forwards unchanged.
+    expect(asked).toBe('http://localhost:1633/health');
   });
 
   it('bounds its own wait at the window it ships with, so a node that goes quiet cannot hold the picker open', async () => {
     let window: number | undefined;
-    const fetcher: typeof fetchWithTimeout = async (url, options) => {
-      window = options?.timeoutMs;
-      return answering(200)(url, options);
-    };
+    const prober = () => ({
+      probe: async (options?: ReadOptions): Promise<ProbeResult> => {
+        window = options?.timeoutMs;
+        return { kind: 'ok', elapsedMs: 1 };
+      },
+    });
 
-    await probeGateway('http://localhost:1633', { fetcher });
+    await probeGateway('http://localhost:1633', { prober });
 
     // The constant itself, not a lower bound. Above zero is satisfied by ten minutes, which is the
     // picker held open rather than a wait with an end.
@@ -109,34 +114,34 @@ describe('probeGateway', () => {
   });
 
   it('accepts an address that answers with a Bee health document', async () => {
-    expect(await probeGateway('http://localhost:1633', { fetcher: answering(200) })).toEqual({ kind: 'ok' });
+    expect(await probeGateway('http://localhost:1633', { prober: answering(200) })).toEqual({ kind: 'ok' });
   });
 
   it('refuses a single-page app that answers 200 with its index page', async () => {
-    expect(await probeGateway('http://localhost:4173', { fetcher: answering(200, SPA_INDEX) })).toEqual({
+    expect(await probeGateway('http://localhost:4173', { prober: answering(200, SPA_INDEX) })).toEqual({
       kind: 'not-bee',
     });
   });
 
   it('accepts a Bee node whose health says nok, because it is still a Bee node', async () => {
-    expect(await probeGateway('http://localhost:1633', { fetcher: answering(200, '{"status":"nok"}') })).toEqual({
+    expect(await probeGateway('http://localhost:1633', { prober: answering(200, '{"status":"nok"}') })).toEqual({
       kind: 'ok',
     });
   });
 
   it('reports the status when something answers with an error', async () => {
-    expect(await probeGateway('http://localhost:8080', { fetcher: answering(404) })).toEqual({
+    expect(await probeGateway('http://localhost:8080', { prober: answering(404) })).toEqual({
       kind: 'rejected',
       status: 404,
     });
   });
 
   it('reports a refusal rather than throwing, so the picker always has something to show', async () => {
-    expect(await probeGateway('http://localhost:1', { fetcher: refusing() })).toEqual({ kind: 'unreachable' });
+    expect(await probeGateway('http://localhost:1', { prober: refusing() })).toEqual({ kind: 'unreachable' });
   });
 
   it('keeps a node that never answered apart from one that could not be reached', async () => {
-    expect(await probeGateway('http://localhost:1633', { fetcher: silent() })).toEqual({ kind: 'timed-out' });
+    expect(await probeGateway('http://localhost:1633', { prober: silent() })).toEqual({ kind: 'timed-out' });
   });
 });
 
@@ -155,12 +160,14 @@ describe('probeGateway', () => {
  */
 describe('a plain http node named from an https page', () => {
   /** Any call is a failure: the point is that the probe decides this without asking anything. */
-  const neverAsked: typeof fetchWithTimeout = async (url) => {
-    throw new Error(`the probe asked ${url}, which a browser would have refused to send`);
-  };
+  const neverAsked = (url: string) => ({
+    probe: async (): Promise<ProbeResult> => {
+      throw new Error(`the probe asked ${url}, which a browser would have refused to send`);
+    },
+  });
 
   it('is refused as mixed content rather than sent and misread as unreachable', async () => {
-    expect(await probeGateway('http://192.168.1.20:1633', { pageProtocol: 'https:', fetcher: neverAsked })).toEqual({
+    expect(await probeGateway('http://192.168.1.20:1633', { pageProtocol: 'https:', prober: neverAsked })).toEqual({
       kind: 'mixed-content',
     });
   });
@@ -174,13 +181,13 @@ describe('a plain http node named from an https page', () => {
 
   it("still asks loopback, which browsers exempt, so a node on the viewer's own machine works", async () => {
     const asked: string[] = [];
-    const fetcher: typeof fetchWithTimeout = async (url, options) => {
-      asked.push(url);
-      return answering(200)(url, options);
-    };
+    const prober = beeAnsweredBy((async (input: RequestInfo | URL) => {
+      asked.push(String(input));
+      return new Response(BEE_HEALTH);
+    }) as typeof fetch);
 
-    expect(await probeGateway('http://localhost:1633', { pageProtocol: 'https:', fetcher })).toEqual({ kind: 'ok' });
-    expect(await probeGateway('http://127.0.0.1:1633', { pageProtocol: 'https:', fetcher })).toEqual({ kind: 'ok' });
+    expect(await probeGateway('http://localhost:1633', { pageProtocol: 'https:', prober })).toEqual({ kind: 'ok' });
+    expect(await probeGateway('http://127.0.0.1:1633', { pageProtocol: 'https:', prober })).toEqual({ kind: 'ok' });
     expect(asked).toHaveLength(2);
   });
 

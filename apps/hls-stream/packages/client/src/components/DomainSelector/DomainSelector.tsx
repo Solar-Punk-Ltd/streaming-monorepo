@@ -1,7 +1,6 @@
 import { useRef, useState } from 'react';
 
 import { useAppContext } from '@/providers/App';
-import { config } from '@/utils/config';
 
 import {
   beeBaseUrlFromTypedAddress,
@@ -32,7 +31,7 @@ const EMPTY_ADDRESS_TEXT = 'Enter the address of your Bee node, for example http
  * they have never seen.
  */
 export function DomainSelector() {
-  const { gatewayUrl, setGatewayUrl } = useAppContext();
+  const { gatewayUrl, setGatewayUrl, defaultGatewayUrl } = useAppContext();
   const [isOpen, setIsOpen] = useState(false);
   const [inputValue, setInputValue] = useState('');
   const [status, setStatus] = useState<PickerStatus>(IDLE);
@@ -40,7 +39,7 @@ export function DomainSelector() {
   // retyped cannot save an address they no longer meant.
   const probeGeneration = useRef(0);
 
-  const isOnDefault = isDefaultGateway(gatewayUrl, config.beeUrl);
+  const isOnDefault = isDefaultGateway(gatewayUrl, defaultGatewayUrl);
 
   const handleOpen = () => {
     setInputValue(isOnDefault ? '' : gatewayUrl);
@@ -81,7 +80,7 @@ export function DomainSelector() {
   };
 
   const handleUseDefault = () => {
-    setGatewayUrl(config.beeUrl);
+    setGatewayUrl(defaultGatewayUrl);
     close();
   };
 
@@ -108,7 +107,7 @@ export function DomainSelector() {
     <>
       <button className="gateway-button" onClick={handleOpen} title="Choose which Bee node streams load through">
         <span className="gateway-button-label">Bee node</span>
-        <span className="gateway-button-current">{gatewayLabel(gatewayUrl, config.beeUrl)}</span>
+        <span className="gateway-button-current">{gatewayLabel(gatewayUrl, defaultGatewayUrl)}</span>
       </button>
 
       {isOpen && (
