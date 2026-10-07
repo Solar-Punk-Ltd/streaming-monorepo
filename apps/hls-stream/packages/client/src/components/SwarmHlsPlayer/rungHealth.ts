@@ -108,6 +108,8 @@ export function attachWatchedRungReporter(hls: Hls, groupHexTopic: string, feedH
  * ⛔ The level hls.js is loading is named too, when it is another one. A switch asked before hls.js
  * reports the level it started on is under way when that report arrives, and a poller told only the
  * reported rung would stop the switch target and search for it again when hls.js next asks.
+ *
+ * ⛔ A switch taken back before it plays names the playing rung alone, so the rung asked for stops.
  */
 export function attachActiveRungFollower(
   hls: Hls,
@@ -125,10 +127,22 @@ export function attachActiveRungFollower(
     }
   };
 
+  // hls.js reports LEVEL_SWITCHED once a level's first fragment plays, so a switch it asks for and takes
+  // back before then reports nothing, and the rung it asked for would be walked for the session. Going
+  // back is a LEVEL_SWITCHING to the level that plays.
+  const returnToPlaying = (_event: unknown, data: { level: number }): void => {
+    const rung = data.level === hls.currentLevel ? rungOf(data.level) : null;
+    if (rung !== null) {
+      followOnly(rung, null);
+    }
+  };
+
   hls.on(Events.LEVEL_SWITCHED, follow);
+  hls.on(Events.LEVEL_SWITCHING, returnToPlaying);
 
   return () => {
     hls.off(Events.LEVEL_SWITCHED, follow);
+    hls.off(Events.LEVEL_SWITCHING, returnToPlaying);
   };
 }
 

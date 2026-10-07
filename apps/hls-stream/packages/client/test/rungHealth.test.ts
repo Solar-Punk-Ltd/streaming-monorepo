@@ -64,6 +64,7 @@ function makeLadderPlayer({
   feedHealth.trackGroup(GROUP, walked.map(hexOf));
 
   const switchedListeners = new Set<(event: unknown, data: { level: number }) => void>();
+  const switchingListeners = new Set<(event: unknown, data: { level: number }) => void>();
   const removed: number[] = [];
 
   const hls = {
@@ -72,6 +73,7 @@ function makeLadderPlayer({
       height: HEIGHTS[RUNG_NAMES.indexOf(rung as (typeof RUNG_NAMES)[number])],
     })),
     loadLevel: 0,
+    currentLevel: -1,
     nextLoadLevel: -1,
     nextAutoLevel: 1,
     removeLevel(index: number) {
@@ -86,12 +88,19 @@ function makeLadderPlayer({
       }
     },
     on(event: string, listener: (event: unknown, data: { level: number }) => void) {
+      if (event === Events.LEVEL_SWITCHING) {
+        switchingListeners.add(listener);
+        return;
+      }
       assert.equal(event, Events.LEVEL_SWITCHED, `the reporter listened for ${event}`);
       switchedListeners.add(listener);
     },
     off(event: string, listener: (event: unknown, data: { level: number }) => void) {
       if (event === Events.LEVEL_SWITCHED) {
         switchedListeners.delete(listener);
+      }
+      if (event === Events.LEVEL_SWITCHING) {
+        switchingListeners.delete(listener);
       }
     },
   };
@@ -105,9 +114,18 @@ function makeLadderPlayer({
     loadLevel: () => hls.loadLevel,
     setLoadLevel: (level: number) => void (hls.loadLevel = level),
     nextLoadLevel: () => hls.nextLoadLevel,
+    /** hls.js has played the first fragment of this level, which is when it reports the switch. */
     switchTo: (level: number) => {
+      hls.currentLevel = level;
       for (const listener of switchedListeners) {
         listener(Events.LEVEL_SWITCHED, { level });
+      }
+    },
+    /** hls.js starts loading this level, which it announces before any of it plays. */
+    startLoading: (level: number) => {
+      hls.loadLevel = level;
+      for (const listener of switchingListeners) {
+        listener(Events.LEVEL_SWITCHING, { level });
       }
     },
     /** The poller announcing one of this player's rungs as stopped. */
@@ -370,6 +388,23 @@ describe('telling the poller which rung the player now plays', () => {
     assert.deepEqual(followed, [
       [hexOf('rung-1080p'), hexOf('rung-360p')],
       [hexOf('rung-360p'), null],
+    ]);
+  });
+
+  it('names the playing rung alone when hls.js goes back to it before the level it asked for plays', () => {
+    const player = makeLadderPlayer();
+    const followed: [string, string | null][] = [];
+    attachActiveRungFollower(player.hls, (rung, loading) => followed.push([rung, loading]));
+    player.startLoading(0);
+    player.switchTo(0);
+
+    // A switch down is asked and taken back before any of it plays, so no LEVEL_SWITCHED follows.
+    player.startLoading(2);
+    player.startLoading(0);
+
+    assert.deepEqual(followed, [
+      [hexOf('rung-1080p'), null],
+      [hexOf('rung-1080p'), null],
     ]);
   });
 
