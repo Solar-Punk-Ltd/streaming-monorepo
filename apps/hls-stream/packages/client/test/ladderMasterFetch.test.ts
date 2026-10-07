@@ -4,6 +4,8 @@ import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { ManifestFetcher, ManifestStateManager } from '../src/components/SwarmHlsPlayer/ManifestManagement';
 import { RequestJitter } from '../src/utils/requestJitter';
 
+import { slotPathsOf } from './helpers/slotPaths';
+
 /**
  * The first browser ever pointed at a published ladder failed with three
  * `networkError manifestLoadError` and zero rung requests (sitting 2026-08-28, arm
@@ -48,6 +50,15 @@ const realFetch = globalThis.fetch;
 
 const groupTopicHex = Topic.fromString(GROUP_ID).toString();
 const rungTopicHex = new Map(RUNG_IDS.map((id) => [Topic.fromString(id).toString(), id]));
+const rungSlots = slotPathsOf(
+  OWNER,
+  RUNG_IDS.map((id) => Topic.fromString(id)),
+);
+
+/** The rung a read was for, by hex topic, or null for any other read. */
+function rungOf(url: string): string | null {
+  return rungSlots.get(new URL(url).pathname.slice(1))?.hex ?? null;
+}
 
 function feedResponse(body: string, index = 10): Response {
   return new Response(body, {
@@ -75,10 +86,10 @@ describe('a published ladder master starts the rungs (the 2026-08-28 sitting fai
       if (url.includes(groupTopicHex)) {
         return feedResponse(PUBLISHED_MASTER);
       }
-      for (const hex of rungTopicHex.keys()) {
-        if (url.includes(hex)) {
-          return feedResponse(RUNG_MEDIA, 0);
-        }
+      // Each rung holds its first slot only, so the search for its newest index ends there.
+      const slot = rungSlots.get(new URL(url).pathname.slice(1));
+      if (slot?.index === 0) {
+        return new Response(RUNG_MEDIA, { status: 200 });
       }
       return new Response('not found', { status: 404 });
     }) as typeof fetch;
@@ -98,7 +109,7 @@ describe('a published ladder master starts the rungs (the 2026-08-28 sitting fai
 
     expect(text).toBe(PUBLISHED_MASTER);
     await fetcher.settled();
-    const rungsAsked = [...rungTopicHex.keys()].filter((hex) => fetched.some((url) => url.includes(hex)));
+    const rungsAsked = [...rungTopicHex.keys()].filter((hex) => fetched.some((url) => rungOf(url) === hex));
     expect(rungsAsked.length, `rung feeds asked for: ${rungsAsked.length} of 4`).toBe(0);
   });
 
@@ -121,7 +132,7 @@ describe('a published ladder master starts the rungs (the 2026-08-28 sitting fai
 
     expect(playlist).toContain('#EXTINF');
     expect(playlist).toContain('seg-0.ts');
-    const rungsAsked = [...rungTopicHex.keys()].filter((hex) => fetched.some((url) => url.includes(hex)));
+    const rungsAsked = [...rungTopicHex.keys()].filter((hex) => fetched.some((url) => rungOf(url) === hex));
     expect(rungsAsked, 'a level request read a rung other than its own').toEqual([
       Topic.fromString(RUNG_IDS[2]).toString(),
     ]);

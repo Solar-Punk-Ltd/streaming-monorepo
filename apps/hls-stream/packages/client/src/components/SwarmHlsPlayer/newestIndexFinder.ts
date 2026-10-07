@@ -1,9 +1,13 @@
 import { FeedIndex, Topic } from '@ethersphere/bee-js';
-import { extractFeedIndex, nextFeedRequest } from '@swarm-hls-stream/shared';
 
 import { TimedResponse } from '@/utils/fetchWithTimeout';
 
-import { isSlotNotWrittenYet } from './refusedSlot';
+import type { FollowClock } from './following/feedReader';
+import { findNewestFromHint, type SwitchHint } from './following/findNewestFromHint';
+import { findNewestFromScratch } from './following/findNewestFromScratch';
+import { RungFeedReader } from './rungFeedReader';
+
+export type { SwitchHint };
 
 /** One rung's feed, as the finder is asked about it. */
 export interface FeedRung {
@@ -22,34 +26,41 @@ export interface NewestIndex {
  *
  * The only place a rung's walk may skip indexes. Everything after it is walked slot by slot.
  *
- * ⛔ **The hint is the playing rung's current index, and nothing may rely on it being right.** A
- * rung's index counts the playlists the uploader published to it, and publishes coalesce under load,
- * so the rungs of one ladder drift apart without bound. A search may start from the hint. It may
- * never read the hint as the answer.
+ * ⛔ **The hint is the playing rung's newest slot, and nothing may rely on it being right.** A rung's
+ * index counts the playlists the uploader published to it, and publishes coalesce under load, so the
+ * rungs of one ladder drift apart without bound. A search may start from the hint. It may never read
+ * the hint as the answer.
+ *
+ * Injected, so the owner's decision 34 can move to Bee's own lookup at the start (option b) or to a
+ * latest index the stream list carries (option c) without touching the walk.
  *
  * @returns Null when the feed holds nothing yet. A read the gateway did not answer throws.
  */
 export interface NewestIndexFinder {
-  findNewest(rung: FeedRung, hint: FeedIndex | null): Promise<NewestIndex | null>;
+  findNewest(rung: FeedRung, hint: SwitchHint | null): Promise<NewestIndex | null>;
 }
 
 /**
- * The feed head lookup, which is what every rung started with before there was a choice. It ignores
- * the hint.
+ * The searches by index from the polling study (decision 34, option a): from nothing at the start,
+ * and from the playing rung's newest slot at a switch, a failover and the check of an end. Neither
+ * reads the feed head lookup, which measured the slowest request this deployment has.
  */
-export class HeadLookupFinder implements NewestIndexFinder {
-  constructor(private readonly fetchResource: (path: string) => Promise<TimedResponse>) {}
+export class IndexSearchFinder implements NewestIndexFinder {
+  constructor(
+    private readonly fetchResource: (path: string) => Promise<TimedResponse>,
+    private readonly clock: FollowClock,
+  ) {}
 
-  async findNewest(rung: FeedRung): Promise<NewestIndex | null> {
-    let response: TimedResponse;
-    try {
-      response = await this.fetchResource(nextFeedRequest(rung.owner, rung.topic, null).path);
-    } catch (error) {
-      if (isSlotNotWrittenYet(error)) {
-        return null;
-      }
-      throw error;
+  async findNewest(rung: FeedRung, hint: SwitchHint | null): Promise<NewestIndex | null> {
+    const reader = new RungFeedReader(this.fetchResource, rung.owner, rung.topic, this.clock.now);
+    const { newest } =
+      hint === null
+        ? await findNewestFromScratch(reader, this.clock)
+        : await findNewestFromHint(reader, this.clock, hint);
+    const playlist = newest === null ? undefined : reader.playlistOf(newest);
+    if (newest === null || playlist === undefined) {
+      return null;
     }
-    return { index: extractFeedIndex(response.headers), playlist: response.text };
+    return { index: FeedIndex.fromBigInt(BigInt(newest.index)), playlist };
   }
 }

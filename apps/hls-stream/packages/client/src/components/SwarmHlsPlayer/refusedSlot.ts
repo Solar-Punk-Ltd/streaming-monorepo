@@ -61,7 +61,7 @@ export function isSlotNotWrittenYet(error: unknown): boolean {
  * Bounded at both ends. Below the first, a refusal is too likely to be the publisher's head to be
  * worth asking about. Above the second the feed has been asked on every poll and found nothing every
  * time, so what is missing is not within reach and asking again just costs four requests a poll for
- * as long as the page stays open. Both followers keep asking for the slot they need either way, so a
+ * as long as the page stays open. The walk keeps asking for the slot it needs either way, so a
  * slot that becomes retrievable later is still picked up by the ordinary walk.
  *
  * @param unservedPolls The length of the unserved run this poll extends, which is what
@@ -119,16 +119,11 @@ type ProbeResult = ProbeServed | ProbeFoundNothing | ProbeGatewayFailed;
  *
  * ## Why this stops at finding the slot
  *
- * ⛔ **The two followers are not equally free to be wrong about a refusal, which is why both make
- * this call and only one used to.** The single-rendition walk pays for a refusal it believed with a
- * slower poll, and the next poll asks again. On a ladder the same refusal keeps the playing rung
- * unserved, and a rung unserved past the stall threshold beside a sibling that moves is handed to
- * `hls.removeLevel`, which has no undo inside the session. So the path where taking a 404 at face
- * value costs the least was the one checking, and the path where it costs a rung for the rest of the
- * broadcast was the one believing it.
- *
- * What a follower does with the slot is still its own, because what the slot has to be folded into
- * differs, so this returns the answer rather than applying it.
+ * What a follower does with the slot is its own, because what the slot has to be folded into
+ * differs, so this returns the answer rather than applying it. A ladder's rungs do not call this:
+ * the predicted follower they run looks past a late slot by one, on its own timing
+ * (`following/followPredicted.ts`), because a refusal there costs the rung itself once the stall rule
+ * moves the player to a sibling.
  *
  * @param missing The slot that was refused. The probe looks past it and never at it again.
  */

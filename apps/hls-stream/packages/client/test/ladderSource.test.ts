@@ -13,6 +13,7 @@ import {
 import { ManifestFetcher, ManifestStateManager } from '../src/components/SwarmHlsPlayer/ManifestManagement';
 import { RequestJitter } from '../src/utils/requestJitter';
 
+import { slotPathsOf } from './helpers/slotPaths';
 import { waitFor } from './helpers/waiting';
 
 /**
@@ -40,6 +41,30 @@ function rung(name: string, width: number, height: number, bandwidth: number): R
 
 const LADDER = [rung('360p', 640, 360, 700_000), rung('720p', 1280, 720, 2_800_000)];
 const RUNG_TOPICS = LADDER.map((r) => Topic.fromString(r.topic).toString());
+const FOUR = [
+  rung('360p', 640, 360, 700_000),
+  rung('480p', 854, 480, 1_400_000),
+  rung('720p', 1280, 720, 2_800_000),
+  rung('1080p', 1920, 1080, 5_000_000),
+];
+const FOUR_TOPICS = FOUR.map((r) => Topic.fromString(r.topic).toString());
+
+/** Every rung's newest slot. The rungs are read by index, so each holds slots 0 to this one. */
+const RUNG_HEAD = 3;
+const rungSlots = slotPathsOf(
+  OWNER,
+  [...LADDER, ...FOUR].map((r) => Topic.fromString(r.topic)),
+);
+
+/** The rung a read was for, by hex topic, or null for any other read. */
+function rungOf(path: string): string | null {
+  return rungSlots.get(path)?.hex ?? null;
+}
+
+/** The slot path of a rung's index. */
+function slotPathOf(hex: string, index: number): string {
+  return [...rungSlots].find(([, slot]) => slot.hex === hex && slot.index === index)![0];
+}
 
 function mediaPlaylist(segment: string): string {
   return ['#EXTM3U', '#EXT-X-TARGETDURATION:2', '#EXTINF:2,', segment].join('\n');
@@ -94,21 +119,18 @@ describe('the ladder entry points', () => {
     console.error = realConsoleError;
   });
 
-  /** Answers the source feed with `sourceBody` and every rung feed with a media playlist. */
-  function stubFetch(sourceBody: string, onRequest: (path: string) => Response | null = () => null): void {
+  /** Answers the source feed with `sourceBody` and every rung slot up to {@link RUNG_HEAD} with `rungBody`. */
+  function stubFetch(sourceBody: string, rungBody = mediaPlaylist('rung-seg.ts')): void {
     globalThis.fetch = (async (url: string) => {
       const path = url.replace(`${BEE_URL}/`, '');
       requested.push(path);
 
-      const override = onRequest(path);
-      if (override) {
-        return override;
-      }
       if (path === `feeds/${OWNER}/${hexSource}`) {
         return feedResponse(sourceBody);
       }
-      if (RUNG_TOPICS.some((hex) => path === `feeds/${OWNER}/${hex}`)) {
-        return feedResponse(mediaPlaylist('rung-seg.ts'));
+      const slot = rungSlots.get(path);
+      if (slot && slot.index <= RUNG_HEAD) {
+        return new Response(rungBody, { status: 200 });
       }
       return new Response('not found', { status: 404 });
     }) as typeof fetch;
@@ -129,7 +151,7 @@ describe('the ladder entry points', () => {
       await settle();
 
       for (const hex of RUNG_TOPICS) {
-        assert.ok(!requested.some((path) => path.includes(hex)), `rung ${hex} was read before anyone played it`);
+        assert.ok(!requested.some((path) => rungOf(path) === hex), `rung ${hex} was read before anyone played it`);
       }
     });
 
@@ -141,25 +163,31 @@ describe('the ladder entry points', () => {
     it('reads only the rung a level request names, and stops the old rung once the switch is reported', async () => {
       const [low, top] = RUNG_TOPICS;
       stubFetch(buildMasterPlaylist(OWNER, LADDER));
-      const readsOf = (hex: string) => requested.filter((path) => path === `feeds/${OWNER}/${hex}`).length;
+      const readsOf = (hex: string) => requested.filter((path) => rungOf(path) === hex).length;
 
       await fetcher.fetchSource(`${OWNER}/${SOURCE_TOPIC}`);
       await fetcher.fetch(`${OWNER}/${LADDER[1].topic}`);
       await settle();
-      assert.equal(readsOf(top), 1, 'the playing rung was not started with one head read');
+      assert.equal(
+        manager.getIndex(top)?.toBigInt(),
+        BigInt(RUNG_HEAD),
+        'the playing rung did not start at its newest',
+      );
+      assert.ok(readsOf(top) > 0, 'the playing rung was not read');
       assert.equal(readsOf(low), 0, 'a rung nobody plays was read');
+      assert.ok(!requested.some((path) => path.startsWith('feeds/') && path !== `feeds/${OWNER}/${hexSource}`));
 
       const beforeSwitch = requested.length;
       await fetcher.fetch(`${OWNER}/${LADDER[0].topic}`);
-      assert.equal(readsOf(low), 1, 'the switch did not start the new rung with one head read');
-      assert.equal(requested[beforeSwitch], `feeds/${OWNER}/${low}`, 'the switch read something before its finder');
+      assert.equal(manager.getIndex(low)?.toBigInt(), BigInt(RUNG_HEAD), 'the switch did not start the new rung');
+      assert.equal(rungOf(requested[beforeSwitch]), low, 'the switch read something before its finder');
 
       fetcher.followOnlyRung(low);
       assert.equal(manager.getIndex(top), null, 'the rung switched away from kept its index');
       const afterSwitch = requested.length;
       await settle();
       assert.ok(
-        requested.slice(afterSwitch).every((path) => !path.includes(top)),
+        requested.slice(afterSwitch).every((path) => rungOf(path) !== top),
         'the old rung was still read after the switch',
       );
     });
@@ -179,12 +207,7 @@ describe('the ladder entry points', () => {
      * frozen frame.
      */
     it('ends the source topic once the playing rung and its sibling are both finalized', async () => {
-      stubFetch(buildMasterPlaylist(OWNER, LADDER), (path) => {
-        if (RUNG_TOPICS.some((hex) => path === `feeds/${OWNER}/${hex}`)) {
-          return feedResponse(`${mediaPlaylist('rung-seg.ts')}\n#EXT-X-ENDLIST`);
-        }
-        return null;
-      });
+      stubFetch(buildMasterPlaylist(OWNER, LADDER), `${mediaPlaylist('rung-seg.ts')}\n#EXT-X-ENDLIST`);
 
       await fetcher.fetchSource(`${OWNER}/${SOURCE_TOPIC}`);
       await fetcher.fetch(`${OWNER}/${LADDER[1].topic}`);
@@ -209,17 +232,18 @@ describe('the ladder entry points', () => {
       });
       const watching = new ManifestFetcher(manager, health, undefined, counting, POLL_MS, WATCH_MS);
       watching.beeUrl = BEE_URL;
-      stubFetch(buildMasterPlaylist(OWNER, LADDER), (path) => {
-        if (RUNG_TOPICS.some((hex) => path === `feeds/${OWNER}/${hex}`)) {
-          return feedResponse(`${mediaPlaylist('rung-seg.ts')}\n#EXT-X-ENDLIST`);
-        }
-        return null;
-      });
-      const asks = () => requested.filter((path) => path.startsWith('soc/')).length;
+      stubFetch(buildMasterPlaylist(OWNER, LADDER), `${mediaPlaylist('rung-seg.ts')}\n#EXT-X-ENDLIST`);
+      // The watch asks for the slot after the finished one, which the search for the newest index also
+      // read, so only the asks made once the end is recorded are the watch's.
+      const watched = slotPathOf(RUNG_TOPICS[1], RUNG_HEAD + 1);
+      let readBeforeTheEnd = 0;
+      const asks = () => requested.filter((path) => path === watched).length - readBeforeTheEnd;
 
       try {
         await watching.fetchSource(`${OWNER}/${SOURCE_TOPIC}`);
         await watching.fetch(`${OWNER}/${LADDER[1].topic}`);
+        await waitFor(() => health.state(hexSource) === FEED_STATE_ENDED, 'the broadcast to end', 5_000);
+        readBeforeTheEnd = asks();
         await waitFor(() => asks() >= 3, 'the finished rung to ask three times', 5_000);
 
         const asked = asks();
@@ -241,18 +265,8 @@ describe('the ladder entry points', () => {
    * the slowest at start, 4.2 to 4.7 s in phase 0, a head lookup of the master topic.
    */
   describe('a stream list entry that names its renditions', () => {
-    const FOUR = [
-      rung('360p', 640, 360, 700_000),
-      rung('480p', 854, 480, 1_400_000),
-      rung('720p', 1280, 720, 2_800_000),
-      rung('1080p', 1920, 1080, 5_000_000),
-    ];
-    const FOUR_TOPICS = FOUR.map((r) => Topic.fromString(r.topic).toString());
-
     it('is answered with the master built from the list, reading nothing, and the first read is the start rung', async () => {
-      stubFetch(buildMasterPlaylist(OWNER, FOUR), (path) =>
-        FOUR_TOPICS.some((hex) => path === `feeds/${OWNER}/${hex}`) ? feedResponse(mediaPlaylist('rung-seg.ts')) : null,
-      );
+      stubFetch(buildMasterPlaylist(OWNER, FOUR));
       fetcher.registerLadder(`${OWNER}/${SOURCE_TOPIC}`, () => ({ owner: OWNER, renditions: FOUR }));
 
       const master = await fetcher.fetchSource(`${OWNER}/${SOURCE_TOPIC}`);
@@ -260,7 +274,7 @@ describe('the ladder entry points', () => {
       assert.deepEqual(requested, [], 'starting playback read something before hls.js asked for a level');
 
       await fetcher.fetch(`${OWNER}/${FOUR[3].topic}`);
-      assert.equal(requested[0], `feeds/${OWNER}/${FOUR_TOPICS[3]}`, 'the first read was not the start rung');
+      assert.equal(rungOf(requested[0]), FOUR_TOPICS[3], 'the first read was not the start rung');
       assert.ok(!requested.includes(`feeds/${OWNER}/${hexSource}`), 'the master topic was read');
     });
 
@@ -405,7 +419,7 @@ describe('the ladder entry points', () => {
 
       for (const hex of RUNG_TOPICS) {
         assert.ok(
-          !requested.some((path) => path.includes(hex)),
+          !requested.some((path) => rungOf(path) === hex),
           `rung ${hex} was walked after teardown, so a torn-down player left an orphan poller running`,
         );
       }

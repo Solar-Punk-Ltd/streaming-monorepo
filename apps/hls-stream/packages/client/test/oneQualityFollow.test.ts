@@ -12,11 +12,11 @@ import {
 } from '../src/components/SwarmHlsPlayer/feedState.js';
 import { LadderFeedPoller, STALL_REPROBE_MS } from '../src/components/SwarmHlsPlayer/LadderFeedPoller.js';
 import { ManifestStateManager } from '../src/components/SwarmHlsPlayer/ManifestManagement.js';
-import type { NewestIndexFinder } from '../src/components/SwarmHlsPlayer/newestIndexFinder.js';
+import { IndexSearchFinder, type NewestIndexFinder } from '../src/components/SwarmHlsPlayer/newestIndexFinder.js';
 import { parseManifest } from '../src/components/SwarmHlsPlayer/playlist.js';
-import type { PollPacing } from '../src/components/SwarmHlsPlayer/pollPacing.js';
 import { STALE_RUNG_LAG_MS } from '../src/components/SwarmHlsPlayer/rungPosition.js';
 
+import { fastClock } from './helpers/fastClock.js';
 import { FakeLadderGateway, LADDER_EPOCH_MS, SEGMENT_S } from './helpers/fakeLadderGateway.js';
 import { waitFor } from './helpers/waiting.js';
 
@@ -33,6 +33,12 @@ const POLL_MS = 2;
 /** The progress bound, short so a trial ends inside a test. Production's is `RUNG_PROGRESS_BOUND_MS`. */
 const BOUND_MS = 150;
 const RETURN_MS = 5;
+/**
+ * How much faster than real time the follower runs: a two second segment is twenty milliseconds. Slow
+ * enough that a switch's search, which moves its hint on by the segments since it was read, still
+ * starts close to the playing rung.
+ */
+const FOLLOW_SPEED = 100;
 
 const LOW = Topic.fromString('oq-360p');
 const MID = Topic.fromString('oq-720p');
@@ -63,29 +69,37 @@ interface Rig {
   clock: ReturnType<typeof makeClock>;
   stopped: { rung: string; failoverTo: string | null; reason: string }[];
   playhead: { ms: number | null };
+  /** The rungs the finder was asked about, in order, by hex topic. */
+  finds: string[];
 }
 
 let rigs: Rig[] = [];
 
-function makeRig(
-  options: { finderFor?: (gateway: FakeLadderGateway) => NewestIndexFinder; pacing?: PollPacing } = {},
-): Rig {
+function makeRig(options: { finderFor?: (gateway: FakeLadderGateway) => NewestIndexFinder } = {}): Rig {
   const gateway = new FakeLadderGateway(OWNER);
   const clock = makeClock();
   const health = new FeedHealthTracker(clock.now);
   const playhead = { ms: null as number | null };
+  const followClock = fastClock(FOLLOW_SPEED);
+  const finds: string[] = [];
+  const finder = options.finderFor?.(gateway) ?? new IndexSearchFinder(gateway.fetchResource, followClock);
   const poller = new LadderFeedPoller(state, gateway.fetchResource, POLL_MS, health, undefined, () => RETURN_MS, {
     now: clock.now,
     progressBoundMs: BOUND_MS,
     playheadMs: () => playhead.ms,
-    finder: options.finderFor?.(gateway),
-    pacing: options.pacing,
+    finder: {
+      findNewest: (rung, hint) => {
+        finds.push(rung.topic.toString());
+        return finder.findNewest(rung, hint);
+      },
+    },
+    followClock,
   });
   const stopped: Rig['stopped'] = [];
   health.onRungStopped((rung, detail) => {
     stopped.push({ rung, failoverTo: detail.failoverTo, reason: detail.reason });
   });
-  const rig = { gateway, health, poller, clock, stopped, playhead };
+  const rig = { gateway, health, poller, clock, stopped, playhead, finds };
   rigs.push(rig);
   return rig;
 }
@@ -125,7 +139,7 @@ describe('Q1: only the rung that plays is walked', () => {
   });
 
   it('walks the activated rung alone, and a switch adds only the new rung, whose walk starts with the finder', async () => {
-    const { gateway, poller } = makeRig();
+    const { gateway, poller, finds } = makeRig();
     gateway.publishLive(LOW, 'low', 10);
     gateway.publishLive(MID, 'mid', 10);
     gateway.publishLive(TOP, 'top', 10);
@@ -142,8 +156,7 @@ describe('Q1: only the rung that plays is walked', () => {
 
     poller.activate(hex(MID));
     await poller.ready(hex(MID));
-    const midReads = gateway.requestsFor(hex(MID));
-    assert.equal(midReads[0]?.kind, 'head', 'the new rung did not start with the finder');
+    assert.deepEqual(finds, [hex(TOP), hex(MID)], 'the new rung did not start with the finder');
 
     poller.followOnly(hex(MID));
     const topReadsAtSwitch = gateway.requestsFor(hex(TOP)).length;
@@ -155,12 +168,12 @@ describe('Q1: only the rung that plays is walked', () => {
     assert.equal(poller.isActive(hex(TOP)), false);
   });
 
-  it('hands the finder the playing rung index as a hint, and walks whatever the finder says is newest', async () => {
-    const hints: (bigint | null)[] = [];
+  it('hands the finder the playing rung newest slot as a hint, and walks whatever the finder says is newest', async () => {
+    const hints: unknown[] = [];
     const { gateway, poller } = makeRig({
       finderFor: (gateway) => ({
         async findNewest(rung, hint) {
-          hints.push(hint?.toBigInt() ?? null);
+          hints.push(hint === null ? null : { index: hint.index, newestSegmentEndMs: hint.newestSegmentEndMs });
           const head = gateway.head(rung.topic);
           const response = await gateway.fetchResource(gateway.slotPath(rung.topic, head));
           return { index: FeedIndex.fromBigInt(BigInt(head)), playlist: response.text };
@@ -176,27 +189,36 @@ describe('Q1: only the rung that plays is walked', () => {
     poller.activate(hex(MID));
     await poller.ready(hex(MID));
 
-    assert.deepEqual(hints, [null, 7n], 'the first rung has no hint, and a switch hints the playing index');
+    // Index 7 of the top rung ends with segment 7, stamped from the ladder's epoch.
+    const segmentEndMs = LADDER_EPOCH_MS + 8 * SEGMENT_S * 1000;
+    assert.deepEqual(
+      hints,
+      [null, { index: 7, newestSegmentEndMs: segmentEndMs }],
+      'the first rung has no hint, and a switch hints the playing slot',
+    );
     assert.equal(state.getIndex(hex(MID))?.toBigInt(), 900n, 'the hint was read as the new rung index');
   });
 
-  it('decides every wait through the pacing it was given', async () => {
-    const asked: number[] = [];
-    const pacing: PollPacing = {
-      waitBeforeNextAskMs(observation) {
-        asked.push(observation.advanced);
-        return POLL_MS;
-      },
-      probesPastRefusal: () => false,
-    };
-    const { gateway, poller } = makeRig({ pacing });
-    gateway.publishLive(TOP, 'top', 3);
+  it('finds the newest index by reading slots, never through the feed head lookup', async () => {
+    const { gateway, poller } = makeRig();
+    gateway.publishLive(TOP, 'top', 300);
+    gateway.publishLive(MID, 'mid', 300);
     poller.register(OWNER, RUNGS, GROUP);
 
     poller.activate(hex(TOP));
-    await waitFor(() => asked.length >= 3, 'the pacing to be asked three times');
+    await poller.ready(hex(TOP));
+    poller.activate(hex(MID));
+    await poller.ready(hex(MID));
 
-    assert.equal(asked[0], 1, 'the first pass found the newest index and the pacing was not told');
+    assert.equal(state.getIndex(hex(TOP))?.toBigInt(), 300n);
+    assert.equal(state.getIndex(hex(MID))?.toBigInt(), 300n);
+    assert.deepEqual(
+      gateway.requests.filter((read) => read.kind === 'head'),
+      [],
+      'a rung was started through the feed head lookup',
+    );
+    const switchReads = gateway.requestsFor(hex(MID)).length;
+    assert.ok(switchReads <= 16, `a switch between level rungs cost ${switchReads} reads`);
   });
 });
 
@@ -308,7 +330,7 @@ describe('Q3: the playing quality stops', () => {
     const rig = makeRig();
     rig.gateway.publishLive(TOP, 'top', 20);
     rig.gateway.publishLive(MID, 'mid', 20);
-    const midHeads = () => rig.gateway.requestsFor(hex(MID)).filter((read) => read.kind === 'head').length;
+    const midHeads = () => rig.finds.filter((rung) => rung === hex(MID)).length;
 
     await stallTop(rig);
     await waitFor(() => !rig.poller.isActive(hex(MID)) && midHeads() === 1, 'the first trial to end');
@@ -452,14 +474,17 @@ describe('Q6: a rung switched back to starts again at its newest index', () => {
     // Two minutes on at one index a segment.
     rig.gateway.publishLive(TOP, 'top', 70);
     rig.gateway.publishLive(MID, 'mid', 70);
+    await waitFor(() => state.getIndex(hex(MID))?.toBigInt() === 70n, 'the playing rung to reach index 70');
     const topReadsBefore = rig.gateway.requestsFor(hex(TOP)).length;
+    const findsBefore = rig.finds.length;
     rig.poller.activate(hex(TOP));
     await rig.poller.ready(hex(TOP));
 
     const comeback = rig.gateway.requestsFor(hex(TOP)).slice(topReadsBefore);
-    assert.equal(comeback[0]?.kind, 'head');
+    assert.deepEqual(rig.finds.slice(findsBefore), [hex(TOP)], 'coming back did not start with the finder');
     assert.equal(state.getIndex(hex(TOP))?.toBigInt(), 70n);
-    assert.ok(comeback.length < 5, `coming back cost ${comeback.length} reads`);
+    // One round of eight around the playing rung's index, which a level rung pins at once.
+    assert.ok(comeback.length <= 9, `coming back cost ${comeback.length} reads`);
   });
 });
 
@@ -484,13 +509,17 @@ describe('Q7: a switch while the viewer is behind live keeps their position', ()
     const uris = segmentUris(MID);
     assert.ok(uris.includes('mid-seg-25'), `the switch lost the position, holding ${uris[0]} to ${uris.at(-1)}`);
     assert.equal(uris.at(-1), 'mid-seg-40');
+    // The search reads a round around the playing rung's index, misses above the newest included.
+    // The reads back to the viewer are below the newest, so every one of those names a slot that exists.
     const head = rig.gateway.head(MID);
-    for (const read of rig.gateway.requestsFor(hex(MID))) {
-      const index = rig.gateway.slotIndexOf(read.path);
-      assert.ok(index === null || index <= head + 1, `asked for index ${index}, past the newest`);
-    }
-    const backReads = rig.gateway.requestsFor(hex(MID)).filter((read) => read.kind === 'slot');
-    assert.ok(backReads.length <= 10 + 2, `${backReads.length} slot reads for one switch`);
+    const reads = rig.gateway.requestsFor(hex(MID)).map((read) => rig.gateway.slotIndexOf(read.path));
+    assert.ok(
+      reads.every((index) => index !== null && index >= 0),
+      `asked for something other than a slot: ${reads.join(', ')}`,
+    );
+    const above = reads.filter((index) => index! > head);
+    assert.ok(above.length <= 4, `asked for ${above.length} slots past the newest: ${above.join(', ')}`);
+    assert.ok(reads.length <= 8 + 10 + 2, `${reads.length} slot reads for one switch`);
   });
 
   it('goes to the live edge and says so once ten reads cannot reach the position', async () => {
