@@ -33,7 +33,7 @@ Opens at `http://localhost:5173`.
 
 When `VITE_READER_BEE_URL` points to `localhost` or `127.0.0.1`, the dev server automatically proxies `/bee/*` requests to the Bee node. This avoids CORS issues during local development, no Bee configuration needed.
 
-In production builds or when pointing to a remote gateway, requests go directly to the configured URL. The gateway URL can also be changed at runtime via the UI (DomainSelector in the header), which also tests the gateways and copies a report, see [The node picker's tools](#the-node-pickers-tools).
+In production builds or when pointing to a remote gateway, requests go directly to the configured URL. Where each part reads from can also be changed at runtime via the UI (the Sources button in the header, `DomainSelector`), which also checks and tests every source and copies a report, see [The node picker](#the-node-picker).
 
 ## Environment Variables (in root `.env`)
 
@@ -70,16 +70,49 @@ hashes, which that gate reads as a client predating the stamp and answers with a
 - **Scheduled streams**: An entry whose `state` is `scheduled` has been announced but never broadcast, so nothing is written under its topic yet. Its card renders the uploaded image or the placeholder and never probes for a manifest, and its watch page says the stream has not started instead of starting a player against a feed that does not exist. While the entry is scheduled the watch page reads the catalog again every 5 seconds, sharing the browse page's poll, and starts the player as soon as the entry turns live. If the stream is unpublished while the page waits, the page says it is no longer available rather than starting the player, and keeps reading the catalog, so publishing the stream again reaches the page without a reload
 - **A broadcast that comes back**: In admin mode a declared stream's broadcaster can stop and later return to the same feeds, and the admin lists the stream as live again. After a feed finishes, the player keeps asking for the slot after the finished playlist, about every 30 seconds and spread per viewer. Once that slot holds an open playlist and the viewer has reached the end of what they were playing, the player rejoins the live broadcast. A viewer still watching the recording further back is not moved, and a broadcast that never comes back stays on "This broadcast has ended"
 - **HLS Playback**: Video and audio stream playback via custom hls.js loaders
-- **Gateway Selector**: Runtime Bee node URL switching via UI modal, persisted to localStorage, with a Test of each gateway, who answered each feature in the last minute, and a copyable report below it
+- **Sources**: The build's gateways and any number of gateways and Bee nodes a viewer adds, read from as one source or one per part, with the fallback order, a status dot per source, a Test of each, who answered each feature in the last minute, and a copyable report, all kept in localStorage
 
 ## The node picker
 
-The picker takes any address, a path on this site such as `/bee` or an http or https address, because
-it is also how this viewer is pointed at a gateway under test. It checks the node before it switches
-(`gatewayProbe.ts`): its `/health`, its `/readiness` (400 while it starts), its `/peers` (503 while it
+The Sources button in the header opens the picker (`src/components/DomainSelector/`). Every change in
+it applies at once and is kept in this browser.
+
+- **Sources.** The build's gateways, which cannot be renamed or removed, then the gateways and Bee nodes
+  the viewer added, any number of each, each with a name of up to 40 characters, renamed and removed
+  in the list (`src/swarm/sources.ts`). A source is added only once it passed its check below, and in
+  One source mode it is in use at once.
+- **One source or Per part** (`src/swarm/routing.ts`). One source reads the video, the stream list and
+  the previews from the source whose radio is picked. Per part has a source for each of the three, and
+  the video and the stream list are linked until the viewer unlinks them, because the player finds a
+  live stream's newest entry from time markers at addresses computed from the clock of whoever serves
+  the stream list, so the two on different hosts can put the player behind or ahead of live. A part
+  whose source is removed reads from the default gateway.
+- **The fallback order** (`src/swarm/fallbackOrder.ts`). One order for every part, the build's until the
+  viewer moves a gateway up or down, with the default gateway always last. A saved order can reorder
+  the gateways the build falls back to and never add one, and a part's own source is left out of its
+  list.
+- **A status dot per source** (`sourceStatus.ts`). While the picker is open every source is checked as
+  it opens and again every 10 s: a gateway is asked for the stream list's head, a Bee node the probe
+  below. The dot is green with the time the source took, amber with a word for one that answers and
+  cannot serve (Starting, Busy, Limited, Errors), and red for one that does not answer or that the
+  browser would block. Running a source's Test checks its dot again too.
+- **What the browser keeps.** `swarm-sources` holds the added sources, `swarm-routing` the mode and each
+  part's source, and `swarm-fallback-order` the viewer's order (`src/providers/sourceStorage.ts`). A
+  browser that still holds the one address the picker used to save under `swarm-gateway-url`, and none
+  of the new keys, has it moved once on load: an offered gateway's address is a choice of that gateway,
+  and any other becomes an added Bee node named My Bee node, in use. The old key is then removed. A
+  browser that refuses the page its storage gets the build's defaults for that visit.
+
+### Adding a source
+
+A source is a gateway or a Bee node. Its address can be any address, a path on this site such as `/bee`
+or an http or https address, because the picker is also how this viewer is pointed at a gateway under
+test. A gateway typed without a scheme is taken as https and a Bee node as http. A gateway is checked by
+its Test below, whose connection must pass, and its results then show under its row. A Bee node is
+checked by its own probe (`gatewayProbe.ts`): its `/health`, its `/readiness` (400 while it starts), its `/peers` (503 while it
 starts, none when it has no peers yet), and a version of at least 2.3.0, the release that added the
-`GET /soc` every feed entry is read through. A node that answers but cannot serve yet is not switched
-to, and the picker says to wait, or to update the node.
+`GET /soc` every feed entry is read through. A node that answers but cannot serve yet is not added,
+and the picker says to wait, or to update the node.
 
 When nothing readable comes back, a second request with `mode: 'no-cors'` tells nothing at the address
 apart from a node that answers and refuses this site, and the refusal shows the exact
@@ -100,13 +133,13 @@ resolves to the local network, such as `bee.lan`, and a link-local address count
 
 ## The node picker's tools
 
-Below the node picker's own-node field sit three debug tools (`src/components/DomainSelector/`,
-`GatewayTools.tsx`). They live only while the picker is open, and closing it stops a test under way.
+Beside the sources sit three debug tools (`GatewayTools.tsx`). They live only while the picker is open,
+and closing it stops a test and a status check under way.
 
-- **Test.** Each gateway the build offers, and the viewer's own node while it is in use, has a Test
+- **Test.** Every source has a Test
   that reads this deployment's real content through a client of that gateway alone, with no fallback
   behind it, each read given the 10 s the viewer's own read has (`providerTest.ts`). The connection of the
-  viewer's own node is the picker's check above, given 5 s, with the same help under a failure. A gateway the build offers serves only the
+  viewer's own Bee node is the probe above, given 5 s, with the same help under a failure. A gateway the build offers serves only the
   stream's content and refuses `/health`, so its connection is shown by its content reads: any answer
   passes it, and when none came it says it did not answer in time or could not be reached. The stream
   list is its feed's head, checked to be a stream list. The video is read as the player starts: the
@@ -120,14 +153,14 @@ Below the node picker's own-node field sit three debug tools (`src/components/Do
   which a proxy in front of a deployment can set, "this address is not a Swarm gateway", or "the gateway did
   not answer in 10 s". The sentences are in `checkSentences.ts`, each with its test.
 - **Status.** Who answered each feature in the last minute, from the client's `activity()`: which
-  provider the feature reads from and which stands behind it, how many answers of each kind came from
+  source the feature reads from and every fallback behind it in the order they are asked, how many answers of each kind came from
   each, how many came from the fallback, and which provider is paused and for how long
   (`providerStatus.ts`). It refreshes every 2 s while the picker is open. With the picker closed, the
-  header's Bee node button says "Using fallback" while the fallback answered a read of the video in the
+  header's Sources button says "Using fallback" while the fallback answered a read of the video in the
   last minute, or the gateway in use is paused, so a viewer sees the switch without opening anything.
 - **Report.** "Copy report" copies the last test's sentences, the status, the build and the browser
   (`report.ts`). It holds no address but the tested gateway's: every other provider is named, never
-  addressed, and a test fails if another address or the viewer's saved node gets in. The build is the
+  addressed, and a test fails if another address or a source the viewer saved gets in. The build is the
   package, its version and when it was built, which `vite.config.js` writes in as `__BUILD_LABEL__`.
 - **The image adds nothing for them.** The client image serves the page with no content security
   policy, so a gateway the build offers is reached as any other request is, and there is no gateway
@@ -255,9 +288,13 @@ and the registry of kinds stay behind it, so a new kind of provider changes noth
   build's own behind them, and a viewer on a fallback has the rest of the list behind them.
   `"fallback": false` switches it off. A build that leaves the setting empty reads the one gateway
   `VITE_READER_BEE_URL` names, the default and the fallback, so a deployment needs no change.
-  A value that is wrong stops the page at start and says where (`src/swarm/settings.ts`). A viewer's
-  saved node is kept as an address: one an offered gateway has is that gateway, and any other is a Bee
-  node of their own, with the build's fallback behind it.
+  A value that is wrong stops the page at start and says where (`src/swarm/settings.ts`). Every source
+  a viewer reads from has the build's fallback order behind it.
+- **The measurement switch.** A build made with `VITE_EXPOSE_PLAYER` puts a gateway switch on `window`
+  (`src/providers/gatewayTestHandle.ts`). Its `select` reads every part from one source at the address
+  given, the source that already has it or a Bee node added for it, and its `current` answers the
+  video's source's address. An arm seeded under `swarm-gateway-url` before the page loads is moved into
+  a source on that first load, so a sweep seeds each arm in a fresh browser context.
 - **The contract** (`test/swarm/providerContract.ts`) is the suite every provider kind must pass, run
   for Bee over HTTP against a gateway held in memory (`test/helpers/fakeBeeGateway.ts`).
 
