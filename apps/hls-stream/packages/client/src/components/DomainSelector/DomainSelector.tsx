@@ -9,6 +9,7 @@ import {
   isDefaultGateway,
   probeGateway,
 } from './gatewayProbe';
+import { GatewayTools } from './GatewayTools';
 
 import './DomainSelector.scss';
 
@@ -29,6 +30,9 @@ const EMPTY_ADDRESS_TEXT = 'Enter the address of your Bee node, for example http
  * with nothing in it. The default gateway is one click away again, because a viewer who tried their
  * own node and gave up has no other route back: a deployed build's default is an environment value
  * they have never seen.
+ *
+ * Below the picker sit its debug tools, a Test of each gateway, who answered each feature in the last
+ * minute, and a copyable report, see {@link GatewayTools}.
  */
 export function DomainSelector() {
   const { gatewayUrl, setGatewayUrl, defaultGatewayUrl } = useAppContext();
@@ -149,6 +153,7 @@ export function DomainSelector() {
                 {status.kind === 'checking' ? 'Checking...' : 'Check and use'}
               </button>
             </div>
+            <GatewayTools />
           </div>
         </div>
       )}

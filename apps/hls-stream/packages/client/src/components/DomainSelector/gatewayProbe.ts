@@ -90,7 +90,7 @@ type GatewayProbeOutcome =
 type Prober = (gatewayUrl: string) => { probe(options?: ReadOptions): Promise<ProbeResult> };
 
 /** The settings of one gateway alone, with no fallback, so a test of it is a test of it and nothing else. */
-function onlyGateway(gateway: GatewaySetting): SwarmSettings {
+export function onlyGateway(gateway: GatewaySetting): SwarmSettings {
   return { gateways: [gateway], defaultId: gateway.id, fallbackId: null, kinds: [gateway.kind] };
 }
 

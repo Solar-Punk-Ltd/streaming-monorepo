@@ -7,7 +7,7 @@ import { ManifestStateManager } from '@/components/SwarmHlsPlayer/ManifestManage
 import { Stream } from '@/types/stream';
 import type { SwarmClient } from '@/swarm/client';
 import { createSwarmClient } from '@/swarm/createSwarmClient';
-import { choiceForAddress, defaultGateway, swarmSettingsFrom } from '@/swarm/settings';
+import { choiceForAddress, defaultGateway, type SwarmSettings, swarmSettingsFrom } from '@/swarm/settings';
 import { CatalogFeedReader } from '@/utils/catalogFeed';
 import { config } from '@/utils/config';
 import { gatewayClock } from '@/utils/gatewayClock';
@@ -41,6 +41,10 @@ type AppContextState = {
   fetchAppState: () => Promise<CatalogRead>;
   /** The one way the app reads Swarm, on the gateway the viewer chose with the build's fallback behind it. */
   swarm: SwarmClient;
+  /** The gateways this build offers, its default and its fallback, which the node picker lists and tests. */
+  swarmSettings: SwarmSettings;
+  /** The stream list feed this build reads, which the node picker's Test reads too. */
+  catalogFeed: { readonly owner: string; readonly topic: string };
   /** The address of the gateway the viewer chose, which the node picker shows and the stream list is tagged with. */
   gatewayUrl: string;
   setGatewayUrl: (url: string) => void;
@@ -73,6 +77,8 @@ export const GATEWAY_STORAGE_KEY = 'swarm-gateway-url';
 
 /** What the build names as its gateways, read once: the providers setting, or its one Bee URL. */
 const SWARM_SETTINGS = swarmSettingsFrom(config);
+
+const CATALOG_FEED = { owner: config.appOwner, topic: config.rawAppTopic };
 
 /** The address of the gateway this build reads by default. */
 const DEFAULT_GATEWAY_URL = defaultGateway(SWARM_SETTINGS).url;
@@ -212,6 +218,8 @@ export const AppContextProvider = ({ children }: Props) => {
         setNewStreamList,
         fetchAppState,
         swarm,
+        swarmSettings: SWARM_SETTINGS,
+        catalogFeed: CATALOG_FEED,
         gatewayUrl,
         setGatewayUrl,
         defaultGatewayUrl: DEFAULT_GATEWAY_URL,

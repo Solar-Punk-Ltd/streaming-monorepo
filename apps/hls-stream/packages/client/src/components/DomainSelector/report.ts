@@ -7,7 +7,7 @@
 import type { StatusRow } from './providerStatus';
 import { CHECK_LABELS, type CheckResult } from './providerTest';
 
-interface TestedGateway {
+export interface TestedGateway {
   readonly name: string;
   readonly address: string;
   readonly results: readonly CheckResult[];
