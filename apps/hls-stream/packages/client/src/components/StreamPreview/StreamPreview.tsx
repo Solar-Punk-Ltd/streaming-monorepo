@@ -14,7 +14,7 @@ import Pqueue from 'p-queue';
 import playIcon from '@/assets/icons/playIcon.png';
 import DefaultPreviewImage from '@/assets/images/defaultPreviewImage.png';
 import { fetchPreviewManifest, rungSlotsKey } from '@/components/StreamPreview/previewManifest';
-import { previewMode, thumbnailFailed, thumbnailImageUrl } from '@/components/StreamPreview/previewMode';
+import { previewMode, thumbnailFailed } from '@/components/StreamPreview/previewMode';
 import { previewSourceFrom } from '@/components/StreamPreview/previewSource';
 import { CustomFragmentLoader } from '@/components/SwarmHlsPlayer/CustomManifestLoader';
 import { useAppContext } from '@/providers/App';
@@ -60,7 +60,8 @@ export const StreamPreview = ({
   scheduledStartTime,
 }: StreamPreviewProps) => {
   const navigate = useNavigate();
-  const { gatewayUrl } = useAppContext();
+  const { swarm } = useAppContext();
+  const previews = swarm.reader('previews');
   const videoRef = useRef<HTMLVideoElement>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [isDataAvailable, setIsDataAvailable] = useState(false);
@@ -113,7 +114,7 @@ export const StreamPreview = ({
 
       try {
         const { res, segments } = await fetchPreviewManifest(
-          gatewayUrl,
+          previews,
           { owner, topic, index, state, renditions: renditionsRef.current },
           abort.signal,
         );
@@ -133,7 +134,12 @@ export const StreamPreview = ({
         }
 
         const seg = source.firstSegment;
-        const segUrl = previewSegmentUrl(seg.uri, gatewayUrl, window.location.origin);
+        const segUrl = previewSegmentUrl(seg.uri, (reference) => previews.urlFor(reference, 'preview-segment'));
+        if (segUrl === null) {
+          console.warn(`Thumbnail unavailable for ${topic}: no provider gives a URL for its segment`);
+          setIsLoading(false);
+          return;
+        }
 
         // Spelled from the shared constants rather than by hand. These six literals were the last
         // place a tag rename could pass every type check and every test and still leave the preview
@@ -208,7 +214,7 @@ export const StreamPreview = ({
         blobUrl = null;
       }
     };
-  }, [owner, topic, gatewayUrl, index, state, slotsKey, mode]);
+  }, [owner, topic, swarm, index, state, slotsKey, mode]);
 
   return (
     <div className="stream-preview" onClick={() => navigate(`/watch/${mediatype}/${owner}/${topic}`)}>
@@ -230,7 +236,7 @@ export const StreamPreview = ({
           // new reference — demoting a card for a failure that was never its own.
           key={thumbnail}
           className="stream-preview-image"
-          src={thumbnailImageUrl(gatewayUrl, thumbnail)}
+          src={previews.urlFor(thumbnail, 'thumbnail') ?? undefined}
           alt=""
           onError={() => setFailedThumbnail(thumbnail)}
         />

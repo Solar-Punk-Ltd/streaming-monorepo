@@ -10,7 +10,7 @@ export { FetchTimeoutError };
 export const DEFAULT_FETCH_TIMEOUT_MS = 10_000;
 
 /** What a caller gets back: the body already read, plus the parts of the response worth keeping. */
-export interface TimedResponse {
+interface TimedResponse {
   ok: boolean;
   status: number;
   headers: Headers;

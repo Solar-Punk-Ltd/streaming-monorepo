@@ -2,10 +2,12 @@ import { FeedIndex, Topic } from '@ethersphere/bee-js';
 import { feedSlotPath } from '@swarm-hls-stream/shared';
 import { describe, expect, it } from 'vitest';
 
-import { previewSegmentUrl, thumbnailManifestUrl } from '@/utils/thumbnailManifest';
+import { SwarmClient } from '@/swarm/client';
+import { BeeHttpProvider } from '@/swarm/providers/bee-http/beeHttpProvider';
+import { previewSegmentUrl, readPreviewPlaylist } from '@/utils/thumbnailManifest';
 
 /**
- * Which URL a stream card asks for to build its thumbnail.
+ * Which read a stream card makes to build its thumbnail.
  *
  * A finished stream's catalog entry carries the SOC index of its own final manifest, so the card is
  * searching a feed for a position it was handed. Measured against the real catalog on 2026-08-05:
@@ -13,23 +15,40 @@ import { previewSegmentUrl, thumbnailManifestUrl } from '@/utils/thumbnailManife
  * returned byte-identical manifests in 12 of 12 entries. The previews run through a queue at
  * concurrency 1, so the head lookups are serial and ten cards is about 26 seconds of them.
  *
- * These assert on the URL rather than on any fetch, because the URL *is* the change.
+ * These assert on the URL a Bee gateway is asked for, because the URL *is* the change.
  */
 
 const GATEWAY = 'http://gw';
 const OWNER = '1f6e0f8a9b7c3d5e2a4b6c8d0e1f2a3b4c5d6e7f';
 const RAW_TOPIC = 'a-finished-broadcast';
 
-describe('thumbnailManifestUrl', () => {
-  it('addresses the published slot directly when the entry carries an index', () => {
-    const url = thumbnailManifestUrl(GATEWAY, OWNER, RAW_TOPIC, 365);
+/** The URL a card's read of this entry asks a Bee gateway at {@link GATEWAY} for. */
+async function urlAskedFor(index: number | undefined): Promise<string> {
+  const asked: string[] = [];
+  const fetcher = (async (input: RequestInfo | URL) => {
+    asked.push(String(input));
+    return new Response('#EXTM3U');
+  }) as typeof fetch;
+  const client = new SwarmClient({
+    chosen: { id: 'gw', provider: new BeeHttpProvider({ baseUrl: GATEWAY, fetcher }) },
+  });
+
+  await readPreviewPlaylist(client.reader('previews'), OWNER, RAW_TOPIC, index);
+
+  expect(asked).toHaveLength(1);
+  return asked[0];
+}
+
+describe('readPreviewPlaylist', () => {
+  it('reads the published slot directly when the entry carries an index', async () => {
+    const url = await urlAskedFor(365);
 
     expect(url).toBe(`${GATEWAY}/${feedSlotPath(OWNER, Topic.fromString(RAW_TOPIC), FeedIndex.fromBigInt(365n))}`);
     expect(url).toContain('/soc/');
   });
 
-  it('addresses slot zero, which a one-segment stream really does publish at', () => {
-    expect(thumbnailManifestUrl(GATEWAY, OWNER, RAW_TOPIC, 0)).toContain('/soc/');
+  it('reads slot zero, which a one-segment stream really does publish at', async () => {
+    expect(await urlAskedFor(0)).toContain('/soc/');
   });
 
   /**
@@ -37,10 +56,8 @@ describe('thumbnailManifestUrl', () => {
    * entry, so the search is still the only way to find a live thumbnail. That is fix 3 and it needs a
    * new publish rather than a client change.
    */
-  it('falls back to resolving the head when the entry has no index', () => {
-    const url = thumbnailManifestUrl(GATEWAY, OWNER, RAW_TOPIC, undefined);
-
-    expect(url).toBe(`${GATEWAY}/feeds/${OWNER}/${Topic.fromString(RAW_TOPIC).toString()}`);
+  it('falls back to resolving the head when the entry has no index', async () => {
+    expect(await urlAskedFor(undefined)).toBe(`${GATEWAY}/feeds/${OWNER}/${Topic.fromString(RAW_TOPIC).toString()}`);
   });
 
   /**
@@ -55,8 +72,8 @@ describe('thumbnailManifestUrl', () => {
     ['not a number', Number.NaN],
     ['infinite', Number.POSITIVE_INFINITY],
     ['past the safe integer range', Number.MAX_SAFE_INTEGER + 2],
-  ])('falls back to the head lookup for an index that is %s', (_label, index) => {
-    expect(thumbnailManifestUrl(GATEWAY, OWNER, RAW_TOPIC, index)).toContain('/feeds/');
+  ])('falls back to the head lookup for an index that is %s', async (_label, index) => {
+    expect(await urlAskedFor(index)).toContain('/feeds/');
   });
 });
 
@@ -90,30 +107,34 @@ describe('previewSegmentUrl', () => {
    */
   const VIEWER_PROXY_GATEWAY = '/bee';
 
+  /** The preview segment URLs a Bee gateway at `baseUrl` gives, as the card is handed them. */
+  function urlsOf(baseUrl: string) {
+    const provider = new BeeHttpProvider({ baseUrl, pageOrigin: PAGE_ORIGIN });
+    return (reference: string) => provider.urlFor(reference, 'preview-segment');
+  }
+
   it('sends a rooted path to the gateway, not to whatever origin the page came from', () => {
-    expect(previewSegmentUrl('/bytes/abc123', GATEWAY, PAGE_ORIGIN)).toBe(`${GATEWAY}/bytes/abc123`);
+    expect(previewSegmentUrl('/bytes/abc123', urlsOf(GATEWAY))).toBe(`${GATEWAY}/bytes/abc123`);
   });
 
   it('addresses a bare swarm reference under the gateway bytes endpoint', () => {
-    expect(previewSegmentUrl('abc123', GATEWAY, PAGE_ORIGIN)).toBe(`${GATEWAY}/bytes/abc123`);
+    expect(previewSegmentUrl('abc123', urlsOf(GATEWAY))).toBe(`${GATEWAY}/bytes/abc123`);
   });
 
   it("addresses a bare reference through the viewer's own proxy by the page's address", () => {
-    expect(previewSegmentUrl('abc123', VIEWER_PROXY_GATEWAY, PAGE_ORIGIN)).toBe(`${PAGE_ORIGIN}/bee/bytes/abc123`);
+    expect(previewSegmentUrl('abc123', urlsOf(VIEWER_PROXY_GATEWAY))).toBe(`${PAGE_ORIGIN}/bee/bytes/abc123`);
   });
 
   it("sends a rooted path through the viewer's own proxy by the page's address", () => {
-    expect(previewSegmentUrl('/bytes/abc123', VIEWER_PROXY_GATEWAY, PAGE_ORIGIN)).toBe(
-      `${PAGE_ORIGIN}/bee/bytes/abc123`,
-    );
+    expect(previewSegmentUrl('/bytes/abc123', urlsOf(VIEWER_PROXY_GATEWAY))).toBe(`${PAGE_ORIGIN}/bee/bytes/abc123`);
   });
 
   it.each([
     ['http', 'http://other-gw:1633/bytes/abc123'],
     ['https', 'https://other-gw/bytes/abc123'],
   ])('leaves an absolute %s uri alone, since the uploader already named a gateway', (_scheme, uri) => {
-    expect(previewSegmentUrl(uri, GATEWAY, PAGE_ORIGIN)).toBe(uri);
-    expect(previewSegmentUrl(uri, VIEWER_PROXY_GATEWAY, PAGE_ORIGIN)).toBe(uri);
+    expect(previewSegmentUrl(uri, urlsOf(GATEWAY))).toBe(uri);
+    expect(previewSegmentUrl(uri, urlsOf(VIEWER_PROXY_GATEWAY))).toBe(uri);
   });
 
   /**
@@ -122,7 +143,11 @@ describe('previewSegmentUrl', () => {
    * the check was reading as a scheme test while only testing a prefix.
    */
   it('does not mistake a reference beginning with the letters http for an absolute url', () => {
-    expect(previewSegmentUrl('httpabc123', GATEWAY, PAGE_ORIGIN)).toBe(`${GATEWAY}/bytes/httpabc123`);
+    expect(previewSegmentUrl('httpabc123', urlsOf(GATEWAY))).toBe(`${GATEWAY}/bytes/httpabc123`);
+  });
+
+  it('has no URL for a reference when no provider gives one, so the card shows its placeholder', () => {
+    expect(previewSegmentUrl('abc123', () => null)).toBeNull();
   });
 
   // Every result has to be something hls.js will not try to resolve, which is what makes the blob
@@ -134,6 +159,6 @@ describe('previewSegmentUrl', () => {
     ['/bytes/abc123', VIEWER_PROXY_GATEWAY],
     ['abc123', VIEWER_PROXY_GATEWAY],
   ])('returns an absolute url for %s through %s, so hls.js has nothing left to resolve', (uri, gateway) => {
-    expect(previewSegmentUrl(uri, gateway, PAGE_ORIGIN)).toMatch(/^https?:\/\//);
+    expect(previewSegmentUrl(uri, urlsOf(gateway))).toMatch(/^https?:\/\//);
   });
 });

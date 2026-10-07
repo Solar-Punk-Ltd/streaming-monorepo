@@ -69,18 +69,3 @@ export function thumbnailFailed(failedThumbnail: string | null, thumbnail: strin
 function hasThumbnail(thumbnail: string | undefined): thumbnail is string {
   return typeof thumbnail === 'string' && thumbnail.trim().length > 0;
 }
-
-/**
- * Where the gateway serves a catalog entry's thumbnail.
- *
- * The trailing slash is not decoration: `/bzz/<ref>` without it is a redirect on a collection, and
- * the reference an uploader writes addresses the uploaded file's manifest rather than its bytes.
- *
- * ⭐ Encoded rather than interpolated raw. The catalog is JSON pulled off a feed and parsed
- * unchecked, so this field is external input however trusted its author, and a value carrying `../`
- * or a query would otherwise address a path on the gateway that this URL never meant to name. A real
- * reference is hex, which encoding leaves untouched.
- */
-export function thumbnailImageUrl(gatewayUrl: string, thumbnail: string): string {
-  return `${gatewayUrl}/bzz/${encodeURIComponent(thumbnail.trim())}/`;
-}

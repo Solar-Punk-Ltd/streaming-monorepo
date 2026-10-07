@@ -1,9 +1,11 @@
-import { buildMasterPlaylist, type Rendition } from '@swarm-hls-stream/shared';
+import { FeedIndex, Topic } from '@ethersphere/bee-js';
+import { buildMasterPlaylist, feedSlotPath, nextFeedRequest, type Rendition } from '@swarm-hls-stream/shared';
 import { describe, expect, it } from 'vitest';
 
 import { fetchPreviewManifest, type PreviewEntry, rungSlotsKey } from '@/components/StreamPreview/previewManifest';
 import { STREAM_STATUS_LIVE, STREAM_STATUS_VOD } from '@/types/stream';
-import { thumbnailManifestUrl } from '@/utils/thumbnailManifest';
+import { SwarmClient, type SwarmReader } from '@/swarm/client';
+import { BeeHttpProvider } from '@/swarm/providers/bee-http/beeHttpProvider';
 
 /**
  * Which playlists a stream card reads to find its first frame.
@@ -36,26 +38,39 @@ const RUNG_PLAYLIST = ['#EXTM3U', '#EXT-X-VERSION:3', '#EXT-X-TARGETDURATION:2',
   '\n',
 );
 
+/** Where a Bee gateway at {@link GATEWAY} is asked for a feed: its slot when one is named, its head otherwise. */
+function thumbnailManifestUrl(owner: string, rawTopic: string, index?: number): string {
+  const topic = Topic.fromString(rawTopic);
+  return index === undefined
+    ? `${GATEWAY}/${nextFeedRequest(owner, topic, null).path}`
+    : `${GATEWAY}/${feedSlotPath(owner, topic, FeedIndex.fromBigInt(BigInt(index)))}`;
+}
+
+function previewsReading(fetcher: typeof fetch): SwarmReader {
+  const provider = new BeeHttpProvider({ baseUrl: GATEWAY, fetcher });
+  return new SwarmClient({ chosen: { id: 'gw', provider } }).reader('previews');
+}
+
 interface Recorded {
   asked: string[];
-  fetcher: typeof fetch;
+  reader: SwarmReader;
 }
 
 /** A gateway answering the master at the entry's own address and a rung playlist anywhere else. */
 function gateway(entry: PreviewEntry): Recorded {
-  const masterUrl = thumbnailManifestUrl(GATEWAY, entry.owner, entry.topic, entry.index);
+  const masterUrl = thumbnailManifestUrl(entry.owner, entry.topic, entry.index);
   const asked: string[] = [];
   const fetcher = (async (input: RequestInfo | URL) => {
     const url = String(input);
     asked.push(url);
     return new Response(url === masterUrl ? MASTER : RUNG_PLAYLIST, { status: 200 });
   }) as typeof fetch;
-  return { asked, fetcher };
+  return { asked, reader: previewsReading(fetcher) };
 }
 
 async function rungUrlAskedFor(entry: PreviewEntry): Promise<string> {
-  const { asked, fetcher } = gateway(entry);
-  const { segments } = await fetchPreviewManifest(GATEWAY, entry, new AbortController().signal, fetcher);
+  const { asked, reader } = gateway(entry);
+  const { segments } = await fetchPreviewManifest(reader, entry, new AbortController().signal);
 
   expect(asked).toHaveLength(2);
   expect(segments).toHaveLength(1);
@@ -76,7 +91,7 @@ describe('fetchPreviewManifest on a ladder', () => {
       renditions: [rendition('720p', RUNG_720, SLOT_720), rendition('360p', RUNG_360, SLOT_360)],
     });
 
-    expect(url).toBe(thumbnailManifestUrl(GATEWAY, OWNER, RUNG_360, SLOT_360));
+    expect(url).toBe(thumbnailManifestUrl(OWNER, RUNG_360, SLOT_360));
     expect(url).toContain('/soc/');
   });
 
@@ -89,7 +104,7 @@ describe('fetchPreviewManifest on a ladder', () => {
       renditions: [rendition('360p', RUNG_360, SLOT_360), rendition('720p', RUNG_720)],
     });
 
-    expect(url).toBe(thumbnailManifestUrl(GATEWAY, OWNER, RUNG_360));
+    expect(url).toBe(thumbnailManifestUrl(OWNER, RUNG_360));
     expect(url).toContain('/feeds/');
   });
 
@@ -103,7 +118,7 @@ describe('fetchPreviewManifest on a ladder', () => {
       renditions: [rendition('360p', RUNG_360), rendition('720p', RUNG_720, SLOT_720)],
     });
 
-    expect(url).toBe(thumbnailManifestUrl(GATEWAY, OWNER, RUNG_360));
+    expect(url).toBe(thumbnailManifestUrl(OWNER, RUNG_360));
   });
 
   /** An entry written before rungs carried their slots lists no renditions to read one from. */
@@ -115,7 +130,44 @@ describe('fetchPreviewManifest on a ladder', () => {
       state: STREAM_STATUS_VOD,
     });
 
-    expect(url).toBe(thumbnailManifestUrl(GATEWAY, OWNER, RUNG_360));
+    expect(url).toBe(thumbnailManifestUrl(OWNER, RUNG_360));
+  });
+});
+
+describe('fetchPreviewManifest answers', () => {
+  const ENTRY: PreviewEntry = { owner: OWNER, topic: 'a-single-rendition', state: STREAM_STATUS_LIVE };
+
+  it('hand a feed that is not there to the card as a 404, which it shows as unavailable', async () => {
+    const reader = previewsReading((async () => new Response('', { status: 404 })) as typeof fetch);
+
+    const { res, segments } = await fetchPreviewManifest(reader, ENTRY, new AbortController().signal);
+
+    expect(res).toEqual({ ok: false, status: 404 });
+    expect(segments).toEqual([]);
+  });
+
+  it('hand a refusing gateway to the card with its status', async () => {
+    const reader = previewsReading((async () => new Response('', { status: 502 })) as typeof fetch);
+
+    const { res } = await fetchPreviewManifest(reader, ENTRY, new AbortController().signal);
+
+    expect(res).toEqual({ ok: false, status: 502 });
+  });
+
+  it('reject when the gateway could not be reached, as the card has always been told', async () => {
+    const reader = previewsReading((async () => {
+      throw new TypeError('Failed to fetch');
+    }) as typeof fetch);
+
+    await expect(fetchPreviewManifest(reader, ENTRY, new AbortController().signal)).rejects.toThrow('Failed to fetch');
+  });
+
+  it('reject with an AbortError once the card is gone, which the card drops in silence', async () => {
+    const reader = previewsReading((async () => new Response(RUNG_PLAYLIST)) as typeof fetch);
+    const controller = new AbortController();
+    controller.abort();
+
+    await expect(fetchPreviewManifest(reader, ENTRY, controller.signal)).rejects.toMatchObject({ name: 'AbortError' });
   });
 });
 

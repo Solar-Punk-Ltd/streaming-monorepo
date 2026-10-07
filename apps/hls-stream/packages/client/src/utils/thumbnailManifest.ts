@@ -1,40 +1,45 @@
-import { FeedIndex, Topic } from '@ethersphere/bee-js';
-import { feedSlotPath, nextFeedRequest } from '@swarm-hls-stream/shared';
+import { Topic } from '@ethersphere/bee-js';
 
-import { absoluteGatewayUrl } from './gatewayUrl';
+import type { SwarmAnswer } from '@/swarm/answers';
+import type { ReadOptions } from '@/swarm/provider';
+import type { SwarmReader } from '@/swarm/client';
+
+/** What a stream card reads a playlist through: a feed's head, or one of its entries by index. */
+export type PreviewReads = Pick<SwarmReader, 'readFeedHead' | 'readFeedEntry'>;
+
+const BYTES_PATH = '/bytes/';
 
 /**
- * The one media line in a preview's playlist, always absolute against the gateway.
+ * The one media line in a preview's playlist, always absolute against the gateway, or null when no
+ * provider gives a URL for it.
  *
  * A preview playlist is handed to hls.js as a blob, and hls.js resolves a relative media line against
  * the playlist's own URL. Resolving `/bytes/<ref>` against `blob:http://viewer/<uuid>` returns
  * `blob:http:/bytes/<ref>`, measured against hls.js 1.6.15's own resolver: the page origin and the
  * blob id are both consumed, so nothing downstream can work out which gateway was meant. The line has
- * to name it here or it cannot be named at all.
- *
- * ⛔ Absolute includes the gateway itself. A deployed viewer's gateway is its own `/bee` proxy, a
- * rooted path rather than a URL, and joining it onto the line as it stood made every card on every
- * deployed viewer ask for `/bee/bytes/<ref>`, which the fragment loader refuses as naming no gateway.
- * Seen 2026-09-24 as a page of blank cards. So the gateway is resolved against the page's own
- * address, the rule the player's `absoluteBytesBase` already follows.
+ * to name it here or it cannot be named at all, so it is the URL the Swarm client gives for the
+ * reference, which a Bee gateway makes absolute against the page's own address.
  *
  * A bare reference is what the uploader writes, and what every manifest published since 2026-08-13
  * holds. The other two shapes come from content published before that, when `MANIFEST_ACCESS_URL`
- * could prepend either a full URL or a rooted path, and only the rooted one reached hls.js
- * unresolved because the caller used to pass it through untouched. All three are still handled,
- * since a recording keeps whatever its manifest was published with.
+ * could prepend either a full URL or a rooted path. A full URL already names its gateway and is kept,
+ * and a rooted `/bytes/<ref>` is read as the reference it names, since a recording keeps whatever its
+ * manifest was published with.
  *
- * @param pageOrigin the viewer page's own origin, which a rooted gateway is a path on.
+ * @param urlFor The URL the browser loads a reference from, which the client's previews reader gives.
  */
-export function previewSegmentUrl(uri: string, gatewayUrl: string, pageOrigin: string): string {
+export function previewSegmentUrl(uri: string, urlFor: (reference: string) => string | null): string | null {
   if (uri.startsWith('http://') || uri.startsWith('https://')) {
     return uri;
   }
-  return absoluteGatewayUrl(gatewayUrl, uri.startsWith('/') ? uri : `/bytes/${uri}`, pageOrigin);
+  if (uri.startsWith(BYTES_PATH)) {
+    return urlFor(uri.slice(BYTES_PATH.length));
+  }
+  return uri.startsWith('/') ? null : urlFor(uri);
 }
 
 /**
- * Where a stream card fetches the manifest it builds its thumbnail from.
+ * The playlist a stream card builds its thumbnail from.
  *
  * **A finished stream's catalog entry already carries the SOC index of its own final manifest**, set
  * by the uploader in `notifyStop`. Until now the client read that field in exactly one place and only
@@ -47,12 +52,17 @@ export function previewSegmentUrl(uri: string, gatewayUrl: string, pageOrigin: s
  *
  * A live entry has no index to give, because `notifyStart` publishes none, so it keeps the search.
  */
-export function thumbnailManifestUrl(gatewayUrl: string, owner: string, rawTopic: string, index?: number): string {
+export function readPreviewPlaylist(
+  reads: PreviewReads,
+  owner: string,
+  rawTopic: string,
+  index?: number,
+  options?: ReadOptions,
+): Promise<SwarmAnswer> {
   const topic = Topic.fromString(rawTopic);
-  if (!isAddressableSlot(index)) {
-    return `${gatewayUrl}/${nextFeedRequest(owner, topic, null).path}`;
-  }
-  return `${gatewayUrl}/${feedSlotPath(owner, topic, FeedIndex.fromBigInt(BigInt(index)))}`;
+  return isAddressableSlot(index)
+    ? reads.readFeedEntry(owner, topic, index, options)
+    : reads.readFeedHead(owner, topic, options);
 }
 
 /**
