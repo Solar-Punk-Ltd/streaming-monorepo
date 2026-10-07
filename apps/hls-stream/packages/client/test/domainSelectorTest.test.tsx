@@ -122,6 +122,28 @@ describe("the node picker's tools", () => {
     expect(results).not.toContain('Chat');
   });
 
+  it('forgets a Test the viewer stopped by closing the picker, so it can be run again', async () => {
+    // Every read but the health check waits until it is stopped, so the Test is still running at close.
+    globalThis.fetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
+      if (String(input).endsWith('/health')) {
+        return Response.json({ status: 'ok' });
+      }
+      return new Promise<Response>((_, reject) => {
+        init?.signal?.addEventListener('abort', () => reject(new DOMException('stopped', 'AbortError')));
+      });
+    }) as typeof fetch;
+    await open();
+    click(buttonNamed('Test', row('Backup gateway')));
+    expect(row('Backup gateway').textContent).toContain('Testing...');
+
+    click(buttonNamed('Cancel'));
+    await settle();
+    click(buttonNamed(/^Bee node/));
+
+    expect(row('Backup gateway').textContent).not.toContain('Testing');
+    expect(buttonNamed('Test', row('Backup gateway')).disabled).toBe(false);
+  });
+
   it('shows who answered each feature in the last minute', async () => {
     await open();
 
