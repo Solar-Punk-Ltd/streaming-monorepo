@@ -513,6 +513,7 @@ async function main(): Promise<void> {
       eventBus,
       metricsCollector,
       beeRpcEndpoint: config.beeRpcEndpoint,
+      managerVersion: config.managerVersion,
     },
     config.port,
     config.host,

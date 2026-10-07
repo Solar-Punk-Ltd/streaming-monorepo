@@ -53,6 +53,7 @@ export * from './stampCost.js';
 export * from './stampGating.js';
 export * from './stampHealth.js';
 export * from './uploaderHealth.js';
+export * from './versionInfo.js';
 export type { DeploymentPhase } from './deploymentPhase.js';
 export type { BeeNodeObservation, BeeNodeState } from './beeNodeObservation.js';
 export {

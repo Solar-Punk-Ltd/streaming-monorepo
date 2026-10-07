@@ -26,6 +26,13 @@ services:
     build:
       context: ..
       dockerfile: manager/Dockerfile
+      # The build the image is, which deploy/deploy.sh exports on the host before it builds, and the image keeps
+      # in its environment. Left unset, the image is a development build. Never set either in .env: env_file
+      # would put it over the image's in every container started from it, so the deploy refuses an env file
+      # with a line for either one before anything leaves the machine.
+      args:
+        MANAGER_VERSION: ${MANAGER_VERSION:-}
+        MANAGER_COMMIT: ${MANAGER_COMMIT:-}
     restart: unless-stopped
     depends_on:
       postgres:

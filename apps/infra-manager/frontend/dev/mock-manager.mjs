@@ -35,6 +35,7 @@ import {
   rpcEndpointChoiceProblem,
   stampHealthFrom,
   stampStateReason,
+  versionInfo,
 } from '@streaming-infra-manager/common';
 
 import { authRoutes, DEV_PASSWORD, DEV_USERNAME, refuseRequest, seedAuth, userFor } from './mock-auth.mjs';
@@ -606,6 +607,14 @@ const ROUTES = [
         beeRpcEndpoint: configuredBeeRpcEndpoint(managerEndpoint()),
       });
     },
+  ],
+  // The build the manager runs, which the sidebar shows under its host: a
+  // development build, unless the mock is started with MANAGER_VERSION and
+  // MANAGER_COMMIT set, as a deployed manager's image sets them.
+  [
+    'GET',
+    /^\/version$/,
+    (_req, res) => send(res, 200, versionInfo(process.env.MANAGER_VERSION, process.env.MANAGER_COMMIT)),
   ],
   ['GET', /^\/profiles$/, (_req, res) => send(res, 200, { profiles: state.profiles })],
   [

@@ -49,7 +49,8 @@ describe('server.ts mount order', () => {
     );
 
     const after = lines.slice(gate + 1);
-    for (const path of ["'/events'", "'/metrics'", "'/profiles'", "'/groups'"]) {
+    // /version is the build the host runs, which is for its signed-in users alone.
+    for (const path of ["'/events'", "'/metrics'", "'/profiles'", "'/groups'", "'/version'"]) {
       assert.ok(
         after.some((line) => line.includes(path)),
         `${path} must be mounted below requireSession`,

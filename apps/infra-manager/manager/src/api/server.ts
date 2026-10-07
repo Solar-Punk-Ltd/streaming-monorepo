@@ -1,6 +1,7 @@
 import type { ChequebookOperationsService } from '../domain/chequebook/ChequebookOperationsService.js';
 import http from 'node:http';
 
+import type { VersionInfo } from '@streaming-infra-manager/common';
 import express from 'express';
 
 import { AuthService } from '../domain/auth/AuthService.js';
@@ -47,6 +48,7 @@ import { createEventsRouter } from './routes/events.js';
 import { createGroupsRouter } from './routes/groups.js';
 import { createHealthRouter } from './routes/health.js';
 import { createManagerSettingsRouter } from './routes/managerSettings.js';
+import { createManagerVersionRouter } from './routes/managerVersion.js';
 import { createMetricsRouter } from './routes/metrics.js';
 import { createProfilesRouter } from './routes/profiles.js';
 import { createIngestHealthRouter } from './routes/ingestHealth.js';
@@ -99,6 +101,8 @@ export interface ApiDeps {
   metricsCollector: MetricsCollector;
   /** The manager's own chain endpoint, BEE_RPC_ENDPOINT, or null for none. */
   beeRpcEndpoint: string | null;
+  /** The build this manager runs, as the deploy built it into the image. */
+  managerVersion: VersionInfo;
 }
 
 export interface ApiServerHandle {
@@ -132,6 +136,7 @@ export function startApiServer(deps: ApiDeps, port: number, host: string): ApiSe
       deps.beeRpcEndpoint,
     ),
   );
+  app.use('/version', createManagerVersionRouter(deps.managerVersion));
   app.use('/metrics', metrics);
   app.use('/events', events.router);
   // Before /versions, whose /:id route would otherwise take "attempts" for an id.
