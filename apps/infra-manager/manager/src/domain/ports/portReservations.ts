@@ -1,6 +1,7 @@
-import type { PortProtocol, StackPortVar } from '@streaming-infra-manager/common';
+import { portExposureProblem, type PortProtocol, type StackPortVar } from '@streaming-infra-manager/common';
 
 import { portFor } from '../versions/portTable.js';
+import { isFetchBlockedPort } from './fetchBlockedPorts.js';
 
 /**
  * A port reservation is a physical thing: one transport, one port number,
@@ -67,6 +68,21 @@ export function portPlanFor(table: readonly StackPortVar[], slot: number): PortP
     portVar: port.name,
     service: port.service,
   }));
+}
+
+/**
+ * Whether a new deployment may be given this slot, before asking who holds it.
+ *
+ * Every port of a slot comes from the one slot number, `deploy.sh
+ * --portSlot=N`, so a slot with one unusable port is skipped whole. A fetch
+ * blocked port is refused here and not in `portExposureProblem`, which also
+ * admits the deploys of deployments that exist, because a deployment already
+ * on such a port keeps it.
+ */
+export function slotTakesNewDeployment(table: readonly StackPortVar[], slot: number): boolean {
+  return portPlanFor(table, slot).every(
+    (entry) => portExposureProblem(entry) === null && !isFetchBlockedPort(entry.port),
+  );
 }
 
 /** `udp/10031`: the name of the pair a daemon owns once. */
