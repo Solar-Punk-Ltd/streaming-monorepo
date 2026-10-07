@@ -25,6 +25,14 @@ describe('the gateway clock', () => {
     assert.equal(clock.offsetMs(), 90_500, 'the offset stays put as the viewer clock moves');
   });
 
+  it('takes the same offset from a server time already read out of the header', () => {
+    const clock = new GatewayClock(() => GATEWAY_NOW_MS - 90_000);
+    clock.noteServerTime(GATEWAY_NOW_MS);
+    assert.equal(clock.offsetMs(), 90_500);
+    clock.noteServerTime(Number.NaN);
+    assert.equal(clock.offsetMs(), 90_500, 'an unreadable time leaves the offset as it was');
+  });
+
   it('keeps the last offset when a response carries no Date or an unreadable one', () => {
     const clock = new GatewayClock(() => GATEWAY_NOW_MS + 20_000);
     clock.noteResponse(new Headers({ date: new Date(GATEWAY_NOW_MS).toUTCString() }));

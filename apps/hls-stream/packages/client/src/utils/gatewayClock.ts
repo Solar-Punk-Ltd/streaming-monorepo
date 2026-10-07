@@ -18,7 +18,11 @@ export class GatewayClock {
   /** Folds in the `Date` of a response that has just arrived. */
   noteResponse(headers: Headers): void {
     const date = headers.get('date');
-    const gatewayMs = date === null ? Number.NaN : Date.parse(date);
+    this.noteServerTime(date === null ? Number.NaN : Date.parse(date));
+  }
+
+  /** Folds in the instant an answer's `Date` header names, in Unix milliseconds, as read just now. */
+  noteServerTime(gatewayMs: number): void {
     if (!Number.isFinite(gatewayMs)) {
       return;
     }
