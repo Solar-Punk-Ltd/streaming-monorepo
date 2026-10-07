@@ -278,3 +278,39 @@ describe('the Bee HTTP provider', () => {
     });
   });
 });
+
+/**
+ * Chrome lets an https page reach a plain http node on the local network only when the request says it
+ * is meant for the local network, and fails one whose mark does not match where the address is.
+ */
+describe('a Bee node on the local network over plain http', () => {
+  function initsSentBy(baseUrl: string) {
+    const inits: (RequestInit | undefined)[] = [];
+    const fetcher = (async (_input: RequestInfo | URL, init?: RequestInit) => {
+      inits.push(init);
+      return new Response('{"status":"ok","version":"2.8.2"}');
+    }) as typeof fetch;
+    return { inits, provider: new BeeHttpProvider({ baseUrl, fetcher, pageOrigin: PAGE_ORIGIN }) };
+  }
+
+  it('marks every read and the probe as meant for the local network', async () => {
+    const { inits, provider } = initsSentBy('http://192.168.1.20:1633');
+
+    await provider.probe();
+    await provider.readChunk(ABSENT_ADDRESS);
+
+    expect(inits.length).toBeGreaterThanOrEqual(2);
+    for (const init of inits) {
+      expect(init).toMatchObject({ targetAddressSpace: 'local' });
+      expect(init?.signal).toBeInstanceOf(AbortSignal);
+    }
+  });
+
+  it('marks nothing for a node on this computer, over https, or on this site', async () => {
+    for (const baseUrl of ['http://localhost:1633', 'https://192.168.1.20:1633', 'https://bee.example.com', '/bee']) {
+      const { inits, provider } = initsSentBy(baseUrl);
+      await provider.probe();
+      expect(inits[0]).not.toHaveProperty('targetAddressSpace');
+    }
+  });
+});

@@ -1,3 +1,5 @@
+import { localNetworkRequestInit } from './addressSpace';
+
 /** How one bounded request ended. Never a rejection, so every caller sorts the same three endings. */
 type BoundedOutcome =
   | { readonly kind: 'response'; readonly response: Response; readonly body: Uint8Array | null }
@@ -21,6 +23,9 @@ interface BoundedRequestOptions {
  *
  * Built from `AbortController` and `setTimeout` rather than `AbortSignal.timeout` (Safari 16) and
  * `AbortSignal.any` (Safari 17.4), so every read works on the build target's Safari 14.
+ *
+ * A plain http address on the local network is sent marked as such, which is what lets Chrome send it
+ * from an https page at all. Other browsers ignore the option.
  */
 export async function boundedRequest(url: string, options: BoundedRequestOptions): Promise<BoundedOutcome> {
   const { fetcher, timeoutMs, signal, readsBody } = options;
@@ -39,7 +44,7 @@ export async function boundedRequest(url: string, options: BoundedRequestOptions
   }, timeoutMs);
 
   try {
-    const response = await fetcher(url, { signal: controller.signal });
+    const response = await fetcher(url, { ...localNetworkRequestInit(url), signal: controller.signal });
     const body = readsBody(response.status) ? new Uint8Array(await response.arrayBuffer()) : null;
     return { kind: 'response', response, body };
   } catch (error) {
