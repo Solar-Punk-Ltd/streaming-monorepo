@@ -14,7 +14,7 @@ import {
 export { loadUrl, type UrlLoadOptions } from './urlLoad';
 
 /** The parts of the app that read Swarm, each of which the client may send to a provider of its own. */
-const SWARM_FEATURES = ['player', 'stream-list', 'previews'] as const;
+export const SWARM_FEATURES = ['player', 'stream-list', 'previews'] as const;
 
 export type SwarmFeature = (typeof SWARM_FEATURES)[number];
 
