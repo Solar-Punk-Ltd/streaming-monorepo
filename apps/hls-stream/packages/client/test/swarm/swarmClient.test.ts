@@ -129,6 +129,88 @@ describe('the Swarm client', () => {
     });
   });
 
+  describe('an ordered list of fallbacks', () => {
+    function ordered() {
+      const chosen = new ScriptedProvider('chosen');
+      const second = new ScriptedProvider('second');
+      const last = new ScriptedProvider('last');
+      let nowMs = 0;
+      const client = new SwarmClient({
+        chosen: { id: 'chosen', provider: chosen },
+        fallbacks: [
+          { id: 'second', provider: second },
+          { id: 'last', provider: last },
+        ],
+        pausePolicy: POLICY,
+        now: () => nowMs,
+      });
+      return { chosen, second, last, client, advance: (ms: number) => void (nowMs += ms) };
+    }
+
+    it('asks each fallback in order until one answers', async () => {
+      const { chosen, second, last, client } = ordered();
+      chosen.answer = fault;
+      second.answer = fault;
+      last.answer = content();
+
+      expect(await readBytes(client)).toBe(last.answer);
+      expect([chosen.asked, second.asked, last.asked]).toEqual([['bytes'], ['bytes'], ['bytes']]);
+    });
+
+    it('stops at the first fallback that answers', async () => {
+      const { chosen, second, last, client } = ordered();
+      chosen.answer = fault;
+      second.answer = notFound;
+
+      expect(await readBytes(client)).toBe(second.answer);
+      expect(last.asked).toEqual([]);
+    });
+
+    it("leaves out the feature's own provider when it is also in the list", async () => {
+      const { second, last, client } = ordered();
+      const routed = new SwarmClient({
+        chosen: { id: 'second', provider: second },
+        fallbacks: [
+          { id: 'second', provider: second },
+          { id: 'last', provider: last },
+        ],
+      });
+      second.answer = fault;
+      last.answer = content();
+
+      expect(await routed.reader('player').readBytes(REFERENCE)).toBe(last.answer);
+      expect(second.asked).toEqual(['bytes']);
+      expect(client.activity()[0].fallbackOrder).toEqual(['second', 'last']);
+      expect(routed.activity()[0].fallbackOrder).toEqual(['last']);
+    });
+
+    it('skips a paused fallback for the next one, and pauses each fallback on its own faults', async () => {
+      const { chosen, second, last, client } = ordered();
+      chosen.answer = fault;
+      second.answer = fault;
+      last.answer = content();
+      await readBytes(client);
+      await readBytes(client);
+      expect(client.health().find(({ id }) => id === 'second')?.pausedUntilMs).not.toBeNull();
+      expect(client.health().find(({ id }) => id === 'last')?.pausedUntilMs).toBeNull();
+
+      second.asked.length = 0;
+      await readBytes(client);
+      expect(second.asked).toEqual([]);
+      expect(last.asked).toEqual(['bytes', 'bytes', 'bytes']);
+    });
+
+    it('names the first fallback as the one behind each feature, and lists the whole order', () => {
+      const { client } = ordered();
+
+      expect(client.activity()[0]).toMatchObject({
+        primary: 'chosen',
+        fallback: 'second',
+        fallbackOrder: ['second', 'last'],
+      });
+    });
+  });
+
   describe("keeping a read inside the caller's window", () => {
     const WINDOW_MS = 1_000;
     const readInWindow = (client: SwarmClient) =>
@@ -309,6 +391,7 @@ describe('the Swarm client', () => {
           feature: 'player',
           primary: 'chosen',
           fallback: 'fallback',
+          fallbackOrder: ['fallback'],
           answers: [{ provider: 'chosen', answer: 'content', count: 2 }],
           fallbacks: 0,
         },
@@ -316,13 +399,21 @@ describe('the Swarm client', () => {
           feature: 'stream-list',
           primary: 'chosen',
           fallback: 'fallback',
+          fallbackOrder: ['fallback'],
           answers: [
             { provider: 'chosen', answer: 'unavailable', count: 1 },
             { provider: 'fallback', answer: 'not-found', count: 1 },
           ],
           fallbacks: 1,
         },
-        { feature: 'previews', primary: 'chosen', fallback: 'fallback', answers: [], fallbacks: 0 },
+        {
+          feature: 'previews',
+          primary: 'chosen',
+          fallback: 'fallback',
+          fallbackOrder: ['fallback'],
+          answers: [],
+          fallbacks: 0,
+        },
       ]);
     });
 

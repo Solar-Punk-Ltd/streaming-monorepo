@@ -51,7 +51,12 @@ const DEFAULT_PAUSE_POLICY: PausePolicy = {
 export interface SwarmClientOptions {
   /** The provider every feature reads from unless {@link routes} names another. */
   readonly chosen: NamedProvider;
-  /** Asked when a feature's own provider is paused, faults, is rate limited or cannot make a read. */
+  /**
+   * Asked in this order when a feature's own provider is paused, faults, is rate limited or cannot make
+   * a read. A feature's own provider is left out of its list.
+   */
+  readonly fallbacks?: readonly NamedProvider[];
+  /** A list of one, {@link fallbacks}, for a caller with a single provider behind the chosen one. */
   readonly fallback?: NamedProvider | null;
   /** A provider of its own for a feature, with the same fallback. */
   readonly routes?: Partial<Record<SwarmFeature, NamedProvider>>;
@@ -100,8 +105,10 @@ export interface FeatureActivity {
   readonly feature: SwarmFeature;
   /** The provider the feature reads from first. */
   readonly primary: string;
-  /** The provider asked when that one fails, or null when there is none. */
+  /** The first provider asked when that one fails, or null when there is none. */
   readonly fallback: string | null;
+  /** Every provider asked when that one fails, in the order they are asked. */
+  readonly fallbackOrder: readonly string[];
   /** Every answer in the window, by the provider that gave it and its kind, in the order first seen. */
   readonly answers: readonly ProviderAnswerCount[];
   /** Answers in the window that came from a provider other than {@link primary}. */
@@ -134,7 +141,7 @@ type Ask = (provider: SwarmProvider, options: ReadOptions) => Promise<SwarmAnswe
 const ASK_ANOTHER: ReadonlySet<AnswerKind> = new Set<AnswerKind>(['unavailable', 'rate-limited', 'unsupported']);
 
 /**
- * The one way the app reads Swarm. It holds the chosen provider and a fallback, decides for each
+ * The one way the app reads Swarm. It holds the chosen provider and an ordered list of fallbacks, decides for each
  * feature which provider answers, leaves a provider that keeps failing alone for a while and then
  * tries it again, counts every read, and keeps the gateway's clock from the server time of the
  * player's and the stream list's answers.
@@ -145,7 +152,7 @@ const ASK_ANOTHER: ReadonlySet<AnswerKind> = new Set<AnswerKind>(['unavailable',
  */
 export class SwarmClient {
   private readonly chosen: NamedProvider;
-  private readonly fallback: NamedProvider | null;
+  private readonly fallbacks: readonly NamedProvider[];
   private readonly routes: Partial<Record<SwarmFeature, NamedProvider>>;
   private readonly policy: PausePolicy;
   private readonly clock: GatewayClock;
@@ -157,7 +164,7 @@ export class SwarmClient {
 
   constructor(options: SwarmClientOptions) {
     this.chosen = options.chosen;
-    this.fallback = options.fallback ?? null;
+    this.fallbacks = options.fallbacks ?? (options.fallback ? [options.fallback] : []);
     this.routes = options.routes ?? {};
     this.policy = { ...DEFAULT_PAUSE_POLICY, ...options.pausePolicy };
     this.clock = options.clock ?? new GatewayClock();
@@ -205,10 +212,12 @@ export class SwarmClient {
           fallbacks += 1;
         }
       }
+      const fallbackOrder = this.fallbacksFor(primary).map(({ id }) => id);
       return {
         feature,
         primary: primary.id,
-        fallback: this.fallbackFor(primary)?.id ?? null,
+        fallback: fallbackOrder[0] ?? null,
+        fallbackOrder,
         answers: [...byKey.values()],
         fallbacks,
       };
@@ -285,22 +294,21 @@ export class SwarmClient {
     return this.routes[feature] ?? this.chosen;
   }
 
-  private fallbackFor(primary: NamedProvider): NamedProvider | null {
-    return this.fallback && this.fallback.id !== primary.id ? this.fallback : null;
+  private fallbacksFor(primary: NamedProvider): NamedProvider[] {
+    return this.fallbacks.filter(({ id }) => id !== primary.id);
   }
 
-  /** The feature's own provider then the fallback, the paused ones left out while another remains. */
+  /** The feature's own provider then its fallbacks in order, the paused ones left out while another remains. */
   private candidatesFor(feature: SwarmFeature): NamedProvider[] {
     const primary = this.primaryFor(feature);
-    const fallback = this.fallbackFor(primary);
-    const all = fallback ? [primary, fallback] : [primary];
+    const all = [primary, ...this.fallbacksFor(primary)];
     const awake = all.filter(({ id }) => !this.isPaused(id));
     return awake.length > 0 ? awake : [primary];
   }
 
   private providers(): NamedProvider[] {
     const byId = new Map<string, NamedProvider>();
-    for (const named of [this.chosen, this.fallback, ...Object.values(this.routes)]) {
+    for (const named of [this.chosen, ...this.fallbacks, ...Object.values(this.routes)]) {
       if (named && !byId.has(named.id)) {
         byId.set(named.id, named);
       }
