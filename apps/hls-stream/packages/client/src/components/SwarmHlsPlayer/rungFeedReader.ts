@@ -1,5 +1,6 @@
 import { FeedIndex, Topic } from '@ethersphere/bee-js';
 import { feedSlotPath } from '@swarm-hls-stream/shared';
+import { HLS_M3U } from '@swarm-hls-stream/shared';
 import { programDateTimeMs, segmentDuration } from '@swarm-hls-stream/shared';
 
 import { TimedResponse } from '@/utils/fetchWithTimeout';
@@ -28,8 +29,9 @@ export function feedEntryOf(index: number, playlist: string, readAtMs: number): 
 /**
  * Reads one rung's feed slot by slot for the strategies in `following/`.
  *
- * A slot not written yet is `found: false`, as those strategies expect. Anything else that fails, a
- * transport error or a 5xx, is a fault of the gateway and is thrown, for the caller to back off.
+ * A slot not written yet is `found: false`, as those strategies expect, and so is an answer that is
+ * not a playlist. Anything else that fails, a transport error or a 5xx, is a fault of the gateway and
+ * is thrown, for the caller to back off.
  * The playlist each found entry came from is kept beside it, so whoever is handed the entry can fold
  * the playlist in without reading the slot again.
  */
@@ -57,6 +59,11 @@ export class RungFeedReader implements FeedReader {
         return { found: false };
       }
       throw error;
+    }
+    // A 200 that is not a playlist, a captive portal's page or a chunk that is not this feed's, would
+    // otherwise be taken as an empty slot and handed to hls.js.
+    if (!response.text.trimStart().startsWith(HLS_M3U)) {
+      return { found: false };
     }
     const entry = feedEntryOf(index, response.text, this.now());
     this.playlists.set(entry, response.text);
