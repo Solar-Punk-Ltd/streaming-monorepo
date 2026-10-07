@@ -5,8 +5,12 @@ import { manifestFetcher } from '@/components/SwarmHlsPlayer/CustomManifestLoade
 import { exposeFetchBackendForInstrumentation } from '@/components/SwarmHlsPlayer/fetchBackendTestHandle';
 import { ManifestStateManager } from '@/components/SwarmHlsPlayer/ManifestManagement';
 import { Stream } from '@/types/stream';
+import type { SwarmClient } from '@/swarm/client';
+import { createSwarmClient } from '@/swarm/createSwarmClient';
+import { choiceForAddress, defaultGateway, swarmSettingsFrom } from '@/swarm/settings';
 import { CatalogFeedReader } from '@/utils/catalogFeed';
 import { config } from '@/utils/config';
+import { gatewayClock } from '@/utils/gatewayClock';
 
 import { CatalogRead, catalogUpdater, StreamCatalog, toCatalogRead } from './catalogState';
 import { exposeGatewayForInstrumentation } from './gatewayTestHandle';
@@ -35,8 +39,13 @@ type AppContextState = {
   isStreamListFromCurrentGateway: boolean;
   setNewStreamList: (read: CatalogRead) => void;
   fetchAppState: () => Promise<CatalogRead>;
+  /** The one way the app reads Swarm, on the gateway the viewer chose with the build's fallback behind it. */
+  swarm: SwarmClient;
+  /** The address of the gateway the viewer chose, which the node picker shows and the stream list is tagged with. */
   gatewayUrl: string;
   setGatewayUrl: (url: string) => void;
+  /** The address of the gateway this build reads by default, which the picker offers as the way back. */
+  defaultGatewayUrl: string;
 };
 
 const AppContext = createContext<AppContextState | undefined>(undefined);
@@ -62,22 +71,41 @@ type Props = {
  */
 export const GATEWAY_STORAGE_KEY = 'swarm-gateway-url';
 
+/** What the build names as its gateways, read once: the providers setting, or its one Bee URL. */
+const SWARM_SETTINGS = swarmSettingsFrom(config);
+
+/** The address of the gateway this build reads by default. */
+const DEFAULT_GATEWAY_URL = defaultGateway(SWARM_SETTINGS).url;
+
 function loadGatewayUrl(): string {
   try {
-    return localStorage.getItem(GATEWAY_STORAGE_KEY) || config.beeUrl;
+    return localStorage.getItem(GATEWAY_STORAGE_KEY) || DEFAULT_GATEWAY_URL;
   } catch {
-    return config.beeUrl;
+    return DEFAULT_GATEWAY_URL;
   }
+}
+
+/**
+ * The client for the gateway at `address`, sharing the one gateway clock the player's time markers
+ * read, so every answer's server time corrects them and not only the stream list's.
+ */
+function swarmClientFor(address: string): SwarmClient {
+  return createSwarmClient(SWARM_SETTINGS, {
+    choice: choiceForAddress(SWARM_SETTINGS, address),
+    client: { clock: gatewayClock },
+  });
 }
 
 export const AppContextProvider = ({ children }: Props) => {
   const [catalog, setCatalog] = useState<StreamCatalog>({ streams: [], gateway: null, slot: null });
   const [isStreamListLoaded, setIsStreamListLoaded] = useState(false);
-  const [gatewayUrl, setGatewayUrlState] = useState<string>(() => {
-    const url = loadGatewayUrl();
-    manifestFetcher.beeUrl = url;
-    return url;
+  const [gatewayUrl, setGatewayUrlState] = useState<string>(loadGatewayUrl);
+  const [swarm, setSwarm] = useState<SwarmClient>(() => {
+    const client = swarmClientFor(gatewayUrl);
+    manifestFetcher.useSwarm(client.reader('player'));
+    return client;
   });
+  const swarmRef = useRef(swarm);
 
   const gatewayRef = useRef(gatewayUrl);
 
@@ -96,7 +124,10 @@ export const AppContextProvider = ({ children }: Props) => {
     const trimmed = url.replace(/\/+$/, '');
     gatewayRef.current = trimmed;
     setGatewayUrlState(trimmed);
-    manifestFetcher.beeUrl = trimmed;
+    const client = swarmClientFor(trimmed);
+    swarmRef.current = client;
+    setSwarm(client);
+    manifestFetcher.useSwarm(client.reader('player'));
     // The new node has its own view of the feed, so a position established against the old one would
     // ask it for slots it may not hold, which reads as a catalog that stopped rather than one being
     // followed from the wrong place.
@@ -180,8 +211,10 @@ export const AppContextProvider = ({ children }: Props) => {
         isStreamListFromCurrentGateway: catalog.gateway === gatewayUrl,
         setNewStreamList,
         fetchAppState,
+        swarm,
         gatewayUrl,
         setGatewayUrl,
+        defaultGatewayUrl: DEFAULT_GATEWAY_URL,
       }}
     >
       {children}

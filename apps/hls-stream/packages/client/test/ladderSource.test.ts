@@ -15,6 +15,7 @@ import { RequestJitter } from '../src/utils/requestJitter';
 
 import { slotPathsOf } from './helpers/slotPaths';
 import { waitFor } from './helpers/waiting';
+import { segmentsUnder, swarmOverGlobalFetch } from './helpers/playerReader';
 
 /**
  * The ladder entry points, which arrived with the ABR merge carrying no tests at all.
@@ -106,7 +107,7 @@ describe('the ladder entry points', () => {
     manager.clear();
     health = new FeedHealthTracker();
     fetcher = new ManifestFetcher(manager, health, undefined, NO_JITTER, POLL_MS);
-    fetcher.beeUrl = BEE_URL;
+    fetcher.useSwarm(swarmOverGlobalFetch(BEE_URL));
     requested = [];
     // The master is logged once per session, deliberately, and it is not what any of these assert.
     console.log = () => {};
@@ -197,7 +198,7 @@ describe('the ladder entry points', () => {
 
       await fetcher.fetchSource(`${OWNER}/${SOURCE_TOPIC}`);
 
-      assert.equal(manager.serialize(hexSource, `${BEE_URL}/bytes`), '');
+      assert.equal(manager.serialize(hexSource, segmentsUnder(`${BEE_URL}/bytes`)), '');
     });
 
     /**
@@ -231,7 +232,7 @@ describe('the ladder entry points', () => {
         return 0;
       });
       const watching = new ManifestFetcher(manager, health, undefined, counting, POLL_MS, WATCH_MS);
-      watching.beeUrl = BEE_URL;
+      watching.useSwarm(swarmOverGlobalFetch(BEE_URL));
       stubFetch(buildMasterPlaylist(OWNER, LADDER), `${mediaPlaylist('rung-seg.ts')}\n#EXT-X-ENDLIST`);
       // The watch asks for the slot after the finished one, which the search for the newest index also
       // read, so only the asks made once the end is recorded are the watch's.
@@ -370,7 +371,7 @@ describe('the ladder entry points', () => {
         NO_JITTER,
         POLL_MS,
       );
-      waiting.beeUrl = BEE_URL;
+      waiting.useSwarm(swarmOverGlobalFetch(BEE_URL));
       health.recordGatewayFailure(hexSource);
       // Read before the call, because a successful read clears the backoff: comparing afterwards
       // would be comparing against zero. Bounded rather than equal, because the tracker returns the
@@ -398,7 +399,7 @@ describe('the ladder entry points', () => {
 
       await assert.rejects(pending, /torn down/);
       assert.equal(manager.getIndex(hexSource), null, 'a cleared topic came back at a pre-teardown index');
-      assert.equal(manager.serialize(hexSource, `${BEE_URL}/bytes`), '');
+      assert.equal(manager.serialize(hexSource, segmentsUnder(`${BEE_URL}/bytes`)), '');
     });
 
     it('does not start four rung pollers when a master lands after the topic was torn down', async () => {
@@ -446,14 +447,14 @@ describe('the ladder entry points', () => {
       await fetcher.fetch(`${OWNER}/${LADDER[1].topic}`);
       await settle();
       assert.ok(
-        RUNG_TOPICS.some((hex) => manager.serialize(hex, `${BEE_URL}/bytes`) !== ''),
+        RUNG_TOPICS.some((hex) => manager.serialize(hex, segmentsUnder(`${BEE_URL}/bytes`)) !== ''),
         'no rung accumulated a playlist, so this test cannot show one being cleared',
       );
 
       fetcher.unregisterLadder(source);
 
       for (const hex of RUNG_TOPICS) {
-        assert.equal(manager.serialize(hex, `${BEE_URL}/bytes`), '', `rung ${hex} kept its playlist`);
+        assert.equal(manager.serialize(hex, segmentsUnder(`${BEE_URL}/bytes`)), '', `rung ${hex} kept its playlist`);
       }
     });
 

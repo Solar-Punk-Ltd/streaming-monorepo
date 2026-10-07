@@ -1,9 +1,8 @@
 import { FeedIndex, Topic } from '@ethersphere/bee-js';
 import { feedSlotPath } from '@swarm-hls-stream/shared';
 
-import { TimedResponse } from '@/utils/fetchWithTimeout';
-
 import { UNSERVED_POLLS_PROBE_CEILING } from './feedState';
+import { type PlayerReader, servedText, type ServedText } from './playerReads';
 
 /**
  * A feed slot the publisher has not written yet, which is what a viewer who has caught up sees on
@@ -39,6 +38,8 @@ export class ManifestFetchError extends Error {
   constructor(
     path: string,
     readonly status: number,
+    /** How long the node asked to be left alone, which only a rate limit says. Zero otherwise. */
+    readonly retryAfterMs: number = 0,
   ) {
     super(`Failed to fetch: ${path}`);
     this.name = 'ManifestFetchError';
@@ -75,7 +76,7 @@ export function shouldProbePastRefusal(unservedPolls: number): boolean {
 interface ProbeServed {
   readonly kind: 'served';
   readonly index: FeedIndex;
-  readonly response: TimedResponse;
+  readonly response: ServedText;
 }
 
 /** Every distance was refused too, so the refusal may really be the publisher's head. */
@@ -128,7 +129,7 @@ type ProbeResult = ProbeServed | ProbeFoundNothing | ProbeGatewayFailed;
  * @param missing The slot that was refused. The probe looks past it and never at it again.
  */
 export async function probePastRefusal(
-  fetchResource: (path: string) => Promise<TimedResponse>,
+  reader: PlayerReader,
   owner: string,
   topic: Topic,
   missing: FeedIndex,
@@ -137,7 +138,10 @@ export async function probePastRefusal(
     const index = FeedIndex.fromBigInt(missing.toBigInt() + BigInt(distance));
 
     try {
-      const response = await fetchResource(feedSlotPath(owner, topic, index));
+      const response = await servedText(
+        reader.readFeedEntry(owner, topic, Number(index.toBigInt())),
+        feedSlotPath(owner, topic, index),
+      );
       return { kind: 'served', index, response };
     } catch (error) {
       // A refusal here is the ordinary answer and the reason the probe has more than one distance:

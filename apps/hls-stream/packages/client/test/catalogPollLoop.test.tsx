@@ -40,9 +40,9 @@ vi.mock('../src/utils/fetchWithTimeout', async (importOriginal) => {
   return { ...actual, fetchWithTimeout: (url: string) => fakes.answer.current(url) };
 });
 
-// The provider points the player's manifest fetcher at the gateway, and nothing here plays anything.
+// The provider hands the player's manifest fetcher the Swarm client's reader, and nothing here plays anything.
 vi.mock('../src/components/SwarmHlsPlayer/CustomManifestLoader', () => ({
-  manifestFetcher: { beeUrl: '' },
+  manifestFetcher: { useSwarm: () => {} },
 }));
 
 const TOPIC = Topic.fromString(config.rawAppTopic);

@@ -1,9 +1,9 @@
 import { FeedIndex, Topic } from '@ethersphere/bee-js';
 import { nextFeedRequest } from '@swarm-hls-stream/shared';
 
-import { TimedResponse } from '@/utils/fetchWithTimeout';
 import { RequestJitter } from '@/utils/requestJitter';
 
+import { type PlayerReader, servedText, type ServedText } from './playerReads';
 import { parseManifest } from './playlist';
 
 /**
@@ -103,16 +103,16 @@ const STILL_FINISHED: FeedStillFinished = { kind: 'stillFinished' };
  * @param finishedAt The slot whose playlist finished the feed. Only the slot after it is read.
  */
 async function askWhetherFeedReturned(
-  fetchResource: (path: string) => Promise<TimedResponse>,
+  reader: PlayerReader,
   owner: string,
   topic: Topic,
   finishedAt: FeedIndex,
 ): Promise<FeedReturnAnswer> {
   const { path, index } = nextFeedRequest(owner, topic, finishedAt);
 
-  let response: TimedResponse;
+  let response: ServedText;
   try {
-    response = await fetchResource(path);
+    response = await servedText(reader.readFeedEntry(owner, topic, Number(index.toBigInt())), path);
   } catch {
     // A refusal is the ordinary answer for a broadcast that stays over, and a gateway that did not
     // answer says nothing about the broadcaster either way. Neither is recorded anywhere: the feed is
@@ -131,8 +131,8 @@ async function askWhetherFeedReturned(
 
 /** The finished feed a {@link FeedReturnWatch} asks about, and whom it tells when the feed opens again. */
 interface FeedReturnWatchOptions {
-  /** The holding follower's own read of one path off the gateway. */
-  readonly fetchResource: (path: string) => Promise<TimedResponse>;
+  /** What the holding follower reads Swarm through. */
+  readonly reader: PlayerReader;
   readonly owner: string;
   readonly topic: Topic;
   /** The slot whose playlist finished the feed. */
@@ -197,8 +197,8 @@ export class FeedReturnWatch {
    * that finished again moves the watch past it, and anything else waits for the next ask.
    */
   private async ask(): Promise<void> {
-    const { fetchResource, owner, topic } = this.feed;
-    const answer = await askWhetherFeedReturned(fetchResource, owner, topic, this.finishedAt);
+    const { reader, owner, topic } = this.feed;
+    const answer = await askWhetherFeedReturned(reader, owner, topic, this.finishedAt);
 
     // Re-checked after the await, for the reason `LadderFeedPoller.advance` gives about responses that
     // land after a teardown. An answer that outlived its watch belongs to a session that is gone.

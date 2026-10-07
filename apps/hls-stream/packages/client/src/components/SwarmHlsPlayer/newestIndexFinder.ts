@@ -1,10 +1,9 @@
 import { FeedIndex, Topic } from '@ethersphere/bee-js';
 
-import { TimedResponse } from '@/utils/fetchWithTimeout';
-
 import type { FollowClock } from './following/feedReader';
 import { findNewestFromHint, type SwitchHint } from './following/findNewestFromHint';
 import { findNewestFromScratch } from './following/findNewestFromScratch';
+import type { PlayerReader } from './playerReads';
 import { RungFeedReader } from './rungFeedReader';
 
 export type { SwitchHint };
@@ -54,7 +53,7 @@ export interface NewestIndexFinder {
  */
 export class IndexSearchFinder implements NewestIndexFinder {
   constructor(
-    private readonly fetchResource: (path: string) => Promise<TimedResponse>,
+    private readonly reader: PlayerReader,
     private readonly clock: FollowClock,
   ) {}
 
@@ -63,7 +62,7 @@ export class IndexSearchFinder implements NewestIndexFinder {
     hint: SwitchHint | null,
     isStopped: () => boolean = () => false,
   ): Promise<NewestIndex | null> {
-    const reader = new RungFeedReader(this.fetchResource, rung.owner, rung.topic, this.clock.now, isStopped);
+    const reader = new RungFeedReader(this.reader, rung.owner, rung.topic, this.clock.now, isStopped);
     const { newest } =
       hint === null
         ? await findNewestFromScratch(reader, this.clock)

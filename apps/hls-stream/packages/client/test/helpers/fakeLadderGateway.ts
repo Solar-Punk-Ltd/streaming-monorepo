@@ -1,8 +1,11 @@
 import { FeedIndex, Topic } from '@ethersphere/bee-js';
 import { makeFeedIdentifier } from '@swarm-hls-stream/shared';
 
+import type { PlayerReader } from '../../src/components/SwarmHlsPlayer/playerReads.js';
 import { ManifestFetchError } from '../../src/components/SwarmHlsPlayer/refusedSlot.js';
-import { TimedResponse } from '../../src/utils/fetchWithTimeout.js';
+import type { PathResponse } from './playerReader';
+
+import { readerOverPaths } from './playerReader.js';
 
 /** The instant every fake ladder's first segment is stamped with. */
 export const LADDER_EPOCH_MS = Date.UTC(2026, 9, 7, 12, 0, 0);
@@ -163,7 +166,10 @@ export class FakeLadderGateway {
     return this.slotOwners.get(path)?.index ?? null;
   }
 
-  fetchResource = async (path: string): Promise<TimedResponse> => {
+  /** The player's reads, answered by {@link answerPath}. */
+  readonly reader: PlayerReader = readerOverPaths((path) => this.answerPath(path));
+
+  answerPath = async (path: string): Promise<PathResponse> => {
     const head = /^feeds\/[^/]+\/([0-9a-f]+)$/.exec(path);
     if (head) {
       const hex = head[1];

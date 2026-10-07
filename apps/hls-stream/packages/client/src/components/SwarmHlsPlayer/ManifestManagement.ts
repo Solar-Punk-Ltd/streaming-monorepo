@@ -1,6 +1,5 @@
 import { FeedIndex, Topic } from '@ethersphere/bee-js';
 import {
-  extractFeedIndex,
   HLS_DISCONTINUITY,
   HLS_ENDLIST,
   HLS_GAP,
@@ -13,8 +12,8 @@ import {
 import Pqueue from 'p-queue';
 
 import { Rendition } from '@/types/stream';
-import { config } from '@/utils/config';
-import { fetchWithTimeout, TimedResponse } from '@/utils/fetchWithTimeout';
+import { UNSUPPORTED } from '@/swarm/answers';
+import type { SwarmReader } from '@/swarm/client';
 import { gatewayClock } from '@/utils/gatewayClock';
 import { RequestJitter } from '@/utils/requestJitter';
 
@@ -22,7 +21,8 @@ import { FEED_RETURN_WATCH_INTERVAL_MS, FeedReturnWatch, feedReturnWatchWaitMs }
 import { FeedHealthTracker, UNSERVED_POLLS_PROBE_CEILING } from './feedState';
 import { LadderFeedPoller, type LadderRung, WALL_CLOCK } from './LadderFeedPoller';
 import { MarkerFinder } from './markerFinder';
-import { absoluteBytesBase, buildMasterPlaylist, isMasterPlaylist, masterRungs, parseSwarmUri } from './playlist';
+import { headIndexOf, type PlayerReader, retryAfterMsOf, servedText, type ServedText } from './playerReads';
+import { buildMasterPlaylist, isMasterPlaylist, masterRungs, parseSwarmUri } from './playlist';
 import { isSlotNotWrittenYet, ManifestFetchError, probePastRefusal, shouldProbePastRefusal } from './refusedSlot';
 
 // The parser and the segment shape now live beside the tags the uploader builds with, so the two
@@ -39,14 +39,24 @@ interface TopicState {
   dirty: boolean;
   cachedManifest: string;
   /**
-   * The gateway {@link ManifestStateManager.serialize} built {@link cachedManifest} against.
+   * The segment URLs {@link ManifestStateManager.serialize} built {@link cachedManifest} with.
    *
-   * ⛔ Every segment line in a serialized playlist is prefixed with this, so a cached manifest is
-   * only valid for the gateway that produced it. Without it, `serialize` takes the gateway as an
-   * argument and then ignores it on every cache hit.
+   * ⛔ Every segment line in a serialized playlist comes from this, so a cached manifest is only
+   * valid for the gateway that produced it. Without it, `serialize` takes the gateway as an argument
+   * and then ignores it on every cache hit.
    */
-  cachedBytesUrl: string;
+  cachedSegmentUrl: SegmentUrl | null;
 }
+
+/**
+ * Where hls.js loads a segment from, given the reference a playlist names, or null to leave the line
+ * as the publisher wrote it. One function per gateway, so a playlist cached for one is never served
+ * for another.
+ */
+export type SegmentUrl = (reference: string) => string | null;
+
+/** Leaves every line as the publisher wrote it. */
+export const SEGMENTS_AS_WRITTEN: SegmentUrl = () => null;
 
 const manifestQueue = new Pqueue({ concurrency: 1 });
 
@@ -197,7 +207,7 @@ export class ManifestStateManager {
     }
   }
 
-  serialize(topicId: string, bytesUrl: string): string {
+  serialize(topicId: string, segmentUrl: SegmentUrl): string {
     const state = this.topics.get(topicId);
     if (!state || state.segments.length === 0) {
       return '';
@@ -208,7 +218,7 @@ export class ManifestStateManager {
     // was silently served the previous gateway's playlist. On 2026-08-13 that put every segment of
     // both arms of a funded-versus-unfunded sitting on the SAME node while the client truthfully
     // reported two different gateways, which would have reported that funding does not matter.
-    if (!state.dirty && state.cachedBytesUrl === bytesUrl) {
+    if (!state.dirty && state.cachedSegmentUrl === segmentUrl) {
       return state.cachedManifest;
     }
 
@@ -240,7 +250,7 @@ export class ManifestStateManager {
         lines.push(seg.programDateTime);
       }
       lines.push(seg.extinf);
-      lines.push(seg.gap ? seg.uri : this.buildUri(seg.uri, bytesUrl));
+      lines.push(seg.gap ? seg.uri : this.buildUri(seg.uri, segmentUrl));
     }
 
     if (state.isFinalized) {
@@ -248,7 +258,7 @@ export class ManifestStateManager {
     }
 
     state.cachedManifest = lines.join('\n');
-    state.cachedBytesUrl = bytesUrl;
+    state.cachedSegmentUrl = segmentUrl;
     state.dirty = false;
     return state.cachedManifest;
   }
@@ -342,7 +352,7 @@ export class ManifestStateManager {
         isFinalized: false,
         dirty: true,
         cachedManifest: '',
-        cachedBytesUrl: '',
+        cachedSegmentUrl: null,
       });
     }
     return this.topics.get(topicId)!;
@@ -363,11 +373,11 @@ export class ManifestStateManager {
    * real host in front of a token that stands for missing media, and every later reader would have to
    * strip the host back off to see what it was. {@link serialize} passes it through instead.
    */
-  private buildUri(uri: string, bytesUrl: string): string {
-    if (!bytesUrl || uri.startsWith('http://') || uri.startsWith('https://') || uri.startsWith('/bytes/')) {
+  private buildUri(uri: string, segmentUrl: SegmentUrl): string {
+    if (uri.startsWith('http://') || uri.startsWith('https://') || uri.startsWith('/bytes/')) {
       return uri;
     }
-    return `${bytesUrl}/${uri}`;
+    return segmentUrl(uri) ?? uri;
   }
 }
 
@@ -398,6 +408,9 @@ interface RegisteredLadder {
   topics: Topic[];
 }
 
+/** The status a head read is refused with when it was served and yielded no playlist, a captive portal's page say. */
+const SERVED_WITHOUT_PLAYLIST = 200;
+
 /** A finished single-rendition feed's watch, and the teardown registration that would end it. */
 interface HeldReturnWatch {
   watch: FeedReturnWatch;
@@ -407,7 +420,7 @@ interface HeldReturnWatch {
 
 /** One slot read off a single-rendition feed, carried with the state it was read against. */
 interface SlotRead {
-  response: TimedResponse;
+  response: ServedText;
   /** The index the topic's state held when the read was issued, which the read only applies to. */
   readIndex: FeedIndex;
   /** The slot the response came from. */
@@ -483,8 +496,30 @@ class RungNotFollowedError extends Error {
 /** When the frame a player shows was presented, by PROGRAM-DATE-TIME, or null when it cannot say. */
 type PlayheadClock = () => number | null;
 
+/** What the fetcher reads through until the app hands it the Swarm client: nothing, so nothing is read. */
+const NO_SWARM: SwarmReader = {
+  readFeedHead: async () => UNSUPPORTED,
+  readFeedEntry: async () => UNSUPPORTED,
+  readSoc: async () => UNSUPPORTED,
+  readChunk: async () => UNSUPPORTED,
+  readBytes: async () => UNSUPPORTED,
+  urlFor: () => null,
+};
+
 export class ManifestFetcher {
-  private _beeUrl: string = config.beeUrl;
+  /** Set by the app provider to the Swarm client's player reader before any player mounts. */
+  private swarm: SwarmReader = NO_SWARM;
+  /** Made once per reader, so a playlist serialized against one gateway is never served for another. */
+  private segmentUrl: SegmentUrl = SEGMENTS_AS_WRITTEN;
+  /**
+   * Every read this fetcher and its poller make, passed on to whichever reader is current, so a node
+   * switched to mid-session moves the walks with it.
+   */
+  private readonly reads: PlayerReader = {
+    readFeedHead: (owner, topic, options) => this.swarm.readFeedHead(owner, topic, options),
+    readFeedEntry: (owner, topic, index, options) => this.swarm.readFeedEntry(owner, topic, index, options),
+    readSoc: (owner, identifier, options) => this.swarm.readSoc(owner, identifier, options),
+  };
   private ladders = new Map<string, RegisteredLadder>();
   private poller: LadderFeedPoller;
   private lastLoggedMaster = '';
@@ -532,33 +567,33 @@ export class ManifestFetcher {
      */
     private readonly returnWatchIntervalMs: number = FEED_RETURN_WATCH_INTERVAL_MS,
   ) {
-    // The poller fetches through this instance rather than holding a URL of its own, so switching
+    // The poller reads through this instance rather than holding a reader of its own, so switching
     // gateway mid-session moves the walk with it. It also shares this instance's feed health and
     // computes its backoff through the same jitter, so a ladder outage records and paces exactly as
     // the single-rendition path does rather than polling a dead gateway flat. A finished rung's watch
     // draws its waits through that jitter too, as the single rendition's does. A rung's newest index is
     // found from the ladder's time marker, on the clock the stream list's answers corrected.
-    const fetchThrough = (path: string) => this.fetchResource(path);
     this.poller = new LadderFeedPoller(
       stateManager,
-      fetchThrough,
+      this.reads,
       pollIntervalMs,
       this.feedHealth,
       (hexTopic) => this.jitter.spread(this.feedHealth.backoffRemainingMs(hexTopic)),
       () => this.drawReturnWatchWaitMs(),
       {
         playheadMs: (group) => (group === null ? null : (this.playheads.get(group)?.() ?? null)),
-        finder: new MarkerFinder(fetchThrough, WALL_CLOCK, () => gatewayClock.offsetMs()),
+        finder: new MarkerFinder(this.reads, WALL_CLOCK, () => gatewayClock.offsetMs()),
       },
     );
   }
 
-  get beeUrl(): string {
-    return this._beeUrl;
-  }
-
-  set beeUrl(url: string) {
-    this._beeUrl = url;
+  /**
+   * Reads every feed through `reader` from now on, and names every segment by its URLs. The app hands
+   * in the Swarm client's player reader at start and again whenever the viewer picks another node.
+   */
+  useSwarm(reader: SwarmReader): void {
+    this.swarm = reader;
+    this.segmentUrl = (reference) => reader.urlFor(reference, 'segment');
   }
 
   /**
@@ -643,7 +678,7 @@ export class ManifestFetcher {
 
     const { path } = nextFeedRequest(source.owner, topic, null);
     try {
-      const res = await this.fetchResource(path);
+      const res = await servedText(this.swarm.readFeedHead(source.owner, topic), path);
       const text = res.text;
 
       if (isMasterPlaylist(text)) {
@@ -665,7 +700,7 @@ export class ManifestFetcher {
       this.feedHealth.recordGatewayReachable(hexTopic);
       return manifest;
     } catch (error) {
-      this.feedHealth.recordGatewayFailure(hexTopic);
+      this.feedHealth.recordGatewayFailure(hexTopic, retryAfterMsOf(error));
       throw error;
     }
   }
@@ -698,7 +733,7 @@ export class ManifestFetcher {
       if (readiness === 'inactive') {
         throw new RungNotFollowedError(hexTopic);
       }
-      return this.stateManager.serialize(hexTopic, this.bytesBaseUrl());
+      return this.stateManager.serialize(hexTopic, this.segmentUrl);
     }
 
     // Which request follows is `nextFeedRequest`'s to decide, on the same input, for everything in
@@ -798,7 +833,7 @@ export class ManifestFetcher {
     // loop and says nothing to the viewer. A 200 carrying a captive portal's HTML does exactly that.
     const { path } = nextFeedRequest(owner, topic, null);
     try {
-      const res = await this.fetchResource(path);
+      const res = await servedText(this.swarm.readFeedHead(owner, topic), path);
       this.assertTopicSurvived(hexTopic, generation);
 
       const manifest = this.ingestManifest(owner, topic, res, path);
@@ -809,7 +844,7 @@ export class ManifestFetcher {
       this.feedHealth.recordGatewayReachable(hexTopic);
       return manifest;
     } catch (error) {
-      this.feedHealth.recordGatewayFailure(hexTopic);
+      this.feedHealth.recordGatewayFailure(hexTopic, retryAfterMsOf(error));
       throw error;
     }
   }
@@ -857,7 +892,7 @@ export class ManifestFetcher {
    * A head that is already finished is a recording being opened, and it is watched for its
    * broadcaster coming back exactly as a finish read live is. See {@link watchForReturn}.
    */
-  private ingestManifest(owner: string, topic: Topic, response: TimedResponse, path: string): string {
+  private ingestManifest(owner: string, topic: Topic, response: ServedText, path: string): string {
     const hexTopic = topic.toString();
     const parsed = parseManifest(response.text);
 
@@ -871,12 +906,12 @@ export class ManifestFetcher {
     // Checked before the index is committed, not after. An index is what routes the next poll to the
     // follow-up path, so committing one for a response that yielded no playlist strands the topic
     // there, answering every poll with the same empty string and never asking the head again.
-    const manifest = this.stateManager.serialize(hexTopic, this.bytesBaseUrl());
+    const manifest = this.stateManager.serialize(hexTopic, this.segmentUrl);
     if (!manifest) {
-      throw new ManifestFetchError(path, response.status);
+      throw new ManifestFetchError(path, SERVED_WITHOUT_PLAYLIST);
     }
     if (shouldContinue) {
-      this.stateManager.setIndex(hexTopic, extractFeedIndex(response.headers));
+      this.stateManager.setIndex(hexTopic, headIndexOf(response));
       // A mount's first read found the feed open, so an end still recorded against it was left by an
       // earlier mount and is over. Forgotten without announcing a return, and only once the read has
       // proved usable. See `FeedHealthTracker.forgetStaleEnd`.
@@ -885,9 +920,8 @@ export class ManifestFetcher {
       // Read only here, and forgivingly. A finished head was never asked for its index before, and a
       // gateway that leaves the header off still has a recording worth playing, so a missing index
       // costs the watch and not the playlist.
-      const finishedAt = feedIndexOrNull(response.headers);
-      if (finishedAt !== null) {
-        this.watchForReturn(owner, topic, finishedAt);
+      if (response.feedIndex !== null) {
+        this.watchForReturn(owner, topic, FeedIndex.fromBigInt(BigInt(response.feedIndex)));
       }
     }
 
@@ -945,7 +979,7 @@ export class ManifestFetcher {
       this.inFlight.set(hexTopic, walk);
     }
 
-    return this.stateManager.serialize(hexTopic, this.bytesBaseUrl());
+    return this.stateManager.serialize(hexTopic, this.segmentUrl);
   }
 
   /**
@@ -978,9 +1012,9 @@ export class ManifestFetcher {
     for (let consumed = 0; consumed < MAX_SLOTS_PER_POLL; consumed++) {
       const { path, index: targetIndex } = nextFeedRequest(owner, topic, readIndex);
 
-      let response: TimedResponse;
+      let response: ServedText;
       try {
-        response = await this.fetchResource(path);
+        response = await servedText(this.swarm.readFeedEntry(owner, topic, Number(targetIndex.toBigInt())), path);
       } catch (error) {
         if (isSlotNotWrittenYet(error)) {
           // Where every healthy poll ends: the walk has caught the publisher up. Counted as an
@@ -999,7 +1033,7 @@ export class ManifestFetcher {
         // about the gateway rather than about the topic generation, and it is the fact worth keeping
         // across a teardown, because the restart that discards the topic is itself what a fatal
         // network error triggers.
-        this.feedHealth.recordGatewayFailure(hexTopic);
+        this.feedHealth.recordGatewayFailure(hexTopic, retryAfterMsOf(error));
         console.error('Error fetching follow-up manifest:', error);
         return;
       }
@@ -1084,7 +1118,7 @@ export class ManifestFetcher {
     }
 
     const watch = new FeedReturnWatch({
-      fetchResource: (path) => this.fetchResource(path),
+      reader: this.reads,
       owner,
       topic,
       finishedAt,
@@ -1189,10 +1223,10 @@ export class ManifestFetcher {
    */
   private async stepPastRefusal(owner: string, topic: Topic, readIndex: FeedIndex, missing: FeedIndex): Promise<void> {
     const hexTopic = topic.toString();
-    const found = await probePastRefusal((path) => this.fetchResource(path), owner, topic, missing);
+    const found = await probePastRefusal(this.reads, owner, topic, missing);
 
     if (found.kind === 'gatewayFailed') {
-      this.feedHealth.recordGatewayFailure(hexTopic);
+      this.feedHealth.recordGatewayFailure(hexTopic, retryAfterMsOf(found.error));
       console.error('Error probing past a refused manifest slot:', found.error);
       return;
     }
@@ -1231,19 +1265,6 @@ export class ManifestFetcher {
     }
     return polls;
   }
-
-  /** Absolute, because it is written into a playlist. See {@link absoluteBytesBase}. */
-  private bytesBaseUrl(): string {
-    return absoluteBytesBase(this._beeUrl, pageOrigin());
-  }
-
-  private async fetchResource(path: string): Promise<TimedResponse> {
-    const response = await fetchWithTimeout(`${this._beeUrl}/${path}`);
-    if (!response.ok) {
-      throw new ManifestFetchError(path, response.status);
-    }
-    return response;
-  }
 }
 
 function ladderTopics(ladder: LadderSource): Topic[] {
@@ -1261,25 +1282,4 @@ function groupHexOf(sourceUrl: string): string | null {
   } catch {
     return null;
   }
-}
-
-/** The slot a head read resolved to, or null where the response does not say. */
-function feedIndexOrNull(headers: Headers): FeedIndex | null {
-  try {
-    return extractFeedIndex(headers);
-  } catch {
-    return null;
-  }
-}
-
-/**
- * The origin a playlist's URIs are made absolute against.
- *
- * Read here rather than taken from `window.location` at the call site because this class is
- * exercised outside a browser, where touching `window` is a `ReferenceError` rather than a
- * `undefined`. The fallback is only ever the base of an already absolute gateway URL, which `URL`
- * discards, so it cannot reach a playlist a viewer reads.
- */
-function pageOrigin(): string {
-  return typeof window === 'undefined' ? 'http://localhost' : window.location.origin;
 }

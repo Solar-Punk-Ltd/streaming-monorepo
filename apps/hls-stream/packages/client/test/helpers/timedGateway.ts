@@ -2,8 +2,9 @@ import { FeedIndex, Topic } from '@ethersphere/bee-js';
 import { makeFeedIdentifier } from '@swarm-hls-stream/shared';
 
 import type { NewestIndexFinder } from '../../src/components/SwarmHlsPlayer/newestIndexFinder.js';
+import type { PlayerReader } from '../../src/components/SwarmHlsPlayer/playerReads.js';
 import { ManifestFetchError } from '../../src/components/SwarmHlsPlayer/refusedSlot.js';
-import { TimedResponse } from '../../src/utils/fetchWithTimeout.js';
+import type { PathResponse } from './playerReader';
 import {
   encodeLadderMarker,
   type LadderMarker,
@@ -11,6 +12,8 @@ import {
   markerPeriodAt,
   markerPeriodStartMs,
 } from '@swarm-hls-stream/shared';
+
+import { readerOverPaths } from './playerReader.js';
 
 import type { VirtualTime } from '../feedModel/virtualTime.js';
 
@@ -176,7 +179,10 @@ export class TimedGateway {
     return Object.keys(rungs).length === 0 ? null : { v: 1, period, writtenAt, rungs };
   }
 
-  fetchResource = (path: string): Promise<TimedResponse> => {
+  /** The player's reads, answered by {@link answerPath}. */
+  readonly reader: PlayerReader = readerOverPaths((path) => this.answerPath(path));
+
+  answerPath = (path: string): Promise<PathResponse> => {
     const slot = this.slots.get(path);
     if (!slot) {
       return this.readMarker(path);
@@ -196,7 +202,7 @@ export class TimedGateway {
     });
   };
 
-  private readMarker(path: string): Promise<TimedResponse> {
+  private readMarker(path: string): Promise<PathResponse> {
     const askedAtMs = this.time.trueNowMs;
     const now = markerPeriodAt(askedAtMs);
     let period: number | null = null;
@@ -237,7 +243,7 @@ export class TimedGateway {
         if (head < 0) {
           return null;
         }
-        const response = await this.fetchResource(this.slotPath(rung.topic, head));
+        const response = await this.answerPath(this.slotPath(rung.topic, head));
         return { index: FeedIndex.fromBigInt(BigInt(head)), playlist: response.text };
       },
     };

@@ -1,14 +1,13 @@
 import { FeedIndex, Topic } from '@ethersphere/bee-js';
 import { feedSlotPath } from '@swarm-hls-stream/shared';
 
-import { TimedResponse } from '@/utils/fetchWithTimeout';
-
 import { FeedReturnWatch } from './feedReturn';
 import { FeedHealthTracker, UNSERVED_SLOT_STALL_MS } from './feedState';
 import type { FeedEntry, FeedReader, FollowClock } from './following/feedReader';
 import { followPredicted } from './following/followPredicted';
 import { ManifestStateManager } from './ManifestManagement';
 import { FeedRung, IndexSearchFinder, NewestIndex, NewestIndexFinder, SwitchHint } from './newestIndexFinder';
+import { type PlayerReader, retryAfterMsOf, servedText } from './playerReads';
 import { parseManifest } from './playlist';
 import { isSlotNotWrittenYet } from './refusedSlot';
 import { feedEntryOf, RungFeedReader } from './rungFeedReader';
@@ -177,7 +176,7 @@ export class LadderFeedPoller {
 
   constructor(
     private readonly stateManager: ManifestStateManager,
-    private readonly fetchResource: (path: string) => Promise<TimedResponse>,
+    private readonly reader: PlayerReader,
     /** How long a walk waits after a read the gateway did not answer, and the slice a backoff is waited out in. */
     private readonly pollIntervalMs: number = DEFAULT_POLL_INTERVAL_MS,
     /**
@@ -194,7 +193,7 @@ export class LadderFeedPoller {
     options: LadderFeedPollerOptions = {},
   ) {
     this.followClock = options.followClock ?? WALL_CLOCK;
-    this.finder = options.finder ?? new IndexSearchFinder(fetchResource, this.followClock);
+    this.finder = options.finder ?? new IndexSearchFinder(reader, this.followClock);
     this.now = options.now ?? (() => performance.now());
     this.progressBoundMs = options.progressBoundMs ?? RUNG_PROGRESS_BOUND_MS;
     this.candidateFindDeadlineMs = options.candidateFindDeadlineMs ?? CANDIDATE_FIND_DEADLINE_MS;
@@ -461,7 +460,7 @@ export class LadderFeedPoller {
     if (from === null || walk.stopped) {
       return;
     }
-    const reader = new RungFeedReader(this.fetchResource, entry.owner, entry.topic, this.followClock.now);
+    const reader = new RungFeedReader(this.reader, entry.owner, entry.topic, this.followClock.now);
     const counted: FeedReader = {
       read: async (index) => {
         const read = await reader.read(index);
@@ -572,7 +571,7 @@ export class LadderFeedPoller {
     // A feed found empty gains slot 0 first, so one read says when to search again, where a search
     // from nothing would cost a round of eight each time.
     if (walk.waitingForFirstSlot && walk.seed === null) {
-      const first = await new RungFeedReader(this.fetchResource, rung.owner, rung.topic, this.followClock.now).read(0);
+      const first = await new RungFeedReader(this.reader, rung.owner, rung.topic, this.followClock.now).read(0);
       if (walk.stopped) {
         return false;
       }
@@ -685,7 +684,12 @@ export class LadderFeedPoller {
       const target = at > step ? at - step : 0n;
       let text: string;
       try {
-        text = (await this.fetchResource(feedSlotPath(entry.owner, entry.topic, FeedIndex.fromBigInt(target)))).text;
+        text = (
+          await servedText(
+            this.reader.readFeedEntry(entry.owner, entry.topic, Number(target)),
+            feedSlotPath(entry.owner, entry.topic, FeedIndex.fromBigInt(target)),
+          )
+        ).text;
       } catch (error) {
         this.reportReadBackFailure(entry, target, error);
         return [];
@@ -992,7 +996,7 @@ export class LadderFeedPoller {
     this.stopReturnWatch(ladder);
     ladder.returnWatchedRung = entry;
     ladder.returnWatch = new FeedReturnWatch({
-      fetchResource: this.fetchResource,
+      reader: this.reader,
       owner: entry.owner,
       topic: entry.topic,
       finishedAt,
@@ -1032,7 +1036,7 @@ export class LadderFeedPoller {
     if (isSlotNotWrittenYet(error)) {
       return this.feedHealth.recordUnservedSlot(entry.hexTopic);
     }
-    this.feedHealth.recordGatewayFailure(entry.hexTopic);
+    this.feedHealth.recordGatewayFailure(entry.hexTopic, retryAfterMsOf(error));
     return null;
   }
 

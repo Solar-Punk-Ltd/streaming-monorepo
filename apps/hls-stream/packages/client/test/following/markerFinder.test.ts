@@ -50,7 +50,7 @@ async function rig(options: { viewerBehindMs?: number; learnedOffsetMs?: number 
     },
   };
   const learned = options.learnedOffsetMs ?? 0;
-  const finder = new MarkerFinder(gateway.fetchResource, clock, () => learned, fallback);
+  const finder = new MarkerFinder(gateway.reader, clock, () => learned, fallback);
   return { time, gateway, fallbacks, finder };
 }
 
@@ -223,7 +223,7 @@ describe('a search for a quality that stops being followed', () => {
     await time.runUntil(NOW_MS);
     const gateway = new TimedGateway(time, OWNER, ROUND_TRIP_MS);
     gateway.addFeed(TOP, '720p', { lagMs: LAG_MS });
-    const finder = new IndexSearchFinder(gateway.fetchResource, time.clock());
+    const finder = new IndexSearchFinder(gateway.reader, time.clock());
     let stopped = false;
     time.at(NOW_MS + 100, () => {
       stopped = true;

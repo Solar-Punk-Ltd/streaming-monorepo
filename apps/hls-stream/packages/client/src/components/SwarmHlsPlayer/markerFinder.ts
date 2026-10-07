@@ -1,11 +1,11 @@
 import { FeedIndex, Topic } from '@ethersphere/bee-js';
 
-import { TimedResponse } from '@/utils/fetchWithTimeout';
 import { type LadderMarker, ladderMarkerIdentifier, markerPeriodAt, parseLadderMarker } from '@swarm-hls-stream/shared';
 
 import type { FollowClock } from './following/feedReader';
 import { findNewestFromHint, type SwitchHint } from './following/findNewestFromHint';
 import { FeedRung, IndexSearchFinder, NewestIndex, NewestIndexFinder } from './newestIndexFinder';
+import { type PlayerReader, servedText } from './playerReads';
 import { isSlotNotWrittenYet } from './refusedSlot';
 import { RungFeedReader } from './rungFeedReader';
 
@@ -45,11 +45,11 @@ export class MarkerFinder implements NewestIndexFinder {
   } | null = null;
 
   constructor(
-    private readonly fetchResource: (path: string) => Promise<TimedResponse>,
+    private readonly reader: PlayerReader,
     private readonly clock: FollowClock,
     /** What to add to the viewer's clock to read the gateway's. See `GatewayClock`. */
     private readonly clockOffsetMs: () => number = () => 0,
-    private readonly fallback: NewestIndexFinder = new IndexSearchFinder(fetchResource, clock),
+    private readonly fallback: NewestIndexFinder = new IndexSearchFinder(reader, clock),
   ) {}
 
   async findNewest(
@@ -66,7 +66,7 @@ export class MarkerFinder implements NewestIndexFinder {
       return this.fallback.findNewest(rung, hint, isStopped);
     }
 
-    const reader = new RungFeedReader(this.fetchResource, rung.owner, rung.topic, this.clock.now, isStopped);
+    const reader = new RungFeedReader(this.reader, rung.owner, rung.topic, this.clock.now, isStopped);
     const { newest } = await findNewestFromHint(reader, this.clock, {
       index,
       // The newest segment of that index ended a little before the marker was written, by the upload's
@@ -99,21 +99,22 @@ export class MarkerFinder implements NewestIndexFinder {
       if (wanted < 0) {
         continue;
       }
-      const path = `soc/${owner}/${ladderMarkerIdentifier(group, wanted).toHex()}`;
-      if (this.missing.has(path)) {
+      const identifier = ladderMarkerIdentifier(group, wanted).toHex();
+      const address = `${owner}/${identifier}`;
+      if (this.missing.has(address)) {
         continue;
       }
-      let read = this.inFlight.get(path);
+      let read = this.inFlight.get(address);
       if (read === undefined) {
-        read = this.readMarker(path, wanted).finally(() => this.inFlight.delete(path));
-        this.inFlight.set(path, read);
+        read = this.readMarker(owner, identifier, wanted).finally(() => this.inFlight.delete(address));
+        this.inFlight.set(address, read);
       }
       const marker = await read;
       if (marker !== null) {
         this.last = { ladder, period: wanted, marker, readAtMs: this.clock.now() };
         return marker;
       }
-      if (!this.missing.has(path)) {
+      if (!this.missing.has(address)) {
         // A fault, which says nothing about the period before it either.
         return null;
       }
@@ -122,25 +123,26 @@ export class MarkerFinder implements NewestIndexFinder {
   }
 
   /** One marker read. Null for a fault as well as for a marker missing or malformed, which alone are remembered. */
-  private async readMarker(path: string, period: number): Promise<LadderMarker | null> {
+  private async readMarker(owner: string, identifier: string, period: number): Promise<LadderMarker | null> {
+    const address = `${owner}/${identifier}`;
     let text: string;
     try {
-      text = (await this.fetchResource(path)).text;
+      text = (await servedText(this.reader.readSoc(owner, identifier), `soc/${address}`)).text;
     } catch (error) {
       if (isSlotNotWrittenYet(error)) {
-        this.rememberMissing(path);
+        this.rememberMissing(address);
       }
       return null;
     }
     const marker = parseLadderMarker(text, period);
     if (marker === null) {
-      this.rememberMissing(path);
+      this.rememberMissing(address);
     }
     return marker;
   }
 
-  private rememberMissing(path: string): void {
-    this.missing.add(path);
+  private rememberMissing(address: string): void {
+    this.missing.add(address);
     if (this.missing.size > MISSING_REMEMBERED) {
       const oldest = this.missing.values().next().value;
       if (oldest !== undefined) {

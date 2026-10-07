@@ -9,6 +9,7 @@ import {
   RungNotReadyError,
 } from '../src/components/SwarmHlsPlayer/ManifestManagement';
 import { RequestJitter } from '../src/utils/requestJitter';
+import { swarmOverGlobalFetch } from './helpers/playerReader';
 
 /**
  * A level request for a rung the gateway cannot read used to wait for ever.
@@ -79,7 +80,7 @@ describe('a level request for a rung whose feed the gateway cannot read', () => 
       NO_JITTER,
       POLL_INTERVAL_MS,
     );
-    fetcher.beeUrl = 'http://gateway.test';
+    fetcher.useSwarm(swarmOverGlobalFetch('http://gateway.test'));
   });
 
   afterEach(async () => {

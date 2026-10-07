@@ -35,7 +35,7 @@ function makeRig(options: LadderFeedPollerOptions = {}) {
   gateway.addFeed(TOP, 'top', { lagMs: 900 });
   gateway.addFeed(LOW, 'low', { lagMs: 900 });
   const health = new FeedHealthTracker(() => time.trueNowMs);
-  const poller = new LadderFeedPoller(state, gateway.fetchResource, 750, health, undefined, undefined, {
+  const poller = new LadderFeedPoller(state, gateway.reader, 750, health, undefined, undefined, {
     now: () => time.trueNowMs,
     followClock: time.clock(),
     finder: gateway.knownHeadFinder(),

@@ -3,9 +3,8 @@ import { feedSlotPath } from '@swarm-hls-stream/shared';
 import { HLS_M3U } from '@swarm-hls-stream/shared';
 import { programDateTimeMs, segmentDuration } from '@swarm-hls-stream/shared';
 
-import { TimedResponse } from '@/utils/fetchWithTimeout';
-
 import type { FeedEntry, FeedRead, FeedReader } from './following/feedReader';
+import { type PlayerReader, servedText, type ServedText } from './playerReads';
 import { parseManifest } from './playlist';
 import { isSlotNotWrittenYet } from './refusedSlot';
 
@@ -39,7 +38,7 @@ export class RungFeedReader implements FeedReader {
   private readonly playlists = new WeakMap<FeedEntry, string>();
 
   constructor(
-    private readonly fetchResource: (path: string) => Promise<TimedResponse>,
+    private readonly reader: PlayerReader,
     private readonly owner: string,
     private readonly topic: Topic,
     private readonly now: () => number,
@@ -51,9 +50,12 @@ export class RungFeedReader implements FeedReader {
     if (this.isStopped()) {
       return { found: false };
     }
-    let response: TimedResponse;
+    let response: ServedText;
     try {
-      response = await this.fetchResource(feedSlotPath(this.owner, this.topic, FeedIndex.fromBigInt(BigInt(index))));
+      response = await servedText(
+        this.reader.readFeedEntry(this.owner, this.topic, index),
+        feedSlotPath(this.owner, this.topic, FeedIndex.fromBigInt(BigInt(index))),
+      );
     } catch (error) {
       if (isSlotNotWrittenYet(error)) {
         return { found: false };

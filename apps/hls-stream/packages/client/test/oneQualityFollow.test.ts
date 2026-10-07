@@ -19,6 +19,7 @@ import { STALE_RUNG_LAG_MS } from '../src/components/SwarmHlsPlayer/rungPosition
 import { fastClock } from './helpers/fastClock.js';
 import { FakeLadderGateway, LADDER_EPOCH_MS, SEGMENT_S } from './helpers/fakeLadderGateway.js';
 import { waitFor } from './helpers/waiting.js';
+import { SEGMENTS_AS_WRITTEN } from '../src/components/SwarmHlsPlayer/ManifestManagement';
 
 /**
  * The player follows only the quality it plays (Levi, 2026-10-07: "only one quality request at the
@@ -58,7 +59,7 @@ function makeClock() {
 const state = ManifestStateManager.getInstance();
 
 function segmentUris(topic: Topic): string[] {
-  const serialized = state.serialize(hex(topic), '');
+  const serialized = state.serialize(hex(topic), SEGMENTS_AS_WRITTEN);
   return serialized ? parseManifest(serialized).segments.map((segment) => segment.uri) : [];
 }
 
@@ -82,8 +83,8 @@ function makeRig(options: { finderFor?: (gateway: FakeLadderGateway) => NewestIn
   const playhead = { ms: null as number | null };
   const followClock = fastClock(FOLLOW_SPEED);
   const finds: string[] = [];
-  const finder = options.finderFor?.(gateway) ?? new IndexSearchFinder(gateway.fetchResource, followClock);
-  const poller = new LadderFeedPoller(state, gateway.fetchResource, POLL_MS, health, undefined, () => RETURN_MS, {
+  const finder = options.finderFor?.(gateway) ?? new IndexSearchFinder(gateway.reader, followClock);
+  const poller = new LadderFeedPoller(state, gateway.reader, POLL_MS, health, undefined, () => RETURN_MS, {
     now: clock.now,
     progressBoundMs: BOUND_MS,
     playheadMs: () => playhead.ms,
@@ -172,7 +173,7 @@ describe('Q1: only the rung that plays is walked', () => {
     const groups: (string | null | undefined)[] = [];
     const { gateway, poller } = makeRig({
       finderFor: (gateway) => {
-        const search = new IndexSearchFinder(gateway.fetchResource, fastClock(FOLLOW_SPEED));
+        const search = new IndexSearchFinder(gateway.reader, fastClock(FOLLOW_SPEED));
         return {
           findNewest(rung, hint) {
             groups.push(rung.group);
@@ -224,7 +225,7 @@ describe('Q1: only the rung that plays is walked', () => {
         async findNewest(rung, hint) {
           hints.push(hint === null ? null : { index: hint.index, newestSegmentEndMs: hint.newestSegmentEndMs });
           const head = gateway.head(rung.topic);
-          const response = await gateway.fetchResource(gateway.slotPath(rung.topic, head));
+          const response = await gateway.answerPath(gateway.slotPath(rung.topic, head));
           return { index: FeedIndex.fromBigInt(BigInt(head)), playlist: response.text };
         },
       }),
@@ -410,7 +411,7 @@ describe('Q3: the playing quality stops', () => {
     let finding: Promise<void> = Promise.resolve();
     const rig = makeRig({
       finderFor: (gateway) => {
-        const search = new IndexSearchFinder(gateway.fetchResource, fastClock(FOLLOW_SPEED));
+        const search = new IndexSearchFinder(gateway.reader, fastClock(FOLLOW_SPEED));
         return {
           async findNewest(rung, hint) {
             const found = await search.findNewest(rung, hint);

@@ -16,14 +16,17 @@ import {
 } from '../src/components/SwarmHlsPlayer/feedState.js';
 import { LadderFeedPoller } from '../src/components/SwarmHlsPlayer/LadderFeedPoller.js';
 import { ManifestStateManager } from '../src/components/SwarmHlsPlayer/ManifestManagement.js';
+import type { PlayerReader } from '../src/components/SwarmHlsPlayer/playerReads.js';
 import { parseManifest } from '../src/components/SwarmHlsPlayer/playlist.js';
 import { ManifestFetchError } from '../src/components/SwarmHlsPlayer/refusedSlot.js';
-import { TimedResponse } from '../src/utils/fetchWithTimeout.js';
+import type { PathResponse } from './helpers/playerReader';
 import { RequestJitter } from '../src/utils/requestJitter.js';
 
 import { fastClock } from './helpers/fastClock.js';
 import { headLookupFinder } from './helpers/headLookupFinder.js';
+import { readerOverPaths } from './helpers/playerReader.js';
 import { waitFor } from './helpers/waiting.js';
+import { SEGMENTS_AS_WRITTEN } from '../src/components/SwarmHlsPlayer/ManifestManagement';
 
 const OWNER = 'aabbcc';
 const POLL_MS = 2;
@@ -58,7 +61,7 @@ function feedHeadPath(topic: Topic): string {
 class FakeGateway {
   public readonly responses = new Map<string, string>();
   public readonly requests: string[] = [];
-  /** Reproduces a proxy that drops the header extractFeedIndex needs, which makes it throw. */
+  /** Reproduces a proxy that drops the `swarm-feed-index` header, so a head lookup carries no index. */
   public stripFeedIndexHeader = false;
   /**
    * Status a missing path is refused with. Set to 404 to model a slot the publisher has not written
@@ -102,12 +105,11 @@ class FakeGateway {
     return () => release();
   }
 
-  /**
-   * A `TimedResponse`, which is what the poller is handed in production: `ManifestFetcher` reads
-   * through `fetchWithTimeout`, so the body arrives already read and inside the bounded window. A
-   * fake returning a `Response` would leave `text` a method the poller never calls.
-   */
-  fetchResource = async (path: string): Promise<TimedResponse> => {
+  /** The player's reads, answered by {@link answerPath}. */
+  readonly reader: PlayerReader = readerOverPaths((path) => this.answerPath(path));
+
+  /** Answers one Bee path, as the gateway the player's reads are asked of. */
+  answerPath = async (path: string): Promise<PathResponse> => {
     this.requests.push(path);
 
     const blocked = this.held.get(path);
@@ -169,7 +171,7 @@ function follow(poller: LadderFeedPoller, owner: string, topics: Topic[], group:
 }
 
 function segmentCount(state: ManifestStateManager, topic: Topic): number {
-  const serialized = state.serialize(topic.toString(), '');
+  const serialized = state.serialize(topic.toString(), SEGMENTS_AS_WRITTEN);
   return serialized ? parseManifest(serialized).segments.length : 0;
 }
 
@@ -188,7 +190,7 @@ describe('LadderFeedPoller', () => {
     gateway.publishSoc(topic, 1, manifest(2));
     gateway.publishSoc(topic, 2, manifest(3));
 
-    const poller = new FastPoller(state, gateway.fetchResource, POLL_MS);
+    const poller = new FastPoller(state, gateway.reader, POLL_MS);
     follow(poller, OWNER, [topic]);
 
     try {
@@ -209,7 +211,7 @@ describe('LadderFeedPoller', () => {
       gateway.publishSoc(topic, i, manifest(i + 1));
     }
 
-    const poller = new FastPoller(state, gateway.fetchResource, 10_000);
+    const poller = new FastPoller(state, gateway.reader, 10_000);
     follow(poller, OWNER, [topic]);
 
     try {
@@ -229,7 +231,7 @@ describe('LadderFeedPoller', () => {
       gateway.publishSoc(topic, 1, manifest(2));
     }
 
-    const poller = new FastPoller(state, gateway.fetchResource, POLL_MS);
+    const poller = new FastPoller(state, gateway.reader, POLL_MS);
     poller.register(
       OWNER,
       topics.map((topic) => ({ topic })),
@@ -264,7 +266,7 @@ describe('LadderFeedPoller', () => {
     gateway.publishFeedHead(topic, 0, manifest(1));
     gateway.publishSoc(topic, 1, manifest(2, true));
 
-    const poller = new FastPoller(state, gateway.fetchResource, POLL_MS);
+    const poller = new FastPoller(state, gateway.reader, POLL_MS);
     follow(poller, OWNER, [topic]);
 
     try {
@@ -295,7 +297,7 @@ describe('LadderFeedPoller', () => {
       gateway.publishSoc(playing, 1, manifest(2, true));
       gateway.publishFeedHead(sibling, 4, manifest(2, true));
 
-      const poller = new FastPoller(state, gateway.fetchResource, POLL_MS, tracker);
+      const poller = new FastPoller(state, gateway.reader, POLL_MS, tracker);
       poller.register(
         OWNER,
         [
@@ -329,7 +331,7 @@ describe('LadderFeedPoller', () => {
       gateway.publishFeedHead(live, 0, manifest(1));
       gateway.publishSoc(live, 1, manifest(2));
 
-      const poller = new FastPoller(state, gateway.fetchResource, POLL_MS, tracker, undefined, undefined, {
+      const poller = new FastPoller(state, gateway.reader, POLL_MS, tracker, undefined, undefined, {
         progressBoundMs: 2_000,
       });
       poller.register(
@@ -359,7 +361,7 @@ describe('LadderFeedPoller', () => {
       const tracker = new FeedHealthTracker();
       gateway.publishFeedHead(topic, 0, manifest(2, true));
 
-      const poller = new FastPoller(state, gateway.fetchResource, POLL_MS, tracker);
+      const poller = new FastPoller(state, gateway.reader, POLL_MS, tracker);
       follow(poller, OWNER, [topic]);
 
       try {
@@ -424,7 +426,7 @@ describe('LadderFeedPoller', () => {
     function watchingPoller(gateway: FakeGateway, tracker: FeedHealthTracker): LadderFeedPoller {
       const poller = new FastPoller(
         state,
-        gateway.fetchResource,
+        gateway.reader,
         POLL_MS,
         tracker,
         () => 0,
@@ -680,7 +682,7 @@ describe('LadderFeedPoller', () => {
     const gateway = new FakeGateway();
     gateway.publishFeedHead(topic, 0, manifest(1));
 
-    const poller = new FastPoller(state, gateway.fetchResource, POLL_MS);
+    const poller = new FastPoller(state, gateway.reader, POLL_MS);
     follow(poller, OWNER, [topic]);
 
     try {
@@ -700,7 +702,7 @@ describe('LadderFeedPoller', () => {
     const gateway = new FakeGateway();
     gateway.publishFeedHead(topic, 0, manifest(1));
 
-    const poller = new FastPoller(state, gateway.fetchResource, POLL_MS);
+    const poller = new FastPoller(state, gateway.reader, POLL_MS);
     follow(poller, OWNER, [topic]);
 
     await poller.ready(topic.toString());
@@ -724,7 +726,7 @@ describe('LadderFeedPoller', () => {
     gateway.publishFeedHead(topic, 0, manifest(1));
     gateway.stripFeedIndexHeader = true;
 
-    const poller = new FastPoller(state, gateway.fetchResource, POLL_MS);
+    const poller = new FastPoller(state, gateway.reader, POLL_MS);
     follow(poller, OWNER, [topic]);
 
     try {
@@ -746,7 +748,7 @@ describe('LadderFeedPoller', () => {
     const gateway = new FakeGateway();
     gateway.publishFeedHead(topic, 0, manifest(1));
 
-    const poller = new FastPoller(state, gateway.fetchResource, POLL_MS);
+    const poller = new FastPoller(state, gateway.reader, POLL_MS);
     follow(poller, OWNER, [topic]);
 
     await waitFor(() => state.getIndex(topic.toString()) !== null, 'bootstrap');
@@ -776,7 +778,7 @@ describe('LadderFeedPoller', () => {
   it('reports a topic as unpolled once stopped, so the loader falls back to reading it itself', () => {
     const topic = Topic.fromString('group-1-720p');
     const gateway = new FakeGateway();
-    const poller = new FastPoller(state, gateway.fetchResource, POLL_MS);
+    const poller = new FastPoller(state, gateway.reader, POLL_MS);
 
     assert.equal(poller.isRegistered(topic.toString()), false);
 
@@ -810,7 +812,7 @@ describe('LadderFeedPoller feed health', () => {
       return health.backoffRemainingMs(hexTopic);
     };
 
-    const poller = new FastPoller(state, gateway.fetchResource, POLL_MS, health, backoffMs);
+    const poller = new FastPoller(state, gateway.reader, POLL_MS, health, backoffMs);
     follow(poller, OWNER, [topic]);
 
     try {
@@ -841,7 +843,7 @@ describe('LadderFeedPoller feed health', () => {
 
     // Backoff held at zero so the outage is reached quickly. This test is about the state reaching a
     // subscriber, not the pacing, which the test above covers.
-    const poller = new FastPoller(state, gateway.fetchResource, POLL_MS, health, () => 0);
+    const poller = new FastPoller(state, gateway.reader, POLL_MS, health, () => 0);
     follow(poller, OWNER, [topic]);
 
     try {
@@ -885,7 +887,7 @@ describe('LadderFeedPoller feed health', () => {
       const health = new FeedHealthTracker(() => 0);
       holdAtTheCap(health, held.toString());
 
-      const poller = new FastPoller(state, gateway.fetchResource, POLL_MS, health, (hexTopic) =>
+      const poller = new FastPoller(state, gateway.reader, POLL_MS, health, (hexTopic) =>
         health.backoffRemainingMs(hexTopic),
       );
       follow(poller, OWNER, [served, held]);
@@ -945,7 +947,7 @@ describe('LadderFeedPoller feed health', () => {
           : Math.max(0, OWED_MS - (performance.now() - startedAt));
       };
 
-      const poller = new FastPoller(state, gateway.fetchResource, SLICE_MS, health, () => jitter.spread(owedMs()));
+      const poller = new FastPoller(state, gateway.reader, SLICE_MS, health, () => jitter.spread(owedMs()));
       follow(poller, OWNER, [topic]);
 
       try {
@@ -974,7 +976,7 @@ describe('LadderFeedPoller feed health', () => {
       const health = new FeedHealthTracker(() => 0);
       holdAtTheCap(health, broken.toString());
 
-      const poller = new FastPoller(state, gateway.fetchResource, POLL_MS, health, (hexTopic) =>
+      const poller = new FastPoller(state, gateway.reader, POLL_MS, health, (hexTopic) =>
         health.backoffRemainingMs(hexTopic),
       );
       follow(poller, OWNER, [served, broken]);
@@ -1016,7 +1018,7 @@ describe('LadderFeedPoller feed health', () => {
     gateway.publishFeedHead(topic, 0, manifest(1));
 
     const health = new FeedHealthTracker(() => 0);
-    const poller = new FastPoller(state, gateway.fetchResource, POLL_MS, health, () => 0);
+    const poller = new FastPoller(state, gateway.reader, POLL_MS, health, () => 0);
     follow(poller, OWNER, [topic]);
 
     try {
@@ -1063,7 +1065,7 @@ describe('LadderFeedPoller telling the viewer the gateway is gone', () => {
     const seen: FeedState[] = [];
     tracker.subscribe(groupHex, (feedState) => seen.push(feedState));
 
-    const poller = new FastPoller(state, gateway.fetchResource, POLL_MS, tracker);
+    const poller = new FastPoller(state, gateway.reader, POLL_MS, tracker);
     follow(poller, OWNER, topics, groupHex);
 
     try {
@@ -1087,7 +1089,7 @@ describe('LadderFeedPoller telling the viewer the gateway is gone', () => {
     gateway.unreachableHeads.add(feedHeadPath(dark));
 
     const tracker = new FeedHealthTracker();
-    const poller = new FastPoller(state, gateway.fetchResource, POLL_MS, tracker);
+    const poller = new FastPoller(state, gateway.reader, POLL_MS, tracker);
     follow(poller, OWNER, [served, dark], groupHex);
 
     try {
@@ -1105,7 +1107,7 @@ describe('LadderFeedPoller telling the viewer the gateway is gone', () => {
     const gateway = new FakeGateway();
     const tracker = new FeedHealthTracker();
 
-    const poller = new FastPoller(state, gateway.fetchResource, POLL_MS, tracker);
+    const poller = new FastPoller(state, gateway.reader, POLL_MS, tracker);
     follow(poller, OWNER, [kept, dropped], groupHex);
     poller.unregister([dropped]);
 
@@ -1143,7 +1145,7 @@ describe('LadderFeedPoller telling the viewer the publisher has gone quiet', () 
     gateway.publishFeedHead(topic, 0, manifest(1));
 
     const tracker = new FeedHealthTracker();
-    const poller = new FastPoller(state, gateway.fetchResource, POLL_MS, tracker);
+    const poller = new FastPoller(state, gateway.reader, POLL_MS, tracker);
     follow(poller, OWNER, [topic], groupHex);
 
     try {
@@ -1161,7 +1163,7 @@ describe('LadderFeedPoller telling the viewer the publisher has gone quiet', () 
     gateway.publishFeedHead(topic, 0, manifest(1));
 
     const tracker = new FeedHealthTracker();
-    const poller = new FastPoller(state, gateway.fetchResource, POLL_MS, tracker);
+    const poller = new FastPoller(state, gateway.reader, POLL_MS, tracker);
     follow(poller, OWNER, [topic], groupHex);
 
     try {
@@ -1180,7 +1182,7 @@ describe('LadderFeedPoller telling the viewer the publisher has gone quiet', () 
     gateway.publishFeedHead(topic, 0, manifest(1));
 
     const tracker = new FeedHealthTracker();
-    const poller = new FastPoller(state, gateway.fetchResource, POLL_MS, tracker);
+    const poller = new FastPoller(state, gateway.reader, POLL_MS, tracker);
     follow(poller, OWNER, [topic], groupHex);
 
     // A long run before the slot lands, and a generous drop after it. At this poll interval the
@@ -1225,7 +1227,7 @@ describe('LadderFeedPoller telling the player a rung has stopped being produced'
     const feedHealth = new FeedHealthTracker(clock.now);
     const stopped: string[] = [];
     feedHealth.onRungStopped((rung) => stopped.push(rung));
-    const poller = new FastPoller(state, gateway.fetchResource, POLL_MS, feedHealth, undefined, undefined, {
+    const poller = new FastPoller(state, gateway.reader, POLL_MS, feedHealth, undefined, undefined, {
       now: clock.now,
       progressBoundMs: 2_000,
     });
@@ -1318,7 +1320,7 @@ describe('LadderFeedPoller asking what is behind a slot the gateway refuses', ()
     const feedHealth = new FeedHealthTracker(clock.now);
     const stopped: string[] = [];
     feedHealth.onRungStopped((rung) => stopped.push(rung));
-    const poller = new FastPoller(state, gateway.fetchResource, POLL_MS, feedHealth, undefined, undefined, {
+    const poller = new FastPoller(state, gateway.reader, POLL_MS, feedHealth, undefined, undefined, {
       now: clock.now,
       progressBoundMs: 2_000,
     });
@@ -1408,7 +1410,7 @@ describe('LadderFeedPoller asking what is behind a slot the gateway refuses', ()
     gateway.publishFeedHead(topic, 0, manifest(1));
 
     const tracker = new FeedHealthTracker();
-    const poller = new FastPoller(state, gateway.fetchResource, POLL_MS, tracker);
+    const poller = new FastPoller(state, gateway.reader, POLL_MS, tracker);
     follow(poller, OWNER, [topic]);
 
     const looksPast = () => gateway.requests.filter((path) => path === socPath(topic, HOLE_AT + 1)).length;
@@ -1453,7 +1455,7 @@ describe('LadderFeedPoller asking what is behind a slot the gateway refuses', ()
     // A poll interval the test cannot outlive, so the whole backlog is consumed without the run of
     // refusals ever reaching the length a probe needs. What is asserted is then the client's rule
     // rather than how fast the machine happened to be.
-    const poller = new FastPoller(state, gateway.fetchResource, 10_000);
+    const poller = new FastPoller(state, gateway.reader, 10_000);
     follow(poller, OWNER, [topic]);
 
     try {

@@ -3,6 +3,8 @@ import { beforeEach, describe, it } from 'vitest';
 
 import { ManifestStateManager } from '../src/components/SwarmHlsPlayer/ManifestManagement';
 import { parseManifest } from '../src/components/SwarmHlsPlayer/playlist';
+import { segmentsUnder } from './helpers/playerReader';
+import { SEGMENTS_AS_WRITTEN } from '../src/components/SwarmHlsPlayer/ManifestManagement';
 
 // Tags a fixture repeats get a name. Single-use header tags stay inline so each fixture still
 // reads like the playlist it stands in for.
@@ -82,7 +84,7 @@ describe('ManifestStateManager serialize', () => {
     const parsed = parseManifest(manifest);
     manager.updateManifest(TOPIC, parsed.headers, parsed.segments, parsed.isFinalized);
 
-    const out = manager.serialize(TOPIC, '');
+    const out = manager.serialize(TOPIC, SEGMENTS_AS_WRITTEN);
 
     assert.ok(
       out.includes(`${DISCONTINUITY}\n${EXTINF_2S}\nseg1.ts`),
@@ -117,7 +119,7 @@ describe('ManifestStateManager serialize', () => {
     const parsed = parseManifest(manifest);
     manager.updateManifest(TOPIC, parsed.headers, parsed.segments, parsed.isFinalized);
 
-    const out = manager.serialize(TOPIC, '');
+    const out = manager.serialize(TOPIC, SEGMENTS_AS_WRITTEN);
 
     assert.ok(out.includes(`${PDT_0}\n${EXTINF_2S}\nseg0.ts`), `seg0 lost its wall clock, got:\n${out}`);
     assert.ok(out.includes(`${PDT_1}\n${EXTINF_2S}\nseg1.ts`), `seg1 lost its wall clock, got:\n${out}`);
@@ -129,7 +131,7 @@ describe('ManifestStateManager serialize', () => {
     const parsed = parseManifest(manifest);
     manager.updateManifest(TOPIC, parsed.headers, parsed.segments, parsed.isFinalized);
 
-    const out = manager.serialize(TOPIC, '');
+    const out = manager.serialize(TOPIC, SEGMENTS_AS_WRITTEN);
 
     assert.ok(out.includes(`${DISCONTINUITY}\n${PDT_1}\n${EXTINF_2S}\nseg1.ts`), `got:\n${out}`);
   });
@@ -140,7 +142,7 @@ describe('ManifestStateManager serialize', () => {
     const parsed = parseManifest(manifest);
     manager.updateManifest(TOPIC, parsed.headers, parsed.segments, parsed.isFinalized);
 
-    assert.ok(!manager.serialize(TOPIC, '').includes(PROGRAM_DATE_TIME));
+    assert.ok(!manager.serialize(TOPIC, SEGMENTS_AS_WRITTEN).includes(PROGRAM_DATE_TIME));
   });
 
   it('keeps the media sequence of the first playlist instead of rewinding it to zero', () => {
@@ -165,7 +167,7 @@ describe('ManifestStateManager serialize', () => {
     const parsed = parseManifest(first);
     manager.updateManifest(TOPIC, parsed.headers, parsed.segments, parsed.isFinalized);
 
-    const out = manager.serialize(TOPIC, '');
+    const out = manager.serialize(TOPIC, SEGMENTS_AS_WRITTEN);
 
     assert.ok(out.includes('#EXT-X-MEDIA-SEQUENCE:4'), `the publisher's own sequence must survive, got:\n${out}`);
     assert.ok(!out.includes('#EXT-X-MEDIA-SEQUENCE:0'), `must not rewind a joining viewer to zero, got:\n${out}`);
@@ -191,7 +193,7 @@ describe('ManifestStateManager serialize', () => {
     const parsed = parseManifest(recording);
     manager.updateManifest(TOPIC, parsed.headers, parsed.segments, parsed.isFinalized);
 
-    const out = manager.serialize(TOPIC, '');
+    const out = manager.serialize(TOPIC, SEGMENTS_AS_WRITTEN);
 
     // hls.js refuses a playlist whose first line is not this, with `Missing format identifier
     // #EXTM3U`, and reports it as a fatal error rather than as a bad playlist.
@@ -207,7 +209,7 @@ describe('ManifestStateManager serialize', () => {
     const parsed1 = parseManifest(manifest1);
     manager.updateManifest(TOPIC, parsed1.headers, parsed1.segments, parsed1.isFinalized);
 
-    const out1 = manager.serialize(TOPIC, '');
+    const out1 = manager.serialize(TOPIC, SEGMENTS_AS_WRITTEN);
     assert.ok(out1.includes(`${DISCONTINUITY}\n${EXTINF_2S}\nseg1.ts`), 'Poll 1: expected discontinuity before seg1');
 
     // Poll 2: same segments but NO discontinuity tag in the manifest
@@ -220,7 +222,7 @@ describe('ManifestStateManager serialize', () => {
 
     manager.updateManifest(TOPIC, parsed2.headers, parsed2.segments, parsed2.isFinalized);
 
-    const out2 = manager.serialize(TOPIC, '');
+    const out2 = manager.serialize(TOPIC, SEGMENTS_AS_WRITTEN);
     // CRITICAL: Does seg1 still have the discontinuity flag?
     // The dedup logic should have ignored seg0 and seg1 (already in state), and only added seg2.
     // This means state.segments[1] (the original seg1 with discontinuity=true) is UNCHANGED.
@@ -260,7 +262,7 @@ describe('a gap entry as a viewer rebuilds it', () => {
   it('writes the tag back before the entry it belongs to', () => {
     hold(withHole);
 
-    const out = manager.serialize(TOPIC, '');
+    const out = manager.serialize(TOPIC, SEGMENTS_AS_WRITTEN);
 
     assert.ok(out.includes(`${GAP}\n${PDT_1}\n${EXTINF_2S}\ngap-1`), `the gap lost its tag, got:\n${out}`);
     assert.equal(out.split(GAP).length - 1, 1, `one tag per gap entry, got:\n${out}`);
@@ -275,7 +277,7 @@ describe('a gap entry as a viewer rebuilds it', () => {
   it('leaves a gap URI alone while re-hosting the media around it', () => {
     hold(withHole);
 
-    const out = manager.serialize(TOPIC, GATEWAY);
+    const out = manager.serialize(TOPIC, segmentsUnder(GATEWAY));
 
     assert.ok(out.includes(`${EXTINF_2S}\ngap-1`), `a gap URI must not be re-hosted, got:\n${out}`);
     assert.ok(out.includes(`${EXTINF_2S}\n${GATEWAY}/${REF_0}`), `the media around it must be, got:\n${out}`);
@@ -285,7 +287,7 @@ describe('a gap entry as a viewer rebuilds it', () => {
     hold(withHole);
 
     const entries = manager
-      .serialize(TOPIC, '')
+      .serialize(TOPIC, SEGMENTS_AS_WRITTEN)
       .split('\n')
       .filter((line) => line && !line.startsWith('#'));
 
@@ -301,7 +303,7 @@ describe('a gap entry as a viewer rebuilds it', () => {
     hold(withHole);
     hold(withHole);
 
-    const out = manager.serialize(TOPIC, '');
+    const out = manager.serialize(TOPIC, SEGMENTS_AS_WRITTEN);
 
     assert.equal(out.split('gap-1').length - 1, 1, `the gap doubled on a re-poll, got:\n${out}`);
   });
@@ -311,7 +313,7 @@ describe('a gap entry as a viewer rebuilds it', () => {
     hold([M3U, GAP, PDT_1, EXTINF_2S, 'gap-1', PDT_2, EXTINF_2S, REF_2, '#EXT-X-ENDLIST'].join('\n'));
 
     const entries = manager
-      .serialize(TOPIC, '')
+      .serialize(TOPIC, SEGMENTS_AS_WRITTEN)
       .split('\n')
       .filter((line) => line && !line.startsWith('#'));
 
@@ -347,8 +349,8 @@ describe('a cached manifest belongs to the gateway it was built for', () => {
     const state = ManifestStateManager.getInstance();
     state.updateManifest(TOPIC, [M3U], [{ extinf: EXTINF_2S, uri: 'abc123' }], false);
 
-    const first = state.serialize(TOPIC, FUNDED);
-    const second = state.serialize(TOPIC, UNFUNDED);
+    const first = state.serialize(TOPIC, segmentsUnder(FUNDED));
+    const second = state.serialize(TOPIC, segmentsUnder(UNFUNDED));
 
     assert.match(first, /10077/);
     assert.match(second, /10087/, `asked for the unfunded gateway and got back: ${second}`);

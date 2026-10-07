@@ -605,14 +605,17 @@ export class FeedHealthTracker {
    * A gateway that answered with a failure, or did not answer. Counted apart from an unserved slot:
    * this one gets asked less often, because asking a gateway that is down every two seconds for as
    * long as the tab is open helps nobody and adds load to something already struggling.
+   *
+   * @param atLeastMs The wait the gateway itself asked for, a rate limit's Retry-After, which the
+   *   backoff never undercuts.
    */
-  recordGatewayFailure(topicId: string): void {
+  recordGatewayFailure(topicId: string, atLeastMs = 0): void {
     this.update(topicId, (health) => {
       const gatewayFailures = health.gatewayFailures + 1;
       return {
         ...health,
         gatewayFailures,
-        retryAtMs: this.now() + backoffDelayMs(gatewayFailures),
+        retryAtMs: this.now() + Math.max(backoffDelayMs(gatewayFailures), atLeastMs),
         // ⛔⛔⛔ **The unserved run ends here, and leaving it running cost a viewer their picture.**
         // An unserved slot means the gateway ANSWERED and had nothing in it. A gateway that did not
         // answer is no evidence at all about the slot, so a run carried through an outage measures

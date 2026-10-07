@@ -3,14 +3,15 @@ import assert from 'node:assert/strict';
 import { describe, it } from 'vitest';
 
 import { RungFeedReader } from '../../src/components/SwarmHlsPlayer/rungFeedReader.js';
-import type { TimedResponse } from '../../src/utils/fetchWithTimeout.js';
+import type { PathResponse } from '../helpers/playerReader';
+import { readerOverPaths } from '../helpers/playerReader.js';
 
 const OWNER = 'a1'.repeat(20);
 const TOPIC = Topic.fromString('rung-feed-reader-test');
 
 function readerAnswering(text: string): RungFeedReader {
-  const fetchResource = async (): Promise<TimedResponse> => ({ ok: true, status: 200, headers: new Headers(), text });
-  return new RungFeedReader(fetchResource, OWNER, TOPIC, () => 0);
+  const answerPath = async (): Promise<PathResponse> => ({ ok: true, status: 200, headers: new Headers(), text });
+  return new RungFeedReader(readerOverPaths(answerPath), OWNER, TOPIC, () => 0);
 }
 
 describe('reading one slot of a quality', () => {

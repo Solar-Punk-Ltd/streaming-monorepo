@@ -1,29 +1,13 @@
+import { FetchTimeoutError } from './fetchTimeoutError';
+
+export { FetchTimeoutError };
+
 /**
  * How long any client request may wait before it is given up on, headers and body together. Node and
  * browsers both leave `fetch` with no timeout of its own, so a gateway that accepts the connection
  * and then goes silent holds the request open until the tab is closed.
  */
 export const DEFAULT_FETCH_TIMEOUT_MS = 10_000;
-
-/** Raised in place of a bare `AbortError` so a caller can tell a timeout from a cancelled request. */
-export class FetchTimeoutError extends Error {
-  /**
-   * Whatever the request actually rejected with. Declared rather than passed to `super`, because the
-   * options form of the `Error` constructor is newer than this bundle's `build.target` and would be
-   * dropped in silence on the older engines that target promises.
-   */
-  readonly cause?: unknown;
-
-  constructor(
-    readonly url: string,
-    readonly timeoutMs: number,
-    cause?: unknown,
-  ) {
-    super(`Request to ${url} timed out after ${timeoutMs}ms`);
-    this.name = 'FetchTimeoutError';
-    this.cause = cause;
-  }
-}
 
 /** What a caller gets back: the body already read, plus the parts of the response worth keeping. */
 export interface TimedResponse {
