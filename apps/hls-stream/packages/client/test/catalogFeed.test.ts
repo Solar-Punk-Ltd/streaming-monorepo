@@ -292,8 +292,7 @@ describe('CatalogFeedReader', () => {
    * carries the whole catalog rather than a delta, so the broadcast announced in the dropped slot was
    * never offered to this reader again.
    *
-   * `fetchWithTimeout` rejects on a transport failure and on its own timeout, and answers `ok: false`
-   * only for an HTTP status, so this is the ordinary shape of a gateway going slow mid-walk.
+   * A read that got no answer at all is the ordinary shape of a gateway going away mid-walk.
    */
   it('keeps the slot it already read when a later step of the same walk throws', async () => {
     const { fetcher } = stubFetcher([
