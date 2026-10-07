@@ -132,7 +132,7 @@ export const DROPPED_SEGMENTS_METRIC = `${METRICS_PREFIX}_${DROPPED_SEGMENTS_FAM
  * ⚠️ Mirrors `HEALTH_REASON_SEGMENT_UPLOAD_FAILURE` in `packages/stream-uploader/src/types.ts`, and
  * `test/batchDrainMirrors.test.ts` refuses the two drifting apart. e2e must not reach past a package
  * boundary into another package's internals, so this is the same mirror-and-prove arrangement
- * `rungDeathAgreement.test.ts` uses for the two rung-death limits.
+ * `rungDeathAgreement.test.ts` uses for the uploader's rung-death limits.
  */
 export const HEALTH_REASON_SEGMENT_UPLOAD_FAILURE = 'segment_upload_failure';
 
