@@ -6,9 +6,9 @@
  * those had happened. Everything here is pure or takes an injected prober, because this package runs
  * vitest without a DOM and a rule left inside the component is a rule nothing covers.
  */
+import { createSwarmClient } from '@/swarm/createSwarmClient';
 import { PROBE_TIMEOUT_MS, type ProbeResult, type ReadOptions } from '@/swarm/provider';
-import { PROVIDER_REGISTRY } from '@/swarm/registry';
-import { OWN_GATEWAY_ID } from '@/swarm/settings';
+import { type GatewaySetting, OWN_GATEWAY_ID, type SwarmSettings } from '@/swarm/settings';
 
 /** Both a viewer's typing and a saved address, since every caller joins with a path of its own. */
 function withoutTrailingSlash(url: string): string {
@@ -89,9 +89,14 @@ type GatewayProbeOutcome =
 /** What can ask an address whether a Swarm node is there: a provider's own probe. */
 type Prober = (gatewayUrl: string) => { probe(options?: ReadOptions): Promise<ProbeResult> };
 
+/** The settings of one gateway alone, with no fallback, so a test of it is a test of it and nothing else. */
+function onlyGateway(gateway: GatewaySetting): SwarmSettings {
+  return { gateways: [gateway], defaultId: gateway.id, fallbackId: null, kinds: [gateway.kind] };
+}
+
 /** A Bee node over HTTP at the address, which is the kind of node the picker offers to use. */
 const beeHttpProber: Prober = (gatewayUrl) =>
-  PROVIDER_REGISTRY['bee-http'].create({ id: OWN_GATEWAY_ID, kind: 'bee-http', url: gatewayUrl }, {});
+  createSwarmClient(onlyGateway({ id: OWN_GATEWAY_ID, kind: 'bee-http', url: gatewayUrl }));
 
 interface GatewayProbeOptions {
   /** Injected only by tests. Production asks the Bee HTTP provider the picker would switch to. */

@@ -61,6 +61,23 @@ describe('the Swarm layer', () => {
 });
 
 /**
+ * The modules of the Swarm layer everything outside it may import: the client and what it reads in. A
+ * provider's own files and the registry of kinds stay behind it, so a new kind of provider changes
+ * nothing outside `src/swarm`.
+ */
+const PUBLIC_SURFACE = ['client', 'answers', 'provider', 'settings', 'createSwarmClient'].map((name) =>
+  join(SWARM, name),
+);
+
+function importsPastTheSurface(file: string): string[] {
+  const source = readFileSync(file, 'utf8');
+  return [...source.matchAll(SPECIFIERS)]
+    .map(([, specifier]) => ({ specifier, target: resolvedPath(specifier, file) }))
+    .filter(({ target }) => target !== null && target.startsWith(`${SWARM}/`) && !PUBLIC_SURFACE.includes(target))
+    .map(({ specifier }) => `${relative(ROOT, file)} imports ${specifier}`);
+}
+
+/**
  * What reaching Swarm directly looks like in a source line: a gateway joined onto a Bee path, a call
  * of the global fetch, a Bee client of its own, and the two ways a page loads a URL without fetch. A
  * method that is merely named `fetch` is not one.
@@ -98,6 +115,12 @@ describe('everything outside the Swarm layer', () => {
 
     expect(files.length).toBeGreaterThan(0);
     expect(files.flatMap(directAccessIn)).toEqual([]);
+  });
+
+  it("imports only the Swarm client's public surface", () => {
+    const files = sourceFiles(SRC).filter((file) => !file.startsWith(`${SWARM}/`));
+
+    expect(files.flatMap(importsPastTheSurface)).toEqual([]);
   });
 
   it.each([
