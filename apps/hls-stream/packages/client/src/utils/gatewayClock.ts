@@ -4,8 +4,8 @@
  * A ladder's time markers sit at addresses computed from the wall clock, ten seconds a period, so a
  * viewer whose clock is a minute off would ask for six periods that do not exist yet or are long
  * gone. The gateway's clock is close to the uploader's, both being servers, so the `Date` header of
- * every answer the Swarm client reads is the reference. An answer without one leaves the correction
- * as it was.
+ * every answer the Swarm client reads for the player and the stream list is the reference. An answer
+ * without one leaves the correction as it was.
  *
  * A browser only shows a cross-origin response's `Date` when the gateway lists it in
  * `Access-Control-Expose-Headers`. Without that the correction stays zero, and a marker missed for a
@@ -31,5 +31,5 @@ export class GatewayClock {
   }
 }
 
-/** The one the Swarm client feeds from every answer and the player reads, so all see the same correction. */
+/** The one the Swarm client feeds from the player's and the stream list's answers and the player reads. */
 export const gatewayClock = new GatewayClock();

@@ -87,7 +87,7 @@ function loadGatewayUrl(): string {
 
 /**
  * The client for the gateway at `address`, sharing the one gateway clock the player's time markers
- * read, so every answer's server time corrects them and not only the stream list's.
+ * read, so the server time of the player's answers corrects them and not only the stream list's.
  */
 function swarmClientFor(address: string): SwarmClient {
   return createSwarmClient(SWARM_SETTINGS, {

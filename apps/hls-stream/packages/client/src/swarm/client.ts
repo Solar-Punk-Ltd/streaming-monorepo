@@ -10,6 +10,13 @@ const SWARM_FEATURES = ['player', 'stream-list', 'previews'] as const;
 
 export type SwarmFeature = (typeof SWARM_FEATURES)[number];
 
+/**
+ * The features whose answers keep the gateway clock. The player's time markers sit at addresses
+ * computed from that clock, so it is taken from the hosts the player and the stream list read, and a
+ * feature routed to a host of its own cannot move it.
+ */
+const CLOCK_FEATURES: ReadonlySet<SwarmFeature> = new Set<SwarmFeature>(['player', 'stream-list']);
+
 type ReadKind = 'feed-head' | 'feed-entry' | 'soc' | 'chunk' | 'bytes';
 
 /** A provider with the name the counts and the health report give it, such as a gateway's id in the settings. */
@@ -87,7 +94,8 @@ const ASK_ANOTHER: ReadonlySet<AnswerKind> = new Set<AnswerKind>(['unavailable',
 /**
  * The one way the app reads Swarm. It holds the chosen provider and a fallback, decides for each
  * feature which provider answers, leaves a provider that keeps failing alone for a while and then
- * tries it again, counts every read, and keeps the gateway's clock from every answer's server time.
+ * tries it again, counts every read, and keeps the gateway's clock from the server time of the
+ * player's and the stream list's answers.
  *
  * A paused provider is skipped only while another provider can be asked. When every provider for a
  * read is paused the feature's own provider is asked anyway, because a pause is a preference between
@@ -176,7 +184,7 @@ export class SwarmClient {
       this.count(feature, read, id, answer.kind);
       this.noteHealth(id, answer);
       const serverTimeMs = serverTimeOf(answer);
-      if (serverTimeMs !== null) {
+      if (serverTimeMs !== null && CLOCK_FEATURES.has(feature)) {
         this.clock.noteServerTime(serverTimeMs);
       }
       if (!ASK_ANOTHER.has(answer.kind)) {

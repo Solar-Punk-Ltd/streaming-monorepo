@@ -166,7 +166,7 @@ export class CatalogFeedReader {
    *
    * @param source The gateway's reads, which the Swarm client's stream-list reader gives. Each read has
    *   its ten second window, headers and body together, and the client keeps the gateway clock from
-   *   every answer's `Date`, which is where the player's time markers take the time from.
+   *   each of its answers' `Date`, which is where the player's time markers take the time from.
    */
   public async read(source: CatalogSource, signal?: AbortSignal): Promise<CatalogSnapshot | null> {
     // Pinned before the first await and carried through, so every write this read makes is checked

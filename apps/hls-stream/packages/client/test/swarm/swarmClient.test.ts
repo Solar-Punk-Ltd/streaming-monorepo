@@ -295,15 +295,29 @@ describe('the Swarm client', () => {
   });
 
   describe('the gateway clock', () => {
-    it('learns the offset from the server time of any answer, whichever feature read it', async () => {
+    it.each(['player', 'stream-list'] as const)(
+      'learns the offset from the server time of a %s answer',
+      async (feature) => {
+        const gatewayMs = Date.UTC(2026, 9, 7, 12, 0, 30);
+        const clock = new GatewayClock(() => gatewayMs - 60_000);
+        const { chosen, client } = world({ clock });
+        chosen.answer = { kind: 'not-found', serverTimeMs: gatewayMs };
+
+        await client.reader(feature).readFeedEntry(OWNER, TOPIC, 9);
+
+        expect(client.clockOffsetMs()).toBe(60_500);
+      },
+    );
+
+    it('is not moved by a previews answer, so only what the player and the stream list read sets it', async () => {
       const gatewayMs = Date.UTC(2026, 9, 7, 12, 0, 30);
       const clock = new GatewayClock(() => gatewayMs - 60_000);
       const { chosen, client } = world({ clock });
       chosen.answer = { kind: 'not-found', serverTimeMs: gatewayMs };
 
-      await client.reader('player').readFeedEntry(OWNER, TOPIC, 9);
+      await client.reader('previews').readChunk(REFERENCE);
 
-      expect(client.clockOffsetMs()).toBe(60_500);
+      expect(client.clockOffsetMs()).toBe(0);
     });
 
     it('keeps the offset it had when an answer carries no server time', async () => {

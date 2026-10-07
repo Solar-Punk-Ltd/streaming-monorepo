@@ -178,12 +178,12 @@ describe("the app's Swarm client", () => {
     ).toEqual([{ feature: 'player', read: 'feed-head', provider: 'own-node', answer: 'not-found', count: 1 }]);
   });
 
-  it("keeps the shared gateway clock from every answer's server time", async () => {
+  it("keeps the shared gateway clock from the player's answers' server time", async () => {
     const { gatewayClock } = await start();
     const before = gatewayClock.offsetMs();
 
     serverDate = 'Thu, 01 Jan 2099 00:00:00 GMT';
-    await current().swarm.reader('previews').readBytes(REFERENCE);
+    await current().swarm.reader('player').readBytes(REFERENCE);
 
     expect(gatewayClock.offsetMs()).toBeGreaterThan(before);
   });
