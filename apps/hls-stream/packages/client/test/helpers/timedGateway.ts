@@ -4,6 +4,13 @@ import { makeFeedIdentifier } from '@swarm-hls-stream/shared';
 import type { NewestIndexFinder } from '../../src/components/SwarmHlsPlayer/newestIndexFinder.js';
 import { ManifestFetchError } from '../../src/components/SwarmHlsPlayer/refusedSlot.js';
 import { TimedResponse } from '../../src/utils/fetchWithTimeout.js';
+import {
+  encodeLadderMarker,
+  type LadderMarker,
+  ladderMarkerIdentifier,
+  markerPeriodAt,
+  markerPeriodStartMs,
+} from '@swarm-hls-stream/shared';
 
 import type { VirtualTime } from '../feedModel/virtualTime.js';
 
@@ -34,6 +41,24 @@ export interface TimedRead {
   readonly found: boolean;
 }
 
+export interface MarkerRead {
+  readonly period: number;
+  readonly atMs: number;
+  readonly found: boolean;
+}
+
+interface MarkerShape {
+  /** How long into its period the uploader writes a marker. */
+  readonly writeDelayMs: number;
+  /** Whether a period has no marker, as when the uploader's write failed or it writes none at all. */
+  readonly omitted: (period: number) => boolean;
+  /** The body served for a marker, the uploader's own encoding unless a test garbles it. */
+  readonly body: (marker: LadderMarker) => string;
+}
+
+/** How many periods either side of now a marker read is recognised in. */
+const MARKER_PERIODS_RECOGNISED = 6;
+
 /**
  * A gateway on simulated time serving live feeds that gain one index every two seconds, each readable
  * `lagMs` after its newest segment ends, every read answered after `roundTripMs`. Whether a slot is
@@ -42,8 +67,10 @@ export interface TimedRead {
  */
 export class TimedGateway {
   readonly reads: TimedRead[] = [];
+  readonly markerReads: MarkerRead[] = [];
   private readonly feeds = new Map<string, TimedFeed>();
   private readonly slots = new Map<string, { hex: string; index: number }>();
+  private markers: { readonly group: Topic; readonly shape: MarkerShape } | null = null;
 
   constructor(
     private readonly time: VirtualTime,
@@ -115,10 +142,44 @@ export class TimedGateway {
     return lines.join('\n');
   }
 
+  /**
+   * Writes this ladder's time markers as the uploader does: one per period of every feed added, naming
+   * each feed's newest index at the moment it is written.
+   */
+  serveMarkers(group: Topic, shape: Partial<MarkerShape> = {}): void {
+    this.markers = {
+      group,
+      shape: {
+        writeDelayMs: shape.writeDelayMs ?? 250,
+        omitted: shape.omitted ?? (() => false),
+        body: shape.body ?? ((marker) => new TextDecoder().decode(encodeLadderMarker(marker))),
+      },
+    };
+  }
+
+  /** The marker the uploader wrote for a period, or null when there is none to read yet. */
+  markerAt(period: number, atMs: number): LadderMarker | null {
+    if (this.markers === null || this.markers.shape.omitted(period)) {
+      return null;
+    }
+    const writtenAt = markerPeriodStartMs(period) + this.markers.shape.writeDelayMs;
+    if (atMs < writtenAt) {
+      return null;
+    }
+    const rungs: Record<string, number> = {};
+    for (const feed of this.feeds.values()) {
+      const newest = this.newestAt(feed.topic, writtenAt);
+      if (newest >= 0) {
+        rungs[feed.topic.toHex()] = newest;
+      }
+    }
+    return Object.keys(rungs).length === 0 ? null : { v: 1, period, writtenAt, rungs };
+  }
+
   fetchResource = (path: string): Promise<TimedResponse> => {
     const slot = this.slots.get(path);
     if (!slot) {
-      return Promise.reject(new ManifestFetchError(path, 404));
+      return this.readMarker(path);
     }
     const feed = this.feedOf(slot.hex);
     const askedAtMs = this.time.trueNowMs;
@@ -134,6 +195,36 @@ export class TimedGateway {
       });
     });
   };
+
+  private readMarker(path: string): Promise<TimedResponse> {
+    const askedAtMs = this.time.trueNowMs;
+    const now = markerPeriodAt(askedAtMs);
+    let period: number | null = null;
+    for (let candidate = now - MARKER_PERIODS_RECOGNISED; candidate <= now + MARKER_PERIODS_RECOGNISED; candidate++) {
+      if (
+        this.markers !== null &&
+        candidate >= 0 &&
+        path === `soc/${this.owner}/${ladderMarkerIdentifier(this.markers.group, candidate).toHex()}`
+      ) {
+        period = candidate;
+      }
+    }
+    if (period === null || this.markers === null) {
+      return Promise.reject(new ManifestFetchError(path, 404));
+    }
+    const marker = this.markerAt(period, askedAtMs);
+    this.markerReads.push({ period, atMs: askedAtMs, found: marker !== null });
+    const body = marker === null ? null : this.markers.shape.body(marker);
+    return new Promise((resolve, reject) => {
+      this.time.at(askedAtMs + this.roundTripMs, () => {
+        if (body === null) {
+          reject(new ManifestFetchError(path, 404));
+        } else {
+          resolve({ ok: true, status: 200, headers: new Headers(), text: body });
+        }
+      });
+    });
+  }
 
   /**
    * A finder that knows the head without searching, reading only the newest slot. For a case about

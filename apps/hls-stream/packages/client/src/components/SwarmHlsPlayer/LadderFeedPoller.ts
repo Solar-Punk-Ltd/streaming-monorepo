@@ -8,7 +8,7 @@ import { FeedHealthTracker, UNSERVED_SLOT_STALL_MS } from './feedState';
 import type { FeedEntry, FeedReader, FollowClock } from './following/feedReader';
 import { followPredicted } from './following/followPredicted';
 import { ManifestStateManager } from './ManifestManagement';
-import { IndexSearchFinder, NewestIndex, NewestIndexFinder, SwitchHint } from './newestIndexFinder';
+import { FeedRung, IndexSearchFinder, NewestIndex, NewestIndexFinder, SwitchHint } from './newestIndexFinder';
 import { parseManifest } from './playlist';
 import { isSlotNotWrittenYet } from './refusedSlot';
 import { feedEntryOf, RungFeedReader } from './rungFeedReader';
@@ -35,7 +35,7 @@ const DEFAULT_POLL_INTERVAL_MS = 750;
  * The wall clock, which a rung is followed and searched on. The strategies compare it with
  * PROGRAM-DATE-TIME stamps, so it has to be the viewer's idea of the date, not a monotonic count.
  */
-const WALL_CLOCK: FollowClock = {
+export const WALL_CLOCK: FollowClock = {
   now: () => Date.now(),
   sleep: (ms) => new Promise((resolve) => setTimeout(resolve, ms)),
 };
@@ -563,7 +563,7 @@ export class LadderFeedPoller {
    */
   private async bootstrap(entry: RungEntry, walk: Walk): Promise<boolean> {
     const playing = this.playingBeside(entry);
-    const rung = { owner: entry.owner, topic: entry.topic };
+    const rung = feedRungOf(entry);
 
     // A feed found empty gains slot 0 first, so one read says when to search again, where a search
     // from nothing would cost a round of eight each time.
@@ -820,7 +820,7 @@ export class LadderFeedPoller {
 
     let found: NewestIndex | null;
     try {
-      found = await this.finder.findNewest({ owner: sibling.owner, topic: sibling.topic }, hint);
+      found = await this.finder.findNewest(feedRungOf(sibling), hint);
     } catch {
       // Nothing to confirm with. The playing rung's own ENDLIST is the stronger evidence.
       found = null;
@@ -998,4 +998,9 @@ export class LadderFeedPoller {
       );
     }
   }
+}
+
+/** A rung as the finder is asked about it, with the ladder whose time markers name it. */
+function feedRungOf(entry: RungEntry): FeedRung {
+  return { owner: entry.owner, topic: entry.topic, group: entry.ladder.group };
 }

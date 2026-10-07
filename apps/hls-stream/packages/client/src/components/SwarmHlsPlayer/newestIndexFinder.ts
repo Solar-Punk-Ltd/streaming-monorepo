@@ -13,6 +13,11 @@ export type { SwitchHint };
 export interface FeedRung {
   readonly owner: string;
   readonly topic: Topic;
+  /**
+   * The ladder's master feed topic in hex, which is where its time markers are found, or null for a
+   * rung of no known ladder. The rung's owner is the ladder's signer, who writes the markers too.
+   */
+  readonly group?: string | null;
 }
 
 /** A rung's newest index and the playlist published at it. */

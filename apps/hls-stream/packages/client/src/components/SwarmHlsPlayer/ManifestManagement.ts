@@ -15,11 +15,13 @@ import Pqueue from 'p-queue';
 import { Rendition } from '@/types/stream';
 import { config } from '@/utils/config';
 import { fetchWithTimeout, TimedResponse } from '@/utils/fetchWithTimeout';
+import { gatewayClock } from '@/utils/gatewayClock';
 import { RequestJitter } from '@/utils/requestJitter';
 
 import { FEED_RETURN_WATCH_INTERVAL_MS, FeedReturnWatch, feedReturnWatchWaitMs } from './feedReturn';
 import { FeedHealthTracker, UNSERVED_POLLS_PROBE_CEILING } from './feedState';
-import { LadderFeedPoller, type LadderRung } from './LadderFeedPoller';
+import { LadderFeedPoller, type LadderRung, WALL_CLOCK } from './LadderFeedPoller';
+import { MarkerFinder } from './markerFinder';
 import { absoluteBytesBase, buildMasterPlaylist, isMasterPlaylist, masterRungs, parseSwarmUri } from './playlist';
 import { isSlotNotWrittenYet, ManifestFetchError, probePastRefusal, shouldProbePastRefusal } from './refusedSlot';
 
@@ -537,15 +539,20 @@ export class ManifestFetcher {
     // gateway mid-session moves the walk with it. It also shares this instance's feed health and
     // computes its backoff through the same jitter, so a ladder outage records and paces exactly as
     // the single-rendition path does rather than polling a dead gateway flat. A finished rung's watch
-    // draws its waits through that jitter too, as the single rendition's does.
+    // draws its waits through that jitter too, as the single rendition's does. A rung's newest index is
+    // found from the ladder's time marker, on the clock the stream list's answers corrected.
+    const fetchThrough = (path: string) => this.fetchResource(path);
     this.poller = new LadderFeedPoller(
       stateManager,
-      (path) => this.fetchResource(path),
+      fetchThrough,
       pollIntervalMs,
       this.feedHealth,
       (hexTopic) => this.jitter.spread(this.feedHealth.backoffRemainingMs(hexTopic)),
       () => this.drawReturnWatchWaitMs(),
-      { playheadMs: (group) => (group === null ? null : (this.playheads.get(group)?.() ?? null)) },
+      {
+        playheadMs: (group) => (group === null ? null : (this.playheads.get(group)?.() ?? null)),
+        finder: new MarkerFinder(fetchThrough, WALL_CLOCK, () => gatewayClock.offsetMs()),
+      },
     );
   }
 

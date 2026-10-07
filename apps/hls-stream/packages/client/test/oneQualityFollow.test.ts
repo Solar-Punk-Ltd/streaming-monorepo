@@ -168,6 +168,31 @@ describe('Q1: only the rung that plays is walked', () => {
     assert.equal(poller.isActive(hex(TOP)), false);
   });
 
+  it("hands the finder the ladder's group, where its time markers are found, at a start and at a switch", async () => {
+    const groups: (string | null | undefined)[] = [];
+    const { gateway, poller } = makeRig({
+      finderFor: (gateway) => {
+        const search = new IndexSearchFinder(gateway.fetchResource, fastClock(FOLLOW_SPEED));
+        return {
+          findNewest(rung, hint) {
+            groups.push(rung.group);
+            return search.findNewest(rung, hint);
+          },
+        };
+      },
+    });
+    gateway.publishLive(TOP, 'top', 7);
+    gateway.publishLive(MID, 'mid', 7);
+    poller.register(OWNER, RUNGS, GROUP);
+
+    poller.activate(hex(TOP));
+    await poller.ready(hex(TOP));
+    poller.activate(hex(MID));
+    await poller.ready(hex(MID));
+
+    assert.deepEqual(groups, [GROUP, GROUP]);
+  });
+
   it('hands the finder the playing rung newest slot as a hint, and walks whatever the finder says is newest', async () => {
     const hints: unknown[] = [];
     const { gateway, poller } = makeRig({

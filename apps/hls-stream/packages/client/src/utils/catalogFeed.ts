@@ -2,6 +2,7 @@ import { FeedIndex, Topic } from '@ethersphere/bee-js';
 import { nextFeedRequest, resolvedFeedIndex } from '@swarm-hls-stream/shared';
 
 import { fetchWithTimeout, TimedResponse } from './fetchWithTimeout';
+import { GatewayClock, gatewayClock } from './gatewayClock';
 
 /**
  * How far a single read will walk forward before giving up and finishing on the next one.
@@ -94,6 +95,8 @@ export class CatalogFeedReader {
     private readonly owner: string,
     private readonly topic: Topic,
     private readonly fetcher: typeof fetchWithTimeout = fetchWithTimeout,
+    /** Corrected from every answer's `Date`, which is where the player's time markers take the time from. */
+    private readonly clock: GatewayClock = gatewayClock,
   ) {}
 
   /** The slot this reader has read, or null before its first successful read. Diagnostics and tests. */
@@ -145,6 +148,7 @@ export class CatalogFeedReader {
       let response: TimedResponse;
       try {
         response = await this.fetcher(`${gatewayUrl}/${request.path}`, { signal });
+        this.clock.noteResponse(response.headers);
       } catch (error) {
         // A throw is not the same shape as a refusal and must not lose what the walk already read.
         // `this.index` is committed per slot, inside this loop, while the body is only handed back
@@ -211,6 +215,7 @@ export class CatalogFeedReader {
   ): Promise<CatalogSnapshot | null> {
     const request = nextFeedRequest(this.owner, this.topic, null);
     const response = await this.fetcher(`${gatewayUrl}/${request.path}`, { signal });
+    this.clock.noteResponse(response.headers);
     // A catalog nobody has broadcast to has no head, which is nothing to show rather than a fault.
     if (response.status === SLOT_NOT_WRITTEN_YET) {
       return null;

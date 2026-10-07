@@ -274,7 +274,10 @@ describe('the ladder entry points', () => {
       assert.deepEqual(requested, [], 'starting playback read something before hls.js asked for a level');
 
       await fetcher.fetch(`${OWNER}/${FOUR[3].topic}`);
-      assert.equal(rungOf(requested[0]), FOUR_TOPICS[3], 'the first read was not the start rung');
+      // Before it, the ladder's time markers are asked for, which this stub does not hold.
+      const firstRungRead = requested.findIndex((path) => rungOf(path) !== null);
+      assert.equal(rungOf(requested[firstRungRead]), FOUR_TOPICS[3], 'the first read was not the start rung');
+      assert.ok(firstRungRead <= 2, `${firstRungRead} reads came before the start rung's, more than two markers`);
       assert.ok(!requested.includes(`feeds/${OWNER}/${hexSource}`), 'the master topic was read');
     });
 
