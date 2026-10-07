@@ -12,7 +12,7 @@ import {
   type SwarmProvider,
   type UrlUse,
 } from '../../provider';
-import { boundedRequest } from './boundedRequest';
+import { boundedRequest } from '../../boundedRequest';
 
 /** Bee answers this with `{"status":"ok",...}` in every version this viewer has targeted. */
 const HEALTH_PATH = 'health';
