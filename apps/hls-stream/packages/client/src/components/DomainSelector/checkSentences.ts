@@ -6,6 +6,8 @@
 import type { SwarmAnswer } from '@/swarm/answers';
 import type { NotReadyReason, ProbeResult } from '@/swarm/provider';
 
+import type { UnreachableCause } from './reachability';
+
 /** Every way a read can end that is not the content it asked for. */
 export type FailedAnswer = Exclude<SwarmAnswer, { kind: 'content' }>;
 
@@ -25,7 +27,14 @@ export const NOT_A_SWARM_GATEWAY =
   'This address is not a Swarm gateway: something answered, but not with Swarm content. Check the address and the port.';
 
 export const MIXED_CONTENT =
-  'This site is served over https, and a browser refuses to load anything over plain http from it. Give the node an https address, or open this site over http.';
+  'This site is served over https, and a browser refuses to load anything over plain http from it, so the request never leaves this page. Give the node an https address, or open this site over http.';
+
+/**
+ * A plain http node on the local network, from an https page, in a browser that blocks it before any
+ * request leaves the page.
+ */
+export const LOCAL_HTTP_UNSUPPORTED =
+  "This browser does not let a site served over https reach a plain http node on your local network. Open this page in Chrome or Edge, or enter the node's https address.";
 
 /** Why a read failed and what the viewer can do about it. `what` names the content, such as "the stream list". */
 export function failedReadSentence(what: string, answer: FailedAnswer): string {
@@ -70,8 +79,9 @@ export function probeSentence(result: ProbeResult, timeoutMs: number): string {
       return `Something answered at this address with an error (HTTP ${result.status}). Check the address and the port.`;
     case 'timed-out':
       return `The gateway did not answer in ${seconds(timeoutMs)}. It may be busy or still starting. ${PICK_ANOTHER}`;
-    case 'unreachable':
     case 'refuses-this-site':
+      return UNREACHABLE_SENTENCES['cors-refused'];
+    case 'unreachable':
       return COULD_NOT_REACH;
   }
 }
@@ -118,5 +128,87 @@ export function notReadySentence(reason: NotReadyReason): string {
       return NODE_NOT_READY.noPeers;
     case 'too-old':
       return NODE_NOT_READY.tooOld(reason.version, reason.needed);
+  }
+}
+
+/** One step of help: what it is, then the exact text to copy or the thing to do. */
+interface HelpStep {
+  readonly label: string;
+  readonly code?: string;
+  readonly text?: string;
+}
+
+/** Help shown under a failure, when the fix takes more than one sentence. */
+export interface Help {
+  readonly intro: string;
+  readonly steps: readonly HelpStep[];
+  readonly note: string;
+}
+
+/**
+ * How to let this site read from a Bee node, for the origin the page is served from, which the caller
+ * reads from the page at run time. Bee takes `cors-allowed-origins` as a list in its config file, a
+ * flag on the command line, or `BEE_CORS_ALLOWED_ORIGINS` in its environment.
+ */
+export function corsHelp(origin: string): Help {
+  return {
+    intro:
+      "Add this site to the node's cors-allowed-origins setting, then restart the node. If the setting already lists other sites, add this one to the list.",
+    steps: [
+      { label: "In the node's config file, often bee.yaml:", code: `cors-allowed-origins: ["${origin}"]` },
+      { label: 'Or on the command line:', code: `bee start --cors-allowed-origins=${origin}` },
+      { label: 'Or as an environment variable:', code: `BEE_CORS_ALLOWED_ORIGINS=${origin}` },
+    ],
+    note: "Swarm Desktop writes cors-allowed-origins: '*' into its own config.yaml, which allows every site. If your Swarm Desktop node refuses this site, put that line back and restart Swarm Desktop.",
+  };
+}
+
+/** How to undo a refusal of the browser's local network question, in the browsers that ask it. */
+export const LOCAL_NETWORK_HELP: Help = {
+  intro:
+    'The first time a site reaches a device on your network or a program on this computer, your browser asks whether to allow it. A Block is remembered for this site. To undo it:',
+  steps: [
+    {
+      label: 'Chrome:',
+      text: 'Click the icon to the left of the address, open Site settings, and set Local network access to Allow.',
+    },
+    {
+      label: 'Edge:',
+      text: 'Open Settings, then Privacy, search, and services, Site permissions, All permissions, Local network access, and allow this site.',
+    },
+    {
+      label: 'Firefox:',
+      text: 'Open Settings, then Privacy & Security, Permissions, and allow this site under Local network devices, or under Device apps and services for a node on this computer.',
+    },
+  ],
+  note: 'Then reload this page and try again.',
+};
+
+/** Why a node of the viewer's own could not be reached, as far as the page can tell. */
+export const UNREACHABLE_SENTENCES: Readonly<Record<UnreachableCause['kind'], string>> = {
+  unreachable:
+    'Nothing answers at this address. Check that the node is running and that the address and port are right. The Bee API is usually on port 1633.',
+  'cors-refused':
+    "Something answers at this address, but it does not let this site read from it. If it is your Bee node, add this site to the node's cors-allowed-origins setting, then restart the node.",
+  'local-network-refused':
+    'Your browser is blocking this site from reaching your local network and this computer, so the request never reached the node.',
+  'unreachable-local':
+    'Nothing answered at this address. Check that the node is running and the port is right. If your browser asked whether this site may reach devices on your local network, the answer has to be Allow.',
+};
+
+export function unreachableSentence(cause: UnreachableCause): string {
+  return UNREACHABLE_SENTENCES[cause.kind];
+}
+
+/** The help a cause needs beyond its sentence, or null when the sentence says it all. */
+export function unreachableHelp(cause: UnreachableCause, origin: string): Help | null {
+  switch (cause.kind) {
+    case 'cors-refused':
+      return corsHelp(origin);
+    case 'local-network-refused':
+    case 'unreachable-local':
+      return LOCAL_NETWORK_HELP;
+    case 'unreachable':
+      return null;
   }
 }

@@ -17,6 +17,7 @@ import { fetchPreviewManifest } from '@/components/StreamPreview/previewManifest
 import { isMasterPlaylist, masterVariants, parseManifest } from '@/components/SwarmHlsPlayer/playlist';
 import { STREAM_STATUS_LIVE, STREAM_STATUS_SCHEDULED, type Stream } from '@/types/stream';
 import { FetchTimeoutError } from '@/utils/fetchTimeoutError';
+import { supportsLocalNetworkRequests } from '@/swarm/addressSpace';
 import { contentText, type SwarmAnswer } from '@/swarm/answers';
 import {
   loadUrl as loadUrlOverHttp,
@@ -31,14 +32,24 @@ import {
   CONNECTED_BY_CONTENT,
   type FailedAnswer,
   failedReadSentence,
+  type Help,
+  LOCAL_HTTP_UNSUPPORTED,
   MIXED_CONTENT,
   NO_SEGMENT,
   NOT_A_SWARM_GATEWAY,
   PASSED,
   probeSentence,
   SKIPPED,
+  unreachableHelp,
+  unreachableSentence,
 } from './checkSentences';
-import { isBlockedAsMixedContent } from './gatewayProbe';
+import { isBlockedAsMixedContent, isLocalHttp } from './gatewayProbe';
+import {
+  awaitsLocalNetworkAnswer,
+  type ReachabilityOptions,
+  unreachableCause,
+  type UnreachableCause,
+} from './reachability';
 
 /** What the Test checks, in the order the picker shows them. This viewer has no chat, so there is no chat check. */
 export const CHECKS = ['connection', 'stream-list', 'player', 'previews', 'thumbnails'] as const;
@@ -59,6 +70,8 @@ export interface CheckResult {
   readonly check: CheckName;
   readonly outcome: CheckOutcome;
   readonly sentence: string;
+  /** Steps shown under the sentence, when the fix takes more than one sentence. */
+  readonly help?: Help;
 }
 
 interface ProviderTestContext {
@@ -88,6 +101,12 @@ interface ProviderTestContext {
   readonly now?: () => number;
   /** Injected by tests. Read from the page otherwise. */
   readonly pageProtocol?: string;
+  /** Whether this browser can mark a request as meant for the local network. Injected by tests. */
+  readonly localNetworkRequests?: boolean;
+  /** Injected by tests. Reads the page and asks the browser's Permissions API otherwise. */
+  readonly reachability?: ReachabilityOptions;
+  /** The origin the page is served from, which the CORS help names. Read from the page when absent. */
+  readonly pageOrigin?: string;
 }
 
 const passed = (check: CheckName, sentence: string): CheckResult => ({ check, outcome: 'passed', sentence });
@@ -97,6 +116,10 @@ const skipped = (check: CheckName, sentence: string): CheckResult => ({ check, o
 /** A read that did not give its content, as the check's failure. */
 const failedRead = (check: CheckName, what: string, answer: Exclude<SwarmAnswer, { kind: 'content' }>) =>
   failed(check, failedReadSentence(what, answer));
+
+function currentPageOrigin(): string {
+  return typeof window === 'undefined' ? '' : window.location.origin;
+}
 
 function currentPageProtocol(): string {
   return typeof window === 'undefined' ? '' : window.location.protocol;
@@ -108,8 +131,10 @@ function currentPageProtocol(): string {
  */
 export async function testProvider(context: ProviderTestContext): Promise<CheckResult[]> {
   const pageProtocol = context.pageProtocol ?? currentPageProtocol();
-  if (isBlockedAsMixedContent(context.address, pageProtocol)) {
-    return CHECKS.map((check) => failed(check, MIXED_CONTENT));
+  const localNetworkRequests = context.localNetworkRequests ?? (await supportsLocalNetworkRequests());
+  if (isBlockedAsMixedContent(context.address, pageProtocol, localNetworkRequests)) {
+    const sentence = isLocalHttp(context.address) ? LOCAL_HTTP_UNSUPPORTED : MIXED_CONTENT;
+    return CHECKS.map((check) => failed(check, sentence));
   }
 
   const answers: SwarmAnswer[] = [];
@@ -179,9 +204,23 @@ function connectionByContent(answers: readonly SwarmAnswer[], list: CheckResult)
   return failedRead('connection', "the stream's content", timedOut ?? failures[0] ?? { kind: 'aborted' });
 }
 
+/** The connection's failure for a cause the page could tell, with its help when the fix takes more than a sentence. */
+function unreachableConnection(context: ProviderTestContext, cause: UnreachableCause): CheckResult {
+  const help = unreachableHelp(cause, context.pageOrigin ?? currentPageOrigin());
+  const result = failed('connection', unreachableSentence(cause));
+  return help === null ? result : { ...result, help };
+}
+
 async function checkConnection(context: ProviderTestContext): Promise<CheckResult> {
   // The picker's window for a node of the viewer's own, short so a wrong port does not feel like a hang.
   const found = await context.client.probe({ timeoutMs: PROBE_TIMEOUT_MS, signal: context.signal });
+  const reachability = { localNetworkRequests: context.localNetworkRequests, ...context.reachability };
+  if (found.kind === 'unreachable' || found.kind === 'refuses-this-site') {
+    return unreachableConnection(context, await unreachableCause(context.address, found, reachability));
+  }
+  if (found.kind === 'timed-out' && (await awaitsLocalNetworkAnswer(context.address, reachability))) {
+    return unreachableConnection(context, { kind: 'unreachable-local' });
+  }
   const sentence = probeSentence(found, PROBE_TIMEOUT_MS);
   return found.kind === 'ok' ? passed('connection', sentence) : failed('connection', sentence);
 }

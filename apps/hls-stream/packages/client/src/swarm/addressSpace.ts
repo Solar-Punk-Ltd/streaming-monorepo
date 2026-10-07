@@ -9,7 +9,7 @@
  */
 
 /** The values of the Local Network Access draft's `IPAddressSpace`, which `fetch` takes as `targetAddressSpace`. */
-type AddressSpace = 'loopback' | 'local' | 'public';
+export type AddressSpace = 'loopback' | 'local' | 'public';
 
 /** `RequestInit` with the Local Network Access draft's option, which the DOM types do not carry yet. */
 type LocalNetworkRequestInit = RequestInit & { targetAddressSpace?: 'local' };

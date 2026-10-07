@@ -7,9 +7,12 @@ import {
   describeProbeFailure,
   gatewayLabel,
   isDefaultGateway,
+  probeFailureHelp,
   probeGateway,
 } from './gatewayProbe';
+import type { Help } from './checkSentences';
 import { GatewayTools } from './GatewayTools';
+import { HelpSteps } from './HelpSteps';
 import { isServingFromFallback } from './providerStatus';
 
 import './DomainSelector.scss';
@@ -17,7 +20,7 @@ import './DomainSelector.scss';
 const KEY_ENTER = 'Enter';
 const KEY_ESCAPE = 'Escape';
 
-type PickerStatus = { kind: 'idle' } | { kind: 'checking' } | { kind: 'error'; text: string };
+type PickerStatus = { kind: 'idle' } | { kind: 'checking' } | { kind: 'error'; text: string; help?: Help | null };
 
 const IDLE: PickerStatus = { kind: 'idle' };
 
@@ -90,7 +93,11 @@ export function DomainSelector() {
       close();
       return;
     }
-    setStatus({ kind: 'error', text: describeProbeFailure(outcome) });
+    setStatus({
+      kind: 'error',
+      text: describeProbeFailure(outcome),
+      help: probeFailureHelp(outcome, window.location.origin),
+    });
   };
 
   const handleUseDefault = () => {
@@ -148,6 +155,7 @@ export function DomainSelector() {
               {status.kind === 'checking' && 'Checking the node...'}
               {status.kind === 'error' && status.text}
             </p>
+            {status.kind === 'error' && status.help && <HelpSteps help={status.help} />}
             <div className="gateway-modal-actions">
               {!isOnDefault && (
                 <button className="gateway-modal-default" onClick={handleUseDefault}>

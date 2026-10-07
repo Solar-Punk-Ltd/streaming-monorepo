@@ -10,14 +10,19 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 
 import {
   CONNECTED_BY_CONTENT,
+  corsHelp,
   COULD_NOT_REACH,
+  LOCAL_HTTP_UNSUPPORTED,
+  LOCAL_NETWORK_HELP,
   MIXED_CONTENT,
   NODE_NOT_READY,
   NO_SEGMENT,
   NOT_A_SWARM_GATEWAY,
   SKIPPED,
+  UNREACHABLE_SENTENCES,
 } from '../src/components/DomainSelector/checkSentences';
 import { CHECKS, type CheckResult, testProvider } from '../src/components/DomainSelector/providerTest';
+import type { ReachabilityOptions } from '../src/components/DomainSelector/reachability';
 import { loadUrl } from '../src/swarm/client';
 import { MINIMUM_BEE_VERSION } from '../src/swarm/providers/bee-http/beeNodeState';
 import { createSwarmClient } from '../src/swarm/createSwarmClient';
@@ -88,6 +93,9 @@ interface Run {
   readonly knownStreams?: readonly Stream[];
   readonly address?: string;
   readonly pageProtocol?: string;
+  readonly localNetworkRequests?: boolean;
+  /** The browser's answer for its local network permission. The Permissions API when absent. */
+  readonly permission?: ReachabilityOptions['permission'];
   readonly now?: () => number;
   /** Whether the gateway is the viewer's own node rather than one the build offers. Own by default. */
   readonly isOwnNode?: boolean;
@@ -98,6 +106,8 @@ async function run({
   knownStreams = [],
   address = GW,
   pageProtocol = 'https:',
+  localNetworkRequests = false,
+  permission,
   now,
   isOwnNode = true,
 }: Run): Promise<Record<string, CheckResult>> {
@@ -116,15 +126,21 @@ async function run({
     catalog: CATALOG,
     knownStreams,
     pageProtocol,
+    localNetworkRequests,
     now,
     isOwnNode,
     loadUrl: (url, options) => loadUrl(url, { ...options, fetcher }),
+    reachability: { pageUrl: `${PAGE_ORIGIN}/`, permission },
+    pageOrigin: PAGE_ORIGIN,
   });
   expect(results.map(({ check }) => check)).toEqual([...CHECKS]);
   return Object.fromEntries(results.map((result) => [result.check, result]));
 }
 
 const TITLE = '“Recorded talk”';
+
+/** This page's origin as the Test reads it, which the CORS help names. */
+const PAGE_ORIGIN = 'https://viewer.example.com';
 
 describe("the node picker's Test", () => {
   it('checks the connection, the stream list, the video, the previews and the pictures, and no chat', () => {
@@ -161,12 +177,41 @@ describe("the node picker's Test", () => {
     });
   });
 
-  it('says a gateway that cannot be reached may be refusing this site, on every check', async () => {
+  it('says a gateway that cannot be reached may be refusing this site, on every check but the connection', async () => {
     const results = await run({ fetcher: gateway(() => 'refuse'), knownStreams: [RECORDED] });
 
-    for (const check of CHECKS) {
+    // The connection of the viewer's own node asks again and names the one cause it finds, tested below.
+    for (const check of CHECKS.filter((name) => name !== 'connection')) {
       expect(results[check], check).toEqual({ check, outcome: 'failed', sentence: COULD_NOT_REACH });
     }
+  });
+
+  it("says nothing answers at the address of a node of the viewer's own when the second request fails too", async () => {
+    const results = await run({ fetcher: gateway(() => 'refuse'), knownStreams: [RECORDED] });
+
+    expect(results.connection).toEqual({
+      check: 'connection',
+      outcome: 'failed',
+      sentence: UNREACHABLE_SENTENCES.unreachable,
+    });
+  });
+
+  it("tells a node of the viewer's own that answers and refuses this site apart, with the lines to add", async () => {
+    // The Test's own reads fail as a CORS refusal does, and the second request without CORS is answered.
+    const fetcher = (async (_input: RequestInfo | URL, init?: RequestInit) => {
+      if (init?.mode === 'no-cors') {
+        return new Response(null);
+      }
+      throw new TypeError('Failed to fetch');
+    }) as typeof fetch;
+    const results = await run({ fetcher, knownStreams: [RECORDED] });
+
+    expect(results.connection).toEqual({
+      check: 'connection',
+      outcome: 'failed',
+      sentence: UNREACHABLE_SENTENCES['cors-refused'],
+      help: corsHelp(PAGE_ORIGIN),
+    });
   });
 
   it('tests the other features on the list the page already shows when this gateway cannot read it', async () => {
@@ -240,6 +285,22 @@ describe("the node picker's Test", () => {
     });
 
     expect(Object.values(results).map(({ sentence }) => sentence)).toEqual(CHECKS.map(() => MIXED_CONTENT));
+    expect(asked).toEqual([]);
+  });
+
+  it('names the browsers that can reach a plain http node on the local network, in one that cannot', async () => {
+    const asked: string[] = [];
+    const results = await run({
+      fetcher: (async (input: RequestInfo | URL) => {
+        asked.push(String(input));
+        return new Response('');
+      }) as typeof fetch,
+      address: 'http://192.168.1.20:1633',
+      pageProtocol: 'https:',
+      localNetworkRequests: false,
+    });
+
+    expect(Object.values(results).map(({ sentence }) => sentence)).toEqual(CHECKS.map(() => LOCAL_HTTP_UNSUPPORTED));
     expect(asked).toEqual([]);
   });
 });
@@ -374,6 +435,10 @@ async function runOnTestClock(args: Run): Promise<Record<string, CheckResult>> {
 
 const CATALOG_HEAD = `${GW}/${nextFeedRequest(CATALOG.owner, Topic.fromString(CATALOG.topic), null).path}`;
 
+/** A node on this computer, which an https page needs the viewer's leave to reach where the browser asks. */
+const LOCAL_NODE = 'http://localhost:1633';
+const LOCAL_HEALTH = `${LOCAL_NODE}/health`;
+
 describe('the window the Test gives each read', () => {
   afterEach(() => {
     vi.useRealTimers();
@@ -407,6 +472,38 @@ describe('the window the Test gives each read', () => {
 
   it("asks the viewer's own node for its health for 5 s, as the picker does", async () => {
     const results = await runOnTestClock({ fetcher: gateway((url) => (url === `${GW}/health` ? 'hang' : undefined)) });
+
+    expect(results.connection).toEqual({
+      check: 'connection',
+      outcome: 'failed',
+      sentence:
+        'The gateway did not answer in 5 s. It may be busy or still starting. Test again in a minute, or pick another gateway.',
+    });
+  });
+
+  it("sends a viewer whose own node never answered to the browser's unanswered local network question", async () => {
+    const results = await runOnTestClock({
+      fetcher: gateway((url) => (url === LOCAL_HEALTH ? 'hang' : undefined)),
+      address: LOCAL_NODE,
+      localNetworkRequests: true,
+      permission: async () => 'prompt',
+    });
+
+    expect(results.connection).toEqual({
+      check: 'connection',
+      outcome: 'failed',
+      sentence: UNREACHABLE_SENTENCES['unreachable-local'],
+      help: LOCAL_NETWORK_HELP,
+    });
+  });
+
+  it('calls a node that never answered slow once the local network question is answered', async () => {
+    const results = await runOnTestClock({
+      fetcher: gateway((url) => (url === LOCAL_HEALTH ? 'hang' : undefined)),
+      address: LOCAL_NODE,
+      localNetworkRequests: true,
+      permission: async () => 'granted',
+    });
 
     expect(results.connection).toEqual({
       check: 'connection',

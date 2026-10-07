@@ -6,6 +6,7 @@ import { choiceForAddress, gatewayName, type GatewaySetting, OWN_GATEWAY_ID } fr
 import { BUILD_LABEL } from '@/utils/buildLabel';
 
 import { onlyGateway } from './gatewayProbe';
+import { HelpSteps } from './HelpSteps';
 import { statusRows } from './providerStatus';
 import { CHECK_LABELS, testProvider } from './providerTest';
 import { reportText, type TestedGateway } from './report';
@@ -131,9 +132,10 @@ export function GatewayTools() {
               {test?.state === 'running' && <p className="gateway-tools-note">Testing every feature...</p>}
               {test?.state === 'done' && (
                 <ul className="gateway-tools-results" aria-label={`Test of ${test.name}`}>
-                  {test.results.map(({ check, outcome, sentence }) => (
+                  {test.results.map(({ check, outcome, sentence, help }) => (
                     <li key={check} className={`gateway-tools-result ${outcome}`}>
                       {CHECK_LABELS[check]}: {outcome === 'skipped' ? 'not tested' : outcome}. {sentence}
+                      {help && <HelpSteps help={help} />}
                     </li>
                   ))}
                 </ul>

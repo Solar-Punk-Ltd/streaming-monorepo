@@ -6,9 +6,17 @@ import {
   gatewayLabel,
   isBlockedAsMixedContent,
   isDefaultGateway,
+  probeFailureHelp,
   probeGateway,
 } from '@/components/DomainSelector/gatewayProbe';
-import { notReadySentence } from '@/components/DomainSelector/checkSentences';
+import {
+  corsHelp,
+  LOCAL_HTTP_UNSUPPORTED,
+  LOCAL_NETWORK_HELP,
+  MIXED_CONTENT,
+  notReadySentence,
+  UNREACHABLE_SENTENCES,
+} from '@/components/DomainSelector/checkSentences';
 import { PROBE_TIMEOUT_MS, type ProbeResult, type ReadOptions } from '@/swarm/provider';
 import { BeeHttpProvider } from '@/swarm/providers/bee-http/beeHttpProvider';
 
@@ -39,6 +47,9 @@ function beeAnsweredBy(fetcher: typeof fetch) {
 function answering(status: number, text = BEE_HEALTH) {
   return beeAnsweredBy((async () => new Response(text, { status })) as typeof fetch);
 }
+
+/** A browser without Local Network Access, so no permission is asked. */
+const NO_LOCAL_NETWORK = { localNetworkRequests: false } as const;
 
 /** One rejection stands for a closed port, a DNS miss and a CORS refusal, which a browser never tells apart. */
 function refusing() {
@@ -137,12 +148,50 @@ describe('probeGateway', () => {
     });
   });
 
+  it('names a node that answered and refused this site, which the probe found by asking again without CORS', async () => {
+    const prober = () => ({ probe: async (): Promise<ProbeResult> => ({ kind: 'refuses-this-site' }) });
+    expect(await probeGateway('http://localhost:1633', { prober })).toEqual({
+      kind: 'unreachable',
+      cause: { kind: 'cors-refused' },
+    });
+  });
+
+  it("asks the browser's local network permission for a node on this computer that answered nothing", async () => {
+    const reachability = { pageUrl: 'https://viewer.example.com/', permission: async () => 'denied' as const };
+    expect(
+      await probeGateway('http://localhost:1633', { prober: refusing(), localNetworkRequests: true, reachability }),
+    ).toEqual({ kind: 'unreachable', cause: { kind: 'local-network-refused' } });
+  });
+
   it('reports a refusal rather than throwing, so the picker always has something to show', async () => {
-    expect(await probeGateway('http://localhost:1', { prober: refusing() })).toEqual({ kind: 'unreachable' });
+    expect(await probeGateway('http://localhost:1', { prober: refusing(), reachability: NO_LOCAL_NETWORK })).toEqual({
+      kind: 'unreachable',
+      cause: { kind: 'unreachable' },
+    });
   });
 
   it('keeps a node that never answered apart from one that could not be reached', async () => {
-    expect(await probeGateway('http://localhost:1633', { prober: silent() })).toEqual({ kind: 'timed-out' });
+    expect(await probeGateway('http://localhost:1633', { prober: silent(), reachability: NO_LOCAL_NETWORK })).toEqual({
+      kind: 'timed-out',
+      awaitingLocalNetwork: false,
+    });
+  });
+
+  it("finds a node that never answered may be held by the browser's unanswered local network question", async () => {
+    const reachability = { pageUrl: 'https://viewer.example.com/', permission: async () => 'prompt' as const };
+    expect(
+      await probeGateway('http://localhost:1633', { prober: silent(), localNetworkRequests: true, reachability }),
+    ).toEqual({ kind: 'timed-out', awaitingLocalNetwork: true });
+  });
+
+  it('does not blame the local network question once it is answered, or where it is not asked', async () => {
+    const granted = { pageUrl: 'https://viewer.example.com/', permission: async () => 'granted' as const };
+    const samePlace = { pageUrl: 'http://localhost:5173/', permission: async () => 'prompt' as const };
+    for (const reachability of [granted, samePlace]) {
+      expect(
+        await probeGateway('http://localhost:1633', { prober: silent(), localNetworkRequests: true, reachability }),
+      ).toEqual({ kind: 'timed-out', awaitingLocalNetwork: false });
+    }
   });
 });
 
@@ -168,7 +217,7 @@ describe('a plain http node named from an https page', () => {
   });
 
   it('is refused as mixed content rather than sent and misread as unreachable', async () => {
-    expect(await probeGateway('http://192.168.1.20:1633', { pageProtocol: 'https:', prober: neverAsked })).toEqual({
+    expect(await probeGateway('http://192.0.2.10:1633', { pageProtocol: 'https:', prober: neverAsked })).toEqual({
       kind: 'mixed-content',
     });
   });
@@ -177,7 +226,7 @@ describe('a plain http node named from an https page', () => {
     const message = describeProbeFailure({ kind: 'mixed-content' });
 
     expect(message).not.toContain('cors-allowed-origins');
-    expect(message).toContain('http');
+    expect(message).toBe(MIXED_CONTENT);
   });
 
   it("still asks loopback, which browsers exempt, so a node on the viewer's own machine works", async () => {
@@ -193,12 +242,53 @@ describe('a plain http node named from an https page', () => {
   });
 
   it('leaves an https node and a page served over http alone', () => {
-    expect(isBlockedAsMixedContent('https://node.example:1633', 'https:')).toBe(false);
-    expect(isBlockedAsMixedContent('http://192.168.1.20:1633', 'http:')).toBe(false);
+    expect(isBlockedAsMixedContent('https://node.example:1633', 'https:', false)).toBe(false);
+    expect(isBlockedAsMixedContent('http://192.168.1.20:1633', 'http:', false)).toBe(false);
   });
 
   it("leaves the deployed default alone, which is a path on this page's own origin", () => {
-    expect(isBlockedAsMixedContent('/bee', 'https:')).toBe(false);
+    expect(isBlockedAsMixedContent('/bee', 'https:', false)).toBe(false);
+  });
+});
+
+/**
+ * Chrome and Edge let an https page reach a plain http node on the local network, and other browsers
+ * block it as mixed content before anything is sent. Which one this is is read off the browser's
+ * Permissions API, so the probe takes the answer as an option.
+ */
+describe('a plain http node on the local network named from an https page', () => {
+  const neverAsked = (url: string) => ({
+    probe: async (): Promise<ProbeResult> => {
+      throw new Error(`the probe asked ${url}, which this browser would have refused to send`);
+    },
+  });
+
+  it('is asked in a browser that can mark a request as meant for the local network', async () => {
+    expect(
+      await probeGateway('http://192.168.1.20:1633', {
+        pageProtocol: 'https:',
+        localNetworkRequests: true,
+        prober: answering(200),
+      }),
+    ).toEqual({ kind: 'ok' });
+  });
+
+  it('is refused in any other browser, with a sentence naming the browsers that can', async () => {
+    expect(
+      await probeGateway('http://192.168.1.20:1633', {
+        pageProtocol: 'https:',
+        localNetworkRequests: false,
+        prober: neverAsked,
+      }),
+    ).toEqual({ kind: 'local-http-unsupported' });
+    expect(describeProbeFailure({ kind: 'local-http-unsupported' })).toBe(LOCAL_HTTP_UNSUPPORTED);
+    expect(LOCAL_HTTP_UNSUPPORTED).toContain('Chrome');
+  });
+
+  it('is still mixed content on the internet, whatever the browser', () => {
+    expect(isBlockedAsMixedContent('http://192.0.2.10:1633', 'https:', true)).toBe(true);
+    expect(isBlockedAsMixedContent('http://192.168.1.20:1633', 'https:', true)).toBe(false);
+    expect(isBlockedAsMixedContent('http://192.168.1.20:1633', 'https:', false)).toBe(true);
   });
 });
 
@@ -217,15 +307,43 @@ describe('a Bee node that answers but cannot serve this viewer yet', () => {
 });
 
 describe('describeProbeFailure', () => {
-  it('tells an unreachable viewer about CORS, because a browser hides that cause behind a failed fetch', () => {
-    expect(describeProbeFailure({ kind: 'unreachable' })).toContain('cors-allowed-origins');
+  it('tells a viewer whose node answers and refuses this site about CORS, with the lines to add', () => {
+    const failure = { kind: 'unreachable', cause: { kind: 'cors-refused' } } as const;
+
+    expect(describeProbeFailure(failure)).toBe(UNREACHABLE_SENTENCES['cors-refused']);
+    expect(probeFailureHelp(failure, 'https://viewer.example.com')).toEqual(corsHelp('https://viewer.example.com'));
+  });
+
+  it('sends a viewer whose address has nothing behind it to the node, with no CORS help', () => {
+    const failure = { kind: 'unreachable', cause: { kind: 'unreachable' } } as const;
+
+    expect(describeProbeFailure(failure)).not.toContain('cors-allowed-origins');
+    expect(probeFailureHelp(failure, 'https://viewer.example.com')).toBeNull();
+  });
+
+  it("explains the browser's local network question where it may be the cause", () => {
+    for (const kind of ['local-network-refused', 'unreachable-local'] as const) {
+      const failure = { kind: 'unreachable', cause: { kind } } as const;
+      expect(describeProbeFailure(failure)).toBe(UNREACHABLE_SENTENCES[kind]);
+      expect(probeFailureHelp(failure, 'https://viewer.example.com')).toBe(LOCAL_NETWORK_HELP);
+    }
   });
 
   it('sends a viewer whose node never answered to the node rather than to its CORS settings', () => {
-    const timedOut = describeProbeFailure({ kind: 'timed-out' });
+    const timedOut = describeProbeFailure({ kind: 'timed-out', awaitingLocalNetwork: false });
 
     expect(timedOut).not.toContain('cors-allowed-origins');
-    expect(timedOut).not.toBe(describeProbeFailure({ kind: 'unreachable' }));
+    expect(timedOut).not.toBe(describeProbeFailure({ kind: 'unreachable', cause: { kind: 'unreachable' } }));
+    expect(
+      probeFailureHelp({ kind: 'timed-out', awaitingLocalNetwork: false }, 'https://viewer.example.com'),
+    ).toBeNull();
+  });
+
+  it("sends a viewer whose node never answered to the browser's local network question while it is unanswered", () => {
+    const failure = { kind: 'timed-out', awaitingLocalNetwork: true } as const;
+
+    expect(describeProbeFailure(failure)).toBe(UNREACHABLE_SENTENCES['unreachable-local']);
+    expect(probeFailureHelp(failure, 'https://viewer.example.com')).toBe(LOCAL_NETWORK_HELP);
   });
 
   it('names the status when something answered with an error', () => {

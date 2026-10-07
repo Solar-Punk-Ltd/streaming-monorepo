@@ -4,7 +4,11 @@ import { act, createElement } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
-import { CONNECTED_BY_CONTENT, NODE_NOT_READY } from '../src/components/DomainSelector/checkSentences';
+import {
+  CONNECTED_BY_CONTENT,
+  NODE_NOT_READY,
+  UNREACHABLE_SENTENCES,
+} from '../src/components/DomainSelector/checkSentences';
 import type { SwarmClient } from '../src/swarm/client';
 
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
@@ -181,6 +185,43 @@ describe("the node picker's tools", () => {
     await waitFor(() => row('Your own node').textContent?.includes('The gateway answered in') ?? false, 'the test');
     expect(asked.filter((url) => url.endsWith('/health'))).toEqual(['http://localhost:1633/health']);
     expect(asked).toContain('http://localhost:1633/readiness');
+  });
+
+  it("shows the exact cors-allowed-origins lines for this page's origin when a node answers and refuses this site", async () => {
+    globalThis.fetch = (async (_input: RequestInfo | URL, init?: RequestInit) => {
+      if (init?.mode === 'no-cors') {
+        return new Response(null);
+      }
+      throw new TypeError('Failed to fetch');
+    }) as typeof fetch;
+    await open();
+    typeAddress('http://localhost:1633');
+    click(buttonNamed('Check and use'));
+    await waitFor(() => text().includes(UNREACHABLE_SENTENCES['cors-refused']), 'the CORS sentence');
+
+    const picker = document.querySelector('.gateway-modal')?.textContent ?? '';
+    expect(picker).toContain(`cors-allowed-origins: ["${window.location.origin}"]`);
+    expect(picker).toContain(`BEE_CORS_ALLOWED_ORIGINS=${window.location.origin}`);
+    expect(picker).toContain('Swarm Desktop');
+    expect(localStorage.length).toBe(0);
+  });
+
+  it("shows the CORS lines under a Test of the viewer's own node that answers and refuses this site", async () => {
+    localStorage.setItem('swarm-gateway-url', 'http://localhost:1633');
+    globalThis.fetch = (async (_input: RequestInfo | URL, init?: RequestInit) => {
+      if (init?.mode === 'no-cors') {
+        return new Response(null);
+      }
+      throw new TypeError('Failed to fetch');
+    }) as typeof fetch;
+    await open();
+    click(buttonNamed('Test', row('Your own node')));
+    await waitFor(
+      () => row('Your own node').textContent?.includes(UNREACHABLE_SENTENCES['cors-refused']) ?? false,
+      'the test',
+    );
+
+    expect(row('Your own node').textContent).toContain(`BEE_CORS_ALLOWED_ORIGINS=${window.location.origin}`);
   });
 
   it("says a node of the viewer's own is still starting rather than switching to it", async () => {

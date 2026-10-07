@@ -10,6 +10,7 @@ import {
   PASSED,
   probeSentence,
   SKIPPED,
+  UNREACHABLE_SENTENCES,
 } from '../src/components/DomainSelector/checkSentences';
 import { DEFAULT_READ_TIMEOUT_MS, PROBE_TIMEOUT_MS } from '../src/swarm/provider';
 
@@ -58,6 +59,7 @@ describe('the sentences the connection check ends in', () => {
       'The gateway did not answer in 5 s. It may be busy or still starting. Test again in a minute, or pick another gateway.',
     ],
     [{ kind: 'unreachable' }, COULD_NOT_REACH],
+    [{ kind: 'refuses-this-site' }, UNREACHABLE_SENTENCES['cors-refused']],
   ] as const)('%o', (result, sentence) => {
     expect(probeSentence(result, PROBE_TIMEOUT_MS)).toBe(sentence);
   });
