@@ -576,7 +576,7 @@ export class ManifestFetcher {
     // which happens before the previous effect's cleanup runs, so a resolver read at unregister
     // time already sees the *next* stream's ladder — which would stop the rungs just started and
     // leave the previous stream's walk loops running forever.
-    this.trackLadder(sourceUrl, topics, resolve);
+    this.ladders.set(sourceUrl, { resolve, topics });
     this.poller.register(
       ladder.owner,
       ladder.renditions.map((rendition) => ({
@@ -1121,21 +1121,6 @@ export class ManifestFetcher {
     held.letGoOfTeardown();
   }
 
-  /**
-   * Records a ladder against its source, merging topics rather than replacing them.
-   *
-   * Both paths can fire for one source — the catalog registers the ladder as the player mounts, and
-   * the published master names the same rungs a moment later. Replacing would leave whichever set
-   * lost the race running with nothing to stop it at teardown.
-   */
-  private trackLadder(sourceUrl: string, topics: Topic[], resolve?: LadderResolver): void {
-    const existing = this.ladders.get(sourceUrl);
-    const known = new Set(existing?.topics.map((t) => t.toString()));
-    const merged = [...(existing?.topics ?? []), ...topics.filter((t) => !known.has(t.toString()))];
-
-    this.ladders.set(sourceUrl, { resolve: resolve ?? existing?.resolve, topics: merged });
-  }
-
   private registerVariants(
     sourceUrl: string,
     sourceOwner: string,
@@ -1149,10 +1134,9 @@ export class ManifestFetcher {
       topic: Topic.fromString(variant.topic),
       bandwidth: variant.bandwidth ?? undefined,
     }));
-    this.trackLadder(
-      sourceUrl,
-      rungs.map((rung) => rung.topic),
-    );
+    // A source the stream list names renditions for is answered from the list and never reads its
+    // master, so this is the only registration the source has.
+    this.ladders.set(sourceUrl, { topics: rungs.map((rung) => rung.topic) });
     this.poller.register(variants[0].owner || sourceOwner, rungs, groupHexOf(sourceUrl));
   }
 
