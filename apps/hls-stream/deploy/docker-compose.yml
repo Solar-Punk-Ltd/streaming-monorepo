@@ -397,6 +397,8 @@ services:
         VITE_EXPOSE_PLAYER: ${VITE_EXPOSE_PLAYER:-}
         # Empty for the gateway, `weeb3` for an in-tab Swarm node. See Dockerfile.client.
         VITE_BROWSER_FETCH_BACKEND: ${VITE_BROWSER_FETCH_BACKEND:-}
+        # Empty for the one gateway above, or JSON naming the gateways. See Dockerfile.client.
+        VITE_SWARM_PROVIDERS: ${VITE_SWARM_PROVIDERS:-}
         # Which sources this bundle was built from, minted from git by deploy.sh and served as
         # `/build-stamp.json`. Empty when whatever ran compose could not read git, which the
         # `client-shape` e2e preflight refuses rather than treating as a match.
