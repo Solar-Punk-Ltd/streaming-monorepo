@@ -25,13 +25,59 @@ const SAMPLES = {
   'infra/edge/.env.sample': '# A test fixture standing in for the committed template.\n',
 };
 
+/** Where deploy.sh finds the release tools, from the repository root. */
+const VERSION_TOOL = 'tools/release/version.mjs';
+const TAG_TOOL = 'tools/release/tag.mjs';
+
+/** The real version.mjs and what it imports, which a sandbox made with `realVersion` runs. */
+const REAL_VERSION_TOOL = ['tools/release/version.mjs', 'tools/release/lib/git.mjs', 'tools/release/lib/tagName.mjs'];
+
+/** The stand-ins every other sandbox runs in their place, from this folder. */
+const FAKE_VERSION_TOOL = fileURLToPath(new URL('fake-version.mjs', import.meta.url));
+const FAKE_TAG_TOOL = fileURLToPath(new URL('fake-tag.mjs', import.meta.url));
+
+/**
+ * The build the stand-in version.mjs names unless a test names another through FAKE_VERSION_COMMIT, FAKE_VERSION_TAG
+ * and FAKE_VERSION_LABEL: a commit with a tag on it.
+ */
+export const FIXTURE_VERSION = Object.freeze({
+  commit: '0123456789abcdef0123456789abcdef01234567',
+  short: '012345678',
+  tag: 'QA-build-fixture',
+});
+
+/**
+ * What a git hook or `git rebase --exec` exports to point every git command at one repository, as
+ * tools/release/lib/git.mjs lists them. A sandbox drops them, so no git it runs reaches past it, into the checkout
+ * the tests run from.
+ */
+const LOCATING_GIT_VARIABLES = [
+  'GIT_DIR',
+  'GIT_WORK_TREE',
+  'GIT_INDEX_FILE',
+  'GIT_COMMON_DIR',
+  'GIT_OBJECT_DIRECTORY',
+  'GIT_ALTERNATE_OBJECT_DIRECTORIES',
+  'GIT_PREFIX',
+  'GIT_NAMESPACE',
+];
+
+/** An environment whose git reads the repository in its working directory and none of this machine's settings. */
+export function isolatedGitEnv(env = process.env) {
+  const copy = { ...env, GIT_CONFIG_GLOBAL: '/dev/null', GIT_CONFIG_NOSYSTEM: '1' };
+  for (const name of LOCATING_GIT_VARIABLES) delete copy[name];
+  return copy;
+}
+
 /**
  * Each stub writes its name and arguments to the journal, one line per call, and nothing leaves
  * this machine. ssh treats the fake host, a folder in the sandbox, as the host: it runs a command
  * there only when the command names that folder, and a script on standard input only when the
  * script changes into it, so nothing outside the sandbox is touched. docker answers just enough for
- * a deploy's steps on the host to find a healthy stack. git answers "not a repository" whatever
- * folder the sandbox sits in.
+ * a deploy's steps on the host to find a healthy stack, and an api container that reports the
+ * version compose was last asked to build, or FAKE_API_VERSION and FAKE_API_COMMIT when a test sets
+ * them. git answers "not a repository" whatever folder the sandbox sits in, unless the sandbox runs
+ * the real version.mjs.
  */
 const STUBS = {
   ssh: `#!/bin/sh
@@ -76,14 +122,29 @@ fi
 exit 0
 `,
   // The copy tools/app-workspace/in-copy.mjs names in APP_WORKSPACE_COPY is gone once compose
-  // returns, so what it held is listed while it is there.
+  // returns, so what it held is listed while it is there. An `up` keeps the version compose was
+  // given, as a build bakes it into the images: one tab-separated line per `up` for the test to
+  // read, and the last one for the api container's environment to report.
   docker: `#!/bin/sh
 printf 'docker %s\\n' "$*" >> "$STUB_JOURNAL"
 if [ -n "$APP_WORKSPACE_COPY" ]; then
   (cd "$APP_WORKSPACE_COPY" && find . -type f | LC_ALL=C sort) >> "$STUB_JOURNAL-copy"
 fi
 case " $* " in
+  *" up "*)
+    printf '%s\\t%s\\t%s\\n' "\${WEB2_ADMIN_VERSION-(unset)}" "\${WEB2_ADMIN_COMMIT-(unset)}" \\
+      "\${APP_WORKSPACE_COPY:+in-copy}" >> "$STUB_JOURNAL-compose-env"
+    printf '%s\\n' "\${WEB2_ADMIN_VERSION-}" > "$STUB_JOURNAL-built-version"
+    printf '%s\\n' "\${WEB2_ADMIN_COMMIT-}" > "$STUB_JOURNAL-built-commit"
+    ;;
+esac
+case " $* " in
   *" ps -q "*) echo stub-container ;;
+  *".Config.Env"*)
+    echo 'PATH=/usr/local/bin:/usr/bin:/bin'
+    echo "WEB2_ADMIN_VERSION=\${FAKE_API_VERSION-$(cat "$STUB_JOURNAL-built-version" 2>/dev/null)}"
+    echo "WEB2_ADMIN_COMMIT=\${FAKE_API_COMMIT-$(cat "$STUB_JOURNAL-built-commit" 2>/dev/null)}"
+    ;;
   " inspect "*) echo healthy ;;
   *" exec "*) echo '{"status":"ok"}' ;;
 esac
@@ -91,11 +152,12 @@ exit 0
 `,
   curl: journalOnly('curl'),
   dig: journalOnly('dig'),
-  // Which files a checkout holds is the real git's to answer, for in-copy.mjs. Every other question
-  // is answered "not a repository", as before.
+  // Which files a checkout holds is the real git's to answer, for in-copy.mjs, and so is every
+  // question the real version.mjs asks. Every other question is answered "not a repository", as
+  // before.
   git: `#!/bin/sh
 printf 'git %s\\n' "$*" >> "$STUB_JOURNAL"
-if [ "$1" = ls-files ]; then
+if [ "$1" = ls-files ] || [ -n "$GIT_STUB_PASSES_ALL" ]; then
   exec "$REAL_GIT" "$@"
 fi
 echo "fatal: not a git repository" >&2
@@ -190,14 +252,25 @@ export function fakeEdgeEnv(marker) {
   );
 }
 
+/** Copies one file of this repository into a sandbox's checkout, from `from` when it is given. */
+function copyIn(root, path, from = join(REPOSITORY_ROOT, path)) {
+  mkdirSync(dirname(join(root, path)), { recursive: true });
+  cpSync(from, join(root, path));
+}
+
 /**
  * A throwaway checkout of this repository holding the two deploy scripts, laid out as the
  * repository is, beside a fake host and a folder of stubs that go first on PATH.
  *
  * `checkout` and `host` map a path to the content written there. Without `host` the fake host does
  * not exist yet, which is a host nothing was deployed to.
+ *
+ * tools/release/version.mjs is a stand-in that names FIXTURE_VERSION, or the build a test names in
+ * FAKE_VERSION_COMMIT, FAKE_VERSION_TAG and FAKE_VERSION_LABEL. With `realVersion` it is the real
+ * one, and git answers it: the test makes the checkout a repository first. tools/release/tag.mjs is
+ * always a stand-in that only records that it ran.
  */
-export function makeSandbox({ checkout = {}, host, cutTool = false, realRsync = false } = {}) {
+export function makeSandbox({ checkout = {}, host, cutTool = false, realRsync = false, realVersion = false } = {}) {
   const dir = mkdtempSync(join(tmpdir(), 'web2-admin-deploy-'));
   sandboxes.push(dir);
   const root = join(dir, 'checkout');
@@ -205,10 +278,10 @@ export function makeSandbox({ checkout = {}, host, cutTool = false, realRsync = 
   const bin = join(dir, 'bin');
   const journal = join(dir, 'journal');
 
-  for (const path of COPIED_FROM_REPOSITORY) {
-    mkdirSync(dirname(join(root, path)), { recursive: true });
-    cpSync(join(REPOSITORY_ROOT, path), join(root, path));
-  }
+  for (const path of COPIED_FROM_REPOSITORY) copyIn(root, path);
+  if (realVersion) for (const path of REAL_VERSION_TOOL) copyIn(root, path);
+  else copyIn(root, VERSION_TOOL, FAKE_VERSION_TOOL);
+  copyIn(root, TAG_TOOL, FAKE_TAG_TOOL);
   if (cutTool) cpSync(join(REPOSITORY_ROOT, CUT_TOOL), join(root, CUT_TOOL), { recursive: true });
   writeTree(root, { ...SAMPLES, ...checkout });
   if (host) writeTree(hostDir, host);
@@ -216,7 +289,7 @@ export function makeSandbox({ checkout = {}, host, cutTool = false, realRsync = 
   for (const name of Object.keys(STUBS)) chmodSync(join(bin, name), 0o755);
 
   const env = {
-    ...process.env,
+    ...isolatedGitEnv(process.env),
     PATH: `${bin}${delimiter}${process.env.PATH ?? ''}`,
     STUB_JOURNAL: journal,
     FAKE_HOST_DIR: hostDir,
@@ -224,7 +297,14 @@ export function makeSandbox({ checkout = {}, host, cutTool = false, realRsync = 
     PROBE_TIMEOUT: '0',
     REAL_GIT,
     REAL_RSYNC,
+    FAKE_VERSION_COMMIT: FIXTURE_VERSION.commit,
+    FAKE_VERSION_TAG: FIXTURE_VERSION.tag,
   };
+  if (realVersion) env.GIT_STUB_PASSES_ALL = '1';
+  // What a test's run sets for the stand-ins itself, never inherited from the shell the tests run in.
+  for (const name of ['FAKE_VERSION_LABEL', 'FAKE_VERSION_FAILS', 'FAKE_API_VERSION', 'FAKE_API_COMMIT']) {
+    delete env[name];
+  }
   // A file bash would source before every script it starts.
   delete env.BASH_ENV;
   delete env.ENV;
@@ -262,6 +342,18 @@ export function makeSandbox({ checkout = {}, host, cutTool = false, realRsync = 
     /** What each copy in-copy.mjs named to docker held, one sorted file list per docker call, as `./path` lines. */
     copies: () =>
       existsSync(`${journal}-copy`) ? readFileSync(`${journal}-copy`, 'utf8').split('\n').filter(Boolean) : [],
+    /**
+     * The version each `docker compose ... up` found in its environment, as it would build it into the images, in the
+     * order they ran: `version` and `commit`, `(unset)` for one that was not exported, and whether it ran in the copy
+     * tools/app-workspace/in-copy.mjs makes.
+     */
+    composeEnv: () =>
+      (existsSync(`${journal}-compose-env`) ? readFileSync(`${journal}-compose-env`, 'utf8').split('\n') : [])
+        .filter(Boolean)
+        .map((line) => {
+          const [version, commit, copy] = line.split('\t');
+          return { version, commit, inCopy: copy === 'in-copy' };
+        }),
     /** The arguments the rsync of a `realRsync` sandbox was given, as it was given them. */
     rsyncArgv: () => readFileSync(`${journal}-rsync-argv`, 'utf8').split('\0').slice(0, -1),
     /** The destination as the real rsync of a `realRsync` sandbox left it. */

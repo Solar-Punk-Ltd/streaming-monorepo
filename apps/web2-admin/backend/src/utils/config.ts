@@ -2,7 +2,9 @@ import 'dotenv/config';
 
 import { PrivateKey } from '@ethersphere/bee-js';
 import { ADMIN_API_TOKEN_MIN_LENGTH } from '@streaming-monorepo/contracts';
+import type { VersionInfo } from '@streaming-monorepo/web2-admin-common';
 
+import { versionFrom } from './buildVersion.js';
 import { getErrorMessage } from './errorUtils.js';
 
 function required(name: string): string {
@@ -67,6 +69,11 @@ export interface AppConfig {
    * Stages page. Off unless set, until the move has been tried on a real node (docs/architecture/stages.md).
    */
   catalogueMoveEnabled: boolean;
+  /**
+   * `WEB2_ADMIN_VERSION` and `WEB2_ADMIN_COMMIT`: the build this process runs, which deploy/deploy.sh builds into the
+   * api image. Signed-in users read it at GET /api/version.
+   */
+  version: VersionInfo;
 }
 
 function optionalFlag(name: string): boolean {
@@ -114,4 +121,5 @@ export const config: AppConfig = {
   viewerBaseUrl: optional('VIEWER_BASE_URL', ''),
   internalApiToken: requiredSecret('INTERNAL_API_TOKEN', INTERNAL_API_TOKEN_MIN_LENGTH),
   catalogueMoveEnabled: optionalFlag('CATALOGUE_MOVE_ENABLED'),
+  version: versionFrom(process.env),
 };

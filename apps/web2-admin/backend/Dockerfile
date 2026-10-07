@@ -54,3 +54,14 @@ EXPOSE 9877
 # The server writes nothing to disk, so it needs none of root's rights. The node image ships this user.
 USER node
 CMD ["node", "dist/index.js"]
+
+# The build this image is, as deploy/deploy.sh names it from tools/release/version.mjs: the label it deployed as and
+# the commit. Last in the image on purpose, so a new version changes only these metadata lines and every layer above
+# stays cached. The API answers them at GET /api/version, and the deploy checks the container it starts reports them.
+# Empty in a build made by hand, which the API calls a development build.
+ARG WEB2_ADMIN_VERSION=""
+ARG WEB2_ADMIN_COMMIT=""
+ENV WEB2_ADMIN_VERSION=$WEB2_ADMIN_VERSION \
+    WEB2_ADMIN_COMMIT=$WEB2_ADMIN_COMMIT
+LABEL org.opencontainers.image.version=$WEB2_ADMIN_VERSION \
+      org.opencontainers.image.revision=$WEB2_ADMIN_COMMIT

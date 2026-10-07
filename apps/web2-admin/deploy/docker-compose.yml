@@ -14,6 +14,13 @@
 #                        because a port slot is authoritative over the file
 # Running compose by hand works too, as long as both are exported first; see
 # deploy/README.md.
+#
+# Two more name the build, and deploy.sh sets them from tools/release/version.mjs:
+#   WEB2_ADMIN_VERSION   the label the build is deployed as
+#   WEB2_ADMIN_COMMIT    the commit it was made from
+# Both are built into the images, so a container that was not replaced goes on
+# reporting the build it runs. An `up --build` by hand without them builds
+# images that call themselves a development build.
 services:
   postgres:
     image: postgres:16.15-alpine@sha256:721873c34ceb9f8d8fc265984940dc982404c105f19ad51be9fdc5970a6080ea
@@ -42,6 +49,11 @@ services:
       # lockfile, so it needs the root manifests as well as the package.
       context: ..
       dockerfile: backend/Dockerfile
+      # Into the image's environment, where the API reads them and the deploy
+      # checks them, and into its labels.
+      args:
+        WEB2_ADMIN_VERSION: ${WEB2_ADMIN_VERSION:-}
+        WEB2_ADMIN_COMMIT: ${WEB2_ADMIN_COMMIT:-}
     restart: unless-stopped
     depends_on:
       postgres:
@@ -77,6 +89,10 @@ services:
     build:
       context: ..
       dockerfile: frontend/Dockerfile
+      # Into the image's labels only: the console reads the version from the API.
+      args:
+        WEB2_ADMIN_VERSION: ${WEB2_ADMIN_VERSION:-}
+        WEB2_ADMIN_COMMIT: ${WEB2_ADMIN_COMMIT:-}
     restart: unless-stopped
     # Started, not healthy, as in the manager: waiting for the API is
     # deploy.sh's job, with a timeout, where a crash-looping API cannot hold a

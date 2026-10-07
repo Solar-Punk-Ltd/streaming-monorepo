@@ -14,9 +14,12 @@
 #      this machine. The backend refuses to start without a handful of keys,
 #      and a deploy that fails here is better than an API restarting forever
 #      on the host with nobody watching its logs.
-#   2. Writes the commit this checkout is at into deploy/.deployed-commit,
-#      with -dirty appended when the tree has changes, since this repository
-#      is often deployed before its work is committed.
+#   2. Names the build with tools/release/version.mjs: the tag on the commit,
+#      or the nearest tag before it and how far past it, ended by -dirty when
+#      the admin's files hold changes not yet committed, since this repository
+#      is often deployed before its work is committed. In a terminal, a commit
+#      with no tag is offered the tag script first. Writes the commit into
+#      deploy/.deployed-commit.
 #   3. rsyncs apps/web2-admin to <remote-path> on the host, leaving out .git,
 #      node_modules, build output, deploy/edge/ (the host's edge, which
 #      infra/edge/edge.sh maintains) and every env file but the one this profile
@@ -24,18 +27,21 @@
 #      env files are left out rather than shipped because the host keeps one
 #      checkout for every profile: a laptop that has only .env.brand-a must not
 #      delete the .env.brand-b that someone else deployed from theirs.
-#   4. Over one ssh session, builds the images and starts the compose project
-#      web2-admin-<profile> on the host, then waits for the API and the
-#      console to report healthy and for /api/health to answer through nginx.
-#      The API applies its migrations at boot, before it listens, so there is
-#      no separate migration step and healthy means migrated.
+#   4. Over one ssh session, builds the images with the version in them and
+#      starts the compose project web2-admin-<profile> on the host, then waits
+#      for the API and the console to report healthy, for /api/health to
+#      answer through nginx, and for the api container to report the version
+#      just built. The API applies its migrations at boot, before it listens,
+#      so there is no separate migration step and healthy means migrated.
 #
 # With --host=localhost there is no rsync and no ssh: the same steps run in
 # this checkout against the local Docker daemon, which is what the manager
 # passes for a profile that lives on its own host.
 #
-# Nothing here ever prompts. Standard input may be closed, and a question
-# nobody can answer is worse than a refusal that says why.
+# Nothing here prompts unless both standard input and standard output are a
+# terminal, and then only to offer the tag script for a commit with no tag.
+# Standard input may be closed, and a question nobody can answer is worse than
+# a refusal that says why.
 
 set -euo pipefail
 
@@ -92,6 +98,11 @@ Flags (each one with a value also accepts it separately, as in --host admin-host
   -h, --help            Show this help.
 
 Services: postgres api web. None named means all three.
+
+The build is named by tools/release/version.mjs from the git tag on the commit,
+and built into the images. In a terminal, a commit with no tag is offered
+tools/release/tag.mjs first (docs/releasing.md). Run from anything that is
+not a terminal, it never prompts.
 
 Environment:
   HEALTH_TIMEOUT        Seconds to wait for the stack to report healthy after
@@ -404,6 +415,18 @@ if [ -n "$ENV_WEB_PORT" ]; then
     fi
 fi
 
+# The build is named by this script and built into the api image. A line in the
+# env file, even an empty one, would win over the image's value in the
+# container, which would then report a build nobody made. Compose's env file
+# parser also takes `export KEY=`, `KEY =` and `KEY:` as assignments, so each
+# of those forms is refused too. Another name that holds the key, and a
+# comment, are not.
+for key in WEB2_ADMIN_VERSION WEB2_ADMIN_COMMIT; do
+    if grep -qE "^[[:space:]]*(export[[:space:]]+)?$key[[:space:]]*[=:]" "$ENV_FILE"; then
+        problem "$key is set by deploy.sh, which builds it into the api image. Remove it: the env file's value would win over the image's."
+    fi
+done
+
 if [ "$PROBLEMS" -gt 0 ]; then
     if [ "$SAMPLE_SECRETS" -gt 0 ]; then
         echo "[deploy] ERROR: a test install can keep the sample's values with --allow-sample-secrets. Anything real needs values of its own." >&2
@@ -437,6 +460,7 @@ if [ ! -t 0 ]; then
     SSH_OPTS+=(-o BatchMode=yes)
 fi
 
+command -v node >/dev/null 2>&1 || die "node is not installed on this machine: tools/release/version.mjs names the build"
 if [ "$LOCAL" = true ]; then
     command -v docker >/dev/null 2>&1 || die "docker is not installed on this machine"
     docker compose version >/dev/null 2>&1 || die "docker compose is not available on this machine"
@@ -445,17 +469,94 @@ else
     command -v rsync >/dev/null 2>&1 || die "rsync is not installed on this machine"
 fi
 
-# --- The commit ---------------------------------------------------------------
+# --- The version --------------------------------------------------------------
 
-COMMIT="unknown"
-if git rev-parse --verify -q HEAD >/dev/null 2>&1; then
-    COMMIT="$(git rev-parse HEAD)"
-    # Only this folder's changes count: the repository holds other projects,
-    # and a change in one of them is not a change to what this deploy ships.
-    if [ -n "$(git status --porcelain -- . 2>/dev/null)" ]; then
-        COMMIT="$COMMIT-dirty"
+# tools/release/version.mjs names the build: the tag on this commit, or the
+# nearest tag before it and how many commits past it, or the short commit, with
+# -dirty at the end when the admin's folder or what its images build from holds
+# changes not yet committed. A change in another project of the repository is
+# not a change to what this deploy ships, and does not count.
+#
+# Its lines are read one by one and never run. Each value is held to its pattern
+# here, before it is written into the script the host runs, into the images and
+# into the console, all of which take it without quoting.
+VERSION_COMMIT=""
+VERSION_SHORT=""
+VERSION_TAG=""
+VERSION_LABEL=""
+
+# printf %q, so a refused value shows what is in it, invisible characters too.
+quoted() { printf '%q' "$1"; }
+
+read_version() {
+    local output line
+    if ! output="$(node "$REPO_ROOT/tools/release/version.mjs" --app "$APP_DIR_FROM_ROOT")"; then
+        die "tools/release/version.mjs could not name the build, for the reason above. Nothing was deployed."
     fi
+    VERSION_COMMIT=""
+    VERSION_TAG=""
+    VERSION_LABEL=""
+    while IFS= read -r line; do
+        case "$line" in
+            VERSION_COMMIT=*) VERSION_COMMIT="${line#VERSION_COMMIT=}" ;;
+            VERSION_TAG=*) VERSION_TAG="${line#VERSION_TAG=}" ;;
+            VERSION_LABEL=*) VERSION_LABEL="${line#VERSION_LABEL=}" ;;
+        esac
+    done <<VERSION_LINES
+$output
+VERSION_LINES
+    if ! [[ "$VERSION_COMMIT" =~ ^[0-9a-f]{40}$ ]]; then
+        die "tools/release/version.mjs named the commit $(quoted "$VERSION_COMMIT"), which is not 40 lowercase hex characters. Nothing was deployed."
+    fi
+    # The API shows no label longer than 96 characters, which holds an
+    # 80-character tag, how far past it the build is, and -dirty.
+    if ! [[ "$VERSION_LABEL" =~ ^[A-Za-z0-9._+/-]{1,96}$ ]]; then
+        die "tools/release/version.mjs named the build $(quoted "$VERSION_LABEL"). A label holds 1 to 96 letters, digits and . _ + / - and nothing else. Nothing was deployed."
+    fi
+    if ! [[ "$VERSION_TAG" =~ ^[A-Za-z0-9._+/-]*$ ]]; then
+        die "tools/release/version.mjs named the tag $(quoted "$VERSION_TAG"). A tag holds letters, digits and . _ + / - and nothing else. Nothing was deployed."
+    fi
+    VERSION_SHORT="${VERSION_COMMIT:0:9}"
+}
+
+# The build as every console names it: the label and the short commit, or the
+# label alone when it starts with the short commit, as an untagged build's does.
+version_display() {
+    case "$VERSION_LABEL" in
+        "$VERSION_SHORT"*) printf '%s' "$VERSION_LABEL" ;;
+        *) printf '%s (%s)' "$VERSION_LABEL" "$VERSION_SHORT" ;;
+    esac
+}
+
+read_version
+
+# A person at a terminal deploying a commit with no tag is offered the tag
+# script first, and the deploy goes on with the version as it then stands,
+# whatever the script did. A run without a terminal, the manager's among them,
+# is never asked anything.
+if [ -z "$VERSION_TAG" ] && [ -t 0 ] && [ -t 1 ]; then
+    echo "[deploy] This commit has no tag."
+    printf '%s' "[deploy] Run the tag script now? [y/N] "
+    ANSWER=""
+    read -r ANSWER || true
+    case "$ANSWER" in
+        [yY] | [yY][eE][sS])
+            TAG_STATUS=0
+            node "$REPO_ROOT/tools/release/tag.mjs" || TAG_STATUS=$?
+            if [ "$TAG_STATUS" -ne 0 ]; then
+                warn "tools/release/tag.mjs exited with status $TAG_STATUS. Deploying the version this commit has now."
+            fi
+            read_version
+            ;;
+    esac
 fi
+if [ -n "$VERSION_TAG" ]; then
+    log "version $(version_display), from the tag on this commit"
+else
+    log "this commit has no tag: it deploys as $VERSION_LABEL"
+fi
+
+COMMIT="$VERSION_COMMIT"
 printf '%s\n' "$COMMIT" >deploy/.deployed-commit
 log "commit $COMMIT (written to $APP_DIR_FROM_ROOT/deploy/.deployed-commit)"
 
@@ -478,9 +579,10 @@ OLD_ENV_FILE_CHECK
 }
 
 # Every value interpolated below has been held to a pattern above (the path,
-# profile, port, services and commit), so none of them can end the single
-# quotes it sits in. The script is written to ssh's standard input rather than
-# passed as an argument, which keeps it out of the host's process list.
+# profile, port, services, commit and version label), so none of them can end
+# the single quotes it sits in. The script is written to ssh's standard input
+# rather than passed as an argument, which keeps it out of the host's process
+# list.
 #
 # The body is one function, called with its input from /dev/null. bash -s reads
 # its script from standard input as it goes, so any command in a bare script
@@ -522,7 +624,9 @@ unset POSTGRES_PASSWORD
 # Relative to deploy/, where the compose file is.
 export WEB2_ADMIN_ENV_FILE='../$ENV_FILE'
 export WEB2_ADMIN_WEB_PORT='$WEB_PORT'
+# The build, which compose passes to the images as build arguments.
 export WEB2_ADMIN_COMMIT='$COMMIT'
+export WEB2_ADMIN_VERSION='$VERSION_LABEL'
 
 compose() {
     docker compose -p '$PROJECT' -f '$COMPOSE_FILE' --env-file '$ENV_FILE' "\$@"
@@ -577,6 +681,29 @@ case " \$SCOPE " in
             report_failure "the console is up but /api/health does not answer through nginx"
         fi
         echo "[deploy] /api/health through nginx: \$HEALTH"
+        ;;
+esac
+
+# The version is in the image, and compose replaces a container only when its
+# image or settings changed. So the api container answers for the build it
+# runs, and anything but the build just made means that build is not running.
+case " \$SCOPE " in
+    *" api "*)
+        api_id="\$(compose ps -q api 2>/dev/null || true)"
+        api_env=""
+        if [ -n "\$api_id" ]; then
+            api_env="\$(docker inspect -f '{{range .Config.Env}}{{println .}}{{end}}' "\$api_id" 2>/dev/null || true)"
+        fi
+        running_version="\$(printf '%s\n' "\$api_env" | sed -n 's/^WEB2_ADMIN_VERSION=//p' | tail -n 1)"
+        running_commit="\$(printf '%s\n' "\$api_env" | sed -n 's/^WEB2_ADMIN_COMMIT=//p' | tail -n 1)"
+        if [ "\$running_version" != '$VERSION_LABEL' ] || [ "\$running_commit" != '$COMMIT' ]; then
+            echo "[deploy] ERROR: the api container reports version \${running_version:-(none)} at commit \${running_commit:-(none)}, but this deploy built $VERSION_LABEL at $COMMIT. The build just made is not what runs." >&2
+            exit 1
+        fi
+        echo "[deploy] the api container runs $VERSION_LABEL at $COMMIT, the build just made"
+        ;;
+    *)
+        echo "[deploy] the api was not part of this deploy, so the build it runs was not checked"
         ;;
 esac
 
@@ -651,7 +778,6 @@ fi
 # A new database has no users and refuses every sign-in until one is made,
 # hence the command for the first one, printed on every deploy.
 USER_ADD="WEB2_ADMIN_ENV_FILE=../$ENV_FILE docker compose -p $PROJECT -f $COMPOSE_FILE --env-file $ENV_FILE exec api node dist/cli.js user:add <username>"
-log "done: $PROJECT at commit $COMMIT"
 if [ "$LOCAL" = true ]; then
     log "open: http://127.0.0.1:$WEB_PORT"
     log "first user, once per profile, from the repository root (prompts for the password):"
@@ -662,3 +788,5 @@ else
     log "first user, once per profile (prompts for the password):"
     log "  ssh -t $HOST 'cd $REMOTE_PATH && $USER_ADD'"
 fi
+# The last line, for whoever reads only that: the build this deploy made.
+log "deployed $(version_display)"
