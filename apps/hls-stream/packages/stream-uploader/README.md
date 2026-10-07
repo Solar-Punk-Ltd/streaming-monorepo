@@ -469,6 +469,43 @@ outlives the others by roughly 7×, and those two feeds are the only addresses a
 a stage. Riding them on the 1080p node would take discovery down first, while three rungs were still
 publishing fine.
 
+### Ladder time markers
+
+Every rung's playlist feed is a numbered sequence, one entry per published playlist, and a viewer that
+starts or switches quality has to find the newest number. Bee's own feed lookup walks at most 255
+indexes a round from 0, so on a long broadcast that costs many round trips before the first frame.
+
+So each live ladder also writes a **time marker** every ten seconds: one small single-owner chunk that
+says where every rung's feed stood at that moment. A viewer computes the address of a recent marker
+from the clock, reads it once, and is then at most one round of parallel reads from the newest entry.
+Feeds, the master, the catalog and recordings are unchanged, and a viewer that finds no marker
+searches the feeds exactly as before. The convention lives in `@swarm-hls-stream/shared`
+(`ladderMarker.ts`), so the writer and every reader compute the same address.
+
+- **Period.** `p = floor(unix seconds / 10)`, global time rather than time since the stream started,
+  so a reader needs nothing but the clock.
+- **Address.** A single-owner chunk owned by the ladder's signer, the owner of the master feed, with
+  identifier `keccak256("ladder-marker" ‖ group topic ‖ p as 8 bytes big-endian)`. The group topic is
+  the master feed's topic, `Topic.fromString(group)`.
+- **Payload.** Small JSON naming only rungs that have published, keyed by each rung's feed topic in
+  hex. `parseLadderMarker` rejects anything else, so a reader never jumps on a malformed marker.
+
+```json
+{ "v": 1, "period": 175983840, "writtenAt": 1759838400250, "rungs": { "<rung feed topic hex>": 41 } }
+```
+
+`LadderMarkerWriter` starts a ladder's markers with its first published playlist and writes each
+period's marker shortly after the period begins. It stops when the ladder's last rung is released,
+and a ladder with nothing published gets none. Writes go direct, not deferred, through the node the
+master is written through, on a queue of their own, so a marker never delays a playlist. A write that
+cannot finish inside its own period is abandoned with its request cancelled, logged once per run of
+failures and counted in `swarm_hls_ladder_markers_failed_total`, and the next period goes on. A
+marker is never rewritten, including when the wall clock steps back. `swarm_hls_ladder_markers_written_total`
+counts the ones that landed.
+
+The cost is one chunk per ladder every ten seconds, 360 an hour, on the lowest rung's batch, which is
+the one the catalog and the master already ride. `LADDER_MARKERS=false` turns markers off.
+
 ## Prerequisites
 
 - Node.js 24+
