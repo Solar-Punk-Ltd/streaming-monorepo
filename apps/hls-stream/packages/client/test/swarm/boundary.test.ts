@@ -62,12 +62,21 @@ describe('the Swarm layer', () => {
 
 /**
  * The modules of the Swarm layer everything outside it may import: the client and what it reads in, and
- * one that makes no requests, which network an address is on. A provider's own files and the registry
- * of kinds stay behind it, so a new kind of provider changes nothing outside `src/swarm`.
+ * four that make no requests, which network an address is on, the sources a viewer reads from, which
+ * part reads from which, and the order of fallbacks. A provider's own files and the registry of kinds
+ * stay behind it, so a new kind of provider changes nothing outside `src/swarm`.
  */
-const PUBLIC_SURFACE = ['client', 'answers', 'provider', 'settings', 'createSwarmClient', 'addressSpace'].map((name) =>
-  join(SWARM, name),
-);
+const PUBLIC_SURFACE = [
+  'client',
+  'answers',
+  'provider',
+  'settings',
+  'createSwarmClient',
+  'addressSpace',
+  'sources',
+  'routing',
+  'fallbackOrder',
+].map((name) => join(SWARM, name));
 
 function importsPastTheSurface(file: string): string[] {
   const source = readFileSync(file, 'utf8');
