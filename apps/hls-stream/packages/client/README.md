@@ -37,12 +37,13 @@ In production builds or when pointing to a remote gateway, requests go directly 
 
 ## Environment Variables (in root `.env`)
 
-| Variable              | Required | Description                                                                                                                                                                  |
-| --------------------- | -------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `VITE_READER_BEE_URL` | Yes      | Bee node URL for fetching streams                                                                                                                                            |
-| `VITE_APP_OWNER`      | Yes      | Feed owner address (hex, no 0x prefix)                                                                                                                                       |
-| `VITE_APP_RAW_TOPIC`  | Yes      | Feed topic for the stream catalog, must match `STREAM_LIST_TOPIC`                                                                                                            |
-| `VITE_EXPOSE_PLAYER`  | No       | Test builds only. Puts the player, gateway and fetch-backend handles on `window` for the e2e browser suites. No shipping build sets it, and `bundle.test.ts` holds that line |
+| Variable               | Required | Description                                                                                                                                                                  |
+| ---------------------- | -------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `VITE_READER_BEE_URL`  | Yes      | Bee node URL for fetching streams                                                                                                                                            |
+| `VITE_APP_OWNER`       | Yes      | Feed owner address (hex, no 0x prefix)                                                                                                                                       |
+| `VITE_APP_RAW_TOPIC`   | Yes      | Feed topic for the stream catalog, must match `STREAM_LIST_TOPIC`                                                                                                            |
+| `VITE_SWARM_PROVIDERS` | No       | The gateways the viewer reads, as JSON. Empty means the one gateway `VITE_READER_BEE_URL` names. See [The Swarm client](#the-swarm-client)                                   |
+| `VITE_EXPOSE_PLAYER`   | No       | Test builds only. Puts the player, gateway and fetch-backend handles on `window` for the e2e browser suites. No shipping build sets it, and `bundle.test.ts` holds that line |
 
 ## The build stamp
 
@@ -132,16 +133,65 @@ Fragment loading is started by hand from `MANIFEST_PARSED` (`autoStartLoad: fals
 
 Combine with `?qoe=1` to watch what those settings do: the overlay's ABR section shows the selected rung, hls.js's live bandwidth estimate, and **switch latency**, the time from hls.js committing to a rung until the first fragment of it is buffered. That last number is the one this POC exists to produce.
 
+## The Swarm client
+
+`src/swarm/` is the one layer that reads Swarm, plain TypeScript with no React, and it imports nothing
+from the app's components, pages, providers or layouts. Everything else reads only through it: a test
+fails on a source line outside it that builds a Bee URL, calls fetch, or makes a Bee client of its own
+(`test/swarm/boundary.test.ts`).
+
+- **Where each feature reads.** `providers/App.tsx` makes one client at start from the build's
+  gateways and the viewer's saved node, and makes it again when the viewer picks another node. The
+  player reads through `reader('player')`, the stream list through `reader('stream-list')`, the
+  previews and pictures through `reader('previews')`, and the node picker checks a node through its
+  provider's `probe()`. This viewer has no chat, so there is no chat reader.
+- **A provider** is one way of reaching Swarm (`src/swarm/provider.ts`), holding only what the app
+  reads: a feed's head, a feed entry by index, a single-owner chunk's payload by its owner and
+  identifier (a feed entry is one, and so is a ladder's time marker), a chunk, the bytes a reference
+  names, and a URL for what the browser or hls.js loads itself. It also says what it can do, its
+  status, a probe, and start and stop for a node in the tab. `src/swarm/providers/bee-http/` is Bee's
+  HTTP API, asking the paths the viewer has always asked.
+- **Every read answers and never throws** (`src/swarm/answers.ts`): the content, with the feed index
+  and the server time where the answer carries them, not found, rate limited with the wait asked for,
+  unsupported, unavailable with its cause (a timeout, a status or no answer at all), or aborted. Every
+  read takes a signal and a window, ten seconds when none is given. Bee's 404 is not found, its 429 is
+  rate limited with its `Retry-After` capped at a minute, and any other failing status, a 500 included,
+  is unavailable. A chunk read is the exception: Bee answers 500 for a chunk nobody has written, so
+  there a 500 is not found and never pauses the node.
+- **The client** (`src/swarm/client.ts`) is made from the settings and the viewer's choice by
+  `createSwarmClient`, which makes each gateway's provider through the registry of kinds
+  (`src/swarm/registry.ts`). Each feature reads through its own provider with the fallback behind it.
+  A provider that faults three times in a row is left alone for 15 seconds, twice that each time it
+  faults again at once, up to two minutes, and a rate-limited one for as long as it asked. A paused
+  provider is still asked when nothing else can be. A read's window covers the fallback too: the
+  fallback gets only what the first provider left of it, and is not asked once nothing is left. Every
+  read is counted by feature, kind, provider and answer, and every answer's server time keeps the
+  gateway clock the time markers are read on.
+- **The in-tab node is unchanged.** Segment lines are the player reader's URLs, which for a Bee
+  gateway are `<gateway>/bytes/<reference>`, so the fragment loader still finds the reference in each
+  and hands it to weeb-3 when that backend is selected.
+- **The settings come from the build**, as every other setting of this viewer does, not from a
+  `config.json` beside the page. `VITE_SWARM_PROVIDERS` is JSON naming the gateways offered, each
+  with an `id`, the `kind` `bee-http`, an optional `label` and a `url` that is a path on this site
+  such as `/bee` or an http or https address, then the `default` gateway's id, an optional `fallback`
+  id, and optionally the `kinds` a viewer may add a node of. A build that leaves it empty reads the one
+  gateway `VITE_READER_BEE_URL` names, the default with no fallback, so a deployment needs no change.
+  A value that is wrong stops the page at start and says where (`src/swarm/settings.ts`). A viewer's
+  saved node is kept as an address: one an offered gateway has is that gateway, and any other is a Bee
+  node of their own, with the build's fallback behind it.
+- **The contract** (`test/swarm/providerContract.ts`) is the suite every provider kind must pass, run
+  for Bee over HTTP against a gateway held in memory (`test/helpers/fakeBeeGateway.ts`).
+
 ## Custom hls.js Loaders
 
 Standard hls.js expects static manifest URLs. On Swarm, every manifest update produces a new content hash. The client solves this with custom loaders:
 
 1. **CustomManifestLoader**, Instead of fetching a static URL, performs a Swarm Feed lookup to get the latest manifest. Proactively fetches the next feed index for caching.
-2. **CustomFragmentLoader**, Resolves segment references from the manifest (which contain Swarm hashes) into fetchable blob URLs via the configured Bee node.
+2. **CustomFragmentLoader**, Resolves segment references from the manifest (which contain Swarm hashes) into fetchable URLs, the ones the Swarm client's player reader gives.
 3. **ManifestStateManager**, Merges incoming live manifests into a growing EVENT-type playlist so segments remain available longer than the sliding window. Tracks feed indices, handles deduplication, and caches serialized output.
 4. **LadderFeedPoller**. For ABR streams, owns the feed walk of the rung hls.js plays, plus the one being switched to while a switch is under way. Every rung is registered and only those are read. A rung left behind forgets where it was, so coming back to it starts at its newest playlist. Where a walk starts comes from a `NewestIndexFinder`, injected so it can be swapped: the `MarkerFinder`, which reads the ladder's time marker and falls back to the `IndexSearchFinder`. How it follows is `followPredicted` in `SwarmHlsPlayer/following/`, the polling study's choice. The study's simulator and the strategies it was compared with are in `test/feedModel/`.
    - **How it times its reads.** The player asks for the next playlist when it is due: the newest segment's end, plus one segment, plus a delay it learns from its own reads, set so that about one ask in four comes too early. A second ask covers that one, then one ask per segment, then asks every 2 seconds rising to 4 while nothing comes. A playlist 4 seconds late is looked past, one slot further on.
-   - **How it finds the newest playlist.** It reads slots by their number, never Bee's feed lookup. The uploader writes a time marker for each ladder every 10 seconds, at an address worked out from the clock, naming every rung's newest playlist (`packages/shared/src/ladderMarker.ts`). At the start, at a switch, and when a rung stops or finishes, the player reads the marker of the previous 10 seconds, and the one before if that is missing, then one round of eight slots from where it says. One marker read serves every rung for a few seconds, and a marker address found missing is never asked again. The clock is the gateway's, taken from the `Date` header on the catalog reads, so a viewer whose clock is wrong still finds the marker. A gateway on another origin has to list `Date` in `Access-Control-Expose-Headers` for the browser to show it, and without that the correction stays zero. With no marker, it searches: at the start eight slots at once, spread out to the feed's length, closing in on the newest in a few rounds, and at a switch from the playing rung's newest slot, usually one round. The new rung is read further back when the viewer is behind the live edge, at most ten reads.
+   - **How it finds the newest playlist.** It reads slots by their number, never Bee's feed lookup. The uploader writes a time marker for each ladder every 10 seconds, at an address worked out from the clock, naming every rung's newest playlist (`packages/shared/src/ladderMarker.ts`). At the start, at a switch, and when a rung stops or finishes, the player reads the marker of the previous 10 seconds, and the one before if that is missing, then one round of eight slots from where it says. One marker read serves every rung for a few seconds, and a marker address found missing is never asked again. The clock is the gateway's, taken from the `Date` header of every answer the Swarm client reads, so a viewer whose clock is wrong still finds the marker. A gateway on another origin has to list `Date` in `Access-Control-Expose-Headers` for the browser to show it, and without that the correction stays zero. With no marker, it searches: at the start eight slots at once, spread out to the feed's length, closing in on the newest in a few rounds, and at a switch from the playing rung's newest slot, usually one round. The new rung is read further back when the viewer is behind the live edge, at most ten reads.
 
 5. **`fragmentRequested` and `fragmentSettled` are a parsed contract, not debug output.** The loaders write those two console lines, `packages/shared/src/clientLog.ts` composes them and owns their wording, and `e2e/src/browser/fragmentRequests.ts` reads them back. They are the only thing that lets a sitting say whether a down-switch the player asked for actually completed or starved. Rewording either one throws nothing and fails nothing: the e2e quality arm's reading simply comes back empty, and the run reports on a viewer it could not see.
 
@@ -209,14 +259,15 @@ src/
     StreamBrowser/        # Home, fetches stream catalog, renders list
     StreamWatcher/        # Watch, plays a single stream
   providers/
-    App.tsx               # Global state (stream list, gateway URL)
+    App.tsx               # Global state (stream list, gateway URL, the Swarm client)
+  swarm/                  # The one layer that reads Swarm: answers, providers, the client, settings
   types/
     stream.ts             # MediaType, StreamState, Stream interface
   utils/
     catalogFeed.ts        # Follows the stream catalog feed by walking slots
     config.ts             # Environment config with auto proxy detection
-    fetchWithTimeout.ts   # fetch() with a timeout, returning a timed response
+    fetchTimeoutError.ts  # The error a read whose window ran out reaches the player and the stream list as
     format.ts             # formatDuration (mm:ss)
     requestJitter.ts      # Gateway request jitter, to desynchronise pollers
-    thumbnailManifest.ts  # Preview segment URL for stream thumbnails
+    thumbnailManifest.ts  # A stream card's playlist read and its segment's URL
 ```
