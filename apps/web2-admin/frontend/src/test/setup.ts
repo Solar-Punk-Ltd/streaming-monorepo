@@ -6,6 +6,11 @@ import { afterEach } from 'vitest';
 // Testing Library only auto-cleans when vitest globals are on; they are not.
 afterEach(cleanup);
 
+// The auth provider remembers in localStorage that this browser was signed in,
+// so a reload can say the session ended. One test's sign-in must not become the
+// next test's ended session.
+afterEach(() => localStorage.clear());
+
 // jsdom has no matchMedia, and MUI's responsive helpers call it on mount.
 // Reporting "no match" puts every component in its widest layout, which is
 // the one the console is designed for.

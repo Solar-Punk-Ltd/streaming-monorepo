@@ -6,6 +6,7 @@ import { useEditors } from '../app/EditorsContext';
 import { MONO_STACK } from '../app/theme';
 import { KeyValueList, type KeyValueEntry } from '../components/KeyValueList';
 import { SectionCard } from '../components/SectionCard';
+import { defaultFeedTopicText } from '../deployments/feedTopicText';
 import { hasService, SHAPE_LABEL, shapeOf } from '../deployments/shape';
 import { shortHex } from '../format';
 import type { DeploymentGroup, Profile } from '../types';
@@ -49,6 +50,15 @@ export function SharedSettingsCard({
         </Box>
       ) : (
         'none'
+      ),
+    });
+    entries.push({
+      key: 'Feed topic',
+      value: (
+        <Box component="span" sx={{ fontFamily: MONO_STACK }}>
+          {/* The group page reads no version settings, so an unset topic is described rather than named. */}
+          {first.feed_topic || defaultFeedTopicText(null)}
+        </Box>
       ),
     });
   }

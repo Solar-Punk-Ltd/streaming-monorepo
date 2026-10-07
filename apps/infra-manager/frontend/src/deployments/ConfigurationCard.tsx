@@ -25,6 +25,7 @@ import { shortHex } from '../format';
 import type { Profile } from '../types';
 import { fetchSrtPassphrase } from '../data';
 import { beeApiUrl, hostFor } from '../urls';
+import { defaultFeedTopicText } from './feedTopicText';
 import { nodeModeLabel, rpcEndpointLabel } from './nodeText';
 import { endpointSourceOf, hasService, ownsAnyBeeNode, servicesOf, SHAPE_LABEL, shapeOf } from './shape';
 
@@ -36,6 +37,7 @@ export function ConfigurationCard({
   hostPassphrase,
   beeRpcEndpoint,
   streamerName,
+  versionTopic,
   stampHealth,
 }: {
   profile: Profile;
@@ -45,6 +47,8 @@ export function ConfigurationCard({
   /** The chain endpoint this manager offers, for the deployments that take it. */
   beeRpcEndpoint: ConfiguredBeeRpcEndpoint;
   streamerName: string | null;
+  /** The topic the version gives a player that names none, or null while it is not known. */
+  versionTopic: string | null;
   stampHealth: StampHealth;
 }) {
   const { openEditDeployment } = useEditors();
@@ -187,6 +191,10 @@ export function ConfigurationCard({
       ) : (
         <Muted>none</Muted>
       ),
+    });
+    entries.push({
+      key: 'Feed topic',
+      value: <Mono>{profile.feed_topic || defaultFeedTopicText(versionTopic)}</Mono>,
     });
   }
 

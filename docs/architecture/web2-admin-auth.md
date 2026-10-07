@@ -104,7 +104,7 @@ and being wrong about a different half of it.
 | `LockedOutError` → `locked_out`                    | `TooManyAttemptsError` → `too_many_attempts`                             | The console already renders that code. The body gained `retryAfterSeconds` beside the `Retry-After` header, as in the manager.                                              |
 | `NoUsersError` → 409                               | → 401                                                                    | It is an answer to "who am I", and the console's fetch wrapper already treats `/auth/session` and `/auth/login` as routes where a 401 is an answer rather than an eviction. |
 | `GET /auth/users` → a bare array                   | → `{ users: [...] }`                                                     | `UserListResponse` in web2-admin-common.                                                                                                                                    |
-| One password check throttled per route             | Same, but the wrong _current_ password answers 401 `invalid_credentials` | The manager's choice, kept: the console's wrapper exempts `/auth/password` from the sign-out-on-401 rule for exactly this case.                                             |
+| One password check throttled per route             | Same, but the wrong _current_ password answers 401 `invalid_credentials` | The manager's choice, kept: the console's wrapper exempts `/auth/password` from the sign-out-on-401 rule, and signs out there only on 401 `unauthenticated`.                |
 | No audit log; user add and remove log no actor     | takes an `AuditLog`: every user action names its actor and is audited    | Every operator can act on every stream, so who did what is kept in `audit_log` (migration 007), and changing the users is one of those things.                              |
 | `manager/src/domain/auth/*`                        | `apps/web2-admin/backend/src/domain/auth/*`                              | Same shape, under this repo's `src/domain/`.                                                                                                                                |
 
@@ -124,13 +124,33 @@ ended, and no request would ever come along to notice.
 
 web2-admin has no SSE and no long-lived connection of any kind. Every response
 ends within its request, so `requireAuth` is the only place an ended session has
-to be noticed, and it notices on the next request. Porting `OpenStreams` would
-have been a registry that never held anything and a timer that never closed
-anything. **It is absent on purpose, not by oversight.** If this backend ever
-grows a live-updates stream, that is the moment to port both files — the
-manager's `AuthService.closeStreamsOfEndedSessions` is the whole of it, and the
-comment there about a stream deliberately not counting as activity is the part
-that is easy to get wrong.
+to be noticed on the server. Porting `OpenStreams` would have been a registry
+that never held anything and a timer that never closed anything. **It is absent
+on purpose, not by oversight.** If this backend ever grows a live-updates
+stream, that is the moment to port both files — the manager's
+`AuthService.closeStreamsOfEndedSessions` is the whole of it, and the comment
+there about a stream deliberately not counting as activity is the part that is
+easy to get wrong.
+
+An idle tab is the console's job, not the server's. A session revoked from
+another browser ("Sign out everywhere", a password change, a removed user)
+would otherwise go unnoticed until the operator clicked something. So while
+someone is signed in, the console's `AuthProvider` asks `GET /api/auth/me`
+again whenever the operator comes back to the tab, on `window` focus and on
+`visibilitychange` to visible, at most once every five seconds. The route is
+behind `requireAuth`, so a 401 goes through the fetch wrapper's sign-out like
+any other, and the tab lands on the login page with "Your session ended. Log in
+again." A failure that is not a 401 is left for the next request to report.
+There is deliberately no timer: every gated request refreshes `last_seen_at`,
+so a poll would keep an unattended console signed in past the 12-hour idle
+limit. The other tabs of the same browser hear about it at once on a
+`BroadcastChannel` and each asks the server for itself.
+
+A reload after a revoke says the same thing. The cookie is `httpOnly`, so the
+console keeps a one-bit mark in `localStorage` while someone is signed in (no
+token, nothing about the user); a 401 on the boot probe with the mark present
+reads as a session that ended rather than one that never was. A deliberate
+sign-out clears the mark, so it shows no notice.
 
 Also left out, with less to say about them: the manager's nginx security
 headers and its host firewall generator. Those are deployment, this is the API,

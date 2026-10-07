@@ -12,7 +12,9 @@
  * mode, a stream on the manager's own endpoint, and the two entries read off
  * each page afterwards. What it is here to catch is the gap the wizard and the
  * page can drift into, where a choice is made on one screen and a different
- * one is reported on the next.
+ * one is reported on the next. The two viewers carry the feed topic through
+ * the same gap: one is given a topic, the other none, which its review and
+ * page name as the version's default.
  */
 import assert from 'node:assert/strict';
 import { spawn } from 'node:child_process';
@@ -54,6 +56,15 @@ const DEFAULT_VERSION = '1';
  * two places that reduce such an address to its host before it is rendered.
  */
 const KEYED_ENDPOINT = 'https://rpc.example.org/v1/not-a-key';
+
+/** A topic in the stack's shape, typed for one viewer. */
+const TOPIC = 'brand.catalog_1';
+
+/**
+ * What a viewer that names no topic shows for it: the version's own, named
+ * once the version's settings list is read and described until then.
+ */
+const DEFAULT_TOPIC = /Feed topic\s*(swarm-stream \(default\)|the version's default)/;
 
 async function freePort() {
   const server = createNetServer();
@@ -212,9 +223,11 @@ test('a node is created in the mode and on the endpoint the wizard offered', asy
     assert.equal(await chosen("Manager's endpoint"), null);
   });
   assert.match(ultraLight, /Ultra-light, download only/);
+  assert.match(ultraLight, DEFAULT_TOPIC);
   const ultraLightPage = await body();
   assert.match(ultraLightPage, /Ultra-light, download only/);
   assert.match(ultraLightPage, /None, an ultra-light node reaches no chain/);
+  assert.match(ultraLightPage, DEFAULT_TOPIC);
 
   const light = await create('Watch a stream', 'gateway-on-chain', async () => {
     await choose('Light');
@@ -226,12 +239,15 @@ test('a node is created in the mode and on the endpoint the wizard offered', asy
     // The stack gives its gateway an empty endpoint, which is what makes that
     // node ultra-light, so a light one cannot take that default.
     assert.equal(await disabled('Stack default'), true);
+    await fill('#wizard-feed-topic', TOPIC);
   });
   assert.match(light, /Light, on the chain/);
   assert.match(light, /Manager's endpoint/);
+  assert.match(light, /Feed topic\s*brand\.catalog_1/);
   const lightPage = await body();
   assert.match(lightPage, /Light, on the chain/);
   assert.match(lightPage, /Manager's endpoint \(/);
+  assert.match(lightPage, /Feed topic\s*brand\.catalog_1/);
 
   const stream = await create('Stream to Swarm', 'stage-on-chain', async () => {
     await waitFor(body, (text) => text.includes('Light node, required to publish'), 'the stated mode');
@@ -270,6 +286,14 @@ test('a node is created in the mode and on the endpoint the wizard offered', asy
     ['gateway-on-chain', 'light', 'manager', false, null, false],
     ['stage-on-chain', null, 'manager', false, null, false],
     ['stage-own-endpoint', null, 'custom', true, 'rpc.example.org', false],
+  ]);
+  // The topic as stored: the one typed, and none for the viewer left on its version's.
+  const topics = await evaluate(`fetch('/profiles').then(r => r.json()).then(body => body.profiles
+    .filter(profile => ['gateway-offline', 'gateway-on-chain'].includes(profile.name))
+    .map(profile => [profile.name, profile.feed_topic]))`);
+  assert.deepEqual(topics.sort(), [
+    ['gateway-offline', null],
+    ['gateway-on-chain', TOPIC],
   ]);
   assert.deepEqual(browser.errors, []);
 });

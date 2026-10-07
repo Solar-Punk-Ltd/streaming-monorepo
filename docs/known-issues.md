@@ -23,10 +23,11 @@ with the address of the catalogue feed's owner, and the manager hands it that ad
 viewer deployment's own feed owner setting. After the stages upgrade the catalogue is written by the
 catalogue node, so its owner changes, but the upgrade steps in [self-hosting.md](self-hosting.md)
 name only the viewer's feed topic. A viewer redeployed without the owner builds with none: the page
-stays empty and the browser console says `Missing env var: VITE_APP_OWNER`. The fix by hand is to
-save the owner the admin publishes at `/api/config` (its `feed.owner`, with `0x` in front) as the
-viewer deployment's feed owner, which redeploys it. To see it: designate a catalogue node, give the
-viewer the new topic only, redeploy it and open the page.
+stays empty and the browser console says `Missing env var: VITE_APP_OWNER`. The fix by hand is the
+viewer deployment's **Edit** drawer: the owner the admin publishes at `/api/config` (its
+`feed.owner`, with `0x` in front) under **Streamer to follow**, and its `feed.topic` under **Feed
+topic**. Saving redeploys it. To see it: designate a catalogue node, give the viewer the new topic
+only, redeploy it and open the page.
 
 **A stray file in a version folder spreads into every build and deploy (P3).** The manager copies a
 stack version's folder whole, so any extra file there, such as a backup of its `.env`, is copied into

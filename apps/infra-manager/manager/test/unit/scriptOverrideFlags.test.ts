@@ -34,12 +34,13 @@ const OVERRIDE_FLAGS = ['--feed-owner', '--feed-topic', '--stamp-id'];
 
 let nextName = 0;
 
-function setup() {
+function setup(over: Parameters<typeof makeProfile>[0] = {}) {
   const profile = makeProfile({
     name: `flags-${++nextName}`,
     feed_owner: FEED_OWNER,
     feed_topic: FEED_TOPIC,
     stamp_id: STAMP_ID,
+    ...over,
   });
   return { profile, ...orchestratorHarness([profile]) };
 }
@@ -58,6 +59,21 @@ describe('the feed and stamp overrides', () => {
     assert.ok(run.args.includes(`--feed-owner=${FEED_OWNER}`), run.args.join(' '));
     assert.ok(run.args.includes(`--feed-topic=${FEED_TOPIC}`), run.args.join(' '));
     assert.ok(run.args.includes(`--stamp-id=${STAMP_ID}`), run.args.join(' '));
+  });
+
+  /**
+   * A cleared topic is a NULL column, and deploy.sh skips an empty override
+   * so the env file's value wins: the version's own topic, which is what
+   * emptying the field in the Edit drawer promises.
+   */
+  it('leave the topic out for a deployment that names none, so its version’s own applies', async () => {
+    const h = setup({ feed_topic: null });
+
+    await h.orchestrator.startDeploy(h.profile, undefined);
+
+    const run = h.runner.runs[0]!;
+    assert.match(run.script, /\/deploy\.sh$/);
+    assert.deepEqual(overridesIn(run.args), ['--feed-owner', '--stamp-id']);
   });
 
   it('do not reach stop.sh, which would refuse a stored topic it dislikes', async () => {

@@ -1,7 +1,7 @@
 import { FeedIndex, Topic } from '@ethersphere/bee-js';
 import { nextFeedRequest, resolvedFeedIndex } from '@swarm-hls-stream/shared';
 
-import { fetchWithTimeout, TimedResponse } from './fetchWithTimeout';
+import { FetchTimeoutError, fetchWithTimeout, TimedResponse } from './fetchWithTimeout';
 
 /**
  * How far a single read will walk forward before giving up and finishing on the next one.
@@ -64,11 +64,18 @@ class CatalogFetchError extends Error {
  * routing both through `nextFeedRequest` is deliberate: the last time this rule existed twice the two
  * copies diverged.
  *
- * **A miss is cheap, which is what makes this work for a mostly idle feed.** A walking reader asks
- * for a slot that does not exist yet on almost every poll, since broadcasts are rare. Measured
- * 2026-08-05: that 404 costs 4ms at the median, indistinguishable from a hit. It has a real tail,
- * about one in twenty taking 1.4s, which is invisible at a five second cadence and is the reason
- * `MAX_WALK_PER_READ` exists rather than an unbounded walk. See the `feed-miss-cost` measurement (kept outside the repository).
+ * **A miss is the ordinary answer, and it is not always cheap.** A walking reader asks for a slot that
+ * does not exist yet on almost every poll, since broadcasts are rare. Measured 2026-08-05 on a single
+ * node that wrote the catalog itself, that 404 cost 4ms at the median, with about one in twenty taking
+ * 1.4s. Now that the catalog is written on another node, a miss on the gateway takes about a second,
+ * with a tail past six seconds under load, and some end in a timeout or a status other than 404
+ * rather than a clean miss. See the `feed-miss-cost` measurement (kept outside the repository).
+ *
+ * ⛔ **So once the head has answered, a slot read that times out or is refused means "nothing new
+ * yet", never an error.** Raising it put the page's poll into SWR's error state, which skips the
+ * regular reads and backs off, and one slow miss held an open page behind until a reload. Only a head
+ * lookup that fails, or a gateway that cannot be reached at all, is raised. `MAX_WALK_PER_READ` still
+ * bounds how long one read can walk.
  */
 export class CatalogFeedReader {
   private index: FeedIndex | null = null;
@@ -153,35 +160,44 @@ export class CatalogFeedReader {
         // it threw away, and since each slot carries the whole catalog rather than a delta, a
         // broadcast announced only in that slot is never offered to this reader again.
         //
-        // Reached by a gateway going slow rather than answering: `fetchWithTimeout` rejects on a
-        // transport failure and on its own timeout, and returns `ok: false` only for an HTTP status.
-        // A hit and the miss that ends the walk are different requests, and a miss has a measured
-        // tail of about 1.4s at the 95th percentile, so "one slot answered, the next one hung" is
-        // the ordinary shape of this rather than an exotic one. See the `feed-miss-cost` measurement (kept outside the repository).
+        // ⛔ A timeout is "nothing new yet", even on the walk's first step. `fetchWithTimeout` rejects
+        // on its own timeout and on a transport failure, and returns `ok: false` only for an HTTP
+        // status. The reader holds a position, so this gateway has already answered for this
+        // catalog, and the slot asked for is usually one nobody has written yet: a miss, which on a
+        // gateway reading the catalog from another node takes about a second and has a tail past six
+        // seconds under load. Raising it put the poll into SWR's error state, which skips the regular
+        // reads and backs off instead, so one slow miss held an open page behind until a reload. The
+        // slot is asked for again on the next poll.
         //
-        // Rethrown only when there is nothing to salvage, so a walk that failed on its first step
-        // still reaches the caller as the error it is instead of reading as an idle catalog.
-        if (newest === null) {
+        // Any other throw is a gateway that cannot be reached at all, and is rethrown when there is
+        // nothing to salvage, so it reaches the caller as the error it is instead of reading as an
+        // idle catalog.
+        if (newest === null && !(error instanceof FetchTimeoutError)) {
           throw error;
         }
         return newest;
       }
 
       if (response.status === SLOT_NOT_WRITTEN_YET) {
-        // The expected case on an idle catalog, and the cheap one. The walk stops rather than
-        // retrying here, since the poll comes round again.
+        // The expected case on an idle catalog. The walk stops rather than retrying here, since the
+        // poll comes round again.
         break;
       }
       if (!response.ok) {
-        // Every other status is the gateway failing, and is raised for the same reason a throw is:
-        // the browse page decides between "Could not reach this gateway" and "No streams here yet"
-        // by whether this rejected, so a refusal that returned quietly always chose the second.
-        // Salvaged first, on the same rule the throw path uses, since each slot carries the whole
-        // catalog and a body already fetched is not worth discarding for a later step's failure.
-        if (newest !== null) {
-          return newest;
-        }
-        throw new CatalogFetchError(`${gatewayUrl}/${request.path}`, response.status);
+        // Every other status is the gateway failing to answer for this one slot, and once the reader
+        // holds a position that is "nothing new yet" too, for the reason a timeout is above. What
+        // the walk already read is handed back, since each slot carries the whole catalog. A refused
+        // head lookup still raises, see `readHead`: that is the read the browse page's choice
+        // between "Could not reach this gateway" and "No streams here yet" rests on.
+        return newest;
+      }
+      // ⛔ The body is checked before the position moves. The caller parses it after this returns,
+      // so a body that arrived cut short used to fail that poll with the position already past it,
+      // and every later poll asked for the slot after it. A change announced only in that slot never
+      // reached the page. Treated like a refused read: the walk stops here, and this slot is asked
+      // for again on the next poll.
+      if (!isJson(response.text)) {
+        return newest;
       }
       // The reader was reset while this slot was in flight, so it now belongs to a gateway the
       // viewer has left. What was already fetched is still handed back, since each slot carries the
@@ -226,9 +242,25 @@ export class CatalogFeedReader {
     // A head resolved on a gateway the viewer has since left keeps no position either, for the
     // stronger reason that the node now being asked has its own numbering. See {@link generation}.
     // Its slot is still handed back, because the slot describes the body rather than this reader.
-    if (slot !== null && generation === this.generation) {
+    // A body that does not parse keeps no position either, so the next read resolves the head again
+    // rather than walking on from a slot whose catalog never reached the page.
+    if (slot !== null && generation === this.generation && isJson(response.text)) {
       this.index = FeedIndex.fromBigInt(slot);
     }
     return { body: response.text, slot };
+  }
+}
+
+/**
+ * Whether a catalog body parses at all. What it holds is checked by the stream list, which owns that
+ * rule: a body that parses but does not validate still moves the position, so one writer's mistake
+ * cannot hold every open page at that slot.
+ */
+function isJson(text: string): boolean {
+  try {
+    JSON.parse(text);
+    return true;
+  } catch {
+    return false;
   }
 }

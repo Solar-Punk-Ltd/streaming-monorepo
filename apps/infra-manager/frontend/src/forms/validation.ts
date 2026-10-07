@@ -1,4 +1,10 @@
-import { addressOfStreamKey, SRT_PASSPHRASE_MESSAGE, SRT_PASSPHRASE_RE } from '@streaming-infra-manager/common';
+import {
+  addressOfStreamKey,
+  FEED_TOPIC_MESSAGE,
+  FEED_TOPIC_RE,
+  SRT_PASSPHRASE_MESSAGE,
+  SRT_PASSPHRASE_RE,
+} from '@streaming-infra-manager/common';
 
 /**
  * The field rules the wizard and the drawers check before anything is sent.
@@ -49,6 +55,12 @@ export function privateKeyProblem(value: string): Problem {
   // The right shape is not enough: all zeros, or a value past the curve order,
   // derives no address, and saving it would wipe the stream's public key.
   return addressOfStreamKey(value) === null ? 'Stream key: not a usable key, no address can be derived from it' : null;
+}
+
+/** Optional: an empty topic is not wrong, it leaves the player on its version's own. */
+export function feedTopicProblem(value: string): Problem {
+  if (!value.trim()) return null;
+  return FEED_TOPIC_RE.test(value) ? null : `Feed topic ${FEED_TOPIC_MESSAGE}`;
 }
 
 export function stampIdProblem(value: string): Problem {

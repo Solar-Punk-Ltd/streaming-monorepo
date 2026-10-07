@@ -2,7 +2,7 @@ import { Topic } from '@ethersphere/bee-js';
 import { describe, expect, it } from 'vitest';
 
 import { CatalogFeedReader } from '@/utils/catalogFeed';
-import type { TimedResponse } from '@/utils/fetchWithTimeout';
+import { FetchTimeoutError, type TimedResponse } from '@/utils/fetchWithTimeout';
 
 /**
  * That the catalog is followed by walking rather than by resolving its head on every poll.
@@ -198,16 +198,33 @@ describe('CatalogFeedReader', () => {
     expect(reader.getIndex()).toBeNull();
   });
 
-  it('raises when the first step of a walk is refused with a server error', async () => {
-    const { fetcher } = stubFetcher([respond({ headers: headerFor(7) }), respond({ ok: false, status: 502 })]);
-    const reader = new CatalogFeedReader(OWNER, TOPIC, fetcher);
+  /**
+   * ⛔ Once the head has answered, a slot read the gateway refuses or lets time out is "nothing new
+   * yet". Raising it put the browse page's poll into SWR's error state, which skips the regular reads
+   * and backs off instead, so one slow or refused miss held an open page behind until a reload.
+   */
+  it.each([
+    ['is refused with a server error', respond({ ok: false, status: 502 })],
+    ['times out', new FetchTimeoutError('http://gw/soc', 10_000)],
+  ])(
+    'reads as nothing new when the first step of a walk %s, and asks for the same slot next time',
+    async (_, failure) => {
+      const { urls, fetcher } = stubFetcher([
+        respond({ headers: headerFor(7) }),
+        failure as TimedResponse,
+        respond({ ok: false, status: 404 }),
+      ]);
+      const reader = new CatalogFeedReader(OWNER, TOPIC, fetcher);
 
-    await reader.read('http://gw');
+      await reader.read('http://gw');
 
-    await expect(reader.read('http://gw')).rejects.toThrow('502');
-    // The walk read nothing, so the position it starts from next time is the one it already held.
-    expect(reader.getIndex()?.toBigInt()).toBe(7n);
-  });
+      expect(await reader.read('http://gw')).toBeNull();
+      // The walk read nothing, so the position it starts from next time is the one it already held.
+      expect(reader.getIndex()?.toBigInt()).toBe(7n);
+      await reader.read('http://gw');
+      expect(urls[2]).toBe(urls[1]);
+    },
+  );
 
   // Same salvage rule the throw path already has: what a walk fetched is not thrown away because a
   // later step of it failed, since each slot carries the whole catalog rather than a delta.
@@ -250,6 +267,29 @@ describe('CatalogFeedReader', () => {
     // The position and the body have to agree: index 8 is the slot the returned body came from.
     expect(await reader.read('http://gw')).toEqual({ body: '[{"live":true}]', slot: 8n });
     expect(reader.getIndex()?.toBigInt()).toBe(8n);
+  });
+
+  /**
+   * ⛔ The position used to move before anyone parsed the body. The reader committed the slot as soon
+   * as the gateway answered, and the caller parsed it afterwards, so a body that arrived cut short
+   * failed the poll and was never asked for again: the next poll read the slot after it. Each slot
+   * carries the whole catalog, so a change announced only in that slot never reached the page.
+   */
+  it('keeps its position when a slot body does not parse, and reads that slot again next time', async () => {
+    const { urls, fetcher } = stubFetcher([
+      respond({ headers: headerFor(7), text: '[]' }),
+      respond({ text: '[{"live":tr' }),
+      respond({ text: '[{"live":true}]' }),
+      respond({ ok: false, status: 404 }),
+    ]);
+    const reader = new CatalogFeedReader(OWNER, TOPIC, fetcher);
+
+    await reader.read('http://gw');
+
+    expect(await reader.read('http://gw')).toBeNull();
+    expect(reader.getIndex()?.toBigInt()).toBe(7n);
+    expect(await reader.read('http://gw')).toEqual({ body: '[{"live":true}]', slot: 8n });
+    expect(urls[2]).toBe(urls[1]);
   });
 
   it('still raises when the first step of a walk throws, so a dead gateway is not read as an idle catalog', async () => {

@@ -178,7 +178,7 @@ export function makeProfile(input) {
     network_host: input.host ?? 'localhost',
     components: input.components ?? null,
     feed_owner: input.feed_owner ?? null,
-    feed_topic: null,
+    feed_topic: input.feed_topic ?? null,
     // Whether a key is stored, never the key: the manager answers this and
     // keeps the value, so a page that reads the mock reads the same row.
     has_private_key: Boolean(input.private_key),

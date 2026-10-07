@@ -182,19 +182,22 @@ services:
       - --blockchain-rpc-endpoint=${BEE_GATEWAY_RPC_ENDPOINT:-}
       - --full-node=false
       - --swap-enable=${BEE_GATEWAY_SWAP_ENABLE:-false}
-      # ⛔⛔ ZERO IS THE ONE VALUE THAT GUARANTEES A THRASH LOOP, so read this before changing it and
-      # before quoting any cache figure gathered at it. Bee's cache Putter never tests capacity, so
-      # chunks enter regardless; eviction triggers whenever size exceeds capacity, which at 0 is every
-      # cached chunk; and every round then asks to drop at least `cacheMinEvictCount`, hard-coded at
-      # 10,000 in bee with no flag. The counter undershoots into negative, and bee's guard
-      # `if size <= capc { continue }` then stops eviction until ordinary caching lifts it back over 0.
-      # Measured 2026-08-14: the gateway reports bee_localstore_cache_size -1844 with 2,989 eviction
-      # rounds behind it, while the uploader on the same host at bee's default capacity reports +2962
-      # and has never evicted once. So this node's cache is neither on nor off, it is a sawtooth whose
-      # phase nothing records, and a measurement's exposure scales with how long it takes to gather.
-      # ⚠️ Left at 0 because every sitting this project has run was gathered at 0 and moving it breaks
-      # comparability AND restarts the gateway. the `the-gateway-cache-is-a-sawtooth-2026-08-14` measurement (kept outside the repository)
-      - --cache-capacity=${BEE_GATEWAY_CACHE_CAPACITY:-0}
+      # Bee's own default, 1,000,000 chunks (about 4 GB on disk), the capacity the uploader runs at.
+      # ⛔⛔ Never 0: ZERO IS THE ONE VALUE THAT GUARANTEES A THRASH LOOP. Bee's cache Putter never
+      # tests capacity, so chunks enter regardless; eviction triggers whenever size exceeds capacity,
+      # which at 0 is every cached chunk; and every round then asks to drop at least
+      # `cacheMinEvictCount`, hard-coded at 10,000 in bee with no flag. The counter undershoots into
+      # negative, and bee's guard `if size <= capc { continue }` then stops eviction until ordinary
+      # caching lifts it back over 0. Measured 2026-08-14: the gateway at 0 reported
+      # bee_localstore_cache_size -1844 with 2,989 eviction rounds behind it, while the uploader on the
+      # same host at bee's default reported +2962 and had never evicted once. So a cache at 0 is
+      # neither on nor off, it is a sawtooth whose phase nothing records.
+      # ⚠️ This file shipped 0 until 2026-10-06, and every sitting this project gathered before then
+      # ran at 0, so cache figures from before do not compare with later ones. A deployment whose env
+      # file sets the key keeps its value; one that took this fallback restarts its gateway with the
+      # new flag on its next deploy. See the `the-gateway-cache-is-a-sawtooth-2026-08-14` measurement
+      # (kept outside the repository).
+      - --cache-capacity=${BEE_GATEWAY_CACHE_CAPACITY:-1000000}
       # ⛔ Capacity does NOT gate caching, and setting it to 0 never turned the cache off. Measured
       # 2026-08-10: with capacity 0 confirmed on the running container, a second walk of the same 1000
       # references moved the same 120 MB with a median of 4ms against 121ms on the first walk. Bee's
