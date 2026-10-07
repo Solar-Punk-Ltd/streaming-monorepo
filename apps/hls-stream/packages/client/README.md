@@ -33,7 +33,7 @@ Opens at `http://localhost:5173`.
 
 When `VITE_READER_BEE_URL` points to `localhost` or `127.0.0.1`, the dev server automatically proxies `/bee/*` requests to the Bee node. This avoids CORS issues during local development, no Bee configuration needed.
 
-In production builds or when pointing to a remote gateway, requests go directly to the configured URL. The gateway URL can also be changed at runtime via the UI (DomainSelector in the header).
+In production builds or when pointing to a remote gateway, requests go directly to the configured URL. The gateway URL can also be changed at runtime via the UI (DomainSelector in the header), which also tests the gateways and copies a report, see [The node picker's tools](#the-node-pickers-tools).
 
 ## Environment Variables (in root `.env`)
 
@@ -70,7 +70,35 @@ hashes, which that gate reads as a client predating the stamp and answers with a
 - **Scheduled streams**: An entry whose `state` is `scheduled` has been announced but never broadcast, so nothing is written under its topic yet. Its card renders the uploaded image or the placeholder and never probes for a manifest, and its watch page says the stream has not started instead of starting a player against a feed that does not exist. While the entry is scheduled the watch page reads the catalog again every 5 seconds, sharing the browse page's poll, and starts the player as soon as the entry turns live. If the stream is unpublished while the page waits, the page says it is no longer available rather than starting the player, and keeps reading the catalog, so publishing the stream again reaches the page without a reload
 - **A broadcast that comes back**: In admin mode a declared stream's broadcaster can stop and later return to the same feeds, and the admin lists the stream as live again. After a feed finishes, the player keeps asking for the slot after the finished playlist, about every 30 seconds and spread per viewer. Once that slot holds an open playlist and the viewer has reached the end of what they were playing, the player rejoins the live broadcast. A viewer still watching the recording further back is not moved, and a broadcast that never comes back stays on "This broadcast has ended"
 - **HLS Playback**: Video and audio stream playback via custom hls.js loaders
-- **Gateway Selector**: Runtime Bee node URL switching via UI modal, persisted to localStorage
+- **Gateway Selector**: Runtime Bee node URL switching via UI modal, persisted to localStorage, with a Test of each gateway, who answered each feature in the last minute, and a copyable report below it
+
+## The node picker's tools
+
+Below the node picker's own-node field sit three debug tools (`src/components/DomainSelector/`,
+`GatewayTools.tsx`). They live only while the picker is open, and closing it stops a test under way.
+
+- **Test.** Each gateway the build offers, and the viewer's own node while it is in use, has a Test
+  that reads this deployment's real content through a client of that gateway alone, with no fallback
+  behind it, each read given 5 s (`providerTest.ts`). The connection is Bee's health check. The stream
+  list is its feed's head, checked to be a stream list. The video is read as the player starts: the
+  ladder's time marker on a live ladder, otherwise a feed entry the list names, then one segment's URL
+  is loaded. Previews read the playlist a stream card reads. Pictures load one stream's picture. The
+  checks after the list use the stream this gateway listed, or the list the page already shows when
+  it could not, a live stream first. This viewer has no chat, so there is no chat check. Each check
+  ends in one sentence, and a failure says what the viewer can do: "this node does not allow this
+  site" with the setting that decides it, "this address is not a Swarm gateway", or "the gateway did
+  not answer in 5 s". The sentences are in `checkSentences.ts`, each with its test.
+- **Status.** Who answered each feature in the last minute, from the client's `activity()`: which
+  provider the feature reads from and which stands behind it, how many answers of each kind came from
+  each, how many came from the fallback, and which provider is paused and for how long
+  (`providerStatus.ts`). It refreshes every 2 s while the picker is open.
+- **Report.** "Copy report" copies the last test's sentences, the status, the build and the browser
+  (`report.ts`). It holds no address but the tested gateway's: every other provider is named, never
+  addressed, and a test fails if another address or the viewer's saved node gets in. The build is the
+  package, its version and when it was built, which `vite.config.js` writes in as `__BUILD_LABEL__`.
+- **The image adds nothing for them.** The client image serves the page with no content security
+  policy, so a gateway the build offers is reached as any other request is, and there is no gateway
+  list to widen.
 
 ## QoE Overlay
 
@@ -137,14 +165,17 @@ Combine with `?qoe=1` to watch what those settings do: the overlay's ABR section
 
 `src/swarm/` is the one layer that reads Swarm, plain TypeScript with no React, and it imports nothing
 from the app's components, pages, providers or layouts. Everything else reads only through it: a test
-fails on a source line outside it that builds a Bee URL, calls fetch, or makes a Bee client of its own
-(`test/swarm/boundary.test.ts`).
+fails on a source line outside it that builds a Bee URL, calls fetch, or makes a Bee client of its own,
+and on an import of anything in it past the client's public surface, which is `client`, `answers`,
+`provider`, `settings` and `createSwarmClient` (`test/swarm/boundary.test.ts`). A provider's own files
+and the registry of kinds stay behind it, so a new kind of provider changes nothing outside
+`src/swarm`.
 
 - **Where each feature reads.** `providers/App.tsx` makes one client at start from the build's
   gateways and the viewer's saved node, and makes it again when the viewer picks another node. The
   player reads through `reader('player')`, the stream list through `reader('stream-list')`, the
-  previews and pictures through `reader('previews')`, and the node picker checks a node through its
-  provider's `probe()`. This viewer has no chat, so there is no chat reader.
+  previews and pictures through `reader('previews')`, and the node picker checks a node through the
+  `probe()` of a client made for that node alone. This viewer has no chat, so there is no chat reader.
 - **A provider** is one way of reaching Swarm (`src/swarm/provider.ts`), holding only what the app
   reads: a feed's head, a feed entry by index, a single-owner chunk's payload by its owner and
   identifier (a feed entry is one, and so is a ladder's time marker), a chunk, the bytes a reference
@@ -165,8 +196,17 @@ fails on a source line outside it that builds a Bee URL, calls fetch, or makes a
   faults again at once, up to two minutes, and a rate-limited one for as long as it asked. A paused
   provider is still asked when nothing else can be. A read's window covers the fallback too: the
   fallback gets only what the first provider left of it, and is not asked once nothing is left. Every
-  read is counted by feature, kind, provider and answer, and every answer's server time keeps the
-  gateway clock the time markers are read on.
+  read is counted by feature, kind, provider and answer, and `activity()` says what each feature read
+  in the last minute, from whom and how many answers came from the fallback. The server time of the
+  player's and the stream list's answers keeps the gateway clock the time markers are read on, and no
+  other feature's moves it.
+- **URLs follow the provider serving now.** A reader's `urlFor` takes URLs from the first provider
+  that is not paused and gives URLs, and `urlSource` names it. A playlist the player already holds is
+  served again with its segment lines named by that provider, so a pause that sends segments to the
+  fallback, and the end of it, reach a playlist held from before (`ManifestManagement.ts`).
+- **What the node picker's Test uses.** `probe()` asks the provider every feature reads from first
+  whether it is there, and `loadUrl` (`src/swarm/urlLoad.ts`) loads a URL the client gave, as the
+  browser or hls.js would, and answers as a read does. The player and the pages never call it.
 - **The in-tab node is unchanged.** Segment lines are the player reader's URLs, which for a Bee
   gateway are `<gateway>/bytes/<reference>`, so the fragment loader still finds the reference in each
   and hands it to weeb-3 when that backend is selected.
@@ -251,7 +291,7 @@ launches Chrome with `--unsafely-treat-insecure-origin-as-secure` for that one o
 src/
   components/
     Button/               # Reusable button (primary/secondary variants)
-    DomainSelector/       # Gateway URL modal
+    DomainSelector/       # Gateway URL modal, and its Test, status rows and report
     Icons/                # SVG icon components
     StreamList/           # Stream list display (every entry, sorted)
     StreamPreview/        # Preview card with thumbnail
