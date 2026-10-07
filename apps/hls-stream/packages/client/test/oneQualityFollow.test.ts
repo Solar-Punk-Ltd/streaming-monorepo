@@ -455,6 +455,59 @@ describe('Q3: the playing quality stops', () => {
       [hex(TOP)],
     );
   });
+
+  /** Decision 37: the player fails over again and again until it is on a quality that moves. */
+  it('fails over a second time when the quality it moved to stops as well', async () => {
+    const rig = makeRig();
+    rig.gateway.publishLive(TOP, 'top', 20);
+    rig.gateway.publishLive(MID, 'mid', 20);
+    rig.gateway.publishLive(LOW, 'low', 20);
+
+    await stallTop(rig);
+    await waitFor(() => rig.poller.isActive(hex(MID)), 'the next lower rung to be tried');
+    rig.gateway.publishNext(MID);
+    await waitFor(() => rig.stopped.length > 0, 'the playing rung to be failed over');
+    rig.poller.followOnly(hex(MID));
+    await waitFor(() => rig.health.unservedPollsRecorded(hex(MID)) > 0, 'the middle rung to sit on an unwritten slot');
+    rig.clock.advance(UNSERVED_SLOT_STALL_MS);
+    await waitFor(() => rig.poller.isActive(hex(LOW)), 'the lowest rung to be tried');
+    rig.gateway.publishNext(LOW);
+    await waitFor(() => rig.stopped.length > 1, 'the middle rung to be failed over');
+
+    assert.deepEqual(
+      rig.stopped.map(({ rung, failoverTo }) => ({ rung, failoverTo })),
+      [
+        { rung: hex(TOP), failoverTo: hex(MID) },
+        { rung: hex(MID), failoverTo: hex(LOW) },
+      ],
+    );
+  });
+
+  it('fails over past a quality it refused at a switch, to the next one that moves', async () => {
+    const rig = makeRig();
+    rig.gateway.publishLive(TOP, 'top', 40);
+    rig.gateway.publishLive(MID, 'mid', 20);
+    rig.gateway.publishLive(LOW, 'low', 40);
+    rig.poller.register(OWNER, RUNGS, GROUP);
+    rig.poller.activate(hex(TOP));
+    await rig.poller.ready(hex(TOP));
+    rig.poller.activate(hex(MID));
+    await waitFor(() => rig.poller.readiness(hex(MID)) === 'refused', 'the stale middle rung to be refused');
+
+    await waitFor(() => rig.health.unservedPollsRecorded(hex(TOP)) > 0, 'the top rung to sit on an unwritten slot');
+    rig.clock.advance(UNSERVED_SLOT_STALL_MS);
+    await waitFor(() => rig.poller.isActive(hex(LOW)), 'the lowest rung to be tried past the refused one');
+    rig.gateway.publishNext(LOW);
+    await waitFor(() => rig.stopped.length > 1, 'the playing rung to be failed over');
+
+    assert.deepEqual(
+      rig.stopped.map(({ rung, failoverTo }) => ({ rung, failoverTo })),
+      [
+        { rung: hex(MID), failoverTo: hex(TOP) },
+        { rung: hex(TOP), failoverTo: hex(LOW) },
+      ],
+    );
+  });
 });
 
 describe('Q4: ended is the playing rung finishing, confirmed by one sibling', () => {

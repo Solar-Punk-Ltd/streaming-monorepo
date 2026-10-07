@@ -21,33 +21,18 @@ import { parseSwarmUri } from './playlist';
  * unserved for the stall threshold, or finishes, the poller walks one sibling, and a sibling that shows
  * a new index means the playing rung alone stopped. It announces that rung, and this side takes the
  * level out and moves the viewer to the sibling.
+ *
+ * ⛔ **Every announced rung is dropped, however many came before** (decision 37, 2026-10-07: "what if we
+ * simply allow any drop until one is healthy?"). A cap of one per ladder stood here from 2026-09-01,
+ * when an uploader dying read as every rung failing in turn and the player took the ladder apart. The
+ * poller no longer condemns a rung for being quiet alone. It fails over only to a sibling it watched
+ * make progress, and a broadcast that stops everywhere shows none, so a cascade has nothing to drive it.
+ * What the cap did leave was a viewer stuck on the second quality to die, and a refused switch used it
+ * up before any real failure came. Only the last level hls.js holds is kept, under the stalled overlay.
  */
 
 /** Below this a ladder has no spare rung, and hls.js refuses to remove the last level anyway. */
 const MIN_LEVELS_TO_DROP_ONE = 2;
-
-/**
- * How many rungs this player will ever take out of one ladder.
- *
- * ⛔⛔⛔ Found on 2026-09-01, in the first sitting with this armed. The uploader crash arm kills the uploader, so
- * every rung stops. The player read that as three separate rungs failing, deleted them one by one,
- * hls.js raised a fatal `levelSwitchError`, and the whole player destroyed and restarted itself.
- *
- * Rungs do not stop at the same instant, which is what the rule's safety argument assumed. Each
- * drains whatever it was already holding, the queues differ, and a rung that drains further pushes
- * the middle reference up past rungs that stopped with less in hand. So a broadcast ending cascades.
- *
- * One is the whole of the feature: **one quality dies and the others carry on**. A second going
- * quiet is not two independent failures, it is the source going away, and the answer to that is to
- * wait and recover rather than to take the ladder apart under a viewer.
- *
- * ⚠️ Its accepted cost: two rungs failing genuinely separately in one broadcast leaves the second
- * dead one in the ladder, and a viewer sitting on it can freeze.
- *
- * **Kept the same as the uploader's `MAX_RUNGS_DROPPED_AT_ONCE`**, which decides what the master
- * advertises. `e2e/test/rungDeathAgreement.test.ts` pins the pair that must move together.
- */
-const MAX_RUNGS_DROPPED_PER_LADDER = 1;
 
 /**
  * The feed a parsed level reads from, or null when its URI is not one of ours.
@@ -161,14 +146,10 @@ export function attachActiveRungFollower(
  * alternative is rebuilding the player, which costs the viewer their place in a live stream to
  * recover a rung they are not watching.
  *
- * ⛔ **At most one rung is ever removed.** See {@link MAX_RUNGS_DROPPED_PER_LADDER} for the live
- * failure that bought that limit. It also retires the reindexing hazard that used to sit here: hls.js
- * renumbers levels on every removal, so a second removal had to be resolved against a list that had
- * already shifted. There is no second removal now.
+ * ⛔ **hls.js renumbers the levels on every removal**, so a rung is looked up by its topic on each
+ * announcement and never by an index remembered from an earlier one.
  */
 export function attachRungFailover(hls: Hls, feedHealth: FeedHealthTracker): () => void {
-  let dropped = 0;
-
   return feedHealth.onRungStopped((rungTopicId, detail) => {
     const index = levelIndexOfRung(hls, rungTopicId);
     if (index < 0) {
@@ -180,15 +161,6 @@ export function attachRungFailover(hls: Hls, feedHealth: FeedHealthTracker): () 
       console.debug(
         `[SwarmHls] rung ${rungTopicId} was reported stopped and is not one of this player's ` +
           `${hls.levels.length} level(s), so there is nothing to drop`,
-      );
-      return;
-    }
-
-    // ⛔ Before the level is read, so this cannot be reordered into an accidental second removal.
-    if (dropped >= MAX_RUNGS_DROPPED_PER_LADDER) {
-      console.warn(
-        `Rung ${hls.levels[index]?.height}p has stopped being produced too, and a second rung going ` +
-          'quiet is a broadcast ending rather than two rungs failing, so the ladder is left alone',
       );
       return;
     }
@@ -212,7 +184,6 @@ export function attachRungFailover(hls: Hls, feedHealth: FeedHealthTracker): () 
     const tookThePlayingLevel = hls.loadLevel === index;
 
     console.warn(`Rung ${level.height}p has stopped being produced (${reason}), dropping it from the ladder`);
-    dropped += 1;
     hls.removeLevel(index);
 
     // hls.js clears the current level when the removed one was playing, and nothing else picks a

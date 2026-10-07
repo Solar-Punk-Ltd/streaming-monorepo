@@ -159,46 +159,53 @@ describe('dropping a rung that has stopped being produced', () => {
   });
 
   /**
-   * ⛔⛔⛔ **One drop per broadcast, and no more.**
+   * ⛔⛔ **Any number of drops, until the viewer is on a quality that moves** (decision 37, 2026-10-07).
    *
-   * The first sitting with this armed killed the uploader in the uploader crash arm, so every rung stopped. The player
-   * read that as three separate rungs failing and deleted them one by one, hls.js raised a fatal
-   * `levelSwitchError`, and the whole player destroyed and restarted itself. Rungs do not stop at
-   * the same instant: each drains what it was already holding, the queues differ, and a rung that
-   * drains further pushes the reference past rungs that stopped with less in hand.
-   *
-   * One is the whole of the feature: one quality dies and the others carry on. A second going quiet
-   * is the source going away, and the answer to that is to wait rather than take the ladder apart.
-   *
-   * ⚠️ The accepted cost: two rungs genuinely failing separately in one broadcast leaves the second
-   * one in the ladder, and a viewer on it can freeze.
-   *
-   * ⭐ It also retires a hazard rather than only adding a limit. A second removal had to be resolved
-   * against a freshly reindexed level list, because hls.js renumbers on every removal. There is no
-   * second removal now.
+   * A cap of one used to stand here, bought by a live test on 2026-09-01 where an uploader dying read as
+   * every rung failing in turn. The poller no longer announces a rung for being quiet alone: it fails
+   * over only to a sibling it watched make progress, and a broadcast that stops everywhere shows no such
+   * sibling. So every announcement names a rung that stopped while another carries on, and a cap only
+   * left a viewer stuck on the second one to die.
    */
-  it('refuses a second drop, because a whole broadcast ending is not two rungs failing', () => {
+  it('drops two qualities that die one after the other and leaves the viewer on the third', () => {
     const player = makeLadderPlayer();
     attachRungFailover(player.hls, player.feedHealth);
 
-    player.silence('rung-1080p');
-    player.silence('rung-480p');
+    player.silence('rung-1080p', 'rung-720p');
+    assert.equal(player.nextLoadLevel(), 0, 'the viewer was not moved to 720p');
+    player.setLoadLevel(0);
+    player.silence('rung-720p', 'rung-480p');
 
-    assert.deepEqual(player.heightsLeft(), [720, 480, 360], 'the second death took a rung out anyway');
-    assert.deepEqual(player.removed, [0], 'exactly one level was ever handed to removeLevel');
+    assert.deepEqual(player.heightsLeft(), [480, 360], 'the second quality to die was left in the ladder');
+    assert.equal(player.nextLoadLevel(), 0, 'the viewer was not moved on to 480p');
   });
 
-  /** ⛔ And it must stay refused however many follow, not merely for the second. */
-  it('stays refused when the rest of the ladder goes quiet too', () => {
+  /** ⛔ A refusal takes a quality nobody plays out of the ladder, and must not stand in the way of a real failover. */
+  it('still fails over on a real failure after a switch was refused', () => {
+    const player = makeLadderPlayer();
+    // The viewer plays 1080p and asked for 720p, which was found stale and refused.
+    player.setLoadLevel(1);
+    attachRungFailover(player.hls, player.feedHealth);
+    player.silence('rung-720p', 'rung-1080p');
+    player.setLoadLevel(0);
+
+    player.silence('rung-1080p', 'rung-480p');
+
+    assert.deepEqual(player.heightsLeft(), [480, 360]);
+    assert.equal(player.nextLoadLevel(), 0, 'the viewer was left on the quality that stopped');
+  });
+
+  it('drops every quality that dies in turn but never the last level', () => {
     const player = makeLadderPlayer();
     attachRungFailover(player.hls, player.feedHealth);
 
-    player.silence('rung-1080p');
-    player.silence('rung-480p');
+    player.silence('rung-1080p', 'rung-720p');
+    player.silence('rung-720p', 'rung-480p');
+    player.silence('rung-480p', 'rung-360p');
     player.silence('rung-360p');
 
-    assert.deepEqual(player.heightsLeft(), [720, 480, 360]);
-    assert.deepEqual(player.removed, [0]);
+    assert.deepEqual(player.heightsLeft(), [360], 'the last level went too');
+    assert.deepEqual(player.removed, [0, 0, 0], 'the last level was handed to removeLevel');
   });
 
   /**
