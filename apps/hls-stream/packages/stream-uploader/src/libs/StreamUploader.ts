@@ -51,6 +51,7 @@ import { BeePublisher } from './BeePublisherPool.js';
 import { averageBandwidth, emptyBitrateSample, peakBandwidth, recordSegment } from './BitrateMeter.js';
 import { BroadcastDating } from './broadcastDating.js';
 import { ErrorHandler } from './ErrorHandler.js';
+import { LadderMarkerSink } from './LadderMarkerWriter.js';
 import { LadderIdentity, LadderRegistry, RenditionAnnouncement } from './LadderRegistry.js';
 import { Logger } from './Logger.js';
 import { continuesFrom, inheritedTimeline, ManifestManager } from './ManifestManager.js';
@@ -273,6 +274,8 @@ export interface StreamUploaderOptions {
    * announcing itself is the same act either way. Unread on a stream with no ladder.
    */
   ladderRegistry?: LadderRegistry;
+  /** Where a rung reports each manifest index it landed, for its ladder's time markers. Unread with no ladder. */
+  ladderMarkers?: LadderMarkerSink;
   recoveryStore: RecoveryStore;
   streamKey: string;
   streamId: string;
@@ -351,6 +354,7 @@ export class StreamUploader {
   private streamRawTopic: string;
   private streamCatalog: StreamCatalog;
   private ladderRegistry: LadderRegistry;
+  private readonly ladderMarkers?: LadderMarkerSink;
   private recoveryStore: RecoveryStore;
   private streamId: string;
   private stamp: string;
@@ -456,6 +460,7 @@ export class StreamUploader {
     this.streamSigner = new PrivateKey(options.streamKey);
     this.streamCatalog = options.streamCatalog;
     this.ladderRegistry = options.ladderRegistry ?? options.streamCatalog;
+    this.ladderMarkers = options.ladderMarkers;
     this.recoveryStore = options.recoveryStore;
     this.streamId = options.streamId;
     this.stamp = options.publisher.stamp;
@@ -1579,6 +1584,9 @@ export class StreamUploader {
     }
 
     this.socIndex = nextIndex;
+    if (this.ladder) {
+      this.ladderMarkers?.recordPublished(this.ladder.group, this.streamRawTopic, nextIndex);
+    }
 
     if (needsCatalogAnnounce(this.readiness)) {
       // ⛔ Both of these are below the `feedPositionSettled` refusal above, and that ordering is what

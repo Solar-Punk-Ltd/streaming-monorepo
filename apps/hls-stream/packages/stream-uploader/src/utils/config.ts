@@ -5,7 +5,7 @@ import { parsePublisherSpecs, PublisherSpec } from '../libs/BeePublisherPool.js'
 import { gatePolicyFor, parseStartGateMode, START_GATE_CHEQUEBOOK_WARN } from '../libs/StartGates.js';
 
 import { readAbrConfig } from './abrConfig.js';
-import { optional, optionalInt, optionalNumber, required } from './env.js';
+import { optional, optionalBool, optionalInt, optionalNumber, required } from './env.js';
 
 /**
  * How much SWAP chequebook balance every Bee node must hold before the uploader will start.
@@ -339,6 +339,12 @@ export const config = {
   segmentRedundancy: optionalInt('SEGMENT_REDUNDANCY', 1, { min: 0 }),
   engine: optional('ENGINE', ''),
   abr: readAbrConfig(),
+  /**
+   * Whether a ladder writes its time marker every ten seconds, so a viewer finds every rung's newest
+   * playlist with one read. On by default. Read only with the ladder on, since a single rendition has
+   * no ladder to mark. See `libs/LadderMarkerWriter.ts`.
+   */
+  ladderMarkers: optionalBool('LADDER_MARKERS', true),
   /**
    * The admin service, or null for the standalone deployment. Everything admin mode changes hangs
    * off this one value being non-null. See {@link readAdminConfig}.

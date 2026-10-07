@@ -19,7 +19,7 @@ import { Logger } from './Logger.js';
  * early still lands inside the new period, short enough that a viewer arriving early in a period
  * usually finds its marker already there.
  */
-export const MARKER_WRITE_DELAY_MS = 250;
+const MARKER_WRITE_DELAY_MS = 250;
 
 /**
  * How many markers may be in flight at once across ladders. Each ladder has at most one, since a
@@ -30,18 +30,27 @@ const MARKER_WRITE_CONCURRENCY = 4;
 const MARKER_RETRY_BASE_MS = 250;
 const MARKER_RETRY_CAP_MS = 1_000;
 
-export interface LadderMarkerMetrics {
+/**
+ * What the uploader tells the marker writer: where a rung's feed now stands, and that a ladder is over.
+ * Declared apart from the writer so a session and the orchestrator depend on the two facts only.
+ */
+export interface LadderMarkerSink {
+  recordPublished(group: string, rungTopic: string, index: number): void;
+  endLadder(group: string): void;
+}
+
+interface LadderMarkerMetrics {
   recordLadderMarkerWritten(): void;
   recordLadderMarkerFailed(): void;
 }
 
-export interface LadderMarkerLogger {
+interface LadderMarkerLogger {
   info(message: string): void;
   warn(message: string): void;
   debug(message: string): void;
 }
 
-export interface LadderMarkerWriterOptions {
+interface LadderMarkerWriterOptions {
   publishers: BeePublisherPool;
   /** The ladder's signer, the key the master feed is written with. */
   signer: PrivateKey;
@@ -74,7 +83,7 @@ interface LadderState {
  * write that has not finished inside its own period is abandoned and its request cancelled, and a
  * marker is never rewritten, because a single-owner chunk at one address is meant to hold one answer.
  */
-export class LadderMarkerWriter {
+export class LadderMarkerWriter implements LadderMarkerSink {
   private readonly ladders = new Map<string, LadderState>();
   private readonly queue = new PQueue({ concurrency: MARKER_WRITE_CONCURRENCY });
   private readonly clock: Clock;

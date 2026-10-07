@@ -252,6 +252,24 @@ describe('the environment contract', () => {
    * rule in both its halves: the uploader starts whatever the chequebook says, and a
    * postage batch that cannot carry a broadcast still stops it.
    */
+  describe('the ladder time markers', () => {
+    const markersFor = async (written?: string) =>
+      (await loadConfig(written === undefined ? requiredEnv() : { ...requiredEnv(), LADDER_MARKERS: written }))
+        .ladderMarkers;
+
+    it('are on unless a deployment turns them off', async () => {
+      assert.equal(await markersFor(), true);
+    });
+
+    it('turn off on LADDER_MARKERS=false', async () => {
+      assert.equal(await markersFor('false'), false);
+    });
+
+    it('stay on on LADDER_MARKERS=true', async () => {
+      assert.equal(await markersFor('true'), true);
+    });
+  });
+
   describe('the start gates', () => {
     const gatesFor = async (mode?: string) =>
       (await loadConfig(mode === undefined ? requiredEnv() : { ...requiredEnv(), UPLOADER_START_GATES: mode }))

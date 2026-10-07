@@ -72,6 +72,7 @@ import {
   watchFragment,
 } from './fragmentAgreement.js';
 import { LadderGroupStore, RememberedLadder } from './LadderGroupStore.js';
+import { LadderMarkerSink } from './LadderMarkerWriter.js';
 import { LadderRegistry } from './LadderRegistry.js';
 import { Logger } from './Logger.js';
 import { RecentSegmentIndexes } from './RecentSegmentIndexes.js';
@@ -164,6 +165,16 @@ export interface StreamOrchestratorConfig {
    * built with, which is the standalone deployment. See {@link LadderRegistry}.
    */
   ladderRegistry?: LadderRegistry;
+  /**
+   * Where each rung's newest published index is reported, and the end of each ladder, so its time
+   * markers follow it. Absent writes no markers. See `LadderMarkerWriter`.
+   */
+  ladderMarkers?: LadderMarkerSink;
+  /**
+   * The process-lifetime counters `/metrics` serves. Supplied when something outside the orchestrator
+   * counts into them too, as the marker writer does. Absent, the orchestrator keeps its own.
+   */
+  metrics?: ServiceMetrics;
 }
 
 /**
@@ -443,7 +454,7 @@ export class StreamOrchestrator {
   /** Uploaders whose inherited and own write completion is already registered. */
   private trackedSharedFeedDrains = new WeakSet<StreamUploader>();
   /** Totals that outlive the streams they describe, which is what `/health` structurally cannot do. */
-  private readonly metrics = new ServiceMetrics();
+  private readonly metrics: ServiceMetrics;
   /** Ladder id per base stream, so the four rungs of one source share a catalog entry. */
   private ladderGroups = new Map<string, RememberedLadder>();
   /**
@@ -472,6 +483,7 @@ export class StreamOrchestrator {
     this.clock = config.clock ?? systemClock;
     this.wallClock = config.wallClock ?? Date.now;
     this.stopOutcomeTtlMs = config.stopOutcomeTtlMs ?? DEFAULT_STOP_OUTCOME_TTL_MS;
+    this.metrics = config.metrics ?? new ServiceMetrics();
   }
 
   private readonly clock: Clock;
@@ -1389,6 +1401,7 @@ export class StreamOrchestrator {
       publisher,
       streamCatalog: this.streamCatalog,
       ladderRegistry: this.config.ladderRegistry,
+      ladderMarkers: this.config.ladderMarkers,
       recoveryStore: this.recoveryStore,
       streamKey: this.config.streamKey,
       redundancyLevel: this.config.segmentRedundancy,
@@ -2068,6 +2081,7 @@ export class StreamOrchestrator {
       publisher,
       streamCatalog: this.streamCatalog,
       ladderRegistry: this.config.ladderRegistry,
+      ladderMarkers: this.config.ladderMarkers,
       recoveryStore: this.recoveryStore,
       streamKey: this.config.streamKey,
       redundancyLevel: this.config.segmentRedundancy,
@@ -3037,6 +3051,10 @@ export class StreamOrchestrator {
     // still draining must not be handed a second group for the same ladder.
     const stillRunning = [...this.streamBases.values()].some((other) => other === base);
     if (!stillRunning) {
+      const group = this.ladderGroups.get(base)?.group;
+      if (group !== undefined) {
+        this.config.ladderMarkers?.endLadder(group);
+      }
       this.ladderGroups.delete(base);
       this.broadcastAnchors.delete(base);
       this.returnsInProgress.delete(base);
