@@ -5,7 +5,7 @@
  */
 
 /** The content was served. */
-export interface ContentAnswer {
+interface ContentAnswer {
   readonly kind: 'content';
   readonly bytes: Uint8Array;
   /**
@@ -18,13 +18,13 @@ export interface ContentAnswer {
 }
 
 /** The node answered that nothing is there. An answer about the content, never a fault of the node. */
-export interface NotFoundAnswer {
+interface NotFoundAnswer {
   readonly kind: 'not-found';
   readonly serverTimeMs: number | null;
 }
 
 /** The node asked to be asked less often. */
-export interface RateLimitedAnswer {
+interface RateLimitedAnswer {
   readonly kind: 'rate-limited';
   /** How long the node asked to be left alone, from `Retry-After`, or null when it did not say. */
   readonly retryAfterMs: number | null;
@@ -32,12 +32,12 @@ export interface RateLimitedAnswer {
 }
 
 /** This provider cannot make this kind of read at all, so asking again will not help. */
-export interface UnsupportedAnswer {
+interface UnsupportedAnswer {
   readonly kind: 'unsupported';
 }
 
 /** Why a provider could not answer. */
-export type UnavailableCause =
+type UnavailableCause =
   /** Nothing came back inside the read's window, headers and body together. */
   | { readonly kind: 'timeout'; readonly timeoutMs: number }
   /** The node answered with a status that is neither content nor one of the answers above. */
@@ -46,13 +46,13 @@ export type UnavailableCause =
   | { readonly kind: 'network'; readonly error: unknown };
 
 /** A fault: the provider could not say whether the content is there. */
-export interface UnavailableAnswer {
+interface UnavailableAnswer {
   readonly kind: 'unavailable';
   readonly cause: UnavailableCause;
 }
 
 /** The caller's own signal stopped the read. */
-export interface AbortedAnswer {
+interface AbortedAnswer {
   readonly kind: 'aborted';
 }
 
@@ -65,15 +65,6 @@ export type SwarmAnswer =
   | AbortedAnswer;
 
 export type AnswerKind = SwarmAnswer['kind'];
-
-export const ANSWER_KINDS: readonly AnswerKind[] = [
-  'content',
-  'not-found',
-  'rate-limited',
-  'unsupported',
-  'unavailable',
-  'aborted',
-];
 
 export const UNSUPPORTED: UnsupportedAnswer = { kind: 'unsupported' };
 

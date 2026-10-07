@@ -1,7 +1,7 @@
 import type { SwarmAnswer } from '../../src/swarm/answers';
 import type { ProviderCapabilities, ReadOptions, SwarmProvider, UrlUse } from '../../src/swarm/provider';
 
-export type ScriptedRead = 'feed-head' | 'feed-entry' | 'soc' | 'chunk' | 'bytes';
+type ScriptedRead = 'feed-head' | 'feed-entry' | 'soc' | 'chunk' | 'bytes';
 
 /** A provider whose every read answers what the test says it does now, and which logs what it was asked. */
 export class ScriptedProvider implements SwarmProvider {

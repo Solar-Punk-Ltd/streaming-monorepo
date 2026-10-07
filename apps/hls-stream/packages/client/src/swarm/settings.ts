@@ -161,7 +161,7 @@ export function parseProvidersSetting(raw: string): ProvidersSetting {
 }
 
 /** The two ways a build names its gateways, as `src/utils/config.ts` reads them. */
-export interface GatewayConfig {
+interface GatewayConfig {
   /** The one Bee gateway of `VITE_READER_BEE_URL`, read only when no providers setting is given. */
   readonly beeUrl: string;
   readonly providers: ProvidersSetting | null;

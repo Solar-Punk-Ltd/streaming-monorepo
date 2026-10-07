@@ -47,7 +47,7 @@ export interface ProviderCapabilities {
 }
 
 /** Where a provider is in its own life. A provider over HTTP is always ready. */
-export type ProviderState = 'stopped' | 'starting' | 'ready' | 'failed';
+type ProviderState = 'stopped' | 'starting' | 'ready' | 'failed';
 
 export interface ProviderStatus {
   readonly state: ProviderState;

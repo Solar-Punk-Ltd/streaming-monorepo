@@ -5,7 +5,7 @@ import type { SwarmAnswer } from '../../src/swarm/answers';
 import type { SwarmProvider } from '../../src/swarm/provider';
 
 /** What a provider under contract holds, so each case can name content it knows is there or is not. */
-export interface ContractWorld {
+interface ContractWorld {
   readonly feedHead: {
     readonly owner: string;
     readonly topic: Topic;
@@ -37,7 +37,7 @@ export interface ContractWorld {
  * How the provider's far side behaves for one case. `served` answers from the world, `silent` accepts
  * a read and never answers, `faulty` fails every read, and `rate-limited` asks for every read to wait.
  */
-export type ContractBehaviour = 'served' | 'silent' | 'faulty' | 'rate-limited';
+type ContractBehaviour = 'served' | 'silent' | 'faulty' | 'rate-limited';
 
 export interface ContractHarness {
   readonly world: ContractWorld;

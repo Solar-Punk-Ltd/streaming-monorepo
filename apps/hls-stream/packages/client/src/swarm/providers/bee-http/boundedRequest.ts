@@ -1,5 +1,5 @@
 /** How one bounded request ended. Never a rejection, so every caller sorts the same three endings. */
-export type BoundedOutcome =
+type BoundedOutcome =
   | { readonly kind: 'response'; readonly response: Response; readonly body: Uint8Array | null }
   | { readonly kind: 'aborted' }
   | { readonly kind: 'timed-out' }

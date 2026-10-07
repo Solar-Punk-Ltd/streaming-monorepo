@@ -3,7 +3,7 @@ import { PROVIDER_REGISTRY, type ProviderEnvironment, type ProviderKind } from '
 import type { GatewaySetting, SwarmSettings } from './settings';
 import type { ProviderKindName } from './providerKinds';
 
-export interface CreateSwarmClientOptions {
+interface CreateSwarmClientOptions {
   /**
    * The viewer's choice: the id of a gateway the settings offer, or a gateway of the viewer's own such
    * as a node on their machine. Absent, or an id no longer offered, means the default.

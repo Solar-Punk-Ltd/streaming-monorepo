@@ -6,11 +6,11 @@ import { type AnswerKind, serverTimeOf, type SwarmAnswer } from './answers';
 import { DEFAULT_READ_TIMEOUT_MS, type ReadOptions, type SwarmProvider, type UrlUse } from './provider';
 
 /** The parts of the app that read Swarm, each of which the client may send to a provider of its own. */
-export const SWARM_FEATURES = ['player', 'stream-list', 'previews'] as const;
+const SWARM_FEATURES = ['player', 'stream-list', 'previews'] as const;
 
 export type SwarmFeature = (typeof SWARM_FEATURES)[number];
 
-export type ReadKind = 'feed-head' | 'feed-entry' | 'soc' | 'chunk' | 'bytes';
+type ReadKind = 'feed-head' | 'feed-entry' | 'soc' | 'chunk' | 'bytes';
 
 /** A provider with the name the counts and the health report give it, such as a gateway's id in the settings. */
 export interface NamedProvider {
@@ -19,7 +19,7 @@ export interface NamedProvider {
 }
 
 /** When a provider that keeps failing is left alone, and for how long. */
-export interface PausePolicy {
+interface PausePolicy {
   /** Faults in a row before the first pause. Once paused, one more fault pauses it again. */
   readonly faultsBeforePause: number;
   readonly firstPauseMs: number;
@@ -27,7 +27,7 @@ export interface PausePolicy {
   readonly longestPauseMs: number;
 }
 
-export const DEFAULT_PAUSE_POLICY: PausePolicy = {
+const DEFAULT_PAUSE_POLICY: PausePolicy = {
   faultsBeforePause: 3,
   firstPauseMs: 15_000,
   longestPauseMs: 120_000,
@@ -58,7 +58,7 @@ export interface SwarmReader {
   urlFor(reference: string, use: UrlUse): string | null;
 }
 
-export interface ReadCount {
+interface ReadCount {
   readonly feature: SwarmFeature;
   readonly read: ReadKind;
   readonly provider: string;
@@ -66,7 +66,7 @@ export interface ReadCount {
   readonly count: number;
 }
 
-export interface ProviderHealth {
+interface ProviderHealth {
   readonly id: string;
   readonly faultsInARow: number;
   /** When the provider is asked again, on the client's clock, or null while it is not paused. */

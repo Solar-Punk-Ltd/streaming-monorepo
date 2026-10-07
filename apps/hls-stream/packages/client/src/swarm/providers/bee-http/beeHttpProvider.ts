@@ -43,7 +43,7 @@ const CAPABILITIES: ProviderCapabilities = {
 
 const READY: ProviderStatus = { state: 'ready' };
 
-export interface BeeHttpProviderOptions {
+interface BeeHttpProviderOptions {
   /** A Bee API base: an http or https address, or a path on this site such as `/bee` that the site proxies to Bee. */
   readonly baseUrl: string;
   /** Injected by tests. The global `fetch` otherwise. */
