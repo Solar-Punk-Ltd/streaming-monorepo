@@ -86,16 +86,16 @@ const MANIFEST_RETRY_BASE_MS = 2_000;
  *
  * The same number was reached from a third direction, three weeks before any of this was measured:
  * `docs/reviews/roadmap.md` item 0.8b named 8s as the secondary lever if clearing the hold on a
- * segment arrival turned out not to be enough. On the ladder it was not enough, because a ladder
- * holds five feeds and the segment path only ever cleared one of them at a time.
+ * segment arrival turned out not to be enough. On the ladder it was not enough, because a ladder then
+ * held five feeds and the segment path only ever cleared one of them at a time.
  *
  * ## Why the load argument that set thirty still holds
  *
- * The flood this bounds is flat polling: four rungs at the 750ms poll interval is 5.3 requests a
- * second, or the **160 requests per 30s** recorded in `LadderFeedPoller`. At a thirty second ceiling
- * a fully dark gateway sees 4 of those per 30s from a viewer, and at eight it sees 15. That is still
- * a **10.7x** reduction against the flood, and half a request a second from a viewer is not what
- * tips a gateway that is already struggling.
+ * The flood this bounds is flat polling. Since 2026-10-07 a viewer follows the one quality it plays,
+ * two during a switch, and one rung at the 750ms poll interval is **40 requests per 30s**. At a thirty
+ * second ceiling a fully dark gateway sees one of those per 30s from a viewer, and at eight it sees
+ * about four. That is still a **10.7x** reduction against the flood, and one request every eight
+ * seconds is not what tips a gateway that is already struggling.
  *
  * The ceiling is also no longer the only thing shortening a recovery. A rung is released the moment
  * a rung beside it is served (see {@link FeedHealthTracker.recordGatewayReachable}), so this bounds
@@ -642,10 +642,11 @@ export class FeedHealthTracker {
    *
    * ⭐ **Every topic held off stops waiting, whichever one was proven.** One gateway serves every
    * feed this tracker holds, so a read getting through is the same evidence a segment arriving is.
-   * A viewer on the four rung ladder holds five entries, each backing off on its own count, and
-   * leaving four of them asleep while the fifth is demonstrably being served is four rungs of
-   * nothing to switch to. Measured 2026-08-29: three unrelated faults under a watching ladder viewer
-   * each froze the picture for 58.5 to 59.0 seconds, an eight second writer-bee pause included.
+   * A ladder viewer holds an entry for the quality it plays, one more while a switch is under way,
+   * each backing off on its own count, and leaving the switch target asleep while the playing rung is
+   * demonstrably being served is a switch with nothing to switch to. Measured 2026-08-29, when every
+   * rung was followed: three unrelated faults under a watching ladder viewer each froze the picture
+   * for 58.5 to 59.0 seconds, an eight second writer-bee pause included.
    *
    * What the other topics do **not** get is their failure counts back, because a named read proves
    * two different things about two different sets. That the gateway answers is proven for everyone.

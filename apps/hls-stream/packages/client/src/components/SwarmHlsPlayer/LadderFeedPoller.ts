@@ -14,21 +14,6 @@ import { isSlotNotWrittenYet } from './refusedSlot';
 import { feedEntryOf, RungFeedReader } from './rungFeedReader';
 import { firstSegmentStartMs, joinsOnto, RUNG_PROGRESS_BOUND_MS, switchRefusal } from './rungPosition';
 
-/**
- * Follows only the rungs of a ladder the player is playing.
- *
- * A Swarm feed is read one SOC at a time: to reach index N you ask for N-1 first. The rung hls.js is
- * playing is followed by the polling study's predicted follower (`following/followPredicted.ts`), which
- * asks for the next slot when the next playlist is due rather than as often as it can, and looks one
- * slot past a slot that is late. The loader serves hls.js's level reloads out of what it has read.
- *
- * ⭐ **One rung at a time** (Levi, 2026-10-07: "only one quality request at the time. Not 4! We only
- * request what we watch."). Every rung of the ladder is registered, and only the playing rung is
- * walked, plus the one being switched to while a switch is under way. Walking all four used to make a
- * switch free, at up to about 320 requests a minute, half of them for an index not written yet. A
- * switch now pays the {@link NewestIndexFinder}'s reads for the new rung while hls.js plays the old one
- * from its buffer.
- */
 const DEFAULT_POLL_INTERVAL_MS = 750;
 
 /**
@@ -163,6 +148,21 @@ interface LadderEntry {
   returnWatchedRung: RungEntry | null;
 }
 
+/**
+ * Follows only the rungs of a ladder the player is playing.
+ *
+ * A Swarm feed is read one SOC at a time: to reach index N you ask for N-1 first. The rung hls.js is
+ * playing is followed by the polling study's predicted follower (`following/followPredicted.ts`), which
+ * asks for the next slot when the next playlist is due rather than as often as it can, and looks one
+ * slot past a slot that is late. The loader serves hls.js's level reloads out of what it has read.
+ *
+ * ⭐ **One rung at a time** (Levi, 2026-10-07: "only one quality request at the time. Not 4! We only
+ * request what we watch."). Every rung of the ladder is registered, and only the playing rung is
+ * walked, plus the one being switched to while a switch is under way. Walking all four used to make a
+ * switch free, at up to about 320 requests a minute, half of them for an index not written yet. A
+ * switch now pays the {@link NewestIndexFinder}'s reads for the new rung while hls.js plays the old one
+ * from its buffer.
+ */
 export class LadderFeedPoller {
   private readonly rungs = new Map<string, RungEntry>();
   private readonly ladders = new Map<string, LadderEntry>();
@@ -202,10 +202,8 @@ export class LadderFeedPoller {
   }
 
   /**
-   * Registers a ladder's rungs. Nothing is read until hls.js asks for one of them.
-   *
-   * Registering again for the same group merges, because the catalog and a published master can both
-   * name a ladder's rungs.
+   * Registers a ladder's rungs. Nothing is read until hls.js asks for one of them. A rung already
+   * registered is left as it is.
    */
   public register(owner: string, rungs: readonly LadderRung[], groupHexTopic: string | null = null): void {
     const ladder = this.ladderFor(groupHexTopic);
