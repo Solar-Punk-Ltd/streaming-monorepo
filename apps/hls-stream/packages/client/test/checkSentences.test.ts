@@ -4,7 +4,9 @@ import {
   CONNECTED_BY_CONTENT,
   COULD_NOT_REACH,
   failedReadSentence,
+  NODE_NOT_READY,
   NOT_A_SWARM_GATEWAY,
+  notReadySentence,
   PASSED,
   probeSentence,
   SKIPPED,
@@ -94,5 +96,26 @@ describe('the sentences a passed or skipped check ends in', () => {
     for (const sentence of every) {
       expect(sentence).not.toMatch(/[—;]/);
     }
+  });
+});
+
+describe('the sentences for a Bee node that answered and cannot serve this viewer yet', () => {
+  it.each([
+    [{ kind: 'starting' }, 'The Bee node at this address is still starting. Wait a minute, then try again.'],
+    [
+      { kind: 'no-peers' },
+      'The Bee node at this address is running but has no peers yet, so it cannot fetch anything from Swarm. Wait a minute for it to connect, then try again.',
+    ],
+    [
+      { kind: 'too-old', version: '2.2.0', needed: '2.3.0' },
+      'This Bee node runs version 2.2.0, and this viewer needs 2.3.0 or newer. Update the node, then try again.',
+    ],
+  ] as const)('%o', (reason, sentence) => {
+    expect(notReadySentence(reason)).toBe(sentence);
+    expect(probeSentence({ kind: 'not-ready', reason }, PROBE_TIMEOUT_MS)).toBe(sentence);
+  });
+
+  it('names each reason once, for the picker and the Test alike', () => {
+    expect(NODE_NOT_READY.tooOld('1.0.0', '2.3.0')).toContain('1.0.0');
   });
 });

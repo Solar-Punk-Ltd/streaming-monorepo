@@ -53,13 +53,25 @@ export interface ProviderStatus {
   readonly state: ProviderState;
 }
 
+/** Why a node that answered cannot serve reads yet. */
+export type NotReadyReason =
+  | { readonly kind: 'starting' }
+  /** Connected to nobody, so nothing it is asked for can be fetched from the network. */
+  | { readonly kind: 'no-peers' }
+  /** Older than the oldest release whose API this viewer reads. */
+  | { readonly kind: 'too-old'; readonly version: string; readonly needed: string };
+
 /** What asking a provider whether it is there at all found. */
 export type ProbeResult =
   | { readonly kind: 'ok'; readonly elapsedMs: number }
   /** Something answered, but not as a Swarm node does. */
   | { readonly kind: 'not-swarm' }
+  /** A Swarm node answered and cannot serve reads yet. */
+  | { readonly kind: 'not-ready'; readonly reason: NotReadyReason }
   | { readonly kind: 'rejected'; readonly status: number }
   | { readonly kind: 'timed-out' }
+  /** Something answered, and the browser would not let this page read the answer, which is a CORS refusal. */
+  | { readonly kind: 'refuses-this-site' }
   | { readonly kind: 'unreachable' };
 
 /**

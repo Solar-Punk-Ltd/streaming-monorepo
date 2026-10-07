@@ -7,8 +7,10 @@
  * vitest without a DOM and a rule left inside the component is a rule nothing covers.
  */
 import { createSwarmClient } from '@/swarm/createSwarmClient';
-import { PROBE_TIMEOUT_MS, type ProbeResult, type ReadOptions } from '@/swarm/provider';
+import { type NotReadyReason, PROBE_TIMEOUT_MS, type ProbeResult, type ReadOptions } from '@/swarm/provider';
 import { type GatewaySetting, OWN_GATEWAY_ID, type SwarmSettings } from '@/swarm/settings';
+
+import { notReadySentence } from './checkSentences';
 
 /** Both a viewer's typing and a saved address, since every caller joins with a path of its own. */
 function withoutTrailingSlash(url: string): string {
@@ -83,6 +85,8 @@ type GatewayProbeOutcome =
    */
   | { kind: 'not-bee' }
   | { kind: 'timed-out' }
+  /** A Bee node answered its health and cannot serve this viewer yet. */
+  | { kind: 'not-ready'; reason: NotReadyReason }
   /** No answer at all: connection refused, wrong port, DNS miss, or the node blocked this site. */
   | { kind: 'unreachable' };
 
@@ -140,13 +144,17 @@ export async function probeGateway(
   switch (found.kind) {
     case 'ok':
       return { kind: 'ok' };
+    case 'not-ready':
+      return { kind: 'not-ready', reason: found.reason };
     case 'not-swarm':
       return { kind: 'not-bee' };
     case 'rejected':
       return { kind: 'rejected', status: found.status };
     case 'timed-out':
+      return { kind: 'timed-out' };
     case 'unreachable':
-      return { kind: found.kind };
+    case 'refuses-this-site':
+      return { kind: 'unreachable' };
   }
 }
 
@@ -168,6 +176,8 @@ export function describeProbeFailure(failure: GatewayProbeFailure): string {
       return `Something answered at this address with an error (HTTP ${failure.status}). ${CHECK_THE_PORT}`;
     case 'not-bee':
       return `Something answered at this address, but it is not a Bee node. ${CHECK_THE_PORT}`;
+    case 'not-ready':
+      return notReadySentence(failure.reason);
     case 'mixed-content':
       return 'This site is served over https, and a browser refuses to load anything over plain http from it, so the request never leaves this page. Give the node an https address, or open this site over http.';
     case 'timed-out':

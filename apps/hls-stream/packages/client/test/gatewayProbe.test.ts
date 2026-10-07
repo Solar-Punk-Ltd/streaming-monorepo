@@ -8,6 +8,7 @@ import {
   isDefaultGateway,
   probeGateway,
 } from '@/components/DomainSelector/gatewayProbe';
+import { notReadySentence } from '@/components/DomainSelector/checkSentences';
 import { PROBE_TIMEOUT_MS, type ProbeResult, type ReadOptions } from '@/swarm/provider';
 import { BeeHttpProvider } from '@/swarm/providers/bee-http/beeHttpProvider';
 
@@ -76,16 +77,16 @@ describe('beeBaseUrlFromTypedAddress', () => {
 
 describe('probeGateway', () => {
   it('asks the health endpoint under the address it was given', async () => {
-    let asked = '';
+    const asked: string[] = [];
     const prober = beeAnsweredBy((async (input: RequestInfo | URL) => {
-      asked = String(input);
+      asked.push(String(input));
       return new Response(BEE_HEALTH);
     }) as typeof fetch);
 
     await probeGateway('http://localhost:1633', { prober });
 
     // Bee's health document, which a /bee proxy on this site forwards unchanged.
-    expect(asked).toBe('http://localhost:1633/health');
+    expect(asked).toContain('http://localhost:1633/health');
   });
 
   it('bounds its own wait at the window it ships with, so a node that goes quiet cannot hold the picker open', async () => {
@@ -188,7 +189,7 @@ describe('a plain http node named from an https page', () => {
 
     expect(await probeGateway('http://localhost:1633', { pageProtocol: 'https:', prober })).toEqual({ kind: 'ok' });
     expect(await probeGateway('http://127.0.0.1:1633', { pageProtocol: 'https:', prober })).toEqual({ kind: 'ok' });
-    expect(asked).toHaveLength(2);
+    expect(asked.filter((url) => url.endsWith('/health'))).toHaveLength(2);
   });
 
   it('leaves an https node and a page served over http alone', () => {
@@ -198,6 +199,20 @@ describe('a plain http node named from an https page', () => {
 
   it("leaves the deployed default alone, which is a path on this page's own origin", () => {
     expect(isBlockedAsMixedContent('/bee', 'https:')).toBe(false);
+  });
+});
+
+describe('a Bee node that answers but cannot serve this viewer yet', () => {
+  it.each([
+    [{ kind: 'starting' } as const],
+    [{ kind: 'no-peers' } as const],
+    [{ kind: 'too-old', version: '2.2.0', needed: '2.3.0' } as const],
+  ])('is not switched to when it is %o, and says so', async (reason) => {
+    const prober = () => ({ probe: async (): Promise<ProbeResult> => ({ kind: 'not-ready', reason }) });
+    const outcome = await probeGateway('http://localhost:1633', { prober });
+
+    expect(outcome).toEqual({ kind: 'not-ready', reason });
+    expect(describeProbeFailure({ kind: 'not-ready', reason })).toBe(notReadySentence(reason));
   });
 });
 

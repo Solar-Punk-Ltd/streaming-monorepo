@@ -1,7 +1,7 @@
 import { localNetworkRequestInit } from './addressSpace';
 
 /** How one bounded request ended. Never a rejection, so every caller sorts the same three endings. */
-type BoundedOutcome =
+export type BoundedOutcome =
   | { readonly kind: 'response'; readonly response: Response; readonly body: Uint8Array | null }
   | { readonly kind: 'aborted' }
   | { readonly kind: 'timed-out' }
@@ -13,6 +13,8 @@ interface BoundedRequestOptions {
   readonly signal?: AbortSignal;
   /** Whether a response with this status has its body read inside the window. */
   readonly readsBody: (status: number) => boolean;
+  /** How the request is made, apart from its signal, such as `mode: 'no-cors'`. */
+  readonly init?: RequestInit;
 }
 
 /**
@@ -28,7 +30,7 @@ interface BoundedRequestOptions {
  * from an https page at all. Other browsers ignore the option.
  */
 export async function boundedRequest(url: string, options: BoundedRequestOptions): Promise<BoundedOutcome> {
-  const { fetcher, timeoutMs, signal, readsBody } = options;
+  const { fetcher, timeoutMs, signal, readsBody, init } = options;
   if (signal?.aborted) {
     return { kind: 'aborted' };
   }
@@ -44,7 +46,7 @@ export async function boundedRequest(url: string, options: BoundedRequestOptions
   }, timeoutMs);
 
   try {
-    const response = await fetcher(url, { ...localNetworkRequestInit(url), signal: controller.signal });
+    const response = await fetcher(url, { ...localNetworkRequestInit(url), ...init, signal: controller.signal });
     const body = readsBody(response.status) ? new Uint8Array(await response.arrayBuffer()) : null;
     return { kind: 'response', response, body };
   } catch (error) {

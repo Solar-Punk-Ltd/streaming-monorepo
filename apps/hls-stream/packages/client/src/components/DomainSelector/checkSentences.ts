@@ -4,7 +4,7 @@
  * and a new way of failing cannot ship without its words.
  */
 import type { SwarmAnswer } from '@/swarm/answers';
-import type { ProbeResult } from '@/swarm/provider';
+import type { NotReadyReason, ProbeResult } from '@/swarm/provider';
 
 /** Every way a read can end that is not the content it asked for. */
 export type FailedAnswer = Exclude<SwarmAnswer, { kind: 'content' }>;
@@ -64,11 +64,14 @@ export function probeSentence(result: ProbeResult, timeoutMs: number): string {
       return `The gateway answered in ${result.elapsedMs} ms.`;
     case 'not-swarm':
       return NOT_A_SWARM_GATEWAY;
+    case 'not-ready':
+      return notReadySentence(result.reason);
     case 'rejected':
       return `Something answered at this address with an error (HTTP ${result.status}). Check the address and the port.`;
     case 'timed-out':
       return `The gateway did not answer in ${seconds(timeoutMs)}. It may be busy or still starting. ${PICK_ANOTHER}`;
     case 'unreachable':
+    case 'refuses-this-site':
       return COULD_NOT_REACH;
   }
 }
@@ -96,3 +99,24 @@ export const PASSED = {
 /** A playlist that names no segment proves the gateway answered and nothing about whether video loads. */
 export const NO_SEGMENT = (title: string) =>
   `The playlist of ${titled(title)} names no segment, so no video could be loaded from it. Test again in a minute.`;
+
+/** A Bee node that answers and cannot serve this viewer yet, each with what to do about it. */
+export const NODE_NOT_READY = {
+  starting: 'The Bee node at this address is still starting. Wait a minute, then try again.',
+  noPeers:
+    'The Bee node at this address is running but has no peers yet, so it cannot fetch anything from Swarm. Wait a minute for it to connect, then try again.',
+  tooOld: (version: string, needed: string) =>
+    `This Bee node runs version ${version}, and this viewer needs ${needed} or newer. Update the node, then try again.`,
+} as const;
+
+/** What the picker and the Test say about a node that answered and cannot serve this viewer yet. */
+export function notReadySentence(reason: NotReadyReason): string {
+  switch (reason.kind) {
+    case 'starting':
+      return NODE_NOT_READY.starting;
+    case 'no-peers':
+      return NODE_NOT_READY.noPeers;
+    case 'too-old':
+      return NODE_NOT_READY.tooOld(reason.version, reason.needed);
+  }
+}

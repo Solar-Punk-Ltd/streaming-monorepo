@@ -13,9 +13,12 @@ import {
   type UrlUse,
 } from '../../provider';
 import { boundedRequest } from '../../boundedRequest';
+import { notReadyReasonOf } from './beeNodeState';
 
 /** Bee answers this with `{"status":"ok",...}` in every version this viewer has targeted. */
 const HEALTH_PATH = 'health';
+const READINESS_PATH = 'readiness';
+const PEERS_PATH = 'peers';
 
 /** The longest a node's `Retry-After` may keep a provider paused, so one answer cannot stall a feed for an hour. */
 export const LONGEST_RETRY_AFTER_MS = 60_000;
@@ -168,29 +171,43 @@ export class BeeHttpProvider implements SwarmProvider {
     return READY;
   }
 
+  /**
+   * Asks `/health`, and beside it `/readiness` and `/peers`, so a node that is there and cannot serve
+   * reads yet is told apart in the same round trip. When nothing readable comes back, a second request
+   * with `mode: 'no-cors'` asks whether anything answered at all: a browser answers that one opaquely
+   * whatever the node's CORS settings, and rejects it only when nothing is there.
+   */
   async probe(options: ReadOptions = {}): Promise<ProbeResult> {
     const startedAt = Date.now();
-    const outcome = await boundedRequest(`${this.baseUrl}/${HEALTH_PATH}`, {
-      fetcher: this.fetcher,
-      timeoutMs: options.timeoutMs ?? PROBE_TIMEOUT_MS,
-      signal: options.signal,
-      readsBody: isSuccess,
-    });
-    switch (outcome.kind) {
+    const ask = (path: string, init?: RequestInit) =>
+      boundedRequest(`${this.baseUrl}/${path}`, {
+        fetcher: this.fetcher,
+        timeoutMs: options.timeoutMs ?? PROBE_TIMEOUT_MS,
+        signal: options.signal,
+        readsBody: isSuccess,
+        init,
+      });
+    const [health, readiness, peers] = await Promise.all([ask(HEALTH_PATH), ask(READINESS_PATH), ask(PEERS_PATH)]);
+    switch (health.kind) {
       case 'response': {
-        const { response, body } = outcome;
+        const { response, body } = health;
         if (!isSuccess(response.status)) {
           return { kind: 'rejected', status: response.status };
         }
-        return looksLikeBeeHealth(new TextDecoder().decode(body ?? new Uint8Array()))
-          ? { kind: 'ok', elapsedMs: Date.now() - startedAt }
-          : { kind: 'not-swarm' };
+        if (!looksLikeBeeHealth(new TextDecoder().decode(body ?? new Uint8Array()))) {
+          return { kind: 'not-swarm' };
+        }
+        const reason = notReadyReasonOf(body, readiness, peers);
+        return reason === null ? { kind: 'ok', elapsedMs: Date.now() - startedAt } : { kind: 'not-ready', reason };
       }
       case 'timed-out':
         return { kind: 'timed-out' };
       case 'aborted':
-      case 'failed':
         return { kind: 'unreachable' };
+      case 'failed': {
+        const opaque = await ask(HEALTH_PATH, { mode: 'no-cors' });
+        return opaque.kind === 'response' ? { kind: 'refuses-this-site' } : { kind: 'unreachable' };
+      }
     }
   }
 

@@ -267,7 +267,7 @@ describe('the Bee HTTP provider', () => {
       }) as typeof fetch;
 
       expect(await provider(fetcher).probe()).toMatchObject({ kind: 'ok' });
-      expect(log.urls).toEqual([`${FAKE_GATEWAY}/health`]);
+      expect(log.urls).toEqual([`${FAKE_GATEWAY}/health`, `${FAKE_GATEWAY}/readiness`, `${FAKE_GATEWAY}/peers`]);
     });
 
     it('tells a refusal, something that is not Bee, silence and no answer apart', async () => {
@@ -299,7 +299,8 @@ describe('a Bee node on the local network over plain http', () => {
     await provider.probe();
     await provider.readChunk(ABSENT_ADDRESS);
 
-    expect(inits.length).toBeGreaterThanOrEqual(2);
+    // The probe's health, readiness and peers, then the chunk.
+    expect(inits).toHaveLength(4);
     for (const init of inits) {
       expect(init).toMatchObject({ targetAddressSpace: 'local' });
       expect(init?.signal).toBeInstanceOf(AbortSignal);

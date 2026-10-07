@@ -4,7 +4,7 @@ import { act, createElement } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
-import { CONNECTED_BY_CONTENT } from '../src/components/DomainSelector/checkSentences';
+import { CONNECTED_BY_CONTENT, NODE_NOT_READY } from '../src/components/DomainSelector/checkSentences';
 import type { SwarmClient } from '../src/swarm/client';
 
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
@@ -99,6 +99,15 @@ function row(name: string): HTMLElement {
 
 const text = () => document.body.textContent ?? '';
 
+/** Types into the picker's address field as a viewer does, through the setter React listens behind. */
+function typeAddress(value: string): void {
+  const input = document.querySelector<HTMLInputElement>('.gateway-modal-input')!;
+  act(() => {
+    Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value')?.set?.call(input, value);
+    input.dispatchEvent(new Event('input', { bubbles: true }));
+  });
+}
+
 beforeEach(() => {
   localStorage.clear();
   copied = null;
@@ -163,11 +172,7 @@ describe("the node picker's tools", () => {
     await waitFor(() => row('Backup gateway').textContent?.includes(CONNECTED_BY_CONTENT) ?? false, 'the test');
     expect(asked.filter((url) => url.endsWith('/health'))).toEqual([]);
 
-    const input = document.querySelector<HTMLInputElement>('.gateway-modal-input')!;
-    act(() => {
-      Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value')?.set?.call(input, 'http://localhost:1633');
-      input.dispatchEvent(new Event('input', { bubbles: true }));
-    });
+    typeAddress('http://localhost:1633');
     click(buttonNamed('Check and use'));
     await waitFor(() => document.querySelector('.gateway-modal') === null, 'the picker to close on the own node');
     click(buttonNamed(/^Bee node/));
@@ -175,6 +180,22 @@ describe("the node picker's tools", () => {
     click(buttonNamed('Test', row('Your own node')));
     await waitFor(() => row('Your own node').textContent?.includes('The gateway answered in') ?? false, 'the test');
     expect(asked.filter((url) => url.endsWith('/health'))).toEqual(['http://localhost:1633/health']);
+    expect(asked).toContain('http://localhost:1633/readiness');
+  });
+
+  it("says a node of the viewer's own is still starting rather than switching to it", async () => {
+    const answer = globalThis.fetch;
+    globalThis.fetch = ((input: RequestInfo | URL, init?: RequestInit) =>
+      String(input).endsWith('/readiness')
+        ? Promise.resolve(Response.json({ status: 'notReady' }, { status: 400 }))
+        : answer(input, init)) as typeof fetch;
+    await open();
+    typeAddress('http://localhost:1633');
+    click(buttonNamed('Check and use'));
+    await waitFor(() => text().includes(NODE_NOT_READY.starting), 'the not ready sentence');
+
+    expect(document.querySelector('.gateway-modal')).not.toBeNull();
+    expect(localStorage.length).toBe(0);
   });
 
   it('forgets a Test the viewer stopped by closing the picker, so it can be run again', async () => {

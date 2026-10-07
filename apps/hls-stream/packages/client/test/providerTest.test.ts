@@ -12,12 +12,14 @@ import {
   CONNECTED_BY_CONTENT,
   COULD_NOT_REACH,
   MIXED_CONTENT,
+  NODE_NOT_READY,
   NO_SEGMENT,
   NOT_A_SWARM_GATEWAY,
   SKIPPED,
 } from '../src/components/DomainSelector/checkSentences';
 import { CHECKS, type CheckResult, testProvider } from '../src/components/DomainSelector/providerTest';
 import { loadUrl } from '../src/swarm/client';
+import { MINIMUM_BEE_VERSION } from '../src/swarm/providers/bee-http/beeNodeState';
 import { createSwarmClient } from '../src/swarm/createSwarmClient';
 import type { Stream } from '../src/types/stream';
 
@@ -239,6 +241,28 @@ describe("the node picker's Test", () => {
 
     expect(Object.values(results).map(({ sentence }) => sentence)).toEqual(CHECKS.map(() => MIXED_CONTENT));
     expect(asked).toEqual([]);
+  });
+});
+
+describe("the node picker's Test, on a node of the viewer's own that cannot serve yet", () => {
+  it('fails the connection while the node is still starting, and says to wait', async () => {
+    const starting = (url: string) =>
+      url === `${GW}/readiness` ? Response.json({ status: 'notReady' }, { status: 400 }) : undefined;
+    const results = await run({ fetcher: gateway(starting) });
+
+    expect(results.connection).toEqual({ check: 'connection', outcome: 'failed', sentence: NODE_NOT_READY.starting });
+  });
+
+  it('fails the connection when the node is older than the viewer needs', async () => {
+    const old = (url: string) =>
+      url === `${GW}/health` ? Response.json({ status: 'ok', version: '2.2.0' }) : undefined;
+    const results = await run({ fetcher: gateway(old) });
+
+    expect(results.connection).toEqual({
+      check: 'connection',
+      outcome: 'failed',
+      sentence: NODE_NOT_READY.tooOld('2.2.0', MINIMUM_BEE_VERSION),
+    });
   });
 });
 
