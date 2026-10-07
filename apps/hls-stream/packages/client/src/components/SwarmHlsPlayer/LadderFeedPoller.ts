@@ -171,19 +171,15 @@ export class LadderFeedPoller {
   private readonly followClock: FollowClock;
   private readonly now: () => number;
   private readonly progressBoundMs: number;
-  private readonly candidateFindDeadlineMs: number;
+  /** See {@link CANDIDATE_FIND_DEADLINE_MS}. Public because a level request's wait is sized from it. */
+  public readonly candidateFindDeadlineMs: number;
   private readonly playheadMs: (group: string | null) => number | null;
 
   constructor(
     private readonly stateManager: ManifestStateManager,
     private readonly fetchResource: (path: string) => Promise<TimedResponse>,
-    /**
-     * How long a walk waits after a read the gateway did not answer, the slice a backoff is waited out
-     * in, and the clock anything waiting on a rung has to be sized against. Public because
-     * {@link ManifestFetcher} bounds its wait for a rung's first playlist in these units rather than in
-     * milliseconds, so a deployment that slows this slows that wait with it.
-     */
-    public readonly pollIntervalMs: number = DEFAULT_POLL_INTERVAL_MS,
+    /** How long a walk waits after a read the gateway did not answer, and the slice a backoff is waited out in. */
+    private readonly pollIntervalMs: number = DEFAULT_POLL_INTERVAL_MS,
     /**
      * Shared with the single-rendition path, so a rung read reaching or losing the gateway records
      * against the same tracker the overlay reads.

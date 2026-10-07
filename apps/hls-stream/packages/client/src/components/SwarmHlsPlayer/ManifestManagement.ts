@@ -415,7 +415,8 @@ interface SlotRead {
 }
 
 /**
- * How many of the poller's own polls a level request waits for a rung's first playlist.
+ * How much longer than a search for a rung's newest index may take a level request waits for that
+ * rung's first playlist.
  *
  * ⛔ **The wait it bounds had no bound at all, and a bound is the whole fix.** A rung is served out
  * of what {@link LadderFeedPoller} has already read, so a level request for a rung that has read
@@ -425,27 +426,23 @@ interface SlotRead {
  * its own, so hls.js was given no timeout, no retry and no error for that level. The viewer got a
  * black player, no spinner and no message, with three healthy rungs one level switch away.
  *
- * ## Why twenty polls
+ * ## Why the search's deadline and five seconds
  *
- * Counted in polls rather than milliseconds because the poller's cadence is what decides how often
- * a rung gets a chance to become ready. A deployment that slows the poll interval slows this in
- * step, which a wall time written here would not.
- *
- * It has to clear one whole read of the feed, since a first read that is merely slow still succeeds
- * and must not be cut off: `fetchWithTimeout` gives a single read 10s, which is 13.3 polls at the
- * shipped 750ms interval. Twenty polls is 15s there, so it clears that ceiling with five seconds
- * over, and stays under the 20s hls.js itself allows a playlist load before its own loader would
- * have errored, so the level error arrives no later than the stock loader's would have.
+ * A rung's first playlist arrives with its search, so the wait has to outlast the longest search
+ * the poller allows, its `candidateFindDeadlineMs`. A fixed 15 s used to equal it, so a slow
+ * search that would have succeeded had its level failed at the same moment. The margin is the time a
+ * search that ends at its deadline still needs for its playlist to be folded in and handed on, a few
+ * polls, and with the shipped 15 s it makes 20 s, the time hls.js itself allows a playlist load
+ * before its own loader would have errored.
  *
  * Expiry costs a level rather than the session: hls.js retries a playlist error twice before it
  * switches level, each retry re-enters this wait with a fresh deadline, and the poller's walk keeps
  * running throughout, so a rung that becomes readable later is picked up by the next retry.
  */
-export const RUNG_READY_DEADLINE_POLLS = 20;
+export const RUNG_READY_MARGIN_MS = 5_000;
 
 /**
- * A rung that had produced no playlist by the time {@link RUNG_READY_DEADLINE_POLLS} polls had
- * passed.
+ * A rung that had produced no playlist inside its search's deadline and {@link RUNG_READY_MARGIN_MS}.
  *
  * Its own type rather than a {@link ManifestFetchError}, because no response was refused and no
  * status was read. Nothing arrived at all.
@@ -690,7 +687,7 @@ export class ManifestFetcher {
 
     // A rung of a registered ladder. Asking for its playlist is what starts following it, at its
     // newest index, and the wait for that first read is bounded, because a rung whose feed this
-    // gateway cannot resolve never has one. See {@link RUNG_READY_DEADLINE_POLLS}.
+    // gateway cannot resolve never has one. See {@link RUNG_READY_MARGIN_MS}.
     if (this.poller.isRegistered(hexTopic)) {
       this.poller.activate(hexTopic);
       await this.awaitRungReady(hexTopic);
@@ -735,7 +732,7 @@ export class ManifestFetcher {
    * subscribed to.
    */
   private async awaitRungReady(hexTopic: string): Promise<void> {
-    const deadlineMs = RUNG_READY_DEADLINE_POLLS * this.poller.pollIntervalMs;
+    const deadlineMs = this.poller.candidateFindDeadlineMs + RUNG_READY_MARGIN_MS;
     const expired = this.delay(deadlineMs).then(() => {
       throw new RungNotReadyError(hexTopic, deadlineMs);
     });
