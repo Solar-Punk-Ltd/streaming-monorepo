@@ -69,13 +69,13 @@ export async function readRound(
 }
 
 /** Where the head probably is, given what the search knows, or null when there is nothing to go on. */
-export type HeadEstimate = (bracket: Bracket) => number | null;
+type HeadEstimate = (bracket: Bracket) => number | null;
 
 /**
  * Where a round reads around an estimate: dense near it, wider further out, so an estimate off by a
  * dozen slots still leaves a gap of a few for the next round.
  */
-export const ZOOM_CENTRED: readonly number[] = [-12, -6, -3, -1, 0, 1, 3, 6];
+const ZOOM_CENTRED: readonly number[] = [-12, -6, -3, -1, 0, 1, 3, 6];
 
 /**
  * The same leaning low, for an estimate projected over many slots, which runs high: coalesced

@@ -14,7 +14,7 @@ export interface Pause {
   readonly lengthMs: number;
 }
 
-export interface QualityFeedOptions {
+interface QualityFeedOptions {
   readonly random: Random;
   readonly slots: number;
   /** True time at which slot 0's newest segment ends. */

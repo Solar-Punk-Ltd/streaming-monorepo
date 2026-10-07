@@ -23,7 +23,7 @@ interface PlaylistShape {
 }
 
 /** A media playlist in the shape the uploader publishes, every segment stamped with its instant. */
-export function ladderPlaylist({ name, firstSequence, count, startMs, finalized = false }: PlaylistShape): string {
+function ladderPlaylist({ name, firstSequence, count, startMs, finalized = false }: PlaylistShape): string {
   const lines = [
     '#EXTM3U',
     '#EXT-X-VERSION:3',

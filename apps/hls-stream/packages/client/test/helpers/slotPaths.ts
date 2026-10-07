@@ -2,7 +2,7 @@ import { FeedIndex, Topic } from '@ethersphere/bee-js';
 import { feedSlotPath } from '@swarm-hls-stream/shared';
 
 /** A feed slot a path names: the rung's hex topic and the index. */
-export interface NamedSlot {
+interface NamedSlot {
   readonly hex: string;
   readonly index: number;
 }

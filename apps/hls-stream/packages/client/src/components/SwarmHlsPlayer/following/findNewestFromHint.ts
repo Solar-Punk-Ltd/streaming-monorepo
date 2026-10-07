@@ -24,7 +24,7 @@ export interface SwitchHint {
   readonly seenAtMs: number;
 }
 
-export interface NewestFoundFromHint extends NewestFound {
+interface NewestFoundFromHint extends NewestFound {
   readonly usedFallback: boolean;
 }
 

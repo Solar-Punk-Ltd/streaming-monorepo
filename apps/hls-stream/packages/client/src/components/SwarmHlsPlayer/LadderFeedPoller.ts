@@ -55,7 +55,7 @@ export const CANDIDATE_FIND_DEADLINE_MS = 15_000;
  * switch goes to the live edge, because reading a long way back costs the viewer more waiting than the
  * minutes they would skip.
  */
-export const MAX_READ_BACK_READS = 10;
+const MAX_READ_BACK_READS = 10;
 
 /** A rung as a ladder names it. */
 export interface LadderRung {
@@ -65,7 +65,7 @@ export interface LadderRung {
 }
 
 /** What a level request finds once it has waited for a rung. */
-export type RungReadiness = 'ready' | 'refused' | 'inactive' | 'unregistered';
+type RungReadiness = 'ready' | 'refused' | 'inactive' | 'unregistered';
 
 /** The seams the walk is built from. Every one has a default that is today's behaviour. */
 export interface LadderFeedPollerOptions {

@@ -34,14 +34,14 @@ interface TimedFeed {
   shape: TimedFeedShape;
 }
 
-export interface TimedRead {
+interface TimedRead {
   readonly rung: string;
   readonly index: number;
   readonly atMs: number;
   readonly found: boolean;
 }
 
-export interface MarkerRead {
+interface MarkerRead {
   readonly period: number;
   readonly atMs: number;
   readonly found: boolean;

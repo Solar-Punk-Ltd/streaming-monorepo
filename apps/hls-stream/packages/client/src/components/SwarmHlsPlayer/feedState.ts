@@ -36,7 +36,7 @@ export type FeedState =
 type FeedStateListener = (state: FeedState) => void;
 
 /** Why the poller took a rung out, and the rung the player should play instead. */
-export interface RungStoppedDetail {
+interface RungStoppedDetail {
   /** Said in the console line that drops the level, so a drop can be checked against the broadcast. */
   readonly reason: string;
   /** The rung to load next, or null to leave the choice to ABR. */

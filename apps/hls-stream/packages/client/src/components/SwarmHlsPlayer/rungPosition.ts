@@ -36,12 +36,12 @@ export function firstSegmentStartMs(segments: readonly Segment[]): number | null
 }
 
 /** When the newest segment of a playlist was presented, or null when it carries no stamp. */
-export function newestSegmentStartMs(segments: readonly Segment[]): number | null {
+function newestSegmentStartMs(segments: readonly Segment[]): number | null {
   return startMsOf(segments[segments.length - 1]);
 }
 
 /** What a switch target and the playing rung are compared on. */
-export interface RungSnapshot {
+interface RungSnapshot {
   readonly segments: readonly Segment[];
   readonly isFinalized: boolean;
 }

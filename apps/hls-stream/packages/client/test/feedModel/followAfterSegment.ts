@@ -8,7 +8,7 @@ import { PROBE_DISTANCES } from '../../src/components/SwarmHlsPlayer/refusedSlot
 
 import { TODAY_TRIGGER } from './followImmediately';
 
-export interface FollowAfterSegmentOptions {
+interface FollowAfterSegmentOptions {
   /**
    * How long after the ask that found a slot before the next one is asked for. A little under a
    * segment, so that a follower which has fallen behind the publisher drifts back to it by itself.
@@ -19,7 +19,7 @@ export interface FollowAfterSegmentOptions {
   readonly trigger: RefusedSlotTrigger;
 }
 
-export const AFTER_SEGMENT_DEFAULTS: FollowAfterSegmentOptions = {
+const AFTER_SEGMENT_DEFAULTS: FollowAfterSegmentOptions = {
   waitMs: SEGMENT_MS - 200,
   retryMs: 500,
   trigger: TODAY_TRIGGER,

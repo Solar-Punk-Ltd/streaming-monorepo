@@ -461,7 +461,7 @@ export class RungNotReadyError extends Error {
  * A level request for a rung the poller refused at the switch, because it had clearly stopped. The
  * player has already been told to take the level out, so this only ends the request.
  */
-export class RungRefusedError extends Error {
+class RungRefusedError extends Error {
   constructor(readonly hexTopic: string) {
     super(`Rung ${hexTopic} has stopped, so the switch to it was refused`);
     this.name = 'RungRefusedError';
@@ -473,7 +473,7 @@ export class RungRefusedError extends Error {
  * playlist would reach hls.js as a fatal parse error and restart the player, so the level errors
  * instead and hls.js asks again if it still wants it.
  */
-export class RungNotFollowedError extends Error {
+class RungNotFollowedError extends Error {
   constructor(readonly hexTopic: string) {
     super(`Rung ${hexTopic} stopped being followed while its playlist was asked for`);
     this.name = 'RungNotFollowedError';

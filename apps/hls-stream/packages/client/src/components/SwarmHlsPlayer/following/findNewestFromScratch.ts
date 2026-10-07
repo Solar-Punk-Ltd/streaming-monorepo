@@ -18,7 +18,7 @@ import {
  * up to that is bracketed within a factor of four, and a longer one gives its 16,383rd entry, whose
  * segment time places the head by the clock.
  */
-export const FIRST_ROUND: readonly number[] = Array.from({ length: MAX_PARALLEL_READS }, (_, power) =>
+const FIRST_ROUND: readonly number[] = Array.from({ length: MAX_PARALLEL_READS }, (_, power) =>
   power === 0 ? 0 : 4 ** power - 1,
 );
 

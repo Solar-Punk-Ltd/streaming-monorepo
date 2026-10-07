@@ -9,7 +9,7 @@ import { PROBE_DISTANCES } from '../../src/components/SwarmHlsPlayer/refusedSlot
 /** The walk's trigger before the predicted follower: after three unserved polls, and not past thirty. */
 export const TODAY_TRIGGER: RefusedSlotTrigger = { kind: 'polls', polls: 3, ceiling: 30 };
 
-export interface FollowImmediatelyOptions {
+interface FollowImmediatelyOptions {
   readonly pollIntervalMs: number;
   readonly trigger: RefusedSlotTrigger;
 }

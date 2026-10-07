@@ -10,7 +10,7 @@ import { Random } from './random';
 import { VirtualTime } from './virtualTime';
 
 /** The spread of a slot's readable lag from slot to slot, fitted to phase 0 (see the study report). */
-export const CALIBRATED_JITTER_MS = 300;
+const CALIBRATED_JITTER_MS = 300;
 
 export type Follower = (context: FollowContext) => Promise<void>;
 export type Finder = 'bee' | 'scratch' | 'hint';

@@ -9,7 +9,7 @@ import type { VirtualTime } from './virtualTime';
 const MAX_ROUND_TRIP_MS = 8_000;
 
 /** How long Bee keeps skipping the peers that failed to deliver an address, `pkg/retrieval/retrieval.go:128`. */
-export const SKIP_LIST_MS = 60_000;
+const SKIP_LIST_MS = 60_000;
 
 /**
  * The early-ask penalty. Bee skips a peer that failed to deliver an address for one minute, so an
@@ -32,7 +32,7 @@ interface AddressHistory {
 }
 
 /** What one node saw of one feed, for the tables. */
-export interface NodeTally {
+interface NodeTally {
   reads: number;
   found: number;
   earlyAsks: number;

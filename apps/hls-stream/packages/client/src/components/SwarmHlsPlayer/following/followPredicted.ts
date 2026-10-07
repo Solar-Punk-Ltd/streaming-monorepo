@@ -1,7 +1,7 @@
 import { FeedEntry, FollowContext, SEGMENT_MS } from './feedReader';
 import { pollsTriggerFires, probeAhead, RefusedSlotTrigger } from './probeAhead';
 
-export interface FollowPredictedOptions {
+interface FollowPredictedOptions {
   /**
    * How often the first ask for a slot may come too early, as a target the follower steers to. Lower
    * asks later and wastes less, higher finds a little sooner and wastes more.
