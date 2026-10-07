@@ -1,4 +1,4 @@
-import { useRef, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 
 import { useAppContext } from '@/providers/App';
 
@@ -10,6 +10,7 @@ import {
   probeGateway,
 } from './gatewayProbe';
 import { GatewayTools } from './GatewayTools';
+import { isServingFromFallback } from './providerStatus';
 
 import './DomainSelector.scss';
 
@@ -19,6 +20,9 @@ const KEY_ESCAPE = 'Escape';
 type PickerStatus = { kind: 'idle' } | { kind: 'checking' } | { kind: 'error'; text: string };
 
 const IDLE: PickerStatus = { kind: 'idle' };
+
+/** How often the button reads the client's counts again for its fallback marker. */
+const MARKER_REFRESH_MS = 2_000;
 
 const EMPTY_ADDRESS_TEXT = 'Enter the address of your Bee node, for example http://localhost:1633.';
 
@@ -35,8 +39,9 @@ const EMPTY_ADDRESS_TEXT = 'Enter the address of your Bee node, for example http
  * minute, and a copyable report, see {@link GatewayTools}.
  */
 export function DomainSelector() {
-  const { gatewayUrl, setGatewayUrl, defaultGatewayUrl } = useAppContext();
+  const { gatewayUrl, setGatewayUrl, defaultGatewayUrl, swarm } = useAppContext();
   const [isOpen, setIsOpen] = useState(false);
+  const [, setRefreshes] = useState(0);
   const [inputValue, setInputValue] = useState('');
   const [status, setStatus] = useState<PickerStatus>(IDLE);
   // Bumped on every confirm and on close, so a probe that comes back after the viewer cancelled or
@@ -44,6 +49,11 @@ export function DomainSelector() {
   const probeGeneration = useRef(0);
 
   const isOnDefault = isDefaultGateway(gatewayUrl, defaultGatewayUrl);
+
+  useEffect(() => {
+    const timer = setInterval(() => setRefreshes((count) => count + 1), MARKER_REFRESH_MS);
+    return () => clearInterval(timer);
+  }, []);
 
   const handleOpen = () => {
     setInputValue(isOnDefault ? '' : gatewayUrl);
@@ -112,6 +122,9 @@ export function DomainSelector() {
       <button className="gateway-button" onClick={handleOpen} title="Choose which Bee node streams load through">
         <span className="gateway-button-label">Bee node</span>
         <span className="gateway-button-current">{gatewayLabel(gatewayUrl, defaultGatewayUrl)}</span>
+        {isServingFromFallback(swarm.activity(), swarm.health()) && (
+          <span className="gateway-button-marker">Using fallback</span>
+        )}
       </button>
 
       {isOpen && (

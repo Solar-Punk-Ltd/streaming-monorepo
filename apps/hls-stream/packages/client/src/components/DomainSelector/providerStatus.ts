@@ -67,3 +67,20 @@ export function statusRows(
     };
   });
 }
+
+/**
+ * Whether the video is not coming from the gateway the viewer chose: the fallback answered a read of it
+ * in the last minute, or the gateway it reads from is paused, so the fallback is asked first. Never
+ * when there is no fallback, as on the build's own gateway, which stands behind every other one.
+ */
+export function isServingFromFallback(
+  activity: readonly FeatureActivity[],
+  health: readonly ProviderHealth[],
+): boolean {
+  const player = activity.find(({ feature }) => feature === 'player');
+  if (!player || player.fallback === null) {
+    return false;
+  }
+  const isPaused = health.some(({ id, pausedUntilMs }) => id === player.primary && pausedUntilMs !== null);
+  return player.fallbacks > 0 || isPaused;
+}

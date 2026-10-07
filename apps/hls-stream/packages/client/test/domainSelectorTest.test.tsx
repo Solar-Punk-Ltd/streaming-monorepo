@@ -1,7 +1,10 @@
 // @vitest-environment jsdom
+import { Topic } from '@ethersphere/bee-js';
 import { act, createElement } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+
+import type { SwarmClient } from '../src/swarm/client';
 
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 
@@ -19,6 +22,7 @@ const TWO_GATEWAYS = JSON.stringify({
 const realFetch = globalThis.fetch;
 let root: Root | null = null;
 let copied: string | null = null;
+let swarm: SwarmClient | null = null;
 
 /** The picker inside the app, as a build with two gateways starts it, opened. */
 async function open() {
@@ -29,7 +33,17 @@ async function open() {
   const host = document.createElement('div');
   document.body.append(host);
   root = createRoot(host);
-  act(() => root!.render(createElement(app.AppContextProvider, { children: createElement(DomainSelector) })));
+  function Probe() {
+    swarm = app.useAppContext().swarm;
+    return null;
+  }
+  act(() =>
+    root!.render(
+      createElement(app.AppContextProvider, {
+        children: [createElement(DomainSelector, { key: 'picker' }), createElement(Probe, { key: 'probe' })],
+      }),
+    ),
+  );
   await settle();
   click(buttonNamed(/^Bee node/));
 }
@@ -40,12 +54,18 @@ async function settle(): Promise<void> {
   });
 }
 
-async function waitFor(holds: () => boolean, what: string): Promise<void> {
+async function waitFor(holds: () => boolean, what: string, pauseMs = 0): Promise<void> {
   for (let tries = 0; tries < 200; tries += 1) {
     if (holds()) {
       return;
     }
-    await settle();
+    if (pauseMs === 0) {
+      await settle();
+    } else {
+      await act(async () => {
+        await new Promise((resolve) => setTimeout(resolve, pauseMs));
+      });
+    }
   }
   throw new Error(`timed out waiting for ${what}`);
 }
@@ -142,6 +162,30 @@ describe("the node picker's tools", () => {
 
     expect(row('Backup gateway').textContent).not.toContain('Testing');
     expect(buttonNamed('Test', row('Backup gateway')).disabled).toBe(false);
+  });
+
+  it('marks the Bee node button while the fallback serves the video, with the picker closed', async () => {
+    const VIDEO_OWNER = 'a'.repeat(40);
+    globalThis.fetch = (async (input: RequestInfo | URL) => {
+      const url = String(input);
+      if (url.endsWith('/health')) {
+        return Response.json({ status: 'ok' });
+      }
+      return new Response('', { status: url.startsWith(BACKUP) && url.includes(VIDEO_OWNER) ? 502 : 404 });
+    }) as typeof fetch;
+    await open();
+    const input = document.querySelector<HTMLInputElement>('.gateway-modal-input')!;
+    act(() => {
+      Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value')?.set?.call(input, BACKUP);
+      input.dispatchEvent(new Event('input', { bubbles: true }));
+    });
+    click(buttonNamed('Check and use'));
+    await waitFor(() => document.querySelector('.gateway-modal') === null, 'the picker to close on the backup');
+    expect(buttonNamed(/^Bee node/).textContent).not.toContain('Using fallback');
+
+    await swarm?.reader('player').readFeedEntry(VIDEO_OWNER, Topic.fromString('a-rung'), 0);
+
+    await waitFor(() => buttonNamed(/^Bee node/).textContent?.includes('Using fallback') ?? false, 'the marker', 20);
   });
 
   it('shows who answered each feature in the last minute', async () => {

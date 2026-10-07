@@ -1,7 +1,7 @@
 import { Topic } from '@ethersphere/bee-js';
 import { describe, expect, it } from 'vitest';
 
-import { statusRows } from '../src/components/DomainSelector/providerStatus';
+import { isServingFromFallback, statusRows } from '../src/components/DomainSelector/providerStatus';
 import { SwarmClient } from '../src/swarm/client';
 import { content, fault, notFound, ScriptedProvider } from './helpers/scriptedProvider';
 
@@ -78,5 +78,51 @@ describe('the status rows', () => {
     expect(statusRows(client.activity(), client.health(), 0, nameOf)[0].route).toBe(
       'Reads from Default gateway. No fallback.',
     );
+  });
+});
+
+describe('whether the Bee node button marks the fallback as serving', () => {
+  it('does not while the video reads from the gateway in use', async () => {
+    const { event, client } = world();
+    event.answer = content();
+    await client.reader('player').readFeedEntry(OWNER, TOPIC, 1);
+
+    expect(isServingFromFallback(client.activity(), client.health())).toBe(false);
+  });
+
+  it('does once the fallback answered a read of the video in the last minute', async () => {
+    const { event, backup, client, advance } = world();
+    event.answer = fault;
+    backup.answer = content();
+    await client.reader('player').readFeedEntry(OWNER, TOPIC, 1);
+
+    expect(isServingFromFallback(client.activity(), client.health())).toBe(true);
+    event.answer = content();
+    advance(61_000);
+    await client.reader('player').readFeedEntry(OWNER, TOPIC, 2);
+    expect(isServingFromFallback(client.activity(), client.health())).toBe(false);
+  });
+
+  it('does while the gateway the video reads from is paused, whatever answered the video', async () => {
+    const { event, backup, client } = world();
+    event.answer = fault;
+    backup.answer = notFound;
+    await client.reader('stream-list').readFeedHead(OWNER, TOPIC);
+    await client.reader('stream-list').readFeedHead(OWNER, TOPIC);
+
+    expect(isServingFromFallback(client.activity(), client.health())).toBe(true);
+  });
+
+  it('does not when the gateway in use has no fallback behind it, paused or not', async () => {
+    const event = new ScriptedProvider('event');
+    const client = new SwarmClient({
+      chosen: { id: 'event', provider: event },
+      pausePolicy: { faultsBeforePause: 1 },
+    });
+    event.answer = fault;
+    await client.reader('player').readFeedEntry(OWNER, TOPIC, 1);
+
+    expect(client.health()[0].pausedUntilMs).not.toBeNull();
+    expect(isServingFromFallback(client.activity(), client.health())).toBe(false);
   });
 });

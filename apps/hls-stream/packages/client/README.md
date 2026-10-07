@@ -91,7 +91,9 @@ Below the node picker's own-node field sit three debug tools (`src/components/Do
 - **Status.** Who answered each feature in the last minute, from the client's `activity()`: which
   provider the feature reads from and which stands behind it, how many answers of each kind came from
   each, how many came from the fallback, and which provider is paused and for how long
-  (`providerStatus.ts`). It refreshes every 2 s while the picker is open.
+  (`providerStatus.ts`). It refreshes every 2 s while the picker is open. With the picker closed, the
+  header's Bee node button says "Using fallback" while the fallback answered a read of the video in the
+  last minute, or the gateway in use is paused, so a viewer sees the switch without opening anything.
 - **Report.** "Copy report" copies the last test's sentences, the status, the build and the browser
   (`report.ts`). It holds no address but the tested gateway's: every other provider is named, never
   addressed, and a test fails if another address or the viewer's saved node gets in. The build is the
