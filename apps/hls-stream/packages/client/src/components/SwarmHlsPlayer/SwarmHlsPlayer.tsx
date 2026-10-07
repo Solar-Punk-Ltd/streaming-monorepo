@@ -330,8 +330,8 @@ export const SwarmHlsPlayer: React.FC<HlsPlayerProps> = ({
     const sourceUrl = buildSwarmUri(owner, topicString);
     const ladder = renditionsRef.current;
 
-    // A ladder the catalog knows about. Only the fallback path needs this — a stream whose feed
-    // holds a published master is recognised by the loader from the master itself, catalog or not.
+    // A ladder the stream list names. Its master is built from the list and the master feed is never
+    // read. A stream the list names no renditions for is recognised by the loader from its feed.
     const isLadder = renditionKey.length > 0 && !!ladder;
 
     if (isLadder) {

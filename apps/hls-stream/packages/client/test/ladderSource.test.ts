@@ -235,6 +235,44 @@ describe('the ladder entry points', () => {
     });
   });
 
+  /**
+   * Decision 33 (Levi, 2026-10-07): a stream whose entry in the stream list names its renditions is
+   * answered with the master built from them, and the master feed is not read at all. That read was
+   * the slowest at start, 4.2 to 4.7 s in phase 0, a head lookup of the master topic.
+   */
+  describe('a stream list entry that names its renditions', () => {
+    const FOUR = [
+      rung('360p', 640, 360, 700_000),
+      rung('480p', 854, 480, 1_400_000),
+      rung('720p', 1280, 720, 2_800_000),
+      rung('1080p', 1920, 1080, 5_000_000),
+    ];
+    const FOUR_TOPICS = FOUR.map((r) => Topic.fromString(r.topic).toString());
+
+    it('is answered with the master built from the list, reading nothing, and the first read is the start rung', async () => {
+      stubFetch(buildMasterPlaylist(OWNER, FOUR), (path) =>
+        FOUR_TOPICS.some((hex) => path === `feeds/${OWNER}/${hex}`) ? feedResponse(mediaPlaylist('rung-seg.ts')) : null,
+      );
+      fetcher.registerLadder(`${OWNER}/${SOURCE_TOPIC}`, () => ({ owner: OWNER, renditions: FOUR }));
+
+      const master = await fetcher.fetchSource(`${OWNER}/${SOURCE_TOPIC}`);
+      assert.equal(master, buildMasterPlaylist(OWNER, FOUR));
+      assert.deepEqual(requested, [], 'starting playback read something before hls.js asked for a level');
+
+      await fetcher.fetch(`${OWNER}/${FOUR[3].topic}`);
+      assert.equal(requested[0], `feeds/${OWNER}/${FOUR_TOPICS[3]}`, 'the first read was not the start rung');
+      assert.ok(!requested.includes(`feeds/${OWNER}/${hexSource}`), 'the master topic was read');
+    });
+
+    it('keeps the source read for an entry that names no renditions', async () => {
+      stubFetch(buildMasterPlaylist(OWNER, LADDER));
+
+      await fetcher.fetchSource(`${OWNER}/${SOURCE_TOPIC}`);
+
+      assert.deepEqual(requested, [`feeds/${OWNER}/${hexSource}`]);
+    });
+  });
+
   describe('a catalog entry written before masters were published', () => {
     it('is answered with a locally built master, so it plays as a ladder rather than one rung', async () => {
       stubFetch(mediaPlaylist('lowest-rung-seg.ts'));
@@ -402,17 +440,13 @@ describe('the ladder entry points', () => {
       }
     });
 
-    /**
-     * Both paths fire for one source: the catalog registers the ladder as the player mounts, and the
-     * published master names the same rungs a moment later. `trackLadder` merges rather than
-     * replaces, or whichever set lost the race is left walking with nothing to stop it.
-     */
-    it('stops the rungs from both the catalog and the master, not just the later set', async () => {
+    /** The rung the player was following stops with the ladder, and nothing is read afterwards. */
+    it('stops the rung the player was following, so nothing is read after the teardown', async () => {
       const source = `${OWNER}/${SOURCE_TOPIC}`;
-      const extra = rung('1080p', 1920, 1080, 5_000_000);
       stubFetch(buildMasterPlaylist(OWNER, LADDER));
-      fetcher.registerLadder(source, () => ({ owner: OWNER, renditions: [extra] }));
+      fetcher.registerLadder(source, () => ({ owner: OWNER, renditions: LADDER }));
       await fetcher.fetchSource(source);
+      await fetcher.fetch(`${OWNER}/${LADDER[1].topic}`);
       await settle();
 
       fetcher.unregisterLadder(source);

@@ -387,8 +387,8 @@ type LadderResolver = () => LadderSource;
 /**
  * A source known to be a ladder, and the topics actually handed to the poller.
  *
- * `resolve` is present only on the fallback path, where the ladder came from the stream catalog
- * rather than from a published master. `topics` is recorded rather than re-derived, because it is
+ * `resolve` is present only where the ladder came from the stream list rather than from a published
+ * master. `topics` is recorded rather than re-derived, because it is
  * what has to be stopped again — see {@link ManifestFetcher.registerLadder}.
  */
 interface RegisteredLadder {
@@ -558,15 +558,11 @@ export class ManifestFetcher {
   }
 
   /**
-   * Declares that the stream loaded from `sourceUrl` has a ladder in the stream catalog.
+   * Declares that the stream loaded from `sourceUrl` has a ladder in the stream list.
    *
-   * This is the fallback path, for an entry whose `topic` points at the lowest rung because it was
-   * written before the uploader published masters. It pre-starts the rung walks from the catalog's
-   * rendition list so such a stream is still a ladder; {@link fetchSource} then answers the
-   * top-level request with a locally built master when the feed turns out to hold a media playlist.
-   *
-   * Registering costs nothing when the source *does* have a published master: the topics are the
-   * same ones, and starting a walk that is already running is a no-op.
+   * Its rungs are registered from the list's renditions, and {@link fetchSource} answers the
+   * top-level request with the master built from them without reading the master feed. Nothing is
+   * read here: the first read is the rung hls.js asks for.
    */
   registerLadder(sourceUrl: string, resolve: LadderResolver): void {
     const ladder = resolve();
@@ -610,19 +606,28 @@ export class ManifestFetcher {
   }
 
   /**
-   * Answers the top-level playlist request for `url` — the one hls.js makes once, from
+   * Answers the top-level playlist request for `url`, the one hls.js makes once, from
    * `loadSource`.
    *
-   * The source feed is read first and its content decides what this is. A multivariant playlist
-   * means the uploader published a master for a ladder, and it is returned as it stands; the rungs
-   * it names start being walked here, before hls.js has parsed it and asked for any of them. A
-   * media playlist means either a single-rendition stream, or a catalog entry from before masters
-   * existed — the fallback in {@link registerLadder} covers the second.
+   * A stream whose entry in the stream list names its renditions is answered with the master built
+   * from them, and nothing is read (decision 33, Levi, 2026-10-07). The master feed's head lookup
+   * was the slowest read at start, 4.2 to 4.7 s in phase 0, and the list already carries every
+   * rendition with its topic, size and bandwidth.
+   *
+   * Any other stream reads its source feed, and the content decides what it is. A multivariant
+   * playlist means the uploader published a master for a ladder, and it is returned as it stands,
+   * with the rungs it names registered. A media playlist means a single-rendition stream.
    */
   async fetchSource(url: string): Promise<string> {
     const source = parseSwarmUri(url);
     const topic = Topic.fromString(source.topic);
     const hexTopic = topic.toString();
+
+    const fromList = this.masterFor(url);
+    if (fromList) {
+      this.logMaster(url, fromList, 'built from the stream list');
+      return fromList;
+    }
 
     // Guarded exactly as {@link handleInitialFetch} is, and for the same reasons. Once a stream can
     // be a ladder this is the head read every mount makes, and the restart a fatal player error
@@ -647,13 +652,6 @@ export class ManifestFetcher {
         this.logMaster(url, text, 'published');
         this.feedHealth.recordGatewayReachable(hexTopic);
         return text;
-      }
-
-      const synthesized = this.masterFor(url);
-      if (synthesized) {
-        this.logMaster(url, synthesized, 'synthesised from the catalog');
-        this.feedHealth.recordGatewayReachable(hexTopic);
-        return synthesized;
       }
 
       // Single rendition: the source feed *is* the media playlist, so the read above was the initial
