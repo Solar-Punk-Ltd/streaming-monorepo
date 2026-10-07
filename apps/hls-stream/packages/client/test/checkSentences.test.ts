@@ -1,0 +1,96 @@
+import { describe, expect, it } from 'vitest';
+
+import {
+  COULD_NOT_REACH,
+  failedReadSentence,
+  NOT_A_SWARM_GATEWAY,
+  PASSED,
+  probeSentence,
+  SKIPPED,
+} from '../src/components/DomainSelector/checkSentences';
+import { CHECK_TIMEOUT_MS } from '../src/components/DomainSelector/providerTest';
+
+describe("the sentences a failed check's read ends in", () => {
+  it.each([
+    [
+      { kind: 'not-found', serverTimeMs: null },
+      'This gateway answered that the stream list is not there. It may not have found it on the network yet. Test again in a minute, or pick another gateway.',
+    ],
+    [
+      { kind: 'rate-limited', retryAfterMs: 30_000, serverTimeMs: null },
+      'This gateway asked to be asked less often. Wait a minute, then test again.',
+    ],
+    [{ kind: 'unsupported' }, 'This kind of gateway cannot read the stream list. Pick another gateway for it.'],
+    [{ kind: 'aborted' }, 'The test was stopped before it finished.'],
+    [
+      { kind: 'unavailable', cause: { kind: 'timeout', timeoutMs: CHECK_TIMEOUT_MS } },
+      'The gateway did not answer in 5 s. It may be busy or still starting. Test again in a minute, or pick another gateway.',
+    ],
+    [
+      { kind: 'unavailable', cause: { kind: 'status', status: 503 } },
+      'The gateway answered with an error (HTTP 503). Test again in a minute, or pick another gateway.',
+    ],
+    [{ kind: 'unavailable', cause: { kind: 'network', error: new TypeError('Failed to fetch') } }, COULD_NOT_REACH],
+  ] as const)('%o', (answer, sentence) => {
+    expect(failedReadSentence('the stream list', answer)).toBe(sentence);
+  });
+
+  it('tells a viewer a node may not allow this site, and which setting decides it', () => {
+    expect(COULD_NOT_REACH).toBe(
+      'Could not reach this gateway. Check that the address is right and the node is running. If it is, this node does not allow this site: its cors-allowed-origins setting has to include it.',
+    );
+  });
+});
+
+describe('the sentences the connection check ends in', () => {
+  it.each([
+    [{ kind: 'ok', elapsedMs: 84 }, 'The gateway answered in 84 ms.'],
+    [{ kind: 'not-swarm' }, NOT_A_SWARM_GATEWAY],
+    [
+      { kind: 'rejected', status: 403 },
+      'Something answered at this address with an error (HTTP 403). Check the address and the port.',
+    ],
+    [
+      { kind: 'timed-out' },
+      'The gateway did not answer in 5 s. It may be busy or still starting. Test again in a minute, or pick another gateway.',
+    ],
+    [{ kind: 'unreachable' }, COULD_NOT_REACH],
+  ] as const)('%o', (result, sentence) => {
+    expect(probeSentence(result, CHECK_TIMEOUT_MS)).toBe(sentence);
+  });
+});
+
+describe('the sentences a passed or skipped check ends in', () => {
+  it('say what loaded, naming the stream it was tested on', () => {
+    expect(PASSED.streamList(12, 41)).toBe('The stream list loaded: 12 streams, entry 41.');
+    expect(PASSED.streamList(1, null)).toBe('The stream list loaded: 1 stream.');
+    expect(PASSED.playerByMarker('Main stage')).toBe(
+      'The video loaded: the time marker of “Main stage”, a playlist and one segment.',
+    );
+    expect(PASSED.playerByEntry('Main stage')).toBe('The video loaded: a playlist of “Main stage” and one segment.');
+    expect(PASSED.previews('Main stage')).toBe('Previews loaded: the preview playlist of “Main stage”.');
+    expect(PASSED.picture('Main stage')).toBe('Pictures loaded: the picture of “Main stage”.');
+  });
+
+  it('say why a check was not run', () => {
+    expect(Object.values(SKIPPED)).toEqual([
+      'Not tested: the stream list has no stream to test with.',
+      'Not tested: no stream in the list has video yet.',
+      'Not tested: no stream in the list has a picture.',
+    ]);
+  });
+
+  it('use no em-dash and no semicolon', () => {
+    const every = [
+      COULD_NOT_REACH,
+      NOT_A_SWARM_GATEWAY,
+      ...Object.values(SKIPPED),
+      PASSED.streamList(2, 3),
+      PASSED.playerByMarker('x'),
+      failedReadSentence('x', { kind: 'unsupported' }),
+    ];
+    for (const sentence of every) {
+      expect(sentence).not.toMatch(/[—;]/);
+    }
+  });
+});
