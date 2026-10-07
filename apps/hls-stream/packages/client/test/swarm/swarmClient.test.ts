@@ -294,6 +294,62 @@ describe('the Swarm client', () => {
     expect(client.counts()).toHaveLength(3);
   });
 
+  describe('what answered in the last minute', () => {
+    it('gives each feature its answers by provider and kind, and how many reads went to the fallback', async () => {
+      const { chosen, fallback, client } = world();
+      chosen.answer = content();
+      await client.reader('player').readFeedEntry(OWNER, TOPIC, 1);
+      await client.reader('player').readFeedEntry(OWNER, TOPIC, 2);
+      chosen.answer = fault;
+      fallback.answer = notFound;
+      await client.reader('stream-list').readFeedHead(OWNER, TOPIC);
+
+      expect(client.activity()).toEqual([
+        {
+          feature: 'player',
+          primary: 'chosen',
+          fallback: 'fallback',
+          answers: [{ provider: 'chosen', answer: 'content', count: 2 }],
+          fallbacks: 0,
+        },
+        {
+          feature: 'stream-list',
+          primary: 'chosen',
+          fallback: 'fallback',
+          answers: [
+            { provider: 'chosen', answer: 'unavailable', count: 1 },
+            { provider: 'fallback', answer: 'not-found', count: 1 },
+          ],
+          fallbacks: 1,
+        },
+        { feature: 'previews', primary: 'chosen', fallback: 'fallback', answers: [], fallbacks: 0 },
+      ]);
+    });
+
+    it('forgets reads older than a minute', async () => {
+      const { chosen, client, advance } = world();
+      chosen.answer = content();
+      await client.reader('player').readFeedEntry(OWNER, TOPIC, 1);
+      advance(30_000);
+      await client.reader('player').readFeedEntry(OWNER, TOPIC, 2);
+      advance(30_001);
+
+      expect(client.activity().find(({ feature }) => feature === 'player')?.answers).toEqual([
+        { provider: 'chosen', answer: 'content', count: 1 },
+      ]);
+    });
+
+    it("names a routed feature's own provider as the one in use", () => {
+      const previewsGateway = new ScriptedProvider('previews');
+      const { client } = world({ routes: { previews: { id: 'previews-gateway', provider: previewsGateway } } });
+
+      expect(client.activity().find(({ feature }) => feature === 'previews')).toMatchObject({
+        primary: 'previews-gateway',
+        fallback: 'fallback',
+      });
+    });
+  });
+
   describe('the gateway clock', () => {
     it.each(['player', 'stream-list'] as const)(
       'learns the offset from the server time of a %s answer',

@@ -78,6 +78,35 @@ interface ReadCount {
   readonly count: number;
 }
 
+/** How long the client remembers each read for {@link SwarmClient.activity}. */
+const ACTIVITY_WINDOW_MS = 60_000;
+
+interface ProviderAnswerCount {
+  readonly provider: string;
+  readonly answer: AnswerKind;
+  readonly count: number;
+}
+
+/** What one feature read in the last {@link ACTIVITY_WINDOW_MS}, and from whom. */
+interface FeatureActivity {
+  readonly feature: SwarmFeature;
+  /** The provider the feature reads from first. */
+  readonly primary: string;
+  /** The provider asked when that one fails, or null when there is none. */
+  readonly fallback: string | null;
+  /** Every answer in the window, by the provider that gave it and its kind, in the order first seen. */
+  readonly answers: readonly ProviderAnswerCount[];
+  /** Answers in the window that came from a provider other than {@link primary}. */
+  readonly fallbacks: number;
+}
+
+interface RecentAnswer {
+  readonly atMs: number;
+  readonly feature: SwarmFeature;
+  readonly provider: string;
+  readonly answer: AnswerKind;
+}
+
 interface ProviderHealth {
   readonly id: string;
   readonly faultsInARow: number;
@@ -115,6 +144,8 @@ export class SwarmClient {
   private readonly now: () => number;
   private readonly healthById = new Map<string, HealthState>();
   private readonly countByKey = new Map<string, ReadCount>();
+  /** Oldest first, never older than {@link ACTIVITY_WINDOW_MS}. */
+  private readonly recent: RecentAnswer[] = [];
 
   constructor(options: SwarmClientOptions) {
     this.chosen = options.chosen;
@@ -146,6 +177,34 @@ export class SwarmClient {
 
   counts(): ReadCount[] {
     return [...this.countByKey.values()];
+  }
+
+  /** What each feature read in the last minute, for the node picker's status rows. */
+  activity(): FeatureActivity[] {
+    this.forgetOldAnswers();
+    return SWARM_FEATURES.map((feature) => {
+      const primary = this.primaryFor(feature);
+      const byKey = new Map<string, ProviderAnswerCount>();
+      let fallbacks = 0;
+      for (const recent of this.recent) {
+        if (recent.feature !== feature) {
+          continue;
+        }
+        const key = `${recent.provider}|${recent.answer}`;
+        const counted = byKey.get(key);
+        byKey.set(key, { provider: recent.provider, answer: recent.answer, count: (counted?.count ?? 0) + 1 });
+        if (recent.provider !== primary.id) {
+          fallbacks += 1;
+        }
+      }
+      return {
+        feature,
+        primary: primary.id,
+        fallback: this.fallbackFor(primary)?.id ?? null,
+        answers: [...byKey.values()],
+        fallbacks,
+      };
+    });
   }
 
   health(): ProviderHealth[] {
@@ -209,10 +268,19 @@ export class SwarmClient {
     return this.candidatesFor(feature).find(({ provider }) => provider.capabilities.urls) ?? null;
   }
 
+  private primaryFor(feature: SwarmFeature): NamedProvider {
+    return this.routes[feature] ?? this.chosen;
+  }
+
+  private fallbackFor(primary: NamedProvider): NamedProvider | null {
+    return this.fallback && this.fallback.id !== primary.id ? this.fallback : null;
+  }
+
   /** The feature's own provider then the fallback, the paused ones left out while another remains. */
   private candidatesFor(feature: SwarmFeature): NamedProvider[] {
-    const primary = this.routes[feature] ?? this.chosen;
-    const all = this.fallback && this.fallback.id !== primary.id ? [primary, this.fallback] : [primary];
+    const primary = this.primaryFor(feature);
+    const fallback = this.fallbackFor(primary);
+    const all = fallback ? [primary, fallback] : [primary];
     const awake = all.filter(({ id }) => !this.isPaused(id));
     return awake.length > 0 ? awake : [primary];
   }
@@ -270,5 +338,16 @@ export class SwarmClient {
     const key = `${feature}|${read}|${provider}|${answer}`;
     const current = this.countByKey.get(key);
     this.countByKey.set(key, { feature, read, provider, answer, count: (current?.count ?? 0) + 1 });
+    this.recent.push({ atMs: this.now(), feature, provider, answer });
+    this.forgetOldAnswers();
+  }
+
+  private forgetOldAnswers(): void {
+    const oldestKeptMs = this.now() - ACTIVITY_WINDOW_MS;
+    let old = 0;
+    while (old < this.recent.length && this.recent[old].atMs < oldestKeptMs) {
+      old += 1;
+    }
+    this.recent.splice(0, old);
   }
 }
