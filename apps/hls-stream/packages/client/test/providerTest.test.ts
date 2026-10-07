@@ -115,7 +115,7 @@ async function run({
     {
       gateways: [{ id: 'tested', kind: 'bee-http', url: address }],
       defaultId: 'tested',
-      fallbackId: null,
+      fallbackOrder: [],
       kinds: ['bee-http'],
     },
     { environment: { fetcher } },

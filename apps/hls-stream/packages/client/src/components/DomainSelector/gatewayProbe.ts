@@ -129,7 +129,7 @@ type Prober = (gatewayUrl: string) => { probe(options?: ReadOptions): Promise<Pr
 
 /** The settings of one gateway alone, with no fallback, so a test of it is a test of it and nothing else. */
 export function onlyGateway(gateway: GatewaySetting): SwarmSettings {
-  return { gateways: [gateway], defaultId: gateway.id, fallbackId: null, kinds: [gateway.kind] };
+  return { gateways: [gateway], defaultId: gateway.id, fallbackOrder: [], kinds: [gateway.kind] };
 }
 
 /** A Bee node over HTTP at the address, which is the kind of node the picker offers to use. */

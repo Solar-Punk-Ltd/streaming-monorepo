@@ -224,11 +224,13 @@ and the registry of kinds stay behind it, so a new kind of provider changes noth
   there a 500 is not found and never pauses the node.
 - **The client** (`src/swarm/client.ts`) is made from the settings and the viewer's choice by
   `createSwarmClient`, which makes each gateway's provider through the registry of kinds
-  (`src/swarm/registry.ts`). Each feature reads through its own provider with the fallback behind it.
+  (`src/swarm/registry.ts`). Each feature reads through its own provider with an ordered list of
+  fallbacks behind it, asked in turn until one answers, its own provider left out of the list.
   A provider that faults three times in a row is left alone for 15 seconds, twice that each time it
   faults again at once, up to two minutes, and a rate-limited one for as long as it asked. A paused
-  provider is still asked when nothing else can be. A read's window covers the fallback too: the
-  fallback gets only what the first provider left of it, and is not asked once nothing is left. Every
+  provider is still asked when nothing else can be, and each fallback is paused on its own faults, so a
+  paused one is skipped for the next. A read's window covers the fallbacks too: each gets only what the
+  providers before it left, and none is asked once nothing is left. Every
   read is counted by feature, kind, provider and answer, and `activity()` says what each feature read
   in the last minute, from whom and how many answers came from the fallback. The server time of the
   player's and the stream list's answers keeps the gateway clock the time markers are read on, and no
@@ -246,10 +248,11 @@ and the registry of kinds stay behind it, so a new kind of provider changes noth
 - **The settings come from the build**, as every other setting of this viewer does, not from a
   `config.json` beside the page. `VITE_SWARM_PROVIDERS` is JSON naming the gateways offered, each
   with an `id`, the `kind` `bee-http`, an optional `label` and a `url` that is a path on this site
-  such as `/bee` or an http or https address, then the `default` gateway's id, an optional `fallback`
-  id, and optionally the `kinds` a viewer may add a node of. Without a `fallback` the default gateway
-  is the fallback, so a viewer who picked another gateway or a node of their own always has the
-  build's own behind them, and a viewer on the named fallback itself has the default behind them.
+  such as `/bee` or an http or https address, then the `default` gateway's id, an optional `fallback`,
+  one id or an ordered list of them, and optionally the `kinds` a viewer may add a node of. The default
+  gateway is always asked last, so a list may not name it, and without a `fallback` the default gateway
+  alone is the fallback. A viewer who picked another gateway or a node of their own always has the
+  build's own behind them, and a viewer on a fallback has the rest of the list behind them.
   `"fallback": false` switches it off. A build that leaves the setting empty reads the one gateway
   `VITE_READER_BEE_URL` names, the default and the fallback, so a deployment needs no change.
   A value that is wrong stops the page at start and says where (`src/swarm/settings.ts`). A viewer's

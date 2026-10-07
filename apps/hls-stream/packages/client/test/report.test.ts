@@ -42,7 +42,7 @@ async function reportOfBackup(): Promise<string> {
   const backup = settings.gateways.find(({ id }) => id === 'backup')!;
   const results = await testProvider({
     client: createSwarmClient(
-      { gateways: [backup], defaultId: backup.id, fallbackId: null, kinds: [backup.kind] },
+      { gateways: [backup], defaultId: backup.id, fallbackOrder: [], kinds: [backup.kind] },
       { environment: { fetcher: failing } },
     ),
     address: backup.url,
