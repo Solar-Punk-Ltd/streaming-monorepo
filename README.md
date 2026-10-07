@@ -22,7 +22,8 @@ How the folders relate and the rules that keep them apart are in
 | [`docs`](docs/)                                                              | How the pieces fit: the layout and its rules, the host roles, the roadmap, the design briefs, and notes on the neighbouring systems.                                               |
 
 Scripts that serve the whole repository go under `tools/`: the boundary check, which keeps the apps
-from depending on each other, and the cut of each app's own lockfile out of the root one.
+from depending on each other, the cut of each app's own lockfile out of the root one, and the release
+scripts, which name the build each deploy sends and guide the tag a release is made under.
 
 ## Working in an app
 
@@ -76,6 +77,7 @@ Every original commit of the imported repositories is in this one under its own 
 - [docs/monorepo.md](docs/monorepo.md): the layout, the rules between projects, and how the history came along.
 - [docs/architecture/overview.md](docs/architecture/overview.md): how the pieces fit, the ports each one listens on, and what must never be public.
 - [docs/self-hosting.md](docs/self-hosting.md): running your own deployment, the three kinds of host, the edge, a recipe for each kind of fresh host, and the names on the hosts that never change.
+- [docs/releasing.md](docs/releasing.md): releasing: tag the build, deploy each manager and admin, and check the version each console shows.
 - [docs/ROADMAP.md](docs/ROADMAP.md): the roadmap and the checkpoint log.
 - [docs/architecture/](docs/architecture/): the design briefs, starting with the [admin layer](docs/architecture/web2-admin.md).
 - [docs/research/](docs/research/README.md): condensed notes on the systems the admin talks to.

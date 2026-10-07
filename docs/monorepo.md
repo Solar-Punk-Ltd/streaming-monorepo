@@ -31,7 +31,10 @@ streaming-monorepo/
 ├── infra/                   what hosts need, shared by every project
 │   └── edge/                the front door of a host
 ├── packages/                code shared by two or more apps: contracts, db-migrate, web-auth
-├── tools/                   scripts that serve the whole repository: the boundary check and the app cut
+├── tools/                   scripts that serve the whole repository
+│   ├── boundary-check/      the check that no app depends on another
+│   ├── app-workspace/       the cut of an app's lockfile and workspace file out of the root's
+│   └── release/             the name a deploy gives its build, and the tag script a release starts with
 ├── scripts/public-leaks/    the gate that refuses a real address, wallet or host name in the tree
 ├── docs/                    how the pieces fit
 ├── .github/                 CODEOWNERS and every workflow
@@ -51,6 +54,10 @@ the root `package.json` pins its pnpm, the root `pnpm-workspace.yaml` lists ever
 under the app's own folder and holds the security overrides, and one lockfile covers all three apps.
 Each app keeps its own `package.json` and its own Node. The [README](../README.md#working-in-an-app)
 says how to work in one.
+
+`tools/release` holds what a release runs: the tag script an operator runs on the commit about to be
+deployed, and the script each deploy runs to name its build after that tag.
+[releasing.md](releasing.md) is the order of a release.
 
 ## The rules
 

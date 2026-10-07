@@ -23,6 +23,8 @@ and how the pieces fit under `docs/`. Read it before moving anything.
 - `docs/architecture/` holds the design briefs.
 - `docs/self-hosting.md` holds the host roles, the edge, the recipe for each kind of fresh host,
   and the names on the hosts that never change.
+- `docs/releasing.md` is the release procedure: tag the build with `tools/release/tag.mjs`, then
+  deploy. Change it with the deploy scripts and the tag script it describes.
 - `docs/research/` holds condensed reports on the neighbouring systems. Read the relevant one
   before touching anything that talks to those systems.
 
