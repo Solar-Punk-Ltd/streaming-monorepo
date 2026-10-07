@@ -44,6 +44,21 @@ export const SINGLE_GATEWAY_ID = 'gateway';
 /** The id a Bee node of the viewer's own goes by, one the settings do not offer. */
 export const OWN_GATEWAY_ID = 'own-node';
 
+/**
+ * What a viewer is shown a provider as: its label, or what it is. Never its address, so a name can go
+ * anywhere an address must not, such as the node picker's report.
+ */
+export function gatewayName(settings: SwarmSettings, id: string): string {
+  if (id === OWN_GATEWAY_ID) {
+    return 'Your own node';
+  }
+  const offered = settings.gateways.find((gateway) => gateway.id === id);
+  if (offered?.label) {
+    return offered.label;
+  }
+  return id === settings.defaultId ? 'Default gateway' : `Gateway ${id}`;
+}
+
 /** An example's `<...>` value, which a build that forgot to fill one in must not start on. */
 const PLACEHOLDER = /^<.*>$/s;
 

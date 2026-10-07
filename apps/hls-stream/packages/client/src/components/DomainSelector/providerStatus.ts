@@ -20,7 +20,7 @@ const ANSWER_WORDS: Readonly<Record<AnswerKind, string>> = {
   aborted: 'stopped',
 };
 
-interface StatusRow {
+export interface StatusRow {
   readonly feature: SwarmFeature;
   readonly label: string;
   /** Which provider the feature reads from and which stands behind it. */

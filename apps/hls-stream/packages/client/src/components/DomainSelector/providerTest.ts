@@ -37,6 +37,14 @@ export const CHECKS = ['connection', 'stream-list', 'player', 'previews', 'thumb
 
 type CheckName = (typeof CHECKS)[number];
 
+export const CHECK_LABELS: Readonly<Record<CheckName, string>> = {
+  connection: 'Connection',
+  'stream-list': 'Stream list',
+  player: 'Video',
+  previews: 'Previews',
+  thumbnails: 'Pictures',
+};
+
 type CheckOutcome = 'passed' | 'failed' | 'skipped';
 
 export interface CheckResult {
