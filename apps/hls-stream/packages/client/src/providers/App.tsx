@@ -156,7 +156,7 @@ export const AppContextProvider = ({ children }: Props) => {
    */
   const fetchAppState = useCallback(async (): Promise<CatalogRead> => {
     const gateway = gatewayRef.current;
-    return toCatalogRead(gateway, await catalogReader.current.read(gateway));
+    return toCatalogRead(gateway, await catalogReader.current.read(swarmRef.current.reader('stream-list')));
   }, []);
 
   /**

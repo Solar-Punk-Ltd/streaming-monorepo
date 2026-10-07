@@ -17,6 +17,9 @@ const EVENT_GATEWAY = 'https://event.example.com';
 const BACKUP_GATEWAY = 'https://backup.example.com';
 const STREAM_OWNER = '2'.repeat(40);
 const STREAM_TOPIC_HEX = Topic.fromString('a-stream').toString();
+/** The stream list's feed the test build names, as `vitest.config.ts` sets it. */
+const CATALOG_OWNER = '0x0000000000000000000000000000000000000000';
+const CATALOG_TOPIC = 'test-topic';
 /** Where a viewer's chosen gateway survives a reload, as the provider keeps it. */
 const GATEWAY_STORAGE_KEY = 'swarm-gateway-url';
 
@@ -137,6 +140,22 @@ describe("the app's Swarm client", () => {
     act(() => current().setGatewayUrl(current().defaultGatewayUrl));
     await settle();
     expect(await readThrough(current().swarm)).toBe(`${BUILD_GATEWAY}/bytes/${REFERENCE}`);
+  });
+
+  it("reads the stream list through the client's stream-list reader, on the node picked", async () => {
+    await start();
+    const catalogHead = `${BUILD_GATEWAY}/feeds/${CATALOG_OWNER}/${Topic.fromString(CATALOG_TOPIC).toString()}`;
+    expect(asked[0]).toBe(catalogHead);
+
+    act(() => current().setGatewayUrl(OWN_NODE));
+    await settle();
+    await act(() => current().fetchAppState());
+
+    expect(
+      current()
+        .swarm.counts()
+        .filter(({ feature }) => feature === 'stream-list'),
+    ).toEqual([{ feature: 'stream-list', read: 'feed-head', provider: 'own-node', answer: 'not-found', count: 1 }]);
   });
 
   it("hands the player the client's player reader, at start and on every node picked", async () => {

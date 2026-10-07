@@ -6,7 +6,8 @@ import { CATALOG_POLL_INTERVAL_MS, watchPageCatalogPollMs } from '../src/provide
 import { catalogUpdater, StreamCatalog, toCatalogRead } from '../src/providers/catalogState';
 import { Stream, STREAM_STATUS_LIVE, STREAM_STATUS_SCHEDULED } from '../src/types/stream';
 import { CatalogFeedReader } from '../src/utils/catalogFeed';
-import type { TimedResponse } from '../src/utils/fetchWithTimeout';
+import type { PathResponse } from './helpers/playerReader';
+import { readerOverPaths } from './helpers/playerReader';
 import {
   isWaitingForStart,
   WATCH_VIEW_LOADING,
@@ -41,20 +42,20 @@ describe('when the watch page reads the catalog again', () => {
 
 const GATEWAY = 'https://gateway.example';
 
-function catalogSlot(streams: Stream[], headers = new Headers()): TimedResponse {
+function catalogSlot(streams: Stream[], headers = new Headers()): PathResponse {
   return { ok: true, status: 200, headers, text: JSON.stringify(streams) };
 }
 
 /** The head of the catalog feed, which is the one answer that says which slot it is. */
-function catalogHead(slot: number, streams: Stream[]): TimedResponse {
+function catalogHead(slot: number, streams: Stream[]): PathResponse {
   return catalogSlot(streams, new Headers({ 'swarm-feed-index': slot.toString(16).padStart(16, '0') }));
 }
 
-const SLOT_NOT_WRITTEN_YET: TimedResponse = { ok: false, status: 404, headers: new Headers(), text: '' };
+const SLOT_NOT_WRITTEN_YET: PathResponse = { ok: false, status: 404, headers: new Headers(), text: '' };
 
 /** A gateway that answers the catalog reader's requests in the order given. */
-function gatewayAnswering(answers: TimedResponse[]) {
-  return async (): Promise<TimedResponse> => {
+function gatewayAnswering(answers: PathResponse[]) {
+  return async (): Promise<PathResponse> => {
     const answer = answers.shift();
     if (!answer) {
       throw new Error('the reader asked for a slot this feed does not hold');
@@ -87,10 +88,11 @@ const NOTHING_HELD: StreamCatalog = { streams: [], gateway: null, slot: null };
  * One catalog poll as the app makes it: the reader's answer from a gateway that answers in the order
  * given, applied to the list on screen through the list's own update rule.
  */
-function pollerAnswering(answers: TimedResponse[]): (held: StreamCatalog) => Promise<StreamCatalog> {
+function pollerAnswering(answers: PathResponse[]): (held: StreamCatalog) => Promise<StreamCatalog> {
   const selectedGateway = { current: GATEWAY };
-  const reader = new CatalogFeedReader(announced.owner, Topic.fromString('catalog-test'), gatewayAnswering(answers));
-  return async (held) => catalogUpdater(toCatalogRead(GATEWAY, await reader.read(GATEWAY)), selectedGateway)(held);
+  const reader = new CatalogFeedReader(announced.owner, Topic.fromString('catalog-test'));
+  const gateway = readerOverPaths(gatewayAnswering(answers));
+  return async (held) => catalogUpdater(toCatalogRead(GATEWAY, await reader.read(gateway)), selectedGateway)(held);
 }
 
 /** The announced stream's entry in the list, the way the watch page finds it. */
