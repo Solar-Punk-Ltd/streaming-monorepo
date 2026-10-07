@@ -58,6 +58,14 @@ const MISSES_BEFORE_WARNING = 20;
 export const STALL_REPROBE_MS = 30_000;
 
 /**
+ * How long a sibling tried as somewhere to fail over to may take to find its newest index. Its progress
+ * bound starts once that is found, so a slow search cannot use up the bound and have a live sibling
+ * judged paused. Past this the try ends as if the sibling had shown nothing. The polling study's
+ * slowest searches from a hint, a quality 500 slots behind, took 12 s at p90 on the gateway profile.
+ */
+export const CANDIDATE_FIND_DEADLINE_MS = 15_000;
+
+/**
  * How many older indexes a switch reads to reach a viewer who is behind the live edge. Past it the
  * switch goes to the live edge, because reading a long way back costs the viewer more waiting than the
  * minutes they would skip.
@@ -83,6 +91,8 @@ export interface LadderFeedPollerOptions {
   readonly now?: () => number;
   /** The bound a rung has to show a new index in. See {@link RUNG_PROGRESS_BOUND_MS}. */
   readonly progressBoundMs?: number;
+  /** See {@link CANDIDATE_FIND_DEADLINE_MS}. */
+  readonly candidateFindDeadlineMs?: number;
   /**
    * When the frame the viewer is watching was presented, by PROGRAM-DATE-TIME, for a ladder's group, or
    * null when the player cannot say. Read only when switching, to keep a viewer behind live where they are.
@@ -114,6 +124,8 @@ interface Walk {
   progressed: boolean;
   /** Told once, when the walk first progresses or ends, by whoever is waiting on it. */
   onSettled?: (progressed: boolean) => void;
+  /** Told once, when the walk has found its newest index, by whoever is timing it from there. */
+  onFound?: () => void;
   /** When this rung's current stall last had a sibling tried, or null when it has not. */
   stallTriedAtMs: number | null;
 }
@@ -154,6 +166,7 @@ export class LadderFeedPoller {
   private readonly followClock: FollowClock;
   private readonly now: () => number;
   private readonly progressBoundMs: number;
+  private readonly candidateFindDeadlineMs: number;
   private readonly playheadMs: (group: string | null) => number | null;
 
   constructor(
@@ -183,6 +196,7 @@ export class LadderFeedPoller {
     this.finder = options.finder ?? new IndexSearchFinder(fetchResource, this.followClock);
     this.now = options.now ?? (() => performance.now());
     this.progressBoundMs = options.progressBoundMs ?? RUNG_PROGRESS_BOUND_MS;
+    this.candidateFindDeadlineMs = options.candidateFindDeadlineMs ?? CANDIDATE_FIND_DEADLINE_MS;
     this.playheadMs = options.playheadMs ?? (() => null);
   }
 
@@ -603,6 +617,9 @@ export class LadderFeedPoller {
     this.stateManager.setIndex(entry.hexTopic, found.index);
     walk.current = feedEntryOf(Number(found.index.toBigInt()), found.playlist, this.followClock.now());
     walk.currentSeenAtMs = this.followClock.now();
+    const onFound = walk.onFound;
+    walk.onFound = undefined;
+    onFound?.();
     // This session's first read found the rung open, so an end still recorded against it or its group
     // was left by an earlier session and is over. See `FeedHealthTracker.forgetStaleEnd`.
     this.feedHealth.forgetStaleEnd(entry.hexTopic);
@@ -758,8 +775,9 @@ export class LadderFeedPoller {
 
   /**
    * The playing rung has been unserved for the stall threshold. Walks the next lower rung for
-   * {@link RUNG_PROGRESS_BOUND_MS}: a new index there means the playing rung alone stopped, and the
-   * player fails over to it. None means the broadcast paused, and the stall shows as it always did.
+   * {@link RUNG_PROGRESS_BOUND_MS} from when its newest index is found: a new index there means the
+   * playing rung alone stopped, and the player fails over to it. None means the broadcast paused, and
+   * the stall shows as it always did.
    */
   private async failOverIfSiblingProgresses(entry: RungEntry, walk: Walk, sibling: RungEntry): Promise<void> {
     const { ladder } = entry;
@@ -827,7 +845,9 @@ export class LadderFeedPoller {
   }
 
   /**
-   * Follows a rung as a candidate until it shows a new index or the bound passes.
+   * Follows a rung as a candidate until it shows a new index or the bound passes. The bound counts from
+   * when its newest index is known, and the search for it has {@link CANDIDATE_FIND_DEADLINE_MS} of its
+   * own.
    *
    * @param seed Its newest index when already found, so the walk does not ask the finder again.
    */
@@ -843,12 +863,21 @@ export class LadderFeedPoller {
       return Promise.resolve(false);
     }
     return new Promise((resolve) => {
-      const timer = setTimeout(() => {
+      const giveUp = () => {
         walk.onSettled = undefined;
+        walk.onFound = undefined;
         resolve(false);
-      }, this.progressBoundMs);
+      };
+      let timer = setTimeout(giveUp, walk.current === null ? this.candidateFindDeadlineMs : this.progressBoundMs);
+      if (walk.current === null) {
+        walk.onFound = () => {
+          clearTimeout(timer);
+          timer = setTimeout(giveUp, this.progressBoundMs);
+        };
+      }
       walk.onSettled = (progressed) => {
         clearTimeout(timer);
+        walk.onFound = undefined;
         resolve(progressed);
       };
     });

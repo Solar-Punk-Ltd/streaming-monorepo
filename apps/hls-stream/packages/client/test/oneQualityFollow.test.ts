@@ -357,6 +357,40 @@ describe('Q3: the playing quality stops', () => {
     );
   });
 
+  it('gives a sibling its whole bound once its newest index is found, however long the search took', async () => {
+    let finding: Promise<void> = Promise.resolve();
+    const rig = makeRig({
+      finderFor: (gateway) => {
+        const search = new IndexSearchFinder(gateway.fetchResource, fastClock(FOLLOW_SPEED));
+        return {
+          async findNewest(rung, hint) {
+            const found = await search.findNewest(rung, hint);
+            if (rung.topic.toString() === hex(MID)) {
+              // Longer than the whole bound, as a search on a slow node can be.
+              finding = sleep(BOUND_MS * 2);
+              await finding;
+            }
+            return found;
+          },
+        };
+      },
+    });
+    rig.gateway.publishLive(TOP, 'top', 20);
+    rig.gateway.publishLive(MID, 'mid', 20);
+
+    await stallTop(rig);
+    await waitFor(() => rig.finds.includes(hex(MID)), 'the next lower rung to be searched');
+    await sleep(BOUND_MS * 2 + 20);
+    await finding;
+    rig.gateway.publishNext(MID);
+    await waitFor(() => rig.stopped.length > 0, 'the playing rung to be failed over');
+
+    assert.deepEqual(
+      rig.stopped.map(({ rung, failoverTo }) => ({ rung, failoverTo })),
+      [{ rung: hex(TOP), failoverTo: hex(MID) }],
+    );
+  });
+
   it('fails over to a lower rung whose stamps run ten seconds behind, and never removes it', async () => {
     const rig = makeRig();
     rig.gateway.publishLive(TOP, 'top', 20);
