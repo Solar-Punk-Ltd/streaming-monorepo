@@ -47,7 +47,7 @@ const MIGRATED_NODE_NAME = 'My Bee node';
 const isAddedId = (id: string) => id.startsWith(ADDED_ID_PREFIX);
 
 /** A name as a viewer typed it, trimmed and cut to {@link SOURCE_NAME_MAX_LENGTH}, or null for a blank one. */
-export function cleanSourceName(input: string): string | null {
+function cleanSourceName(input: string): string | null {
   const name = input.trim().replace(/\s+/g, ' ').slice(0, SOURCE_NAME_MAX_LENGTH).trim();
   return name === '' ? null : name;
 }

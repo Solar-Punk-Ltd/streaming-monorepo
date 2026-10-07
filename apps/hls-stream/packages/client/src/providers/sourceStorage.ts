@@ -28,7 +28,7 @@ export const SOURCE_STORAGE_KEYS = {
 } as const;
 
 /** What of the browser's storage this needs, so a test can hand it one in memory. */
-export type SourceStorage = Pick<Storage, 'getItem' | 'setItem' | 'removeItem'>;
+type SourceStorage = Pick<Storage, 'getItem' | 'setItem' | 'removeItem'>;
 
 export interface SourceChoices {
   readonly added: readonly AddedSource[];
