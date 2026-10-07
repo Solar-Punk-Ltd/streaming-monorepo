@@ -17,6 +17,8 @@ const RUNG = {
   avgBandwidth: 2_500_000,
 };
 const ENTRY = { owner: '0xowner', topic: 'topic', title: 'A broadcast', timestamp: 1, mediatype: 'video' };
+/** A made-up Swarm reference, built rather than written out. */
+const RECORDING = 'ab'.repeat(32);
 
 const accepts = (schema: { safeParse(value: unknown): { success: boolean } }, value: unknown): boolean =>
   schema.safeParse(value).success;
@@ -96,6 +98,22 @@ describe('a catalog entry, as the viewer reads it', () => {
   });
 });
 
+describe('a recording named by reference, as a writer on time windows writes it', () => {
+  it('is kept on a rung and on an entry, and read back by the admin', () => {
+    const rung = { ...RUNG, recording: RECORDING, duration: 30 };
+    assert.deepEqual(viewerCatalogRungSchema.parse(rung), rung);
+    const entry = { ...ENTRY, state: 'vod', recording: RECORDING, duration: 30, renditions: [rung] };
+    assert.deepEqual(viewerCatalogEntrySchema.parse(entry), entry);
+    assert.deepEqual(adminFeedRungSchema.parse(rung), rung);
+  });
+
+  it('is refused when it is not text', () => {
+    assert.equal(accepts(viewerCatalogRungSchema, { ...RUNG, recording: 5 }), false);
+    assert.equal(accepts(viewerCatalogEntrySchema, { ...ENTRY, recording: 5 }), false);
+    assert.equal(accepts(adminFeedRungSchema, { ...RUNG, recording: null }), false);
+  });
+});
+
 describe('the catalog, as the viewer reads it', () => {
   it('is a list of entries, refused whole when any one entry is refused', () => {
     assert.equal(accepts(viewerCatalogSchema, [ENTRY, ENTRY]), true);
@@ -106,14 +124,17 @@ describe('the catalog, as the viewer reads it', () => {
 });
 
 describe('a rung, as the admin reads it back off the catalog', () => {
-  it('takes any number and any text, and an index or a duration alone', () => {
+  it('takes any number and any text, and a duration alone', () => {
     assert.equal(accepts(adminFeedRungSchema, { ...RUNG, width: Infinity, name: '' }), true);
-    assert.equal(accepts(adminFeedRungSchema, { ...RUNG, index: Number.NaN }), true);
     assert.equal(accepts(adminFeedRungSchema, { ...RUNG, duration: 1 }), true);
   });
 
+  it('names no feed index, since a recording is named by its reference alone', () => {
+    assert.equal('index' in adminFeedRungSchema.shape, false);
+  });
+
   it('refuses a missing field and a field of the wrong kind', () => {
-    for (const change of [{ width: '1280' }, { topic: 1 }, { index: '1' }, { duration: null }]) {
+    for (const change of [{ width: '1280' }, { topic: 1 }, { duration: null }]) {
       assert.equal(accepts(adminFeedRungSchema, { ...RUNG, ...change }), false, JSON.stringify(change));
     }
     const { avgBandwidth: _left, ...missing } = RUNG;

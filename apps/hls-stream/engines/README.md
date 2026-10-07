@@ -200,11 +200,9 @@ keyframe interval, or turn `ABR_ENABLED` on, where the fragment sets the segment
 names each such stream under `publisherGopStreams` with both lengths. Neither reason changes a date,
 refuses a segment or ends a broadcast.
 
-The uploader then writes a fifth feed: the ladder's **master playlist**, a multivariant playlist
-naming the four rung feeds, on a topic that _is_ the ladder's group id. The catalog entry points at
-that, so one URL yields the whole ladder. It is rewritten whenever a rung's measured bandwidth
-drifts, and always before the catalog entry referring to it — the other order would publish an
-entry whose topic resolves to nothing.
+The uploader writes each rung's live playlist as a time window every 2 s, on a topic derived from the
+ladder's group id and the rung's name. There is no master playlist and no feed per rung. The stream
+list entry names the rungs, and the player builds the ladder from it.
 
 ```
                              transcode (4x ffmpeg)         republish, RTMP 127.0.0.1
@@ -251,11 +249,11 @@ a second. Measured on the deployment host 2026-08-31, SRS sustains about **6.7 a
 own encoders were producing 8.0, and nothing errors when it cannot keep up. Announcements fall behind
 the media at 0.46s per second of video until the lag passes `HLS_WINDOW`, after which SRS deletes
 each segment before announcing it: the uploader gets a callback naming a file that is already gone,
-the tallest rung is unpublished about two minutes in, and the master feed goes on advertising it.
+the tallest rung stops being written about two minutes in, and the stream list goes on naming it until the player drops it.
 
-A four-rung ladder therefore runs at `HLS_FRAGMENT=1.0` (4.0/s, verified over 600s with lag flat and
-zero segments lost) and **not** the 0.5s that measures best on latency, which asks 8.0/s. A single
-rendition at 0.5s asks 2.0/s and is unaffected. ⚠️ The 6.7/s is one measurement on a co-tenanted host,
+A four-rung ladder therefore runs at the default `HLS_FRAGMENT=2` (2.0/s) or at 1.0 (4.0/s, verified
+over 600s with lag flat and zero segments lost) and **not** the 0.5s that measures best on latency,
+which asks 8.0/s. A single rendition at 0.5s asks 2.0/s and is unaffected. ⚠️ The 6.7/s is one measurement on a co-tenanted host,
 nothing refuses a ladder that exceeds it, and what SRS spends the time on is not known: the uploader
 answers each callback in 1ms.
 

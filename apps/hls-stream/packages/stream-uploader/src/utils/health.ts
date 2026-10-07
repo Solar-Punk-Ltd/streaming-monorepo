@@ -1,6 +1,11 @@
 import {
+  CLOCK_UNCHECKED,
+  CLOCK_UNTRUSTED,
+  ClockCheckReport,
   HEALTH_DEGRADED,
   HEALTH_OK,
+  HEALTH_REASON_CLOCK_UNCHECKED,
+  HEALTH_REASON_CLOCK_UNTRUSTED,
   HEALTH_REASON_FRAGMENT_MISMATCH,
   HEALTH_REASON_FRAGMENT_PUBLISHER_GOP,
   HEALTH_REASON_INGEST_REFUSED,
@@ -54,6 +59,8 @@ export function deriveHealthStatus(
   segmentStallMs: number,
   /** The boot's own state, and absent for a service whose boot has finished. See `libs/NodeWait.ts`. */
   nodeWait: NodeWaitReport | null = null,
+  /** The clock check's last round, and absent for a caller with no clock check. See `libs/ClockCheck.ts`. */
+  clock: ClockCheckReport | null = null,
 ): HealthReport {
   // ⛔ Before every threshold below and alone, because none of them has anything to describe yet. A
   // service still waiting for its node has read no catalog, recovered no stream and uploaded no
@@ -72,6 +79,17 @@ export function deriveHealthStatus(
   // and a reason per rung would read as several faults.
   if (signals.startGateWarnings.length > 0) {
     reasons.push(HEALTH_REASON_START_GATE_WARNED);
+  }
+
+  // Beside the boot's reasons, because both are about this host rather than about a stream. Untrusted
+  // is the one reason that stops publishing by itself: every window is skipped while it stands, so
+  // nothing a viewer can read is being written, and it stands until a later round measures the clock
+  // within the limit. Unchecked covers no answer and an answer too slow to judge. It refuses nothing and
+  // is reported so that a host whose firewall drops UDP 123 is seen rather than trusted by default.
+  if (clock?.verdict === CLOCK_UNTRUSTED) {
+    reasons.push(HEALTH_REASON_CLOCK_UNTRUSTED);
+  } else if (clock?.verdict === CLOCK_UNCHECKED) {
+    reasons.push(HEALTH_REASON_CLOCK_UNCHECKED);
   }
 
   if (signals.maxConsecutiveManifestFailures >= MANIFEST_FAILURE_THRESHOLD) {

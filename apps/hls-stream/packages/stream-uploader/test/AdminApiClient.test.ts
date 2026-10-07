@@ -218,11 +218,12 @@ describe('the admin API client, reporting where a broadcast got to', () => {
     });
   });
 
-  it('carries the feed index and the duration on a vod report', async () => {
+  it('carries the recording reference and the duration on a vod report', async () => {
     await withAdmin(always(200), async ({ client, received }) => {
-      const report = { state: ADMIN_STATE_VOD, index: 42, duration: 137.5 } as const;
+      const recording = 'ab'.repeat(32);
+      const report = { state: ADMIN_STATE_VOD, recording, duration: 137.5 } as const;
       assert.equal(await client.reportState(ADMIN_STREAM_ID, report), STATE_REPORT_ACCEPTED);
-      assert.deepEqual(received[0].body, { state: 'vod', index: 42, duration: 137.5 });
+      assert.deepEqual(received[0].body, { state: 'vod', recording, duration: 137.5 });
     });
   });
 
@@ -268,7 +269,11 @@ describe('the admin API client, reporting where a broadcast got to', () => {
           ? res.status(409).json({ error: 'invalid_state_transition', from: 'live', to: 'vod' })
           : res.status(200).json({}),
       async ({ client, received }) => {
-        const outcome = await client.reportState(ADMIN_STREAM_ID, { state: ADMIN_STATE_VOD, index: 3, duration: 10 });
+        const outcome = await client.reportState(ADMIN_STREAM_ID, {
+          state: ADMIN_STATE_VOD,
+          recording: 'ab'.repeat(32),
+          duration: 10,
+        });
         assert.equal(outcome, STATE_REPORT_ACCEPTED);
         assert.equal(received.length, 2);
       },
@@ -306,7 +311,7 @@ describe('the admin API client, reporting where a broadcast got to', () => {
     await withAdmin(always(500), async ({ client, received, sleeps }) => {
       const outcome = await client.reportState(ADMIN_STREAM_ID, {
         state: ADMIN_STATE_VOD,
-        index: 3,
+        recording: 'ab'.repeat(32),
         duration: 10,
       });
 
@@ -371,6 +376,8 @@ describe('the admin API client, reporting one rung of a ladder', () => {
     avgBandwidth: 2_400_000,
   };
 
+  const RECORDING = 'c3'.repeat(32);
+
   /** The merged ladder as the contract states it, so `renditionReportAnswerSchema` accepts it. */
   const MERGED = {
     stream: { id: ADMIN_STREAM_ID },
@@ -396,15 +403,15 @@ describe('the admin API client, reporting one rung of a ladder', () => {
   it('reads the flip and the duration back off a ladder that finished', async () => {
     const finished = {
       ...MERGED,
-      renditions: [{ ...RUNG, index: 9, duration: 12 }],
+      renditions: [{ ...RUNG, recording: RECORDING, duration: 12 }],
       ladder: { finished: true, flippedToFinished: true, duration: 12 },
     };
 
     await withAdmin(always(200, finished), async ({ client }) => {
-      const report = await client.reportRendition(ADMIN_STREAM_ID, { ...RUNG, index: 9, duration: 12 });
+      const report = await client.reportRendition(ADMIN_STREAM_ID, { ...RUNG, recording: RECORDING, duration: 12 });
 
       assert.deepEqual(report?.ladder, { finished: true, flippedToFinished: true, duration: 12 });
-      assert.equal(report?.renditions[0].index, 9);
+      assert.equal(report?.renditions[0].recording, RECORDING);
     });
   });
 
@@ -473,7 +480,10 @@ describe('the admin API client, reporting one rung of a ladder', () => {
   for (const [name, body] of [
     ['a rendition missing its topic', { ...MERGED, renditions: [{ ...RUNG, topic: undefined }] }],
     ['a rendition whose bandwidth is not a number', { ...MERGED, renditions: [{ ...RUNG, bandwidth: 'fast' }] }],
-    ['a rendition carrying an index with no duration', { ...MERGED, renditions: [{ ...RUNG, index: 9 }] }],
+    [
+      'a rendition carrying a recording with no duration',
+      { ...MERGED, renditions: [{ ...RUNG, recording: RECORDING }] },
+    ],
     ['no ladder state at all', { ...MERGED, ladder: undefined }],
     ['renditions that are not a list', { ...MERGED, renditions: { '720p': RUNG } }],
     ['a body that is not an object', 'a merged ladder'],

@@ -28,10 +28,12 @@ import {
   engineSkippedSegmentsPattern,
   finalizeResumedPattern,
   ladderFinalizedPattern,
+  liveWindowWrittenPattern,
   manifestUploadedPattern,
   omeSegmentLossReportedPattern,
   originDeclaredDiscontinuityPattern,
   publishingRenditionPattern,
+  recordingUploadedPattern,
   replacedSessionFinalizedPattern,
   rungAnnouncedPattern,
   rungBatchRefusedPattern,
@@ -464,6 +466,31 @@ export function segmentUploads(text: string): SegmentUpload[] {
     streamId: match[2],
     index: Number(match[1]),
     reference: match[3],
+  }));
+}
+
+/**
+ * How many live windows each stream wrote, in the order the streams first wrote one.
+ *
+ * A window is the playlist a viewer reads, so a stream with segments and no window here was
+ * uploading media nobody could find.
+ */
+export function liveWindowsWrittenByStream(text: string): ReadonlyMap<string, number> {
+  const counts = new Map<string, number>();
+  for (const [, streamId] of messageText(text).matchAll(liveWindowWrittenPattern('g'))) {
+    counts.set(streamId, (counts.get(streamId) ?? 0) + 1);
+  }
+  return counts;
+}
+
+/**
+ * Every recording the log says was uploaded, with its stream. A crash between the upload and the
+ * report uploads the same recording again under the same reference, so a stream can appear twice.
+ */
+export function recordingsUploaded(text: string): { streamId: string; reference: string }[] {
+  return [...messageText(text).matchAll(recordingUploadedPattern('g'))].map(([, streamId, reference]) => ({
+    streamId,
+    reference,
   }));
 }
 

@@ -74,7 +74,8 @@ const DRAFT = {
 };
 
 const RUNG = { name: '720p', width: 1280, height: 720, topic: 'rung-topic', bandwidth: 2_800_000, avgBandwidth: 0 };
-const FINISHED_RUNG = { ...RUNG, index: 9, duration: 12 };
+const RECORDING = 'b8'.repeat(32);
+const FINISHED_RUNG = { ...RUNG, recording: RECORDING, duration: 12 };
 
 const MERGED = {
   stream: { id: 'str_01', status: 'live' },
@@ -156,15 +157,15 @@ describe('the contract reads the answers the uploader reads as its hand-written 
       const base = { ...MERGED, ladder };
       inputs.push(...variations(base, { stream: base.stream, ladder: base.ladder, feed: base.feed }));
       for (const rung of [RUNG, FINISHED_RUNG]) {
-        for (const field of new Set([...Object.keys(rung), 'index', 'duration'])) {
+        for (const field of new Set([...Object.keys(rung), 'recording', 'duration'])) {
           for (const changed of eachValueOf(rung, field)) {
             inputs.push({ ...base, renditions: [changed] }, { ...base, renditions: [RUNG, changed] });
           }
         }
         inputs.push({ ...base, renditions: [{ ...rung, codecs: 'avc1' }] });
       }
-      for (const index of PALETTE) {
-        for (const duration of PALETTE) inputs.push({ ...base, renditions: [{ ...RUNG, index, duration }] });
+      for (const recording of PALETTE) {
+        for (const duration of PALETTE) inputs.push({ ...base, renditions: [{ ...RUNG, recording, duration }] });
       }
       for (const renditions of PALETTE) inputs.push({ ...base, renditions: [renditions] });
     }

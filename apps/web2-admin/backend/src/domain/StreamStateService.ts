@@ -22,7 +22,7 @@ export interface StateStreamStore {
   markVod(
     id: string,
     allowedFrom: readonly StreamStatus[],
-    manifestIndex: number,
+    recordingRef: string,
     durationSeconds: number,
   ): Promise<StreamRow | null>;
 }
@@ -117,10 +117,11 @@ export class StreamStateService {
     logger.info(
       `[State] ${describeActor(UPLOADER)} reported ${report.state} for ${describeStream(updated)}: ${existing.status} → ${
         updated.status
-      }${report.state === 'vod' ? ` (index ${String(report.index)}, ${String(report.duration)}s)` : ''}`,
+      }${report.state === 'vod' ? ` (recording ${String(report.recording)}, ${String(report.duration)}s)` : ''}`,
     );
 
-    const recording = report.state === 'vod' ? { index: report.index ?? 0, duration: report.duration ?? 0 } : {};
+    const recording =
+      report.state === 'vod' ? { recording: report.recording ?? '', duration: report.duration ?? 0 } : {};
     const entry = {
       actor: UPLOADER,
       action: report.state === 'live' ? 'stream.state.live' : 'stream.state.vod',
@@ -160,6 +161,6 @@ export class StreamStateService {
       return this.streams.markLive(existing.id, allowedFrom);
     }
     // The schema has already established that a `vod` report carries both.
-    return this.streams.markVod(existing.id, allowedFrom, report.index ?? 0, report.duration ?? 0);
+    return this.streams.markVod(existing.id, allowedFrom, report.recording ?? '', report.duration ?? 0);
   }
 }

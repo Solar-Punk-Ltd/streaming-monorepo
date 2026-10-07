@@ -115,8 +115,7 @@ fi
 #
 # Ascending by height, which is the order `AbrLadder.rungs()` hands the pool and therefore the order
 # the lowest rung ends up as the coordinator. 360p rides the shared bee-uploader because the catalog
-# and every ladder master go through the coordinator, and that node is the one a viewer needs to open
-# the stage at all.
+# goes through the coordinator, and that node is the one a viewer needs to open the stage at all.
 RUNG_PORT_VARS=(
   "360p:BEE_UPLOADER_API_PORT"
   "480p:BEE_RUNG_480P_API_PORT"

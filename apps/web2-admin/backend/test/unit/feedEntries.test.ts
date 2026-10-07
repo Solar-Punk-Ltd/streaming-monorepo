@@ -5,8 +5,8 @@
  * This is the boundary between the admin layer's vocabulary (five statuses,
  * including two of its own) and the viewer's (three states). Getting it wrong
  * is invisible here and obvious in a player: a recording advertised as
- * scheduled never opens, and a live entry carrying a stale manifest index
- * points at the wrong feed update.
+ * scheduled never opens, and a live entry carrying a stale recording
+ * would send the viewer to a recording that is not this broadcast.
  */
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
@@ -17,6 +17,9 @@ import type { StreamStatus } from '@streaming-monorepo/web2-admin-common';
 import { buildFeedEntry, carriesEntry, feedEntryState } from '../../src/domain/feedEntries.js';
 
 import { streamRow, TEST_OWNER } from './support/fakes.js';
+
+const RECORDING = 'ab'.repeat(32);
+const RUNG_RECORDING = 'cd'.repeat(32);
 
 describe('feedEntryState', () => {
   it("maps every admin status onto one of the viewer's three states", () => {
@@ -34,7 +37,7 @@ describe('feedEntryState', () => {
 });
 
 describe('buildFeedEntry', () => {
-  it('announces a published stream as scheduled, with no index or duration', () => {
+  it('announces a published stream as scheduled, with no recording or duration', () => {
     // `publishing` is what the row says while the publish that writes this
     // entry holds it, and that is still an announcement.
     const entry = buildFeedEntry(streamRow({ status: 'publishing' }), null, 1_700_000_000_000);
@@ -45,7 +48,7 @@ describe('buildFeedEntry', () => {
     assert.equal(entry.thumbnail, '');
     assert.equal(entry.scheduledStartTime, '2026-10-01T09:00:00.000Z');
     assert.equal(entry.timestamp, 1_700_000_000_000);
-    assert.ok(!('index' in entry), 'no index on a scheduled entry');
+    assert.ok(!('recording' in entry), 'no recording on a scheduled entry');
     assert.ok(!('duration' in entry), 'no duration on a scheduled entry');
   });
 
@@ -61,15 +64,15 @@ describe('buildFeedEntry', () => {
 
     assert.equal(entry.state, 'live');
     assert.equal(entry.thumbnail, 'a'.repeat(64));
-    assert.ok(!('index' in entry));
+    assert.ok(!('recording' in entry));
     assert.ok(!('duration' in entry));
   });
 
-  it('says vod, with the manifest index and duration the uploader reported', () => {
+  it('says vod, with the recording and duration the uploader reported', () => {
     const entry = buildFeedEntry(
       streamRow({
         status: 'vod',
-        manifest_index: 412,
+        recording_ref: RECORDING,
         duration_seconds: 3725.5,
         ended_at: new Date('2026-10-01T10:02:05.000Z'),
       }),
@@ -78,25 +81,24 @@ describe('buildFeedEntry', () => {
     );
 
     assert.equal(entry.state, 'vod');
-    assert.equal(entry.index, 412);
+    assert.equal(entry.recording, RECORDING);
     assert.equal(entry.duration, 3725.5);
   });
 
-  it('keeps index and duration off a vod entry that has neither reported', () => {
+  it('keeps recording and duration off a vod entry that has neither reported', () => {
     // A `vod` row can only get here through a report that carried both, but an
-    // entry rebuilt from an older row must not advertise index 0, which is a
-    // real manifest index and would play the first segment of the stream.
+    // entry rebuilt from an older row must not advertise a recording it never had.
     const entry = buildFeedEntry(streamRow({ status: 'vod' }), null, 1);
 
     assert.equal(entry.state, 'vod');
-    assert.ok(!('index' in entry));
+    assert.ok(!('recording' in entry));
     assert.ok(!('duration' in entry));
   });
 
-  it('accepts index 0, which is a feed index like any other', () => {
-    const entry = buildFeedEntry(streamRow({ status: 'vod', manifest_index: 0, duration_seconds: 0 }), null, 1);
+  it('keeps a duration of 0 beside the recording, which is not "absent"', () => {
+    const entry = buildFeedEntry(streamRow({ status: 'vod', recording_ref: RECORDING, duration_seconds: 0 }), null, 1);
 
-    assert.equal(entry.index, 0);
+    assert.equal(entry.recording, RECORDING);
     assert.equal(entry.duration, 0);
   });
 
@@ -130,7 +132,7 @@ describe('buildFeedEntry', () => {
         topic: 'bbbbbbbb-0000-4000-8000-000000000720',
         bandwidth: 2_800_000,
         avgBandwidth: 2_400_000,
-        index: 42,
+        recording: RUNG_RECORDING,
         duration: 61.5,
       },
     ];
@@ -141,24 +143,29 @@ describe('buildFeedEntry', () => {
     assert.deepEqual(entry.renditions, ladder);
   });
 
-  it('keeps the ladder on a vod entry, beside the master index', () => {
-    // The entry's own `index` is the master playlist's, not a rung's: it is
-    // what the viewer opens, and each rung carries its own index inside.
-    const entry = buildFeedEntry(streamRow({ status: 'vod', manifest_index: 9, duration_seconds: 61.5 }), null, 1, [
-      {
-        name: '720p',
-        width: 1280,
-        height: 720,
-        topic: 'bbbbbbbb-0000-4000-8000-000000000720',
-        bandwidth: 2_800_000,
-        avgBandwidth: 2_400_000,
-        index: 42,
-        duration: 61.5,
-      },
-    ]);
+  it('keeps the ladder on a vod entry, beside the master recording', () => {
+    // The entry's own `recording` is the master playlist's, not a rung's: it is
+    // what the viewer opens, and each rung carries its own recording inside.
+    const entry = buildFeedEntry(
+      streamRow({ status: 'vod', recording_ref: RECORDING, duration_seconds: 61.5 }),
+      null,
+      1,
+      [
+        {
+          name: '720p',
+          width: 1280,
+          height: 720,
+          topic: 'bbbbbbbb-0000-4000-8000-000000000720',
+          bandwidth: 2_800_000,
+          avgBandwidth: 2_400_000,
+          recording: RUNG_RECORDING,
+          duration: 61.5,
+        },
+      ],
+    );
 
-    assert.equal(entry.index, 9, 'the master, not the rung');
-    assert.equal(entry.renditions?.[0]?.index, 42);
+    assert.equal(entry.recording, RECORDING, 'the master, not the rung');
+    assert.equal(entry.renditions?.[0]?.recording, RUNG_RECORDING);
   });
 });
 
@@ -204,7 +211,7 @@ describe('what the viewer reads of an entry the admin writes', () => {
       topic: 'bbbbbbbb-0000-4000-8000-000000000720',
       bandwidth: 2_800_000,
       avgBandwidth: 2_400_000,
-      index: 42,
+      recording: RUNG_RECORDING,
       duration: 61.5,
     },
   ];
@@ -215,7 +222,7 @@ describe('what the viewer reads of an entry the admin writes', () => {
       for (const renditions of [[], ladder]) {
         const row = streamRow({
           status,
-          manifest_index: 9,
+          recording_ref: RECORDING,
           duration_seconds: 61.5,
           scheduled_start_time: new Date(1_800_000_000_000),
         });

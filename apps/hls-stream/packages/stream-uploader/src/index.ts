@@ -19,13 +19,14 @@ import { BeePublisherPool, safeUrl } from './libs/BeePublisherPool.js';
 import { CatalogIndexStore } from './libs/CatalogIndexStore.js';
 import { bzzToPlur, ChequebookGate, ChequebookNode, FundingLogger } from './libs/ChequebookGate.js';
 import { ChequebookRecheck } from './libs/ChequebookRecheck.js';
+import { ClockCheck } from './libs/ClockCheck.js';
 import { LadderGroupStore } from './libs/LadderGroupStore.js';
 import { LadderRegistry } from './libs/LadderRegistry.js';
 import { Logger } from './libs/Logger.js';
-import { MasterFeedWriter } from './libs/MasterFeedWriter.js';
 import { assertNodeReachable, waitForNode } from './libs/NodeWait.js';
 import { PostageGate } from './libs/PostageGate.js';
 import { registerCrashHandlers, registerShutdownSignals } from './libs/processSignals.js';
+import { RecordingStore } from './libs/RecordingStore.js';
 import { RecoveryStore } from './libs/RecoveryStore.js';
 import { ServiceLifecycle } from './libs/ServiceLifecycle.js';
 import { runStartGates, StartGate } from './libs/StartGates.js';
@@ -128,41 +129,42 @@ async function start() {
     // In a subdirectory so RecoveryStore's *.json scan of stateDir never picks it up as a stream.
     const catalogIndexStore = new CatalogIndexStore(path.join(config.stateDir, 'catalog', 'feed-index.json'));
 
-    // Only with the ladder on. A single-rendition stream has nothing to be multivariant about, and
-    // publishing a one-entry master for it would buy a second feed and no choice.
-    const masterWriter = config.abr ? new MasterFeedWriter(publishers, new PrivateKey(config.streamKey)) : undefined;
-
     // Also ladder-only, and in a subdirectory for the same reason the catalog index is: RecoveryStore
     // scans stateDir for `*.json` and would otherwise offer this file up as a stream to recover.
     const ladderGroupStore = config.abr
       ? new LadderGroupStore(path.join(config.stateDir, 'ladder', 'groups.json'))
       : undefined;
 
-    const streamCatalog = new StreamCatalog(
-      publishers,
-      config.streamKey,
-      config.streamListTopic,
-      catalogIndexStore,
-      // ⛔ Withheld in admin mode, where this catalog writes nothing at all: the master belongs to the
-      // ladder registry below, and a catalog holding a writer it must never reach is a catalog a
-      // later change can make write one. Nothing would call it today. The wiring says so anyway.
-      config.admin ? undefined : masterWriter,
-    );
+    // In a subdirectory for the same reason. Kept across restarts so the next broadcast on a declared
+    // topic or a rung's topic glues the recording the one before it finished with.
+    const recordingStore = new RecordingStore(path.join(config.stateDir, 'recordings', 'by-topic.json'));
+
+    const streamCatalog = new StreamCatalog(publishers, config.streamKey, config.streamListTopic, catalogIndexStore);
 
     // Where a ladder rung's rendition record goes. Standalone, the catalog: it merges four rungs into
-    // one entry on the stream list feed and writes the master from it. In admin mode the merge moves
-    // into the admin. The declared topic becomes the master feed's topic, each rung reports its own
-    // record, and the admin writes `renditions` into the catalog entry it already owns. See
+    // one entry on the stream list feed. In admin mode the merge moves into the admin: each rung
+    // reports its own record, and the admin writes `renditions` into the catalog entry it already
+    // owns. A player builds the ladder's master playlist from those renditions. See
     // `libs/AdminLadderRegistry.ts` and the "Admin mode" section of the package README.
     const ladderRegistry: LadderRegistry =
-      adminApi && masterWriter ? new AdminLadderRegistry({ client: adminApi, masterWriter }) : streamCatalog;
-    if (adminApi && masterWriter) {
+      adminApi && config.abr ? new AdminLadderRegistry({ client: adminApi }) : streamCatalog;
+    if (adminApi && config.abr) {
       logger.info(
-        '[Admin] ABR ladder in admin mode: the declared topic is the ladder master feed, each rung publishes ' +
-          'to a topic derived from the group and its rung name, and the ladder the master is written from is ' +
-          'the one the admin merges',
+        '[Admin] ABR ladder in admin mode: the declared topic is the ladder group, each rung writes its ' +
+          'windows on a topic derived from the group and its rung name, and the admin merges the ladder',
       );
     }
+
+    // Started here, beside the boot rather than as a start gate: the start gates are questions about a
+    // Bee node, read again on every attempt of the node wait, and holding the boot for a round would buy
+    // nothing, because the window writer asks `isTrusted` before every write. Its first round has
+    // finished long before the node wait is over, and until then it refuses nothing.
+    //
+    // The live windows and the list notes ask the same check, so a clock it distrusts skips both.
+    const clockCheck = new ClockCheck({ servers: config.clockCheckServers, logger });
+    clockCheck.start();
+    lifecycle.trackClockCheck(clockCheck);
+    const clockTrusted = (): boolean => clockCheck.isTrusted();
 
     const streamOrchestrator = new StreamOrchestrator(publishers, streamCatalog, recoveryStore, {
       streamKey: config.streamKey,
@@ -178,6 +180,8 @@ async function start() {
       ladderGroupStore,
       adminApi,
       ladderRegistry,
+      clockTrusted,
+      recordingStore,
     });
 
     lifecycle.trackOrchestrator(streamOrchestrator);
@@ -208,6 +212,7 @@ async function start() {
       authToken: config.apiAuthToken,
       engines,
       waitingForNode: () => nodeWait,
+      clockReport: () => clockCheck.report(),
     });
     lifecycle.trackApiServer(apiServer);
 
@@ -264,6 +269,13 @@ async function start() {
 
     // Only now, so nothing reaches an orchestrator whose catalog has never been read.
     nodeWait = null;
+
+    // After init, which settles the index the first note names. Standalone only: in admin mode the
+    // admin writes the list and its notes, and notes from here would collide with its own.
+    if (!config.admin) {
+      streamCatalog.startNotes({ clockTrusted });
+      lifecycle.trackListNotes(streamCatalog);
+    }
 
     // Only once the boot is over, because until then the node wait reads the gates again on every
     // attempt of its own. A chequebook warning that pass left is read again until the chequebook is

@@ -53,9 +53,9 @@ services:
   # that could not have kept up whatever it did. `BEE_PUBLISHERS` has existed, built and unit-tested,
   # the whole time; there were simply no nodes for it to name.
   #
-  # ⭐ `bee-uploader` above is the 360p rung as well as the shared default, because the catalog and
-  # each ladder's master playlist go through the LOWEST rung's node (see `.env.sample`), and those two
-  # feeds are the only addresses a viewer needs to open a stage.
+  # ⭐ `bee-uploader` above is the 360p rung as well as the shared default, because the catalog goes
+  # through the LOWEST rung's node (see `.env.sample`), and it is the one address a viewer needs to
+  # open a stage.
   #
   # ⚠️ Each of these is a separate Swarm node: its own wallet, its own chequebook and its own postage
   # batch. Four nodes is four things to fund and four batches to watch, which is the cost of the
@@ -273,6 +273,9 @@ services:
       START_GATE_TIMEOUT_MS: ${START_GATE_TIMEOUT_MS:-20000}
       CHEQUEBOOK_MIN_BZZ: ${CHEQUEBOOK_MIN_BZZ:-0.5}
       CHEQUEBOOK_RECHECK_MS: ${CHEQUEBOOK_RECHECK_MS:-60000}
+      # The time servers the clock check asks over UDP 123, at start and every 10 minutes. More than
+      # 250 ms off them and the uploader refuses to publish windows. See `libs/ClockCheck.ts`.
+      CLOCK_CHECK_SERVERS: ${CLOCK_CHECK_SERVERS:-time.cloudflare.com,time.google.com,pool.ntp.org}
       # The other two thresholds `PostageGate` reads a batch against, and they belong here for the
       # same reason CHEQUEBOOK_MIN_BZZ does. Neither reached the container before, so the gate ran on its
       # compiled 24 and 0.9 whatever an operator wrote in .env, which is the ORPHAN_REAP_MS shape
@@ -295,12 +298,12 @@ services:
       # empty leaves the deployment standalone, exactly as it was. The token is required whenever the
       # URL is set, so a half-configured admin deployment refuses to start rather than running as a
       # standalone one. Both default to empty so an existing deployment upgrades unchanged.
-      # With ABR_ENABLED as well, the declared topic is the ladder's master playlist feed and each
-      # rung publishes on a topic derived from the group and its rung name, so a rung's feed outlives
-      # its session: a restarted rung or a reconnected encoder continues the same feed with a
-      # discontinuity, recordings sit back to back on it and the entry names the latest, which is why
-      # the admin accepts `live` after `vod`. The admin merges the rungs and the uploader writes the
-      # master from what it hands back. See the uploader README's "Admin mode".
+      # With ABR_ENABLED as well, the declared topic is the ladder's group and each rung writes its
+      # live windows on a topic derived from the group and its rung name, so a rung's topic outlives
+      # its session: a restarted rung or a reconnected encoder continues it with a discontinuity, and
+      # the entry names the latest recording, which is why the admin accepts `live` after `vod`. The
+      # admin merges the rungs into the renditions a player builds the master from. See the uploader
+      # README's "Admin mode".
       ADMIN_API_URL: ${ADMIN_API_URL:-}
       ADMIN_API_TOKEN: ${ADMIN_API_TOKEN:-}
       API_PORT: ${API_PORT:-3000}
@@ -312,17 +315,17 @@ services:
       # The same variable the SRS block below sets, and the same default on purpose: it is what the
       # engine is asked to cut at and what every segment's `#EXT-X-PROGRAM-DATE-TIME` steps by, so
       # the two reading different values would date a recording against a fragment length nothing
-      # produced. Absent here the uploader falls back to the same 0.5, which is right for a
+      # produced. Absent here the uploader falls back to the same 2, which is right for a
       # deployment that never overrode it and wrong for every one that did.
-      HLS_FRAGMENT: ${HLS_FRAGMENT:-0.5}
+      HLS_FRAGMENT: ${HLS_FRAGMENT:-2}
       SEGMENT_DEDUP_WINDOW: ${SEGMENT_DEDUP_WINDOW:-10000}
       ORPHAN_REAP_MS: ${ORPHAN_REAP_MS:-60000}
       SEGMENT_REDUNDANCY: ${SEGMENT_REDUNDANCY:-1}
       ENGINE: ${ENGINE:-srs}
       SRS_MEDIA_PATH: /media
       # The uploader reads the same ladder the engine was configured with: SRS's webhooks carry
-      # the stream name and nothing else, so width, height and the encoder's target bitrate — all
-      # of which the master playlist needs — only exist here.
+      # the stream name and nothing else, so width, height and the encoder's target bitrate, all of
+      # which a rung's rendition needs, only exist here.
       ABR_ENABLED: ${ABR_ENABLED:-false}
       ABR_LADDER: ${ABR_LADDER:-}
       ABR_VHOST: ${ABR_VHOST:-abr}
@@ -399,6 +402,7 @@ services:
         CLIENT_BUILD_CLIENT_TREE: ${CLIENT_BUILD_CLIENT_TREE:-}
         CLIENT_BUILD_SHARED_TREE: ${CLIENT_BUILD_SHARED_TREE:-}
         CLIENT_BUILD_CONTRACTS_TREE: ${CLIENT_BUILD_CONTRACTS_TREE:-}
+        CLIENT_BUILD_SWARM_WINDOWS_TREE: ${CLIENT_BUILD_SWARM_WINDOWS_TREE:-}
         CLIENT_BUILD_HEAD: ${CLIENT_BUILD_HEAD:-}
         CLIENT_BUILD_DIRTY: ${CLIENT_BUILD_DIRTY:-0}
         CLIENT_BUILD_AT: ${CLIENT_BUILD_AT:-}
@@ -474,12 +478,14 @@ services:
       #
       # ⛔ `HLS_FRAGMENT` is NOT the segment length. Measured over 20 arms and replicated to three
       # decimals, the segment is `ceil(HLS_FRAGMENT / GOP) * GOP`, so the publisher's keyframe
-      # interval decides it and the fragment only sets a floor. This was 1.0, which put the floor
-      # above the 0.5s GOP that a funded sitting found best and silently produced 1.0s segments for a
-      # broadcaster who asked for 0.5s ones. See the `gop-vs-fragment-2026-08-12` measurement (kept outside the repository).
-      HLS_FRAGMENT: ${HLS_FRAGMENT:-0.5}
+      # interval decides it and the fragment only sets a floor. The default is 2, the product's
+      # segment length since 2026-10-06, so a broadcaster's keyframe every 2s gives 2s segments and a
+      # shorter one is rounded up to a whole number of its own intervals. See the
+      # `gop-vs-fragment-2026-08-12` measurement (kept outside the repository).
+      HLS_FRAGMENT: ${HLS_FRAGMENT:-2}
       # SRS force-closes a segment at `HLS_FRAGMENT * HLS_AOF_RATIO` regardless of keyframes, so this
-      # is the ceiling on the pair rather than a detail.
+      # is the ceiling on the pair rather than a detail. It is held in seconds below, so moving the
+      # fragment to 2 left the ceiling at 2.5s, which still clears the 2.135s a 2.0s GOP needs.
       #
       # ⛔ The ceiling has to clear `GOP + 0.135s`, not the GOP. Measured 2026-08-12: a segment
       # overshoots its settled length by a **constant ~0.135s** and ramps back down, at every GOP

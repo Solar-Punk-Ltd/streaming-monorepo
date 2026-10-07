@@ -11,6 +11,8 @@ import {
 
 const TOPIC = '1867808f-7b1c-4e46-b437-f7423b466b39';
 const RUNG = { name: '720p', width: 1280, height: 720, topic: TOPIC, bandwidth: 2_800_000, avgBandwidth: 2_500_000 };
+/** A made-up Swarm reference, built rather than written out. */
+const RECORDING = 'ab'.repeat(32);
 
 const accepts = (schema: { safeParse(value: unknown): { success: boolean } }, value: unknown): boolean =>
   schema.safeParse(value).success;
@@ -50,32 +52,39 @@ describe('the ingest lookup address', () => {
 });
 
 describe('a state report, as the admin reads it', () => {
-  it('takes live alone, and a recording with its index and duration', () => {
+  it('takes live alone, and an ended broadcast with the reference of its recording and its duration', () => {
     assert.deepEqual(streamStateReportSchema.parse({ state: 'live' }), { state: 'live' });
-    assert.deepEqual(streamStateReportSchema.parse({ state: 'vod', index: 3, duration: 12.5 }), {
+    assert.deepEqual(streamStateReportSchema.parse({ state: 'vod', recording: RECORDING, duration: 12.5 }), {
       state: 'vod',
-      index: 3,
+      recording: RECORDING,
       duration: 12.5,
     });
   });
 
-  it('refuses a recording without its index or its duration, and live with either', () => {
-    assert.equal(accepts(streamStateReportSchema, { state: 'vod', index: 3 }), false);
+  it('refuses a recording without its reference or its duration, and live with either', () => {
+    assert.equal(accepts(streamStateReportSchema, { state: 'vod', recording: RECORDING }), false);
     assert.equal(accepts(streamStateReportSchema, { state: 'vod', duration: 1 }), false);
-    assert.equal(accepts(streamStateReportSchema, { state: 'live', index: 3 }), false);
+    assert.equal(accepts(streamStateReportSchema, { state: 'live', recording: RECORDING }), false);
     assert.equal(accepts(streamStateReportSchema, { state: 'live', duration: 1 }), false);
   });
 
-  it('refuses another state, a fractional or negative index, a null, and a body that is no object', () => {
+  it('refuses a feed index, with or without a reference beside it', () => {
+    for (const value of [
+      { state: 'vod', index: 3, duration: 1 },
+      { state: 'vod', recording: RECORDING, index: 3, duration: 1 },
+      { state: 'live', index: 3 },
+      { state: 'live', index: null },
+    ]) {
+      assert.equal(accepts(streamStateReportSchema, value), false, JSON.stringify(value));
+    }
+  });
+
+  it('refuses another state, a negative duration, and a body that is no object', () => {
     for (const value of [
       { state: 'LIVE' },
       { state: 'scheduled' },
       { state: 5 },
-      { state: 'vod', index: 1.5, duration: 1 },
-      { state: 'vod', index: -1, duration: 1 },
-      { state: 'vod', index: 1, duration: -1 },
-      { state: 'vod', index: null, duration: 1 },
-      { state: 'live', index: null },
+      { state: 'vod', recording: RECORDING, duration: -1 },
       null,
       ['live'],
       'live',
@@ -88,43 +97,56 @@ describe('a state report, as the admin reads it', () => {
     assert.deepEqual(streamStateReportSchema.parse({ state: 'live', extra: 1 }), { state: 'live' });
   });
 
-  it('reads a number sent as text or as a one-element list as that number, as the admin always has', () => {
-    assert.deepEqual(streamStateReportSchema.parse({ state: 'vod', index: ' 3 ', duration: '12.5' }), {
-      state: 'vod',
-      index: 3,
-      duration: 12.5,
-    });
-    assert.deepEqual(streamStateReportSchema.parse({ state: 'vod', index: [3], duration: 1 }), {
-      state: 'vod',
-      index: 3,
-      duration: 1,
-    });
+  it('reads a duration sent as text or as a one-element list as that number, as the admin always has', () => {
+    assert.equal(
+      streamStateReportSchema.parse({ state: 'vod', recording: RECORDING, duration: '12.5' }).duration,
+      12.5,
+    );
+    assert.equal(streamStateReportSchema.parse({ state: 'vod', recording: RECORDING, duration: [3] }).duration, 3);
   });
 
-  it('refuses text that is no number, an empty one, and true', () => {
-    for (const index of ['', 'three', true]) {
-      assert.equal(accepts(streamStateReportSchema, { state: 'vod', index, duration: 1 }), false, String(index));
+  it('refuses a duration that is no number, an empty one, and true', () => {
+    for (const duration of ['', 'three', true]) {
+      assert.equal(
+        accepts(streamStateReportSchema, { state: 'vod', recording: RECORDING, duration }),
+        false,
+        String(duration),
+      );
     }
   });
 
   it('lets an infinite duration through, as the admin always has', () => {
-    assert.equal(streamStateReportSchema.parse({ state: 'vod', index: 1, duration: Infinity }).duration, Infinity);
+    assert.equal(
+      streamStateReportSchema.parse({ state: 'vod', recording: RECORDING, duration: Infinity }).duration,
+      Infinity,
+    );
+  });
+
+  it('refuses a reference that is not 64 lowercase hex digits', () => {
+    for (const recording of [RECORDING.toUpperCase(), RECORDING.slice(2), `${RECORDING}aa`]) {
+      assert.equal(accepts(streamStateReportSchema, { state: 'vod', recording, duration: 1 }), false, recording);
+    }
   });
 });
 
 describe('a rung report, as the admin reads it', () => {
-  it('takes a rung still delivering, and a finished one with its index and duration', () => {
+  it('takes a rung still delivering, and a finished one with the reference of its recording and its duration', () => {
     assert.deepEqual(renditionReportSchema.parse(RUNG), RUNG);
-    assert.deepEqual(renditionReportSchema.parse({ ...RUNG, index: 0, duration: 0 }), {
+    assert.deepEqual(renditionReportSchema.parse({ ...RUNG, recording: RECORDING, duration: 30 }), {
       ...RUNG,
-      index: 0,
-      duration: 0,
+      recording: RECORDING,
+      duration: 30,
     });
   });
 
-  it('refuses an index without a duration, or the other way round', () => {
-    assert.equal(accepts(renditionReportSchema, { ...RUNG, index: 1 }), false);
+  it('refuses a reference without its duration, or the other way round', () => {
+    assert.equal(accepts(renditionReportSchema, { ...RUNG, recording: RECORDING }), false);
     assert.equal(accepts(renditionReportSchema, { ...RUNG, duration: 1 }), false);
+  });
+
+  it('refuses a feed index, with or without a reference beside it', () => {
+    assert.equal(accepts(renditionReportSchema, { ...RUNG, index: 0, duration: 0 }), false);
+    assert.equal(accepts(renditionReportSchema, { ...RUNG, recording: RECORDING, index: 3, duration: 30 }), false);
   });
 
   it('refuses a name with an underscore, a space or over 32 characters, and a topic that is no UUID', () => {
@@ -146,8 +168,7 @@ describe('a rung report, as the admin reads it', () => {
       { bandwidth: -1 },
       { avgBandwidth: 1.5 },
       { width: Infinity },
-      { index: -1, duration: 1 },
-      { index: 1, duration: -1 },
+      { recording: RECORDING, duration: -1 },
     ]) {
       assert.equal(accepts(renditionReportSchema, { ...RUNG, ...change }), false, JSON.stringify(change));
     }

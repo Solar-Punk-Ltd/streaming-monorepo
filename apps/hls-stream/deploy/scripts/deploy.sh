@@ -676,11 +676,12 @@ CLIENT_SOURCE_PATHS=(
 # from an export has no history to name, and the gate refuses on the empty hash rather than this
 # script blocking a deploy over a stamp.
 client_build_stamp_text() {
-  local out="" head client_tree shared_tree contracts_tree="" dirty=0
-  # The package the stack's shared package re-exports, which vite compiles into the bundle as well. It
-  # sits at the root of the one workspace rather than in the stack's folder, so it is read from
-  # WORKSPACE_ROOT, and a stack that keeps its own lockfile has no root to read it from.
+  local out="" head client_tree shared_tree contracts_tree="" swarm_windows_tree="" dirty=0
+  # The packages the stack's shared package re-exports, which vite compiles into the bundle as well.
+  # They sit at the root of the one workspace rather than in the stack's folder, so they are read from
+  # WORKSPACE_ROOT, and a stack that keeps its own lockfile has no root to read them from.
   local contracts_path="packages/contracts"
+  local swarm_windows_path="packages/swarm-windows"
   head=$(git -C "$ROOT_DIR" rev-parse HEAD 2>/dev/null || true)
   # `HEAD:./<path>` is read from the folder `-C` names, where a bare `HEAD:<path>` is read from the
   # repository root. The stack can sit in a subfolder of a larger repository, and there the bare form
@@ -694,7 +695,8 @@ client_build_stamp_text() {
     # A commit without the package is ordinary here, and git prints the argument back before it fails
     # on a path that names nothing, so a failure empties the value rather than keeping what it printed.
     contracts_tree=$(git -C "$WORKSPACE_ROOT" rev-parse "HEAD:./$contracts_path" 2>/dev/null) || contracts_tree=""
-    if [ -n "$(git -C "$WORKSPACE_ROOT" status --porcelain -- "$contracts_path" 2>/dev/null || true)" ]; then
+    swarm_windows_tree=$(git -C "$WORKSPACE_ROOT" rev-parse "HEAD:./$swarm_windows_path" 2>/dev/null) || swarm_windows_tree=""
+    if [ -n "$(git -C "$WORKSPACE_ROOT" status --porcelain -- "$contracts_path" "$swarm_windows_path" 2>/dev/null || true)" ]; then
       dirty=1
     fi
   fi
@@ -702,6 +704,7 @@ client_build_stamp_text() {
   out+="CLIENT_BUILD_CLIENT_TREE=${client_tree}\n"
   out+="CLIENT_BUILD_SHARED_TREE=${shared_tree}\n"
   out+="CLIENT_BUILD_CONTRACTS_TREE=${contracts_tree}\n"
+  out+="CLIENT_BUILD_SWARM_WINDOWS_TREE=${swarm_windows_tree}\n"
   out+="CLIENT_BUILD_HEAD=${head}\n"
   out+="CLIENT_BUILD_DIRTY=${dirty}\n"
   out+="CLIENT_BUILD_AT=$(date -u +%Y-%m-%dT%H:%M:%SZ)\n"

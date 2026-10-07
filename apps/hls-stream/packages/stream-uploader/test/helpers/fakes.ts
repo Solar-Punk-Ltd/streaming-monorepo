@@ -1,8 +1,11 @@
 import { Bee, BeeResponseError, FeedIndex, Topic } from '@ethersphere/bee-js';
+import { type WindowWriterClock } from '@swarm-hls-stream/shared';
+import { createHash } from 'node:crypto';
+import { after } from 'node:test';
 import { viewerCatalogEntrySchema } from '@swarm-hls-stream/shared';
 
 import { BeePublisher, BeePublisherPool, shortBatchId, SINGLE_PUBLISHER } from '../../src/libs/BeePublisherPool.js';
-import { Clock, systemClock } from '../../src/libs/Clock.js';
+import { Clock, systemClock, Timer } from '../../src/libs/Clock.js';
 import { RecoveryStore } from '../../src/libs/RecoveryStore.js';
 import { MetricsSnapshot } from '../../src/libs/ServiceMetrics.js';
 import { StreamCatalog } from '../../src/libs/StreamCatalog.js';
@@ -10,7 +13,6 @@ import { StreamOrchestrator, StreamOrchestratorConfig } from '../../src/libs/Str
 import {
   BroadcastAnchor,
   HealthSignals,
-  MEDIA_TYPE_VIDEO,
   PRESSURE_LOW,
   RECOVERY_ENTRY_LOADED,
   RECOVERY_ENTRY_MISSING,
@@ -18,6 +20,8 @@ import {
   STREAM_LIFECYCLE_UNKNOWN,
   StreamState,
 } from '../../src/types.js';
+
+import { FakeClock } from './fakeClock.js';
 
 const TEST_STREAM_KEY = '0'.repeat(63) + '1';
 
@@ -41,7 +45,7 @@ export const TEST_ANCHOR: BroadcastAnchor = {
 const NON_RETRYABLE_STATUS = 400;
 
 /** What a manifest feed currently holds at its head, in the terms a test states it in. */
-export interface FakeFeedHead {
+interface FakeFeedHead {
   index: number;
   manifest: string;
 }
@@ -64,7 +68,88 @@ export interface FakeUploads {
    * Returning `null` is bee answering 404. The default is {@link CRASHED_MID_BROADCAST}.
    */
   feedHead?: (topic: string) => FakeFeedHead | null;
+  /**
+   * A live window's single owner chunk write, called with the window's identifier in hex and the
+   * payload. Defaults to resolving, which is a window stored.
+   */
+  uploadWindow?: (identifier: string, payload: Uint8Array) => Promise<unknown>;
+  /**
+   * What a window's chunk holds when a session opening on a topic asks for it, by identifier in hex.
+   * Null, the default, is Bee answering 404 for a window nobody wrote.
+   */
+  windowAt?: (identifier: string) => Uint8Array | null;
+  /**
+   * The recording playlist's upload at the end, called with the playlist's text. Defaults to a
+   * reference made from the text, so the same recording uploaded twice answers the same reference as
+   * Swarm does. A test holds a finalize open by not settling it.
+   */
+  uploadRecording?: (playlist: string) => Promise<unknown>;
+  /**
+   * A recording playlist's download by reference, which a session opening on a topic makes to glue
+   * the topic's last recording ahead of its own. Defaults to the recordings this fake took through
+   * the default {@link uploadRecording}, and a 404 for any other reference.
+   */
+  downloadRecording?: (reference: string) => Promise<string>;
 }
+
+/** Whether a `/bytes` upload is a recording playlist rather than a segment. */
+function isPlaylist(data: Uint8Array): boolean {
+  return Buffer.from(data).toString('utf-8').startsWith('#EXTM3U');
+}
+
+/** A made-up reference for a recording, the same for the same text, built rather than written out. */
+export function fakeRecordingReference(playlist: string): string {
+  return createHash('sha256').update(playlist).digest('hex');
+}
+
+/**
+ * The live window length every orchestrator and uploader in these tests runs at, so the window a
+ * catalog announce and a finalize wait for is milliseconds of real time rather than two seconds.
+ */
+export const TEST_LIVE_WINDOW_MS = 20;
+
+const windowTimers = new Set<ReturnType<typeof setTimeout>>();
+let windowTimersStopped = false;
+
+/**
+ * Real time for the window writers in these tests, with every timer stopped once the file's tests
+ * have all run.
+ *
+ * ⛔ A session a test does not finalize goes on writing a window every few milliseconds, and each one
+ * logs a line. Unreferenced timers alone do not let the process end then, because each window's log
+ * write is pending on the pipe when the next timer fires, so a test file would never exit. The root
+ * hook below arms no timer after the last test and clears the ones armed.
+ */
+const testWindowClock: WindowWriterClock = {
+  now: () => Date.now(),
+  setTimeout: (callback, delayMs) => {
+    if (windowTimersStopped) {
+      return undefined;
+    }
+    const timer = setTimeout(() => {
+      windowTimers.delete(timer);
+      callback();
+    }, delayMs);
+    timer.unref();
+    windowTimers.add(timer);
+    return timer;
+  },
+  clearTimeout: (handle) => {
+    clearTimeout(handle as ReturnType<typeof setTimeout>);
+    windowTimers.delete(handle as ReturnType<typeof setTimeout>);
+  },
+};
+
+after(() => {
+  windowTimersStopped = true;
+  for (const timer of windowTimers) {
+    clearTimeout(timer);
+  }
+  windowTimers.clear();
+});
+
+/** The window options every uploader and orchestrator in these tests is built with. */
+export const TEST_WINDOWS = { liveWindowMs: TEST_LIVE_WINDOW_MS, windowClock: testWindowClock } as const;
 
 /**
  * Which feed a read or a write is addressed to, as the one string a test can key a map on.
@@ -126,9 +211,48 @@ export function neverSettles(): Promise<never> {
 
 export function makeFakeBee(uploads: FakeUploads = {}): Bee {
   let refCounter = 0;
+  const recordings = new Map<string, string>();
   return {
     data: {
-      upload: uploads.uploadData ?? (async () => ({ reference: { toHex: () => `ref${refCounter++}` } })),
+      upload: async (stamp: string, data: Uint8Array) => {
+        if (isPlaylist(data)) {
+          const playlist = Buffer.from(data).toString('utf-8');
+          if (uploads.uploadRecording) {
+            return uploads.uploadRecording(playlist);
+          }
+          const reference = fakeRecordingReference(playlist);
+          recordings.set(reference, playlist);
+          return { reference: { toHex: () => reference } };
+        }
+        return uploads.uploadData
+          ? uploads.uploadData(stamp, data)
+          : { reference: { toHex: () => `ref${refCounter++}` } };
+      },
+      download: async (reference: string | { toHex(): string }) => {
+        const hex = typeof reference === 'string' ? reference : reference.toHex();
+        const playlist = uploads.downloadRecording ? await uploads.downloadRecording(hex) : recordings.get(hex);
+        if (playlist === undefined) {
+          throw new BeeResponseError('GET', '/bytes', 'Not Found', undefined, 404, 'Not Found');
+        }
+        return { toUtf8: () => playlist };
+      },
+    },
+    soc: {
+      makeWriter: () => ({
+        upload: async (_stamp: string, identifier: { toHex(): string }, payload: Uint8Array) =>
+          uploads.uploadWindow
+            ? uploads.uploadWindow(identifier.toHex(), payload)
+            : { reference: { toHex: () => 'soc' } },
+      }),
+      makeReader: () => ({
+        download: async (identifier: { toHex(): string }) => {
+          const payload = uploads.windowAt?.(identifier.toHex()) ?? null;
+          if (payload === null) {
+            throw new BeeResponseError('GET', '/chunks', 'Not Found', undefined, 404, 'Not Found');
+          }
+          return { payload: { toUint8Array: () => payload } };
+        },
+      }),
     },
     feed: {
       makeReader: (topic: Topic) => ({
@@ -171,17 +295,17 @@ export function makeFakeCatalog(overrides: Record<string, unknown> = {}): Stream
     // takes this default, which is the line six e2e scenarios wait on.
     addStream: async () => true,
     getMsSinceIndexSaveFailed: () => null,
-    // Called from the uploader's segment path, so every fake needs it or the segment path throws.
-    recordRungDelivered: () => {},
-    // The same path's other outcome, a segment that never landed.
-    recordRungUploadFailed: () => {},
     // Where a rung registers its record when no other ladder registry is configured. A neutral answer: no
-    // master written and no flip, which is the real catalog's answer for a rung it holds no entry
+    // recording and no flip, which is the real catalog's answer for a rung it holds no entry
     // for. Missing, every rung announce in every orchestrator test died with a TypeError the error
     // handler swallowed, and fifteen tests passed over it — the fourth time this fake went stale.
-    upsertRendition: async () => ({ masterIndex: null, flippedToFinished: false, duration: null }),
+    upsertRendition: async () => ({ recording: null, flippedToFinished: false, duration: null }),
     // Called by the orchestrator for a rung whose stop failed. The same neutral answer, for the same reason.
-    recordRungUnfinished: async () => ({ masterIndex: null, flippedToFinished: false, duration: null }),
+    recordRungUnfinished: async () => ({
+      recording: null,
+      flippedToFinished: false,
+      duration: null,
+    }),
     ...overrides,
   } as unknown as StreamCatalog;
 }
@@ -288,6 +412,7 @@ export function makeMetricsSnapshot(overrides: Partial<MetricsSnapshot> = {}): M
     streamsFinalizedTotal: 0,
     streamsFailedTotal: 0,
     streamsReapedTotal: 0,
+    recordingsUngluedTotal: 0,
     segmentDurationsUnreadTotal: 0,
     authRejectionsTotal: 0,
     takeoversRefusedTotal: 0,
@@ -323,22 +448,7 @@ export function makeFakeRecoveryStore(overrides: Partial<Record<keyof RecoverySt
   } as unknown as RecoveryStore;
 }
 
-/** A stream state as RecoveryStore.load would return it, for exercising the recovery path. */
-export function makeRecoveredState(streamId: string): StreamState {
-  return {
-    streamId,
-    streamRawTopic: 'topic-xyz',
-    mediatype: MEDIA_TYPE_VIDEO,
-    socIndex: 3,
-    segments: [{ index: 0, duration: 2, ref: 'ref0', discontinuity: false }],
-    hlsHeaders: ['#EXTM3U', '#EXT-X-VERSION:3'],
-    isFirstSegmentReady: true,
-    isFirstManifestReady: true,
-    pendingDiscontinuity: false,
-    liveManifestStale: false,
-    updatedAt: Date.now(),
-  };
-}
+export { makeRecoveredState } from './recoveredState.js';
 
 /**
  * What `RecoveryStore.listActive` hands back for an entry written before ids were escaped, which is
@@ -401,6 +511,90 @@ const detachedClock: Clock = {
   setTimer: (handler, delayMs) => systemClock.setTimer(handler, delayMs, { unref: true }),
 };
 
+/** Where a test's fake window clock starts, an arbitrary instant so window numbers look like real ones. */
+const FAKE_WINDOW_EPOCH_MS = 1_800_000_000_000;
+
+/**
+ * The window writer's clock over a test's `FakeClock`, so windows end only when the test moves time.
+ *
+ * ⛔ An orchestrator on a `FakeClock` with windows on real time is two clocks, and how many windows
+ * fall between two steps of the fake one then depends on how busy the machine is. A loaded runner
+ * passed windows over and each one logged a warning, so a test counting warnings went red on the box
+ * and green on a laptop.
+ */
+function windowClockOn(clock: FakeClock): WindowWriterClock {
+  return {
+    now: () => FAKE_WINDOW_EPOCH_MS + clock.now(),
+    setTimeout: (callback, delayMs) => clock.setTimer(callback, delayMs),
+    clearTimeout: (handle) => {
+      (handle as Timer).cancel();
+    },
+  };
+}
+
+/**
+ * The orchestrator config that puts its timers and its live windows on one `FakeClock`.
+ *
+ * `windowMs` is the window length in fake time. A case that jumps minutes at once, such as through a
+ * drain deadline, passes the real length, because at the test length one jump would fire more window
+ * timers than the fake clock's runaway ceiling allows.
+ */
+export function onTheFakeClock(
+  clock: FakeClock,
+  windowMs: number = TEST_LIVE_WINDOW_MS,
+): Required<Pick<StreamOrchestratorConfig, 'clock' | 'windowClock' | 'liveWindowMs'>> {
+  return { clock, windowClock: windowClockOn(clock), liveWindowMs: windowMs };
+}
+
+/** How many window lengths {@link advanceUntil} steps before it gives up. */
+const ADVANCE_UNTIL_STEP_LIMIT = 500;
+
+/**
+ * Step `clock` one window at a time until `condition` holds, for work that waits on a window, such as
+ * a finalize waiting for its closing window. `windowMs` is the length {@link onTheFakeClock} was given.
+ *
+ * @throws when the condition still does not hold after {@link ADVANCE_UNTIL_STEP_LIMIT} windows.
+ */
+export async function advanceUntil(
+  clock: FakeClock,
+  condition: () => boolean,
+  windowMs: number = TEST_LIVE_WINDOW_MS,
+): Promise<void> {
+  for (let step = 0; step < ADVANCE_UNTIL_STEP_LIMIT; step++) {
+    if (condition()) {
+      return;
+    }
+    await clock.advance(windowMs);
+  }
+  if (!condition()) {
+    throw new Error(`the condition did not hold within ${ADVANCE_UNTIL_STEP_LIMIT} windows of the fake clock`);
+  }
+}
+
+/**
+ * Step `clock` one window at a time until `work` has settled, then await it, for a stop or a cleanup
+ * whose finalize waits on a closing window. Awaiting such work directly on a fake clock never returns.
+ */
+export async function untilSettled(
+  clock: FakeClock,
+  work: Promise<unknown>,
+  windowMs: number = TEST_LIVE_WINDOW_MS,
+): Promise<void> {
+  let settled = false;
+  const following = work.finally(() => {
+    settled = true;
+  });
+  // Handled here as well as below, so work that rejects while the clock is stepped is not reported
+  // as an unhandled rejection before the await below reads it.
+  following.catch(() => {});
+  await advanceUntil(clock, () => settled, windowMs);
+  await following;
+}
+
+/**
+ * An orchestrator over a fake bee, its live windows on real time at {@link TEST_LIVE_WINDOW_MS} unless
+ * `config.windowClock` says otherwise. A test on a `FakeClock` hands it {@link onTheFakeClock}.
+ */
 export function makeTestOrchestrator(
   config: Partial<StreamOrchestratorConfig> = {},
   uploads: FakeUploads = {},
@@ -418,6 +612,7 @@ export function makeTestOrchestrator(
     fragmentSeconds: TEST_ANCHOR.fragmentSeconds,
     segmentDedupWindow: 10_000,
     segmentRedundancy: 1,
+    ...TEST_WINDOWS,
     ...config,
   });
 }

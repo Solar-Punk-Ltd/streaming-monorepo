@@ -204,17 +204,28 @@ describe('buildLadderEntry', () => {
     assert.equal(second.renditions?.[0].bandwidth, 2_800_000);
   });
 
+  const PRIMARY_RECORDING = 'f6'.repeat(32);
+  const OTHER_RECORDING = 'a7'.repeat(32);
+
   it('stays live until every announced rung has finalized', () => {
     const live = buildLadderEntry(identity, [], rendition('360p', 360));
-    const halfDone = buildLadderEntry(identity, [live], rendition('720p', 720, { index: 40, duration: 60 }));
+    const halfDone = buildLadderEntry(
+      identity,
+      [live],
+      rendition('720p', 720, { recording: OTHER_RECORDING, duration: 60 }),
+    );
 
     assert.equal(halfDone.state, 'live');
-    assert.equal(halfDone.index, undefined);
+    assert.equal(halfDone.recording, undefined);
 
-    const done = buildLadderEntry(identity, [halfDone], rendition('360p', 360, { index: 42, duration: 61 }));
+    const done = buildLadderEntry(
+      identity,
+      [halfDone],
+      rendition('360p', 360, { recording: PRIMARY_RECORDING, duration: 61 }),
+    );
 
     assert.equal(done.state, 'vod');
-    assert.equal(done.index, 42, 'index tracks the primary (lowest) rung');
+    assert.equal(done.recording, PRIMARY_RECORDING, 'the recording is the primary (lowest) rung′s');
     assert.equal(done.duration, 61, 'duration is the longest rung');
   });
 
@@ -245,7 +256,9 @@ describe('buildLadderEntry', () => {
       ['720p', 720],
       ['360p', 360],
     ] as const) {
-      previous = [buildLadderEntry(identity, previous, rendition(name, height, { index: 4, duration: 61.5 }))];
+      previous = [
+        buildLadderEntry(identity, previous, rendition(name, height, { recording: PRIMARY_RECORDING, duration: 61.5 })),
+      ];
     }
     assert.equal(previous[0].state, 'vod');
     assert.ok(viewerCatalogEntrySchema.safeParse(previous[0]).success, 'finished');

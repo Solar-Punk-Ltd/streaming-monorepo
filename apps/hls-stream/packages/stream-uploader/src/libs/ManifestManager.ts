@@ -1,4 +1,11 @@
-import { buildExtinf, buildProgramDateTime, datingReanchored, encoderReturned } from '@swarm-hls-stream/shared';
+import {
+  buildExtinf,
+  buildProgramDateTime,
+  datingReanchored,
+  encoderReturned,
+  HLS_SWARM_WRITTEN_AT,
+  WINDOW_CHUNK_MAX_BYTES,
+} from '@swarm-hls-stream/shared';
 
 import { BroadcastAnchor, InheritedTimeline, SegmentEntry } from '../types.js';
 import {
@@ -34,37 +41,6 @@ const ENCODER_RETURNED = 'encoder-returned' as const;
 type ReanchorCause = typeof COUNTER_RESTARTED | typeof ENCODER_RETURNED;
 
 /**
- * The most bytes a live manifest may occupy, which is one single-owner chunk.
- *
- * bee-js writes a feed payload straight into the chunk while it fits in one, and past that uploads
- * the payload separately, downloads its root chunk back, and wraps that instead
- * (`updateFeedWithPayload`, against its own `MAX_PAYLOAD_SIZE`). So crossing this turns one round
- * trip per publish into three, on a path that runs once per segment. It is a cost cliff rather than
- * a failure, and it is not ours to move. Spelled out rather than imported because bee-js exports the
- * constant from `chunk/cac` and not from the package root.
- *
- * The window is budgeted against it rather than counted in segments because a count is a different
- * amount of media at every segment length, and in the wrong direction: ten segments was 20 seconds
- * at a 2.0s segment and 2.5 at the 0.25s profile, so the configuration whose viewers have least time
- * to recover was given the least to recover with. Ten segments also spent 864 of these bytes, so the
- * headroom was already paid for.
- */
-export const LIVE_WINDOW_MAX_BYTES = 4096;
-
-/**
- * The fewest media entries a live window names while the broadcast holds that many, whatever the
- * budget says. Three because that is how many segments a player wants behind the live edge before it
- * starts, `liveSyncDurationCount` in hls.js. See `ManifestManager.liveWindowLength`.
- */
-export const MIN_LIVE_WINDOW_SEGMENTS = 3;
-
-/**
- * The most bytes a live window may reach to for {@link MIN_LIVE_WINDOW_SEGMENTS}: the budget, and one
- * budget's worth of gap entries more. Past it the window names fewer media entries than the floor.
- */
-export const LIVE_WINDOW_FLOOR_MAX_BYTES = 2 * LIVE_WINDOW_MAX_BYTES;
-
-/**
  * The bytes a manifest of these lines occupies once joined, without joining them.
  *
  * `\n` separates every line and terminates the last, so each line costs its own length plus one.
@@ -76,6 +52,26 @@ function manifestBytes(lines: string[]): number {
 function joinManifest(lines: string[]): string {
   return lines.join('\n') + '\n';
 }
+
+/**
+ * The most bytes a live playlist may occupy, so that it fits one window chunk with what the window
+ * adds to it.
+ *
+ * A live playlist is written as the `live` chunk of a 2 s window, and a window chunk is at most
+ * `WINDOW_CHUNK_MAX_BYTES`, a hard limit: the writer refuses anything larger and that window goes
+ * unwritten. The window adds its `#EXT-X-SWARM-WRITTEN-AT` line, reserved here at the longest written-at
+ * time there can be, and the closing window adds `#EXT-X-ENDLIST`, reserved always so that the playlist
+ * that ends a broadcast fits as surely as the ones before it.
+ *
+ * The window is budgeted in bytes rather than counted in segments because a count is a different
+ * amount of media at every segment length, and in the wrong direction: ten segments was 20 seconds
+ * at a 2.0s segment and 2.5 at the 0.25s profile, so the configuration whose viewers have least time
+ * to recover was given the least to recover with.
+ */
+export const LIVE_WINDOW_MAX_BYTES =
+  WINDOW_CHUNK_MAX_BYTES -
+  manifestBytes([`${HLS_SWARM_WRITTEN_AT}:${Number.MAX_SAFE_INTEGER}`]) -
+  manifestBytes([HLS_ENDLIST]);
 
 /** Where the broadcast's numbering starts: the engine index that publishes as `sequence`. */
 interface SequenceAnchor {
@@ -170,8 +166,8 @@ function headerNumber(lines: readonly string[], tag: string, fallback: number): 
 }
 
 /**
- * Everything the playlist at a feed head holds, as the prefix a session opening over it glues its own
- * recording behind. Null where the playlist names no media.
+ * Everything a topic's last recording holds, as the prefix a session opening on that topic glues its
+ * own recording behind. Null where the playlist names no media.
  *
  * ⛔⛔ **The lines come back verbatim.** From the first timeline tag to the entry before
  * `#EXT-X-ENDLIST`, in the order the previous session wrote them, discontinuities, gap entries and
@@ -181,21 +177,16 @@ function headerNumber(lines: readonly string[], tag: string, fallback: number): 
  * publish a different history from the one the previous session already published at its own index.
  * Blank lines are the only thing dropped, because the recording writes its own separator.
  *
- * ⚠️ **Only the head is inherited, so a head without `#EXT-X-ENDLIST` yields only its window.** That
- * is a previous session that was killed before it finalized: the last thing it published is a live
- * playlist holding the newest segments that fit the byte budget, and the media that slid out of that
- * window is not on the head to read. It is deliberately not worked around here. The killed session's
- * own recovery entry is the path that recovers its whole recording, and a session that went looking
- * back through earlier feed indices would be guessing at which of them belonged to which broadcast.
+ * ⚠️ **Only a finished recording is inherited.** A previous session killed before it finalized left
+ * no recording, so the session after it glues the one before that, or none. The killed session's own
+ * recovery entry is the path that finalizes its recording, and that recording then becomes the
+ * topic's newest for the session after it.
  *
  * ⚠️ **Only the timeline is carried, so an initialization or key header would be lost.**
  * `#EXT-X-MAP` and `#EXT-X-KEY` sit above the first timeline tag and are dropped with the rest of the
  * header. Neither applies to this project: segments are self-contained MPEG-TS with no
  * initialization section, and nothing here encrypts. A deployment that started publishing fMP4 or
  * encrypted segments would have to carry them.
- *
- * Works on a recording, a closing playlist and a live window alike, because any of the three can be
- * the head.
  */
 export function inheritedTimeline(manifest: string): InheritedTimeline | null {
   const lines = manifest.split('\n').map((line) => line.trim());
@@ -494,16 +485,15 @@ export class ManifestManager {
   }
 
   /**
-   * Open this session's recording with the playlist that was at the feed head, so the head recording
-   * carries the whole broadcast rather than the last session of it.
+   * Open this session's recording with the topic's last recording, so the recording this session
+   * finalizes carries the whole broadcast rather than the last session of it.
    *
-   * Called once, before the first playlist is published, with what {@link inheritedTimeline} read off
-   * the same head {@link continueFrom} took its number from, and again beside {@link restoreState}
-   * for a session rebuilt off disk. After a crash the head is this session's own live playlist, so
-   * the prefix is taken back off the recovery entry rather than re-read — exactly as the offset is.
+   * Called once, before the first window is composed, with what {@link inheritedTimeline} read off
+   * that recording, and again beside {@link restoreState} for a session rebuilt off disk, which takes
+   * the prefix back off its recovery entry rather than downloading it again, exactly as the offset is.
    *
-   * ⛔ Chaining is what makes the head recording whole, and it costs nothing: the playlist this
-   * inherits is itself a glued recording, so session three's prefix already carries session one.
+   * ⛔ Chaining is what makes the recording whole, and it costs nothing: the recording this inherits
+   * is itself a glued recording, so session three's prefix already carries session one.
    */
   public inherit(timeline: InheritedTimeline): void {
     this.inherited = timeline;
@@ -1059,10 +1049,7 @@ export class ManifestManager {
    */
   public restoreState(segments: SegmentEntry[], hlsHeaders: string[], inherited?: InheritedTimeline): void {
     if (inherited !== undefined) {
-      // ⛔ Re-derived off the lines rather than trusted. An entry written before gap entries stopped
-      // counting as media carries a duration that includes them, and the lines are verbatim, so the
-      // media they hold is exactly recoverable. See `mediaSecondsOf`.
-      this.inherited = { ...inherited, durationSeconds: mediaSecondsOf(inherited.lines) };
+      this.inherited = inherited;
     }
     const firstIndex = segments[0]?.index ?? 0;
     const renumbered = segments.map((seg) => ({ ...seg, sequence: seg.sequence ?? seg.index - firstIndex }));
@@ -1092,58 +1079,38 @@ export class ManifestManager {
 
   /**
    * How many of the newest segments fit in {@link LIVE_WINDOW_MAX_BYTES}, and never fewer than one.
-   * Fewer than {@link MIN_LIVE_WINDOW_SEGMENTS} only where reaching them would pass
-   * {@link LIVE_WINDOW_FLOOR_MAX_BYTES}.
    *
    * Counted backwards from the live edge, so the work is the window's rather than the broadcast's:
-   * `segments` holds every segment ever published, because the VOD manifest is built from the same
-   * array, and this runs once per segment for the life of the stream.
+   * `segments` holds every segment ever published, because the recording is built from the same
+   * array, and this runs once per window for the life of the stream.
    *
-   * A segment that overruns the budget on its own is still emitted. A manifest naming nothing is
-   * worse than a manifest costing an extra round trip. A segment line is now a duration and a
-   * reference, so no live sequence can reach that state: {@link restoreState} can, because it takes
-   * its headers from a recovered manifest, and a header long enough to spend the budget leaves every
-   * segment overrunning what is left.
+   * A segment that overruns the budget on its own is still emitted, and that window is then refused
+   * by the writer as too large. No live sequence can reach that state, because a segment line is a
+   * duration and a reference. {@link restoreState} can, because it takes its headers from a recovered
+   * entry, and a header long enough to spend the budget leaves every segment overrunning what is left.
    *
    * ⛔ Extending the window over a hole costs the hole's gap entries as well as the segment on the
-   * far side of it, and both are charged here. Uncounted, a broadcast that lost a run of segments
-   * would publish a window over one chunk and pay three round trips per segment for as long as the
-   * hole stayed inside it. A hole too wide to afford stops the window, once it names
-   * {@link MIN_LIVE_WINDOW_SEGMENTS} segments or the floor's own limit is reached.
+   * far side of it, and both are charged here. A hole too wide to afford stops the window at it.
    *
-   * ⛔⛔ **Never fewer than three media entries, even over budget.** A rung lining up with its ladder
-   * after a long partial return lists the whole absence as gap entries right before its break, sixty
-   * of them after a minute at one second fragments, and that run alone fills the budget. Stopped
-   * there, the window right after the return named one media entry, and a player joining or switching
-   * to that rung had nothing to buffer from.
-   *
-   * ⛔ **But never further back than {@link LIVE_WINDOW_FLOOR_MAX_BYTES}.** The floor applies to every
-   * stream and every hole, and a hole a node outage left can be minutes of gap entries: reaching all
-   * the way back made the first publishes after a five minute outage about fourteen kilobytes, several
-   * chunks each. Within the limit, going over the budget costs a publish one payload upload more than a
-   * chunk, for the few segments it takes the run to slide out.
+   * ⛔ **No floor of media entries, unlike the feed playlist this replaced.** A feed playlist could
+   * reach twice the budget so that a window right after a long run of gap entries still named three
+   * media entries. A window chunk cannot go over at all, and it need not: the player keeps every
+   * segment it has seen, so a window naming one media entry after a return loses a viewer nothing.
    */
   private liveWindowLength(): number {
     // Reserved against the largest media sequence there could be, whose own digits are part of the
     // header. Reserving this way avoids a second pass over a header whose length depends on the
-    // answer, and under-reserving spends a budget that is one bee chunk. The newest sequence is the
-    // upper bound rather than the segment count, because an engine restart re-anchors the numbering
-    // forwards and leaves the sequence above the count.
+    // answer, and under-reserving spends a budget that is one window chunk. The newest sequence is
+    // the upper bound rather than the segment count, because an engine restart re-anchors the
+    // numbering forwards and leaves the sequence above the count.
     const newestSequence =
       this.segments.length === 0 ? 0 : this.published(sequenceOf(this.segments[this.segments.length - 1]));
-    // Reserved against the widest `#EXT-X-DISCONTINUITY-SEQUENCE` this session could ever declare,
-    // for the same reason the sequence is: the real value depends on where the window starts, which
-    // is the answer this is computing. Over-reserving costs a handful of bytes; under-reserving
-    // spends a budget that is one bee chunk.
     // Every break this session could possibly declare as behind its window, which is what the header
-    // may have to carry. Unconditional since {@link discontinuitySequence} stopped answering zero for
-    // a session on an empty feed: reserving nothing there under-reserves the moment such a session's
-    // first reconnect seam slides out of the window, and the budget this feeds is one bee chunk.
+    // may have to carry, reserved for the same reason the sequence is.
     const mostBreaksBehind =
       this.inheritedDiscontinuities() + 1 + this.segments.filter((seg) => seg.discontinuity === true).length;
     const headerBytes = manifestBytes(this.liveHeaderLines(newestSequence, mostBreaksBehind));
     const budget = LIVE_WINDOW_MAX_BYTES - headerBytes;
-    const floorBudget = LIVE_WINDOW_FLOOR_MAX_BYTES - headerBytes;
 
     let spent = 0;
     let length = 0;
@@ -1153,8 +1120,7 @@ export class ManifestManager {
       if (successor !== undefined) {
         spent += manifestBytes(this.gapLines(this.segments[i], successor));
       }
-      const floorStillOwed = length < MIN_LIVE_WINDOW_SEGMENTS && spent <= floorBudget;
-      if (spent > budget && length > 0 && !floorStillOwed) {
+      if (spent > budget && length > 0) {
         break;
       }
       length++;

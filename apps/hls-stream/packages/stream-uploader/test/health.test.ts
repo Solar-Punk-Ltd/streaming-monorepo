@@ -2,8 +2,16 @@ import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 
 import {
+  CLOCK_PENDING,
+  CLOCK_TRUSTED,
+  CLOCK_UNCHECKED,
+  CLOCK_UNTRUSTED,
+  ClockCheckReport,
+  ClockVerdict,
   HEALTH_DEGRADED,
   HEALTH_OK,
+  HEALTH_REASON_CLOCK_UNCHECKED,
+  HEALTH_REASON_CLOCK_UNTRUSTED,
   HEALTH_REASON_FRAGMENT_MISMATCH,
   HEALTH_REASON_FRAGMENT_PUBLISHER_GOP,
   HEALTH_REASON_INGEST_REFUSED,
@@ -756,5 +764,60 @@ describe('deriveHealthStatus start gate warnings', () => {
     );
 
     assert.equal(report.reasons.length, 2);
+  });
+});
+
+describe('deriveHealthStatus clock check', () => {
+  function clock(verdict: ClockVerdict): ClockCheckReport {
+    const measured = verdict === CLOCK_TRUSTED || verdict === CLOCK_UNTRUSTED;
+    return {
+      verdict,
+      checkedAt: verdict === CLOCK_PENDING ? null : '2026-10-06T12:00:00.000Z',
+      server: measured ? 'time.example.com' : null,
+      offsetMs: measured ? (verdict === CLOCK_UNTRUSTED ? 300 : 10) : null,
+      delayMs: measured ? 4 : null,
+      errorBoundMs: measured ? (verdict === CLOCK_UNTRUSTED ? 302 : 12) : null,
+      maxErrorMs: 250,
+    };
+  }
+
+  it('is ok while the clock is trusted or not yet checked', () => {
+    for (const verdict of [CLOCK_TRUSTED, CLOCK_PENDING] as const) {
+      const report = deriveHealthStatus(signals(), STALL_MS, null, clock(verdict));
+      assert.equal(report.status, HEALTH_OK, verdict);
+      assert.deepEqual(report.reasons, [], verdict);
+    }
+  });
+
+  it('is degraded with clock_untrusted while publishing is refused', () => {
+    const report = deriveHealthStatus(signals(), STALL_MS, null, clock(CLOCK_UNTRUSTED));
+    assert.equal(report.status, HEALTH_DEGRADED);
+    assert.deepEqual(report.reasons, [HEALTH_REASON_CLOCK_UNTRUSTED]);
+  });
+
+  it('is degraded with clock_unchecked, its own reason, when no time server answered', () => {
+    const report = deriveHealthStatus(signals(), STALL_MS, null, clock(CLOCK_UNCHECKED));
+    assert.equal(report.status, HEALTH_DEGRADED);
+    assert.deepEqual(report.reasons, [HEALTH_REASON_CLOCK_UNCHECKED]);
+  });
+
+  it('stands beside the other reasons rather than replacing them', () => {
+    const report = deriveHealthStatus(
+      signals({ startGateWarnings: [{ gate: 'PostageGate' }] }),
+      STALL_MS,
+      null,
+      clock(CLOCK_UNTRUSTED),
+    );
+    assert.deepEqual(report.reasons, [HEALTH_REASON_START_GATE_WARNED, HEALTH_REASON_CLOCK_UNTRUSTED]);
+  });
+
+  it('leaves the waiting state alone, which reports node_unavailable and nothing else', () => {
+    const waiting: NodeWaitReport = {
+      url: 'http://bee.test:1633',
+      waitingSince: '2026-10-06T12:00:00.000Z',
+      attempts: 1,
+    };
+    const report = deriveHealthStatus(signals(), STALL_MS, waiting, clock(CLOCK_UNTRUSTED));
+    assert.deepEqual(report.reasons, [HEALTH_REASON_NODE_UNAVAILABLE]);
   });
 });

@@ -6,6 +6,10 @@ import { mediaTypeSchema } from './mediaType.js';
  * The catalog is the list of broadcasts a viewer shows: one JSON array on a feed that the uploader, when it runs
  * without an admin, and the admin both rewrite whole. Each reader checks what it reads, and each keeps its own
  * reading, so there is one schema per reader here rather than one for the catalog.
+ *
+ * A finished broadcast names its recording by reference: the writer uploads the recording playlist once as bytes and
+ * names it in `recording`, read with `GET /bytes/<recording>`. The viewer schemas below still read an `index` beside
+ * it, because the viewers move off it in later phases. No writer writes one.
  */
 
 /** A rung of an entry's quality ladder as the viewer reads it: every number finite, and fields it does not know kept. */
@@ -17,6 +21,7 @@ export const viewerCatalogRungSchema = z.looseObject({
   bandwidth: z.number(),
   avgBandwidth: z.number(),
   index: z.number().optional(),
+  recording: z.string().optional(),
   duration: z.number().optional(),
 });
 
@@ -33,6 +38,7 @@ export const viewerCatalogEntrySchema = z.looseObject({
   state: z.string().optional(),
   duration: z.union([z.string(), z.number()]).optional(),
   index: z.number().optional(),
+  recording: z.string().optional(),
   thumbnail: z.string().optional(),
   scheduledStartTime: z.union([z.string(), z.number()]).nullable().optional(),
   renditions: z.array(viewerCatalogRungSchema).optional(),
@@ -45,7 +51,7 @@ const anyNumber = z.custom<number>((value) => typeof value === 'number');
 
 /**
  * A rung as the admin reads it back off the catalog before it rewrites an entry: the six fields every rung carries,
- * each only of its kind, and an index or a duration of any number when present.
+ * each only of its kind, and a recording reference and a duration of any number when present.
  */
 export const adminFeedRungSchema = z.looseObject({
   name: z.string(),
@@ -54,6 +60,6 @@ export const adminFeedRungSchema = z.looseObject({
   height: anyNumber,
   bandwidth: anyNumber,
   avgBandwidth: anyNumber,
-  index: anyNumber.optional(),
+  recording: z.string().optional(),
   duration: anyNumber.optional(),
 });

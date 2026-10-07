@@ -51,9 +51,12 @@ interface ParsedLine {
  */
 export const PARSED_LINES: readonly ParsedLine[] = [
   {
-    what: 'the catalog feed location (owner + topicHex)',
+    what: 'the catalog feed location (owner + topic name + topicHex)',
     level: 'debug',
-    emittedBy: { file: 'libs/StreamCatalog.ts', fragment: 'owner=${ownerAddr} topicHex=' },
+    emittedBy: {
+      file: 'libs/StreamCatalog.ts',
+      fragment: 'owner=${ownerAddr} topic="${this.feedTopicName}" topicHex=',
+    },
     neededBy: 'discoverCatalogFeed, so scenario F and service/catalog-via-gateway cannot start',
   },
   {
@@ -63,10 +66,12 @@ export const PARSED_LINES: readonly ParsedLine[] = [
     neededBy: 'every scenario that counts segments or checks they are gapless',
   },
   {
-    what: 'manifest publishes ("Manifest of <stream> uploaded at SOC index N")',
+    what: 'live windows written ("Live window of <stream> written at window N")',
     level: 'log',
-    emittedBy: { file: 'libs/StreamUploader.ts', fragment: 'manifestUploaded(this.streamId, nextIndex)' },
-    neededBy: 'service/happy-path, which asserts every rung keeps its manifest advancing',
+    emittedBy: { file: 'libs/StreamUploader.ts', fragment: 'liveWindowWritten(this.streamId, event.window)' },
+    neededBy:
+      'scenarios/publish-stop-to-vod and service/abr-ladder, which assert every stream that uploaded ' +
+      'segments also wrote the live playlist a viewer reads',
   },
   {
     what: 'single-rendition VOD finalizes ("Updating stream in list to VOD")',
@@ -184,13 +189,10 @@ export const PARSED_LINES: readonly ParsedLine[] = [
       'Without it a second finalize cannot be told from a first one the guard could not see',
   },
   {
-    what: 'a finalize resuming after a crash ("Resuming the finalize of <stream> at the catalog write")',
+    what: 'recordings uploaded ("Recording of <stream> uploaded as <reference>")',
     level: 'log',
-    emittedBy: { file: 'libs/StreamUploader.ts', fragment: 'finalizeResumed(this.streamId, alreadyPublished)' },
-    neededBy:
-      'resumedFinalizeCount, which is how a reader of scenarios/finalize-crash tells a kill that ' +
-      'landed inside the window and was answered from one that missed the window entirely. Both ' +
-      'leave the same count of one flip, and only this line separates them',
+    emittedBy: { file: 'libs/StreamUploader.ts', fragment: 'recordingUploaded(this.streamId, recording)' },
+    neededBy: 'scenarios/publish-stop-to-vod, which asserts every stream it finalized uploaded its recording',
   },
   {
     what: 'a segment whose duration could not be read ("Cannot read how much media segment N of <stream> holds")',

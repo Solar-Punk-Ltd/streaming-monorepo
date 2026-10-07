@@ -4,7 +4,13 @@ import { after, before, describe, it } from 'node:test';
 import { containerName, loadConfig } from '../../src/config.js';
 import { getEngine } from '../../src/harness/engine.js';
 import { makeHost, waitForIdle } from '../../src/harness/host.js';
-import { announcedVodFinalizeCount, parseUploaderLog } from '../../src/harness/logwatch.js';
+import {
+  announcedVodFinalizeCount,
+  liveWindowsWrittenByStream,
+  parseUploaderLog,
+  recordingsUploaded,
+  segmentUploads,
+} from '../../src/harness/logwatch.js';
 import { type Publisher, startPublisher } from '../../src/harness/publisher.js';
 import { vodFinalizeWaitMs } from '../../src/harness/recording.js';
 import { requireStageStamps } from '../../src/harness/stageStamps.js';
@@ -23,6 +29,10 @@ import { waitFor } from '../../src/harness/wait.js';
  *
  * So this scenario is still "the broadcaster stops and the recording appears", and what changed is
  * the size of the wait it needs. Nothing here asserts how long it took; see `AGENTS.md`.
+ *
+ * A stream that broadcast wrote live windows, which is what a viewer reads while it is live, and
+ * ends with its recording uploaded as one piece and named by reference. Both are read off the
+ * uploader's log, by the stream ids that uploaded segments in this window.
  */
 
 const WARMUP_SEGMENTS = 3;
@@ -77,5 +87,14 @@ describe('D — clean broadcaster stop: finalize as VOD', () => {
     const finalLog = await log();
     assert.match(finalLog, engine.unpublishedMarker, `the ${engine.name} engine must report the stream ended`);
     assert.ok(announcedVodFinalizeCount(finalLog) >= 1, 'the uploader must finalize the VOD catalog entry');
+
+    const streams = [...new Set(segmentUploads(finalLog).map((upload) => upload.streamId))];
+    const windows = liveWindowsWrittenByStream(finalLog);
+    const recorded = new Set(recordingsUploaded(finalLog).map((recording) => recording.streamId));
+    assert.ok(streams.length > 0, 'no stream uploaded a segment in this window, so nothing here is a result');
+    for (const streamId of streams) {
+      assert.ok((windows.get(streamId) ?? 0) > 0, `${streamId} uploaded segments and wrote no live window`);
+      assert.ok(recorded.has(streamId), `${streamId} finalized without uploading its recording`);
+    }
   });
 });

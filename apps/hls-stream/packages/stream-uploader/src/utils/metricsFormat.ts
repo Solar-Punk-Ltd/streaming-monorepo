@@ -1,4 +1,5 @@
 import { MetricsSnapshot } from '../libs/ServiceMetrics.js';
+import { CLOCK_UNCHECKED, CLOCK_UNTRUSTED, ClockCheckReport } from '../types.js';
 
 const PREFIX = 'swarm_hls';
 
@@ -96,7 +97,7 @@ function describe(snapshot: MetricsSnapshot): RenderedMetric[] {
     {
       name: 'manifest_publish_failures_total',
       type: 'counter',
-      help: 'Live manifest publishes that failed. Retried at the same index when the next segment arrives.',
+      help: 'Live windows that were due and not written: refused, skipped or passed over. Never retried, the next window carries the news.',
       value: snapshot.manifestPublishFailuresTotal,
     },
     {
@@ -116,6 +117,12 @@ function describe(snapshot: MetricsSnapshot): RenderedMetric[] {
       type: 'counter',
       help: 'Streams the reaper gave up on because their engine went silent, rather than because a stop was sent. Counts the decision, not the finalize that follows it, so cross-reference streams_failed_total to see whether the recording was published. A rising rate means an engine is dying without unpublishing.',
       value: snapshot.streamsReapedTotal,
+    },
+    {
+      name: 'recordings_unglued_total',
+      type: 'counter',
+      help: 'Sessions on a topic with an earlier recording that could not download it, so their recording starts without the broadcast before them. The earlier recording is still there under its own reference.',
+      value: snapshot.recordingsUngluedTotal,
     },
     {
       name: 'segment_durations_unread_total',
@@ -152,6 +159,40 @@ function describe(snapshot: MetricsSnapshot): RenderedMetric[] {
       type: 'gauge',
       help: 'Playing time still waiting to upload for the worst stream, which is how far behind live it is.',
       value: snapshot.queueBacklogSeconds,
+    },
+  ];
+}
+
+/**
+ * The clock check's last round. Seconds, like every duration here, and `NaN` where the round measured
+ * nothing, because a zero offset is a reading and an unanswered round is not one.
+ */
+function describeClock(clock: ClockCheckReport | undefined): RenderedMetric[] {
+  const seconds = (ms: number | null | undefined): number => (ms === null || ms === undefined ? NaN : ms / 1000);
+  return [
+    {
+      name: 'clock_untrusted',
+      type: 'gauge',
+      help: 'One while publishing windows is refused because a clock check measured this host more than 250 ms off its time servers. It stays one until a later check measures the clock within the limit. Zero otherwise, including before the first check.',
+      value: clock?.verdict === CLOCK_UNTRUSTED ? 1 : 0,
+    },
+    {
+      name: 'clock_unchecked',
+      type: 'gauge',
+      help: 'One while the last clock check was inconclusive, because no time server answered or the answer came too slowly to judge. Publishing goes on unless a refusal already stands, and the host must allow outbound UDP 123 for the check to mean anything.',
+      value: clock?.verdict === CLOCK_UNCHECKED ? 1 : 0,
+    },
+    {
+      name: 'clock_offset_seconds',
+      type: 'gauge',
+      help: 'How far the time server the last clock check kept is ahead of this host, negative when the host runs fast. NaN when that check measured nothing.',
+      value: seconds(clock?.offsetMs),
+    },
+    {
+      name: 'clock_error_bound_seconds',
+      type: 'gauge',
+      help: 'The most this host clock can be off given the last clock check, the offset plus half the round trip. Publishing is refused above 0.25. NaN when that check measured nothing.',
+      value: seconds(clock?.errorBoundMs),
     },
   ];
 }
@@ -200,8 +241,8 @@ function describeByRung(snapshot: MetricsSnapshot): LabelledMetric[] {
  * registry and one label dimension, against a dependency that would have to be provenance checked and
  * carried. Every consumer of this format reads it, including a plain curl.
  */
-export function renderPrometheusMetrics(snapshot: MetricsSnapshot): string {
-  const plain = describe(snapshot).flatMap(({ name, type, help, value }) => [
+export function renderPrometheusMetrics(snapshot: MetricsSnapshot, clock?: ClockCheckReport): string {
+  const plain = [...describe(snapshot), ...describeClock(clock)].flatMap(({ name, type, help, value }) => [
     `# HELP ${PREFIX}_${name} ${help}`,
     `# TYPE ${PREFIX}_${name} ${type}`,
     `${PREFIX}_${name} ${value}`,

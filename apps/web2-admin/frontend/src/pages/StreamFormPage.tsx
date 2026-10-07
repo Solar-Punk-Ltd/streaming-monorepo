@@ -121,8 +121,13 @@ export const FIRST_STAGE_IS_FINAL =
 function stageLockOf(stream: Stream | null): string | null {
   if (!stream) return null;
   if (stream.status !== 'draft') return STAGE_LOCKED.published;
-  if (stream.manifestIndex != null && stream.stageId !== null) return STAGE_LOCKED.recording;
+  if (holdsRecording(stream) && stream.stageId !== null) return STAGE_LOCKED.recording;
   return null;
+}
+
+/** A recording, named by its playlist's reference, as the API's `holdsRecording` asks. */
+function holdsRecording(stream: Stream): boolean {
+  return stream.recording != null;
 }
 
 export function StreamFormPage() {
@@ -259,7 +264,7 @@ export function StreamFormPage() {
   const stageLock = stageLockOf(loaded);
   // A draft from before stages that holds a recording may be given a stage
   // once, and then keeps it: the recording lives under that stage's owner.
-  const firstStageIsFinal = loaded?.status === 'draft' && loaded.manifestIndex != null && loaded.stageId === null;
+  const firstStageIsFinal = loaded?.status === 'draft' && holdsRecording(loaded) && loaded.stageId === null;
   const chosenStage = stages?.find((stage) => stage.stageId === form.stageId) ?? null;
 
   const storedThumbnail = loaded?.hasThumbnail && !removeStored && !picked ? api.thumbnailUrl(loaded) : null;

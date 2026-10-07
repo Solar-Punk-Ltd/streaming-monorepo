@@ -6,7 +6,18 @@ import { after, describe, it } from 'node:test';
 
 import { type E2EConfig, loadConfig } from '../src/config.js';
 import type { Host } from '../src/harness/host.js';
-import { type CatalogEntry, discoverCatalogFeed, entryCarriesTopic, fetchCatalog } from '../src/harness/viewer.js';
+import { FeedIndex, Identifier, Topic } from '@ethersphere/bee-js';
+import { encodeWindowNote, STREAM_LIST_NOTE_WINDOW_MS, windowIdentifier } from '@swarm-hls-stream/shared';
+import { Binary } from 'cafe-utility';
+
+import {
+  type CatalogEntry,
+  discoverCatalogFeed,
+  entryCarriesTopic,
+  fetchCatalog,
+  fetchCatalogAt,
+  fetchListNote,
+} from '../src/harness/viewer.js';
 
 /**
  * The catalog feed is located by reading the uploader's own log rather than by hard-coding a
@@ -37,7 +48,7 @@ interface HostCall {
 }
 
 /** A Host that answers with canned text and records what it was asked for. */
-function stubHost(logs: string, json: unknown = []): { host: Host; calls: HostCall[] } {
+function stubHost(logs: string, json: unknown = [], text = ''): { host: Host; calls: HostCall[] } {
   const calls: HostCall[] = [];
   const host = {
     logs: async (container: string, tail: number) => {
@@ -47,6 +58,10 @@ function stubHost(logs: string, json: unknown = []): { host: Host; calls: HostCa
     localJson: async (port: number, path: string) => {
       calls.push({ port, path });
       return json;
+    },
+    localText: async (port: number, path: string) => {
+      calls.push({ port, path });
+      return text;
     },
   } as unknown as Host;
   return { host, calls };
@@ -130,6 +145,75 @@ describe('discoverCatalogFeed', () => {
   });
 });
 
+describe('the stream list topic name', () => {
+  const LIST_TOPIC = 'swarm-stream';
+  const LIST_TOPIC_HEX = Topic.fromString(LIST_TOPIC).toHex();
+  const namedLine = (topic: string, topicHex: string) =>
+    `[2026-10-06T09:14:05.123Z] [DEBUG] - [StreamCatalog] Feed updated index=4 entries=1 bytes=90 ref=ab ` +
+    `owner=${OWNER} topic="${topic}" topicHex=${topicHex}`;
+
+  it('is read from a line that names it, so the notes can be addressed', async () => {
+    const { host } = stubHost(namedLine(LIST_TOPIC, LIST_TOPIC_HEX));
+    assert.deepEqual(await discoverCatalogFeed(host, config()), {
+      owner: OWNER,
+      topicHex: LIST_TOPIC_HEX,
+      topicName: LIST_TOPIC,
+    });
+  });
+
+  it('is left out when it does not hash to the topic the line names', async () => {
+    const { host } = stubHost(namedLine('another-list', LIST_TOPIC_HEX));
+    assert.deepEqual(await discoverCatalogFeed(host, config()), { owner: OWNER, topicHex: LIST_TOPIC_HEX });
+  });
+});
+
+describe('fetchListNote', () => {
+  const feed = { owner: OWNER, topicHex: Topic.fromString('swarm-stream').toHex(), topicName: 'swarm-stream' };
+  const WINDOW = 179379366;
+
+  it('reads one window of the list notes from the gateway, by owner and window identifier', async () => {
+    const note = new TextDecoder().decode(encodeWindowNote({ newest: 214, writtenAt: 1793793670012 }));
+    const { host, calls } = stubHost('', [], note);
+    const cfg = config({ E2E_PORT_SLOT: '2' });
+
+    assert.deepEqual(await fetchListNote(host, cfg, feed, WINDOW), { newest: 214, writtenAt: 1793793670012 });
+    const identifier = windowIdentifier({
+      topic: 'swarm-stream',
+      kind: 'note',
+      windowMs: STREAM_LIST_NOTE_WINDOW_MS,
+      window: WINDOW,
+    }).toHex();
+    assert.deepEqual(calls, [{ port: 10027, path: `/soc/${OWNER}/${identifier}` }]);
+  });
+
+  it('answers null for a window with no note, whatever the gateway said instead', async () => {
+    const { host } = stubHost('', [], '{"code":404,"message":"Not Found"}');
+    assert.equal(await fetchListNote(host, config(), feed, WINDOW), null);
+  });
+
+  it('refuses a feed whose topic name was never found, rather than asking a wrong address', async () => {
+    const { host, calls } = stubHost('');
+    await assert.rejects(fetchListNote(host, config(), { owner: OWNER, topicHex: TOPIC_HEX }, WINDOW), /topic name/);
+    assert.deepEqual(calls, []);
+  });
+});
+
+describe('fetchCatalogAt', () => {
+  it('reads one version of the list by its feed index, as a feed reader computes the slot', async () => {
+    const entries = [{ topic: 'a', state: 'vod' }];
+    const { host, calls } = stubHost('', [], JSON.stringify(entries));
+    const feed = { owner: OWNER, topicHex: Topic.fromString('swarm-stream').toHex(), topicName: 'swarm-stream' };
+
+    assert.deepEqual(await fetchCatalogAt(host, config({ E2E_PORT_SLOT: '2' }), feed, 214), entries);
+    const identifier = new Identifier(
+      Binary.keccak256(
+        Binary.concatBytes(Topic.fromString('swarm-stream').toUint8Array(), FeedIndex.fromBigInt(214n).toUint8Array()),
+      ),
+    ).toHex();
+    assert.deepEqual(calls, [{ port: 10027, path: `/soc/${OWNER}/${identifier}` }]);
+  });
+});
+
 describe('fetchCatalog', () => {
   const entries: CatalogEntry[] = [
     {
@@ -137,7 +221,6 @@ describe('fetchCatalog', () => {
       owner: `0x${OWNER}`,
       topic: 'topic-a',
       state: 'live',
-      index: 3,
       mediatype: 'video',
       timestamp: 1786000445123,
     },
@@ -164,7 +247,7 @@ describe('fetchCatalog', () => {
 });
 
 describe('entryCarriesTopic', () => {
-  const base = { title: 't', owner: 'o', index: 0, mediatype: 'video', timestamp: 1 };
+  const base = { title: 't', owner: 'o', mediatype: 'video', timestamp: 1 };
 
   it('matches a single-rendition entry by its own topic', () => {
     const entry: CatalogEntry = { ...base, topic: 'session-1', state: 'live' };

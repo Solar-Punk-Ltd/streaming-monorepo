@@ -40,7 +40,7 @@ import type { FeedWriteRecord } from './FeedWriteRepository.js';
 import { Logger } from './Logger.js';
 import { Mutex } from './Mutex.js';
 import { toRendition } from './renditions.js';
-import { publishedStatusFor, type PublishedStatus } from './streamState.js';
+import { holdsRecording, publishedStatusFor, type PublishedStatus } from './streamState.js';
 import { stageUnavailability, type StreamStageLookup } from './StreamService.js';
 import { hasPendingThumbnail } from './unpublishedEdits.js';
 
@@ -155,9 +155,9 @@ export interface FeedWriteLog {
 /** The slice of CatalogueBatchService publishing needs: where a write goes, and where the boot check reads. */
 export type CatalogueTargets = Pick<CatalogueBatchService, 'forWrite' | 'forRead'>;
 
-/** A recording as a `vod` entry lists it: its final manifest's feed index, and how long it runs. */
+/** Where the entry says its recording is, and how long it runs. */
 export interface EntryRecording {
-  index: number | null;
+  recording: string | null;
   duration: number | null;
 }
 
@@ -266,13 +266,13 @@ function headCarrying(row: StreamRow, snapshot: FeedSnapshot, entry: FeedStreamE
 }
 
 /**
- * The recording an entry lists: its `index` and `duration` when it is `vod`,
+ * The recording an entry lists: its `recording` and `duration` when it is `vod`,
  * null for any other. Read back off the entry `buildFeedEntry` built, rather
  * than worked out again from the row.
  */
 function recordingOn(entry: FeedStreamEntry): EntryRecording | null {
   if (entry.state !== 'vod') return null;
-  return { index: entry.index ?? null, duration: entry.duration ?? null };
+  return { recording: entry.recording ?? null, duration: entry.duration ?? null };
 }
 
 /** Where a feed write landed, once the gateway has taken it; null until then. */
@@ -536,7 +536,7 @@ export class PublishService {
     // a recording is listed as that recording, which needs no broadcast, and
     // keeps the stage it was made on, so it is published whatever became of
     // the stage.
-    if (before.status === 'draft' && before.stage_id !== null && before.manifest_index === null) {
+    if (before.status === 'draft' && before.stage_id !== null && !holdsRecording(before)) {
       const reason = stageUnavailability(await this.stages.findSummary(before.stage_id));
       if (reason) throw new StageUnavailableError(before.stage_id, reason);
     }
@@ -882,12 +882,7 @@ export class PublishService {
       }
       // The claim takes a draft that holds a recording only while its stage
       // signs as the owner the recording was made under.
-      if (
-        draftNeedsStage &&
-        current.status === 'draft' &&
-        current.stage_id !== null &&
-        current.manifest_index !== null
-      ) {
+      if (draftNeedsStage && current.status === 'draft' && current.stage_id !== null && holdsRecording(current)) {
         const stage = await this.stages.findSummary(current.stage_id);
         if (stage && !sameFeedOwner(current.owner, stage.owner)) {
           throw new FeedOwnerMismatchError(current.id, current.owner, current.stage_id, stage.owner);

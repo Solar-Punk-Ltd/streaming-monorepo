@@ -57,8 +57,11 @@ export interface StreamRow {
   publish_error: string | null;
   publish_key: string;
   publish_key_rotated_at: Date | null;
-  /** What the uploader reported back; null until an encoder connects. */
-  manifest_index: number | null;
+  /**
+   * What the uploader reported back, null until an encoder connects: the reference of the recording playlist
+   * (migration 015) and how long it runs.
+   */
+  recording_ref: string | null;
   duration_seconds: number | null;
   live_since: Date | null;
   ended_at: Date | null;
@@ -103,8 +106,8 @@ export interface StreamRenditionRow {
   topic: string;
   bandwidth: number;
   avg_bandwidth: number;
-  /** Null until the rung finalizes; set together with `duration_seconds`. */
-  manifest_index: number | null;
+  /** Null until the rung finalizes, then set together with `duration_seconds` (migration 015). */
+  recording_ref: string | null;
   duration_seconds: number | null;
   updated_at: Date;
 }

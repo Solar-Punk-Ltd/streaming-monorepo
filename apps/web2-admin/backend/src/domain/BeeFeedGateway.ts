@@ -1,5 +1,7 @@
 import { Bee, BeeResponseError, Bytes, FeedIndex, Identifier, PrivateKey, Reference, Topic } from '@ethersphere/bee-js';
 
+import { windowIdentifier, type WindowSlot } from '@streaming-monorepo/swarm-windows';
+
 import { getErrorMessage } from '../utils/errorUtils.js';
 
 import { withoutCatalogueNode } from './catalogueNodeText.js';
@@ -105,13 +107,24 @@ export class BeeFeedGateway implements FeedGateway, CatalogueRestamper {
     // title is then counted as one unit but takes more than one byte, so a
     // list just under the limit would be rejected by the node.
     const payload = new TextEncoder().encode(payloadText);
+    // Direct, so this returns on the storer's receipt rather than once this node alone holds the
+    // chunk. bee-js defaults to deferred, which the catalogue inherited and never chose. The stream
+    // list's window notes name a version only once its write has returned (the architecture
+    // overview's "The stream list's notes"), so that return has to mean the network holds it.
     const result = await this.bee(target)
       .feed.makeWriter(this.topic, this.signer)
-      .uploadPayload(batchId, payload, { index: FeedIndex.fromBigInt(BigInt(index)) });
+      .uploadPayload(batchId, payload, { index: FeedIndex.fromBigInt(BigInt(index)), deferred: false });
     logger.info(
       `[BeeFeedGateway] Wrote feed index=${index} bytes=${payload.length} batch=${batchId.slice(0, 8)}… ref=${result.reference.toHex()}`,
     );
     return result.reference.toHex();
+  }
+
+  async writeNote(slot: WindowSlot, payload: Uint8Array, target: CatalogueTarget | null): Promise<void> {
+    const { batchId } = required(target);
+    await this.bee(target)
+      .soc.makeWriter(this.signer)
+      .upload(batchId, windowIdentifier(slot), payload, { deferred: false });
   }
 
   async uploadThumbnail(

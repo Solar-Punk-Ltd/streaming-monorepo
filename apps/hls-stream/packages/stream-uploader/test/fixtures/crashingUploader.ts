@@ -6,7 +6,7 @@
  */
 import { RecoveryStore } from '../../src/libs/RecoveryStore.js';
 import { registerCrashHandlers, registerShutdownSignals } from '../../src/libs/processSignals.js';
-import { makeRecoveredState } from '../helpers/fakes.js';
+import { makeRecoveredState } from '../helpers/recoveredState.js';
 
 const STREAM_ID = 'live_stream';
 const stateDir = process.argv[2];

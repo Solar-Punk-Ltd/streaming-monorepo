@@ -11,8 +11,7 @@ readonly SVC_BEE_GATEWAY="bee-gateway"
 readonly SVC_CLIENT="client"
 
 # One Bee node per ABR rung, so the ladder does not share one upload pipe. `bee-uploader` is the
-# 360p rung as well as the shared default: the catalog and every ladder master go through the lowest
-# rung's node. Disabled by default, because each is a wallet and a postage batch to fund and a
+# 360p rung as well as the shared default: the catalog goes through the lowest rung's node. Disabled by default, because each is a wallet and a postage batch to fund and a
 # single-rendition deployment needs none of them. See `BEE_PUBLISHERS` in `.env.sample`.
 readonly SVC_BEE_RUNG_480P="bee-uploader-480p"
 readonly SVC_BEE_RUNG_720P="bee-uploader-720p"

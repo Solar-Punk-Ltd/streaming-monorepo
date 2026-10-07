@@ -126,10 +126,11 @@ fi
 # 4.0s. Close to linear in the segment, and the segment is not the only term that moves, because a
 # shorter one is less data to write into Swarm and less to pull back.
 #
-# The default is 0.5, the value that measured best, and `deploy/test/srsTuning.test.js` holds it
-# there. This comment claimed 1.0 for weeks after the default had been lowered, which is worth one
-# line of warning on its own: it was read as authorising 1.0 by a later session that never opened the
-# test.
+# The default is 2, the product's segment length since the owner ruled it on 2026-10-06 (0.5 measured
+# best for latency on its own).
+# `deploy/test/srsTuning.test.js` holds it there. This comment once claimed 1.0 for weeks after the
+# default had been lowered, which is worth one line of warning on its own: it was read as authorising
+# 1.0 by a later session that never opened the test.
 #
 # ⛔ **A SHORT FRAGMENT IS NOT ONLY A LATENCY LEVER, AND ON A LADDER IT HAS A CEILING.** SRS announces
 # each closed segment over `on_hls`, once per rung, so the announcement rate is `rungs / HLS_FRAGMENT`
@@ -141,20 +142,22 @@ fi
 # unpublished mid-broadcast while the master feed goes on advertising it.
 #
 # So a four-rung ladder at 0.5 asks for 8.0/s and loses a rung about two minutes in. At 1.0 it asks
-# for 4.0/s and fits. A single-rendition deployment at 0.5 asks for 2.0/s and is unaffected, which is
-# why the default is still 0.5 and why the constraint is the ladder's, not the fragment's.
+# for 4.0/s and fits, and at the default 2 it asks for 2.0/s with room to spare. A single-rendition
+# deployment at 0.5 asks for 2.0/s and is unaffected, so the constraint is the ladder's, not the
+# fragment's.
 # ⚠️ The 6.7/s is one measurement on a co-tenanted host and wants replicating before it becomes a
 # gate. What SRS spends the time on is not known: the uploader answers each callback in 1ms.
 #
 # `LIVE_SYNC_DURATION_S` in the client is 6, chosen against a 1.0s segment. The two go together, so a
-# deployment that raises the fragment past 1.0 has to raise that or it will rebuffer.
+# deployment that raises the fragment past 1.0 has to raise that or it will rebuffer. At the default
+# 2 it is three segments.
 #
 # ⚠️ `HLS_WINDOW` is SECONDS of playlist, not fragments. This comment used to say "fifteen fragments",
 # which is only the same number when the fragment is 1.0 and is double the intent at 0.5.
 # --- hls tuning ---
-require_number HLS_FRAGMENT "${HLS_FRAGMENT:-0.5}"
+require_number HLS_FRAGMENT "${HLS_FRAGMENT:-2}"
 require_number HLS_WINDOW "${HLS_WINDOW:-15}"
-HLS_FRAGMENT="${HLS_FRAGMENT:-0.5}"
+HLS_FRAGMENT="${HLS_FRAGMENT:-2}"
 HLS_WINDOW="${HLS_WINDOW:-15}"
 
 # How long a segment may run before SRS closes it without a keyframe, in seconds.
@@ -500,7 +503,7 @@ vhost ${ABR_VHOST} {
         hls_fragment    ${HLS_FRAGMENT};
         # Without this the rungs run on SRS's own 2.1 default while the ingest vhost runs on
         # the configured ratio, so an enabled ladder force-closes segments the single-rendition
-        # path does not. 0.5 * 5.0 = 2.5s, the ceiling the stages have always run.
+        # path does not. The ceiling is 2.5s, the one the stages have always run, whatever the fragment.
         hls_aof_ratio   ${HLS_AOF_RATIO};
         hls_window      ${HLS_WINDOW};
         hls_ts_file     [app]/[stream]/[stream]-[seq].ts;
@@ -535,7 +538,7 @@ fi
 
 write_play_rules
 
-sed -i "s/HLS_FRAGMENT_PLACEHOLDER/${HLS_FRAGMENT:-0.5}/" "$CONF"
+sed -i "s/HLS_FRAGMENT_PLACEHOLDER/${HLS_FRAGMENT:-2}/" "$CONF"
 sed -i "s/HLS_AOF_RATIO_PLACEHOLDER/${HLS_AOF_RATIO}/" "$CONF"
 sed -i "s/HLS_WINDOW_PLACEHOLDER/${HLS_WINDOW:-15}/" "$CONF"
 

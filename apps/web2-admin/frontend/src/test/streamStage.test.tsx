@@ -170,7 +170,13 @@ describe('the stream form stage picker', () => {
 
   it('says nothing about a retired stage that a stream which holds its recording keeps', async () => {
     renderEdit(
-      makeStream({ id: 'vod-id', status: 'vod', stageId: RETIRED_STAGE_ID, manifestIndex: 7, durationSeconds: 61 }),
+      makeStream({
+        id: 'vod-id',
+        status: 'vod',
+        stageId: RETIRED_STAGE_ID,
+        recording: 'cd'.repeat(32),
+        durationSeconds: 61,
+      }),
       [makeStage(), { ...RETIRED, readiness: { tone: 'blocked', reasons: ['Deployment gone'] } }],
     );
 
@@ -225,7 +231,29 @@ describe('the stream form stage picker', () => {
 
   it('locks the stage of a draft that holds a recording', async () => {
     renderEdit(
-      makeStream({ id: 'rec-id', status: 'draft', stageId: MAIN_STAGE_ID, manifestIndex: 7, durationSeconds: 61 }),
+      makeStream({
+        id: 'rec-id',
+        status: 'draft',
+        stageId: MAIN_STAGE_ID,
+        recording: 'cd'.repeat(32),
+        durationSeconds: 61,
+      }),
+      [makeStage()],
+    );
+
+    await waitFor(() => expect(stageSelect()).toBeDisabled());
+    expect(screen.getByText(STAGE_LOCKED.recording)).toBeInTheDocument();
+  });
+
+  it('locks the stage of a draft whose recording is named by reference', async () => {
+    renderEdit(
+      makeStream({
+        id: 'ref-id',
+        status: 'draft',
+        stageId: MAIN_STAGE_ID,
+        recording: 'ab'.repeat(32),
+        durationSeconds: 61,
+      }),
       [makeStage()],
     );
 
@@ -240,7 +268,7 @@ describe('the stream form stage picker', () => {
       owner: MAIN_STAGE_OWNER,
       status: 'draft',
       stageId: null,
-      manifestIndex: 7,
+      recording: 'cd'.repeat(32),
       durationSeconds: 61,
     });
     renderEdit(recorded, [makeStage()], (body) => sent.push(body));
@@ -270,7 +298,7 @@ describe('the stream form stage picker', () => {
       owner: MAIN_STAGE_OWNER,
       status: 'draft',
       stageId: null,
-      manifestIndex: 7,
+      recording: 'cd'.repeat(32),
       durationSeconds: 61,
     });
     renderEdit(recorded, [makeStage()], (body) => sent.push(body));
@@ -289,7 +317,7 @@ describe('the stream form stage picker', () => {
       owner: MAIN_STAGE_OWNER.toUpperCase(),
       status: 'draft',
       stageId: null,
-      manifestIndex: 7,
+      recording: 'cd'.repeat(32),
       durationSeconds: 61,
     });
     renderEdit(recorded, [makeStage(), OTHER_KEY]);
@@ -302,7 +330,7 @@ describe('the stream form stage picker', () => {
       id: 'old-rec',
       status: 'draft',
       stageId: null,
-      manifestIndex: 7,
+      recording: 'cd'.repeat(32),
       durationSeconds: 61,
     });
     renderEdit(recorded, [makeStage(), OTHER_KEY]);

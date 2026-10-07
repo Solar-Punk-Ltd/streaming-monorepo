@@ -59,11 +59,19 @@ export function isRendition(value: unknown): value is Rendition {
       return false;
     }
   }
-  const finished = candidate.index !== undefined;
+  if (candidate.index !== undefined) {
+    return false;
+  }
+  const finished = candidate.recording !== undefined;
   if (finished !== (candidate.duration !== undefined)) {
     return false;
   }
-  return !finished || (typeof candidate.index === 'number' && typeof candidate.duration === 'number');
+  return (
+    !finished ||
+    (typeof candidate.recording === 'string' &&
+      /^[0-9a-f]{64}$/.test(candidate.recording) &&
+      typeof candidate.duration === 'number')
+  );
 }
 
 export function asRenditionReport(body: unknown): RenditionReportResponse | null {

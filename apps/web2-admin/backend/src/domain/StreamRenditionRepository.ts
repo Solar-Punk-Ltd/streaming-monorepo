@@ -37,14 +37,14 @@ export class StreamRenditionRepository {
   /**
    * Stores one rung, replacing whatever that name held. The caller has already
    * merged the incoming report into the stored one, so what arrives here is
-   * the whole row as it should now stand — including a null index and duration
-   * for a rung that has not finalized.
+   * the whole row as it should now stand, including a null recording
+   * and duration for a rung that has not finalized.
    */
   async upsert(streamId: string, rendition: Rendition): Promise<StreamRenditionRow> {
     const result = await this.pool.query<StreamRenditionRow>(
       `INSERT INTO stream_renditions (
          stream_id, name, width, height, topic, bandwidth, avg_bandwidth,
-         manifest_index, duration_seconds, updated_at
+         recording_ref, duration_seconds, updated_at
        )
        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, NOW())
        ON CONFLICT (stream_id, name) DO UPDATE
@@ -53,7 +53,7 @@ export class StreamRenditionRepository {
               topic = EXCLUDED.topic,
               bandwidth = EXCLUDED.bandwidth,
               avg_bandwidth = EXCLUDED.avg_bandwidth,
-              manifest_index = EXCLUDED.manifest_index,
+              recording_ref = EXCLUDED.recording_ref,
               duration_seconds = EXCLUDED.duration_seconds,
               updated_at = NOW()
        RETURNING ${STREAM_RENDITION_COLUMNS}`,
@@ -65,7 +65,7 @@ export class StreamRenditionRepository {
         rendition.topic,
         rendition.bandwidth,
         rendition.avgBandwidth,
-        rendition.index ?? null,
+        rendition.recording ?? null,
         rendition.duration ?? null,
       ],
     );

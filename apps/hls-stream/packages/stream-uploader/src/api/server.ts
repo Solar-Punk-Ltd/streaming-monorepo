@@ -4,7 +4,7 @@ import http from 'http';
 import { EnginePlugin, RawBodyRequest } from '../engines/types.js';
 import { Logger } from '../libs/Logger.js';
 import { StreamOrchestrator } from '../libs/StreamOrchestrator.js';
-import { NodeWaitReport } from '../types.js';
+import { ClockCheckReport, NodeWaitReport } from '../types.js';
 
 import { errorHandler } from './middleware/errorHandler.js';
 import { notFound } from './middleware/notFound.js';
@@ -46,10 +46,21 @@ interface ApiAppOptions {
    * what every API test but the two about the wait still drives.
    */
   waitingForNode?: () => NodeWaitReport | null;
+  /**
+   * The clock check's last round, read on every request to `/health` and `/metrics`. Omitted is a
+   * service with no clock check, which is every test that is not about it.
+   */
+  clockReport?: () => ClockCheckReport;
 }
 
 export function createApiApp(streamOrchestrator: StreamOrchestrator, options: ApiAppOptions): express.Express {
-  const { authToken, engines = [], limits = DEFAULT_REQUEST_LIMITS, waitingForNode = () => null } = options;
+  const {
+    authToken,
+    engines = [],
+    limits = DEFAULT_REQUEST_LIMITS,
+    waitingForNode = () => null,
+    clockReport,
+  } = options;
   const app = express();
 
   // Global middleware
@@ -133,13 +144,14 @@ export function createApiApp(streamOrchestrator: StreamOrchestrator, options: Ap
 
   // Core routes
   app.use('/stream', createStreamRouter(streamOrchestrator));
-  app.use('/metrics', createMetricsRouter(streamOrchestrator));
+  app.use('/metrics', createMetricsRouter(streamOrchestrator, clockReport));
   app.use(
     '/health',
     createHealthRouter(
       streamOrchestrator,
       engines.map((e) => e.name),
       waitingForNode,
+      clockReport,
     ),
   );
 

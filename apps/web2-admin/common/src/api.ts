@@ -18,7 +18,7 @@ export { MEDIA_TYPES, type MediaType } from '@streaming-monorepo/contracts';
  * publishing publish in progress (transient)
  * published  entry is in the stream list feed with state 'scheduled'
  * live/vod   reported by the uploader: the broadcast is running, or it has
- *            ended and manifestIndex says where its recording is
+ *            ended and `recording` names its recording
  */
 export type StreamStatus = 'draft' | 'publishing' | 'published' | 'live' | 'vod';
 
@@ -109,8 +109,11 @@ export interface Stream {
    */
   publishedFeedIndex: number | null;
   publishError: string | null;
-  /** Feed index of the final manifest, reported by the uploader when the stream ends. */
-  manifestIndex?: number | null;
+  /**
+   * Swarm reference of the recording playlist, reported by the uploader when the stream ends. A stream holds a
+   * recording when it is set.
+   */
+  recording?: string | null;
   /** Seconds, reported by the uploader when the stream ends. */
   durationSeconds?: number | null;
   /** When the uploader reported the stream live, and when it reported it ended. */
@@ -186,9 +189,9 @@ export interface Rendition {
   bandwidth: number;
   /** Mean bitrate, bits/s. HLS AVERAGE-BANDWIDTH. */
   avgBandwidth: number;
-  /** Set once the rung finalized: feed index of its VOD manifest in `topic`. */
-  index?: number;
-  /** Set with `index`: recording length in seconds. */
+  /** Set once the rung finalized: the Swarm reference of its recording playlist, read with `GET /bytes/<recording>`. */
+  recording?: string;
+  /** Set with `recording`: recording length in seconds. */
   duration?: number;
 }
 
@@ -211,7 +214,8 @@ export interface FeedStreamEntry {
   scheduledStartTime: string | null;
   /** ms since epoch, when this entry was last written. */
   timestamp: number;
-  index?: number;
+  /** The reference of the recording playlist, on a `vod` entry. */
+  recording?: string;
   duration?: number;
   /**
    * Both present only for a stream whose uploader publishes an ABR ladder, and
@@ -312,8 +316,8 @@ export interface IngestLookupResponse {
  */
 export interface StreamStateReport {
   state: 'live' | 'vod';
-  /** Required with 'vod': feed index of the final manifest under the stream's topic. */
-  index?: number;
+  /** With 'vod': the recording playlist's reference. */
+  recording?: string;
   /** Seconds; with 'vod'. */
   duration?: number;
 }
@@ -324,7 +328,7 @@ export type StreamStateResponse = PublishResult;
 /**
  * POST /api/internal/streams/:id/renditions — one rung of an ABR ladder,
  * reported by the uploader as that rung starts delivering and again when it
- * finalizes (then carrying `index` and `duration`, both or neither).
+ * finalizes (then carrying `recording` and `duration`).
  *
  * The admin merges the report into what it already stores for `(stream, name)`,
  * writes the merged ladder onto the catalogue entry, and answers with the
@@ -339,7 +343,7 @@ export interface RenditionReportResponse {
   /** The merged ladder after this report, ascending by height. */
   renditions: Rendition[];
   ladder: {
-    /** At least one rung, and every rung has an index. */
+    /** At least one rung, and every rung names its recording. */
     finished: boolean;
     /** Finished now and not before this report — the uploader's cue to report `vod`. */
     flippedToFinished: boolean;

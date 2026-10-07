@@ -1,3 +1,10 @@
+import {
+  isHeartbeatWindow,
+  STREAM_LIST_HEARTBEAT_MS,
+  STREAM_LIST_NOTE_WINDOW_MS,
+  windowEnd,
+  windowOf,
+} from '@swarm-hls-stream/shared';
 import assert from 'node:assert/strict';
 import { after, before, describe, it } from 'node:test';
 
@@ -5,23 +12,41 @@ import { loadConfig } from '../../src/config.js';
 import { makeHost, waitForIdle } from '../../src/harness/host.js';
 import { type Publisher, startPublisher } from '../../src/harness/publisher.js';
 import { requireStageStamps } from '../../src/harness/stageStamps.js';
-import { type CatalogEntry, type CatalogFeed, discoverCatalogFeed, fetchCatalog } from '../../src/harness/viewer.js';
-import { waitFor } from '../../src/harness/wait.js';
+import {
+  type CatalogEntry,
+  type CatalogFeed,
+  discoverCatalogFeed,
+  fetchCatalog,
+  fetchCatalogAt,
+  fetchListNote,
+} from '../../src/harness/viewer.js';
+import { sleep, waitFor } from '../../src/harness/wait.js';
 
 /**
  * Service — the stream catalog a VIEWER loads (resolved through the bee-gateway) reflects the
  * live→VOD lifecycle. This is the player-visible layer: the same `GET /feeds/{owner}/{topic}` the
  * client's StreamBrowser makes. A fresh publish must surface a new `live` entry, and a clean stop
  * must flip that same entry to `vod` with a real duration.
+ *
+ * The list is written direct and then named in a note, in 10 s windows with a heartbeat every
+ * minute. Once the entry says `vod`, a heartbeat note must name a version of the list that carries
+ * it, which is what a viewer on the notes reads instead of polling the next feed index.
  */
 
-// Catalog feed writes are deferred through the single bee-uploader node, so a fresh live/VOD entry
-// can take minutes to surface on the gateway-served catalog when the pusher is draining a segment
-// backlog. These waits are generous on purpose — this is an accepted propagation-latency budget,
-// not a behavioural expectation.
+// Generous on purpose: the gateway's feed lookup can still lag the write it reports, so these are an
+// accepted propagation budget, not a behavioural expectation.
 const APPEAR_WAIT_MS = 300_000;
 const VOD_WAIT_MS = 300_000;
 const MIN_STAMP_TTL_S = 600;
+
+/**
+ * How long after a window's end it is first asked. Never earlier: an ask before the note exists makes
+ * Bee skip its peers for that address for about a minute.
+ */
+const NOTE_READ_MARGIN_MS = 2_000;
+
+/** Heartbeat windows asked, each once, before the notes count as missing. */
+const HEARTBEAT_WINDOWS_ASKED = 3;
 
 const cfg = loadConfig();
 
@@ -30,6 +55,8 @@ describe('service — viewer catalog via gateway reflects live→VOD', () => {
   let publisher: Publisher;
   let feed: CatalogFeed;
   let baselineTopics: Set<string>;
+  let ourTopic: string | undefined;
+  let vodSeenAt: number | undefined;
 
   const safeFetch = async () => {
     try {
@@ -59,8 +86,6 @@ describe('service — viewer catalog via gateway reflects live→VOD', () => {
   });
 
   it('surfaces a new live entry, then flips it to VOD on a clean stop', async () => {
-    let ourTopic: string | undefined;
-
     await waitFor(
       async () => {
         const mine = (await safeFetch()).find((e) => !baselineTopics.has(e.topic) && e.state === 'live');
@@ -86,6 +111,7 @@ describe('service — viewer catalog via gateway reflects live→VOD', () => {
         const mine = (await safeFetch()).find((e) => e.topic === ourTopic);
         if (mine?.state === 'vod') {
           finalEntry = mine;
+          vodSeenAt = Date.now();
         }
         return finalEntry !== undefined;
       },
@@ -102,5 +128,42 @@ describe('service — viewer catalog via gateway reflects live→VOD', () => {
       `a VOD entry must carry a positive duration; got ${finalEntry?.duration}`,
     );
     assert.equal(finalEntry?.owner, feed.owner, 'the entry owner must match the catalog feed owner');
+  });
+
+  it('names a version carrying the recording in a heartbeat note of the list', async () => {
+    assert.ok(
+      ourTopic !== undefined && vodSeenAt !== undefined,
+      'the entry never reached vod, so there is nothing to name',
+    );
+
+    // A heartbeat window that starts after the vod entry was seen names a version at least that new.
+    const ratio = STREAM_LIST_HEARTBEAT_MS / STREAM_LIST_NOTE_WINDOW_MS;
+    let window = windowOf(vodSeenAt, STREAM_LIST_NOTE_WINDOW_MS) + 1;
+    const asked: number[] = [];
+    let found: { window: number; newest: number; writtenAt: number } | undefined;
+    while (asked.length < HEARTBEAT_WINDOWS_ASKED && found === undefined) {
+      while (!isHeartbeatWindow(window, STREAM_LIST_NOTE_WINDOW_MS, STREAM_LIST_HEARTBEAT_MS)) {
+        window += 1;
+      }
+      await sleep(Math.max(0, windowEnd(window, STREAM_LIST_NOTE_WINDOW_MS) + NOTE_READ_MARGIN_MS - Date.now()));
+      asked.push(window);
+      const note = await fetchListNote(host, cfg, feed, window).catch(() => null);
+      if (note !== null) {
+        found = { window, ...note };
+      }
+      window += ratio;
+    }
+    assert.ok(found, `no note in heartbeat windows ${asked.join(', ')} of the stream list`);
+    assert.ok(found.newest >= 0, `the heartbeat named no version at all (newest ${found.newest})`);
+
+    const version = await fetchCatalogAt(host, cfg, feed, found.newest);
+    const mine = version.find((e) => e.topic === ourTopic);
+    assert.equal(mine?.state, 'vod', `the version at index ${found.newest} the note names must list the recording`);
+
+    console.log(
+      `  observations, none of them asserted. heartbeat window ${found.window} named index ${found.newest}, ` +
+        `written ${found.writtenAt - windowEnd(found.window, STREAM_LIST_NOTE_WINDOW_MS)} ms after its end, ` +
+        `${asked.length} window(s) asked`,
+    );
   });
 });

@@ -2,6 +2,7 @@ import { ADMIN_API_TOKEN_KEY, ADMIN_API_URL_KEY } from '@swarm-hls-stream/shared
 
 import { assertUsableAdminApiToken } from '../libs/AdminApiClient.js';
 import { parsePublisherSpecs, PublisherSpec } from '../libs/BeePublisherPool.js';
+import { parseClockServers } from '../libs/sntp.js';
 import { gatePolicyFor, parseStartGateMode, START_GATE_CHEQUEBOOK_WARN } from '../libs/StartGates.js';
 
 import { readAbrConfig } from './abrConfig.js';
@@ -96,7 +97,7 @@ const DEFAULT_STAMP_MAX_UTILIZATION = 0.9;
  * The bounds are the range SRS itself will work in: below a frame the entrypoint refuses the GOP
  * arithmetic outright, and an hour is `isUsableDuration`'s own ceiling on a segment.
  */
-const DEFAULT_HLS_FRAGMENT_SECONDS = 0.5;
+const DEFAULT_HLS_FRAGMENT_SECONDS = 2;
 const MIN_HLS_FRAGMENT_SECONDS = 0.01;
 const MAX_HLS_FRAGMENT_SECONDS = 3600;
 
@@ -113,8 +114,7 @@ const MAX_HLS_FRAGMENT_SECONDS = 3600;
  *
  * **The default is derived, not chosen.** Every bee call the service makes sits inside
  * `retryUntilDeadlineAsync`, and the shortest window any of them gets is 10s: `CATALOG_RETRY_WINDOW_MS`
- * in `StreamCatalog.ts` and `MASTER_RETRY_WINDOW_MS` in `MasterFeedWriter.ts`, against 15s for the
- * three in `StreamUploader.ts`. The first backoff is 350ms before jitter halves it, so two whole
+ * in `StreamCatalog.ts`, against 15s for the two in `StreamUploader.ts`. The first backoff is 350ms before jitter halves it, so two whole
  * attempts fit inside 10s for any timeout up to 4825ms. 4s is that with room left over, and it keeps a
  * retry worth having: shorten a window below 8.35s and this becomes the wrong number, which is why
  * `test/config.test.ts` reads those windows out of the files that declare them and re-derives it.
@@ -158,6 +158,15 @@ const DEFAULT_START_GATE_TIMEOUT_MS = 20_000;
  * reason and with the same limit: a typo must not be a setting, as far as a range can tell.
  */
 const MAX_START_GATE_TIMEOUT_MS = 600_000;
+
+/**
+ * The time servers the clock check asks, every one of them in each round.
+ *
+ * Three public services run by different operators, so one of them being off or unreachable still
+ * leaves a round an answer to keep. A round keeps the quickest answer and compares nothing. A host with
+ * time servers of its own, or a firewall that allows UDP 123 only to some, names its own list.
+ */
+const DEFAULT_CLOCK_CHECK_SERVERS = 'time.cloudflare.com,time.google.com,pool.ntp.org';
 
 /**
  * One Bee node per rung, or empty for the single-node deployment described by BEE_URL and STAMP.
@@ -255,6 +264,8 @@ export const config = {
     min: MIN_CHEQUEBOOK_RECHECK_MS,
     max: MAX_CHEQUEBOOK_RECHECK_MS,
   }),
+  /** The servers the clock check asks. See `libs/ClockCheck.ts`. */
+  clockCheckServers: parseClockServers(optional('CLOCK_CHECK_SERVERS', DEFAULT_CLOCK_CHECK_SERVERS)),
   stampMinTtlHours: optionalNumber('STAMP_MIN_TTL_HOURS', DEFAULT_STAMP_MIN_TTL_HOURS, {
     min: 0,
     max: MAX_STAMP_MIN_TTL_HOURS,

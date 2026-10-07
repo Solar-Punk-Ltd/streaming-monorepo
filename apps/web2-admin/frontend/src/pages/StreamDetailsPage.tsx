@@ -429,10 +429,12 @@ export function StreamDetailsPage() {
                     </Field>
                   </Grid>
                 ) : null}
-                {stream.manifestIndex != null ? (
+                {stream.recording != null ? (
                   <Grid size={{ xs: 6, sm: 4 }}>
-                    <Field label="Manifest index">
-                      <Typography variant="body2">{stream.manifestIndex}</Typography>
+                    <Field label="Recording">
+                      <Typography variant="body2" sx={{ wordBreak: 'break-all' }}>
+                        {stream.recording}
+                      </Typography>
                     </Field>
                   </Grid>
                 ) : null}

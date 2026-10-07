@@ -8,6 +8,11 @@ Config-driven deployment for the Swarm HLS Stream stack.
 - Node.js 24+ and pnpm
 - [jq](https://jqlang.github.io/jq/download/)
 - SSH access for remote targets
+- Outbound UDP 123 from the publishing host to the time servers in `CLOCK_CHECK_SERVERS`. The
+  uploader checks its clock against them at start and every 10 minutes. More than 250 ms off and it
+  refuses to publish windows and reports `clock_untrusted` on `/health` until a later check measures it
+  within the limit. No answer, or an answer too slow to judge, is `clock_unchecked`, which refuses
+  nothing new. See "The clock check" in the uploader's README
 
 ## First-time Setup
 
@@ -75,17 +80,20 @@ Nothing in this stack transcodes. SRS cuts the stream it is given into segments,
 keyframe interval decides the segment length**, and the segment is the largest single hop between a
 camera and a viewer.
 
-| Setting                     | Use      | Why                                                                                |
-| --------------------------- | -------- | ---------------------------------------------------------------------------------- |
-| **Keyframe interval (GOP)** | **0.5s** | Measured on both sides. Larger costs latency and stalls, smaller breaks retrieval. |
-| Video bitrate               | 2500k    | 720p30. 1080p at 6000k also ships, and costs ~2.3x the BZZ.                        |
-| B-frames                    | off      | `-tune zerolatency` or equivalent.                                                 |
+| Setting                     | Use    | Why                                                                                       |
+| --------------------------- | ------ | ----------------------------------------------------------------------------------------- |
+| **Keyframe interval (GOP)** | **2s** | The product's segment length. A keyframe every 2s gives 2s segments, the shipped default. |
+| Video bitrate               | 2500k  | 720p30. 1080p at 6000k also ships, and costs ~2.3x the BZZ.                               |
+| B-frames                    | off    | `-tune zerolatency` or equivalent.                                                        |
 
 In OBS this is _Settings → Output → Advanced → Keyframe Interval_, which takes **seconds** and
-defaults to 0 (meaning "let the encoder decide", usually 2s). In ffmpeg it is `-g <frames>`, so at 30
-fps a 0.5s GOP is `-g 15`.
+defaults to 0 (meaning "let the encoder decide", usually 2s), so set it to 2 explicitly. In ffmpeg it
+is `-g <frames>`, so at 30 fps a 2s GOP is `-g 60`.
 
-**Why 0.5 and not something else**, from two funded sittings on 2026-08-12:
+**Why 2s, and what a shorter one buys.** 2s segments are the default everywhere, ruled by the owner
+on 2026-10-06. A shorter segment is a latency lever and nothing else here moved to justify it, so the
+table below is the cost of the choice rather than its reason. From two funded sittings on 2026-08-12,
+on a single-rendition stage:
 
 |      GOP | capture to fetchable | confirmed feed stalls |
 | -------: | -------------------: | --------------------: |
@@ -94,10 +102,11 @@ fps a 0.5s GOP is `-g 15`.
 | **0.5s** |            **1.55s** |            **0 of 3** |
 |    0.25s |       not comparable |                0 of 3 |
 
-Going from 2.0s to 0.5s costs **19% more BZZ**, because the extra bytes are keyframes.
+Going from 2.0s to 0.5s costs **19% more BZZ**, because the extra bytes are keyframes. A deployment
+that wants the lower latency sets `HLS_FRAGMENT` and the publisher's GOP to 0.5 together.
 
 ⛔⛔⛔ **This whole table is for a SINGLE-RENDITION stage. With the ABR ladder on, none of it decides
-the segment length and 0.5s is unreachable.** The transcoders re-GOP every rung from `HLS_FRAGMENT`
+the segment length.** The transcoders re-GOP every rung from `HLS_FRAGMENT`
 (`ABR_GOP = ABR_FPS x HLS_FRAGMENT`), so the broadcaster's own keyframe interval stops mattering to
 the segment length (it still decides how long a lost packet damages the picture, see the SRT section
 below), and
@@ -106,23 +115,24 @@ a second limit appears that a single rendition never meets: SRS announces each c
 Measured on the deployment host 2026-08-31, SRS sustains about **6.7 a second** while its own
 encoders were producing 8.0. Nothing errors. Announcements fall behind the media at 0.46s per second
 of video until the lag passes `HLS_WINDOW`, after which SRS deletes each segment before announcing
-it, the tallest rung is unpublished about two minutes in, and the master feed goes on advertising it.
+it, and the tallest rung is unpublished about two minutes in.
 
 | rungs | fragment |      asks | against ~6.7/s                                     |
 | ----: | -------: | --------: | -------------------------------------------------- |
 |     1 |     0.5s |     2.0/s | fine, and the table above applies                  |
 |     4 |     0.5s | **8.0/s** | **over. Loses the top rung every broadcast**       |
 |     4 |     1.0s |     4.0/s | 40% spare. Verified over 600s: lag flat, zero lost |
-|     4 |     2.0s |     2.0/s | 70% spare                                          |
+|     4 |     2.0s |     2.0/s | 70% spare, the shipped default                     |
 
-So a four-rung ladder runs at `HLS_FRAGMENT=1.0` and pays about one second of capture-to-fetchable
-for it (1.96s against 2.94s, 2026-08-03 sweep of 105 samples). ⚠️ The 6.7/s is one measurement on a
+So a four-rung ladder at the default 2s is well inside the limit. A deployment that sets it below 1s
+on a ladder is the one that loses a rung (1.96s against 2.94s capture-to-fetchable between 0.5s and
+1.0s segments, 2026-08-03 sweep of 105 samples). ⚠️ The 6.7/s is one measurement on a
 co-tenanted host and is not yet a gate. Nothing refuses a ladder that asks for more.
 
 **Why not go below 0.5s**, on the two reasons that survived a replicate:
 
-1. **Shipped config cannot get there.** `HLS_FRAGMENT` is `0.5`, and a segment is
-   `ceil(GOP / fragment) * fragment`, so asking an encoder for 0.25s yields 0.5s segments anyway.
+1. **Shipped config cannot get there.** `HLS_FRAGMENT` is `2`, and a segment is
+   `ceil(GOP / fragment) * fragment`, so asking an encoder for 0.25s yields 2s segments anyway.
    Reaching sub-0.5 takes a second deliberate change that no default leads to.
 2. **It buys nothing and costs more.** A 0.25s GOP measured 5.86s behind live against 1.0s's 5.52s
    and wrote 24% more BZZ.
@@ -137,10 +147,10 @@ reason for it did.**
 The measurements behind this, gop-sustain, gop-floor and, for the withdrawal,
 gop-floor-replicate, are kept outside the repository.
 
-⚠️ `HLS_FRAGMENT` (default `0.5`) is a **floor** on the segment, not the segment. A GOP below it is
+⚠️ `HLS_FRAGMENT` (default `2`) is a **floor** on the segment, not the segment. A GOP below it is
 rounded up, so lowering the encoder's keyframe interval without lowering `HLS_FRAGMENT` to match
 changes nothing. The pair is a range: a GOP outside `[HLS_FRAGMENT, HLS_FRAGMENT * HLS_AOF_RATIO]`,
-shipped as `[0.5, 2.5]`, is either rounded up or force-cut without a keyframe.
+shipped as `[2, 2.5]` (the ceiling is held in seconds as `HLS_SEGMENT_MAX`, 2.5, so it stays 2.5 whatever the fragment is), is either rounded up or force-cut without a keyframe.
 
 ⛔ **`HLS_FRAGMENT` now reaches the stream-uploader as well as the engine, and it is the grid every
 segment's `#EXT-X-PROGRAM-DATE-TIME` reads its media against.** Set it once in the profile's `.env`

@@ -3,7 +3,7 @@
  *
  * The merge is the one with a bug behind it. swarm-hls-stream's scenario H: a
  * rung dies and comes back, announces itself before it has finalized again,
- * and a wholesale replace throws away the index it already reported — which
+ * and a wholesale replace throws away the recording it already reported, which
  * un-finishes a ladder that was finished and leaves the viewer a master
  * playlist it cannot seek. Every case below is a shape that report can arrive
  * in.
@@ -18,6 +18,8 @@ import type { StreamRenditionRow } from '../../src/types/index.js';
 
 const TOPIC_720 = 'bbbbbbbb-0000-4000-8000-000000000720';
 const TOPIC_360 = 'bbbbbbbb-0000-4000-8000-000000000360';
+const RECORDING_A = 'a1'.repeat(32);
+const RECORDING_B = 'b2'.repeat(32);
 
 function rendition(over: Partial<Rendition> = {}): Rendition {
   return {
@@ -40,7 +42,7 @@ function renditionRow(over: Partial<StreamRenditionRow> = {}): StreamRenditionRo
     topic: TOPIC_720,
     bandwidth: 2_800_000,
     avg_bandwidth: 2_400_000,
-    manifest_index: null,
+    recording_ref: null,
     duration_seconds: null,
     updated_at: new Date('2026-09-11T11:00:00.000Z'),
     ...over,
@@ -48,7 +50,7 @@ function renditionRow(over: Partial<StreamRenditionRow> = {}): StreamRenditionRo
 }
 
 describe('toRendition', () => {
-  it('renames the two nullable columns and leaves them off when null', () => {
+  it('renames the nullable columns and leaves them off when null', () => {
     const value = toRendition(renditionRow());
 
     assert.deepEqual(value, {
@@ -59,13 +61,13 @@ describe('toRendition', () => {
       bandwidth: 2_800_000,
       avgBandwidth: 2_400_000,
     });
-    assert.ok(!('index' in value), 'an unfinished rung has no index');
+    assert.ok(!('recording' in value), 'an unfinished rung has no recording');
     assert.ok(!('duration' in value), 'and no duration');
   });
 
-  it('carries index 0, which is a feed index like any other', () => {
-    const value = toRendition(renditionRow({ manifest_index: 0, duration_seconds: 0 }));
-    assert.equal(value.index, 0);
+  it('carries a duration of 0 beside the recording, which is not "absent"', () => {
+    const value = toRendition(renditionRow({ recording_ref: RECORDING_A, duration_seconds: 0 }));
+    assert.equal(value.recording, RECORDING_A);
     assert.equal(value.duration, 0);
   });
 });
@@ -89,8 +91,8 @@ describe('mergeRendition', () => {
   it('keeps what a finished rung finished with, on the same topic', () => {
     // Scenario H. The recovered rung resumes writing the feed it was already
     // writing, so the recording it closed there is still the one on the
-    // catalogue: `index` and `duration` stay, the encoder's numbers do not.
-    const stored = rendition({ index: 42, duration: 61.5 });
+    // catalogue: `recording` and `duration` stay, the encoder's numbers do not.
+    const stored = rendition({ recording: RECORDING_A, duration: 61.5 });
     const incoming = rendition({
       width: 1920,
       height: 1080,
@@ -105,16 +107,16 @@ describe('mergeRendition', () => {
       topic: TOPIC_720,
       bandwidth: 5_000_000,
       avgBandwidth: 4_000_000,
-      index: 42,
+      recording: RECORDING_A,
       duration: 61.5,
     });
   });
 
   it('matches the topic case-insensitively, as a UUID', () => {
-    const stored = rendition({ index: 42, duration: 61.5 });
+    const stored = rendition({ recording: RECORDING_A, duration: 61.5 });
     const incoming = rendition({ topic: TOPIC_720.toUpperCase() });
 
-    assert.equal(mergeRendition(stored, incoming).index, 42);
+    assert.equal(mergeRendition(stored, incoming).recording, RECORDING_A);
   });
 
   it('replaces a finished rung that reports on a fresh topic', () => {
@@ -122,21 +124,21 @@ describe('mergeRendition', () => {
     // encoder reconnected after the broadcast finished, so this rung is live
     // again — keeping the old record would leave the master advertising the
     // recording's feed while the one now being written went unadvertised.
-    const stored = rendition({ index: 42, duration: 61.5 });
+    const stored = rendition({ recording: RECORDING_A, duration: 61.5 });
     const incoming = rendition({ topic: TOPIC_360 });
 
     const merged = mergeRendition(stored, incoming);
     assert.deepEqual(merged, incoming);
     assert.equal(merged.topic, TOPIC_360, 'the feed now being written');
-    assert.ok(!('index' in merged), 'and it is delivering, not finished');
+    assert.ok(!('recording' in merged), 'and it is delivering, not finished');
     assert.ok(!('duration' in merged));
   });
 
   it('lets a finished report replace a finished rung', () => {
-    // A second recording of the same rung: the incoming index is the newer
+    // A second recording of the same rung: the incoming recording is the newer
     // one, and keeping the stored one would point the viewer at the old take.
-    const stored = rendition({ index: 42, duration: 61.5 });
-    const incoming = rendition({ topic: TOPIC_360, index: 7, duration: 12 });
+    const stored = rendition({ recording: RECORDING_A, duration: 61.5 });
+    const incoming = rendition({ topic: TOPIC_360, recording: RECORDING_B, duration: 12 });
 
     assert.deepEqual(mergeRendition(stored, incoming), incoming);
   });
@@ -148,12 +150,18 @@ describe('isLadderFinished', () => {
   });
 
   it('is false while any rung is still delivering', () => {
-    assert.equal(isLadderFinished([rendition({ name: '360p', index: 3, duration: 60 }), rendition()]), false);
+    assert.equal(
+      isLadderFinished([rendition({ name: '360p', recording: RECORDING_B, duration: 60 }), rendition()]),
+      false,
+    );
   });
 
-  it('is true once every rung has an index', () => {
+  it('is true once every rung has a recording', () => {
     assert.equal(
-      isLadderFinished([rendition({ name: '360p', index: 3, duration: 60 }), rendition({ index: 0, duration: 61 })]),
+      isLadderFinished([
+        rendition({ name: '360p', recording: RECORDING_B, duration: 60 }),
+        rendition({ recording: RECORDING_A, duration: 61 }),
+      ]),
       true,
     );
   });
@@ -169,7 +177,10 @@ describe('ladderDuration', () => {
     // The rungs are cut from one broadcast and differ by fractions of a
     // segment; a seek bar built on the shortest stops before the end.
     assert.equal(
-      ladderDuration([rendition({ name: '360p', index: 3, duration: 61.2 }), rendition({ index: 4, duration: 60.8 })]),
+      ladderDuration([
+        rendition({ name: '360p', recording: RECORDING_B, duration: 61.2 }),
+        rendition({ recording: RECORDING_A, duration: 60.8 }),
+      ]),
       61.2,
     );
   });

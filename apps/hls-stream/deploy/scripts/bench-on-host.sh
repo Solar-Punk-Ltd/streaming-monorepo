@@ -487,6 +487,8 @@ CLIENT_SOURCE_PATHS=(
 # The package the stack's shared package re-exports, which vite compiles into the bundle as well. It
 # sits at the root of the one workspace, so it is read from WORKSPACE_ROOT, as `deploy.sh` reads it.
 CONTRACTS_SOURCE_PATH="packages/contracts"
+# The window convention, which the shared package re-exports too, at the same root.
+SWARM_WINDOWS_SOURCE_PATH="packages/swarm-windows"
 
 # ⛔ `.git` is excluded from the rsync above, so the harness cannot answer this for itself once it is
 # on the host. Computed here, on the operator's machine, and carried in as the expectation the
@@ -519,12 +521,13 @@ workspace_tree_or_empty() {
 EXPECT_CLIENT_TREE="$(git_tree_or_empty packages/client)"
 EXPECT_SHARED_TREE="$(git_tree_or_empty packages/shared)"
 EXPECT_CONTRACTS_TREE="$(workspace_tree_or_empty "${CONTRACTS_SOURCE_PATH}")"
+EXPECT_SWARM_WINDOWS_TREE="$(workspace_tree_or_empty "${SWARM_WINDOWS_SOURCE_PATH}")"
 EXPECT_CLIENT_DIRTY=0
 if [ -n "$(git -C "${REPO_ROOT}" status --porcelain -- "${CLIENT_SOURCE_PATHS[@]}" 2>/dev/null || true)" ]; then
   EXPECT_CLIENT_DIRTY=1
 fi
 if [ -n "${WORKSPACE_ROOT}" ] &&
-  [ -n "$(git -C "${WORKSPACE_ROOT}" status --porcelain -- "${CONTRACTS_SOURCE_PATH}" 2>/dev/null || true)" ]; then
+  [ -n "$(git -C "${WORKSPACE_ROOT}" status --porcelain -- "${CONTRACTS_SOURCE_PATH}" "${SWARM_WINDOWS_SOURCE_PATH}" 2>/dev/null || true)" ]; then
   EXPECT_CLIENT_DIRTY=1
 fi
 
@@ -532,6 +535,7 @@ RUN_ENV="-e E2E_SSH_TARGET=local -e E2E_PUBLIC_HOST=${HOST_ADDRESS} -e E2E_PROFI
 RUN_ENV="${RUN_ENV} -e E2E_EXPECT_CLIENT_TREE=${EXPECT_CLIENT_TREE}"
 RUN_ENV="${RUN_ENV} -e E2E_EXPECT_SHARED_TREE=${EXPECT_SHARED_TREE}"
 RUN_ENV="${RUN_ENV} -e E2E_EXPECT_CONTRACTS_TREE=${EXPECT_CONTRACTS_TREE}"
+RUN_ENV="${RUN_ENV} -e E2E_EXPECT_SWARM_WINDOWS_TREE=${EXPECT_SWARM_WINDOWS_TREE}"
 RUN_ENV="${RUN_ENV} -e E2E_EXPECT_CLIENT_DIRTY=${EXPECT_CLIENT_DIRTY}"
 if [ "${OWN_NETWORK}" -eq 1 ]; then
   RUN_ENV="${RUN_ENV} -e E2E_LOCAL_HOST_ADDRESS=${HOST_ADDRESS}"

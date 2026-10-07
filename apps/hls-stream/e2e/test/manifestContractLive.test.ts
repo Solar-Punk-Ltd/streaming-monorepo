@@ -1,4 +1,12 @@
-import { addingStreamToList, rungAnnounced, segmentUploaded } from '@swarm-hls-stream/shared';
+import {
+  addingStreamToList,
+  encodeLiveWindowPayload,
+  LIVE_PLAYLIST_WINDOW_MS,
+  rungAnnounced,
+  segmentUploaded,
+  windowChunkPath,
+  windowOf,
+} from '@swarm-hls-stream/shared';
 import assert from 'node:assert/strict';
 import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
@@ -558,16 +566,33 @@ function config(env: NodeJS.ProcessEnv = {}): E2EConfig {
 }
 
 /** What one gateway read was asked for, and when it happened relative to the log re-read. */
-type Step = { readonly feed: string } | { readonly log: true };
+type Step = { readonly window: string } | { readonly log: true };
 
-/** A Host that answers every feed read with one playlist and records the order it was asked. */
+/** A playlist as the gateway answers it from a live window chunk, written-at line and all. */
+function windowPayloadOf(playlist: string): string {
+  return new TextDecoder().decode(encodeLiveWindowPayload(playlist, Date.now()));
+}
+
+/** A Host that answers every window read with one playlist and records the order it was asked. */
 function stubHost(playlist: string, steps: Step[]): Host {
   return {
-    localText: async (_port: number, path: string) => {
-      steps.push({ feed: path });
-      return playlist;
+    localChunkPayload: async (_port: number, path: string) => {
+      steps.push({ window: path });
+      return { status: 200, payload: windowPayloadOf(playlist) };
     },
   } as unknown as Host;
+}
+
+/** The chunk path of every live window of `topic` around now, wider than any read's lookback. */
+function windowPathsOf(topic: string, owner: string): ReadonlySet<string> {
+  const now = windowOf(Date.now(), LIVE_PLAYLIST_WINDOW_MS);
+  return new Set(
+    Array.from(
+      { length: 40 },
+      (_, back) =>
+        `/${windowChunkPath({ topic, kind: 'live', windowMs: LIVE_PLAYLIST_WINDOW_MS, window: now + 5 - back }, owner)}`,
+    ),
+  );
 }
 
 describe('the one call a live suite makes', () => {
@@ -595,8 +620,8 @@ describe('the one call a live suite makes', () => {
     });
 
     assert.deepEqual(
-      steps.map((step) => ('log' in step ? 'log' : 'feed')),
-      ['feed', 'feed', 'log'],
+      steps.map((step) => ('log' in step ? 'log' : 'window')),
+      ['window', 'window', 'log'],
     );
   });
 
@@ -665,17 +690,21 @@ describe('the one call a live suite makes', () => {
   it('refuses rungs that break at different sequences when the suite asks for one return', async () => {
     const byTopic = new Map([
       [
-        rungPlaylistParse(feedOf('360p', TOPIC_360), '').topicHex,
+        windowPathsOf(TOPIC_360, OWNER),
         rungPlaylist([0, 1, 2, 3], { breaks: [3], datedLater: { from: 3, byMs: 26_000 } }),
       ],
       [
-        rungPlaylistParse(feedOf('1080p', TOPIC_1080), '').topicHex,
+        windowPathsOf(TOPIC_1080, OWNER),
         rungPlaylist([0, 1, 2, 3], { breaks: [2], datedLater: { from: 2, byMs: 26_000 } }),
       ],
     ]);
     const host = {
-      localText: async (_port: number, path: string) =>
-        [...byTopic].find(([topicHex]) => path.includes(topicHex))?.[1] ?? '',
+      localChunkPayload: async (_port: number, path: string) => {
+        const playlist = [...byTopic].find(([paths]) => paths.has(path))?.[1];
+        return playlist === undefined
+          ? { status: 404, payload: null }
+          : { status: 200, payload: windowPayloadOf(playlist) };
+      },
     } as unknown as Host;
     const check = {
       owner: OWNER,

@@ -19,8 +19,7 @@ import { rungCountersOf } from '../src/harness/uploaderMetrics.js';
  * A `/health` reason, the degraded status beside it and the name of a Prometheus counter are all
  * chosen in the uploader and copied here, because e2e must not reach past a package boundary into
  * another package's internals. A copy is only safe while something refuses the two drifting apart,
- * which is the arrangement `rungDeathAgreement.test.ts` uses for the two rung-death limits and
- * `logLevel.test.ts` uses for the uploader's own log call sites.
+ * which is the arrangement `logLevel.test.ts` uses for the uploader's own log call sites.
  *
  * ⛔ Drift here is not a crash. A reason renamed in the uploader leaves
  * `segmentUploadFailureRefusal` asking for a word nothing writes, so the drain scenario goes red

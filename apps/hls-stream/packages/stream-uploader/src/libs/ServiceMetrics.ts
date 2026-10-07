@@ -21,6 +21,7 @@ export class ServiceMetrics {
   private streamsFinalized = 0;
   private streamsFailed = 0;
   private streamsReaped = 0;
+  private recordingsUnglued = 0;
   private segmentDurationsUnread = 0;
   private segmentsSkipped = 0;
   private openingSegmentsWithheld = 0;
@@ -155,6 +156,15 @@ export class ServiceMetrics {
    */
   public recordStreamReaped(): void {
     this.streamsReaped += 1;
+  }
+
+  /**
+   * A session that opened on a topic with a known recording and could not download it, so its own
+   * recording starts without the broadcast before it. The broadcast goes on, and the earlier recording
+   * is still listed under its own entry.
+   */
+  public recordRecordingUnglued(): void {
+    this.recordingsUnglued += 1;
   }
 
   /**
@@ -310,6 +320,7 @@ export class ServiceMetrics {
       streamsFinalizedTotal: this.streamsFinalized,
       streamsFailedTotal: this.streamsFailed,
       streamsReapedTotal: this.streamsReaped,
+      recordingsUngluedTotal: this.recordingsUnglued,
       segmentDurationsUnreadTotal: this.segmentDurationsUnread,
       authRejectionsTotal: this.authRejections,
       takeoversRefusedTotal: this.takeoversRefused,
@@ -379,6 +390,8 @@ interface MetricsCounters {
   streamsFailedTotal: number;
   /** Broadcasts finalized because their engine went silent rather than because anything asked. */
   streamsReapedTotal: number;
+  /** Sessions whose recording started without the topic's last recording, because it would not download. */
+  recordingsUngluedTotal: number;
   /** Segments published with the engine's declared duration because their own timestamps were unreadable. */
   segmentDurationsUnreadTotal: number;
   /** Requests refused by a credential gate, across every gate in the process. */

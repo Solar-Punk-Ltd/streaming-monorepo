@@ -1,5 +1,15 @@
 import { FeedIndex, PrivateKey, Topic } from '@ethersphere/bee-js';
-import { catalogStateLost, ladderFinalized } from '@swarm-hls-stream/shared';
+import {
+  catalogStateLost,
+  createNoteWindowWriter,
+  ladderFinalized,
+  STREAM_LIST_HEARTBEAT_MS,
+  STREAM_LIST_NOTE_WINDOW_MS,
+  windowIdentifier,
+  type WindowSlot,
+  type WindowWriteEvent,
+  type WindowWriterClock,
+} from '@swarm-hls-stream/shared';
 import PQueue from 'p-queue';
 
 import { MediaType, Rendition, STREAM_STATUS_LIVE, STREAM_STATUS_VOD, StreamStatus } from '../types.js';
@@ -10,19 +20,14 @@ import { BeePublisher, BeePublisherPool, safeUrl } from './BeePublisherPool.js';
 import { CatalogIndexStore } from './CatalogIndexStore.js';
 import { ErrorHandler } from './ErrorHandler.js';
 import { hasRecording, isFinishedLadder, recordedRungs, recordingDuration } from './LadderCompletion.js';
-import { advertisableRenditions, LadderLivenessBook } from './LadderLiveness.js';
 import { LadderIdentity, LadderRegistry, RenditionAnnouncement } from './LadderRegistry.js';
 import { Logger } from './Logger.js';
-import { MasterFeedWriter, PublishedMaster } from './MasterFeedWriter.js';
-import { ladderShape, MasterRewriteSchedule } from './MasterRewriteSchedule.js';
 import { NodeUnreachableError } from './NodeUnreachableError.js';
 
 const CATALOG_RETRY_WINDOW_MS = 10_000;
 
-// Re-exported from where they are now declared, so nothing that named them here has to move. The
-// rewrite schedule moved out because the admin-mode ladder registry runs the same one; the identity
+// Re-exported from where it is now declared, so nothing that named it here has to move. The identity
 // moved out because it describes a ladder rather than a catalog, and both registries are handed one.
-export { MASTER_REWRITE_RETRY_MS } from './MasterRewriteSchedule.js';
 export type { LadderIdentity } from './LadderRegistry.js';
 
 /**
@@ -36,14 +41,19 @@ export interface StreamEntry {
   title: string;
   owner: string;
   /**
-   * The feed a viewer opens. For a ladder this is the master playlist's feed, so one URL yields
-   * every rung; for a single-rendition stream it is the media playlist's feed, as it always was.
+   * The topic a viewer opens: a single-rendition stream's own, and a ladder's lowest rung's, which is
+   * what a player that knows nothing of `renditions` plays. A player that does builds the ladder's
+   * master playlist from `renditions`.
    */
   topic: string;
   state: StreamStatus;
   mediatype: MediaType;
   timestamp: number;
-  index?: number;
+  /**
+   * Where the recording is: the reference of its recording playlist, read with `GET /bytes/<recording>`.
+   * For a ladder, its lowest finished rung's.
+   */
+  recording?: string;
   duration?: number;
   /**
    * Ladder identity, absent on single-rendition streams. Present, it — not `topic` — is what
@@ -72,11 +82,16 @@ export class StreamCatalog implements LadderRegistry {
   private publishers: BeePublisherPool;
   private signer: PrivateKey;
   private feedTopic: Topic;
+  /** The text the feed topic is made from, and the topic of the list's notes, which readers compute from it. */
+  private readonly feedTopicName: string;
   private indexStore?: CatalogIndexStore;
   private feedIndex: FeedIndex | null = null;
   private queue = new PQueue({ concurrency: 1 });
   private logger = Logger.getInstance();
   private errorHandler = ErrorHandler.getInstance();
+
+  /** Running while this process writes the list, which is standalone only. See {@link startNotes}. */
+  private notes?: ReturnType<typeof createNoteWindowWriter>;
 
   /**
    * Set when boot resumed to an index whose state it never read — the head was below the persisted
@@ -91,132 +106,12 @@ export class StreamCatalog implements LadderRegistry {
   /** Consecutive failures to read that unread state. See {@link TREAT_STATE_AS_LOST_AFTER}. */
   private unreadableStateReads = 0;
 
-  /**
-   * Writes each ladder's master playlist. Absent, ladder entries fall back to pointing at their
-   * lowest rung, which is what a client without master support reads.
-   */
-  private masterWriter?: MasterFeedWriter;
-
-  /**
-   * How far each ladder's rungs have got, one tracker per group.
-   *
-   * ⛔ Kept here rather than in {@link MasterFeedWriter} because the writer is handed a rendition
-   * list and should stay that way: what a master is ALLOWED to say is a catalog decision, and the
-   * writer's job is to write what it is given.
-   */
-  private readonly liveness = new LadderLivenessBook();
-
-  /**
-   * When a rung dying may rewrite this ladder's master, and what a rewrite that did not land costs.
-   *
-   * ⛔ Lifted into {@link MasterRewriteSchedule} rather than kept here, because the admin-mode ladder
-   * registry has to run the same rules and every one of them is a fix for a measured live failure.
-   * The rules and the reasons for them are stated there; nothing about them changed in the move.
-   */
-  private readonly rewrites: MasterRewriteSchedule;
-
-  /** The identity each ladder last announced under, so a rung dying can be written as that owner. */
-  private readonly lastIdentity = new Map<string, LadderIdentity>();
-
-  /**
-   * One segment of this rung reached Swarm.
-   *
-   * Called from the uploader's segment path beside the per-rung metric, because that is the one
-   * place a delivery is known to have actually landed rather than been attempted.
-   */
-  public recordRungDelivered(group: string, rung: string): void {
-    this.republishIfLadderShapeChanged(group, this.liveness.recordDelivered(group, rung));
-  }
-
-  /** One segment of this rung was dropped. See {@link LadderRegistry.recordRungUploadFailed}. */
-  public recordRungUploadFailed(group: string, rung: string): void {
-    this.republishIfLadderShapeChanged(group, this.liveness.recordUploadFailed(group, rung));
-  }
-
-  /**
-   * Rewrite the master when the set of producing rungs changes, and only then.
-   *
-   * ⛔⛔⛔ **Without this the filter never runs at the moment it matters.** `upsertRendition` is the
-   * only path that writes a master, and it fires on a rendition announce: at startup and on bitrate
-   * drift. A rung dying is neither. Measured live 2026-09-01 over a clean two minute outage with
-   * `activeStreams 3` throughout, the master was not rewritten once, so a viewer joining was offered
-   * the dead rung for the whole outage even with the filter deployed and correct.
-   *
-   * Fire and forget, deliberately: the caller is the segment path and a master write is a feed write
-   * behind a queue. A burst of deliveries across one transition still queues a single rewrite,
-   * because {@link MasterRewriteSchedule.beginRewrite} marks the shape being written as in flight
-   * until that write settles.
-   *
-   * ⛔ **A rewrite that did not reach the feed is not a shape anyone is being offered, and this used
-   * to record it as one.** `advertised` was stamped before the write ran, so a master the writer
-   * could not publish was remembered as published: `republishMaster` rejects when the master feed
-   * exhausts its own retry window, the catch only logged, and nothing ever tried again. The reasoning
-   * written here leaned on the next transition or the next announce to put it right, and a steady
-   * broadcast produces neither, so one failed write left a viewer joining that broadcast offered a
-   * dead rung for the rest of it. Now `advertised`, kept in {@link MasterRewriteSchedule} since the web2 admin link change,
-   * records only what the feed took, and a failure holds the group off for
-   * {@link MASTER_REWRITE_RETRY_MS} rather than for good.
-   */
-  private republishIfLadderShapeChanged(group: string, liveRungs: readonly string[]): void {
-    if (this.masterWriter === undefined) {
-      // No master exists to correct: the entry points a viewer straight at a rung. See `upsertRendition`.
-      return;
-    }
-
-    const identity = this.lastIdentity.get(group);
-    if (identity === undefined) {
-      // Nothing has announced this ladder yet, so there is no master to correct and no owner to
-      // write as. The first announce publishes the right shape anyway.
-      return;
-    }
-
-    const shape = ladderShape(liveRungs);
-    if (!this.rewrites.beginRewrite(group, shape)) {
-      return;
-    }
-
-    void this.rewriteMaster(group, shape, identity);
-  }
-
-  /** Runs one rewrite and records what it actually achieved. Never rejects: its caller is a segment. */
-  private async rewriteMaster(group: string, shape: string, identity: LadderIdentity): Promise<void> {
-    try {
-      if (await this.republishMaster(identity)) {
-        this.rewrites.rewriteLanded(group, shape);
-        return;
-      }
-      // Resolved without writing, which is the ladder having no entry to rewrite or no rendition left
-      // to name. Held off like a failure: both are conditions that persist, and asking again on the
-      // next segment would ask several times a second for the rest of the broadcast.
-      this.rewrites.holdOff(group);
-    } catch (error) {
-      this.rewrites.holdOff(group);
-      this.logger.error(`[StreamCatalog] Could not rewrite the master for ${group} after its rungs changed:`, error);
-    } finally {
-      this.rewrites.endRewrite(group, shape);
-    }
-  }
-
-  /**
-   * @param now a monotonic reading in milliseconds, for the one thing here that measures a duration:
-   * how long a failed master rewrite waits before it may be tried again. Monotonic rather than a
-   * date so a clock adjustment cannot move the deadline, and injected so a test can step it rather
-   * than wait out {@link MASTER_REWRITE_RETRY_MS}.
-   */
-  constructor(
-    publishers: BeePublisherPool,
-    streamKey: string,
-    feedTopic: string,
-    indexStore?: CatalogIndexStore,
-    masterWriter?: MasterFeedWriter,
-    now: () => number = () => performance.now(),
-  ) {
+  constructor(publishers: BeePublisherPool, streamKey: string, feedTopic: string, indexStore?: CatalogIndexStore) {
     this.publishers = publishers;
     this.signer = new PrivateKey(streamKey);
     this.feedTopic = Topic.fromString(feedTopic);
+    this.feedTopicName = feedTopic;
     this.indexStore = indexStore;
-    this.masterWriter = masterWriter;
-    this.rewrites = new MasterRewriteSchedule(now);
 
     const publisher = this.publisher;
     this.logger.debug(
@@ -233,6 +128,72 @@ export class StreamCatalog implements LadderRegistry {
    */
   public getMsSinceIndexSaveFailed(): number | null {
     return this.indexStore?.getMsSinceSaveFailed() ?? null;
+  }
+
+  /**
+   * Starts writing the list's notes: in each 10 s window that saw a new version, and in every aligned
+   * heartbeat window once a minute, a note naming the newest index this process has stored. A viewer
+   * reads one note a window instead of polling the next feed index, which is the early ask that makes
+   * Bee skip its peers for that address. See "Time windows on Swarm" in the architecture overview.
+   *
+   * Only after {@link init}, which settles the index a note names, and only where this process writes
+   * the list. In admin mode the admin writes the list and its notes, and a second writer here would
+   * sign different notes at the same addresses.
+   *
+   * @param options.clock the writer's clock and timers, the system's unless a test hands its own.
+   * @param options.clockTrusted asked before each note, the clock check's verdict in production. A note
+   * dated by a wrong clock sits at an address no reader asks, so an untrusted clock skips it and the
+   * news waits for the next window the clock is trusted in.
+   */
+  public startNotes(options: { clock?: WindowWriterClock; clockTrusted?: () => boolean } = {}): void {
+    if (this.notes !== undefined) {
+      return;
+    }
+    this.notes = createNoteWindowWriter({
+      topic: this.feedTopicName,
+      windowMs: STREAM_LIST_NOTE_WINDOW_MS,
+      heartbeatMs: STREAM_LIST_HEARTBEAT_MS,
+      newestStored: () => this.newestStored(),
+      write: (slot, payload) => this.writeNote(slot, payload),
+      onEvent: (event) => this.logNoteEvent(event),
+      clock: options.clock,
+      clockTrusted: options.clockTrusted,
+    });
+    this.notes.start();
+  }
+
+  /** Stops the note writer. Settles once the notes already being written have finished. */
+  public async stopNotes(): Promise<void> {
+    await this.notes?.stop();
+  }
+
+  /**
+   * The newest feed index whose own write finished, or -1 before any has. `feedIndex` moves only after
+   * a write's receipt, and at boot it is the head the node answered or the last index this uploader
+   * persisted after a write of its own, both stored.
+   */
+  private newestStored(): number {
+    return this.feedIndex === null ? -1 : Number(this.feedIndex.toBigInt());
+  }
+
+  /** One note, signed by the list's key over the window's identifier, direct and tried once. */
+  private async writeNote(slot: WindowSlot, payload: Uint8Array): Promise<void> {
+    const publisher = this.publisher;
+    await publisher.bee.soc
+      .makeWriter(this.signer)
+      .upload(publisher.stamp, windowIdentifier(slot), payload, { deferred: false });
+  }
+
+  private logNoteEvent(event: WindowWriteEvent): void {
+    if (event.outcome === 'failed') {
+      this.logger.warn(
+        `[StreamCatalog] List note for window ${event.window} not written, the next window carries it: ${getErrorMessage(event.error)}`,
+      );
+    } else if (event.outcome === 'written') {
+      this.logger.debug(`[StreamCatalog] List note written window=${event.window} in ${event.durationMs}ms`);
+    } else if (event.outcome === 'missed') {
+      this.logger.warn(`[StreamCatalog] List note windows ${event.fromWindow} to ${event.toWindow} passed unwritten`);
+    }
   }
 
   /**
@@ -414,17 +375,11 @@ export class StreamCatalog implements LadderRegistry {
 
   /**
    * Merges one rung into its ladder's single catalog entry, creating the entry if this is the
-   * first rung up, and republishes the ladder's master playlist to match.
+   * first rung up.
    *
    * Four uploaders call this concurrently for the same ladder, each holding only its own rung.
    * The read-merge-write that reconciles them is only safe because the catalog's queue serialises
-   * every write to this feed, so the merge always sees the previous rung's result — and it is also
-   * the only point at which the *whole* ladder is known, which is why the master is written here
-   * rather than from the uploader that happens to hold a rung.
-   *
-   * The master goes out before the catalog entry that points at it. The other order would publish
-   * an entry whose `topic` resolves to nothing for as long as the two writes are apart, and a
-   * viewer reading the catalog in that window sees a stream it cannot open.
+   * every write to this feed, so the merge always sees the previous rung's result.
    *
    * @returns what this announce achieved for the whole ladder. See {@link RenditionAnnouncement}: the
    * flip is read off the entry the catalog held rather than off the caller's intent, for the reason
@@ -438,8 +393,8 @@ export class StreamCatalog implements LadderRegistry {
    * Record that this rung ended without a recording, so its ladder no longer waits for it. See
    * {@link LadderRegistry.recordRungUnfinished}.
    *
-   * The same merge and the same two writes as {@link upsertRendition}, master first, so the
-   * `ladderFinalized` line keeps its one meaning: said once, after the write that made the entry a
+   * The same merge and the same write as {@link upsertRendition}, so the `ladderFinalized` line keeps
+   * its one meaning: said once, after the write that made the entry a
    * recording, whichever path that write came from. On 2026-09-23 it would have been a sibling's
    * announce, because 1080p stopped two seconds before the last three rungs finalized. Stopping after
    * them, this is the write that finishes the ladder.
@@ -454,12 +409,11 @@ export class StreamCatalog implements LadderRegistry {
     merge: RungMerge,
   ): Promise<RenditionAnnouncement> {
     let flippedToVod = false;
-    let shapeThatLanded: string | null = null;
-    let masterIndex: number | null = null;
     let duration: number | null = null;
+    let recording: string | null = null;
 
     await this.queue.add(async () => {
-      await this.writeFeed(async (previous) => {
+      await this.writeFeed((previous) => {
         const held = previous.find((e) => e.owner === identity.owner && e.group === identity.group);
         if (merge.unfinished && held === undefined) {
           // No rung of this ladder was ever listed, so nothing waits for this one and no viewer can
@@ -476,93 +430,29 @@ export class StreamCatalog implements LadderRegistry {
           `[StreamCatalog] Ladder ${identity.group}: the catalog held ` +
             `${held === undefined ? 'no entry' : `state=${held.state} renditions=${held.renditions?.length ?? 0}`}` +
             `, this announce carries ${rendition.name}` +
-            `${rendition.index === undefined ? ' with no index' : ` at index ${rendition.index}`}` +
+            `${hasRecording(rendition) ? ' with its recording' : ' with no recording'}` +
             `${merge.unfinished ? ' that will not finish' : ''}` +
             `, so the entry becomes ${entry.state}`,
         );
         flippedToVod = entry.state === STREAM_STATUS_VOD && !wasVod;
         duration = entry.duration ?? null;
-        // ⛔ A master naming a rung nothing is producing offers a viewer a quality with nothing
-        // behind it. The player moves them off within about seven seconds, so this is the last few
-        // seconds of that harm rather than all of it, and it is harm a stream need not cause.
-        const advertised = advertisableRenditions(entry.renditions ?? [], this.liveness.of(identity.group));
-        // Remembered here because this is the path that always runs: a ladder that never announces
-        // has no master for a rung death to correct, and no owner to write it as.
-        this.lastIdentity.set(identity.group, identity);
-        const published = await this.masterWriter?.publish(identity.group, advertised);
-        if (published) {
-          shapeThatLanded = ladderShape(advertised.map((rendition) => rendition.name));
-          masterIndex = published.index;
-        }
+        recording = entry.recording ?? null;
 
-        return [
-          ...withoutGroup(previous, identity.owner, identity.group),
-          published ? withMaster(entry, published) : entry,
-        ];
+        return [...withoutGroup(previous, identity.owner, identity.group), entry];
       });
-
-      // ⛔ After the write and only when the master went out, for the reason the line below is after
-      // it too. `advertised` is what a later rung death compares itself against, so a shape recorded
-      // here that the feed did not take is a correction that will never be attempted. This announce
-      // can fail at the master write or at the catalog write that names it, and neither leaves a
-      // viewer resolving the new shape.
-      if (shapeThatLanded !== null) {
-        this.rewrites.recordAdvertised(identity.group, shapeThatLanded);
-      }
 
       // ⛔⛔⛔ After the write, never inside the update. The one externally visible moment a ladder
       // ends, and the line scenario H arms its kill on, so written from inside the callback it
-      // announced a flip the feed had not taken yet: the master write and the catalog write both
-      // still lay ahead of it. A crash there left the log claiming a finished ladder over an entry
-      // that honestly still said `live`, and the reboot then flipped it for real and said so again.
-      // Two lines, one flip, and no process wrong about itself. Here it means the entry IS vod.
+      // announced a flip the feed had not taken yet. A crash there left the log claiming a finished
+      // ladder over an entry that honestly still said `live`, and the reboot then flipped it for real
+      // and said so again. Two lines, one flip, and no process wrong about itself. Here it means the
+      // entry IS vod.
       if (flippedToVod) {
         this.logger.log(ladderFinalized(identity.group));
       }
     });
 
-    return { masterIndex, flippedToFinished: flippedToVod, duration };
-  }
-
-  /**
-   * Rewrite one ladder's master from the entry the catalog already holds, and answer whether the new
-   * shape reached the feed.
-   *
-   * Shares `writeFeed` with {@link upsertRendition} rather than reaching for the master writer
-   * directly, because the entry carries the master's index and a master written without updating it
-   * leaves the catalog pointing a viewer at the previous version.
-   *
-   * That is also why the answer is taken from inside the update and returned only once the whole
-   * write has settled: a master on its own feed that no catalog entry names yet is one no viewer
-   * resolves, so it is not a shape this ladder is advertising. Two ways to reach here having written
-   * nothing, and neither throws: the group has no catalog entry, and the master writer had no
-   * rendition to name.
-   */
-  private async republishMaster(identity: LadderIdentity): Promise<boolean> {
-    let rewritten = false;
-
-    await this.queue.add(() =>
-      this.writeFeed(async (previous) => {
-        const entry = previous.find((e) => e.owner === identity.owner && e.group === identity.group);
-        if (!entry) {
-          return previous;
-        }
-
-        const advertised = advertisableRenditions(entry.renditions ?? [], this.liveness.of(identity.group));
-        const published = await this.masterWriter?.publish(identity.group, advertised);
-        if (!published) {
-          return previous;
-        }
-
-        this.logger.log(
-          `[StreamCatalog] Ladder ${identity.group} now produces ${advertised.length} rung(s), master rewritten`,
-        );
-        rewritten = true;
-        return [...withoutGroup(previous, identity.owner, identity.group), withMaster(entry, published)];
-      }),
-    );
-
-    return rewritten;
+    return { recording, flippedToFinished: flippedToVod, duration };
   }
 
   /** @param update the entries to write, or null when it found nothing to change, which writes nothing. */
@@ -586,8 +476,12 @@ export class StreamCatalog implements LadderRegistry {
 
     const payload = JSON.stringify(state);
     const result = await retryUntilDeadlineAsync(
-      // deferred for the same reason as the manifest feed: a direct SOC write blocks on push-sync.
-      () => feedWriter.uploadPayload(publisher.stamp, payload, { index: nextIndex, deferred: true }),
+      // Direct, so the write returns on the storer's receipt and a note may name this index at once.
+      // It was deferred to avoid blocking on push-sync, the reason the manifest feed once had too. A
+      // deferred version is only on this node when the write returns, so a note naming it would send
+      // a viewer to an index the network may not hold yet. Phase 0 measured direct receipts 84 ms after
+      // a window end at the median, 2026-10-06.
+      () => feedWriter.uploadPayload(publisher.stamp, payload, { index: nextIndex, deferred: false }),
       CATALOG_RETRY_WINDOW_MS,
     );
 
@@ -601,7 +495,7 @@ export class StreamCatalog implements LadderRegistry {
     this.logger.debug(
       `[StreamCatalog] Feed updated index=${nextIndex.toString()} entries=${state.length} bytes=${payload.length} ref=${
         result?.reference?.toHex?.() ?? '?'
-      } owner=${ownerAddr} topicHex=${this.feedTopic.toString()}`,
+      } owner=${ownerAddr} topic="${this.feedTopicName}" topicHex=${this.feedTopic.toString()}`,
     );
   }
 
@@ -660,8 +554,8 @@ export class StreamCatalog implements LadderRegistry {
  * at least one of them finalized. See `LadderCompletion`. Doing it per rung would flip the whole entry
  * to VOD on the first one to drain, and the other three are still live.
  *
- * ⛔ A finished entry's `renditions` names only rungs that have a recording, and `topic`, `index` and
- * `duration` are all read off those, so nothing in it or built from it offers a viewer a rung with
+ * ⛔ A finished entry's `renditions` names only rungs that have a recording, and `topic`, `recording`
+ * and `duration` are all read off those, so nothing in it or built from it offers a viewer a rung with
  * nothing to play. A rung that did not finish is named in `unfinishedRungs` instead.
  */
 export function buildLadderEntry(
@@ -696,7 +590,7 @@ export function buildLadderEntry(
   }
 
   if (finished) {
-    entry.index = primary.index;
+    entry.recording = primary.recording;
     entry.duration = recordingDuration(renditions);
   }
 
@@ -706,7 +600,7 @@ export function buildLadderEntry(
 /**
  * The rungs still known not to finish once this merge is in.
  *
- * ⛔ The mark survives every later merge of its rung that carries no index, because that is what a rung
+ * ⛔ The mark survives every later merge of its rung that carries no recording, because that is what a rung
  * recovered at the next boot sends before it finalizes, and dropping the mark there would turn a
  * finished recording back into a live broadcast. It goes only once the rung has a recording to point
  * at. A rung that already has one is never marked, since the ladder can offer that recording.
@@ -722,25 +616,6 @@ function unfinishedAfter(
     return held.filter((name) => name !== rung);
   }
   return merge.unfinished && !held.includes(rung) ? [...held, rung] : [...held];
-}
-
-/**
- * Repoints a ladder entry at its published master playlist.
- *
- * `topic` moves off the lowest rung and onto the master, so one URL yields the whole ladder — and
- * `index`, which on a finalized stream is where a viewer finds the last playlist written, has to
- * move with it or it would name an index in the wrong feed. `renditions` stays: it is what lets a
- * client show the ladder before fetching anything, and what the fallback path builds a master from
- * when an entry predates masters being published at all.
- */
-export function withMaster(entry: StreamEntry, master: PublishedMaster): StreamEntry {
-  const repointed: StreamEntry = { ...entry, topic: master.topic };
-
-  if (entry.index !== undefined) {
-    repointed.index = master.index;
-  }
-
-  return repointed;
 }
 
 function withoutTopic(entries: StreamEntry[], owner: string, topic: string): StreamEntry[] {
@@ -762,18 +637,18 @@ function mergeRendition(existing: Rendition[], incoming: Rendition): Rendition[]
  * A rung that has already finished stays finished when it announces itself again.
  *
  * ⛔⛔⛔ Scenario H, caused 2026-09-01 after being an open red since 2026-08-31. A rung recovered
- * from a crash announces itself before it finalizes, and that announcement carries no `index`
- * because it has not published its recording yet. The merge replaced the finished rendition
- * wholesale, so the index recorded when the rung DID finalize was thrown away,
- * `renditions.every(r => r.index !== undefined)` went false, and **the whole finished ladder went
+ * from a crash announces itself before it finalizes, and that announcement carries no recording
+ * because it has not uploaded one yet. The merge replaced the finished rendition
+ * wholesale, so what the rung recorded when it DID finalize was thrown away, the check that every
+ * rung had finished went false, and **the whole finished ladder went
  * back to `live` in the catalog**. Read off the host log: ladder `fdbd7167` finalized at 05:58:04,
  * was killed, rebooted with a clean catalog read, and finalized again at 05:59:08 when the recovery
  * timer fired. For that minute a recording that had ended was advertised as a live broadcast, and
  * the second flip paid for another catalog write.
  *
- * `index`, `duration` and `topic` move together or not at all: the index names a position inside the
- * feed the topic addresses, so keeping one without the other would point at a place in the wrong
- * feed. Everything the re-announce genuinely knows better — the measured bitrates — is taken from it.
+ * `recording`, `duration` and `topic` move together or not at all: they are one finished
+ * recording of one rung, and keeping part of it would describe two. Everything the re-announce
+ * genuinely knows better, the measured bitrates, is taken from it.
  *
  * ⛔ **A rung's topic is stable, and this rule is written for that and NOT against it.** Since a
  * rung's feed topic is derived from its ladder group and its rung name, the re-announce carries the
@@ -781,13 +656,18 @@ function mergeRendition(existing: Rendition[], incoming: Rendition): Rendition[]
  * again on the same feed. That is not a reason to compare topics here. The question this answers is
  * whether a recording that has been published is still the one to point at, and until the returning
  * session finalizes there is nothing else to point at: its own recording does not exist yet, and the
- * previous one is whole at the index kept here. The next finalize arrives WITH an index and replaces
- * the record wholesale, which is the first branch below and which is how the entry comes to name the
- * latest of however many recordings that feed holds.
+ * previous one is whole as kept here. The next finalize arrives WITH a recording and replaces the
+ * record wholesale, which is the first branch below and which is how the entry comes to name the
+ * latest of however many recordings that rung has made.
  */
 function keepingWhatFinished(previous: Rendition | undefined, incoming: Rendition): Rendition {
-  if (previous?.index === undefined || incoming.index !== undefined) {
+  if (previous === undefined || !hasRecording(previous) || hasRecording(incoming)) {
     return incoming;
   }
-  return { ...incoming, topic: previous.topic, index: previous.index, duration: previous.duration };
+  return {
+    ...incoming,
+    topic: previous.topic,
+    recording: previous.recording,
+    duration: previous.duration,
+  };
 }

@@ -131,7 +131,7 @@ export class LadderService {
     };
     const rung = {
       rung: report.name,
-      index: report.index ?? null,
+      recording: report.recording ?? null,
       duration: report.duration ?? null,
     };
 
@@ -153,7 +153,7 @@ export class LadderService {
 
     logger.info(
       `[Ladder] ${describeActor(UPLOADER)} reported rung ${report.name}${
-        report.index === undefined ? '' : ` final (index ${String(report.index)}, ${String(report.duration)}s)`
+        report.recording === undefined ? '' : ` final (recording ${report.recording}, ${String(report.duration)}s)`
       } for ${describeStream(publish.stream)}; ${renditions.length} rung(s) on the catalogue, ${
         finished ? 'finished' : 'still running'
       }${ladder.flippedToFinished ? ' as of this report' : ''}`,

@@ -40,8 +40,8 @@ const feed: FeedIdentity = {
   topicHex: 'cfbbc155d709547b198638d0fb11d733359561538d8bd606a9ab257354d13bcc',
 };
 
-/** A rung as the uploader reports it: live, or final with index and length. */
-function rung(name: string, height: number, final?: { index: number; duration: number }): Rendition {
+/** A rung as the uploader reports it: live, or final with its recording and length. */
+function rung(name: string, height: number, final?: { recording: string; duration: number }): Rendition {
   return {
     name,
     width: (height * 16) / 9,
@@ -53,10 +53,14 @@ function rung(name: string, height: number, final?: { index: number; duration: n
   };
 }
 
+const RECORDING_360 = 'a1'.repeat(32);
+const RECORDING_720 = 'b2'.repeat(32);
+const RECORDING_MASTER = 'c3'.repeat(32);
+
 const LIVE_360 = rung('360p', 360);
 const LIVE_720 = rung('720p', 720);
-const FINAL_360 = rung('360p', 360, { index: 10, duration: 61 });
-const FINAL_720 = rung('720p', 720, { index: 12, duration: 62.5 });
+const FINAL_360 = rung('360p', 360, { recording: RECORDING_360, duration: 61 });
+const FINAL_720 = rung('720p', 720, { recording: RECORDING_720, duration: 62.5 });
 
 /** A published stream with its entry on the feed: where every report starts. */
 async function setup() {
@@ -223,7 +227,7 @@ describe('LadderService.report', () => {
   it('is unfinished after a resume, and flips once when the new run ends', async () => {
     // The `live` report is what un-finishes the ladder, because the feeds the
     // rungs continue writing are the ones the last recording sits on. After it
-    // the entry carries index-less rungs, and the next set of final reports
+    // the entry carries rungs without a recording, and the next set of final reports
     // has a flip to give the uploader for the second `vod`.
     const { gateway, service, state, stream } = await setup();
     await state.report(stream.id, { state: 'live' }, ON_STAGE);
@@ -232,7 +236,7 @@ describe('LadderService.report', () => {
     await service.report(stream.id, FINAL_360, ON_STAGE);
     const ended = await service.report(stream.id, FINAL_720, ON_STAGE);
     assert.equal(ended.ladder.flippedToFinished, true);
-    await state.report(stream.id, { state: 'vod', index: 7, duration: 62.5 }, ON_STAGE);
+    await state.report(stream.id, { state: 'vod', recording: RECORDING_MASTER, duration: 62.5 }, ON_STAGE);
 
     const resumed = await state.report(stream.id, { state: 'live' }, ON_STAGE);
 
@@ -302,7 +306,7 @@ describe('LadderService audit', () => {
         statusAfter: 'published',
         details: {
           rung: '720p',
-          index: 12,
+          recording: RECORDING_720,
           duration: 62.5,
           feedIndex: outcome.publish.feed.index,
           entryRung: FINAL_720,
@@ -338,7 +342,7 @@ describe('LadderService audit', () => {
   it('records the rung as its write published it when a later report for that rung lands first', async () => {
     // This report stores 720p still live, then 720p's final report is stored
     // before the republish reads the ladder. The write carries the final
-    // rung, as the catalogue should; the entry pairs this report's index and
+    // rung, as the catalogue should. The entry pairs this report's recording and
     // duration with that write, so it has to say what the write carried.
     const { renditions, audit, service, stream } = await setup();
     const upsert = renditions.upsert.bind(renditions);
@@ -362,7 +366,7 @@ describe('LadderService audit', () => {
         statusAfter: 'published',
         details: {
           rung: '720p',
-          index: null,
+          recording: null,
           duration: null,
           feedIndex: outcome.publish.feed.index,
           entryRung: FINAL_720,
@@ -407,7 +411,7 @@ describe('LadderService audit', () => {
         {
           actor: { kind: 'uploader' },
           action: 'stream.rendition.report',
-          details: { rung: '360p', index: null, duration: null, feedIndex: null, publishError: 'bee unreachable' },
+          details: { rung: '360p', recording: null, duration: null, feedIndex: null, publishError: 'bee unreachable' },
         },
       ],
     );

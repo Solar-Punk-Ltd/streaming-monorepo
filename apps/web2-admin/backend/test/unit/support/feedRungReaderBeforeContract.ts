@@ -14,7 +14,7 @@ export function isRendition(value: unknown): value is Rendition {
     typeof rung.topic === 'string' &&
     typeof rung.bandwidth === 'number' &&
     typeof rung.avgBandwidth === 'number' &&
-    (rung.index === undefined || typeof rung.index === 'number') &&
+    (rung.recording === undefined || typeof rung.recording === 'string') &&
     (rung.duration === undefined || typeof rung.duration === 'number')
   );
 }

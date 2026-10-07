@@ -16,17 +16,17 @@ broadcaster's.
 
 ## The parts
 
-| Part          | Folder                                            | What it does                                                                                                                                                                                                                         |
-| ------------- | ------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| Ingest engine | `apps/hls-stream/engines`                         | SRS (the default) or OvenMediaEngine. Takes SRT from the encoder and cuts it into HLS segments. With the ABR ladder on, it transcodes every quality rung.                                                                            |
-| Uploader      | `apps/hls-stream/packages/stream-uploader`        | Hears about every closed segment from the engine, stamps it and uploads it to Swarm, and keeps the playlists and feeds that tell a viewer where each segment is. Asks the web2 admin which stream an encoder publishes to.           |
-| Bee nodes     | `apps/hls-stream/nodes`, `apps/hls-stream/deploy` | Swarm nodes. One uploader node per quality rung publishes that rung's segments, each with its own postage batch and chequebook. A gateway node serves viewers. A catalogue node holds the catalogue's batch alone.                   |
-| Feeds         | written by the uploader                           | Swarm feeds are mutable pointers signed by one key. Each rung has a feed of its playlist, and a master feed names the rungs. Every stage signs its feeds with a key of its own. A viewer follows a feed, not a host.                 |
-| Catalog       | written by the web2 admin                         | A feed signed with the brand key, which only the admin holds, that lists the streams of every stage, with their titles and thumbnails. Written through the dedicated catalogue node's immutable batch, which the manager designates. |
-| Viewer        | `apps/hls-stream/packages/client`                 | A browser player built on hls.js. Reads the catalog and the feeds and fetches segments from a gateway or from an in-tab Swarm node.                                                                                                  |
-| Manager       | `apps/infra-manager`                              | A console and an API that deploy stack versions onto hosts over ssh, hand out port slots, buy postage and fund chequebooks. Pushes every stage it runs, and the catalogue's batch, into the web2 admin.                              |
-| Web2 admin    | `apps/web2-admin`                                 | The brand console: streams, the stage each goes live on, and users. Publishes the catalog. Learns its stages from the manager's pushes and never calls the manager, a host or a wallet.                                              |
-| Edge          | `infra/edge`                                      | One Caddy container per control host. Holds ports 80 and 443, gets the HTTPS certificates, and sends each domain to the console behind it.                                                                                           |
+| Part          | Folder                                            | What it does                                                                                                                                                                                                                                                                                           |
+| ------------- | ------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| Ingest engine | `apps/hls-stream/engines`                         | SRS (the default) or OvenMediaEngine. Takes SRT from the encoder and cuts it into HLS segments. With the ABR ladder on, it transcodes every quality rung.                                                                                                                                              |
+| Uploader      | `apps/hls-stream/packages/stream-uploader`        | Hears about every closed segment from the engine, stamps it and uploads it to Swarm direct, writes each quality's live playlist as a time window every 2 s, and names each quality's finished recording by its reference on the stream list. Asks the web2 admin which stream an encoder publishes to. |
+| Bee nodes     | `apps/hls-stream/nodes`, `apps/hls-stream/deploy` | Swarm nodes. One uploader node per quality rung publishes that rung's segments, each with its own postage batch and chequebook. A gateway node serves viewers. A catalogue node holds the catalogue's batch alone.                                                                                     |
+| Feeds         | written by the uploader                           | Swarm feeds are mutable pointers signed by one key. The stream list is a feed, written direct, with notes beside it. A quality's live playlist is a time window and not a feed, and there is no master feed. Every stage signs with a key of its own. A viewer follows the stream list, not a host.    |
+| Catalog       | written by the web2 admin                         | A feed signed with the brand key, which only the admin holds, that lists the streams of every stage, with their titles and thumbnails. Written through the dedicated catalogue node's immutable batch, which the manager designates.                                                                   |
+| Viewer        | `apps/hls-stream/packages/client`                 | A browser player built on hls.js. Reads the catalog and the feeds and fetches segments from a gateway or from an in-tab Swarm node.                                                                                                                                                                    |
+| Manager       | `apps/infra-manager`                              | A console and an API that deploy stack versions onto hosts over ssh, hand out port slots, buy postage and fund chequebooks. Pushes every stage it runs, and the catalogue's batch, into the web2 admin.                                                                                                |
+| Web2 admin    | `apps/web2-admin`                                 | The brand console: streams, the stage each goes live on, and users. Publishes the catalog. Learns its stages from the manager's pushes and never calls the manager, a host or a wallet.                                                                                                                |
+| Edge          | `infra/edge`                                      | One Caddy container per control host. Holds ports 80 and 443, gets the HTTPS certificates, and sends each domain to the console behind it.                                                                                                                                                             |
 
 A stage is a manager deployment that runs a stream uploader, with the node pool behind it.
 [stages.md](stages.md) says what the manager pushes about each one and how the admin uses it.
@@ -36,12 +36,16 @@ A stage is a manager deployment that runs a stream uploader, with the node pool 
 1. The encoder sends SRT to the ingest engine on a stage host.
 2. The engine writes each closed segment to a media volume it shares with the uploader and calls the
    uploader's webhook. With the ladder on, it writes one segment per rung.
-3. The uploader stamps each segment with its rung's postage batch and uploads it through that rung's
-   own Bee node. It then rewrites the rung's playlist, uploads that, and moves the rung's feed to it.
-4. The master feed names every rung that is publishing. A rung that stops is dropped from it, so a
-   viewer is never sent to a quality that has died.
-5. The viewer reads the catalog to find a stream, follows its master feed, and plays the rung its
-   bandwidth allows. Segments come from a Bee gateway over HTTP, or from a light node in the tab.
+3. The uploader stamps each segment with its rung's postage batch and uploads it direct through that
+   rung's own Bee node. Every 2 s it writes the rung's live playlist, naming the segments whose upload
+   finished, as that rung's window chunk for the 2 s that just ended. When the broadcast ends it writes a
+   closing window and uploads the rung's recording playlist once, named by its reference.
+4. The stream list entry names every rung with its topic, its size and its bandwidth, which is all a
+   player needs to build the ladder's master playlist. No master playlist is written to Swarm.
+5. The viewer reads the catalog to find a stream, builds the master from the entry's renditions, and
+   plays the rung its bandwidth allows, reading that rung's windows. Segments come from a Bee gateway
+   over HTTP, or from a light node in the tab. The player moves onto windows in phase 3 of the windows
+   plan, and until then it follows feeds this uploader no longer writes.
 
 The manager and the web2 admin are not on this path. A running broadcast carries on while either of
 them is down. They decide what runs where and who owns which stream.
@@ -59,7 +63,9 @@ Live playlists are moving off feeds onto time windows, the convention the chat a
 its slot notes. Asking Bee for a chunk before it exists makes Bee skip its peers for that address
 for about a minute, so polling the next feed index delays the update it waits for. A window chunk
 sits at an address computed from the clock and is asked for once, after it is due. The convention
-lives once, in `apps/hls-stream/packages/shared/src/windows.ts`. Nothing reads or writes it yet.
+lives once, in `packages/swarm-windows/src/windows.ts`, a package the stack's shared package
+re-exports and the web2 admin depends on directly. The uploader writes each quality's `live`
+windows on it, and both writers of the stream list write its notes. Nothing reads them yet.
 
 - **The window.** Window `w` of length `windowMs` covers `[w * windowMs, (w + 1) * windowMs)` of
   Unix milliseconds. The writer writes window `w` once, at its end. A reader asks for it at its end
@@ -78,7 +84,7 @@ lives once, in `apps/hls-stream/packages/shared/src/windows.ts`. Nothing reads o
 
 ### Writing windows
 
-`apps/hls-stream/packages/shared/src/windowWriter.ts` holds the writer, as pure logic with the
+`packages/swarm-windows/src/windowWriter.ts` holds the writer, as pure logic with the
 clock, the timers and the write injected. The caller's write signs the chunk and uploads it direct.
 
 - **Two writers on one schedule.** The `live` writer publishes the composed playlist in every window
@@ -104,10 +110,36 @@ clock, the timers and the write injected. The caller's write signs the chunk and
   defined.
 - **Named seams.** `maxInFlight` bounds the writes running at once, and `clockTrusted` lets the
   caller hold writes while it does not trust its own clock. Both skip a window and say why.
+- **The uploader is the `live` writer.** `StreamUploader` writes a quality's live playlist every 2 s
+  window on the topic the stream list's rendition names, from its first segment on, through any pause
+  in the media, until the end, when windows carry `#EXT-X-ENDLIST` until one is written. Its
+  `clockTrusted` comes from the uploader's own option and holds every window while it answers false. A
+  session on a topic an earlier session wrote waits until that session has stopped writing, then reads
+  the topic's windows of the last minute once, newest first, and continues the media sequence the
+  newest one left. Segments and the recording are uploaded direct.
+- **A recording is its reference.** At the end each quality uploads its recording playlist once as
+  bytes, and the stream list's rendition, the entry and the reports to the web2 admin name it by that
+  reference, `recording`, and by nothing else. No writer names a recording by a feed index, and the
+  admin refuses a report that does.
+
+### The stream list's notes
+
+The stream list stays a feed, so every version is kept in order. The uploader's `StreamCatalog`,
+when it runs without an admin, writes each new version as the next feed index with a direct upload,
+then runs one `note` writer for the list: 10 s windows, a heartbeat every 60 s, the topic being the
+list's topic name (`STREAM_LIST_TOPIC`, the text the feed topic is made from), signed by the list's
+key and uploaded direct. The note names the newest index whose own write finished. A reader takes
+the same name from its own setting, `VITE_APP_RAW_TOPIC` in the monorepo's client and
+`catalog.topic` in the event viewer's config.
+
+The web2 admin writes the list at an event and runs the same writer from `ListNotes.ts`: the topic
+is its `FEED_TOPIC`, the key its `FEED_PRIVATE_KEY`, the newest index the highest one its
+`feed_writes` recorded, and each note goes through the node and batch the catalogue is written with.
+The admin has no clock check, so its notes trust its clock.
 
 ### Reading windows
 
-The reader core is `apps/hls-stream/packages/shared/src/windowReader.ts`, and the clock calibration
+The reader core is `packages/swarm-windows/src/windowReader.ts`, and the clock calibration
 it shares is `windowClock.ts` beside it. Both are pure logic: the read, the clock and the timers are
 injected, and the caller checks the owner's signature before a payload reaches them.
 

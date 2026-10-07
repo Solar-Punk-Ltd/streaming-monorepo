@@ -1,30 +1,29 @@
 /**
- * What admin mode changes about a broadcast once the gate has admitted it: whose topic it publishes
- * on, where in that topic's feed it starts writing, and who is told that it went live and became a
- * recording.
+ * What admin mode changes about a broadcast once the gate has admitted it: whose topic it writes its
+ * live windows on, where its numbering on that topic continues from, and who is told that it went live
+ * and became a recording.
  *
- * ## The three properties, and why each one is here
+ * ## The four properties, and why each one is here
  *
  * 1. **The topic belongs to the declaration.** A standalone single-rendition session mints a fresh
- *    `crypto.randomUUID()` topic, so an empty feed and index 0 cannot collide with anything. A
- *    declared stream keeps one topic for its whole life, which is what makes it reachable before it
- *    has ever published — and what makes a second session on it dangerous.
- * 2. **So the feed index resumes from the feed head.** Without it the second broadcast on a declared
- *    stream starts at index 0 and writes over the first, including whatever the previous recording's
- *    opening was. The feed is the only thing that knows: this process may never have seen the earlier
- *    session, and its recovery entry was deleted when it finalized.
+ *    `crypto.randomUUID()` topic, so nothing was ever written on it. A declared stream keeps one topic
+ *    for its whole life, which is what makes it reachable before it has ever published, and what makes
+ *    a second session on it something to be careful with.
+ * 2. **So the numbering continues from the topic's newest window.** A viewer who was following the last
+ *    broadcast is handed this session's first window as the next update of the playlist they are
+ *    playing, and a media sequence that moved backwards is what hls.js reports as a parsing error. The
+ *    newest window is the only thing that knows: this process may never have seen the earlier session.
  * 3. **Nothing is written to the stream catalog, and the admin is told instead.** The admin owns the
  *    list of streams here, so a second writer would publish entries nothing reconciles. The two
  *    reports land at exactly the two moments the catalog's own entries would have, carrying exactly
  *    what those entries would have carried.
- * 4. **And a replacement session waits for the one it replaced.** (2) reads the head once and latches
- *    it, which is sound only once the head has stopped moving — and a re-announce leaves the retired
- *    session writing its own closing and VOD playlists to this same topic. Without the wait the two
- *    claim the same indexes and the old recording ends up above the live broadcast.
+ * 4. **And a replacement session waits for the one it replaced.** A re-announce leaves the retired
+ *    session writing its own closing windows on this same topic, and two writers on one window address
+ *    are as bad as two on one feed index.
  */
 
-import { Bee } from '@ethersphere/bee-js';
-import { ladderFinalized } from '@swarm-hls-stream/shared';
+import { encodeLiveWindowPayload, ladderFinalized, parseLiveWindowPayload } from '@swarm-hls-stream/shared';
+import { BeeResponseError } from '@ethersphere/bee-js';
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 
@@ -43,12 +42,14 @@ import { StreamUploader } from '../src/libs/StreamUploader.js';
 import { MEDIA_TYPE_VIDEO, Rendition, StreamState } from '../src/types.js';
 
 import {
-  FakeFeedHead,
+  fakeRecordingReference,
   makeFakeBee,
   makeFakeCatalog,
   makeFakeRecoveryStore,
   makeTestOrchestrator,
   TEST_ANCHOR,
+  TEST_LIVE_WINDOW_MS,
+  TEST_WINDOWS,
   testPublisher,
 } from './helpers/fakes.js';
 import { waitFor } from './helpers/waiting.js';
@@ -59,11 +60,8 @@ const DECLARED_TOPIC = 'declared-topic-0001';
 const ADMIN_STREAM_ID = 'str_01HZY';
 const SETTLE_CEILING_MS = 4_000;
 
-/** A playlist the head read can hand back. Its content decides nothing on the resume path. */
-const SOME_PLAYLIST = '#EXTM3U\n#EXT-X-VERSION:3\n';
-
-/** A head naming one segment, so a case can read both facts a session takes off it. */
-const PREVIOUS_ON_THIS_FEED = [
+/** The closing window a previous broadcast on this topic left: six entries behind it and one in it. */
+const PREVIOUS_ON_THIS_TOPIC = [
   '#EXTM3U',
   '#EXT-X-VERSION:3',
   '#EXT-X-TARGETDURATION:2',
@@ -76,32 +74,27 @@ const PREVIOUS_ON_THIS_FEED = [
   '',
 ].join('\n');
 
-/**
- * A read failure that is not a 404 and not worth retrying, so the head read fails on its first
- * attempt instead of spending its fifteen second window proving it.
- */
-const headReadRefused = () => Object.assign(new Error('bee refused the read'), { status: 400 });
+/** A window chunk holding that playlist, as a reader of the topic finds it. */
+const PREVIOUS_WINDOW = encodeLiveWindowPayload(PREVIOUS_ON_THIS_TOPIC, 1_000);
 
-/**
- * How many `downloadPayload` calls one head read makes, which is two and not one.
- *
- * `readManifestFeedHead` asks without an index for the head's position and then again **at** that
- * index for the payload, because bee-js only rejoins a payload larger than one chunk on the indexed
- * path. The fake answers both out of the same fixture, so a counter on it counts downloads rather
- * than head reads, and the ratio has to be stated rather than assumed.
- */
-const DOWNLOADS_PER_HEAD_READ = 2;
+/** A read failure that is not Bee saying the chunk is absent, which says nothing about the topic. */
+const windowReadRefused = () => new BeeResponseError('GET', '/chunks', 'refused', undefined, 400, 'Bad Request');
 
-/** One SOC write the uploader made to its manifest feed. */
-interface ManifestWrite {
-  index: number;
+/** Bee's answer for a window nobody wrote. */
+const windowAbsent = () => new BeeResponseError('GET', '/chunks', 'Not Found', undefined, 404, 'Not Found');
+
+/** One live window this session wrote, its playlist without the written-at line. */
+interface WindowWrite {
+  identifier: string;
   playlist: string;
 }
 
 interface Session {
   uploader: StreamUploader;
-  /** Every manifest this session published, in order. Its first index is the whole of property 2. */
-  published: ManifestWrite[];
+  /** Every live window this session wrote, in order. */
+  windows: WindowWrite[];
+  /** Every recording playlist this session uploaded. */
+  recordings: string[];
   /** Every catalog entry written. In admin mode this must stay empty. */
   catalogEntries: unknown[];
   /** Every state report delivered to the admin, in order. */
@@ -111,14 +104,21 @@ interface Session {
 }
 
 interface SessionOptions {
-  /** What the manifest feed head answers. Absent throws a 404, which is a topic nothing ever wrote. */
-  feedHead?: () => FakeFeedHead | null;
+  /**
+   * What a window of this topic holds when the opening scan asks, or throws. Absent answers 404 for
+   * every window, which is a topic nothing has written recently.
+   */
+  windowAt?: () => Uint8Array | null;
   /** Answer for each report in turn, so a failure can be driven. Defaults to accepting every one. */
   reportOutcome?: (report: AdminStateReport) => StateReportOutcome;
   /** Built without `admin`, which is the standalone deployment this service has always been. */
   standalone?: boolean;
   /** The finalize of the session this one replaced, when this session is a re-announce's replacement. */
   predecessorDrained?: Promise<void>;
+}
+
+function playlistOf(payload: Uint8Array): string {
+  return parseLiveWindowPayload(payload)?.playlist ?? '';
 }
 
 /**
@@ -129,17 +129,23 @@ interface SessionOptions {
  * `AdminApiClient.test.ts` is where the call itself is driven.
  */
 function newSession(options: SessionOptions = {}): Session {
-  const published: ManifestWrite[] = [];
+  const windows: WindowWrite[] = [];
+  const recordings: string[] = [];
   const catalogEntries: unknown[] = [];
   const reports: AdminStateReport[] = [];
   const saved: StreamState[] = [];
 
   const bee = makeFakeBee({
-    uploadPayload: async (index, payload) => {
-      published.push({ index, playlist: String(payload) });
-      return { reference: { toHex: () => `soc${index}` } };
+    uploadWindow: async (identifier, payload) => {
+      windows.push({ identifier, playlist: playlistOf(payload) });
+      return { reference: { toHex: () => 'window' } };
     },
-    feedHead: options.feedHead ?? (() => null),
+    windowAt: () => (options.windowAt ? options.windowAt() : null),
+    uploadRecording: async (playlist) => {
+      recordings.push(playlist);
+      const reference = fakeRecordingReference(playlist);
+      return { reference: { toHex: () => reference } };
+    },
   });
 
   const client = {
@@ -152,7 +158,7 @@ function newSession(options: SessionOptions = {}): Session {
 
   const uploader = new StreamUploader({
     anchor: TEST_ANCHOR,
-    publisher: testPublisher(bee as Bee),
+    publisher: testPublisher(bee),
     streamCatalog: makeFakeCatalog({
       addStream: async (entry: unknown) => {
         catalogEntries.push(entry);
@@ -171,19 +177,31 @@ function newSession(options: SessionOptions = {}): Session {
     mediatype: MEDIA_TYPE_VIDEO,
     admin: options.standalone ? undefined : { client, id: ADMIN_STREAM_ID },
     predecessorDrained: options.predecessorDrained,
+    ...TEST_WINDOWS,
   });
 
-  return { uploader, published, catalogEntries, reports, saved };
+  return { uploader, windows, recordings, catalogEntries, reports, saved };
+}
+
+/** Real time for a few test windows. */
+function windowsPass(count = 3): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, count * TEST_LIVE_WINDOW_MS));
 }
 
 async function drain(uploader: StreamUploader): Promise<void> {
   await uploader.segmentQueue.onIdle();
-  await (uploader as unknown as { manifestQueue: { onIdle(): Promise<void> } }).manifestQueue.onIdle();
+  await windowsPass();
+  await (uploader as unknown as { announceQueue: { onIdle(): Promise<void> } }).announceQueue.onIdle();
 }
 
 async function feedOneSegment(uploader: StreamUploader, index: number): Promise<void> {
   uploader.handleSegment(index, 2, Buffer.from(`seg${index}`));
   await drain(uploader);
+}
+
+function mediaSequenceOf(playlist: string): number | null {
+  const line = playlist.split('\n').find((l) => l.startsWith('#EXT-X-MEDIA-SEQUENCE:'));
+  return line === undefined ? null : Number(line.split(':')[1]);
 }
 
 /** Every line logged while `run` runs, with the previous sink restored afterwards. */
@@ -199,70 +217,39 @@ async function logLinesDuring(run: () => Promise<void>): Promise<string[]> {
   return lines;
 }
 
-describe('the feed index a declared topic resumes from', () => {
+describe('where a declared topic numbers its playlist from', () => {
   /**
-   * ⛔⛔ The case the whole mechanism exists for. The declaration's topic already holds a previous
-   * broadcast, and a session that started at 0 would publish over it — over the recording's own
-   * opening playlist first of all.
+   * ⛔⛔ The case the scan exists for. The declaration's topic already carried a broadcast, and a
+   * session that numbered from 0 would move the media sequence of a viewer still following the topic
+   * backwards.
    */
-  it('continues above the head the topic already holds', async () => {
-    const session = newSession({ feedHead: () => ({ index: 7, manifest: SOME_PLAYLIST }) });
+  it('continues from the newest window the topic already holds', async () => {
+    const session = newSession({ windowAt: () => PREVIOUS_WINDOW });
     await feedOneSegment(session.uploader, 0);
 
-    assert.equal(session.published[0]?.index, 8, 'the first write of this session must sit above the feed head');
+    assert.equal(mediaSequenceOf(session.windows[0]?.playlist ?? ''), 7, 'six behind it plus the one it named');
+    assert.ok(session.windows[0]?.playlist.includes('#EXT-X-DISCONTINUITY\n'), 'and the seam is marked');
   });
 
-  /**
-   * ⛔ The prefix is persisted rather than re-derived, for the same reason the sequence offset is: by
-   * the time a recovered session runs, the feed head is its own live playlist, so re-reading it would
-   * glue this session's own window in front of itself. `FinalizeResume.test.ts` drives what the
-   * recovered session then builds; this pins that the entry actually carries it.
-   */
-  it('writes what it inherited into its recovery entry', async () => {
-    const head = [
-      '#EXTM3U',
-      '#EXT-X-VERSION:3',
-      '#EXT-X-TARGETDURATION:2',
-      '#EXT-X-MEDIA-SEQUENCE:6',
-      '',
-      '#EXT-X-PROGRAM-DATE-TIME:2026-09-21T10:05:21.849Z',
-      '#EXTINF:2,',
-      'c'.repeat(64),
-      '#EXT-X-ENDLIST',
-      '',
-    ].join('\n');
-    const session = newSession({ feedHead: () => ({ index: 7, manifest: head }) });
+  it('writes the numbering it continued from into its recovery entry', async () => {
+    const session = newSession({ windowAt: () => PREVIOUS_WINDOW });
 
     await feedOneSegment(session.uploader, 0);
 
-    const entry = session.saved.at(-1);
-    assert.equal(entry?.sequenceOffset, 7, 'six entries behind it plus the one it names');
-    assert.equal(entry?.inherited?.mediaSequence, 6);
-    assert.equal(entry?.inherited?.durationSeconds, 2);
-    assert.deepEqual(entry?.inherited?.lines.at(-1), 'c'.repeat(64));
+    assert.equal(session.saved.at(-1)?.sequenceOffset, 7);
+    assert.equal(session.saved.at(-1)?.inherited, undefined, 'a window carries no recording to open with');
   });
 
   /**
-   * ⛔⛔ The window a review found on 2026-09-21. The head read runs behind the first segment's
-   * upload and the segment path does not await the manifest publish, so a recovery entry could be
-   * written while the feed position was still unsettled. Such an entry says `sequenceOffset: 0` and
-   * no inherited recording, which is not "unknown yet" but a positive claim that this session opened
-   * on an empty feed — and a recovered session never re-reads its head, so it republished the
-   * numbering from a number viewers had already been handed and finalized a recording that dropped
-   * every earlier session.
-   *
-   * Driven here through the other thing that holds the same state open, an earlier session still
-   * finalizing onto the topic they share, because it can be held deterministically where the race
-   * itself cannot. It is the same guard and the same refusal. Nothing is lost by writing no entry,
-   * because no playlist may be published before the same facts are settled, so a session that has
-   * not settled them has told no viewer anything.
+   * ⛔⛔ An entry written before the scan answered says `sequenceOffset: 0`, which is not "unknown yet"
+   * but a positive claim that nothing was on the topic, and a recovered session never scans, so it
+   * would number the broadcast again from a number viewers had already been handed. Held here through
+   * an earlier session still finalizing onto the same topic, which keeps the scan from starting.
    */
-  it('writes no recovery entry while its feed position is unsettled', async () => {
+  it('writes no recovery entry while its position is unsettled', async () => {
     let release: (() => void) | null = null;
     const session = newSession({
-      feedHead: () => ({ index: 7, manifest: PREVIOUS_ON_THIS_FEED }),
-      // An earlier session still finalizing onto the topic they share, which is the other thing that
-      // holds the feed position open. The head is not read at all until it drains.
+      windowAt: () => PREVIOUS_WINDOW,
       predecessorDrained: new Promise<void>((resolve) => {
         release = resolve;
       }),
@@ -270,31 +257,27 @@ describe('the feed index a declared topic resumes from', () => {
 
     await feedOneSegment(session.uploader, 0);
 
-    assert.equal(
-      session.saved.length,
-      0,
-      'an entry here would claim this session opened on an empty feed, which a recovery believes',
-    );
+    assert.equal(session.saved.length, 0, 'an entry here would claim the topic was empty, which a recovery believes');
+    assert.equal(session.windows.length, 0, 'and no window names a numbering nobody has settled');
 
     release!();
     await feedOneSegment(session.uploader, 1);
 
     const entry = session.saved.at(-1);
-    assert.ok(entry, 'and the entry is written as soon as the read answers');
-    assert.equal(entry?.sequenceOffset, 7, 'carrying the numbering the head really left');
-    assert.equal(entry?.inherited?.durationSeconds, 2, 'and the recording it really has to open with');
-    assert.equal(entry?.segments.length, 2, 'naming the segment it held while the read was outstanding as well');
+    assert.ok(entry, 'and the entry is written as soon as the scan answers');
+    assert.equal(entry?.sequenceOffset, 7, 'carrying the numbering the topic really had');
+    assert.equal(entry?.segments.length, 2, 'naming the segment it held while the scan was outstanding as well');
   });
 
   /**
    * ⛔ And the entry lands on the settling itself rather than waiting for a segment to follow it.
-   * Otherwise a broadcast whose first segment settled the position and whose second never came would
-   * hold an uploaded, unnamed segment with nothing on disk recording it.
+   * Otherwise a broadcast whose first segment arrived while the position was unsettled and whose second
+   * never came would hold an uploaded, unnamed segment with nothing on disk recording it.
    */
-  it('writes the entry as soon as the head read settles, with no further segment needed', async () => {
+  it('writes the entry as soon as the scan settles, with no further segment needed', async () => {
     let release: (() => void) | null = null;
     const session = newSession({
-      feedHead: () => ({ index: 7, manifest: PREVIOUS_ON_THIS_FEED }),
+      windowAt: () => PREVIOUS_WINDOW,
       predecessorDrained: new Promise<void>((resolve) => {
         release = resolve;
       }),
@@ -304,27 +287,21 @@ describe('the feed index a declared topic resumes from', () => {
     assert.equal(session.saved.length, 0);
 
     release!();
-    // The publish the held segment already queued, re-attempted now the position can settle.
-    session.uploader.handleSegment(1, 2, Buffer.from('seg1'));
-    await drain(session.uploader);
+    await waitFor(() => session.saved.length > 0, SETTLE_CEILING_MS);
 
-    const entry = session.saved.at(-1);
-    assert.equal(entry?.sequenceOffset, 7);
-    assert.equal(entry?.inherited?.mediaSequence, 6);
+    assert.equal(session.saved.at(-1)?.sequenceOffset, 7);
   });
 
   /**
-   * ⛔⛔ The half of the persist gate that could have cost something. A `live` the admin was told
-   * while no recovery entry existed would strand that row: nothing on the uploader side would survive
-   * a crash to flip it, because the entry the next boot recovers from was never written. It cannot
-   * happen, because the report is `notifyStart`'s, which is reached only through `announceToCatalog`,
-   * which `commitManifest` calls BELOW its `feedPositionSettled` refusal. Pinned here so moving the
-   * announce in front of that gate fails rather than strands a row.
+   * ⛔⛔ A `live` the admin was told while no recovery entry existed would strand that row: nothing on
+   * the uploader side would survive a crash to flip it. The report is reached only off the first
+   * written window, which is composed only once the position is settled, and the entry is written
+   * before the announce.
    */
   it('never reports live to the admin before a recovery entry exists', async () => {
     let release: (() => void) | null = null;
     const session = newSession({
-      feedHead: () => ({ index: 7, manifest: PREVIOUS_ON_THIS_FEED }),
+      windowAt: () => PREVIOUS_WINDOW,
       predecessorDrained: new Promise<void>((resolve) => {
         release = resolve;
       }),
@@ -347,10 +324,9 @@ describe('the feed index a declared topic resumes from', () => {
 
   /**
    * ⛔ The standalone deployment is untouched by that. Its topic is a fresh uuid per session, so its
-   * feed position is settled by construction and it persists from its first segment exactly as it
-   * always did.
+   * position is settled by construction and it persists from its first segment exactly as it always did.
    */
-  it('persists from the first segment on a stream that reads no head at all', async () => {
+  it('persists from the first segment on a stream that scans nothing', async () => {
     const session = newSession({ standalone: true });
 
     await feedOneSegment(session.uploader, 0);
@@ -358,99 +334,97 @@ describe('the feed index a declared topic resumes from', () => {
     assert.ok(session.saved.length > 0, 'a session with nothing to settle has nothing to wait for');
   });
 
-  it('carries no inherited recording when the topic has never been written', async () => {
-    const session = newSession();
-
-    await feedOneSegment(session.uploader, 0);
-
-    assert.equal(session.saved.at(-1)?.inherited, undefined);
-  });
-
-  it('starts at zero when nothing has ever been written on the topic', async () => {
+  it('starts at zero when the topic holds no recent window', async () => {
     const session = newSession();
     await feedOneSegment(session.uploader, 0);
 
-    assert.equal(session.published[0]?.index, 0, 'a 404 is an answer: the feed is empty, so 0 is right');
+    assert.equal(mediaSequenceOf(session.windows[0]?.playlist ?? ''), 0, 'a 404 is an answer: nothing to continue');
   });
 
-  it('asks the feed once and then publishes straight through', async () => {
-    let downloads = 0;
+  it('scans once and then writes straight through', async () => {
+    let reads = 0;
     const session = newSession({
-      feedHead: () => {
-        downloads++;
-        return { index: 3, manifest: SOME_PLAYLIST };
+      windowAt: () => {
+        reads++;
+        return null;
       },
     });
 
     await feedOneSegment(session.uploader, 0);
+    const readsAfterTheScan = reads;
     await feedOneSegment(session.uploader, 1);
     await feedOneSegment(session.uploader, 2);
 
-    assert.equal(
-      downloads,
-      DOWNLOADS_PER_HEAD_READ,
-      'the head is established once per session, not once per manifest: a retrieval per segment is what ' +
-        'the latch exists to avoid',
-    );
-    assert.deepEqual(
-      session.published.map((write) => write.index),
-      [4, 5, 6],
-      'and the indexes step from the head rather than restarting at it, which is the same fact read off the feed',
-    );
+    assert.ok(readsAfterTheScan > 0, 'the topic was scanned');
+    assert.equal(reads, readsAfterTheScan, 'the scan is once per session, never once per window');
   });
 
   /**
-   * ⛔ Refused rather than guessed. Taking a failed read for an empty feed is what overwrites the
-   * previous recording, and the cost of refusing is a stale live playlist for one segment interval.
-   * The session is not latched by the failure: the next segment asks again.
+   * ⛔ Refused rather than guessed. Taking a failed read for an empty topic is what moves a viewer's
+   * media sequence backwards, and the cost of refusing is a window or two with nothing written. The
+   * session is not latched by the failure: the next segment asks again.
    */
-  it('refuses to publish while it cannot tell where the topic has got to, and retries at the next segment', async () => {
-    let attempts = 0;
+  it('writes no window while it cannot tell where the topic stands, and asks again at the next segment', async () => {
+    let refusing = true;
     const session = newSession({
-      feedHead: () => {
-        if (++attempts === 1) {
-          throw headReadRefused();
+      windowAt: () => {
+        if (refusing) {
+          throw windowReadRefused();
         }
-        return { index: 5, manifest: SOME_PLAYLIST };
+        return PREVIOUS_WINDOW;
       },
     });
 
     await feedOneSegment(session.uploader, 0);
-    // A length rather than `deepEqual` against `[]`: node's assertion signature narrows the array to
-    // `never[]` for the rest of the block, and the next assertion is about what ends up in it.
-    assert.equal(session.published.length, 0, 'nothing may be written on a topic whose head is unknown');
+    assert.equal(session.windows.length, 0, 'nothing may be written on a topic whose numbering is unknown');
 
+    refusing = false;
     await feedOneSegment(session.uploader, 1);
-    assert.equal(session.published[0]?.index, 6, 'the retried read settles the index and publishing resumes above it');
+    assert.equal(mediaSequenceOf(session.windows[0]?.playlist ?? ''), 7, 'the retried scan settles it');
+  });
+
+  it('reads an absent window as no window, not as a failure', async () => {
+    const session = newSession({
+      windowAt: () => {
+        throw windowAbsent();
+      },
+    });
+
+    await feedOneSegment(session.uploader, 0);
+
+    assert.equal(mediaSequenceOf(session.windows[0]?.playlist ?? ''), 0);
   });
 
   /**
    * A standalone single-rendition stream is untouched, and it is the only session left that is. Its
-   * topic is a fresh uuid, so there is nothing to resume from and asking would spend a retrieval per
-   * session to be told so. A standalone RUNG is not this case: its topic is derived from its ladder
-   * and outlives it, so it reads the head like any declared stream — see `LadderIdentity.test.ts`.
+   * topic is a fresh uuid, so there is nothing to continue from and scanning would spend a read per
+   * window to be told so.
    */
   it('is not run at all for a standalone single-rendition stream', async () => {
     let reads = 0;
     const session = newSession({
       standalone: true,
-      feedHead: () => {
+      windowAt: () => {
         reads++;
-        return { index: 7, manifest: SOME_PLAYLIST };
+        return PREVIOUS_WINDOW;
       },
     });
 
     await feedOneSegment(session.uploader, 0);
 
     assert.equal(reads, 0);
-    assert.equal(session.published[0]?.index, 0, 'a session that mints its own topic starts at zero');
+    assert.equal(
+      mediaSequenceOf(session.windows[0]?.playlist ?? ''),
+      0,
+      'a session that mints its own topic starts at zero',
+    );
   });
 });
 
 describe('what a declared broadcast reports, and what it no longer writes', () => {
   /**
    * ⛔ Not one entry, at either moment. The admin owns the list of streams in admin mode, and a
-   * second writer would publish entries nothing reconciles — and pay postage for them.
+   * second writer would publish entries nothing reconciles.
    */
   it('writes nothing to the stream catalog, live or on the flip to vod', async () => {
     const session = newSession();
@@ -461,14 +435,14 @@ describe('what a declared broadcast reports, and what it no longer writes', () =
     assert.deepEqual(session.catalogEntries, []);
   });
 
-  it('reports live on its first published manifest and vod once the recording is in the feed', async () => {
+  it('reports live on its first written window and vod once the recording is uploaded', async () => {
     const session = newSession();
 
     await feedOneSegment(session.uploader, 0);
     assert.deepEqual(
       session.reports.map((report) => report.state),
       [ADMIN_STATE_LIVE],
-      'the live report lands where the catalog announce would have, on the first manifest',
+      'the live report lands where the catalog announce would have, on the first window',
     );
 
     await session.uploader.notifyStop();
@@ -482,11 +456,10 @@ describe('what a declared broadcast reports, and what it no longer writes', () =
 
   /**
    * The two values the catalog's own VOD entry would have carried, because they answer the same
-   * question: where the recording sits in this stream's feed, and how long it plays. The index is
-   * read off what was actually published rather than written out here, so a change in how many
-   * playlists a finalize publishes cannot leave this asserting a number nothing points at.
+   * question: where the recording is, and how long it plays. The reference is read off what was
+   * actually uploaded rather than written out here.
    */
-  it('reports the recording at the index it was published to, with its playing time', async () => {
+  it('reports the recording by the reference it was uploaded under, with its playing time', async () => {
     const session = newSession();
 
     await feedOneSegment(session.uploader, 0);
@@ -494,13 +467,12 @@ describe('what a declared broadcast reports, and what it no longer writes', () =
     await session.uploader.notifyStop();
 
     const vod = session.reports.at(-1);
-    assert.equal(vod?.state, ADMIN_STATE_VOD);
-    assert.equal(
-      vod?.state === ADMIN_STATE_VOD ? vod.index : null,
-      session.published.at(-1)?.index,
-      'the report has to name the SOC the recording was actually written to',
-    );
-    assert.equal(vod?.state === ADMIN_STATE_VOD ? vod.duration : null, 4, 'two segments of two seconds each');
+    assert.equal(session.recordings.length, 1);
+    assert.deepEqual(vod, {
+      state: ADMIN_STATE_VOD,
+      recording: fakeRecordingReference(session.recordings[0]),
+      duration: 4,
+    });
   });
 
   /**
@@ -549,8 +521,8 @@ describe('the orchestrator in admin mode', () => {
 
   /**
    * ⛔ The generic `POST /stream/start` has no declaration to pass and no way to get one. Admitted,
-   * it would mint a random topic and publish a broadcast the admin never learns about and — because
-   * nothing writes a catalog entry in admin mode — that no viewer could find either.
+   * it would mint a random topic and publish a broadcast the admin never learns about and, because
+   * nothing writes a catalog entry in admin mode, that no viewer could find either.
    */
   it('refuses an announce that carries no declaration', async () => {
     const orchestrator = makeTestOrchestrator({ adminApi: acceptingAdmin() });
@@ -566,7 +538,7 @@ describe('the orchestrator in admin mode', () => {
    * The topic comes off the declaration rather than `crypto.randomUUID()`, and the admin's own id for
    * the stream is persisted beside it. Both are read back off the recovery entry, which is the only
    * thing a rebuilt session has: nothing re-announces a recovered stream, so an entry without the id
-   * is a broadcast that finalizes into its feed and stays `live` in the admin's list for ever.
+   * is a broadcast that finalizes and stays `live` in the admin's list for ever.
    */
   it('publishes a declared stream on the declaration topic, and writes its admin id down', async () => {
     const saved: StreamState[] = [];
@@ -601,137 +573,91 @@ describe('the orchestrator in admin mode', () => {
 });
 
 /**
- * Takeover ordering: the fourth property, and the one the other three quietly assumed.
+ * Takeover ordering: the fourth property.
  *
  * A re-announce retires the live session and starts its replacement in the same synchronous turn,
- * then drains the retired one in the background. Outside admin mode that is safe because each session
- * mints its own topic and the retired one writes only to its own. Under a declaration both sessions
- * hold the same topic, and `retire()` does not stop SOC writes — it gives up the recovery entry, the
- * admin report and the catalog entry, and nothing else. Its doc used to close with the premise admin
- * mode had already removed, "the published media is unaffected, since each uploader owns its own feed
- * topic", which is why this went unnoticed; it now says what it does not cover.
- *
- * So the retired session's closing and VOD manifests are writes onto the feed the replacement is
- * about to publish into. Ungated, the replacement reads a head the retired session is still moving:
- * both then compute the same next index and write over one another, and the retired session's VOD
- * lands above the replacement's live playlist — leaving the feed head announcing that a broadcast
- * still running has finished.
+ * then drains the retired one in the background. Under a declaration both sessions hold the same
+ * topic, and `retire()` does not stop window writes: it gives up the recovery entry, the admin report
+ * and the catalog entry, and nothing else. So the retired session's closing windows are written on the
+ * topic the replacement is about to write on. Ungated, the two write the same window addresses, and
+ * the replacement scans a topic the retired session is still moving.
  */
 describe('a replacement session on a declared topic waits for the session it replaced', () => {
-  /** Runs after the microtask queue, so the constructor's own settle callback on the drain has run. */
-  const afterMicrotasks = (): Promise<void> => new Promise((resolve) => setImmediate(resolve));
-
-  it('publishes nothing, and does not even read the head, while the retired session is finalizing', async () => {
+  it('writes no window, and does not even scan the topic, while the retired session is finalizing', async () => {
     let releaseDrain = (): void => {};
     const drained = new Promise<void>((resolve) => {
       releaseDrain = resolve;
     });
 
-    // Where the retired session has got to, and where it ends up: a closing manifest at 8 and its VOD
-    // at 9, which is exactly what it writes during the window this test holds open.
-    let head = 7;
-    let downloads = 0;
+    let reads = 0;
+    let finished = false;
     const session = newSession({
       predecessorDrained: drained,
-      feedHead: () => {
-        downloads++;
-        return { index: head, manifest: SOME_PLAYLIST };
+      windowAt: () => {
+        reads++;
+        return finished ? PREVIOUS_WINDOW : null;
       },
     });
 
     await feedOneSegment(session.uploader, 0);
 
-    assert.equal(
-      session.published.length,
-      0,
-      'a write here would land on an index the retired session is about to claim for its closing manifest',
-    );
-    assert.equal(
-      downloads,
-      0,
-      'and the head must not even be read yet: it is still moving, and the read is latched for the ' +
-        'life of the session, so a reading taken now would be wrong for every publish that follows',
-    );
+    assert.equal(session.windows.length, 0, 'a window here would share an address with the retired session');
+    assert.equal(reads, 0, 'and the topic must not be scanned yet: its newest window is still being written');
 
-    head = 9;
+    finished = true;
     releaseDrain();
-    await drained;
-    await afterMicrotasks();
-
     await feedOneSegment(session.uploader, 1);
 
-    assert.deepEqual(
-      session.published.map((write) => write.index),
-      [10],
-      'once the retired session is done the replacement resumes above its VOD, so no index is written ' +
-        'twice and the newest thing on the feed is this session live rather than the old recording',
+    assert.equal(
+      mediaSequenceOf(session.windows[0]?.playlist ?? ''),
+      7,
+      'once the retired session is done the replacement continues from its closing window',
     );
   });
 
   /**
-   * The latch is on the drain settling, not on the first refusal. A session that refused once has to
-   * publish on its own next segment rather than waiting for a further event, or a broadcast would be
-   * held for its whole life by one early reconnect.
+   * The latch is on the drain settling, not on a refusal. A session held once has to write on its own
+   * once the drain settles rather than waiting for a further event, or a broadcast would be held for
+   * its whole life by one early reconnect.
    */
-  it('is not latched by having refused once', async () => {
+  it('is not latched by having been held once', async () => {
     let releaseDrain = (): void => {};
     const drained = new Promise<void>((resolve) => {
       releaseDrain = resolve;
     });
-    const session = newSession({
-      predecessorDrained: drained,
-      feedHead: () => ({ index: 2, manifest: SOME_PLAYLIST }),
-    });
+    const session = newSession({ predecessorDrained: drained });
 
     await feedOneSegment(session.uploader, 0);
-    assert.equal(session.published.length, 0);
+    assert.equal(session.windows.length, 0);
 
     releaseDrain();
-    await drained;
-    await afterMicrotasks();
+    await drain(session.uploader);
 
-    await feedOneSegment(session.uploader, 1);
-    await feedOneSegment(session.uploader, 2);
-
-    assert.deepEqual(
-      session.published.map((write) => write.index),
-      [3, 4],
-      'the session publishes normally from here',
-    );
+    assert.ok(session.windows.length > 0, 'the session writes normally from here');
   });
 
   /**
-   * ⛔ The gate is admin-only, and this is the half that says so. A standalone session owns a topic
-   * nothing else will ever write, so holding its playlist for a drain would buy nothing and cost every
-   * viewer the wait. `StreamOrchestrator` is what passes the promise, and it passes it only when the
-   * announce carried an admin session.
+   * ⛔ The gate is for a shared topic only. `StreamOrchestrator` passes the promise only for a session
+   * whose topic outlives it, so a session handed none writes from its first window.
    */
   it('does not wait when it was handed no predecessor, which is every session outside a re-announce', async () => {
-    const session = newSession({ feedHead: () => ({ index: 4, manifest: SOME_PLAYLIST }) });
+    const session = newSession();
 
     await feedOneSegment(session.uploader, 0);
 
-    assert.deepEqual(
-      session.published.map((write) => write.index),
-      [5],
-      'nothing to wait for, so nothing waits',
-    );
+    assert.ok(session.windows.length > 0, 'nothing to wait for, so nothing waits');
   });
 });
 
 /**
- * A rung of an ABR ladder under a declaration, which is the other shape admin mode now takes.
+ * A rung of an ABR ladder under a declaration, which is the other shape admin mode takes.
  *
- * ## What is the same, and what is not
- *
- * The three properties above hold, with one substitution each. The declared topic still belongs to the
- * declaration — but it is the **ladder's master feed**, not this rung's, so this session publishes its
- * own manifests on a topic derived from the ladder group and its rung name. That topic outlives the
- * session exactly as a declared one does, so the head resume and the predecessor gate are both owed
- * here too. Nothing is written to the stream catalog, and the admin is told instead — but the two
- * reports are now statements about the LADDER: `live` once a master a viewer can open has landed, and
- * `vod` once every rung of the ladder has finalized or is known not to finish, carrying the master's
- * index rather than this rung's own.
+ * The declared topic is the ladder group, and this session writes its own windows on a topic derived
+ * from the ladder group and its rung name. That topic outlives the session exactly as a declared one
+ * does, so the opening scan and the predecessor gate are both owed here too. Nothing is written to the
+ * stream catalog, and the admin is told instead, but the two reports are now statements about the
+ * LADDER: `live` once the ladder's announce landed, and `vod` once every rung of the ladder has
+ * finalized or is known not to finish, carrying the ladder's recording rather than this rung's own.
  *
  * ⛔ The rung registers its own record through the ladder registry, which is the only thing that can
  * see the other three rungs. That is why the flip is read off an answer rather than off this session's
@@ -739,13 +665,14 @@ describe('a replacement session on a declared topic waits for the session it rep
  */
 describe('a rung of a declared ladder', () => {
   /**
-   * This rung's own manifest feed, which the orchestrator derives from the ladder group and the rung
-   * name. Spelled out rather than computed with `rungTopicFor`, because what these cases turn on is
-   * that it is NOT the declared topic and that it outlives the session, not what the derivation
-   * produces — `rungTopic.test.ts` pins that.
+   * This rung's own topic, which the orchestrator derives from the ladder group and the rung name.
+   * Spelled out rather than computed with `rungTopicFor`, because what these cases turn on is that it
+   * is NOT the declared topic and that it outlives the session.
    */
   const RUNG_TOPIC = 'rung-topic-0001';
   const RUNG = { name: '720p', width: 1280, height: 720, configuredKbps: 2800 };
+  /** The ladder's recording as the merge names it: its lowest finished rung's. Built rather than written out. */
+  const LADDER_RECORDING = 'ab'.repeat(32);
 
   /** One rendition report registered with the registry. */
   interface Upsert {
@@ -756,44 +683,57 @@ describe('a rung of a declared ladder', () => {
 
   interface LadderSession {
     uploader: StreamUploader;
-    published: ManifestWrite[];
+    windows: WindowWrite[];
+    recordings: string[];
     catalogEntries: unknown[];
     reports: AdminStateReport[];
     upserts: Upsert[];
     /** Every record of this rung registered as one that will not finish. */
     unfinished: Upsert[];
-    delivered: string[];
   }
 
   interface LadderSessionOptions {
-    /**
-     * What the registry answers for each announce in turn. Defaults to a master at 0 that flipped
-     * nothing.
-     */
+    /** What the registry answers for each announce in turn. Defaults to a master at 0 that flipped nothing. */
     announce?: (upsert: Upsert, attempt: number) => RenditionAnnouncement;
-    /** What the registry answers when the rung is recorded as one that will not finish. Defaults to no master and no flip. */
+    /** What the registry answers when the rung is recorded as one that will not finish. */
     unfinished?: (upsert: Upsert) => RenditionAnnouncement;
     /** Answer for each state report in turn, so a failure can be driven. Defaults to accepting every one. */
     reportOutcome?: (report: AdminStateReport) => StateReportOutcome;
-    /** How long a failed announce waits before the next manifest publish re-attempts it. */
+    /** How long a failed announce waits before the next window re-attempts it. */
     catalogAnnounceRetryMs?: number;
-    feedHead?: () => FakeFeedHead | null;
+    windowAt?: () => Uint8Array | null;
   }
 
+  const LIVE_ANSWER: RenditionAnnouncement = {
+    recording: null,
+    flippedToFinished: false,
+    duration: null,
+  };
+  const NOTHING_ANSWER: RenditionAnnouncement = {
+    recording: null,
+    flippedToFinished: false,
+    duration: null,
+  };
+
   function newLadderSession(options: LadderSessionOptions = {}): LadderSession {
-    const published: ManifestWrite[] = [];
+    const windows: WindowWrite[] = [];
+    const recordings: string[] = [];
     const catalogEntries: unknown[] = [];
     const reports: AdminStateReport[] = [];
     const upserts: Upsert[] = [];
     const unfinished: Upsert[] = [];
-    const delivered: string[] = [];
 
     const bee = makeFakeBee({
-      uploadPayload: async (index, payload) => {
-        published.push({ index, playlist: String(payload) });
-        return { reference: { toHex: () => `soc${index}` } };
+      uploadWindow: async (identifier, payload) => {
+        windows.push({ identifier, playlist: playlistOf(payload) });
+        return { reference: { toHex: () => 'window' } };
       },
-      feedHead: options.feedHead ?? (() => null),
+      windowAt: () => (options.windowAt ? options.windowAt() : null),
+      uploadRecording: async (playlist) => {
+        recordings.push(playlist);
+        const reference = fakeRecordingReference(playlist);
+        return { reference: { toHex: () => reference } };
+      },
     });
 
     const client = {
@@ -808,28 +748,18 @@ describe('a rung of a declared ladder', () => {
       upsertRendition: async (identity, rendition) => {
         const upsert = { adminStreamId: identity.adminStreamId, group: identity.group, rendition };
         upserts.push(upsert);
-        return (
-          options.announce?.(upsert, upserts.length) ?? {
-            masterIndex: 0,
-            flippedToFinished: false,
-            duration: null,
-          }
-        );
+        return options.announce?.(upsert, upserts.length) ?? LIVE_ANSWER;
       },
-      recordRungDelivered: (_group, rung) => {
-        delivered.push(rung);
-      },
-      recordRungUploadFailed: () => {},
       recordRungUnfinished: async (identity, rendition) => {
         const upsert = { adminStreamId: identity.adminStreamId, group: identity.group, rendition };
         unfinished.push(upsert);
-        return options.unfinished?.(upsert) ?? { masterIndex: null, flippedToFinished: false, duration: null };
+        return options.unfinished?.(upsert) ?? NOTHING_ANSWER;
       },
     };
 
     const uploader = new StreamUploader({
       anchor: TEST_ANCHOR,
-      publisher: testPublisher(bee as Bee),
+      publisher: testPublisher(bee),
       streamCatalog: makeFakeCatalog({
         addStream: async (entry: unknown) => {
           catalogEntries.push(entry);
@@ -841,63 +771,39 @@ describe('a rung of a declared ladder', () => {
       streamKey: TEST_STREAM_KEY,
       redundancyLevel: 0,
       streamId: `${STREAM_ID}_720p`,
-      // The rung's own derived topic, never the declaration's. The declaration's topic is the group
-      // below, which is the ladder's master feed.
+      // The rung's own derived topic, never the declaration's. The declaration's topic is the group.
       streamTopic: RUNG_TOPIC,
       mediatype: MEDIA_TYPE_VIDEO,
       ladder: { group: DECLARED_TOPIC, rung: RUNG },
       admin: { client, id: ADMIN_STREAM_ID },
       catalogAnnounceRetryMs: options.catalogAnnounceRetryMs,
+      ...TEST_WINDOWS,
     });
 
-    return { uploader, published, catalogEntries, reports, upserts, unfinished, delivered };
+    return { uploader, windows, recordings, catalogEntries, reports, upserts, unfinished };
   }
 
   /**
-   * ⛔⛔ **A rung reads the head of its OWN feed, and it is the only feed it ever reads.** Its topic is
-   * derived from the ladder group and the rung name, so it outlives the session: a rung that restarts
-   * mid-broadcast comes back onto the feed it was already writing, and starting at index 0 there would
-   * write over its own last session's playlists. Reading the DECLARED topic would be the opposite
-   * mistake and is what the session is built to make impossible — that feed is the ladder's master,
-   * whose writer establishes its own index, and this session never names it.
+   * ⛔⛔ **A rung scans its OWN topic, and it is the only topic it ever scans.** Its topic is derived
+   * from the ladder group and the rung name, so it outlives the session: a rung that restarts
+   * mid-broadcast comes back onto the topic it was already writing, and numbering from 0 there would
+   * move the media sequence of every viewer on that rung backwards.
    */
-  it('continues above the head its own derived topic already holds', async () => {
-    const session = newLadderSession({ feedHead: () => ({ index: 7, manifest: SOME_PLAYLIST }) });
+  it('continues from the newest window its own derived topic already holds', async () => {
+    const session = newLadderSession({ windowAt: () => PREVIOUS_WINDOW });
 
     await feedOneSegment(session.uploader, 0);
 
-    assert.equal(session.published[0]?.index, 8, 'a rung that restarts must not write over the feed it left');
+    assert.equal(mediaSequenceOf(session.windows[0]?.playlist ?? ''), 7);
+    assert.ok(session.windows[0]?.playlist.includes('#EXT-X-DISCONTINUITY\n'), 'the seam must be marked');
   });
 
-  it('starts at zero when its own topic has never been written, which is a new ladder', async () => {
+  it('starts at zero when its own topic holds no recent window, which is a new ladder', async () => {
     const session = newLadderSession();
 
     await feedOneSegment(session.uploader, 0);
 
-    assert.equal(session.published[0]?.index, 0, 'a 404 is an answer: the feed is empty, so 0 is right');
-  });
-
-  /**
-   * ⛔ The numbering continues too, not just the index. A viewer following this rung's feed head is
-   * handed the new session's first playlist as the next update of the one they are playing, and
-   * hls.js reads a media sequence that moved backwards as a parsing error rather than as a new
-   * broadcast. `ManifestManager.test.ts` drives the seam itself; this pins that the head read is
-   * where the number comes from.
-   */
-  it('numbers its playlist on from what the head it read was numbered to', async () => {
-    const previous = ['#EXTM3U', '#EXT-X-VERSION:3', '#EXT-X-MEDIA-SEQUENCE:12', '', '#EXTINF:2,', 'ref-a', ''].join(
-      '\n',
-    );
-    const session = newLadderSession({ feedHead: () => ({ index: 4, manifest: previous }) });
-
-    await feedOneSegment(session.uploader, 0);
-
-    assert.match(
-      session.published[0]?.playlist ?? '',
-      /#EXT-X-MEDIA-SEQUENCE:13/,
-      'the new session restarted the numbering over a feed a viewer is already following',
-    );
-    assert.match(session.published[0]?.playlist ?? '', /#EXT-X-DISCONTINUITY/, 'the seam must be marked');
+    assert.equal(mediaSequenceOf(session.windows[0]?.playlist ?? ''), 0);
   });
 
   it('writes nothing to the stream catalog, and registers its rung with the ladder registry instead', async () => {
@@ -914,15 +820,11 @@ describe('a rung of a declared ladder', () => {
         upsert.rendition.topic,
       ]),
       [[DECLARED_TOPIC, ADMIN_STREAM_ID, '720p', RUNG_TOPIC]],
-      'the record names the rung′s own feed, under the declared ladder, addressed to the declared stream',
+      'the record names the rung′s own topic, under the declared ladder, addressed to the declared stream',
     );
   });
 
-  /**
-   * `live` is a statement about the ladder, so it waits for a master a viewer can actually open. A
-   * rung that published a manifest into a ladder with no master yet is a quality nothing points at.
-   */
-  it('reports live once the ladder′s first master has landed', async () => {
+  it('reports live once the ladder′s announce has landed', async () => {
     const session = newLadderSession();
 
     await feedOneSegment(session.uploader, 0);
@@ -933,40 +835,26 @@ describe('a rung of a declared ladder', () => {
     );
   });
 
-  it('reports nothing while no master has landed', async () => {
-    const session = newLadderSession({
-      announce: () => ({ masterIndex: null, flippedToFinished: false, duration: null }),
-    });
-
-    await feedOneSegment(session.uploader, 0);
-
-    assert.deepEqual(session.reports, [], 'there is nothing for a viewer to open yet, so the broadcast is not live');
-  });
-
   /**
-   * ⛔ The index is the FINAL MASTER's, in the declared topic's feed, and never this rung's own VOD
-   * index. A viewer in admin mode is handed the declared topic; for a ladder that feed holds the
-   * master, so a rung's index would name a position in a feed nobody opens.
+   * ⛔ The reference is the LADDER's recording as the merge answered it, never this rung's own: one
+   * declared stream is one ladder. And the duration is the ladder's.
    */
-  it('reports vod at the master′s index with the ladder′s duration, once the ladder flipped', async () => {
+  it('reports vod with the ladder′s recording and duration, once the ladder flipped', async () => {
     const session = newLadderSession({
       announce: (upsert) =>
-        upsert.rendition.index === undefined
-          ? { masterIndex: 0, flippedToFinished: false, duration: null }
-          : { masterIndex: 4, flippedToFinished: true, duration: 12 },
+        upsert.rendition.recording === undefined
+          ? LIVE_ANSWER
+          : { recording: LADDER_RECORDING, flippedToFinished: true, duration: 12 },
     });
 
     await feedOneSegment(session.uploader, 0);
     await session.uploader.notifyStop();
 
-    const vod = session.reports.at(-1);
-    assert.equal(vod?.state, ADMIN_STATE_VOD);
-    assert.equal(vod?.state === ADMIN_STATE_VOD ? vod.index : null, 4, 'the master′s index, not the rung′s');
-    assert.equal(vod?.state === ADMIN_STATE_VOD ? vod.duration : null, 12, 'the ladder′s playing time, not the rung′s');
-    assert.notEqual(
-      session.published.at(-1)?.index,
-      4,
-      'and the rung really did publish its own recording somewhere else, or this asserts nothing',
+    assert.deepEqual(session.reports.at(-1), { state: ADMIN_STATE_VOD, recording: LADDER_RECORDING, duration: 12 });
+    assert.equal(
+      session.upserts.at(-1)?.rendition.recording,
+      fakeRecordingReference(session.recordings[0]),
+      'and the rung′s own record carries its own recording',
     );
   });
 
@@ -977,9 +865,7 @@ describe('a rung of a declared ladder', () => {
    * air in the admin′s list.
    */
   it('reports no vod when its own finalize did not finish the ladder', async () => {
-    const session = newLadderSession({
-      announce: () => ({ masterIndex: 0, flippedToFinished: false, duration: null }),
-    });
+    const session = newLadderSession();
 
     await feedOneSegment(session.uploader, 0);
     await session.uploader.notifyStop();
@@ -990,7 +876,7 @@ describe('a rung of a declared ladder', () => {
       'the broadcast went live and stays that way: three of its rungs are still publishing',
     );
     assert.equal(session.upserts.length, 2, 'the rung still announced itself finished, which is what flips the ladder');
-    assert.equal(session.upserts[1].rendition.index, session.published.at(-1)?.index);
+    assert.equal(session.upserts[1].rendition.recording, fakeRecordingReference(session.recordings[0]));
   });
 
   /**
@@ -998,7 +884,7 @@ describe('a rung of a declared ladder', () => {
    * belonged to has to stop waiting for it, or three rungs' recording stays listed as live for good.
    */
   describe('a rung whose stop failed', () => {
-    it('registers itself as it stands, with no index, under the declared ladder and stream', async () => {
+    it('registers itself as it stands, with no recording, under the declared ladder and stream', async () => {
       const session = newLadderSession();
       await feedOneSegment(session.uploader, 0);
 
@@ -1008,8 +894,8 @@ describe('a rung of a declared ladder', () => {
         session.unfinished.map((upsert) => [upsert.group, upsert.adminStreamId, upsert.rendition.name]),
         [[DECLARED_TOPIC, ADMIN_STREAM_ID, '720p']],
       );
-      assert.equal(session.unfinished[0].rendition.topic, RUNG_TOPIC, 'the record names the rung′s own feed');
-      assert.equal(session.unfinished[0].rendition.index, undefined, 'a rung with no recording has no index to name');
+      assert.equal(session.unfinished[0].rendition.topic, RUNG_TOPIC, 'the record names the rung′s own topic');
+      assert.equal(session.unfinished[0].rendition.recording, undefined, 'a rung with no recording names none');
     });
 
     /**
@@ -1017,9 +903,9 @@ describe('a rung of a declared ladder', () => {
      * here passes. It is passed over on purpose: the orchestrator calls this only when no newer session
      * took the id, and a guard that held here would leave the recording listed as live.
      */
-    it('reports vod at the master′s index, once, when marking it is what finishes the ladder', async () => {
+    it('reports vod with the ladder′s recording, once, when marking it is what finishes the ladder', async () => {
       const session = newLadderSession({
-        unfinished: () => ({ masterIndex: 6, flippedToFinished: true, duration: 12 }),
+        unfinished: () => ({ recording: LADDER_RECORDING, flippedToFinished: true, duration: 12 }),
       });
       await feedOneSegment(session.uploader, 0);
       session.uploader.retire();
@@ -1028,7 +914,7 @@ describe('a rung of a declared ladder', () => {
 
       assert.deepEqual(session.reports, [
         { state: ADMIN_STATE_LIVE },
-        { state: ADMIN_STATE_VOD, index: 6, duration: 12 },
+        { state: ADMIN_STATE_VOD, recording: LADDER_RECORDING, duration: 12 },
       ]);
       assert.equal(
         lines.filter((line) => line.includes(ladderFinalized(DECLARED_TOPIC))).length,
@@ -1054,7 +940,7 @@ describe('a rung of a declared ladder', () => {
     /** Reported only after the report landed, as a finalize's flip is: a line claiming it first is a flip nobody took. */
     it('does not say the ladder finalized when the vod report could not be delivered', async () => {
       const session = newLadderSession({
-        unfinished: () => ({ masterIndex: 6, flippedToFinished: true, duration: 12 }),
+        unfinished: () => ({ recording: LADDER_RECORDING, flippedToFinished: true, duration: 12 }),
         reportOutcome: (report) => (report.state === ADMIN_STATE_VOD ? STATE_REPORT_FAILED : STATE_REPORT_ACCEPTED),
       });
       await feedOneSegment(session.uploader, 0);
@@ -1068,35 +954,34 @@ describe('a rung of a declared ladder', () => {
   });
 
   /**
-   * A rendition report that did not land is a rung missing from the master every viewer resolves, so it
-   * costs exactly what a failed catalog announce costs: the age `/health` reports as an unlisted
-   * stream, and a re-attempt on the announce cadence rather than on the segment cadence.
+   * A rendition report that did not land is a rung missing from what the admin holds, so it costs
+   * exactly what a failed catalog announce costs: the age `/health` reports as an unlisted stream, and
+   * a re-attempt on the announce cadence.
    */
   it('re-attempts a failed announce on the announce cadence, and says so on /health meanwhile', async () => {
+    let refusing = true;
     const session = newLadderSession({
       catalogAnnounceRetryMs: 0,
-      announce: (_upsert, attempt) => {
-        if (attempt === 1) {
+      announce: () => {
+        if (refusing) {
           throw new Error('the admin refused the rendition report');
         }
-        return { masterIndex: 1, flippedToFinished: false, duration: null };
+        return LIVE_ANSWER;
       },
     });
 
     await feedOneSegment(session.uploader, 0);
-    assert.equal(session.upserts.length, 1);
-    // A length rather than `deepEqual` against `[]`: node's assertion signature narrows the array to
-    // `never[]` for the rest of the block, and the assertions below are about what ends up in it.
-    assert.equal(session.reports.length, 0, 'nothing is live until a master exists');
+    assert.ok(session.upserts.length >= 1);
+    assert.equal(session.reports.length, 0, 'nothing is live until the ladder holds this rung');
     assert.notEqual(
       session.uploader.getMsSinceCatalogAnnounceFailed(),
       null,
       'a ladder the admin does not hold is a broadcast no viewer can find, which is what this signal is',
     );
 
+    refusing = false;
     await feedOneSegment(session.uploader, 1);
 
-    assert.equal(session.upserts.length, 2, 'the next manifest publish re-attempts it');
     assert.deepEqual(
       session.reports.map((report) => report.state),
       [ADMIN_STATE_LIVE],
@@ -1104,151 +989,20 @@ describe('a rung of a declared ladder', () => {
     assert.equal(session.uploader.getMsSinceCatalogAnnounceFailed(), null, 'and the signal clears once it lands');
   });
 
-  it('counts each delivery against the ladder, so the master can drop a rung that stops', async () => {
-    const session = newLadderSession();
+  /**
+   * ⛔ A window is a live playlist, not a recording, so a session continuing a topic carries nothing
+   * of the last session's media into its own recording. Each session's recording is its own.
+   */
+  it('finalizes a recording of its own media alone, even on a topic that held a broadcast', async () => {
+    const session = newLadderSession({ windowAt: () => PREVIOUS_WINDOW });
 
     await feedOneSegment(session.uploader, 0);
     await feedOneSegment(session.uploader, 1);
+    await session.uploader.notifyStop();
 
-    assert.deepEqual(session.delivered, ['720p', '720p']);
-  });
-
-  /**
-   * ## The head recording carries every session this rung's feed has held
-   *
-   * A rung's topic is derived, so it outlives its sessions and a broadcaster who stops and starts
-   * again writes several recordings onto one feed. The catalogue points at the head, so the head
-   * recording opens with what was already there: the previous playlist verbatim, one
-   * `#EXT-X-DISCONTINUITY`, then this session's own media.
-   *
-   * ⛔ `ManifestManager.test.ts` owns the shape of the glued playlist. These cases own the wiring: that
-   * the SAME head read that moves the numbering is also what the recording inherits, that the duration
-   * the admin is told is the whole broadcast, and that a session over an empty feed publishes exactly
-   * what it always did.
-   */
-  describe('a rung whose feed already holds a recording', () => {
-    const PREVIOUS_REF = 'a'.repeat(64);
-    const PREVIOUS_RECORDING = [
-      '#EXTM3U',
-      '#EXT-X-VERSION:3',
-      '#EXT-X-TARGETDURATION:2',
-      '#EXT-X-PLAYLIST-TYPE:VOD',
-      '#EXT-X-MEDIA-SEQUENCE:0',
-      '',
-      '#EXT-X-PROGRAM-DATE-TIME:2026-09-21T10:05:21.849Z',
-      '#EXTINF:2,',
-      PREVIOUS_REF,
-      '#EXT-X-PROGRAM-DATE-TIME:2026-09-21T10:05:23.849Z',
-      '#EXTINF:2,',
-      'b'.repeat(64),
-      '#EXT-X-ENDLIST',
-      '',
-    ].join('\n');
-
-    /** The recording, which finalize publishes last, out of everything this session wrote. */
-    function recordingOf(published: readonly { playlist: string }[]): string {
-      const vod = published.filter((write) => write.playlist.includes('#EXT-X-PLAYLIST-TYPE:VOD'));
-      assert.equal(vod.length, 1, 'a finalize publishes exactly one recording');
-      return vod[0].playlist;
-    }
-
-    function urisOf(playlist: string): string[] {
-      return playlist
-        .split('\n')
-        .map((line) => line.trim())
-        .filter((line) => line !== '' && !line.startsWith('#'));
-    }
-
-    it('finalizes a recording that opens with the previous one and seams it once', async () => {
-      const session = newLadderSession({ feedHead: () => ({ index: 4, manifest: PREVIOUS_RECORDING }) });
-
-      await feedOneSegment(session.uploader, 0);
-      await feedOneSegment(session.uploader, 1);
-      await session.uploader.notifyStop();
-
-      const recording = recordingOf(session.published);
-      const uris = urisOf(recording);
-
-      assert.equal(uris[0], PREVIOUS_REF, 'the recording must start where the broadcast started');
-      assert.equal(uris.length, 4, 'two inherited entries and this session′s two');
-      assert.equal(recording.split('#EXT-X-DISCONTINUITY\n').length - 1, 1, 'one seam, never two');
-      assert.match(recording, /#EXT-X-MEDIA-SEQUENCE:0/, 'the whole broadcast starts at the prefix′s number');
-    });
-
-    /**
-     * ⛔ Every number reported about the recording describes the recording. The admin's `vod` report is
-     * what an audience is shown as the length of what they are about to play, and stopping it at the
-     * last restart would call a four-session broadcast as long as its last session.
-     */
-    it('reports the whole broadcast′s duration, not this session′s share', async () => {
-      const session = newLadderSession({
-        feedHead: () => ({ index: 4, manifest: PREVIOUS_RECORDING }),
-        // The rung whose report finished the ladder, which is the one that tells the admin how long
-        // the recording plays.
-        announce: (_upsert, attempt) => ({
-          masterIndex: 0,
-          flippedToFinished: attempt > 1,
-          duration: null,
-        }),
-      });
-
-      await feedOneSegment(session.uploader, 0);
-      await feedOneSegment(session.uploader, 1);
-      await session.uploader.notifyStop();
-
-      assert.equal(
-        session.upserts.at(-1)?.rendition.duration,
-        8,
-        'the rendition record: four seconds inherited plus this session′s four',
-      );
-      const vod = session.reports.find((report) => report.state === ADMIN_STATE_VOD);
-      assert.equal(vod?.state === ADMIN_STATE_VOD ? vod.duration : null, 8, 'and the admin′s vod report with it');
-    });
-
-    /**
-     * ⚠️ A predecessor that was killed never published a recording, so its head is a live window and
-     * only that window is inherited. Not worked around here: that session's own recovery entry is what
-     * recovers the rest of its recording.
-     */
-    it('inherits only the window a session that never finalized left behind', async () => {
-      const liveWindow = [
-        '#EXTM3U',
-        '#EXT-X-VERSION:3',
-        '#EXT-X-TARGETDURATION:2',
-        '#EXT-X-MEDIA-SEQUENCE:8',
-        '',
-        '#EXT-X-PROGRAM-DATE-TIME:2026-09-21T10:05:21.849Z',
-        '#EXTINF:2,',
-        PREVIOUS_REF,
-        '',
-      ].join('\n');
-      const session = newLadderSession({ feedHead: () => ({ index: 4, manifest: liveWindow }) });
-
-      await feedOneSegment(session.uploader, 0);
-      await session.uploader.notifyStop();
-
-      const uris = urisOf(recordingOf(session.published));
-      assert.equal(uris[0], PREVIOUS_REF, 'the window that was on the head is inherited');
-      assert.equal(uris.length, 2, 'and nothing that had already slid out of it');
-    });
-
-    /**
-     * ⛔⛔ A standalone single-rendition stream mints a fresh topic per broadcast, so its head is empty
-     * by construction and nothing is inherited. That deployment must publish exactly what it published
-     * before any of this existed.
-     */
-    it('publishes an unglued recording when its feed has never been written', async () => {
-      const session = newLadderSession();
-
-      await feedOneSegment(session.uploader, 0);
-      await feedOneSegment(session.uploader, 1);
-      await session.uploader.notifyStop();
-
-      const recording = recordingOf(session.published);
-      assert.equal(urisOf(recording).length, 2, 'only this session′s own segments');
-      assert.match(recording, /#EXT-X-MEDIA-SEQUENCE:0/);
-      assert.ok(!recording.includes('#EXT-X-DISCONTINUITY'), 'there is no seam to declare');
-      assert.ok(!recording.includes('#EXT-X-DISCONTINUITY-SEQUENCE'));
-    });
+    const recording = session.recordings[0] ?? '';
+    const uris = recording.split('\n').filter((line) => line !== '' && !line.startsWith('#'));
+    assert.equal(uris.length, 2, 'only this session′s own segments');
+    assert.ok(!uris.includes('d'.repeat(64)), 'nothing from the window it continued');
   });
 });

@@ -7,7 +7,7 @@ import { HLS_INDEPENDENT_SEGMENTS, HLS_M3U, HLS_STREAM_INF, HLS_VERSION } from '
  * encoder's configuration, and they are the entire supply-side input to a player's ABR decision.
  * See the uploader's `libs/BitrateMeter.ts`.
  *
- * `index` and `duration` are both set once the rung has been finalized as VOD.
+ * A finished rung names its recording by reference, `recording`, with its `duration`.
  */
 export interface Rendition {
   name: string;
@@ -18,7 +18,8 @@ export interface Rendition {
   bandwidth: number;
   /** Mean bitrate so far, bits/s. HLS's AVERAGE-BANDWIDTH. */
   avgBandwidth: number;
-  index?: number;
+  /** The reference of the rung's recording playlist, read with `GET /bytes/<recording>`. */
+  recording?: string;
   duration?: number;
 }
 

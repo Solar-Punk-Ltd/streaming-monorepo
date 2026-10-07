@@ -30,7 +30,7 @@ streaming-monorepo/
 │       └── docs/            its feature pages, its issue and decision record, its test notes
 ├── infra/                   what hosts need, shared by every project
 │   └── edge/                the front door of a host
-├── packages/                code shared by two or more apps: contracts, db-migrate, web-auth
+├── packages/                code shared by two or more apps: contracts, db-migrate, swarm-windows, web-auth
 ├── tools/                   scripts that serve the whole repository: the boundary check and the app cut
 ├── scripts/public-leaks/    the gate that refuses a real address, wallet or host name in the tree
 ├── docs/                    how the pieces fit
@@ -45,7 +45,8 @@ streaming-monorepo/
 Two things the tree shows are worth knowing before a first change. Code that two apps share lives
 once, in `packages/`: `contracts` holds the shapes the apps send each other, one schema each,
 checked by the side that receives it, `web-auth` the sign-in and session code of the two backends,
-and `db-migrate` the migration runner both backends use. Any app may depend on a package, and the
+`db-migrate` the migration runner both backends use, and `swarm-windows` the time window convention
+on Swarm that the stack and the web2 admin both write. Any app may depend on a package, and the
 boundary check refuses a package that depends on an app. And the repository is one pnpm workspace:
 the root `package.json` pins its pnpm, the root `pnpm-workspace.yaml` lists every app's projects
 under the app's own folder and holds the security overrides, and one lockfile covers all three apps.

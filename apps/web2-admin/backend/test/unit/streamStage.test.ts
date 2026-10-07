@@ -70,6 +70,7 @@ const FORM: StreamInputValues = {
  * holds the owner rules.
  */
 const BRAND_STAGE_OWNER = `0x${TEST_OWNER}`;
+const RECORDING = 'ab'.repeat(32);
 const SECOND_STAGE_OWNER = '0x2222222222222222222222222222222222222222';
 
 async function setup() {
@@ -128,7 +129,7 @@ describe('stageLockFor', () => {
   });
 
   it('keeps the stage of a draft that holds a recording, and lets one without a stage take its first', () => {
-    const recorded = { manifest_index: 7, duration_seconds: 61 };
+    const recorded = { recording_ref: RECORDING, duration_seconds: 61 };
 
     assert.equal(stageLockFor(streamRow(recorded), SECOND_STAGE), 'recording');
     assert.equal(stageLockFor(streamRow(recorded), null), 'recording');
@@ -243,7 +244,7 @@ describe('StreamService on stages', () => {
 
   it('keeps the stage of a draft that holds a recording', async () => {
     const { store, service } = await setup();
-    const row = store.add(streamRow({ manifest_index: 7, duration_seconds: 61 }));
+    const row = store.add(streamRow({ recording_ref: RECORDING, duration_seconds: 61 }));
 
     await assert.rejects(
       () => service.update(TEST_OPERATOR, row.id, { ...FORM, stageId: SECOND_STAGE }),
@@ -254,7 +255,7 @@ describe('StreamService on stages', () => {
 
   it('gives a recorded draft from before stages its first stage', async () => {
     const { store, service } = await setup();
-    const row = store.add(streamRow({ stage_id: null, manifest_index: 7, duration_seconds: 61 }));
+    const row = store.add(streamRow({ stage_id: null, recording_ref: RECORDING, duration_seconds: 61 }));
 
     assert.equal((await service.update(TEST_OPERATOR, row.id, { ...FORM, stageId: STAGE_ID })).stage_id, STAGE_ID);
   });
@@ -378,7 +379,7 @@ describe('PublishService on stages', () => {
 
   it('publishes a draft that holds a recording on a stage retired since, as that recording', async () => {
     const { store, publish } = await setup();
-    const row = store.add(streamRow({ stage_id: RETIRED_STAGE, manifest_index: 7, duration_seconds: 61 }));
+    const row = store.add(streamRow({ stage_id: RETIRED_STAGE, recording_ref: RECORDING, duration_seconds: 61 }));
 
     const outcome = await publish.publish(TEST_OPERATOR, row.id);
 

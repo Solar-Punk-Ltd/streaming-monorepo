@@ -18,6 +18,7 @@ import { feedIdentityFrom } from './domain/feedIdentity.js';
 import { FeedWriteRepository } from './domain/FeedWriteRepository.js';
 import { IngestService } from './domain/IngestService.js';
 import { LadderService } from './domain/LadderService.js';
+import { ListNotes } from './domain/ListNotes.js';
 import { Logger } from './domain/Logger.js';
 import { Mutex } from './domain/Mutex.js';
 import { PostgresAuditLog } from './domain/PostgresAuditLog.js';
@@ -92,6 +93,7 @@ let apiServer: ApiServerHandle | undefined;
 let database: Database | undefined;
 let sessionSweep: SessionSweep | undefined;
 let catalogueMove: CatalogueMoveService | undefined;
+let listNotes: ListNotes | undefined;
 let isShuttingDown = false;
 
 async function gracefulShutdown(signal: string): Promise<void> {
@@ -110,6 +112,11 @@ async function gracefulShutdown(signal: string): Promise<void> {
     if (apiServer) {
       await apiServer.close();
       apiServer = undefined;
+    }
+    if (listNotes) {
+      // After the api, so no report writes a version that no note would name before the process ends.
+      await listNotes.stop();
+      listNotes = undefined;
     }
     if (catalogueMove) {
       // After the slot it is on, so the move stays running and the next start resumes it.
@@ -174,11 +181,13 @@ async function main(): Promise<void> {
   // Every catalogue write goes through this one mutex, and the last step of a catalogue move takes it as well, so
   // nothing is written between the move's catch-up and its switch to the new batch.
   const feedMutex = new Mutex();
+  // Every catalogue write is recorded through the notes, which name the newest recorded index in the list's windows.
+  listNotes = new ListNotes({ log: feedWriteRepository, feed, gateway, targets: catalogueBatch });
   const publishService = new PublishService(
     streamRepository,
     renditionRepository,
     stageRepository,
-    feedWriteRepository,
+    listNotes,
     gateway,
     catalogueBatch,
     feed,
@@ -204,6 +213,8 @@ async function main(): Promise<void> {
   await feedBootCheck.run();
   // A move of the catalogue left running by the last process goes on where it stopped, in the background.
   await catalogueMove.resumeOnBoot();
+  // After the boot check, which may record a head it adopts from the network, so the first note names it.
+  await listNotes.start();
 
   const ingestService = new IngestService(streamRepository, stageRepository, auditLog);
   const streamStateService = new StreamStateService(streamRepository, publishService, auditLog);

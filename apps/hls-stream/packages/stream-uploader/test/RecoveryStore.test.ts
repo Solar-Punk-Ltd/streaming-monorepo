@@ -106,10 +106,10 @@ describe('RecoveryStore', () => {
     const { store, dir } = storeIn(makeTempRoot(), 'state');
     store.save('stream-1', makeRecoveredState('stream-1'));
 
-    store.save('stream-1', { ...makeRecoveredState('stream-1'), socIndex: 99 });
+    store.save('stream-1', { ...makeRecoveredState('stream-1'), sequenceOffset: 99 });
 
     assert.equal(fs.readdirSync(dir).length, 1);
-    assert.equal(store.load('stream-1')?.socIndex, 99);
+    assert.equal(store.load('stream-1')?.sequenceOffset, 99);
   });
 
   /**
@@ -398,10 +398,10 @@ describe('RecoveryStore', () => {
       writeLegacyEntry(dir, 'stream-1');
 
       assert.deepEqual(fs.readdirSync(dir), ['stream-1.json']);
-      store.save('stream-1', { ...makeRecoveredState('stream-1'), socIndex: 99 });
+      store.save('stream-1', { ...makeRecoveredState('stream-1'), sequenceOffset: 99 });
 
       assert.deepEqual(fs.readdirSync(dir), ['stream-1.json'], 'a save under the same id wrote a second file');
-      assert.equal(store.load('stream-1')?.socIndex, 99);
+      assert.equal(store.load('stream-1')?.sequenceOffset, 99);
     });
 
     /**
@@ -415,11 +415,11 @@ describe('RecoveryStore', () => {
       const { store, dir } = storeIn(makeTempRoot(), 'state');
       writeLegacyEntry(dir, 'live/stream');
 
-      store.save('live/stream', { ...makeRecoveredState('live/stream'), socIndex: 99 });
+      store.save('live/stream', { ...makeRecoveredState('live/stream'), sequenceOffset: 99 });
 
       assert.deepEqual(store.listActive(), ['live/stream'], 'one broadcast is listed as two streams to recover');
       assert.equal(fs.readdirSync(dir).length, 1);
-      assert.equal(store.load('live/stream')?.socIndex, 99);
+      assert.equal(store.load('live/stream')?.sequenceOffset, 99);
     });
   });
 
@@ -585,7 +585,6 @@ describe('RecoveryStore', () => {
     const { store } = storeIn(makeTempRoot(), 'state');
     const state: StreamState = {
       ...makeRecoveredState('stream-1'),
-      socIndex: null,
       pendingDiscontinuity: true,
       liveManifestStale: true,
       segments: [
