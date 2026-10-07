@@ -1565,6 +1565,8 @@ describe('deploy/deploy.sh, run against a repository on this disk', () => {
    */
   function checkoutWithHost(root: string): Checkout {
     const checked = checkout(root);
+    // The folder MANAGER_ROOT sits in, as a host has it: rsync makes the last folder of its destination and no other.
+    mkdirSync(join(root, 'host'), { recursive: true });
     writeFileSync(
       join(checked.manager, 'manager', '.env'),
       `POSTGRES_PASSWORD=synthetic-not-a-secret\nMANAGER_ROOT=${join(root, 'host', 'streaming-infra-manager')}\n`,
