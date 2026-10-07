@@ -485,6 +485,39 @@ describe('Q4: ended is the playing rung finishing, confirmed by one sibling', ()
     assert.equal(rig.poller.isActive(hex(MID)), false, 'the sibling kept walking after the end');
     assert.deepEqual(rig.stopped, []);
   });
+
+  it('counts a sibling that publishes and then finishes inside the bound as the end, not as one rung stopping', async () => {
+    // The qualities of one broadcast finish moments apart, each as its upload drains.
+    const rig = makeRig();
+    rig.gateway.publishLive(TOP, 'top', 20);
+    rig.gateway.publishLive(MID, 'mid', 20);
+
+    await playTopToItsEnd(rig);
+    await waitFor(() => rig.poller.isActive(hex(MID)), 'the sibling to be tried');
+    rig.gateway.publishNext(MID);
+    rig.gateway.publishNext(MID, true);
+    await waitFor(() => rig.health.state(GROUP) === FEED_STATE_ENDED, 'the broadcast to end');
+    await polls();
+
+    assert.deepEqual(rig.stopped, [], 'the viewer was failed over to a quality that was finishing too');
+    assert.equal(rig.health.state(GROUP), FEED_STATE_ENDED);
+  });
+
+  it('runs the end check when the quality failed over to finishes before the player has switched to it', async () => {
+    const rig = makeRig();
+    rig.gateway.publishLive(TOP, 'top', 20);
+    rig.gateway.publishLive(MID, 'mid', 20);
+    rig.gateway.publishLive(LOW, 'low', 20);
+    rig.gateway.finishHead(LOW);
+
+    await playTopToItsEnd(rig);
+    await waitFor(() => rig.poller.isActive(hex(MID)), 'the sibling to be tried');
+    rig.gateway.publishNext(MID);
+    await waitFor(() => rig.stopped.length > 0, 'the finished rung to be failed over');
+    rig.gateway.publishNext(MID, true);
+
+    await waitFor(() => rig.health.state(GROUP) === FEED_STATE_ENDED, 'the broadcast to end');
+  });
 });
 
 describe('Q5: a returning broadcast is watched on the rung that was playing', () => {

@@ -343,7 +343,8 @@ describe('LadderFeedPoller', () => {
       poller.activate(finished.toString());
 
       try {
-        await waitFor(() => stopped.length > 0, 'the finished rung to be failed over');
+        // The sibling is watched for the whole bound before it counts as carrying on.
+        await waitFor(() => stopped.length > 0, 'the finished rung to be failed over', 4_000);
 
         assert.deepEqual(stopped, [finished.toString()]);
         assert.equal(tracker.state(groupHex), FEED_STATE_LIVE);

@@ -153,6 +153,11 @@ interface LadderEntry {
   playing: RungEntry | null;
   /** A sibling is being walked as a candidate, so a second try waits for the first. */
   isTrying: boolean;
+  /**
+   * The rung the player was failed over to, until hls.js reports it playing. Its ENDLIST runs the end
+   * check as the playing rung's would, since it can finish before the switch to it lands.
+   */
+  failoverTarget: RungEntry | null;
   /** The watch on the rung that was playing when the broadcast ended. */
   returnWatch: FeedReturnWatch | null;
   returnWatchedRung: RungEntry | null;
@@ -245,6 +250,9 @@ export class LadderFeedPoller {
       if (ladder.playing === entry) {
         ladder.playing = null;
       }
+      if (ladder.failoverTarget === entry) {
+        ladder.failoverTarget = null;
+      }
       if (ladder.returnWatchedRung === entry) {
         this.stopReturnWatch(ladder);
       }
@@ -295,6 +303,7 @@ export class LadderFeedPoller {
     }
     const { ladder } = entry;
     ladder.playing = entry;
+    ladder.failoverTarget = null;
     if (entry.walk) {
       entry.walk.isCandidate = false;
     }
@@ -333,6 +342,7 @@ export class LadderFeedPoller {
       rungs: [],
       playing: null,
       isTrying: false,
+      failoverTarget: null,
       returnWatch: null,
       returnWatchedRung: null,
     };
@@ -747,7 +757,9 @@ export class LadderFeedPoller {
       this.settle(walk, false);
     }
 
-    if (parsed.isFinalized && entry.ladder.playing === entry && !walk.isCandidate) {
+    const { ladder } = entry;
+    const watched = ladder.playing === entry || ladder.failoverTarget === entry;
+    if (parsed.isFinalized && watched && !walk.isCandidate) {
       const finished = feedEntryOf(Number(index.toBigInt()), text, this.followClock.now());
       void this.confirmEnd(entry, index, { ...finished, seenAtMs: this.followClock.now() });
     }
@@ -808,8 +820,13 @@ export class LadderFeedPoller {
 
   /**
    * The playing rung published ENDLIST. One sibling confirms it: a sibling that finished too means the
-   * broadcast ended, one that shows a new index inside the bound means this rung alone stopped and the
+   * broadcast ended, one that carries on through the bound means this rung alone stopped and the
    * player fails over to it.
+   *
+   * ⛔ **The sibling is watched for the whole bound, not to its first new index.** The qualities of one
+   * broadcast finish moments apart, each as its own upload drains, so a sibling still publishing its
+   * last playlists is finishing too. Taking its first new index as proof it carries on failed the viewer
+   * over to a quality about to end, and the ended overlay came late or not at all.
    */
   private async confirmEnd(entry: RungEntry, finishedAt: FeedIndex, hint: SwitchHint): Promise<void> {
     const sibling = this.siblingOf(entry);
@@ -833,7 +850,7 @@ export class LadderFeedPoller {
       return;
     }
 
-    const progressed = await this.walkForProgress(sibling, found);
+    const progressed = await this.walkForProgress(sibling, found, 'wholeBound');
     if (!this.isCurrent(entry)) {
       return;
     }
@@ -850,39 +867,53 @@ export class LadderFeedPoller {
   /**
    * Follows a rung as a candidate until it shows a new index or the bound passes. The bound counts from
    * when its newest index is known, and the search for it has {@link CANDIDATE_FIND_DEADLINE_MS} of its
-   * own.
+   * own. A rung that shows ENDLIST has not progressed, however many indexes came before it.
    *
    * @param seed Its newest index when already found, so the walk does not ask the finder again.
+   * @param rule `firstIndex` answers at the first new index. `wholeBound` keeps watching until the bound
+   *   passes, so a rung that publishes and then finishes inside it counts as finished.
    */
-  private walkForProgress(entry: RungEntry, seed: NewestIndex | null): Promise<boolean> {
+  private walkForProgress(
+    entry: RungEntry,
+    seed: NewestIndex | null,
+    rule: 'firstIndex' | 'wholeBound' = 'firstIndex',
+  ): Promise<boolean> {
     if (entry.retired) {
       return Promise.resolve(false);
     }
     const walk = entry.walk ?? this.startWalk(entry, seed, true);
-    if (walk.progressed) {
-      return Promise.resolve(true);
-    }
-    if (walk.stopped) {
+    if (walk.stopped || this.stateManager.snapshot(entry.hexTopic)?.isFinalized) {
       return Promise.resolve(false);
     }
+    if (walk.progressed && rule === 'firstIndex') {
+      return Promise.resolve(true);
+    }
     return new Promise((resolve) => {
-      const giveUp = () => {
-        walk.onSettled = undefined;
-        walk.onFound = undefined;
-        resolve(false);
-      };
-      let timer = setTimeout(giveUp, walk.current === null ? this.candidateFindDeadlineMs : this.progressBoundMs);
-      if (walk.current === null) {
-        walk.onFound = () => {
-          clearTimeout(timer);
-          timer = setTimeout(giveUp, this.progressBoundMs);
-        };
-      }
-      walk.onSettled = (progressed) => {
+      let timer: ReturnType<typeof setTimeout>;
+      let progressedInBound = false;
+      const finish = (progressed: boolean) => {
         clearTimeout(timer);
+        walk.onSettled = undefined;
         walk.onFound = undefined;
         resolve(progressed);
       };
+      const atBound = () => finish(rule === 'wholeBound' && progressedInBound && !walk.stopped);
+      const onSettled = (progressed: boolean) => {
+        if (progressed && rule === 'wholeBound') {
+          progressedInBound = true;
+          walk.onSettled = onSettled;
+          return;
+        }
+        finish(progressed);
+      };
+      timer = setTimeout(atBound, walk.current === null ? this.candidateFindDeadlineMs : this.progressBoundMs);
+      if (walk.current === null) {
+        walk.onFound = () => {
+          clearTimeout(timer);
+          timer = setTimeout(atBound, this.progressBoundMs);
+        };
+      }
+      walk.onSettled = onSettled;
     });
   }
 
@@ -892,6 +923,7 @@ export class LadderFeedPoller {
    */
   private failOver(from: RungEntry, to: RungEntry, reason: string): void {
     from.retired = true;
+    from.ladder.failoverTarget = to;
     if (to.walk) {
       to.walk.isCandidate = false;
     }
