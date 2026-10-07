@@ -19,7 +19,7 @@ import { STREAM_STATUS_LIVE, STREAM_STATUS_SCHEDULED, type Stream } from '@/type
 import { FetchTimeoutError } from '@/utils/fetchTimeoutError';
 import { contentText, type SwarmAnswer } from '@/swarm/answers';
 import { loadUrl as loadUrlOverHttp, type SwarmClient, type SwarmReader, type UrlLoadOptions } from '@/swarm/client';
-import { PROBE_TIMEOUT_MS, type ReadOptions } from '@/swarm/provider';
+import { DEFAULT_READ_TIMEOUT_MS, PROBE_TIMEOUT_MS, type ReadOptions } from '@/swarm/provider';
 
 import {
   failedReadSentence,
@@ -52,9 +52,6 @@ export interface CheckResult {
   readonly outcome: CheckOutcome;
   readonly sentence: string;
 }
-
-/** Every read a check makes gets this long, the window the node picker has always given a node. */
-export const CHECK_TIMEOUT_MS = PROBE_TIMEOUT_MS;
 
 interface ProviderTestContext {
   /** A client made for the gateway under test alone. */
@@ -103,10 +100,7 @@ export async function testProvider(context: ProviderTestContext): Promise<CheckR
   }
 
   const readWindow = windowOf(context);
-  const [connection, list] = await Promise.all([
-    checkConnection(context, readWindow),
-    checkStreamList(context, readWindow),
-  ]);
+  const [connection, list] = await Promise.all([checkConnection(context), checkStreamList(context, readWindow)]);
   const streams = list.streams ?? context.knownStreams;
   const rest = await Promise.all([
     checkPlayer(context, streams, readWindow),
@@ -116,9 +110,10 @@ export async function testProvider(context: ProviderTestContext): Promise<CheckR
   return [connection, list.result, ...rest];
 }
 
-async function checkConnection(context: ProviderTestContext, readWindow: ReadOptions): Promise<CheckResult> {
-  const found = await context.client.probe(readWindow);
-  const sentence = probeSentence(found, CHECK_TIMEOUT_MS);
+async function checkConnection(context: ProviderTestContext): Promise<CheckResult> {
+  // The picker's window for a node of the viewer's own, short so a wrong port does not feel like a hang.
+  const found = await context.client.probe({ timeoutMs: PROBE_TIMEOUT_MS, signal: context.signal });
+  const sentence = probeSentence(found, PROBE_TIMEOUT_MS);
   return found.kind === 'ok' ? passed('connection', sentence) : failed('connection', sentence);
 }
 
@@ -295,8 +290,8 @@ async function entryOf(
 }
 
 /**
- * The playlist a stream card takes its frame from, read the way the card reads it. The card gives its
- * reads no window of their own, so the check stops them itself once {@link CHECK_TIMEOUT_MS} is up.
+ * The playlist a stream card takes its frame from, read the way the card reads it, each read with the
+ * client's own window as the card's has.
  */
 async function checkPreviews(context: ProviderTestContext, streams: readonly Stream[]): Promise<CheckResult> {
   const stream = streamToTest(streams);
@@ -304,11 +299,6 @@ async function checkPreviews(context: ProviderTestContext, streams: readonly Str
     return noStreamSkip('previews', streams);
   }
   const stopper = new AbortController();
-  let timedOut = false;
-  const timer = setTimeout(() => {
-    timedOut = true;
-    stopper.abort();
-  }, CHECK_TIMEOUT_MS);
   const stop = () => stopper.abort();
   context.signal?.addEventListener('abort', stop);
   try {
@@ -321,9 +311,8 @@ async function checkPreviews(context: ProviderTestContext, streams: readonly Str
     }
     return failedRead('previews', 'the preview playlist', previewAnswerOf(res.status));
   } catch (error) {
-    return failedRead('previews', 'the preview playlist', previewFailureOf(error, timedOut));
+    return failedRead('previews', 'the preview playlist', previewFailureOf(error));
   } finally {
-    clearTimeout(timer);
     context.signal?.removeEventListener('abort', stop);
   }
 }
@@ -339,10 +328,10 @@ function previewAnswerOf(status: number): Exclude<SwarmAnswer, { kind: 'content'
   return { kind: 'unavailable', cause: { kind: 'status', status } };
 }
 
-/** A card's read rejects for no answer, a window run out, or its signal, which the check's timer also fires. */
-function previewFailureOf(error: unknown, timedOut: boolean): Exclude<SwarmAnswer, { kind: 'content' }> {
-  if (timedOut || error instanceof FetchTimeoutError) {
-    return { kind: 'unavailable', cause: { kind: 'timeout', timeoutMs: CHECK_TIMEOUT_MS } };
+/** A card's read rejects for no answer, a window run out, or its signal, which stopping the Test fires. */
+function previewFailureOf(error: unknown): Exclude<SwarmAnswer, { kind: 'content' }> {
+  if (error instanceof FetchTimeoutError) {
+    return { kind: 'unavailable', cause: { kind: 'timeout', timeoutMs: error.timeoutMs } };
   }
   if (error instanceof DOMException && error.name === 'AbortError') {
     return { kind: 'aborted' };
@@ -369,8 +358,11 @@ async function checkPicture(
     : failedRead('thumbnails', 'the picture', loaded);
 }
 
-/** Every read a check makes: {@link CHECK_TIMEOUT_MS} long, and stopped with the Test. */
+/**
+ * The window of every read a check makes, the one the viewer's own reads have, so a gateway that serves
+ * the viewer never fails the Test for time alone. Stopped with the Test.
+ */
 const windowOf = (context: ProviderTestContext): ReadOptions => ({
-  timeoutMs: CHECK_TIMEOUT_MS,
+  timeoutMs: DEFAULT_READ_TIMEOUT_MS,
   signal: context.signal,
 });

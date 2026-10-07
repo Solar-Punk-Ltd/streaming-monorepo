@@ -8,7 +8,7 @@ import {
   probeSentence,
   SKIPPED,
 } from '../src/components/DomainSelector/checkSentences';
-import { CHECK_TIMEOUT_MS } from '../src/components/DomainSelector/providerTest';
+import { DEFAULT_READ_TIMEOUT_MS, PROBE_TIMEOUT_MS } from '../src/swarm/provider';
 
 describe("the sentences a failed check's read ends in", () => {
   it.each([
@@ -23,8 +23,8 @@ describe("the sentences a failed check's read ends in", () => {
     [{ kind: 'unsupported' }, 'This kind of gateway cannot read the stream list. Pick another gateway for it.'],
     [{ kind: 'aborted' }, 'The test was stopped before it finished.'],
     [
-      { kind: 'unavailable', cause: { kind: 'timeout', timeoutMs: CHECK_TIMEOUT_MS } },
-      'The gateway did not answer in 5 s. It may be busy or still starting. Test again in a minute, or pick another gateway.',
+      { kind: 'unavailable', cause: { kind: 'timeout', timeoutMs: DEFAULT_READ_TIMEOUT_MS } },
+      'The gateway did not answer in 10 s. It may be busy or still starting. Test again in a minute, or pick another gateway.',
     ],
     [
       { kind: 'unavailable', cause: { kind: 'status', status: 503 } },
@@ -56,7 +56,7 @@ describe('the sentences the connection check ends in', () => {
     ],
     [{ kind: 'unreachable' }, COULD_NOT_REACH],
   ] as const)('%o', (result, sentence) => {
-    expect(probeSentence(result, CHECK_TIMEOUT_MS)).toBe(sentence);
+    expect(probeSentence(result, PROBE_TIMEOUT_MS)).toBe(sentence);
   });
 });
 

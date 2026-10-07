@@ -79,7 +79,8 @@ Below the node picker's own-node field sit three debug tools (`src/components/Do
 
 - **Test.** Each gateway the build offers, and the viewer's own node while it is in use, has a Test
   that reads this deployment's real content through a client of that gateway alone, with no fallback
-  behind it, each read given 5 s (`providerTest.ts`). The connection is Bee's health check. The stream
+  behind it, each read given the 10 s the viewer's own read has (`providerTest.ts`). The connection is
+  Bee's health check, given 5 s. The stream
   list is its feed's head, checked to be a stream list. The video is read as the player starts: the
   ladder's time marker on a live ladder, otherwise a feed entry the list names, then one segment's URL
   is loaded. Previews read the playlist a stream card reads. Pictures load one stream's picture. The
@@ -88,7 +89,7 @@ Below the node picker's own-node field sit three debug tools (`src/components/Do
   ends in one sentence, and a failure says what the viewer can do: "this node does not allow this
   site" with the setting that decides it, or that this site's own policy does not allow the address,
   which a proxy in front of a deployment can set, "this address is not a Swarm gateway", or "the gateway did
-  not answer in 5 s". The sentences are in `checkSentences.ts`, each with its test.
+  not answer in 10 s". The sentences are in `checkSentences.ts`, each with its test.
 - **Status.** Who answered each feature in the last minute, from the client's `activity()`: which
   provider the feature reads from and which stands behind it, how many answers of each kind came from
   each, how many came from the fallback, and which provider is paused and for how long

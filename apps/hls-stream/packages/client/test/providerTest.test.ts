@@ -6,7 +6,7 @@ import {
   markerPeriodAt,
   nextFeedRequest,
 } from '@swarm-hls-stream/shared';
-import { describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 
 import {
   COULD_NOT_REACH,
@@ -44,7 +44,7 @@ const slot = (owner: string, topic: string, index: number) =>
   `${GW}/${feedSlotPath(owner, Topic.fromString(topic), FeedIndex.fromBigInt(BigInt(index)))}`;
 
 /** What one request is answered with: a response, a refusal as a browser reports one, or nothing. */
-type Answer = Response | 'refuse';
+type Answer = Response | 'refuse' | 'hang';
 
 /** A gateway holding the stream list and the recording, with any URL the test names answered its own way. */
 function gateway(override: (url: string) => Answer | undefined = () => undefined, streams = [RECORDED]): typeof fetch {
@@ -61,11 +61,16 @@ function gateway(override: (url: string) => Answer | undefined = () => undefined
     [`${GW}/bytes/${SEGMENT}`, () => new Response(new Uint8Array([0x47]))],
     [`${GW}/bzz/${PICTURE}/`, () => new Response(new Uint8Array([0x89]))],
   ]);
-  return (async (input: RequestInfo | URL) => {
+  return (async (input: RequestInfo | URL, init?: RequestInit) => {
     const url = String(input);
     const answer = override(url) ?? held.get(url)?.();
     if (answer === 'refuse') {
       throw new TypeError('Failed to fetch');
+    }
+    if (answer === 'hang') {
+      return new Promise<Response>((_resolve, reject) =>
+        init?.signal?.addEventListener('abort', () => reject(new DOMException('aborted', 'AbortError'))),
+      );
     }
     return answer ?? new Response('', { status: 404 });
   }) as typeof fetch;
@@ -302,6 +307,76 @@ describe("the node picker's Test, on a live ladder", () => {
       check: 'player',
       outcome: 'passed',
       sentence: 'The video loaded: the time marker of “Main stage”, a playlist and one segment.',
+    });
+  });
+});
+
+/** Answers the URLs `delayOf` names that many milliseconds late, by the test's clock, unless the read is stopped first. */
+function slowed(fetcher: typeof fetch, delayOf: (url: string) => number | undefined): typeof fetch {
+  return ((input: RequestInfo | URL, init?: RequestInit) => {
+    const delayMs = delayOf(String(input));
+    if (delayMs === undefined) {
+      return fetcher(input, init);
+    }
+    return new Promise<Response>((resolve, reject) => {
+      const timer = setTimeout(() => resolve(fetcher(input, init)), delayMs);
+      init?.signal?.addEventListener('abort', () => {
+        clearTimeout(timer);
+        reject(new DOMException('aborted', 'AbortError'));
+      });
+    });
+  }) as typeof fetch;
+}
+
+/** The Test on a clock the test moves, so a read of seconds takes none. */
+async function runOnTestClock(args: Run): Promise<Record<string, CheckResult>> {
+  vi.useFakeTimers();
+  const pending = run(args);
+  await vi.advanceTimersByTimeAsync(60_000);
+  return pending;
+}
+
+const CATALOG_HEAD = `${GW}/${nextFeedRequest(CATALOG.owner, Topic.fromString(CATALOG.topic), null).path}`;
+
+describe('the window the Test gives each read', () => {
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  it('waits for each read as long as the viewer waits for it, so a 6 s stream list passes', async () => {
+    const results = await runOnTestClock({
+      fetcher: slowed(gateway(), (url) => (url === CATALOG_HEAD ? 6_000 : undefined)),
+    });
+
+    expect(results['stream-list']).toEqual({
+      check: 'stream-list',
+      outcome: 'passed',
+      sentence: 'The stream list loaded: 1 stream, entry 7.',
+    });
+  });
+
+  it('fails a read that has not answered once the 10 s the viewer would wait are up', async () => {
+    const results = await runOnTestClock({
+      fetcher: gateway((url) => (url === CATALOG_HEAD ? 'hang' : undefined)),
+      knownStreams: [RECORDED],
+    });
+
+    expect(results['stream-list']).toEqual({
+      check: 'stream-list',
+      outcome: 'failed',
+      sentence:
+        'The gateway did not answer in 10 s. It may be busy or still starting. Test again in a minute, or pick another gateway.',
+    });
+  });
+
+  it("asks the viewer's own node for its health for 5 s, as the picker does", async () => {
+    const results = await runOnTestClock({ fetcher: gateway((url) => (url === `${GW}/health` ? 'hang' : undefined)) });
+
+    expect(results.connection).toEqual({
+      check: 'connection',
+      outcome: 'failed',
+      sentence:
+        'The gateway did not answer in 5 s. It may be busy or still starting. Test again in a minute, or pick another gateway.',
     });
   });
 });
