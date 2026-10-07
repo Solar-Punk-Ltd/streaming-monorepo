@@ -41,14 +41,16 @@ export function statusRows(
   nowMs: number,
   nameOf: NameOf,
 ): StatusRow[] {
-  return activity.map(({ feature, primary, fallback, answers, fallbacks }) => {
+  return activity.map(({ feature, primary, fallbackOrder, answers, fallbacks }) => {
     const pause = (id: string) => {
       const until = health.find((provider) => provider.id === id)?.pausedUntilMs ?? null;
       return until === null ? '' : `, paused for ${Math.max(1, Math.ceil((until - nowMs) / 1000))} s after failing`;
     };
     const route =
       `Reads from ${nameOf(primary)}${pause(primary)}.` +
-      (fallback === null ? ' No fallback.' : ` Falls back to ${nameOf(fallback)}${pause(fallback)}.`);
+      (fallbackOrder.length === 0
+        ? ' No fallback.'
+        : ` Falls back to ${fallbackOrder.map((id) => `${nameOf(id)}${pause(id)}`).join(', then ')}.`);
 
     if (answers.length === 0) {
       return { feature, label: FEATURE_LABELS[feature], route, answered: 'Nothing read in the last minute.' };
