@@ -258,8 +258,7 @@ export function probeFailureHelp(failure: GatewayProbeFailure, origin: string): 
  * Whether a viewer is already on the gateway the build ships with, which is what decides whether a way
  * back to it is worth offering.
  *
- * Compared without trailing slashes, because a saved address has been through `setGatewayUrl`, which
- * strips them, while the build's own value comes from an environment variable that may carry one. A
+ * Compared without trailing slashes, because a saved address has had them stripped, while the build's own value comes from an environment variable that may carry one. A
  * strict comparison would offer a viewer a way back to where they already are.
  */
 export function isDefaultGateway(gatewayUrl: string, defaultGatewayUrl: string): boolean {

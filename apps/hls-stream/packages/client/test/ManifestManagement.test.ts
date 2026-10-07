@@ -332,7 +332,7 @@ describe('a gap entry as a viewer rebuilds it', () => {
  * that funding makes no difference to a viewer.
  *
  * ⭐ `serialize` takes the gateway as an argument and then returns `cachedManifest` without looking
- * at it. `markAllDirty` exists for exactly this and is called by `setGatewayUrl`, so a viewer who
+ * at it. `markAllDirty` exists for exactly this and is called by the provider's source switch, so a viewer who
  * clicks the control is fine. A harness that seeds the gateway before the app runs never calls the
  * setter, and neither does anything else that changes the gateway without going through it.
  */

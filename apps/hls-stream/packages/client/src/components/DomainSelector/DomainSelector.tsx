@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 
 import { useAppContext } from '@/providers/App';
+import { chooseSource } from '@/swarm/routing';
 
 import {
   beeBaseUrlFromTypedAddress,
@@ -42,7 +43,15 @@ const EMPTY_ADDRESS_TEXT = 'Enter the address of your Bee node, for example http
  * minute, and a copyable report, see {@link GatewayTools}.
  */
 export function DomainSelector() {
-  const { gatewayUrl, setGatewayUrl, defaultGatewayUrl, swarm } = useAppContext();
+  const { sources, parts, routing, addSource, setRouting, swarmSettings, swarm } = useAppContext();
+  const urlOf = (id: string) => sources.find((source) => source.id === id)?.url ?? '';
+  const gatewayUrl = urlOf(parts.player);
+  const defaultGatewayUrl = urlOf(swarmSettings.defaultId);
+  const setGatewayUrl = (url: string) => {
+    const id =
+      sources.find((source) => isDefaultGateway(source.url, url))?.id ?? addSource({ type: 'bee-node', name: '', url });
+    setRouting(chooseSource(routing, id));
+  };
   const [isOpen, setIsOpen] = useState(false);
   const [, setRefreshes] = useState(0);
   const [inputValue, setInputValue] = useState('');

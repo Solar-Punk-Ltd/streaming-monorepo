@@ -118,7 +118,7 @@ export class CatalogFeedReader {
    * Bumped by {@link reset}, pinned by every read, and compared before the position is written.
    *
    * ⛔ **Without it a reset that lands mid-read is undone by the read it was meant to cancel.** The
-   * position is written after an await, and `setGatewayUrl` resets this reader synchronously while a
+   * position is written after an await, and a switch of the stream list's source resets this reader synchronously while a
    * poll may be in flight against the node the viewer just left. That read then finished and wrote
    * the old node's slot number back. Every later poll asked the new node for the slot after it, a
    * node that has just been pointed at this catalog does not hold it, the walk broke with nothing

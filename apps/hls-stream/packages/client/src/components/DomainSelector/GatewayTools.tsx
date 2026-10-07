@@ -38,7 +38,8 @@ function whereIs(url: string): string {
  * live only while the picker is open, so the tests they start stop when it closes.
  */
 export function GatewayTools() {
-  const { swarmSettings: settings, gatewayUrl, swarm, streamList, catalogFeed } = useAppContext();
+  const { swarmSettings: settings, sources, parts, swarm, streamList, catalogFeed } = useAppContext();
+  const gatewayUrl = sources.find((source) => source.id === parts.player)?.url ?? '';
   const [tests, setTests] = useState<Record<string, GatewayTest>>({});
   const [lastTested, setLastTested] = useState<TestedGateway | null>(null);
   const [copy, setCopy] = useState<CopyState>(NOT_COPIED);

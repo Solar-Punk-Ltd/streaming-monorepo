@@ -6,7 +6,6 @@ import { BeeHttpProvider } from '../../src/swarm/providers/bee-http/beeHttpProvi
 import { PROVIDER_REGISTRY } from '../../src/swarm/registry';
 import {
   choiceForAddress,
-  defaultGateway,
   OWN_GATEWAY_ID,
   parseProvidersSetting,
   SINGLE_GATEWAY_ID,
@@ -177,15 +176,6 @@ describe('the Swarm settings', () => {
 });
 
 describe("the viewer's choice of gateway", () => {
-  it('is the default gateway until the viewer picks another', () => {
-    expect(defaultGateway(TWO_GATEWAYS)).toEqual({
-      id: 'primary',
-      kind: 'bee-http',
-      label: 'Event gateway',
-      url: PRIMARY,
-    });
-  });
-
   it('names an offered gateway by its address, a trailing slash either side', () => {
     expect(choiceForAddress(TWO_GATEWAYS, `${BACKUP}/`)).toEqual({ id: 'backup', kind: 'bee-http', url: BACKUP });
   });

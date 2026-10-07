@@ -10,9 +10,10 @@ import { type BrowserContext, type Page } from 'playwright-core';
 const GATEWAY_HANDLE = '__swarmGatewaySwitch';
 
 /**
- * Where the client persists the gateway a viewer chose, read back on the next load.
+ * Where the client kept the gateway a viewer chose before sources existed. The first load moves an
+ * address found there into a source and reads every part from it.
  *
- * Mirrored for the same reason as the handle above, and `packages/client/test/appGateway.test.ts`
+ * Mirrored for the same reason as the handle above, and `packages/client/test/appSwarmClient.test.tsx`
  * holds the other end. Seeding it is how an arm gets its gateway in place **before** any application
  * code runs, which the runtime switch cannot do.
  */
@@ -72,7 +73,7 @@ async function askTheClient(page: Page, target: string | null): Promise<GatewayS
 /**
  * Point the running viewer at another gateway, and read back what it actually did.
  *
- * `setGatewayUrl` normalises by stripping trailing slashes, so the comparison is against the
+ * The client's switch normalises by stripping trailing slashes, so the comparison is against the
  * normalised form rather than the raw string.
  */
 export async function selectGateway(page: Page, url: string): Promise<GatewaySetup> {
@@ -102,8 +103,10 @@ export async function readGateway(page: Page): Promise<GatewaySetup> {
  * and joining is the expensive part. The contrast would be diluted by exactly the phase where the
  * difference is expected to be largest.
  *
- * An init script runs before page scripts on every navigation, so `loadGatewayUrl()` picks this up in
- * the client's very first render and the arm is the arm from its first request.
+ * An init script runs before page scripts on every navigation, so `loadSourceChoices()` picks this up in
+ * the client's very first render and the arm is the arm from its first request. The client moves it
+ * only in a browser that has no sources or routing saved yet, so an arm is seeded in a fresh context:
+ * a later navigation in the same context keeps the source the first load made.
  *
  * ⭐ Seeding is not trusted either. {@link readGateway} still reads back what the client says, so a
  * key that drifts here fails the arm rather than quietly returning it to the default.
@@ -121,7 +124,7 @@ export async function seedGateway(context: BrowserContext, url: string): Promise
   );
 }
 
-/** The trailing-slash normalisation `setGatewayUrl` applies, so a readback can be compared to a request. */
+/** The trailing-slash normalisation the client's switch applies, so a readback can be compared to a request. */
 export function normalizeGatewayUrl(url: string): string {
   return url.replace(/\/+$/, '');
 }
