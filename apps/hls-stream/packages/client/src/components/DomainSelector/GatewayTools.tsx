@@ -122,6 +122,7 @@ export function GatewayTools() {
                   className="gateway-tools-button"
                   onClick={() => void runTest(gateway)}
                   disabled={test?.state === 'running'}
+                  aria-label={`${test?.state === 'running' ? 'Testing' : 'Test'} ${nameOf(gateway.id)}`}
                 >
                   {test?.state === 'running' ? 'Testing...' : 'Test'}
                 </button>

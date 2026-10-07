@@ -130,6 +130,14 @@ describe("the node picker's tools", () => {
     expect(row('Backup gateway').textContent).not.toContain('in use');
   });
 
+  it("names every row's Test button with that row's gateway, for a screen reader", async () => {
+    await open();
+
+    const named = (label: string) => document.querySelector<HTMLButtonElement>(`button[aria-label="${label}"]`);
+    expect(named('Test Backup gateway')).toBe(buttonNamed('Test', row('Backup gateway')));
+    expect(named('Test Event gateway')).toBe(buttonNamed('Test', row('Event gateway')));
+  });
+
   it('tests a gateway on every feature and shows each sentence', async () => {
     await open();
     click(buttonNamed('Test', row('Backup gateway')));
