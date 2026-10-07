@@ -15,6 +15,8 @@ export interface Container {
   /** The build the container was seen to be started from, and its commit, or null before an observation. */
   buildId: string | null;
   buildCommit: string | null;
+  /** The release that build was made as, or null for one made with none. Absent reads as null. */
+  buildLabel?: string | null;
 }
 
 export interface Profile {

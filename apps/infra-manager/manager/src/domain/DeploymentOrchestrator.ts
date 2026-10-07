@@ -1977,7 +1977,7 @@ export class DeploymentOrchestrator {
     }
     try {
       for (const seen of observations) {
-        await this.containers.setBuild(profile.name, seen.service, seen.buildId, seen.commit);
+        await this.containers.setBuild(profile.name, seen.service, seen.buildId, seen.commit, seen.label);
       }
       // One commit for the deployment only when this deploy touched every
       // service it has and every one was seen on that commit. A partial deploy

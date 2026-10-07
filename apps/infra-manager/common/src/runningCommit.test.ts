@@ -5,7 +5,7 @@
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 
-import { runningCommitOf } from './runningCommit.js';
+import { runningCommitOf, runningLabelOf } from './runningCommit.js';
 
 const A = 'a'.repeat(40);
 const B = 'b'.repeat(40);
@@ -55,6 +55,50 @@ describe('runningCommitOf', () => {
           { service: 'bee-uploader', commit: null },
         ],
       },
+    );
+  });
+});
+
+describe('runningLabelOf', () => {
+  it('is the label and the commit when every container agrees on both', () => {
+    assert.deepEqual(
+      runningLabelOf([
+        { service: 'client', buildCommit: A, buildLabel: 'QA-build-2026-10-07' },
+        { service: 'bee-gateway', buildCommit: A, buildLabel: 'QA-build-2026-10-07' },
+      ]),
+      { label: 'QA-build-2026-10-07', commit: A },
+    );
+  });
+
+  it('is nothing when nothing was observed, or the build carries no label', () => {
+    assert.equal(runningLabelOf([]), null);
+    assert.equal(runningLabelOf([{ service: 'srs', buildCommit: A, buildLabel: null }]), null);
+    assert.equal(runningLabelOf([{ service: 'srs', buildCommit: A }]), null, 'an answer without the field');
+    assert.equal(runningLabelOf([{ service: 'srs', buildCommit: null, buildLabel: 'v1' }]), null);
+  });
+
+  it('is nothing when the containers run two commits, or two builds of one commit under two labels', () => {
+    assert.equal(
+      runningLabelOf([
+        { service: 'srs', buildCommit: A, buildLabel: 'v1' },
+        { service: 'stream-uploader', buildCommit: B, buildLabel: 'v1' },
+      ]),
+      null,
+    );
+    assert.equal(
+      runningLabelOf([
+        { service: 'srs', buildCommit: A, buildLabel: 'v1' },
+        { service: 'stream-uploader', buildCommit: A, buildLabel: 'v2' },
+      ]),
+      null,
+    );
+    assert.equal(
+      runningLabelOf([
+        { service: 'srs', buildCommit: A, buildLabel: 'v1' },
+        { service: 'stream-uploader', buildCommit: A, buildLabel: null },
+      ]),
+      null,
+      'a container whose build carries none is not agreement',
     );
   });
 });

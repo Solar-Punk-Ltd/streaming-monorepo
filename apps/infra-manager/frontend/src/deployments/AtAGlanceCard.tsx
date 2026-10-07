@@ -11,10 +11,10 @@ import { SectionCard } from '../components/SectionCard';
 import { formatDate, formatTtl } from '../format';
 import type { DeploymentGroup, Profile } from '../types';
 import { hostFor } from '../urls';
-import { describeRunning, describeVersion } from '../versions/versionText';
+import { describeRunning, describeRunningRelease, describeVersion, runningReleaseKey } from '../versions/versionText';
 import type { EngineOverview } from './engineApi';
 import { ENGINE_LABEL, engineSummary } from './engineText';
-import { engineOf } from './shape';
+import { engineOf, shapeOf } from './shape';
 import { type Readiness } from '@streaming-infra-manager/common';
 
 export function AtAGlanceCard({
@@ -74,6 +74,15 @@ export function AtAGlanceCard({
       key: 'Running',
       value: <Mono>{describeRunning(profile.containers)}</Mono>,
     });
+    // The release of that build, read off the tree the containers were
+    // started from, and nothing when it carries none.
+    const release = describeRunningRelease(profile.containers);
+    if (release) {
+      entries.push({
+        key: runningReleaseKey(shapeOf(profile)),
+        value: <Mono title={release.title}>{release.text}</Mono>,
+      });
+    }
   }
 
   if (profile.stamp_id) {
@@ -103,9 +112,9 @@ export function AtAGlanceCard({
   );
 }
 
-function Mono({ children }: { children: ReactNode }) {
+function Mono({ children, title }: { children: ReactNode; title?: string }) {
   return (
-    <Box component="span" sx={{ fontFamily: MONO_STACK }}>
+    <Box component="span" title={title} sx={{ fontFamily: MONO_STACK }}>
       {children}
     </Box>
   );

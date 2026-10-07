@@ -10,7 +10,7 @@ import { randomBytes, randomInt, randomUUID } from 'node:crypto';
 
 import { DEFAULT_RPC_ENDPOINT_SOURCE, PLUR_PER_BZZ, stampBucketCapacity } from '@streaming-infra-manager/common';
 
-import { commitOfVersion } from './mock-versions.mjs';
+import { commitOfVersion, labelOfVersion } from './mock-versions.mjs';
 
 /** The hostname this fake manager publishes its deployments on. */
 export const PUBLIC_HOST = 'lab-host-1';
@@ -153,6 +153,7 @@ export function containersFor(profile, { withUploader = true } = {}) {
   // What the containers were seen to run: this mock's deploys always land on
   // the version's commit, so every container agrees with it.
   const commit = commitOfVersion(profile.stack_version_id);
+  const label = labelOfVersion(profile.stack_version_id);
   return servicesOf(profile)
     .filter((service) => withUploader || service !== 'stream-uploader')
     .map((service) => ({
@@ -160,6 +161,7 @@ export function containersFor(profile, { withUploader = true } = {}) {
       ports: portsFor(service, profile.port_slot),
       buildId: commit,
       buildCommit: commit,
+      buildLabel: label,
     }));
 }
 

@@ -991,6 +991,14 @@ the row on the tree in the checkout and refuses the rebuild, saying so. The
 stack's `main-v2` is obsolete and is kept only as a second version to test
 version selection with.
 
+Every build is made as a release, which its manifest keeps and the pages show
+behind sign-in: the bundled version's as the label the manager was deployed
+with, which the api reads from `MANAGER_VERSION` when it makes the build, and
+an added version's as the tag on the commit it built, read in its own clone.
+`GET /versions` answers the current build's as `buildLabel`, and each container
+of `GET /profiles` answers the one its build was made as, also `buildLabel`.
+[stack-versions.md](../docs/features/stack-versions.md) has the rules.
+
 Every deployment runs one version, chosen in the new deployment wizard when
 more than one has finished building and preselected to the default. `POST
 /profiles` and `POST /groups` take `stack_version_id`, absent means the default,
@@ -1017,7 +1025,7 @@ answered by the API.
 
 | Method | Path                           | Body                               | Answer                                                                                                                                                                                                                 |
 | ------ | ------------------------------ | ---------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| GET    | `/versions`                    |                                    | `[{ id, name, gitRef, commitSha, status, isDefault, tested, testedInvalidatedAt, builtAt, lastError, contract, deployments, layout, buildId, previousBuildId }]`                                                       |
+| GET    | `/versions`                    |                                    | `[{ id, name, gitRef, commitSha, status, isDefault, tested, testedInvalidatedAt, builtAt, lastError, contract, deployments, layout, buildId, previousBuildId, buildLabel }]`                                           |
 | POST   | `/versions`                    | `{ name, ref }`                    | SSE build log, then `version.changed` on `/events`.                                                                                                                                                                    |
 | POST   | `/versions/:id/update`         |                                    | SSE build log. On `bundled` it builds the commit the manager pins, and refuses when it pins none.                                                                                                                      |
 | POST   | `/versions/:id/default`        |                                    | 204. Refused for a version still building or not marked tested.                                                                                                                                                        |

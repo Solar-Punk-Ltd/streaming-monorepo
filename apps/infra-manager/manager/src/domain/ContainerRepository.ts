@@ -16,6 +16,8 @@ export interface ContainerRow {
   env_digests: Record<string, string>;
   build_id: string | null;
   build_commit: string | null;
+  /** The release that build was made as, migration 051, or null. */
+  build_label: string | null;
   created_at: Date;
   updated_at: Date;
 }
@@ -44,18 +46,28 @@ export class ContainerRepository {
     );
   }
 
-  /** What the service's container was seen to be started from. Only a row a deploy wrote is updated. */
-  async setBuild(profileName: string, service: string, buildId: string, buildCommit: string | null): Promise<void> {
+  /**
+   * What the service's container was seen to be started from: the build, its
+   * commit and the release it was made as. Only a row a deploy wrote is updated.
+   */
+  async setBuild(
+    profileName: string,
+    service: string,
+    buildId: string,
+    buildCommit: string | null,
+    buildLabel: string | null,
+  ): Promise<void> {
     await this.pool.query(
-      `UPDATE containers SET build_id = $3, build_commit = $4, updated_at = NOW()
+      `UPDATE containers SET build_id = $3, build_commit = $4, build_label = $5, updated_at = NOW()
         WHERE profile_name = $1 AND service = $2`,
-      [profileName, service, buildId, buildCommit],
+      [profileName, service, buildId, buildCommit, buildLabel],
     );
   }
 
   async listForProfile(profileName: string): Promise<ContainerRow[]> {
     const r = await this.pool.query<ContainerRow>(
-      `SELECT profile_name, service, ports, env, env_salt, env_digests, build_id, build_commit, created_at, updated_at
+      `SELECT profile_name, service, ports, env, env_salt, env_digests, build_id, build_commit, build_label,
+              created_at, updated_at
          FROM containers
         WHERE profile_name = $1
         ORDER BY service ASC`,
@@ -71,6 +83,7 @@ export class ContainerRepository {
       ports: row.ports,
       buildId: row.build_id,
       buildCommit: row.build_commit,
+      buildLabel: row.build_label,
     }));
   }
 

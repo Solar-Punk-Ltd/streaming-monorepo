@@ -12,6 +12,7 @@ import { ANOTHER_BUILDING } from './buildSlot';
 import {
   describeBuild,
   describePreviousBuild,
+  describeRelease,
   describeSource,
   lostApprovalWarning,
   updateHint,
@@ -119,6 +120,7 @@ export function VersionCard({
   const removalBlocked = removalBlockedBecause(version);
   const settingsBlocked = settingsBlockedBecause(version);
   const previousBuild = describePreviousBuild(version);
+  const release = describeRelease(version);
   const approvalWarning = lostApprovalWarning(version);
   const headingId = `version-${version.id}-heading`;
 
@@ -280,6 +282,14 @@ export function VersionCard({
             {previousBuild ? `, ${previousBuild}` : ''}
           </Typography>
         </VersionFact>
+        {/* Beside the build it names, and only for a build that carries a release. */}
+        {release && (
+          <VersionFact label="Release">
+            <Box component="span" title={release.title} sx={{ fontFamily: MONO_STACK }}>
+              {release.text}
+            </Box>
+          </VersionFact>
+        )}
       </Box>
 
       {version.lastError && (version.status === 'failed' || version.status === 'ready') && (

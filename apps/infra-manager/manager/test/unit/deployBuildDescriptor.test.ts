@@ -51,14 +51,20 @@ const CONTRACT: StackContract = {
 const COMMIT_A = 'a'.repeat(40);
 const COMMIT_B = 'b'.repeat(40);
 
-/** A complete build of v3 on disk, with the sample the deploy bootstraps from. */
-function buildOnDisk(versionsRoot: string, buildId: string, name = 'v3'): string {
+/** A complete build of v3 on disk, with the sample the deploy bootstraps from, made as `label` when one is given. */
+function buildOnDisk(versionsRoot: string, buildId: string, name = 'v3', label?: string): string {
   const dir = buildDirFor(versionsRoot, name, buildId);
   mkdirSync(join(dir, 'deploy', 'scripts'), { recursive: true });
   writeFileSync(join(dir, '.env'), 'ENGINE=srs\n');
   writeFileSync(
     join(dir, BUILD_MANIFEST_FILE),
-    JSON.stringify({ commit: buildId.slice(0, 40), buildId, builtAt: new Date().toISOString(), toolchain: 't' }),
+    JSON.stringify({
+      commit: buildId.slice(0, 40),
+      buildId,
+      builtAt: new Date().toISOString(),
+      toolchain: 't',
+      ...(label ? { label } : {}),
+    }),
   );
   writeFileSync(join(dir, BUILD_COMPLETE_MARKER), '');
   return dir;
@@ -389,11 +395,33 @@ describe('what the row says runs', () => {
     await untilRunning(harness.profiles, 'stage');
 
     assert.deepEqual([...harness.containers.builds.entries()].sort(), [
-      ['stage/bee-uploader', { buildId: COMMIT_A, commit: COMMIT_A }],
-      ['stage/srs', { buildId: COMMIT_A, commit: COMMIT_A }],
-      ['stage/stream-uploader', { buildId: COMMIT_A, commit: COMMIT_A }],
+      ['stage/bee-uploader', { buildId: COMMIT_A, commit: COMMIT_A, label: null }],
+      ['stage/srs', { buildId: COMMIT_A, commit: COMMIT_A, label: null }],
+      ['stage/stream-uploader', { buildId: COMMIT_A, commit: COMMIT_A, label: null }],
     ]);
     assert.equal(row().last_full_deploy_commit, COMMIT_A);
+  });
+
+  it('records the release the build was made as, read off the tree each container was started from', async () => {
+    const { harness, row, v3, versionsRoot } = await setup();
+    buildOnDisk(versionsRoot, COMMIT_B, 'v3', 'QA-build-2026-10-07');
+    await harness.versions.publish(v3.id, { buildId: COMMIT_B, commitSha: COMMIT_B, contract: CONTRACT });
+    for (const service of ['srs', 'stream-uploader', 'bee-uploader'])
+      harness.ledger.mounted.set(`stage/${service}`, buildDirFor(versionsRoot, 'v3', COMMIT_B));
+
+    await harness.orchestrator.startDeploy(row(), undefined);
+    harness.runner.finish(0);
+    await untilRunning(harness.profiles, 'stage');
+
+    assert.deepEqual(harness.containers.builds.get('stage/srs'), {
+      buildId: COMMIT_B,
+      commit: COMMIT_B,
+      label: 'QA-build-2026-10-07',
+    });
+    assert.deepEqual(
+      [...harness.containers.builds.values()].map((build) => build.label),
+      ['QA-build-2026-10-07', 'QA-build-2026-10-07', 'QA-build-2026-10-07'],
+    );
   });
 
   it('does not advance untouched services or the full deploy commit on an engine-only deploy', async () => {
@@ -412,8 +440,12 @@ describe('what the row says runs', () => {
     harness.runner.finish(1, 0);
     await untilRunning(harness.profiles, 'stage');
 
-    assert.deepEqual(harness.containers.builds.get('stage/srs'), { buildId: COMMIT_B, commit: COMMIT_B });
-    assert.deepEqual(harness.containers.builds.get('stage/stream-uploader'), { buildId: COMMIT_A, commit: COMMIT_A });
+    assert.deepEqual(harness.containers.builds.get('stage/srs'), { buildId: COMMIT_B, commit: COMMIT_B, label: null });
+    assert.deepEqual(harness.containers.builds.get('stage/stream-uploader'), {
+      buildId: COMMIT_A,
+      commit: COMMIT_A,
+      label: null,
+    });
     assert.equal(row().last_full_deploy_commit, COMMIT_A, 'a partial deploy is not a full one');
   });
 });

@@ -9,7 +9,16 @@ import { describe, it } from 'node:test';
 
 import type { StackContract, StackVersion } from '@streaming-infra-manager/common';
 
-import { describeBuild, describeSource, describeVersion, updateHint, versionPlacementProblem } from './versionText';
+import {
+  describeBuild,
+  describeRelease,
+  describeRunningRelease,
+  describeSource,
+  describeVersion,
+  runningReleaseKey,
+  updateHint,
+  versionPlacementProblem,
+} from './versionText';
 
 const COMMIT = 'ee99c368bd45c12defcb10ca726f0db0777defb0';
 
@@ -30,6 +39,7 @@ function version(over: Partial<StackVersion> = {}): StackVersion {
     layout: 'builds',
     buildId: COMMIT,
     previousBuildId: null,
+    buildLabel: null,
     source: { url: 'https://github.com/Solar-Punk-Ltd/swarm-hls-stream.git', folder: '.' },
     ...over,
   };
@@ -82,6 +92,34 @@ describe('where a version deploys from', () => {
 
   it('names a version and its commit', () => {
     assert.equal(describeVersion(version()), 'bundled @ ee99c36');
+  });
+});
+
+describe('the release a card and a deployment page name', () => {
+  it("names a version's current build by its release and the first nine characters of the commit", () => {
+    assert.deepEqual(describeRelease(version({ buildLabel: 'QA-build-2026-10-07+3' })), {
+      text: 'QA-build-2026-10-07+3 (ee99c368b)',
+      title: COMMIT,
+    });
+    assert.equal(describeRelease(version()), null, 'a build made with none names nothing');
+  });
+
+  it('names what the containers run only when every one agrees on the commit and the release', () => {
+    const client = { service: 'client', buildCommit: COMMIT, buildLabel: 'QA-build-2026-10-07' };
+    const gateway = { ...client, service: 'bee-gateway' };
+    assert.deepEqual(describeRunningRelease([client, gateway]), {
+      text: 'QA-build-2026-10-07 (ee99c368b)',
+      title: COMMIT,
+    });
+    assert.equal(describeRunningRelease([client, { ...gateway, buildLabel: null }]), null);
+    assert.equal(describeRunningRelease([]), null);
+  });
+
+  it("calls it the player's version on a deployment that serves the web player, and the release anywhere else", () => {
+    assert.equal(runningReleaseKey('viewer'), 'Player');
+    for (const shape of ['stream', 'bee-node', 'abr-uploader', 'custom'] as const) {
+      assert.equal(runningReleaseKey(shape), 'Release', shape);
+    }
   });
 });
 

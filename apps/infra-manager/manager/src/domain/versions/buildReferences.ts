@@ -45,6 +45,15 @@ export function commitOfRoot(root: string): string | null {
   return readBuildManifest(root).manifest?.commit ?? null;
 }
 
+/**
+ * The release a root was built as, off its manifest, or null for a root that
+ * is not a build and for a build made without one. A deployment's own copy
+ * carries its build's manifest, so this names the build the copy came from.
+ */
+export function labelOfRoot(root: string): string | null {
+  return readBuildManifest(root).manifest?.label ?? null;
+}
+
 export interface NewBuildReference {
   versionId: number;
   buildId: string;
