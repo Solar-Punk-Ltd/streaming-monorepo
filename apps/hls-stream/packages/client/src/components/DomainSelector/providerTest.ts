@@ -18,10 +18,18 @@ import { isMasterPlaylist, masterVariants, parseManifest } from '@/components/Sw
 import { STREAM_STATUS_LIVE, STREAM_STATUS_SCHEDULED, type Stream } from '@/types/stream';
 import { FetchTimeoutError } from '@/utils/fetchTimeoutError';
 import { contentText, type SwarmAnswer } from '@/swarm/answers';
-import { loadUrl as loadUrlOverHttp, type SwarmClient, type SwarmReader, type UrlLoadOptions } from '@/swarm/client';
+import {
+  loadUrl as loadUrlOverHttp,
+  type SwarmClient,
+  type SwarmFeature,
+  type SwarmReader,
+  type UrlLoadOptions,
+} from '@/swarm/client';
 import { DEFAULT_READ_TIMEOUT_MS, PROBE_TIMEOUT_MS, type ReadOptions } from '@/swarm/provider';
 
 import {
+  CONNECTED_BY_CONTENT,
+  type FailedAnswer,
   failedReadSentence,
   MIXED_CONTENT,
   NO_SEGMENT,
@@ -66,6 +74,11 @@ interface ProviderTestContext {
    * the rest.
    */
   readonly knownStreams: readonly Stream[];
+  /**
+   * Whether the gateway is the viewer's own node, a full Bee asked for its health. A gateway the build
+   * offers serves the deployment's content only, so its connection is shown by the reads of that content.
+   */
+  readonly isOwnNode: boolean;
   /** What to add to the viewer's clock to read the gateway's, for a ladder's time marker. */
   readonly clockOffsetMs?: number;
   readonly signal?: AbortSignal;
@@ -99,15 +112,71 @@ export async function testProvider(context: ProviderTestContext): Promise<CheckR
     return CHECKS.map((check) => failed(check, MIXED_CONTENT));
   }
 
+  const answers: SwarmAnswer[] = [];
+  const reading = context.isOwnNode ? context : notingAnswers(context, answers);
   const readWindow = windowOf(context);
-  const [connection, list] = await Promise.all([checkConnection(context), checkStreamList(context, readWindow)]);
+  const [ownConnection, list] = await Promise.all([
+    context.isOwnNode ? checkConnection(context) : null,
+    checkStreamList(reading, readWindow),
+  ]);
   const streams = list.streams ?? context.knownStreams;
   const rest = await Promise.all([
-    checkPlayer(context, streams, readWindow),
-    checkPreviews(context, streams),
-    checkPicture(context, streams, readWindow),
+    checkPlayer(reading, streams, readWindow),
+    checkPreviews(reading, streams),
+    checkPicture(reading, streams, readWindow),
   ]);
+  const connection = ownConnection ?? connectionByContent(answers, list.result);
   return [connection, list.result, ...rest];
+}
+
+/** The context with every read through the gateway under test noted in `answers` as it ends. */
+function notingAnswers(context: ProviderTestContext, answers: SwarmAnswer[]): ProviderTestContext {
+  const noted = async (read: Promise<SwarmAnswer>) => {
+    const answer = await read;
+    answers.push(answer);
+    return answer;
+  };
+  const reader = (feature: SwarmFeature): SwarmReader => {
+    const inner = context.client.reader(feature);
+    return {
+      readFeedHead: (...args) => noted(inner.readFeedHead(...args)),
+      readFeedEntry: (...args) => noted(inner.readFeedEntry(...args)),
+      readSoc: (...args) => noted(inner.readSoc(...args)),
+      readChunk: (...args) => noted(inner.readChunk(...args)),
+      readBytes: (...args) => noted(inner.readBytes(...args)),
+      urlFor: (...args) => inner.urlFor(...args),
+      urlSource: (...args) => inner.urlSource(...args),
+    };
+  };
+  const loadUrl = context.loadUrl ?? loadUrlOverHttp;
+  return {
+    ...context,
+    client: { reader, probe: (options) => context.client.probe(options) },
+    loadUrl: (url, options) => noted(loadUrl(url, options)),
+  };
+}
+
+/** Whether the gateway itself answered, whatever it said, rather than the read ending without an answer. */
+function isAnswerFromGateway(answer: SwarmAnswer): boolean {
+  return answer.kind === 'unavailable'
+    ? answer.cause.kind === 'status'
+    : answer.kind !== 'aborted' && answer.kind !== 'unsupported';
+}
+
+/**
+ * The connection of a gateway the build offers, from what its content reads ended in. Any answer at all
+ * shows it is there, unless what it served was not Swarm content. With none, the reads that ran out of
+ * time say so before the ones that got no answer, since a slow gateway is a different next step.
+ */
+function connectionByContent(answers: readonly SwarmAnswer[], list: CheckResult): CheckResult {
+  if (answers.some(isAnswerFromGateway)) {
+    return list.sentence === NOT_A_SWARM_GATEWAY
+      ? failed('connection', NOT_A_SWARM_GATEWAY)
+      : passed('connection', CONNECTED_BY_CONTENT);
+  }
+  const failures = answers.filter((answer): answer is FailedAnswer => answer.kind !== 'content');
+  const timedOut = failures.find((answer) => answer.kind === 'unavailable' && answer.cause.kind === 'timeout');
+  return failedRead('connection', "the stream's content", timedOut ?? failures[0] ?? { kind: 'aborted' });
 }
 
 async function checkConnection(context: ProviderTestContext): Promise<CheckResult> {

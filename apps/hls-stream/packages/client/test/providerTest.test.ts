@@ -9,6 +9,7 @@ import {
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
 import {
+  CONNECTED_BY_CONTENT,
   COULD_NOT_REACH,
   MIXED_CONTENT,
   NO_SEGMENT,
@@ -82,6 +83,8 @@ interface Run {
   readonly address?: string;
   readonly pageProtocol?: string;
   readonly now?: () => number;
+  /** Whether the gateway is the viewer's own node rather than one the build offers. Own by default. */
+  readonly isOwnNode?: boolean;
 }
 
 async function run({
@@ -90,6 +93,7 @@ async function run({
   address = GW,
   pageProtocol = 'https:',
   now,
+  isOwnNode = true,
 }: Run): Promise<Record<string, CheckResult>> {
   const client = createSwarmClient(
     {
@@ -107,6 +111,7 @@ async function run({
     knownStreams,
     pageProtocol,
     now,
+    isOwnNode,
     loadUrl: (url, options) => loadUrl(url, { ...options, fetcher }),
   });
   expect(results.map(({ check }) => check)).toEqual([...CHECKS]);
@@ -378,5 +383,65 @@ describe('the window the Test gives each read', () => {
       sentence:
         'The gateway did not answer in 5 s. It may be busy or still starting. Test again in a minute, or pick another gateway.',
     });
+  });
+});
+
+/**
+ * A gateway the build offers, as the event gateway behaves: it serves stream paths only, so `/health` is refused with
+ * no CORS header, which a browser reports as no answer, and a head lookup on a long feed takes 6 s.
+ */
+function eventGateway(
+  asked: string[] = [],
+  override: (url: string) => Answer | undefined = () => undefined,
+): typeof fetch {
+  return slowed(
+    gateway((url) => {
+      asked.push(url);
+      return url === `${GW}/health` ? 'refuse' : override(url);
+    }),
+    (url) => (url === CATALOG_HEAD ? 6_000 : undefined),
+  );
+}
+
+describe("the node picker's Test, on a gateway the build offers", () => {
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  it('shows the connection by the content it served, and never asks for its health', async () => {
+    const asked: string[] = [];
+    const results = await runOnTestClock({ fetcher: eventGateway(asked), isOwnNode: false });
+
+    expect(results.connection).toEqual({ check: 'connection', outcome: 'passed', sentence: CONNECTED_BY_CONTENT });
+    expect(results['stream-list'].outcome).toBe('passed');
+    expect(asked).not.toContain(`${GW}/health`);
+  });
+
+  it('says it could not be reached when no read got an answer', async () => {
+    const results = await run({ fetcher: gateway(() => 'refuse'), knownStreams: [RECORDED], isOwnNode: false });
+
+    expect(results.connection).toEqual({ check: 'connection', outcome: 'failed', sentence: COULD_NOT_REACH });
+  });
+
+  it('says it did not answer in time when its reads ran out of time', async () => {
+    const results = await runOnTestClock({
+      fetcher: gateway(() => 'hang'),
+      knownStreams: [RECORDED],
+      isOwnNode: false,
+    });
+
+    expect(results.connection).toEqual({
+      check: 'connection',
+      outcome: 'failed',
+      sentence:
+        'The gateway did not answer in 10 s. It may be busy or still starting. Test again in a minute, or pick another gateway.',
+    });
+  });
+
+  it('says an address that answers with a web page is not a Swarm gateway', async () => {
+    const page = () => new Response('<!doctype html><title>Some site</title>', { status: 200 });
+    const results = await run({ fetcher: gateway(page), knownStreams: [RECORDED], isOwnNode: false });
+
+    expect(results.connection).toEqual({ check: 'connection', outcome: 'failed', sentence: NOT_A_SWARM_GATEWAY });
   });
 });

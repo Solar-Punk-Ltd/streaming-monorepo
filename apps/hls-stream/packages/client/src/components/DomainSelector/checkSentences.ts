@@ -50,6 +50,13 @@ export function failedReadSentence(what: string, answer: FailedAnswer): string {
   }
 }
 
+/**
+ * The connection of a gateway the build offers, which answered the Test's reads. Such a gateway serves the
+ * deployment's content and nothing else, so it is not asked for a node's health, which it would refuse.
+ */
+export const CONNECTED_BY_CONTENT =
+  "The gateway answered. It serves only the stream's content, so the Test reads that content rather than asking for the node's health.";
+
 /** What asking the gateway whether it is there found, success included. */
 export function probeSentence(result: ProbeResult, timeoutMs: number): string {
   switch (result.kind) {

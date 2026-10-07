@@ -4,6 +4,7 @@ import { act, createElement } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
+import { CONNECTED_BY_CONTENT } from '../src/components/DomainSelector/checkSentences';
 import type { SwarmClient } from '../src/swarm/client';
 
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
@@ -141,13 +142,39 @@ describe("the node picker's tools", () => {
   it('tests a gateway on every feature and shows each sentence', async () => {
     await open();
     click(buttonNamed('Test', row('Backup gateway')));
-    await waitFor(() => text().includes('The gateway answered in'), 'the test to finish');
+    await waitFor(() => text().includes(CONNECTED_BY_CONTENT), 'the test to finish');
 
     const results = row('Backup gateway').textContent ?? '';
     expect(results).toContain('Connection: passed');
     expect(results).toContain('This gateway answered that the stream list is not there.');
     expect(results).toContain('Not tested: the stream list has no stream to test with.');
     expect(results).not.toContain('Chat');
+  });
+
+  it("asks a node of the viewer's own for its health, and a gateway the build offers for none", async () => {
+    const asked: string[] = [];
+    const answer = globalThis.fetch;
+    globalThis.fetch = ((input: RequestInfo | URL, init?: RequestInit) => {
+      asked.push(String(input));
+      return answer(input, init);
+    }) as typeof fetch;
+    await open();
+    click(buttonNamed('Test', row('Backup gateway')));
+    await waitFor(() => row('Backup gateway').textContent?.includes(CONNECTED_BY_CONTENT) ?? false, 'the test');
+    expect(asked.filter((url) => url.endsWith('/health'))).toEqual([]);
+
+    const input = document.querySelector<HTMLInputElement>('.gateway-modal-input')!;
+    act(() => {
+      Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value')?.set?.call(input, 'http://localhost:1633');
+      input.dispatchEvent(new Event('input', { bubbles: true }));
+    });
+    click(buttonNamed('Check and use'));
+    await waitFor(() => document.querySelector('.gateway-modal') === null, 'the picker to close on the own node');
+    click(buttonNamed(/^Bee node/));
+    asked.length = 0;
+    click(buttonNamed('Test', row('Your own node')));
+    await waitFor(() => row('Your own node').textContent?.includes('The gateway answered in') ?? false, 'the test');
+    expect(asked.filter((url) => url.endsWith('/health'))).toEqual(['http://localhost:1633/health']);
   });
 
   it('forgets a Test the viewer stopped by closing the picker, so it can be run again', async () => {
@@ -208,7 +235,7 @@ describe("the node picker's tools", () => {
   it('copies a report of the last test and the status, with no address but the tested one', async () => {
     await open();
     click(buttonNamed('Test', row('Backup gateway')));
-    await waitFor(() => text().includes('The gateway answered in'), 'the test to finish');
+    await waitFor(() => text().includes(CONNECTED_BY_CONTENT), 'the test to finish');
     click(buttonNamed('Copy report'));
     await waitFor(() => copied !== null, 'the report to be copied');
     await settle();

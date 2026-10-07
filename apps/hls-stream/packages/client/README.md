@@ -79,8 +79,10 @@ Below the node picker's own-node field sit three debug tools (`src/components/Do
 
 - **Test.** Each gateway the build offers, and the viewer's own node while it is in use, has a Test
   that reads this deployment's real content through a client of that gateway alone, with no fallback
-  behind it, each read given the 10 s the viewer's own read has (`providerTest.ts`). The connection is
-  Bee's health check, given 5 s. The stream
+  behind it, each read given the 10 s the viewer's own read has (`providerTest.ts`). The connection of the
+  viewer's own node is Bee's health check, given 5 s. A gateway the build offers serves only the
+  stream's content and refuses `/health`, so its connection is shown by its content reads: any answer
+  passes it, and when none came it says it did not answer in time or could not be reached. The stream
   list is its feed's head, checked to be a stream list. The video is read as the player starts: the
   ladder's time marker on a live ladder, otherwise a feed entry the list names, then one segment's URL
   is loaded. Previews read the playlist a stream card reads. Pictures load one stream's picture. The

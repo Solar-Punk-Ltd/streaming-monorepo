@@ -71,6 +71,7 @@ export function GatewayTools() {
       address: gateway.url,
       catalog: catalogFeed,
       knownStreams: streamList,
+      isOwnNode: gateway.id === OWN_GATEWAY_ID,
       clockOffsetMs: swarm.clockOffsetMs(),
       signal: controller.signal,
     });

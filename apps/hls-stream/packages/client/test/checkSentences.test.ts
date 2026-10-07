@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 
 import {
+  CONNECTED_BY_CONTENT,
   COULD_NOT_REACH,
   failedReadSentence,
   NOT_A_SWARM_GATEWAY,
@@ -83,6 +84,7 @@ describe('the sentences a passed or skipped check ends in', () => {
   it('use no em-dash and no semicolon', () => {
     const every = [
       COULD_NOT_REACH,
+      CONNECTED_BY_CONTENT,
       NOT_A_SWARM_GATEWAY,
       ...Object.values(SKIPPED),
       PASSED.streamList(2, 3),
