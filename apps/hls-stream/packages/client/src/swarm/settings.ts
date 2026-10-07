@@ -16,8 +16,11 @@ export interface ProvidersSetting {
   readonly gateways: readonly GatewaySetting[];
   /** The id of the gateway every reader starts on. */
   readonly default: string;
-  /** The id of the gateway asked when the one in use fails. Absent means none. */
-  readonly fallback?: string;
+  /**
+   * The id of the gateway asked when the one in use fails. Absent means the default gateway, so a viewer
+   * who picked another always has the build's own behind them, and false means none.
+   */
+  readonly fallback?: string | false;
   /** The kinds of provider a viewer may add one of their own of. Absent means every kind this build carries. */
   readonly kinds?: readonly ProviderKindName[];
 }
@@ -26,7 +29,10 @@ export interface ProvidersSetting {
 export interface SwarmSettings {
   readonly gateways: readonly GatewaySetting[];
   readonly defaultId: string;
-  /** The gateway asked when the one in use fails, or null for none. */
+  /**
+   * The gateway asked when the one in use fails, or null when the build switched the fallback off. A
+   * viewer on this gateway itself has the default behind them instead.
+   */
   readonly fallbackId: string | null;
   /** The kinds of provider a viewer may add one of their own of. */
   readonly kinds: readonly ProviderKindName[];
@@ -93,6 +99,18 @@ function gatewayOf(raw: unknown, path: string, problems: Problems): GatewaySetti
   return label === undefined ? { id, kind: raw.kind, url } : { id, kind: raw.kind, label, url };
 }
 
+/** The fallback as written: absent, switched off with false, or a gateway's id, and null after recording why not. */
+function fallbackOf(raw: unknown, problems: Problems): string | false | undefined | null {
+  if (raw === undefined || raw === false) {
+    return raw;
+  }
+  if (typeof raw !== 'string') {
+    problems.add('fallback', 'must name one of the gateways, or be false');
+    return null;
+  }
+  return problems.text(raw, 'fallback');
+}
+
 /**
  * The providers setting a build was given, checked as a whole.
  *
@@ -134,7 +152,7 @@ export function parseProvidersSetting(raw: string): ProvidersSetting {
   if (defaultId !== null && !offered.has(defaultId)) {
     problems.add('default', 'must name one of the gateways');
   }
-  const fallback = parsed.fallback === undefined ? undefined : problems.text(parsed.fallback, 'fallback');
+  const fallback = fallbackOf(parsed.fallback, problems);
   if (typeof fallback === 'string' && !offered.has(fallback)) {
     problems.add('fallback', 'must name one of the gateways');
   } else if (typeof fallback === 'string' && fallback === defaultId) {
@@ -169,22 +187,24 @@ interface GatewayConfig {
 
 /**
  * The settings a build describes. A build given no providers setting names one gateway,
- * `VITE_READER_BEE_URL`, and that is read as the only gateway offered and the default, with no
- * fallback, so a deployment built before providers existed needs no change to its settings.
+ * `VITE_READER_BEE_URL`, and that is read as the only gateway offered, the default and the fallback,
+ * so a deployment built before providers existed needs no change to its settings and a viewer on a
+ * node of their own still has the build's gateway behind them. The fallback is the default gateway
+ * unless the setting names another or switches it off.
  */
 export function swarmSettingsFrom({ beeUrl, providers }: GatewayConfig): SwarmSettings {
   if (!providers) {
     return {
       gateways: [{ id: SINGLE_GATEWAY_ID, kind: 'bee-http', url: beeUrl }],
       defaultId: SINGLE_GATEWAY_ID,
-      fallbackId: null,
+      fallbackId: SINGLE_GATEWAY_ID,
       kinds: [...PROVIDER_KINDS],
     };
   }
   return {
     gateways: providers.gateways,
     defaultId: providers.default,
-    fallbackId: providers.fallback ?? null,
+    fallbackId: providers.fallback === false ? null : (providers.fallback ?? providers.default),
     kinds: providers.kinds ?? [...PROVIDER_KINDS],
   };
 }

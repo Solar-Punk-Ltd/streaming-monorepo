@@ -32,12 +32,19 @@ export function createSwarmClient(settings: SwarmSettings, options: CreateSwarmC
 
   const chosen =
     (typeof choice === 'string' ? offered(choice) : choice) ?? offered(settings.defaultId) ?? settings.gateways[0];
-  const fallback = offered(settings.fallbackId);
+  // A viewer on the fallback gateway itself has the default behind them, so the build's own gateway is
+  // behind every other choice for as long as the build keeps the fallback on.
+  const fallback =
+    settings.fallbackId === null
+      ? null
+      : ([offered(settings.fallbackId), offered(settings.defaultId)].find(
+          (gateway) => gateway !== null && gateway.id !== chosen.id,
+        ) ?? null);
 
   return new SwarmClient({
     ...options.client,
     chosen: make(chosen),
-    fallback: fallback && fallback.id !== chosen.id ? make(fallback) : null,
+    fallback: fallback ? make(fallback) : null,
     routes: Object.fromEntries(Object.entries(routes).map(([feature, gateway]) => [feature, make(gateway)])) as Partial<
       Record<SwarmFeature, NamedProvider>
     >,

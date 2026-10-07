@@ -174,8 +174,11 @@ fails on a source line outside it that builds a Bee URL, calls fetch, or makes a
   `config.json` beside the page. `VITE_SWARM_PROVIDERS` is JSON naming the gateways offered, each
   with an `id`, the `kind` `bee-http`, an optional `label` and a `url` that is a path on this site
   such as `/bee` or an http or https address, then the `default` gateway's id, an optional `fallback`
-  id, and optionally the `kinds` a viewer may add a node of. A build that leaves it empty reads the one
-  gateway `VITE_READER_BEE_URL` names, the default with no fallback, so a deployment needs no change.
+  id, and optionally the `kinds` a viewer may add a node of. Without a `fallback` the default gateway
+  is the fallback, so a viewer who picked another gateway or a node of their own always has the
+  build's own behind them, and a viewer on the named fallback itself has the default behind them.
+  `"fallback": false` switches it off. A build that leaves the setting empty reads the one gateway
+  `VITE_READER_BEE_URL` names, the default and the fallback, so a deployment needs no change.
   A value that is wrong stops the page at start and says where (`src/swarm/settings.ts`). A viewer's
   saved node is kept as an address: one an offered gateway has is that gateway, and any other is a Bee
   node of their own, with the build's fallback behind it.

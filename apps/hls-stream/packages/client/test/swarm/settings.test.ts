@@ -80,6 +80,14 @@ describe('the providers setting', () => {
     expect(problemOf(providers({ fallback: 'elsewhere' }))).toContain('fallback');
   });
 
+  it('accepts a fallback switched off', () => {
+    expect(parseProvidersSetting(providers({ fallback: false }))).toEqual({ ...PROVIDERS, fallback: false });
+  });
+
+  it('refuses a fallback switched on by name only, since on is what leaving it out means', () => {
+    expect(problemOf(providers({ fallback: true }))).toContain('fallback: must name one of the gateways, or be false');
+  });
+
   it('refuses a fallback that is the default', () => {
     expect(problemOf(providers({ fallback: 'event' }))).toContain('fallback');
   });
@@ -107,13 +115,28 @@ describe('the providers setting', () => {
 });
 
 describe('the Swarm settings', () => {
-  it('make a build that names only its Bee URL one Bee gateway, the default, with no fallback', () => {
+  it('make a build that names only its Bee URL one Bee gateway, the default and the fallback', () => {
     expect(swarmSettingsFrom({ beeUrl: '/bee', providers: null })).toEqual({
       gateways: [{ id: SINGLE_GATEWAY_ID, kind: 'bee-http', url: '/bee' }],
       defaultId: SINGLE_GATEWAY_ID,
-      fallbackId: null,
+      fallbackId: SINGLE_GATEWAY_ID,
       kinds: [...PROVIDER_KINDS],
     });
+  });
+
+  it('make the default gateway the fallback when the providers setting names none', () => {
+    const { fallback: _named, ...bare } = PROVIDERS;
+
+    expect(
+      swarmSettingsFrom({ beeUrl: '/bee', providers: parseProvidersSetting(JSON.stringify(bare)) }).fallbackId,
+    ).toBe('event');
+  });
+
+  it('have no fallback when the providers setting switches it off', () => {
+    expect(
+      swarmSettingsFrom({ beeUrl: '/bee', providers: parseProvidersSetting(providers({ fallback: false })) })
+        .fallbackId,
+    ).toBe(null);
   });
 
   it('take the gateways, the default, the fallback and the kinds from the providers setting', () => {
@@ -189,7 +212,7 @@ describe('making the client from the settings', () => {
     await client.reader('player').readBytes(REFERENCE);
 
     expect(asked).toEqual([`${BACKUP}/bytes/${REFERENCE}`]);
-    expect(client.health().map(({ id }) => id)).toEqual(['backup']);
+    expect(client.health().map(({ id }) => id)).toEqual(['backup', 'primary']);
   });
 
   it('reads from the default when the choice names a gateway no longer offered', async () => {
@@ -211,6 +234,39 @@ describe('making the client from the settings', () => {
     await client.reader('player').readBytes(REFERENCE);
 
     expect(asked).toEqual([`https://previews.example.com/bytes/${REFERENCE}`, `${BACKUP}/bytes/${REFERENCE}`]);
+  });
+
+  it("reads from a viewer's own node with the build's gateway behind it, for a build naming only its Bee URL", () => {
+    const own = { id: 'own-node', kind: 'bee-http' as const, url: 'http://localhost:1633' };
+    const client = createSwarmClient(swarmSettingsFrom({ beeUrl: PRIMARY, providers: null }), { choice: own });
+
+    expect(client.health().map(({ id }) => id)).toEqual(['own-node', SINGLE_GATEWAY_ID]);
+  });
+
+  it("has nothing behind the build's gateway when the viewer is on it and the build names no other", () => {
+    const client = createSwarmClient(swarmSettingsFrom({ beeUrl: PRIMARY, providers: null }));
+
+    expect(client.health().map(({ id }) => id)).toEqual([SINGLE_GATEWAY_ID]);
+  });
+
+  it('puts the default gateway behind a viewer who picked the fallback gateway itself', () => {
+    const client = createSwarmClient(TWO_GATEWAYS, { choice: 'backup' });
+
+    expect(client.health().map(({ id }) => id)).toEqual(['backup', 'primary']);
+  });
+
+  it('has no fallback behind any choice when the providers setting switches it off', () => {
+    const settings = swarmSettingsFrom({
+      beeUrl: '/bee',
+      providers: parseProvidersSetting(providers({ fallback: false })),
+    });
+    const own = { id: 'own-node', kind: 'bee-http' as const, url: 'http://localhost:1633' };
+
+    expect(
+      createSwarmClient(settings, { choice: own })
+        .health()
+        .map(({ id }) => id),
+    ).toEqual(['own-node']);
   });
 
   it("reads from a viewer's own gateway, with the deployment's fallback behind it", async () => {
