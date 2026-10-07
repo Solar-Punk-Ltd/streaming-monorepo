@@ -69,6 +69,10 @@ function scratchRepo() {
     lightweightTag(name) {
       run('tag', name);
     },
+    // A tag git tag would never make, such as one starting with a dash: update-ref writes any name git takes in a ref.
+    refTag(name) {
+      run('update-ref', `refs/tags/${name}`, 'HEAD');
+    },
     head: () => run('rev-parse', 'HEAD'),
   };
 }
@@ -142,7 +146,7 @@ describe('the version of a build', () => {
     repo.annotatedTag('v1');
     repo.commit('two');
     repo.annotatedTag("x'y");
-    repo.lightweightTag('-dash');
+    repo.refTag('-dash');
     repo.commit('three');
     assert.equal(describeVersion({ root: repo.dir }).label, 'v1+2');
   });
