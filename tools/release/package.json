@@ -1,0 +1,21 @@
+{
+  "name": "release-tools",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Names the build a deploy sends from the git tag on its commit, and guides the tagging before a deploy.",
+  "license": "MIT",
+  "type": "module",
+  "scripts": {
+    "lint": "oxlint .",
+    "test": "node --test"
+  },
+  "engines": {
+    "node": ">=24"
+  },
+  "nx": {
+    "tags": [
+      "scope:tools",
+      "type:app"
+    ]
+  }
+}
