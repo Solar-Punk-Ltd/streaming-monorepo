@@ -594,6 +594,8 @@ killed it answers `ok` with `activeStreams: 0`.
 | `swarm_hls_auth_rejections_total`           | counter | Requests refused by a credential gate                       |
 | `swarm_hls_takeovers_refused_total`         | counter | Announces refused because a live session still holds the id |
 | `swarm_hls_manifest_publish_failures_total` | counter | Live manifest publishes that failed                         |
+| `swarm_hls_ladder_markers_written_total`    | counter | Ladder time markers written, see Ladder time markers        |
+| `swarm_hls_ladder_markers_failed_total`     | counter | Markers given up on inside their period. Playback unharmed  |
 | `swarm_hls_streams_finalized_total`         | counter | Stops that published a VOD                                  |
 | `swarm_hls_streams_failed_total`            | counter | Stops that did not. Those broadcasts have no recording      |
 | `swarm_hls_streams_reaped_total`            | counter | Broadcasts finalized because their engine went silent       |
