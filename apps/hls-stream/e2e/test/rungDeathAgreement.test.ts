@@ -6,17 +6,12 @@ import { describe, it } from 'node:test';
 import { ROOT_DIR } from '../src/config.js';
 
 /**
- * The player and the master must agree about when a rung has stopped.
+ * The player and the master each decide when a rung has stopped, and this holds what each side declares.
  *
- * Two copies of one rule exist on purpose. `packages/client/.../feedState.ts` decides when a viewer
- * leaves a rung, and `packages/stream-uploader/src/libs/LadderLiveness.ts` decides when the master
- * stops advertising it. The uploader's is a deliberate port rather than a second invention, because
- * the client's took eight attempts and three of the failures shipped.
- *
- * ⛔ Both files say in prose that if one constant moves the other must move with it, and until
- * 2026-09-01 that sentence was the whole of the enforcement. Disagreement is not a crash: the master
- * would go on naming a rung the player had already left, or drop one the player was still happily
- * watching, and either reads as a viewer-side fault a long way from the number that caused it.
+ * Until 2026-10-07 there were two copies of one rule, the player's in `feedState.ts` and the uploader's
+ * in `packages/stream-uploader/src/libs/LadderLiveness.ts`, and they had to agree, because a master
+ * naming a rung the player had left reads as a viewer-side fault a long way from the number that
+ * caused it. The player has since moved to judging the rung it plays by that rung's own progress.
  *
  * Read out of the source rather than imported. e2e must not reach past a package boundary into
  * another package's internals, and the client is a browser package this runner cannot load anyway.
@@ -41,25 +36,17 @@ const DROP_LIMITS = {
   'the uploader': ['packages/stream-uploader/src/libs/LadderLiveness.ts', 'MAX_RUNGS_DROPPED_AT_ONCE'],
 } as const;
 
-const SOURCES = {
-  'the player, which decides when a viewer leaves a rung': join(
-    ROOT_DIR,
-    'packages',
-    'client',
-    'src',
-    'components',
-    'SwarmHlsPlayer',
-    'feedState.ts',
-  ),
-  'the uploader, which decides what the master advertises': join(
-    ROOT_DIR,
-    'packages',
-    'stream-uploader',
-    'src',
-    'libs',
-    'LadderLiveness.ts',
-  ),
-} as const;
+/**
+ * ⛔ **The player left this rule on 2026-10-07.** It follows only the quality it plays and judges that
+ * quality by its own progress, confirmed by one sibling that moves, because the rungs' feeds drift
+ * apart without bound and a count of segments one rung is behind the others stopped meaning anything
+ * once only one rung is read. The uploader keeps its count for what the master advertises. The player
+ * reads that master once at most, and not at all when the stream list names the renditions, so the
+ * two no longer have to agree. The player's side is pinned as absent, so a lag rule coming back into
+ * it is looked at rather than mirrored.
+ */
+const PLAYER_FEED_STATE = join(ROOT_DIR, 'packages', 'client', 'src', 'components', 'SwarmHlsPlayer', 'feedState.ts');
+const UPLOADER_LIVENESS = join(ROOT_DIR, 'packages', 'stream-uploader', 'src', 'libs', 'LadderLiveness.ts');
 
 /** The declared value of `name` in `path`, or null when it is not declared there at all. */
 function declaredValueOf(path: string, name: string): number | null {
@@ -71,29 +58,23 @@ function declaredValue(path: string): number | null {
   return declaredValueOf(path, CONSTANT);
 }
 
-describe('the player and the master agree about when a rung has stopped', () => {
-  for (const [whose, path] of Object.entries(SOURCES)) {
-    it(`finds ${CONSTANT} declared in ${whose}`, () => {
-      assert.notEqual(
-        declaredValue(path),
-        null,
-        `${CONSTANT} is not declared in ${path}. Either it was renamed, in which case rename it here ` +
-          'too, or one side stopped using segment lag to judge a rung, which is a change this test ' +
-          'exists to make someone look at rather than a rename.',
-      );
-    });
-  }
+describe('when a rung has stopped', () => {
+  it(`finds ${CONSTANT} declared in the uploader, which decides what the master advertises`, () => {
+    assert.notEqual(
+      declaredValue(UPLOADER_LIVENESS),
+      null,
+      `${CONSTANT} is not declared in ${UPLOADER_LIVENESS}. Either it was renamed, in which case rename it ` +
+        'here too, or the uploader stopped using segment lag to judge a rung, which is a change this test ' +
+        'exists to make someone look at rather than a rename.',
+    );
+  });
 
-  it('reads the same number on both sides', () => {
-    const [player, uploader] = Object.values(SOURCES).map(declaredValue);
-
+  it(`finds ${CONSTANT} gone from the player, which judges the rung it plays by its own progress`, () => {
     assert.equal(
-      player,
-      uploader,
-      `${CONSTANT} is ${player} in the player and ${uploader} in the uploader. They must match, or the ` +
-        'master will advertise a rung the viewer has already left, or drop one the viewer is still ' +
-        'watching. Neither shows up as an error: it shows up as a viewer-side fault a long way from ' +
-        'the number that caused it.',
+      declaredValue(PLAYER_FEED_STATE),
+      null,
+      `${CONSTANT} is declared in ${PLAYER_FEED_STATE} again. The player follows one rung, so a count of ` +
+        'segments the others delivered is not something it can read. Look at why it came back.',
     );
   });
 });

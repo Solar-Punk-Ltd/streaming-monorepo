@@ -9,12 +9,13 @@ import {
   FEED_STATE_LIVE,
   FEED_STATE_STALLED,
   FeedHealthTracker,
-  RUNG_DEATH_LAG_SEGMENTS,
+  UNSERVED_SLOT_STALL_MS,
 } from '../src/components/SwarmHlsPlayer/feedState';
-
-/** One segment at the longest stage this project runs, so the clock in these cases is a real one. */
-const SEGMENT_MS = 2_000;
-import { attachRungFailover, attachWatchedRungReporter } from '../src/components/SwarmHlsPlayer/rungHealth';
+import {
+  attachActiveRungFollower,
+  attachRungFailover,
+  attachWatchedRungReporter,
+} from '../src/components/SwarmHlsPlayer/rungHealth';
 
 const OWNER = '0x1234567890123456789012345678901234567890';
 const GROUP = 'the-broadcast-a-viewer-linked-to';
@@ -31,29 +32,15 @@ function makeClock() {
 }
 
 /**
- * One rung stops being produced while the rest of its ladder carries on delivering segments.
- *
- * ⛔⛔⛔ **The siblings have to actually be SERVED.** What judges a rung is how many segments the
- * ladder delivered that it did not, so a helper that only advanced a clock sets nothing up at all,
- * and every case built on it would agree with an implementation containing no rule whatsoever. That
- * is not hypothetical: this WAS a clock and two polls, and it is what these cases were standing on
- * while the rule underneath them was got wrong three times running.
+ * What the poller says once it has found a rung stopped: a sibling showed a new index while this rung
+ * showed none, or the rung was refused at a switch. The judgement is the poller's and is tested there
+ * (`test/oneQualityFollow.test.ts`). This side only acts on the announcement.
  */
-function stopPublishing(
-  feedHealth: FeedHealthTracker,
-  clock: { advance: (by: number) => void },
-  deadRung: string,
-  stillPublishing: readonly string[],
-): void {
-  const deadHex = hexOf(deadRung);
-  feedHealth.recordUnservedSlot(deadHex);
-  for (let segment = 0; segment < RUNG_DEATH_LAG_SEGMENTS; segment++) {
-    clock.advance(SEGMENT_MS);
-    for (const sibling of stillPublishing) {
-      feedHealth.recordGatewayResponse(hexOf(sibling));
-    }
-    feedHealth.recordUnservedSlot(deadHex);
-  }
+function announceStopped(feedHealth: FeedHealthTracker, deadRung: string, failoverTo: string | null = null): void {
+  feedHealth.recordRungStopped(hexOf(deadRung), {
+    reason: 'it stopped while a sibling carries on',
+    failoverTo: failoverTo === null ? null : hexOf(failoverTo),
+  });
 }
 
 /**
@@ -64,9 +51,9 @@ function stopPublishing(
  * what makes the index question real: it drops the entry, so every level above it shifts down, and
  * it clears the current level when the removed one was playing.
  *
- * ⛔ `walked` and `parsed` are separate because they genuinely come apart. The poller keeps walking
- * every rung of the ladder while hls.js only holds the levels it still has, so after a rung has been
- * dropped the two sets differ, and that is exactly the state the last-rung case has to be set up in.
+ * ⛔ `walked` and `parsed` are separate because they genuinely come apart: the poller registers every
+ * rung while hls.js only holds the levels it still has, so after a rung has been dropped the two sets
+ * differ, and that is exactly the state the last-rung case has to be set up in.
  */
 function makeLadderPlayer({
   walked = RUNG_NAMES,
@@ -123,14 +110,14 @@ function makeLadderPlayer({
         listener(Events.LEVEL_SWITCHED, { level });
       }
     },
-    /** This player's own ladder losing one rung while every other rung it walks carries on. */
-    silence: (rung: string) =>
-      stopPublishing(
-        feedHealth,
-        clock,
-        rung,
-        walked.filter((other) => other !== rung),
-      ),
+    /** The poller announcing one of this player's rungs as stopped. */
+    silence: (rung: string, failoverTo: string | null = null) => announceStopped(feedHealth, rung, failoverTo),
+    /** One rung unserved for the stall threshold while the poller follows it. */
+    goQuiet: (rung: string) => {
+      feedHealth.recordUnservedSlot(hexOf(rung));
+      clock.advance(UNSERVED_SLOT_STALL_MS);
+      feedHealth.recordUnservedSlot(hexOf(rung));
+    },
   };
 }
 
@@ -199,20 +186,18 @@ describe('dropping a rung that has stopped being produced', () => {
   /**
    * Every player on the page hears every announcement, and most of them are about other ladders.
    *
-   * ⛔ The other broadcast needs two rungs of its own and one of them has to really be announced. A
-   * ladder of one can never announce anything, so a single-rung stand-in would leave this case
-   * passing on there being no announcement at all rather than on one being correctly ignored.
+   * ⛔ The other broadcast's rung has to really be announced, or this case would pass on there being no
+   * announcement at all rather than on one being correctly ignored.
    */
   it('ignores a rung this player is not holding', () => {
     const player = makeLadderPlayer();
     const otherDead = 'a-rung-of-someone-elses-broadcast';
     const otherLive = 'the-rung-someone-else-is-watching';
-    player.feedHealth.trackGroup('another-broadcast', [otherDead, otherLive].map(hexOf));
     const heard: string[] = [];
     player.feedHealth.onRungStopped((rung) => heard.push(rung));
     attachRungFailover(player.hls, player.feedHealth);
 
-    stopPublishing(player.feedHealth, player.clock, otherDead, [otherLive]);
+    announceStopped(player.feedHealth, otherDead, otherLive);
 
     assert.deepEqual(heard, [hexOf(otherDead)], 'the other ladder should have announced its own dead rung');
     assert.deepEqual(player.removed, []);
@@ -227,9 +212,7 @@ describe('dropping a rung that has stopped being produced', () => {
    * the recovery below would then run against a ladder nothing had been taken out of.
    */
   it('leaves the last rung alone, without asking hls.js to drop it', () => {
-    // Every other rung has already been dropped, which is where a run of these leaves a player. The
-    // poller still walks all four, so a living sibling is what makes the last one judged at all: a
-    // ladder of one announces nothing, and this case would then pass with no guard here whatsoever.
+    // Every other rung has already been dropped, which is where a run of these leaves a player.
     const player = makeLadderPlayer({ parsed: ['rung-1080p'] });
     attachRungFailover(player.hls, player.feedHealth);
 
@@ -251,6 +234,28 @@ describe('dropping a rung that has stopped being produced', () => {
 
     assert.equal(player.loadLevel(), -1, 'the double should reproduce hls.js clearing the loading level');
     assert.equal(player.nextLoadLevel(), 1, 'the viewer was left with no level to load, so the picture stops');
+  });
+
+  it('puts the viewer on the rung the poller found moving, counted after the removal renumbers the levels', () => {
+    const player = makeLadderPlayer();
+    attachRungFailover(player.hls, player.feedHealth);
+
+    player.silence('rung-1080p', 'rung-480p');
+
+    // 480p was level 2 before 1080p went, and is level 1 after.
+    assert.equal(player.nextLoadLevel(), 1);
+    assert.deepEqual(player.heightsLeft(), [720, 480, 360]);
+  });
+
+  it('keeps a viewer whose switch was refused on the rung they play', () => {
+    const player = makeLadderPlayer();
+    // hls.js was loading 720p, the switch target, while the viewer still plays 1080p from its buffer.
+    player.setLoadLevel(1);
+    attachRungFailover(player.hls, player.feedHealth);
+
+    player.silence('rung-720p', 'rung-1080p');
+
+    assert.equal(player.nextLoadLevel(), 0, 'a refused switch moved the viewer off the rung they play');
   });
 
   it('leaves the loading level alone when the dead rung was not the one playing', () => {
@@ -301,7 +306,7 @@ describe('telling the feed health which rung this viewer is on', () => {
     attachWatchedRungReporter(player.hls, GROUP, player.feedHealth);
 
     player.switchTo(0);
-    player.silence('rung-1080p');
+    player.goQuiet('rung-1080p');
 
     assert.equal(player.feedHealth.state(GROUP), FEED_STATE_STALLED);
   });
@@ -311,7 +316,7 @@ describe('telling the feed health which rung this viewer is on', () => {
     attachWatchedRungReporter(player.hls, GROUP, player.feedHealth);
 
     player.switchTo(0);
-    player.silence('rung-1080p');
+    player.goQuiet('rung-1080p');
     player.switchTo(3);
 
     assert.equal(player.feedHealth.state(GROUP), FEED_STATE_LIVE);
@@ -324,7 +329,7 @@ describe('telling the feed health which rung this viewer is on', () => {
 
     player.switchTo(0);
     player.switchTo(99);
-    player.silence('rung-1080p');
+    player.goQuiet('rung-1080p');
 
     assert.equal(player.feedHealth.state(GROUP), FEED_STATE_LIVE, 'a rung out of range was still being watched');
   });
@@ -335,8 +340,32 @@ describe('telling the feed health which rung this viewer is on', () => {
     player.switchTo(0);
 
     detach();
-    player.silence('rung-1080p');
+    player.goQuiet('rung-1080p');
 
     assert.equal(player.feedHealth.state(GROUP), FEED_STATE_LIVE, 'a destroyed player was still choosing the overlay');
+  });
+});
+
+describe('telling the poller which rung the player now plays', () => {
+  it('names the rung of the level hls.js switched to', () => {
+    const player = makeLadderPlayer();
+    const followed: string[] = [];
+    attachActiveRungFollower(player.hls, (rung) => followed.push(rung));
+
+    player.switchTo(2);
+
+    assert.deepEqual(followed, [hexOf('rung-480p')]);
+  });
+
+  it('names nothing for a level index past the ladder, and nothing once torn down', () => {
+    const player = makeLadderPlayer();
+    const followed: string[] = [];
+    const detach = attachActiveRungFollower(player.hls, (rung) => followed.push(rung));
+
+    player.switchTo(99);
+    detach();
+    player.switchTo(0);
+
+    assert.deepEqual(followed, []);
   });
 });

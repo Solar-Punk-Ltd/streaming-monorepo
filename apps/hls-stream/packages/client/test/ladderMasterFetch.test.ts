@@ -93,13 +93,13 @@ describe('a published ladder master starts the rungs (the 2026-08-28 sitting fai
     globalThis.fetch = realFetch;
   });
 
-  it('returns the master text and asks for the rung feeds, rather than throwing', async () => {
+  it('returns the master text, rather than throwing, and reads no rung until a level is asked for', async () => {
     const text = await fetcher.fetchSource(`swarm://${OWNER}/${GROUP_ID}`);
 
     expect(text).toBe(PUBLISHED_MASTER);
     await fetcher.settled();
     const rungsAsked = [...rungTopicHex.keys()].filter((hex) => fetched.some((url) => url.includes(hex)));
-    expect(rungsAsked.length, `rung feeds asked for: ${rungsAsked.length} of 4`).toBe(4);
+    expect(rungsAsked.length, `rung feeds asked for: ${rungsAsked.length} of 4`).toBe(0);
   });
 
   /**
@@ -121,5 +121,9 @@ describe('a published ladder master starts the rungs (the 2026-08-28 sitting fai
 
     expect(playlist).toContain('#EXTINF');
     expect(playlist).toContain('seg-0.ts');
+    const rungsAsked = [...rungTopicHex.keys()].filter((hex) => fetched.some((url) => url.includes(hex)));
+    expect(rungsAsked, 'a level request read a rung other than its own').toEqual([
+      Topic.fromString(RUNG_IDS[2]).toString(),
+    ]);
   });
 });

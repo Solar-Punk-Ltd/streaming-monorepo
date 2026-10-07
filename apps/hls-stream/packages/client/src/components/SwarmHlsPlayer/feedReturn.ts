@@ -25,10 +25,10 @@ import { parseManifest } from './playlist';
  * watched the broadcast end or opened its recording afterwards. Every one that finds nothing is a
  * Swarm retrieval the gateway attempts and fails, so this is paid by the gateway rather than by the
  * viewer. A wait is drawn between 22.5 and 30 seconds, 26.25 on average, which is **0.038 requests a
- * second** for a single rendition and **0.15** for the four rung ladder, which watches every rung. The
- * same ladder walked live asks 5.3 a second, four rungs at the 750ms poll interval, so the watch is
- * about one thirty-fifth of it. An hour on an old recording costs about 137 requests for a single
- * rendition and 549 for the ladder, and never more than 160 and 640.
+ * second**, for a single rendition and for a ladder alike, since a ladder watches only the rung that
+ * was playing when it ended. One rung walked live asks up to 1.3 a second at the 750ms poll interval,
+ * so the watch is about one thirty-fifth of it. An hour on an old recording costs about 137 requests,
+ * and never more than 160.
  *
  * ## Why thirty seconds
  *

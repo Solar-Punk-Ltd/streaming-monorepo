@@ -12,6 +12,7 @@ import {
   buildMasterPlaylist,
   buildSwarmUri,
   isMasterPlaylist,
+  masterRungs,
   masterVariants,
   parseManifest,
   parseSwarmUri,
@@ -103,6 +104,22 @@ describe('isMasterPlaylist', () => {
   it('does not call an empty or headers-only playlist a master', () => {
     assert.equal(isMasterPlaylist(''), false);
     assert.equal(isMasterPlaylist(buildMasterPlaylist('aabbcc', [])), false);
+  });
+});
+
+describe('masterRungs', () => {
+  it('reads each variant with the BANDWIDTH it declares, never the AVERAGE-BANDWIDTH beside it', () => {
+    const master = buildMasterPlaylist('aabbcc', [rendition('720p', 1280, 720, 2_800_000)]);
+
+    assert.deepEqual(masterRungs(master), [{ owner: 'aabbcc', topic: 'group-1-720p', bandwidth: 2_800_000 }]);
+  });
+
+  it('reads no bandwidth from a variant that declares none', () => {
+    const master = ['#EXTM3U', '#EXT-X-STREAM-INF:AVERAGE-BANDWIDTH=900,RESOLUTION=640x360', 'swarm://aabbcc/low'].join(
+      '\n',
+    );
+
+    assert.deepEqual(masterRungs(master), [{ owner: 'aabbcc', topic: 'low', bandwidth: null }]);
   });
 });
 

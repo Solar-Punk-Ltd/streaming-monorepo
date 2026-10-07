@@ -19,8 +19,8 @@ import { RequestJitter } from '@/utils/requestJitter';
 
 import { FEED_RETURN_WATCH_INTERVAL_MS, FeedReturnWatch, feedReturnWatchWaitMs } from './feedReturn';
 import { FeedHealthTracker, UNSERVED_POLLS_PROBE_CEILING } from './feedState';
-import { LadderFeedPoller } from './LadderFeedPoller';
-import { absoluteBytesBase, buildMasterPlaylist, isMasterPlaylist, masterVariants, parseSwarmUri } from './playlist';
+import { LadderFeedPoller, type LadderRung } from './LadderFeedPoller';
+import { absoluteBytesBase, buildMasterPlaylist, isMasterPlaylist, masterRungs, parseSwarmUri } from './playlist';
 import { isSlotNotWrittenYet, ManifestFetchError, probePastRefusal, shouldProbePastRefusal } from './refusedSlot';
 
 // The parser and the segment shape now live beside the tags the uploader builds with, so the two
@@ -109,6 +109,12 @@ export class ManifestStateManager {
    */
   hasSegments(topicId: string): boolean {
     return (this.topics.get(topicId)?.segments.length ?? 0) > 0;
+  }
+
+  /** What this topic holds, for comparing two rungs at a switch, or null when it holds nothing. */
+  snapshot(topicId: string): { readonly segments: readonly Segment[]; readonly isFinalized: boolean } | null {
+    const state = this.topics.get(topicId);
+    return state ? { segments: state.segments, isFinalized: state.isFinalized } : null;
   }
 
   updateManifest(topicId: string, headers: string[], segments: Segment[], isFinalized: boolean): boolean {
@@ -452,6 +458,32 @@ export class RungNotReadyError extends Error {
   }
 }
 
+/**
+ * A level request for a rung the poller refused at the switch, because it had clearly stopped. The
+ * player has already been told to take the level out, so this only ends the request.
+ */
+export class RungRefusedError extends Error {
+  constructor(readonly hexTopic: string) {
+    super(`Rung ${hexTopic} has stopped, so the switch to it was refused`);
+    this.name = 'RungRefusedError';
+  }
+}
+
+/**
+ * A level request for a rung the player switched away from while the request waited. An empty
+ * playlist would reach hls.js as a fatal parse error and restart the player, so the level errors
+ * instead and hls.js asks again if it still wants it.
+ */
+export class RungNotFollowedError extends Error {
+  constructor(readonly hexTopic: string) {
+    super(`Rung ${hexTopic} stopped being followed while its playlist was asked for`);
+    this.name = 'RungNotFollowedError';
+  }
+}
+
+/** When the frame a player shows was presented, by PROGRAM-DATE-TIME, or null when it cannot say. */
+type PlayheadClock = () => number | null;
+
 export class ManifestFetcher {
   private _beeUrl: string = config.beeUrl;
   private ladders = new Map<string, RegisteredLadder>();
@@ -474,6 +506,9 @@ export class ManifestFetcher {
    * are watched by {@link LadderFeedPoller} instead, which already owns their teardown.
    */
   private readonly returnWatches = new Map<string, HeldReturnWatch>();
+
+  /** Each ladder's player clock, by the group topic its overlay watches. See {@link attachPlayhead}. */
+  private readonly playheads = new Map<string, PlayheadClock>();
 
   constructor(
     private readonly stateManager: ManifestStateManager = ManifestStateManager.getInstance(),
@@ -510,6 +545,7 @@ export class ManifestFetcher {
       this.feedHealth,
       (hexTopic) => this.jitter.spread(this.feedHealth.backoffRemainingMs(hexTopic)),
       () => this.drawReturnWatchWaitMs(),
+      { playheadMs: (group) => (group === null ? null : (this.playheads.get(group)?.() ?? null)) },
     );
   }
 
@@ -541,7 +577,14 @@ export class ManifestFetcher {
     // time already sees the *next* stream's ladder — which would stop the rungs just started and
     // leave the previous stream's walk loops running forever.
     this.trackLadder(sourceUrl, topics, resolve);
-    this.poller.start(ladder.owner, topics, groupHexOf(sourceUrl));
+    this.poller.register(
+      ladder.owner,
+      ladder.renditions.map((rendition) => ({
+        topic: Topic.fromString(rendition.topic),
+        bandwidth: rendition.bandwidth,
+      })),
+      groupHexOf(sourceUrl),
+    );
   }
 
   /**
@@ -560,7 +603,7 @@ export class ManifestFetcher {
       return;
     }
 
-    this.poller.stop(registered.topics);
+    this.poller.unregister(registered.topics);
     for (const topic of registered.topics) {
       this.stateManager.clear(topic.toString());
     }
@@ -600,8 +643,7 @@ export class ManifestFetcher {
         // walks here would leave four orphans that nothing can stop, `unregisterLadder` being their
         // only stopper and already spent. The single-rendition branch below guards the same way.
         this.assertTopicSurvived(hexTopic, generation);
-        const variants = masterVariants(text);
-        this.startVariants(url, source.owner, variants);
+        this.registerVariants(url, source.owner, masterRungs(text));
         this.logMaster(url, text, 'published');
         this.feedHealth.recordGatewayReachable(hexTopic);
         return text;
@@ -641,12 +683,19 @@ export class ManifestFetcher {
     const topic = Topic.fromString(topicPart);
     const hexTopic = topic.toString();
 
-    // A rung the poller owns is already being kept current, so a playlist request is a read of
-    // what is there. The only wait is for the very first response to arrive, and it is bounded,
-    // because a rung whose feed this gateway cannot resolve never has one. See
-    // {@link RUNG_READY_DEADLINE_POLLS}.
-    if (this.poller.isPolling(hexTopic)) {
+    // A rung of a registered ladder. Asking for its playlist is what starts following it, at its
+    // newest index, and the wait for that first read is bounded, because a rung whose feed this
+    // gateway cannot resolve never has one. See {@link RUNG_READY_DEADLINE_POLLS}.
+    if (this.poller.isRegistered(hexTopic)) {
+      this.poller.activate(hexTopic);
       await this.awaitRungReady(hexTopic);
+      const readiness = this.poller.readiness(hexTopic);
+      if (readiness === 'refused') {
+        throw new RungRefusedError(hexTopic);
+      }
+      if (readiness === 'inactive') {
+        throw new RungNotFollowedError(hexTopic);
+      }
       return this.stateManager.serialize(hexTopic, this.bytesBaseUrl());
     }
 
@@ -1085,14 +1134,49 @@ export class ManifestFetcher {
     this.ladders.set(sourceUrl, { resolve: resolve ?? existing?.resolve, topics: merged });
   }
 
-  private startVariants(sourceUrl: string, sourceOwner: string, variants: { owner: string; topic: string }[]): void {
+  private registerVariants(
+    sourceUrl: string,
+    sourceOwner: string,
+    variants: { owner: string; topic: string; bandwidth: number | null }[],
+  ): void {
     if (variants.length === 0) {
       return;
     }
 
-    const topics = variants.map((variant) => Topic.fromString(variant.topic));
-    this.trackLadder(sourceUrl, topics);
-    this.poller.start(variants[0].owner || sourceOwner, topics, groupHexOf(sourceUrl));
+    const rungs: LadderRung[] = variants.map((variant) => ({
+      topic: Topic.fromString(variant.topic),
+      bandwidth: variant.bandwidth ?? undefined,
+    }));
+    this.trackLadder(
+      sourceUrl,
+      rungs.map((rung) => rung.topic),
+    );
+    this.poller.register(variants[0].owner || sourceOwner, rungs, groupHexOf(sourceUrl));
+  }
+
+  /**
+   * The player is now playing this rung, which is what hls.js says on `LEVEL_SWITCHED`, so every other
+   * rung of its ladder stops being followed and forgets what it read.
+   */
+  followOnlyRung(rungHexTopic: string): void {
+    this.poller.followOnly(rungHexTopic);
+  }
+
+  /**
+   * Lets a switch read when the viewer is watching, so a viewer behind the live edge keeps their
+   * place. One clock per ladder, and the returned function lets go of it.
+   */
+  attachPlayhead(sourceUrl: string, clock: PlayheadClock): () => void {
+    const group = groupHexOf(sourceUrl);
+    if (group === null) {
+      return () => {};
+    }
+    this.playheads.set(group, clock);
+    return () => {
+      if (this.playheads.get(group) === clock) {
+        this.playheads.delete(group);
+      }
+    };
   }
 
   /**

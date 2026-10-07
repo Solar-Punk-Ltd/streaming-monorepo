@@ -121,8 +121,8 @@ type ProbeResult = ProbeServed | ProbeFoundNothing | ProbeGatewayFailed;
  *
  * ⛔ **The two followers are not equally free to be wrong about a refusal, which is why both make
  * this call and only one used to.** The single-rendition walk pays for a refusal it believed with a
- * slower poll, and the next poll asks again. On a ladder the same refusal is evidence in
- * {@link FeedHealthTracker.rungStoppedWhileOthersAdvance}, and a rung condemned there is handed to
+ * slower poll, and the next poll asks again. On a ladder the same refusal keeps the playing rung
+ * unserved, and a rung unserved past the stall threshold beside a sibling that moves is handed to
  * `hls.removeLevel`, which has no undo inside the session. So the path where taking a 404 at face
  * value costs the least was the one checking, and the path where it costs a rung for the rest of the
  * broadcast was the one believing it.

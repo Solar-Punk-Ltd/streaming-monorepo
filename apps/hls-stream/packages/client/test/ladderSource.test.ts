@@ -122,18 +122,46 @@ describe('the ladder entry points', () => {
       assert.equal(await fetcher.fetchSource(`${OWNER}/${SOURCE_TOPIC}`), master);
     });
 
-    it('starts every rung it names, before hls.js has asked for any of them', async () => {
+    it('registers every rung it names and reads none of them before hls.js asks for one', async () => {
       stubFetch(buildMasterPlaylist(OWNER, LADDER));
 
       await fetcher.fetchSource(`${OWNER}/${SOURCE_TOPIC}`);
       await settle();
 
       for (const hex of RUNG_TOPICS) {
-        assert.ok(
-          requested.some((path) => path.includes(hex)),
-          `rung ${hex} was never read, so switching to it would start eighty indices behind`,
-        );
+        assert.ok(!requested.some((path) => path.includes(hex)), `rung ${hex} was read before anyone played it`);
       }
+    });
+
+    /**
+     * Only the quality hls.js plays is read (Levi, 2026-10-07). A level request starts that rung, a
+     * second one starts the rung switched to, and the switch reported by hls.js stops the first.
+     * Counted on the requests a real fetch makes, by the rung each one names.
+     */
+    it('reads only the rung a level request names, and stops the old rung once the switch is reported', async () => {
+      const [low, top] = RUNG_TOPICS;
+      stubFetch(buildMasterPlaylist(OWNER, LADDER));
+      const readsOf = (hex: string) => requested.filter((path) => path === `feeds/${OWNER}/${hex}`).length;
+
+      await fetcher.fetchSource(`${OWNER}/${SOURCE_TOPIC}`);
+      await fetcher.fetch(`${OWNER}/${LADDER[1].topic}`);
+      await settle();
+      assert.equal(readsOf(top), 1, 'the playing rung was not started with one head read');
+      assert.equal(readsOf(low), 0, 'a rung nobody plays was read');
+
+      const beforeSwitch = requested.length;
+      await fetcher.fetch(`${OWNER}/${LADDER[0].topic}`);
+      assert.equal(readsOf(low), 1, 'the switch did not start the new rung with one head read');
+      assert.equal(requested[beforeSwitch], `feeds/${OWNER}/${low}`, 'the switch read something before its finder');
+
+      fetcher.followOnlyRung(low);
+      assert.equal(manager.getIndex(top), null, 'the rung switched away from kept its index');
+      const afterSwitch = requested.length;
+      await settle();
+      assert.ok(
+        requested.slice(afterSwitch).every((path) => !path.includes(top)),
+        'the old rung was still read after the switch',
+      );
     });
 
     it('does not ingest the master as a media playlist, which would serve zero segments', async () => {
@@ -150,7 +178,7 @@ describe('the ladder entry points', () => {
      * this level: the poller stopped its walks on ENDLIST while the viewer stayed on `live` over a
      * frozen frame.
      */
-    it('ends the source topic once every rung the master names is finalized', async () => {
+    it('ends the source topic once the playing rung and its sibling are both finalized', async () => {
       stubFetch(buildMasterPlaylist(OWNER, LADDER), (path) => {
         if (RUNG_TOPICS.some((hex) => path === `feeds/${OWNER}/${hex}`)) {
           return feedResponse(`${mediaPlaylist('rung-seg.ts')}\n#EXT-X-ENDLIST`);
@@ -159,6 +187,7 @@ describe('the ladder entry points', () => {
       });
 
       await fetcher.fetchSource(`${OWNER}/${SOURCE_TOPIC}`);
+      await fetcher.fetch(`${OWNER}/${LADDER[1].topic}`);
 
       for (let tick = 0; tick < 200 && health.state(hexSource) !== FEED_STATE_ENDED; tick++) {
         await settle(1);
@@ -167,11 +196,11 @@ describe('the ladder entry points', () => {
     });
 
     /**
-     * Each finished rung watches for its broadcaster, and every wait it takes is drawn through this
-     * fetcher's own jitter, as the single rendition's is. Counted through the jitter's source: nothing
-     * else here draws from it, since there is no stagger bound and no backoff to spread.
+     * The rung that was playing watches for its broadcaster, and every wait it takes is drawn through
+     * this fetcher's own jitter, as the single rendition's is. Counted through the jitter's source:
+     * nothing else here draws from it, since there is no stagger bound and no backoff to spread.
      */
-    it('draws the wait before every ask of every finished rung through the jitter the fetcher was built with', async () => {
+    it('draws the wait before every ask of the finished rung through the jitter the fetcher was built with', async () => {
       const WATCH_MS = 5;
       let draws = 0;
       const counting = new RequestJitter(0, () => {
@@ -190,13 +219,14 @@ describe('the ladder entry points', () => {
 
       try {
         await watching.fetchSource(`${OWNER}/${SOURCE_TOPIC}`);
-        await waitFor(() => asks() >= RUNG_TOPICS.length * 3, 'every finished rung to ask three times', 5_000);
+        await watching.fetch(`${OWNER}/${LADDER[1].topic}`);
+        await waitFor(() => asks() >= 3, 'the finished rung to ask three times', 5_000);
 
         const asked = asks();
-        assert.ok(asked >= RUNG_TOPICS.length * 3, `the finished rungs asked ${asked} times`);
-        // One draw per ask, plus one per rung for a wait in progress when this reads.
+        assert.ok(asked >= 3, `the finished rung asked ${asked} times`);
+        // One draw per ask, plus one for a wait in progress when this reads.
         assert.ok(
-          draws >= asked && draws <= asked + RUNG_TOPICS.length,
+          draws >= asked && draws <= asked + 1,
           `${draws} waits were drawn through the fetcher for ${asked} asks`,
         );
       } finally {
@@ -358,6 +388,7 @@ describe('the ladder entry points', () => {
       const source = `${OWNER}/${SOURCE_TOPIC}`;
       stubFetch(buildMasterPlaylist(OWNER, LADDER));
       await fetcher.fetchSource(source);
+      await fetcher.fetch(`${OWNER}/${LADDER[1].topic}`);
       await settle();
       assert.ok(
         RUNG_TOPICS.some((hex) => manager.serialize(hex, `${BEE_URL}/bytes`) !== ''),

@@ -59,14 +59,23 @@ export function isMasterPlaylist(text: string): boolean {
  * reason: the master is what says where its own variants live.
  */
 export function masterVariants(text: string): { owner: string; topic: string }[] {
+  return masterRungs(text).map(({ owner, topic }) => ({ owner, topic }));
+}
+
+/**
+ * The variants a master names, each with the `BANDWIDTH` its line declares, or null where it declares
+ * none. The bandwidth is what orders the rungs, so "the next lower rung" can be found.
+ */
+export function masterRungs(text: string): { owner: string; topic: string; bandwidth: number | null }[] {
   // ⚠️ The per-line trim below covers everything this one does, so dropping this call is an
   // equivalent mutant that survives `pnpm mutate`. Kept rather than removed because it bounds the
   // loop to real content, and the equivalence holds only for the line shapes the tests cover.
   const lines = text.trim().split('\n');
-  const variants: { owner: string; topic: string }[] = [];
+  const variants: { owner: string; topic: string; bandwidth: number | null }[] = [];
 
   for (let i = 0; i < lines.length; i++) {
-    if (!lines[i].trim().startsWith(HLS_STREAM_INF)) {
+    const line = lines[i].trim();
+    if (!line.startsWith(HLS_STREAM_INF)) {
       continue;
     }
 
@@ -77,10 +86,16 @@ export function masterVariants(text: string): { owner: string; topic: string }[]
 
     const variant = parseSwarmUri(uri);
     if (variant.owner && variant.topic) {
-      variants.push(variant);
+      variants.push({ ...variant, bandwidth: declaredBandwidth(line) });
     }
     i++;
   }
 
   return variants;
+}
+
+/** The `BANDWIDTH` attribute of an `#EXT-X-STREAM-INF` line, which `AVERAGE-BANDWIDTH` must not match. */
+function declaredBandwidth(streamInf: string): number | null {
+  const match = /(?:^|[:,])BANDWIDTH=(\d+)/.exec(streamInf);
+  return match ? Number(match[1]) : null;
 }
