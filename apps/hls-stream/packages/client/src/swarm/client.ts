@@ -96,7 +96,7 @@ interface ProviderAnswerCount {
 }
 
 /** What one feature read in the last {@link ACTIVITY_WINDOW_MS}, and from whom. */
-interface FeatureActivity {
+export interface FeatureActivity {
   readonly feature: SwarmFeature;
   /** The provider the feature reads from first. */
   readonly primary: string;
@@ -115,7 +115,7 @@ interface RecentAnswer {
   readonly answer: AnswerKind;
 }
 
-interface ProviderHealth {
+export interface ProviderHealth {
   readonly id: string;
   readonly faultsInARow: number;
   /** When the provider is asked again, on the client's clock, or null while it is not paused. */
