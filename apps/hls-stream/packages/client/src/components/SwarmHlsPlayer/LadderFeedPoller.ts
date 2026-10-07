@@ -585,7 +585,8 @@ export class LadderFeedPoller {
       }
     }
 
-    const found = walk.seed ?? (await this.finder.findNewest(rung, playing ? this.hintFrom(playing) : null));
+    const found =
+      walk.seed ?? (await this.finder.findNewest(rung, playing ? this.hintFrom(playing) : null, () => walk.stopped));
     walk.seed = null;
     if (walk.stopped) {
       return false;
@@ -833,7 +834,7 @@ export class LadderFeedPoller {
 
     let found: NewestIndex | null;
     try {
-      found = await this.finder.findNewest(feedRungOf(sibling), hint);
+      found = await this.finder.findNewest(feedRungOf(sibling), hint, () => !this.isCurrent(entry));
     } catch {
       // Nothing to confirm with. The playing rung's own ENDLIST is the stronger evidence.
       found = null;

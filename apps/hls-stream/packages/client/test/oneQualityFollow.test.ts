@@ -88,9 +88,9 @@ function makeRig(options: { finderFor?: (gateway: FakeLadderGateway) => NewestIn
     progressBoundMs: BOUND_MS,
     playheadMs: () => playhead.ms,
     finder: {
-      findNewest: (rung, hint) => {
+      findNewest: (rung, hint, isStopped) => {
         finds.push(rung.topic.toString());
-        return finder.findNewest(rung, hint);
+        return finder.findNewest(rung, hint, isStopped);
       },
     },
     followClock,
@@ -191,6 +191,30 @@ describe('Q1: only the rung that plays is walked', () => {
     await poller.ready(hex(MID));
 
     assert.deepEqual(groups, [GROUP, GROUP]);
+  });
+
+  it('hands the search a stop check that turns true once the rung is unregistered', async () => {
+    let stopCheck: (() => boolean) | undefined;
+    let release = () => {};
+    const { poller } = makeRig({
+      finderFor: () => ({
+        findNewest(_rung, _hint, isStopped) {
+          stopCheck = isStopped;
+          return new Promise((resolve) => {
+            release = () => resolve(null);
+          });
+        },
+      }),
+    });
+    poller.register(OWNER, RUNGS, GROUP);
+    poller.activate(hex(TOP));
+    await waitFor(() => stopCheck !== undefined, 'the search to start');
+    assert.equal(stopCheck?.(), false);
+
+    poller.unregister([TOP]);
+
+    assert.equal(stopCheck?.(), true, 'the search in flight was not told the rung stopped');
+    release();
   });
 
   it('hands the finder the playing rung newest slot as a hint, and walks whatever the finder says is newest', async () => {

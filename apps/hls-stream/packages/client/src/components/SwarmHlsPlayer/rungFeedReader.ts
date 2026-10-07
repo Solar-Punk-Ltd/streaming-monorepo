@@ -41,9 +41,14 @@ export class RungFeedReader implements FeedReader {
     private readonly owner: string,
     private readonly topic: Topic,
     private readonly now: () => number,
+    /** Once true, every read answers as a slot not written yet without asking, so a search ends quietly. */
+    private readonly isStopped: () => boolean = () => false,
   ) {}
 
   async read(index: number): Promise<FeedRead> {
+    if (this.isStopped()) {
+      return { found: false };
+    }
     let response: TimedResponse;
     try {
       response = await this.fetchResource(feedSlotPath(this.owner, this.topic, FeedIndex.fromBigInt(BigInt(index))));

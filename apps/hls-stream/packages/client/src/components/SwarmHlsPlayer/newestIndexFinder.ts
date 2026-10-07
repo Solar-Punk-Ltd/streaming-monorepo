@@ -39,10 +39,12 @@ export interface NewestIndex {
  * Injected, so the owner's decision 34 can move to Bee's own lookup at the start (option b) or to a
  * latest index the stream list carries (option c) without touching the walk.
  *
+ * @param isStopped Checked before every read. Once the rung stops being followed the search reads
+ *   nothing more and its answer is thrown away.
  * @returns Null when the feed holds nothing yet. A read the gateway did not answer throws.
  */
 export interface NewestIndexFinder {
-  findNewest(rung: FeedRung, hint: SwitchHint | null): Promise<NewestIndex | null>;
+  findNewest(rung: FeedRung, hint: SwitchHint | null, isStopped?: () => boolean): Promise<NewestIndex | null>;
 }
 
 /**
@@ -56,8 +58,12 @@ export class IndexSearchFinder implements NewestIndexFinder {
     private readonly clock: FollowClock,
   ) {}
 
-  async findNewest(rung: FeedRung, hint: SwitchHint | null): Promise<NewestIndex | null> {
-    const reader = new RungFeedReader(this.fetchResource, rung.owner, rung.topic, this.clock.now);
+  async findNewest(
+    rung: FeedRung,
+    hint: SwitchHint | null,
+    isStopped: () => boolean = () => false,
+  ): Promise<NewestIndex | null> {
+    const reader = new RungFeedReader(this.fetchResource, rung.owner, rung.topic, this.clock.now, isStopped);
     const { newest } =
       hint === null
         ? await findNewestFromScratch(reader, this.clock)

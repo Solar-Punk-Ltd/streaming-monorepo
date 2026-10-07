@@ -4,7 +4,11 @@ import { describe, it } from 'vitest';
 
 import type { SwitchHint } from '../../src/components/SwarmHlsPlayer/following/findNewestFromHint.js';
 import { MARKER_REUSE_MS, MarkerFinder } from '../../src/components/SwarmHlsPlayer/markerFinder.js';
-import type { FeedRung, NewestIndexFinder } from '../../src/components/SwarmHlsPlayer/newestIndexFinder.js';
+import {
+  type FeedRung,
+  IndexSearchFinder,
+  type NewestIndexFinder,
+} from '../../src/components/SwarmHlsPlayer/newestIndexFinder.js';
 import { markerPeriodAt } from '@swarm-hls-stream/shared';
 
 import { VirtualTime } from '../feedModel/virtualTime.js';
@@ -210,5 +214,43 @@ describe('finding the newest index from a time marker', () => {
       ],
     );
     assert.deepEqual(fallbacks, [{ rung: TOP.toHex(), hint: null }]);
+  });
+});
+
+describe('a search for a quality that stops being followed', () => {
+  it('reads nothing more once the stop check says so, from the search before markers', async () => {
+    const time = new VirtualTime();
+    await time.runUntil(NOW_MS);
+    const gateway = new TimedGateway(time, OWNER, ROUND_TRIP_MS);
+    gateway.addFeed(TOP, '720p', { lagMs: LAG_MS });
+    const finder = new IndexSearchFinder(gateway.fetchResource, time.clock());
+    let stopped = false;
+    time.at(NOW_MS + 100, () => {
+      stopped = true;
+    });
+
+    await time.runToCompletion(finder.findNewest(rungOf(TOP), null, () => stopped));
+
+    assert.ok(gateway.reads.length > 0, 'the first round went out before the stop');
+    assert.deepEqual(
+      gateway.reads.filter((read) => read.atMs > NOW_MS + 100),
+      [],
+      'the search read on after the quality stopped being followed',
+    );
+  });
+
+  it('reads no slot once the stop check says so while the marker is read', async () => {
+    const { time, gateway, finder } = await rig();
+    gateway.serveMarkers(GROUP);
+    let stopped = false;
+    time.at(NOW_MS + 100, () => {
+      stopped = true;
+    });
+
+    const found = await time.runToCompletion(finder.findNewest(rungOf(TOP), null, () => stopped));
+
+    assert.equal(found, null);
+    assert.equal(gateway.markerReads.length, 1);
+    assert.deepEqual(gateway.readsOf(TOP), []);
   });
 });

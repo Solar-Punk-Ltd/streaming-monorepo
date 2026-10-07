@@ -52,14 +52,21 @@ export class MarkerFinder implements NewestIndexFinder {
     private readonly fallback: NewestIndexFinder = new IndexSearchFinder(fetchResource, clock),
   ) {}
 
-  async findNewest(rung: FeedRung, hint: SwitchHint | null): Promise<NewestIndex | null> {
-    const marker = rung.group ? await this.markerFor(rung.owner, rung.group) : null;
+  async findNewest(
+    rung: FeedRung,
+    hint: SwitchHint | null,
+    isStopped: () => boolean = () => false,
+  ): Promise<NewestIndex | null> {
+    const marker = rung.group && !isStopped() ? await this.markerFor(rung.owner, rung.group) : null;
+    if (isStopped()) {
+      return null;
+    }
     const index = marker?.rungs[rung.topic.toHex()];
     if (marker === null || index === undefined) {
-      return this.fallback.findNewest(rung, hint);
+      return this.fallback.findNewest(rung, hint, isStopped);
     }
 
-    const reader = new RungFeedReader(this.fetchResource, rung.owner, rung.topic, this.clock.now);
+    const reader = new RungFeedReader(this.fetchResource, rung.owner, rung.topic, this.clock.now, isStopped);
     const { newest } = await findNewestFromHint(reader, this.clock, {
       index,
       // The newest segment of that index ended a little before the marker was written, by the upload's
