@@ -714,6 +714,8 @@ importers:
 
   tools/boundary-check: {}
 
+  tools/release: {}
+
 packages:
 
   '@adobe/css-tools@4.5.0':
