@@ -84,8 +84,9 @@ Below the node picker's own-node field sit three debug tools (`src/components/Do
   stream's content and refuses `/health`, so its connection is shown by its content reads: any answer
   passes it, and when none came it says it did not answer in time or could not be reached. The stream
   list is its feed's head, checked to be a stream list. The video is read as the player starts: the
-  ladder's time marker on a live ladder, otherwise a feed entry the list names, then one segment's URL
-  is loaded. Previews read the playlist a stream card reads. Pictures load one stream's picture. The
+  ladder's time marker on a live ladder, a rung's entry the list names on any other ladder, and the
+  feed head of a stream the list names no renditions for, a recording among them. Then one segment's
+  URL is loaded. Previews read the playlist a stream card reads. Pictures load one stream's picture. The
   checks after the list use the stream this gateway listed, or the list the page already shows when
   it could not, a live stream first. This viewer has no chat, so there is no chat check. Each check
   ends in one sentence, and a failure says what the viewer can do: "this node does not allow this

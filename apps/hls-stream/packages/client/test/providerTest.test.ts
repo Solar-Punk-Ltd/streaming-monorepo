@@ -41,6 +41,9 @@ const RECORDED: Stream = {
   thumbnail: PICTURE,
 };
 
+/** Where the player opens a stream the list names no renditions for: its feed head. */
+const RECORDED_HEAD = `${GW}/${nextFeedRequest(OWNER, Topic.fromString(RECORDED.topic), null).path}`;
+
 const slot = (owner: string, topic: string, index: number) =>
   `${GW}/${feedSlotPath(owner, Topic.fromString(topic), FeedIndex.fromBigInt(BigInt(index)))}`;
 
@@ -59,6 +62,7 @@ function gateway(override: (url: string) => Answer | undefined = () => undefined
         }),
     ],
     [slot(OWNER, RECORDED.topic, 3), () => new Response(PLAYLIST)],
+    [RECORDED_HEAD, () => new Response(PLAYLIST, { headers: { 'swarm-feed-index': '0000000000000003' } })],
     [`${GW}/bytes/${SEGMENT}`, () => new Response(new Uint8Array([0x47]))],
     [`${GW}/bzz/${PICTURE}/`, () => new Response(new Uint8Array([0x89]))],
   ]);
@@ -165,7 +169,7 @@ describe("the node picker's Test", () => {
 
   it('tests the other features on the list the page already shows when this gateway cannot read it', async () => {
     const results = await run({
-      fetcher: gateway((url) => (url.includes('/feeds/') ? new Response('', { status: 404 }) : undefined)),
+      fetcher: gateway((url) => (url === CATALOG_HEAD ? new Response('', { status: 404 }) : undefined)),
       knownStreams: [RECORDED],
     });
 
@@ -242,6 +246,8 @@ describe("the node picker's Test, on masters that name masters", () => {
   it('follows them at most three levels deep', async () => {
     const LOOP = 'test-loop-master';
     const master = ['#EXTM3U', '#EXT-X-STREAM-INF:BANDWIDTH=400000', `swarm://${OWNER}/${LOOP}`].join('\n');
+    // The player opens a stream with no renditions in the list by its feed head, and follows a master's variants.
+    const headOfLoop = `${GW}/${nextFeedRequest(OWNER, Topic.fromString(LOOP), null).path}`;
     let masterReads = 0;
     const stream: Stream = {
       owner: OWNER,
@@ -254,7 +260,7 @@ describe("the node picker's Test, on masters that name masters", () => {
     const fetcher = gateway(
       (url) => {
         // Answers a few dozen times only, so a reader with no limit ends rather than running forever.
-        if (url === slot(OWNER, LOOP, 0) && masterReads < 30) {
+        if ((url === slot(OWNER, LOOP, 0) || url === headOfLoop) && masterReads < 30) {
           masterReads += 1;
           return new Response(master);
         }
@@ -265,7 +271,8 @@ describe("the node picker's Test, on masters that name masters", () => {
 
     const results = await run({ fetcher });
 
-    expect(masterReads).toBe(4);
+    // Four by the video check, the head and three masters it follows, and two by the previews check, which follows one.
+    expect(masterReads).toBe(6);
     expect(results.player).toEqual({ check: 'player', outcome: 'failed', sentence: NO_SEGMENT('Loop') });
   });
 });
@@ -443,5 +450,32 @@ describe("the node picker's Test, on a gateway the build offers", () => {
     const results = await run({ fetcher: gateway(page), knownStreams: [RECORDED], isOwnNode: false });
 
     expect(results.connection).toEqual({ check: 'connection', outcome: 'failed', sentence: NOT_A_SWARM_GATEWAY });
+  });
+});
+
+describe("the node picker's Test, on a recording", () => {
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  it('reads it as the player opens it, by its feed head, and waits the 6 s that head takes', async () => {
+    const asked: string[] = [];
+    const results = await runOnTestClock({
+      fetcher: slowed(
+        gateway((url) => {
+          asked.push(url);
+          return url === slot(OWNER, RECORDED.topic, 3) ? new Response('', { status: 404 }) : undefined;
+        }),
+        (url) => (url === RECORDED_HEAD ? 6_000 : undefined),
+      ),
+      isOwnNode: false,
+    });
+
+    expect(results.player).toEqual({
+      check: 'player',
+      outcome: 'passed',
+      sentence: `The video loaded: a playlist of ${TITLE} and one segment.`,
+    });
+    expect(asked.filter((url) => url === RECORDED_HEAD)).toHaveLength(1);
   });
 });

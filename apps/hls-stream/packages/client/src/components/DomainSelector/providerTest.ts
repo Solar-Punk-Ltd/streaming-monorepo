@@ -261,8 +261,10 @@ async function checkPlayer(
 
 /**
  * The playlist the player would start from: through the ladder's time marker on a live ladder, which is
- * how the player starts there, and otherwise a feed entry the stream list names. A ladder whose marker
- * is missing falls back to a feed entry, as the player falls back to its search.
+ * how the player starts there, and on any other ladder a rung's entry the stream list names, which a
+ * finished ladder's rungs carry. A ladder whose marker is missing falls back to a rung's entry, as the
+ * player falls back to its search. A stream the list names no renditions for, a recording among them,
+ * is read by its feed head, the read the player opens it with, however long that feed is.
  */
 async function playlistOf(
   context: ProviderTestContext,
@@ -284,7 +286,12 @@ async function playlistOf(
   const lowest = rungs.find((rung) => rung.index !== undefined) ?? rungs[0];
   return lowest
     ? entryOf(reader, stream, lowest.topic, lowest.index ?? 0, readWindow, false)
-    : entryOf(reader, stream, stream.topic, stream.index ?? 0, readWindow, false);
+    : served(await reader.readFeedHead(stream.owner, Topic.fromString(stream.topic), readWindow), {
+        reader,
+        stream,
+        readWindow,
+        byMarker: false,
+      });
 }
 
 const topicHex = (topic: string) => Topic.fromString(topic).toHex();
@@ -333,6 +340,23 @@ async function entryOf(
   depth = 0,
 ): Promise<PlaylistRead> {
   const answer = await reader.readFeedEntry(stream.owner, Topic.fromString(topic), index, readWindow);
+  return served(answer, { reader, stream, readWindow, byMarker }, depth);
+}
+
+/** Where a playlist read was made, which a master it served is followed from. */
+interface PlaylistReadPlace {
+  readonly reader: SwarmReader;
+  readonly stream: Stream;
+  readonly readWindow: ReadOptions;
+  readonly byMarker: boolean;
+}
+
+/** A playlist read's answer as the playlist the player would play, a master followed to its first variant. */
+async function served(
+  answer: SwarmAnswer,
+  { reader, stream, readWindow, byMarker }: PlaylistReadPlace,
+  depth = 0,
+): Promise<PlaylistRead> {
   if (answer.kind !== 'content') {
     return { kind: 'failed', result: failedRead('player', 'the playlist of the video', answer) };
   }
