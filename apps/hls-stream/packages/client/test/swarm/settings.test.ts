@@ -97,11 +97,13 @@ describe('the providers setting', () => {
   it('accepts an ordered list of fallbacks', () => {
     const third = { id: 'third', kind: 'bee-http', url: 'https://third.example.com' };
 
-    expect(parseProvidersSetting(providers({ gateways: [EVENT, SPARE, third], fallback: ['third', 'spare'] }))).toEqual({
-      ...PROVIDERS,
-      gateways: [EVENT, SPARE, third],
-      fallback: ['third', 'spare'],
-    });
+    expect(parseProvidersSetting(providers({ gateways: [EVENT, SPARE, third], fallback: ['third', 'spare'] }))).toEqual(
+      {
+        ...PROVIDERS,
+        gateways: [EVENT, SPARE, third],
+        fallback: ['third', 'spare'],
+      },
+    );
   });
 
   it('refuses a list of fallbacks that is empty, names the default, names a gateway twice or one not offered', () => {
