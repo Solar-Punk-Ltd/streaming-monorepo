@@ -104,13 +104,24 @@ export function attachWatchedRungReporter(hls: Hls, groupHexTopic: string, feedH
  *
  * `LEVEL_SWITCHED` and not the level load, because hls.js keeps playing the old level from its buffer
  * until the new one's media is reached, and the old rung has to stay followed until then.
+ *
+ * ⛔ The level hls.js is loading is named too, when it is another one. A switch asked before hls.js
+ * reports the level it started on is under way when that report arrives, and a poller told only the
+ * reported rung would stop the switch target and search for it again when hls.js next asks.
  */
-export function attachActiveRungFollower(hls: Hls, followOnly: (rungTopicId: string) => void): () => void {
+export function attachActiveRungFollower(
+  hls: Hls,
+  followOnly: (rungTopicId: string, loadingRungTopicId: string | null) => void,
+): () => void {
+  const rungOf = (index: number): string | null => {
+    const level = hls.levels[index];
+    return level ? rungTopicOfLevel(level.uri) : null;
+  };
   const follow = (_event: unknown, data: { level: number }): void => {
-    const level = hls.levels[data.level];
-    const rung = level ? rungTopicOfLevel(level.uri) : null;
+    const rung = rungOf(data.level);
     if (rung !== null) {
-      followOnly(rung);
+      const loading = rungOf(hls.loadLevel);
+      followOnly(rung, loading === rung ? null : loading);
     }
   };
 

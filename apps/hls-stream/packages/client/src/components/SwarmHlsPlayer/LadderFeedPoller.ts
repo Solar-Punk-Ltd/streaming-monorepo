@@ -284,8 +284,11 @@ export class LadderFeedPoller {
   /**
    * The player is now playing this rung, so every other rung of its ladder stops being followed. What
    * hls.js reports on `LEVEL_SWITCHED`.
+   *
+   * @param loadingHexTopic The rung hls.js is loading as its next level, when that is another one. It
+   *   keeps being followed, since a switch to it is under way.
    */
-  public followOnly(hexTopic: string): void {
+  public followOnly(hexTopic: string, loadingHexTopic: string | null = null): void {
     const entry = this.rungs.get(hexTopic);
     if (!entry) {
       return;
@@ -296,7 +299,7 @@ export class LadderFeedPoller {
       entry.walk.isCandidate = false;
     }
     for (const other of ladder.rungs) {
-      if (other !== entry && other.walk) {
+      if (other !== entry && other.hexTopic !== loadingHexTopic && other.walk) {
         this.deactivate(other);
       }
     }

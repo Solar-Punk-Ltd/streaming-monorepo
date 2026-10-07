@@ -1154,10 +1154,10 @@ export class ManifestFetcher {
 
   /**
    * The player is now playing this rung, which is what hls.js says on `LEVEL_SWITCHED`, so every other
-   * rung of its ladder stops being followed and forgets what it read.
+   * rung of its ladder stops being followed and forgets what it read, except the one hls.js is loading.
    */
-  followOnlyRung(rungHexTopic: string): void {
-    this.poller.followOnly(rungHexTopic);
+  followOnlyRung(rungHexTopic: string, loadingRungHexTopic: string | null = null): void {
+    this.poller.followOnly(rungHexTopic, loadingRungHexTopic);
   }
 
   /**

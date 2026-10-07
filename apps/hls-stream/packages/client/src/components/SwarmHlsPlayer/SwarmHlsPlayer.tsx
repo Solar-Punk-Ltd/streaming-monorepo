@@ -468,7 +468,7 @@ export const SwarmHlsPlayer: React.FC<HlsPlayerProps> = ({
     // playhead at a switch so a viewer behind the live edge keeps their place. Both for any ladder,
     // including one the catalog never named, which only the published master revealed.
     const detachRungFollower = hls
-      ? attachActiveRungFollower(hls, (rung) => manifestFetcher.followOnlyRung(rung))
+      ? attachActiveRungFollower(hls, (rung, loading) => manifestFetcher.followOnlyRung(rung, loading))
       : null;
     const playingHls = hls;
     const detachPlayhead = playingHls

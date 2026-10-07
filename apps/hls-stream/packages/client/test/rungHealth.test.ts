@@ -357,6 +357,22 @@ describe('telling the poller which rung the player now plays', () => {
     assert.deepEqual(followed, [hexOf('rung-480p')]);
   });
 
+  it('names the level hls.js is loading as well, while a switch is under way past the one it reports', () => {
+    const player = makeLadderPlayer();
+    const followed: [string, string | null][] = [];
+    attachActiveRungFollower(player.hls, (rung, loading) => followed.push([rung, loading]));
+
+    // A switch to the lowest level was asked before hls.js reported the level it started on.
+    player.setLoadLevel(3);
+    player.switchTo(0);
+    player.switchTo(3);
+
+    assert.deepEqual(followed, [
+      [hexOf('rung-1080p'), hexOf('rung-360p')],
+      [hexOf('rung-360p'), null],
+    ]);
+  });
+
   it('names nothing for a level index past the ladder, and nothing once torn down', () => {
     const player = makeLadderPlayer();
     const followed: string[] = [];

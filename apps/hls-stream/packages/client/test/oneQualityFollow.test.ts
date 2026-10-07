@@ -490,6 +490,32 @@ describe('Q5: a returning broadcast is watched on the rung that was playing', ()
   });
 });
 
+describe('a switch asked before hls.js reports the rung it started on', () => {
+  it('keeps following the rung hls.js is loading when it reports the rung it is leaving', async () => {
+    const rig = makeRig();
+    rig.gateway.publishLive(TOP, 'top', 10);
+    rig.gateway.publishLive(MID, 'mid', 10);
+    rig.poller.register(OWNER, RUNGS, GROUP);
+    rig.poller.activate(hex(TOP));
+    await rig.poller.ready(hex(TOP));
+    rig.poller.activate(hex(MID));
+    await rig.poller.ready(hex(MID));
+
+    rig.poller.followOnly(hex(TOP), hex(MID));
+
+    assert.equal(rig.poller.isActive(hex(MID)), true, 'the switch target was dropped');
+    assert.equal(state.getIndex(hex(MID))?.toBigInt(), 10n, 'the switch target forgot what it read');
+    rig.poller.activate(hex(MID));
+    rig.poller.followOnly(hex(MID));
+    assert.equal(rig.poller.isActive(hex(TOP)), false);
+    assert.deepEqual(
+      rig.finds.filter((rung) => rung === hex(MID)),
+      [hex(MID)],
+      'the switch target was searched for twice',
+    );
+  });
+});
+
 describe('Q6: a rung switched back to starts again at its newest index', () => {
   it('forgets a rung it leaves, and comes back to it with one finder read rather than a walk', async () => {
     const rig = makeRig();
