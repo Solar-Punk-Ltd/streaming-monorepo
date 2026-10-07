@@ -72,6 +72,32 @@ hashes, which that gate reads as a client predating the stamp and answers with a
 - **HLS Playback**: Video and audio stream playback via custom hls.js loaders
 - **Gateway Selector**: Runtime Bee node URL switching via UI modal, persisted to localStorage, with a Test of each gateway, who answered each feature in the last minute, and a copyable report below it
 
+## The node picker
+
+The picker takes any address, a path on this site such as `/bee` or an http or https address, because
+it is also how this viewer is pointed at a gateway under test. It checks the node before it switches
+(`gatewayProbe.ts`): its `/health`, its `/readiness` (400 while it starts), its `/peers` (503 while it
+starts, none when it has no peers yet), and a version of at least 2.3.0, the release that added the
+`GET /soc` every feed entry is read through. A node that answers but cannot serve yet is not switched
+to, and the picker says to wait, or to update the node.
+
+When nothing readable comes back, a second request with `mode: 'no-cors'` tells nothing at the address
+apart from a node that answers and refuses this site, and the refusal shows the exact
+`cors-allowed-origins` line for Bee's config file, its flag and its environment variable, for the origin
+the page is served from. Where the browser has Local Network Access, read off the Permissions API, and
+the node is on a more private network than the page, the picker says whether the viewer refused this
+site that access, and explains the browser's question and how to undo a refusal in Chrome, Edge and
+Firefox. A node that never answers while the browser has yet to ask that question gets the same
+explanation rather than being called slow, because Chrome holds the request while it asks.
+
+From an https page a plain http address is refused before anything is sent, because a browser blocks
+it as mixed content, with two exceptions. A node on this computer is always asked. A node on the local
+network (10/8, 172.16/12, 192.168/16, `.local` names, IPv6 unique local addresses) is asked in a
+browser with Local Network Access, Chrome and Edge today, and every read of it is sent with
+`targetAddressSpace: 'local'` (`src/swarm/addressSpace.ts`). In any other browser the picker says
+which browsers can reach it. The local network is read from the address as written, so a name that
+resolves to the local network, such as `bee.lan`, and a link-local address count as the internet.
+
 ## The node picker's tools
 
 Below the node picker's own-node field sit three debug tools (`src/components/DomainSelector/`,
@@ -80,7 +106,7 @@ Below the node picker's own-node field sit three debug tools (`src/components/Do
 - **Test.** Each gateway the build offers, and the viewer's own node while it is in use, has a Test
   that reads this deployment's real content through a client of that gateway alone, with no fallback
   behind it, each read given the 10 s the viewer's own read has (`providerTest.ts`). The connection of the
-  viewer's own node is Bee's health check, given 5 s. A gateway the build offers serves only the
+  viewer's own node is the picker's check above, given 5 s, with the same help under a failure. A gateway the build offers serves only the
   stream's content and refuses `/health`, so its connection is shown by its content reads: any answer
   passes it, and when none came it says it did not answer in time or could not be reached. The stream
   list is its feed's head, checked to be a stream list. The video is read as the player starts: the
