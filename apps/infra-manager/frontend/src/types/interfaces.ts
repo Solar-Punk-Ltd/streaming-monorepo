@@ -123,6 +123,8 @@ export interface CreateProfileBody {
   host?: string;
   components?: string[];
   feed_owner?: string;
+  /** Absent is the stack version's own topic. */
+  feed_topic?: string;
   private_key?: string;
   public_key?: string;
   stamp_id?: string;

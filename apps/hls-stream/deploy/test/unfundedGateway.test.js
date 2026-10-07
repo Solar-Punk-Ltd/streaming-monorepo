@@ -189,7 +189,7 @@ describe('the unfunded gateway stands up beside the funded one', () => {
     const started = dockerRun(argv);
 
     for (const flag of [
-      '--cache-capacity=0',
+      '--cache-capacity=1000000',
       '--cache-retrieval=true',
       '--cors-allowed-origins=*',
       '--verbosity=4',

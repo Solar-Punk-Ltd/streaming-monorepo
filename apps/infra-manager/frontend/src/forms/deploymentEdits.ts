@@ -22,7 +22,14 @@ import { endpointSourceOf, hasService, ownsAnyBeeNode, shapeOf } from '../deploy
 import type { UpdateProfileBody } from '../data';
 import type { Profile } from '../types';
 import type { PassphraseMode } from './PassphraseField';
-import { addressProblem, notesProblem, passphraseProblem, privateKeyProblem, stampIdProblem } from './validation';
+import {
+  addressProblem,
+  feedTopicProblem,
+  notesProblem,
+  passphraseProblem,
+  privateKeyProblem,
+  stampIdProblem,
+} from './validation';
 
 /** Everything the deployment drawer lets an operator change. */
 export interface DeploymentEdits {
@@ -36,6 +43,8 @@ export interface DeploymentEdits {
   rpcEndpoint: string;
   poolString: string;
   feedOwner: string;
+  /** Empty for the stack version's own topic. */
+  feedTopic: string;
   notes: string;
 }
 
@@ -48,6 +57,7 @@ export interface ShownFields {
   rpcEndpoint: boolean;
   poolString: boolean;
   feedOwner: boolean;
+  feedTopic: boolean;
 }
 
 export function fieldsFor(profile: Profile): ShownFields {
@@ -66,6 +76,8 @@ export function fieldsFor(profile: Profile): ShownFields {
     rpcEndpoint: ownsAnyBeeNode(profile) && effectiveNodeMode(profile) === LIGHT_NODE_MODE,
     poolString: shape === 'abr-uploader',
     feedOwner: hasService(profile, CLIENT_SERVICE),
+    // Asked wherever the owner is: the client builds both into its bundle.
+    feedTopic: hasService(profile, CLIENT_SERVICE),
   };
 }
 
@@ -85,6 +97,7 @@ export function initialEdits(profile: Profile | null): DeploymentEdits {
     rpcEndpoint: '',
     poolString: profile?.bee_publishers ?? '',
     feedOwner: profile?.feed_owner ?? '',
+    feedTopic: profile?.feed_topic ?? '',
     notes: profile?.notes ?? '',
   };
 }
@@ -200,6 +213,10 @@ export function editProblem(
     const problem = addressProblem(edits.feedOwner);
     if (problem) return problem;
   }
+  if (shown.feedTopic) {
+    const problem = feedTopicProblem(edits.feedTopic);
+    if (problem) return problem;
+  }
   return notesProblem(edits.notes);
 }
 
@@ -233,6 +250,7 @@ export function bodyFor(
     components: profile.components ?? undefined,
     notes: changed('notes') ? edits.notes.trim() || null : (profile.notes ?? null),
     feed_owner: profile.feed_owner ?? undefined,
+    feed_topic: profile.feed_topic ?? undefined,
     public_key: profile.public_key ?? undefined,
     stamp_id: profile.stamp_id ?? undefined,
     bee_publishers: profile.bee_publishers ?? undefined,
@@ -286,8 +304,21 @@ export function bodyFor(
   if (shown.feedOwner && changed('feedOwner')) {
     body.feed_owner = edits.feedOwner.trim() || undefined;
   }
+  if (shown.feedTopic && changed('feedTopic')) {
+    body.feed_topic = editedFeedTopic(edits.feedTopic);
+  }
 
   return body;
+}
+
+/**
+ * What a save sends for a topic the operator changed: the topic, or null for
+ * an emptied field, which puts the player back on its stack version's own.
+ * Null, not nothing, because the group edit reads nothing as "keep it", and
+ * both Edit drawers send this.
+ */
+export function editedFeedTopic(value: string): string | null {
+  return value.trim() || null;
 }
 
 export function poolHint(value: string): string {

@@ -2,7 +2,15 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import { REQUESTED_WITH_HEADER, REQUESTED_WITH_VALUE } from '@streaming-monorepo/web2-admin-common';
 
 import { UNSUPPORTED_IMAGE_TYPE } from '../errors';
-import { SessionEndedError, extractApiError, getJson, send, sendJson, setUnauthorizedHandler } from '../http';
+import {
+  SessionEndedError,
+  extractApiError,
+  getJson,
+  send,
+  sendJson,
+  sessionEnded,
+  setUnauthorizedHandler,
+} from '../http';
 import { jsonError, jsonOk, mockFetch } from './helpers';
 
 describe('extractApiError', () => {
@@ -126,5 +134,32 @@ describe('a 401', () => {
 
     expect(probe).toEqual({ signedIn: false, reason: 'noUsers' });
     expect(onEnded).not.toHaveBeenCalled();
+  });
+
+  it('can be turned into a sign-out by a caller that took it itself', () => {
+    const onEnded = vi.fn();
+    setUnauthorizedHandler(onEnded);
+
+    expect(() => sessionEnded()).toThrow(SessionEndedError);
+    expect(onEnded).toHaveBeenCalledTimes(1);
+  });
+
+  it('on the password change, signs out only when the session itself ended', async () => {
+    const onEnded = vi.fn();
+    setUnauthorizedHandler(onEnded);
+    const { changePassword } = await import('../api');
+    const body = { currentPassword: 'whatever-it-was', newPassword: 'a-long-enough-one' };
+
+    mockFetch([
+      { method: 'POST', path: '/api/auth/password', respond: () => jsonError(401, { error: 'invalid_credentials' }) },
+    ]);
+    await expect(changePassword(body)).rejects.toThrow('That is not your current password.');
+    expect(onEnded).not.toHaveBeenCalled();
+
+    mockFetch([
+      { method: 'POST', path: '/api/auth/password', respond: () => jsonError(401, { error: 'unauthenticated' }) },
+    ]);
+    await expect(changePassword(body)).rejects.toBeInstanceOf(SessionEndedError);
+    expect(onEnded).toHaveBeenCalledTimes(1);
   });
 });

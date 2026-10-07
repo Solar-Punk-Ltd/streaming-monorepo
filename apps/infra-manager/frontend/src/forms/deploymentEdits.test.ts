@@ -22,12 +22,15 @@ import type { Profile } from '../types';
 import {
   bodyFor,
   type DeploymentEdits,
+  editedFeedTopic,
   editProblem,
   fieldsFor,
+  hasEdits,
   initialEdits,
   srtPassphraseMasked,
   streamKeyMasked,
 } from './deploymentEdits';
+import { feedTopicProblem } from './validation';
 
 function viewer(over: Partial<Profile> = {}): Profile {
   return {
@@ -504,5 +507,97 @@ describe('the three sources the Edit drawer offers for an RPC endpoint', () => {
     const body = bodyFor(profile, initial, { ...initial, notes: 'edited' }, fieldsFor(profile), profile.notes_revision);
 
     assert.equal('node_mode' in body, false);
+  });
+});
+
+describe('the feed topic in the Edit drawer', () => {
+  const TOPIC = 'brand.catalog_1';
+  const SHAPE = 'Feed topic must be letters, digits, dot, underscore or hyphen, at most 64 characters';
+  const context = (profile: Profile) => ({ profile, managerHasEndpoint: false });
+
+  it('is asked wherever the owner is, which is a deployment that runs the client', () => {
+    assert.equal(fieldsFor(viewer()).feedTopic, true);
+    assert.equal(fieldsFor(uploader()).feedTopic, false);
+  });
+
+  it('opens on the topic the deployment holds, and empty on none', () => {
+    assert.equal(initialEdits(viewer({ feed_topic: TOPIC })).feedTopic, TOPIC);
+    assert.equal(initialEdits(viewer()).feedTopic, '');
+  });
+
+  it('refuses a topic the stack would refuse, in one sentence, before anything is sent', () => {
+    const profile = viewer();
+    const initial = initialEdits(profile);
+    const problem = (feedTopic: string) => editProblem({ ...initial, feedTopic }, fieldsFor(profile), context(profile));
+
+    assert.equal(problem('my stream'), SHAPE);
+    assert.equal(problem('stream/1'), SHAPE);
+    assert.equal(problem('a'.repeat(65)), SHAPE);
+    assert.equal(problem(` ${TOPIC}`), SHAPE, 'the shape takes no spaces, around it or inside it');
+    assert.equal(problem(TOPIC), null);
+    assert.equal(problem('a'.repeat(64)), null);
+  });
+
+  it('takes an empty field, which is the stack version’s own topic', () => {
+    const profile = viewer({ feed_topic: TOPIC });
+    const initial = initialEdits(profile);
+
+    assert.equal(editProblem({ ...initial, feedTopic: '' }, fieldsFor(profile), context(profile)), null);
+    assert.equal(feedTopicProblem('   '), null);
+  });
+
+  it('is not checked on a deployment that runs no client and so is not asked it', () => {
+    const profile = uploader();
+    const initial = initialEdits(profile);
+
+    assert.equal(editProblem({ ...initial, feedTopic: 'my stream' }, fieldsFor(profile), context(profile)), null);
+  });
+
+  /**
+   * The PUT replaces every editable field and stores one it is not sent as
+   * null, so a save that left the topic out moved the player off the topic it
+   * followed, a note's edit included.
+   */
+  it('sends the topic the deployment holds when the operator did not touch it', () => {
+    const profile = viewer({ feed_topic: TOPIC });
+    const initial = initialEdits(profile);
+
+    const body = bodyFor(profile, initial, { ...initial, notes: 'edited' }, fieldsFor(profile), profile.notes_revision);
+
+    assert.equal(body.feed_topic, TOPIC);
+  });
+
+  it('sends a typed topic without the spaces around it', () => {
+    const profile = viewer();
+    const initial = initialEdits(profile);
+
+    const body = bodyFor(profile, initial, { ...initial, feedTopic: ` ${TOPIC} ` }, fieldsFor(profile), 4);
+
+    assert.equal(body.feed_topic, TOPIC);
+  });
+
+  it('sends null for an emptied field, which puts the player back on its version’s own topic', () => {
+    const profile = viewer({ feed_topic: TOPIC });
+    const initial = initialEdits(profile);
+
+    const body = bodyFor(profile, initial, { ...initial, feedTopic: '' }, fieldsFor(profile), 4);
+
+    assert.equal(body.feed_topic, null);
+  });
+
+  /**
+   * Saving is what redeploys, and the client builds its topic into its
+   * bundle, so a topic change on its own has to be one Save is offered for.
+   */
+  it('is a change on its own, so Save is offered for it', () => {
+    const initial = initialEdits(viewer());
+
+    assert.equal(hasEdits(initial, { ...initial, feedTopic: TOPIC }), true);
+  });
+
+  it('is sent as the group edit needs it as well: a topic, or null for an emptied field', () => {
+    assert.equal(editedFeedTopic(` ${TOPIC} `), TOPIC);
+    assert.equal(editedFeedTopic(''), null);
+    assert.equal(editedFeedTopic('   '), null);
   });
 });

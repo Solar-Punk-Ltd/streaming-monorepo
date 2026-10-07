@@ -1,5 +1,5 @@
 import { useEffect } from 'react';
-import useSWR from 'swr';
+import useSWR, { SWRConfiguration } from 'swr';
 
 import { useAppContext } from '@/providers/App';
 
@@ -19,6 +19,14 @@ interface CatalogPollState {
  * again while the new node is being asked, and an `error` belongs to the node now selected instead of
  * the one the viewer has left.
  *
+ * ⛔ **A failed read is followed by the next one at the same cadence, never by a backoff.** SWR skips
+ * its refresh timer while its cache holds an error and leaves the next read to `onErrorRetry`, whose
+ * default waits longer after every failure, from 5 to 10 s after one up to minutes after a few in a
+ * row. One slow or refused read used to hold an open page that far behind, so a stream published or
+ * gone live reached it only after a reload. A retry is scheduled only while the page is visible, which
+ * is SWR's own rule, and is dropped if the page has been hidden by the time it is due, since SWR reads
+ * again when the page is shown.
+ *
  * @param pollMs How often to read, or null not to read at all, which is SWR's null key.
  */
 export function useCatalogPoll(pollMs: number | null): CatalogPollState {
@@ -28,6 +36,7 @@ export function useCatalogPoll(pollMs: number | null): CatalogPollState {
     refreshInterval: pollMs ?? 0,
     dedupingInterval: pollMs ?? 0,
     shouldRetryOnError: true,
+    onErrorRetry: retryAfter(pollMs),
   });
 
   useEffect(() => {
@@ -35,4 +44,18 @@ export function useCatalogPoll(pollMs: number | null): CatalogPollState {
   }, [data, setNewStreamList]);
 
   return { error, isLoading };
+}
+
+/** SWR's error retry, flat: the next read comes `pollMs` after a failure, however many came before it. */
+function retryAfter(pollMs: number | null): SWRConfiguration['onErrorRetry'] {
+  return (_error, _key, config, revalidate, options) => {
+    if (pollMs === null) {
+      return;
+    }
+    setTimeout(() => {
+      if (config.isVisible()) {
+        void revalidate(options);
+      }
+    }, pollMs);
+  };
 }

@@ -8,6 +8,7 @@ import { configuredBeeRpcEndpoint, CUSTOM_RPC_ENDPOINT_SOURCE } from '@streaming
 import { MONO_STACK } from '../../../app/theme';
 import { KeyValueList, type KeyValueEntry } from '../../../components/KeyValueList';
 import { ServiceChip } from '../../../components/ServiceChip';
+import { defaultFeedTopicText, versionFeedTopic } from '../../../deployments/feedTopicText';
 import { nodeModeLabel, rpcEndpointLabel } from '../../../deployments/nodeText';
 import { shortHex } from '../../../format';
 import { describeVersion, lostApprovalWarning } from '../../../versions/versionText';
@@ -127,6 +128,15 @@ export function ReviewStep({ state, context }: WizardStepProps) {
         ) : (
           <Mono>{shortHex(state.feedOwner)}</Mono>
         ),
+    });
+    entries.push({
+      key: 'Feed topic',
+      value: (
+        <Mono>
+          {state.feedTopic.trim() ||
+            defaultFeedTopicText(versionFeedTopic(context.newDeploymentSettings?.catalog?.entries))}
+        </Mono>
+      ),
     });
   }
   if (state.goal === 'abr-uploader') {

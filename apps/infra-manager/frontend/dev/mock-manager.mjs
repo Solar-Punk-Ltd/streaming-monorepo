@@ -884,6 +884,7 @@ const ROUTES = [
             kind: template.kind ?? 'viewer',
             components: template.components ?? null,
             feed_owner: template.feed_owner ?? null,
+            feed_topic: template.feed_topic ?? null,
             notes: template.notes ?? null,
             node_mode: template.node_mode ?? null,
             rpc_endpoint_source: template.rpc_endpoint_source,

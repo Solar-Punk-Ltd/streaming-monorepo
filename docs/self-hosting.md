@@ -92,12 +92,21 @@ with the admin. [architecture/stages.md](architecture/stages.md) is the design.
    ```
 
    ```sh
-   ./deploy/deploy.sh <control-host>
+   ./deploy/deploy.sh --host=<control-host>
    ```
 
    It worked when the deploy ends without an error and `http://localhost:8080` shows the manager's
    sign-in page while `ssh <control-host>` is open. The first deploy takes a while, because the host
    builds the stack version the manager bundles.
+
+   A second manager host gets an env file of its own, `manager/.env.<name>` made from the same
+   sample, and `--profile=<name>` deploys it to the host named with it. A deploy sends only the file
+   it uses, and every host keeps it as `manager/.env`. Both flags also take their value as the next
+   word, as in `--host <control-host>`.
+
+   ```sh
+   ./deploy/deploy.sh --host=<second-control-host> --profile=<name>
+   ```
 
    Every Bee API and engine HTTP port the stack runs answers on the host's Docker bridge address
    wherever its own `*_BIND` setting is empty, because the API asks for no password and Docker
@@ -183,9 +192,11 @@ with the admin. [architecture/stages.md](architecture/stages.md) is the design.
     **Stages** page lists the stage, ready, with "Its own token".
 
 11. **The viewer and the first stream.** Build a viewer for the brand's catalog owner and topic,
-    the address and topic the admin's `/api/config` names, and put its address in the admin's
-    `VIEWER_BASE_URL`. Then in the admin, **My Streams**: create a stream, pick its stage, schedule
-    and publish. The OBS panel shows that stage's ingest details.
+    the address and topic the admin's `/api/config` names: a **Watch a stream** deployment, with
+    `feed.owner`, `0x` in front, under **A streamer somewhere else** and `feed.topic` in **Feed
+    topic**. Put its address in the admin's `VIEWER_BASE_URL`. Then in the admin, **My Streams**:
+    create a stream, pick its stage, schedule and publish. The OBS panel shows that stage's ingest
+    details.
 
 **Upgrading a host that runs the admin and manager from before stages.** A fresh installation
 needs none of this. On a running one, in this order:

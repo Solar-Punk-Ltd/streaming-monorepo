@@ -10,17 +10,20 @@ import { hasService, servicesOf, SHAPE_LABEL, shapeOf, streamersOf } from '../de
 import { updateGroupConfig, type UpdateGroupConfigBody } from '../data';
 import type { Profile } from '../types';
 import { hostFor } from '../urls';
-import { hasEdits, srtPassphraseMasked } from './deploymentEdits';
+import { editedFeedTopic, hasEdits, srtPassphraseMasked } from './deploymentEdits';
 import { EditDrawerFrame } from './EditDrawerFrame';
+import { FeedTopicField } from './FeedTopicField';
 import { FixedAtCreation } from './FixedAtCreation';
 import { FormField } from './FormField';
 import { PassphraseField, type PassphraseMode } from './PassphraseField';
-import { addressProblem, notesProblem, passphraseProblem } from './validation';
+import { addressProblem, feedTopicProblem, notesProblem, passphraseProblem } from './validation';
 
 interface GroupEdits {
   passMode: PassphraseMode;
   passphrase: string;
   feedOwner: string;
+  /** Empty for the stack version's own topic. */
+  feedTopic: string;
   notes: string;
 }
 
@@ -147,6 +150,14 @@ export function EditGroupDrawer({ id, onClose }: { id: number; onClose: () => vo
         </FormField>
       )}
 
+      {showsFeedOwner && (
+        <FeedTopicField
+          id="edit-group-feed-topic"
+          value={edits.feedTopic}
+          onChange={(feedTopic) => update({ feedTopic })}
+        />
+      )}
+
       <FormField label="Notes" error={notesProblem(edits.notes)}>
         <TextField
           size="small"
@@ -168,6 +179,7 @@ function initialEdits(first: Profile | undefined): GroupEdits {
     passMode: first?.has_srt_passphrase ? 'own' : 'host',
     passphrase: '',
     feedOwner: first?.feed_owner ?? '',
+    feedTopic: first?.feed_topic ?? '',
     notes: first?.notes ?? '',
   };
 }
@@ -193,6 +205,8 @@ function groupProblem(
   if (showsFeedOwner) {
     const problem = addressProblem(edits.feedOwner);
     if (problem) return problem;
+    const topic = feedTopicProblem(edits.feedTopic);
+    if (topic) return topic;
   }
   return notesProblem(edits.notes);
 }
@@ -213,6 +227,7 @@ function bodyFor(
   return {
     notes: edits.notes !== initial.notes ? edits.notes.trim() || null : undefined,
     feed_owner: showsFeedOwner && edits.feedOwner !== initial.feedOwner ? edits.feedOwner.trim() : undefined,
+    feed_topic: showsFeedOwner && edits.feedTopic !== initial.feedTopic ? editedFeedTopic(edits.feedTopic) : undefined,
     srt_passphrase: passphraseFor(initial, edits, showsPassphrase),
   };
 }

@@ -7,6 +7,8 @@ import {
   rpcEndpointProblem,
   defaultServicesFor,
   engineForComponents,
+  FEED_TOPIC_MESSAGE,
+  FEED_TOPIC_RE,
   hasConflictingEngines,
   impliedRpcEndpointSource,
   ingestHostProblem,
@@ -36,10 +38,6 @@ const HOST_RE = /^[a-zA-Z0-9][a-zA-Z0-9._@-]{0,127}$/; // like localhost or "use
 const ETH_ADDRESS_RE = /^0x[0-9a-fA-F]{40}$/;
 const PRIVATE_KEY_RE = /^0x[0-9a-fA-F]{64}$/;
 const STAMP_ID_RE = /^(0x)?[0-9a-fA-F]{64}$/;
-// The stack's deploy script checks the --feed-topic flag against this shape
-// (_lib.sh, require_override_shape), and the manager passes the topic as that
-// flag, so anything wider stores a deployment no deploy can run.
-const FEED_TOPIC_RE = /^[A-Za-z0-9._-]{1,64}$/;
 
 // Four `rung@url<batch>` entries come to ~500 chars. This is headroom, not a
 // format rule. beePublishersProblem is the rule.
@@ -76,6 +74,16 @@ const beePublishersField = () =>
         message: `bee_publishers is required for a ${ABR_UPLOADER_KIND} — paste it from an ABR node pool`,
       });
     });
+
+/**
+ * The topic a viewer's player follows, beside the owner in `feed_owner`.
+ *
+ * Absent and null are both allowed, and either leaves the deployment on its
+ * stack version's own topic. The shape is common's, the one the stack's deploy
+ * script holds `--feed-topic` to, so a topic it would refuse is a 400 here
+ * rather than a deployment that fails on its host.
+ */
+const feedTopicField = () => string().notRequired().matches(FEED_TOPIC_RE, `feed_topic ${FEED_TOPIC_MESSAGE}`);
 
 /**
  * An explicit bee API URL. Refused alongside `bee_publishers`, which the
@@ -268,9 +276,7 @@ export const createProfileSchema = object({
     .notRequired()
     .test('one-engine', ONE_ENGINE_MESSAGE, (v) => !hasConflictingEngines(v)),
   feed_owner: string().notRequired().matches(ETH_ADDRESS_RE, 'feed_owner must be a 0x-prefixed Ethereum address'),
-  feed_topic: string()
-    .notRequired()
-    .matches(FEED_TOPIC_RE, 'feed_topic must be letters, digits, dot, underscore or hyphen, at most 64 characters'),
+  feed_topic: feedTopicField(),
   private_key: string()
     .notRequired()
     .matches(PRIVATE_KEY_RE, 'private_key must be 0x + 64 hex chars')
@@ -359,9 +365,7 @@ export const updateProfileSchema = object({
   /** The revision the drawer loaded the notes at. Sent with an edited note. */
   notes_revision: number().integer().min(0).notRequired(),
   feed_owner: string().notRequired().matches(ETH_ADDRESS_RE, 'feed_owner must be a 0x-prefixed Ethereum address'),
-  feed_topic: string()
-    .notRequired()
-    .matches(FEED_TOPIC_RE, 'feed_topic must be letters, digits, dot, underscore or hyphen, at most 64 characters'),
+  feed_topic: feedTopicField(),
   private_key: string().notRequired().matches(PRIVATE_KEY_RE, 'private_key must be 0x + 64 hex chars'),
   public_key: string().notRequired().matches(ETH_ADDRESS_RE, 'public_key must be a 0x-prefixed Ethereum address'),
   stamp_id: string().notRequired().matches(STAMP_ID_RE, 'stamp_id must be 32-byte hex (optionally 0x-prefixed)'),
@@ -455,9 +459,7 @@ export const createGroupSchema = object({
     .notRequired()
     .test('one-engine', ONE_ENGINE_MESSAGE, (v) => !hasConflictingEngines(v)),
   feed_owner: string().notRequired().matches(ETH_ADDRESS_RE, 'feed_owner must be a 0x-prefixed Ethereum address'),
-  feed_topic: string()
-    .notRequired()
-    .matches(FEED_TOPIC_RE, 'feed_topic must be letters, digits, dot, underscore or hyphen, at most 64 characters'),
+  feed_topic: feedTopicField(),
   private_key: string().notRequired().matches(PRIVATE_KEY_RE, 'private_key must be 0x + 64 hex chars'),
   public_key: string().notRequired().matches(ETH_ADDRESS_RE, 'public_key must be a 0x-prefixed Ethereum address'),
   stamp_id: string().notRequired().matches(STAMP_ID_RE, 'stamp_id must be 32-byte hex (optionally 0x-prefixed)'),
@@ -490,9 +492,7 @@ export const groupIdParamSchema = object({
 export const updateGroupConfigSchema = object({
   notes: string().nullable().notRequired().max(500),
   feed_owner: string().notRequired().matches(ETH_ADDRESS_RE, 'feed_owner must be a 0x-prefixed Ethereum address'),
-  feed_topic: string()
-    .notRequired()
-    .matches(FEED_TOPIC_RE, 'feed_topic must be letters, digits, dot, underscore or hyphen, at most 64 characters'),
+  feed_topic: feedTopicField(),
   stamp_id: string().notRequired().matches(STAMP_ID_RE, 'stamp_id must be 32-byte hex (optionally 0x-prefixed)'),
   srt_passphrase: string().notRequired().matches(SRT_PASSPHRASE_RE, `srt_passphrase ${SRT_PASSPHRASE_MESSAGE}`),
 }).noUnknown(true);

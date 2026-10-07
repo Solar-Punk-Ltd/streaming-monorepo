@@ -51,6 +51,15 @@ export class SessionEndedError extends ApiError {
   }
 }
 
+/**
+ * Ends the session in the console, as an unexpected 401 does, for a caller that took the 401 itself: one of the
+ * password routes, where a 401 is a wrong password unless the API says the session ended.
+ */
+export function sessionEnded(): never {
+  unauthorizedHandler?.();
+  throw new SessionEndedError();
+}
+
 export interface RequestOptions {
   /**
    * For the routes where a 401 is the answer to the question asked rather than

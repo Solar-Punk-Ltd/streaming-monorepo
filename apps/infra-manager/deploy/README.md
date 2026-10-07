@@ -24,8 +24,9 @@ sudo install -d -o deploy -g deploy /opt/streaming
 mkdir -p /opt/streaming/streaming-infra-manager/manager
 ```
 
-Make sure `manager/.env` exists in your local checkout. It gets rsynced to
-the server on every deploy, so your laptop is the source of truth. Example:
+Make sure `manager/.env` exists in your local checkout. Every deploy sends it
+to the server, so your laptop is the source of truth. Another server gets a
+file of its own, as "Which env file a deploy sends" below says. Example:
 
 ```env
 POSTGRES_PASSWORD=<pick-something>
@@ -54,12 +55,18 @@ Host <control-host>
 From your local checkout:
 
 ```sh
-./deploy/deploy.sh <control-host>
+./deploy/deploy.sh --host=<control-host>
 ```
 
 This rsyncs the repo, then builds the images on the server and runs the upgrade
 command that brings the project back up. The rsync leaves out `node_modules`,
-`.git`, build caches, `.scratch/` and `manager/swarm-hls-stream/`.
+`.git`, build caches, `.scratch/`, `manager/swarm-hls-stream/` and every env
+file in the tree, every file whose name starts with `.env`, copies such as
+`.envrc` or `.env~` included, but the `.env.sample` files, `manager/`'s and the
+test fixtures'. Each flag takes its value after `=` or as the next word, so
+`--host <control-host>` works too, and so does the host alone,
+`./deploy/deploy.sh <control-host>`. With no host at all the deploy goes to the
+ssh alias `viewer`.
 
 When the repository keeps its one lockfile at its root, the manager's folder
 holds none of its own. The deploy then cuts the manager's `pnpm-lock.yaml` and
@@ -68,14 +75,49 @@ a folder outside the checkout that it removes when it exits, and sends the pair
 with the folder. The server's folder holds what its image builds need, and your
 checkout gains no file.
 
-`manager/.env` is the one env file that travels with it, and `rsync --delete`
-means your checkout is the only source of truth for that file: an edit made on
-the server is undone by the next deploy. **The streaming stack's own `.env` is
-the opposite, and editing it in your checkout does nothing.** The deploy ships
-the manager's folder and not `apps/hls-stream`, and the rsync leaves the
-server's own `manager/swarm-hls-stream/`, which existing deployments mount, alone.
-The stack's settings live on the server and are edited there, as "Where the
+### Which env file a deploy sends
+
+One, which the server keeps as `manager/.env`. Without `--profile` it is
+`manager/.env`. A server whose settings differ gets a file of its own, made
+from the same sample, and `--profile=<name>`, or `--profile <name>`, sends
+`manager/.env.<name>` in its place:
+
+```sh
+cp manager/.env.sample manager/.env.staging
+./deploy/deploy.sh --host=<staging-host> --profile=staging
+```
+
+The name follows the manager's rule for a profile name,
+`^[a-z0-9][a-z0-9-]{0,30}$`, and `default` means `manager/.env`. `sample` is
+not a profile: `manager/.env.sample` is the file every profile is copied from.
+A profile needs its host named, because the default target would get its
+settings, and a missing file stops the deploy rather than falling back to
+`manager/.env`. Every check before anything leaves reads that file, and the
+deploy prints which profile and file it uses. A profile changes only which file
+is sent. The server runs it as any manager host does: in the folder its
+`MANAGER_ROOT` names, on `manager/.env`, as compose project `manager` with the
+same volumes.
+
+Each deploy writes that file over the server's, so your checkout is the only
+source of truth for it: an edit made on the server is undone by the next
+deploy. **The streaming stack's own `.env` is the opposite, and editing it in
+your checkout does nothing.** The deploy ships the manager's folder and not
+`apps/hls-stream`, and the rsync leaves the server's own
+`manager/swarm-hls-stream/`, which existing deployments mount, alone. The
+stack's settings live on the server and are edited there, as "Where the
 streaming stack's settings live" below describes.
+
+Until 2026-10-06 a deploy sent every file in `manager/` whose name starts with
+`.env`, so a server can still hold `manager/.env.staging` and the like, or a
+copy such as `.envrc` or `.env~`, beside its own `.env`. Nothing reads them,
+but each keeps the settings it was sent with, a database password among them,
+and rsync never deletes a file it leaves out. So the deploy names every one of
+them but `.env` and `.env.sample` on the server before it builds, with the
+command that removes them, and leaves them where they are until you run it:
+
+```sh
+ssh <control-host> 'cd /opt/streaming/streaming-infra-manager/manager && rm .env.staging .env.qa .envrc'
+```
 
 ## What a deploy does to the bundled stack
 
@@ -123,11 +165,11 @@ the project, waits for the new API to answer its health check, and then waits fo
 that API's own boot to finish building the pinned commit. `--bundled-timeout`
 says how long that last wait may take, twenty minutes by default, and you can
 raise it for a first build on a cold host with
-`BUNDLED_TIMEOUT=3600 ./deploy/deploy.sh <control-host>`. It prints one line of
-JSON with the state and the bundled build, which the deploy echoes. A bundled
-build that failed or ran out of time makes the deploy exit non zero after the
-manager is already up, so the fix is Update on the Versions page rather than
-another deploy.
+`BUNDLED_TIMEOUT=3600 ./deploy/deploy.sh --host=<control-host>`. It prints one
+line of JSON with the state and the bundled build, which the deploy echoes. A
+bundled build that failed or ran out of time makes the deploy exit non zero
+after the manager is already up, so the fix is Update on the Versions page
+rather than another deploy.
 
 **Where builds live.** Each published build is one immutable directory at
 `/opt/streaming/streaming-infra-manager-versions/bundled.builds/<build id>`. Nothing is ever
