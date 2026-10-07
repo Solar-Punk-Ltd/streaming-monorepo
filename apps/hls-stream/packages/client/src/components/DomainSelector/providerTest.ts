@@ -253,6 +253,12 @@ async function markerOf(
   return { kind: 'missing' };
 }
 
+/**
+ * How many masters naming another master the check follows. A real ladder has one, and a gateway or an
+ * entry that keeps naming masters would otherwise keep the Test reading forever.
+ */
+const MAX_MASTER_DEPTH = 3;
+
 async function entryOf(
   reader: SwarmReader,
   stream: Stream,
@@ -260,6 +266,7 @@ async function entryOf(
   index: number,
   readWindow: ReadOptions,
   byMarker: boolean,
+  depth = 0,
 ): Promise<PlaylistRead> {
   const answer = await reader.readFeedEntry(stream.owner, Topic.fromString(topic), index, readWindow);
   if (answer.kind !== 'content') {
@@ -269,13 +276,21 @@ async function entryOf(
   if (!text.startsWith('#EXTM3U')) {
     return { kind: 'failed', result: failed('player', NOT_A_SWARM_GATEWAY) };
   }
-  if (!isMasterPlaylist(text)) {
+  if (!isMasterPlaylist(text) || depth >= MAX_MASTER_DEPTH) {
     return { kind: 'served', text, byMarker };
   }
   // An older ladder entry names its master. Its first variant is the playlist the player would play.
   const [variant] = masterVariants(text);
   return variant
-    ? entryOf(reader, { ...stream, owner: variant.owner || stream.owner }, variant.topic, 0, readWindow, byMarker)
+    ? entryOf(
+        reader,
+        { ...stream, owner: variant.owner || stream.owner },
+        variant.topic,
+        0,
+        readWindow,
+        byMarker,
+        depth + 1,
+      )
     : { kind: 'served', text, byMarker };
 }
 

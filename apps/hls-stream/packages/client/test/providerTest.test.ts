@@ -11,6 +11,7 @@ import { describe, expect, it } from 'vitest';
 import {
   COULD_NOT_REACH,
   MIXED_CONTENT,
+  NO_SEGMENT,
   NOT_A_SWARM_GATEWAY,
   SKIPPED,
 } from '../src/components/DomainSelector/checkSentences';
@@ -224,6 +225,38 @@ describe("the node picker's Test", () => {
 
     expect(Object.values(results).map(({ sentence }) => sentence)).toEqual(CHECKS.map(() => MIXED_CONTENT));
     expect(asked).toEqual([]);
+  });
+});
+
+describe("the node picker's Test, on masters that name masters", () => {
+  it('follows them at most three levels deep', async () => {
+    const LOOP = 'test-loop-master';
+    const master = ['#EXTM3U', '#EXT-X-STREAM-INF:BANDWIDTH=400000', `swarm://${OWNER}/${LOOP}`].join('\n');
+    let masterReads = 0;
+    const stream: Stream = {
+      owner: OWNER,
+      topic: LOOP,
+      title: 'Loop',
+      timestamp: Date.UTC(2026, 9, 1),
+      mediatype: 'video',
+      state: 'vod',
+    };
+    const fetcher = gateway(
+      (url) => {
+        // Answers a few dozen times only, so a reader with no limit ends rather than running forever.
+        if (url === slot(OWNER, LOOP, 0) && masterReads < 30) {
+          masterReads += 1;
+          return new Response(master);
+        }
+        return undefined;
+      },
+      [stream],
+    );
+
+    const results = await run({ fetcher });
+
+    expect(masterReads).toBe(4);
+    expect(results.player).toEqual({ check: 'player', outcome: 'failed', sentence: NO_SEGMENT('Loop') });
   });
 });
 
