@@ -677,4 +677,23 @@ describe('Q7: a switch while the viewer is behind live keeps their position', ()
       'the switch went to the live edge without saying so',
     );
   });
+
+  it('reports a gateway fault while reading back as a fault, not as a viewer too far behind', async () => {
+    const rig = makeRig();
+    rig.gateway.publishLive(TOP, 'top', 40);
+    rig.gateway.publishLive(MID, 'mid', 40);
+    // The first read back from index 40 steps one window less a segment, to 36.
+    rig.gateway.faultSlot(MID, 36);
+
+    await switchWhileBehind(rig, 25);
+
+    const debugLines = vi.mocked(console.debug).mock.calls.map((call) => String(call[0]));
+    assert.ok(!debugLines.some((line) => line.includes('further behind')), 'a fault was logged as distance');
+    assert.ok(
+      vi.mocked(console.warn).mock.calls.some((call) => String(call[0]).includes('could not read')),
+      'the fault was not logged',
+    );
+    assert.ok(rig.health.backoffRemainingMs(hex(MID)) > 0, 'the fault was not recorded against the rung');
+    assert.equal(segmentUris(MID).at(-1), 'mid-seg-40', 'the switch still lands on the live edge');
+  });
 });

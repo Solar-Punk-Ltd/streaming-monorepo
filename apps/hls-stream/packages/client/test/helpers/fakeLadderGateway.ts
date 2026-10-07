@@ -68,8 +68,14 @@ export class FakeLadderGateway {
   readonly requests: { path: string; rung: string | null; kind: 'head' | 'slot' | 'other' }[] = [];
   private readonly feeds = new Map<string, FakeFeed>();
   private readonly slotOwners = new Map<string, { hex: string; index: number }>();
+  private readonly faulted = new Set<string>();
 
   constructor(readonly owner: string) {}
+
+  /** Reads of this slot fail in transport, as a gateway that drops the connection does. */
+  faultSlot(topic: Topic, index: number): void {
+    this.faulted.add(this.slotPath(topic, index));
+  }
 
   /** The rung name a hex topic was published under. */
   nameOf(hex: string): string | null {
@@ -172,6 +178,9 @@ export class FakeLadderGateway {
 
     const owner = this.slotOwners.get(path);
     this.requests.push({ path, rung: owner?.hex ?? null, kind: owner ? 'slot' : 'other' });
+    if (this.faulted.has(path)) {
+      throw new TypeError('Failed to fetch');
+    }
     const body = owner ? this.feeds.get(owner.hex)?.slots.get(owner.index) : undefined;
     if (body === undefined) {
       throw new ManifestFetchError(path, 404);

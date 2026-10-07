@@ -669,8 +669,8 @@ export class LadderFeedPoller {
    * windows share a segment. A step that lands past a hole, which a coalesced publish leaves, is halved
    * and tried again. Every read names an index between zero and the newest, so each one exists.
    *
-   * @returns The older playlists, oldest first, or none when the viewer is at the live edge or the
-   *   position is more than {@link MAX_READ_BACK_READS} reads back.
+   * @returns The older playlists, oldest first, or none when the viewer is at the live edge, the
+   *   position is more than {@link MAX_READ_BACK_READS} reads back, or a read back fails.
    */
   private async readBackToPlayhead(entry: RungEntry, walk: Walk, found: NewestIndex): Promise<string[]> {
     const playheadMs = this.playheadMs(entry.ladder.group);
@@ -688,8 +688,9 @@ export class LadderFeedPoller {
       let text: string;
       try {
         text = (await this.fetchResource(feedSlotPath(entry.owner, entry.topic, FeedIndex.fromBigInt(target)))).text;
-      } catch {
-        break;
+      } catch (error) {
+        this.reportReadBackFailure(entry, target, error);
+        return [];
       }
       if (walk.stopped) {
         return [];
@@ -718,6 +719,26 @@ export class LadderFeedPoller {
         'reach, so the switch goes to the live edge',
     );
     return [];
+  }
+
+  /**
+   * A read back to the viewer's position that failed, said as what it was. The switch then goes to the
+   * live edge, as it does for a viewer too far behind, but a gateway fault is recorded as one, so the
+   * walk that follows backs off and the overlay hears it.
+   */
+  private reportReadBackFailure(entry: RungEntry, index: bigint, error: unknown): void {
+    if (isSlotNotWrittenYet(error)) {
+      console.debug(
+        `[SwarmHls] index ${index} of rung ${entry.hexTopic} was not served, so the switch goes to the live edge`,
+      );
+      return;
+    }
+    this.feedHealth.recordGatewayFailure(entry.hexTopic);
+    console.warn(
+      `[SwarmHls] could not read index ${index} of rung ${entry.hexTopic} back to the viewer's position, so ` +
+        'the switch goes to the live edge',
+      error,
+    );
   }
 
   /**
