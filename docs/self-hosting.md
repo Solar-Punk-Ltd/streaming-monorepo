@@ -67,6 +67,10 @@ stage, no Bee node and no batch to start, and the edge last, because it checks t
 answers before it serves it. The stages come after, from the manager, and each registers itself
 with the admin. [architecture/stages.md](architecture/stages.md) is the design.
 
+Each deploy names its build after the git tag on the commit it deploys, and the consoles show that
+name to signed-in users. A first installation needs no tag: a build without one is named after its
+commit. A release is tagged before its deploys, and [releasing.md](releasing.md) is that order.
+
 1. **An ssh alias on your machine**, in `~/.ssh/config`. The forward is the way into the manager
    before the edge serves it, and stays the way in when the edge is down.
    `<control-host>` stands for whatever alias you choose, and the steps below use it.

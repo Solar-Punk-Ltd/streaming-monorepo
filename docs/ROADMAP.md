@@ -431,6 +431,26 @@ broadcast too. The SRT passphrase keeps the picture private but not the key. A
 key of RTMP's own, separate from the SRT one, would close that last part, and
 is not built.
 
+## Build versions and release tags (decided 2026-10-07)
+
+**A release is named by a git tag, and each console shows the build it runs to
+signed-in users.**
+
+- A release is tagged by hand before its deploys, with
+  `node tools/release/tag.mjs`, step 1 of [releasing.md](releasing.md). It
+  lists the tags already made and takes any name the operator types, within
+  letters, digits and `. _ + / -`, because the name reaches shells on the
+  hosts.
+- Both deploy scripts name their build with `tools/release/version.mjs`: the
+  tag on the commit, or the nearest tag and the distance past it, or the short
+  commit, with `-dirty` for uncommitted changes. They build the name into the
+  api image and check that the running api reports it. Run in a terminal on an
+  untagged commit, a deploy offers the tag script first.
+- Signed-in users see it: the manager's sidebar, the web2 admin's toolbar, and
+  on the manager's pages the release of each stack build, which for a Watch a
+  stream deployment is the viewer client it serves. The public viewer and every
+  unauthenticated endpoint show nothing.
+
 ## Checkpoint 4: brand console
 
 - Login (placeholder until the auth decision), stream list, create stream,
