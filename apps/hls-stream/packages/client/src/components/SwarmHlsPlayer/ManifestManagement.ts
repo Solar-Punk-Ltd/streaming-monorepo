@@ -50,8 +50,8 @@ interface TopicState {
 
 /**
  * Where hls.js loads a segment from, given the reference a playlist names, or null to leave the line
- * as the publisher wrote it. One function per gateway, so a playlist cached for one is never served
- * for another.
+ * as the publisher wrote it. One function per provider serving segments, so a playlist cached for one
+ * is never served for another.
  */
 export type SegmentUrl = (reference: string) => string | null;
 
@@ -504,13 +504,22 @@ const NO_SWARM: SwarmReader = {
   readChunk: async () => UNSUPPORTED,
   readBytes: async () => UNSUPPORTED,
   urlFor: () => null,
+  urlSource: () => null,
 };
 
 export class ManifestFetcher {
   /** Set by the app provider to the Swarm client's player reader before any player mounts. */
   private swarm: SwarmReader = NO_SWARM;
-  /** Made once per reader, so a playlist serialized against one gateway is never served for another. */
-  private segmentUrl: SegmentUrl = SEGMENTS_AS_WRITTEN;
+  /**
+   * Made again whenever the reader or the provider it takes segment URLs from changes, so a playlist
+   * serialized against one provider is never served for another. A pause sends segments to the
+   * fallback and its end sends them back, with no switch of reader, so the provider is part of the key.
+   */
+  private segmentUrlCache: {
+    readonly reader: SwarmReader;
+    readonly source: string | null;
+    readonly segmentUrl: SegmentUrl;
+  } = { reader: NO_SWARM, source: null, segmentUrl: SEGMENTS_AS_WRITTEN };
   /**
    * Every read this fetcher and its poller make, passed on to whichever reader is current, so a node
    * switched to mid-session moves the walks with it.
@@ -593,7 +602,16 @@ export class ManifestFetcher {
    */
   useSwarm(reader: SwarmReader): void {
     this.swarm = reader;
-    this.segmentUrl = (reference) => reader.urlFor(reference, 'segment');
+  }
+
+  /** How segments are named now: by the provider the current reader takes segment URLs from. */
+  private segmentUrl(): SegmentUrl {
+    const reader = this.swarm;
+    const source = reader.urlSource('segment');
+    if (this.segmentUrlCache.reader !== reader || this.segmentUrlCache.source !== source) {
+      this.segmentUrlCache = { reader, source, segmentUrl: (reference) => reader.urlFor(reference, 'segment') };
+    }
+    return this.segmentUrlCache.segmentUrl;
   }
 
   /**
@@ -733,7 +751,7 @@ export class ManifestFetcher {
       if (readiness === 'inactive') {
         throw new RungNotFollowedError(hexTopic);
       }
-      return this.stateManager.serialize(hexTopic, this.segmentUrl);
+      return this.stateManager.serialize(hexTopic, this.segmentUrl());
     }
 
     // Which request follows is `nextFeedRequest`'s to decide, on the same input, for everything in
@@ -906,7 +924,7 @@ export class ManifestFetcher {
     // Checked before the index is committed, not after. An index is what routes the next poll to the
     // follow-up path, so committing one for a response that yielded no playlist strands the topic
     // there, answering every poll with the same empty string and never asking the head again.
-    const manifest = this.stateManager.serialize(hexTopic, this.segmentUrl);
+    const manifest = this.stateManager.serialize(hexTopic, this.segmentUrl());
     if (!manifest) {
       throw new ManifestFetchError(path, SERVED_WITHOUT_PLAYLIST);
     }
@@ -979,7 +997,7 @@ export class ManifestFetcher {
       this.inFlight.set(hexTopic, walk);
     }
 
-    return this.stateManager.serialize(hexTopic, this.segmentUrl);
+    return this.stateManager.serialize(hexTopic, this.segmentUrl());
   }
 
   /**

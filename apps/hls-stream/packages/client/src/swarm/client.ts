@@ -63,6 +63,11 @@ export interface SwarmReader {
   readBytes(reference: string, options?: ReadOptions): Promise<SwarmAnswer>;
   /** A URL from the first provider that is not paused and gives URLs, or null when none does. */
   urlFor(reference: string, use: UrlUse): string | null;
+  /**
+   * The id of the provider {@link urlFor} takes URLs from now, or null when none gives any. It changes
+   * when that provider is paused or its pause ends, which is when URLs handed out before go stale.
+   */
+  urlSource(use: UrlUse): string | null;
 }
 
 interface ReadCount {
@@ -135,6 +140,7 @@ export class SwarmClient {
       readBytes: (reference, options) =>
         this.read(feature, 'bytes', options, (provider, windowed) => provider.readBytes(reference, windowed)),
       urlFor: (reference, use) => this.urlFor(feature, reference, use),
+      urlSource: () => this.urlProviderFor(feature)?.id ?? null,
     };
   }
 
@@ -196,13 +202,11 @@ export class SwarmClient {
   }
 
   private urlFor(feature: SwarmFeature, reference: string, use: UrlUse): string | null {
-    for (const { provider } of this.candidatesFor(feature)) {
-      const url = provider.capabilities.urls ? provider.urlFor(reference, use) : null;
-      if (url !== null) {
-        return url;
-      }
-    }
-    return null;
+    return this.urlProviderFor(feature)?.provider.urlFor(reference, use) ?? null;
+  }
+
+  private urlProviderFor(feature: SwarmFeature): NamedProvider | null {
+    return this.candidatesFor(feature).find(({ provider }) => provider.capabilities.urls) ?? null;
   }
 
   /** The feature's own provider then the fallback, the paused ones left out while another remains. */
