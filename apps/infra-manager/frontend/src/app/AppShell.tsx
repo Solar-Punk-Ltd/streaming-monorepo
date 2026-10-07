@@ -41,7 +41,7 @@ const PAGE_TITLES: Record<Route['page'], string> = {
 
 export function AppShell() {
   const route = useRoute();
-  const { profiles, serverHost, connected, loadError, reload } = useDeployments();
+  const { profiles, serverHost, managerVersion, connected, loadError, reload } = useDeployments();
   const actions = useActions();
   const [search, setSearch] = useState('');
   const [navOpen, setNavOpen] = useState(false);
@@ -51,6 +51,7 @@ export function AppShell() {
       route={route}
       deploymentCount={profiles?.length ?? null}
       serverHost={serverHost}
+      managerVersion={managerVersion}
       onNavigate={() => setNavOpen(false)}
     />
   );

@@ -25,6 +25,8 @@ import { basename, dirname, join, relative } from 'node:path';
 import { describe, it } from 'node:test';
 import { fileURLToPath } from 'node:url';
 
+import { VERSION_COMMIT_RE, VERSION_LABEL_RE } from '@streaming-infra-manager/common';
+
 import { MANAGER_POSTGRES_VOLUME } from '../../src/domain/versions/managerProject.js';
 import { STACK_COMMIT_FILE } from '../../src/domain/versions/StackVersionService.js';
 import { MONOREPO_STACK_SOURCE } from '../../src/domain/versions/stackSources.js';
@@ -33,6 +35,8 @@ const here = dirname(fileURLToPath(import.meta.url));
 const DEPLOY_SCRIPT = join(here, '..', '..', '..', 'deploy', 'deploy.sh');
 /** The repository's own cut tool, which a checkout of the one workspace carries at tools/app-workspace. */
 const CUT_TOOL = join(here, '..', '..', '..', '..', '..', 'tools', 'app-workspace');
+/** The repository's release scripts, version.mjs among them, which every checkout carries at tools/release. */
+const RELEASE_TOOLS = join(here, '..', '..', '..', '..', '..', 'tools', 'release');
 
 /** The pnpm a checkout of the one workspace names at its root and in each app alike. */
 const ONE_PNPM = 'pnpm@11.11.0+sha512.0123abcd';
@@ -295,6 +299,77 @@ describe('deploy/deploy.sh', () => {
     assert.ok(checked < script.indexOf('ssh "$SSH_TARGET"'), 'and before anything runs on the host');
   });
 
+  /**
+   * What version.mjs prints is written into the script the host runs, so it is taken apart a line at a time into
+   * variables of its own, never evaluated, and each value is held to its shape before anything leaves this machine.
+   */
+  it('names the build with tools/release/version.mjs, reading its lines into variables and evaluating none of them', () => {
+    const asked = script.indexOf('node "$WORKSPACE_ROOT/tools/release/version.mjs" --app "$MANAGER_FOLDER"');
+    assert.notEqual(asked, -1, 'the manager folder is the app whose changes make a build dirty');
+    assert.doesNotMatch(script, /\beval\b/, 'nothing printed is evaluated');
+    assert.doesNotMatch(script, /^\s*(?:source|\.)\s/m, 'or sourced');
+    for (const name of ['VERSION_COMMIT', 'VERSION_TAG', 'VERSION_LABEL']) {
+      assert.ok(script.includes(`${name}=*) ${name}="\${line#${name}=}" ;;`), `${name} is cut off its own line`);
+    }
+    const commitChecked = script.indexOf(`if ! [[ "$VERSION_COMMIT" =~ ${VERSION_COMMIT_RE.source} ]]`);
+    const labelChecked = script.indexOf(`if ! [[ "$VERSION_LABEL" =~ ${VERSION_LABEL_RE.source} ]]`);
+    assert.notEqual(commitChecked, -1, 'the commit is held to the shape the manager reads it in');
+    assert.notEqual(labelChecked, -1, 'and the label to the one the manager shows, so none becomes no version');
+    for (const checked of [commitChecked, labelChecked]) {
+      assert.ok(checked > asked, 'after the values are read');
+      assert.ok(checked < script.indexOf('rsync -avz'), 'before anything is sent');
+      assert.ok(checked < script.indexOf('ssh "$SSH_TARGET"'), 'and before anything runs on the host');
+    }
+  });
+
+  it('names the build before the pushed-commit check, so the check judges the commit that is deployed', () => {
+    const named = script.indexOf('\nread_version\n');
+    assert.notEqual(named, -1);
+    assert.ok(named > script.indexOf('POSTGRES_PASSWORD is missing or empty'), 'after the env file is checked');
+    assert.ok(named < script.indexOf('PUSHED_IN="$(git branch -r --contains "$MANAGER_COMMIT")"'));
+    assert.equal(script.includes('MANAGER_COMMIT="$(git rev-parse HEAD)"'), false, 'the commit is the one it names');
+  });
+
+  /**
+   * The offer runs the tag script, which asks for a name, so it is made only where a person can answer: both
+   * standard input and standard output a terminal. Whatever the script ends with, the build is named again.
+   */
+  it('offers the tag script only in a terminal, and names the build again after it whatever it exited with', () => {
+    const offer = script.indexOf('if [ -z "$VERSION_TAG" ] && [ -t 0 ] && [ -t 1 ]; then');
+    assert.notEqual(offer, -1, 'on a commit without a tag, with a person at both ends');
+    const block = script.slice(offer, script.indexOf('\nfi\n', offer));
+    assert.ok(block.includes('echo "This commit has no tag."'));
+    assert.ok(block.includes('"Run the tag script now? [y/N] "'));
+    assert.match(block, /node "\$WORKSPACE_ROOT\/tools\/release\/tag\.mjs" \|\| [^\n]+\n\s+read_version\n/);
+  });
+
+  it('builds the api image on the host with the name and commit of the build, which it exports before the build', () => {
+    const remote = script.slice(script.indexOf('<<REMOTE'), script.indexOf('\nREMOTE\n'));
+    const exported = [
+      remote.indexOf("export MANAGER_VERSION='${MANAGER_VERSION}'"),
+      remote.indexOf("export MANAGER_COMMIT='${MANAGER_COMMIT}'"),
+    ];
+    for (const at of exported) {
+      assert.notEqual(at, -1, 'each value goes into the host script in single quotes, after its shape is checked');
+      assert.ok(at < remote.indexOf('docker compose build'), 'before compose hands it to the image');
+    }
+  });
+
+  it("fails unless the api that came up reports the build it made, after the upgrade, and ends with the build's name", () => {
+    const remote = script.slice(script.indexOf('<<REMOTE'), script.indexOf('\nREMOTE\n'));
+    const asked = remote.indexOf(
+      `RUNNING_BUILD="\\$(docker compose exec -T api sh -c 'printf "MANAGER_VERSION=%s MANAGER_COMMIT=%s" "\\\${MANAGER_VERSION:-}" "\\\${MANAGER_COMMIT:-}"' < /dev/null)"`,
+    );
+    assert.notEqual(asked, -1, 'the api container is asked, with nothing on its standard input');
+    assert.ok(asked > remote.indexOf('exit "\\${UPGRADE_STATUS}"'), 'once the upgrade has the api running');
+    assert.ok(
+      remote.includes(
+        `if [ "\\\${RUNNING_BUILD}" != 'MANAGER_VERSION=\${MANAGER_VERSION} MANAGER_COMMIT=\${MANAGER_COMMIT}' ]; then`,
+      ),
+    );
+    assert.ok(script.trimEnd().endsWith('echo "==> Done: deployed ${BUILD_NAME}"'), 'the last thing it says');
+  });
+
   it('feeds both remote docker commands from /dev/null, so neither reads the rest of the script', () => {
     // The remote block arrives on the stdin of one bash, and `run` and `exec` keep stdin open,
     // so without this the lines below them are swallowed instead of run.
@@ -376,11 +451,24 @@ describe('deploy/deploy.sh', () => {
  * script's text.
  */
 describe('deploy/deploy.sh, run against a repository on this disk', () => {
+  /**
+   * The environment every git here runs in, the deploy's own included: none of this machine's git configuration,
+   * and nothing a hook or `git rebase --exec` exports to point git at another repository, so a scratch repository
+   * is the only one any of them touches.
+   */
+  const gitEnvironment = (): NodeJS.ProcessEnv => {
+    const environment: NodeJS.ProcessEnv = { ...process.env, GIT_CONFIG_GLOBAL: '/dev/null', GIT_CONFIG_NOSYSTEM: '1' };
+    for (const name of ['GIT_DIR', 'GIT_WORK_TREE', 'GIT_INDEX_FILE', 'GIT_COMMON_DIR', 'GIT_OBJECT_DIRECTORY']) {
+      delete environment[name];
+    }
+    return environment;
+  };
+
   const git = (cwd: string, ...args: string[]): string =>
     execFileSync(
       'git',
       ['-c', 'user.name=deploy test', '-c', 'user.email=deploy@example.invalid', '-c', 'commit.gpgsign=false', ...args],
-      { cwd, encoding: 'utf8' },
+      { cwd, encoding: 'utf8', env: gitEnvironment() },
     ).trim();
 
   interface Deployed {
@@ -599,6 +687,10 @@ describe('deploy/deploy.sh, run against a repository on this disk', () => {
     mkdirSync(join(manager, 'manager'));
     mkdirSync(join(work, 'apps', 'hls-stream'));
     if (oneWorkspace) seedOneWorkspace(work);
+    cpSync(RELEASE_TOOLS, join(work, 'tools', 'release'), {
+      recursive: true,
+      filter: (source) => basename(source) !== 'node_modules',
+    });
     copyFileSync(DEPLOY_SCRIPT, join(manager, 'deploy', 'deploy.sh'));
     writeFileSync(join(manager, 'manager', '.env'), 'POSTGRES_PASSWORD=synthetic-not-a-secret\n');
     writeFileSync(join(work, 'apps', 'hls-stream', 'README.md'), 'the stack\n');
@@ -622,7 +714,12 @@ describe('deploy/deploy.sh, run against a repository on this disk', () => {
       { mode: 0o755 },
     );
     gitAnswering(root, bin, lsRemote);
-    return { work, manager, stackCommit, environment: { ...process.env, PATH: `${bin}:${process.env.PATH ?? ''}` } };
+    return {
+      work,
+      manager,
+      stackCommit,
+      environment: { ...gitEnvironment(), PATH: `${bin}:${process.env.PATH ?? ''}` },
+    };
   }
 
   /** Commits one file and pushes, and answers the commit. */
@@ -648,7 +745,14 @@ describe('deploy/deploy.sh, run against a repository on this disk', () => {
     args: string[] = ['fixture-host'],
   ): Deployed {
     const pin = join(manager, 'manager', STACK_COMMIT_FILE);
-    for (const record of [join(root, 'rsync-calls'), join(root, 'ssh-targets'), join(root, 'ls-remote-calls'), pin]) {
+    for (const record of [
+      join(root, 'rsync-calls'),
+      join(root, 'ssh-targets'),
+      join(root, 'ls-remote-calls'),
+      join(root, 'docker-calls'),
+      join(root, 'built-with'),
+      pin,
+    ]) {
       rmSync(record, { recursive: true, force: true });
     }
     const run = spawnSync('bash', [join(manager, 'deploy', 'deploy.sh'), ...args], {
@@ -1412,6 +1516,323 @@ describe('deploy/deploy.sh, run against a repository on this disk', () => {
       const again = deploy(root, manager, environment, ['--host=fixture-host', '--profile=dev']);
       assert.equal(again.status, 97, again.stderr);
       assert.equal(again.stderr.includes('earlier deploys copied there'), false, 'a host without them is not warned');
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
+  });
+
+  /** The image id the docker of an installed host names, in the shape the upgrade checks. */
+  const BUILT_IMAGE_ID = `sha256:${'a'.repeat(64)}`;
+
+  /**
+   * A docker of a host that has run the manager before. It builds, writing down the build arguments the compose
+   * file would hand the api image from the host's environment, names the image, finds the data volume and the
+   * containers, prints the upgrade's receipt, and runs a command in the api container with the environment the
+   * image was built with. A file `api-reports` in the test's folder stands in for an api whose environment carries
+   * another build, and `api-unreachable` for one that cannot be asked.
+   */
+  function dockerOfAnInstalledHost(root: string): void {
+    const file = (name: string): string => join(root, name);
+    writeFileSync(
+      join(root, 'bin', 'docker'),
+      [
+        '#!/bin/bash',
+        `printf '%s\\n' "$*" >> '${file('docker-calls')}'`,
+        'case "$1 $2" in',
+        `  'compose build') printf 'MANAGER_VERSION=%s\\nMANAGER_COMMIT=%s\\n' "\${MANAGER_VERSION-(unset)}" "\${MANAGER_COMMIT-(unset)}" > '${file('built-with')}'; exit 0 ;;`,
+        `  'image inspect') echo '${BUILT_IMAGE_ID}'; exit 0 ;;`,
+        "  'volume ls') echo manager_manager-pg; exit 0 ;;",
+        `  'compose run') echo '{"state":"upgraded","bundled":{"state":"ready"}}'; exit 0 ;;`,
+        "  'compose exec')",
+        '    shift 4',
+        `    if [ -e '${file('api-unreachable')}' ]; then echo 'service "api" is not running' >&2; exit 1; fi`,
+        `    image='${file('built-with')}'`,
+        `    if [ -e '${file('api-reports')}' ]; then image='${file('api-reports')}'; fi`,
+        `    exec env MANAGER_VERSION="$(sed -n 's/^MANAGER_VERSION=//p' "$image")" MANAGER_COMMIT="$(sed -n 's/^MANAGER_COMMIT=//p' "$image")" "$@" ;;`,
+        'esac',
+        'if [ "$1" = ps ]; then echo 0123456789ab; exit 0; fi',
+        'echo "docker stand-in: nothing answers $*" >&2',
+        'exit 98',
+        '',
+      ].join('\n'),
+      { mode: 0o755 },
+    );
+  }
+
+  /**
+   * A checkout whose manager/.env puts the host's folder under the test's own, reached through an ssh that runs its
+   * command here, the machine's own rsync and the docker of an installed host.
+   */
+  function checkoutWithHost(root: string): Checkout {
+    const checked = checkout(root);
+    writeFileSync(
+      join(checked.manager, 'manager', '.env'),
+      `POSTGRES_PASSWORD=synthetic-not-a-secret\nMANAGER_ROOT=${join(root, 'host', 'streaming-infra-manager')}\n`,
+    );
+    realRsync(root, '');
+    sshRunningHere(root);
+    dockerOfAnInstalledHost(root);
+    return checked;
+  }
+
+  /** The lines version.mjs prints, for a commit and a label of a test's choosing. */
+  const versionLines = (commit: string, label: string): string =>
+    `VERSION_COMMIT=${commit}\nVERSION_SHORT=${commit.slice(0, 9)}\nVERSION_TAG=\nVERSION_LABEL=${label}\nVERSION_DIRTY=false\n`;
+
+  /** A version.mjs that prints `out` and exits with `status`, for what the real one never prints. */
+  function versionPrinting(work: string, out: string, status = 0): void {
+    writeFileSync(
+      join(work, 'tools', 'release', 'version.mjs'),
+      `process.stdout.write(${JSON.stringify(out)});\nprocess.stderr.write('version: a stand-in\\n');\nprocess.exitCode = ${status};\n`,
+    );
+  }
+
+  /** A tag script that only leaves a mark that it ran, and the mark. */
+  function tagScriptMarking(work: string, root: string): string {
+    const mark = join(root, 'tag-script-ran');
+    writeFileSync(
+      join(work, 'tools', 'release', 'tag.mjs'),
+      `import { writeFileSync } from 'node:fs';\nwriteFileSync(${JSON.stringify(mark)}, 'ran\\n');\n`,
+    );
+    return mark;
+  }
+
+  /** The last line a run printed. */
+  const lastLine = (deployed: Deployed): string | undefined => deployed.stdout.trimEnd().split('\n').at(-1);
+
+  /**
+   * The tag on the commit names the build. The host's script exports it before the images are built, where the
+   * compose file hands it to the api image, the api that came up reports it back, and the deploy ends with it.
+   */
+  it('builds the tag and the commit into the api image on the host, finds the api reports them, and ends with both', () => {
+    const root = mkdtempSync(join(tmpdir(), 'manager-deploy-version-'));
+    try {
+      const { work, manager, environment } = checkoutWithHost(root);
+      git(work, 'tag', '-a', '-m', 'a release', 'QA-build-2026-10-07');
+      const commit = git(work, 'rev-parse', 'HEAD');
+      const short = commit.slice(0, 9);
+
+      const deployed = deploy(root, manager, environment);
+
+      assert.equal(deployed.status, 0, deployed.stderr);
+      assert.ok(deployed.stdout.includes(`==> Build: QA-build-2026-10-07 (${short})\n`), deployed.stdout);
+      assert.equal(
+        readFileSync(join(root, 'built-with'), 'utf8'),
+        `MANAGER_VERSION=QA-build-2026-10-07\nMANAGER_COMMIT=${commit}\n`,
+        "the host's environment as the images were built, which the compose file hands the api image",
+      );
+      const upgrade = linesOf(join(root, 'docker-calls')).find((call) => call.includes('manager:upgrade')) ?? '';
+      assert.ok(upgrade.includes(`--manager-commit ${commit} `), `the upgrade records the same commit: ${upgrade}`);
+      assert.ok(
+        deployed.stdout.includes(
+          `[deploy] the api container runs MANAGER_VERSION=QA-build-2026-10-07 MANAGER_COMMIT=${commit}\n`,
+        ),
+        deployed.stdout,
+      );
+      assert.equal(lastLine(deployed), `==> Done: deployed QA-build-2026-10-07 (${short})`);
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
+  });
+
+  /**
+   * The upgrade has checked the api runs the image just built, so another build here is an environment over the
+   * image's. Whatever the api reports, an old build, none at all or the right name on another commit, the deploy
+   * fails after the upgrade with both builds named, and so it does when the api cannot be asked.
+   */
+  it('fails when the api that came up reports another build than the one it built, or cannot be asked', () => {
+    const root = mkdtempSync(join(tmpdir(), 'manager-deploy-version-mismatch-'));
+    try {
+      const { work, manager, environment } = checkoutWithHost(root);
+      git(work, 'tag', '-a', '-m', 'a release', 'QA-build-2026-10-07');
+      const commit = git(work, 'rev-parse', 'HEAD');
+      const old = 'b'.repeat(40);
+
+      for (const [reports, said] of [
+        [
+          `MANAGER_VERSION=QA-build-2026-09-29\nMANAGER_COMMIT=${old}\n`,
+          `MANAGER_VERSION=QA-build-2026-09-29 MANAGER_COMMIT=${old}`,
+        ],
+        ['MANAGER_VERSION=\nMANAGER_COMMIT=\n', 'MANAGER_VERSION= MANAGER_COMMIT='],
+        [
+          `MANAGER_VERSION=QA-build-2026-10-07\nMANAGER_COMMIT=${old}\n`,
+          `MANAGER_VERSION=QA-build-2026-10-07 MANAGER_COMMIT=${old}`,
+        ],
+      ] as const) {
+        writeFileSync(join(root, 'api-reports'), reports);
+
+        const failed = deploy(root, manager, environment);
+
+        assert.equal(failed.status, 1, failed.stderr);
+        assert.ok(
+          failed.stderr.includes(
+            `[deploy] ERROR: the api container reports ${said}, and this deploy built MANAGER_VERSION=QA-build-2026-10-07 MANAGER_COMMIT=${commit} into its image.`,
+          ),
+          failed.stderr,
+        );
+        assert.ok(failed.stdout.includes('[deploy] upgrade receipt: '), 'it is found once the upgrade has run');
+        assert.equal(failed.stdout.includes('==> Done'), false, 'and the deploy never says it is done');
+      }
+
+      rmSync(join(root, 'api-reports'));
+      writeFileSync(join(root, 'api-unreachable'), '');
+      const unasked = deploy(root, manager, environment);
+
+      assert.equal(unasked.status, 1, unasked.stderr);
+      assert.match(unasked.stderr, /the api container could not be asked which build it runs/);
+      assert.equal(unasked.stdout.includes('==> Done'), false);
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
+  });
+
+  /**
+   * version.mjs prints nothing a shell would have to quote, and this is what the deploy does if it ever did: the
+   * label and the commit go into the host's script in single quotes, so a value of any other shape is refused
+   * before anything is asked, sent or run, and so is a run of version.mjs that failed.
+   */
+  it('refuses a build name or a commit of another shape, or none, before anything reaches the host', () => {
+    const root = mkdtempSync(join(tmpdir(), 'manager-deploy-version-shape-'));
+    try {
+      const { work, manager, environment } = checkout(root);
+      const commit = git(work, 'rev-parse', 'HEAD');
+      const ran = join(root, 'ran');
+      const badLabel = /the build name tools\/release\/version\.mjs printed is not 1 to 96 letters, digits, dots, /;
+      const badCommit = /the commit tools\/release\/version\.mjs named is not 40 lowercase hex digits/;
+
+      for (const [out, refusal] of [
+        [versionLines(commit, `QA';touch '${ran}';'`), badLabel],
+        [versionLines(commit, `QA$(touch ${ran})`), badLabel],
+        [versionLines(commit, 'QA`id`'), badLabel],
+        [versionLines(commit, 'QA build'), badLabel],
+        [versionLines(commit, ''), badLabel],
+        [versionLines(commit, 'a'.repeat(97)), badLabel],
+        [`VERSION_COMMIT=${commit}\n`, badLabel],
+        [versionLines(commit.toUpperCase(), 'QA-build'), badCommit],
+        [versionLines(commit.slice(0, 9), 'QA-build'), badCommit],
+        [versionLines(`${commit}';touch '${ran}`, 'QA-build'), badCommit],
+        ['VERSION_LABEL=QA-build\n', badCommit],
+      ] as const) {
+        versionPrinting(work, out);
+
+        const refused = deploy(root, manager, environment);
+
+        stoppedBeforeAnything(refused);
+        assert.match(refused.stderr, refusal, out);
+        assert.equal(existsSync(ran), false, 'and nothing it carried ran');
+      }
+
+      versionPrinting(work, versionLines(commit, 'QA-build'), 1);
+      const failed = deploy(root, manager, environment);
+
+      stoppedBeforeAnything(failed);
+      assert.match(failed.stderr, /tools\/release\/version\.mjs could not name the build of this checkout/);
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
+  });
+
+  /**
+   * The deploy builds the name and the commit into the api image, and compose reads the env file into the api
+   * container over the image's environment. A line for either key, even an empty one, would have the api report a
+   * build nobody made, which the check after the upgrade finds only once the host runs the new manager. So it is
+   * refused with the env file's other checks, in every form compose reads as an assignment, KEY=, KEY = , KEY: and
+   * export KEY=, by the rule web2-admin's deploy refuses its own two keys by, in a profile's file as in manager/.env.
+   * A comment that names a key, or another name that holds one, is no such line.
+   */
+  it('refuses an env file that sets MANAGER_VERSION or MANAGER_COMMIT, even to nothing, before anything reaches the host', () => {
+    const root = mkdtempSync(join(tmpdir(), 'manager-deploy-version-in-env-'));
+    try {
+      const { manager, environment } = checkout(root);
+      const password = 'POSTGRES_PASSWORD=synthetic-not-a-secret\n';
+
+      for (const [line, key] of [
+        ['MANAGER_VERSION=QA-build-2026-10-07', 'MANAGER_VERSION'],
+        ['MANAGER_VERSION=', 'MANAGER_VERSION'],
+        [`MANAGER_COMMIT=${'a'.repeat(40)}`, 'MANAGER_COMMIT'],
+        ['MANAGER_COMMIT=', 'MANAGER_COMMIT'],
+        ['  MANAGER_VERSION=""', 'MANAGER_VERSION'],
+        ['\tMANAGER_COMMIT=', 'MANAGER_COMMIT'],
+        ['export MANAGER_VERSION=x', 'MANAGER_VERSION'],
+        ['MANAGER_COMMIT = y', 'MANAGER_COMMIT'],
+        ['MANAGER_VERSION: z', 'MANAGER_VERSION'],
+      ] as const) {
+        writeFileSync(join(manager, 'manager', '.env'), `${password}${line}\n`);
+
+        const refused = deploy(root, manager, environment);
+
+        stoppedBeforeAnything(refused);
+        assert.ok(
+          refused.stderr.includes(
+            `ERROR: ${key} is set in manager/.env, and deploy.sh sets it: it builds the value into the api image, and the file's value, even an empty one, would replace the image's in the api container. Remove the line.\n`,
+          ),
+          `${JSON.stringify(line)}: ${refused.stderr}`,
+        );
+      }
+
+      writeFileSync(join(manager, 'manager', '.env.dev'), `${password}MANAGER_VERSION=\n`);
+      const profile = deploy(root, manager, environment, ['--host=fixture-host', '--profile=dev']);
+
+      stoppedBeforeAnything(profile);
+      assert.match(profile.stderr, /ERROR: MANAGER_VERSION is set in manager\/\.env\.dev, /, "a profile's file alike");
+
+      writeFileSync(
+        join(manager, 'manager', '.env'),
+        [
+          password.trimEnd(),
+          '# MANAGER_VERSION=QA-build-2026-10-07',
+          '# export MANAGER_VERSION=QA-build-2026-10-07',
+          `OLD_MANAGER_COMMIT=${'a'.repeat(40)}`,
+          'MANAGER_VERSIONS=QA-build-2026-10-07',
+          'MANAGER_COMMIT_NOTE=the commit a release came from',
+          '',
+        ].join('\n'),
+      );
+      const deployed = deploy(root, manager, environment);
+
+      assert.equal(deployed.status, 0, deployed.stderr);
+      assert.equal(deployed.stderr.includes('and deploy.sh sets it'), false, 'none of them is taken for such a line');
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
+  });
+
+  /**
+   * Run from a script or a pipe, with no terminal at either end, a deploy of a commit without a tag asks nothing and
+   * runs no tag script: it says so, with the name the build deploys as, and goes on. Past a tag, that is the tag and
+   * the distance, with the short commit beside it, and with no tag behind it at all, the short commit alone.
+   */
+  it('never offers the tag script without a terminal, and says which name a commit without a tag deploys as', () => {
+    const root = mkdtempSync(join(tmpdir(), 'manager-deploy-version-untagged-'));
+    try {
+      const { work, manager, environment } = checkout(root);
+      const mark = tagScriptMarking(work, root);
+      const first = git(work, 'rev-parse', 'HEAD').slice(0, 9);
+
+      const deployed = deploy(root, manager, environment);
+
+      assert.equal(deployed.status, 0, deployed.stderr);
+      assert.ok(
+        deployed.stdout.includes(`==> This commit has no tag, so the build deploys as ${first}\n`),
+        deployed.stdout,
+      );
+      for (const asked of ['This commit has no tag.', 'Run the tag script now?']) {
+        assert.equal(`${deployed.stdout}${deployed.stderr}`.includes(asked), false, `it does not say "${asked}"`);
+      }
+      assert.equal(existsSync(mark), false, 'the tag script never ran');
+      assert.equal(lastLine(deployed), `==> Done: deployed ${first}`);
+
+      git(work, 'tag', '-a', '-m', 'a release', 'QA-build-2026-10-07');
+      const past = change(work, 'apps/infra-manager/NOTES.md', 'a manager change\n').slice(0, 9);
+      const later = deploy(root, manager, environment);
+
+      assert.equal(later.status, 0, later.stderr);
+      assert.ok(
+        later.stdout.includes(`==> This commit has no tag, so the build deploys as QA-build-2026-10-07+1 (${past})\n`),
+        later.stdout,
+      );
+      assert.equal(existsSync(mark), false, 'nor does it now');
+      assert.equal(lastLine(later), `==> Done: deployed QA-build-2026-10-07+1 (${past})`);
     } finally {
       rmSync(root, { recursive: true, force: true });
     }

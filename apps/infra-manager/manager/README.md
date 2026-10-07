@@ -45,7 +45,7 @@ Until that last command has been run once, every route but `/health` and
 
 Every route needs a session except two: `GET /health`, which answers
 `{"status":"ok"}` and nothing more, and `POST /auth/login`. That includes both
-Server-Sent Events streams, `/config`, `/metrics` and `/profiles`.
+Server-Sent Events streams, `/config`, `/version`, `/metrics` and `/profiles`.
 
 No Docker healthcheck reads `/health`, as of 2026-09-23 at `87673c99`: the
 `api` service in `docker-compose.yml` has none and neither Dockerfile declares
@@ -1151,10 +1151,25 @@ the staging tree and never the root, because the root holds every deployment's
 
 ### Misc
 
-| Method | Path        | Notes                             |
-| ------ | ----------- | --------------------------------- |
-| GET    | `/health`   | DB ping. Returns `{status:"ok"}`. |
-| GET    | `/services` | List of valid service names.      |
+| Method | Path        | Notes                                                                    |
+| ------ | ----------- | ------------------------------------------------------------------------ |
+| GET    | `/health`   | DB ping. Returns `{status:"ok"}`.                                        |
+| GET    | `/services` | List of valid service names.                                             |
+| GET    | `/version`  | The build this manager runs, `{ label, commit }`, `no-store`. See below. |
+
+`GET /version` answers the build `deploy/deploy.sh` built into the api image:
+`label`, the name `tools/release/version.mjs` gave the deployed commit, which
+is its tag, the nearest tag before it and how far past it, or the short commit,
+ended by `-dirty` when the deploy sent uncommitted changes, and `commit`, the
+full commit. Each is null when the image carries none, or one of another shape
+than the deploy builds in, and the console shows a null label as a development
+build. It needs a session like every route but two, because which build a host
+runs is for its signed-in users. The console shows it in its sidebar, under
+"manager · <host>", as `<label> (<first 9 of the commit>)`, or the label alone
+when it already starts with those nine characters, as an untagged build's does,
+with the full commit as its title. "The build it names" in
+[deploy/README.md](../deploy/README.md#the-build-it-names) says how a deploy
+names it.
 
 ### Resource metrics
 
@@ -1311,12 +1326,28 @@ curl -b cookies.txt -X DELETE localhost:9876/profiles/streamer1 \
 
 ## Environment
 
-Everything comes from `manager/.env`. `manager/.env.sample` documents the keys
-an operator sets by hand. Four more are used that it does not carry:
-`SHLS_ROOT` and `BEE_DATA_ROOT`, which `docker-compose.yml` sets for the `api`
-container, `WEB_PORT`, which the compose file interpolates for the `web` port
-binding, and `DOCKER_HOST`, which the compose file leaves unset and the table
-below describes.
+Everything comes from `manager/.env` but the build's name. `manager/.env.sample`
+documents the keys an operator sets by hand. Four more are used that it does
+not carry: `SHLS_ROOT` and `BEE_DATA_ROOT`, which `docker-compose.yml` sets for
+the `api` container, `WEB_PORT`, which the compose file interpolates for the
+`web` port binding, and `DOCKER_HOST`, which the compose file leaves unset and
+the table below describes. Two more no file carries, `MANAGER_VERSION` and
+`MANAGER_COMMIT`, which the next paragraph describes.
+
+**`MANAGER_VERSION`** and **`MANAGER_COMMIT`** are the build this manager runs,
+which `deploy/deploy.sh` builds into the api image: the name
+`tools/release/version.mjs` gave the deployed commit, and that commit. They
+reach the image as build arguments of `docker-compose.yml`, which keeps them as
+its environment and its labels, so a container reports the build it was started
+from until it is replaced. The api reads them once at startup and answers them
+on `GET /version`. A name that is not 1 to 96 letters, digits and `. _ + / -`,
+or a commit that is not 40 lowercase hex digits, reads as none, and a manager
+started without them, by `pnpm dev` or from an image a `docker compose build`
+by hand made, is a development build. Never set either in `.env`: compose would
+put it over the image's in the api container. A deploy refuses an env file with
+a line for either one, even an empty one, before anything leaves the machine,
+and still fails after the upgrade when the api reports another build than the
+one it built.
 
 **`CHEQUEBOOK_RPC_ENDPOINTS`** and **`CHEQUEBOOK_DOCKER_TRANSPORTS`** are in
 the sample commented out, because both are optional overrides. Without them a

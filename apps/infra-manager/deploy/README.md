@@ -75,6 +75,57 @@ a folder outside the checkout that it removes when it exits, and sends the pair
 with the folder. The server's folder holds what its image builds need, and your
 checkout gains no file.
 
+### The build it names
+
+Before anything leaves your machine, the deploy names the build it sends with
+`tools/release/version.mjs` at the repository root: the tag on the commit you
+have checked out, or the nearest tag before it and how far past it,
+`QA-build-2026-10-07+3`, or the short commit when no tag is behind it, ended by
+`-dirty` when the manager's folder, `packages/` or the root's `package.json`,
+`pnpm-lock.yaml` or `pnpm-workspace.yaml` holds a change git has not committed.
+A release tags its commit before it deploys, as
+[docs/releasing.md](../../../docs/releasing.md) says.
+
+On a commit without a tag, a deploy run in a terminal says so and asks first:
+
+```text
+This commit has no tag.
+Run the tag script now? [y/N]
+```
+
+`y` runs `node tools/release/tag.mjs`, which tags the commit and pushes the
+tag, and the deploy then names the build again, whatever the script ended
+with. Any other answer deploys the commit under the name it has. A deploy
+without a terminal at both ends, from a script or a pipe, never asks, and
+prints the name the commit deploys as instead.
+
+The name and the commit are built into the api image, through the build
+arguments `MANAGER_VERSION` and `MANAGER_COMMIT` of `manager/docker-compose.yml`,
+which the deploy exports on the server before it builds. The image keeps them
+as its environment and as its labels `org.opencontainers.image.version` and
+`org.opencontainers.image.revision`, so a container reports the build it was
+started from until it is replaced, and `docker image inspect manager-api` on
+the server names the build of the image as well. Each value is held to its
+shape before the deploy writes the script the server runs, the name to 1 to 96
+letters, digits and `. _ + / -` and the commit to 40 lowercase hex digits, and
+a deploy refuses anything else before anything is sent. It refuses just as
+early an env file with a `MANAGER_VERSION` or `MANAGER_COMMIT` line, even an
+empty one: compose reads that file into the api container over the image's
+environment, so the file's value would replace the build.
+
+Once the upgrade has the new api running, the deploy still reads both back from
+the api container, and fails when they are not the build it made. The last line
+it prints is the build:
+
+```text
+==> Done: deployed QA-build-2026-10-07 (635b4e175)
+```
+
+An untagged build's name starts with its short commit already, and is printed
+alone. A signed-in console shows the same name under "manager · <host>" in its
+sidebar, with the full commit as its title, read from `GET /version`, and
+nothing that answers without a session carries it.
+
 ### Which env file a deploy sends
 
 One, which the server keeps as `manager/.env`. Without `--profile` it is
@@ -668,9 +719,10 @@ docker compose down -v            # nuke postgres data too, so be sure
   reachable through the SSH tunnel and from the host's edge on the host's
   loopback, never directly from outside. It serves the built React SPA and
   reverse-proxies `/auth`, `/profiles`, `/groups`, `/health`, `/services`,
-  `/config`, `/targets`, `/manager-settings`, `/versions`, `/chequebook`,
-  `/metrics` and `/events` to `api:9876`. Every path the dev server proxies has
-  to appear here too. A path wired in one place and not the other is how the
+  `/config`, `/targets`, `/manager-settings`, `/stages`, `/version`,
+  `/versions`, `/chequebook`, `/metrics` and `/events` to `api:9876`. Every
+  path the dev server proxies has to appear here too. A path wired in one
+  place and not the other is how the
   whole transfer history had no route in production until 2026-09-11, and a
   test checks the two lists against each other.
 - **`api`** has no published port at all. The `web` proxy on the internal

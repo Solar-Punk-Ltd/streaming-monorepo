@@ -20,7 +20,15 @@
 # project and volumes are the same for every profile.
 #
 # What it does:
-#   1. Writes the stack pin into manager/.stack-commit: the last commit that
+#   1. Names the build it sends with tools/release/version.mjs at the
+#      repository root: the tag on the checked-out commit, or the nearest tag
+#      before it and how far past it, or the short commit, ended by -dirty when
+#      the manager's files hold changes git has not committed. In a terminal,
+#      on a commit with no tag, it says so and offers to run
+#      tools/release/tag.mjs first, then names the build again whatever that
+#      script ended with. Without a terminal it never asks. docs/releasing.md
+#      at the repository root is the procedure.
+#   2. Writes the stack pin into manager/.stack-commit: the last commit that
 #      changed apps/hls-stream, the stack this manager bundles, which holds the
 #      same stack tree as the commit being deployed. So a deploy that changes
 #      only the manager finds the bundled build the host already has, keeps
@@ -28,7 +36,7 @@
 #      the streaming stack a deploy carries. The host fetches that commit from
 #      GitHub and builds its apps/hls-stream there if it has no complete build
 #      of it, through the same path a version added in the UI takes.
-#   2. rsyncs the repo to the manager's folder on the host, MANAGER_ROOT in
+#   3. rsyncs the repo to the manager's folder on the host, MANAGER_ROOT in
 #      the profile's env file or /opt/streaming/streaming-infra-manager,
 #      without manager/swarm-hls-stream: the tree the engines of existing
 #      deployments mount is never written over again, so a container restart
@@ -38,18 +46,21 @@
 #      its own, to manager/.env on the host, so no host gets another's
 #      settings, and this checkout is the only source of truth for the one it
 #      gets.
-#   3. Names, on the host, the env files earlier deploys left in its manager/
+#   4. Names, on the host, the env files earlier deploys left in its manager/
 #      folder, with the command that removes them, and removes none. Then
-#      builds the images on the server, decides there whether this host has
-#      ever run the manager, and then runs `manager:upgrade` in a one-off
-#      container of the image just built. The first use question is answered
-#      before that container exists, because preparing it can create the
-#      project's volumes, and it stops the deploy when the data volume is gone
-#      from under an installed manager. The command owns the rest:
+#      builds the images on the server, the api image with the build's name
+#      and commit in its environment and its labels, decides there whether
+#      this host has ever run the manager, and then runs `manager:upgrade` in
+#      a one-off container of the image just built. The first use question is
+#      answered before that container exists, because preparing it can create
+#      the project's volumes, and it stops the deploy when the data volume is
+#      gone from under an installed manager. The command owns the rest:
 #      it holds one directory for the whole run so a second upgrade cannot
 #      start beside it, stops the old api, migrates, starts the project, waits
 #      for the api to answer, and then waits for the api's own boot to finish
 #      building the pinned stack commit.
+#   5. Fails unless the api that came up reports the build this deploy built
+#      into its image, and ends with "deployed <label> (<short commit>)".
 #
 # HTTPS is the host's edge, infra/edge/edge.sh, which serves the console
 # published on the host's loopback. See deploy/README.md.
@@ -174,6 +185,19 @@ if ! grep -q "POSTGRES_PASSWORD=.\+" "$ENV_FILE"; then
     echo "ERROR: POSTGRES_PASSWORD is missing or empty in $ENV_FILE." >&2
     exit 1
 fi
+# The build is named by this script and built into the api image. Compose reads
+# this file into the api container over the image's environment, so a line for
+# either key, even an empty one, would have the api report a build nobody made,
+# and the check after the upgrade would find it only once the host runs the new
+# manager. Refused here instead, in every form compose reads as an assignment,
+# KEY=, KEY = , KEY: and export KEY=, with the rule web2-admin's deploy refuses
+# its own two keys by.
+for key in MANAGER_VERSION MANAGER_COMMIT; do
+    if grep -qE "^[[:space:]]*(export[[:space:]]+)?$key[[:space:]]*[=:]" "$ENV_FILE"; then
+        echo "ERROR: $key is set in $ENV_FILE, and deploy.sh sets it: it builds the value into the api image, and the file's value, even an empty one, would replace the image's in the api container. Remove the line." >&2
+        exit 1
+    fi
+done
 # Read the way compose reads the env file, which interpolates the same key into
 # the compose file on the host: the last assignment wins, and a carriage return
 # and surrounding quotes are not part of the value.
@@ -191,15 +215,90 @@ if ! [[ "$REMOTE_PATH" =~ ^/[A-Za-z0-9._/-]+$ ]] || [[ "$REMOTE_PATH" =~ (^|/)\.
 fi
 HOST_ROOT="$(dirname "$REMOTE_PATH")"
 
+# The repository this checkout belongs to, and the manager's folder in it,
+# which the build's name below and the lockfile cut further down both read.
+WORKSPACE_ROOT="$(git rev-parse --show-toplevel)"
+MANAGER_FOLDER="$(git rev-parse --show-prefix)"
+MANAGER_FOLDER="${MANAGER_FOLDER%/}"
+
+# The build this deploy sends, as tools/release/version.mjs names the
+# checked-out commit: VERSION_COMMIT, the commit, and VERSION_LABEL, its tag,
+# the nearest tag before it and how far past it, or the short commit, ended by
+# -dirty when the manager's files hold changes git has not committed, which the
+# rsync below sends with the rest. VERSION_TAG is the tag alone, empty on a
+# commit without one. Each line is taken apart here and never evaluated, and
+# each value is held to its own shape before the host's script is written with
+# it: the commit to the 40 lowercase hex digits git names it with, and the
+# label to the characters and the length the manager shows, so a label the
+# console would show as no version at all is refused here rather than built in.
+read_version() {
+    local output line
+    if ! output="$(node "$WORKSPACE_ROOT/tools/release/version.mjs" --app "$MANAGER_FOLDER")"; then
+        echo "ERROR: tools/release/version.mjs could not name the build of this checkout, so the deploy has no name to build it with." >&2
+        exit 1
+    fi
+    VERSION_COMMIT=""
+    VERSION_TAG=""
+    VERSION_LABEL=""
+    while IFS= read -r line; do
+        case "$line" in
+            VERSION_COMMIT=*) VERSION_COMMIT="${line#VERSION_COMMIT=}" ;;
+            VERSION_TAG=*) VERSION_TAG="${line#VERSION_TAG=}" ;;
+            VERSION_LABEL=*) VERSION_LABEL="${line#VERSION_LABEL=}" ;;
+        esac
+    done <<< "$output"
+    if ! [[ "$VERSION_COMMIT" =~ ^[0-9a-f]{40}$ ]]; then
+        echo "ERROR: the commit tools/release/version.mjs named is not 40 lowercase hex digits (got: $VERSION_COMMIT)" >&2
+        exit 1
+    fi
+    if ! [[ "$VERSION_LABEL" =~ ^[A-Za-z0-9._+/-]{1,96}$ ]]; then
+        echo "ERROR: the build name tools/release/version.mjs printed is not 1 to 96 letters, digits, dots, underscores, plus signs, slashes and hyphens, so it is not built into the image (got: $VERSION_LABEL)" >&2
+        exit 1
+    fi
+    # The commit being deployed is what the upgrade records as the manager it
+    # installed, and the label is what the image is built with besides.
+    MANAGER_COMMIT="$VERSION_COMMIT"
+    MANAGER_VERSION="$VERSION_LABEL"
+    MANAGER_SHORT="${MANAGER_COMMIT:0:9}"
+    # The build as every console shows it: the label and the short commit, or
+    # the label alone when it starts with that commit already, as an untagged
+    # build's does.
+    if [[ "$MANAGER_VERSION" == "$MANAGER_SHORT"* ]]; then
+        BUILD_NAME="$MANAGER_VERSION"
+    else
+        BUILD_NAME="$MANAGER_VERSION ($MANAGER_SHORT)"
+    fi
+}
+read_version
+# A commit without a tag deploys under the name version.mjs gives it. In a
+# terminal the deploy offers the tag script first, which tags the commit and
+# pushes the tag, and then names the build again, whatever the script ended
+# with. A run without a terminal, from a script or a pipe, never asks.
+if [ -z "$VERSION_TAG" ] && [ -t 0 ] && [ -t 1 ]; then
+    echo "This commit has no tag."
+    TAG_ANSWER=""
+    read -r -p "Run the tag script now? [y/N] " TAG_ANSWER || true
+    case "$TAG_ANSWER" in
+        [yY] | [yY][eE][sS])
+            node "$WORKSPACE_ROOT/tools/release/tag.mjs" || echo "[deploy] the tag script exited with $?, so the deploy goes on with the build as it is named now" >&2
+            read_version
+            ;;
+    esac
+fi
+if [ -z "$VERSION_TAG" ]; then
+    echo "==> This commit has no tag, so the build deploys as $BUILD_NAME"
+else
+    echo "==> Build: $BUILD_NAME"
+fi
+
 echo "==> Recording the stack commit this manager pins"
-# The commit being deployed is what the upgrade records as the manager it
-# installed. The pin is the last commit that changed apps/hls-stream, the stack
-# this manager bundles, which holds the same stack tree as the deployed commit.
+# The pin is the last commit that changed apps/hls-stream, the stack this
+# manager bundles, which holds the same stack tree as the deployed commit.
 # So a deploy that changes only the manager finds the bundled build the host
 # already has, keeps its Tested mark and builds nothing. The host reads this file
 # at boot and builds the pin if it has no complete build of it, which is why the
 # file sits next to the tree the host keeps and is never committed.
-MANAGER_COMMIT="$(git rev-parse HEAD)"
+#
 # The host fetches this commit from GitHub by its name, so one only this
 # machine has would replace the manager and then fail its bundled build. A
 # remote branch that holds it is the answer that needs no network. A commit
@@ -253,12 +352,10 @@ MANAGER_DIGEST="$(git ls-tree -r HEAD | shasum -a 256 | cut -c1-64)"
 # did. The empty second source expands to nothing under set -u in bash 3.2
 # through the + form.
 CUT_SOURCE=()
-WORKSPACE_ROOT="$(git rev-parse --show-toplevel)"
 if [ ! -f pnpm-lock.yaml ] && [ -f "$WORKSPACE_ROOT/pnpm-lock.yaml" ]; then
     CUT_DIR="$(mktemp -d "${TMPDIR:-/tmp}/manager-cut.XXXXXX")"
     trap 'rm -rf "$CUT_DIR"' EXIT
-    MANAGER_FOLDER="$(git rev-parse --show-prefix)"
-    node "$WORKSPACE_ROOT/tools/app-workspace/cut.mjs" --root "$WORKSPACE_ROOT" --app "${MANAGER_FOLDER%/}" --out "$CUT_DIR/manager"
+    node "$WORKSPACE_ROOT/tools/app-workspace/cut.mjs" --root "$WORKSPACE_ROOT" --app "$MANAGER_FOLDER" --out "$CUT_DIR/manager"
     CUT_SOURCE=("$CUT_DIR/manager/")
 fi
 
@@ -358,6 +455,11 @@ export MANAGER_SSH_DIR="\${MANAGER_SSH_DIR:-${HOST_ROOT}/manager-ssh}"
 mkdir -p -m 700 "\${MANAGER_SSH_DIR}"
 echo "[deploy] ssh identity for other hosts: \${MANAGER_SSH_DIR}"
 
+# The build this deploy names, which docker-compose.yml hands the api image as
+# build arguments and the image keeps in its environment and its labels.
+export MANAGER_VERSION='${MANAGER_VERSION}'
+export MANAGER_COMMIT='${MANAGER_COMMIT}'
+
 docker compose build
 IMAGE_ID="\$(docker image inspect --format '{{.Id}}' manager-api)"
 echo "[deploy] built api image \${IMAGE_ID}"
@@ -418,9 +520,26 @@ fi
 echo "[deploy] PUBLIC_HOST seen inside api container:"
 docker compose exec -T api sh -c 'echo "  PUBLIC_HOST=\${PUBLIC_HOST}"' < /dev/null || \
     echo "[deploy] (could not exec into api container to verify)"
+
+# The build the api that came up runs, read from its own environment, which is
+# what it answers a signed-in console, against the one this deploy built into
+# its image. The upgrade has checked the container runs the image just built,
+# so another build here is an environment over the image's. The env file's own
+# MANAGER_VERSION and MANAGER_COMMIT lines are refused before anything leaves,
+# so this is the check that still finds one set some other way, and an api that
+# cannot be asked is not taken for one that runs it.
+if ! RUNNING_BUILD="\$(docker compose exec -T api sh -c 'printf "MANAGER_VERSION=%s MANAGER_COMMIT=%s" "\${MANAGER_VERSION:-}" "\${MANAGER_COMMIT:-}"' < /dev/null)"; then
+    echo "[deploy] ERROR: the api container could not be asked which build it runs, so this deploy cannot tell whether it runs the one it built. Look at docker compose ps and docker compose logs api on the host." >&2
+    exit 1
+fi
+if [ "\${RUNNING_BUILD}" != 'MANAGER_VERSION=${MANAGER_VERSION} MANAGER_COMMIT=${MANAGER_COMMIT}' ]; then
+    echo "[deploy] ERROR: the api container reports \${RUNNING_BUILD}, and this deploy built MANAGER_VERSION=${MANAGER_VERSION} MANAGER_COMMIT=${MANAGER_COMMIT} into its image. A MANAGER_VERSION or MANAGER_COMMIT in manager/.env would be put over the image's." >&2
+    exit 1
+fi
+echo "[deploy] the api container runs MANAGER_VERSION=${MANAGER_VERSION} MANAGER_COMMIT=${MANAGER_COMMIT}"
 REMOTE
 
 
-echo "==> Done."
 echo "Tunnel: ssh -L 8080:localhost:8080 ${SSH_TARGET}"
 echo "Then open: http://localhost:8080"
+echo "==> Done: deployed ${BUILD_NAME}"

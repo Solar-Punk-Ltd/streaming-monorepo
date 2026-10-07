@@ -2,7 +2,13 @@ import 'dotenv/config';
 
 import { isIP } from 'node:net';
 
-import { bzzToPlur, DEFAULT_CHEQUEBOOK_FLOOR_BZZ, rpcEndpointProblem } from '@streaming-infra-manager/common';
+import {
+  bzzToPlur,
+  DEFAULT_CHEQUEBOOK_FLOOR_BZZ,
+  rpcEndpointProblem,
+  type VersionInfo,
+  versionInfo,
+} from '@streaming-infra-manager/common';
 
 import { DEFAULT_LOG_LEVEL, isLogLevel, LOG_LEVELS, type LogLevel } from '../domain/Logger.js';
 import { parseStackSources, type StackSource } from '../domain/versions/stackSources.js';
@@ -147,6 +153,20 @@ export function adminLinkAllowPlainHttp(raw: string | undefined): boolean {
   throw new Error(`ADMIN_LINK_ALLOW_PLAIN_HTTP must be true or false, got: ${raw}`);
 }
 
+/**
+ * The build this manager runs, read once at startup from MANAGER_VERSION and MANAGER_COMMIT, which
+ * deploy/deploy.sh builds into the api image: the label tools/release/version.mjs named the deployed commit with,
+ * and that commit. A label of another shape than version.mjs prints, or a commit that is not 40 lowercase hex
+ * digits, is null, and so is either one unset, which the console shows as a development build. A malformed value
+ * does not stop the manager, as a malformed setting above does: it names the build, and the deploy has already
+ * refused any value of another shape before it built one.
+ *
+ * Exported so each shape can be tested without the process.
+ */
+export function managerVersion(label: string | undefined, commit: string | undefined): VersionInfo {
+  return versionInfo(label, commit);
+}
+
 export interface AppConfig {
   port: number;
   host: string;
@@ -169,6 +189,8 @@ export interface AppConfig {
   adminLinkAllowPlainHttp: boolean;
   /** The repositories stack versions are built from, the first for a new version. See `parseStackSources`. */
   stackSources: readonly StackSource[];
+  /** See `managerVersion`. */
+  managerVersion: VersionInfo;
 }
 
 export const config: AppConfig = {
@@ -183,4 +205,5 @@ export const config: AppConfig = {
   beeLocalHost: beeLocalHost(process.env.BEE_LOCAL_HOST),
   adminLinkAllowPlainHttp: adminLinkAllowPlainHttp(process.env.ADMIN_LINK_ALLOW_PLAIN_HTTP),
   stackSources: parseStackSources(process.env.STACK_SOURCES),
+  managerVersion: managerVersion(process.env.MANAGER_VERSION, process.env.MANAGER_COMMIT),
 };

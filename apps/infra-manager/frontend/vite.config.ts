@@ -41,6 +41,9 @@ export default defineConfig({
       '/targets': managerApi(),
       '/manager-settings': managerApi(),
       '/stages': managerApi(),
+      // The build the manager runs. A regex, because a '/version' key would take
+      // /versions by its prefix, and that needs the open stream settings below.
+      '^/version$': managerApi(),
       // SSE — disable any buffering / timeouts so events stream live.
       '/events': { ...managerApi(), ws: false, proxyTimeout: 0, timeout: 0 },
       // Metrics: JSON one-shot, SSE stream, and on-demand disk lookups.
