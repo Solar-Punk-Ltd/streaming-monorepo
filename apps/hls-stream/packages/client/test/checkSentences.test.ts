@@ -35,9 +35,9 @@ describe("the sentences a failed check's read ends in", () => {
     expect(failedReadSentence('the stream list', answer)).toBe(sentence);
   });
 
-  it('tells a viewer a node may not allow this site, and which setting decides it', () => {
+  it("tells a viewer a node may not allow this site, which setting decides it, or that the site's own policy may not allow the node", () => {
     expect(COULD_NOT_REACH).toBe(
-      'Could not reach this gateway. Check that the address is right and the node is running. If it is, this node does not allow this site: its cors-allowed-origins setting has to include it.',
+      "Could not reach this gateway. Check that the address is right and the node is running. If it is, this node does not allow this site: its cors-allowed-origins setting has to include it. Or this site's own policy does not allow the address, which only whoever runs the site can change.",
     );
   });
 });

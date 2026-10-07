@@ -14,11 +14,12 @@ const PICK_ANOTHER = 'Test again in a minute, or pick another gateway.';
 const seconds = (ms: number) => `${Math.round(ms / 100) / 10} s`;
 
 /**
- * A browser reports a closed port, a wrong address and a node that refuses this site's origin the same
- * way, so the sentence names all of them in the order a viewer can check them.
+ * A browser reports a closed port, a wrong address, a node that refuses this site's origin and an address
+ * a content security policy leaves out the same way, so the sentence names all of them in the order a
+ * viewer can check them. The client image sets no such policy, but a proxy in front of a deployment can.
  */
 export const COULD_NOT_REACH =
-  'Could not reach this gateway. Check that the address is right and the node is running. If it is, this node does not allow this site: its cors-allowed-origins setting has to include it.';
+  "Could not reach this gateway. Check that the address is right and the node is running. If it is, this node does not allow this site: its cors-allowed-origins setting has to include it. Or this site's own policy does not allow the address, which only whoever runs the site can change.";
 
 export const NOT_A_SWARM_GATEWAY =
   'This address is not a Swarm gateway: something answered, but not with Swarm content. Check the address and the port.';
