@@ -154,6 +154,13 @@ export interface StackVersion {
   buildId: string | null;
   /** The build the current one replaced, kept for recovery, or null. */
   previousBuildId: string | null;
+  /**
+   * The release the current build was made as, read off its manifest: the
+   * label the manager was deployed with for the bundled version, the tag on
+   * the commit for an added one. Null for a build made with none, and for
+   * every build made before builds carried one.
+   */
+  buildLabel: string | null;
   /** The repository and folder the stack is taken from. */
   source: StackVersionSource;
 }

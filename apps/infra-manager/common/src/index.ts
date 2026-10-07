@@ -3,6 +3,7 @@ export * from './abrRungSettings.js';
 export * from './adminLink.js';
 export * from './adminLinkTest.js';
 export * from './auth.js';
+export * from './buildLabel.js';
 export * from './catalogueNode.js';
 export * from './chequebook.js';
 export * from './chequebookOperations.js';

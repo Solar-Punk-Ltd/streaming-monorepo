@@ -1,0 +1,22 @@
+-- The release each container's build was made as, beside the build and the
+-- commit migration 015 records for it. docs/features/stack-versions.md, "What
+-- is actually running".
+--
+-- A build's release lives in its own manifest, written when the build is made:
+-- the label the manager was deployed with for the bundled version, the tag on
+-- the commit for an added one. A deployment can run a build its version has
+-- since moved past, so what a deployment's page shows is read where the build
+-- and the commit are read, off the manifest of the tree the container was
+-- started from, when a deploy and boot observe it, and kept here.
+--
+-- NULL is a container not observed since this column came, and a build made
+-- with no label: before builds carried one, from a commit no tag names, or by
+-- a manager deployed without one. The check is the manifest's own rule for a
+-- label, as a backstop.
+--
+-- Going back to an older manager needs no step: it never reads the column and
+-- leaves it as it is. A container that manager observes again keeps the label
+-- of the build it ran before, beside the new build and commit, until a manager
+-- that writes the column observes it.
+ALTER TABLE containers ADD COLUMN build_label TEXT
+  CHECK (build_label IS NULL OR build_label ~ '^[A-Za-z0-9._+/-]{1,96}$');

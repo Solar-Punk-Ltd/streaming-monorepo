@@ -31,6 +31,7 @@ import { Logger } from '../Logger.js';
 import { RunHandle, ScriptSpawner } from '../ScriptRunner.js';
 
 import { forgetRecordsOfGoneBuilds } from './buildInventoryRecord.js';
+import { deployedManagerLabel, releaseOfCommit } from './buildLabel.js';
 import type { BuildReferenceReader } from './buildLedger.js';
 import {
   BUILD_COMPLETE_MARKER,
@@ -122,9 +123,10 @@ export interface InterruptedAttempts {
   kept: string[];
 }
 
-/** What an attempt made current: the build, published or adopted. */
+/** What an attempt made current: the build, published or adopted, and the release its manifest names. */
 interface PublishedBuild extends PublishOutcome {
   reused: boolean;
+  label: string | null;
 }
 
 export interface PrunedBuilds {
@@ -190,7 +192,7 @@ export class StackVersionService {
 
   async list(): Promise<StackVersion[]> {
     const rows = await this.versions.list();
-    return rows.map((row) => toApiVersion(row, row.deployments));
+    return rows.map((row) => toApiVersion(row, row.deployments, currentLabelOf(row)));
   }
 
   /** Refreshes metadata only for an explicit legacy row. A build is published
@@ -424,7 +426,7 @@ export class StackVersionService {
 
     this.publishChanged();
     const deployments = await this.versions.deploymentNames(id);
-    return toApiVersion(updated, deployments.length);
+    return toApiVersion(updated, deployments.length, currentLabelOf(updated));
   }
 
   // ---------------------------------------------------------- the settings
@@ -516,6 +518,8 @@ export class StackVersionService {
         );
       }
       await this.writeSettingsInto(staging, inputs.files);
+      // The commit, the toolchain and the release stay the build's own: only
+      // the settings files differ from the tree it was made from.
       await writeFile(
         join(staging, BUILD_MANIFEST_FILE),
         `${JSON.stringify(
@@ -684,7 +688,7 @@ export class StackVersionService {
       if (outcome) {
         await this.versions.publish(version.id, outcome);
         logger.info(
-          `[Versions] ${version.name} is ready on build ${outcome.buildId}${outcome.reused ? ', the complete build it already had' : ''}`,
+          `[Versions] ${version.name} is ready on build ${outcome.buildId}${outcome.reused ? ', the complete build it already had' : ''}, ${outcome.label ? `release ${outcome.label}` : 'no release label'}`,
         );
         await this.pruneBuilds(version.id);
       } else {
@@ -743,6 +747,8 @@ export class StackVersionService {
 
     const buildsRoot = buildsRootFor(this.versionsRoot, version.name);
     await mkdir(buildsRoot, { recursive: true });
+    // An adopted build keeps the release it was made as, the way it keeps
+    // every other byte: a published build is never written to again.
     const existing = await this.completeBuildOf(version.name, commit, inputs.generation);
     if (existing) {
       return {
@@ -752,11 +758,13 @@ export class StackVersionService {
         rootPath: configRoot,
         source: builtFrom,
         reused: true,
+        label: existing.label ?? null,
       };
     }
 
     await this.writeSettingsInto(staging, inputs.files);
     const buildId = await this.freeBuildId(version.name, commit);
+    const label = await this.labelForBuild(version, commit);
     const manifest: BuildManifest = {
       commit,
       buildId,
@@ -764,11 +772,32 @@ export class StackVersionService {
       toolchain,
       inputGeneration: inputs.generation,
       inputHashes: inputs.hashes,
+      ...(label ? { label } : {}),
     };
     await writeFile(join(staging, BUILD_MANIFEST_FILE), `${JSON.stringify(manifest, null, 2)}\n`);
     await writeFile(join(staging, BUILD_COMPLETE_MARKER), '');
     await rename(staging, buildDirFor(this.versionsRoot, version.name, buildId));
-    return { buildId, commitSha: commit, contract, rootPath: configRoot, source: builtFrom, reused: false };
+    return { buildId, commitSha: commit, contract, rootPath: configRoot, source: builtFrom, reused: false, label };
+  }
+
+  /**
+   * The release a new build of this commit is made as. For the bundled version
+   * that is the label this manager was deployed with, read now, so a manager
+   * deploy that builds nothing leaves the bundled build with the label it was
+   * made with. For an added version it is the tag on the commit, read in the
+   * version's own clone. A label git cannot read leaves the build without one
+   * and says why, because a name on a page is no reason to fail a build.
+   */
+  private async labelForBuild(version: StackVersionRecord, commit: string): Promise<string | null> {
+    if (version.name === BUNDLED_VERSION_NAME) return deployedManagerLabel();
+    try {
+      return await releaseOfCommit(repoRootFor(this.versionsRoot, version.name), commit);
+    } catch (err) {
+      logger.warn(
+        `[Versions] ${version.name}: the release of ${commit} could not be read from its clone, so the build carries none: ${getErrorMessage(err)}`,
+      );
+      return null;
+    }
   }
 
   /**
@@ -1000,7 +1029,7 @@ export class StackVersionService {
   }
 }
 
-function toApiVersion(version: StackVersionRecord, deployments: number): StackVersion {
+function toApiVersion(version: StackVersionRecord, deployments: number, buildLabel: string | null): StackVersion {
   return {
     id: version.id,
     name: version.name,
@@ -1017,8 +1046,24 @@ function toApiVersion(version: StackVersionRecord, deployments: number): StackVe
     layout: version.layout,
     buildId: version.buildId,
     previousBuildId: version.previousBuildId,
+    buildLabel,
     source: version.source,
   };
+}
+
+/**
+ * The release of the build a version deploys from, off that build's own
+ * manifest, the one place a label is kept. Null for a legacy row, which has
+ * no build, and for a build that cannot be read, which the deploy refuses on
+ * its own terms.
+ */
+function currentLabelOf(version: StackVersionRecord): string | null {
+  if (version.layout !== 'builds' || version.rootPath === null || !version.buildId) return null;
+  try {
+    return readBuildManifest(stackRootOf(version)).manifest?.label ?? null;
+  } catch {
+    return null;
+  }
 }
 
 function refuse(problem: string | null): void {

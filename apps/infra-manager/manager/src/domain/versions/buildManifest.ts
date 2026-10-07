@@ -1,6 +1,8 @@
 import { existsSync, readFileSync, statSync } from 'node:fs';
 import { join } from 'node:path';
 
+import { isBuildLabel } from '@streaming-infra-manager/common';
+
 import type { BuildTreeSharing } from './buildTreeClone.js';
 
 /** Written by the build script into every build, with the commit and how it was built. */
@@ -29,6 +31,14 @@ export interface BuildManifest {
    * filesystem refused a link. Absent on a build the build script wrote.
    */
   treeSharing?: BuildTreeSharing;
+  /**
+   * The release the build was made as, `buildLabel.ts`: the label the manager
+   * was deployed with for the bundled version, the tag on the commit for an
+   * added one. Absent on a build made with none, and on every build an older
+   * manager wrote. A build made by applying settings keeps the one of the
+   * build it was made from, as it keeps its commit and toolchain.
+   */
+  label?: string;
 }
 
 export type BuildManifestRead = { manifest: BuildManifest; problem: null } | { manifest: null; problem: string };
@@ -113,6 +123,9 @@ export function parseBuildManifestBytes(bytes: string | Buffer, manifestPath = B
       ...(record.treeSharing === 'linked' || record.treeSharing === 'copied'
         ? { treeSharing: record.treeSharing }
         : {}),
+      // A label only names the build on a page, so one that is not a label is
+      // left out rather than making the build one that cannot be deployed.
+      ...(isBuildLabel(record.label) ? { label: record.label } : {}),
     },
     problem: null,
   };

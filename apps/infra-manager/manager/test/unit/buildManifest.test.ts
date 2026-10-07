@@ -109,6 +109,22 @@ describe('parseBuildManifestBytes', () => {
     assert.deepEqual(parseBuildManifestBytes(Buffer.from(JSON.stringify(manifest))), { manifest, problem: null });
   });
 
+  it('reads the release a build was made as', async () => {
+    const { parseBuildManifestBytes } = await import('../../src/domain/versions/buildManifest.js');
+    for (const label of ['QA-build-2026-10-07', 'QA-build-2026-10-07+3', '635b4e175-dirty', 'release/2026.10']) {
+      const manifest = { ...MANIFEST, label };
+      assert.deepEqual(parseBuildManifestBytes(Buffer.from(JSON.stringify(manifest))), { manifest, problem: null });
+    }
+  });
+
+  it('leaves out a label that is not one, and keeps the build deployable', async () => {
+    const { parseBuildManifestBytes } = await import('../../src/domain/versions/buildManifest.js');
+    for (const label of ['', 'two words', '$(touch-pwned)', 'x'.repeat(97), 7, null, ['v1']]) {
+      const parsed = parseBuildManifestBytes(Buffer.from(JSON.stringify({ ...MANIFEST, label })));
+      assert.deepEqual(parsed, { manifest: MANIFEST, problem: null }, JSON.stringify(label));
+    }
+  });
+
   it('retains malformed JSON, object and field diagnostics without reading a path', async () => {
     const { parseBuildManifestBytes } = await import('../../src/domain/versions/buildManifest.js');
     for (const [bytes, problem] of [

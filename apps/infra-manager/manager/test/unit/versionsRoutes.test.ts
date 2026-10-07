@@ -16,6 +16,11 @@ import { cpSync, writeFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { afterEach, beforeEach, describe, it } from 'node:test';
 
+import type { StackVersion } from '@streaming-infra-manager/common';
+
+import { BUILD_COMPLETE_MARKER, BUILD_MANIFEST_FILE } from '../../src/domain/versions/buildManifest.js';
+import { readStackContract } from '../../src/domain/versions/stackContract.js';
+import { buildDirFor, configRootFor } from '../../src/domain/versions/stackPaths.js';
 import { leaveBuildMarkers, scratchVersionsRoot, V3_FIXTURE } from '../support/stackFixtures.js';
 import {
   nextVersionChange,
@@ -104,6 +109,36 @@ describe('GET /versions', () => {
       (answer.body as { name: string; isDefault: boolean }[]).map((row) => [row.name, row.isDefault]),
       [['bundled', true]],
     );
+  });
+
+  it("answers the release each version's current build was made as, and null where there is none", async () => {
+    const releases = async () =>
+      ((await callJson('GET', '/versions')).body as StackVersion[]).map((row) => [row.name, row.buildLabel]);
+    assert.deepEqual(await releases(), [['bundled', null]], 'a version with no build of its own carries none');
+
+    const build = buildDirFor(versionsRoot, 'bundled', PINNED_COMMIT);
+    cpSync(V3_FIXTURE, build, { recursive: true });
+    writeFileSync(
+      join(build, BUILD_MANIFEST_FILE),
+      JSON.stringify({
+        commit: PINNED_COMMIT,
+        buildId: PINNED_COMMIT,
+        builtAt: '2026-10-07T10:00:00.000Z',
+        toolchain: 'synthetic',
+        label: 'QA-build-2026-10-07',
+      }),
+    );
+    writeFileSync(join(build, BUILD_COMPLETE_MARKER), '');
+    const bundled = await app.repository.findByName('bundled');
+    assert.ok(bundled);
+    await app.repository.publish(bundled.id, {
+      buildId: PINNED_COMMIT,
+      commitSha: PINNED_COMMIT,
+      rootPath: configRootFor(versionsRoot, 'bundled'),
+      contract: readStackContract(build),
+    });
+
+    assert.deepEqual(await releases(), [['bundled', 'QA-build-2026-10-07']]);
   });
 });
 
