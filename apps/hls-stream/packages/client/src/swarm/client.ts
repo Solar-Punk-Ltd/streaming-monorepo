@@ -3,7 +3,15 @@ import type { Topic } from '@ethersphere/bee-js';
 import { GatewayClock } from '@/utils/gatewayClock';
 
 import { type AnswerKind, serverTimeOf, type SwarmAnswer } from './answers';
-import { DEFAULT_READ_TIMEOUT_MS, type ReadOptions, type SwarmProvider, type UrlUse } from './provider';
+import {
+  DEFAULT_READ_TIMEOUT_MS,
+  type ProbeResult,
+  type ReadOptions,
+  type SwarmProvider,
+  type UrlUse,
+} from './provider';
+
+export { loadUrl, type UrlLoadOptions } from './urlLoad';
 
 /** The parts of the app that read Swarm, each of which the client may send to a provider of its own. */
 const SWARM_FEATURES = ['player', 'stream-list', 'previews'] as const;
@@ -217,6 +225,11 @@ export class SwarmClient {
   /** What to add to the viewer's clock to read the gateway's. */
   clockOffsetMs(): number {
     return this.clock.offsetMs();
+  }
+
+  /** Asks the provider every feature reads from first whether it is there at all. Never rejects. */
+  probe(options?: ReadOptions): Promise<ProbeResult> {
+    return this.chosen.provider.probe(options);
   }
 
   async start(): Promise<void> {
