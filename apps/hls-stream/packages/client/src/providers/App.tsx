@@ -60,8 +60,9 @@ type AppContextState = {
   fetchAppState: () => Promise<CatalogRead>;
   /**
    * Reads the stream list's next slot once and applies it, for a watch page whose player found its
-   * ladder short. One slot and never the one after it, which is not written yet and which Bee would
-   * hide for a minute if asked early. A call while one is in flight does nothing.
+   * ladder short or that found a ladder marker while waiting on an announced stream. One slot and never
+   * the one after it, which is not written yet and which Bee would hide for a minute if asked early. A
+   * call while one is in flight does nothing.
    */
   readNextStreamListSlot: () => void;
   /** The one way the app reads Swarm, each part from its source with the order of fallbacks behind it. */
@@ -325,7 +326,7 @@ export const AppContextProvider = ({ children }: Props) => {
     void catalogReader.current
       .read(swarmRef.current.reader('stream-list'), undefined, 1)
       .then((snapshot) => setNewStreamList(toCatalogRead(source, snapshot)))
-      .catch((error: unknown) => console.warn('Could not read the stream list for a short ladder:', error))
+      .catch((error: unknown) => console.warn("Could not read the stream list's next slot:", error))
       .finally(() => {
         nextSlotRead.current = false;
       });

@@ -2,7 +2,11 @@ import { Topic } from '@ethersphere/bee-js';
 import assert from 'node:assert/strict';
 import { describe, it } from 'vitest';
 
-import { CATALOG_POLL_INTERVAL_MS, watchPageCatalogPollMs } from '../src/providers/catalogPoll';
+import {
+  CATALOG_POLL_INTERVAL_MS,
+  WAITING_PAGE_CATALOG_POLL_MS,
+  watchPageCatalogPollMs,
+} from '../src/providers/catalogPoll';
 import { catalogUpdater, StreamCatalog, toCatalogRead } from '../src/providers/catalogState';
 import { Stream, STREAM_STATUS_LIVE, STREAM_STATUS_SCHEDULED } from '../src/types/stream';
 import { CatalogFeedReader } from '../src/utils/catalogFeed';
@@ -19,8 +23,8 @@ import {
 } from '../src/utils/watchPageView';
 
 describe('when the watch page reads the catalog again', () => {
-  it('keeps reading it while the stream has not started, so the page notices when it does', () => {
-    assert.equal(watchPageCatalogPollMs(WATCH_VIEW_NOT_STARTED), CATALOG_POLL_INTERVAL_MS);
+  it('reads it once a minute while the stream has not started, so a reschedule or a cancellation reaches the page', () => {
+    assert.equal(watchPageCatalogPollMs(WATCH_VIEW_NOT_STARTED), WAITING_PAGE_CATALOG_POLL_MS);
   });
 
   it('keeps reading it while the stream it waited for is missing, so a republish reaches the page', () => {
