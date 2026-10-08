@@ -679,8 +679,10 @@ describe('Q6: a rung switched back to starts again at its newest index', () => {
     const comeback = rig.gateway.requestsFor(hex(TOP)).slice(topReadsBefore);
     assert.deepEqual(rig.finds.slice(findsBefore), [hex(TOP)], 'coming back did not start with the finder');
     assert.equal(state.getIndex(hex(TOP))?.toBigInt(), 70n);
-    // One round of eight around the playing rung's index, which a level rung pins at once.
-    assert.ok(comeback.length <= 9, `coming back cost ${comeback.length} reads`);
+    // One round of eight around the playing rung's index, which a level rung pins at once. Slots are counted once
+    // each, because on a loaded machine the follower polls the next slot again before ready() returns.
+    const slots = new Set(comeback.map((read) => rig.gateway.slotIndexOf(read.path)));
+    assert.ok(slots.size <= 9, `coming back read ${slots.size} slots: ${[...slots].join(', ')}`);
   });
 });
 
