@@ -18,21 +18,21 @@ export const MARKER_READ_DELAY_MS = 4_000;
  * newer marker says more.
  * Periods are counted on the gateway's clock, which is the viewer's plus `offsetMs`.
  */
-export class PeriodMarkers implements HeadMarkers {
+export class PeriodMarkers<T = number> implements HeadMarkers<T> {
   private nextPeriod = 0;
 
   constructor(
     private readonly clock: FollowClock,
     private readonly offsetMs: () => number,
-    /** One read of the marker of `period`: the index it names for this feed, or null. */
-    private readonly readPeriod: (period: number) => Promise<number | null>,
+    /** One read of the marker of `period`: what it says for this reader, the index it names for a feed, or null. */
+    private readonly readPeriod: (period: number) => Promise<T | null>,
   ) {}
 
   nextDueMs(): number {
     return markerPeriodStartMs(this.duePeriod()) + MARKER_READ_DELAY_MS - this.offsetMs();
   }
 
-  readNext(): Promise<number | null> {
+  readNext(): Promise<T | null> {
     const period = this.duePeriod();
     this.nextPeriod = period + 1;
     return this.readPeriod(period);

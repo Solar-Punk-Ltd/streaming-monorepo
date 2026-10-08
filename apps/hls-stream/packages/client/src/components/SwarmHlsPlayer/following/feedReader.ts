@@ -44,14 +44,14 @@ export interface FollowClock {
  * from the clock. A follower reads these while its feed is quiet, instead of asking again and again for
  * a slot that is not there, which Bee answers by skipping, for a minute, every peer it asked.
  */
-export interface HeadMarkers {
+export interface HeadMarkers<T = number> {
   /** When the next marker not read yet is worth its one ask, on the follower's clock. */
   nextDueMs(): number;
   /**
    * Reads that marker, and moves on to the one after it. The newest index it names for this feed, or
    * null when it is missing or names none. A read the gateway did not answer throws.
    */
-  readNext(): Promise<number | null>;
+  readNext(): Promise<T | null>;
 }
 
 /** Everything a follower is started with. */

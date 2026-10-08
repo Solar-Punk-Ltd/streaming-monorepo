@@ -7,7 +7,7 @@ import { afterEach, beforeEach, describe, it, vi } from 'vitest';
 
 import { FEED_STATE_STALLED, type FeedState } from '../src/components/SwarmHlsPlayer/feedState';
 import { SwarmHlsPlayer, type HlsPlayerProps } from '../src/components/SwarmHlsPlayer/SwarmHlsPlayer';
-import { MEDIA_TYPE_VIDEO } from '../src/types/stream';
+import { MEDIA_TYPE_VIDEO, type Rendition } from '../src/types/stream';
 
 /**
  * The player's two wirings that outlive, or end with, one hls.js instance, checked by mounting the
@@ -19,6 +19,12 @@ const fakes = vi.hoisted(() => {
   const unsubscribed: string[] = [];
   const detachStallReporter = vi.fn();
   return {
+    stopLadderWatch: vi.fn(),
+    watchLadderCompletion: vi.fn(
+      (_sourceUrl: string, _owner: string, _listedTopics: () => readonly string[], _onShort: () => void) =>
+        fakes.stopLadderWatch,
+    ),
+    registerLadder: vi.fn(),
     subscriptions,
     unsubscribed,
     detachStallReporter,
@@ -38,7 +44,12 @@ const fakes = vi.hoisted(() => {
 vi.mock('../src/components/SwarmHlsPlayer/CustomManifestLoader', () => ({
   CustomManifestLoader: class {},
   CustomFragmentLoader: class {},
-  manifestFetcher: { feedHealth: fakes.feedHealth, registerLadder: vi.fn(), unregisterLadder: vi.fn() },
+  manifestFetcher: {
+    feedHealth: fakes.feedHealth,
+    registerLadder: fakes.registerLadder,
+    unregisterLadder: vi.fn(),
+    watchLadderCompletion: fakes.watchLadderCompletion,
+  },
 }));
 
 vi.mock('../src/components/SwarmHlsPlayer/playbackHealth', () => ({
@@ -66,6 +77,9 @@ beforeEach(() => {
   fakes.feedHealth.subscribe.mockClear();
   fakes.feedHealth.recordPlaybackStall.mockClear();
   fakes.attachStallReporter.mockClear();
+  fakes.registerLadder.mockClear();
+  fakes.watchLadderCompletion.mockClear();
+  fakes.stopLadderWatch.mockClear();
   fakes.detachStallReporter.mockClear();
   container = document.createElement('div');
   document.body.append(container);
@@ -138,5 +152,67 @@ describe('the player component is wired to the feed state tracker', () => {
     onStall();
 
     assert.deepEqual(fakes.feedHealth.recordPlaybackStall.mock.calls, [[hexOf('stream-a')]]);
+  });
+});
+
+/**
+ * Architecture review 2026-10-08, P2 #7. A viewer who joined while only some qualities had reported
+ * holds a short entry, and the player builds its master from it once. The player watches the ladder's
+ * markers and says when one names a rung the entry lacks, so the page can read the list's next slot,
+ * and the fuller entry rebuilds the player with every quality.
+ */
+describe('the player watches its ladder markers for rungs the stream list did not name', () => {
+  const rendition = (name: string, height: number): Rendition => ({
+    name,
+    width: (height * 16) / 9,
+    height,
+    topic: `rung-${name}`,
+    bandwidth: height * 1000,
+    avgBandwidth: height * 1000,
+  });
+  const ONE = [rendition('360p', 360)];
+  const FOUR = [rendition('360p', 360), rendition('480p', 480), rendition('720p', 720), rendition('1080p', 1080)];
+  const lastWatch = () => {
+    const call = fakes.watchLadderCompletion.mock.calls.at(-1);
+    assert.ok(call, 'no ladder watch was started');
+    return { listedTopics: call[2], onShort: call[3] };
+  };
+
+  it('passes on a short entry, and once the entry names every rung it rebuilds with all four', () => {
+    const onLadderShort = vi.fn();
+    mount({ topicString: 'stream-a', renditions: ONE, onLadderShort });
+
+    assert.deepEqual(lastWatch().listedTopics(), [hexOf('rung-360p')]);
+    lastWatch().onShort();
+    assert.equal(onLadderShort.mock.calls.length, 1);
+
+    mount({ topicString: 'stream-a', renditions: FOUR, onLadderShort });
+
+    assert.equal(fakes.stopLadderWatch.mock.calls.length, 1, 'the rebuild did not stop the first watch');
+    assert.equal(lastWatch().listedTopics().length, 4);
+    const resolve = fakes.registerLadder.mock.calls.at(-1)?.[1] as () => { renditions: Rendition[] };
+    assert.deepEqual(
+      resolve().renditions.map((r) => r.name),
+      ['360p', '480p', '720p', '1080p'],
+      'the rebuilt player does not offer every quality',
+    );
+  });
+
+  /** A page may start the player on the stream's first marker before the list names any rendition. */
+  it('watches an entry naming no rendition the same way', () => {
+    const onLadderShort = vi.fn();
+    mount({ topicString: 'stream-a', onLadderShort });
+
+    assert.deepEqual(lastWatch().listedTopics(), []);
+    lastWatch().onShort();
+    assert.equal(onLadderShort.mock.calls.length, 1);
+  });
+
+  it('stops the watch when the player is torn down', () => {
+    mount({ topicString: 'stream-a', renditions: ONE });
+    act(() => root.unmount());
+    root = createRoot(container);
+
+    assert.equal(fakes.stopLadderWatch.mock.calls.length, 1);
   });
 });

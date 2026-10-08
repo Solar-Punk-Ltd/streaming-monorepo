@@ -167,8 +167,14 @@ export class CatalogFeedReader {
    * @param source The gateway's reads, which the Swarm client's stream-list reader gives. Each read has
    *   its ten second window, headers and body together, and the client keeps the gateway clock from
    *   each of its answers' `Date`, which is where the player's time markers take the time from.
+   * @param maxSlots How many slots past the one held this read may ask for. One asks only the next
+   *   slot, for a caller that knows it is written and must not ask the slot after it early.
    */
-  public async read(source: CatalogSource, signal?: AbortSignal): Promise<CatalogSnapshot | null> {
+  public async read(
+    source: CatalogSource,
+    signal?: AbortSignal,
+    maxSlots = MAX_WALK_PER_READ,
+  ): Promise<CatalogSnapshot | null> {
     // Pinned before the first await and carried through, so every write this read makes is checked
     // against the reader it started on rather than against whatever the reader is by then.
     const generation = this.generation;
@@ -183,7 +189,7 @@ export class CatalogFeedReader {
     let cursor: FeedIndex = this.index;
     let newest: CatalogSnapshot | null = null;
 
-    for (let step = 0; step < MAX_WALK_PER_READ; step++) {
+    for (let step = 0; step < Math.min(maxSlots, MAX_WALK_PER_READ); step++) {
       const request = nextFeedRequest(this.owner, this.topic, cursor);
 
       const answer = await source.readFeedEntry(this.owner, this.topic, Number(request.index.toBigInt()), { signal });

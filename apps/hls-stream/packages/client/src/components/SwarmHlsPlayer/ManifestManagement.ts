@@ -20,6 +20,8 @@ import { RequestJitter } from '@/utils/requestJitter';
 import { FEED_RETURN_WATCH_INTERVAL_MS, FeedReturnWatch, feedReturnWatchWaitMs } from './feedReturn';
 import { FeedHealthTracker, UNSERVED_POLLS_PROBE_CEILING } from './feedState';
 import { LadderFeedPoller, type LadderRung, WALL_CLOCK } from './LadderFeedPoller';
+import { watchLadderCompletion } from './ladderCompletionWatch';
+import { LadderMarkerReads } from './ladderMarkerReads';
 import { MarkerFinder } from './markerFinder';
 import { headIndexOf, type PlayerReader, retryAfterMsOf, servedText, type ServedText } from './playerReads';
 import { buildMasterPlaylist, isMasterPlaylist, masterRungs, parseSwarmUri } from './playlist';
@@ -531,6 +533,15 @@ export class ManifestFetcher {
     readSoc: (owner, identifier, options) => this.swarm.readSoc(owner, identifier, options),
   };
   private ladders = new Map<string, RegisteredLadder>();
+  /** Every marker read this fetcher's player makes, so an address is asked once between them. */
+  private readonly markerReads = new LadderMarkerReads(this.reads);
+  private readonly markers = new MarkerFinder(
+    this.reads,
+    WALL_CLOCK,
+    () => gatewayClock.offsetMs(),
+    undefined,
+    this.markerReads,
+  );
   private poller: LadderFeedPoller;
   private lastLoggedMaster = '';
 
@@ -593,8 +604,9 @@ export class ManifestFetcher {
       () => this.drawReturnWatchWaitMs(),
       {
         playheadMs: (group) => (group === null ? null : (this.playheads.get(group)?.() ?? null)),
-        finder: new MarkerFinder(this.reads, WALL_CLOCK, () => gatewayClock.offsetMs()),
-        headMarkers: (rung, clock) => rungHeadMarkers(this.reads, rung, clock, () => gatewayClock.offsetMs()),
+        finder: this.markers,
+        headMarkers: (rung, clock) =>
+          rungHeadMarkers(this.reads, rung, clock, () => gatewayClock.offsetMs(), this.markerReads),
       },
     );
   }
@@ -724,6 +736,45 @@ export class ManifestFetcher {
       this.feedHealth.recordGatewayFailure(hexTopic, retryAfterMsOf(error));
       throw error;
     }
+  }
+
+  /**
+   * Watches this source's ladder markers for rungs the stream list does not name, and calls `onShort`
+   * whenever one does, so the page reads the list's next slot once and the fuller entry rebuilds the
+   * player. At the start with the marker the start rung's search reads, so that check asks no address
+   * of its own, then with one marker per period for a bounded time, see `ladderCompletionWatch.ts`.
+   *
+   * An entry naming no rendition is watched too, since a page may start the player on the stream's
+   * first marker before the list names any. A stream with no ladder has no markers, so the watch only
+   * finds each address missing once.
+   *
+   * @param listedTopics The rungs the list names now, by hex topic, read again at every check.
+   * @returns Stops the watch.
+   */
+  watchLadderCompletion(
+    sourceUrl: string,
+    owner: string,
+    listedTopics: () => readonly string[],
+    onShort: () => void,
+  ): () => void {
+    const group = groupHexOf(sourceUrl);
+    if (group === null) {
+      return () => {};
+    }
+
+    return watchLadderCompletion({
+      reads: this.markerReads,
+      clock: WALL_CLOCK,
+      clockOffsetMs: () => gatewayClock.offsetMs(),
+      owner,
+      group: new Topic(group),
+      listedTopics,
+      onShort,
+      startNames: async () => {
+        const marker = await this.markers.markerFor(owner, group);
+        return marker === null ? null : Object.keys(marker.rungs);
+      },
+    });
   }
 
   /** The master playlist for a registered ladder, or null when this source is single-rendition. */

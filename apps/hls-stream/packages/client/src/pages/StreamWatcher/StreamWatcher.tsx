@@ -30,7 +30,7 @@ export function StreamWatcher() {
   }>();
   const [searchParams] = useSearchParams();
   const navigate = useNavigate();
-  const { streamList, isStreamListLoaded } = useAppContext();
+  const { streamList, isStreamListLoaded, readNextStreamListSlot } = useAppContext();
 
   // The ladder lives in the catalog, keyed by the primary feed the browser links to. Current
   // entries name the master, older ones the lowest rung. Waiting for the first catalog read
@@ -71,6 +71,7 @@ export function StreamWatcher() {
           enableQoeOverlay={enableQoeOverlay}
           renditions={playableRenditions(stream)}
           level={level}
+          onLadderShort={readNextStreamListSlot}
         />
       )}
       <Button variant={ButtonVariant.SECONDARY} onClick={() => handleBackButtonClick()}>

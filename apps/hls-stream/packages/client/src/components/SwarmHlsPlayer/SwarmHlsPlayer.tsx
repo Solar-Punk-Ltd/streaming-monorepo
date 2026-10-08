@@ -272,6 +272,13 @@ interface HlsPlayerProps extends React.VideoHTMLAttributes<HTMLVideoElement> {
    * in the values themselves does rebuild the player, which loses playback position.
    */
   hlsConfig?: HlsTuning;
+  /**
+   * Called when a ladder marker names a rung that `renditions` lacks, which means the entry was read
+   * before every quality had reported to the admin, or before any had. The page reads the stream list's
+   * next slot once: an entry naming more rungs rebuilds the player. At most once per marker period, for
+   * a bounded time after each build.
+   */
+  onLadderShort?: () => void;
 }
 
 /** The key both the manifest state and the feed state are held under. Null if the name is unusable. */
@@ -294,6 +301,7 @@ export const SwarmHlsPlayer: React.FC<HlsPlayerProps> = ({
   renditions,
   level,
   hlsConfig,
+  onLadderShort,
   ...videoProps
 }) => {
   const [restartTrigger, setRestartTrigger] = useState(0);
@@ -308,6 +316,8 @@ export const SwarmHlsPlayer: React.FC<HlsPlayerProps> = ({
   // it on every poll. `renditionKey` is what the effect actually reacts to.
   const renditionsRef = useRef(renditions);
   renditionsRef.current = renditions;
+  const onLadderShortRef = useRef(onLadderShort);
+  onLadderShortRef.current = onLadderShort;
 
   // Deliberately not part of the effect below, which reruns on every restart. A fatal network error
   // is what causes a restart, so a subscription torn down and rebuilt with the player would be
@@ -340,6 +350,14 @@ export const SwarmHlsPlayer: React.FC<HlsPlayerProps> = ({
         renditions: renditionsRef.current ?? ladder,
       }));
     }
+    // The list is not polled once the player is mounted, so a viewer who joined while only some
+    // qualities had reported, or none, would keep that ladder for the whole talk.
+    const stopLadderWatch = manifestFetcher.watchLadderCompletion(
+      sourceUrl,
+      owner,
+      () => (renditionsRef.current ?? []).map((rendition) => Topic.fromString(rendition.topic).toString()),
+      () => onLadderShortRef.current?.(),
+    );
 
     let hls: Hls | null = null;
 
@@ -500,6 +518,7 @@ export const SwarmHlsPlayer: React.FC<HlsPlayerProps> = ({
         : null;
 
     return () => {
+      stopLadderWatch();
       video.removeEventListener('pause', onHlsPause);
       video.removeEventListener('play', onHlsPlay);
       detachQoe?.();

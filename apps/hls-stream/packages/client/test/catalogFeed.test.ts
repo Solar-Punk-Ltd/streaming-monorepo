@@ -172,6 +172,19 @@ describe('CatalogFeedReader', () => {
     expect(urls).toHaveLength(5);
   });
 
+  /**
+   * For a page that knows the next slot is written and must not ask the one after it before it is:
+   * Bee hides an address asked early for a minute.
+   */
+  it('asks only the next slot when the read is limited to one', async () => {
+    const { urls, fetcher } = stubFetcher([respond({ headers: headerFor(7) }), respond({ text: '[{"live":true}]' })]);
+    const reader = new CatalogFeedReader(OWNER, TOPIC);
+    await reader.read(via(fetcher, 'http://gw'));
+
+    expect(await reader.read(via(fetcher, 'http://gw'), undefined, 1)).toEqual({ body: '[{"live":true}]', slot: 8n });
+    expect(urls).toHaveLength(2);
+  });
+
   it('stops walking at the bound rather than holding the page open', async () => {
     const replies = [respond({ headers: headerFor(0) })];
     for (let i = 0; i < 100; i++) {

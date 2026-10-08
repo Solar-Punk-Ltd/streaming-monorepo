@@ -1,5 +1,11 @@
 import { Topic } from '@ethersphere/bee-js';
-import { buildMasterPlaylist, type Rendition } from '@swarm-hls-stream/shared';
+import {
+  buildMasterPlaylist,
+  ladderMarkerIdentifier,
+  markerPeriodAt,
+  markerPeriodStartMs,
+  type Rendition,
+} from '@swarm-hls-stream/shared';
 import assert from 'node:assert/strict';
 import { setTimeout as sleep } from 'node:timers/promises';
 import { afterEach, beforeEach, describe, it } from 'vitest';
@@ -288,6 +294,101 @@ describe('the ladder entry points', () => {
       await fetcher.fetchSource(`${OWNER}/${SOURCE_TOPIC}`);
 
       assert.deepEqual(requested, [`feeds/${OWNER}/${hexSource}`]);
+    });
+  });
+
+  /**
+   * Architecture review 2026-10-08, P2 #7. The entry turns live after the first quality reports to the
+   * admin, and the others report a moment later, up to about 20 s when an encoder reconnects. A viewer
+   * who joins in that moment is handed an entry naming only the qualities reported so far, and the
+   * master is built from it once. The ladder's time marker names every rung that has published, so it
+   * is what says the entry was short.
+   */
+  describe('an entry that joined before every quality had reported', () => {
+    /** Answers the stub's feeds as {@link stubFetch} does, and the ladder's recent markers naming `rungs`. */
+    function stubFetchWithMarker(rungs: string[]): void {
+      stubFetch(buildMasterPlaylist(OWNER, FOUR));
+      const feeds = globalThis.fetch;
+      globalThis.fetch = (async (url: string, init?: RequestInit) => {
+        const path = url.replace(`${BEE_URL}/`, '');
+        const period = markerPeriodAt(Date.now());
+        for (const wanted of [period - 1, period - 2]) {
+          if (path.startsWith('soc/') && path.endsWith(ladderMarkerIdentifier(sourceTopic, wanted).toHex())) {
+            requested.push(path);
+            const marker = {
+              v: 1,
+              period: wanted,
+              writtenAt: markerPeriodStartMs(wanted) + 1,
+              rungs: Object.fromEntries(rungs.map((hex) => [hex, RUNG_HEAD])),
+            };
+            return new Response(JSON.stringify(marker), { status: 200 });
+          }
+        }
+        return feeds(url, init);
+      }) as typeof fetch;
+    }
+
+    /** Starts the watch on what the list names now, and stops it once the start check has answered. */
+    async function shortSaidAtStart(listed: Rendition[]): Promise<number> {
+      let said = 0;
+      const stop = fetcher.watchLadderCompletion(
+        `${OWNER}/${SOURCE_TOPIC}`,
+        OWNER,
+        () => listed.map((r) => Topic.fromString(r.topic).toString()),
+        () => said++,
+      );
+      await settle();
+      stop();
+      return said;
+    }
+
+    it('says the entry is short at the start when the marker names rungs it lacks', async () => {
+      stubFetchWithMarker(FOUR_TOPICS);
+
+      assert.equal(await shortSaidAtStart([FOUR[0]]), 1);
+    });
+
+    /**
+     * A page may start the player on the stream's first marker before the list names any rendition,
+     * and such an entry is short in the same way.
+     */
+    it('says an entry naming no rendition is short when the marker names rungs', async () => {
+      stubFetchWithMarker(FOUR_TOPICS);
+
+      assert.equal(await shortSaidAtStart([]), 1);
+    });
+
+    it('reads the marker once for the start check and for the start rung together', async () => {
+      const source = `${OWNER}/${SOURCE_TOPIC}`;
+      stubFetchWithMarker(FOUR_TOPICS);
+      fetcher.registerLadder(source, () => ({ owner: OWNER, renditions: [FOUR[0]] }));
+      await fetcher.fetchSource(source);
+
+      const stop = fetcher.watchLadderCompletion(
+        source,
+        OWNER,
+        () => [FOUR_TOPICS[0]],
+        () => {},
+      );
+      await fetcher.fetch(`${OWNER}/${FOUR[0].topic}`);
+      stop();
+
+      // A rung that has caught up waits on later markers, so only the reads before its first slot count.
+      const firstRungRead = requested.findIndex((path) => rungOf(path) !== null);
+      const atStart = requested.slice(0, firstRungRead).filter((path) => path.startsWith('soc/'));
+      assert.equal(atStart.length, 1, `the marker was read ${atStart.length} times before the start rung`);
+    });
+
+    it('says nothing when the entry already has every rung the marker names', async () => {
+      stubFetchWithMarker(FOUR_TOPICS);
+
+      assert.equal(await shortSaidAtStart(FOUR), 0);
+    });
+
+    it('says nothing when the stream has no marker, so a stream without them plays as before', async () => {
+      stubFetch(buildMasterPlaylist(OWNER, FOUR));
+
+      assert.equal(await shortSaidAtStart([]), 0);
     });
   });
 
