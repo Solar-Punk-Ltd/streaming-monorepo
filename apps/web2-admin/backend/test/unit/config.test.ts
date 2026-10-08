@@ -13,7 +13,7 @@
 import assert from 'node:assert/strict';
 import { randomBytes } from 'node:crypto';
 import { readFileSync } from 'node:fs';
-import { describe, it } from 'node:test';
+import { after, describe, it } from 'node:test';
 
 import { versionFrom } from '../../src/utils/buildVersion.js';
 
@@ -111,10 +111,18 @@ describe('FEED_PRIVATE_KEY', () => {
 
 const FUNDING_KEYS = ['BRAND_WALLET_SECRET', 'MANAGER_FUNDING_URL', 'MANAGER_FUNDING_TOKEN'] as const;
 
+/**
+ * None of the funding keys set, as an install without funding. Each funding suite ends with it, because every suite
+ * after them loads the config with the required keys alone, and a funding address left set refuses that load.
+ */
+function clearFunding(): void {
+  for (const key of FUNDING_KEYS) delete process.env[key];
+}
+
 /** The required keys, and of the funding keys exactly `keys`, the others unset. */
 function withFunding(keys: Partial<Record<(typeof FUNDING_KEYS)[number], string>>): void {
   Object.assign(process.env, REQUIRED);
-  for (const key of FUNDING_KEYS) delete process.env[key];
+  clearFunding();
   Object.assign(process.env, keys);
 }
 
@@ -134,6 +142,8 @@ const SECRET = randomBytes(32).toString('hex');
 const TOKEN = 'config-test-funding-token-of-more-than-thirty-two-characters';
 
 describe('BRAND_WALLET_SECRET', () => {
+  after(clearFunding);
+
   it('is null when unset or empty: no brand wallet is created', async () => {
     for (const [tag, keys] of [
       ['secret-unset', {}],
@@ -182,6 +192,8 @@ describe('BRAND_WALLET_SECRET', () => {
 });
 
 describe('MANAGER_FUNDING_URL and MANAGER_FUNDING_TOKEN', () => {
+  after(clearFunding);
+
   it('leave funding not set up when neither is set', async () => {
     withFunding({ MANAGER_FUNDING_URL: '', MANAGER_FUNDING_TOKEN: ' ' });
     const config = await loadConfig('funding-unset');
