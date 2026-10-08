@@ -12,10 +12,9 @@ import type { PathResponse } from './helpers/playerReader';
 /**
  * That the catalog is followed by walking rather than by resolving its head on every poll.
  *
- * The catalog is polled every five seconds forever, gains a slot per broadcast lifecycle event, and
+ * The catalog is polled for as long as a page is open, gains a slot per broadcast lifecycle event, and
  * is never reset. Resolving the head each time costs a lookup that grows with the feed: measured at
- * about 1s on a one slot feed and 5s at a thousand, against 4ms for a slot read by address. Past a
- * few hundred events the poll no longer fits inside its own interval.
+ * about 1s on a one slot feed and 5s at a thousand, against 4ms for a slot read by address.
  *
  * These drive the reader against a stubbed fetcher and assert on the URLs it asks for, because the
  * whole change is *which request is made*, and a test that only checked the returned body would pass

@@ -19,8 +19,8 @@ import type { PathResponse } from './helpers/playerReader';
 /**
  * ⛔ The browse page's catalog poll over time, through the real provider, SWR and catalog reader.
  *
- * The client promises to read the catalog again every five seconds, so a stream published, gone live
- * or unpublished shows on an open page without a reload. QA saw the opposite: changes reached an open
+ * The client promises to read the catalog again once a minute, so a stream published, gone live or
+ * unpublished shows on an open page without a reload. QA saw the opposite: changes reached an open
  * page only after a reload. One failed read was enough. SWR stops its refresh timer while its cache
  * holds an error and leaves the next read to `onErrorRetry`, whose default backs off exponentially,
  * and the catalog reader turned a slot read that timed out or was refused into exactly that error.
@@ -101,7 +101,7 @@ function gateway({
   failingSlots?: number;
   failure: Failure;
 }) {
-  const state = { failingHeads, failingSlots, lastFailureAt: -1 };
+  const state = { failingHeads, failingSlots, lastFailureAt: -1, unwrittenAsksAt: [] as number[] };
   const nextSlot = pathOfSlotAfter(HEAD_SLOT);
   const afterNext = pathOfSlotAfter(HEAD_SLOT + 1);
 
@@ -136,6 +136,7 @@ function gateway({
       return answered(200, [wentLive]);
     }
     if (url.endsWith(afterNext)) {
+      state.unwrittenAsksAt.push(Date.now());
       return NOT_WRITTEN_YET;
     }
     throw new Error(`the reader asked for a slot this feed does not hold: ${url}`);
@@ -227,7 +228,7 @@ describe('when a catalog read fails on an open page', () => {
       await advanceUntil(() => bee.lastFailureAt >= 0, 2 * CATALOG_POLL_INTERVAL_MS + DEFAULT_READ_TIMEOUT_MS + 1_000);
       assert.ok(bee.lastFailureAt >= 0, 'the slot read never failed');
 
-      const shownAt = await advanceUntil(() => shown() === STREAM_STATUS_LIVE, 120_000);
+      const shownAt = await advanceUntil(() => shown() === STREAM_STATUS_LIVE, 2 * CATALOG_POLL_INTERVAL_MS);
 
       assert.notEqual(shownAt, null, 'the stream gone live never reached the page');
       const late = (shownAt ?? 0) - bee.lastFailureAt;
@@ -244,10 +245,31 @@ describe('when a catalog read fails on an open page', () => {
     const bee = gateway({ failingHeads: 4, failure: 'refused' });
     mount();
 
-    const shownAt = await advanceUntil(() => shown().length > 0, 300_000);
+    const shownAt = await advanceUntil(() => shown().length > 0, 6 * CATALOG_POLL_INTERVAL_MS);
 
     assert.notEqual(shownAt, null, 'the catalog never reached the page');
     const late = (shownAt ?? 0) - bee.lastFailureAt;
     assert.ok(late <= NEXT_POLL_MS, `the page showed the catalog ${late}ms after the last failure`);
+  });
+});
+
+/**
+ * Bee skips each peer it asked for an address not written yet, for a minute. Every poll after the
+ * newest slot asks the slot after it, which is not written until the list changes, so each poll is
+ * one such early ask, and a page asking more than once a minute keeps its node's peers skipped for
+ * the slot the next change lands in.
+ */
+describe('an open browse page with nothing new on the list', () => {
+  it('keeps asking for the next slot, at most once a minute', async () => {
+    const bee = gateway({ failure: 'refused' });
+    mount();
+
+    await advanceUntil(() => false, 4 * 60_000);
+
+    assert.ok(bee.unwrittenAsksAt.length > 1, 'an open page stopped reading the list');
+    const gaps = bee.unwrittenAsksAt.slice(1).map((atMs, i) => atMs - bee.unwrittenAsksAt[i]);
+    for (const gap of gaps) {
+      assert.ok(gap >= 60_000, `the next slot was asked again after ${gap}ms`);
+    }
   });
 });

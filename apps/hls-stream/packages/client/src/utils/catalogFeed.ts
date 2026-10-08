@@ -87,11 +87,11 @@ function isNothingNewYet(answer: FailedAnswer): boolean {
 /**
  * Follows the app catalog feed by walking slots rather than resolving its head on every poll.
  *
- * The catalog is polled every five seconds forever and gains a slot per broadcast lifecycle event,
+ * The catalog is polled for as long as a page is open and gains a slot per broadcast lifecycle event,
  * and it is never reset. Resolving the head each time costs a lookup that gets slower as the feed
  * grows: measured on this deployment at about 1s on a one slot feed, 4s at twenty, and 5s at a
- * thousand, against **4ms** for a slot read by explicit address. Past a few hundred events the poll
- * no longer fits inside its own interval and the catalog is never not in flight.
+ * thousand, against **4ms** for a slot read by explicit address, a cost every poll of every open page
+ * would pay.
  *
  * So the head is resolved **once**, on the first read, and every read after that asks for the slot
  * after the one it holds. That is the same thing the player does, through the same shared helper, and
