@@ -83,12 +83,15 @@ export function batchGroups(view: Inventory): BatchGroup[] {
 
 /**
  * Every batch once, in the order the page lists them. A batch listed twice, by a node pool two stages share, is ticked
- * in both places and counted and asked for once, for the node that lists it first.
+ * in both places and counted and asked for once, for the first listing that can take an operation, or the first of all
+ * while none can: a listing whose node could not be read about the batch never hides one whose node could.
  */
 export function allBatchRows(view: Inventory): BatchRow[] {
   const byId = new Map<string, BatchRow>();
   for (const row of batchGroups(view).flatMap((group) => group.rows)) {
-    if (!byId.has(row.batch.batchId)) byId.set(row.batch.batchId, row);
+    const kept = byId.get(row.batch.batchId);
+    // A batch keeps the place it is first listed in, whichever listing it is kept for.
+    if (!kept || (!operableBatch(kept.batch) && operableBatch(row.batch))) byId.set(row.batch.batchId, row);
   }
   return [...byId.values()];
 }
