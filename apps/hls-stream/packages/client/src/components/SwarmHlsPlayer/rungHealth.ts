@@ -109,6 +109,7 @@ export function attachActiveRungFollower(
     if (rung !== null) {
       const loading = rungOf(hls.loadLevel);
       followOnly(rung, loading === rung ? null : loading);
+      forgetUnfollowedPlaylists(hls, [data.level, hls.loadLevel]);
     }
   };
 
@@ -119,6 +120,7 @@ export function attachActiveRungFollower(
     const rung = data.level === hls.currentLevel ? rungOf(data.level) : null;
     if (rung !== null) {
       followOnly(rung, null);
+      forgetUnfollowedPlaylists(hls, [data.level]);
     }
   };
 
@@ -196,6 +198,19 @@ export function attachRungFailover(hls: Hls, feedHealth: FeedHealthTracker): () 
       forgetEarlierPlaylist(hls, target);
       hls.nextLoadLevel = target;
       forgetLastAppendedFragment(hls);
+    }
+  });
+}
+
+/**
+ * Drops what hls.js holds for every level the poller has just stopped following, which is every level but
+ * the ones named. A switch back to one of them then finds no playlist and places the new one by date, as
+ * {@link forgetEarlierPlaylist} explains.
+ */
+function forgetUnfollowedPlaylists(hls: Hls, followed: readonly number[]): void {
+  hls.levels.forEach((_level, index) => {
+    if (!followed.includes(index)) {
+      forgetEarlierPlaylist(hls, index);
     }
   });
 }

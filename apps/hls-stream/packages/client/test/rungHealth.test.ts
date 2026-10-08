@@ -477,6 +477,52 @@ describe('telling the poller which rung the player now plays', () => {
     ]);
   });
 
+  /**
+   * The poller forgets the playlist of every rung it stops following and starts a new one from the rung's newest
+   * window when it follows it again. hls.js keeps the old one on the level and places the new one against it by
+   * counting sequence numbers at the target duration, which is wrong by every short segment and gap in between, so
+   * an ABR switch back up jumped or met a hole. A level holding no playlist is placed by date instead.
+   */
+  it('forgets the playlists of the rungs the poller stops following, so a switch back places them by date', () => {
+    const player = makeLadderPlayer();
+    attachActiveRungFollower(player.hls, () => {});
+
+    player.setLoadLevel(2);
+    player.switchTo(2);
+
+    assert.notEqual(player.playlistHeld(480), undefined, 'the playing rung lost its playlist');
+    assert.deepEqual(
+      [1080, 720, 360].map((height) => player.playlistHeld(height)),
+      [undefined, undefined, undefined],
+      'a rung the poller stopped following kept a playlist hls.js would align the next one against',
+    );
+  });
+
+  it('keeps the playlist of the level hls.js is loading while a switch is under way', () => {
+    const player = makeLadderPlayer();
+    attachActiveRungFollower(player.hls, () => {});
+
+    player.setLoadLevel(3);
+    player.switchTo(0);
+
+    assert.notEqual(player.playlistHeld(1080), undefined, 'the playing rung lost its playlist');
+    assert.notEqual(player.playlistHeld(360), undefined, 'the switch target lost its playlist');
+    assert.equal(player.playlistHeld(720), undefined);
+  });
+
+  it('forgets the playlist of a switch taken back before it played', () => {
+    const player = makeLadderPlayer();
+    attachActiveRungFollower(player.hls, () => {});
+    player.startLoading(0);
+    player.switchTo(0);
+
+    player.startLoading(2);
+    player.startLoading(0);
+
+    assert.equal(player.playlistHeld(480), undefined, 'the rung asked for and abandoned kept its playlist');
+    assert.notEqual(player.playlistHeld(1080), undefined, 'the playing rung lost its playlist');
+  });
+
   it('names nothing for a level index past the ladder, and nothing once torn down', () => {
     const player = makeLadderPlayer();
     const followed: string[] = [];
