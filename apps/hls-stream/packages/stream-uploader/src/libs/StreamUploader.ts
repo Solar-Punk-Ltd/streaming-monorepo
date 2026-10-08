@@ -856,7 +856,7 @@ export class StreamUploader {
             this.ladderRecordingReport(announced, announced.masterIndex),
             'so the recording is in the feed and the admin does not know it, which the recovery entry lets the next boot retry',
           ),
-        );
+        ).catch((error: unknown) => this.letGoOfADeletedStream(error));
         // ⛔⛔⛔ After the report and only when the ladder really flipped, which is the same rule the
         // standalone halves of this method both state at length: written earlier it announces a flip
         // the admin has not taken yet, and written unconditionally a resumed finalize announces a
@@ -1247,7 +1247,8 @@ export class StreamUploader {
    * entry was recovered at every uploader start, held for the reconnect window and refused again, each
    * time costing a minute and a wrong active stream count. The recording already in this stream's feed
    * stays there, so all that is lost is a report nothing would ever accept. Reached from a ladder rung's
-   * rendition report and from a single rendition's `vod` state report, whichever names the recording.
+   * rendition report, from the `vod` state report of the rung whose finalize finished the ladder, and
+   * from a single rendition's `vod` state report, whichever names the recording.
    *
    * Rethrows either way, so the stop still reads as failed: this stream did end without its recording
    * being named anywhere.

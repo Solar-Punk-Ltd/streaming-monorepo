@@ -35,8 +35,10 @@ import {
   AdminStateReport,
   STATE_REPORT_ACCEPTED,
   STATE_REPORT_FAILED,
+  STATE_REPORT_STREAM_GONE,
   StateReportOutcome,
 } from '../src/libs/AdminApiClient.js';
+import { AdminStreamGoneError } from '../src/libs/AdminStreamGoneError.js';
 import { LadderRegistry, RenditionAnnouncement } from '../src/libs/LadderRegistry.js';
 import { Logger } from '../src/libs/Logger.js';
 import { StreamUploader } from '../src/libs/StreamUploader.js';
@@ -765,6 +767,8 @@ describe('a rung of a declared ladder', () => {
     delivered: string[];
     /** Every ladder group the registry was told its flip's vod report did not go through for. */
     notReported: string[];
+    /** Every stream id whose recovery entry was removed, in order. */
+    removedEntries: string[];
   }
 
   interface LadderSessionOptions {
@@ -790,6 +794,7 @@ describe('a rung of a declared ladder', () => {
     const unfinished: Upsert[] = [];
     const delivered: string[] = [];
     const notReported: string[] = [];
+    const removedEntries: string[] = [];
 
     const bee = makeFakeBee({
       uploadPayload: async (index, payload) => {
@@ -843,7 +848,7 @@ describe('a rung of a declared ladder', () => {
         },
       }),
       ladderRegistry,
-      recoveryStore: makeFakeRecoveryStore(),
+      recoveryStore: makeFakeRecoveryStore({ remove: (streamId: string) => removedEntries.push(streamId) }),
       streamKey: TEST_STREAM_KEY,
       redundancyLevel: 0,
       streamId: `${STREAM_ID}_720p`,
@@ -856,7 +861,17 @@ describe('a rung of a declared ladder', () => {
       catalogAnnounceRetryMs: options.catalogAnnounceRetryMs,
     });
 
-    return { uploader, published, catalogEntries, reports, upserts, unfinished, delivered, notReported };
+    return {
+      uploader,
+      published,
+      catalogEntries,
+      reports,
+      upserts,
+      unfinished,
+      delivered,
+      notReported,
+      removedEntries,
+    };
   }
 
   /**
@@ -994,6 +1009,26 @@ describe('a rung of a declared ladder', () => {
     await assert.rejects(() => session.uploader.notifyStop(), /admin API/);
 
     assert.deepEqual(session.notReported, [DECLARED_TOPIC]);
+  });
+
+  /**
+   * The last rung's finalize finishes the ladder, and the stream is deleted on the admin before the vod
+   * report naming the recording lands. That refusal never heals, so the entry kept for it would be
+   * recovered and refused at every start.
+   */
+  it('drops its recovery entry when the vod report that finishes the ladder meets a deleted stream', async () => {
+    const session = newLadderSession({
+      announce: (upsert) =>
+        upsert.rendition.index === undefined
+          ? { masterIndex: 0, flippedToFinished: false, duration: null }
+          : { masterIndex: 4, flippedToFinished: true, duration: 12 },
+      reportOutcome: (report) => (report.state === ADMIN_STATE_VOD ? STATE_REPORT_STREAM_GONE : STATE_REPORT_ACCEPTED),
+    });
+
+    await feedOneSegment(session.uploader, 0);
+    await assert.rejects(() => session.uploader.notifyStop(), AdminStreamGoneError);
+
+    assert.deepEqual(session.removedEntries, [`${STREAM_ID}_720p`], 'a deleted stream′s entry was kept for every boot');
   });
 
   it('keeps the flip when its vod report was delivered', async () => {

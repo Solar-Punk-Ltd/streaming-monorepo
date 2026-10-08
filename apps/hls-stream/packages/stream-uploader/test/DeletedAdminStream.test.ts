@@ -257,6 +257,84 @@ describe('a single-rendition broadcast whose stream the admin no longer knows', 
 });
 
 /**
+ * The last rung's finalize finishes the ladder, and the `vod` report that names the recording is the
+ * one the admin refuses because the stream was deleted in the admin at that moment. The three rungs
+ * before it finalized cleanly and gave their entries up, so this rung's entry is the only one left.
+ */
+describe('a ladder whose stream the admin deletes as its last rung reports the recording', () => {
+  /** An admin that merges every rung, flips the ladder when all of them carry an index, and refuses the vod report. */
+  function adminDeletingAtTheVodReport(): FakeAdmin {
+    const states: AdminStateReport[] = [];
+    const rungs = new Set<string>();
+    const held = new Map<string, Rendition>();
+    const isFinished = () => held.size === RUNGS.length && [...held.values()].every((r) => r.index !== undefined);
+
+    const fetcher = (async (input: string | URL | Request, init?: RequestInit) => {
+      const body = JSON.parse(String(init?.body)) as unknown;
+      if (String(input).endsWith('/state')) {
+        const report = body as AdminStateReport;
+        if (report.state !== ADMIN_STATE_LIVE) {
+          return new Response(JSON.stringify(STREAM_DELETED.body), { status: STREAM_DELETED.status });
+        }
+        states.push(report);
+        return new Response('{}', { status: 200 });
+      }
+      const rendition = body as Rendition;
+      const wasFinished = isFinished();
+      rungs.add(rendition.name);
+      held.set(rendition.name, rendition);
+      const finished = isFinished();
+      return new Response(
+        JSON.stringify({
+          stream: { id: DECLARED.id, status: ADMIN_STATE_LIVE },
+          renditions: [...held.values()],
+          ladder: { finished, flippedToFinished: finished && !wasFinished, duration: finished ? 2 : null },
+          feed: { index: held.size },
+        }),
+        { status: 200 },
+      );
+    }) as typeof globalThis.fetch;
+
+    return {
+      client: new AdminApiClient({ baseUrl: ADMIN_URL, token: ADMIN_TOKEN, fetcher, sleep: async () => {} }),
+      states,
+      rungs,
+      refusedRenditions: [],
+      refuseWith: () => {},
+    };
+  }
+
+  it('lets the last rung′s recovery entry go when that vod report meets stream_not_found', async () => {
+    const store = newStore();
+    const admin = adminDeletingAtTheVodReport();
+    const orch = adminOrchestrator(admin, store, { feedHead: () => null });
+    try {
+      for (const streamId of LADDER.streamIds) {
+        orch.startStream(streamId, MEDIA_TYPE_VIDEO, undefined, DECLARED);
+      }
+      for (const streamId of LADDER.streamIds) {
+        orch.handleSegment(streamId, 0, 2, Buffer.from(`${streamId}-segment-0`));
+      }
+      await waitFor(() => LADDER.isUp(admin) && store.listActive().length === RUNGS.length, SETTLE_CEILING_MS);
+
+      for (const streamId of LADDER.streamIds) {
+        await orch.stopStream(streamId);
+      }
+      const last = LADDER.streamIds.at(-1)!;
+      assert.equal(
+        orch.getStreamStatus(last).state,
+        STREAM_LIFECYCLE_FAILED,
+        'the vod report was refused, so the last finalize was supposed to fail and nothing here is tested',
+      );
+    } finally {
+      await orch.cleanup();
+    }
+
+    assert.deepEqual(store.listActive(), [], 'a deleted stream′s last entry was kept to be refused at every boot');
+  });
+});
+
+/**
  * ⛔⛔ **Measured live 2026-10-08 on the test stack, after the two fixes above were deployed.** The deleted
  * stream's 1080p entry recovered at boot and its finalize failed before any rendition report, because the
  * rung could not tell whether it had published its recording before the crash. The orchestrator then
