@@ -1,4 +1,4 @@
-import { FeedEntry, FollowContext, SEGMENT_MS } from './feedReader';
+import { FeedEntry, FollowContext, HeadMarkers, SEGMENT_MS } from './feedReader';
 import { pollsTriggerFires, probeAhead, RefusedSlotTrigger } from './probeAhead';
 
 interface FollowPredictedOptions {
@@ -14,6 +14,12 @@ interface FollowPredictedOptions {
   /** The wait after the last ask the budget allows, doubled after every further miss up to `maxBackoffMs`. */
   readonly firstBackoffMs: number;
   readonly maxBackoffMs: number;
+  /**
+   * The most asks one slot takes when the feed has markers. Past it the publisher has gone quiet, and
+   * the follower waits on the markers alone. A few more than the early-ask budget, so a slot a few
+   * seconds late in steady play is still found by asking.
+   */
+  readonly slotAsksWithMarkers: number;
   readonly trigger: RefusedSlotTrigger;
 }
 
@@ -23,6 +29,7 @@ export const PREDICTED_DEFAULTS: FollowPredictedOptions = {
   earlyAskBudget: 3,
   firstBackoffMs: SEGMENT_MS,
   maxBackoffMs: 4_000,
+  slotAsksWithMarkers: 5,
   trigger: { kind: 'time', lateMs: 2 * SEGMENT_MS },
 };
 
@@ -81,6 +88,14 @@ interface Ask {
  * or stalled publisher cannot pile early asks onto one address. A slot that is late is looked past by
  * one, once when it is `lateMs` late and again on every backoff turn, in case the node is refusing it
  * while the publisher has moved on.
+ *
+ * ⛔ **A feed with markers stops asking a slot that does not come.** Bee skips, for a minute, every
+ * peer it asked for an address not written yet, and once all are skipped it answers not found at
+ * once even after the slot is written. Measured on 2026-10-08: a 21 s broadcaster outage left the
+ * picture frozen for 72 s, about a minute of it from the follower's own asks for the next slot. So
+ * after `slotAsksWithMarkers` asks the follower reads the feed's markers instead, each once when it is
+ * due, and reads the slot a marker names once that slot is past the one it was waiting for. That slot
+ * had few early asks if any, and the playlist it holds carries the segments of the slots it jumps.
  */
 export async function followPredicted(
   context: FollowContext,
@@ -156,6 +171,11 @@ export async function followPredicted(
         }
       }
 
+      if (context.markers !== undefined && asks.length >= options.slotAsksWithMarkers) {
+        found = await waitOutQuietFeed(context, context.markers, next);
+        break;
+      }
+
       if (asks.length >= options.earlyAskBudget) {
         if (kind === 'backoff') {
           backoffMs = Math.min(options.maxBackoffMs, backoffMs * 2);
@@ -199,6 +219,42 @@ function learn(asks: readonly Ask[], foundStep: number, firstLag: TrackedLag, se
   if (secondLag.valueMs < firstLag.valueMs + MIN_RETRY_GAP_MS) {
     secondLag.valueMs = firstLag.valueMs + MIN_RETRY_GAP_MS;
   }
+}
+
+/**
+ * Waits for the marker that shows the feed past `next`, and reads the slot it names. A turn without a
+ * marker to go by asks the slot itself once, as a follower without markers would but less often.
+ *
+ * @returns The slot found, or null once the follower is stopped.
+ */
+async function waitOutQuietFeed(context: FollowContext, markers: HeadMarkers, next: number): Promise<FeedEntry | null> {
+  const { reader, isStopped } = context;
+  while (!isStopped()) {
+    await sleepUntil(context, markers.nextDueMs());
+    if (isStopped()) {
+      return null;
+    }
+    const head = await markers.readNext();
+    if (isStopped()) {
+      return null;
+    }
+    if (head === null) {
+      const read = await reader.read(next);
+      if (read.found) {
+        return read.entry;
+      }
+      const past = await probeAhead(reader, next, LOOK_PAST);
+      if (past !== null) {
+        return past;
+      }
+    } else if (head >= next) {
+      const read = await reader.read(head);
+      if (read.found) {
+        return read.entry;
+      }
+    }
+  }
+  return null;
 }
 
 function lateMsOf(trigger: RefusedSlotTrigger): number {

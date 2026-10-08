@@ -24,6 +24,7 @@ import { MarkerFinder } from './markerFinder';
 import { headIndexOf, type PlayerReader, retryAfterMsOf, servedText, type ServedText } from './playerReads';
 import { buildMasterPlaylist, isMasterPlaylist, masterRungs, parseSwarmUri } from './playlist';
 import { isSlotNotWrittenYet, ManifestFetchError, probePastRefusal, shouldProbePastRefusal } from './refusedSlot';
+import { rungHeadMarkers } from './rungHeadMarkers';
 
 // The parser and the segment shape now live beside the tags the uploader builds with, so the two
 // halves of the manifest contract cannot drift apart. Re-exported because the player's own modules
@@ -581,7 +582,8 @@ export class ManifestFetcher {
     // computes its backoff through the same jitter, so a ladder outage records and paces exactly as
     // the single-rendition path does rather than polling a dead gateway flat. A finished rung's watch
     // draws its waits through that jitter too, as the single rendition's does. A rung's newest index is
-    // found from the ladder's time marker, on the clock the stream list's answers corrected.
+    // found from the ladder's time marker, on the clock the stream list's answers corrected, and a rung
+    // gone quiet waits on the same markers rather than asking for its next slot.
     this.poller = new LadderFeedPoller(
       stateManager,
       this.reads,
@@ -592,6 +594,7 @@ export class ManifestFetcher {
       {
         playheadMs: (group) => (group === null ? null : (this.playheads.get(group)?.() ?? null)),
         finder: new MarkerFinder(this.reads, WALL_CLOCK, () => gatewayClock.offsetMs()),
+        headMarkers: (rung, clock) => rungHeadMarkers(this.reads, rung, clock, () => gatewayClock.offsetMs()),
       },
     );
   }

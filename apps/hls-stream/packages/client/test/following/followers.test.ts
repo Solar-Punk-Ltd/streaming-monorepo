@@ -3,6 +3,8 @@ import { describe, it } from 'vitest';
 
 import type { FeedEntry, FollowContext } from '../../src/components/SwarmHlsPlayer/following/feedReader';
 import { followPredicted } from '../../src/components/SwarmHlsPlayer/following/followPredicted';
+import { MARKER_READ_DELAY_MS, PeriodMarkers } from '../../src/components/SwarmHlsPlayer/following/headMarkers';
+import { MARKER_PERIOD_SECONDS, markerPeriodStartMs } from '@swarm-hls-stream/shared';
 
 import { followAfterSegment } from '../feedModel/followAfterSegment';
 import { followImmediately } from '../feedModel/followImmediately';
@@ -108,5 +110,82 @@ describe('the predicted follower', () => {
       `gaps ${gaps.join(', ')}`,
     );
     assert.ok(times.length <= 35, `${times.length} asks in two minutes`);
+  });
+});
+
+/** When the uploader writes a period's marker, and how long until another node serves it. */
+const MARKER_WRITE_DELAY_MS = 250;
+const MARKER_SERVED_AFTER_MS = 1_500;
+
+describe('the predicted follower through an outage', () => {
+  // The publisher stops after index 40, whose slot is readable at 80.9 s, and comes back at 100.5 s,
+  // twenty seconds late. The node gives up on an address after three early asks, for a minute.
+  const LAST_BEFORE = 40;
+  const BACK_AT_MS = 100_500;
+  const LAG_MS = 900;
+  const readableAtMs = (index: number) =>
+    index <= LAST_BEFORE ? index * 2_000 + LAG_MS : BACK_AT_MS + (index - LAST_BEFORE - 1) * 2_000;
+
+  function outageFeed(time: VirtualTime): TimedFeed {
+    return new TimedFeed(time, {
+      readableAtMs,
+      segmentEndMs: (index) => readableAtMs(index) - LAG_MS,
+      roundTripMs: 650,
+      skipList: { peers: 3, skipMs: 60_000 },
+    });
+  }
+
+  /** The uploader's markers, which it keeps writing through the outage, each naming the newest index at its write. */
+  function markersOf(time: VirtualTime, feed: TimedFeed, reads: Map<number, number>): PeriodMarkers {
+    return new PeriodMarkers(
+      time.clock(),
+      () => 0,
+      async (period) => {
+        reads.set(period, (reads.get(period) ?? 0) + 1);
+        const askedAtMs = time.trueNowMs;
+        await time.delay(650);
+        const writtenAtMs = markerPeriodStartMs(period) + MARKER_WRITE_DELAY_MS;
+        return askedAtMs < writtenAtMs + MARKER_SERVED_AFTER_MS ? null : feed.newestAt(writtenAtMs);
+      },
+    );
+  }
+
+  it('is back within about one marker period of the publisher, where asking the next slot costs a minute', async () => {
+    const time = new VirtualTime();
+    const feed = outageFeed(time);
+    const markerReads = new Map<number, number>();
+    await time.runUntil(61_000);
+    const newest = feed.newestAt(61_000);
+    const found: { index: number; atMs: number }[] = [];
+    let stopped = false;
+    void followPredicted({
+      reader: feed,
+      clock: time.clock(),
+      from: { index: newest, newestSegmentEndMs: readableAtMs(newest) - LAG_MS },
+      onEntry: (entry) => found.push({ index: entry.index, atMs: time.trueNowMs }),
+      isStopped: () => stopped,
+      markers: markersOf(time, feed, markerReads),
+    });
+    await time.runUntil(200_000);
+    stopped = true;
+
+    const back = found.find((entry) => entry.index > LAST_BEFORE);
+    assert.ok(back, 'never found a slot after the outage');
+    const waitedMs = back.atMs - BACK_AT_MS;
+    assert.ok(
+      waitedMs <= MARKER_PERIOD_SECONDS * 1_000 + MARKER_READ_DELAY_MS + 2_000,
+      `back ${waitedMs} ms after the publisher, at index ${back.index}`,
+    );
+    for (const index of [LAST_BEFORE + 1, LAST_BEFORE + 2]) {
+      assert.ok(
+        (feed.earlyAsks.get(index) ?? 0) <= 5,
+        `index ${index} was asked early ${feed.earlyAsks.get(index)} times`,
+      );
+    }
+    for (const [period, reads] of markerReads) {
+      assert.equal(reads, 1, `the marker of period ${period} was read ${reads} times`);
+    }
+    const after = found.filter((entry) => entry.index > back.index);
+    assert.ok(after.length >= 30, `only ${after.length} slots followed after the outage`);
   });
 });
