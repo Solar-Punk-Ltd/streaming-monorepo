@@ -80,6 +80,13 @@ const MB = 1024 * 1024;
 export const LIVE_SYNC_DURATION_S = 6;
 
 /**
+ * Segments behind the live edge the player aims at. Three, which is {@link LIVE_SYNC_DURATION_S} at
+ * the event's 2 s segment, and that value is the floor: below it the measured arrivals above are no
+ * longer covered, whatever the segment length.
+ */
+const LIVE_SYNC_SEGMENTS = 3;
+
+/**
  * The latency at which hls.js stops trying to recover gradually and seeks to the live edge instead.
  *
  * hls.js refuses a value at or below {@link LIVE_SYNC_DURATION_S}, throwing from the constructor, so
@@ -95,6 +102,25 @@ export const LIVE_SYNC_DURATION_S = 6;
  * side does not control.
  */
 export const LIVE_MAX_LATENCY_DURATION_S = 2 * LIVE_SYNC_DURATION_S;
+
+/** The live target and catch-up limit hls.js works with. */
+interface LiveLatency {
+  liveSyncDuration: number;
+  liveMaxLatencyDuration: number;
+}
+
+/**
+ * The live target for a stage cutting segments of `segmentMs`: three segments behind the live edge,
+ * never under {@link LIVE_SYNC_DURATION_S}, and the catch-up limit twice that, for the reason
+ * {@link LIVE_MAX_LATENCY_DURATION_S} gives. A length not known yet answers the floor.
+ */
+export function liveLatencyFor(segmentMs: number | null | undefined): LiveLatency {
+  const known = segmentMs != null && Number.isFinite(segmentMs) && segmentMs > 0;
+  const liveSyncDuration = known
+    ? Math.max(LIVE_SYNC_DURATION_S, (LIVE_SYNC_SEGMENTS * segmentMs) / 1000)
+    : LIVE_SYNC_DURATION_S;
+  return { liveSyncDuration, liveMaxLatencyDuration: 2 * liveSyncDuration };
+}
 
 /**
  * The fastest playback rate used to catch up after drifting behind the target.

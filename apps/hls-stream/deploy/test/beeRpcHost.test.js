@@ -138,7 +138,9 @@ describe('the gateway command compose renders', () => {
   function render(overrides) {
     // Both keys are dropped rather than left to the ambient environment. A shell that exports either
     // one would render the other arm and every assertion below would still pass.
-    const env = { ...process.env };
+    // HLS_FRAGMENT has no default and compose interpolates the whole file, so a render of any profile
+    // needs one.
+    const env = { ...process.env, HLS_FRAGMENT: '2' };
     delete env.BEE_GATEWAY_RPC_ENDPOINT;
     delete env.BEE_GATEWAY_SWAP_ENABLE;
 

@@ -41,16 +41,25 @@ export function feedEntryOf(index: number, playlist: string, readAtMs: number): 
  * longest segment so far rounded up, and never lowers it, so it is a ceiling rather than the cadence.
  */
 function segmentLengthMs(durationsS: readonly (number | null)[], headers: readonly string[]): number | null {
-  const usable = durationsS.filter((duration): duration is number => duration !== null && duration > 0);
-  if (usable.length > 0) {
-    const sorted = [...usable].sort((a, b) => a - b);
-    const middle = Math.floor(sorted.length / 2);
-    const medianS = sorted.length % 2 === 1 ? sorted[middle] : (sorted[middle - 1] + sorted[middle]) / 2;
-    return Math.round(medianS * 1000);
+  const medianMs = medianSegmentMs(durationsS);
+  if (medianMs !== null) {
+    return medianMs;
   }
   const target = headers.find((line) => line.startsWith(`${HLS_TARGET_DURATION}:`));
   const targetS = target === undefined ? Number.NaN : Number(target.slice(HLS_TARGET_DURATION.length + 1));
   return Number.isFinite(targetS) && targetS > 0 ? targetS * 1000 : null;
+}
+
+/** The median of the segments' own durations in milliseconds, or null when none names a usable one. */
+export function medianSegmentMs(durationsS: readonly (number | null)[]): number | null {
+  const usable = durationsS.filter((duration): duration is number => duration !== null && duration > 0);
+  if (usable.length === 0) {
+    return null;
+  }
+  const sorted = [...usable].sort((a, b) => a - b);
+  const middle = Math.floor(sorted.length / 2);
+  const medianS = sorted.length % 2 === 1 ? sorted[middle] : (sorted[middle - 1] + sorted[middle]) / 2;
+  return Math.round(medianS * 1000);
 }
 
 /**

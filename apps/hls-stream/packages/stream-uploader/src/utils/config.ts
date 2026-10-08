@@ -5,7 +5,7 @@ import { parsePublisherSpecs, PublisherSpec } from '../libs/BeePublisherPool.js'
 import { gatePolicyFor, parseStartGateMode, START_GATE_CHEQUEBOOK_WARN } from '../libs/StartGates.js';
 
 import { readAbrConfig } from './abrConfig.js';
-import { optional, optionalBool, optionalInt, optionalNumber, required } from './env.js';
+import { optional, optionalBool, optionalInt, optionalNumber, required, requiredNumber } from './env.js';
 
 /**
  * How much SWAP chequebook balance every Bee node must hold before the uploader will start.
@@ -84,7 +84,8 @@ const MAX_STAMP_MIN_TTL_HOURS = 24 * 365;
 const DEFAULT_STAMP_MAX_UTILIZATION = 0.9;
 
 /**
- * Nominal seconds of media per fragment, matching `HLS_FRAGMENT`'s default in `docker-compose.yml`.
+ * Nominal seconds of media per fragment, the same `HLS_FRAGMENT` the engine is asked to cut at. It has
+ * no default here or anywhere else in the stack, so a deployment that names none is refused at start.
  *
  * ⚠️ It is what the deployment **asks** the engine to cut at, never what a segment measured. Under
  * a ladder the two agree, because each rung is re-GOPed at `ABR_FPS x HLS_FRAGMENT` and SRS then
@@ -96,7 +97,6 @@ const DEFAULT_STAMP_MAX_UTILIZATION = 0.9;
  * The bounds are the range SRS itself will work in: below a frame the entrypoint refuses the GOP
  * arithmetic outright, and an hour is `isUsableDuration`'s own ceiling on a segment.
  */
-const DEFAULT_HLS_FRAGMENT_SECONDS = 0.5;
 const MIN_HLS_FRAGMENT_SECONDS = 0.01;
 const MAX_HLS_FRAGMENT_SECONDS = 3600;
 
@@ -291,7 +291,7 @@ export const config = {
    * enough for transcoders that start slowly but healthily.
    */
   firstRungDeadlineMs: optionalInt('FIRST_RUNG_DEADLINE_MS', 45000, { min: 1 }),
-  fragmentSeconds: optionalNumber('HLS_FRAGMENT', DEFAULT_HLS_FRAGMENT_SECONDS, {
+  fragmentSeconds: requiredNumber('HLS_FRAGMENT', {
     min: MIN_HLS_FRAGMENT_SECONDS,
     max: MAX_HLS_FRAGMENT_SECONDS,
   }),

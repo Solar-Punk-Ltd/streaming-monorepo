@@ -11,7 +11,7 @@ import { type PlayerReader, retryAfterMsOf, servedText } from './playerReads';
 import { parseManifest } from './playlist';
 import { isSlotNotWrittenYet } from './refusedSlot';
 import { feedEntryOf, RungFeedReader } from './rungFeedReader';
-import { firstSegmentStartMs, joinsOnto, RUNG_PROGRESS_BOUND_MS, switchRefusal } from './rungPosition';
+import { firstSegmentStartMs, joinsOnto, rungProgressBoundMs, switchRefusal } from './rungPosition';
 
 const DEFAULT_POLL_INTERVAL_MS = 750;
 
@@ -37,7 +37,7 @@ const MISSES_BEFORE_WARNING = 20;
 /**
  * How long a stalled playing rung waits before a sibling is tried again, once one try found nothing.
  * A broadcast that paused stays paused for a while, and each try costs the sibling's finder reads and
- * a walk of it for {@link RUNG_PROGRESS_BOUND_MS}.
+ * a walk of it for {@link rungProgressBoundMs}.
  */
 export const STALL_REPROBE_MS = 30_000;
 
@@ -79,7 +79,10 @@ export interface LadderFeedPollerOptions {
   readonly followClock?: FollowClock;
   /** A monotonic clock, the same one the feed health reads. */
   readonly now?: () => number;
-  /** The bound a rung has to show a new index in. See {@link RUNG_PROGRESS_BOUND_MS}. */
+  /**
+   * The bound a rung has to show a new index in, fixed. Unset, it is three of the rung's own segments,
+   * see {@link rungProgressBoundMs}.
+   */
   readonly progressBoundMs?: number;
   /** See {@link CANDIDATE_FIND_DEADLINE_MS}. */
   readonly candidateFindDeadlineMs?: number;
@@ -176,7 +179,7 @@ export class LadderFeedPoller {
   private readonly headMarkers: (rung: FeedRung, clock: FollowClock) => HeadMarkers | null;
   private readonly followClock: FollowClock;
   private readonly now: () => number;
-  private readonly progressBoundMs: number;
+  private readonly fixedProgressBoundMs: number | null;
   /** See {@link CANDIDATE_FIND_DEADLINE_MS}. Public because a level request's wait is sized from it. */
   public readonly candidateFindDeadlineMs: number;
   private readonly playheadMs: (group: string | null) => number | null;
@@ -203,7 +206,7 @@ export class LadderFeedPoller {
     this.finder = options.finder ?? new IndexSearchFinder(reader, this.followClock);
     this.headMarkers = options.headMarkers ?? (() => null);
     this.now = options.now ?? (() => performance.now());
-    this.progressBoundMs = options.progressBoundMs ?? RUNG_PROGRESS_BOUND_MS;
+    this.fixedProgressBoundMs = options.progressBoundMs ?? null;
     this.candidateFindDeadlineMs = options.candidateFindDeadlineMs ?? CANDIDATE_FIND_DEADLINE_MS;
     this.playheadMs = options.playheadMs ?? (() => null);
   }
@@ -857,7 +860,7 @@ export class LadderFeedPoller {
 
   /**
    * The playing rung has been unserved for the stall threshold. Walks the next lower rung for
-   * {@link RUNG_PROGRESS_BOUND_MS} from when its newest index is found: a new index there means the
+   * {@link rungProgressBoundMs} from when its newest index is found: a new index there means the
    * playing rung alone stopped, and the player fails over to it. None means the broadcast paused, and
    * the stall shows as it always did.
    */
@@ -973,15 +976,20 @@ export class LadderFeedPoller {
         }
         finish(progressed);
       };
-      timer = setTimeout(atBound, walk.current === null ? this.candidateFindDeadlineMs : this.progressBoundMs);
+      timer = setTimeout(atBound, walk.current === null ? this.candidateFindDeadlineMs : this.progressBoundOf(walk));
       if (walk.current === null) {
         walk.onFound = () => {
           clearTimeout(timer);
-          timer = setTimeout(atBound, this.progressBoundMs);
+          timer = setTimeout(atBound, this.progressBoundOf(walk));
         };
       }
       walk.onSettled = onSettled;
     });
+  }
+
+  /** How long `walk` has to show a new index, from the segment length its newest slot names. */
+  private progressBoundOf(walk: Walk): number {
+    return this.fixedProgressBoundMs ?? rungProgressBoundMs(walk.current?.segmentMs);
   }
 
   /**
