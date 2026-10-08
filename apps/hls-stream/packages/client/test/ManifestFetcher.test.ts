@@ -19,9 +19,9 @@ import {
   ManifestStateManager,
   MAX_SLOTS_PER_POLL,
   SEGMENTS_AS_WRITTEN,
-  waitMs,
 } from '../src/components/SwarmHlsPlayer/ManifestManagement';
 import { PROBE_DISTANCES, UNSERVED_POLLS_BEFORE_PROBE } from '../src/components/SwarmHlsPlayer/refusedSlot';
+import { waitMs } from '../src/components/SwarmHlsPlayer/waitMs';
 import { MANIFEST_BACKOFF_JITTER_FRACTION, RequestJitter } from '../src/utils/requestJitter';
 
 import { waitFor } from './helpers/waiting';

@@ -12,6 +12,7 @@ import { parseManifest } from './playlist';
 import { isSlotNotWrittenYet } from './refusedSlot';
 import { feedEntryOf, RungFeedReader } from './rungFeedReader';
 import { firstSegmentStartMs, joinsOnto, rungProgressBoundMs, switchRefusal } from './rungPosition';
+import { waitMs } from './waitMs';
 
 /** The flat wait before a failed walk tries again, and the slice a backoff is waited out in. Not tuned to the segment length. */
 const DEFAULT_POLL_INTERVAL_MS = 750;
@@ -22,7 +23,7 @@ const DEFAULT_POLL_INTERVAL_MS = 750;
  */
 export const WALL_CLOCK: FollowClock = {
   now: () => Date.now(),
-  sleep: (ms) => new Promise((resolve) => setTimeout(resolve, ms)),
+  sleep: waitMs,
 };
 
 /** How long a rung whose feed holds nothing yet waits before it is looked for again. */

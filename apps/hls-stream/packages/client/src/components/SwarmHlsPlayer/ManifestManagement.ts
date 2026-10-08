@@ -27,6 +27,7 @@ import { headIndexOf, type PlayerReader, retryAfterMsOf, servedText, type Served
 import { buildMasterPlaylist, isMasterPlaylist, masterRungs, parseSwarmUri } from './playlist';
 import { isSlotNotWrittenYet, ManifestFetchError, probePastRefusal, shouldProbePastRefusal } from './refusedSlot';
 import { rungHeadMarkers } from './rungHeadMarkers';
+import { waitMs } from './waitMs';
 
 // The parser and the segment shape now live beside the tags the uploader builds with, so the two
 // halves of the manifest contract cannot drift apart. Re-exported because the player's own modules
@@ -78,17 +79,6 @@ const manifestQueue = new Pqueue({ concurrency: 1 });
  * close any backlog within a few polls.
  */
 export const MAX_SLOTS_PER_POLL = 16;
-
-/**
- * The wait the fetcher ships with, named so that something can run it.
- *
- * As an inline default parameter it was the one code path every backoff test injected over, so a
- * default that returned immediately left the whole suite green while a page of players hammered a
- * gateway that was already down.
- */
-export function waitMs(ms: number): Promise<void> {
-  return new Promise((resolve) => setTimeout(resolve, ms));
-}
 
 export class ManifestStateManager {
   private static instance: ManifestStateManager;

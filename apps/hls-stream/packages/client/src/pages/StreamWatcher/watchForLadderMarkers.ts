@@ -4,6 +4,7 @@ import { ladderMarkerIdentifier, parseLadderMarker } from '@swarm-hls-stream/sha
 
 import { PeriodMarkers } from '@/components/SwarmHlsPlayer/following/headMarkers';
 import type { PlayerReader } from '@/components/SwarmHlsPlayer/playerReads';
+import { waitMs } from '@/components/SwarmHlsPlayer/waitMs';
 import { contentText } from '@/swarm/answers';
 
 interface LadderMarkerWatch {
@@ -36,7 +37,7 @@ export function watchForLadderMarkers(watch: LadderMarkerWatch): () => void {
   const now = watch.now ?? (() => Date.now());
   const group = Topic.fromString(watch.topic);
   const markers = new PeriodMarkers<true>(
-    { now, sleep: (ms) => new Promise((resolve) => setTimeout(resolve, ms)) },
+    { now, sleep: waitMs },
     watch.clockOffsetMs,
     async (period) => {
       const identifier = ladderMarkerIdentifier(group, period).toHex();
