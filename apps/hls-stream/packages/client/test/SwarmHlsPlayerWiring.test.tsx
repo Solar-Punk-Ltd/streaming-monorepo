@@ -45,6 +45,16 @@ vi.mock('../src/components/SwarmHlsPlayer/playbackHealth', () => ({
   attachPlaybackStallReporter: fakes.attachStallReporter,
 }));
 
+/** A bundle built with a release, which only the QoE overlay may show. */
+const built = vi.hoisted(() => ({
+  release: { label: 'QA-build-2026-10-07', commit: `1702aff1b${'e'.repeat(31)}` },
+}));
+
+vi.mock('../src/utils/config', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('../src/utils/config')>();
+  return { config: { ...actual.config, release: built.release } };
+});
+
 const OWNER = '0000000000000000000000000000000000000000';
 const hexOf = (topicString: string) => Topic.fromString(topicString).toString();
 
@@ -138,5 +148,26 @@ describe('the player component is wired to the feed state tracker', () => {
     onStall();
 
     assert.deepEqual(fakes.feedHealth.recordPlaybackStall.mock.calls, [[hexOf('stream-a')]]);
+  });
+});
+
+/**
+ * The release the player was built as is for whoever opens the QoE overlay, which `?qoe=1` on a watch
+ * URL does, and for nobody else: the player's own face shows nothing of it.
+ */
+describe('the release the player was built as', () => {
+  it('shows nowhere in the player without the overlay', () => {
+    mount({ topicString: 'stream-a' });
+
+    assert.equal(container.querySelector('.qoe-overlay__release'), null);
+    assert.doesNotMatch(container.textContent ?? '', /QA-build-2026-10-07|1702aff1b/);
+  });
+
+  it('shows in the overlay, under its header', () => {
+    mount({ topicString: 'stream-a', enableQoeOverlay: true });
+
+    const line = container.querySelector('.qoe-overlay__release .qoe-overlay__value');
+    assert.equal(line?.textContent, 'QA-build-2026-10-07 (1702aff1b)');
+    assert.equal(line?.getAttribute('title'), built.release.commit);
   });
 });

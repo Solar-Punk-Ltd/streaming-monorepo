@@ -238,6 +238,13 @@ export function makeSandbox({
             .filter(Boolean)
             .map((line) => JSON.parse(line))
         : [],
+    /**
+     * For each compose `up` on this host, the keys a test named in DOCKER_STUB_ENV_KEYS as compose's
+     * own environment held them. Compose lets that environment win over every `--env-file`, so
+     * envFiles alone is half of what a build was given.
+     */
+    upEnv: () =>
+      existsSync(`${localJournal}-up-env`) ? readLines(`${localJournal}-up-env`).map((line) => JSON.parse(line)) : [],
   };
 }
 
@@ -502,6 +509,15 @@ for (let i = 0; i < argv.length; i++) {
   if (argv[i] === '--env-file' && argv[i + 1] && fs.existsSync(argv[i + 1])) {
     fs.appendFileSync(journal + '-env-files', fs.readFileSync(argv[i + 1], 'utf8'));
   }
+}
+
+// What a compose \`up\` had in its own environment, for each key a test names in DOCKER_STUB_ENV_KEYS
+// (comma separated), null where it was unset. Compose lets that environment win over every --env-file
+// when it interpolates, so a value the files above override could still reach a build from here.
+if (argv[0] === 'compose' && argv.includes('up') && process.env.DOCKER_STUB_ENV_KEYS) {
+  const seen = {};
+  for (const key of process.env.DOCKER_STUB_ENV_KEYS.split(',')) seen[key] = process.env[key] ?? null;
+  fs.appendFileSync(journal + '-up-env', JSON.stringify(seen) + '\\n');
 }
 
 // The copy tools/app-workspace/in-copy.mjs named as a build context, listed while it still exists.

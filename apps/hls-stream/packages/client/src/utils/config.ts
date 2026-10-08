@@ -1,3 +1,5 @@
+import { playerRelease } from './playerRelease';
+
 function getEnv(name: string): string {
   const value = import.meta.env[name as keyof ImportMetaEnv];
   if (!value) throw new Error(`Missing env var: ${name}`);
@@ -20,4 +22,9 @@ export const config = {
   beeUrl: useProxy ? '/bee' : rawBeeUrl,
   appOwner: getEnv('VITE_APP_OWNER'),
   rawAppTopic: getEnv('VITE_APP_RAW_TOPIC'),
+  /**
+   * The release the bundle was built as, which the QoE overlay shows, or null when its deploy named
+   * none. Optional, unlike the three above: a build with no release is an ordinary one.
+   */
+  release: playerRelease(import.meta.env.VITE_APP_RELEASE_LABEL, import.meta.env.VITE_APP_RELEASE_COMMIT),
 };
