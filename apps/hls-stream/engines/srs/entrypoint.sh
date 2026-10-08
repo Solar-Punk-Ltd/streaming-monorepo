@@ -126,10 +126,11 @@ fi
 # 4.0s. Close to linear in the segment, and the segment is not the only term that moves, because a
 # shorter one is less data to write into Swarm and less to pull back.
 #
-# The default is 0.5, the value that measured best, and `deploy/test/srsTuning.test.js` holds it
-# there. This comment claimed 1.0 for weeks after the default had been lowered, which is worth one
-# line of warning on its own: it was read as authorising 1.0 by a later session that never opened the
-# test.
+# There is no default. The deployment names its segment length, the example config names 2, and
+# the entrypoint refuses to start without one, because the player and the uploader both work from the
+# length the stage really cuts at and a fallback here was a length nobody chose. This used to fall
+# back to 0.5, the value that measured best on 2026-08-03, and the uploader and the viewer were tuned
+# for one length while the stage ran another.
 #
 # ⛔ **A SHORT FRAGMENT IS NOT ONLY A LATENCY LEVER, AND ON A LADDER IT HAS A CEILING.** SRS announces
 # each closed segment over `on_hls`, once per rung, so the announcement rate is `rungs / HLS_FRAGMENT`
@@ -142,19 +143,23 @@ fi
 #
 # So a four-rung ladder at 0.5 asks for 8.0/s and loses a rung about two minutes in. At 1.0 it asks
 # for 4.0/s and fits. A single-rendition deployment at 0.5 asks for 2.0/s and is unaffected, which is
-# why the default is still 0.5 and why the constraint is the ladder's, not the fragment's.
+# why the constraint is the ladder's, not the fragment's.
 # ⚠️ The 6.7/s is one measurement on a co-tenanted host and wants replicating before it becomes a
 # gate. What SRS spends the time on is not known: the uploader answers each callback in 1ms.
-#
-# `LIVE_SYNC_DURATION_S` in the client is 6, chosen against a 1.0s segment. The two go together, so a
-# deployment that raises the fragment past 1.0 has to raise that or it will rebuffer.
 #
 # ⚠️ `HLS_WINDOW` is SECONDS of playlist, not fragments. This comment used to say "fifteen fragments",
 # which is only the same number when the fragment is 1.0 and is double the intent at 0.5.
 # --- hls tuning ---
-require_number HLS_FRAGMENT "${HLS_FRAGMENT:-0.5}"
+if [ -z "$HLS_FRAGMENT" ]; then
+  echo "HLS_FRAGMENT is not set. It is the stage's segment length in seconds, for example 2, and SRS and the uploader both read it." >&2
+  exit 1
+fi
+require_number HLS_FRAGMENT "$HLS_FRAGMENT"
+case "$HLS_FRAGMENT" in
+  *[1-9]*) ;;
+  *) echo "HLS_FRAGMENT must be above zero, got '$HLS_FRAGMENT'" >&2; exit 1 ;;
+esac
 require_number HLS_WINDOW "${HLS_WINDOW:-15}"
-HLS_FRAGMENT="${HLS_FRAGMENT:-0.5}"
 HLS_WINDOW="${HLS_WINDOW:-15}"
 
 # How long a segment may run before SRS closes it without a keyframe, in seconds.
@@ -535,7 +540,7 @@ fi
 
 write_play_rules
 
-sed -i "s/HLS_FRAGMENT_PLACEHOLDER/${HLS_FRAGMENT:-0.5}/" "$CONF"
+sed -i "s/HLS_FRAGMENT_PLACEHOLDER/${HLS_FRAGMENT}/" "$CONF"
 sed -i "s/HLS_AOF_RATIO_PLACEHOLDER/${HLS_AOF_RATIO}/" "$CONF"
 sed -i "s/HLS_WINDOW_PLACEHOLDER/${HLS_WINDOW:-15}/" "$CONF"
 

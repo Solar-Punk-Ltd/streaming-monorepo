@@ -134,17 +134,21 @@ function renderSrsConf(env) {
   return rendered;
 }
 
-const VALID = { SRS_WEBHOOK_TOKEN: 'x'.repeat(64) };
+const VALID = { SRS_WEBHOOK_TOKEN: 'x'.repeat(64), HLS_FRAGMENT: '2' };
 
 /**
- * The keyframe interval a broadcaster is told to publish, from two funded sittings on 2026-08-12
- * that bounded it on both sides. See the `gop-sustain-2026-08-12` measurement (kept outside the repository) for why not larger and
- * the `gop-floor-2026-08-12` measurement (kept outside the repository) for why not smaller.
- *
- * The engine cannot set this, since nothing here transcodes. It is a number the config has to be
- * able to *accept*, which is what the range test below checks.
+ * The keyframe interval the event's broadcasters send, two seconds, which the example config's
+ * segment length is chosen to match. The engine cannot set this, since nothing here transcodes. It
+ * is a number the config has to be able to *accept*, which is what the range test below checks.
  */
-const RECOMMENDED_GOP_SECONDS = 0.5;
+const EVENT_GOP_SECONDS = 2;
+
+/** The segment length `.env.sample` sets, read from it so the checks below follow the file. */
+function exampleFragment() {
+  const found = /^HLS_FRAGMENT=(\S+)$/m.exec(readFileSync(join(ROOT, '.env.sample'), 'utf8'));
+  assert.ok(found, '.env.sample sets no HLS_FRAGMENT, so a fresh install has no segment length');
+  return found[1];
+}
 
 /**
  * How far a segment runs past its settled length before ramping back down to it.
@@ -164,7 +168,7 @@ const LARGEST_UNINVITED_GOP_SECONDS = 2;
 
 describe('the SRS latency knobs', () => {
   // ⛔ None of these values may equal a default asserted below, or the assertion passes against a
-  // template that still hard-codes it. 0.75 is deliberately not 0.5.
+  // template that still hard-codes it. 0.75 is deliberately not the example's 2.
   it('binds what the operator configured', () => {
     const conf = renderSrsConf({
       ...VALID,
@@ -185,27 +189,52 @@ describe('the SRS latency knobs', () => {
     assert.match(conf, /^\s*recvlatency\s+120;/m, 'the wait SRS applies on ingest has to be the configured one');
   });
 
-  /**
-   * The degenerate case. Every assertion above would also pass against a template that still
-   * hard-coded the numbers the test happens to use, so the defaults have to differ from them and be
-   * reachable. This is the regression itself: the hard-coded values were exactly these.
-   */
-  it('falls back to the documented defaults when none is set', () => {
-    const conf = renderSrsConf({ ...VALID, HLS_FRAGMENT: '', HLS_WINDOW: '', SRT_LATENCY: '' });
+  /** What the render printed on standard error when the entrypoint refused to write a config. */
+  function refusalOf(env) {
+    try {
+      renderSrsConf(env);
+    } catch (error) {
+      return String(error.stderr ?? '');
+    }
+    return assert.fail('the entrypoint wrote a config instead of refusing');
+  }
 
-    // 0.5 from the 2026-08-12 funded sittings, which bounded the segment on both sides: a 0.5s GOP
-    // beats a 2.0s one by 2.34s of latency and takes confirmed feed stalls from 3-of-3 to 0-of-3,
-    // and a 0.25s GOP loses 18-21% of live-edge reads to 404. The fragment is a FLOOR on the segment
-    // rather than the segment, so it has to sit at or below the GOP broadcasters are told to
-    // publish, or their request is silently rounded up.
-    assert.match(conf, /hls_fragment\s+0\.5;/);
-    // The ceiling is 2.5s, and it is set in seconds now rather than as the ratio SRS takes, so what
-    // is asserted is the product. It was 2.1s for weeks, which turned out to be 35ms short of what a
-    // 2.0s GOP needs. See the overshoot test below. The ratio read here is derived from
-    // HLS_SEGMENT_MAX's own default by the block the harness replays, so moving that default moves
-    // this number, which is what the dead `:-5.0` in the sed line used to hide.
+  /**
+   * The segment length has no default anywhere. A stage that names none is refused at start, so a
+   * viewer never meets a length nobody chose. The 0.5 this used to fall back to was not the stage the
+   * event runs, and a player tuned for one length met the other.
+   */
+  it('refuses to start without a segment length, and names the variable', () => {
+    const { HLS_FRAGMENT: _omitted, ...withoutFragment } = VALID;
+
+    for (const env of [withoutFragment, { ...VALID, HLS_FRAGMENT: '' }]) {
+      assert.match(refusalOf(env), /^HLS_FRAGMENT is not set/m);
+    }
+  });
+
+  for (const zero of ['0', '0.0', '.']) {
+    it(`refuses a segment length of ${JSON.stringify(zero)}`, () => {
+      assert.match(refusalOf({ ...VALID, HLS_FRAGMENT: zero }), /^HLS_FRAGMENT must be above zero/m);
+    });
+  }
+
+  it('ships an example config that sets a two second segment', () => {
+    assert.equal(exampleFragment(), '2');
+  });
+
+  /**
+   * The degenerate case for the knobs that keep a default. Every assertion above would also pass
+   * against a template that still hard-coded the numbers the test happens to use, so the defaults
+   * have to differ from them and be reachable.
+   */
+  it('falls back to the documented defaults for the other knobs', () => {
+    const conf = renderSrsConf({ ...VALID, HLS_FRAGMENT: exampleFragment(), HLS_WINDOW: '', SRT_LATENCY: '' });
+
+    // The ceiling is 2.5s, and it is set in seconds rather than as the ratio SRS takes, so what is
+    // asserted is the product. The ratio read here is derived from HLS_SEGMENT_MAX's own default by
+    // the block the harness replays, so moving that default moves this number.
     const shippedRatio = Number(conf.match(/hls_aof_ratio\s+([\d.]+);/)[1]);
-    assert.equal(Number((0.5 * shippedRatio).toFixed(3)), 2.5);
+    assert.equal(Number((Number(exampleFragment()) * shippedRatio).toFixed(3)), 2.5);
     assert.match(conf, /hls_window\s+15;/);
     // 2000ms since 2026-09-23. At 200 an outside broadcaster's uplink lost 5 to 8.5% of its packets
     // on 2026-09-22, SRT resent nearly all of them, and SRS dropped the resends as too late, so every
@@ -224,7 +253,7 @@ describe('the SRS latency knobs', () => {
    * a 1.861-2.219 spread against a clean 2.000 when the ceiling was out of the way.
    */
   it('ships a ceiling that clears the largest uninvited GOP plus its overshoot', () => {
-    const conf = renderSrsConf({ ...VALID, HLS_FRAGMENT: '', HLS_WINDOW: '', SRT_LATENCY: '' });
+    const conf = renderSrsConf({ ...VALID, HLS_FRAGMENT: exampleFragment(), HLS_WINDOW: '', SRT_LATENCY: '' });
     const fragment = Number(conf.match(/hls_fragment\s+([\d.]+);/)[1]);
     const ratio = Number(conf.match(/hls_aof_ratio\s+([\d.]+);/)[1]);
     const needed = LARGEST_UNINVITED_GOP_SECONDS + SEGMENT_OVERSHOOT_S;
@@ -243,24 +272,23 @@ describe('the SRS latency knobs', () => {
    * over 20 arms in the `gop-vs-fragment-2026-08-12` measurement (kept outside the repository), and the ceiling half of that rule
    * once invalidated twelve runs.
    *
-   * This is the check the config did not have: the shipped fragment was 1.0 while the profile two
-   * funded sittings selected is a 0.5s GOP, so the recommendation could not be produced by the
-   * defaults and nothing said so.
+   * The example config's segment length is chosen to match the keyframe interval the event's
+   * broadcasters send, so that interval has to fit the example's range without being rounded up.
    */
-  it('ships a range that contains the GOP broadcasters are told to publish', () => {
-    const conf = renderSrsConf({ ...VALID, HLS_FRAGMENT: '', HLS_WINDOW: '', SRT_LATENCY: '' });
+  it('ships an example range that contains the GOP the event broadcasts at', () => {
+    const conf = renderSrsConf({ ...VALID, HLS_FRAGMENT: exampleFragment(), HLS_WINDOW: '', SRT_LATENCY: '' });
     const fragment = Number(conf.match(/hls_fragment\s+([\d.]+);/)[1]);
     const ratio = Number(conf.match(/hls_aof_ratio\s+([\d.]+);/)[1]);
 
     assert.ok(
-      RECOMMENDED_GOP_SECONDS >= fragment && RECOMMENDED_GOP_SECONDS <= fragment * ratio,
-      `a ${RECOMMENDED_GOP_SECONDS}s GOP is outside the shipped [${fragment}, ${fragment * ratio}] range, ` +
-        'so the profile we recommend cannot be produced by the config we ship',
+      EVENT_GOP_SECONDS >= fragment && EVENT_GOP_SECONDS <= fragment * ratio,
+      `a ${EVENT_GOP_SECONDS}s GOP is outside the example's [${fragment}, ${fragment * ratio}] range, ` +
+        'so the event cannot be broadcast on the config we ship',
     );
     assert.equal(
-      Math.ceil(fragment / RECOMMENDED_GOP_SECONDS) * RECOMMENDED_GOP_SECONDS,
-      RECOMMENDED_GOP_SECONDS,
-      'the shipped fragment rounds the recommended GOP up into a longer segment',
+      Math.ceil(fragment / EVENT_GOP_SECONDS) * EVENT_GOP_SECONDS,
+      EVENT_GOP_SECONDS,
+      "the example's segment length rounds the event's GOP up into a longer segment",
     );
   });
 
@@ -487,7 +515,7 @@ describe('the credentials the entrypoint splices into its config', () => {
   it('writes a hex token into every hook URL, unchanged', () => {
     const token = 'a3f9'.repeat(16);
 
-    const conf = renderSrsConf({ SRS_WEBHOOK_TOKEN: token });
+    const conf = renderSrsConf({ ...VALID, SRS_WEBHOOK_TOKEN: token });
 
     assert.doesNotMatch(conf, /SRS_WEBHOOK_TOKEN_PLACEHOLDER/);
     assert.equal(conf.split(`token=${token};`).length - 1, 3, 'the token did not reach all three hooks verbatim');
