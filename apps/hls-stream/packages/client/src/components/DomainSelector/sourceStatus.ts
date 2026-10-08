@@ -29,7 +29,7 @@ export const UNCHECKED: SourceStatus = { health: 'unknown', elapsedMs: null };
 export const SOURCE_CHECK_INTERVAL_MS = 10_000;
 
 interface SourceCheckContext {
-  /** The stream list feed this build reads, whose head a gateway is asked for. */
+  /** The stream list feed this build reads, whose first entry a gateway is asked for. */
   readonly catalog: { readonly owner: string; readonly topic: string };
   readonly signal?: AbortSignal;
   /** Injected by tests. Read from the page otherwise. */
@@ -54,8 +54,9 @@ function currentPageProtocol(): string {
 }
 
 /**
- * Whether a source answers now. A gateway is asked for the stream list's head, the read every viewer
- * makes first, because a gateway serving only the stream's content refuses a node's health. A Bee node
+ * Whether a source answers now. A gateway is asked for the stream list's first entry by index, because
+ * a gateway serving only the stream's content refuses a node's health, and Bee 2.8.2 searches a feed's
+ * head from entry 0, which took longer than the probe's budget on a list past entry 1,000. A Bee node
  * is asked the provider probe, which also says whether it is still starting. Never rejects.
  */
 export async function checkSourceStatus(
@@ -85,7 +86,7 @@ export async function checkSourceStatus(
 
   const startedAtMs = now();
   const { owner, topic } = context.catalog;
-  const answer = await client.reader('stream-list').readFeedHead(owner, Topic.fromString(topic), readWindow);
+  const answer = await client.reader('stream-list').readFeedEntry(owner, Topic.fromString(topic), 0, readWindow);
   switch (answer.kind) {
     case 'content':
     case 'not-found':

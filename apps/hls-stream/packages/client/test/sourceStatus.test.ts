@@ -27,12 +27,12 @@ function world(probe: ProbeResult = { kind: 'ok', elapsedMs: 0 }) {
 }
 
 describe('the light check of a source', () => {
-  it("reads a gateway's stream list head, since a gateway refuses a node's health, and times it", async () => {
+  it("reads a gateway's first stream list entry by index, never the head a long list makes Bee search for", async () => {
     const { provider, context } = world();
     provider.answer = content();
 
     expect(await checkSourceStatus(GATEWAY, context)).toEqual({ health: 'ok', elapsedMs: 120 });
-    expect(provider.asked).toEqual(['feed-head']);
+    expect(provider.asked).toEqual(['feed-entry']);
   });
 
   it('takes a gateway answering that the list is not there as answering', async () => {
