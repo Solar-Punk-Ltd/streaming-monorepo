@@ -1031,6 +1031,41 @@ describe('a rung of a declared ladder', () => {
     assert.deepEqual(session.removedEntries, [`${STREAM_ID}_720p`], 'a deleted stream′s entry was kept for every boot');
   });
 
+  /**
+   * A reconnect inside the drain, or a drain timeout, retires the rung while its final announce is in
+   * flight. The flip it was handed then meets the guard that keeps a retired session from reporting,
+   * so the report is skipped rather than failed. Kept, the flip blocked every sibling and the admin
+   * listed the broadcast as live for good, under a line saying the ladder had finalized.
+   */
+  it('hands the flip back, and does not say the ladder finalized, when it is retired before its vod report', async () => {
+    const holder: { uploader?: StreamUploader } = {};
+    const session = newLadderSession({
+      announce: (upsert) => {
+        if (upsert.rendition.index === undefined) {
+          return { masterIndex: 0, flippedToFinished: false, duration: null };
+        }
+        holder.uploader?.retire();
+        return { masterIndex: 4, flippedToFinished: true, duration: 12 };
+      },
+    });
+    holder.uploader = session.uploader;
+    await feedOneSegment(session.uploader, 0);
+
+    const lines = await logLinesDuring(() => session.uploader.notifyStop());
+
+    assert.deepEqual(
+      session.reports.map((report) => report.state),
+      [ADMIN_STATE_LIVE],
+      'a retired rung reports no vod, since the admin stream is shared with its replacement',
+    );
+    assert.deepEqual(session.notReported, [DECLARED_TOPIC], 'the flip it did not report was kept from its siblings');
+    assert.equal(
+      lines.filter((line) => line.includes(ladderFinalized(DECLARED_TOPIC))).length,
+      0,
+      'the ladder was said to have finalized for a report never sent',
+    );
+  });
+
   it('keeps the flip when its vod report was delivered', async () => {
     const session = newLadderSession({
       announce: (upsert) =>

@@ -719,10 +719,11 @@ export class StreamUploader {
     }
 
     if (this.admin) {
-      return this.reportAdminState(
+      await this.reportAdminState(
         { state: ADMIN_STATE_LIVE },
         'so the admin will go on showing it as a draft until the next attempt',
       );
+      return;
     }
 
     if (this.ladder) {
@@ -851,17 +852,20 @@ export class StreamUploader {
       // list. This is `StreamCatalog.upsertRendition`'s `flippedToVod` rule, read off the other side
       // of a wire rather than off a feed read.
       if (announced && announced.flippedToFinished && announced.masterIndex !== null) {
-        await this.reportLadderRecording(
+        const sent = await this.reportLadderRecording(
           this.reportAdminState(
             this.ladderRecordingReport(announced, announced.masterIndex),
             'so the recording is in the feed and the admin does not know it, which the recovery entry lets the next boot retry',
           ),
         ).catch((error: unknown) => this.letGoOfADeletedStream(error));
-        // ⛔⛔⛔ After the report and only when the ladder really flipped, which is the same rule the
-        // standalone halves of this method both state at length: written earlier it announces a flip
-        // the admin has not taken yet, and written unconditionally a resumed finalize announces a
-        // second flip for one broadcast.
-        this.logger.log(ladderFinalized(this.ladder.group));
+        // ⛔⛔⛔ After the report and only when the ladder really flipped and the report was sent, which
+        // is the same rule the standalone halves of this method both state at length: written earlier
+        // it announces a flip the admin has not taken yet, written unconditionally a resumed finalize
+        // announces a second flip for one broadcast, and written after a report a retired session
+        // skipped it announces one nobody was told of.
+        if (sent === true) {
+          this.logger.log(ladderFinalized(this.ladder.group));
+        }
       }
 
       this.metrics?.recordStreamFinalized();
@@ -954,7 +958,7 @@ export class StreamUploader {
         this.sendAdminState(
           this.ladderRecordingReport(announced, announced.masterIndex),
           'so the ladder is a recording in its master and the admin still lists it as live',
-        ),
+        ).then(() => true),
       );
       this.logger.log(ladderFinalized(this.ladder.group));
     }
@@ -1410,22 +1414,23 @@ export class StreamUploader {
    * guard on `announceRendition`. Outside admin mode a retired session still owns its own feed topic,
    * so its VOD entry describes a recording nobody else is writing. In admin mode both sessions share
    * one declared stream, so a retired session reporting `vod` would mark the broadcast that replaced
-   * it as finished.
+   * it as finished. Answers false when it skipped, so a caller holding a ladder's flip can hand it back.
    *
    * ⛔ This covers the *report* and nothing else. The retired session still publishes manifests to the
    * declared topic the two of them share, and `ownsRecoveryEntry` does not gate that — what keeps the
    * two off one feed is the replacement waiting, not this session stopping. See {@link retire}.
    */
-  private async reportAdminState(report: AdminStateReport, whatIsLost: string): Promise<void> {
+  private async reportAdminState(report: AdminStateReport, whatIsLost: string): Promise<boolean> {
     if (!this.ownsRecoveryEntry) {
       this.logger.warn(
         `[StreamUploader] Not reporting ${report.state} for ${this.streamId}: a newer session holds it, ` +
           'and the admin stream is shared between them',
       );
-      return;
+      return false;
     }
 
     await this.sendAdminState(report, whatIsLost);
+    return true;
   }
 
   /** {@link reportAdminState} without its guard, for the one caller that has settled it another way. */
@@ -1442,16 +1447,23 @@ export class StreamUploader {
 
   /**
    * Await the `vod` report a ladder's flip asked for, handing the flip back to the registry when it did
-   * not go through. The registry gives a finished ladder's flip to one rung only, so a rung keeping it
-   * after a failed report would leave every sibling finishing later unable to report the recording.
+   * not go through, whether it failed or was skipped because this session was retired while its final
+   * announce was in flight. The registry gives a finished ladder's flip to one rung only, so a rung
+   * keeping it after a report that never reached the admin would leave every sibling finishing later
+   * unable to report the recording. Answers whether the report was sent.
    */
-  private async reportLadderRecording(report: Promise<void>): Promise<void> {
+  private async reportLadderRecording(report: Promise<boolean>): Promise<boolean> {
+    let sent: boolean;
     try {
-      await report;
+      sent = await report;
     } catch (error) {
       this.ladderRegistry.recordingNotReported(this.ladder!.group);
       throw error;
     }
+    if (!sent) {
+      this.ladderRegistry.recordingNotReported(this.ladder!.group);
+    }
+    return sent;
   }
 
   /**
