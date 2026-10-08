@@ -34,3 +34,10 @@ COPY frontend/nginx.conf /etc/nginx/conf.d/default.conf
 COPY --from=build /repo/frontend/dist /usr/share/nginx/html
 
 EXPOSE 80
+
+# The build this image is, as labels only: the console reads the version from the API, which carries it. Last in the
+# image, so a new version changes no layer above. See backend/Dockerfile.
+ARG WEB2_ADMIN_VERSION=""
+ARG WEB2_ADMIN_COMMIT=""
+LABEL org.opencontainers.image.version=$WEB2_ADMIN_VERSION \
+      org.opencontainers.image.revision=$WEB2_ADMIN_COMMIT

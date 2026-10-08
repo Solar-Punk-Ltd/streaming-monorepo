@@ -556,6 +556,7 @@ async function main(): Promise<void> {
         token: config.fundingApiToken,
         routes: [createFundingInventoryRouter(fundingInventory), createFundingChainRouter(fundingChain)],
       },
+      managerVersion: config.managerVersion,
     },
     config.port,
     config.host,

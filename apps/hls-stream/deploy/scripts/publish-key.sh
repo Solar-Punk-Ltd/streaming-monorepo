@@ -23,6 +23,8 @@ usage() {
   echo "  --feed-topic=<hex>    override, unused here and consumed anyway"
   echo "  --private-key=<hex>   override, unused here and consumed anyway"
   echo "  --stamp-id=<hex>      override, unused here and consumed anyway"
+  echo "  --release-label=<label>, --release-commit=<commit>"
+  echo "                        the release a deploy names, unused here and consumed anyway"
   echo
   echo "  Each flag also takes a two-word form, which consumes the next argument: write"
   echo "  --profile=live rather than --profile live unless the stream id follows both."

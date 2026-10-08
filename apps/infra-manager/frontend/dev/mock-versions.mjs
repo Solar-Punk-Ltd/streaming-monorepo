@@ -91,7 +91,7 @@ const BUNDLED_CONTRACT = {
     HLS_SEGMENT_DURATION: '2',
     HLS_SEGMENT_COUNT: '5',
   },
-  features: { srsApiPort: false, chequebookGate: false, sharedImageTags: true },
+  features: { srsApiPort: false, chequebookGate: false, sharedImageTags: true, playerRelease: false },
   chequebookMinBzz: null,
   engineConfig: { srs: false, ome: false },
   engineImages: { srs: 'ossrs/srs:6', ome: 'airensoft/ovenmediaengine:latest' },
@@ -110,7 +110,7 @@ const V3_CONTRACT = {
     HLS_SEGMENT_DURATION: '2',
     HLS_SEGMENT_COUNT: '5',
   },
-  features: { srsApiPort: true, chequebookGate: true, sharedImageTags: true },
+  features: { srsApiPort: true, chequebookGate: true, sharedImageTags: true, playerRelease: false },
   chequebookMinBzz: '0.5',
   engineConfig: { srs: true, ome: true },
   engineImages: { srs: 'ossrs/srs:6', ome: 'airensoft/ovenmediaengine:latest' },
@@ -156,6 +156,8 @@ function makeVersion(input) {
     layout: input.layout ?? 'builds',
     buildId: input.buildId ?? null,
     previousBuildId: null,
+    // The release the current build was made as, or null for one made with none.
+    buildLabel: input.buildLabel ?? null,
     // Added from the monorepo, whose folder its first build names.
     source: input.source ?? { url: MONOREPO_URL, folder: null },
   };
@@ -164,6 +166,11 @@ function makeVersion(input) {
 /** The commit of the version a deployment runs, which its containers are seen to run in this mock. */
 export function commitOfVersion(id) {
   return findVersion(id)?.commitSha ?? null;
+}
+
+/** The release of the build a deployment's containers are seen to run in this mock: its version's. */
+export function labelOfVersion(id) {
+  return findVersion(id)?.buildLabel ?? null;
 }
 
 /** The deploy contract of the version a deployment runs, or null. */
@@ -205,6 +212,8 @@ export function seedVersions() {
       contract: BUNDLED_CONTRACT,
       // Published by the manager's own deploy, so it deploys from a build of its own.
       buildId: 'ee99c368bd45c12defcb10ca726f0db0777defb0',
+      // Made as the release the manager was deployed with.
+      buildLabel: 'QA-build-2026-08-04',
       source: { url: SWARM_HLS_STREAM_URL, folder: '.' },
     }),
     makeVersion({
@@ -330,6 +339,9 @@ function playBuild(res, version, publish) {
       if (version.buildId && version.buildId !== buildId) version.previousBuildId = version.buildId;
       version.layout = 'builds';
       version.buildId = buildId;
+      // The mock has no clone whose tags it could read, so a build it plays
+      // carries no release, as a build of a commit no tag names carries none.
+      version.buildLabel = null;
       version.status = 'ready';
       version.commitSha = commit;
       version.builtAt = new Date().toISOString();

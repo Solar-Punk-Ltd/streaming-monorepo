@@ -235,7 +235,8 @@ takeover in [engines/README.md](../engines/README.md).
 ### deploy.sh
 
 ```bash
-deploy.sh [--profile=<name>] [--portSlot=<N>] [--host=<target>] [service...]
+deploy.sh [--profile=<name>] [--portSlot=<N>] [--host=<target>]
+          [--release-label=<label>] [--release-commit=<commit>] [service...]
 ```
 
 ```bash
@@ -302,6 +303,20 @@ deploy.sh --host=my-staging-box stream-uploader bee-uploader
 ```
 
 Because every service resolves to the same target under `--host`, the usual co-location constraints (e.g. `srs` + `stream-uploader`) are satisfied automatically.
+
+#### --release-label and --release-commit
+
+`--release-label=<label>` and `--release-commit=<commit>` name the release being deployed, and the client builds it in. The player shows it in its QoE overlay, which `?qoe=1` on a watch URL opens, as `Player QA-build-2026-10-07 (1702aff1b)`: the label and the first nine characters of the commit, or the label alone when it already starts with those nine or no commit was given. Nothing else in the player shows it. The deployment manager passes the label and the commit of the stack build a deployment runs, on a version whose deploy script takes these flags.
+
+```bash
+deploy.sh --profile=viewer1 --portSlot=4 --release-label=QA-build-2026-10-07 \
+  --release-commit=<the 40 character commit> client bee-gateway
+```
+
+- A label is letters, digits and `. _ + / -`, one to 96 of them, as `tools/release/version.mjs` names a build. A commit is the whole commit, 40 lower-case hex characters. Anything else is refused before anything is deployed, and the refusal names the flag but not the value.
+- The two reach the client's build as `VITE_APP_RELEASE_LABEL` and `VITE_APP_RELEASE_COMMIT`, written into the override file for a target that builds the client and for no other. Both lines are always written there, empty without the flags, so the release comes from the flags or from nowhere: a value an env file or the shell sets never reaches the bundle.
+- Without `--release-label` the overlay shows no release line at all, whatever `--release-commit` says.
+- A version of the stack from before 2026-10-08 has no such flags, and reads either as a service name it does not know, so the deploy stops with `Unknown service`.
 
 Setup for a new profile:
 
@@ -504,7 +519,7 @@ hold are in [.env.sample](../.env.sample) under "Per-rung Bee nodes".
 
 ### Viewer stack (`client` + `bee-gateway`)
 
-The React client is bundled into a multi-stage docker image: Node builds `packages/client/dist`, nginx serves it on port `80` and reverse-proxies `/bee/` to the `bee-gateway` service over the compose network. The bundle is built with **per-profile** `VITE_APP_OWNER` / `VITE_APP_RAW_TOPIC` baked in (build args wired through `docker-compose.yml`), so streamer1's image and streamer2's image are different and live under their own compose project namespaces.
+The React client is bundled into a multi-stage docker image: Node builds `packages/client/dist`, nginx serves it on port `80` and reverse-proxies `/bee/` to the `bee-gateway` service over the compose network. The bundle is built with **per-profile** `VITE_APP_OWNER` / `VITE_APP_RAW_TOPIC` baked in (build args wired through `docker-compose.yml`), so streamer1's image and streamer2's image are different and live under their own compose project namespaces. The release the deploy names with [--release-label and --release-commit](#--release-label-and---release-commit) is baked in the same way, for the QoE overlay to show.
 
 `client` and `bee-gateway` must be on the same target (nginx proxies via the docker service name).
 

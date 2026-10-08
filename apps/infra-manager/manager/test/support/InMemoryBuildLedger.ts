@@ -16,6 +16,7 @@ import {
   buildIdOfRoot,
   commitOfRoot,
   coveredJobReferences,
+  labelOfRoot,
 } from '../../src/domain/versions/buildReferences.js';
 import { stackRootOf } from '../../src/domain/versions/stackPaths.js';
 import type { Profile, ProfileStatus } from '../../src/types/index.js';
@@ -162,7 +163,12 @@ export class InMemoryBuildLedger implements BuildLedger, BuildReferenceReader {
     for (const service of services) {
       const root = this.mounted.get(`${profileName}/${service}`);
       if (!root) continue;
-      observations.push({ service, buildId: buildIdOfRoot(this.versionsRoot, root), commit: commitOfRoot(root) });
+      observations.push({
+        service,
+        buildId: buildIdOfRoot(this.versionsRoot, root),
+        commit: commitOfRoot(root),
+        label: labelOfRoot(root),
+      });
       const versionId = await this.versionOfRoot(root);
       if (versionId === null) continue;
       for (const older of this.references) {

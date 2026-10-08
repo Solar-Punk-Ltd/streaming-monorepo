@@ -127,6 +127,12 @@ export interface ApiContainer {
   /** The build the container was seen to be started from, and its commit, or null before an observation. */
   buildId: string | null;
   buildCommit: string | null;
+  /**
+   * The release that build was made as, or null before an observation and for
+   * a build made with none. `ObservedContainer` in the common package, which
+   * the pages read it through. Migration 051.
+   */
+  buildLabel: string | null;
 }
 
 export interface ProfileWithContainers extends Profile {

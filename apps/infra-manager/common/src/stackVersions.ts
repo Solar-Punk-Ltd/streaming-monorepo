@@ -55,6 +55,16 @@ export interface StackContractFeatures {
    * be read, because unknown must not run concurrently.
    */
   sharedImageTags: boolean;
+  /**
+   * The version's deploy script takes the release of the build it deploys,
+   * `--release-label` and `--release-commit`, and builds it into the player,
+   * whose QoE overlay shows it. Read off the case arms of `parse_profile_args`
+   * in `_lib.sh`, which are what accept a flag. A version without them reads
+   * either flag as a service name and refuses the deploy, so the manager
+   * passes the release only where this is true. False on a contract an older
+   * manager stored.
+   */
+  playerRelease: boolean;
 }
 
 /** Per engine: whether the version runs it on a config file of the operator's own when asked. */
@@ -154,6 +164,13 @@ export interface StackVersion {
   buildId: string | null;
   /** The build the current one replaced, kept for recovery, or null. */
   previousBuildId: string | null;
+  /**
+   * The release the current build was made as, read off its manifest: the
+   * label the manager was deployed with for the bundled version, the tag on
+   * the commit for an added one. Null for a build made with none, and for
+   * every build made before builds carried one.
+   */
+  buildLabel: string | null;
   /** The repository and folder the stack is taken from. */
   source: StackVersionSource;
 }
@@ -273,6 +290,9 @@ export function describeStackContract(contract: StackContract): string {
   }
   const editable = describeEngineConfig(contract.engineConfig);
   if (editable) parts.push(editable);
+  if (contract.features.playerRelease) {
+    parts.push('player shows its release');
+  }
   if (contract.warnings.length > 0) {
     const count = contract.warnings.length;
     parts.push(`${count} ${count === 1 ? 'line' : 'lines'} not understood`);
@@ -325,6 +345,9 @@ export function parseStackContract(value: unknown): StackContract | null {
       // Absent from a contract an older manager stored, which was never
       // classified, and unknown must not run concurrently.
       sharedImageTags: features.sharedImageTags !== false,
+      // Absent from a contract an older manager stored, which never asked,
+      // and a flag the version may not take would fail every deploy of it.
+      playerRelease: features.playerRelease === true,
     },
     chequebookMinBzz: typeof value.chequebookMinBzz === 'string' ? value.chequebookMinBzz : null,
     // Absent from a contract read by an older manager, which is a version

@@ -2,6 +2,8 @@ import React, { useEffect, useRef, useState } from 'react';
 
 import { BarChartIcon } from '@/components/Icons/BarChartIcon';
 import { MoveIcon } from '@/components/Icons/MoveIcon';
+import { config } from '@/utils/config';
+import { type PlayerRelease, playerReleaseText } from '@/utils/playerRelease';
 
 import { LIVE_SYNC_DURATION_S } from '../../playerConfig';
 
@@ -14,9 +16,15 @@ const DEFAULT_OVERLAY_Y_OFFSET = 10;
 
 interface QoeOverlayProps {
   metrics: QoeMetrics;
+  /**
+   * The release the player was built as, shown under the panel's header, and nowhere else in the
+   * player. Left out, the one the bundle was built with. Null, or a bundle built with none, shows no
+   * release line at all.
+   */
+  release?: PlayerRelease | null;
 }
 
-export const QoeOverlay: React.FC<QoeOverlayProps> = ({ metrics }) => {
+export const QoeOverlay: React.FC<QoeOverlayProps> = ({ metrics, release = config.release }) => {
   const [visible, setVisible] = useState(true);
   const [pos, setPos] = useState<{ x: number; y: number } | null>(null);
   const [isDragging, setIsDragging] = useState(false);
@@ -129,12 +137,12 @@ export const QoeOverlay: React.FC<QoeOverlayProps> = ({ metrics }) => {
         {visible && <span className="qoe-btn__live" />}
       </button>
 
-      {visible && <QoePanel metrics={metrics} />}
+      {visible && <QoePanel metrics={metrics} release={release} />}
     </div>
   );
 };
 
-const QoePanel: React.FC<{ metrics: QoeMetrics }> = ({ metrics: m }) => {
+const QoePanel: React.FC<{ metrics: QoeMetrics; release: PlayerRelease | null }> = ({ metrics: m, release }) => {
   // Read defensively rather than trusted. The metrics object is built once inside a long-lived
   // closure in attachQoeTracking, so during a hot reload this panel can render against a snapshot
   // taken before a field existed. An observability panel must not be able to take the player down
@@ -144,6 +152,7 @@ const QoePanel: React.FC<{ metrics: QoeMetrics }> = ({ metrics: m }) => {
   return (
     <div className="qoe-overlay__panel">
       <div className="qoe-overlay__header">QoE Metrics</div>
+      {release && <ReleaseRow release={release} />}
 
       <Section title="Startup">
         <Row label="Startup Time" value={fmtMs(m.startupTimeMs)} />
@@ -230,6 +239,16 @@ const Row: React.FC<{ label: string; value: string; bad?: boolean }> = ({ label,
   <div className={`qoe-overlay__row${bad ? ' qoe-overlay__row--bad' : ''}`}>
     <span className="qoe-overlay__label">{label}</span>
     <span className="qoe-overlay__value">{value}</span>
+  </div>
+);
+
+/** Which build is playing, `Player QA-build-2026-10-07 (1702aff1b)`, with the whole commit as its title. */
+const ReleaseRow: React.FC<{ release: PlayerRelease }> = ({ release }) => (
+  <div className="qoe-overlay__row qoe-overlay__release">
+    <span className="qoe-overlay__label">Player</span>
+    <span className="qoe-overlay__value" title={release.commit ?? undefined}>
+      {playerReleaseText(release)}
+    </span>
   </div>
 );
 

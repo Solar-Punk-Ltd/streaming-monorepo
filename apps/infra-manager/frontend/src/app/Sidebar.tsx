@@ -13,8 +13,9 @@ import {
 } from '@mui/material';
 import { useColorScheme } from '@mui/material/styles';
 
-import { getErrorMessage } from '@streaming-infra-manager/common';
+import { getErrorMessage, type VersionInfo } from '@streaming-infra-manager/common';
 
+import { ManagerVersionLine } from './ManagerVersionLine';
 import { useToast } from './ToastProvider';
 import { MONO_STACK } from './theme';
 import { navigate, routes, type Route } from './router';
@@ -47,11 +48,14 @@ export function Sidebar({
   route,
   deploymentCount,
   serverHost,
+  managerVersion,
   onNavigate,
 }: {
   route: Route;
   deploymentCount: number | null;
   serverHost: string;
+  /** The build this manager runs, null until it has said which. */
+  managerVersion: VersionInfo | null;
   onNavigate?: () => void;
 }) {
   return (
@@ -81,7 +85,7 @@ export function Sidebar({
         >
           SI
         </Box>
-        <Box>
+        <Box sx={{ minWidth: 0 }}>
           <Typography sx={{ fontWeight: 600, lineHeight: 1.2 }}>Streaming Infra</Typography>
           <Typography
             variant="caption"
@@ -91,6 +95,7 @@ export function Sidebar({
           >
             manager · {serverHost}
           </Typography>
+          <ManagerVersionLine version={managerVersion} />
         </Box>
       </Stack>
 

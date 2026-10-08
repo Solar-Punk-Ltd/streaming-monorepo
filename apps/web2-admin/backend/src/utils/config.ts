@@ -2,7 +2,9 @@ import 'dotenv/config';
 
 import { PrivateKey } from '@ethersphere/bee-js';
 import { ADMIN_API_TOKEN_MIN_LENGTH } from '@streaming-monorepo/contracts';
+import type { VersionInfo } from '@streaming-monorepo/web2-admin-common';
 
+import { versionFrom } from './buildVersion.js';
 import { getErrorMessage } from './errorUtils.js';
 import {
   BRAND_WALLET_SECRET_KEY,
@@ -94,6 +96,11 @@ export interface AppConfig {
    * (docs/architecture/funding.md).
    */
   managerFunding: ManagerFundingSettings | null;
+  /**
+   * `WEB2_ADMIN_VERSION` and `WEB2_ADMIN_COMMIT`: the build this process runs, which deploy/deploy.sh builds into the
+   * api image. Signed-in users read it at GET /api/version.
+   */
+  version: VersionInfo;
 }
 
 function optionalFlag(name: string): boolean {
@@ -179,4 +186,5 @@ export const config: AppConfig = {
   catalogueMoveEnabled: optionalFlag('CATALOGUE_MOVE_ENABLED'),
   brandWalletSecret: brandWalletSecret(),
   managerFunding: managerFunding(),
+  version: versionFrom(process.env),
 };

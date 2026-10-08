@@ -94,6 +94,7 @@ import {
   STREAM_UPLOADER_SERVICE,
 } from './stampLogic.js';
 import { omePortsFor, portTableOf } from './versions/portTable.js';
+import { releaseArgsFor, releaseOfBuild } from './versions/deployRelease.js';
 import {
   deployOwnerOf,
   type BuildDescriptor,
@@ -1452,7 +1453,7 @@ export class DeploymentOrchestrator {
         onLaunch,
         paths,
         script: paths.deploy,
-        args: this.buildDeployScriptArgs(profile, services, reservation.host),
+        args: this.buildDeployScriptArgs(profile, services, build, reservation.host),
         redactedEndpoints: [secrets.rpcEndpoint],
         guard: { kind: this.attemptKindOf(version), services },
         reservedAttempt: reservation.attempt,
@@ -1933,18 +1934,28 @@ export class DeploymentOrchestrator {
   }
 
   /**
-   * The same, plus the three overrides only deploy.sh reads.
+   * The same, plus the three overrides only deploy.sh reads, and the release
+   * of the build the deploy was admitted on, which the player builds in.
    *
    * The stack checks the shape of every flag it is handed, on every script, in
    * _lib.sh's parse_profile_args. Handing these to stop.sh and health.sh made a
    * stored value the stack refuses fail those too, and a deployment that cannot
-   * be stopped is the worst shape there is.
+   * be stopped is the worst shape there is. The release goes only to a version
+   * whose contract says its parser takes it, because an older one refuses a
+   * flag it has no arm for, so a deploy of an older version is handed what it
+   * always was.
    */
-  private buildDeployScriptArgs(profile: Profile, services: string[], hostOverride?: string): string[] {
+  private buildDeployScriptArgs(
+    profile: Profile,
+    services: string[],
+    build: Pick<CapturedDeployReservation['build'], 'root' | 'version'>,
+    hostOverride?: string,
+  ): string[] {
     const overrides: string[] = [];
     if (profile.feed_owner) overrides.push(`--feed-owner=${profile.feed_owner}`);
     if (profile.feed_topic) overrides.push(`--feed-topic=${profile.feed_topic}`);
     if (profile.stamp_id) overrides.push(`--stamp-id=${profile.stamp_id}`);
+    overrides.push(...releaseArgsFor(build.version.contract, releaseOfBuild(build.root)));
     return [...this.buildScriptArgs(profile, [], hostOverride), ...overrides, ...services];
   }
 
@@ -1977,7 +1988,7 @@ export class DeploymentOrchestrator {
     }
     try {
       for (const seen of observations) {
-        await this.containers.setBuild(profile.name, seen.service, seen.buildId, seen.commit);
+        await this.containers.setBuild(profile.name, seen.service, seen.buildId, seen.commit, seen.label);
       }
       // One commit for the deployment only when this deploy touched every
       // service it has and every one was seen on that commit. A partial deploy

@@ -177,6 +177,17 @@
   white-space: nowrap;
 }
 
+// The release under the header. A label can run to 96 characters, so it wraps rather than widening
+// the panel past the player.
+.qoe-overlay__release {
+  margin-bottom: 4px;
+
+  .qoe-overlay__value {
+    white-space: normal;
+    overflow-wrap: anywhere;
+  }
+}
+
 .qoe-overlay__footer {
   border-top: 1px solid rgba(255, 255, 255, 0.15);
   padding-top: 4px;

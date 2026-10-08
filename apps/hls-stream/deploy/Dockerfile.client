@@ -52,6 +52,16 @@ COPY workspace-packages/contracts workspace-packages/contracts
 COPY packages/shared packages/shared
 COPY packages/client packages/client
 
+# The release this bundle is built as, which the player shows in its QoE overlay: the label and the
+# commit `deploy/scripts/deploy.sh` takes as --release-label and --release-commit, empty without them,
+# when the overlay shows no release at all. Vite reads them while it builds, so they come before the
+# build, and after the install, because a build arg's value is part of the cache key of every layer
+# after it and a release moves with every tag.
+ARG VITE_APP_RELEASE_LABEL=
+ARG VITE_APP_RELEASE_COMMIT=
+ENV VITE_APP_RELEASE_LABEL=$VITE_APP_RELEASE_LABEL \
+    VITE_APP_RELEASE_COMMIT=$VITE_APP_RELEASE_COMMIT
+
 # The client's `prebuild` copies weeb-3's worker, glue, wasm and snippets out of node_modules into
 # `public/weeb-3/`, which vite then copies into `dist/`. That directory is gitignored, so the build
 # context carries none of it and this install layer is where the bytes come from. pnpm runs `pre`

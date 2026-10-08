@@ -14,7 +14,13 @@ import {
   type MountObserver,
   type Observation,
 } from './buildLedger.js';
-import { type BuildReference, buildIdOfRoot, commitOfRoot, coveredJobReferences } from './buildReferences.js';
+import {
+  type BuildReference,
+  buildIdOfRoot,
+  commitOfRoot,
+  coveredJobReferences,
+  labelOfRoot,
+} from './buildReferences.js';
 import { stackRootOf } from './stackPaths.js';
 import type { StackVersionRecord } from './StackVersionRepository.js';
 import { cancelBuildJob, claimBuildJob } from './buildJobClaim.js';
@@ -146,6 +152,7 @@ export class PostgresBuildLedger implements BuildLedger, BuildReferenceReader {
           service,
           buildId: source?.buildId ?? buildIdOfRoot(this.versionsRoot, root),
           commit: commitOfRoot(root),
+          label: labelOfRoot(root),
         });
         if (source === null) continue;
         await client.query(

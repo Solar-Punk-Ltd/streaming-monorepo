@@ -27,7 +27,12 @@ function resolver(
     { findByName: async () => (options.current === undefined ? profile : options.current) },
     {
       listApiContainers: async () =>
-        (options.containers ?? [bee]).map((container) => ({ ...container, buildId: null, buildCommit: null })),
+        (options.containers ?? [bee]).map((container) => ({
+          ...container,
+          buildId: null,
+          buildCommit: null,
+          buildLabel: null,
+        })),
     },
     options.mode,
   );

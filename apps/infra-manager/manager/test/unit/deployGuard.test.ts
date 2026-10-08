@@ -34,7 +34,7 @@ const contract = (sharedImageTags: boolean): StackContract => ({
   maxSlot: 999,
   requiredSecrets: [],
   engineDefaults: {},
-  features: { srsApiPort: false, chequebookGate: false, sharedImageTags },
+  features: { srsApiPort: false, chequebookGate: false, sharedImageTags, playerRelease: false },
   chequebookMinBzz: null,
   engineConfig: { srs: false, ome: false },
   engineImages: { srs: null, ome: null },

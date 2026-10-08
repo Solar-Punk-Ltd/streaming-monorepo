@@ -94,8 +94,11 @@ if ! [[ "$REF" =~ ^[A-Za-z0-9._/-]{1,100}$ ]] || [[ "$REF" == -* ]] || [[ "$REF"
     echo "ERROR: <ref> must be a branch, a tag or a commit of letters, digits, dot, underscore, slash and dash, with no leading dash and no .. (got: $REF)" >&2
     exit 2
 fi
-# A commit is fetched by name and checked out detached. A branch or a tag is
-# what `git clone --branch` and `git fetch --tags` take, and a commit is neither.
+# A commit is fetched by name and checked out detached, because `git clone
+# --branch` takes a branch or a tag and a commit is neither. Every fetch brings
+# the repository's tags along, a commit's too, and leaves the clone's tags as
+# the remote has them, because the manager names a build by the tag on its
+# commit, read in this clone once the build is done.
 if [[ "$REF" =~ ^[0-9a-f]{40}$ ]]; then
     REF_IS_COMMIT=yes
 else
@@ -162,11 +165,18 @@ if [ -d "$REPO/.git" ]; then
     # the clone carries is writable by anyone who can write into the versions
     # root, and a fetch honours it.
     git -C "$REPO" remote set-url origin "$REPO_URL"
-    if [ "$REF_IS_COMMIT" = yes ]; then
-        git -C "$REPO" fetch --prune origin "$REF"
-    else
-        git -C "$REPO" fetch --prune --tags origin "$REF"
-    fi
+    # The tags first, made to mirror the remote's: a tag moved upstream follows
+    # and one deleted there goes. --tags alone refuses to move a tag the clone
+    # has ("would clobber existing tag"), which failed every later build of the
+    # version, and never deletes one. The clone only fetches, and the ref below
+    # is read from the remote rather than from these tags, so forcing them
+    # changes nothing about what is built.
+    git -C "$REPO" fetch --prune origin '+refs/tags/*:refs/tags/*'
+    # Then the ref on its own, the same for a commit, a branch and a tag, so
+    # FETCH_HEAD names it and nothing else. With a tag refspec on the same
+    # command line, FETCH_HEAD can start with a tag instead, and that tag's
+    # commit would be checked out below.
+    git -C "$REPO" fetch --prune --no-tags origin "$REF"
     # FETCH_HEAD rather than origin/<ref>: a tag has no origin/<name>, and this
     # is the one thing a branch, a tag and a commit all leave behind.
     git -C "$REPO" checkout --detach --force FETCH_HEAD
@@ -179,16 +189,19 @@ elif [ "$REF_IS_COMMIT" = yes ]; then
     # An empty repository and one fetch, because `git clone --branch` takes a
     # branch or a tag name and a commit is neither. Not shallow: this clone is
     # the one every later ref of this version is fetched into, and a shallow
-    # clone stays shallow for all of them.
+    # clone stays shallow for all of them. A fetch of a commit alone brings no
+    # tag, so --tags asks for them.
     git init -q "$REPO"
     git -C "$REPO" remote add origin "$REPO_URL"
-    git -C "$REPO" fetch origin "$REF"
+    git -C "$REPO" fetch --tags origin "$REF"
     git -C "$REPO" checkout --detach --force FETCH_HEAD
     ARCHIVE_REV="FETCH_HEAD"
 else
     echo "==> Cloning $REF into $REPO"
     mkdir -p "$(dirname "$REPO")"
     rm -rf "$REPO"
+    # The clone brings every tag the history it fetches carries, which is every
+    # tag the build's release can be read from.
     git clone --branch "$REF" --single-branch "$REPO_URL" "$REPO"
     ARCHIVE_REV="HEAD"
 fi

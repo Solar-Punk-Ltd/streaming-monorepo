@@ -4,8 +4,10 @@
 # The app-workspace cut decides which packages each app's images install, so a
 # defect in it could build an image from a lockfile that is not the root's. Its
 # tests also cut each app out of the repository's own root files, so a change
-# to those, or to an app's package.json, starts this workflow too. A script that
-# lands under tools/ adds its own job here.
+# to those, or to an app's package.json, starts this workflow too. The release
+# scripts name the build each deploy sends and guide the tag a release is made
+# under, so a defect in them could deploy under a wrong name or push a tag
+# nobody meant. A script that lands under tools/ adds its own job here.
 name: tools
 
 on:
@@ -73,4 +75,21 @@ jobs:
       # tests build small workspaces and git repositories of their own, which
       # in-copy.mjs reads through the runner's git.
       - name: The cut's own tests
+        run: node --test
+
+  release:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    defaults:
+      run:
+        working-directory: tools/release
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version-file: .nvmrc
+      # Node's standard library alone, so there is nothing to install. The
+      # tests make scratch git repositories, a bare one standing in for the
+      # remote, with the runner's git and none of its configuration.
+      - name: The release scripts' own tests
         run: node --test

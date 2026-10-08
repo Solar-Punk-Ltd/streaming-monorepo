@@ -76,4 +76,16 @@ ENV NODE_ENV=production
 # condition points every node process here, the CLI included, at the compiled copy.
 ENV NODE_OPTIONS=--conditions=compiled
 EXPOSE 9876
+
+# The build this image is: the label tools/release/version.mjs named the deployed commit with, and that commit.
+# deploy/deploy.sh hands both in through docker-compose.yml's build arguments, and the api answers them to a
+# signed-in console from its environment, so a container keeps reporting the build it was started from until it
+# is replaced. Empty without them, which the api reports as a development build. Last in the file, so a new
+# version reuses every layer above.
+ARG MANAGER_VERSION=
+ARG MANAGER_COMMIT=
+LABEL org.opencontainers.image.version="${MANAGER_VERSION}" \
+      org.opencontainers.image.revision="${MANAGER_COMMIT}"
+ENV MANAGER_VERSION=${MANAGER_VERSION} \
+    MANAGER_COMMIT=${MANAGER_COMMIT}
 CMD ["node", "dist/index.js"]

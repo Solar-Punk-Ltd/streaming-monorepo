@@ -28,6 +28,8 @@ export interface Observation {
   buildId: string;
   /** The build's commit from its manifest, or null for a root that is not a build. */
   commit: string | null;
+  /** The release the build was made as, from its manifest, or null for a root that is not a build or carries none. */
+  label: string | null;
 }
 
 export interface ClaimedDeploy {

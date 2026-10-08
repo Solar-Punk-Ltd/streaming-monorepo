@@ -32,12 +32,14 @@ import { dirname, join, relative } from 'node:path';
 import { describe, it } from 'node:test';
 import { fileURLToPath } from 'node:url';
 
+import { gitEnv } from '../../src/domain/versions/buildLabel.js';
 import {
   BUILD_CONTAINER_PREFIX,
   BUILD_IMAGE,
   PINNED_PNPM,
   STACK_COMMIT_FILE,
 } from '../../src/domain/versions/StackVersionService.js';
+import { scratchGitEnv } from '../support/scratchGit.js';
 
 const here = dirname(fileURLToPath(import.meta.url));
 const BUILD_SCRIPT = join(here, '..', '..', 'scripts', 'stack-version-build.sh');
@@ -128,24 +130,36 @@ describe('stack-version-build.sh refs', () => {
     assert.ok(repointed < existing.indexOf('git -C "$REPO" fetch'), 'the repoint comes before every fetch');
   });
 
-  it('fetches a commit into an existing clone rather than asking for a branch of that name', () => {
-    const existing = script.slice(script.indexOf('if [ -d "$REPO/.git" ]'), script.indexOf('COMMIT="$(git -C'));
-    assert.match(existing, /git -C "\$REPO" fetch --prune origin "\$REF"/, 'a commit is fetched without --tags');
-    assert.match(existing, /git -C "\$REPO" checkout --detach --force FETCH_HEAD/);
+  it('mirrors the tags into an existing clone, then fetches the ref on its own, a commit like a branch or a tag', () => {
+    const existing = script.slice(script.indexOf('if [ -d "$REPO/.git" ]'), script.indexOf('elif [ "$REF_IS_COMMIT"'));
+    const fetches = existing.match(/^\s*git -C "\$REPO" fetch .*$/gm)?.map((line) => line.trim());
+    assert.deepEqual(
+      fetches,
+      [
+        `git -C "$REPO" fetch --prune origin '+refs/tags/*:refs/tags/*'`,
+        'git -C "$REPO" fetch --prune --no-tags origin "$REF"',
+      ],
+      'the tags as the remote has them, then the ref alone, so FETCH_HEAD names the ref and never a tag',
+    );
+    assert.ok(
+      existing.indexOf('--no-tags origin "$REF"') <
+        existing.indexOf('git -C "$REPO" checkout --detach --force FETCH_HEAD'),
+      'the checkout reads the FETCH_HEAD of the ref',
+    );
     assert.match(existing, /git -C "\$REPO" reset --hard FETCH_HEAD/);
   });
 
-  it('makes an empty clone and fetches the commit into it, because clone --branch takes no commit', () => {
+  it('makes an empty clone and fetches the commit into it with the tags, because clone --branch takes no commit', () => {
     const fresh = script.slice(script.indexOf('git init'), script.indexOf('COMMIT="$(git -C'));
     assert.match(fresh, /git init/);
     assert.match(fresh, /git -C "\$REPO" remote add origin "\$REPO_URL"/);
-    assert.match(fresh, /git -C "\$REPO" fetch origin "\$REF"/);
+    assert.match(fresh, /git -C "\$REPO" fetch --tags origin "\$REF"/, 'the manager reads the release off the tags');
     assert.match(fresh, /git -C "\$REPO" checkout --detach --force FETCH_HEAD/);
   });
 
   it('keeps the clone of a branch or a tag as it was', () => {
     assert.match(script, /git clone --branch "\$REF" --single-branch "\$REPO_URL" "\$REPO"/);
-    assert.match(script, /git -C "\$REPO" fetch --prune --tags origin "\$REF"/);
+    assert.match(script, /git -C "\$REPO" fetch --prune --no-tags origin "\$REF"/);
   });
 });
 
@@ -208,11 +222,12 @@ function runningDocker(root: string): void {
 /** A committer time in the past, so a file dated by its commit cannot pass for one dated by the run. */
 const COMMITTED_AT = '2026-01-02T03:04:05Z';
 
+/** git in a scratch repository: none of the variables that point git elsewhere, none of the machine's configuration. */
 const git = (cwd: string, ...args: string[]): string =>
   execFileSync('git', ['-c', 'user.email=build@example.invalid', '-c', 'user.name=Build', ...args], {
     cwd,
     encoding: 'utf8',
-    env: { ...process.env, GIT_AUTHOR_DATE: COMMITTED_AT, GIT_COMMITTER_DATE: COMMITTED_AT },
+    env: scratchGitEnv({ GIT_AUTHOR_DATE: COMMITTED_AT, GIT_COMMITTER_DATE: COMMITTED_AT }),
   }).trim();
 
 /**
@@ -231,8 +246,11 @@ function offline(root: string, url: string, origin: string): NodeJS.ProcessEnv {
   mkdirSync(home);
   writeFileSync(join(home, '.gitconfig'), `[url "${origin}"]\n\tinsteadOf = ${url}\n`);
 
+  // gitEnv drops GIT_DIR and the rest of what a hook or `git rebase --exec`
+  // exports, which would otherwise point every `git -C "$REPO"` in the script
+  // at the checkout the suite runs in.
   return {
-    ...process.env,
+    ...gitEnv(process.env),
     HOME: home,
     XDG_CONFIG_HOME: join(home, '.config'),
     GIT_CONFIG_GLOBAL: join(home, '.gitconfig'),
@@ -363,6 +381,117 @@ describe('stack-version-build.sh fetches a pinned commit', () => {
 
       assert.equal(readFileSync(join(added, STACK_COMMIT_FILE), 'utf8').trim(), pinned);
       assert.equal(readFileSync(join(updated, STACK_COMMIT_FILE), 'utf8').trim(), pinned);
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
+  });
+
+  /**
+   * The manager names a build by the tag on its commit, read in the clone once
+   * the build is done, so a pinned commit has to arrive with the tags as a
+   * branch or a tag already did.
+   */
+  it('brings the tags along with a pinned commit, into a new clone and into the clone it already has', () => {
+    const root = mkdtempSync(join(tmpdir(), 'stack-build-tags-'));
+    try {
+      const { pinned, environment } = fixture(root);
+      const origin = join(root, 'origin');
+      git(origin, 'tag', '-a', 'QA-build-2026-10-07', '-m', 'a release', pinned);
+      const fresh = join(root, 'fresh.repo');
+      const existing = join(root, 'existing.repo');
+      execFileSync('git', ['clone', '-q', origin, existing], { env: scratchGitEnv() });
+      git(origin, 'tag', '-a', 'QA-build-2026-10-08', '-m', 'the release after it', pinned);
+
+      execFileSync(
+        'bash',
+        [BUILD_SCRIPT, fresh, join(root, 'staging-fresh'), pinned, STACK_URL, '.', 'none', 'abcdef01'],
+        {
+          env: environment,
+        },
+      );
+      execFileSync(
+        'bash',
+        [BUILD_SCRIPT, existing, join(root, 'staging-existing'), pinned, STACK_URL, '.', 'none', 'abcdef02'],
+        { env: environment },
+      );
+
+      assert.deepEqual(git(fresh, 'tag', '--list').split('\n'), ['QA-build-2026-10-07', 'QA-build-2026-10-08']);
+      assert.deepEqual(git(existing, 'tag', '--list').split('\n'), ['QA-build-2026-10-07', 'QA-build-2026-10-08']);
+      assert.equal(readFileSync(join(root, 'staging-fresh', STACK_COMMIT_FILE), 'utf8').trim(), pinned);
+      assert.equal(readFileSync(join(root, 'staging-existing', STACK_COMMIT_FILE), 'utf8').trim(), pinned);
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
+  });
+
+  /** One more build of `ref` into `repo`, staged under a name of its own, which has to succeed. */
+  function buildAgain(
+    root: string,
+    repo: string,
+    ref: string,
+    attempt: string,
+    environment: NodeJS.ProcessEnv,
+  ): string {
+    const staging = join(root, `staging-${attempt}`);
+    const run = spawnSync('bash', [BUILD_SCRIPT, repo, staging, ref, STACK_URL, '.', 'none', attempt], {
+      env: environment,
+      encoding: 'utf8',
+    });
+    assert.equal(run.status, 0, `the build of ${ref} failed: ${run.stderr}`);
+    return staging;
+  }
+
+  const builtCommit = (staging: string): string => readFileSync(join(staging, STACK_COMMIT_FILE), 'utf8').trim();
+
+  /**
+   * docs/releasing.md has an operator delete a mistaken tag and tag the right
+   * commit, often under the same name. A fetch that keeps the clone's own tag
+   * refuses to move it, "would clobber existing tag", and every later build of
+   * the version failed until someone deleted the tag in the clone on the host.
+   */
+  it('follows a tag moved upstream between two builds, and still builds the commit the ref names', () => {
+    const root = mkdtempSync(join(tmpdir(), 'stack-build-moved-tag-'));
+    try {
+      const { pinned, environment } = fixture(root);
+      const origin = join(root, 'origin');
+      const repo = join(root, 'stack.repo');
+      const moved = git(origin, 'rev-parse', 'HEAD');
+      git(origin, 'tag', '-a', 'QA-build-2026-10-07', '-m', 'a release', pinned);
+      buildAgain(root, repo, pinned, 'abcdef01', environment);
+      assert.equal(git(repo, 'rev-parse', 'QA-build-2026-10-07^{commit}'), pinned);
+
+      git(origin, 'tag', '-d', 'QA-build-2026-10-07');
+      git(origin, 'tag', '-a', 'QA-build-2026-10-07', '-m', 'the release, on the right commit', moved);
+      const again = buildAgain(root, repo, pinned, 'abcdef02', environment);
+
+      assert.equal(git(repo, 'rev-parse', 'QA-build-2026-10-07^{commit}'), moved, "the clone's tag follows");
+      assert.equal(builtCommit(again), pinned, 'the pinned commit is still what is built');
+      assert.equal(
+        builtCommit(buildAgain(root, repo, 'QA-build-2026-10-07', 'abcdef03', environment)),
+        moved,
+        'a version that follows the tag builds the commit it moved to',
+      );
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
+  });
+
+  it('drops a tag deleted upstream from the clone at the next build, and keeps the rest', () => {
+    const root = mkdtempSync(join(tmpdir(), 'stack-build-deleted-tag-'));
+    try {
+      const { pinned, environment } = fixture(root);
+      const origin = join(root, 'origin');
+      const repo = join(root, 'stack.repo');
+      git(origin, 'tag', '-a', 'QA-build-2026-10-07', '-m', 'a release', pinned);
+      git(origin, 'tag', '-a', 'QA-build-mistaken', '-m', 'a mistake', pinned);
+      buildAgain(root, repo, pinned, 'abcdef01', environment);
+      assert.deepEqual(git(repo, 'tag', '--list').split('\n'), ['QA-build-2026-10-07', 'QA-build-mistaken']);
+
+      git(origin, 'tag', '-d', 'QA-build-mistaken');
+      const again = buildAgain(root, repo, pinned, 'abcdef02', environment);
+
+      assert.deepEqual(git(repo, 'tag', '--list').split('\n'), ['QA-build-2026-10-07']);
+      assert.equal(builtCommit(again), pinned);
     } finally {
       rmSync(root, { recursive: true, force: true });
     }

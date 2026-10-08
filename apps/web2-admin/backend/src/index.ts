@@ -58,8 +58,16 @@ function redactSecret(value: string): string {
   return `${value.slice(0, 6)}…(${value.length} chars)`;
 }
 
+/** The build as the boot log names it: the label the deploy built in, or a development build, and the whole commit. */
+function describeVersion(): string {
+  const { label, commit } = config.version;
+  const name = label ?? 'development build';
+  return commit === null ? name : `${name} at ${commit}`;
+}
+
 function logStartupConfig(owner: string, topicHex: string): void {
   logger.info('[Boot] configuration:');
+  logger.info(`[Boot]   version: ${describeVersion()}`);
   logger.info(`[Boot]   listen: ${config.host}:${config.port}`);
   logger.info(`[Boot]   database: ${redactDatabaseUrl(config.databaseUrl)}`);
   logger.info(
@@ -260,6 +268,7 @@ async function main(): Promise<void> {
       uploaderTokens: stageRepository,
       feed,
       viewerBaseUrl: config.viewerBaseUrl,
+      version: config.version,
     },
     config.port,
     config.host,

@@ -1,7 +1,11 @@
 import {
   BUNDLED_VERSION_NAME,
+  buildLabelText,
+  type BuildLabelText,
+  type DeploymentShape,
   type ObservedContainer,
   runningCommitOf,
+  runningLabelOf,
   type StackVersion,
 } from '@streaming-infra-manager/common';
 
@@ -104,6 +108,35 @@ export function describeRunning(containers: readonly ObservedContainer[]): strin
   return `mixed: ${running.byService
     .map(({ service, commit }) => `${service} ${commit ? shortCommit(commit) : NOT_OBSERVED}`)
     .join(', ')}`;
+}
+
+/**
+ * The Release a version card shows: the release its current build was made
+ * as, `QA-build-2026-10-07 (635b4e175)` with the whole commit for a title, or
+ * null for a build made with none, which shows nothing.
+ */
+export function describeRelease(version: StackVersion): BuildLabelText | null {
+  return version.buildLabel ? buildLabelText(version.buildLabel, version.commitSha) : null;
+}
+
+/**
+ * The release a deployment's containers were seen to run, by the same rule, or
+ * null when nothing was observed, their build carries none, or they disagree.
+ * It can be older than the release the version's card shows: an update moves
+ * the version, and only a deploy moves the containers.
+ */
+export function describeRunningRelease(containers: readonly ObservedContainer[]): BuildLabelText | null {
+  const running = runningLabelOf(containers);
+  return running ? buildLabelText(running.label, running.commit) : null;
+}
+
+/**
+ * What a deployment's page calls that release. On a deployment that serves the
+ * web player, which is what Watch a stream makes, the release is the player its
+ * viewers load, so there it reads as the player's version.
+ */
+export function runningReleaseKey(shape: DeploymentShape): string {
+  return shape === 'viewer' ? 'Player' : 'Release';
 }
 
 /**

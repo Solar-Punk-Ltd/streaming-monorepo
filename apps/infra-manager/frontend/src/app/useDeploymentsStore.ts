@@ -7,12 +7,14 @@ import {
   reconcileProfiles,
   type DeployAttemptView,
   type StackVersion,
+  type VersionInfo,
 } from '@streaming-infra-manager/common';
 
 import type { Tone } from '../components/tone';
 import { fetchGroups, fetchProfiles, fetchServerConfig } from '../data';
 import { openLiveStream } from '../liveStream';
 import type { DeploymentGroup, Profile } from '../types';
+import { fetchManagerVersion } from './managerVersion';
 import { useToast, type ToastTone } from './ToastProvider';
 import { fetchAttempts } from '../versions/attemptsApi';
 import { fetchVersions } from '../versions/versionsApi';
@@ -35,6 +37,11 @@ export interface DeploymentsStore {
   chequebookFloorBzz: string;
   /** The chain endpoint this manager offers the Bee nodes it creates, host only. */
   beeRpcEndpoint: ConfiguredBeeRpcEndpoint;
+  /**
+   * The build this manager runs, read once. Null until the manager has answered, and when it could not be read,
+   * which the sidebar shows as nothing rather than as a development build.
+   */
+  managerVersion: VersionInfo | null;
   /** The /events stream is open, so what is on screen is live. */
   connected: boolean;
   activity: ActivityEntry[];
@@ -119,6 +126,7 @@ export function useDeploymentsStore(): DeploymentsStore {
     configured: false,
     host: null,
   }));
+  const [managerVersion, setManagerVersion] = useState<VersionInfo | null>(null);
   const [connected, setConnected] = useState(false);
   const [activity, setActivity] = useState<ActivityEntry[]>([]);
   const [loadError, setLoadError] = useState<string | null>(null);
@@ -194,6 +202,14 @@ export function useDeploymentsStore(): DeploymentsStore {
         setChequebookFloorBzz(config.chequebookFloorBzz);
         setBeeRpcEndpoint(config.beeRpcEndpoint);
       })
+      .catch(() => undefined);
+  }, []);
+
+  // Once per sign-in: a running manager changes build only when a deploy
+  // replaces it, and a page loaded after that reads the new one.
+  useEffect(() => {
+    fetchManagerVersion()
+      .then(setManagerVersion)
       .catch(() => undefined);
   }, []);
 
@@ -277,6 +293,7 @@ export function useDeploymentsStore(): DeploymentsStore {
       hostPassphrase,
       chequebookFloorBzz,
       beeRpcEndpoint,
+      managerVersion,
       connected,
       activity,
       loadError,
@@ -296,6 +313,7 @@ export function useDeploymentsStore(): DeploymentsStore {
       hostPassphrase,
       chequebookFloorBzz,
       beeRpcEndpoint,
+      managerVersion,
       connected,
       activity,
       loadError,

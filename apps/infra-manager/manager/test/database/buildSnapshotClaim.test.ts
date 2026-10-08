@@ -41,7 +41,7 @@ const CONTRACT: StackContract = {
   maxSlot: 99,
   requiredSecrets: [],
   engineDefaults: {},
-  features: { srsApiPort: true, chequebookGate: false, sharedImageTags: false },
+  features: { srsApiPort: true, chequebookGate: false, sharedImageTags: false, playerRelease: false },
   chequebookMinBzz: null,
   engineConfig: { srs: true, ome: false },
   engineImages: { srs: 'test/srs', ome: null },

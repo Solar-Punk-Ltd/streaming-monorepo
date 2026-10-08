@@ -41,6 +41,7 @@ function rowOf(snapshot: ReturnType<typeof buildContainerSnapshot>): ContainerRo
     env_digests: snapshot.envDigests,
     build_id: null,
     build_commit: null,
+    build_label: null,
     created_at: new Date(0),
     updated_at: new Date(0),
   };

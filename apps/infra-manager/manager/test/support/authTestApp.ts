@@ -2,7 +2,7 @@ import http from 'node:http';
 
 import { REQUESTED_WITH_HEADER, REQUESTED_WITH_VALUE, SESSION_COOKIE_NAME } from '@streaming-infra-manager/common';
 import type { LoginLimiter } from '@streaming-monorepo/web-auth';
-import express from 'express';
+import express, { type Router } from 'express';
 
 import { errorHandler } from '../../src/api/middleware/errorHandler.js';
 import { notFound } from '../../src/api/middleware/notFound.js';
@@ -26,7 +26,8 @@ import { InMemoryUserRepository } from './InMemoryUserRepository.js';
  * `/profiles` here stands in for the rest of the API. It answers with the
  * signed-in username so a test can tell a real pass from an accidental one.
  * `/events` is the real events router, because a stream that outlives its
- * session is the thing several of these tests are about.
+ * session is the thing several of these tests are about. `gated` mounts a real
+ * router of the API behind the gate too, at the path `api/server.ts` gives it.
  */
 export interface AuthTestApp {
   url: string;
@@ -36,7 +37,10 @@ export interface AuthTestApp {
   close(): Promise<void>;
 }
 
-export async function startAuthTestApp(limiter?: LoginLimiter): Promise<AuthTestApp> {
+export async function startAuthTestApp(
+  limiter?: LoginLimiter,
+  gated: Readonly<Record<string, Router>> = {},
+): Promise<AuthTestApp> {
   const users = new InMemoryUserRepository();
   const sessions = new InMemorySessionRepository(users);
   const openStreams = new OpenStreams();
@@ -61,6 +65,7 @@ export async function startAuthTestApp(limiter?: LoginLimiter): Promise<AuthTest
   app.use(requireSession);
 
   app.use('/events', events.router);
+  for (const [path, router] of Object.entries(gated)) app.use(path, router);
 
   app.get('/profiles', (req, res) => {
     res.json({ user: signedInUser(req).username });

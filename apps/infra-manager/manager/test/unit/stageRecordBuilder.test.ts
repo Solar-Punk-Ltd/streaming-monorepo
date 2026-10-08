@@ -61,9 +61,9 @@ function stage(over: Partial<ProfileWithContainers> = {}): ProfileWithContainers
   return {
     ...makeProfile({ name: 'stage-one', kind: 'streamer', instance_id: STAGE_ID, stamp_id: BATCH }),
     containers: [
-      { service: 'srs', ports: {}, buildId: null, buildCommit: null },
-      { service: 'stream-uploader', ports: {}, buildId: null, buildCommit: null },
-      { service: 'bee-uploader', ports: {}, buildId: null, buildCommit: null },
+      { service: 'srs', ports: {}, buildId: null, buildCommit: null, buildLabel: null },
+      { service: 'stream-uploader', ports: {}, buildId: null, buildCommit: null, buildLabel: null },
+      { service: 'bee-uploader', ports: {}, buildId: null, buildCommit: null, buildLabel: null },
     ],
     pendingStamp: false,
     network_host: '192.0.2.10',
@@ -301,7 +301,7 @@ describe('the rungs', () => {
       components: ['srs', 'stream-uploader'],
       stamp_id: null,
       bee_publishers: POOL,
-      containers: [{ service: 'srs', ports: {}, buildId: null, buildCommit: null }],
+      containers: [{ service: 'srs', ports: {}, buildId: null, buildCommit: null, buildLabel: null }],
     });
     const { record } = await built(
       {

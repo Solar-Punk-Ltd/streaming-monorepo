@@ -18,7 +18,9 @@ import type {
   User,
   UserListResponse,
   UserSummary,
+  VersionInfo,
 } from '@streaming-monorepo/web2-admin-common';
+import { VERSION_PATH } from '@streaming-monorepo/web2-admin-common';
 
 import {
   FUNDING_PATH,
@@ -372,4 +374,11 @@ export async function fetchFundingTransfers(bulkId: string): Promise<FundingTran
 
 export function fetchPublicConfig(): Promise<PublicConfig> {
   return getJson<PublicConfig>(`${API}/config`);
+}
+
+// --- version ----------------------------------------------------------------
+
+/** The build the API runs, as its deploy built it in. Behind the session, so a 401 here signs out like any other. */
+export function fetchVersion(): Promise<VersionInfo> {
+  return getJson<VersionInfo>(VERSION_PATH);
 }

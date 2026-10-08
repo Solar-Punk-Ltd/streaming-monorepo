@@ -3,6 +3,25 @@
  * `dateUtil.ts`, so there is one answer to what a timestamp looks like.
  */
 
+import type { VersionInfo } from '@streaming-monorepo/web2-admin-common';
+
+/** How much of a commit a build's name shows, as many characters as tools/release/version.mjs shortens one to. */
+const SHORT_COMMIT_LENGTH = 9;
+
+/** What a build is called when the API carries no version, as in a development run. */
+const DEVELOPMENT_BUILD = 'development build';
+
+/**
+ * A build as every console names it: `<label> (<short commit>)`, or the label alone when it already starts with the
+ * short commit, as an untagged build's does, and "development build" when no version was built in.
+ */
+export function versionText({ label, commit }: VersionInfo): string {
+  if (label === null) return DEVELOPMENT_BUILD;
+  if (commit === null) return label;
+  const short = commit.slice(0, SHORT_COMMIT_LENGTH);
+  return label.startsWith(short) ? label : `${label} (${short})`;
+}
+
 /** A long hex value elided in the middle: owners, topics, swarm references. */
 export function shortHex(hex: string, lead = 8, tail = 6): string {
   if (hex.length <= lead + tail + 1) return hex;

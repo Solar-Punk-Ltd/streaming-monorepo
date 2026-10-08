@@ -41,11 +41,47 @@ describe('the api image', () => {
   it('links the system-wide ssh config to the mounted identity, so a host without one starts with none', () => {
     assert.match(dockerfile, /^RUN ln -sf? \/root\/\.ssh\/ssh_config \/etc\/ssh\/ssh_config\s*$/m);
   });
+
+  /**
+   * The build the deploy names lives in the image, so a container keeps reporting the build it was started from
+   * until it is replaced. Taken in after the last layer that copies or runs anything, so a new name reuses every
+   * layer above it, and empty without one, which the api reports as a development build.
+   */
+  it('keeps the build it was made from in its environment and its labels, after every layer that does work', () => {
+    const runtime = dockerfile.slice(dockerfile.lastIndexOf('\nFROM '));
+    for (const name of ['MANAGER_VERSION', 'MANAGER_COMMIT']) {
+      const taken = runtime.indexOf(`\nARG ${name}=\n`);
+      assert.notEqual(taken, -1, `${name} is a build argument of the final stage, empty by default`);
+      assert.match(
+        runtime.slice(taken),
+        new RegExp(`\\n(?:ENV |\\s+)${name}=\\$\\{${name}\\}`),
+        'kept as its environment',
+      );
+      assert.doesNotMatch(runtime.slice(taken), /^(?:RUN|COPY|ADD)\s/m, 'with no layer that does work after it');
+    }
+    assert.match(runtime, /org\.opencontainers\.image\.version="\$\{MANAGER_VERSION\}"/);
+    assert.match(runtime, /org\.opencontainers\.image\.revision="\$\{MANAGER_COMMIT\}"/);
+  });
 });
 
 describe('the api container', () => {
   it('mounts the ssh identity as a directory and never as a file a fresh host lacks', () => {
     assert.match(compose, /\$\{MANAGER_SSH_DIR:-[^}]+\}:\/root\/\.ssh\b/);
     assert.doesNotMatch(compose, /:\/etc\/ssh\/ssh_config/, 'no bind mount onto the system ssh config');
+  });
+
+  /**
+   * The deploy exports the build on the host before it builds, and compose hands it to the image as build
+   * arguments. Never to a container's environment: that would put whatever the shell holds at the next `up` over
+   * the build the image was made from.
+   */
+  it('hands the build to the api image as build arguments, and never to a container', () => {
+    const api = compose.slice(compose.indexOf('\n  api:\n'), compose.indexOf('\n  web:\n'));
+    assert.match(
+      api,
+      /\n {6}args:\n(?: {8}#[^\n]*\n)* {8}MANAGER_VERSION: \$\{MANAGER_VERSION:-\}\n {8}MANAGER_COMMIT: \$\{MANAGER_COMMIT:-\}\n/,
+    );
+    const environment = api.slice(api.indexOf('\n    environment:\n'), api.indexOf('\n    volumes:\n'));
+    assert.doesNotMatch(environment, /MANAGER_VERSION|MANAGER_COMMIT/);
   });
 });

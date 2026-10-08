@@ -619,6 +619,9 @@ async function handle(req, res) {
   const user = currentUser(req);
   if (user === null) return send(res, 401, { error: 'unauthenticated' });
 
+  // Nothing deployed this, so it is what the API answers outside a deploy: a development build.
+  if (path === '/api/version' && method === 'GET') return send(res, 200, { label: null, commit: null });
+
   if (path === '/api/auth/users' && method === 'GET') {
     return send(res, 200, { users: [...users.values()].map(summarise) });
   }

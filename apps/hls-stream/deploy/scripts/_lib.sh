@@ -66,6 +66,12 @@ FEED_TOPIC_OVERRIDE=""
 PRIVATE_KEY_OVERRIDE=""
 STAMP_ID_OVERRIDE=""
 
+# The release of the build being deployed, from --release-label and --release-commit: the name the
+# build was made as and its commit. The client builds them in and its QoE overlay shows them, and no
+# env file can set them, see release_overrides_text.
+RELEASE_LABEL=""
+RELEASE_COMMIT=""
+
 # Populated by parse_profile_args with the argv minus the --profile / --portSlot flags.
 REST_ARGS=()
 
@@ -115,11 +121,12 @@ readonly PORT_VARS=(
 
 # Refuse a per-deployment override whose value is not the shape that key takes.
 #
-# These four are the only argv values that reach a file the deploy `source`s, here and again on the
-# deployment host, so their shape is checked rather than trusted. `shell_quote` in
-# parameter_overrides_text is the other layer and neither is written to lean on the other: a value
-# carrying a newline would still end the remote heredoc at its own `ENVEOF` whatever the quoting
-# around it says, and only a shape check can say that value never existed.
+# These four, and the two that name the release, are the only argv values that reach a file the
+# deploy `source`s, here and again on the deployment host, so their shape is checked rather than
+# trusted. `shell_quote` in parameter_overrides_text and release_overrides_text is the other layer
+# and neither is written to lean on the other: a value carrying a newline would still end the remote
+# heredoc at its own `ENVEOF` whatever the quoting around it says, and only a shape check can say that
+# value never existed.
 #
 # The value is not echoed back. One of the four is the publisher's private key, and a deploy's output
 # reaches the manager's logs and this repository's transcripts, where a key that appears once is a key
@@ -229,6 +236,30 @@ parse_profile_args() {
         STAMP_ID_OVERRIDE="$2"
         shift 2
         ;;
+      --release-label=*)
+        RELEASE_LABEL="${1#*=}"
+        shift
+        ;;
+      --release-label)
+        if [ $# -lt 2 ]; then
+          echo -e "${RED}ERROR: --release-label requires a value${NC}" >&2
+          exit 1
+        fi
+        RELEASE_LABEL="$2"
+        shift 2
+        ;;
+      --release-commit=*)
+        RELEASE_COMMIT="${1#*=}"
+        shift
+        ;;
+      --release-commit)
+        if [ $# -lt 2 ]; then
+          echo -e "${RED}ERROR: --release-commit requires a value${NC}" >&2
+          exit 1
+        fi
+        RELEASE_COMMIT="$2"
+        shift 2
+        ;;
       *)
         REST_ARGS+=("$1")
         shift
@@ -275,6 +306,14 @@ parse_profile_args() {
     "a 64 character hex key, with or without a 0x prefix"
   require_override_shape "--stamp-id" "$STAMP_ID_OVERRIDE" '^(0x)?[0-9a-fA-F]{64}$' \
     "a 64 character hex batch id, with or without a 0x prefix"
+  # The release reaches the same file, and from there the client's bundle, where the player shows it
+  # in its QoE overlay. The shapes are the ones a release has wherever it is named: a label is what
+  # tools/release/version.mjs prints and what the deployment manager keeps in a build's manifest, and
+  # a commit is a whole one. See release_overrides_text.
+  require_override_shape "--release-label" "$RELEASE_LABEL" '^[A-Za-z0-9._+/-]{1,96}$' \
+    "letters, digits, dot, underscore, plus, slash or hyphen, at most 96 characters"
+  require_override_shape "--release-commit" "$RELEASE_COMMIT" '^[0-9a-f]{40}$' \
+    "a whole commit, 40 lower-case hex characters"
 
   # A named profile always points at its OWN env file, present or not. The old fallback to the
   # default `.env` did not merely lose this profile's settings, it silently adopted the default
@@ -382,6 +421,24 @@ parameter_overrides_text() {
   if [ -n "$STAMP_ID_OVERRIDE" ]; then
     printf 'STAMP=%s\n' "$(shell_quote "${STAMP_ID_OVERRIDE#0x}")"
   fi
+}
+
+# Emit the two lines that build the release into the client, for a target that builds it:
+#   --release-label   → VITE_APP_RELEASE_LABEL
+#   --release-commit  → VITE_APP_RELEASE_COMMIT
+#
+# Both lines every time, each empty when its flag was not given, which is the difference from the
+# overrides above. A release names the build that is being deployed, so it comes from the flags
+# parse_profile_args checked, or from nowhere: an empty line here wins over a line an env file or the
+# caller's environment carries, so nothing that skipped the check reaches the bundle. The player shows
+# a label, with the first nine characters of the commit beside it, in its QoE overlay, and no line at
+# all for an empty label.
+#
+# Quoted through `shell_quote` and printed after the `%b` expansion, for the reasons
+# parameter_overrides_text gives. generate_env_overrides in deploy.sh is the only caller.
+release_overrides_text() {
+  printf 'VITE_APP_RELEASE_LABEL=%s\n' "$(shell_quote "$RELEASE_LABEL")"
+  printf 'VITE_APP_RELEASE_COMMIT=%s\n' "$(shell_quote "$RELEASE_COMMIT")"
 }
 
 # --- Usage text ---
