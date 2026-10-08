@@ -16,6 +16,8 @@
 import { Identifier, Topic } from '@ethersphere/bee-js';
 import { Binary } from 'cafe-utility';
 
+import { hasExactlyFields } from './exactFields.js';
+
 export const MARKER_PERIOD_SECONDS = 10;
 
 const MARKER_PERIOD_MS = MARKER_PERIOD_SECONDS * 1000;
@@ -116,7 +118,7 @@ export function parseLadderMarker(text: string, expectedPeriod?: number): Ladder
   }
   const { v, period, writtenAt, rungs, segmentMs } = value;
   const fields = v === LADDER_MARKER_VERSION_WITHOUT_LENGTH ? MARKER_FIELDS_WITHOUT_LENGTH : MARKER_FIELDS;
-  if (Object.keys(value).sort().join(',') !== fields.join(',')) {
+  if (!hasExactlyFields(value, fields)) {
     return null;
   }
   if (v !== LADDER_MARKER_VERSION && v !== LADDER_MARKER_VERSION_WITHOUT_LENGTH) {
