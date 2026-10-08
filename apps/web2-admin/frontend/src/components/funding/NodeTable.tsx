@@ -20,7 +20,7 @@ import type { AdminFundingNode, FundingTransferKind } from '@streaming-monorepo/
 import { shortHex } from '../../format';
 import { CopyButton } from '../CopyButton';
 import { acceptsAmountTyping, formatShort, formatUnits, readAmount } from './amounts';
-import { nodeCaption, nodeName, TOKENS, type Drafts, type NodeDraft, type NodeGroup } from './balance';
+import { nodeCaption, nodeName, TOKENS, type Drafts, type NodeDraft, type NodeFocus, type NodeGroup } from './balance';
 
 const NO_DRAFT: NodeDraft = { ticked: false, xdai: '', xbzz: '' };
 
@@ -70,7 +70,7 @@ function PinChip({ node }: { node: AdminFundingNode }) {
 /**
  * A node in three lines: its name, which never wraps and has the whole label as its tooltip, then its stage and role,
  * then its wallet with a copy button and the state of its address. A read error comes under them. The Stamps tab's
- * rows show it too, under the batch the node pays for.
+ * rows show it too, under the batch the node pays for, and the Chequebooks tab's beside its chequebook.
  */
 export function NodeCard({ node, group }: { node: AdminFundingNode; group: NodeGroup }) {
   return (
@@ -105,8 +105,11 @@ export function NodeCard({ node, group }: { node: AdminFundingNode; group: NodeG
   );
 }
 
-/** One balance to three decimals, its token after it, and the exact amount as its tooltip. */
-function BalanceLine({ value, kind }: { value: string | null; kind: FundingTransferKind }) {
+/**
+ * One balance to three decimals, its token after it, and the exact amount as its tooltip. The Chequebooks tab shows
+ * each node's wallet with it too.
+ */
+export function BalanceLine({ value, kind }: { value: string | null; kind: FundingTransferKind }) {
   const { name, decimals } = TOKENS[kind];
   return (
     <Typography
@@ -201,13 +204,13 @@ function AfterLine({ balance, typed, kind }: { balance: string | null; typed: st
 export function NodeTable({
   group,
   drafts,
-  focusNodeId = null,
+  focus = null,
   onChange,
 }: {
   group: NodeGroup;
   drafts: Drafts;
-  /** The node whose xBZZ field takes the focus when the table is drawn: the one a Stamps tab's Fund link named. */
-  focusNodeId?: string | null;
+  /** The amount field that takes the focus when the table is drawn: the one a Fund link of another tab is about. */
+  focus?: NodeFocus | null;
   onChange: (nodeId: string, draft: NodeDraft) => void;
 }) {
   return (
@@ -279,7 +282,7 @@ export function NodeTable({
                               node={node}
                               value={draft[kind]}
                               disabled={noWallet}
-                              focused={kind === 'xbzz' && node.nodeId === focusNodeId}
+                              focused={focus !== null && kind === focus.kind && node.nodeId === focus.nodeId}
                               onType={(value) => type(kind, value)}
                             />
                           </Line>
