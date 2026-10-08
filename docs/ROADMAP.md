@@ -372,7 +372,9 @@ Left open after the nine phases:
   the shared token (phase 9); then a `STREAM_KEY` of its own for each stage.
   Until the catalogue is moved, the batch from before stages holds every slot
   written before the intermediate admin: it stays topped up and alive, is
-  never diluted, replaced or put in a pool string, and the move runs first
+  never diluted (superseded on 2026-10-08: the catalogue batch may be diluted
+  like any other, as [funding.md](architecture/funding.md) records), replaced
+  or put in a pool string, and the move runs first
   after the real-node trial. That is the one remaining way the catalogue can
   go dark. "Upgrading" in `docs/self-hosting.md` has each step. A fresh
   installation needs none of this.

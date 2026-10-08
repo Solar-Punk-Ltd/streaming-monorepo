@@ -118,3 +118,6 @@ against a real node before phase 2, so its first trial is theirs too.
 - A stamp operation takes a confirm dialog, without the password: a node pays for its own, and
   nothing leaves the brand wallet.
 - A catalogue move is not handled: the tab lists only the designated catalogue batch.
+- The catalogue batch may be diluted like any other. This supersedes the rollout note in the
+  [roadmap](../ROADMAP.md) that the batch from before stages is never diluted until the catalogue is
+  moved.
