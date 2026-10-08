@@ -43,7 +43,7 @@ const V3_CONTRACT: StackContract = {
   allocationProblem: null,
   requiredSecrets: [],
   engineDefaults: {},
-  features: { srsApiPort: true, chequebookGate: false, sharedImageTags: true },
+  features: { srsApiPort: true, chequebookGate: false, sharedImageTags: true, playerRelease: false },
   chequebookMinBzz: null,
   engineConfig: { srs: true, ome: false },
   engineImages: { srs: 'ossrs/srs:6', ome: null },

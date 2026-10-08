@@ -997,7 +997,10 @@ with, which the api reads from `MANAGER_VERSION` when it makes the build, and
 an added version's as the tag on the commit it built, read in its own clone.
 `GET /versions` answers the current build's as `buildLabel`, and each container
 of `GET /profiles` answers the one its build was made as, also `buildLabel`.
-[stack-versions.md](../docs/features/stack-versions.md) has the rules.
+Since 2026-10-08 a deploy also hands the stack's deploy script the release of
+the build it was admitted on, `--release-label` and `--release-commit`, on a
+version whose contract has `playerRelease`, and the player shows it in its QoE
+overlay. [stack-versions.md](../docs/features/stack-versions.md) has the rules.
 
 Every deployment runs one version, chosen in the new deployment wizard when
 more than one has finished building and preselected to the default. `POST
@@ -1015,7 +1018,9 @@ manager caps both at 100 whatever the contract declares), the engine defaults th
 card and the settings page name, whether the engine can run on a config file of its own, which
 setting each container reads, taken from every `${KEY}` its block of the
 version's compose files names (since 2026-09-26, a version built before that
-falls back to the manager's own shorter list), and the
+falls back to the manager's own shorter list), whether its deploy script takes
+the release of the build (since 2026-10-08, read off the case arms of
+`parse_profile_args` in `_lib.sh`, and false for a version built before that), and the
 secrets its containers refuse to start without. Those secrets,
 `API_AUTH_TOKEN`, `SRS_WEBHOOK_TOKEN` and `OME_ADMISSION_SECRET` on the bundled
 `v3.4`, are generated the first

@@ -13,6 +13,7 @@ import {
   type StackPortVar,
 } from '@streaming-infra-manager/common';
 
+import { RELEASE_FLAGS } from './deployRelease.js';
 import { portFor } from './portTable.js';
 
 /**
@@ -21,8 +22,9 @@ import { portFor } from './portTable.js';
  * Everything here is read from files the stack already keeps exact, because the
  * deploy scripts themselves read them: the port table is what `_lib.sh` shifts
  * per slot, the slot ceiling is what `deploy.sh` refuses above, the required
- * secrets are the keys the samples declare, and the engine defaults are the
- * `${VAR:-default}` fallbacks the entrypoints apply. Two versions with
+ * secrets are the keys the samples declare, the engine defaults are the
+ * `${VAR:-default}` fallbacks the entrypoints apply, and the flags a deploy may
+ * be handed are the case arms of `_lib.sh`'s own parser. Two versions with
  * different tables can therefore run side by side without a second copy of any
  * of it living in the manager.
  *
@@ -55,6 +57,15 @@ const OME_ENV_SAMPLE = join('engines', 'ome', '.env.sample');
 
 const SRS_API_PORT_VAR = 'SRS_HTTP_API_PORT';
 const CHEQUEBOOK_FLOOR_KEY = 'CHEQUEBOOK_MIN_BZZ';
+
+/**
+ * Whether `parse_profile_args` in `_lib.sh` takes a flag: a case arm for its
+ * `--flag=<value>` spelling, which is what accepts it. A flag a version has no
+ * arm for is handed on as a service name, and `deploy.sh` refuses the deploy.
+ */
+function takesFlag(lib: string, flag: string): boolean {
+  return new RegExp(`^\\s*${flag}=\\*\\)`, 'm').test(lib);
+}
 
 /**
  * A secret the containers refuse to start without, and the sample file whose
@@ -117,6 +128,7 @@ export function readStackContract(root: string): StackContract {
       srsApiPort: ports.some((port) => port.name === SRS_API_PORT_VAR),
       chequebookGate: chequebookMinBzz !== null,
       sharedImageTags: sharedTags.shared,
+      playerRelease: RELEASE_FLAGS.every((flag) => takesFlag(lib, flag)),
     },
     chequebookMinBzz,
     engineConfig: readEngineConfigSupport(root),

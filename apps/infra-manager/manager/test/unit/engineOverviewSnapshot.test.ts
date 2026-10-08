@@ -185,7 +185,7 @@ describe('engine overview identity through the real HTTP route', { timeout: 1500
       allocationProblem: null,
       requiredSecrets: [],
       engineDefaults: { HLS_WINDOW: '12' },
-      features: { srsApiPort: false, chequebookGate: true, sharedImageTags: false },
+      features: { srsApiPort: false, chequebookGate: true, sharedImageTags: false, playerRelease: false },
       chequebookMinBzz: '0.5',
       engineConfig: { srs: true, ome: true },
       engineImages: { srs: null, ome: null },

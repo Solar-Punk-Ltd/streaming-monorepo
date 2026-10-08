@@ -6,9 +6,12 @@ import { VERSION_LABEL_RE, VERSION_SHORT_LENGTH, versionDisplay } from './versio
  * comes from: the label the manager was deployed with for the bundled version,
  * and the tag on the commit for a version an operator added.
  *
- * A label reaches a page only behind sign-in, and is never written into
- * anything a viewer loads. The rules are the manager's own version's, in
- * versionInfo.ts, so the sidebar and the stack pages hold one rule between them.
+ * A label reaches the manager's pages only behind sign-in. Since 2026-10-08 a
+ * deploy also builds it into the player of a version that takes it, whose QoE
+ * overlay, opened with `?qoe=1` on a watch URL, is the one place a viewer can
+ * see it. The rules are the manager's own version's, in versionInfo.ts, so the
+ * sidebar and the stack pages hold one rule between them, and the player shows
+ * a release by the same one.
  */
 
 /** What a label may hold: letters, digits and `. _ + / -`, one to 96 of them, VERSION_LABEL_RE. */
