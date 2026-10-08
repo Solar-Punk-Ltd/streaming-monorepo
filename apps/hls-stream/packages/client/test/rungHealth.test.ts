@@ -324,6 +324,24 @@ describe('dropping a rung that has stopped being produced', () => {
     assert.deepEqual(player.loadStarts, [], 'a paused player started loading again');
   });
 
+  /**
+   * A refused switch hands the viewer back to the rung they play, while hls.js was loading the refused one. That
+   * rung's playlist is the one hls.js aligns the playing rung's next reload against, since the refused playlist
+   * never reached it, so forgetting it would let hls.js place the playing rung at nothing and seek the viewer.
+   */
+  it('keeps the playlist of the rung the viewer plays and leaves loading alone when a refused switch hands them back to it', () => {
+    const player = makeLadderPlayer();
+    player.switchTo(0);
+    player.setLoadLevel(1);
+    attachRungFailover(player.hls, player.feedHealth);
+
+    player.silence('rung-720p', 'rung-1080p');
+
+    assert.equal(player.nextLoadLevel(), 0);
+    assert.notEqual(player.playlistHeld(1080), undefined, 'the rung the viewer plays lost its playlist');
+    assert.deepEqual(player.loadStarts, [], 'a refused switch restarted loading on the rung the viewer plays');
+  });
+
   it('does not restart loading when the dropped rung was not the one playing', () => {
     const player = makeLadderPlayer();
     attachRungFailover(player.hls, player.feedHealth);

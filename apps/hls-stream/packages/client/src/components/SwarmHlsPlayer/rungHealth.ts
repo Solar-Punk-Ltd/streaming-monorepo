@@ -57,6 +57,12 @@ function rungTopicOfLevel(uri: string): string | null {
   }
 }
 
+/** The rung of the level at this index, or null when there is no such level or it is not one of ours. */
+function rungOfLevel(hls: Hls, index: number): string | null {
+  const level = hls.levels[index];
+  return level ? rungTopicOfLevel(level.uri) : null;
+}
+
 /** Where a rung sits in the ladder hls.js currently holds, or -1 when it holds no such rung. */
 function levelIndexOfRung(hls: Hls, rungTopicId: string): number {
   return hls.levels.findIndex((level) => rungTopicOfLevel(level.uri) === rungTopicId);
@@ -100,10 +106,7 @@ export function attachActiveRungFollower(
   hls: Hls,
   followOnly: (rungTopicId: string, loadingRungTopicId: string | null) => void,
 ): () => void {
-  const rungOf = (index: number): string | null => {
-    const level = hls.levels[index];
-    return level ? rungTopicOfLevel(level.uri) : null;
-  };
+  const rungOf = (index: number): string | null => rungOfLevel(hls, index);
   const follow = (_event: unknown, data: { level: number }): void => {
     const rung = rungOf(data.level);
     if (rung !== null) {
@@ -184,6 +187,8 @@ export function attachRungFailover(hls: Hls, feedHealth: FeedHealthTracker): () 
     // -1, and steering that one forces a level while hls.js is still settling the ladder. Only a
     // viewer whose own rung was just taken away needs somewhere to go.
     const tookThePlayingLevel = hls.loadLevel === index;
+    // Read before the removal too, which renumbers the levels and leaves the removed one's fragments at -1.
+    const playingRung = rungOfLevel(hls, hls.currentLevel);
 
     console.warn(`Rung ${level.height}p has stopped being produced (${reason}), dropping it from the ladder`);
     hls.removeLevel(index);
@@ -195,9 +200,17 @@ export function attachRungFailover(hls: Hls, feedHealth: FeedHealthTracker): () 
     if (tookThePlayingLevel) {
       const found = detail.failoverTo === null ? -1 : levelIndexOfRung(hls, detail.failoverTo);
       const target = found >= 0 ? found : hls.nextAutoLevel;
-      forgetEarlierPlaylist(hls, target);
+      // A refused switch hands the viewer back to the rung they play. Its playlist is the one hls.js aligns
+      // that rung's next reload against, since the refused playlist never reached hls.js, and the fragment
+      // appended last is that rung's own, so there is nothing to forget.
+      const backToThePlayingRung = playingRung !== null && detail.failoverTo === playingRung;
+      if (!backToThePlayingRung) {
+        forgetEarlierPlaylist(hls, target);
+      }
       hls.nextLoadLevel = target;
-      forgetLastAppendedFragment(hls);
+      if (!backToThePlayingRung) {
+        forgetLastAppendedFragment(hls);
+      }
     }
   });
 }
