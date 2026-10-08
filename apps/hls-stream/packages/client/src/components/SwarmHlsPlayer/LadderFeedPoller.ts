@@ -13,6 +13,7 @@ import { isSlotNotWrittenYet } from './refusedSlot';
 import { feedEntryOf, RungFeedReader } from './rungFeedReader';
 import { firstSegmentStartMs, joinsOnto, rungProgressBoundMs, switchRefusal } from './rungPosition';
 
+/** The flat wait before a failed walk tries again, and the slice a backoff is waited out in. Not tuned to the segment length. */
 const DEFAULT_POLL_INTERVAL_MS = 750;
 
 /**

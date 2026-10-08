@@ -578,7 +578,7 @@ export class ManifestFetcher {
     private readonly jitter: RequestJitter = new RequestJitter(),
     /**
      * Injected only by tests, so a rung's catch-up is driven rather than waited out. Production takes
-     * the poller's own default, which is tuned against a segment interval.
+     * the poller's own flat 750 ms retry, which is not tuned to the segment length.
      */
     pollIntervalMs?: number,
     /**
