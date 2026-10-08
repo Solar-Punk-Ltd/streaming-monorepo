@@ -17,6 +17,9 @@ const LIST_TOPIC = Topic.fromString('stream-list');
 const PEERS = 4;
 const SKIP_MS = 60_000;
 const MARKER_PERIOD_MS = markerPeriodStartMs(1);
+const RENDITIONS = [
+  { name: '720p', width: 1280, height: 720, topic: `${TOPIC}-720p`, bandwidth: 3_000_000, avgBandwidth: 2_500_000 },
+];
 
 /**
  * The app's stream list, held where both the mocked context and the test can reach it. The poll itself
@@ -28,6 +31,10 @@ const app = vi.hoisted(() => {
     gateway: null as unknown as import('./helpers/fakeLadderGateway').FakeLadderGateway,
     streamList: [] as unknown[],
     heldSlot: 0,
+    /** When the list's next slot was asked, on the test's clock. */
+    listReadsAtMs: [] as number[],
+    /** The renditions each mounted player was handed. */
+    playerRenditions: [] as unknown[],
   };
   return {
     state,
@@ -53,6 +60,7 @@ vi.mock('../src/providers/App', () => ({
       streamListSourceId: 'waiting-page-markers',
       swarm: { reader: () => gateway.reader, clockOffsetMs: () => 0 },
       fetchAppState: async () => {
+        app.state.listReadsAtMs.push(Date.now());
         const answer = await gateway.reader.readFeedEntry(gateway.owner, LIST_TOPIC, app.state.heldSlot + 1);
         if (answer.kind !== 'content') {
           return { gateway: 'fake', streams: null, slot: null };
@@ -69,11 +77,14 @@ vi.mock('../src/providers/App', () => ({
   },
 }));
 vi.mock('../src/components/SwarmHlsPlayer/SwarmHlsPlayer', () => ({
-  SwarmHlsPlayer: () => createElement('video', { 'data-testid': 'player' }),
+  SwarmHlsPlayer: (props: { renditions?: unknown }) => {
+    app.state.playerRenditions.push(props.renditions);
+    return createElement('video', { 'data-testid': 'player' });
+  },
 }));
 
-function entry(state: string) {
-  return { owner: OWNER, topic: TOPIC, title: 'A talk', timestamp: 1, mediatype: 'video', state };
+function entry(state: string, extra: Record<string, unknown> = {}) {
+  return { owner: OWNER, topic: TOPIC, title: 'A talk', timestamp: 1, mediatype: 'video', state, ...extra };
 }
 
 // React only runs effects inside act() when told it is in a test environment.
@@ -107,66 +118,111 @@ async function advance(ms: number): Promise<void> {
   });
 }
 
-describe('a watch page waiting on an announced stream', () => {
-  it('goes live from the ladder marker while the list slot that says live is still skipped, asking each marker once', async () => {
-    // One second into a marker period, so the first marker read falls three seconds after the page opens.
-    const openedAtMs = Date.UTC(2026, 9, 8, 12, 0, 1);
-    vi.useFakeTimers({ now: openedAtMs });
-    const gateway = new FakeLadderGateway(OWNER);
-    app.state.gateway = gateway;
-    app.state.heldSlot = 0;
-    gateway.publishSlot(LIST_TOPIC, 0, JSON.stringify([entry('scheduled')]));
-    gateway.modelSkipList(PEERS, SKIP_MS, Date.now);
-    app.setStreamList([entry('scheduled')]);
+async function advanceTo(atMs: number): Promise<void> {
+  await advance(Math.max(0, atMs - Date.now()));
+}
 
-    mounted = mount(
+/** Opens the watch page on an announced entry, one second into a marker period, with Bee's skip rule on. */
+function openWaitingPage(): FakeLadderGateway {
+  vi.useFakeTimers({ now: Date.UTC(2026, 9, 8, 12, 0, 1) });
+  const gateway = new FakeLadderGateway(OWNER);
+  Object.assign(app.state, { gateway, heldSlot: 0, listReadsAtMs: [], playerRenditions: [] });
+  gateway.publishSlot(LIST_TOPIC, 0, JSON.stringify([entry('scheduled')]));
+  gateway.modelSkipList(PEERS, SKIP_MS, Date.now);
+  app.setStreamList([entry('scheduled')]);
+
+  mounted = mount(
+    createElement(
+      MemoryRouter,
+      { initialEntries: [`/watch/video/${OWNER}/${TOPIC}`] },
       createElement(
-        MemoryRouter,
-        { initialEntries: [`/watch/video/${OWNER}/${TOPIC}`] },
-        createElement(
-          Routes,
-          null,
-          createElement(Route, { path: '/watch/:mediatype/:owner/:topic', element: createElement(StreamWatcher) }),
-        ),
+        Routes,
+        null,
+        createElement(Route, { path: '/watch/:mediatype/:owner/:topic', element: createElement(StreamWatcher) }),
       ),
-    );
-    expect(isPlaying()).toBe(false);
+    ),
+  );
+  return gateway;
+}
 
-    // The list's next slot has been asked every five seconds since the page opened, so by now every
-    // peer is skipped for it and the slot that says live cannot be read for most of a minute.
-    await advance(22_000);
-    const listAsks = gateway.requests.filter((request) => request.kind === 'slot').length;
-    expect(listAsks, 'the page did not poll the list').toBeGreaterThanOrEqual(PEERS);
-    const liveAtMs = Date.now();
-    gateway.publishSlot(LIST_TOPIC, 1, JSON.stringify([entry('live')]));
-    const group = Topic.fromString(TOPIC);
-    const firstMarkerPeriod = markerPeriodAt(liveAtMs) + 1;
-    const writeMarker = (period: number) =>
-      gateway.publishMarker(
-        group,
-        period,
-        JSON.stringify({ v: 1, period, writtenAt: markerPeriodStartMs(period) + 250, rungs: { ['b'.repeat(64)]: 0 } }),
-      );
+/** The uploader's marker for `period`, written 250 ms into it. */
+function writeMarker(gateway: FakeLadderGateway, period: number): void {
+  const marker = { v: 1, period, writtenAt: markerPeriodStartMs(period) + 250, rungs: { ['b'.repeat(64)]: 0 } };
+  gateway.publishMarker(Topic.fromString(TOPIC), period, JSON.stringify(marker));
+}
 
-    let wentLiveAtMs: number | null = null;
-    for (let period = firstMarkerPeriod; wentLiveAtMs === null && period < firstMarkerPeriod + 3; period++) {
-      await advance(markerPeriodStartMs(period) + 250 - Date.now());
-      writeMarker(period);
-      while (wentLiveAtMs === null && Date.now() < markerPeriodStartMs(period + 1) + 250) {
-        await advance(250);
-        if (isPlaying()) {
-          wentLiveAtMs = Date.now();
-        }
+/** Writes every period's marker from `firstPeriod` on, until the page plays. When it started playing, or null. */
+async function broadcastUntilPlaying(gateway: FakeLadderGateway, firstPeriod: number, periods: number) {
+  for (let period = firstPeriod; period < firstPeriod + periods; period++) {
+    await advanceTo(markerPeriodStartMs(period) + 250);
+    writeMarker(gateway, period);
+    while (Date.now() < markerPeriodStartMs(period + 1) + 250) {
+      await advance(250);
+      if (isPlaying()) {
+        return Date.now();
       }
     }
+  }
+  return null;
+}
+
+function markerReads(gateway: FakeLadderGateway): string[] {
+  return gateway.requests.filter((request) => request.kind === 'other').map((request) => request.path);
+}
+
+function gapsBetween(times: readonly number[]): number[] {
+  return times.slice(1).map((atMs, i) => atMs - times[i]);
+}
+
+describe('a watch page waiting on an announced stream', () => {
+  it('asks the list at most once a minute while waiting, and plays with the renditions soon after the first marker', async () => {
+    const gateway = openWaitingPage();
+    expect(isPlaying()).toBe(false);
+
+    await advance(130_000);
+    const readsBeforeLive = [...app.state.listReadsAtMs];
+    expect(readsBeforeLive.length, 'the page stopped watching the list for a cancellation').toBeGreaterThan(0);
+    for (const gap of gapsBetween(readsBeforeLive)) {
+      expect(gap, 'the list was asked more than once a minute while waiting').toBeGreaterThanOrEqual(60_000);
+    }
+
+    // The admin writes the live entry when the first quality reports, before that quality's first
+    // segment and so before the ladder's first marker.
+    const liveAtMs = Date.now();
+    gateway.publishSlot(LIST_TOPIC, 1, JSON.stringify([entry('live', { renditions: RENDITIONS })]));
+    const wentLiveAtMs = await broadcastUntilPlaying(gateway, markerPeriodAt(liveAtMs) + 1, 3);
 
     expect(wentLiveAtMs, 'the page never left "starts soon"').not.toBeNull();
-    expect(wentLiveAtMs! - liveAtMs).toBeLessThanOrEqual(MARKER_PERIOD_MS + 4_000 + 1_000);
-    expect(app.state.heldSlot, 'the list, not the marker, said live').toBe(0);
+    expect(wentLiveAtMs! - liveAtMs).toBeLessThanOrEqual(MARKER_PERIOD_MS + 5_000);
+    expect(app.state.playerRenditions.at(-1)).toEqual(RENDITIONS);
 
     await advance(60_000);
-    const markerReads = gateway.requests.filter((request) => request.kind === 'other').map((request) => request.path);
-    expect(markerReads.length).toBeGreaterThan(0);
-    expect(new Set(markerReads).size, 'a marker address was asked twice').toBe(markerReads.length);
+    const reads = markerReads(gateway);
+    expect(reads.length).toBeGreaterThan(0);
+    expect(new Set(reads).size, 'a marker address was asked twice').toBe(reads.length);
+  });
+
+  it('reads the list again only at the next marker when the first read after a marker is too early', async () => {
+    const gateway = openWaitingPage();
+    await advance(22_000);
+    const firstPeriod = markerPeriodAt(Date.now()) + 1;
+    const readsBeforeMarkers = app.state.listReadsAtMs.length;
+
+    // A marker before the live entry: the read it prompts finds nothing new.
+    await advanceTo(markerPeriodStartMs(firstPeriod) + 250);
+    writeMarker(gateway, firstPeriod);
+    await advanceTo(markerPeriodStartMs(firstPeriod) + 8_000);
+    expect(isPlaying()).toBe(false);
+    gateway.publishSlot(LIST_TOPIC, 1, JSON.stringify([entry('live', { renditions: RENDITIONS })]));
+
+    const wentLiveAtMs = await broadcastUntilPlaying(gateway, firstPeriod + 1, 2);
+
+    expect(wentLiveAtMs, 'the page never left "starts soon"').not.toBeNull();
+    const readsAfterMarkers = app.state.listReadsAtMs.slice(readsBeforeMarkers);
+    expect(readsAfterMarkers, 'one list read per marker, none on a timer of its own').toEqual([
+      markerPeriodStartMs(firstPeriod) + 4_000,
+      markerPeriodStartMs(firstPeriod + 1) + 4_000,
+    ]);
+    expect(app.state.playerRenditions.at(-1)).toEqual(RENDITIONS);
   });
 });

@@ -17,17 +17,30 @@ import { WATCH_VIEW_NOT_STARTED, WATCH_VIEW_UNAVAILABLE, WatchPageView } from '@
 export const CATALOG_POLL_INTERVAL_MS = 5_000;
 
 /**
+ * How often a watch page waiting on an announced stream reads the catalog, in milliseconds.
+ *
+ * ⛔ **Not the browse page's 5 s.** Every read asks the list's next slot, which is not written yet, and
+ * the live entry is written to exactly that slot. Bee skips each peer asked for an address too early
+ * for a minute, and 25 to 40 early asks delayed a chat message by about 40 s, while a few a minute were
+ * harmless. The ladder's markers say when the stream goes live (see `watchForLadderMarkers`), so this
+ * poll only carries a new start time, a title change or a cancellation.
+ */
+export const WAITING_PAGE_CATALOG_POLL_MS = 60_000;
+
+/**
  * How often the watch page has to read the catalog again, or null when it need not.
  *
  * ⛔ **Only a message the catalog can take back needs it.** The page decides to show "This stream has
  * not started yet" from the catalog entry's `state`, and without a poll the catalog is read once, when
- * the app loads. The broadcast's first ladder marker takes the page live sooner than the list's next
- * slot can (see `watchForLiveMarker`), but a new start time, a title change or a cancellation reaches
- * the page only through the catalog. The same holds for a stream that was unpublished
- * while the page waited on it: publishing it again only reaches a page that is still reading. Once the
- * player is mounted it follows the stream's own feeds, and the page deliberately keeps no catalog poll
- * for that case, see `isStreamListLoaded` in `providers/App.tsx`.
+ * the app loads. While it waits, the ladder's markers prompt the read that takes it live, and the slow
+ * poll carries a new start time, a title change or a cancellation. A stream that was unpublished while
+ * the page waited on it is read for at the browse page's rate: publishing it again only reaches a page
+ * that is still reading. Once the player is mounted it follows the stream's own feeds, and the page
+ * deliberately keeps no catalog poll for that case, see `isStreamListLoaded` in `providers/App.tsx`.
  */
 export function watchPageCatalogPollMs(view: WatchPageView): number | null {
-  return view === WATCH_VIEW_NOT_STARTED || view === WATCH_VIEW_UNAVAILABLE ? CATALOG_POLL_INTERVAL_MS : null;
+  if (view === WATCH_VIEW_NOT_STARTED) {
+    return WAITING_PAGE_CATALOG_POLL_MS;
+  }
+  return view === WATCH_VIEW_UNAVAILABLE ? CATALOG_POLL_INTERVAL_MS : null;
 }
