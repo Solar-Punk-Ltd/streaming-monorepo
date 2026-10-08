@@ -6,7 +6,7 @@ import {
   type FundingView,
 } from '@streaming-monorepo/web2-admin-common';
 
-import { readAmount } from './amounts';
+import { formatUnits, readAmount } from './amounts';
 
 /** Gnosis Chain's block explorer, where a transfer is looked up by its hash. The one place the page names it. */
 export const EXPLORER_TX_URL = 'https://gnosis.blockscout.com/tx/';
@@ -77,6 +77,14 @@ export interface NodeDraft {
 }
 
 export type Drafts = Readonly<Record<string, NodeDraft>>;
+
+/**
+ * What the Balance tab opens with when the Stamps tab's Fund link sends it a node: that node ticked, with the xBZZ the
+ * link names typed in, every digit of it, and no xDAI.
+ */
+export function fundDrafts(nodeId: string, xbzzPlur: string): Drafts {
+  return { [nodeId]: { ticked: true, xdai: '', xbzz: formatUnits(xbzzPlur, FUNDING_KIND_DECIMALS.xbzz) } };
+}
 
 /** One transfer Send would ask for: an amount of one kind, in base units, to one node. */
 export interface TransferLine {

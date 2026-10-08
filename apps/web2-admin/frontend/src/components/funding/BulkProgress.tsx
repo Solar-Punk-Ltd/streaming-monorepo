@@ -141,6 +141,7 @@ export function BulkProgress<Item extends BulkItem>({
   read: readItems,
   describe,
   note,
+  footnote,
   onSettled,
   onDismiss,
 }: {
@@ -154,6 +155,8 @@ export function BulkProgress<Item extends BulkItem>({
   describe: (item: Item) => ReactNode;
   /** A line under an item's state, such as why the server cannot tell yet, or null. */
   note: (item: Item) => string | null;
+  /** A line under the items, or none. */
+  footnote?: string;
   /** Said when the items no longer hold the next bulk back, and again each time one more comes to its end after that. */
   onSettled: () => void;
   onDismiss: () => void;
@@ -281,6 +284,11 @@ export function BulkProgress<Item extends BulkItem>({
             })}
           </TableBody>
         </Table>
+        {footnote ? (
+          <Typography variant="caption" sx={{ color: 'text.secondary' }}>
+            {footnote}
+          </Typography>
+        ) : null}
       </Stack>
     </Paper>
   );

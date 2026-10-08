@@ -1,7 +1,7 @@
 import { XBZZ_DECIMALS, XDAI_DECIMALS } from '@streaming-monorepo/web2-admin-common';
 import { describe, expect, it } from 'vitest';
 
-import { acceptsAmountTyping, formatShort, formatUnits, readAmount } from '../components/funding/amounts';
+import { acceptsAmountTyping, formatShort, formatUnits, readAmount, roundUpUnits } from '../components/funding/amounts';
 
 describe('an amount in base units, as the Funding page shows it', () => {
   it('writes wei as xDAI and PLUR as xBZZ exactly, with no trailing zeros', () => {
@@ -48,6 +48,21 @@ describe('an amount in base units, short, as the node tables show it', () => {
     for (const bad of [null, '', '-1', '1.5', '0x10', 'abc', ' 1']) {
       expect(formatShort(bad, XDAI_DECIMALS), String(bad)).toBe('—');
     }
+  });
+});
+
+describe('an amount rounded up, as a shortfall is', () => {
+  it('rounds up to three decimals and stays in base units, so it is never less than the amount', () => {
+    expect(roundUpUnits(2_183_852_646_400_000n, XBZZ_DECIMALS)).toBe(2_190_000_000_000_000n);
+    expect(roundUpUnits(2_190_000_000_000_000n, XBZZ_DECIMALS)).toBe(2_190_000_000_000_000n);
+    expect(roundUpUnits(1n, XBZZ_DECIMALS)).toBe(10_000_000_000_000n);
+    expect(roundUpUnits(0n, XBZZ_DECIMALS)).toBe(0n);
+    expect(formatShort(roundUpUnits(2_183_852_646_400_000n, XBZZ_DECIMALS).toString(), XBZZ_DECIMALS)).toBe('0.219');
+  });
+
+  it('keeps an amount that has no more decimals than it rounds to', () => {
+    expect(roundUpUnits(123n, 2, 3)).toBe(123n);
+    expect(roundUpUnits(123n, 3, 3)).toBe(123n);
   });
 });
 

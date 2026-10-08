@@ -25,16 +25,23 @@ import { VERSION_PATH } from '@streaming-monorepo/web2-admin-common';
 import {
   FUNDING_PATH,
   FUNDING_PINS_PATH,
+  FUNDING_STAMP_OPERATIONS_ADMIN_PATH,
   FUNDING_TRANSFERS_ADMIN_PATH,
   fundingBulkPath,
+  fundingStampBulkPath,
   type FundingBulkAnswer,
   type FundingPinsAnswer,
   type FundingPinsRequest,
+  type FundingStampBulkAnswer,
+  type FundingStampItem,
+  type FundingStampOperationsAnswer,
+  type FundingStampOperationsRequest,
   type FundingTransferItem,
   type FundingTransferItemRequest,
   type FundingTransfersAnswer,
   type FundingTransfersRequest,
   type FundingView,
+  type StampOperationItemRequest,
 } from '@streaming-monorepo/web2-admin-common';
 
 import { SIGN_IN_MESSAGES, tooManyAttempts } from './authMessages';
@@ -368,6 +375,31 @@ export const EARLIER_SEND_SETTLING = 'An earlier send is still settling; check i
 /** Where each transfer of a bulk stands, as the admin last heard from the manager. */
 export async function fetchFundingTransfers(bulkId: string): Promise<FundingTransferItem[]> {
   return (await getJson<FundingBulkAnswer>(fundingBulkPath(bulkId))).items;
+}
+
+/**
+ * Tops up or dilutes these batches, each paid for from its own node's wallet, and answers the stamp bulk they went out
+ * under. No password: a stamp operation moves nothing out of the brand wallet, so the page asks in a confirm dialog.
+ */
+export function sendFundingStampOperations(items: StampOperationItemRequest[]): Promise<FundingStampOperationsAnswer> {
+  const body: FundingStampOperationsRequest = { items };
+  return sendJson<FundingStampOperationsAnswer>('POST', FUNDING_STAMP_OPERATIONS_ADMIN_PATH, body, {
+    fallback: 'The stamp operations could not be sent.',
+  }).catch((e: unknown) => {
+    if (e instanceof ApiError && e.code === 'conflict') {
+      throw new ApiError(EARLIER_STAMP_OPERATIONS_SETTLING, e.code, e.status);
+    }
+    throw e;
+  });
+}
+
+/** What a stamp bulk says when the API refuses it, 409 `conflict`, because an earlier one has not settled yet. */
+export const EARLIER_STAMP_OPERATIONS_SETTLING =
+  'Earlier stamp operations are still settling; check them again or wait.';
+
+/** Where each operation of a stamp bulk stands, as the admin last heard from the manager. */
+export async function fetchFundingStampOperations(bulkId: string): Promise<FundingStampItem[]> {
+  return (await getJson<FundingStampBulkAnswer>(fundingStampBulkPath(bulkId))).items;
 }
 
 // --- public config ----------------------------------------------------------

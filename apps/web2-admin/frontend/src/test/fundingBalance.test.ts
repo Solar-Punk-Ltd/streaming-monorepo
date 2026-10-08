@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 
 import {
   checkSend,
+  fundDrafts,
   nodeCaption,
   nodeGroups,
   nodeName,
@@ -167,6 +168,16 @@ describe('what Send would send, and why it cannot', () => {
     const unread = makeView({ wallet: { address: WALLET, xdaiWei: null, xbzzPlur: '1' } });
     expect(checkSend(unread, { 'stage-1:bee': draft('0.1') }).problems).toEqual([
       "The brand wallet's xDAI balance could not be read.",
+    ]);
+  });
+});
+
+describe('what a Fund link of the Stamps tab enters', () => {
+  it('ticks the node with the xBZZ it lacks, exactly, and no xDAI, which Send then sends as it is', () => {
+    const drafts = fundDrafts('stage-1:bee', '2190000000000000');
+    expect(drafts).toEqual({ 'stage-1:bee': { ticked: true, xdai: '', xbzz: '0.219' } });
+    expect(checkSend(makeView(), drafts).lines).toEqual([
+      { nodeId: 'stage-1:bee', label: 'stage-1-uploader', kind: 'xbzz', amount: '2190000000000000' },
     ]);
   });
 });

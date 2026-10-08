@@ -67,10 +67,14 @@ function SendBar({
  * from the brand wallet; the password is asked first, and each transfer is followed until it comes to its end. Send
  * waits while a send is on its way, the one made here or the one the view says is open, which the page follows after a
  * reload too.
+ *
+ * `initialDrafts` is what the tab opens with, read once when it mounts: what a Fund link of the Stamps tab enters for
+ * the node it names, whose xBZZ field then takes the focus.
  */
-export function BalanceTab() {
+export function BalanceTab({ initialDrafts }: { initialDrafts?: Drafts }) {
   const snackbar = useSnackbar();
-  const [drafts, setDrafts] = useState<Drafts>({});
+  const [drafts, setDrafts] = useState<Drafts>(initialDrafts ?? {});
+  const [focusNodeId] = useState(() => Object.keys(initialDrafts ?? {})[0] ?? null);
   const [pinning, setPinning] = useState(false);
   const [sending, setSending] = useState(false);
   const [followed, setFollowed] = useState<FollowedBulk<FundingTransferItem> | null>(null);
@@ -134,6 +138,7 @@ export function BalanceTab() {
               key={group.key}
               group={group}
               drafts={drafts}
+              focusNodeId={focusNodeId}
               onChange={(nodeId, draft) => setDrafts((prev) => ({ ...prev, [nodeId]: draft }))}
             />
           ))}

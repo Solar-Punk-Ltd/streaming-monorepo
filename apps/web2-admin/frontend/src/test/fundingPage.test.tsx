@@ -82,7 +82,7 @@ async function openSend() {
 }
 
 describe('the Funding page', () => {
-  it('has a Balance tab, and says the Stamps and Chequebooks tabs come next', async () => {
+  it('has a Balance tab and a Stamps tab, and says the Chequebooks tab comes next', async () => {
     serve(() => makeView());
     renderWithProviders(<FundingPage />);
 
@@ -91,7 +91,8 @@ describe('the Funding page', () => {
     expect(await screen.findByRole('heading', { name: 'Brand wallet' })).toBeInTheDocument();
 
     fireEvent.click(screen.getByRole('tab', { name: 'Stamps' }));
-    expect(screen.getByText(COMING_NEXT.stamps)).toBeInTheDocument();
+    expect(await screen.findByRole('group', { name: 'Operation' })).toBeInTheDocument();
+    expect(screen.queryByRole('heading', { name: 'Brand wallet' })).not.toBeInTheDocument();
     fireEvent.click(screen.getByRole('tab', { name: 'Chequebooks' }));
     expect(screen.getByText(COMING_NEXT.chequebooks)).toBeInTheDocument();
   });
