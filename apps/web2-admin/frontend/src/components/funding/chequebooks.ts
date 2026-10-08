@@ -10,7 +10,7 @@ import {
   type FundingView,
 } from '@streaming-monorepo/web2-admin-common';
 
-import { formatShort, formatUnits, readAmount, roundUpUnits } from './amounts';
+import { formatShort, formatUnits, MORE_THAN_ANY_WALLET, readAmount, roundUpUnits } from './amounts';
 import { nodeGroups, type NodeGroup } from './balance';
 
 /**
@@ -35,6 +35,15 @@ export const TARGET_EMPTY_PROBLEM = 'Type a target, the balance to bring each ti
 
 /** Why Apply waits while the target is under the floor. */
 export const TARGET_UNDER_FLOOR_PROBLEM = `The target is at least ${FLOOR} xBZZ.`;
+
+/**
+ * The most digits of PLUR a target has: 30, the most the API takes (its request schema), so that the move worked out
+ * from it fits the manager's chequebook journal. Far more xBZZ than there is.
+ */
+const TARGET_MAX_DIGITS = 30;
+
+/** Why Apply waits while the target is more PLUR than the API takes, 30 digits, or than any balance holds. */
+export const TARGET_TOO_LARGE_PROBLEM = 'The target: That is more than any chequebook holds.';
 
 /** Why Apply waits while no chequebook is ticked. */
 export const NOTHING_TICKED_PROBLEM = 'Tick a chequebook to bring it to the target.';
@@ -128,11 +137,18 @@ export function whyNotMovable(node: AdminFundingNode): string | null {
 
 export type ReadTarget = { kind: 'empty' } | { kind: 'ok'; plur: string } | { kind: 'invalid'; problem: string };
 
-/** The target as typed, in PLUR: an amount of xBZZ, as the amount fields take one, of at least 1 xBZZ. */
+/**
+ * The target as typed, in PLUR: an amount of xBZZ, as the amount fields take one, of at least 1 xBZZ and at most 30
+ * digits of PLUR, which the API refuses past.
+ */
 export function readTarget(typed: string): ReadTarget {
   const read = readAmount(typed, XBZZ_DECIMALS);
   if (read.kind === 'empty') return read;
-  if (read.kind === 'invalid') return { kind: 'invalid', problem: `The target: ${read.problem}` };
+  if (read.kind === 'invalid') {
+    const problem = read.problem === MORE_THAN_ANY_WALLET ? TARGET_TOO_LARGE_PROBLEM : `The target: ${read.problem}`;
+    return { kind: 'invalid', problem };
+  }
+  if (read.value.length > TARGET_MAX_DIGITS) return { kind: 'invalid', problem: TARGET_TOO_LARGE_PROBLEM };
   if (BigInt(read.value) < BigInt(CHEQUEBOOK_TARGET_MIN_PLUR)) {
     return { kind: 'invalid', problem: TARGET_UNDER_FLOOR_PROBLEM };
   }
@@ -229,10 +245,11 @@ function totalOf(lines: readonly MovingLine[], direction: ChequebookMove['direct
 
 /**
  * The ticked chequebooks' moves to the target, what each node's wallet holds after, and every reason Apply cannot ask
- * for them: no target, one it cannot read or under 1 xBZZ, nothing ticked, nothing to change, a node short of xBZZ for
- * its deposit, and one with no xDAI for the gas, which a deposit and a withdrawal both pay. These are the backend's
- * checks, made here first, so the operator learns them before asking. A chequebook that cannot be ticked is never
- * counted, even when a tick from before a refresh is still on it, and one at the target is never asked for.
+ * for them: no target, one it cannot read, under 1 xBZZ or over 30 digits of PLUR, nothing ticked, nothing to change,
+ * a node short of xBZZ for its deposit, and one with no xDAI for the gas, which a deposit and a withdrawal both pay.
+ * These are the backend's checks, made here first, so the operator learns them before asking. A chequebook that cannot
+ * be ticked is never counted, even when a tick from before a refresh is still on it, and one at the target is never
+ * asked for.
  */
 export function checkChequebooks(view: Inventory, selection: ChequebookSelection): ChequebookCheck {
   const target = readTarget(selection.target);

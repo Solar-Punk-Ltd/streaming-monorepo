@@ -45,6 +45,9 @@ export function roundUpUnits(units: bigint, decimals: number, places = 3): bigin
 
 export type ReadAmount = { kind: 'empty' } | { kind: 'ok'; value: string } | { kind: 'invalid'; problem: string };
 
+/** Why `readAmount` cannot read an amount of more base units than any balance holds: over 78 digits. */
+export const MORE_THAN_ANY_WALLET = 'That is more than any wallet can hold.';
+
 const DECIMAL = /^\d*(?:\.(\d*))?$/;
 
 /**
@@ -65,5 +68,5 @@ export function readAmount(typed: string, decimals: number): ReadAmount {
   const match = DECIMAL.exec(text);
   if (!match || text === '.') return { kind: 'invalid', problem: 'Digits and one dot only, such as 1.5.' };
   if ((match[1] ?? '').length > decimals) return { kind: 'invalid', problem: `At most ${decimals} decimals.` };
-  return { kind: 'invalid', problem: 'That is more than any wallet can hold.' };
+  return { kind: 'invalid', problem: MORE_THAN_ANY_WALLET };
 }

@@ -29,6 +29,7 @@ import {
   TARGET_CAPTION,
   TARGET_EMPTY_PROBLEM,
   TARGET_FLOOR_TEXT,
+  TARGET_TOO_LARGE_PROBLEM,
   TARGET_UNDER_FLOOR_PROBLEM,
   WALLET_UNREAD_TEXT,
 } from '../components/funding/chequebooks';
@@ -225,7 +226,7 @@ describe('the chequebooks', () => {
 });
 
 describe('the target', () => {
-  it('takes digits and one dot only, and holds Apply with a sentence while it is empty or under 1 xBZZ', async () => {
+  it('takes digits and one dot only, and holds Apply with a sentence while it is empty, under 1 xBZZ or too large', async () => {
     serve(() => makeChequebookView());
     await openChequebooks();
     const field = screen.getByRole('textbox', { name: 'Target' });
@@ -261,6 +262,13 @@ describe('the target', () => {
     expect(field.closest('[title]')).toBeNull();
     expect(uploader.getByText('deposit +0.5 xBZZ')).toBeInTheDocument();
     expect(apply).toBeEnabled();
+
+    // 31 digits of PLUR, one more than the API takes.
+    typeTarget(`1${'0'.repeat(14)}`);
+    expect(screen.getByText(TARGET_TOO_LARGE_PROBLEM)).toBeInTheDocument();
+    expect(field.closest('[title]')).toHaveAttribute('title', TARGET_TOO_LARGE_PROBLEM);
+    expect(uploader.getAllByText('—')).toHaveLength(2);
+    expect(apply).toBeDisabled();
   });
 
   it('holds Apply while nothing ticked would change', async () => {
