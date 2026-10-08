@@ -355,7 +355,8 @@ Left open after the nine phases:
   admin, and every funding operation through the manager's funding API, as
   [funding.md](architecture/funding.md) plans. Phase 1, the brand wallet, the
   Balance tab and sends to node wallets, is built on `feat/funds` in #101 to
-  #106. Phases 2 to 4, stamp top-ups, chequebook deposits and dilution, are
+  #106, and phase 2, the Stamps tab's top-ups and dilutions, on
+  `feat/funds-stamps` (decided 2026-10-08). Phase 3, chequebook deposits, is
   still to come; until then those stay in the manager's console.
 - **Brand separation** inside one admin, and a second admin link per manager
   for a second brand, among the open decisions below.
@@ -390,8 +391,8 @@ Left open after the nine phases:
   manager's readiness verdict, and the catalogue stamp record the catalogue
   batch's. Funding from the admin was decided on 2026-10-05
   ([funding.md](architecture/funding.md)): phase 1, sends from the brand
-  wallet to node wallets, is built on `feat/funds`; stamp top-ups come in
-  phase 2.
+  wallet to node wallets, and phase 2, stamp top-ups and dilutions, are built
+  on `feat/funds`.
 - Decide how the admin layer authenticates to the manager once they are on
   different hosts. Decided 2026-09-28: it does not, because the manager
   pushes, on the admin's registrar token, and every uploader presents a token

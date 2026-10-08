@@ -1,7 +1,8 @@
 # Funding from the admin: brand wallet, stamps and chequebooks
 
-Plan, 2026-10-05. Phase 1, the brand wallet, the Balance tab and sends to node wallets, is built
-on `feat/funds`; phases 2 to 4 are not. It lets a brand keep its stages alive after handover, from
+Plan, 2026-10-05. Phase 1, the brand wallet, the Balance tab and sends to node wallets, and phase 2,
+the Stamps tab's top-ups and dilutions, are built on `feat/funds`; phase 3 is not. It lets a brand
+keep its stages alive after handover, from
 the web2 admin: fund the nodes, top up the batches, fill the chequebooks, and later dilute. Every
 funding operation goes through the infra manager.
 
@@ -13,9 +14,10 @@ funding operation goes through the infra manager.
    Multichain app. The page shows the address, a QR code and a link to the app.
 3. **Balance tab**: the brand wallet's balances, then every node grouped by stage, each with its
    wallet's balances. Enter amounts beside the nodes' balances, send from the brand wallet.
-4. **Stamps tab**: the catalogue batch on top, then each stage's batches. Tick batches, pick
-   "Top up", choose the days, confirm. Each node pays its own batches' top-up from its wallet, so
-   the tab shows any node short of xBZZ, with a shortcut to fund it. Dilute comes later.
+4. **Stamps tab**: the catalogue batch on top, then each stage's batches. Choose Top up or Dilute
+   and tick batches: one days slider, or 1 or 2 steps, applies to every ticked batch, and each row
+   shows what its batch has left after and what it costs. Confirm. Each node pays from its own
+   wallet, so the tab shows any node short of xBZZ, with a shortcut to fund it on the Balance tab.
 5. **Chequebooks tab**: the same, for each stage's nodes; the catalogue node is not listed. Tick,
    choose the amount, confirm. Each node deposits from its own wallet.
 6. The admin asks the infra manager for all of it, through a new manager API with a bearer token.
@@ -23,12 +25,12 @@ funding operation goes through the infra manager.
 
 ## Who does what
 
-| Action                 | Who signs                      | Paid from             | Carried out by                                    |
-| ---------------------- | ------------------------------ | --------------------- | ------------------------------------------------- |
-| Fund node wallets      | the brand wallet, in the admin | the brand wallet      | the manager sends the admin's signed transfer out |
-| Top up batches         | the node                       | the node's wallet     | the manager, through each node's Bee API          |
-| Fill chequebooks       | the node                       | the node's wallet     | the manager, through each node's Bee API          |
-| Dilute a batch (later) | the node                       | the node's xDAI (gas) | the manager, through each node's Bee API          |
+| Action            | Who signs                      | Paid from             | Carried out by                                    |
+| ----------------- | ------------------------------ | --------------------- | ------------------------------------------------- |
+| Fund node wallets | the brand wallet, in the admin | the brand wallet      | the manager sends the admin's signed transfer out |
+| Top up batches    | the node                       | the node's wallet     | the manager, through each node's Bee API          |
+| Fill chequebooks  | the node                       | the node's wallet     | the manager, through each node's Bee API          |
+| Dilute a batch    | the node                       | the node's xDAI (gas) | the manager, through each node's Bee API          |
 
 The brand wallet's key never leaves the admin. For a transfer, the admin builds and signs the
 transaction itself. The manager supplies the nonce and fee, sends it, and reports the receipt. The
@@ -48,8 +50,8 @@ admin needs no chain connection of its own.
 - It does:
   - sends a signed transfer and reports its receipt;
   - tops up batches;
-  - deposits into chequebooks;
-  - later, dilutes.
+  - dilutes batches;
+  - deposits into chequebooks.
 - Each operation is a list, run item by item with each item's result reported, under a request
   id, so a retry never runs twice. The manager journals each item before it starts, as it already
   does for chequebook deposits.
@@ -87,16 +89,17 @@ admin needs no chain connection of its own.
 
 ## Phases
 
-| #   | What                                                                                         | Size |
-| --- | -------------------------------------------------------------------------------------------- | ---- |
-| 1   | Brand wallet and Balance tab: the manager API's inventory and balances, send to node wallets | M    |
-| 2   | Stamps tab: bulk top-up through the manager, the days slider, the "short of xBZZ" shortcut   | M    |
-| 3   | Chequebooks tab: bulk deposit through the manager                                            | S    |
-| 4   | Dilute through the manager                                                                   | M    |
+| #   | What                                                                                                  | Size |
+| --- | ----------------------------------------------------------------------------------------------------- | ---- |
+| 1   | Brand wallet and Balance tab: the manager API's inventory and balances, send to node wallets          | M    |
+| 2   | Stamps tab: bulk top-up and dilute through the manager, the days slider, the "short of xBZZ" shortcut | M    |
+| 3   | Chequebooks tab: bulk deposit through the manager                                                     | S    |
+| 4   | Dilute through the manager: built with phase 2, decided 2026-10-08                                    | —    |
 
-The UI follows msrs-client's bulk stamp pages: ticked lists, a days slider, and per-item
-progress. Before a brand relies on it, the owner tries each phase once on a scratch setup with
-small amounts. The manager's own top-up and dilute have never run against a real node.
+The Stamps tab follows msrs-client's bulk stamp pages, ticked lists, a days slider and per-item
+progress, with the Balance tab's line per row. Before a brand relies on it, the owner tries each
+phase once on a scratch setup with small amounts. The manager's top-up and dilute had never run
+against a real node before phase 2, so its first trial is theirs too.
 
 ## Decided, 2026-10-05
 
@@ -104,3 +107,14 @@ small amounts. The manager's own top-up and dilute have never run against a real
 - No spending limits; the brand wallet stays small.
 - No recovery address; the key's backup, handed to the brand, covers recovery.
 - Every operator may fund, for now; the password again before every send from the brand wallet.
+
+## Decided, 2026-10-08
+
+- Dilute comes with phase 2, beside the top-up.
+- One days slider, any whole number of days from 1 with no cap, applies to every ticked batch; a
+  dilution takes 1 or 2 steps.
+- Every batch that has not expired can be topped up. A dilution must leave the batch 7 days or more
+  after it.
+- A stamp operation takes a confirm dialog, without the password: a node pays for its own, and
+  nothing leaves the brand wallet.
+- A catalogue move is not handled: the tab lists only the designated catalogue batch.
