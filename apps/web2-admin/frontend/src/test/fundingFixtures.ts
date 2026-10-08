@@ -63,6 +63,7 @@ export function makeView(over: Partial<FundingView> = {}): FundingView {
     managerError: null,
     openBulkId: null,
     openStampBulkId: null,
+    openChequebookBulkId: null,
     ...over,
   };
 }

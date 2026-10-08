@@ -1,9 +1,11 @@
 /**
- * The console's Funding page: the brand wallet, the nodes of every stage with their wallets and batches, the pins
- * that confirm each node's address, transfers from the brand wallet to node wallets, and stamp operations, the
- * top-ups and dilutions of the nodes' batches, which each node pays for from its own wallet. The admin learns the
- * nodes from the manager's funding API (`packages/contracts/src/funding.ts`) and relays every transfer and stamp
- * operation through it; it has no chain connection of its own. `docs/architecture/funding.md` is the design.
+ * The console's Funding page: the brand wallet, the nodes of every stage with their wallets, batches and chequebooks,
+ * the pins that confirm each node's address, transfers from the brand wallet to node wallets, stamp operations, the
+ * top-ups and dilutions of the nodes' batches, and chequebook operations, which bring the nodes' chequebooks to a
+ * target with a deposit or a withdrawal each. A node pays for its stamp and chequebook operations from its own wallet.
+ * The admin learns the nodes from the manager's funding API (`packages/contracts/src/funding.ts`) and relays every
+ * transfer and operation through it; it has no chain connection of its own. `docs/architecture/funding.md` is the
+ * design.
  *
  * Every route is a session route, so a write also needs the same-site header. Amounts are integer strings in base
  * units, never floats: wei for xDAI ({@link XDAI_DECIMALS}, 18 decimals) and PLUR for xBZZ ({@link XBZZ_DECIMALS},
@@ -11,6 +13,7 @@
  */
 
 import {
+  type FundingChequebookDirection,
   type FundingNode,
   type FundingPostage,
   type FundingStampOperationKind,
@@ -19,11 +22,14 @@ import {
 } from '@streaming-monorepo/contracts';
 
 export {
+  FUNDING_CHEQUEBOOK_DIRECTIONS,
   FUNDING_NODE_ROLES,
   FUNDING_STAMP_OPERATION_KINDS,
   FUNDING_TRANSFER_KINDS,
   FUNDING_TRANSFER_STATES,
   type FundingBatch,
+  type FundingChequebook,
+  type FundingChequebookDirection,
   type FundingNode,
   type FundingNodeRole,
   type FundingPostage,
@@ -54,6 +60,15 @@ export const FUNDING_STAMP_OPERATIONS_ADMIN_PATH = `${FUNDING_PATH}/stamp-operat
 export function fundingStampBulkPath(bulkId: string): string {
   if (!UUID_PATTERN.test(bulkId)) throw new Error('A bulk id is a UUID.');
   return `${FUNDING_STAMP_OPERATIONS_ADMIN_PATH}?bulkId=${bulkId.toLowerCase()}`;
+}
+
+/** `POST`: bring chequebooks to a target. `GET` with `?bulkId=`: where one such bulk stands. */
+export const FUNDING_CHEQUEBOOK_OPERATIONS_ADMIN_PATH = `${FUNDING_PATH}/chequebook-operations`;
+
+/** `GET`: the items of one chequebook bulk, by the `bulkId` its request answered. */
+export function fundingChequebookBulkPath(bulkId: string): string {
+  if (!UUID_PATTERN.test(bulkId)) throw new Error('A bulk id is a UUID.');
+  return `${FUNDING_CHEQUEBOOK_OPERATIONS_ADMIN_PATH}?bulkId=${bulkId.toLowerCase()}`;
 }
 
 /** xDAI's decimals: one xDAI is 10^18 wei. */
@@ -143,6 +158,11 @@ export interface FundingView {
    * A stamp bulk and a send do not hold each other up.
    */
   openStampBulkId: string | null;
+  /**
+   * The latest chequebook bulk that still has an item which holds up a new one, or null, as `openBulkId` is for
+   * sends. A chequebook bulk, a stamp bulk and a send do not hold each other up.
+   */
+  openChequebookBulkId: string | null;
 }
 
 /** `POST /api/funding/pins`: confirm the current addresses of these nodes, behind the operator's password. */
@@ -297,6 +317,61 @@ export interface FundingStampOperationsAnswer {
 /** What `GET /api/funding/stamp-operations?bulkId=` answers: each item of the bulk, refreshed from the manager. */
 export interface FundingStampBulkAnswer {
   items: FundingStampItem[];
+}
+
+/** One chequebook to bring to the bulk's target: its node, and its available balance as the page showed it. */
+export interface ChequebookItemRequest {
+  nodeId: string;
+  /**
+   * The chequebook's available balance the page worked the move out from, PLUR as a decimal string. The move is the
+   * target less it, as `chequebookMove` works it out on both sides, so the admin moves what the confirm dialog showed.
+   */
+  availablePlur: string;
+}
+
+/**
+ * `POST /api/funding/chequebook-operations`: bring these chequebooks to `targetPlur`, behind a confirm dialog and no
+ * password. A chequebook under the target takes a deposit of the difference from its node's wallet, one over it a
+ * withdrawal of the difference into its node's wallet, and one at it is not sent. The target is at least
+ * `CHEQUEBOOK_TARGET_MIN_PLUR`, and a node is named at most once.
+ */
+export interface FundingChequebookOperationsRequest {
+  /** The available balance to bring each chequebook to, PLUR as a decimal string. */
+  targetPlur: string;
+  items: ChequebookItemRequest[];
+}
+
+/** One item of a chequebook bulk, as the admin journalled it and as it stands now. */
+export interface FundingChequebookItem {
+  requestId: string;
+  nodeId: string;
+  /** The node's label when the item was journalled. */
+  nodeLabel: string;
+  direction: FundingChequebookDirection;
+  /** What moves, PLUR as a decimal string, more than nothing. */
+  amountPlur: string;
+  /** The bulk's target, PLUR as a decimal string. */
+  targetPlur: string;
+  state: FundingItemState;
+  /** The transaction hash once the manager reported one, or null. */
+  txHash: string | null;
+  /** Why it failed, in a sentence, or null. */
+  error: string | null;
+  /** Whether it no longer holds up a new chequebook bulk, as a transfer's `settled` is for a new send. */
+  settled: boolean;
+  /** Whether the admin still asks the manager about it although it has an outcome, as a transfer's `watched`. */
+  watched: boolean;
+}
+
+/** What `POST /api/funding/chequebook-operations` answers, with 202: the bulk's id and its items. */
+export interface FundingChequebookOperationsAnswer {
+  bulkId: string;
+  items: FundingChequebookItem[];
+}
+
+/** What `GET /api/funding/chequebook-operations?bulkId=` answers: each item of the bulk, refreshed from the manager. */
+export interface FundingChequebookBulkAnswer {
+  items: FundingChequebookItem[];
 }
 
 const AMOUNT_PATTERN = /^(\d+)?(?:\.(\d*))?$/;

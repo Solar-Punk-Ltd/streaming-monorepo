@@ -3,6 +3,8 @@ import { describe, it } from 'node:test';
 
 import {
   type AdminFundingNode,
+  FUNDING_CHEQUEBOOK_DIRECTIONS,
+  FUNDING_CHEQUEBOOK_OPERATIONS_ADMIN_PATH,
   FUNDING_ITEM_STATES,
   FUNDING_PATH,
   FUNDING_PIN_STATES,
@@ -18,6 +20,7 @@ import {
   type FundingTransferItem,
   type FundingView,
   fundingBulkPath,
+  fundingChequebookBulkPath,
   fundingStampBulkPath,
   parseBaseUnits,
   type StampOperationItemRequest,
@@ -46,6 +49,21 @@ describe('the console routes', () => {
 
   it('names the two stamp operations, as the manager does', () => {
     assert.deepEqual(FUNDING_STAMP_OPERATION_KINDS, ['topup', 'dilute']);
+  });
+
+  it('names the chequebook bulk path under the Funding page, from a UUID in lower case', () => {
+    assert.equal(FUNDING_CHEQUEBOOK_OPERATIONS_ADMIN_PATH, '/api/funding/chequebook-operations');
+    assert.equal(
+      fundingChequebookBulkPath(BULK_ID.toUpperCase()),
+      `/api/funding/chequebook-operations?bulkId=${BULK_ID}`,
+    );
+    for (const bad of ['', 'x&y=1', `${BULK_ID}&bulkId=other`]) {
+      assert.throws(() => fundingChequebookBulkPath(bad), /UUID/, JSON.stringify(bad));
+    }
+  });
+
+  it('names the two ways a chequebook operation moves xBZZ, as the manager does', () => {
+    assert.deepEqual(FUNDING_CHEQUEBOOK_DIRECTIONS, ['deposit', 'withdraw']);
   });
 
   it('names the pin and item states', () => {
@@ -125,6 +143,7 @@ describe('the answers', () => {
     managerError: null,
     openBulkId: BULK_ID,
     openStampBulkId: null,
+    openChequebookBulkId: null,
   };
 
   it('name the open send on the Funding page, so a reload resumes it', () => {

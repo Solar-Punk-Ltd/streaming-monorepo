@@ -453,6 +453,7 @@ function fundingView() {
       managerError: null,
       openBulkId: null,
       openStampBulkId: null,
+      openChequebookBulkId: null,
     };
   }
   settleFundingTransfers();
@@ -477,6 +478,7 @@ function fundingView() {
     managerError: null,
     openBulkId: openFundingBulkId(),
     openStampBulkId: openStampBulkId(),
+    openChequebookBulkId: null,
   };
 }
 
