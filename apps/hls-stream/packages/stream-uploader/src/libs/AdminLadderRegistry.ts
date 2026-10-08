@@ -227,8 +227,9 @@ export class AdminLadderRegistry implements LadderRegistry {
     // finalized within 30 ms and the admin read the ladder for each answer after all four were stored, so
     // three answers carried it finished while the stream was still `live`, and each was taken for a flip:
     // three `vod` reports and three `finalized to VOD` lines for one broadcast. A ladder that is not
-    // finished is a broadcast that has not ended, the next one of the same declared stream included.
-    if (!finished) {
+    // finished is a broadcast that has not ended, the next one of the same declared stream included. A
+    // ladder the admin holds as `vod` has had its flip reported, and no answer holding it can flip.
+    if (!finished || heldAsRecording) {
       this.flipHandedOut.delete(group);
     }
     const flipped =

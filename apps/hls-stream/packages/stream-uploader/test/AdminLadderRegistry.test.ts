@@ -296,6 +296,29 @@ describe('what a rendition announce does in admin mode', () => {
       assert.equal(retried.flippedToFinished, true, 'a ladder whose only vod report failed stays live at the admin');
     });
 
+    /**
+     * The entry exists only to stop a second flip while the admin still holds the stream as live. Once
+     * it holds the recording no answer can flip, so an entry kept past that is one per broadcast for the
+     * life of the process. Read off the private set because nothing else can tell it is there.
+     */
+    it('leaves no entry for a group once the admin holds its recording', async () => {
+      let status = 'live';
+      const harness = makeRegistry({
+        answer: () =>
+          new Response(merged(finished, { finished: true, flippedToFinished: false, duration: 12 }, status), {
+            status: 200,
+          }),
+      });
+      const first = await harness.registry.upsertRendition(IDENTITY, finished[0]);
+      assert.equal(first.flippedToFinished, true);
+
+      status = 'vod';
+      await harness.registry.upsertRendition(IDENTITY, finished[1]);
+
+      const handedOut = (harness.registry as unknown as { flipHandedOut: ReadonlySet<string> }).flipHandedOut;
+      assert.equal(handedOut.has(IDENTITY.group), false, 'a finished ladder kept its flip entry');
+    });
+
     it('hands the flip out again for the next broadcast of the same declared stream', async () => {
       let finishedNow = true;
       const harness = makeRegistry({
