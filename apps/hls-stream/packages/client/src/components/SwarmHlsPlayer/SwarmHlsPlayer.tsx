@@ -58,17 +58,20 @@ interface HlsTuning {
  *
  * The one worth knowing about is `liveSyncDuration`. It is a latency *target*: hls.js parks the
  * playhead that many seconds behind the live edge (`latency-controller.ts`, `targetLatency` then
- * `liveSyncPosition = liveEdge - targetLatency`), and that distance is the same at any segment
- * length. hls.js's own default is `liveSyncDurationCount: 3`, a count multiplied by the playlist's
- * target duration, which does track segment length. Setting one of these forbids the other:
- * `mergeConfig` throws on a config carrying both.
+ * `liveSyncPosition = liveEdge - targetLatency`). The shipped target is three segments of the
+ * playlist's segment length, never under 6 s, and moves when a playlist names a new length (see
+ * `liveSyncLength.ts`). Only a caller's own override stays fixed. hls.js's own default is
+ * `liveSyncDurationCount: 3`, a count multiplied by the playlist's target duration, which tracks
+ * segment length but has no floor. Setting one of these forbids the other: `mergeConfig` throws on
+ * a config carrying both.
  *
- * What this has to be checked against is not segment length but the engine's **playlist window**,
- * because `liveSyncPosition` is clamped to `edge - levelDetails.totalduration`. A target as long as
- * the window parks the playhead on the oldest fragment, at the eviction boundary. The two engines
+ * What the target also has to be checked against is the engine's **playlist window**, because
+ * `liveSyncPosition` is clamped to `edge - levelDetails.totalduration`. A target as long as the
+ * window parks the playhead on the oldest fragment, at the eviction boundary. The two engines
  * express that window differently, so the margin differs: SRS's `hls_window` is a duration and
  * holds regardless of fragment length, while OME's is `SegmentCount x SegmentDuration`, which at
- * its defaults is 5 x 2s = 10s, exactly this value.
+ * its defaults is 5 x 2s = 10s, 4 s clear of the 6 s floor. At longer segments and OME's default
+ * count of five, the window stays two segments ahead of the three-segment target.
  */
 const DEFAULT_HLS_TUNING: Readonly<HlsTuning> = Object.freeze({
   // Spread rather than restated. These are the buffering and latency numbers of
