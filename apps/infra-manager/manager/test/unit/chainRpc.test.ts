@@ -378,6 +378,27 @@ describe('what funding reads and sends', () => {
     await assert.rejects(rpc.feeSuggestion(), ChainReadError);
   });
 
+  it('calls a contract read-only at the latest block, and answers the bytes it returned in lower case', async () => {
+    const contract = `0x${'45a1502382541cd610cc9068e88727426b696293'}`;
+    const data = `0xc81e25ab${'AB'.repeat(32)}`;
+    const server = await rpcServer((body, response) => reply(response, body, `0x${'0A'.repeat(64)}`));
+    assert.equal(await new ChainRpc(server.url).call(contract, data), `0x${'0a'.repeat(64)}`);
+    assert.deepEqual(
+      server.calls.map((call) => [call.method, call.params]),
+      [['eth_call', [{ to: contract, data: data.toLowerCase() }, 'latest']]],
+    );
+  });
+
+  it('refuses call data that is not whole bytes, before sending, and an answer that is not', async () => {
+    const contract = `0x${'45a1502382541cd610cc9068e88727426b696293'}`;
+    const server = await rpcServer((body, response) => reply(response, body, '0x123'));
+    const rpc = new ChainRpc(server.url);
+    await assert.rejects(rpc.call(contract, '0xc81e25a'), ChainReadError);
+    assert.equal(server.calls.length, 0);
+    await assert.rejects(rpc.call(contract, '0xc81e25ab'), ChainReadError);
+    assert.equal(server.calls.length, 1);
+  });
+
   it('reads an answer whose error is null as the success it is', async () => {
     const server = await rpcServer((body, response) => {
       response.setHeader('content-type', 'application/json');
