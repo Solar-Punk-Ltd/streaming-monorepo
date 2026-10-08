@@ -1,11 +1,12 @@
 /**
- * The client of the manager's funding API (`packages/contracts/src/funding.ts`), through which the funding service
- * reads the nodes and the brand wallet's account and relays the transfers it signs. Unit test, with a fetch that
- * answers from the test, so nothing leaves the process. `pnpm test`.
+ * The client of the manager's funding API (`packages/contracts/src/funding.ts`), through which the funding services
+ * read the nodes and the brand wallet's account, relay the transfers the admin signs and ask for stamp operations.
+ * Unit test, with a fetch that answers from the test, so nothing leaves the process. `pnpm test`.
  *
  * What is pinned here: each route is asked as the contract names it, with the token as a bearer, no redirect followed
- * and a deadline; each answer is what the contract's schema makes of it; and every way a call can fail is one typed
- * error, the manager's refusals with its code and status, with the token in no error and no log line.
+ * and a deadline, a stamp operation under a longer one of its own; each answer is what the contract's schema makes of
+ * it; and every way a call can fail is one typed error, the manager's refusals with its code and status, with the
+ * token in no error and no log line.
  */
 import assert from 'node:assert/strict';
 import { describe, it, mock } from 'node:test';
@@ -15,11 +16,13 @@ import {
   FUNDING_ERROR_CODES,
   FUNDING_ERROR_STATUS,
   type FundingErrorCode,
+  type FundingStampOperationRequest,
   type FundingTransferRequest,
 } from '@streaming-monorepo/contracts';
 
 import {
   MANAGER_FUNDING_FAILURES,
+  MANAGER_FUNDING_STAMP_TIMEOUT_MS,
   MANAGER_FUNDING_TIMEOUT_MS,
   ManagerFundingClient,
   type ManagerFundingClientOptions,
@@ -82,6 +85,50 @@ const transferStatus = () => ({
   blockNumber: 41_000_000,
   error: null,
 });
+
+const BATCH_ID = `0x${'b1'.repeat(32)}`;
+
+const topUpRequest = (): FundingStampOperationRequest => ({
+  requestId: REQUEST_ID,
+  kind: 'topup',
+  nodeId: `${STAGE_ID}:bee-uploader`,
+  batchId: BATCH_ID,
+  expectedDepth: 20,
+  amountPerChunkPlur: '12441600000',
+});
+
+const diluteRequest = (): FundingStampOperationRequest => ({
+  requestId: REQUEST_ID,
+  kind: 'dilute',
+  nodeId: `${STAGE_ID}:bee-uploader`,
+  batchId: BATCH_ID,
+  expectedDepth: 20,
+  newDepth: 22,
+});
+
+const stampStatus = () => ({
+  requestId: REQUEST_ID,
+  kind: 'topup',
+  state: 'failed',
+  txHash: null,
+  error: 'The node refused the top-up: out of funds.',
+});
+
+/** An answer that comes `ms` after the request, or never once the request is aborted. */
+const answersAfter =
+  (ms: number, answer: () => Response): Answer =>
+  ({ signal }) =>
+    new Promise((resolve, reject) => {
+      const timer = setTimeout(() => resolve(answer()), ms);
+      signal?.addEventListener(
+        'abort',
+        () => {
+          clearTimeout(timer);
+          reject(signal.reason);
+        },
+        { once: true },
+      );
+    });
 
 /** One request the client made, as the fetch saw it. */
 interface Seen {
@@ -252,6 +299,138 @@ describe('ManagerFundingClient: the answers', () => {
     const answer = await client.relay(transferRequest());
 
     assert.equal(answer.state, 'confirmed');
+  });
+});
+
+describe('ManagerFundingClient: stamp operations', () => {
+  it('asks for an operation and for where it stands as the contract names the routes, with the token as a bearer', async () => {
+    const { client, seen } = clientOn(({ method }) =>
+      method === 'POST'
+        ? Response.json({ requestId: REQUEST_ID, kind: 'topup', state: 'confirmed', txHash: TX_HASH }, { status: 202 })
+        : Response.json(stampStatus()),
+    );
+
+    await client.stampOperation(topUpRequest());
+    await client.stampOperationStatus(REQUEST_ID.toUpperCase());
+
+    assert.deepEqual(
+      seen.map(({ method, url }) => `${method} ${url}`),
+      [
+        `POST ${BASE}/api/admin-funding/stamp-operations`,
+        `GET ${BASE}/api/admin-funding/stamp-operations/${REQUEST_ID}`,
+      ],
+    );
+    for (const request of seen) {
+      assert.equal(request.headers.get('authorization'), `Bearer ${TOKEN}`, request.url);
+      assert.equal(request.redirect, 'manual', request.url);
+      assert.ok(request.signal instanceof AbortSignal, request.url);
+    }
+    assert.equal(seen[0]?.headers.get('content-type'), 'application/json');
+    assert.equal(seen[1]?.body, null);
+  });
+
+  it("sends the contract's fields of each kind and nothing else the object carries", async () => {
+    const { client, seen } = clientOn(() =>
+      Response.json({ requestId: REQUEST_ID, kind: 'topup', state: 'submitted', txHash: null }, { status: 202 }),
+    );
+
+    // What a caller's object may carry beside the contract's fields: the other kind's field, and more.
+    const topUpAndMore: Record<string, unknown> = { ...topUpRequest(), newDepth: 21, days: 30 };
+    const diluteAndMore: Record<string, unknown> = {
+      ...diluteRequest(),
+      amountPerChunkPlur: '1',
+      password: 'the operator typed this',
+    };
+    await client.stampOperation(topUpAndMore as FundingStampOperationRequest);
+    await client.stampOperation(diluteAndMore as FundingStampOperationRequest);
+
+    assert.deepEqual(JSON.parse(seen[0]?.body ?? 'null'), topUpRequest());
+    assert.deepEqual(JSON.parse(seen[1]?.body ?? 'null'), diluteRequest());
+  });
+
+  it("answers the manager's answer and status as the contract's schemas read them", async () => {
+    const { client } = clientOn(({ method }) =>
+      method === 'POST'
+        ? Response.json(
+            {
+              requestId: REQUEST_ID.toUpperCase(),
+              kind: 'dilute',
+              state: 'unknown',
+              txHash: TX_HASH.toUpperCase().replace('0X', '0x'),
+              batchApiUrl: 'http://192.0.2.20:1633',
+            },
+            { status: 202 },
+          )
+        : Response.json(stampStatus()),
+    );
+
+    const answer = await client.stampOperation(diluteRequest());
+    const status = await client.stampOperationStatus(REQUEST_ID);
+
+    assert.deepEqual(answer, { requestId: REQUEST_ID, kind: 'dilute', state: 'unknown', txHash: TX_HASH });
+    assert.deepEqual(status, stampStatus());
+  });
+
+  it("carries the manager's refusals of an operation as its code, its status and its sentence", async () => {
+    for (const code of ['stamp_refused', 'node_unreachable', 'unknown_node', 'conflict'] as const) {
+      const status = FUNDING_ERROR_STATUS[code];
+      const { client } = clientOn(() => Response.json({ error: code, message: `A sentence for ${code}.` }, { status }));
+
+      const error = await failure(() => client.stampOperation(topUpRequest()));
+
+      assert.deepEqual([error.code, error.status, error.message], [code, status, `A sentence for ${code}.`]);
+    }
+    const { client } = clientOn(() =>
+      Response.json(
+        { error: 'unknown_request', message: 'No stamp operation was journalled under this request id.' },
+        { status: 404 },
+      ),
+    );
+    const unknown = await failure(() => client.stampOperationStatus(REQUEST_ID));
+    assert.deepEqual([unknown.code, unknown.status], ['unknown_request', 404]);
+  });
+
+  it("calls an answer that is not the route's bad_answer, a transfer's answer among them", async () => {
+    const { client } = clientOn(() =>
+      Response.json({ requestId: REQUEST_ID, state: 'submitted', txHash: null }, { status: 202 }),
+    );
+
+    const error = await failure(() => client.stampOperation(topUpRequest()));
+
+    assert.deepEqual([error.code, error.status], ['bad_answer', 202]);
+  });
+
+  it('asks nothing for the status of what is not a UUID', async () => {
+    const { client, seen } = clientOn(() => Response.json(stampStatus()));
+
+    await assert.rejects(client.stampOperationStatus('../inventory'), /UUID/);
+
+    assert.deepEqual(seen, []);
+  });
+
+  it('waits on an operation under its own deadline, 200 seconds by default, and on its status read under the usual one', async () => {
+    assert.equal(MANAGER_FUNDING_STAMP_TIMEOUT_MS, 200_000);
+    const slow = answersAfter(80, () =>
+      Response.json({ requestId: REQUEST_ID, kind: 'topup', state: 'confirmed', txHash: TX_HASH }, { status: 202 }),
+    );
+    const { client } = clientOn(slow, { timeoutMs: 20, stampTimeoutMs: 1_000 });
+
+    const answer = await client.stampOperation(topUpRequest());
+    const statusRead = await failure(() => client.stampOperationStatus(REQUEST_ID));
+    const inventoryRead = await failure(() => client.inventory());
+
+    assert.equal(answer.state, 'confirmed');
+    assert.equal(statusRead.code, 'timeout');
+    assert.equal(inventoryRead.code, 'timeout');
+  });
+
+  it('calls an operation that outlasts its own deadline timeout, naming that deadline', async () => {
+    const { client } = clientOn(neverAnswers, { stampTimeoutMs: 30 });
+
+    const error = await failure(() => client.stampOperation(diluteRequest()));
+
+    assert.deepEqual([error.code, error.status], ['timeout', null]);
+    assert.match(error.message, /within 30 ms/);
   });
 });
 
@@ -474,7 +653,14 @@ describe('ManagerFundingClient: what it is given', () => {
   });
 
   it('refuses a deadline or a size limit that is not a whole number above 0', () => {
-    for (const options of [{ timeoutMs: 0 }, { timeoutMs: 1.5 }, { timeoutMs: Number.NaN }, { maxAnswerBytes: 0 }]) {
+    for (const options of [
+      { timeoutMs: 0 },
+      { timeoutMs: 1.5 },
+      { timeoutMs: Number.NaN },
+      { stampTimeoutMs: 0 },
+      { stampTimeoutMs: Number.POSITIVE_INFINITY },
+      { maxAnswerBytes: 0 },
+    ]) {
       assert.throws(() => clientOn(() => Response.json(inventory()), options), /whole number/, JSON.stringify(options));
     }
   });

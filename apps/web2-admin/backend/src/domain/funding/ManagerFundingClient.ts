@@ -1,5 +1,6 @@
 import {
   FUNDING_INVENTORY_PATH,
+  FUNDING_STAMP_OPERATIONS_PATH,
   FUNDING_TRANSFERS_PATH,
   type FundingAccountAnswer,
   fundingAccountAnswerSchema,
@@ -8,6 +9,12 @@ import {
   fundingErrorAnswerSchema,
   type FundingInventory,
   fundingInventorySchema,
+  type FundingStampOperationAnswer,
+  fundingStampOperationAnswerSchema,
+  fundingStampOperationPath,
+  type FundingStampOperationRequest,
+  type FundingStampOperationStatus,
+  fundingStampOperationStatusSchema,
   type FundingTransferAnswer,
   fundingTransferAnswerSchema,
   fundingTransferPath,
@@ -25,8 +32,8 @@ import {
 
 /**
  * The client of the manager's funding API (`packages/contracts/src/funding.ts`, docs/architecture/funding.md): the
- * stages' nodes and their wallets, the brand wallet's account, and the transfers the admin signs and the manager
- * sends. The funding service is its one user.
+ * stages' nodes with their wallets and batches, the brand wallet's account, the transfers the admin signs and the
+ * manager sends, and the stamp operations the manager asks the nodes for. The funding services are its users.
  *
  * Every request carries `Authorization: Bearer <MANAGER_FUNDING_TOKEN>` to the manager's address and nowhere else:
  * the address is held to the funding rules (https, or plain http to this host), and no redirect is followed. Each
@@ -37,6 +44,14 @@ import {
 
 /** How long a call may take, its answer read whole, unless the client is given another deadline. */
 export const MANAGER_FUNDING_TIMEOUT_MS = 10_000;
+
+/**
+ * How long a stamp operation's call may take, its answer read whole, unless the client is given another deadline. The
+ * manager answers it only once the node has: a node answers a top-up once its approval and its top-up are mined, and
+ * a dilution once it is mined, and the manager gives a node 180 seconds for a call that waits on the chain
+ * (`ON_CHAIN_TIMEOUT_MS` in its `BeeClient.ts`). This leaves room for the manager's own checks besides.
+ */
+export const MANAGER_FUNDING_STAMP_TIMEOUT_MS = 200_000;
 
 /**
  * The largest answer the client reads, the bound the manager's own chain client keeps. An inventory of a hundred
@@ -62,7 +77,8 @@ export type ManagerFundingFailure = (typeof MANAGER_FUNDING_FAILURES)[number];
  * when no answer came. After `relay`, `unreachable` and `timeout` leave it unknown whether the manager took the
  * transfer: relaying it again under the same request id answers its state, and the manager never sends it twice. A
  * status read that answers `unknown_request` says the manager journalled no transfer under the id, so the relay never
- * reached it and relaying again is safe; `unknown_node` refuses the node.
+ * reached it and relaying again is safe; `unknown_node` refuses the node. A stamp operation's status read answers
+ * `unknown_request` in the same way, when the manager journalled no stamp operation under the id.
  */
 export class ManagerFundingError extends Error {
   readonly code: FundingErrorCode | ManagerFundingFailure;
@@ -88,6 +104,11 @@ export interface ManagerFundingClientOptions {
   token: string;
   /** The deadline of one call, its answer read whole, in ms. {@link MANAGER_FUNDING_TIMEOUT_MS} by default. */
   timeoutMs?: number;
+  /**
+   * The deadline of a stamp operation's call, its answer read whole, in ms. {@link MANAGER_FUNDING_STAMP_TIMEOUT_MS}
+   * by default. A stamp operation's status read keeps `timeoutMs`.
+   */
+  stampTimeoutMs?: number;
   /** The largest answer read, in bytes. {@link MANAGER_FUNDING_MAX_ANSWER_BYTES} by default. */
   maxAnswerBytes?: number;
   /** The fetch to call: the global one by default, a fake in the unit tests. */
@@ -160,6 +181,7 @@ export class ManagerFundingClient {
   readonly #base: string;
   readonly #token: string;
   readonly #timeoutMs: number;
+  readonly #stampTimeoutMs: number;
   readonly #maxAnswerBytes: number;
   readonly #fetch: typeof fetch;
 
@@ -168,9 +190,12 @@ export class ManagerFundingClient {
     const problem = managerFundingUrlProblem(options.url) ?? managerFundingTokenProblem(options.token);
     if (problem) throw new Error(problem);
     const timeoutMs = options.timeoutMs ?? MANAGER_FUNDING_TIMEOUT_MS;
+    const stampTimeoutMs = options.stampTimeoutMs ?? MANAGER_FUNDING_STAMP_TIMEOUT_MS;
     const maxAnswerBytes = options.maxAnswerBytes ?? MANAGER_FUNDING_MAX_ANSWER_BYTES;
-    if (!Number.isSafeInteger(timeoutMs) || timeoutMs < 1) {
-      throw new Error("The funding client's deadline must be a whole number of milliseconds above 0.");
+    for (const deadline of [timeoutMs, stampTimeoutMs]) {
+      if (!Number.isSafeInteger(deadline) || deadline < 1) {
+        throw new Error("The funding client's deadline must be a whole number of milliseconds above 0.");
+      }
     }
     if (!Number.isSafeInteger(maxAnswerBytes) || maxAnswerBytes < 1) {
       throw new Error("The funding client's answer limit must be a whole number of bytes above 0.");
@@ -178,6 +203,7 @@ export class ManagerFundingClient {
     this.#base = managerFundingBaseUrl(options.url);
     this.#token = options.token;
     this.#timeoutMs = timeoutMs;
+    this.#stampTimeoutMs = stampTimeoutMs;
     this.#maxAnswerBytes = maxAnswerBytes;
     this.#fetch = options.fetch ?? ((input, init) => fetch(input, init));
   }
@@ -220,9 +246,52 @@ export class ManagerFundingClient {
     return this.#call('GET', fundingTransferPath(requestId), fundingTransferStatusSchema);
   }
 
-  async #call<T>(method: 'GET' | 'POST', path: string, schema: AnswerSchema<T>, body?: object): Promise<T> {
+  /**
+   * `POST /api/admin-funding/stamp-operations`: one top-up or dilution of a node's batch, which the manager checks,
+   * journals and asks the node for. Only the contract's fields of the operation's kind go. The manager answers once
+   * the node has, so the call has its own, longer deadline ({@link MANAGER_FUNDING_STAMP_TIMEOUT_MS}). The same
+   * request id sent again with the same fields answers the operation's state and never runs it twice, so a call that
+   * ended in `unreachable` or `timeout` is made again as it was, once a status read says the manager never received it.
+   */
+  async stampOperation(operation: FundingStampOperationRequest): Promise<FundingStampOperationAnswer> {
+    const { requestId, nodeId, batchId, expectedDepth } = operation;
+    const body =
+      operation.kind === 'topup'
+        ? {
+            requestId,
+            kind: operation.kind,
+            nodeId,
+            batchId,
+            expectedDepth,
+            amountPerChunkPlur: operation.amountPerChunkPlur,
+          }
+        : { requestId, kind: operation.kind, nodeId, batchId, expectedDepth, newDepth: operation.newDepth };
+    return this.#call(
+      'POST',
+      FUNDING_STAMP_OPERATIONS_PATH,
+      fundingStampOperationAnswerSchema,
+      body,
+      this.#stampTimeoutMs,
+    );
+  }
+
+  /**
+   * `GET /api/admin-funding/stamp-operations/:requestId`: where a stamp operation stands. `unknown_request` (404) when
+   * the manager journalled no stamp operation under the id. Throws, asking nothing, for what is not a UUID.
+   */
+  async stampOperationStatus(requestId: string): Promise<FundingStampOperationStatus> {
+    return this.#call('GET', fundingStampOperationPath(requestId), fundingStampOperationStatusSchema);
+  }
+
+  async #call<T>(
+    method: 'GET' | 'POST',
+    path: string,
+    schema: AnswerSchema<T>,
+    body?: object,
+    timeoutMs: number = this.#timeoutMs,
+  ): Promise<T> {
     const route = `${method} ${path}`;
-    const deadline = AbortSignal.timeout(this.#timeoutMs);
+    const deadline = AbortSignal.timeout(timeoutMs);
     // Aborted once the call is over, so a body left unread, such as a redirect's, does not hold the connection.
     const finished = new AbortController();
     const signal = AbortSignal.any([deadline, finished.signal]);
@@ -249,7 +318,7 @@ export class ManagerFundingClient {
     } catch (error) {
       if (error instanceof ManagerFundingError) throw error;
       const [code, message] = deadline.aborted
-        ? (['timeout', `The manager did not answer ${route} within ${this.#timeoutMs} ms.`] as const)
+        ? (['timeout', `The manager did not answer ${route} within ${timeoutMs} ms.`] as const)
         : (['unreachable', `The manager could not be reached for ${route}.`] as const);
       throw new ManagerFundingError(code, null, message, { cause: error });
     } finally {
