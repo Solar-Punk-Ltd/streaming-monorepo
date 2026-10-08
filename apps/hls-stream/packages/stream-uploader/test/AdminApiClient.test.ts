@@ -28,6 +28,7 @@ import {
   STATE_REPORT_FAILED,
   stateWasReported,
 } from '../src/libs/AdminApiClient.js';
+import { AdminStreamGoneError } from '../src/libs/AdminStreamGoneError.js';
 import { MEDIA_TYPE_VIDEO, Rendition } from '../src/types.js';
 
 import { listenOnLoopback } from './helpers/loopbackServer.js';
@@ -461,6 +462,35 @@ describe('the admin API client, reporting one rung of a ladder', () => {
       assert.equal(await client.reportRendition(ADMIN_STREAM_ID, RUNG), null);
       assert.equal(received.length, 1);
       assert.deepEqual(sleeps, []);
+    });
+  });
+
+  /**
+   * ⛔ The one refusal that is permanent: the stream was deleted on the admin. Thrown as its own type so
+   * a finalize can let go of a broadcast nothing will ever accept a report for, which kept a recovery
+   * entry coming back at every boot on 2026-10-08.
+   */
+  it('throws that the stream is gone on the admin′s own 404 for it, and asks once', async () => {
+    await withAdmin(
+      always(404, { error: 'stream_not_found', id: ADMIN_STREAM_ID }),
+      async ({ client, received, sleeps }) => {
+        await assert.rejects(
+          client.reportRendition(ADMIN_STREAM_ID, RUNG),
+          (error: unknown) => error instanceof AdminStreamGoneError && error.adminStreamId === ADMIN_STREAM_ID,
+        );
+        assert.equal(received.length, 1);
+        assert.deepEqual(sleeps, []);
+      },
+    );
+  });
+
+  /**
+   * A 404 for a path nobody routes is a wrong base url or a proxy in front of the admin, and says nothing
+   * about the stream. Read as a deleted stream it would let every recovery entry go at once.
+   */
+  it('answers null for a 404 that does not name the stream as missing', async () => {
+    await withAdmin(always(404, { error: 'not_found', path: '/api/internal/streams' }), async ({ client }) => {
+      assert.equal(await client.reportRendition(ADMIN_STREAM_ID, RUNG), null);
     });
   });
 

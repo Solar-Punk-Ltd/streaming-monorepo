@@ -37,6 +37,7 @@ import {
   AdminStateReport,
   stateWasReported,
 } from './AdminApiClient.js';
+import { AdminStreamGoneError } from './AdminStreamGoneError.js';
 import {
   AnnounceReadiness,
   needsCatalogAnnounce,
@@ -837,7 +838,7 @@ export class StreamUploader {
       const announced = await this.announceRendition({
         index: vodIndex,
         duration: this.manifestManager.getTotalDuration(),
-      });
+      }).catch((error: unknown) => this.letGoOfADeletedStream(error));
 
       // ⛔ Reported only by the rung whose own report finished the ladder, and only once. A rung
       // draining while its siblings are still live ends its own recording and nothing more: the
@@ -1228,6 +1229,30 @@ export class StreamUploader {
    */
   public retire(): void {
     this.ownsRecoveryEntry = false;
+  }
+
+  /**
+   * Give up the recovery entry of a broadcast the admin says it has no stream for, then fail as before.
+   *
+   * ⛔⛔ The one failed finalize that does not keep its entry. Every other failure heals, and the entry
+   * is how the next boot finishes the recording, which is the reasoning in
+   * `StreamOrchestrator.drainUploader`. A stream deleted on the admin never heals: on 2026-10-08 such an
+   * entry was recovered at every uploader start, held for the reconnect window and refused again, each
+   * time costing a minute and a wrong active stream count. The recording already in this rung's feed
+   * stays there, so all that is lost is a report nothing would ever accept.
+   *
+   * Rethrows either way, so the stop still reads as failed: this rung did end without its recording
+   * being named anywhere.
+   */
+  private letGoOfADeletedStream(error: unknown): never {
+    if (error instanceof AdminStreamGoneError && this.ownsRecoveryEntry) {
+      this.logger.warn(
+        `[StreamUploader] The admin has no stream ${error.adminStreamId} any more, so ${this.streamId} drops ` +
+          'its recovery entry rather than be recovered and refused again at every start',
+      );
+      this.clearRecoveryEntry();
+    }
+    throw error;
   }
 
   private clearRecoveryEntry(): void {
