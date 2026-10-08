@@ -941,7 +941,7 @@ and `chequebookOperationStatus(requestId)`, which the chequebook service uses
   (`MANAGER_FUNDING_CHEQUEBOOK_TIMEOUT_MS`), the one the manager's edge gives
   `/api/admin-funding`: the manager answers it once it has reached the node,
   prepared the move, journalled it and had the node's answer, in seconds as a
-  rule and about 230 seconds at worst. Either operation's status read keeps
+  rule and about 225 seconds at worst. Either operation's status read keeps
   the 10 seconds, over the 5 the manager waits at most on its own check of a
   chequebook operation.
 - Every answer is parsed by the contract's schema, so a field the contract

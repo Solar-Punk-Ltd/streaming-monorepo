@@ -65,10 +65,10 @@ export const MANAGER_FUNDING_STAMP_TIMEOUT_MS = 200_000;
  * How long a chequebook operation's call may take, its answer read whole, unless the client is given another
  * deadline: the 240 seconds the manager's edge gives its funding API (`proxy_read_timeout` of `/api/admin-funding` in
  * the manager's `frontend/nginx.conf`). The manager answers it once it has reached the node, prepared the move,
- * journalled it and had the node's answer to it: seconds as a rule, and about 230 at worst, 15 to reach the node's Bee
- * API, 30 to prepare the move and the 180 it gives the node's answer, with its cleanup after. An answer lost past this
- * deadline is read on the status route, which answers the operation, since the manager journals it before it asks the
- * node.
+ * journalled it and had the node's answer to it: seconds as a rule, and about 225 at worst by its chequebook path's
+ * budgets, 15 to reach the node's container, 30 to prepare the move and the 180 it gives the node's answer. An answer
+ * lost past this deadline is read on the status route, which answers the operation, since the manager journals it
+ * before it asks the node.
  */
 export const MANAGER_FUNDING_CHEQUEBOOK_TIMEOUT_MS = 240_000;
 
