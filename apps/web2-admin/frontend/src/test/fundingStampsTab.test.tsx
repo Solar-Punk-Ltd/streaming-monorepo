@@ -5,12 +5,21 @@ import type { FundingStampItem, FundingView } from '@streaming-monorepo/web2-adm
 import { EARLIER_STAMP_OPERATIONS_SETTLING } from '../api';
 import { EXPLORER_TX_URL } from '../components/funding/balance';
 import { BULK_POLL_LIMIT_MS, BULK_POLL_MS } from '../components/funding/BulkProgress';
-import { DILUTE_NOTE, TOP_UP_NOTE } from '../components/funding/StampDialog';
+import { DILUTE_NOTE, readAgainFailed, READING_AGAIN, TOP_UP_NOTE } from '../components/funding/StampDialog';
 import { READ_BACK_NOTE, STAMP_DROPPED_NOTE, STAMP_NOT_KNOWN_YET_NOTE } from '../components/funding/StampProgress';
 import { DAYS_PROBLEM, EXPIRED_TEXT, NO_PRICE_PROBLEM } from '../components/funding/stamps';
 import { NO_BATCHES_REPORTED, TODAYS_PRICE_CAPTION } from '../components/funding/StampsTab';
 import { FundingPage } from '../pages/FundingPage';
-import { BATCH, makeBatch, makeNode, makeStampItem, makeStampView, makeView, POSTAGE } from './fundingFixtures';
+import {
+  BATCH,
+  makeBatch,
+  makeNode,
+  makeStampItem,
+  makeStampView,
+  makeView,
+  POSTAGE,
+  THIRTY_DAYS_DEPTH_20,
+} from './fundingFixtures';
 import { jsonError, jsonOk, mockFetch, renderWithProviders, type Route } from './helpers';
 
 /** The price of postage the view shows, which every top-up is asked for with. */
@@ -59,6 +68,17 @@ const tick = (label: string, verb = 'Top up') =>
   fireEvent.click(screen.getByRole('checkbox', { name: `${verb} the batch of ${label}` }));
 const typeDays = (value: string) =>
   fireEvent.change(screen.getByRole('textbox', { name: 'Days' }), { target: { value } });
+
+/**
+ * Opens the confirm dialog with the bar's button, `button`, and answers it once the view it reads again as it opens is
+ * back and its own button, `verb`, is free.
+ */
+async function openDialog(button: string, verb: string, title?: string) {
+  fireEvent.click(screen.getByRole('button', { name: button }));
+  const dialog = within(await screen.findByRole('dialog', title ? { name: title } : {}));
+  await waitFor(() => expect(dialog.getByRole('button', { name: verb })).toBeEnabled());
+  return dialog;
+}
 
 afterEach(() => {
   vi.useRealTimers();
@@ -257,8 +277,7 @@ describe('topping up', () => {
     fireEvent.click(boxes()[1] as HTMLElement);
     expect(boxes().map((box) => (box as HTMLInputElement).checked)).toEqual([true, true]);
 
-    fireEvent.click(screen.getByRole('button', { name: 'Top up 1 batch' }));
-    const dialog = within(await screen.findByRole('dialog', { name: 'Top up 1 batch?' }));
+    const dialog = await openDialog('Top up 1 batch', 'Top up', 'Top up 1 batch?');
     fireEvent.click(dialog.getByRole('button', { name: 'Top up' }));
     await waitFor(() =>
       expect(bodyOf(fetchMock, STAMPS)).toEqual({
@@ -329,9 +348,7 @@ describe('diluting', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Dilute' }));
     fireEvent.click(screen.getByRole('button', { name: '2 steps' }));
     tick('catalogue-node', 'Dilute');
-    fireEvent.click(screen.getByRole('button', { name: 'Dilute 1 batch' }));
-
-    const dialog = within(await screen.findByRole('dialog', { name: 'Dilute 1 batch?' }));
+    const dialog = await openDialog('Dilute 1 batch', 'Dilute', 'Dilute 1 batch?');
     expect(dialog.getByText('catalogue-node')).toBeInTheDocument();
     expect(dialog.getByText('Depth 20 to 22')).toBeInTheDocument();
     expect(dialog.getByText('10 days left after')).toBeInTheDocument();
@@ -377,8 +394,7 @@ describe('asking for a stamp bulk', () => {
 
     tick('catalogue-node');
     tick('pool-360p');
-    fireEvent.click(screen.getByRole('button', { name: 'Top up 2 batches' }));
-    const dialog = within(await screen.findByRole('dialog', { name: 'Top up 2 batches?' }));
+    const dialog = await openDialog('Top up 2 batches', 'Top up', 'Top up 2 batches?');
     const asked = within(dialog.getByRole('table', { name: 'Top-ups to ask for' }));
     expect(asked.getByText('catalogue-node')).toBeInTheDocument();
     expect(asked.getByText('pool-360p')).toBeInTheDocument();
@@ -445,17 +461,99 @@ describe('asking for a stamp bulk', () => {
     await openStamps();
 
     tick('catalogue-node');
-    fireEvent.click(screen.getByRole('button', { name: 'Top up 1 batch' }));
-    const dialog = within(await screen.findByRole('dialog'));
     const views = viewsOf(fetchMock);
+    const dialog = await openDialog('Top up 1 batch', 'Top up');
+    expect(viewsOf(fetchMock)).toBe(views + 1);
     fireEvent.click(dialog.getByRole('button', { name: 'Top up' }));
     expect(await dialog.findByText(EARLIER_STAMP_OPERATIONS_SETTLING)).toBeInTheDocument();
-    await waitFor(() => expect(viewsOf(fetchMock)).toBe(views + 1));
+    await waitFor(() => expect(viewsOf(fetchMock)).toBe(views + 2));
+    await waitFor(() => expect(dialog.getByRole('button', { name: 'Top up' })).toBeEnabled());
 
     answer = jsonError(422, { error: 'stamp_refused', message: 'The batch is at depth 21 now, not 20.' });
     fireEvent.click(dialog.getByRole('button', { name: 'Top up' }));
     expect(await dialog.findByText('The batch is at depth 21 now, not 20.')).toBeInTheDocument();
     expect(screen.getByRole('dialog')).toBeInTheDocument();
+  });
+
+  it('reads the view again as the dialog opens, and lists, costs and asks for what that reading says', async () => {
+    let view = makeStampView();
+    let held: Promise<void> | null = null;
+    const sent = makeStampItem({ costPlur: (BigInt(THIRTY_DAYS_DEPTH_20) * 2n).toString() });
+    const fetchMock = mockFetch([
+      {
+        path: FUNDING,
+        respond: async () => {
+          const answer = view;
+          if (held) await held;
+          return jsonOk(answer);
+        },
+      },
+      { path: STAMPS, method: 'POST', respond: () => jsonOk({ bulkId: BULK, items: [sent] }, 202) },
+      { path: STAMPS, respond: () => jsonOk({ items: [sent] }) },
+    ]);
+    await openStamps();
+    tick('catalogue-node');
+    expect(rowOf('Catalogue batch', 'catalogue-node').getByText('1.305 xBZZ')).toBeInTheDocument();
+
+    // Postage costs twice as much since the page read it, and the dialog's reading answers only when let go.
+    view = makeStampView({ postage: { ...POSTAGE, pricePerChunkPerBlockPlur: '48000' } });
+    let letGo!: () => void;
+    held = new Promise<void>((resolve) => {
+      letGo = resolve;
+    });
+    const views = viewsOf(fetchMock);
+    fireEvent.click(screen.getByRole('button', { name: 'Top up 1 batch' }));
+    const dialog = within(await screen.findByRole('dialog', { name: 'Top up 1 batch?' }));
+    expect(viewsOf(fetchMock)).toBe(views + 1);
+    expect(dialog.getByText(READING_AGAIN)).toBeInTheDocument();
+    expect(dialog.queryByRole('table')).not.toBeInTheDocument();
+    expect(dialog.getByRole('button', { name: 'Top up' })).toBeDisabled();
+
+    await act(async () => {
+      letGo();
+      await held;
+    });
+    const asked = within(await dialog.findByRole('table', { name: 'Top-ups to ask for' }));
+    expect(asked.getByText('2.60919263232 xBZZ')).toBeInTheDocument();
+    expect(dialog.getByText('In all: 2.60919263232 xBZZ.')).toBeInTheDocument();
+    expect(dialog.queryByText(READING_AGAIN)).not.toBeInTheDocument();
+    expect(dialog.getByRole('button', { name: 'Top up' })).toBeEnabled();
+
+    fireEvent.click(dialog.getByRole('button', { name: 'Top up' }));
+    await waitFor(() =>
+      expect(bodyOf(fetchMock, STAMPS)).toEqual({
+        items: [
+          {
+            kind: 'topup',
+            nodeId: 'catalogue:bee',
+            batchId: BATCH.catalogue,
+            expectedDepth: 20,
+            days: 30,
+            pricePerChunkPerBlockPlur: '48000',
+          },
+        ],
+      }),
+    );
+  });
+
+  it('asks for nothing while the view cannot be read again, and says why in the dialog', async () => {
+    let failing = false;
+    const fetchMock = serve(
+      () => (failing ? jsonError(404, { error: 'not_found' }) : makeStampView()),
+      [{ path: STAMPS, method: 'POST', respond: () => jsonOk({ bulkId: BULK, items: [makeStampItem()] }, 202) }],
+    );
+    await openStamps();
+    tick('catalogue-node');
+
+    failing = true;
+    fireEvent.click(screen.getByRole('button', { name: 'Top up 1 batch' }));
+    const dialog = within(await screen.findByRole('dialog', { name: 'Top up 1 batch?' }));
+
+    expect(await dialog.findByText(readAgainFailed('Not found.'))).toBeInTheDocument();
+    expect(dialog.queryByRole('table')).not.toBeInTheDocument();
+    expect(dialog.getByRole('button', { name: 'Top up' })).toBeDisabled();
+    fireEvent.click(dialog.getByRole('button', { name: 'Top up' }));
+    expect(fetchMock.mock.calls.some(([url, init]) => String(url) === STAMPS && init?.method === 'POST')).toBe(false);
   });
 });
 
