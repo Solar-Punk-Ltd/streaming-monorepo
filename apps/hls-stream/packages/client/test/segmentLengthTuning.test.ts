@@ -56,10 +56,10 @@ describe('how far behind live the player aims', () => {
 });
 
 /** A player as the follower sees it: the live config, the target latency setter, and LEVEL_UPDATED. */
-function makePlayer() {
+function makePlayer(callerTuning: { liveSyncDuration?: number } = {}) {
   const listeners = new Map<string, (event: string, data: unknown) => void>();
   const targets: number[] = [];
-  const config = { liveSyncDuration: 6, liveMaxLatencyDuration: 12 };
+  const config = { liveSyncDuration: callerTuning.liveSyncDuration ?? 6, liveMaxLatencyDuration: 12 };
   const hls = {
     config,
     set targetLatency(latency: number) {
@@ -73,7 +73,7 @@ function makePlayer() {
       }
     },
   };
-  const detach = attachLiveSyncToSegmentLength(hls as unknown as Hls);
+  const detach = attachLiveSyncToSegmentLength(hls as unknown as Hls, callerTuning);
   const playlist = (...durationsS: number[]) =>
     listeners.get(Events.LEVEL_UPDATED)?.(Events.LEVEL_UPDATED, {
       details: { fragments: durationsS.map((duration) => ({ duration })) },
@@ -118,6 +118,26 @@ describe('the live target following the segment length', () => {
     player.config.liveSyncDuration = 9;
 
     player.playlist(2, 2, 2);
+
+    assert.deepEqual(player.targets, []);
+    assert.equal(player.config.liveSyncDuration, 9);
+  });
+
+  /** A caller who names a target keeps it, even one equal to the shipped floor. */
+  it('keeps a target of 6 s the caller set at 6 s, whatever length the playlist names', () => {
+    const player = makePlayer({ liveSyncDuration: 6 });
+
+    player.playlist(2, 2, 2);
+    player.playlist(4, 4, 4);
+
+    assert.deepEqual(player.targets, []);
+    assert.equal(player.config.liveSyncDuration, 6);
+  });
+
+  it('keeps a target of 9 s the caller set at 9 s', () => {
+    const player = makePlayer({ liveSyncDuration: 9 });
+
+    player.playlist(4, 4, 4);
 
     assert.deepEqual(player.targets, []);
     assert.equal(player.config.liveSyncDuration, 9);
