@@ -5,14 +5,18 @@
  * - `node`: a node is not in the manager's inventory, its wallet could not be read, it was never pinned, or it answers
  *   another address than the pinned one;
  * - `fee`: the manager suggested a fee or a gas limit over the admin's own ceilings, so nothing is signed;
- * - `insufficient_funds`: the brand wallet cannot pay for the send, its fees counted.
+ * - `insufficient_funds`: the brand wallet cannot pay for the send, its fees counted, or a node cannot pay for its
+ *   stamp operations, its top-ups in xBZZ or their gas in xDAI;
+ * - `batch`: a stamp operation's batch is not one its node uploads with, could not be read, is not usable, has expired
+ *   or is no longer at the depth the page showed, or a dilution would leave it under 7 days;
+ * - `price`: the manager read no price of postage, so a top-up cannot be priced.
  */
-export type FundingRefusalProblem = 'not_set_up' | 'chain' | 'node' | 'fee' | 'insufficient_funds';
+export type FundingRefusalProblem = 'not_set_up' | 'chain' | 'node' | 'fee' | 'insufficient_funds' | 'batch' | 'price';
 
 /**
- * A pin or a send the funding service refused before anything was signed or written. `message` is the sentence the
- * console shows. The API answers 409: each is a state of the admin, the manager or the wallet, which changes, not a
- * request that was wrong.
+ * A pin, a send or a stamp request the funding services refused before anything was signed or written. `message` is
+ * the sentence the console shows. The API answers 409: each is a state of the admin, the manager, a node or the
+ * wallet, which changes, not a request that was wrong.
  */
 export class FundingRefusedError extends Error {
   constructor(

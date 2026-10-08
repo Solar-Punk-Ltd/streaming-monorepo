@@ -213,7 +213,8 @@ function rowOf(row: Row): FundingTransferRow {
   };
 }
 
-async function inTransaction<T>(pool: Pool, work: (client: PoolClient) => Promise<T>): Promise<T> {
+/** Runs `work` in one transaction on a connection of its own: all of what it writes, or none of it. */
+export async function inTransaction<T>(pool: Pool, work: (client: PoolClient) => Promise<T>): Promise<T> {
   const client = await pool.connect();
   try {
     await client.query('BEGIN');
@@ -229,35 +230,49 @@ async function inTransaction<T>(pool: Pool, work: (client: PoolClient) => Promis
 }
 
 /**
- * The funding journal, migration 016. The send lock is a session advisory lock, taken with `pg_try_advisory_lock` on a
- * connection of its own and released on it when the work is over: one send at a time across every process on the
+ * Runs `work` while holding the session advisory lock named `name`, or answers `{ locked: false }` without running it
+ * when another session holds it. The lock is taken with `pg_try_advisory_lock`, without waiting, on a connection of
+ * its own, and released on it when the work is over, failed or not: one taker at a time across every process on the
  * database, and a process that dies while it holds the lock drops it with its connection.
+ */
+export async function withAdvisoryLock<T>(
+  pool: Pool,
+  name: string,
+  work: () => Promise<T>,
+): Promise<SendLockOutcome<T>> {
+  const client = await pool.connect();
+  let held = false;
+  try {
+    const taken = await client.query<{ locked: boolean }>('SELECT pg_try_advisory_lock(hashtext($1)) AS locked', [
+      name,
+    ]);
+    held = taken.rows[0]?.locked === true;
+    if (!held) return { locked: false };
+    return { locked: true, result: await work() };
+  } finally {
+    if (held) {
+      // A connection whose unlock failed is not handed back with the lock on it: destroying it drops the lock.
+      const unlocked = await client
+        .query('SELECT pg_advisory_unlock(hashtext($1))', [name])
+        .then(() => true)
+        .catch(() => false);
+      client.release(unlocked ? undefined : true);
+    } else {
+      client.release();
+    }
+  }
+}
+
+/**
+ * The funding journal, migration 016. The send lock is a session advisory lock ({@link withAdvisoryLock}): one send at
+ * a time across every process on the database, and a process that dies while it holds the lock drops it with its
+ * connection.
  */
 export class FundingTransferRepository implements FundingTransferStore {
   constructor(private readonly pool: Pool) {}
 
-  async withSendLock<T>(work: () => Promise<T>): Promise<SendLockOutcome<T>> {
-    const client = await this.pool.connect();
-    let held = false;
-    try {
-      const taken = await client.query<{ locked: boolean }>('SELECT pg_try_advisory_lock(hashtext($1)) AS locked', [
-        SEND_LOCK_NAME,
-      ]);
-      held = taken.rows[0]?.locked === true;
-      if (!held) return { locked: false };
-      return { locked: true, result: await work() };
-    } finally {
-      if (held) {
-        // A connection whose unlock failed is not handed back with the lock on it: destroying it drops the lock.
-        const unlocked = await client
-          .query('SELECT pg_advisory_unlock(hashtext($1))', [SEND_LOCK_NAME])
-          .then(() => true)
-          .catch(() => false);
-        client.release(unlocked ? undefined : true);
-      } else {
-        client.release();
-      }
-    }
+  withSendLock<T>(work: () => Promise<T>): Promise<SendLockOutcome<T>> {
+    return withAdvisoryLock(this.pool, SEND_LOCK_NAME, work);
   }
 
   async hasUnsettled(now: Date): Promise<boolean> {

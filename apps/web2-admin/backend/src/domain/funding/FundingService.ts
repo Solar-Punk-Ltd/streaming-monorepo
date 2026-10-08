@@ -13,11 +13,14 @@ import {
   type FundingBulkAnswer,
   type FundingPinsAnswer,
   type FundingPinState,
+  type FundingStampBulkAnswer,
+  type FundingStampOperationsAnswer,
   type FundingTransferItem,
   type FundingTransferItemRequest,
   type FundingTransfersAnswer,
   type FundingView,
   formatBaseUnits,
+  type StampOperationItemRequest,
   XBZZ_DECIMALS,
   XDAI_DECIMALS,
 } from '@streaming-monorepo/web2-admin-common';
@@ -38,6 +41,7 @@ import { Logger } from '../Logger.js';
 
 import type { BrandWallet, BrandWalletTransaction } from './BrandWallet.js';
 import type { FundingPinRow, FundingPinStore, NewFundingPin } from './FundingPinRepository.js';
+import type { FundingStampService } from './FundingStampService.js';
 import {
   holdsSend,
   isAsked,
@@ -67,6 +71,9 @@ import { ManagerFundingError, type ManagerFundingClient } from './ManagerFunding
  * for a late receipt; a younger `unknown` one holds it up, since the chain may hold it at its nonce.
  *
  * Neither the signed transaction nor the wallet's key reaches an answer, a log line or the audit log.
+ *
+ * The page's stamp operations, the top-ups and dilutions of the nodes' batches, are the stamp service's
+ * (`FundingStampService.ts`): this service answers their routes and the view's open stamp bulk through it.
  */
 
 const logger = Logger.getInstance();
@@ -98,6 +105,9 @@ export type FundingWallet = Pick<BrandWallet, 'address' | 'signTransaction'>;
 /** What the service uses of the client of the manager's funding API. */
 export type FundingManager = Pick<ManagerFundingClient, 'inventory' | 'account' | 'relay' | 'status'>;
 
+/** What the service uses of the stamp service: the stamp routes it answers, and what the view says of stamp bulks. */
+export type FundingStamps = Pick<FundingStampService, 'request' | 'bulk' | 'refreshAsked' | 'openBulkId'>;
+
 /**
  * The codes a relay is refused with for good: the manager checked the transfer and will refuse the same bytes again.
  * The item fails. Any other failure (the manager or the chain out of reach, the funding API off, a token refused, an
@@ -120,7 +130,7 @@ const NOT_SENT_AFTER_FAILURE =
   'Not sent: a transfer before it in this send failed or was lost, so its nonce might never be reached. Send it again.';
 
 /** The code of a failed manager call, or null for any other error. */
-function managerCode(error: unknown): ManagerFundingError['code'] | null {
+export function managerCode(error: unknown): ManagerFundingError['code'] | null {
   return error instanceof ManagerFundingError ? error.code : null;
 }
 
@@ -173,7 +183,7 @@ function nodesOf(inventory: FundingInventory): Map<string, FundingNode> {
 }
 
 /** How a sentence names a node: its label and its id. */
-function nodeName(node: { label: string; nodeId: string }): string {
+export function nodeName(node: { label: string; nodeId: string }): string {
   return `${node.label} (${node.nodeId})`;
 }
 
@@ -237,6 +247,8 @@ export interface FundingServiceDeps {
   manager: FundingManager | null;
   transfers: FundingTransferStore;
   pins: FundingPinStore;
+  /** The stamp operations of the page, which it answers the stamp routes with and reads the open stamp bulk from. */
+  stamps: FundingStamps;
   audit: AuditLog;
   /** A new request id or bulk id: `randomUUID` by default. */
   newId?: () => string;
@@ -252,6 +264,7 @@ export class FundingService {
   private readonly manager: FundingManager | null;
   private readonly transfers: FundingTransferStore;
   private readonly pins: FundingPinStore;
+  private readonly stamps: FundingStamps;
   private readonly audit: AuditLog;
   private readonly newId: () => string;
   private readonly now: () => number;
@@ -263,6 +276,7 @@ export class FundingService {
     this.manager = deps.manager;
     this.transfers = deps.transfers;
     this.pins = deps.pins;
+    this.stamps = deps.stamps;
     this.audit = deps.audit;
     this.newId = deps.newId ?? randomUUID;
     this.now = deps.now ?? Date.now;
@@ -276,10 +290,11 @@ export class FundingService {
 
   /**
    * `GET /api/funding`. Not configured, it asks the manager nothing. Otherwise it first refreshes the latest sends with
-   * an item still asked about, {@link FUNDING_REFRESH_LIMIT} at most, then reads the inventory and the wallet's account
-   * together; when either cannot be read, `managerError` says why and every reading of the manager is empty. Each node
-   * comes with its batch and the chain with the price of postage, as the manager read them, null where it read none.
-   * `openBulkId` names the send that still holds up a new one, so the page resumes it after a reload.
+   * an item still asked about, {@link FUNDING_REFRESH_LIMIT} at most, and the latest stamp bulks likewise, then reads
+   * the inventory and the wallet's account together; when either cannot be read, `managerError` says why and every
+   * reading of the manager is empty. Each node comes with its batch and the chain with the price of postage, as the
+   * manager read them, null where it read none. `openBulkId` names the send that still holds up a new one, and
+   * `openStampBulkId` the stamp bulk, so the page resumes either after a reload.
    */
   async view(): Promise<FundingView> {
     const address = this.wallet?.address() ?? null;
@@ -288,8 +303,10 @@ export class FundingService {
       for (const bulkId of await this.transfers.askedBulkIds(FUNDING_REFRESH_LIMIT)) {
         await this.refreshBulk(manager, bulkId);
       }
+      await this.stamps.refreshAsked();
     }
     const [openBulkId = null] = await this.transfers.openBulkIds(1, new Date(this.now()));
+    const openStampBulkId = await this.stamps.openBulkId();
     const view: FundingView = {
       configured: this.manager !== null,
       wallet: address ? { address, xdaiWei: null, xbzzPlur: null } : null,
@@ -300,7 +317,7 @@ export class FundingService {
       observedAt: null,
       managerError: null,
       openBulkId,
-      openStampBulkId: null,
+      openStampBulkId,
     };
     if (!manager) return view;
 
@@ -511,6 +528,22 @@ export class FundingService {
     if (rows.length === 0) throw new FundingBulkNotFoundError(bulkId);
     if (this.manager && rows.some(isAsked)) await this.refreshBulk(this.manager, bulkId);
     return { items: await this.itemsOf(bulkId) };
+  }
+
+  /**
+   * `POST /api/funding/stamp-operations`, behind the page's confirm dialog and no password: the stamp service's
+   * request, which tops up or dilutes the nodes' batches, each paid from its node's own wallet.
+   */
+  stampOperations(
+    actor: OperatorActor,
+    items: readonly StampOperationItemRequest[],
+  ): Promise<FundingStampOperationsAnswer> {
+    return this.stamps.request(actor, items);
+  }
+
+  /** `GET /api/funding/stamp-operations?bulkId=`: the items of a stamp bulk, refreshed from the manager. */
+  stampBulk(bulkId: string): Promise<FundingStampBulkAnswer> {
+    return this.stamps.bulk(bulkId);
   }
 
   /**

@@ -1,11 +1,13 @@
 /**
  * The Funding page's routes over HTTP: the real router, session gate, cross-site check, password check and error
- * mapping on a random port, mounted as `src/api/server.ts` mounts them, with the funding service over fakes and the
+ * mapping on a random port, mounted as `src/api/server.ts` mounts them, with the funding services over fakes and the
  * users and sessions in memory. `pnpm test`.
  *
  * Pinned here: a wrong password on a pin or a send answers as the password change does, 401 and then 429, on the same
  * count as the password change; the password is checked before anything else of a send; a node named twice is 400;
- * the 202 answer's shape; one of two sends at once is 409 `{ error: 'conflict' }`; and no answer, nor any audit row,
+ * the 202 answer's shape; one of two sends at once is 409 `{ error: 'conflict' }`; a stamp request takes no password,
+ * answers 202 at once with every item queued, refuses a body that is not one with 400, a failed check with 409 and its
+ * problem, and an earlier stamp bulk not settled with 409 `{ error: 'conflict' }`; and no answer, nor any audit row,
  * carries a signed transaction or the password.
  */
 import http from 'node:http';
@@ -15,10 +17,14 @@ import { after, afterEach, before, beforeEach, describe, it } from 'node:test';
 import {
   FUNDING_PATH,
   FUNDING_PINS_PATH,
+  FUNDING_STAMP_OPERATIONS_ADMIN_PATH,
   FUNDING_TRANSFERS_ADMIN_PATH,
+  type FundingStampBulkAnswer,
+  type FundingStampOperationsAnswer,
   type FundingTransfersAnswer,
   type FundingView,
   fundingBulkPath,
+  fundingStampBulkPath,
 } from '@streaming-monorepo/web2-admin-common';
 import { LoginLimiter } from '@streaming-monorepo/web-auth';
 import express from 'express';
@@ -31,6 +37,7 @@ import { createAuthRouter } from '../../src/api/routes/auth.js';
 import { createFundingRouter } from '../../src/api/routes/funding.js';
 import { AuthService } from '../../src/domain/auth/AuthService.js';
 import { FundingService } from '../../src/domain/funding/FundingService.js';
+import { FundingStampService } from '../../src/domain/funding/FundingStampService.js';
 
 import {
   InMemoryCredentialRepository,
@@ -41,13 +48,19 @@ import {
 import { type AuthTestApp, call, signIn } from './support/authTestApp.js';
 import { InMemoryAuditLog } from './support/fakes.js';
 import {
+  BATCH_CATALOGUE,
+  BATCH_STAGE,
   FakeFundingManager,
   FakeFundingWallet,
   InMemoryFundingPinStore,
+  InMemoryFundingStampStore,
   InMemoryFundingTransferStore,
   managerFailure,
   NODE_A,
   NODE_B,
+  NODE_CATALOGUE,
+  POSTAGE,
+  stampInventory,
   WALLET_A,
   WALLET_B,
 } from './support/fundingFakes.js';
@@ -61,6 +74,8 @@ interface FundingTestApp extends AuthTestApp {
   wallet: FakeFundingWallet;
   transfers: InMemoryFundingTransferStore;
   pins: InMemoryFundingPinStore;
+  stampJournal: InMemoryFundingStampStore;
+  stamps: FundingStampService;
   clock: { now: number };
 }
 
@@ -80,11 +95,18 @@ async function startFundingTestApp(options: { configured?: boolean } = {}): Prom
   const wallet = new FakeFundingWallet();
   const transfers = new InMemoryFundingTransferStore();
   const pins = new InMemoryFundingPinStore();
+  const stampJournal = new InMemoryFundingStampStore();
+  const stamps = new FundingStampService({
+    manager: options.configured === false ? null : manager,
+    journal: stampJournal,
+    audit,
+  });
   const fundingService = new FundingService({
     wallet,
     manager: options.configured === false ? null : manager,
     transfers,
     pins,
+    stamps,
     audit,
   });
   const requireAuth = createRequireAuth(authService);
@@ -112,6 +134,8 @@ async function startFundingTestApp(options: { configured?: boolean } = {}): Prom
     wallet,
     transfers,
     pins,
+    stampJournal,
+    stamps,
     clock,
     close: () => new Promise<void>((resolve, reject) => server.close((err) => (err ? reject(err) : resolve()))),
   };
@@ -423,6 +447,190 @@ describe('the Funding page view', () => {
   });
 });
 
+describe('a stamp request', () => {
+  const TOP_UP = { kind: 'topup', nodeId: NODE_A, batchId: BATCH_STAGE, expectedDepth: 20, days: 30 };
+  const CATALOGUE_TOP_UP = {
+    kind: 'topup',
+    nodeId: NODE_CATALOGUE,
+    batchId: BATCH_CATALOGUE,
+    expectedDepth: 18,
+    days: 7,
+  };
+  const DILUTION = { kind: 'dilute', nodeId: NODE_CATALOGUE, batchId: BATCH_CATALOGUE, expectedDepth: 18, steps: 1 };
+
+  const stampRequest = (body: unknown) => fundingCall('POST', FUNDING_STAMP_OPERATIONS_ADMIN_PATH, body);
+
+  beforeEach(() => {
+    app.manager.inventoryAnswer = stampInventory();
+  });
+
+  it('takes no password, and answers 202 at once with the bulk id and every item queued', async () => {
+    const res = await stampRequest({ items: [TOP_UP, CATALOGUE_TOP_UP] });
+
+    assert.equal(res.status, 202);
+    const answer = res.body as FundingStampOperationsAnswer;
+    assert.deepEqual(Object.keys(answer).sort(), ['bulkId', 'items']);
+    assert.deepEqual(
+      answer.items.map((item) => [
+        item.nodeId,
+        item.kind,
+        item.batchId,
+        item.days,
+        item.steps,
+        item.state,
+        item.settled,
+      ]),
+      [
+        [NODE_A, 'topup', BATCH_STAGE, 30, null, 'queued', false],
+        [NODE_CATALOGUE, 'topup', BATCH_CATALOGUE, 7, null, 'queued', false],
+      ],
+    );
+    for (const item of answer.items) {
+      assert.match(item.costPlur ?? '', /^[1-9]\d*$/);
+      assert.match(item.requestId, /^[0-9a-f-]{36}$/);
+    }
+
+    // The relays end behind the answer; the bulk reads back as the manager answered them.
+    await app.stamps.idle();
+    const bulk = await fundingCall('GET', fundingStampBulkPath(answer.bulkId));
+    assert.equal(bulk.status, 200);
+    assert.deepEqual(
+      (bulk.body as FundingStampBulkAnswer).items.map((item) => [item.requestId, item.state, item.settled]),
+      answer.items.map((item) => [item.requestId, 'confirmed', true]),
+    );
+  });
+
+  it('takes a dilution in steps', async () => {
+    const res = await stampRequest({ items: [DILUTION] });
+
+    assert.equal(res.status, 202);
+    assert.deepEqual(
+      (res.body as FundingStampOperationsAnswer).items.map((item) => [item.kind, item.steps, item.days, item.costPlur]),
+      [['dilute', 1, null, null]],
+    );
+    await app.stamps.idle();
+  });
+
+  it('refuses a body that is not a stamp request with 400', async () => {
+    const bodies: unknown[] = [
+      {},
+      { items: [] },
+      { items: [{ ...TOP_UP, kind: 'burn' }] },
+      { items: [{ ...TOP_UP, days: 0 }] },
+      { items: [{ ...TOP_UP, days: '30' }] },
+      { items: [{ ...TOP_UP, days: 1.5 }] },
+      { items: [{ ...TOP_UP, days: 2 ** 31 }] },
+      { items: [{ kind: 'topup', nodeId: NODE_A, batchId: BATCH_STAGE, expectedDepth: 20 }] },
+      { items: [{ ...TOP_UP, steps: 1 }] },
+      { items: [{ ...DILUTION, steps: 3 }] },
+      { items: [{ ...DILUTION, steps: '1' }] },
+      { items: [{ ...DILUTION, days: 30 }] },
+      { items: [{ kind: 'dilute', nodeId: NODE_CATALOGUE, batchId: BATCH_CATALOGUE, expectedDepth: 18 }] },
+      { items: [{ ...TOP_UP, batchId: '0x1234' }] },
+      { items: [{ ...TOP_UP, expectedDepth: 256 }] },
+      { items: [{ ...TOP_UP, expectedDepth: '20' }] },
+      { items: [{ ...TOP_UP, nodeId: 'a/b' }] },
+    ];
+    for (const body of bodies) {
+      const res = await stampRequest(body);
+      assert.equal(res.status, 400, JSON.stringify(body));
+      assert.equal((res.body as { error: string }).error, 'validation_error');
+    }
+    assert.equal(app.stampJournal.rows.size, 0);
+    assert.equal(app.manager.calls.inventory, 0);
+  });
+
+  it('refuses both kinds in one request, and a batch named twice, with 400 and a sentence', async () => {
+    const mixed = await stampRequest({ items: [TOP_UP, DILUTION] });
+    assert.equal(mixed.status, 400);
+    assert.deepEqual(mixed.body, {
+      error: 'validation_error',
+      errors: ['A request takes one kind of operation: top-ups or dilutions, not both.'],
+    });
+
+    const twice = await stampRequest({ items: [TOP_UP, { ...TOP_UP, days: 7 }] });
+    assert.equal(twice.status, 400);
+    assert.deepEqual(twice.body, {
+      error: 'validation_error',
+      errors: [`Batch ${BATCH_STAGE} is named twice: a request takes one operation on a batch.`],
+    });
+  });
+
+  it('refuses a check that fails with 409 funding_refused, its problem and its sentence', async () => {
+    const res = await stampRequest({ items: [{ ...TOP_UP, expectedDepth: 19 }] });
+
+    assert.equal(res.status, 409);
+    assert.deepEqual(res.body, {
+      error: 'funding_refused',
+      problem: 'batch',
+      message:
+        'The batch of Main stage uploader (stage-1:uploader) is at depth 20 now, not the 19 the page showed: read the page again. Nothing was sent.',
+    });
+    assert.equal(app.stampJournal.rows.size, 0);
+  });
+
+  it('refuses a request while an earlier stamp bulk is not settled with 409 conflict', async () => {
+    app.manager.stampState = 'unknown';
+    assert.equal((await stampRequest({ items: [TOP_UP] })).status, 202);
+    await app.stamps.idle();
+
+    const res = await stampRequest({ items: [CATALOGUE_TOP_UP] });
+
+    assert.equal(res.status, 409);
+    assert.deepEqual(res.body, { error: 'conflict' });
+  });
+
+  it('answers 502 with a sentence when the manager cannot be read', async () => {
+    app.manager.inventoryError = managerFailure('unreachable', null, 'GET http://manager.example failed');
+
+    const res = await stampRequest({ items: [TOP_UP] });
+
+    assert.equal(res.status, 502);
+    assert.deepEqual(res.body, {
+      error: 'manager_unavailable',
+      message: 'The manager could not be reached. Nothing was sent.',
+    });
+  });
+
+  it('refuses a write without the cross-site header, and any call without a session', async () => {
+    const crossSite = await call(app, 'POST', FUNDING_STAMP_OPERATIONS_ADMIN_PATH, {
+      cookie,
+      requestedWith: false,
+      body: { items: [TOP_UP] },
+    });
+    assert.equal(crossSite.status, 403);
+
+    const anonymous = await call(app, 'POST', FUNDING_STAMP_OPERATIONS_ADMIN_PATH, { body: { items: [TOP_UP] } });
+    assert.equal(anonymous.status, 401);
+    const anonymousRead = await call(app, 'GET', fundingStampBulkPath('00000000-0000-4000-8000-00000000000a'));
+    assert.equal(anonymousRead.status, 401);
+    assert.equal(app.stampJournal.rows.size, 0);
+  });
+
+  it('reads a stamp bulk back by its id: 400 without a UUID, 404 for one never journalled', async () => {
+    assert.equal((await fundingCall('GET', FUNDING_STAMP_OPERATIONS_ADMIN_PATH)).status, 400);
+    assert.equal((await fundingCall('GET', `${FUNDING_STAMP_OPERATIONS_ADMIN_PATH}?bulkId=not-a-uuid`)).status, 400);
+
+    const unknown = await fundingCall('GET', fundingStampBulkPath('00000000-0000-4000-8000-00000000000a'));
+    assert.equal(unknown.status, 404);
+    assert.deepEqual(unknown.body, { error: 'bulk_not_found', bulkId: '00000000-0000-4000-8000-00000000000a' });
+  });
+
+  it('is named on the Funding page while it is open, beside the batches and the price of postage', async () => {
+    app.manager.stampState = 'unknown';
+    const sent = (await stampRequest({ items: [TOP_UP] })).body as FundingStampOperationsAnswer;
+    await app.stamps.idle();
+
+    const view = (await fundingCall('GET', FUNDING_PATH)).body as FundingView;
+
+    assert.equal(view.openStampBulkId, sent.bulkId);
+    assert.equal(view.openBulkId, null);
+    assert.deepEqual(view.postage, POSTAGE);
+    assert.equal(view.stages[0]?.nodes[0]?.batch?.batchId, BATCH_STAGE);
+    assert.equal(view.stages[0]?.nodes[1]?.batch, null);
+  });
+});
+
 describe('without manager funding settings', () => {
   let off: FundingTestApp;
   let offCookie: string;
@@ -444,6 +652,14 @@ describe('without manager funding settings', () => {
     });
     assert.equal(res.status, 409);
     assert.equal((res.body as { problem: string }).problem, 'not_set_up');
+    assert.equal(off.manager.calls.inventory, 0);
+
+    const stamp = await call(off, 'POST', FUNDING_STAMP_OPERATIONS_ADMIN_PATH, {
+      cookie: offCookie,
+      body: { items: [{ kind: 'dilute', nodeId: NODE_A, batchId: BATCH_STAGE, expectedDepth: 20, steps: 1 }] },
+    });
+    assert.equal(stamp.status, 409);
+    assert.equal((stamp.body as { problem: string }).problem, 'not_set_up');
     assert.equal(off.manager.calls.inventory, 0);
   });
 });
