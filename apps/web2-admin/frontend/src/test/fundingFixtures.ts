@@ -1,10 +1,14 @@
-import type {
-  AdminFundingNode,
-  FundingBatch,
-  FundingPostage,
-  FundingStampItem,
-  FundingTransferItem,
-  FundingView,
+import {
+  parseBaseUnits,
+  XBZZ_DECIMALS,
+  type AdminFundingNode,
+  type FundingBatch,
+  type FundingChequebook,
+  type FundingChequebookItem,
+  type FundingPostage,
+  type FundingStampItem,
+  type FundingTransferItem,
+  type FundingView,
 } from '@streaming-monorepo/web2-admin-common';
 
 /** The brand wallet: the address of private key 1, which nobody signs with. */
@@ -213,6 +217,124 @@ export function makeStampItem(over: Partial<FundingStampItem> = {}): FundingStam
     days: 30,
     steps: null,
     costPlur: THIRTY_DAYS_DEPTH_20,
+    state: 'submitted',
+    txHash: null,
+    error: null,
+    settled: false,
+    watched: false,
+    ...over,
+  };
+}
+
+/** An amount of xBZZ in PLUR, every digit of it: `xbzz('1.5')` is 15000000000000000. */
+export function xbzz(amount: string): string {
+  const plur = parseBaseUnits(amount, XBZZ_DECIMALS);
+  if (plur === null) throw new Error(`${amount} is not an amount of xBZZ`);
+  return plur;
+}
+
+/** A chequebook its node read: 1.5 xBZZ available of 2 in all, so 0.5 xBZZ in cheques its peers have not cashed. */
+export function makeChequebook(over: Partial<FundingChequebook> = {}): FundingChequebook {
+  return {
+    address: '0x3333333333333333333333333333333333333333',
+    availablePlur: xbzz('1.5'),
+    totalPlur: xbzz('2'),
+    readError: null,
+    ...over,
+  };
+}
+
+/** A chequebook its node could not be read about: every reading null, and why. */
+export function unreadChequebook(readError = 'The node did not answer in time.'): FundingChequebook {
+  return { address: null, availablePlur: null, totalPlur: null, readError };
+}
+
+/** The available balance of the main stage's rung over the target of 2 xBZZ, in xBZZ: every digit counts. */
+export const OVER_TARGET = '3.2500000000000001';
+
+/**
+ * The Funding page with chequebooks, every node holding 0.2 xDAI and 5 xBZZ:
+ * - the catalogue node's chequebook, which the Chequebooks tab does not list;
+ * - on the main stage, the uploader's 1.5 xBZZ available of 2, under a target of 2 xBZZ; a rung's {@link OVER_TARGET},
+ *   over it; a rung's 2 xBZZ of 2.5, at it; a rung whose chequebook was not read; a gateway's 1 xBZZ, which the tab
+ *   shows read-only; and a rung that has no chequebook;
+ * - on the second stage, a rung whose wallet was not read, with its chequebook of 1 xBZZ;
+ * - on a third stage, an uploader that has no chequebook.
+ */
+export function makeChequebookView(over: Partial<FundingView> = {}): FundingView {
+  const base = makeView();
+  return {
+    ...base,
+    catalogue: base.catalogue && { ...base.catalogue, chequebook: makeChequebook() },
+    stages: [
+      {
+        stageId: 'stage-1',
+        name: 'Main stage',
+        nodes: [
+          makeNode({ chequebook: makeChequebook() }),
+          makeNode({
+            nodeId: 'stage-1:720p',
+            label: 'rung-720p',
+            role: 'rung',
+            chequebook: makeChequebook({ availablePlur: xbzz(OVER_TARGET), totalPlur: xbzz(OVER_TARGET) }),
+          }),
+          makeNode({
+            nodeId: 'stage-1:1080p',
+            label: 'rung-1080p',
+            role: 'rung',
+            chequebook: makeChequebook({ availablePlur: xbzz('2'), totalPlur: xbzz('2.5') }),
+          }),
+          makeNode({ nodeId: 'stage-1:480p', label: 'rung-480p', role: 'rung', chequebook: unreadChequebook() }),
+          makeNode({
+            nodeId: 'stage-1:gateway',
+            label: 'stage-1-gateway',
+            role: 'gateway',
+            chequebook: makeChequebook({ availablePlur: xbzz('1'), totalPlur: xbzz('1') }),
+          }),
+          makeNode({ nodeId: 'stage-1:240p', label: 'rung-240p', role: 'rung', chequebook: null }),
+        ],
+      },
+      {
+        stageId: 'stage-2',
+        name: 'Second stage',
+        nodes: [
+          makeNode({
+            nodeId: 'stage-2:360p',
+            label: 'pool-360p',
+            role: 'rung',
+            walletAddress: null,
+            xdaiWei: null,
+            xbzzPlur: null,
+            readError: 'The node did not answer.',
+            pin: 'new',
+            pinnedAddress: null,
+            chequebook: makeChequebook({ availablePlur: xbzz('1'), totalPlur: xbzz('1') }),
+          }),
+        ],
+      },
+      {
+        stageId: 'stage-3',
+        name: 'Third stage',
+        nodes: [makeNode({ nodeId: 'stage-3:bee', label: 'stage-3-uploader', chequebook: null })],
+      },
+    ],
+    ...over,
+  };
+}
+
+/**
+ * One deposit of a chequebook bulk: 0.5 xBZZ into the main stage's uploader's chequebook, to a target of 2 xBZZ, sent
+ * and not yet confirmed, so it holds up a new chequebook bulk (`settled` false) and is under way rather than watched
+ * (`watched` false), as the API answers it.
+ */
+export function makeChequebookItem(over: Partial<FundingChequebookItem> = {}): FundingChequebookItem {
+  return {
+    requestId: 'chequebook-request-1',
+    nodeId: 'stage-1:bee',
+    nodeLabel: 'stage-1-uploader',
+    direction: 'deposit',
+    amountPlur: xbzz('0.5'),
+    targetPlur: xbzz('2'),
     state: 'submitted',
     txHash: null,
     error: null,

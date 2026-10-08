@@ -23,13 +23,19 @@ import type {
 import { VERSION_PATH } from '@streaming-monorepo/web2-admin-common';
 
 import {
+  FUNDING_CHEQUEBOOK_OPERATIONS_ADMIN_PATH,
   FUNDING_PATH,
   FUNDING_PINS_PATH,
   FUNDING_STAMP_OPERATIONS_ADMIN_PATH,
   FUNDING_TRANSFERS_ADMIN_PATH,
   fundingBulkPath,
+  fundingChequebookBulkPath,
   fundingStampBulkPath,
   type FundingBulkAnswer,
+  type FundingChequebookBulkAnswer,
+  type FundingChequebookItem,
+  type FundingChequebookOperationsAnswer,
+  type FundingChequebookOperationsRequest,
   type FundingPinsAnswer,
   type FundingPinsRequest,
   type FundingStampBulkAnswer,
@@ -400,6 +406,34 @@ export const EARLIER_STAMP_OPERATIONS_SETTLING =
 /** Where each operation of a stamp bulk stands, as the admin last heard from the manager. */
 export async function fetchFundingStampOperations(bulkId: string): Promise<FundingStampItem[]> {
   return (await getJson<FundingStampBulkAnswer>(fundingStampBulkPath(bulkId))).items;
+}
+
+/**
+ * Brings these chequebooks to the target, each with a deposit from its own node's wallet or a withdrawal into it, and
+ * answers the chequebook bulk they went out under. Each item names the available balance the page showed, from which
+ * the API works out the very move the page showed. No password: nothing leaves the brand wallet, so the page asks in a
+ * confirm dialog.
+ */
+export function sendFundingChequebookOperations(
+  request: FundingChequebookOperationsRequest,
+): Promise<FundingChequebookOperationsAnswer> {
+  return sendJson<FundingChequebookOperationsAnswer>('POST', FUNDING_CHEQUEBOOK_OPERATIONS_ADMIN_PATH, request, {
+    fallback: 'The chequebook operations could not be sent.',
+  }).catch((e: unknown) => {
+    if (e instanceof ApiError && e.code === 'conflict') {
+      throw new ApiError(EARLIER_CHEQUEBOOK_OPERATIONS_SETTLING, e.code, e.status);
+    }
+    throw e;
+  });
+}
+
+/** What a chequebook bulk says when the API refuses it, 409 `conflict`, because an earlier one has not settled yet. */
+export const EARLIER_CHEQUEBOOK_OPERATIONS_SETTLING =
+  'Earlier chequebook operations are still settling; check them again or wait.';
+
+/** Where each operation of a chequebook bulk stands, as the admin last heard from the manager. */
+export async function fetchFundingChequebookOperations(bulkId: string): Promise<FundingChequebookItem[]> {
+  return (await getJson<FundingChequebookBulkAnswer>(fundingChequebookBulkPath(bulkId))).items;
 }
 
 // --- public config ----------------------------------------------------------

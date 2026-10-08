@@ -4,7 +4,16 @@ import type { FundingTransferItem, FundingView } from '@streaming-monorepo/web2-
 
 import { useSnackbar } from '../Snackbar';
 import { formatUnits } from './amounts';
-import { allNodes, checkSend, nodeGroups, TOKENS, unconfirmedNodes, type Drafts, type SendCheck } from './balance';
+import {
+  allNodes,
+  checkSend,
+  fundFocus,
+  nodeGroups,
+  TOKENS,
+  unconfirmedNodes,
+  type Drafts,
+  type SendCheck,
+} from './balance';
 import { followBulk, type FollowedBulk } from './BulkProgress';
 import { FundingFrame, useFundingView } from './FundingFrame';
 import { NodeTable } from './NodeTable';
@@ -68,13 +77,14 @@ function SendBar({
  * waits while a send is on its way, the one made here or the one the view says is open, which the page follows after a
  * reload too.
  *
- * `initialDrafts` is what the tab opens with, read once when it mounts: what a Fund link of the Stamps tab enters for
- * the node it names, whose xBZZ field then takes the focus.
+ * `initialDrafts` is what the tab opens with, read once when it mounts: what a Fund link of the Stamps or the
+ * Chequebooks tab enters for the node it names. Its xBZZ field then takes the focus, or its xDAI field when the link
+ * entered no xBZZ, the gas being all the node lacks.
  */
 export function BalanceTab({ initialDrafts }: { initialDrafts?: Drafts }) {
   const snackbar = useSnackbar();
   const [drafts, setDrafts] = useState<Drafts>(initialDrafts ?? {});
-  const [focusNodeId] = useState(() => Object.keys(initialDrafts ?? {})[0] ?? null);
+  const [focus] = useState(() => fundFocus(initialDrafts));
   const [pinning, setPinning] = useState(false);
   const [sending, setSending] = useState(false);
   const [followed, setFollowed] = useState<FollowedBulk<FundingTransferItem> | null>(null);
@@ -138,7 +148,7 @@ export function BalanceTab({ initialDrafts }: { initialDrafts?: Drafts }) {
               key={group.key}
               group={group}
               drafts={drafts}
-              focusNodeId={focusNodeId}
+              focus={focus}
               onChange={(nodeId, draft) => setDrafts((prev) => ({ ...prev, [nodeId]: draft }))}
             />
           ))}

@@ -3,6 +3,7 @@ import { describe, expect, it } from 'vitest';
 import {
   checkSend,
   fundDrafts,
+  fundFocus,
   nodeCaption,
   nodeGroups,
   nodeName,
@@ -172,13 +173,26 @@ describe('what Send would send, and why it cannot', () => {
   });
 });
 
-describe('what a Fund link of the Stamps tab enters', () => {
+describe('what a Fund link of the Stamps or the Chequebooks tab enters', () => {
   it('ticks the node with the xBZZ it lacks, exactly, and no xDAI, which Send then sends as it is', () => {
     const drafts = fundDrafts('stage-1:bee', '2190000000000000');
     expect(drafts).toEqual({ 'stage-1:bee': { ticked: true, xdai: '', xbzz: '0.219' } });
     expect(checkSend(makeView(), drafts).lines).toEqual([
       { nodeId: 'stage-1:bee', label: 'stage-1-uploader', kind: 'xbzz', amount: '2190000000000000' },
     ]);
+    expect(fundFocus(drafts)).toEqual({ nodeId: 'stage-1:bee', kind: 'xbzz' });
+  });
+
+  it('ticks the node with nothing entered when it lacks only the xDAI for the gas, and focuses its xDAI field', () => {
+    const drafts = fundDrafts('stage-1:bee', null);
+    expect(drafts).toEqual({ 'stage-1:bee': { ticked: true, xdai: '', xbzz: '' } });
+    expect(fundFocus(drafts)).toEqual({ nodeId: 'stage-1:bee', kind: 'xdai' });
+    expect(checkSend(makeView(), drafts).problems).toEqual(['Enter an amount beside a node to send it.']);
+  });
+
+  it('focuses nothing when no link opened the tab', () => {
+    expect(fundFocus(undefined)).toBeNull();
+    expect(fundFocus({})).toBeNull();
   });
 });
 

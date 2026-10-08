@@ -13,7 +13,7 @@ import {
 } from '../components/funding/TransferProgress';
 import { FUND_IT_TEXT } from '../components/funding/WalletCard';
 import { setUnauthorizedHandler } from '../http';
-import { COMING_NEXT, FundingPage } from '../pages/FundingPage';
+import { FundingPage } from '../pages/FundingPage';
 import { makeItem, makeNode, makeView, WALLET } from './fundingFixtures';
 import { jsonError, jsonOk, mockFetch, renderWithProviders, type Route } from './helpers';
 
@@ -82,7 +82,7 @@ async function openSend() {
 }
 
 describe('the Funding page', () => {
-  it('has a Balance tab and a Stamps tab, and says the Chequebooks tab comes next', async () => {
+  it('has a Balance tab, a Stamps tab and a Chequebooks tab', async () => {
     serve(() => makeView());
     renderWithProviders(<FundingPage />);
 
@@ -94,7 +94,8 @@ describe('the Funding page', () => {
     expect(await screen.findByRole('group', { name: 'Operation' })).toBeInTheDocument();
     expect(screen.queryByRole('heading', { name: 'Brand wallet' })).not.toBeInTheDocument();
     fireEvent.click(screen.getByRole('tab', { name: 'Chequebooks' }));
-    expect(screen.getByText(COMING_NEXT.chequebooks)).toBeInTheDocument();
+    expect(await screen.findByRole('textbox', { name: 'Target' })).toBeInTheDocument();
+    expect(screen.queryByRole('group', { name: 'Operation' })).not.toBeInTheDocument();
   });
 
   it('says it is not set up when the admin has no manager to fund through', async () => {

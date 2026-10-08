@@ -79,11 +79,30 @@ export interface NodeDraft {
 export type Drafts = Readonly<Record<string, NodeDraft>>;
 
 /**
- * What the Balance tab opens with when the Stamps tab's Fund link sends it a node: that node ticked, with the xBZZ the
- * link names typed in, every digit of it, and no xDAI.
+ * What the Balance tab opens with when a Fund link of the Stamps or the Chequebooks tab sends it a node: that node
+ * ticked, with the xBZZ the link names typed in, every digit of it, and no xDAI; or with nothing typed when the link
+ * names no xBZZ, as for a node that lacks only the xDAI for the gas.
  */
-export function fundDrafts(nodeId: string, xbzzPlur: string): Drafts {
-  return { [nodeId]: { ticked: true, xdai: '', xbzz: formatUnits(xbzzPlur, FUNDING_KIND_DECIMALS.xbzz) } };
+export function fundDrafts(nodeId: string, xbzzPlur: string | null): Drafts {
+  const xbzz = xbzzPlur === null ? '' : formatUnits(xbzzPlur, FUNDING_KIND_DECIMALS.xbzz);
+  return { [nodeId]: { ticked: true, xdai: '', xbzz } };
+}
+
+/** The amount field that takes the focus as the Balance tab is drawn: one node's field of one token. */
+export interface NodeFocus {
+  nodeId: string;
+  kind: FundingTransferKind;
+}
+
+/**
+ * Where the Balance tab puts the focus when a Fund link opens it: in the xBZZ field of the node the link names when
+ * the link entered xBZZ for it, and in its xDAI field when it entered nothing, the gas being all the node lacks.
+ */
+export function fundFocus(drafts: Drafts | undefined): NodeFocus | null {
+  const [entry] = Object.entries(drafts ?? {});
+  if (!entry) return null;
+  const [nodeId, draft] = entry;
+  return { nodeId, kind: draft.xbzz === '' ? 'xdai' : 'xbzz' };
 }
 
 /** One transfer Send would ask for: an amount of one kind, in base units, to one node. */
