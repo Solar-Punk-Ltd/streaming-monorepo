@@ -920,9 +920,11 @@ printable ASCII with no space, since it travels in a header.
 `src/domain/funding/ManagerFundingClient.ts` calls the manager's funding API
 (`packages/contracts/src/funding.ts`), typed and parsed by the contract:
 `inventory()`, `account(address)`, `relay(transfer)` and `status(requestId)`,
-which the funding service uses, and `stampOperation(operation)` and
+which the funding service uses, `stampOperation(operation)` and
 `stampOperationStatus(requestId)`, which the stamp service uses
-([Stamp operations](#stamp-operations)).
+([Stamp operations](#stamp-operations)), and `chequebookOperation(operation)`
+and `chequebookOperationStatus(requestId)`, for the deposits into and
+withdrawals from the nodes' chequebooks.
 
 - Every request carries `Authorization: Bearer <MANAGER_FUNDING_TOKEN>`, to the
   manager's address alone: the client holds the address to the rule above as
@@ -933,29 +935,39 @@ which the funding service uses, and `stampOperation(operation)` and
   of its own, 200 seconds by default (`MANAGER_FUNDING_STAMP_TIMEOUT_MS`): the
   manager answers it once the node has, and a node answers a top-up once its
   approval and its top-up are mined, a dilution once it is mined. The manager
-  gives a node 180 seconds for such a call. A stamp operation's status read
-  keeps the 10 seconds.
+  gives a node 180 seconds for such a call. A chequebook operation has a
+  deadline of its own, 240 seconds by default
+  (`MANAGER_FUNDING_CHEQUEBOOK_TIMEOUT_MS`), the one the manager's edge gives
+  `/api/admin-funding`: the manager answers it once it has reached the node,
+  prepared the move, journalled it and had the node's answer, in seconds as a
+  rule and about 230 seconds at worst. Either operation's status read keeps
+  the 10 seconds, over the 5 the manager waits at most on its own check of a
+  chequebook operation.
 - Every answer is parsed by the contract's schema, so a field the contract
   does not name is dropped, and an answer that does not parse is an error,
   never a crash. A relay sends the contract's fields of the transfer and
-  nothing else, and a stamp operation the contract's fields of its kind: an
-  amount per chunk for a top-up, a new depth for a dilution.
+  nothing else, a stamp operation the contract's fields of its kind: an
+  amount per chunk for a top-up, a new depth for a dilution, and a chequebook
+  operation its request id, node, direction and amount, and nothing that
+  could name where a withdrawal goes.
 - Every failure is a `ManagerFundingError` with a `code` and a `status`. When
   the manager refused, the code is the contract's (`funding_off`,
   `unauthorized`, `unknown_node`, `bad_transaction`, `chain_unreachable`,
-  `conflict`, `unknown_request`, `stamp_refused`, `node_unreachable`), with
+  `conflict`, `unknown_request`, `stamp_refused`, `node_unreachable`,
+  `chequebook_refused`), with
   the status it answered and its sentence. Otherwise it is `unreachable` or
   `timeout`, with no status,
   `not_json`, or `bad_answer`: JSON that is not the route's answer, an error
-  without one of the contract's codes, an answer over the limit, or a
+  without one of the contract's codes (the manager's 503
+  `chequebook_journal_unavailable` among them), an answer over the limit, or a
   redirect. After a relay, `unreachable` and `timeout` leave it unknown whether
   the manager took the transfer; relayed again under the same request id, it
   answers its state, and the manager never sends it twice. A status read that
   answers `unknown_request` (404) says the manager journalled no transfer under
   the id: the relay never reached it, so relaying again under the same request
-  id is safe, while `unknown_node` refuses the node. A stamp operation's status
-  read answers `unknown_request` in the same way, when the manager journalled
-  no stamp operation under the id.
+  id is safe, while `unknown_node` refuses the node. A stamp or chequebook
+  operation's status read answers `unknown_request` in the same way, when the
+  manager journalled no such operation under the id.
 
 ### Funding transfers
 

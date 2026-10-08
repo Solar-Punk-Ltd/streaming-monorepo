@@ -1,12 +1,12 @@
 /**
  * The client of the manager's funding API (`packages/contracts/src/funding.ts`), through which the funding services
- * read the nodes and the brand wallet's account, relay the transfers the admin signs and ask for stamp operations.
- * Unit test, with a fetch that answers from the test, so nothing leaves the process. `pnpm test`.
+ * read the nodes and the brand wallet's account, relay the transfers the admin signs and ask for stamp and chequebook
+ * operations. Unit test, with a fetch that answers from the test, so nothing leaves the process. `pnpm test`.
  *
  * What is pinned here: each route is asked as the contract names it, with the token as a bearer, no redirect followed
- * and a deadline, a stamp operation under a longer one of its own; each answer is what the contract's schema makes of
- * it; and every way a call can fail is one typed error, the manager's refusals with its code and status, with the
- * token in no error and no log line.
+ * and a deadline, a stamp operation and a chequebook operation each under a longer one of its own; each answer is
+ * what the contract's schema makes of it; and every way a call can fail is one typed error, the manager's refusals
+ * with its code and status, with the token in no error and no log line.
  */
 import assert from 'node:assert/strict';
 import { describe, it, mock } from 'node:test';
@@ -15,12 +15,14 @@ import { inspect } from 'node:util';
 import {
   FUNDING_ERROR_CODES,
   FUNDING_ERROR_STATUS,
+  type FundingChequebookOperationRequest,
   type FundingErrorCode,
   type FundingStampOperationRequest,
   type FundingTransferRequest,
 } from '@streaming-monorepo/contracts';
 
 import {
+  MANAGER_FUNDING_CHEQUEBOOK_TIMEOUT_MS,
   MANAGER_FUNDING_FAILURES,
   MANAGER_FUNDING_STAMP_TIMEOUT_MS,
   MANAGER_FUNDING_TIMEOUT_MS,
@@ -112,6 +114,21 @@ const stampStatus = () => ({
   state: 'failed',
   txHash: null,
   error: 'The node refused the top-up: out of funds.',
+});
+
+const depositRequest = (): FundingChequebookOperationRequest => ({
+  requestId: REQUEST_ID,
+  nodeId: `${STAGE_ID}:bee-uploader`,
+  direction: 'deposit',
+  amountPlur: '5000000000000000',
+});
+
+const chequebookStatus = () => ({
+  requestId: REQUEST_ID,
+  direction: 'withdraw',
+  state: 'failed',
+  txHash: null,
+  error: 'The chequebook holds less than the withdrawal. Nothing was sent.',
 });
 
 /** An answer that comes `ms` after the request, or never once the request is aborted. */
@@ -434,6 +451,161 @@ describe('ManagerFundingClient: stamp operations', () => {
   });
 });
 
+describe('ManagerFundingClient: chequebook operations', () => {
+  it('asks for a move and for where it stands as the contract names the routes, with the token as a bearer', async () => {
+    const { client, seen } = clientOn(({ method }) =>
+      method === 'POST'
+        ? Response.json(
+            { requestId: REQUEST_ID, direction: 'deposit', state: 'submitted', txHash: TX_HASH },
+            { status: 202 },
+          )
+        : Response.json(chequebookStatus()),
+    );
+
+    await client.chequebookOperation(depositRequest());
+    await client.chequebookOperationStatus(REQUEST_ID.toUpperCase());
+
+    assert.deepEqual(
+      seen.map(({ method, url }) => `${method} ${url}`),
+      [
+        `POST ${BASE}/api/admin-funding/chequebook-operations`,
+        `GET ${BASE}/api/admin-funding/chequebook-operations/${REQUEST_ID}`,
+      ],
+    );
+    for (const request of seen) {
+      assert.equal(request.headers.get('authorization'), `Bearer ${TOKEN}`, request.url);
+      assert.equal(request.redirect, 'manual', request.url);
+      assert.ok(request.signal instanceof AbortSignal, request.url);
+    }
+    assert.equal(seen[0]?.headers.get('content-type'), 'application/json');
+    assert.equal(seen[1]?.body, null);
+  });
+
+  it("sends the contract's fields and nothing else the object carries, so no request names where a withdrawal goes", async () => {
+    const { client, seen } = clientOn(() =>
+      Response.json(
+        { requestId: REQUEST_ID, direction: 'withdraw', state: 'submitted', txHash: null },
+        { status: 202 },
+      ),
+    );
+
+    const withdrawAndMore: Record<string, unknown> = {
+      ...depositRequest(),
+      direction: 'withdraw',
+      to: NODE_WALLET,
+      profileName: 'main stage',
+      targetPlur: '20000000000000000',
+    };
+    await client.chequebookOperation(withdrawAndMore as FundingChequebookOperationRequest);
+
+    assert.deepEqual(JSON.parse(seen[0]?.body ?? 'null'), { ...depositRequest(), direction: 'withdraw' });
+  });
+
+  it("answers the manager's answer and status as the contract's schemas read them", async () => {
+    const { client } = clientOn(({ method }) =>
+      method === 'POST'
+        ? Response.json(
+            {
+              requestId: REQUEST_ID.toUpperCase(),
+              direction: 'deposit',
+              state: 'unknown',
+              txHash: TX_HASH.toUpperCase().replace('0X', '0x'),
+              chequebookAddress: '0x3333333333333333333333333333333333333333',
+            },
+            { status: 202 },
+          )
+        : Response.json(chequebookStatus()),
+    );
+
+    const answer = await client.chequebookOperation(depositRequest());
+    const status = await client.chequebookOperationStatus(REQUEST_ID);
+
+    assert.deepEqual(answer, { requestId: REQUEST_ID, direction: 'deposit', state: 'unknown', txHash: TX_HASH });
+    assert.deepEqual(status, chequebookStatus());
+  });
+
+  it("carries the manager's refusals of a move as its code, its status and its sentence", async () => {
+    for (const code of ['chequebook_refused', 'unknown_node', 'conflict', 'bad_transaction'] as const) {
+      const status = FUNDING_ERROR_STATUS[code];
+      const { client } = clientOn(() => Response.json({ error: code, message: `A sentence for ${code}.` }, { status }));
+
+      const error = await failure(() => client.chequebookOperation(depositRequest()));
+
+      assert.deepEqual([error.code, error.status, error.message], [code, status, `A sentence for ${code}.`]);
+    }
+    assert.equal(FUNDING_ERROR_STATUS.chequebook_refused, 422);
+    const { client } = clientOn(() =>
+      Response.json(
+        { error: 'unknown_request', message: 'No chequebook operation was journalled under this request id.' },
+        { status: 404 },
+      ),
+    );
+    const unknown = await failure(() => client.chequebookOperationStatus(REQUEST_ID));
+    assert.deepEqual([unknown.code, unknown.status], ['unknown_request', 404]);
+  });
+
+  it("calls an answer that is not the route's bad_answer, a stamp operation's answer among them", async () => {
+    const { client } = clientOn(() =>
+      Response.json({ requestId: REQUEST_ID, kind: 'topup', state: 'submitted', txHash: null }, { status: 202 }),
+    );
+
+    const error = await failure(() => client.chequebookOperation(depositRequest()));
+
+    assert.deepEqual([error.code, error.status], ['bad_answer', 202]);
+  });
+
+  it('asks nothing for the status of what is not a UUID', async () => {
+    const { client, seen } = clientOn(() => Response.json(chequebookStatus()));
+
+    await assert.rejects(client.chequebookOperationStatus('../stamp-operations'), /UUID/);
+
+    assert.deepEqual(seen, []);
+  });
+
+  it("waits on a move under its own deadline, 240 seconds by default, the manager edge's, and on its status read under the usual one", async () => {
+    assert.equal(MANAGER_FUNDING_CHEQUEBOOK_TIMEOUT_MS, 240_000);
+    const slow = answersAfter(80, () =>
+      Response.json(
+        { requestId: REQUEST_ID, direction: 'deposit', state: 'submitted', txHash: TX_HASH },
+        { status: 202 },
+      ),
+    );
+    // The stamp operations' deadline is not the one a move waits under.
+    const { client } = clientOn(slow, { timeoutMs: 20, stampTimeoutMs: 20, chequebookTimeoutMs: 1_000 });
+
+    const answer = await client.chequebookOperation(depositRequest());
+    const statusRead = await failure(() => client.chequebookOperationStatus(REQUEST_ID));
+    const stampOperation = await failure(() => client.stampOperation(topUpRequest()));
+
+    assert.equal(answer.state, 'submitted');
+    assert.equal(statusRead.code, 'timeout');
+    assert.equal(stampOperation.code, 'timeout');
+  });
+
+  it('calls a move that outlasts its deadline timeout, naming that deadline', async () => {
+    const { client } = clientOn(neverAnswers, { chequebookTimeoutMs: 30 });
+
+    const error = await failure(() => client.chequebookOperation(depositRequest()));
+
+    assert.deepEqual([error.code, error.status], ['timeout', null]);
+    assert.match(error.message, /within 30 ms/);
+  });
+
+  it("calls the manager's journal failure, 503 chequebook_journal_unavailable, bad_answer: not known", async () => {
+    const { client } = clientOn(() =>
+      Response.json(
+        { error: 'chequebook_journal_unavailable', message: 'The chequebook journal is unavailable.' },
+        { status: 503 },
+      ),
+    );
+
+    const posted = await failure(() => client.chequebookOperation(depositRequest()));
+    const read = await failure(() => client.chequebookOperationStatus(REQUEST_ID));
+
+    for (const error of [posted, read]) assert.deepEqual([error.code, error.status], ['bad_answer', 503]);
+  });
+});
+
 describe('ManagerFundingClient: the failures', () => {
   it("carries each of the manager's refusals as its code, its status and its sentence", async () => {
     for (const code of FUNDING_ERROR_CODES) {
@@ -659,6 +831,8 @@ describe('ManagerFundingClient: what it is given', () => {
       { timeoutMs: Number.NaN },
       { stampTimeoutMs: 0 },
       { stampTimeoutMs: Number.POSITIVE_INFINITY },
+      { chequebookTimeoutMs: 0 },
+      { chequebookTimeoutMs: 2.5 },
       { maxAnswerBytes: 0 },
     ]) {
       assert.throws(() => clientOn(() => Response.json(inventory()), options), /whole number/, JSON.stringify(options));
