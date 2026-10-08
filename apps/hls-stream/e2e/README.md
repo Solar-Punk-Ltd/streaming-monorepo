@@ -145,7 +145,9 @@ in the profile env. The engine **cuts** segments by it, and the uploader **reads
 tolerance of it. On
 2026-09-04 an uploader running 1.0 sat in front of an SRS cutting 2.0, all ten gates passed, and the
 only thing that noticed was the ABR ladder suite's timeline subtest mid-sitting. The gate now refuses
-a pair that disagrees, and a pair that agrees on a length the run cannot use.
+a pair that disagrees, and a pair that agrees on a length the run cannot use. `HLS_FRAGMENT` has no
+default, so each profile's own env, `.env.<profile>`, must set it to match the `E2E_EXPECT_SEGMENT_S`
+its profile file declares.
 
 It reads the config the running SRS container was started on, through one `docker exec cat`, and each
 container's own environment through two `docker inspect` reads: **no broadcast, no stamp, nothing
