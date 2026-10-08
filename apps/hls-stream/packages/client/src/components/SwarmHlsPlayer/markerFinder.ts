@@ -1,12 +1,12 @@
 import { FeedIndex, Topic } from '@ethersphere/bee-js';
 
-import { type LadderMarker, ladderMarkerIdentifier, markerPeriodAt, parseLadderMarker } from '@swarm-hls-stream/shared';
+import { type LadderMarker, markerPeriodAt } from '@swarm-hls-stream/shared';
 
 import type { FollowClock } from './following/feedReader';
 import { findNewestFromHint, type SwitchHint } from './following/findNewestFromHint';
 import { FeedRung, IndexSearchFinder, NewestIndex, NewestIndexFinder } from './newestIndexFinder';
-import { type PlayerReader, servedText } from './playerReads';
-import { isSlotNotWrittenYet } from './refusedSlot';
+import { LadderMarkerReads } from './ladderMarkerReads';
+import type { PlayerReader } from './playerReads';
 import { RungFeedReader } from './rungFeedReader';
 
 /**
@@ -15,9 +15,6 @@ import { RungFeedReader } from './rungFeedReader';
  * where a rung stood, and the further that is in the past the wider the round from it has to reach.
  */
 export const MARKER_REUSE_MS = 5_000;
-
-/** Marker addresses remembered as missing, far more than one session's start and switches visit. */
-const MISSING_REMEMBERED = 64;
 
 /**
  * Finds a rung's newest index from the ladder's time marker (decision 35), and searches as before
@@ -30,13 +27,9 @@ const MISSING_REMEMBERED = 64;
  * marker was written, which lands in one round. A ladder with no marker, a marker that does not
  * parse, or one that does not name the rung goes to the {@link IndexSearchFinder} unchanged.
  *
- * ⛔ **A marker address is read at most once.** A marker is never rewritten, so one found missing or
- * malformed stays so, and asking again would put early asks on one address, which Bee answers by
- * skipping peers for it. A gateway fault is not remembered, since the next ask may well be answered.
+ * ⛔ **A marker address is read at most once**, through {@link LadderMarkerReads}, which says why.
  */
 export class MarkerFinder implements NewestIndexFinder {
-  private readonly missing = new Set<string>();
-  private readonly inFlight = new Map<string, Promise<LadderMarker | null>>();
   private last: {
     readonly ladder: string;
     readonly period: number;
@@ -50,6 +43,8 @@ export class MarkerFinder implements NewestIndexFinder {
     /** What to add to the viewer's clock to read the gateway's. See `GatewayClock`. */
     private readonly clockOffsetMs: () => number = () => 0,
     private readonly fallback: NewestIndexFinder = new IndexSearchFinder(reader, clock),
+    /** Shared with the player's other marker readers, so an address is asked once between them. */
+    private readonly reads: LadderMarkerReads = new LadderMarkerReads(reader),
   ) {}
 
   async findNewest(
@@ -104,55 +99,18 @@ export class MarkerFinder implements NewestIndexFinder {
       if (wanted < 0) {
         continue;
       }
-      const identifier = ladderMarkerIdentifier(group, wanted).toHex();
-      const address = `${owner}/${identifier}`;
-      if (this.missing.has(address)) {
-        continue;
+      let marker: LadderMarker | null;
+      try {
+        marker = await this.reads.read(owner, group, wanted);
+      } catch {
+        // A fault, which says nothing about the period before it either.
+        return null;
       }
-      let read = this.inFlight.get(address);
-      if (read === undefined) {
-        read = this.readMarker(owner, identifier, wanted).finally(() => this.inFlight.delete(address));
-        this.inFlight.set(address, read);
-      }
-      const marker = await read;
       if (marker !== null) {
         this.last = { ladder, period: wanted, marker, readAtMs: this.clock.now() };
         return marker;
       }
-      if (!this.missing.has(address)) {
-        // A fault, which says nothing about the period before it either.
-        return null;
-      }
     }
     return null;
-  }
-
-  /** One marker read. Null for a fault as well as for a marker missing or malformed, which alone are remembered. */
-  private async readMarker(owner: string, identifier: string, period: number): Promise<LadderMarker | null> {
-    const address = `${owner}/${identifier}`;
-    let text: string;
-    try {
-      text = (await servedText(this.reader.readSoc(owner, identifier), `soc/${address}`)).text;
-    } catch (error) {
-      if (isSlotNotWrittenYet(error)) {
-        this.rememberMissing(address);
-      }
-      return null;
-    }
-    const marker = parseLadderMarker(text, period);
-    if (marker === null) {
-      this.rememberMissing(address);
-    }
-    return marker;
-  }
-
-  private rememberMissing(address: string): void {
-    this.missing.add(address);
-    if (this.missing.size > MISSING_REMEMBERED) {
-      const oldest = this.missing.values().next().value;
-      if (oldest !== undefined) {
-        this.missing.delete(oldest);
-      }
-    }
   }
 }

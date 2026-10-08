@@ -1,9 +1,4 @@
-import {
-  WATCH_VIEW_NOT_STARTED,
-  WATCH_VIEW_PLAYER,
-  WATCH_VIEW_UNAVAILABLE,
-  WatchPageView,
-} from '@/utils/watchPageView';
+import { WATCH_VIEW_NOT_STARTED, WATCH_VIEW_UNAVAILABLE, WatchPageView } from '@/utils/watchPageView';
 
 /**
  * How often a page that shows the catalog reads it again, in milliseconds.
@@ -31,17 +26,7 @@ export const CATALOG_POLL_INTERVAL_MS = 5_000;
  * while the page waited on it: publishing it again only reaches a page that is still reading. Once the
  * player is mounted it follows the stream's own feeds, and the page deliberately keeps no catalog poll
  * for that case, see `isStreamListLoaded` in `providers/App.tsx`.
- *
- * The one exception is a ladder the player found short. The entry turns live once the first quality
- * has reported to the admin, so a viewer who joined in the moment before the others reported holds an
- * entry naming only some of them, and the player builds its master from it once. Until the list names
- * every rung the ladder's marker does, the page reads it again, and the fuller entry rebuilds the player.
- *
- * @param ladderIncomplete What the player last said about its entry against the ladder's marker.
  */
-export function watchPageCatalogPollMs(view: WatchPageView, ladderIncomplete = false): number | null {
-  if (view === WATCH_VIEW_PLAYER) {
-    return ladderIncomplete ? CATALOG_POLL_INTERVAL_MS : null;
-  }
+export function watchPageCatalogPollMs(view: WatchPageView): number | null {
   return view === WATCH_VIEW_NOT_STARTED || view === WATCH_VIEW_UNAVAILABLE ? CATALOG_POLL_INTERVAL_MS : null;
 }

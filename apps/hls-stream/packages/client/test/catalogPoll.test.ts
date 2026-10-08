@@ -35,16 +35,6 @@ describe('when the watch page reads the catalog again', () => {
     assert.equal(watchPageCatalogPollMs(WATCH_VIEW_PLAYER), null);
   });
 
-  /**
-   * Architecture review 2026-10-08, P2 #7. An entry read before every quality had reported names only
-   * some of them, and the player builds its master from it once. Reading the list again is what brings
-   * the other qualities to a viewer who joined in that moment.
-   */
-  it('reads it again while the player says its entry named fewer rungs than the ladder has', () => {
-    assert.equal(watchPageCatalogPollMs(WATCH_VIEW_PLAYER, true), CATALOG_POLL_INTERVAL_MS);
-    assert.equal(watchPageCatalogPollMs(WATCH_VIEW_PLAYER, false), null);
-  });
-
   it('adds no read of its own before the first one lands, which the app makes itself', () => {
     assert.equal(watchPageCatalogPollMs(WATCH_VIEW_LOADING), null);
   });

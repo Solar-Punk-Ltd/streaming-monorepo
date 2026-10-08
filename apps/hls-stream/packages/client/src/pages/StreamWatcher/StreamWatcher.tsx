@@ -1,4 +1,3 @@
-import { useCallback, useState } from 'react';
 import { useNavigate, useParams, useSearchParams } from 'react-router';
 
 import { Button, ButtonVariant } from '@/components/Button/Button';
@@ -31,7 +30,7 @@ export function StreamWatcher() {
   }>();
   const [searchParams] = useSearchParams();
   const navigate = useNavigate();
-  const { streamList, isStreamListLoaded } = useAppContext();
+  const { streamList, isStreamListLoaded, readNextStreamListSlot } = useAppContext();
 
   // The ladder lives in the catalog, keyed by the primary feed the browser links to. Current
   // entries name the master, older ones the lowest rung. Waiting for the first catalog read
@@ -40,16 +39,9 @@ export function StreamWatcher() {
   const stream = streamList.find((entry) => entry.owner === owner && entry.topic === topic);
 
   // Above the early return, because a hook may not be skipped on some renders.
-  const streamKey = `${owner}/${topic}`;
-  const isWaiting = useIsWaitingForStart(streamKey, stream);
+  const isWaiting = useIsWaitingForStart(`${owner}/${topic}`, stream);
   const view = watchPageView(isStreamListLoaded, stream, isWaiting);
-  // Kept per stream, because React Router keeps this page mounted when only the route changes.
-  const [shortLadderOf, setShortLadderOf] = useState<string | null>(null);
-  const onLadderIncomplete = useCallback(
-    (incomplete: boolean) => setShortLadderOf(incomplete ? streamKey : null),
-    [streamKey],
-  );
-  useCatalogPoll(watchPageCatalogPollMs(view, shortLadderOf === streamKey));
+  useCatalogPoll(watchPageCatalogPollMs(view));
 
   const handleBackButtonClick = () => {
     navigate(ROUTES.STREAM_BROWSER);
@@ -79,7 +71,7 @@ export function StreamWatcher() {
           enableQoeOverlay={enableQoeOverlay}
           renditions={playableRenditions(stream)}
           level={level}
-          onLadderIncomplete={onLadderIncomplete}
+          onLadderShort={readNextStreamListSlot}
         />
       )}
       <Button variant={ButtonVariant.SECONDARY} onClick={() => handleBackButtonClick()}>

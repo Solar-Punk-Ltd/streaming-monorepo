@@ -11,11 +11,11 @@ const OWNER = 'a'.repeat(40);
 const TOPIC = 'stream-one';
 
 const appContext = vi.hoisted(() => ({
-  value: { streamList: [] as unknown[], isStreamListLoaded: true },
+  value: { streamList: [] as unknown[], isStreamListLoaded: true, readNextStreamListSlot: () => {} },
 }));
 const seen = vi.hoisted(() => ({
   pollMs: [] as (number | null)[],
-  player: null as null | { renditions?: { name: string }[]; onLadderIncomplete?: (incomplete: boolean) => void },
+  player: null as null | { renditions?: { name: string }[]; onLadderShort?: () => void },
 }));
 
 vi.mock('../src/providers/App', () => ({ useAppContext: () => appContext.value }));
@@ -73,11 +73,12 @@ afterEach(() => {
 
 /**
  * Architecture review 2026-10-08, P2 #7. The entry turns live once the first quality has reported, and
- * a viewer who joined then is handed one rendition. The player says the ladder's marker names more,
- * the page reads the stream list again, and the fuller entry reaches the player.
+ * a viewer who joined then is handed one rendition. When the player says a ladder marker names a rung
+ * the entry lacks, the page reads the list's next slot once, and the fuller entry reaches the player.
+ * It never polls for it: a slot asked before it is written stays hidden for a minute.
  */
 describe('the watch page with a ladder the player found short', () => {
-  it('reads the stream list again while the player says its entry was short, until the entry names every rung', () => {
+  it('reads the stream list once each time the player says its entry is short, and never polls for it', () => {
     const rung = (name: string) => ({
       name,
       width: 1,
@@ -86,18 +87,19 @@ describe('the watch page with a ladder the player found short', () => {
       bandwidth: 1,
       avgBandwidth: 1,
     });
+    const readNextStreamListSlot = vi.fn();
+    appContext.value = { ...appContext.value, readNextStreamListSlot };
     listing({ state: 'live', renditions: [rung('360p')] });
     renderWatchPage();
-    expect(seen.pollMs.at(-1)).toBeNull();
 
-    act(() => seen.player?.onLadderIncomplete?.(true));
-    expect(seen.pollMs.at(-1)).toBe(5_000);
+    act(() => seen.player?.onLadderShort?.());
+
+    expect(readNextStreamListSlot).toHaveBeenCalledTimes(1);
+    expect(seen.pollMs.every((pollMs) => pollMs === null)).toBe(true);
 
     listing({ state: 'live', renditions: ['360p', '480p', '720p', '1080p'].map(rung) });
     renderWatchPage();
     expect(seen.player?.renditions?.map((r) => r.name)).toEqual(['360p', '480p', '720p', '1080p']);
-
-    act(() => seen.player?.onLadderIncomplete?.(false));
-    expect(seen.pollMs.at(-1)).toBeNull();
+    expect(seen.pollMs.every((pollMs) => pollMs === null)).toBe(true);
   });
 });

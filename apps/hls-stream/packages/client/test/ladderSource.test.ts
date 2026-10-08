@@ -328,24 +328,50 @@ describe('the ladder entry points', () => {
       }) as typeof fetch;
     }
 
-    it('names the rungs the time marker has and the entry lacked', async () => {
-      const source = `${OWNER}/${SOURCE_TOPIC}`;
+    /** Starts the watch on what the list names now, and stops it once the start check has answered. */
+    async function shortSaidAtStart(listed: Rendition[]): Promise<number> {
+      let said = 0;
+      const stop = fetcher.watchLadderCompletion(
+        `${OWNER}/${SOURCE_TOPIC}`,
+        OWNER,
+        () => listed.map((r) => Topic.fromString(r.topic).toString()),
+        () => said++,
+      );
+      await settle();
+      stop();
+      return said;
+    }
+
+    it('says the entry is short at the start when the marker names rungs it lacks', async () => {
       stubFetchWithMarker(FOUR_TOPICS);
-      fetcher.registerLadder(source, () => ({ owner: OWNER, renditions: [FOUR[0]] }));
-      await fetcher.fetchSource(source);
 
-      const missing = await fetcher.rungsMissingFromLadder(source);
-
-      assert.deepEqual([...missing].sort(), FOUR_TOPICS.slice(1).sort());
+      assert.equal(await shortSaidAtStart([FOUR[0]]), 1);
     });
 
-    it('reads the marker once for this and for the start rung together', async () => {
+    /**
+     * A page may start the player on the stream's first marker before the list names any rendition,
+     * and such an entry is short in the same way.
+     */
+    it('says an entry naming no rendition is short when the marker names rungs', async () => {
+      stubFetchWithMarker(FOUR_TOPICS);
+
+      assert.equal(await shortSaidAtStart([]), 1);
+    });
+
+    it('reads the marker once for the start check and for the start rung together', async () => {
       const source = `${OWNER}/${SOURCE_TOPIC}`;
       stubFetchWithMarker(FOUR_TOPICS);
       fetcher.registerLadder(source, () => ({ owner: OWNER, renditions: [FOUR[0]] }));
       await fetcher.fetchSource(source);
 
-      await Promise.all([fetcher.rungsMissingFromLadder(source), fetcher.fetch(`${OWNER}/${FOUR[0].topic}`)]);
+      const stop = fetcher.watchLadderCompletion(
+        source,
+        OWNER,
+        () => [FOUR_TOPICS[0]],
+        () => {},
+      );
+      await fetcher.fetch(`${OWNER}/${FOUR[0].topic}`);
+      stop();
 
       // A rung that has caught up waits on later markers, so only the reads before its first slot count.
       const firstRungRead = requested.findIndex((path) => rungOf(path) !== null);
@@ -353,29 +379,16 @@ describe('the ladder entry points', () => {
       assert.equal(atStart.length, 1, `the marker was read ${atStart.length} times before the start rung`);
     });
 
-    it('names nothing when the entry already has every rung the marker names', async () => {
-      const source = `${OWNER}/${SOURCE_TOPIC}`;
+    it('says nothing when the entry already has every rung the marker names', async () => {
       stubFetchWithMarker(FOUR_TOPICS);
-      fetcher.registerLadder(source, () => ({ owner: OWNER, renditions: FOUR }));
-      await fetcher.fetchSource(source);
 
-      assert.deepEqual(await fetcher.rungsMissingFromLadder(source), []);
+      assert.equal(await shortSaidAtStart(FOUR), 0);
     });
 
-    it('names nothing when the ladder has no marker, so a stream without them plays as before', async () => {
-      const source = `${OWNER}/${SOURCE_TOPIC}`;
+    it('says nothing when the stream has no marker, so a stream without them plays as before', async () => {
       stubFetch(buildMasterPlaylist(OWNER, FOUR));
-      fetcher.registerLadder(source, () => ({ owner: OWNER, renditions: [FOUR[0]] }));
-      await fetcher.fetchSource(source);
 
-      assert.deepEqual(await fetcher.rungsMissingFromLadder(source), []);
-    });
-
-    it('names nothing for a source the stream list gave no ladder', async () => {
-      stubFetchWithMarker(FOUR_TOPICS);
-
-      assert.deepEqual(await fetcher.rungsMissingFromLadder(`${OWNER}/${SOURCE_TOPIC}`), []);
-      assert.deepEqual(requested, [], 'a marker was read for a source with no ladder');
+      assert.equal(await shortSaidAtStart([]), 0);
     });
   });
 

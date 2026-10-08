@@ -273,11 +273,12 @@ interface HlsPlayerProps extends React.VideoHTMLAttributes<HTMLVideoElement> {
    */
   hlsConfig?: HlsTuning;
   /**
-   * Told whether the ladder's time marker names rungs that `renditions` lacks, once per build of a
-   * ladder player. True means the entry was read before every quality had reported to the admin, and
-   * the page should read the stream list again: an entry naming more rungs rebuilds the player.
+   * Called when a ladder marker names a rung that `renditions` lacks, which means the entry was read
+   * before every quality had reported to the admin, or before any had. The page reads the stream list's
+   * next slot once: an entry naming more rungs rebuilds the player. At most once per marker period, for
+   * a bounded time after each build.
    */
-  onLadderIncomplete?: (incomplete: boolean) => void;
+  onLadderShort?: () => void;
 }
 
 /** The key both the manifest state and the feed state are held under. Null if the name is unusable. */
@@ -300,7 +301,7 @@ export const SwarmHlsPlayer: React.FC<HlsPlayerProps> = ({
   renditions,
   level,
   hlsConfig,
-  onLadderIncomplete,
+  onLadderShort,
   ...videoProps
 }) => {
   const [restartTrigger, setRestartTrigger] = useState(0);
@@ -315,8 +316,8 @@ export const SwarmHlsPlayer: React.FC<HlsPlayerProps> = ({
   // it on every poll. `renditionKey` is what the effect actually reacts to.
   const renditionsRef = useRef(renditions);
   renditionsRef.current = renditions;
-  const onLadderIncompleteRef = useRef(onLadderIncomplete);
-  onLadderIncompleteRef.current = onLadderIncomplete;
+  const onLadderShortRef = useRef(onLadderShort);
+  onLadderShortRef.current = onLadderShort;
 
   // Deliberately not part of the effect below, which reruns on every restart. A fatal network error
   // is what causes a restart, so a subscription torn down and rebuilt with the player would be
@@ -343,24 +344,20 @@ export const SwarmHlsPlayer: React.FC<HlsPlayerProps> = ({
     // read. A stream the list names no renditions for is recognised by the loader from its feed.
     const isLadder = renditionKey.length > 0 && !!ladder;
 
-    let isTornDown = false;
     if (isLadder) {
       manifestFetcher.registerLadder(sourceUrl, () => ({
         owner,
         renditions: renditionsRef.current ?? ladder,
       }));
-      // The list is not polled once the player is mounted, so a viewer who joined while only some
-      // qualities had reported would keep that short ladder for the whole talk. The marker this reads
-      // is the one the start rung's search reads, so the check costs no request of its own.
-      void manifestFetcher
-        .rungsMissingFromLadder(sourceUrl)
-        .then((missing) => {
-          if (!isTornDown) {
-            onLadderIncompleteRef.current?.(missing.length > 0);
-          }
-        })
-        .catch((error: unknown) => console.warn('[SwarmHls] could not check the ladder against its marker', error));
     }
+    // The list is not polled once the player is mounted, so a viewer who joined while only some
+    // qualities had reported, or none, would keep that ladder for the whole talk.
+    const stopLadderWatch = manifestFetcher.watchLadderCompletion(
+      sourceUrl,
+      owner,
+      () => (renditionsRef.current ?? []).map((rendition) => Topic.fromString(rendition.topic).toString()),
+      () => onLadderShortRef.current?.(),
+    );
 
     let hls: Hls | null = null;
 
@@ -521,7 +518,7 @@ export const SwarmHlsPlayer: React.FC<HlsPlayerProps> = ({
         : null;
 
     return () => {
-      isTornDown = true;
+      stopLadderWatch();
       video.removeEventListener('pause', onHlsPause);
       video.removeEventListener('play', onHlsPlay);
       detachQoe?.();
