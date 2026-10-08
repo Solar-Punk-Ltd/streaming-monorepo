@@ -37,6 +37,10 @@ import { createFundingInventoryRouter } from './api/routes/adminFunding.js';
 import { createFundingChainRouter } from './api/routes/fundingChain.js';
 import { FundingChainService } from './domain/funding/FundingChainService.js';
 import { PostgresFundingTransferJournal } from './domain/funding/FundingTransferJournal.js';
+import { createFundingStampRouter } from './api/routes/fundingStamps.js';
+import { fundingNodeApiUrl } from './domain/funding/fundingNodeApi.js';
+import { FundingStampService } from './domain/funding/FundingStampService.js';
+import { PostgresFundingStampOperationJournal } from './domain/funding/FundingStampOperationJournal.js';
 import { ChainRpc } from './domain/chequebook/ChainRpc.js';
 import { BeeClient } from './domain/BeeClient.js';
 import { CataloguePublisher } from './domain/stages/CataloguePublisher.js';
@@ -481,6 +485,16 @@ async function main(): Promise<void> {
     journal: new PostgresFundingTransferJournal(database.pool),
     inventory: fundingInventory,
   });
+  // The funding API's stamp operations: a top-up or a dilution of a node's batch, checked against the inventory and
+  // the postage contract read now, journalled in funding_stamp_operations before the node is asked, and paid from the
+  // node's own wallet. The node's Bee API is worked out the way the inventory works it out, and stays here.
+  const fundingStamps = new FundingStampService({
+    journal: new PostgresFundingStampOperationJournal(database.pool),
+    inventory: fundingInventory,
+    nodeApiUrl: fundingNodeApiUrl({ profiles: profileRepository, uploaderApiUrl: beeApiUrlFor }),
+    node: (apiUrl) => new BeeClient(apiUrl),
+    chain: fundingRpc ? new ChainRpc(fundingRpc) : null,
+  });
   profileService.setPoolStringGuard((beePublishers) => catalogueService.segmentBatchProblem(beePublishers));
   // An ABR stage deploys with its pool's current batches, and a batch set on a rung reaches its stages' stored copy.
   const stagePoolStrings = new StagePoolStrings({
@@ -559,7 +573,11 @@ async function main(): Promise<void> {
       beeRpcEndpoint: config.beeRpcEndpoint,
       funding: {
         token: config.fundingApiToken,
-        routes: [createFundingInventoryRouter(fundingInventory), createFundingChainRouter(fundingChain)],
+        routes: [
+          createFundingInventoryRouter(fundingInventory),
+          createFundingChainRouter(fundingChain),
+          createFundingStampRouter(fundingStamps),
+        ],
       },
       managerVersion: config.managerVersion,
     },

@@ -96,7 +96,8 @@ function carriesError(
 
 /**
  * Bounded observations, and one write: `sendRawTransaction`, which the funding API sends a transfer the web2 admin
- * signed with. The endpoint and upstream diagnostics never enter returned errors or answers.
+ * signed with. `call` is an observation too, a read-only contract call. The endpoint and upstream diagnostics never
+ * enter returned errors or answers.
  */
 export class ChainRpc {
   #endpoint: string;
@@ -149,6 +150,18 @@ export class ChainRpc {
     );
     if (typeof result !== 'string' || !/^0x[0-9a-fA-F]{64}$/.test(result)) throw new ChainReadError();
     return BigInt(result).toString();
+  }
+
+  /**
+   * A read-only call of a contract at the latest block, `eth_call` with no sender and no value, answered as the bytes
+   * the call returned, in lower case. The funding API reads the postage contract's record of a batch with it. An answer
+   * that is not whole bytes in hex throws `ChainReadError`, like any answer that is not one.
+   */
+  async call(to: string, data: string, signal?: AbortSignal): Promise<string> {
+    if (!/^0x(?:[0-9a-fA-F]{2})*$/.test(data)) throw new ChainReadError();
+    const result = await this.#call('eth_call', [{ to: chainAddress(to), data: data.toLowerCase() }, 'latest'], signal);
+    if (typeof result !== 'string' || !/^0x(?:[0-9a-fA-F]{2})*$/.test(result)) throw new ChainReadError();
+    return result.toLowerCase();
   }
 
   /** The nonce the next transaction from this address takes, counting the ones still pending. */

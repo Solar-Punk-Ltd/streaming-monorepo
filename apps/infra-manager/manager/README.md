@@ -877,7 +877,10 @@ api. The shapes are `packages/contracts/src/funding.ts`; added 2026-10-05.
   opens nothing but this API and a session opens nothing of it.
 - A refusal is `{ error, message }` with the code's status from the contract:
   `funding_off` 404, `unauthorized` 401, `unknown_node` 404, `bad_transaction`
-  422, `chain_unreachable` 502, `conflict` 409, `unknown_request` 404.
+  422, `chain_unreachable` 502, `conflict` 409, `unknown_request` 404,
+  `stamp_refused` 422 (a check of a stamp operation failed, and the sentence
+  says which) and `node_unreachable` 502 (the manager could not connect to the
+  node's Bee API).
 
 | Method | Path                                      | Answer                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                  |
 | ------ | ----------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
@@ -912,6 +915,59 @@ share is read once.
   Gnosis Chain, since the price is the chain's; 5 seconds a block; and the
   postage contract's floor, 17280 blocks, a day. It is null when no such node
   names a price.
+
+#### Stamp operations
+
+Added 2026-10-08. The web2 admin tops up and dilutes the batches the inventory
+names through these routes, one operation a request. The node that uploads with
+a batch carries out its operation through its own Bee API and pays for it from
+its own wallet: xBZZ for a top-up, xDAI for the gas of either.
+
+| Method | Path                                             | Answer                                                                                                                                                                                                                                                                                                                                                                                                                                                                            |
+| ------ | ------------------------------------------------ | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| POST   | `/api/admin-funding/stamp-operations`            | 202 `{ requestId, kind, state, txHash }`, once the node has answered. Takes `{ requestId, kind: "topup", nodeId, batchId, expectedDepth, amountPerChunkPlur }` or `{ requestId, kind: "dilute", nodeId, batchId, expectedDepth, newDepth }`, the contract's shape, or 422 `stamp_refused` naming the field. Checked, journalled and asked of the node as below. The same `requestId` again answers the journalled state and asks nothing; another body under it is 409 `conflict` |
+| GET    | `/api/admin-funding/stamp-operations/:requestId` | `{ requestId, kind, state, txHash, error }`, `no-store`. An `unknown` operation is read from the postage contract and journalled, as below. 404 `unknown_request` for a request id never journalled, which is safe to send again under the same id, and the manager's 404 for a path that names none                                                                                                                                                                              |
+
+- **The checks**, each refused with 422 `stamp_refused` and a sentence before
+  anything is journalled or asked. Against the inventory read now: `batchId` is
+  the batch `nodeId` uploads with, wherever the node is listed (404
+  `unknown_node` for a node this manager does not run); the batch was read, has
+  time left, is usable and is at `expectedDepth`; a top-up's cost,
+  `amountPerChunkPlur × 2^depth`, is in the node's xBZZ; a dilution goes to
+  depth 40 at most and leaves seven days or more, the time left halved for
+  every step; and the node's wallet holds some xDAI for the gas, since Bee's
+  own refusal of an empty gas wallet says nothing clear. Then against the
+  postage contract, `batches(id)` on Swarm's PostageStamp on Gnosis Chain read
+  through `FUNDING_RPC_URL` or `BEE_RPC_ENDPOINT` (502 `chain_unreachable` when
+  it cannot be): it holds the batch at `expectedDepth`, which it can show
+  moved before the node has read the change back, and for a dilution the
+  node's wallet bought it, since only that wallet may dilute it.
+- **The journal**: the operation is written to `funding_stamp_operations` as
+  `unknown`, with the batch's normalised balance in the postage contract,
+  before the node's `PATCH /stamps/topup/{id}/{amount}` or
+  `PATCH /stamps/dilute/{id}/{depth}` is sent, on Bee's on-chain budget of 180
+  seconds. Bee answers once the transaction is mined, so its answer with a hash
+  is `confirmed`. A refusal, a 4xx, 501 or 503, is `failed` with Bee's words. A
+  node the manager could not connect to, a refused connection or a name that
+  does not resolve, is `failed` and answered 502 `node_unreachable`. A 500,
+  which Bee also answers for a transaction it sent and then lost sight of, and
+  an answer that never came, stay `unknown`.
+- **Settling an `unknown` one**, on the `GET`: a top-up is `confirmed` once
+  the batch's normalised balance in the postage contract has grown by
+  `amountPerChunkPlur` since it was journalled, and a dilution once the batch
+  is at `newDepth` or deeper, with no hash when the node never answered one.
+  With no sign of either thirty minutes after it was journalled, it is
+  `failed`. The contract is read at most once every five seconds for a request
+  id; in between, and when the chain does not answer or answers something
+  unreadable, the journalled state is answered. A node's answer that comes
+  after such a reading confirmed the operation adds its hash.
+- **Limits**: an `unknown` operation is settled by what the batch shows, not
+  by its transaction, so another top-up or dilution of the same batch in that
+  window counts as well, and a dilution between a top-up and its reading can
+  hide the top-up until it fails. A transaction mined more than thirty minutes
+  after it was asked for still reads `failed`; the inventory shows the batch
+  as it is. Nothing here has run against a real node or chain: the tests use
+  fakes.
 
 ### Engine control
 
@@ -1453,7 +1509,7 @@ numbers and how much it logs:
 | `LOG_LEVEL`                   | `info`                                            | How much the api writes to its console, applied from startup. One of `trace`, `debug`, `info`, `warn` or `error`, in either case, and each writes its own lines and those of every level after it. `error` is failures alone, `warn` adds what an operator should look at, `info` adds what the manager did, such as its boot lines, deploys and pushes, and `debug` adds each read that failed and was answered for anyway, a host or container metric, a disk usage, an uploader health address, an SRS log or an ssh alias, which repeat on every poll. `trace` writes what `debug` does, since nothing logs below it. Any other value stops the manager at startup. The command line, `node dist/cli.js`, writes at `info` whatever this says.                                                                                                                                                                          |
 | `ADMIN_LINK_ALLOW_PLAIN_HTTP` | `false`                                           | Whether the web2 admin link may be plain http to another host than the manager's own. Off, the manager takes plain http only to a loopback address, `host.docker.internal` or the bridge address it resolves to, or a name that resolves into a Docker network of the api container, and refuses to save anything else or to send to it: a link saved before this rule says `refused-plain-http` until it is given https or this is `true`. Set it only for a test setup: every push carries the registrar token and each stage's SRT passphrase. Any value but `true` or `false` stops the manager at startup.                                                                                                                                                                                                                                                                                                             |
 | `FUNDING_API_TOKEN`           | none, which turns the API off                     | The bearer token of the web2 admin's funding API under `/api/admin-funding`, the same value as the admin's `MANAGER_FUNDING_TOKEN`. Unset, every path under that API answers 404 `funding_off`. 32 characters or more with no space inside, or the manager stops at startup naming the variable and not the value. Never logged; the boot lines say only whether the API is on. See [Funding API](#funding-api-the-web2-admins-on-a-bearer-token).                                                                                                                                                                                                                                                                                                                                                                                                                                                                          |
-| `FUNDING_RPC_URL`             | `BEE_RPC_ENDPOINT`                                | The chain endpoint the funding API reads balances, nonces, fees and receipts through and broadcasts the admin's transfers to. Unset, it is `BEE_RPC_ENDPOINT`, and with neither the chain routes answer 502 `chain_unreachable`. Held to `BEE_RPC_ENDPOINT`'s shape rules, and a secret like it: it can carry a provider key, so it is never logged or answered, and the boot lines name only which variable is used. A malformed value stops the manager at startup, naming the variable and not the value.                                                                                                                                                                                                                                                                                                                                                                                                                |
+| `FUNDING_RPC_URL`             | `BEE_RPC_ENDPOINT`                                | The chain endpoint the funding API reads balances, nonces, fees, receipts and the postage contract's batches through and broadcasts the admin's transfers to. Unset, it is `BEE_RPC_ENDPOINT`, and with neither the chain routes answer 502 `chain_unreachable`. Held to `BEE_RPC_ENDPOINT`'s shape rules, and a secret like it: it can carry a provider key, so it is never logged or answered, and the boot lines name only which variable is used. A malformed value stops the manager at startup, naming the variable and not the value.                                                                                                                                                                                                                                                                                                                                                                                |
 
 The first two are bind-mounted into the api container at the same absolute path
 they have on the host, because the docker daemon runs on the host and reads
