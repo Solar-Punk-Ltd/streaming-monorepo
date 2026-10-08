@@ -75,17 +75,17 @@ Nothing in this stack transcodes. SRS cuts the stream it is given into segments,
 keyframe interval decides the segment length**, and the segment is the largest single hop between a
 camera and a viewer.
 
-| Setting                     | Use      | Why                                                                                |
-| --------------------------- | -------- | ---------------------------------------------------------------------------------- |
-| **Keyframe interval (GOP)** | **0.5s** | Measured on both sides. Larger costs latency and stalls, smaller breaks retrieval. |
-| Video bitrate               | 2500k    | 720p30. 1080p at 6000k also ships, and costs ~2.3x the BZZ.                        |
-| B-frames                    | off      | `-tune zerolatency` or equivalent.                                                 |
+| Setting                     | Use                                  | Why                                                                                                  |
+| --------------------------- | ------------------------------------ | ---------------------------------------------------------------------------------------------------- |
+| **Keyframe interval (GOP)** | **`HLS_FRAGMENT`**, 2s in the sample | SRS cuts on keyframes, so a GOP that matches the fragment cuts every segment at its declared length. |
+| Video bitrate               | 2500k                                | 720p30. 1080p at 6000k also ships, and costs ~2.3x the BZZ.                                          |
+| B-frames                    | off                                  | `-tune zerolatency` or equivalent.                                                                   |
 
 In OBS this is _Settings → Output → Advanced → Keyframe Interval_, which takes **seconds** and
 defaults to 0 (meaning "let the encoder decide", usually 2s). In ffmpeg it is `-g <frames>`, so at 30
-fps a 0.5s GOP is `-g 15`.
+fps a 2s GOP is `-g 60`.
 
-**Why 0.5 and not something else**, from two funded sittings on 2026-08-12:
+**What the GOP cost when 0.5 was the default**, from two funded sittings on 2026-08-12:
 
 |      GOP | capture to fetchable | confirmed feed stalls |
 | -------: | -------------------: | --------------------: |
@@ -115,15 +115,16 @@ it, the tallest rung is unpublished about two minutes in, and the master feed go
 |     4 |     1.0s |     4.0/s | 40% spare. Verified over 600s: lag flat, zero lost |
 |     4 |     2.0s |     2.0/s | 70% spare                                          |
 
-So a four-rung ladder runs at `HLS_FRAGMENT=1.0` and pays about one second of capture-to-fetchable
-for it (1.96s against 2.94s, 2026-08-03 sweep of 105 samples). ⚠️ The 6.7/s is one measurement on a
-co-tenanted host and is not yet a gate. Nothing refuses a ladder that asks for more.
+So a four-rung ladder needs `HLS_FRAGMENT` of at least 1.0, and ships at 2. At 1.0 it pays about one
+second of capture-to-fetchable for it (1.96s against 2.94s, 2026-08-03 sweep of 105 samples). ⚠️ The
+6.7/s is one measurement on a co-tenanted host and is not yet a gate. Nothing refuses a ladder that
+asks for more.
 
 **Why not go below 0.5s**, on the two reasons that survived a replicate:
 
-1. **Shipped config cannot get there.** `HLS_FRAGMENT` is `0.5`, and a segment is
-   `ceil(GOP / fragment) * fragment`, so asking an encoder for 0.25s yields 0.5s segments anyway.
-   Reaching sub-0.5 takes a second deliberate change that no default leads to.
+1. **The config does not get there by itself.** `HLS_FRAGMENT` has no default and the sample sets
+   2, and a segment is `ceil(GOP / fragment) * fragment`, so asking an encoder for 0.25s yields
+   segments of the fragment anyway. Reaching sub-0.5 takes setting `HLS_FRAGMENT` there on purpose.
 2. **It buys nothing and costs more.** A 0.25s GOP measured 5.86s behind live against 1.0s's 5.52s
    and wrote 24% more BZZ.
 
@@ -137,10 +138,11 @@ reason for it did.**
 The measurements behind this, gop-sustain, gop-floor and, for the withdrawal,
 gop-floor-replicate, are kept outside the repository.
 
-⚠️ `HLS_FRAGMENT` (default `0.5`) is a **floor** on the segment, not the segment. A GOP below it is
-rounded up, so lowering the encoder's keyframe interval without lowering `HLS_FRAGMENT` to match
-changes nothing. The pair is a range: a GOP outside `[HLS_FRAGMENT, HLS_FRAGMENT * HLS_AOF_RATIO]`,
-shipped as `[0.5, 2.5]`, is either rounded up or force-cut without a keyframe.
+⚠️ `HLS_FRAGMENT` (required, no default, the sample sets 2) is a **floor** on the segment, not the
+segment. A GOP below it is rounded up, so lowering the encoder's keyframe interval without lowering
+`HLS_FRAGMENT` to match changes nothing. The pair is a range: a GOP outside
+`[HLS_FRAGMENT, HLS_SEGMENT_MAX]`, `[2, 2.5]` in the sample, is either rounded up or force-cut without
+a keyframe.
 
 ⛔ **`HLS_FRAGMENT` now reaches the stream-uploader as well as the engine, and it is the grid every
 segment's `#EXT-X-PROGRAM-DATE-TIME` reads its media against.** Set it once in the profile's `.env`

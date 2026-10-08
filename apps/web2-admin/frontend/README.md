@@ -44,7 +44,7 @@ from another browser shows "Your session ended. Log in again." the next time
 the operator looks at the tab. There is no timer, because every gated request
 keeps the session's idle clock running. Other tabs of the same browser are told
 at once over a `BroadcastChannel`, and a reload after a revoke shows the same
-notice. On the change-password form a 401 `unauthenticated` signs out too; only
+notice. On the change-password form a 401 `unauthenticated` signs out too. Only
 `invalid_credentials` means the current password was wrong.
 
 ## Running it

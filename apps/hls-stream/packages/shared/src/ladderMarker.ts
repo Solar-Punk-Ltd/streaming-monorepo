@@ -16,6 +16,8 @@
 import { Identifier, Topic } from '@ethersphere/bee-js';
 import { Binary } from 'cafe-utility';
 
+import { hasExactlyFields } from './exactFields.js';
+
 export const MARKER_PERIOD_SECONDS = 10;
 
 const MARKER_PERIOD_MS = MARKER_PERIOD_SECONDS * 1000;
@@ -26,7 +28,7 @@ export const LADDER_MARKER_VERSION = 2;
 const LADDER_MARKER_VERSION_WITHOUT_LENGTH = 1;
 
 /** One Swarm chunk's payload. A marker that does not fit would need a second chunk and a second read. */
-export const LADDER_MARKER_MAX_BYTES = 4096;
+const LADDER_MARKER_MAX_BYTES = 4096;
 
 const IDENTIFIER_PREFIX = new TextEncoder().encode('ladder-marker');
 
@@ -116,7 +118,7 @@ export function parseLadderMarker(text: string, expectedPeriod?: number): Ladder
   }
   const { v, period, writtenAt, rungs, segmentMs } = value;
   const fields = v === LADDER_MARKER_VERSION_WITHOUT_LENGTH ? MARKER_FIELDS_WITHOUT_LENGTH : MARKER_FIELDS;
-  if (Object.keys(value).sort().join(',') !== fields.join(',')) {
+  if (!hasExactlyFields(value, fields)) {
     return null;
   }
   if (v !== LADDER_MARKER_VERSION && v !== LADDER_MARKER_VERSION_WITHOUT_LENGTH) {

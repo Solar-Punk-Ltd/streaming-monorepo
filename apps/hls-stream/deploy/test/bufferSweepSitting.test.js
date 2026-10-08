@@ -183,6 +183,7 @@ exit 0
     ...process.env,
     PROFILE: 'bench-stage',
     PORT_SLOT: '7',
+    GOP: '0.5',
     PATH: `${bin}:${process.env.PATH}`,
     OUT_DIR: out,
     SPEND_LEDGER: ledger,

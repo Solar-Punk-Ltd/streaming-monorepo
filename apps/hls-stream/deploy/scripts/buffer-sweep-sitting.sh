@@ -27,7 +27,10 @@ PROFILE="${PROFILE:?set PROFILE to the deploy profile of the stage this drives}"
 PORT_SLOT="${PORT_SLOT:?set PORT_SLOT to the port slot of the stage this drives}"
 SIZE="${SIZE:-1280x720}"
 BITRATE_KBPS="${BITRATE_KBPS:-2500}"
-GOP="${GOP:-0.5}"
+# The publisher's keyframe interval, which has to be the stage's HLS_FRAGMENT so the stage cuts every
+# segment at the length it declares. Required rather than defaulted, because a driver cannot read the
+# stage's env and a default would be a second source for the segment length.
+GOP="${GOP:?set GOP to HLS_FRAGMENT of the stage, the segment length it cuts}"
 UPLOADER_API_PORT="${UPLOADER_API_PORT:-$((PORT_SLOT == 0 ? 3000 : 10000 + PORT_SLOT * 10))}"
 UPLOADER_BEE_PORT="${UPLOADER_BEE_PORT:-$((PORT_SLOT == 0 ? 1633 : 10005 + PORT_SLOT * 10))}"
 GATEWAY_BEE_PORT="${GATEWAY_BEE_PORT:-$((PORT_SLOT == 0 ? 1733 : 10007 + PORT_SLOT * 10))}"

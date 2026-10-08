@@ -54,6 +54,24 @@ describe('ServiceLifecycle', () => {
     assert.match(recorded.said.join(' '), /All streams stopped/, 'nothing said the streams had been stopped');
   });
 
+  /**
+   * The marker writer's timers are unref'd, so they never held the process open. What stopping it
+   * buys is that no marker write starts while the last segments are being flushed and the api closed.
+   * It stops after the streams, because a publish during their flush would start a ladder's markers
+   * again.
+   */
+  it('stops the ladder markers after the streams and before the api server', async () => {
+    const { lifecycle, recorded } = lifecycleUnderTest();
+    lifecycle.trackOrchestrator(orchestratorThat(async () => void recorded.order.push('streams stopped')));
+    lifecycle.trackLadderMarkers({ stop: () => void recorded.order.push('markers stopped') });
+    lifecycle.trackApiServer(apiServerThat(async () => void recorded.order.push('api closed')));
+
+    await lifecycle.shutdown('SIGTERM');
+
+    assert.deepEqual(recorded.order, ['streams stopped', 'markers stopped', 'api closed']);
+    assert.deepEqual(recorded.exits, [0]);
+  });
+
   it('names the signal it is acting on', async () => {
     const { lifecycle, recorded } = lifecycleUnderTest();
 

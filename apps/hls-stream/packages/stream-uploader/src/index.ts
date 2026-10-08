@@ -39,6 +39,8 @@ import { NodeWaitReport } from './types.js';
 /** The gate's floor is configured in hours, because that is the unit an operator tops a batch up in. */
 const SECONDS_PER_HOUR = 3_600;
 
+const MS_PER_SECOND = 1_000;
+
 const logger = Logger.getInstance();
 const lifecycle = new ServiceLifecycle((code) => process.exit(code), logger);
 
@@ -145,10 +147,13 @@ async function start() {
         ? new LadderMarkerWriter({
             publishers,
             signer: new PrivateKey(config.streamKey),
-            segmentMs: Math.round(config.fragmentSeconds * 1_000),
+            segmentMs: Math.round(config.fragmentSeconds * MS_PER_SECOND),
             metrics,
           })
         : undefined;
+    if (ladderMarkers) {
+      lifecycle.trackLadderMarkers(ladderMarkers);
+    }
 
     // Also ladder-only, and in a subdirectory for the same reason the catalog index is: RecoveryStore
     // scans stateDir for `*.json` and would otherwise offer this file up as a stream to recover.
