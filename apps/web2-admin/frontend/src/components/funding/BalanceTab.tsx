@@ -1,14 +1,12 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
-import { Alert, Box, Button, CircularProgress, IconButton, Paper, Stack, Tooltip, Typography } from '@mui/material';
-import RefreshIcon from '@mui/icons-material/Refresh';
+import { useCallback, useMemo, useState } from 'react';
+import { Alert, Box, Button, Paper, Stack, Typography } from '@mui/material';
 import type { FundingTransferItem, FundingView } from '@streaming-monorepo/web2-admin-common';
 
-import * as api from '../../api';
-import { formatAgo } from '../../dateUtil';
-import { errorMessage } from '../../errors';
 import { useSnackbar } from '../Snackbar';
 import { formatUnits } from './amounts';
 import { allNodes, checkSend, nodeGroups, TOKENS, unconfirmedNodes, type Drafts, type SendCheck } from './balance';
+import { followBulk, type FollowedBulk } from './BulkProgress';
+import { FundingFrame, useFundingView } from './FundingFrame';
 import { NodeTable } from './NodeTable';
 import { PinDialog } from './PinDialog';
 import { SendDialog } from './SendDialog';
@@ -17,40 +15,6 @@ import { WalletCard } from './WalletCard';
 
 /** Said while a send is still on its way, so a second one does not race the first for the wallet's nonces. */
 const WAIT_FOR_TRANSFERS = 'Wait for the transfers above to finish.';
-
-/** The send the page follows: one it made, or the one the view says is still open. */
-interface FollowedSend {
-  bulkId: string;
-  /** What the send answered, or none for an open send the page found in the view, which it then reads at once. */
-  items: readonly FundingTransferItem[];
-  /** Whether its transfers no longer hold Send back. */
-  settled: boolean;
-}
-
-/**
- * The send to follow once the view is read. The view's open send, `openBulkId`, is followed when the page follows
- * none, or one that no longer holds Send back, so a reload or another tab finds it again. A send the page follows that
- * still holds Send back is kept: the view may have been read before it was made.
- */
-function follow(current: FollowedSend | null, openBulkId: string | null): FollowedSend | null {
-  if (!openBulkId || openBulkId === current?.bulkId) return current;
-  if (current && !current.settled) return current;
-  return { bulkId: openBulkId, items: [], settled: false };
-}
-
-function NotSetUp() {
-  return (
-    <Paper variant="outlined" sx={{ p: 6, textAlign: 'center' }}>
-      <Typography variant="body1" gutterBottom>
-        Not set up
-      </Typography>
-      <Typography variant="body2" sx={{ color: 'text.secondary' }}>
-        Funding needs the manager&apos;s address and token in the admin&apos;s env file, MANAGER_FUNDING_URL and
-        MANAGER_FUNDING_TOKEN, and BRAND_WALLET_SECRET for the brand wallet.
-      </Typography>
-    </Paper>
-  );
-}
 
 /** The totals against the wallet's balances, why Send cannot send yet, and Send. */
 function SendBar({
@@ -106,27 +70,14 @@ function SendBar({
  */
 export function BalanceTab() {
   const snackbar = useSnackbar();
-  const [view, setView] = useState<FundingView | null>(null);
-  const [error, setError] = useState<string | null>(null);
-  const [now, setNow] = useState(() => Date.now());
   const [drafts, setDrafts] = useState<Drafts>({});
   const [pinning, setPinning] = useState(false);
   const [sending, setSending] = useState(false);
-  const [followed, setFollowed] = useState<FollowedSend | null>(null);
+  const [followed, setFollowed] = useState<FollowedBulk<FundingTransferItem> | null>(null);
 
-  const load = useCallback(() => {
-    setError(null);
-    api
-      .fetchFunding()
-      .then((next) => {
-        setView(next);
-        setNow(Date.now());
-        setFollowed((current) => follow(current, next.openBulkId));
-      })
-      .catch((e: unknown) => setError(errorMessage(e, 'Failed to load the funding page')));
-  }, []);
-
-  useEffect(load, [load]);
+  const onRead = useCallback((next: FundingView) => setFollowed((current) => followBulk(current, next.openBulkId)), []);
+  const read = useFundingView(onRead);
+  const { view, load } = read;
 
   const groups = useMemo(() => (view ? nodeGroups(view) : []), [view]);
   const unconfirmed = useMemo(() => (view ? unconfirmedNodes(view) : []), [view]);
@@ -142,41 +93,10 @@ export function BalanceTab() {
 
   return (
     <Stack spacing={3}>
-      <Stack direction="row" spacing={2} sx={{ alignItems: 'center' }}>
-        <Typography variant="body2" sx={{ flexGrow: 1, color: 'text.secondary' }}>
-          {view?.observedAt ? `Balances as the manager read them ${formatAgo(view.observedAt, now)}.` : ' '}
-        </Typography>
-        <Tooltip title="Refresh">
-          <IconButton aria-label="refresh funding" onClick={load}>
-            <RefreshIcon />
-          </IconButton>
-        </Tooltip>
-      </Stack>
-
-      {error ? (
-        <Alert
-          severity="error"
-          action={
-            <Button color="inherit" size="small" onClick={load}>
-              Retry
-            </Button>
-          }
-        >
-          {error}
-        </Alert>
-      ) : null}
-
-      {!view && !error ? (
-        <Box sx={{ display: 'flex', justifyContent: 'center', py: 8 }}>
-          <CircularProgress aria-label="Loading funding" />
-        </Box>
-      ) : null}
-
-      {view && !view.configured ? <NotSetUp /> : null}
+      <FundingFrame read={read} readLine={(ago) => `Balances as the manager read them ${ago}.`} />
 
       {view?.configured ? (
         <>
-          {view.managerError ? <Alert severity="warning">The manager did not answer: {view.managerError}</Alert> : null}
           <WalletCard wallet={view.wallet} />
           {followed ? (
             <TransferProgress
