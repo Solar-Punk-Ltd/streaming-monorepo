@@ -2,6 +2,7 @@ import {
   BEE_GATEWAY_SERVICE,
   BEE_UPLOADER_SERVICE,
   BLOCK_TIME_SECONDS,
+  type ChequebookBalance,
   fullestBucketFillRatio,
   getErrorMessage,
   LIGHT_NODE_MODE,
@@ -14,6 +15,7 @@ import {
 } from '@streaming-infra-manager/common';
 import {
   type FundingBatch,
+  type FundingChequebook,
   type FundingInventory,
   type FundingNode,
   type FundingNodeRole,
@@ -22,7 +24,7 @@ import {
 } from '@streaming-monorepo/contracts';
 
 import type { Profile } from '../../types/index.js';
-import type { BeeChainState, BeeStamp, BeeWallet } from '../BeeClient.js';
+import type { BeeChainState, BeeChequebookAddress, BeeStamp, BeeWallet } from '../BeeClient.js';
 import { tokenAddressForChain } from '../chequebook/transactionIdentity.js';
 import { BeeHttpError } from '../errors/BeeHttpError.js';
 import { Logger } from '../Logger.js';
@@ -74,11 +76,25 @@ interface NodeAnswer {
   price: string | null;
 }
 
+/**
+ * One of a chequebook's two reads: what it read, the node saying it has no chequebook, or why it could not be read, in
+ * a sentence with no address in it.
+ */
+type ChequebookPart<T> = { kind: 'read'; value: T } | { kind: 'none' } | { kind: 'unread'; readError: string };
+
+/** A chequebook's balances as the contract takes them, PLUR as decimal strings. */
+interface ChequebookBalances {
+  availablePlur: string;
+  totalPlur: string;
+}
+
 /** The reads of one inventory, each made once however many stages name the node: by its address, and its batch. */
 interface Reads {
   wallets: Map<string, Promise<WalletReading>>;
   batches: Map<string, Promise<FundingBatch>>;
   prices: Map<string, Promise<string | null>>;
+  /** The node's chequebook, null when it has none, both of its reads made once for an address. */
+  chequebooks: Map<string, Promise<FundingChequebook | null>>;
 }
 
 export interface FundingInventoryDeps {
@@ -95,6 +111,10 @@ export interface FundingInventoryDeps {
   stamp(apiUrl: string, batchId: string): Promise<BeeStamp>;
   /** `GET /chainstate` on the Bee API at this address, `BeeClient.getChainState()`. */
   chainState(apiUrl: string): Promise<BeeChainState>;
+  /** `GET /chequebook/address` on the Bee API at this address, `BeeClient.getChequebookAddress()`. */
+  chequebookAddress(apiUrl: string): Promise<BeeChequebookAddress>;
+  /** `GET /chequebook/balance` on the Bee API at this address, `BeeClient.getChequebookBalance()`. */
+  chequebookBalance(apiUrl: string): Promise<ChequebookBalance>;
   now?: () => Date;
 }
 
@@ -256,9 +276,115 @@ function postageOf(price: string | null): FundingPostage | null {
   };
 }
 
+const NOT_A_CHEQUEBOOK = 'The node answered something that is not a chequebook.';
+
+/** The address Bee answers for the chequebook it keeps in place of one while SWAP is off, which is on no chain. */
+const NO_CHEQUEBOOK_ADDRESS = '0x0000000000000000000000000000000000000000';
+
+/** A chequebook the node could not be read about: no reading, and why in a sentence. */
+function unreadChequebook(readError: string): FundingChequebook {
+  return { address: null, availablePlur: null, totalPlur: null, readError };
+}
+
 /**
- * `GET /api/admin-funding/inventory`: every stage's nodes and the brand's catalogue node, each with its wallet and
- * its batch as the node reports them now, or the reason they could not be read, and what postage costs now.
+ * Whether a refused read is the node saying it has no chequebook, in Bee 2.x's words: 403 "Chequebook is disabled" on
+ * either read while its chequebook is off (`--chequebook-enable=false`), and 405 "chain disabled" on the balance while
+ * SWAP is off, as on any ultra-light node, when the chequebook Bee keeps in place of one is on no chain. Any other
+ * refusal is a refusal to say.
+ */
+function saysNoChequebook(error: unknown): boolean {
+  if (!(error instanceof BeeHttpError)) return false;
+  if (error.status === 403) return /chequebook is disabled/i.test(error.message);
+  return error.status === 405 && /chain disabled/i.test(error.message);
+}
+
+/** Why a chequebook read failed, in a sentence with no address in it. */
+function chequebookReadErrorOf(error: unknown): string {
+  switch (readFailureFrom(error, 0).reason) {
+    case 'timeout':
+      return 'The node did not answer in time.';
+    case 'refused':
+      return 'The node refused to say how its chequebook stands.';
+    case 'malformed':
+      return NOT_A_CHEQUEBOOK;
+    default:
+      return 'The node could not be reached.';
+  }
+}
+
+/**
+ * A node's `GET /chequebook/address` answer as the inventory takes it. An answer that names no address, or the zero
+ * address, which Bee answers while SWAP is off, says the node has no chequebook.
+ */
+function chequebookAddressFrom(answer: unknown): ChequebookPart<string> {
+  if (typeof answer !== 'object' || answer === null) return { kind: 'unread', readError: NOT_A_CHEQUEBOOK };
+  const { chequebookAddress: named } = answer as Partial<Record<keyof BeeChequebookAddress, unknown>>;
+  if (named === undefined || named === null || named === '') return { kind: 'none' };
+  if (typeof named !== 'string' || !ADDRESS.test(named)) return { kind: 'unread', readError: NOT_A_CHEQUEBOOK };
+  const address = named.toLowerCase();
+  return address === NO_CHEQUEBOOK_ADDRESS ? { kind: 'none' } : { kind: 'read', value: address };
+}
+
+/** A balance as the contract takes one: decimal digits, no more than a 256-bit number has. */
+const BALANCE_DIGITS = /^\d{1,78}$/;
+
+function isBalance(value: unknown): value is string {
+  return typeof value === 'string' && BALANCE_DIGITS.test(value);
+}
+
+/**
+ * A node's `GET /chequebook/balance` answer as the inventory takes it: two whole numbers, the available balance no
+ * more than the total, which also holds the cheques the node wrote that its peers have not cashed yet.
+ */
+function chequebookBalanceFrom(answer: unknown): ChequebookPart<ChequebookBalances> {
+  const answered: Partial<Record<keyof ChequebookBalance, unknown>> =
+    typeof answer === 'object' && answer !== null ? answer : {};
+  const { availableBalance, totalBalance } = answered;
+  if (!isBalance(availableBalance) || !isBalance(totalBalance) || BigInt(availableBalance) > BigInt(totalBalance)) {
+    return { kind: 'unread', readError: NOT_A_CHEQUEBOOK };
+  }
+  // Bee prints a balance with no leading zeros, but nothing else may reach the contract's pattern.
+  return {
+    kind: 'read',
+    value: { availablePlur: BigInt(availableBalance).toString(), totalPlur: BigInt(totalBalance).toString() },
+  };
+}
+
+/** One of a chequebook's reads, as `from` takes its answer, or what its failure says. Never throws. */
+async function chequebookPart<T>(
+  read: () => Promise<unknown>,
+  from: (answer: unknown) => ChequebookPart<T>,
+): Promise<ChequebookPart<T>> {
+  let answer: unknown;
+  try {
+    answer = await read();
+  } catch (err) {
+    return saysNoChequebook(err) ? { kind: 'none' } : { kind: 'unread', readError: chequebookReadErrorOf(err) };
+  }
+  return from(answer);
+}
+
+/**
+ * The chequebook a node's two answers make, or null when it has none. The node's word that it has none stands when
+ * its other read failed, but not against a chequebook its other read found, since the two cannot both be so. A
+ * chequebook is answered whole or not at all: the first read that failed says why.
+ */
+function chequebookFrom(
+  address: ChequebookPart<string>,
+  balance: ChequebookPart<ChequebookBalances>,
+): FundingChequebook | null {
+  if (address.kind === 'none' || balance.kind === 'none') {
+    return address.kind === 'read' || balance.kind === 'read' ? unreadChequebook(NOT_A_CHEQUEBOOK) : null;
+  }
+  if (address.kind === 'unread') return unreadChequebook(address.readError);
+  if (balance.kind === 'unread') return unreadChequebook(balance.readError);
+  return { address: address.value, ...balance.value, readError: null };
+}
+
+/**
+ * `GET /api/admin-funding/inventory`: every stage's nodes and the brand's catalogue node, each with its wallet, its
+ * batch and its chequebook as the node reports them now, or the reason they could not be read, and what postage costs
+ * now.
  *
  * A stage is a deployment that runs a stream uploader. Its nodes are its own `bee-uploader`, its `bee-gateway` when
  * that runs light (an ultra-light gateway is on no chain and has no wallet), and the rungs of its ABR pool, lowest
@@ -269,6 +395,13 @@ function postageOf(price: string | null): FundingPostage | null {
  * own node, the rung's batch for a rung, and the designated batch for the catalogue node, never the one a pending
  * move left. A gateway has none. The batch is read from the node's `GET /stamps/{id}`, and the price of postage from
  * the `/chainstate` of the first node listed whose wallet reads on Gnosis Chain, since the price is the chain's.
+ *
+ * Each node's chequebook, which pays its peers for bandwidth, is read with its wallet from its
+ * `GET /chequebook/address` and `GET /chequebook/balance`, for every node listed, a gateway and the catalogue node
+ * among them. It is null when the node says it has none, in Bee 2.x's words (`saysNoChequebook`), or names no address
+ * or the zero address for it, as Bee does while SWAP is off. It is answered whole or not at all: an address, and two
+ * balances that are whole numbers, the available one no more than the total. Otherwise every reading is null and a
+ * sentence says why.
  *
  * A node is named by an opaque id, `<instance_id>:<service>`, and a label. Its Bee API address, its host, the chain
  * endpoint it reads and any key stay inside this service, and every answer passes the contract's schema before it
@@ -284,7 +417,7 @@ export class FundingInventoryService {
   async inventory(): Promise<FundingInventory> {
     const observedAt = this.now().toISOString();
     const profiles = (await this.deps.profiles.list()).filter((profile) => profile.status !== 'REMOVING');
-    const reads: Reads = { wallets: new Map(), batches: new Map(), prices: new Map() };
+    const reads: Reads = { wallets: new Map(), batches: new Map(), prices: new Map(), chequebooks: new Map() };
     const read = (planned: PlannedNode) => this.nodeOf(planned, reads);
 
     const stages = await Promise.all(
@@ -366,7 +499,10 @@ export class FundingInventoryService {
     };
   }
 
-  /** One node with its wallet, its batch and its chain state's price, each read once however many stages name it. */
+  /**
+   * One node with its wallet, its batch, its chain state's price and its chequebook, each read once however many
+   * stages name it.
+   */
   private async nodeOf(planned: PlannedNode, reads: Reads): Promise<NodeAnswer> {
     let apiUrl: string;
     try {
@@ -375,16 +511,17 @@ export class FundingInventoryService {
       logger.debug(`[Funding] could not work out the address of ${planned.label}: ${getErrorMessage(err)}`);
       const readError = addressErrorOf(planned.role);
       const batch = planned.batchId === null ? null : unreadBatch(planned.batchId, readError);
-      return { node: this.unread(planned, readError, batch), price: null };
+      return { node: this.unread(planned, readError, batch, unreadChequebook(readError)), price: null };
     }
-    const [reading, batch, price] = await Promise.all([
+    const [reading, batch, price, chequebook] = await Promise.all([
       this.walletOf(planned, apiUrl, reads),
       planned.batchId === null ? null : this.batchOf(planned, planned.batchId, apiUrl, reads),
       this.priceOf(planned, apiUrl, reads),
+      this.chequebookOf(planned, apiUrl, reads),
     ]);
-    if (!reading.ok) return { node: this.unread(planned, reading.readError, batch), price: null };
+    if (!reading.ok) return { node: this.unread(planned, reading.readError, batch, chequebook), price: null };
     const { nodeId, label, role } = planned;
-    return { node: { nodeId, label, role, ...pick(reading), readError: null, batch }, price };
+    return { node: { nodeId, label, role, ...pick(reading), readError: null, batch, chequebook }, price };
   }
 
   /** The node's wallet, or why it could not be read. Never throws. */
@@ -444,9 +581,37 @@ export class FundingInventoryService {
     }
   }
 
-  /** A node answered with no wallet, and why in a sentence, with its batch as it was read. */
-  private unread({ nodeId, label, role }: PlannedNode, readError: string, batch: FundingBatch | null): FundingNode {
-    return { nodeId, label, role, walletAddress: null, xdaiWei: null, xbzzPlur: null, readError, batch };
+  /** The node's chequebook, null when it says it has none, or unread and why. Never throws. */
+  private async chequebookOf(planned: PlannedNode, apiUrl: string, reads: Reads): Promise<FundingChequebook | null> {
+    try {
+      let pending = reads.chequebooks.get(apiUrl);
+      if (!pending) {
+        pending = Promise.all([
+          chequebookPart(() => this.deps.chequebookAddress(apiUrl), chequebookAddressFrom),
+          chequebookPart(() => this.deps.chequebookBalance(apiUrl), chequebookBalanceFrom),
+        ]).then(([address, balance]) => {
+          const chequebook = chequebookFrom(address, balance);
+          if (chequebook?.readError) {
+            logger.debug(`[Funding] could not read the chequebook of ${planned.label}: ${chequebook.readError}`);
+          }
+          return chequebook;
+        });
+        reads.chequebooks.set(apiUrl, pending);
+      }
+      return await pending;
+    } catch (err) {
+      return unreadChequebook(chequebookReadErrorOf(err));
+    }
+  }
+
+  /** A node answered with no wallet, and why in a sentence, with its batch and its chequebook as they were read. */
+  private unread(
+    { nodeId, label, role }: PlannedNode,
+    readError: string,
+    batch: FundingBatch | null,
+    chequebook: FundingChequebook | null,
+  ): FundingNode {
+    return { nodeId, label, role, walletAddress: null, xdaiWei: null, xbzzPlur: null, readError, batch, chequebook };
   }
 }
 

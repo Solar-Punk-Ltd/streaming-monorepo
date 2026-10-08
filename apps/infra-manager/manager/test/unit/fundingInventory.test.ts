@@ -1,23 +1,25 @@
 /**
  * What `GET /api/admin-funding/inventory` answers: every stage's nodes and the brand's catalogue node, each with its
- * wallet and its batch as the node reports them, or the reason they could not be read, and the price of postage.
+ * wallet, its batch and its chequebook as the node reports them, or the reason they could not be read, and the price
+ * of postage.
  *
- * Unit test, no database, no Docker and no Bee node: fake deployments, a fake designation, and fake wallets, batches
- * and chain states. `pnpm test` in manager/.
+ * Unit test, no database, no Docker and no Bee node: fake deployments, a fake designation, and fake wallets, batches,
+ * chain states and chequebooks. `pnpm test` in manager/.
  *
  * A stage's nodes are its own Bee node, its gateway when that runs light (an ultra-light gateway has no wallet), and
  * the rungs of its pool, each found among this manager's deployments by the batch it stamps with. Each node's batch
- * is the one the manager uploads with through it: the stage's own, the rung's, or the designated catalogue batch. A
- * node is named by an opaque id and a label, never by its Bee API address, and nothing else that would reach a node
- * or the chain is answered either.
+ * is the one the manager uploads with through it: the stage's own, the rung's, or the designated catalogue batch. Each
+ * node's chequebook is the one it pays its peers from, or none when the node says it has none. A node is named by an
+ * opaque id and a label, never by its Bee API address, and nothing else that would reach a node or the chain is
+ * answered either.
  */
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 
-import { beePublishersValue } from '@streaming-infra-manager/common';
+import { beePublishersValue, type ChequebookBalance } from '@streaming-infra-manager/common';
 import { type FundingInventory, type FundingNode, fundingInventorySchema } from '@streaming-monorepo/contracts';
 
-import type { BeeChainState, BeeStamp, BeeWallet } from '../../src/domain/BeeClient.js';
+import type { BeeChainState, BeeChequebookAddress, BeeStamp, BeeWallet } from '../../src/domain/BeeClient.js';
 import { BeeHttpError } from '../../src/domain/errors/index.js';
 import {
   FUNDING_BLOCK_SECONDS,
@@ -149,6 +151,38 @@ const chainState = (over: Partial<BeeChainState> = {}): BeeChainState => ({
   ...over,
 });
 
+const CHEQUEBOOK = '0x3333333333333333333333333333333333333333';
+const ZERO_ADDRESS = '0x0000000000000000000000000000000000000000';
+const NOT_A_CHEQUEBOOK = 'The node answered something that is not a chequebook.';
+
+/** A chequebook's address as Bee answers `GET /chequebook/address`, in the mixed case Bee prints. */
+const chequebookAddress = (address = CHEQUEBOOK.toUpperCase().replace('0X', '0x')): BeeChequebookAddress => ({
+  chequebookAddress: address,
+});
+
+/** A chequebook's balance as Bee answers `GET /chequebook/balance`: 1.5 xBZZ of 2 available, 0.5 owed in cheques. */
+const chequebookBalance = (over: Partial<ChequebookBalance> = {}): ChequebookBalance => ({
+  totalBalance: '20000000000000000',
+  availableBalance: '15000000000000000',
+  ...over,
+});
+
+/** What Bee 2.x answers either chequebook read with when the node's chequebook is off, `--chequebook-enable=false`. */
+const chequebookDisabled = (path: string) =>
+  new BeeHttpError(
+    403,
+    `bee GET ${path} → 403: {"message":"Chequebook is disabled. This endpoint is unavailable.","code":403}`,
+  );
+
+/**
+ * What Bee 2.x answers the balance with when SWAP is off, as on any ultra-light node: the chequebook it keeps in place
+ * of one is on no chain, and answers the zero address for its own.
+ */
+const chainDisabled = () =>
+  new BeeHttpError(405, 'bee GET /chequebook/balance → 405: {"message":"chain disabled","code":405}');
+
+const unreadChequebook = (readError: string) => ({ address: null, availablePlur: null, totalPlur: null, readError });
+
 interface Setup {
   designated?: string | null;
   /** A pending move: the batch the catalogue moved from, on the catalogue node. */
@@ -157,6 +191,8 @@ interface Setup {
   walletAt?: (url: string) => Promise<BeeWallet>;
   stampAt?: (url: string, batchId: string) => Promise<BeeStamp>;
   chainStateAt?: (url: string) => Promise<BeeChainState>;
+  chequebookAddressAt?: (url: string) => Promise<BeeChequebookAddress>;
+  chequebookBalanceAt?: (url: string) => Promise<ChequebookBalance>;
   uploaderApiUrl?: (profile: Profile) => string;
   gatewayApiUrl?: (profile: Profile) => Promise<string>;
 }
@@ -165,6 +201,8 @@ function service(setup: Setup = {}) {
   const asked: string[] = [];
   const stampsAsked: string[] = [];
   const chainAsked: string[] = [];
+  /** Each chequebook read, `address <url>` or `balance <url>`. */
+  const chequebooksAsked: string[] = [];
   const row = emptyCatalogueDesignationRow();
   const designated = setup.designated === undefined ? 'catalogue' : setup.designated;
   if (designated) {
@@ -195,9 +233,32 @@ function service(setup: Setup = {}) {
       chainAsked.push(url);
       return setup.chainStateAt ? setup.chainStateAt(url) : chainState();
     },
+    chequebookAddress: async (url) => {
+      chequebooksAsked.push(`address ${url}`);
+      return setup.chequebookAddressAt ? setup.chequebookAddressAt(url) : chequebookAddress();
+    },
+    chequebookBalance: async (url) => {
+      chequebooksAsked.push(`balance ${url}`);
+      return setup.chequebookBalanceAt ? setup.chequebookBalanceAt(url) : chequebookBalance();
+    },
     now: () => OBSERVED,
   });
-  return { inventory, asked, stampsAsked, chainAsked };
+  return { inventory, asked, stampsAsked, chainAsked, chequebooksAsked };
+}
+
+/** A second ABR stage on the first one's pool, so each rung is listed under two stages. */
+function withSecondAbrStage(list: Profile[]): Profile[] {
+  return [
+    ...list,
+    makeProfile({
+      name: 'stage-abr-two',
+      kind: 'abr-uploader',
+      instance_id: ABR_TWO_ID,
+      components: ['stream-uploader', 'srs'],
+      port_slot: 7,
+      bee_publishers: POOL,
+    }),
+  ];
 }
 
 /** Every node the answer lists, the catalogue node included, by its id. */
@@ -240,7 +301,7 @@ describe('the funding inventory', () => {
 
   it('reads each node’s wallet: its address in lower case and its balances in base units', async () => {
     const { inventory } = service();
-    const { batch: _batch, ...node } = (await inventory.inventory()).stages[0]!.nodes[0]!;
+    const { batch: _batch, chequebook: _chequebook, ...node } = (await inventory.inventory()).stages[0]!.nodes[0]!;
     assert.deepEqual(node, {
       nodeId: `${STREAMER_ID}:bee-uploader`,
       label: 'stage-one Bee node',
@@ -511,19 +572,7 @@ describe('each node’s batch in the funding inventory', () => {
   });
 
   it('reads each node’s wallet, batch and chain state once when two stages share a pool', async () => {
-    const { inventory, asked, stampsAsked, chainAsked } = service({
-      profiles: (list) => [
-        ...list,
-        makeProfile({
-          name: 'stage-abr-two',
-          kind: 'abr-uploader',
-          instance_id: ABR_TWO_ID,
-          components: ['stream-uploader', 'srs'],
-          port_slot: 7,
-          bee_publishers: POOL,
-        }),
-      ],
-    });
+    const { inventory, asked, stampsAsked, chainAsked } = service({ profiles: withSecondAbrStage });
     const answer = await inventory.inventory();
     const shared = answer.stages.filter((stage) => stage.name.startsWith('stage-abr'));
     assert.equal(shared.length, 2);
@@ -532,6 +581,242 @@ describe('each node’s batch in the funding inventory', () => {
       shared[1]!.nodes.map((node) => ({ ...node, label: node.label.replace('stage-abr-two', 'stage-abr') })),
     );
     for (const reads of [asked, stampsAsked, chainAsked]) assert.equal(new Set(reads).size, reads.length);
+  });
+});
+
+describe('each node’s chequebook in the funding inventory', () => {
+  const OWN = `${STREAMER_ID}:bee-uploader`;
+  const GATEWAY = `${LIGHT_ID}:bee-gateway`;
+  const RUNG_360 = `${RUNG_360_ID}:bee-uploader`;
+  const RUNG_720 = `${RUNG_720_ID}:bee-uploader`;
+  const CATALOGUE = `${CATALOGUE_ID}:bee-uploader`;
+
+  it('reads every node’s chequebook: its address in lower case, its available balance and its total', async () => {
+    const { inventory, chequebooksAsked } = service();
+    const byId = nodesById(await inventory.inventory());
+    assert.deepEqual(byId.get(OWN)!.chequebook, {
+      address: CHEQUEBOOK,
+      availablePlur: '15000000000000000',
+      totalPlur: '20000000000000000',
+      readError: null,
+    });
+    assert.deepEqual(
+      [...byId.values()].map((node) => [node.nodeId, node.chequebook?.address]),
+      [OWN, GATEWAY, RUNG_360, RUNG_720, CATALOGUE].map((id) => [id, CHEQUEBOOK]),
+    );
+    assert.deepEqual(
+      chequebooksAsked.sort(),
+      [OWN_URL, GATEWAY_URL, RUNG_360_URL, RUNG_720_URL, CATALOGUE_URL]
+        .flatMap((url) => [`address ${url}`, `balance ${url}`])
+        .sort(),
+    );
+  });
+
+  it('reads an empty chequebook as one holding nothing, and its balances as the contract writes them', async () => {
+    const { inventory } = service({
+      chequebookBalanceAt: async (url) => {
+        if (url === OWN_URL) return chequebookBalance({ availableBalance: '0', totalBalance: '0' });
+        if (url === RUNG_360_URL) return chequebookBalance({ availableBalance: '007', totalBalance: '0010' });
+        return chequebookBalance();
+      },
+    });
+    const byId = nodesById(await inventory.inventory());
+    assert.deepEqual(byId.get(OWN)!.chequebook, {
+      address: CHEQUEBOOK,
+      availablePlur: '0',
+      totalPlur: '0',
+      readError: null,
+    });
+    assert.deepEqual(byId.get(RUNG_360)!.chequebook, {
+      address: CHEQUEBOOK,
+      availablePlur: '7',
+      totalPlur: '10',
+      readError: null,
+    });
+  });
+
+  it('reads a light gateway’s chequebook from the gateway’s own Bee API', async () => {
+    const gatewayChequebook = '0x2222222222222222222222222222222222222222';
+    const { inventory } = service({
+      chequebookAddressAt: async (url) => chequebookAddress(url === GATEWAY_URL ? gatewayChequebook : CHEQUEBOOK),
+      chequebookBalanceAt: async (url) =>
+        url === GATEWAY_URL ? chequebookBalance({ availableBalance: '7', totalBalance: '9' }) : chequebookBalance(),
+    });
+    const gateway = (await inventory.inventory()).stages[1]!.nodes[0]!;
+    assert.equal(gateway.role, 'gateway');
+    assert.deepEqual(gateway.chequebook, {
+      address: gatewayChequebook,
+      availablePlur: '7',
+      totalPlur: '9',
+      readError: null,
+    });
+  });
+
+  it('answers none where a node says it has no chequebook, as Bee 2.x says it, and reads its wallet', async () => {
+    const timeout = new Error('bee request GET /chequebook/balance failed: The operation was aborted due to timeout');
+    const { inventory } = service({
+      chequebookAddressAt: async (url) => {
+        // Its chequebook off: both reads refused in Bee's words.
+        if (url === OWN_URL) throw chequebookDisabled('/chequebook/address');
+        // SWAP off: the stand-in's zero address, and a balance on no chain.
+        if (url === GATEWAY_URL) return chequebookAddress(ZERO_ADDRESS);
+        // An answer that names no address.
+        if (url === RUNG_360_URL) return {} as BeeChequebookAddress;
+        // The node says it has none, and its other read did not answer in time.
+        if (url === RUNG_720_URL) throw chequebookDisabled('/chequebook/address');
+        return chequebookAddress();
+      },
+      chequebookBalanceAt: async (url) => {
+        if (url === OWN_URL) throw chequebookDisabled('/chequebook/balance');
+        if (url === GATEWAY_URL || url === RUNG_360_URL) throw chainDisabled();
+        if (url === RUNG_720_URL) throw timeout;
+        return chequebookBalance();
+      },
+    });
+    const byId = nodesById(await inventory.inventory());
+    for (const id of [OWN, GATEWAY, RUNG_360, RUNG_720]) {
+      assert.equal(byId.get(id)!.chequebook, null, id);
+      assert.equal(byId.get(id)!.walletAddress, WALLET, `${id}'s wallet was not read`);
+    }
+    assert.equal(byId.get(CATALOGUE)!.chequebook?.address, CHEQUEBOOK);
+  });
+
+  it('gives a chequebook it could not read every reading null and a sentence saying why', async () => {
+    const { inventory } = service({
+      chequebookAddressAt: async (url) => {
+        if (url === OWN_URL)
+          throw new Error('bee request GET /chequebook/address failed: The operation was aborted due to timeout');
+        if (url === RUNG_720_URL)
+          throw new Error(`bee request GET /chequebook/address failed: connect ECONNREFUSED ${url}`);
+        // Refused, but not because its chequebook is off.
+        if (url === CATALOGUE_URL)
+          throw new BeeHttpError(403, 'bee GET /chequebook/address → 403: {"message":"Forbidden","code":403}');
+        return chequebookAddress();
+      },
+      chequebookBalanceAt: async (url) => {
+        if (url === GATEWAY_URL)
+          throw new BeeHttpError(503, `bee GET /chequebook/balance → 503: ${url} Node is syncing. Try again later.`);
+        if (url === RUNG_360_URL) throw new Error('bee GET /chequebook/balance returned non-JSON body');
+        return chequebookBalance();
+      },
+    });
+    const answer = await inventory.inventory();
+    const byId = nodesById(answer);
+    assert.deepEqual(byId.get(OWN)!.chequebook, unreadChequebook('The node did not answer in time.'));
+    assert.deepEqual(
+      byId.get(GATEWAY)!.chequebook,
+      unreadChequebook('The node refused to say how its chequebook stands.'),
+    );
+    assert.deepEqual(byId.get(RUNG_360)!.chequebook, unreadChequebook(NOT_A_CHEQUEBOOK));
+    assert.deepEqual(byId.get(RUNG_720)!.chequebook, unreadChequebook('The node could not be reached.'));
+    assert.deepEqual(
+      byId.get(CATALOGUE)!.chequebook,
+      unreadChequebook('The node refused to say how its chequebook stands.'),
+    );
+    for (const node of byId.values()) assert.equal(node.walletAddress, WALLET, `${node.label}'s wallet was not read`);
+    assert.ok(!JSON.stringify(answer).includes('bee.internal'), 'a node address is in the answer');
+  });
+
+  it('calls a balance that is not a whole number, or more available than in total, not a chequebook', async () => {
+    const { inventory } = service({
+      chequebookBalanceAt: async (url) => {
+        if (url === OWN_URL) return chequebookBalance({ availableBalance: '1.5' });
+        if (url === GATEWAY_URL) return chequebookBalance({ availableBalance: '20000000000000001' });
+        if (url === RUNG_360_URL) return chequebookBalance({ availableBalance: '-1' });
+        if (url === RUNG_720_URL) return chequebookBalance({ totalBalance: '1'.repeat(79) });
+        return { totalBalance: 20000, availableBalance: '0' } as unknown as ChequebookBalance;
+      },
+    });
+    const byId = nodesById(await inventory.inventory());
+    for (const node of byId.values()) {
+      assert.deepEqual(node.chequebook, unreadChequebook(NOT_A_CHEQUEBOOK), node.label);
+      assert.equal(node.walletAddress, WALLET, `${node.label}'s wallet was not read`);
+    }
+  });
+
+  it('calls an address that is not one unread, and two answers that contradict each other', async () => {
+    const { inventory } = service({
+      chequebookAddressAt: async (url) => {
+        if (url === OWN_URL) return chequebookAddress('0x12');
+        if (url === GATEWAY_URL) return null as unknown as BeeChequebookAddress;
+        if (url === RUNG_360_URL) return { chequebookAddress: 42 } as unknown as BeeChequebookAddress;
+        // No chequebook at this address, and a balance all the same.
+        if (url === RUNG_720_URL) return chequebookAddress(ZERO_ADDRESS);
+        return chequebookAddress();
+      },
+      chequebookBalanceAt: async (url) => {
+        // A chequebook at an address, and a balance on no chain.
+        if (url === CATALOGUE_URL) throw chainDisabled();
+        return chequebookBalance();
+      },
+    });
+    const byId = nodesById(await inventory.inventory());
+    for (const node of byId.values()) assert.deepEqual(node.chequebook, unreadChequebook(NOT_A_CHEQUEBOOK), node.label);
+  });
+
+  it('reads a rung two stages share once, its address and its balance, and answers it under both', async () => {
+    const { inventory, chequebooksAsked } = service({ profiles: withSecondAbrStage });
+    const answer = await inventory.inventory();
+    const [first, second] = answer.stages.filter((stage) => stage.name.startsWith('stage-abr'));
+    assert.equal(second?.nodes.length, 2);
+    assert.deepEqual(
+      first!.nodes.map((node) => [node.nodeId, node.chequebook]),
+      second!.nodes.map((node) => [node.nodeId, node.chequebook]),
+    );
+    assert.deepEqual(chequebooksAsked.filter((read) => read.endsWith(RUNG_720_URL)).sort(), [
+      `address ${RUNG_720_URL}`,
+      `balance ${RUNG_720_URL}`,
+    ]);
+    assert.equal(new Set(chequebooksAsked).size, chequebooksAsked.length);
+  });
+
+  it('gives a node whose address could not be worked out the same sentence on its chequebook', async () => {
+    const { inventory, chequebooksAsked } = service({
+      uploaderApiUrl: (profile) => {
+        if (profile.name === 'stage-one') throw new Error('no address for this deployment');
+        return `http://bee.internal:${10005 + profile.port_slot * 10}`;
+      },
+      gatewayApiUrl: async () => {
+        throw new Error('The stack version v3 is not ready to deploy from: its settings are not captured');
+      },
+    });
+    const byId = nodesById(await inventory.inventory());
+    assert.deepEqual(
+      byId.get(OWN)!.chequebook,
+      unreadChequebook('The node’s address could not be worked out on this manager.'),
+    );
+    assert.deepEqual(
+      byId.get(GATEWAY)!.chequebook,
+      unreadChequebook('The gateway’s address could not be worked out on this manager.'),
+    );
+    assert.ok(
+      !chequebooksAsked.some((read) => read.endsWith(OWN_URL) || read.endsWith(GATEWAY_URL)),
+      'a node with no address was asked',
+    );
+  });
+
+  it('answers chequebooks the contract takes, with no Bee API address in one, read or not', async () => {
+    const { inventory } = service({
+      chequebookAddressAt: async (url) => {
+        if (url === RUNG_720_URL)
+          throw new Error(`bee request GET /chequebook/address failed: getaddrinfo ENOTFOUND ${url}`);
+        return { ...chequebookAddress(), apiUrl: url } as BeeChequebookAddress;
+      },
+      chequebookBalanceAt: async (url) => {
+        if (url === RUNG_360_URL)
+          throw new BeeHttpError(500, `bee GET /chequebook/balance → 500: ${url} cannot get chequebook balance`);
+        return { ...chequebookBalance(), apiUrl: url } as ChequebookBalance;
+      },
+    });
+    const answer = await inventory.inventory();
+    assert.deepEqual(fundingInventorySchema.parse(answer), answer);
+    const byId = nodesById(answer);
+    assert.equal(byId.get(RUNG_720)!.chequebook?.readError, 'The node could not be reached.');
+    assert.equal(byId.get(RUNG_360)!.chequebook?.readError, 'The node refused to say how its chequebook stands.');
+    const text = JSON.stringify(answer);
+    for (const secret of [RPC, 'bee.internal', '192.0.2.10', '198.51.100.7', 'deploy@bee-1', 'apiUrl']) {
+      assert.ok(!text.includes(secret), `the answer carries ${secret}`);
+    }
   });
 });
 

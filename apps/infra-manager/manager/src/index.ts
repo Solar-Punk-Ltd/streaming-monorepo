@@ -78,8 +78,8 @@ import { resolveServerHost } from './utils/serverHost.js';
 const logger = Logger.getInstance();
 
 /**
- * How long the funding inventory waits for each read of a node, its wallet, its batch or its chain state, so one
- * silent node does not hold the whole answer.
+ * How long the funding inventory waits for each read of a node, its wallet, its batch, its chain state, or its
+ * chequebook's address or balance, so one silent node does not hold the whole answer.
  */
 const FUNDING_NODE_READ_MS = 5_000;
 
@@ -460,8 +460,9 @@ async function main(): Promise<void> {
     changed: () => void catalogue.pushNow(),
     nodeUrls: async (profile) => [beeApiUrlFor(profile), beePublisherUrlFor(profile, await localPublisherHost())],
   });
-  // The web2 admin's funding API reads every stage's nodes and the catalogue node with it, each with its wallet and
-  // its batch, and the price of postage. A node's address stays here: the inventory names each node by an opaque id.
+  // The web2 admin's funding API reads every stage's nodes and the catalogue node with it, each with its wallet, its
+  // batch and its chequebook, and the price of postage. A node's address stays here: the inventory names each node by
+  // an opaque id.
   const fundingInventory = new FundingInventoryService({
     profiles: profileRepository,
     catalogue: catalogueDesignation,
@@ -476,6 +477,8 @@ async function main(): Promise<void> {
     wallet: (apiUrl) => new BeeClient(apiUrl, FUNDING_NODE_READ_MS).getWallet(),
     stamp: (apiUrl, batchId) => new BeeClient(apiUrl, FUNDING_NODE_READ_MS).getStamp(batchId),
     chainState: (apiUrl) => new BeeClient(apiUrl, FUNDING_NODE_READ_MS).getChainState(),
+    chequebookAddress: (apiUrl) => new BeeClient(apiUrl, FUNDING_NODE_READ_MS).getChequebookAddress(),
+    chequebookBalance: (apiUrl) => new BeeClient(apiUrl, FUNDING_NODE_READ_MS).getChequebookBalance(),
   });
   // The funding API's chain side: the brand account the admin signs from, the transfers it signs, and their state,
   // journalled in funding_transfers before anything is broadcast.
