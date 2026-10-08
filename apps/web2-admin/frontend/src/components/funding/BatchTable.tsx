@@ -1,0 +1,373 @@
+import {
+  Checkbox,
+  Chip,
+  Link,
+  Paper,
+  Stack,
+  Table,
+  TableBody,
+  TableCell,
+  TableContainer,
+  TableHead,
+  TableRow,
+  Typography,
+} from '@mui/material';
+import {
+  STAMP_EXPIRY_WARNING_SECONDS,
+  XBZZ_DECIMALS,
+  type AdminFundingNode,
+  type FundingBatch,
+  type FundingStampOperationKind,
+} from '@streaming-monorepo/web2-admin-common';
+
+import { formatPercent, formatTimeLeft, shortHex } from '../../format';
+import { CopyButton } from '../CopyButton';
+import { formatShort, formatUnits } from './amounts';
+import { NodeCard } from './NodeTable';
+import {
+  whyNotOperable,
+  type BatchGroup,
+  type BatchRow,
+  type NodeLedger,
+  type StampCheck,
+  type StampLine,
+} from './stamps';
+
+/**
+ * The tick column's width, as the Balance tab's node table has it: a table of fixed column widths takes them from its
+ * header, and a small table's checkbox cell is 28 pixels, padding included, which the checkbox would stand out of.
+ */
+const CHECKBOX_WIDTH = 56;
+
+/** Wide enough for the batch and its node's card beside every number column, as the page is at its widest. */
+const TABLE_MIN_WIDTH = 960;
+
+interface Column {
+  label: string;
+  width: number;
+}
+
+/** The columns a ticked row fills in, for each operation, with fixed widths, so no row changes its size. */
+const AFTER_COLUMNS: Readonly<Record<FundingStampOperationKind, readonly Column[]>> = {
+  topup: [
+    { label: 'Time left after', width: 120 },
+    { label: 'Cost', width: 120 },
+    { label: 'Wallet after', width: 160 },
+  ],
+  dilute: [
+    { label: 'New depth', width: 104 },
+    { label: 'Time left after', width: 176 },
+  ],
+};
+
+const NUMBERS = { fontVariantNumeric: 'tabular-nums' } as const;
+
+/** An unticked row's empty cell, or a value that cannot be worked out. */
+function Dash() {
+  return (
+    <Typography variant="body2" sx={{ color: 'text.disabled' }}>
+      —
+    </Typography>
+  );
+}
+
+/** An amount of xBZZ to three decimals, its token after it, and the exact amount as its tooltip. */
+function Xbzz({ value }: { value: string }) {
+  return (
+    <Typography variant="body2" noWrap title={`${formatUnits(value, XBZZ_DECIMALS)} xBZZ`} sx={NUMBERS}>
+      {formatShort(value, XBZZ_DECIMALS)} xBZZ
+    </Typography>
+  );
+}
+
+/** A batch's time left: `Expired` once it has run out, in the warning colour under two days, as the Stages page has it. */
+function TimeLeft({ seconds }: { seconds: number | null }) {
+  if (seconds === null) return <Dash />;
+  if (seconds === 0) {
+    return (
+      <Typography variant="body2" sx={{ color: 'error.main' }}>
+        Expired
+      </Typography>
+    );
+  }
+  const low = seconds < STAMP_EXPIRY_WARNING_SECONDS;
+  return (
+    <Typography variant="body2" noWrap sx={{ ...NUMBERS, ...(low ? { color: 'warning.main' } : {}) }}>
+      {formatTimeLeft(seconds)}
+    </Typography>
+  );
+}
+
+/** The batch's short id, the whole id on hover and with a copy button, and a chip when it is immutable. */
+function BatchLine({ batch }: { batch: FundingBatch }) {
+  return (
+    <Stack direction="row" spacing={0.5} sx={{ alignItems: 'center', minWidth: 0 }}>
+      <Typography variant="body2" noWrap title={batch.batchId} sx={{ fontFamily: 'monospace' }}>
+        {shortHex(batch.batchId)}
+      </Typography>
+      <CopyButton value={batch.batchId} label="Batch id" />
+      {batch.immutable ? <Chip size="small" variant="outlined" label="Immutable" /> : null}
+    </Stack>
+  );
+}
+
+/**
+ * What the node's wallet holds after its ticked top-ups, all of them, since one wallet pays for each of its batches;
+ * or, when it cannot pay for them, what it lacks in red, rounded up, with the exact amount on hover and a Fund link to
+ * the Balance tab with that amount entered for the node.
+ */
+function WalletAfter({
+  node,
+  ledger,
+  onFund,
+}: {
+  node: AdminFundingNode;
+  ledger: NodeLedger | undefined;
+  onFund: (nodeId: string, xbzzPlur: string) => void;
+}) {
+  if (!ledger) return <Dash />;
+  const { shortPlur, fundPlur, afterPlur } = ledger;
+  if (shortPlur !== null && fundPlur !== null) {
+    return (
+      <Stack spacing={0.25} sx={{ alignItems: 'flex-end' }}>
+        <Typography
+          variant="body2"
+          noWrap
+          title={`${formatUnits(shortPlur, XBZZ_DECIMALS)} xBZZ short`}
+          sx={{ ...NUMBERS, color: 'error.main' }}
+        >
+          Short {formatShort(fundPlur, XBZZ_DECIMALS)} xBZZ
+        </Typography>
+        <Link
+          component="button"
+          type="button"
+          variant="body2"
+          aria-label={`Fund ${node.label}`}
+          onClick={() => onFund(node.nodeId, fundPlur)}
+        >
+          Fund
+        </Link>
+      </Stack>
+    );
+  }
+  return afterPlur === null ? <Dash /> : <Xbzz value={afterPlur} />;
+}
+
+/** A ticked dilution's time left after, in red with the quote's own refusal under it when it would be under 7 days. */
+function DiluteAfter({ line }: { line: StampLine }) {
+  if (line.ttlAfterSeconds === null) return <Dash />;
+  return (
+    <Stack spacing={0.25} sx={{ alignItems: 'flex-end' }}>
+      <Typography variant="body2" noWrap sx={{ ...NUMBERS, ...(line.problem ? { color: 'error.main' } : {}) }}>
+        {formatTimeLeft(line.ttlAfterSeconds)}
+      </Typography>
+      {line.problem ? (
+        <Typography variant="caption" sx={{ color: 'error.main', textAlign: 'right' }}>
+          {line.problem}
+        </Typography>
+      ) : null}
+    </Stack>
+  );
+}
+
+/**
+ * The cells a row fills in once it is ticked: dashes until then, so the row keeps its size. `node` is the row's own,
+ * which names the node as its stage does; a batch two stages list is one line, under the node that lists it first.
+ */
+function AfterCells({
+  operation,
+  node,
+  line,
+  check,
+  onFund,
+}: {
+  operation: FundingStampOperationKind;
+  node: AdminFundingNode;
+  line: StampLine | undefined;
+  check: StampCheck | null;
+  onFund: (nodeId: string, xbzzPlur: string) => void;
+}) {
+  if (operation === 'dilute') {
+    return (
+      <>
+        <TableCell align="right">
+          {line?.newDepth == null ? (
+            <Dash />
+          ) : (
+            <Typography variant="body2" sx={NUMBERS}>
+              {line.newDepth}
+            </Typography>
+          )}
+        </TableCell>
+        <TableCell align="right">{line ? <DiluteAfter line={line} /> : <Dash />}</TableCell>
+      </>
+    );
+  }
+  return (
+    <>
+      <TableCell align="right">
+        {line?.ttlAfterSeconds == null ? (
+          <Dash />
+        ) : (
+          <Typography variant="body2" noWrap sx={{ ...NUMBERS, color: 'success.main' }}>
+            {formatTimeLeft(line.ttlAfterSeconds)}
+          </Typography>
+        )}
+      </TableCell>
+      <TableCell align="right">{line?.costPlur ? <Xbzz value={line.costPlur} /> : <Dash />}</TableCell>
+      <TableCell align="right">
+        {line ? <WalletAfter node={node} ledger={check?.ledgerOf.get(node.nodeId)} onFund={onFund} /> : <Dash />}
+      </TableCell>
+    </>
+  );
+}
+
+function BatchRowView({
+  row,
+  group,
+  operation,
+  ticked,
+  check,
+  onTick,
+  onFund,
+}: {
+  row: BatchRow;
+  group: BatchGroup;
+  operation: FundingStampOperationKind;
+  ticked: boolean;
+  check: StampCheck | null;
+  onTick: (batchId: string) => void;
+  onFund: (nodeId: string, xbzzPlur: string) => void;
+}) {
+  const { node, batch } = row;
+  const why = whyNotOperable(batch);
+  const verb = operation === 'topup' ? 'Top up' : 'Dilute';
+  const line = why === null && ticked ? check?.lineOf.get(batch.batchId) : undefined;
+  return (
+    <TableRow selected={why === null && ticked}>
+      <TableCell padding="checkbox">
+        {why === null ? (
+          <Checkbox
+            checked={ticked}
+            onChange={() => onTick(batch.batchId)}
+            slotProps={{ input: { 'aria-label': `${verb} the batch of ${node.label}` } }}
+          />
+        ) : null}
+      </TableCell>
+      <TableCell>
+        <Stack spacing={0.5} sx={{ minWidth: 0 }}>
+          <BatchLine batch={batch} />
+          <NodeCard node={node} group={group.nodes} />
+        </Stack>
+      </TableCell>
+      <TableCell align="right">
+        {batch.depth === null ? (
+          <Dash />
+        ) : (
+          <Typography variant="body2" sx={NUMBERS}>
+            {batch.depth}
+          </Typography>
+        )}
+      </TableCell>
+      <TableCell align="right">
+        <TimeLeft seconds={batch.ttlSeconds} />
+      </TableCell>
+      <TableCell align="right">
+        {batch.fillRatio === null ? (
+          <Dash />
+        ) : (
+          <Typography variant="body2" sx={NUMBERS}>
+            {formatPercent(batch.fillRatio)}
+          </Typography>
+        )}
+      </TableCell>
+      {why === null ? (
+        <AfterCells operation={operation} node={node} line={line} check={check} onFund={onFund} />
+      ) : (
+        <TableCell colSpan={AFTER_COLUMNS[operation].length}>
+          <Typography variant="body2" sx={{ color: batch.readError ? 'error.main' : 'text.secondary' }}>
+            {why}
+          </Typography>
+        </TableCell>
+      )}
+    </TableRow>
+  );
+}
+
+/**
+ * One group of batches, the catalogue's or one stage's, a row each: the tick box, the batch with its node's card under
+ * it, its depth, time left and fill, then, once it is ticked, what the operation leaves and costs. A batch that cannot
+ * be ticked says why in place of those. The columns keep fixed widths, and no row changes its size when it is ticked.
+ */
+export function BatchTable({
+  group,
+  operation,
+  ticked,
+  check,
+  onTick,
+  onFund,
+}: {
+  group: BatchGroup;
+  operation: FundingStampOperationKind;
+  ticked: ReadonlySet<string>;
+  check: StampCheck | null;
+  onTick: (batchId: string) => void;
+  onFund: (nodeId: string, xbzzPlur: string) => void;
+}) {
+  const catalogue = group.nodes.catalogue;
+  return (
+    <Stack spacing={1}>
+      <Typography variant="subtitle1" component="h3">
+        {group.title}
+      </Typography>
+      {group.rows.length === 0 ? (
+        <Typography variant="body2" sx={{ color: 'text.secondary' }}>
+          {catalogue ? 'The manager reports no catalogue batch.' : 'The manager reports no batch for this stage.'}
+        </Typography>
+      ) : (
+        <TableContainer component={Paper} variant="outlined">
+          <Table
+            size="small"
+            aria-label={catalogue ? 'Catalogue batch' : `Batches of ${group.title}`}
+            sx={{ tableLayout: 'fixed', minWidth: TABLE_MIN_WIDTH }}
+          >
+            <TableHead>
+              <TableRow>
+                <TableCell sx={{ width: CHECKBOX_WIDTH }} />
+                <TableCell>Batch</TableCell>
+                <TableCell align="right" sx={{ width: 72 }}>
+                  Depth
+                </TableCell>
+                <TableCell align="right" sx={{ width: 112 }}>
+                  Time left
+                </TableCell>
+                <TableCell align="right" sx={{ width: 64 }}>
+                  Fill
+                </TableCell>
+                {AFTER_COLUMNS[operation].map((column) => (
+                  <TableCell key={column.label} align="right" sx={{ width: column.width }}>
+                    {column.label}
+                  </TableCell>
+                ))}
+              </TableRow>
+            </TableHead>
+            <TableBody>
+              {group.rows.map((row, index) => (
+                <BatchRowView
+                  key={`${index}:${row.batch.batchId}`}
+                  row={row}
+                  group={group}
+                  operation={operation}
+                  ticked={ticked.has(row.batch.batchId)}
+                  check={check}
+                  onTick={onTick}
+                  onFund={onFund}
+                />
+              ))}
+            </TableBody>
+          </Table>
+        </TableContainer>
+      )}
+    </Stack>
+  );
+}

@@ -33,6 +33,16 @@ export function formatShort(value: string | null, decimals: number, places = 3):
   return `${rounded / step}.${(rounded % step).toString().padStart(places, '0')}`;
 }
 
+/**
+ * Base units rounded up to `places` decimals, still in base units, such as 0.2184 xBZZ to 0.219: never less than the
+ * amount, so a node funded with what a shortfall says is not left short by the rounding.
+ */
+export function roundUpUnits(units: bigint, decimals: number, places = 3): bigint {
+  if (places >= decimals) return units;
+  const step = 10n ** BigInt(decimals - places);
+  return ((units + step - 1n) / step) * step;
+}
+
 export type ReadAmount = { kind: 'empty' } | { kind: 'ok'; value: string } | { kind: 'invalid'; problem: string };
 
 const DECIMAL = /^\d*(?:\.(\d*))?$/;

@@ -1,4 +1,11 @@
-import type { AdminFundingNode, FundingTransferItem, FundingView } from '@streaming-monorepo/web2-admin-common';
+import type {
+  AdminFundingNode,
+  FundingBatch,
+  FundingPostage,
+  FundingStampItem,
+  FundingTransferItem,
+  FundingView,
+} from '@streaming-monorepo/web2-admin-common';
 
 /** The brand wallet: the address of private key 1, which nobody signs with. */
 export const WALLET = '0x7e5f4552091a69125d5dfcb7b8c2659029395bdf';
@@ -82,3 +89,134 @@ export function makeItem(over: Partial<FundingTransferItem> = {}): FundingTransf
 
 /** A ticked node with the amounts typed for it. */
 export const draft = (xdai = '', xbzz = '') => ({ ticked: true, xdai, xbzz });
+
+export const DAY = 86_400;
+
+/**
+ * Gnosis Chain's block time and postage floor, at 24000 PLUR per chunk per block: 30 days are 518400 blocks, which
+ * cost a batch of depth 20 1.30459631616 xBZZ, and one of depth 22 four times that, 5.21838526464 xBZZ.
+ */
+export const POSTAGE: FundingPostage = {
+  pricePerChunkPerBlockPlur: '24000',
+  blockSeconds: 5,
+  minimumValidityBlocks: 17280,
+};
+
+/** What 30 days cost a batch of depth 20 at {@link POSTAGE}, in PLUR. */
+export const THIRTY_DAYS_DEPTH_20 = '13045963161600000';
+
+/** One batch id per batch of {@link makeStampView}. */
+export const BATCH = {
+  catalogue: `0x${'aa'.repeat(32)}`,
+  stage: `0x${'bb'.repeat(32)}`,
+  rung: `0x${'cc'.repeat(32)}`,
+  expired: `0x${'dd'.repeat(32)}`,
+  unread: `0x${'ee'.repeat(32)}`,
+} as const;
+
+/** A usable, mutable batch of depth 20 with 40 days left and a quarter full: the catalogue's. */
+export function makeBatch(over: Partial<FundingBatch> = {}): FundingBatch {
+  return {
+    batchId: BATCH.catalogue,
+    depth: 20,
+    immutable: false,
+    usable: true,
+    ttlSeconds: 40 * DAY,
+    fillRatio: 0.25,
+    readError: null,
+    ...over,
+  };
+}
+
+/** A batch its node could not be read about: every reading null, and why. */
+export function unreadBatch(batchId: string = BATCH.unread): FundingBatch {
+  return {
+    batchId,
+    depth: null,
+    immutable: null,
+    usable: null,
+    ttlSeconds: null,
+    fillRatio: null,
+    readError: 'The node did not answer in time.',
+  };
+}
+
+/**
+ * The Funding page with batches and today's price ({@link POSTAGE}), every node holding 0.2 xDAI and 5 xBZZ:
+ * - the catalogue node's batch, depth 20 with 40 days left;
+ * - on the main stage, the uploader's immutable batch, depth 22 with 12 days left, whose 30 days cost more than the
+ *   node holds; a rung's expired batch; a rung whose batch was not read; and a gateway, which has none;
+ * - on the second stage, a rung's batch of depth 20 with 10 days left, which no dilution leaves 7 days.
+ */
+export function makeStampView(over: Partial<FundingView> = {}): FundingView {
+  const base = makeView();
+  return {
+    ...base,
+    postage: POSTAGE,
+    catalogue: base.catalogue && { ...base.catalogue, batch: makeBatch() },
+    stages: [
+      {
+        stageId: 'stage-1',
+        name: 'Main stage',
+        nodes: [
+          makeNode({
+            batch: makeBatch({
+              batchId: BATCH.stage,
+              depth: 22,
+              immutable: true,
+              ttlSeconds: 12 * DAY,
+              fillRatio: 0.5,
+            }),
+          }),
+          makeNode({
+            nodeId: 'stage-1:720p',
+            label: 'rung-720p',
+            role: 'rung',
+            batch: makeBatch({ batchId: BATCH.expired, usable: false, ttlSeconds: 0, fillRatio: 0.9 }),
+          }),
+          makeNode({ nodeId: 'stage-1:1080p', label: 'rung-1080p', role: 'rung', batch: unreadBatch() }),
+          makeNode({ nodeId: 'stage-1:gateway', label: 'stage-1-gateway', role: 'gateway', batch: null }),
+        ],
+      },
+      {
+        stageId: 'stage-2',
+        name: 'Second stage',
+        nodes: [
+          makeNode({
+            nodeId: 'stage-2:360p',
+            label: 'pool-360p',
+            role: 'rung',
+            walletAddress: '0x2222222222222222222222222222222222222222',
+            pin: 'new',
+            pinnedAddress: null,
+            batch: makeBatch({ batchId: BATCH.rung, ttlSeconds: 10 * DAY, fillRatio: 0.7 }),
+          }),
+        ],
+      },
+    ],
+    ...over,
+  };
+}
+
+/**
+ * One top-up of a stamp bulk: 30 days on the catalogue batch, sent and not yet confirmed, so it holds up a new stamp
+ * bulk (`settled` false) and is under way rather than watched (`watched` false), as the API answers it.
+ */
+export function makeStampItem(over: Partial<FundingStampItem> = {}): FundingStampItem {
+  return {
+    requestId: 'stamp-request-1',
+    kind: 'topup',
+    nodeId: 'catalogue:bee',
+    nodeLabel: 'catalogue-node',
+    batchId: BATCH.catalogue,
+    days: 30,
+    steps: null,
+    costPlur: THIRTY_DAYS_DEPTH_20,
+    state: 'submitted',
+    txHash: null,
+    error: null,
+    settled: false,
+    watched: false,
+    ...over,
+  };
+}

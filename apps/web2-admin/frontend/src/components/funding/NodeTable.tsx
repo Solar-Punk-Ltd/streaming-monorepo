@@ -69,9 +69,10 @@ function PinChip({ node }: { node: AdminFundingNode }) {
 
 /**
  * A node in three lines: its name, which never wraps and has the whole label as its tooltip, then its stage and role,
- * then its wallet with a copy button and the state of its address. A read error comes under them.
+ * then its wallet with a copy button and the state of its address. A read error comes under them. The Stamps tab's
+ * rows show it too, under the batch the node pays for.
  */
-function NodeCard({ node, group }: { node: AdminFundingNode; group: NodeGroup }) {
+export function NodeCard({ node, group }: { node: AdminFundingNode; group: NodeGroup }) {
   return (
     <Stack spacing={0.25} sx={{ minWidth: 0 }}>
       <Typography variant="body2" noWrap title={node.label}>
@@ -129,12 +130,15 @@ function SendField({
   node,
   value,
   disabled,
+  focused,
   onType,
 }: {
   kind: FundingTransferKind;
   node: AdminFundingNode;
   value: string;
   disabled: boolean;
+  /** Whether the field takes the focus when it is drawn, which scrolls it into view. */
+  focused: boolean;
   onType: (value: string) => void;
 }) {
   const { name, decimals } = TOKENS[kind];
@@ -145,6 +149,7 @@ function SendField({
       placeholder="0"
       value={value}
       disabled={disabled}
+      autoFocus={focused}
       onChange={(e) => {
         if (acceptsAmountTyping(e.target.value)) onType(e.target.value);
       }}
@@ -196,10 +201,13 @@ function AfterLine({ balance, typed, kind }: { balance: string | null; typed: st
 export function NodeTable({
   group,
   drafts,
+  focusNodeId = null,
   onChange,
 }: {
   group: NodeGroup;
   drafts: Drafts;
+  /** The node whose xBZZ field takes the focus when the table is drawn: the one a Stamps tab's Fund link named. */
+  focusNodeId?: string | null;
   onChange: (nodeId: string, draft: NodeDraft) => void;
 }) {
   return (
@@ -271,6 +279,7 @@ export function NodeTable({
                               node={node}
                               value={draft[kind]}
                               disabled={noWallet}
+                              focused={kind === 'xbzz' && node.nodeId === focusNodeId}
                               onType={(value) => type(kind, value)}
                             />
                           </Line>
