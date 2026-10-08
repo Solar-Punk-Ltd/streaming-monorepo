@@ -12,7 +12,7 @@ funding operation goes through the infra manager.
 2. The brand sends xDAI and xBZZ to that address from any wallet, for example with Swarm's
    Multichain app. The page shows the address, a QR code and a link to the app.
 3. **Balance tab**: the brand wallet's balances, then every node grouped by stage, each with its
-   wallet's balances. Tick nodes, enter amounts, send from the brand wallet.
+   wallet's balances. Enter amounts beside the nodes' balances, send from the brand wallet.
 4. **Stamps tab**: the catalogue batch on top, then each stage's batches. Tick batches, pick
    "Top up", choose the days, confirm. Each node pays its own batches' top-up from its wallet, so
    the tab shows any node short of xBZZ, with a shortcut to fund it. Dilute comes later.

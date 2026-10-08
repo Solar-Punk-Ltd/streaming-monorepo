@@ -99,9 +99,10 @@ function SendBar({
 
 /**
  * The Balance tab: the brand wallet, then every node grouped by stage with the catalogue node on top, each with its
- * balances and whether its address is confirmed. Tick nodes, enter amounts and send from the brand wallet; the
- * password is asked first, and each transfer is followed until it comes to its end. Send waits while a send is on its
- * way, the one made here or the one the view says is open, which the page follows after a reload too.
+ * balances and whether its address is confirmed. Enter amounts beside the nodes' balances, which ticks them, and send
+ * from the brand wallet; the password is asked first, and each transfer is followed until it comes to its end. Send
+ * waits while a send is on its way, the one made here or the one the view says is open, which the page follows after a
+ * reload too.
  */
 export function BalanceTab() {
   const snackbar = useSnackbar();

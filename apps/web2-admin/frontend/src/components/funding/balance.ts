@@ -36,6 +36,23 @@ export function nodeGroups(view: Inventory): NodeGroup[] {
 }
 
 /**
+ * A node's name on one line: its label without the stage name the manager starts it with, such as `360p rung,
+ * dev-stage-1-360p` out of `dev-stage-1-uploader 360p rung, dev-stage-1-360p`, since the line under it names the
+ * stage. A label that does not start with it, the catalogue node's among them, is the name as it is.
+ */
+export function nodeName(node: AdminFundingNode, group: NodeGroup): string {
+  const prefix = `${group.title} `;
+  return !group.catalogue && node.label.startsWith(prefix) && node.label.length > prefix.length
+    ? node.label.slice(prefix.length)
+    : node.label;
+}
+
+/** The line under a node's name: its stage and its role, or its role alone for the catalogue node. */
+export function nodeCaption(node: AdminFundingNode, group: NodeGroup): string {
+  return group.catalogue ? node.role : `${group.title} · ${node.role}`;
+}
+
+/**
  * Every node once, in the order the page lists them. A node pool shared by two stages is listed under both with one
  * nodeId, so it is ticked, confirmed, counted and sent once.
  */
@@ -116,7 +133,7 @@ export function checkSend(view: Pick<FundingView, 'wallet' | 'stages' | 'catalog
   const totals = { xdai: sum('xdai'), xbzz: sum('xbzz') };
   const over = { xdai: false, xbzz: false };
 
-  if (lines.length === 0 && problems.length === 0) problems.push('Tick a node and enter an amount to send.');
+  if (lines.length === 0 && problems.length === 0) problems.push('Enter an amount beside a node to send it.');
   if (lines.length > 0) {
     const wallet = view.wallet;
     if (!wallet) {

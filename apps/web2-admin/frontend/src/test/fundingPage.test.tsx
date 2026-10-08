@@ -182,24 +182,49 @@ describe('the nodes', () => {
 
     const main = within(screen.getByRole('table', { name: 'Nodes of Main stage' }));
     const uploader = within(main.getByText('stage-1-uploader').closest('tr') as HTMLElement);
-    expect(uploader.getByText('uploader')).toBeInTheDocument();
-    expect(uploader.getByText('0.2')).toBeInTheDocument();
-    expect(uploader.getByText('5')).toBeInTheDocument();
+    expect(uploader.getByText('Main stage · uploader')).toBeInTheDocument();
+    expect(uploader.getByText('0.200 xDAI')).toBeInTheDocument();
+    expect(uploader.getByText('5.000 xBZZ')).toBeInTheDocument();
     expect(uploader.getByText('Confirmed')).toBeInTheDocument();
 
     const moved = within(main.getByText('moved-node').closest('tr') as HTMLElement);
-    expect(moved.getByText('Address changed')).toBeInTheDocument();
-    expect(moved.getByText('was 0x3f1a9c…a1b2c3')).toBeInTheDocument();
+    expect(moved.getByText('Address changed').closest('[title]')).toHaveAttribute(
+      'title',
+      'It was 0x3f1a9c2b4d5e6f708192a3b4c5d6e7f809a1b2c3',
+    );
     expect(moved.getByText('0x4f0e1c…0b0a09')).toBeInTheDocument();
 
     const unread = within(main.getByText('unread-node').closest('tr') as HTMLElement);
     expect(unread.getByText('The node did not answer.')).toBeInTheDocument();
-    expect(unread.getByText('Not read')).toBeInTheDocument();
+    expect(unread.getByText('Wallet not read')).toBeInTheDocument();
     expect(unread.getByRole('checkbox', { name: 'Send to unread-node' })).toBeDisabled();
 
     expect(
       within(screen.getByRole('table', { name: 'Nodes of Second stage' })).getByText('New address'),
     ).toBeInTheDocument();
+  });
+
+  it('takes an amount beside each balance: typing ticks the node and shows what it will hold after', async () => {
+    serve(() => makeView());
+    renderWithProviders(<FundingPage />);
+    await screen.findByRole('heading', { name: 'Brand wallet' });
+
+    const box = screen.getByRole('checkbox', { name: 'Send to stage-1-uploader' });
+    const row = within(box.closest('tr') as HTMLElement);
+    expect(box).not.toBeChecked();
+
+    type('xDAI to send to stage-1-uploader', '0.05');
+    expect(box).toBeChecked();
+    expect(row.getByText('0.250 xDAI')).toBeInTheDocument();
+
+    type('xDAI to send to stage-1-uploader', '');
+    expect(box).not.toBeChecked();
+
+    type('xBZZ to send to stage-1-uploader', '1');
+    expect(row.getByText('6.000 xBZZ')).toBeInTheDocument();
+    tick('stage-1-uploader');
+    expect(box).not.toBeChecked();
+    expect(screen.getByRole('textbox', { name: 'xBZZ to send to stage-1-uploader' })).toHaveValue('');
   });
 
   it('confirms the new and changed addresses with the password, showing the old and the new address', async () => {
@@ -278,7 +303,7 @@ describe('sending from the brand wallet', () => {
     await screen.findByRole('heading', { name: 'Brand wallet' });
     const send = screen.getByRole('button', { name: 'Send' });
     expect(send).toBeDisabled();
-    expect(screen.getByText('Tick a node and enter an amount to send.')).toBeInTheDocument();
+    expect(screen.getByText('Enter an amount beside a node to send it.')).toBeInTheDocument();
 
     tick('stage-1-uploader');
     type('xDAI to send to stage-1-uploader', '0.5');
@@ -296,7 +321,12 @@ describe('sending from the brand wallet', () => {
 
     type('xBZZ to send to stage-1-uploader', '.');
     expect(send).toBeDisabled();
-    expect(screen.getAllByText('Digits and one dot only, such as 1.5.').length).toBeGreaterThan(0);
+    expect(
+      screen.getByText('The xBZZ amount for stage-1-uploader: Digits and one dot only, such as 1.5.'),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByRole('textbox', { name: 'xBZZ to send to stage-1-uploader' }).closest('[title]'),
+    ).toHaveAttribute('title', 'Digits and one dot only, such as 1.5.');
 
     type('xBZZ to send to stage-1-uploader', '');
     tick('pool-360p');

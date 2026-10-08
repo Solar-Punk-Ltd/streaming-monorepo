@@ -1,6 +1,9 @@
+import type { ReactNode } from 'react';
 import {
+  Box,
   Checkbox,
   Chip,
+  InputAdornment,
   Paper,
   Stack,
   Table,
@@ -16,64 +19,179 @@ import type { AdminFundingNode, FundingTransferKind } from '@streaming-monorepo/
 
 import { shortHex } from '../../format';
 import { CopyButton } from '../CopyButton';
-import { acceptsAmountTyping, formatUnits, readAmount } from './amounts';
-import { TOKENS, type Drafts, type NodeDraft, type NodeGroup } from './balance';
+import { acceptsAmountTyping, formatShort, formatUnits, readAmount } from './amounts';
+import { nodeCaption, nodeName, TOKENS, type Drafts, type NodeDraft, type NodeGroup } from './balance';
 
 const NO_DRAFT: NodeDraft = { ticked: false, xdai: '', xbzz: '' };
 
-/** Whether the brand wallet may send to the node's address: confirmed, new, or changed since it was confirmed. */
-function PinState({ node }: { node: AdminFundingNode }) {
+const KINDS: readonly FundingTransferKind[] = ['xdai', 'xbzz'];
+
+/**
+ * The tick column's width, set on a plain header cell. A table of fixed column widths takes them from its header, and
+ * a small table's checkbox cell is 28 pixels, padding included, which the checkbox would stand out of.
+ */
+const CHECKBOX_WIDTH = 56;
+
+/** The height of one token's line in the Balance, Send and After columns, the amount field's, so the three line up. */
+const LINE_HEIGHT = 32;
+
+const DIGITS = /^\d+$/;
+
+function Line({ children, end = false }: { children: ReactNode; end?: boolean }) {
+  return (
+    <Box
+      sx={{
+        height: LINE_HEIGHT,
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: end ? 'flex-end' : 'flex-start',
+      }}
+    >
+      {children}
+    </Box>
+  );
+}
+
+/** Whether the brand wallet may send to the node's address, as one chip; a changed one names the old one on hover. */
+function PinChip({ node }: { node: AdminFundingNode }) {
   if (node.pin === 'pinned') return <Chip size="small" variant="outlined" color="success" label="Confirmed" />;
   if (node.pin === 'new') return <Chip size="small" variant="outlined" color="warning" label="New address" />;
   return (
-    <Stack spacing={0.25} sx={{ alignItems: 'flex-start' }}>
-      <Chip size="small" variant="outlined" color="error" label="Address changed" />
-      {node.pinnedAddress ? (
-        <Typography variant="caption" sx={{ fontFamily: 'monospace' }}>
-          was {shortHex(node.pinnedAddress)}
+    <Chip
+      size="small"
+      variant="outlined"
+      color="error"
+      label="Address changed"
+      title={node.pinnedAddress ? `It was ${node.pinnedAddress}` : undefined}
+    />
+  );
+}
+
+/**
+ * A node in three lines: its name, which never wraps and has the whole label as its tooltip, then its stage and role,
+ * then its wallet with a copy button and the state of its address. A read error comes under them.
+ */
+function NodeCard({ node, group }: { node: AdminFundingNode; group: NodeGroup }) {
+  return (
+    <Stack spacing={0.25} sx={{ minWidth: 0 }}>
+      <Typography variant="body2" noWrap title={node.label}>
+        {nodeName(node, group)}
+      </Typography>
+      <Typography variant="caption" noWrap sx={{ color: 'text.secondary' }}>
+        {nodeCaption(node, group)}
+      </Typography>
+      <Stack direction="row" spacing={0.5} sx={{ alignItems: 'center' }}>
+        {node.walletAddress ? (
+          <>
+            <Typography variant="caption" sx={{ fontFamily: 'monospace' }}>
+              {shortHex(node.walletAddress)}
+            </Typography>
+            <CopyButton value={node.walletAddress} label="Wallet address" />
+          </>
+        ) : (
+          <Typography variant="caption" sx={{ color: 'text.secondary' }}>
+            Wallet not read
+          </Typography>
+        )}
+        <PinChip node={node} />
+      </Stack>
+      {node.readError ? (
+        <Typography variant="caption" sx={{ color: 'error.main' }}>
+          {node.readError}
         </Typography>
       ) : null}
     </Stack>
   );
 }
 
-function AmountField({
+/** One balance to three decimals, its token after it, and the exact amount as its tooltip. */
+function BalanceLine({ value, kind }: { value: string | null; kind: FundingTransferKind }) {
+  const { name, decimals } = TOKENS[kind];
+  return (
+    <Typography
+      variant="body2"
+      noWrap
+      title={value === null ? undefined : `${formatUnits(value, decimals)} ${name}`}
+      sx={{ fontVariantNumeric: 'tabular-nums' }}
+    >
+      {formatShort(value, decimals)} {name}
+    </Typography>
+  );
+}
+
+/**
+ * One token's amount to send, its token at the end. A character a number cannot hold is refused as it is typed or
+ * pasted, and the field keeps what it had. A problem outlines it in red and is its tooltip, and the bar under the
+ * tables says it too, so no line under the box changes the row's height.
+ */
+function SendField({
   kind,
   node,
   value,
-  onChange,
+  disabled,
+  onType,
 }: {
   kind: FundingTransferKind;
   node: AdminFundingNode;
   value: string;
-  onChange: (value: string) => void;
+  disabled: boolean;
+  onType: (value: string) => void;
 }) {
-  const read = readAmount(value, TOKENS[kind].decimals);
-  // A character a number cannot hold is refused as it is typed or pasted, and the field keeps what it had. The line
-  // under the box appears only with a problem to say: an empty one kept for it would sit the box above the row's middle.
+  const { name, decimals } = TOKENS[kind];
+  const read = readAmount(value, decimals);
   return (
     <TextField
       size="small"
-      label={TOKENS[kind].name}
+      placeholder="0"
       value={value}
+      disabled={disabled}
       onChange={(e) => {
-        if (acceptsAmountTyping(e.target.value)) onChange(e.target.value);
+        if (acceptsAmountTyping(e.target.value)) onType(e.target.value);
       }}
       error={read.kind === 'invalid'}
-      helperText={read.kind === 'invalid' ? read.problem : undefined}
-      slotProps={{ htmlInput: { inputMode: 'decimal', 'aria-label': `${TOKENS[kind].name} to send to ${node.label}` } }}
-      sx={{ width: 150 }}
+      title={read.kind === 'invalid' ? read.problem : undefined}
+      slotProps={{
+        htmlInput: { inputMode: 'decimal', 'aria-label': `${name} to send to ${node.label}` },
+        input: { endAdornment: <InputAdornment position="end">{name}</InputAdornment> },
+      }}
+      sx={{
+        width: '100%',
+        '& .MuiInputBase-root': { height: LINE_HEIGHT },
+        '& .MuiInputBase-input': { textAlign: 'right', fontVariantNumeric: 'tabular-nums' },
+      }}
     />
   );
 }
 
-function balanceOf(value: string | null, decimals: number): string {
-  return value === null ? '—' : formatUnits(value, decimals);
+/** What the node will hold once the amount arrives, or a dash while there is no amount to add or no balance read. */
+function AfterLine({ balance, typed, kind }: { balance: string | null; typed: string; kind: FundingTransferKind }) {
+  const { name, decimals } = TOKENS[kind];
+  const read = readAmount(typed, decimals);
+  if (read.kind !== 'ok' || balance === null || !DIGITS.test(balance)) {
+    return (
+      <Typography variant="body2" sx={{ color: 'text.disabled' }}>
+        —
+      </Typography>
+    );
+  }
+  const after = (BigInt(balance) + BigInt(read.value)).toString();
+  return (
+    <Typography
+      variant="body2"
+      noWrap
+      title={`${formatUnits(after, decimals)} ${name}`}
+      sx={{ color: 'success.main', fontVariantNumeric: 'tabular-nums' }}
+    >
+      {formatShort(after, decimals)} {name}
+    </Typography>
+  );
 }
 
 /**
- * One group of nodes, the catalogue node or one stage's: each with its role, wallet address and balances, any read
- * error, and whether its address is confirmed. Ticking a node opens an xDAI and an xBZZ amount to send it.
+ * One group of nodes, the catalogue node or one stage's, as a ledger line per token: the node's balance, the amount to
+ * send it and what it holds after, so each amount stands beside the balance it tops up. The amount fields are always
+ * there: typing an amount ticks the node, clearing both unticks it, and unticking clears them, so a row never changes
+ * its size. Each node's card names it, its stage and role, and its wallet, with its address's state on that line.
  */
 export function NodeTable({
   group,
@@ -95,72 +213,78 @@ export function NodeTable({
         </Typography>
       ) : (
         <TableContainer component={Paper} variant="outlined">
-          <Table size="small" aria-label={`Nodes of ${group.title}`}>
+          <Table size="small" aria-label={`Nodes of ${group.title}`} sx={{ tableLayout: 'fixed', minWidth: 760 }}>
             <TableHead>
               <TableRow>
-                <TableCell padding="checkbox" />
+                <TableCell sx={{ width: CHECKBOX_WIDTH }} />
                 <TableCell>Node</TableCell>
-                <TableCell>Wallet</TableCell>
-                <TableCell align="right">xDAI</TableCell>
-                <TableCell align="right">xBZZ</TableCell>
-                <TableCell>Address</TableCell>
-                <TableCell>Send</TableCell>
+                <TableCell align="right" sx={{ width: 140 }}>
+                  Balance
+                </TableCell>
+                <TableCell sx={{ width: 200 }}>Send</TableCell>
+                <TableCell align="right" sx={{ width: 140 }}>
+                  After
+                </TableCell>
               </TableRow>
             </TableHead>
             <TableBody>
               {group.nodes.map((node) => {
                 const draft = drafts[node.nodeId] ?? NO_DRAFT;
-                const set = (patch: Partial<NodeDraft>) => onChange(node.nodeId, { ...draft, ...patch });
+                const save = (next: NodeDraft) => onChange(node.nodeId, next);
+                const type = (kind: FundingTransferKind, value: string) => {
+                  const next = { ...draft, [kind]: value };
+                  save({ ...next, ticked: next.xdai !== '' || next.xbzz !== '' });
+                };
+                const balances: Record<FundingTransferKind, string | null> = {
+                  xdai: node.xdaiWei,
+                  xbzz: node.xbzzPlur,
+                };
+                const noWallet = node.walletAddress === null;
                 return (
-                  <TableRow key={node.nodeId}>
+                  <TableRow key={node.nodeId} selected={draft.ticked}>
                     <TableCell padding="checkbox">
                       <Checkbox
                         checked={draft.ticked}
-                        disabled={node.walletAddress === null}
-                        onChange={(e) => set({ ticked: e.target.checked })}
+                        disabled={noWallet}
+                        onChange={(e) => save(e.target.checked ? { ...draft, ticked: true } : NO_DRAFT)}
                         slotProps={{ input: { 'aria-label': `Send to ${node.label}` } }}
                       />
                     </TableCell>
                     <TableCell>
-                      <Stack spacing={0.25}>
-                        <Typography variant="body2">{node.label}</Typography>
-                        <Typography variant="caption" sx={{ color: 'text.secondary' }}>
-                          {node.role}
-                        </Typography>
-                        {node.readError ? (
-                          <Typography variant="caption" sx={{ color: 'error.main' }}>
-                            {node.readError}
-                          </Typography>
-                        ) : null}
+                      <NodeCard node={node} group={group} />
+                    </TableCell>
+                    <TableCell align="right">
+                      <Stack spacing={0.5}>
+                        {KINDS.map((kind) => (
+                          <Line key={kind} end>
+                            <BalanceLine value={balances[kind]} kind={kind} />
+                          </Line>
+                        ))}
                       </Stack>
                     </TableCell>
                     <TableCell>
-                      {node.walletAddress ? (
-                        <Stack direction="row" spacing={0.5} sx={{ alignItems: 'center' }}>
-                          <Typography variant="body2" sx={{ fontFamily: 'monospace' }}>
-                            {shortHex(node.walletAddress)}
-                          </Typography>
-                          <CopyButton value={node.walletAddress} label="Wallet address" />
-                        </Stack>
-                      ) : (
-                        <Typography variant="body2" sx={{ color: 'text.secondary' }}>
-                          Not read
-                        </Typography>
-                      )}
+                      <Stack spacing={0.5}>
+                        {KINDS.map((kind) => (
+                          <Line key={kind}>
+                            <SendField
+                              kind={kind}
+                              node={node}
+                              value={draft[kind]}
+                              disabled={noWallet}
+                              onType={(value) => type(kind, value)}
+                            />
+                          </Line>
+                        ))}
+                      </Stack>
                     </TableCell>
-                    <TableCell align="right">{balanceOf(node.xdaiWei, TOKENS.xdai.decimals)}</TableCell>
-                    <TableCell align="right">{balanceOf(node.xbzzPlur, TOKENS.xbzz.decimals)}</TableCell>
-                    <TableCell>
-                      <PinState node={node} />
-                    </TableCell>
-                    <TableCell>
-                      {draft.ticked ? (
-                        // The cell centres the pair in the row; the boxes stay level when one has a problem under it.
-                        <Stack direction="row" spacing={1} sx={{ alignItems: 'flex-start' }}>
-                          <AmountField kind="xdai" node={node} value={draft.xdai} onChange={(xdai) => set({ xdai })} />
-                          <AmountField kind="xbzz" node={node} value={draft.xbzz} onChange={(xbzz) => set({ xbzz })} />
-                        </Stack>
-                      ) : null}
+                    <TableCell align="right">
+                      <Stack spacing={0.5}>
+                        {KINDS.map((kind) => (
+                          <Line key={kind} end>
+                            <AfterLine balance={balances[kind]} typed={draft[kind]} kind={kind} />
+                          </Line>
+                        ))}
+                      </Stack>
                     </TableCell>
                   </TableRow>
                 );

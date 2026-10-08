@@ -1,7 +1,7 @@
 import { XBZZ_DECIMALS, XDAI_DECIMALS } from '@streaming-monorepo/web2-admin-common';
 import { describe, expect, it } from 'vitest';
 
-import { acceptsAmountTyping, formatUnits, readAmount } from '../components/funding/amounts';
+import { acceptsAmountTyping, formatShort, formatUnits, readAmount } from '../components/funding/amounts';
 
 describe('an amount in base units, as the Funding page shows it', () => {
   it('writes wei as xDAI and PLUR as xBZZ exactly, with no trailing zeros', () => {
@@ -21,6 +21,32 @@ describe('an amount in base units, as the Funding page shows it', () => {
   it('shows a dash for a value that is not an amount in base units', () => {
     for (const bad of ['', '-1', '1.5', '0x10', 'abc', ' 1']) {
       expect(formatUnits(bad, XDAI_DECIMALS), bad).toBe('—');
+    }
+  });
+});
+
+describe('an amount in base units, short, as the node tables show it', () => {
+  it('rounds half up to three decimals and keeps the zeros, from BigInt alone', () => {
+    expect(formatShort('109999993971072141', XDAI_DECIMALS)).toBe('0.110');
+    expect(formatShort('99999992745065433', XDAI_DECIMALS)).toBe('0.100');
+    expect(formatShort('114514240000000000', XBZZ_DECIMALS)).toBe('11.451');
+    expect(formatShort('296113920000000000', XBZZ_DECIMALS)).toBe('29.611');
+    expect(formatShort('1000000000000000000', XDAI_DECIMALS)).toBe('1.000');
+    expect(formatShort('1500000000000000', XDAI_DECIMALS)).toBe('0.002');
+    expect(formatShort('1499999999999999', XDAI_DECIMALS)).toBe('0.001');
+    expect(formatShort('999500000000000000', XDAI_DECIMALS)).toBe('1.000');
+    expect(formatShort('123456789012345678901234567', XDAI_DECIMALS)).toBe('123456789.012');
+  });
+
+  it('says less than 0.001 for a balance above zero that would round to nothing, and 0.000 for none', () => {
+    expect(formatShort('1', XDAI_DECIMALS)).toBe('<0.001');
+    expect(formatShort('499999999999999', XDAI_DECIMALS)).toBe('<0.001');
+    expect(formatShort('0', XDAI_DECIMALS)).toBe('0.000');
+  });
+
+  it('shows a dash for nothing read and for what is not an amount in base units', () => {
+    for (const bad of [null, '', '-1', '1.5', '0x10', 'abc', ' 1']) {
+      expect(formatShort(bad, XDAI_DECIMALS), String(bad)).toBe('—');
     }
   });
 });
