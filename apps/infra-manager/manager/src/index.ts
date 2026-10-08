@@ -38,7 +38,9 @@ import { createFundingChainRouter } from './api/routes/fundingChain.js';
 import { FundingChainService } from './domain/funding/FundingChainService.js';
 import { PostgresFundingTransferJournal } from './domain/funding/FundingTransferJournal.js';
 import { createFundingStampRouter } from './api/routes/fundingStamps.js';
-import { fundingNodeApiUrl } from './domain/funding/fundingNodeApi.js';
+import { createFundingChequebookRouter } from './api/routes/fundingChequebooks.js';
+import { fundingNodeApiUrl, fundingNodeDeployment } from './domain/funding/fundingNodeApi.js';
+import { FundingChequebookService } from './domain/funding/FundingChequebookService.js';
 import { FundingStampService } from './domain/funding/FundingStampService.js';
 import { PostgresFundingStampOperationJournal } from './domain/funding/FundingStampOperationJournal.js';
 import { ChainRpc } from './domain/chequebook/ChainRpc.js';
@@ -498,6 +500,14 @@ async function main(): Promise<void> {
     node: (apiUrl) => new BeeClient(apiUrl),
     chain: fundingRpc ? new ChainRpc(fundingRpc) : null,
   });
+  // The funding API's chequebook operations: a deposit into or a withdrawal from the chequebook of a stage's own Bee
+  // node or a rung, checked against the inventory read now, then carried out by the manager's own chequebook path and
+  // journalled in chequebook_operations as requested by web2-admin, beside the operators' own transfers.
+  const fundingChequebooks = new FundingChequebookService({
+    operations: chequebookOperations,
+    inventory: fundingInventory,
+    deployment: fundingNodeDeployment({ profiles: profileRepository }),
+  });
   profileService.setPoolStringGuard((beePublishers) => catalogueService.segmentBatchProblem(beePublishers));
   // An ABR stage deploys with its pool's current batches, and a batch set on a rung reaches its stages' stored copy.
   const stagePoolStrings = new StagePoolStrings({
@@ -580,6 +590,7 @@ async function main(): Promise<void> {
           createFundingInventoryRouter(fundingInventory),
           createFundingChainRouter(fundingChain),
           createFundingStampRouter(fundingStamps),
+          createFundingChequebookRouter(fundingChequebooks),
         ],
       },
       managerVersion: config.managerVersion,
