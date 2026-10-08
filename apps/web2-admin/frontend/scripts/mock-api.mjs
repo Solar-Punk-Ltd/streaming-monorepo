@@ -26,10 +26,12 @@
  *
  * The Funding page has a brand wallet and the mock stage's nodes, one of each
  * address state, and a send confirms a few seconds after it is made. The view
- * names the send still on its way, so a reload resumes it.
- * MOCK_FUNDING=off answers the page as not set up, and MOCK_FUNDING=refuse
- * has the chain's node refuse every transfer at the relay, which is then mined
- * anyway.
+ * names the send still on its way, so a reload resumes it. The nodes hold
+ * batches, one of each kind the Stamps tab shows, and a top-up or a dilution
+ * confirms a few seconds after it is asked for, the stamp bulk named in the
+ * view until then. MOCK_FUNDING=off answers the page as not set up, and
+ * MOCK_FUNDING=refuse has the chain's node refuse every transfer at the relay,
+ * which is then mined anyway, and the nodes refuse every stamp operation.
  *
  * No dependencies: plain node:http, plain node:crypto.
  */
@@ -92,6 +94,12 @@ const stages =
  * answer of its broadcast was lost: within the manager's 30 minutes it holds up a new send, and a few seconds later the
  * manager finds it in the pool and it turns `submitted`, then confirmed. Each item carries `settled` and `watched` by
  * the API's rules. The addresses are the repository's allow-listed fixtures.
+ *
+ * Phase 2, the Stamps tab: each node with a batch answers it, and the view answers today's price of postage. A stamp
+ * bulk takes its items in turn, each queued until the one before it is on its way, sent, then confirmed a few seconds
+ * later, when the batch gains its days or its depth and the node pays the cost and some gas. The route checks what the
+ * API checks, so the page's refusals can be tried. MOCK_FUNDING=refuse has the node refuse every operation, failed
+ * with a sentence, and MOCK_FUNDING=lost answers every one `unknown` first, then sent, then confirmed.
  */
 const FUNDING_CONFIGURED = process.env.MOCK_FUNDING !== 'off';
 const FUNDING_REFUSE = process.env.MOCK_FUNDING === 'refuse';
@@ -111,7 +119,28 @@ const fundingWallet = {
   xbzzPlur: 125_000_000_000_000_000n,
 };
 
-function fundingNode(nodeId, label, role, walletAddress, pinnedAddress, readError = null) {
+/** Today's price of postage as a node's chain state gives it on Gnosis Chain, with its block time and floor. */
+const FUNDING_POSTAGE = { pricePerChunkPerBlockPlur: '24000', blockSeconds: 5, minimumValidityBlocks: 17280 };
+const DAY_MS = 86_400_000;
+/** When the item of a stamp bulk at `index` is sent, after the one before it, and when it is confirmed after that. */
+const STAMP_SEND_EVERY_MS = 2_000;
+const STAMP_CONFIRM_AFTER_MS = 6_000;
+/** How long a `lost` stamp operation stays `unknown` before the manager finds it on the chain. */
+const STAMP_FOUND_AFTER_MS = 3_000;
+/** The gas a stamp operation costs its node, in wei. */
+const STAMP_GAS_WEI = 200_000_000_000_000n;
+/** The sentence of a stamp operation the node refused, as MOCK_FUNDING=refuse answers every one. */
+const STAMP_REFUSED = 'The node refused it, so the batch is as it was.';
+
+/**
+ * A batch as the mock holds it: what the node says of it, and when it runs out, from which its time left is worked
+ * out on every read, so it shrinks as a real one does. One the node could not be read about holds only why.
+ */
+function fundingBatch(batchId, depth, immutable, daysLeft, fillRatio) {
+  return { batchId, depth, immutable, expiresAt: Date.now() + daysLeft * DAY_MS, fillRatio, readError: null };
+}
+
+function fundingNode(nodeId, label, role, walletAddress, pinnedAddress, readError = null, batch = null) {
   return {
     nodeId,
     label,
@@ -121,10 +150,16 @@ function fundingNode(nodeId, label, role, walletAddress, pinnedAddress, readErro
     readError,
     xdaiWei: 200_000_000_000_000_000n,
     xbzzPlur: 50_000_000_000_000_000n,
+    batch,
   };
 }
 
-/** The catalogue node, then the mock stage's nodes: one confirmed, one new, one changed and one the manager could not read. */
+/**
+ * The catalogue node, then the mock stage's nodes: one confirmed, one new, one changed and one the manager could not
+ * read, by address; and by batch, the catalogue's with 40 days, the stage's immutable one whose 30 days cost more
+ * than its node holds, a rung's that no dilution leaves 7 days, an expired one, one the node could not be read about,
+ * and the gateway, which has none.
+ */
 const fundingNodes = new Map(
   [
     fundingNode(
@@ -133,6 +168,8 @@ const fundingNodes = new Map(
       'uploader',
       '0x1234567890123456789012345678901234567890',
       '0x1234567890123456789012345678901234567890',
+      null,
+      fundingBatch(`0x${'c0'.repeat(32)}`, 20, false, 40, 0.12),
     ),
     fundingNode(
       `${MOCK_STAGE_ID}:bee-uploader`,
@@ -140,14 +177,35 @@ const fundingNodes = new Map(
       'uploader',
       '0x1111111111111111111111111111111111111111',
       '0x1111111111111111111111111111111111111111',
+      null,
+      fundingBatch(`0x${'5a'.repeat(32)}`, 22, true, 12, 0.4),
     ),
-    fundingNode(`${MOCK_STAGE_ID}:360p`, 'mock-pool-360p', 'rung', '0x2222222222222222222222222222222222222222', null),
+    fundingNode(
+      `${MOCK_STAGE_ID}:360p`,
+      'mock-pool-360p',
+      'rung',
+      '0x2222222222222222222222222222222222222222',
+      null,
+      null,
+      fundingBatch(`0x${'36'.repeat(32)}`, 20, false, 10, 0.7),
+    ),
     fundingNode(
       `${MOCK_STAGE_ID}:720p`,
       'mock-pool-720p',
       'rung',
       '0x4f0e1c2b3a49586772635441302f1e0d0c0b0a09',
       '0x3f1a9c2b4d5e6f708192a3b4c5d6e7f809a1b2c3',
+      null,
+      fundingBatch(`0x${'72'.repeat(32)}`, 20, false, 0, 0.95),
+    ),
+    fundingNode(
+      `${MOCK_STAGE_ID}:1080p`,
+      'mock-pool-1080p',
+      'rung',
+      '0x3f1a9c2b4d5e6f708192a3b4c5d6e7f809a1b2c3',
+      '0x3f1a9c2b4d5e6f708192a3b4c5d6e7f809a1b2c3',
+      null,
+      { ...fundingBatch(`0x${'10'.repeat(32)}`, 20, false, 20, 0.3), readError: 'The node did not answer in time.' },
     ),
     fundingNode(`${MOCK_STAGE_ID}:gateway`, 'mock-gateway', 'gateway', null, null, 'The node did not answer.'),
   ].map((node) => [node.nodeId, node]),
@@ -156,6 +214,9 @@ const fundingNodes = new Map(
 /** bulkId -> the transfers one send asked for. */
 const fundingBulks = new Map();
 
+/** bulkId -> the top-ups or dilutions one stamp request asked for. */
+const stampBulks = new Map();
+
 /** userId -> wrong passwords in a row on the funding routes, and until when they are locked, as the API throttles them. */
 const fundingFailures = new Map();
 const fundingLockedUntil = new Map();
@@ -163,6 +224,37 @@ const fundingLockedUntil = new Map();
 function pinOf(node) {
   if (node.pinnedAddress === null) return 'new';
   return node.pinnedAddress === node.walletAddress ? 'pinned' : 'changed';
+}
+
+/** The seconds a batch has left now, 0 once it has run out. */
+function ttlOf(batch, now = Date.now()) {
+  return Math.max(0, Math.floor((batch.expiresAt - now) / 1000));
+}
+
+/** A batch as the manager answers it: every reading null, and why, for one its node could not be read about. */
+function batchAnswer(batch) {
+  if (batch === null) return null;
+  if (batch.readError) {
+    return {
+      batchId: batch.batchId,
+      depth: null,
+      immutable: null,
+      usable: null,
+      ttlSeconds: null,
+      fillRatio: null,
+      readError: batch.readError,
+    };
+  }
+  const ttlSeconds = ttlOf(batch);
+  return {
+    batchId: batch.batchId,
+    depth: batch.depth,
+    immutable: batch.immutable,
+    usable: ttlSeconds > 0,
+    ttlSeconds,
+    fillRatio: batch.fillRatio,
+    readError: null,
+  };
 }
 
 function adminFundingNode(node) {
@@ -175,6 +267,7 @@ function adminFundingNode(node) {
     xdaiWei: read ? node.xdaiWei.toString() : null,
     xbzzPlur: read ? node.xbzzPlur.toString() : null,
     readError: node.readError,
+    batch: batchAnswer(node.batch),
     pin: pinOf(node),
     pinnedAddress: node.pinnedAddress,
   };
@@ -224,6 +317,120 @@ function openFundingBulkId() {
   return open;
 }
 
+/**
+ * What a top-up of `days` costs a batch of `depth` at today's price, in PLUR, as the admin's stampQuote works it out:
+ * every block of the days, rounded up, for each of the batch's 2^depth chunks.
+ */
+function topUpCost(days, depth) {
+  const blocks = BigInt(Math.ceil((days * 86_400) / FUNDING_POSTAGE.blockSeconds));
+  return blocks * BigInt(FUNDING_POSTAGE.pricePerChunkPerBlockPlur) * 2n ** BigInt(depth);
+}
+
+/** Whether a stamp operation holds up a new stamp bulk, as a transfer holds up a new send. */
+function stampHoldsNext(item, now = Date.now()) {
+  if (item.state === 'queued' || item.state === 'submitted') return true;
+  return item.state === 'unknown' && now - item.requestedAt <= FUNDING_UNKNOWN_SETTLES_AFTER_MS;
+}
+
+/**
+ * Sends each queued stamp operation in its turn, finds the lost ones, and confirms each sent long enough ago: its batch
+ * gains its days, or its depth with its time left halved and its fill halved for each step, and its node pays the cost
+ * and the gas.
+ */
+function settleStampOperations() {
+  const now = Date.now();
+  for (const items of stampBulks.values()) {
+    for (const item of items) {
+      const sentAt = item.requestedAt + item.index * STAMP_SEND_EVERY_MS;
+      if (item.state === 'queued' && now >= sentAt) {
+        item.state = 'submitted';
+        item.txHash = `0x${hex(32)}`;
+      }
+      if (item.state === 'unknown' && now - sentAt >= STAMP_FOUND_AFTER_MS) {
+        item.state = 'submitted';
+        item.watched = false;
+      }
+      if (item.state !== 'submitted' || now - sentAt < STAMP_CONFIRM_AFTER_MS) continue;
+      item.state = 'confirmed';
+      const node = fundingNodes.get(item.nodeId);
+      const batch = node.batch;
+      if (item.kind === 'topup') {
+        batch.expiresAt += item.days * DAY_MS;
+        node.xbzzPlur -= item.cost;
+      } else {
+        const scale = 2 ** item.steps;
+        batch.depth += item.steps;
+        batch.expiresAt = now + Math.max(0, batch.expiresAt - now) / scale;
+        batch.fillRatio /= scale;
+      }
+      node.xdaiWei = node.xdaiWei > STAMP_GAS_WEI ? node.xdaiWei - STAMP_GAS_WEI : 0n;
+    }
+  }
+}
+
+/** The latest stamp bulk with an operation that holds up a new one, as the API names it, or null. */
+function openStampBulkId() {
+  let open = null;
+  for (const [bulkId, items] of stampBulks) {
+    if (items.some((item) => stampHoldsNext(item))) open = bulkId;
+  }
+  return open;
+}
+
+/** A stamp operation as the API answers it, on the request and on every read. */
+function stampItemAnswer(item) {
+  return {
+    requestId: item.requestId,
+    kind: item.kind,
+    nodeId: item.nodeId,
+    nodeLabel: item.nodeLabel,
+    batchId: item.batchId,
+    days: item.kind === 'topup' ? item.days : null,
+    steps: item.kind === 'dilute' ? item.steps : null,
+    costPlur: item.kind === 'topup' ? item.cost.toString() : null,
+    state: item.state,
+    txHash: item.txHash,
+    error: item.error,
+    settled: !stampHoldsNext(item),
+    watched: item.watched,
+  };
+}
+
+/**
+ * Why the mock refuses a stamp request, as the API checks one, or null: one kind, each batch once, each the batch of
+ * its node, read, usable and at the depth the page saw; whole days of 1 or more; 1 or 2 steps that leave 7 days; every
+ * node's xBZZ covering its top-ups and some xDAI for the gas.
+ */
+function stampRefusal(asked) {
+  if (asked.length === 0) return 'Tick a batch first.';
+  if (new Set(asked.map((item) => item?.kind)).size !== 1) return 'A stamp request takes one kind of operation.';
+  if (new Set(asked.map((item) => item?.batchId)).size !== asked.length) return 'A batch is named twice.';
+  const costs = new Map();
+  for (const item of asked) {
+    const node = fundingNodes.get(item?.nodeId);
+    const batch = node?.batch;
+    if (!batch || batch.batchId !== item.batchId) return `${item?.batchId} is not the batch of ${item?.nodeId}.`;
+    if (batch.readError || ttlOf(batch) === 0) return `The batch of ${node.label} cannot take it now.`;
+    if (batch.depth !== item.expectedDepth) {
+      return `The batch of ${node.label} is at depth ${batch.depth} now, not ${item.expectedDepth}.`;
+    }
+    if (item.kind === 'topup') {
+      if (!Number.isSafeInteger(item.days) || item.days < 1) return 'The days are a whole number, 1 or more.';
+      costs.set(node, (costs.get(node) ?? 0n) + topUpCost(item.days, batch.depth));
+    } else if (item.kind === 'dilute') {
+      if (item.steps !== 1 && item.steps !== 2) return 'A dilution takes 1 or 2 steps.';
+      if (ttlOf(batch) / 2 ** item.steps < 7 * 86_400) return `It would leave the batch of ${node.label} under 7 days.`;
+    } else {
+      return 'An operation is a top-up or a dilution.';
+    }
+    if (node.xdaiWei === 0n) return `${node.label} holds no xDAI to pay the gas.`;
+  }
+  for (const [node, cost] of costs) {
+    if (cost > node.xbzzPlur) return `${node.label} holds less xBZZ than its top-ups cost.`;
+  }
+  return null;
+}
+
 function fundingView() {
   const observedAt = new Date().toISOString();
   if (!FUNDING_CONFIGURED) {
@@ -233,12 +440,15 @@ function fundingView() {
       chainId: 100,
       stages: [],
       catalogue: null,
+      postage: null,
       observedAt,
       managerError: null,
       openBulkId: null,
+      openStampBulkId: null,
     };
   }
   settleFundingTransfers();
+  settleStampOperations();
   const nodesOf = (stageId) => [...fundingNodes.values()].filter((node) => node.nodeId.startsWith(`${stageId}:`));
   return {
     configured: true,
@@ -254,9 +464,11 @@ function fundingView() {
       nodes: nodesOf(stage.stageId).map(adminFundingNode),
     })),
     catalogue: adminFundingNode(fundingNodes.get('catalogue:bee-uploader')),
+    postage: FUNDING_POSTAGE,
     observedAt,
     managerError: null,
     openBulkId: openFundingBulkId(),
+    openStampBulkId: openStampBulkId(),
   };
 }
 
@@ -697,6 +909,51 @@ async function handle(req, res) {
     if (!items) return send(res, 404, { error: 'not_found', path });
     settleFundingTransfers();
     return send(res, 200, { items: items.map(fundingItemAnswer) });
+  }
+
+  if (path === '/api/funding/stamp-operations' && method === 'GET') {
+    const items = stampBulks.get(url.searchParams.get('bulkId') ?? '');
+    if (!items) return send(res, 404, { error: 'not_found', path });
+    settleStampOperations();
+    return send(res, 200, { items: items.map(stampItemAnswer) });
+  }
+
+  // No password: a stamp operation pays from the nodes' own wallets, so the page asks in a confirm dialog alone. One
+  // stamp bulk at a time, as the API has it, whatever a send of the brand wallet is doing.
+  if (path === '/api/funding/stamp-operations' && method === 'POST') {
+    if (!FUNDING_CONFIGURED) return send(res, 404, { error: 'not_found', path });
+    const body = await readJson(req);
+    settleStampOperations();
+    if (openStampBulkId() !== null) {
+      return send(res, 409, { error: 'conflict', message: 'An earlier stamp bulk has not settled yet.' });
+    }
+    const asked = Array.isArray(body.items) ? body.items : [];
+    const refusal = stampRefusal(asked);
+    if (refusal) return send(res, 422, { error: 'stamp_refused', message: refusal });
+    const bulkId = randomUUID();
+    const requestedAt = Date.now();
+    const items = asked.map((item, index) => {
+      const node = fundingNodes.get(item.nodeId);
+      return {
+        requestId: randomUUID(),
+        index,
+        kind: item.kind,
+        nodeId: node.nodeId,
+        nodeLabel: node.label,
+        batchId: item.batchId,
+        days: item.kind === 'topup' ? item.days : null,
+        steps: item.kind === 'dilute' ? item.steps : null,
+        cost: item.kind === 'topup' ? topUpCost(item.days, node.batch.depth) : 0n,
+        state: FUNDING_REFUSE ? 'failed' : FUNDING_LOST ? 'unknown' : 'queued',
+        txHash: FUNDING_LOST ? `0x${hex(32)}` : null,
+        error: FUNDING_REFUSE ? STAMP_REFUSED : null,
+        watched: FUNDING_LOST,
+        requestedAt,
+      };
+    });
+    stampBulks.set(bulkId, items);
+    settleStampOperations();
+    return send(res, 202, { bulkId, items: items.map(stampItemAnswer) });
   }
 
   if ((path === '/api/funding/pins' || path === '/api/funding/transfers') && method === 'POST') {
