@@ -46,6 +46,7 @@ import { isUsableDuration, measureSegmentDuration, SegmentDurationReading } from
 
 import { AbrLadder } from './AbrLadder.js';
 import { AdminApiClient } from './AdminApiClient.js';
+import { AdminStreamGoneError } from './AdminStreamGoneError.js';
 import { BeePublisherPool, PublisherRoute } from './BeePublisherPool.js';
 import {
   agreedResumePoint,
@@ -3131,11 +3132,21 @@ export class StreamOrchestrator {
    *
    * Never throws: this rung is already out of the live maps, and the stop that called this has an
    * outcome of its own to answer with.
+   *
+   * ⛔⛔ The admin answering this report that the stream does not exist lets the rung's recovery entry
+   * go, as a finalize's own report does. On 2026-10-08 a deleted stream's rung recovered, failed its
+   * finalize before reaching any report because it could not read its feed head, and this report was
+   * the only one it sent, so the entry survived to be recovered and refused at every start. Removed
+   * only while no session holds the id, since one started during the report would own an entry of its
+   * own under it. Every other failure keeps the entry, for the reasons `drainUploader` gives.
    */
   private async announceUnfinished(streamId: string, uploader: StreamUploader): Promise<void> {
     try {
       await uploader.announceUnfinished();
     } catch (error) {
+      if (error instanceof AdminStreamGoneError && !this.activeStreams.has(streamId)) {
+        uploader.dropRecoveryEntryOfDeletedStream(error);
+      }
       this.errorHandler.handleError(error, `StreamOrchestrator.announceUnfinished - ${streamId}`);
     }
   }

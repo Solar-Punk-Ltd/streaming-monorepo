@@ -395,6 +395,8 @@ export class StreamUploader {
    * outage as segments this uploader failed to name when nothing here failed at all.
    */
   private announcedThrough: number | null = null;
+  /** Whether {@link dropRecoveryEntryOfDeletedStream} has already let this stream's entry go. */
+  private droppedForDeletedStream = false;
   private segmentsNeverNamed = 0;
   /** Whether the recovery entry under this stream id still describes this uploader. See `retire`. */
   private ownsRecoveryEntry = true;
@@ -1248,13 +1250,31 @@ export class StreamUploader {
    */
   private letGoOfADeletedStream(error: unknown): never {
     if (error instanceof AdminStreamGoneError && this.ownsRecoveryEntry) {
-      this.logger.warn(
-        `[StreamUploader] The admin has no stream ${error.adminStreamId} any more, so ${this.streamId} drops ` +
-          'its recovery entry rather than be recovered and refused again at every start',
-      );
-      this.clearRecoveryEntry();
+      this.dropRecoveryEntryOfDeletedStream(error);
     }
     throw error;
+  }
+
+  /**
+   * Remove this stream's recovery entry because the admin has deleted the stream, saying so in one line.
+   *
+   * ⛔ Without the ownership check {@link letGoOfADeletedStream} makes, because its other caller is the
+   * orchestrator after a failed stop, when this uploader has already been retired so that its entry
+   * survives for the next boot. The orchestrator makes the same check its own way, by removing only
+   * while no live session holds this stream id, which is also what a successor needs before it can
+   * write an entry of its own under the id.
+   */
+  public dropRecoveryEntryOfDeletedStream(error: AdminStreamGoneError): void {
+    // Once, because a finalize refused this way is followed by the unfinished report, refused the same way.
+    if (this.droppedForDeletedStream) {
+      return;
+    }
+    this.droppedForDeletedStream = true;
+    this.logger.warn(
+      `[StreamUploader] The admin has no stream ${error.adminStreamId} any more, so ${this.streamId} drops ` +
+        'its recovery entry rather than be recovered and refused again at every start',
+    );
+    this.recoveryStore.remove(this.streamId);
   }
 
   private clearRecoveryEntry(): void {

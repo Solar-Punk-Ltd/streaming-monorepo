@@ -25,6 +25,7 @@ import { after, describe, it } from 'node:test';
 import { AbrLadder, DEFAULT_LADDER_SPEC } from '../src/libs/AbrLadder.js';
 import { ADMIN_STATE_LIVE, AdminApiClient, AdminStateReport } from '../src/libs/AdminApiClient.js';
 import { AdminLadderRegistry } from '../src/libs/AdminLadderRegistry.js';
+import { Logger } from '../src/libs/Logger.js';
 import { MasterFeedWriter } from '../src/libs/MasterFeedWriter.js';
 import { RecoveryStore } from '../src/libs/RecoveryStore.js';
 import { StreamOrchestrator } from '../src/libs/StreamOrchestrator.js';
@@ -59,6 +60,8 @@ interface FakeAdmin {
   client: AdminApiClient;
   states: AdminStateReport[];
   rungs: Set<string>;
+  /** Every rendition report the admin refused, as its body, in order. */
+  refusedRenditions: Rendition[];
   /** From now on every report is answered with this. */
   refuseWith(refusal: Refusal): void;
 }
@@ -68,10 +71,14 @@ function fakeAdmin(): FakeAdmin {
   const states: AdminStateReport[] = [];
   const rungs = new Set<string>();
   const held: Rendition[] = [];
+  const refusedRenditions: Rendition[] = [];
   let refusal: Refusal | null = null;
 
   const fetcher = (async (input: string | URL | Request, init?: RequestInit) => {
     if (refusal !== null) {
+      if (String(input).endsWith('/renditions')) {
+        refusedRenditions.push(JSON.parse(String(init?.body)) as Rendition);
+      }
       return new Response(JSON.stringify(refusal.body), { status: refusal.status });
     }
     const body = JSON.parse(String(init?.body)) as unknown;
@@ -97,6 +104,7 @@ function fakeAdmin(): FakeAdmin {
     client: new AdminApiClient({ baseUrl: ADMIN_URL, token: ADMIN_TOKEN, fetcher, sleep: async () => {} }),
     states,
     rungs,
+    refusedRenditions,
     refuseWith: (next) => {
       refusal = next;
     },
@@ -245,5 +253,113 @@ describe('a single-rendition broadcast whose stream the admin no longer knows', 
     const store = await broadcastThenStopWhileAdminRefuses(PATH_NOT_ROUTED, SINGLE_RENDITION);
 
     assert.deepEqual(await nextBootRecovers(store, SINGLE_RENDITION), [BASE]);
+  });
+});
+
+/**
+ * ⛔⛔ **Measured live 2026-10-08 on the test stack, after the two fixes above were deployed.** The deleted
+ * stream's 1080p entry recovered at boot and its finalize failed before any rendition report, because the
+ * rung could not tell whether it had published its recording before the crash. The orchestrator then
+ * reported the rung as stopped without a recording, the admin answered that report 404 with
+ * `stream_not_found`, and the entry stayed on disk, because nothing on that path let it go.
+ */
+describe('a recovered rung whose finalize fails before its report, of a stream the admin no longer knows', () => {
+  /** A head read bee refuses outright, which no retry window spends itself on. */
+  const headRefused = (): never => {
+    throw { status: 400, message: 'feed head refused' };
+  };
+
+  /**
+   * A ladder broadcast that crashed mid-way: its entries are copied off the disk while it is live, which
+   * is what a killed process leaves. The live broadcast itself is then cleaned up against the original.
+   */
+  async function entriesACrashLeft(): Promise<RecoveryStore> {
+    const live = newStore();
+    const admin = fakeAdmin();
+    const orch = adminOrchestrator(admin, live, { feedHead: () => null });
+    try {
+      for (const rung of RUNGS) {
+        orch.startStream(rungId(rung), MEDIA_TYPE_VIDEO, undefined, DECLARED);
+      }
+      for (const rung of RUNGS) {
+        orch.handleSegment(rungId(rung), 0, 2, Buffer.from(`${rung}-segment-0`));
+      }
+      await waitFor(
+        () => admin.rungs.size === RUNGS.length && live.listActive().length === RUNGS.length,
+        SETTLE_CEILING_MS,
+      );
+      const crashed = fs.mkdtempSync(path.join(os.tmpdir(), 'deleted-admin-stream-crash-'));
+      stateDirs.push(crashed);
+      for (const streamId of live.listActive()) {
+        const state = live.load(streamId);
+        assert.ok(state, `entry ${streamId} did not read back`);
+        new RecoveryStore(crashed).save(streamId, state);
+      }
+      return new RecoveryStore(crashed);
+    } finally {
+      await orch.cleanup();
+    }
+  }
+
+  /** The next boot recovers every rung, and each recovery times out into a finalize that cannot read its head. */
+  async function recoverAndFinalizeWhileAdminRefuses(store: RecoveryStore, refusal: Refusal): Promise<FakeAdmin> {
+    const admin = fakeAdmin();
+    admin.refuseWith(refusal);
+    const orch = adminOrchestrator(admin, store, { feedHead: headRefused });
+    try {
+      assert.equal((await orch.recoverStreams()).length, RUNGS.length, 'every rung was supposed to recover');
+      for (const rung of RUNGS) {
+        await orch.stopStream(rungId(rung));
+        assert.equal(orch.getStreamStatus(rungId(rung)).state, STREAM_LIFECYCLE_FAILED);
+      }
+    } finally {
+      await orch.cleanup();
+    }
+    return admin;
+  }
+
+  it('lets each entry go when the stopped-without-a-recording report meets stream_not_found', async () => {
+    const store = await entriesACrashLeft();
+    const admin = await recoverAndFinalizeWhileAdminRefuses(store, STREAM_DELETED);
+
+    assert.ok(
+      admin.refusedRenditions.length > 0 && admin.refusedRenditions.every((report) => report.index === undefined),
+      'the finalize was supposed to fail before any report naming a recording, so only the unfinished report reached the admin',
+    );
+    assert.deepEqual(store.listActive(), [], 'a deleted stream′s entries were kept to be refused at every boot');
+  });
+
+  /** A finalize refused this way is followed by the unfinished report, refused the same way, and one line says it. */
+  it('says once per rung that it let the entry go, though two reports were refused', async () => {
+    const lines: string[] = [];
+    const logger = Logger.getInstance();
+    const previous = logger.configure({ sink: (_level, line) => lines.push(line) });
+    try {
+      await broadcastThenStopWhileAdminRefuses(STREAM_DELETED);
+    } finally {
+      logger.configure(previous);
+    }
+
+    for (const rung of RUNGS) {
+      assert.equal(
+        lines.filter((line) => line.includes(`${rungId(rung)} drops its recovery entry`)).length,
+        1,
+        `rung ${rung} said it dropped its entry other than once`,
+      );
+    }
+  });
+
+  it('keeps each entry when that report meets an admin that is only unavailable', async () => {
+    const store = await entriesACrashLeft();
+    await recoverAndFinalizeWhileAdminRefuses(store, ADMIN_UNAVAILABLE);
+
+    assert.deepEqual([...store.listActive()].sort(), RUNGS.map(rungId).sort());
+  });
+
+  it('keeps each entry when that report meets a 404 that does not name the stream as missing', async () => {
+    const store = await entriesACrashLeft();
+    await recoverAndFinalizeWhileAdminRefuses(store, PATH_NOT_ROUTED);
+
+    assert.deepEqual([...store.listActive()].sort(), RUNGS.map(rungId).sort());
   });
 });
