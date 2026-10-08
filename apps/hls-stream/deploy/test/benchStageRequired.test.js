@@ -90,6 +90,35 @@ describe('a bench driver with no stage named', () => {
   });
 });
 
+/**
+ * That a bench driver publishes at the stage's own segment length rather than an assumed one. These
+ * used to default the publisher's GOP to 0.5, the stage's old default, so a sitting against a stage
+ * cutting 2 s segments published at a GOP the stage did not cut at.
+ */
+describe('a bench driver with no segment length named', () => {
+  for (const [script, knob] of [
+    ['buffer-sweep-sitting.sh', 'GOP'],
+    ['crash-arms.sh', 'GOP'],
+    ['gateway-funding-arms.sh', 'GOP_SECONDS'],
+  ]) {
+    it(`${script} refuses without ${knob}, before any tool runs`, () => {
+      const refused = run(script, [], { PROFILE: 'stage-a', PORT_SLOT: '3' });
+
+      assert.notEqual(refused.status, 0, refused.stderr);
+      assert.match(refused.stderr, new RegExp(`${knob}.*HLS_FRAGMENT`));
+      assert.equal(refused.ran, false, 'a tool ran before the refusal');
+    });
+  }
+
+  it('byte-source-arms.sh refuses with neither GOP_SECONDS nor HLS_FRAGMENT, before any tool runs', () => {
+    const refused = run('byte-source-arms.sh', [], { PROFILE: 'stage-a', PORT_SLOT: '3' });
+
+    assert.notEqual(refused.status, 0, refused.stderr);
+    assert.match(refused.stderr, /HLS_FRAGMENT/);
+    assert.equal(refused.ran, false, 'a tool ran before the refusal');
+  });
+});
+
 /** Launchers run from a workstation, which take the stage as flags beside --target. */
 describe('a bench launcher with no stage named', () => {
   for (const script of ['bench-on-host.sh', 'bench-profiles.sh', 'bench-sweep.sh', 'browser-on-host.sh']) {
