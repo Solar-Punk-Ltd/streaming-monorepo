@@ -86,6 +86,38 @@ describe('the batches, grouped', () => {
     ]);
   });
 
+  it('asks for a batch two listings carry under the first that can take it, or the first when neither can', () => {
+    const pooled = `0x${'ff'.repeat(32)}`;
+    const pool = { nodeId: 'pool:720p', role: 'rung' } as const;
+    const view = makeStampView();
+    // The main stage's listing could not be read about the batch; the second stage's could.
+    view.stages[0]?.nodes.push(makeNode({ ...pool, label: 'main-720p', batch: unreadBatch(pooled) }));
+    view.stages[1]?.nodes.push(makeNode({ ...pool, label: 'second-720p', batch: makeBatch({ batchId: pooled }) }));
+    const listedFor = (batchId: string) =>
+      allBatchRows(view)
+        .filter((row) => row.batch.batchId === batchId)
+        .map((row) => row.node.label);
+
+    expect(listedFor(pooled)).toEqual(['second-720p']);
+    const check = checkStamps(view, selection([pooled]));
+    expect(check.lines.map((line) => [line.node.label, line.batch.batchId])).toEqual([['second-720p', pooled]]);
+    expect(check.problems).toEqual([]);
+    // Still in the place the batch is first listed.
+    expect(allBatchRows(view).map((row) => row.batch.batchId)).toEqual([
+      BATCH.catalogue,
+      BATCH.stage,
+      BATCH.expired,
+      BATCH.unread,
+      pooled,
+      BATCH.rung,
+    ]);
+
+    // Expired in the second listing as well: neither can take it, and the first is kept.
+    const second = view.stages[1]?.nodes[1];
+    if (second) view.stages[1]!.nodes[1] = { ...second, batch: makeBatch({ batchId: pooled, ttlSeconds: 0 }) };
+    expect(listedFor(pooled)).toEqual(['main-720p']);
+  });
+
   it('knows whether the manager reports batches at all, which one older than the Stamps tab does not', () => {
     expect(reportsBatches(makeView())).toBe(false);
     expect(reportsBatches(makeStampView())).toBe(true);

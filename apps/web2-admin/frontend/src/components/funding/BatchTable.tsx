@@ -197,7 +197,8 @@ function DiluteAfter({ line }: { line: StampLine }) {
 
 /**
  * The cells a row fills in once it is ticked: dashes until then, so the row keeps its size. `node` is the row's own,
- * which names the node as its stage does; a batch two stages list is one line, under the node that lists it first.
+ * which names the node as its stage does; a batch two stages list is one line, under the first listing that can take
+ * an operation.
  */
 function AfterCells({
   operation,
