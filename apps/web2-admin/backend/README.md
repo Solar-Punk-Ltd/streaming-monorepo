@@ -831,10 +831,13 @@ curl -sS -X DELETE http://127.0.0.1:9877/api/internal/stages/5f0c2a8e-1b2c-4d3e-
 ## Funding
 
 The Funding page sends xDAI and xBZZ from the brand wallet to the wallets of
-the brand's nodes, through the infra manager's funding API
+the brand's nodes, and tops up and dilutes the batches the nodes upload with,
+through the infra manager's funding API
 ([docs/architecture/funding.md](../../../docs/architecture/funding.md)). The
 admin signs each transfer and the manager sends it, so the admin needs no
-chain connection of its own and the wallet's key never leaves it.
+chain connection of its own and the wallet's key never leaves it. A stamp
+operation the admin signs nothing for: the manager asks the node, which pays
+from its own wallet ([Stamp operations](#stamp-operations)).
 
 ### The brand wallet
 
@@ -918,8 +921,8 @@ printable ASCII with no space, since it travels in a header.
 (`packages/contracts/src/funding.ts`), typed and parsed by the contract:
 `inventory()`, `account(address)`, `relay(transfer)` and `status(requestId)`,
 which the funding service uses, and `stampOperation(operation)` and
-`stampOperationStatus(requestId)`, for the top-ups and dilutions of the nodes'
-batches.
+`stampOperationStatus(requestId)`, which the stamp service uses
+([Stamp operations](#stamp-operations)).
 
 - Every request carries `Authorization: Bearer <MANAGER_FUNDING_TOKEN>`, to the
   manager's address alone: the client holds the address to the rule above as
@@ -965,12 +968,12 @@ with the client, or with none while `MANAGER_FUNDING_URL` is unset.
 behind the same-site check as well. The answers are the types of
 `web2-admin-common`'s `funding.ts`.
 
-| Method | Path                                 | Answer                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                            |
-| ------ | ------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| GET    | `/api/funding`                       | `FundingView`: `configured` (false while the manager funding settings are unset, and then the manager is not asked), the brand wallet's address and balances or null while there is none, `chainId` 100, every stage's nodes and the catalogue node, each with `pin` and `pinnedAddress` (below) and the `batch` the manager uses for its uploads as the manager read it (null for a gateway, a node with no batch, and from a manager that reads none; every reading of it null, with `readError`, when the node could not be read about it), `postage`, what postage costs now as the manager read it from a node (the price per chunk per block in PLUR, the block time and the contract's floor in blocks, or null when no node answered), `observedAt`, and `openBulkId`, the latest send that still has an item holding up a new one (`queued`, `submitted`, or `unknown` within the manager's 30 minutes), or null, so the page resumes it after a reload or in another tab. It first refreshes the latest sends with an item still asked about, three at most ([Settling](#settling)). When the manager cannot be read, `managerError` says why in a sentence of the admin's own, never the manager's address or token, and the balances, the nodes, `postage` and `observedAt` are empty |
-| POST   | `/api/funding/pins`                  | `{ password, nodeIds }` in: pins the address each node answers now, read from the manager's inventory, and answers `{ pinned }`. A node the inventory does not hold is `409 funding_refused`, `problem: "node"`; a node whose address could not be read is `400 validation_error` with the sentence, since there is no address to pin. Either way nothing is pinned                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                               |
-| POST   | `/api/funding/transfers`             | `{ password, items: [{ nodeId, kind, amount }] }` in, `202` with `{ bulkId, items }` out: each item's `requestId`, `nodeId`, `kind`, `amount`, `state`, `txHash`, `blockNumber` (null until it is mined), `error`, and the flags `settled` (it no longer holds up a new send) and `watched` (it is still asked about) ([Settling](#settling)). The refusals below                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                 |
-| GET    | `/api/funding/transfers?bulkId=<id>` | `{ items }` of that send, as above, each refreshed from the manager first ([Settling](#settling)). `400` without a UUID, `404 bulk_not_found` for a send the admin never journalled                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                               |
+| Method | Path                                 | Answer                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                          |
+| ------ | ------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| GET    | `/api/funding`                       | `FundingView`: `configured` (false while the manager funding settings are unset, and then the manager is not asked), the brand wallet's address and balances or null while there is none, `chainId` 100, every stage's nodes and the catalogue node, each with `pin` and `pinnedAddress` (below) and the `batch` the manager uses for its uploads as the manager read it (null for a gateway, a node with no batch, and from a manager that reads none; every reading of it null, with `readError`, when the node could not be read about it), `postage`, what postage costs now as the manager read it from a node (the price per chunk per block in PLUR, the block time and the contract's floor in blocks, or null when no node answered), `observedAt`, and `openBulkId`, the latest send that still has an item holding up a new one (`queued`, `submitted`, or `unknown` within the manager's 30 minutes), or null, so the page resumes it after a reload or in another tab, and `openStampBulkId`, the same for stamp bulks ([Stamp operations](#stamp-operations)). It first refreshes the latest sends with an item still asked about, three at most ([Settling](#settling)), and the latest stamp bulks likewise. When the manager cannot be read, `managerError` says why in a sentence of the admin's own, never the manager's address or token, and the balances, the nodes, `postage` and `observedAt` are empty |
+| POST   | `/api/funding/pins`                  | `{ password, nodeIds }` in: pins the address each node answers now, read from the manager's inventory, and answers `{ pinned }`. A node the inventory does not hold is `409 funding_refused`, `problem: "node"`; a node whose address could not be read is `400 validation_error` with the sentence, since there is no address to pin. Either way nothing is pinned                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                             |
+| POST   | `/api/funding/transfers`             | `{ password, items: [{ nodeId, kind, amount }] }` in, `202` with `{ bulkId, items }` out: each item's `requestId`, `nodeId`, `kind`, `amount`, `state`, `txHash`, `blockNumber` (null until it is mined), `error`, and the flags `settled` (it no longer holds up a new send) and `watched` (it is still asked about) ([Settling](#settling)). The refusals below                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                               |
+| GET    | `/api/funding/transfers?bulkId=<id>` | `{ items }` of that send, as above, each refreshed from the manager first ([Settling](#settling)). `400` without a UUID, `404 bulk_not_found` for a send the admin never journalled                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                             |
 
 A node's `pin` is `pinned` when its pin is the address it answers now, `new`
 when it has none, and `changed` when it answers another. A node whose wallet
@@ -1167,6 +1170,121 @@ Without `MANAGER_FUNDING_URL` and `MANAGER_FUNDING_TOKEN` the page answers
 `configured: false`, and without `BRAND_WALLET_SECRET` it shows no wallet;
 either way every send is refused as not set up, and a pin needs the manager.
 
+### Stamp operations
+
+The Stamps tab tops up and dilutes the batches the nodes upload with. Each
+node pays for its own operations from its own wallet: a top-up in xBZZ, and
+the gas of either kind in xDAI. The admin signs nothing for them and nothing
+leaves the brand wallet, so a stamp request takes the page's confirm dialog
+and no password. `src/domain/funding/FundingStampService.ts` is the service,
+which `src/index.ts` builds with the client of the manager's funding API and
+which the funding service answers the two routes and the view's open stamp
+bulk with. The arithmetic is `stampQuote.ts` of `web2-admin-common`, the one
+the page shows.
+
+| Method | Path                                        | Answer                                                                                                                                                                                                                                                                                                                                                                                                                                        |
+| ------ | ------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| POST   | `/api/funding/stamp-operations`             | `{ items }` in, all of one kind, each `{ kind: "topup", nodeId, batchId, expectedDepth, days }` or `{ kind: "dilute", nodeId, batchId, expectedDepth, steps }`; `202` with `{ bulkId, items }` out, at once, every item `queued`: its `requestId`, `kind`, `nodeId`, `nodeLabel`, `batchId`, `days` or `steps`, `costPlur` (a top-up's, null for a dilution), `state`, `txHash`, `error`, `settled` and `watched` (below). The refusals below |
+| GET    | `/api/funding/stamp-operations?bulkId=<id>` | `{ items }` of that stamp bulk, as above, refreshed from the manager first (below). `400` without a UUID, `404 bulk_not_found` for a bulk the admin never journalled                                                                                                                                                                                                                                                                          |
+
+A request's body is checked first, `400 validation_error`: one item at least
+and 200 at most, a node id as the contract takes it, a batch id of `0x` and
+64 hex digits in either case, an `expectedDepth` from 0 to 255, a top-up's
+`days` a whole number from 1 with no cap but the journal column's
+(2^31 - 1), and a dilution's `steps` 1 or 2, each a JSON number, and no field
+of the other kind. Then it is refused, in this order, nothing journalled:
+
+1. a request of both kinds, or one that names a batch twice:
+   `400 validation_error` with the sentence;
+2. funding not set up, or a manager on another chain than Gnosis Chain:
+   `409 funding_refused`, `problem` `not_set_up` or `chain`. A manager whose
+   inventory cannot be read is `502 manager_unavailable`;
+3. each item in turn, against the manager's inventory, read fresh:
+   `409 funding_refused` with the sentence, `problem: "node"` for a node the
+   manager does not hold; `problem: "batch"` for a batch the node does not
+   upload with, one that could not be read, is not usable or has expired (an
+   operation goes only to a batch read whole, usable and not expired,
+   `operableBatch`), one no longer at the depth the page showed, or a dilution
+   that would leave it under 7 days; `problem: "price"` for a top-up when the
+   manager read no price of postage;
+4. a node whose wallet could not be read (`problem: "node"`), or a wallet that
+   holds no xDAI for the gas, or less xBZZ than the top-ups it pays for
+   (`problem: "insufficient_funds"`, naming each shortfall). A wallet is
+   counted once: a node is listed once for each batch it uploads with, as a
+   stage's own node and as the catalogue node, say, and pays for both from one
+   wallet;
+5. an item of an earlier stamp bulk that still holds up a new one, after the
+   latest such bulks were refreshed, or another stamp request at that moment:
+   `409 { "error": "conflict" }`. A send does not hold a stamp bulk up, nor a
+   stamp bulk a send: each has a lock and a check of its own.
+
+**Priced at the price of now.** A top-up adds to each of the batch's chunks
+the days in blocks, rounded up so the days are never short, at the price the
+manager read for this request:
+`ceil(days × 86400 / blockSeconds) × pricePerChunkPerBlockPlur` PLUR, and it
+costs that for each of the batch's `2^depth` chunks. A dilution raises the
+depth by its steps, `expectedDepth + steps`, for the gas alone.
+
+**Journalled, answered, then relayed in turn.** Every item is written to
+`funding_stamp_operations`, `queued`, with the fields of the manager's
+request, before any is relayed, under a Postgres advisory lock of the stamps'
+own, and the request answers at once. The manager answers an operation only
+once the node has, and the node once the chain has mined it, so the items are
+relayed in turn behind the answer, in this process, each relay with the
+client's 200 seconds. A node is asked for one operation at a time: an item
+waits, `queued`, while an item before it in its bulk for the same node is
+still under way, or `unknown` for less than the manager's 30 minutes, and a
+later refresh relays it once that one settled. A relay the manager refuses
+(`stamp_refused`, `unknown_node`, `bad_transaction`, `conflict`) fails its
+item with the manager's sentence, as does one whose node it could not reach
+(`node_unreachable`, which the manager journals failed), and the next item is
+relayed. An item the manager answers `failed`, the node having refused it,
+takes the manager's sentence from a status read, since the answer carries
+none. Any other failure (the manager out of reach, a timeout, the funding API
+off, an answer that cannot be read) leaves the item, and the ones after it,
+`queued` for a refresh. A process that stops mid-way leaves its items as
+recorded, for the next refresh.
+
+**Settling.** The manager journals an operation `unknown` before it asks the
+node, answers it once the node has, and settles an `unknown` one from the
+chain, calling it failed after the 30 minutes the transfers use. So a
+`queued` or `submitted` item holds up a new stamp bulk, and so does an
+`unknown` one for 30 minutes from when the manager answered its relay, or a
+status read first found it, as for a send's item. A `confirmed` or `failed`
+item is settled for good: the manager changes neither. The flags each item
+answers:
+
+| State                                        | `settled` | `watched` |
+| -------------------------------------------- | --------- | --------- |
+| `queued`, `submitted`                        | false     | false     |
+| `unknown`, relay answered at most 30 min ago | false     | true      |
+| `unknown`, older                             | true      | true      |
+| `confirmed`, `failed`                        | true      | false     |
+
+**The refresh** reads, in the bulk's order, where each `queued`, `submitted`
+or `unknown` item stands on the manager, and records it, its hash once the
+manager answers one. A `queued` item the manager never received
+(`unknown_request`) is relayed again, the same fields under the same request
+id, which the manager runs at most once; one that waits on its node is
+neither read nor relayed. An item the manager answered for before is never
+relayed again, whatever the manager says of it, since a second run would pay
+again. The refresh stops at the first item the manager cannot answer for. It
+runs for `GET /api/funding/stamp-operations?bulkId=` on that bulk, for
+`GET /api/funding` on the latest stamp bulks with an item still asked about,
+three at most, and for a stamp request before its check, on those and on the
+open ones, three at most each. One run of relays or reads per bulk at a time
+in the process, which every caller shares: a read waits on it for 2 seconds
+at most (`FUNDING_STAMP_WAIT_MS`), answers the journal as it stands, and the
+run goes on behind it.
+
+Each `funding.stamp.confirmed` or `.failed` audit row is written once, when
+the item first comes to that state, with its hash, which is null for an
+operation the manager confirmed from the chain ([Audit log](#audit-log)).
+
+| Table                      | What it holds                                                                                                                                                                                                                                                                                                                                                                                                   |
+| -------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `funding_stamp_operations` | migration 018: one row per item of a stamp bulk, by `request_id`, with `bulk_id`, its `position` in the bulk, the node's id and label, the batch, `kind`, a top-up's `days`, `amount_per_chunk_plur` and `cost_plur` or a dilution's `steps` and `new_depth`, `expected_depth`, `state`, `tx_hash`, `error`, `relayed_at`, the operator's id and name, and when. One item per batch and one per place in a bulk |
+
 ## Migrations
 
 `src/migrations/NNN_name.sql`, applied in order inside a transaction at every
@@ -1197,6 +1315,9 @@ and its key, encrypted ([The brand wallet](#the-brand-wallet)).
 `016_funding_transfers.sql` is the journal of the sends from the brand wallet,
 `funding_transfers`, and `017_funding_node_pins.sql` the node wallets an
 operator confirmed, `funding_node_pins` ([Funding transfers](#funding-transfers)).
+`018_funding_stamp_operations.sql` is the journal of the top-ups and dilutions
+the admin asks the manager for, `funding_stamp_operations`
+([Stamp operations](#stamp-operations)).
 
 ## Audit log
 
@@ -1292,7 +1413,17 @@ and `funding.transfer.failed`, each with the item's send, request id, node,
 label, kind, amount, address, nonce, hash, state, error and block. The operator
 is the actor of a pin, a request, and of whatever their send's relays learned;
 `system` with the reason `funding` is the actor of what a refresh learned. No
-row carries the password, a signed transaction or a key.
+row carries the password, a signed transaction or a key. The stamp operations
+([Stamp operations](#stamp-operations)): `funding.stamp.request` (one row per
+stamp bulk, with its `bulkId`, its `kind`, the price of postage a top-up was
+worked out at, or null for a dilution, and each item's request id, node,
+label, batch, days or steps, expected and new depth, amount per chunk and
+cost), and `funding.stamp.confirmed` and `funding.stamp.failed`, each with the
+item's bulk, request id, node, label, batch, kind, days, steps, depths,
+amount, cost, hash (null for an operation the manager confirmed from the
+chain), state and error. The operator is the actor of a request and of what
+its relays learned, though they end after the request answered; `system`
+with the reason `funding` of what a refresh learned.
 
 **A failed audit write never fails the operation.** The row is written after
 the mutation it describes, which has already happened by then; the failure is

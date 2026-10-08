@@ -20,6 +20,8 @@ import { BrandWallet } from './domain/funding/BrandWallet.js';
 import { BrandWalletRepository } from './domain/funding/BrandWalletRepository.js';
 import { FundingPinRepository } from './domain/funding/FundingPinRepository.js';
 import { FundingService } from './domain/funding/FundingService.js';
+import { FundingStampRepository } from './domain/funding/FundingStampRepository.js';
+import { FundingStampService } from './domain/funding/FundingStampService.js';
 import { FundingTransferRepository } from './domain/funding/FundingTransferRepository.js';
 import { ManagerFundingClient } from './domain/funding/ManagerFundingClient.js';
 import { IngestService } from './domain/IngestService.js';
@@ -242,12 +244,18 @@ async function main(): Promise<void> {
   stageService.onCatalogueStampStored(() => void feedBootCheck.catalogueStampStored());
   // The brand wallet started above, its address null without BRAND_WALLET_SECRET, and the client of the manager's
   // funding API, none without MANAGER_FUNDING_URL and MANAGER_FUNDING_TOKEN: then the Funding page answers that
-  // funding is not set up, and every pin and send is refused.
+  // funding is not set up, and every pin, send and stamp request is refused.
+  const managerFunding = config.managerFunding ? new ManagerFundingClient(config.managerFunding) : null;
   const fundingService = new FundingService({
     wallet: brandWallet,
-    manager: config.managerFunding ? new ManagerFundingClient(config.managerFunding) : null,
+    manager: managerFunding,
     transfers: new FundingTransferRepository(database.pool),
     pins: new FundingPinRepository(database.pool),
+    stamps: new FundingStampService({
+      manager: managerFunding,
+      journal: new FundingStampRepository(database.pool),
+      audit: auditLog,
+    }),
     audit: auditLog,
   });
 

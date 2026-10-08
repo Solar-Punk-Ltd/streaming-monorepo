@@ -1,7 +1,7 @@
 /**
- * Migrations 016 and 017 against the real database: `funding_transfers` and `funding_node_pins`, and the repositories
- * the funding service keeps its journal and its pins with. Needs Postgres, like the rest of this suite;
- * `DATABASE_URL` overrides the connection.
+ * Migrations 016, 017 and 018 against the real database: `funding_transfers`, `funding_node_pins` and
+ * `funding_stamp_operations`, and the repositories the funding services keep their journals and their pins with.
+ * Needs Postgres, like the rest of this suite; `DATABASE_URL` overrides the connection.
  *
  * What the in-memory stores of the unit tests cannot stand in for is the SQL: that the send lock is one across
  * connections, taken without waiting and released when the work is over, failed or not; that a send's items are
@@ -10,9 +10,13 @@
  * (`relayed_at`, or the journal's moment without one), as read through migration 016's partial index; that an update writes only
  * while an item is open or watched, so a late receipt turns a watched failed item confirmed and nothing moves one
  * settled for good; that only an unknown item, or a failed one with no block, is watched; that the CHECKs and the
- * unique constraints refuse what the service never writes; and that a pin replaces the one before it.
+ * unique constraints refuse what the service never writes; and that a pin replaces the one before it. And the same of
+ * the stamp journal: a request journalled together or not at all and read back in its order with its amounts as they
+ * went in, what each kind carries and nothing of the other's, a batch once per request, the hold of an unknown item
+ * for 30 minutes from its relay, an update only while an item is asked about that keeps a hash once known, and a
+ * stamp lock of its own, which the send lock does not hold up.
  *
- * Every row it writes is in the suite's throwaway database; it empties both tables before each test.
+ * Every row it writes is in the suite's throwaway database; it empties the three tables before each test.
  */
 import assert from 'node:assert/strict';
 import { randomUUID } from 'node:crypto';
@@ -20,6 +24,10 @@ import { after, before, beforeEach, describe, it } from 'node:test';
 
 import { Database } from '../../src/domain/Database.js';
 import { FundingPinRepository } from '../../src/domain/funding/FundingPinRepository.js';
+import {
+  FundingStampRepository,
+  type NewFundingStampOperation,
+} from '../../src/domain/funding/FundingStampRepository.js';
 import {
   FundingTransferRepository,
   type NewFundingTransfer,
@@ -30,6 +38,7 @@ import { releaseStack, requireStack, stack } from './helpers.js';
 let database: Database;
 let transfers: FundingTransferRepository;
 let pins: FundingPinRepository;
+let stamps: FundingStampRepository;
 
 const WALLET_A = '0x1111111111111111111111111111111111111111';
 const WALLET_B = '0x2222222222222222222222222222222222222222';
@@ -45,6 +54,7 @@ before(async () => {
   database = new Database(stack().databaseUrl);
   transfers = new FundingTransferRepository(database.pool);
   pins = new FundingPinRepository(database.pool);
+  stamps = new FundingStampRepository(database.pool);
 });
 
 after(async () => {
@@ -59,6 +69,7 @@ after(async () => {
 beforeEach(async () => {
   await database.pool.query('DELETE FROM funding_transfers');
   await database.pool.query('DELETE FROM funding_node_pins');
+  await database.pool.query('DELETE FROM funding_stamp_operations');
 });
 
 function item(bulkId: string, nonce: number, over: Partial<NewFundingTransfer> = {}): NewFundingTransfer {
@@ -313,5 +324,284 @@ describe('funding_node_pins', () => {
     await assert.rejects(pins.pin([{ nodeId: 'stage-1:gateway', walletAddress: '0x1234' }], 'alice'));
     await assert.rejects(pins.pin([{ nodeId: 'a/b', walletAddress: WALLET_A }], 'alice'));
     assert.equal((await pins.all()).size, 1);
+  });
+});
+
+/** A batch id as the journal keeps it: 0x and 64 hex digits in lower case. */
+const batchOf = (byte: string) => `0x${byte.repeat(32)}`;
+const MAX_UINT256 = (2n ** 256n - 1n).toString();
+
+function topUpItem(
+  bulkId: string,
+  position: number,
+  over: Partial<NewFundingStampOperation> = {},
+): NewFundingStampOperation {
+  return {
+    requestId: randomUUID(),
+    bulkId,
+    position,
+    nodeId: `stage-1:node-${position}`,
+    nodeLabel: `Node ${position}`,
+    batchId: batchOf(`a${position}`),
+    kind: 'topup',
+    days: 30,
+    steps: null,
+    expectedDepth: 20,
+    newDepth: null,
+    amountPerChunkPlur: '12441600000',
+    costPlur: '13045963161600000',
+    requestedByUserId: null,
+    requestedBy: 'alice',
+    ...over,
+  };
+}
+
+function diluteItem(
+  bulkId: string,
+  position: number,
+  over: Partial<NewFundingStampOperation> = {},
+): NewFundingStampOperation {
+  return {
+    ...topUpItem(bulkId, position),
+    kind: 'dilute',
+    days: null,
+    steps: 2,
+    newDepth: 22,
+    amountPerChunkPlur: null,
+    costPlur: null,
+    ...over,
+  };
+}
+
+describe('funding_stamp_operations', () => {
+  it('journals a request queued, and reads it back in its order with every field as it went in', async () => {
+    const bulkId = randomUUID();
+    const big = topUpItem(bulkId, 0, { amountPerChunkPlur: MAX_UINT256, costPlur: MAX_UINT256, days: 2 ** 31 - 1 });
+    await stamps.insertAll([topUpItem(bulkId, 2), big, topUpItem(bulkId, 1)]);
+
+    const rows = await stamps.listBulk(bulkId);
+
+    assert.deepEqual(
+      rows.map((row) => row.position),
+      [0, 1, 2],
+    );
+    assert.deepEqual(
+      [rows[0]?.amountPerChunkPlur, rows[0]?.costPlur, rows[0]?.days],
+      [MAX_UINT256, MAX_UINT256, 2 ** 31 - 1],
+    );
+    const [, second] = rows;
+    assert.deepEqual(
+      [
+        second?.kind,
+        second?.nodeId,
+        second?.nodeLabel,
+        second?.batchId,
+        second?.days,
+        second?.steps,
+        second?.expectedDepth,
+        second?.newDepth,
+        second?.amountPerChunkPlur,
+        second?.costPlur,
+        second?.requestedBy,
+        second?.requestedByUserId,
+      ],
+      [
+        'topup',
+        'stage-1:node-1',
+        'Node 1',
+        batchOf('a1'),
+        30,
+        null,
+        20,
+        null,
+        '12441600000',
+        '13045963161600000',
+        'alice',
+        null,
+      ],
+    );
+    for (const row of rows) {
+      assert.equal(row.state, 'queued');
+      assert.equal(row.txHash, null);
+      assert.equal(row.error, null);
+      assert.equal(row.relayedAt, null);
+      assert.equal(row.bulkId, bulkId);
+    }
+    assert.deepEqual(await stamps.listBulk(randomUUID()), []);
+  });
+
+  it('journals a dilution with its steps and its new depth, and no amount', async () => {
+    const bulkId = randomUUID();
+    await stamps.insertAll([diluteItem(bulkId, 0), diluteItem(bulkId, 1, { steps: 1, newDepth: 21 })]);
+
+    const rows = await stamps.listBulk(bulkId);
+
+    assert.deepEqual(
+      rows.map((row) => [
+        row.kind,
+        row.days,
+        row.steps,
+        row.expectedDepth,
+        row.newDepth,
+        row.amountPerChunkPlur,
+        row.costPlur,
+      ]),
+      [
+        ['dilute', null, 2, 20, 22, null, null],
+        ['dilute', null, 1, 20, 21, null, null],
+      ],
+    );
+  });
+
+  it('journals all the items of a request or none', async () => {
+    const bulkId = randomUUID();
+    await assert.rejects(stamps.insertAll([topUpItem(bulkId, 0), topUpItem(bulkId, 1, { batchId: '0xNOT-A-BATCH' })]));
+
+    assert.deepEqual(await stamps.listBulk(bulkId), []);
+  });
+
+  it('refuses what the service never writes', async () => {
+    const bulkId = randomUUID();
+    const refused: NewFundingStampOperation[] = [
+      topUpItem(bulkId, 0, { amountPerChunkPlur: '0' }),
+      topUpItem(bulkId, 0, { costPlur: (2n ** 256n).toString() }),
+      topUpItem(bulkId, 0, { batchId: batchOf('A1') }),
+      topUpItem(bulkId, 0, { batchId: '0x1234' }),
+      topUpItem(bulkId, 0, { nodeId: 'a/b' }),
+      topUpItem(bulkId, 0, { nodeLabel: '' }),
+      topUpItem(bulkId, 0, { days: 0 }),
+      topUpItem(bulkId, 0, { position: -1 }),
+      topUpItem(bulkId, 0, { expectedDepth: 256 }),
+      // What a top-up carries, and nothing of a dilution's.
+      topUpItem(bulkId, 0, { amountPerChunkPlur: null }),
+      topUpItem(bulkId, 0, { days: null }),
+      topUpItem(bulkId, 0, { steps: 1 }),
+      topUpItem(bulkId, 0, { newDepth: 21 }),
+      // What a dilution carries, and nothing of a top-up's.
+      // Three steps, which the service never takes: the type refuses it, the CHECK as well.
+      diluteItem(bulkId, 0, { steps: 3 as unknown as 1, newDepth: 23 }),
+      diluteItem(bulkId, 0, { newDepth: 21 }),
+      diluteItem(bulkId, 0, { days: 30 }),
+      diluteItem(bulkId, 0, { costPlur: '1' }),
+      diluteItem(bulkId, 0, { expectedDepth: 255, steps: 1, newDepth: 256 }),
+    ];
+    for (const item of refused) {
+      await assert.rejects(stamps.insertAll([item]), JSON.stringify(item));
+    }
+    // A batch at most once in a request, and one item at each place of it.
+    await stamps.insertAll([topUpItem(bulkId, 0)]);
+    await assert.rejects(stamps.insertAll([topUpItem(bulkId, 1, { batchId: batchOf('a0') })]));
+    await assert.rejects(stamps.insertAll([topUpItem(bulkId, 0, { batchId: batchOf('b0') })]));
+    await stamps.insertAll([topUpItem(randomUUID(), 0)]);
+  });
+
+  it('updates an item while it is asked about, keeps a hash once known, and never moves one settled for good', async () => {
+    const bulkId = randomUUID();
+    const item = topUpItem(bulkId, 0);
+    await stamps.insertAll([item]);
+    const hash = `0x${'cd'.repeat(32)}`;
+    const answered = new Date('2026-10-08T12:00:00.000Z');
+
+    const unknown = await stamps.update(item.requestId, {
+      state: 'unknown',
+      error: 'The node did not answer in time.',
+      txHash: hash,
+      relayedAt: answered,
+    });
+    assert.deepEqual(
+      [unknown?.state, unknown?.error, unknown?.txHash, unknown?.relayedAt?.getTime()],
+      ['unknown', 'The node did not answer in time.', hash, answered.getTime()],
+    );
+
+    const confirmed = await stamps.update(item.requestId, { state: 'confirmed', error: null, txHash: null });
+    assert.deepEqual(
+      [confirmed?.state, confirmed?.error, confirmed?.txHash, confirmed?.relayedAt?.getTime()],
+      ['confirmed', null, hash, answered.getTime()],
+    );
+
+    assert.equal(await stamps.update(item.requestId, { state: 'failed', error: 'late' }), null);
+    assert.equal((await stamps.listBulk(bulkId))[0]?.state, 'confirmed');
+    assert.equal(await stamps.update(randomUUID(), { state: 'failed', error: 'none' }), null);
+
+    const other = topUpItem(bulkId, 1);
+    await stamps.insertAll([other]);
+    await assert.rejects(
+      stamps.update(other.requestId, { state: 'submitted', error: null, txHash: '0x12' }),
+      'a hash is 0x and 64 hex digits',
+    );
+    await stamps.update(other.requestId, { state: 'failed', error: 'The manager refused it.' });
+    assert.equal(await stamps.update(other.requestId, { state: 'confirmed', error: null }), null, 'failed is final');
+  });
+
+  it('holds up a bulk for a queued or submitted item, and an unknown one for 30 minutes from its relay', async () => {
+    const journalled = new Date();
+    assert.equal(await stamps.hasUnsettled(journalled), false);
+    const older = randomUUID();
+    const [a, b] = [topUpItem(older, 0), topUpItem(older, 1)];
+    await stamps.insertAll([a, b]);
+    assert.equal(await stamps.hasUnsettled(journalled), true);
+    assert.deepEqual(await stamps.openBulkIds(3, journalled), [older]);
+    assert.deepEqual(await stamps.askedBulkIds(3), [older]);
+
+    // The relays land 40 minutes after the journal: one confirmed, the other's answer lost.
+    const relayed = new Date(journalled.getTime() + 40 * 60 * 1000);
+    await stamps.update(a.requestId, { state: 'confirmed', error: null, relayedAt: relayed });
+    await stamps.update(b.requestId, { state: 'unknown', error: null, relayedAt: relayed });
+    assert.equal(await stamps.hasUnsettled(relayed), true, 'a young unknown item holds up a bulk');
+
+    const thirty = 30 * 60 * 1000;
+    assert.equal(await stamps.hasUnsettled(new Date(relayed.getTime() + thirty)), true, 'at 30 minutes, still');
+    const later = new Date(relayed.getTime() + thirty + 1);
+    assert.equal(await stamps.hasUnsettled(later), false, 'past 30 minutes, an unknown item holds up no bulk');
+    assert.deepEqual(await stamps.openBulkIds(3, later), []);
+    assert.deepEqual(await stamps.askedBulkIds(3), [older], 'and is still asked about');
+
+    // The manager settles it from the chain: asked about no more.
+    await stamps.update(b.requestId, { state: 'failed', error: 'The manager found nothing on chain for it.' });
+    assert.deepEqual(await stamps.askedBulkIds(3), []);
+
+    // A submitted item holds up a bulk whatever its age.
+    const submitted = topUpItem(randomUUID(), 0);
+    await stamps.insertAll([submitted]);
+    await stamps.update(submitted.requestId, { state: 'submitted', error: null, relayedAt: relayed });
+    assert.equal(await stamps.hasUnsettled(new Date(relayed.getTime() + 24 * 60 * thirty)), true);
+  });
+});
+
+describe('the stamp lock', () => {
+  it('is held by one request at a time, across connections, and taken without waiting', async () => {
+    let release!: () => void;
+    const held = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    let entered!: () => void;
+    const inside = new Promise<void>((resolve) => {
+      entered = resolve;
+    });
+
+    const first = stamps.withStampLock(async () => {
+      entered();
+      await held;
+      return 'first';
+    });
+    await inside;
+    const second = await stamps.withStampLock(async () => 'second');
+    // A send is not held up by a stamp request, nor the other way round.
+    const send = await transfers.withSendLock(async () => 'send');
+    release();
+
+    assert.deepEqual(second, { locked: false });
+    assert.deepEqual(send, { locked: true, result: 'send' });
+    assert.deepEqual(await first, { locked: true, result: 'first' });
+  });
+
+  it('is released when the work is over, and when it throws', async () => {
+    await assert.rejects(
+      stamps.withStampLock(async () => {
+        throw new Error('the work failed');
+      }),
+      /the work failed/,
+    );
+    assert.deepEqual(await stamps.withStampLock(async () => 1), { locked: true, result: 1 });
   });
 });

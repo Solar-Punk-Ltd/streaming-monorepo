@@ -1,11 +1,13 @@
 /**
- * In-memory stand-ins for what the funding service depends on, and the readings a test starts from.
+ * In-memory stand-ins for what the funding services depend on, and the readings a test starts from.
  *
- * The stores copy the semantics of the SQL that matter: the journal's update writes only while an item is unsettled
- * and answers null otherwise; the send lock is taken without waiting, as `pg_try_advisory_lock` is, and a second
- * taker gets `{ locked: false }`; rows go in and come out as copies. The wallet signs for real, with a key the test
- * generates, so a test reads back exactly what would go to the chain. The manager journals what it is relayed, as the
- * real one does, so a status read for a request id it never took answers `unknown_request`.
+ * The stores copy the semantics of the SQL that matter: a journal's update writes only while an item is unsettled
+ * (a stamp item: still asked about) and answers null otherwise; the send lock and the stamp lock are taken without
+ * waiting, as `pg_try_advisory_lock` is, and a second taker gets `{ locked: false }`; rows go in and come out as
+ * copies. The wallet signs for real, with a key the test generates, so a test reads back exactly what would go to the
+ * chain. The manager journals what it is relayed, as the real one does, so a status read for a request id it never
+ * took answers `unknown_request`; it runs a stamp operation once per request id, answers the same request id again
+ * with its state, and another body under it with `conflict`.
  *
  * Addresses are fixtures the leak gate allows (`scripts/public-leaks/allow.json`) or derived from a generated key.
  */
@@ -15,11 +17,15 @@ import type {
   FundingInventory,
   FundingNode,
   FundingPostage,
+  FundingStampOperationAnswer,
+  FundingStampOperationRequest,
+  FundingStampOperationStatus,
   FundingTransferAnswer,
   FundingTransferRequest,
+  FundingTransferState,
   FundingTransferStatus,
 } from '@streaming-monorepo/contracts';
-import { type Address, type Hex, keccak256 } from 'viem';
+import { type Address, type Hex, keccak256, toHex } from 'viem';
 import { generatePrivateKey, privateKeyToAccount } from 'viem/accounts';
 
 import type {
@@ -29,6 +35,16 @@ import type {
 } from '../../../src/domain/funding/FundingPinRepository.js';
 import type { BrandWalletTransaction } from '../../../src/domain/funding/BrandWallet.js';
 import type { FundingManager, FundingWallet } from '../../../src/domain/funding/FundingService.js';
+import {
+  holdsStampBulk,
+  isStampAsked,
+  type FundingStampRow,
+  type FundingStampStore,
+  type FundingStampUpdate,
+  type NewFundingStampOperation,
+  type StampLockOutcome,
+} from '../../../src/domain/funding/FundingStampRepository.js';
+import type { FundingStampManager } from '../../../src/domain/funding/FundingStampService.js';
 import {
   holdsSend,
   isAsked,
@@ -118,6 +134,59 @@ export function fundingInventory(over: Partial<FundingInventory> = {}): FundingI
   };
 }
 
+/** A rung's node, on another deployment, and its wallet: the fixture of a made-up rung owner. */
+export const NODE_RUNG = 'stage-2:uploader';
+export const WALLET_RUNG = '0x4f0e1c2b3a49586772635441302f1e0d0c0b0a09';
+
+/**
+ * The inventory a stamp request is checked against: the stage's own node with its batch at depth 20 and 10 days left,
+ * its gateway with no batch, a rung's node at depth 22 with 30 days, and the catalogue node at depth 18 with 40 days;
+ * every wallet holds 5 xBZZ and 0.1 xDAI, and postage costs {@link POSTAGE}.
+ */
+export function stampInventory(): FundingInventory {
+  const funded = { xdaiWei: (ONE_XDAI / 10n).toString(), xbzzPlur: (5n * ONE_XBZZ).toString() };
+  return fundingInventory({
+    chain: { chainId: 100, bzzToken: BZZ_TOKEN, postage: POSTAGE },
+    stages: [
+      {
+        stageId: STAGE_ID,
+        name: 'Main stage',
+        nodes: [
+          fundingNode({ ...funded, batch: fundingBatch() }),
+          fundingNode({
+            nodeId: NODE_B,
+            label: 'Main stage gateway',
+            role: 'gateway',
+            walletAddress: WALLET_B,
+            ...funded,
+            batch: null,
+          }),
+          fundingNode({
+            nodeId: NODE_RUNG,
+            label: 'Main stage 720p rung',
+            role: 'rung',
+            walletAddress: WALLET_RUNG,
+            ...funded,
+            batch: fundingBatch({ batchId: BATCH_RUNG, depth: 22, ttlSeconds: 30 * DAY }),
+          }),
+        ],
+      },
+    ],
+    catalogue: fundingNode({
+      nodeId: NODE_CATALOGUE,
+      label: 'Catalogue node',
+      walletAddress: WALLET_C,
+      ...funded,
+      batch: fundingBatch({ batchId: BATCH_CATALOGUE, depth: 18, ttlSeconds: 40 * DAY }),
+    }),
+  });
+}
+
+/** The hash the fake manager answers for a stamp operation it confirmed. */
+export function stampTxHash(requestId: string): string {
+  return keccak256(toHex(requestId));
+}
+
 /** The brand wallet's account: 10 xDAI, 100 xBZZ, nonce 7, a fee cap of 2 gwei and a tip of 1. */
 export function fundingAccount(address: string, over: Partial<FundingAccountAnswer> = {}): FundingAccountAnswer {
   return {
@@ -175,9 +244,11 @@ export class FakeFundingWallet implements FundingWallet {
 /**
  * The manager's funding API. By default it answers the inventory and the account above, takes every relay as
  * `submitted` and journals it, and answers a status read from that journal, in the state the relay was answered with,
- * `unknown_request` for an id it never took. Each call can be made to fail, or to wait on a gate.
+ * `unknown_request` for an id it never took. A stamp operation it journals and runs once per request id, answered
+ * `confirmed` by default; the same request again answers its state, and another body under its id `conflict`. Each
+ * call can be made to fail, or to wait on a gate.
  */
-export class FakeFundingManager implements FundingManager {
+export class FakeFundingManager implements FundingManager, FundingStampManager {
   inventoryAnswer: FundingInventory = fundingInventory();
   accountAnswer: (address: string) => FundingAccountAnswer = (address) => fundingAccount(address);
   inventoryError: Error | null = null;
@@ -202,6 +273,34 @@ export class FakeFundingManager implements FundingManager {
   readonly journal = new Map<string, FundingTransferRequest>();
   /** The state each relay it took was answered with, which a status read answers until told otherwise. */
   readonly journalState = new Map<string, FundingTransferAnswer['state']>();
+
+  /** The state a stamp operation is answered with when the manager runs it. */
+  stampState: FundingTransferState = 'confirmed';
+  /** When set, the state each operation is answered with when the manager runs it, over `stampState`. */
+  stampStateOf: ((operation: FundingStampOperationRequest) => FundingTransferState) | null = null;
+  /** The sentence a stamp status read gives an operation that failed, unless told otherwise. */
+  stampFailure = 'The node refused it: its wallet holds too little xBZZ.';
+  /** A stamp operation's failure by the order of the call, 0 first, or for every call when `stampErrorAlways` is set. */
+  stampErrors = new Map<number, Error>();
+  stampErrorAlways: Error | null = null;
+  stampStatusError: Error | null = null;
+  /** What a stamp status read answers for a request id, over the journal. */
+  stampStatusAnswers = new Map<string, Partial<FundingStampOperationStatus>>();
+  /** Called at the start of each stamp operation, before anything is answered. */
+  onStampOperation: ((operation: FundingStampOperationRequest) => void) | null = null;
+  /** When set, a stamp operation waits for it before it is answered, as the manager waits on the node and the chain. */
+  stampGate: Promise<void> | null = null;
+
+  readonly stampCalls = { operation: 0, status: 0 };
+  /** Every stamp operation relayed to it, in order, as it came. */
+  readonly stampOperations: FundingStampOperationRequest[] = [];
+  readonly stampStatusReads: string[] = [];
+  /** What the manager journalled: each stamp operation it took, by request id. */
+  readonly stampJournal = new Map<string, FundingStampOperationRequest>();
+  /** The state each journalled operation stands in, which a status read answers until told otherwise. */
+  readonly stampJournalState = new Map<string, FundingTransferState>();
+  /** What the manager asked the nodes for: one operation per request id, however often it was relayed. */
+  readonly stampRuns: FundingStampOperationRequest[] = [];
 
   async inventory(): Promise<FundingInventory> {
     this.calls.inventory += 1;
@@ -251,6 +350,54 @@ export class FakeFundingManager implements FundingManager {
       txHash: taken ? keccak256(taken.rawTransaction as Hex) : null,
       blockNumber: null,
       error: null,
+      ...answer,
+    };
+  }
+
+  async stampOperation(operation: FundingStampOperationRequest): Promise<FundingStampOperationAnswer> {
+    const call = this.stampCalls.operation;
+    this.stampCalls.operation += 1;
+    this.onStampOperation?.(operation);
+    this.stampOperations.push(structuredClone(operation));
+    if (this.stampGate) await this.stampGate;
+    await Promise.resolve();
+    const error = this.stampErrorAlways ?? this.stampErrors.get(call);
+    if (error) throw error;
+    const taken = this.stampJournal.get(operation.requestId);
+    if (taken && JSON.stringify(taken) !== JSON.stringify(operation)) {
+      throw managerFailure('conflict', 409, 'Another stamp operation has this request id.');
+    }
+    if (!taken) {
+      this.stampJournal.set(operation.requestId, structuredClone(operation));
+      this.stampJournalState.set(operation.requestId, this.stampStateOf?.(operation) ?? this.stampState);
+      this.stampRuns.push(structuredClone(operation));
+    }
+    const state = this.stampJournalState.get(operation.requestId) ?? this.stampState;
+    return {
+      requestId: operation.requestId,
+      kind: operation.kind,
+      state,
+      txHash: state === 'confirmed' ? stampTxHash(operation.requestId) : null,
+    };
+  }
+
+  async stampOperationStatus(requestId: string): Promise<FundingStampOperationStatus> {
+    this.stampCalls.status += 1;
+    this.stampStatusReads.push(requestId);
+    await Promise.resolve();
+    if (this.stampStatusError) throw this.stampStatusError;
+    const taken = this.stampJournal.get(requestId);
+    const answer = this.stampStatusAnswers.get(requestId);
+    if (!taken && !answer) {
+      throw managerFailure('unknown_request', 404, 'No stamp operation was journalled under this request id.');
+    }
+    const state = this.stampJournalState.get(requestId) ?? 'submitted';
+    return {
+      requestId,
+      kind: taken?.kind ?? 'topup',
+      state,
+      txHash: state === 'confirmed' ? stampTxHash(requestId) : null,
+      error: state === 'failed' ? this.stampFailure : null,
       ...answer,
     };
   }
@@ -389,5 +536,131 @@ export class InMemoryFundingPinStore implements FundingPinStore {
   /** Pins a node as an operator would have, earlier. */
   set(nodeId: string, walletAddress: string): void {
     this.rows.set(nodeId, { nodeId, walletAddress, pinnedAt: new Date(), pinnedBy: 'earlier-operator' });
+  }
+}
+
+/** The stamp journal in memory, with migration 018's checks that matter to the service. */
+export class InMemoryFundingStampStore implements FundingStampStore {
+  readonly rows = new Map<string, FundingStampRow>();
+  private locked = false;
+  /** How many times the lock was refused to a second taker. */
+  lockRefusals = 0;
+  /** When set, a taker holds the lock until it resolves before its work runs, so a test can meet it there. */
+  lockGate: Promise<void> | null = null;
+
+  async withStampLock<T>(work: () => Promise<T>): Promise<StampLockOutcome<T>> {
+    if (this.locked) {
+      this.lockRefusals += 1;
+      return { locked: false };
+    }
+    this.locked = true;
+    try {
+      if (this.lockGate) await this.lockGate;
+      return { locked: true, result: await work() };
+    } finally {
+      this.locked = false;
+    }
+  }
+
+  async hasUnsettled(now: Date): Promise<boolean> {
+    return [...this.rows.values()].some((row) => holdsStampBulk(row, now.getTime()));
+  }
+
+  async openBulkIds(limit: number, now: Date): Promise<string[]> {
+    return this.bulkIdsWhere((row) => holdsStampBulk(row, now.getTime()), limit);
+  }
+
+  async askedBulkIds(limit: number): Promise<string[]> {
+    return this.bulkIdsWhere(isStampAsked, limit);
+  }
+
+  /** The bulks with a row that matches, the latest first, as the SQL orders them by their rows' moment. */
+  private bulkIdsWhere(matches: (row: FundingStampRow) => boolean, limit: number): string[] {
+    const latest = new Map<string, number>();
+    for (const row of this.rows.values()) {
+      if (!matches(row)) continue;
+      latest.set(row.bulkId, Math.max(latest.get(row.bulkId) ?? 0, row.createdAt.getTime()));
+    }
+    return [...latest]
+      .sort(([a, at], [b, bt]) => bt - at || a.localeCompare(b))
+      .slice(0, limit)
+      .map(([bulkId]) => bulkId);
+  }
+
+  async insertAll(items: readonly NewFundingStampOperation[]): Promise<void> {
+    // The database's clock, as the SQL's NOW() writes it.
+    const at = new Date();
+    const all = [...this.rows.values(), ...items];
+    for (const item of items) {
+      if (this.rows.has(item.requestId)) throw new Error(`duplicate request id ${item.requestId}`);
+      const sameBulk = all.filter((other) => other !== item && other.bulkId === item.bulkId);
+      if (sameBulk.some((other) => other.batchId === item.batchId)) throw new Error('one_per_batch');
+      if (sameBulk.some((other) => other.position === item.position)) throw new Error('bulk_position');
+      const topUp =
+        item.kind === 'topup' &&
+        item.days !== null &&
+        item.amountPerChunkPlur !== null &&
+        item.costPlur !== null &&
+        item.steps === null &&
+        item.newDepth === null;
+      const dilution =
+        item.kind === 'dilute' &&
+        item.steps !== null &&
+        item.newDepth === item.expectedDepth + item.steps &&
+        item.days === null &&
+        item.amountPerChunkPlur === null &&
+        item.costPlur === null;
+      if (!topUp && !dilution) throw new Error(`funding_stamp_operations_kind_fields: ${item.requestId}`);
+    }
+    for (const item of items) {
+      this.rows.set(item.requestId, {
+        ...item,
+        state: 'queued',
+        txHash: null,
+        error: null,
+        relayedAt: null,
+        createdAt: at,
+        updatedAt: at,
+      });
+    }
+  }
+
+  async listBulk(bulkId: string): Promise<FundingStampRow[]> {
+    return [...this.rows.values()]
+      .filter((row) => row.bulkId === bulkId)
+      .sort((a, b) => a.position - b.position)
+      .map((row) => ({ ...row }));
+  }
+
+  async update(requestId: string, update: FundingStampUpdate): Promise<FundingStampRow | null> {
+    const row = this.rows.get(requestId);
+    if (!row || !isStampAsked(row)) return null;
+    const next: FundingStampRow = {
+      ...row,
+      state: update.state,
+      error: update.error,
+      txHash: update.txHash ?? row.txHash,
+      relayedAt: update.relayedAt ?? row.relayedAt,
+      updatedAt: new Date(),
+    };
+    this.rows.set(requestId, next);
+    return { ...next };
+  }
+
+  /** A row as stored, for a test to read. */
+  get(requestId: string): FundingStampRow | undefined {
+    const row = this.rows.get(requestId);
+    return row ? { ...row } : undefined;
+  }
+
+  /** Sets a row's state outside the service, as an earlier request would have left it. */
+  force(
+    requestId: string,
+    state: FundingStampRow['state'],
+    over: Partial<Pick<FundingStampRow, 'error' | 'txHash' | 'relayedAt' | 'createdAt'>> = {},
+  ): void {
+    const row = this.rows.get(requestId);
+    if (!row) throw new Error(`no such row: ${requestId}`);
+    this.rows.set(requestId, { ...row, state, ...over });
   }
 }

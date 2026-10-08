@@ -1,13 +1,29 @@
 import { UUID_PATTERN } from '@streaming-monorepo/contracts';
 import {
+  DILUTE_MAX_STEPS,
+  FUNDING_STAMP_OPERATION_KINDS,
   FUNDING_TRANSFER_KINDS,
+  type FundingStampOperationKind,
   type FundingTransferKind,
   PASSWORD_MAX_LENGTH,
+  type StampOperationItemRequest,
 } from '@streaming-monorepo/web2-admin-common';
-import { array, type InferType, mixed, object, string } from 'yup';
+import { array, type InferType, mixed, number, object, string } from 'yup';
 
-/** The most nodes one pin names, and the most items one send carries: far over what a brand runs. */
+/** The most nodes one pin names, and the most items one send or stamp request carries: far over what a brand runs. */
 export const FUNDING_MAX_ITEMS = 200;
+
+/**
+ * The most days one top-up buys: no cap a person meets, only the journal column's, a 32-bit integer's, about 5.9
+ * million years. The owner set no cap on the days, only a floor of 1.
+ */
+export const FUNDING_STAMP_MAX_DAYS = 2 ** 31 - 1;
+
+/** The deepest a batch is: the postage contract keeps a depth in a byte. */
+const MAX_DEPTH = 255;
+
+/** A batch id, `0x` and 64 hex digits, in either case. */
+const BATCH_ID_RE = /^0x[0-9a-fA-F]{64}$/;
 
 /** The manager's node id, as the contract's `nodeId` takes it. */
 const NODE_ID_RE = /^[A-Za-z0-9:._-]{1,200}$/;
@@ -68,7 +84,76 @@ export const fundingTransfersSchema = object({
 
 export type FundingTransfersBody = InferType<typeof fundingTransfersSchema>;
 
-/** `GET /api/funding/transfers?bulkId=`: a UUID in either case, read in lower case as the journal keeps it. */
+/**
+ * `GET /api/funding/transfers?bulkId=` and `GET /api/funding/stamp-operations?bulkId=`: a UUID in either case, read
+ * in lower case as the journals keep it.
+ */
 export const fundingBulkQuerySchema = object({
   bulkId: string().strict().required('bulkId is required').matches(UUID_PATTERN, 'bulkId must be a UUID'),
 });
+
+/**
+ * One item of a stamp request: a top-up in whole days, 1 or more, or a dilution of 1 or 2 steps, of one batch of one
+ * node, at the depth the page showed. Every number is a JSON number, never a string, and a field of the other kind is
+ * refused rather than ignored.
+ */
+const stampItemSchema = object({
+  kind: mixed<FundingStampOperationKind>()
+    .required('kind is required')
+    .oneOf([...FUNDING_STAMP_OPERATION_KINDS], 'kind must be topup or dilute'),
+  nodeId,
+  batchId: string()
+    .strict()
+    .required('batchId is required')
+    .matches(BATCH_ID_RE, 'batchId must be 0x and 64 hex digits'),
+  expectedDepth: number()
+    .strict()
+    .required('expectedDepth is required')
+    .integer('expectedDepth must be a whole number')
+    .min(0, 'expectedDepth must be 0 or more')
+    .max(MAX_DEPTH, `expectedDepth must be at most ${MAX_DEPTH}`),
+  days: number()
+    .strict()
+    .integer('days must be a whole number')
+    .min(1, 'days must be 1 or more')
+    .max(FUNDING_STAMP_MAX_DAYS, `days must be at most ${FUNDING_STAMP_MAX_DAYS}`)
+    .when('kind', {
+      is: 'topup',
+      then: (schema) => schema.required('days is required for a top-up'),
+      otherwise: (schema) => schema.test('topup-only', 'days is for a top-up only', (value) => value === undefined),
+    }),
+  steps: number()
+    .strict()
+    .integer('steps must be 1 or 2')
+    .min(1, 'steps must be 1 or 2')
+    .max(DILUTE_MAX_STEPS, 'steps must be 1 or 2')
+    .when('kind', {
+      is: 'dilute',
+      then: (schema) => schema.required('steps is required for a dilution'),
+      otherwise: (schema) => schema.test('dilute-only', 'steps is for a dilution only', (value) => value === undefined),
+    }),
+}).noUnknown(true);
+
+/**
+ * `POST /api/funding/stamp-operations`: `FundingStampOperationsRequest`. One kind per request and a batch at most once
+ * are the service's checks, which answer the same 400.
+ */
+export const fundingStampOperationsSchema = object({
+  items: array(stampItemSchema)
+    .required('items is required')
+    .min(1, 'items must hold an operation')
+    .max(FUNDING_MAX_ITEMS, `items holds ${FUNDING_MAX_ITEMS} operations at most`),
+}).noUnknown(true);
+
+export type FundingStampOperationsBody = InferType<typeof fundingStampOperationsSchema>;
+
+/** The items of a stamp request the schema took, as the contract's union of a top-up and a dilution. */
+export function stampOperationItemsOf(body: FundingStampOperationsBody): StampOperationItemRequest[] {
+  return body.items.map((item) => {
+    const { nodeId: id, batchId, expectedDepth } = item;
+    if (item.kind === 'topup') {
+      return { kind: 'topup', nodeId: id, batchId, expectedDepth, days: Number(item.days) };
+    }
+    return { kind: 'dilute', nodeId: id, batchId, expectedDepth, steps: item.steps === 2 ? 2 : 1 };
+  });
+}

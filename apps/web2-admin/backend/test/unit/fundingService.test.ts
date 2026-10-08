@@ -21,6 +21,7 @@ import {
   FundingRefusedError,
 } from '../../src/domain/errors/index.js';
 import { FUNDING_SYSTEM, FundingService } from '../../src/domain/funding/FundingService.js';
+import { FundingStampService } from '../../src/domain/funding/FundingStampService.js';
 
 import { TEST_OPERATOR, InMemoryAuditLog } from './support/fakes.js';
 import {
@@ -34,6 +35,7 @@ import {
   fundingInventory,
   fundingNode,
   InMemoryFundingPinStore,
+  InMemoryFundingStampStore,
   managerFailure,
   InMemoryFundingTransferStore,
   NODE_A,
@@ -51,17 +53,20 @@ let wallet: FakeFundingWallet;
 let manager: FakeFundingManager;
 let transfers: InMemoryFundingTransferStore;
 let pins: InMemoryFundingPinStore;
+let stampJournal: InMemoryFundingStampStore;
 let audit: InMemoryAuditLog;
 let service: FundingService;
 /** The service's clock, which a test moves by hand. */
 const clock = { now: 0 };
 
 function build(over: { wallet?: FakeFundingWallet | null; manager?: FakeFundingManager | null } = {}): FundingService {
+  const builtManager = over.manager === undefined ? manager : over.manager;
   return new FundingService({
     wallet: over.wallet === undefined ? wallet : over.wallet,
-    manager: over.manager === undefined ? manager : over.manager,
+    manager: builtManager,
     transfers,
     pins,
+    stamps: new FundingStampService({ manager: builtManager, journal: stampJournal, audit, now: () => clock.now }),
     audit,
     now: () => clock.now,
   });
@@ -73,6 +78,7 @@ beforeEach(() => {
   manager = new FakeFundingManager();
   transfers = new InMemoryFundingTransferStore();
   pins = new InMemoryFundingPinStore();
+  stampJournal = new InMemoryFundingStampStore();
   audit = new InMemoryAuditLog();
   service = build();
 });
