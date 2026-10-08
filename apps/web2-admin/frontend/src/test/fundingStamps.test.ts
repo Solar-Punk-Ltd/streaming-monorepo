@@ -254,6 +254,14 @@ describe('what a top-up comes to', () => {
     expect(noPrice.totalCostPlur).toBeNull();
   });
 
+  it('reads a view that names no price of postage at all as one with none, and says so', () => {
+    // As an answer from before the price of postage would come: no `postage` at all, rather than null.
+    const { postage: _price, ...unpriced } = makeStampView();
+    const check = checkStamps(unpriced as FundingView, selection([BATCH.catalogue]));
+    expect(check.problems).toEqual([NO_PRICE_PROBLEM]);
+    expect(check.lines[0]).toMatchObject({ request: null, costPlur: null });
+  });
+
   it('cannot ask a node with no xDAI for the gas, or one whose wallet was not read', () => {
     const view = makeStampView();
     if (view.catalogue) view.catalogue = { ...view.catalogue, xdaiWei: '0' };
