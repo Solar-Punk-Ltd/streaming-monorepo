@@ -117,7 +117,7 @@ export class AdminLadderRegistry implements LadderRegistry {
 
   /**
    * Groups whose finished ladder this process has already handed to one rung as a flip, which that rung
-   * answers with the one `vod` report. See {@link recordingOf} and {@link recordingNotReported}.
+   * answers with the one `vod` report. See {@link takeFlip} and {@link recordingNotReported}.
    */
   private readonly flipHandedOut = new Set<string>();
 
@@ -200,11 +200,13 @@ export class AdminLadderRegistry implements LadderRegistry {
       this.rewrites.recordAdvertised(group, ladderShape(advertised.map((r) => r.name)));
     }
 
-    return { masterIndex: published?.index ?? null, ...this.recordingOf(report, group) };
+    return { masterIndex: published?.index ?? null, ...this.takeFlip(report, group) };
   }
 
   /**
    * Whether this answer is the moment the ladder became a recording, and how long the recording plays.
+   * A flip handed back here is taken: no other answer is given it until the ladder stops being finished,
+   * the admin holds the recording, or {@link recordingNotReported} hands it back.
    *
    * The admin raises `flippedToFinished` on the report that completed ITS merge, where every rung has an
    * index, and it cannot see a rung that will not finish. So the flip is read off `LadderCompletion`'s
@@ -213,7 +215,7 @@ export class AdminLadderRegistry implements LadderRegistry {
    * own merge first finishes because the rung left out finished after all, which adds that rung to the
    * master and is not a second ending. Judged on this answer's own ladder, the way the admin's flag is.
    */
-  private recordingOf(
+  private takeFlip(
     report: RenditionReportResponse,
     group: string,
   ): Pick<RenditionAnnouncement, 'flippedToFinished' | 'duration'> {
