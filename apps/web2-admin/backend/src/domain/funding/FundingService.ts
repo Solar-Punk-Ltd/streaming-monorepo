@@ -320,6 +320,7 @@ export class FundingService {
       managerError: null,
       openBulkId,
       openStampBulkId,
+      openChequebookBulkId: null,
     };
     if (!manager) return view;
 

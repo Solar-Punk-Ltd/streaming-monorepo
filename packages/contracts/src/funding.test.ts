@@ -3,6 +3,8 @@ import { describe, it } from 'node:test';
 
 import {
   ADMIN_FUNDING_PATH,
+  FUNDING_CHEQUEBOOK_DIRECTIONS,
+  FUNDING_CHEQUEBOOK_OPERATIONS_PATH,
   FUNDING_ERROR_CODES,
   FUNDING_ERROR_STATUS,
   FUNDING_INVENTORY_PATH,
@@ -16,6 +18,11 @@ import {
   fundingAccountPath,
   fundingBatchSchema,
   fundingChainSchema,
+  fundingChequebookOperationAnswerSchema,
+  fundingChequebookOperationPath,
+  fundingChequebookOperationRequestSchema,
+  fundingChequebookOperationStatusSchema,
+  fundingChequebookSchema,
   fundingErrorAnswerSchema,
   fundingInventorySchema,
   fundingNodeSchema,
@@ -106,6 +113,22 @@ const diluteRequest = () => ({
   newDepth: 23,
 });
 
+const CHEQUEBOOK = '0x3333333333333333333333333333333333333333';
+
+const chequebook = () => ({
+  address: CHEQUEBOOK,
+  availablePlur: '9500000000000000',
+  totalPlur: '10000000000000000',
+  readError: null,
+});
+
+const depositRequest = () => ({
+  requestId: REQUEST_ID,
+  nodeId: `${STAGE_ID}:bee-uploader`,
+  direction: 'deposit',
+  amountPlur: '500000000000000',
+});
+
 describe('the paths under /api/admin-funding', () => {
   it('names each route under the one prefix', () => {
     assert.equal(ADMIN_FUNDING_PATH, '/api/admin-funding');
@@ -137,6 +160,17 @@ describe('the paths under /api/admin-funding', () => {
       assert.throws(() => fundingStampOperationPath(bad), /UUID/);
     }
   });
+
+  it('builds a chequebook operation path from a UUID in lower case, and refuses anything else', () => {
+    assert.equal(FUNDING_CHEQUEBOOK_OPERATIONS_PATH, '/api/admin-funding/chequebook-operations');
+    assert.equal(
+      fundingChequebookOperationPath(REQUEST_ID.toUpperCase()),
+      `/api/admin-funding/chequebook-operations/${REQUEST_ID}`,
+    );
+    for (const bad of ['', 'self', '../stamp-operations', `${REQUEST_ID}/x`]) {
+      assert.throws(() => fundingChequebookOperationPath(bad), /UUID/);
+    }
+  });
 });
 
 describe('the closed lists', () => {
@@ -145,6 +179,7 @@ describe('the closed lists', () => {
     assert.deepEqual(FUNDING_TRANSFER_KINDS, ['xdai', 'xbzz']);
     assert.deepEqual(FUNDING_TRANSFER_STATES, ['submitted', 'confirmed', 'failed', 'unknown']);
     assert.deepEqual(FUNDING_STAMP_OPERATION_KINDS, ['topup', 'dilute']);
+    assert.deepEqual(FUNDING_CHEQUEBOOK_DIRECTIONS, ['deposit', 'withdraw']);
     assert.deepEqual(FUNDING_ERROR_CODES, [
       'funding_off',
       'unauthorized',
@@ -155,6 +190,7 @@ describe('the closed lists', () => {
       'unknown_request',
       'stamp_refused',
       'node_unreachable',
+      'chequebook_refused',
     ]);
     assert.deepEqual(Object.keys(FUNDING_ERROR_STATUS).sort(), [...FUNDING_ERROR_CODES].sort());
     assert.equal(FUNDING_ERROR_STATUS.funding_off, 404, 'an API that is off looks like no API');
@@ -162,6 +198,7 @@ describe('the closed lists', () => {
     assert.equal(FUNDING_ERROR_STATUS.unknown_request, 404, 'a transfer the manager never received');
     assert.equal(FUNDING_ERROR_STATUS.stamp_refused, 422, 'a stamp operation a check refused');
     assert.equal(FUNDING_ERROR_STATUS.node_unreachable, 502, 'a node whose Bee API did not answer');
+    assert.equal(FUNDING_ERROR_STATUS.chequebook_refused, 422, 'a chequebook operation a check refused');
   });
 });
 
@@ -481,6 +518,133 @@ describe('GET /api/admin-funding/stamp-operations/:requestId', () => {
     });
     assert.equal(confirmed.txHash, TX_HASH);
     assert.equal(fundingStampOperationStatusSchema.safeParse({ ...confirmed, state: 'pending' }).success, false);
+  });
+});
+
+describe("a node's chequebook, in the inventory", () => {
+  it("takes a node's chequebook and keeps its address in lower case", () => {
+    const parsed = fundingNodeSchema.parse({
+      ...node(),
+      chequebook: { ...chequebook(), address: CHEQUEBOOK.toUpperCase().replace('0X', '0x') },
+    });
+    assert.deepEqual(parsed.chequebook, chequebook());
+  });
+
+  it('takes a node that has no chequebook, and the node of a manager that answers no chequebook at all', () => {
+    assert.equal(fundingNodeSchema.parse({ ...node(), role: 'gateway', chequebook: null }).chequebook, null);
+    const older = fundingNodeSchema.parse(node());
+    assert.equal(older.chequebook, undefined);
+    assert.equal('chequebook' in older, false);
+  });
+
+  it('takes a chequebook the node could not be read about, with null readings and the reason', () => {
+    const unread = {
+      address: null,
+      availablePlur: null,
+      totalPlur: null,
+      readError: 'The node did not answer in time.',
+    };
+    assert.deepEqual(fundingChequebookSchema.parse(unread), unread);
+  });
+
+  it('takes an empty chequebook, and refuses readings that are not an address or base units', () => {
+    const empty = { ...chequebook(), availablePlur: '0', totalPlur: '0' };
+    assert.deepEqual(fundingChequebookSchema.parse(empty), empty);
+    const refused = (over: Record<string, unknown>) =>
+      fundingChequebookSchema.safeParse({ ...chequebook(), ...over }).success === false;
+    for (const address of ['0x12', CHEQUEBOOK.slice(2), '']) assert.ok(refused({ address }), JSON.stringify(address));
+    for (const availablePlur of ['0.5', '-1', '1e16', '01', 1]) {
+      assert.ok(refused({ availablePlur }), JSON.stringify(availablePlur));
+    }
+    for (const totalPlur of ['0.5', '-1', '', 10]) assert.ok(refused({ totalPlur }), JSON.stringify(totalPlur));
+  });
+
+  it('drops a field it does not name, a chequebook owner or a Bee API address among them', () => {
+    const parsed = fundingChequebookSchema.parse({ ...chequebook(), owner: WALLET, apiUrl: 'http://bee.invalid:1633' });
+    assert.equal('owner' in parsed, false);
+    assert.equal('apiUrl' in parsed, false);
+  });
+});
+
+describe('POST /api/admin-funding/chequebook-operations', () => {
+  it('takes a deposit and a withdrawal, and keeps the request id in lower case', () => {
+    assert.deepEqual(
+      fundingChequebookOperationRequestSchema.parse({ ...depositRequest(), requestId: REQUEST_ID.toUpperCase() }),
+      depositRequest(),
+    );
+    assert.equal(
+      fundingChequebookOperationRequestSchema.parse({ ...depositRequest(), direction: 'withdraw' }).direction,
+      'withdraw',
+    );
+  });
+
+  it('takes an amount of up to 30 digits, as the manager journals one, and refuses 31', () => {
+    const amountPlur = '9'.repeat(30);
+    assert.equal(
+      fundingChequebookOperationRequestSchema.parse({ ...depositRequest(), amountPlur }).amountPlur,
+      amountPlur,
+    );
+    assert.equal(
+      fundingChequebookOperationRequestSchema.safeParse({ ...depositRequest(), amountPlur: '1'.repeat(31) }).success,
+      false,
+    );
+  });
+
+  it('refuses a move of nothing, a direction it does not know, and a request missing a field', () => {
+    const refused = (body: Record<string, unknown>) =>
+      fundingChequebookOperationRequestSchema.safeParse(body).success === false;
+    assert.ok(refused({ ...depositRequest(), amountPlur: '0' }), 'a move of nothing moves nothing');
+    for (const amountPlur of ['0.5', '-1', '1e16', '01', 1]) {
+      assert.ok(refused({ ...depositRequest(), amountPlur }), JSON.stringify(amountPlur));
+    }
+    for (const direction of ['cashout', 'Deposit', ''])
+      assert.ok(refused({ ...depositRequest(), direction }), direction);
+    for (const field of ['requestId', 'nodeId', 'direction', 'amountPlur'] as const) {
+      const { [field]: _dropped, ...missing } = depositRequest();
+      assert.ok(refused(missing), `no ${field}`);
+    }
+    assert.ok(refused({ ...depositRequest(), requestId: 'not-a-uuid' }));
+    assert.ok(refused({ ...depositRequest(), nodeId: 'a/b' }));
+  });
+
+  it('drops a field it does not name, so a request cannot name where a withdrawal goes', () => {
+    const parsed = fundingChequebookOperationRequestSchema.parse({ ...depositRequest(), to: WALLET, profile: 'x' });
+    assert.equal('to' in parsed, false);
+    assert.equal('profile' in parsed, false);
+  });
+
+  it('answers the request id, the direction, a state and the transaction hash once there is one', () => {
+    const answer = { requestId: REQUEST_ID, direction: 'deposit', state: 'submitted', txHash: TX_HASH };
+    assert.deepEqual(fundingChequebookOperationAnswerSchema.parse(answer), answer);
+    assert.equal(
+      fundingChequebookOperationAnswerSchema.parse({ ...answer, state: 'unknown', txHash: null }).txHash,
+      null,
+    );
+    assert.equal(fundingChequebookOperationAnswerSchema.safeParse({ ...answer, direction: 'cashout' }).success, false);
+    assert.equal(fundingChequebookOperationAnswerSchema.safeParse({ ...answer, state: 'settled' }).success, false);
+  });
+});
+
+describe('GET /api/admin-funding/chequebook-operations/:requestId', () => {
+  it('answers the state with the hash and the error, each null until there is one, in the four states only', () => {
+    const failed = fundingChequebookOperationStatusSchema.parse({
+      requestId: REQUEST_ID,
+      direction: 'withdraw',
+      state: 'failed',
+      txHash: null,
+      error: 'The chequebook holds less than the withdrawal.',
+    });
+    assert.equal(failed.error, 'The chequebook holds less than the withdrawal.');
+    const confirmed = fundingChequebookOperationStatusSchema.parse({
+      ...failed,
+      state: 'confirmed',
+      txHash: TX_HASH,
+      error: null,
+    });
+    assert.equal(confirmed.txHash, TX_HASH);
+    for (const state of ['submitting', 'settled', 'reverted', 'rejected', 'asserted']) {
+      assert.equal(fundingChequebookOperationStatusSchema.safeParse({ ...confirmed, state }).success, false, state);
+    }
   });
 });
 

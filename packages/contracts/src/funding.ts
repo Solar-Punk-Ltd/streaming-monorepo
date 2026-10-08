@@ -4,10 +4,10 @@ import { UUID_PATTERN } from './adminApi.js';
 
 /**
  * The manager's funding API, which the web2 admin calls to keep a brand's stages funded from the brand wallet: the
- * nodes with their wallets and batches, the brand account's balances and nonce, transfers the admin signs and the
- * manager checks and broadcasts, and stamp operations, the top-ups and dilutions of the nodes' batches, which each node
- * pays for from its own wallet. The admin has no chain connection of its own. `docs/architecture/funding.md` is the
- * design.
+ * nodes with their wallets, batches and chequebooks, the brand account's balances and nonce, transfers the admin signs
+ * and the manager checks and broadcasts, stamp operations, the top-ups and dilutions of the nodes' batches, and
+ * chequebook operations, the deposits into and withdrawals from the nodes' chequebooks, which each node pays for from
+ * its own wallet. The admin has no chain connection of its own. `docs/architecture/funding.md` is the design.
  *
  * Every route is under {@link ADMIN_FUNDING_PATH}, takes `Authorization: Bearer` with the manager's
  * `FUNDING_API_TOKEN`, and refuses a session cookie; the manager's operator routes refuse that bearer.
@@ -50,6 +50,18 @@ export function fundingStampOperationPath(requestId: string): string {
   return `${FUNDING_STAMP_OPERATIONS_PATH}/${requestId.toLowerCase()}`;
 }
 
+/**
+ * `POST`: one deposit into or withdrawal from a node's chequebook, which the manager checks, journals and asks the
+ * node for.
+ */
+export const FUNDING_CHEQUEBOOK_OPERATIONS_PATH = `${ADMIN_FUNDING_PATH}/chequebook-operations`;
+
+/** `GET`: the state of one chequebook operation, by the request id the admin gave it. */
+export function fundingChequebookOperationPath(requestId: string): string {
+  if (!UUID_PATTERN.test(requestId)) throw new Error('A chequebook operation request id is a UUID.');
+  return `${FUNDING_CHEQUEBOOK_OPERATIONS_PATH}/${requestId.toLowerCase()}`;
+}
+
 /** What a funded node does for its stage. The catalogue node is answered on its own, as a node of role `uploader`. */
 export const FUNDING_NODE_ROLES = ['uploader', 'gateway', 'rung'] as const;
 export type FundingNodeRole = (typeof FUNDING_NODE_ROLES)[number];
@@ -74,6 +86,13 @@ export type FundingTransferState = (typeof FUNDING_TRANSFER_STATES)[number];
 export const FUNDING_STAMP_OPERATION_KINDS = ['topup', 'dilute'] as const;
 export type FundingStampOperationKind = (typeof FUNDING_STAMP_OPERATION_KINDS)[number];
 
+/**
+ * Which way a chequebook operation moves xBZZ: `deposit` from the node's wallet into its chequebook, and `withdraw`
+ * from its chequebook back into its wallet, the one place Bee withdraws to. The node pays the gas of either in xDAI.
+ */
+export const FUNDING_CHEQUEBOOK_DIRECTIONS = ['deposit', 'withdraw'] as const;
+export type FundingChequebookDirection = (typeof FUNDING_CHEQUEBOOK_DIRECTIONS)[number];
+
 /** The codes an error answer carries. */
 export const FUNDING_ERROR_CODES = [
   /** The manager has no `FUNDING_API_TOKEN`, so the API is off. */
@@ -97,6 +116,11 @@ export const FUNDING_ERROR_CODES = [
   'stamp_refused',
   /** The node's Bee API did not answer the manager. */
   'node_unreachable',
+  /**
+   * A check of a chequebook operation failed, or the manager could not prepare it, and the sentence says which.
+   * Nothing was asked of the node.
+   */
+  'chequebook_refused',
 ] as const;
 export type FundingErrorCode = (typeof FUNDING_ERROR_CODES)[number];
 
@@ -114,6 +138,7 @@ export const FUNDING_ERROR_STATUS: Readonly<Record<FundingErrorCode, number>> = 
   unknown_request: 404,
   stamp_refused: 422,
   node_unreachable: 502,
+  chequebook_refused: 422,
 };
 
 const someText = z.string().min(1);
@@ -191,13 +216,32 @@ export const fundingBatchSchema = z.object({
 export type FundingBatch = z.infer<typeof fundingBatchSchema>;
 
 /**
+ * A node's chequebook, which pays its peers for bandwidth, as the node reports it in `GET /chequebook/address` and
+ * `GET /chequebook/balance`: its address; `availablePlur`, what the node can still pay out of it; and `totalPlur`,
+ * which also holds the cheques the node wrote that its peers have not cashed yet, so total less available is what the
+ * node owes them. Every reading is null when the node could not be read about its chequebook, and `readError` says why
+ * in a sentence; it is null otherwise.
+ */
+export const fundingChequebookSchema = z.object({
+  address: address.nullable(),
+  availablePlur: baseUnits.nullable(),
+  totalPlur: baseUnits.nullable(),
+  readError: z.string().nullable(),
+});
+export type FundingChequebook = z.infer<typeof fundingChequebookSchema>;
+
+/**
  * One node a stage, or the catalogue, runs, with its wallet as the manager read it from the node. The wallet and its
  * balances are null when the node could not be read, and `readError` says why in a sentence; it is null otherwise.
  *
  * `batch` is the batch the manager uses for the node's uploads: a rung's is its rung's batch, a stage's own Bee
  * node's the stage's batch, and the catalogue node's the designated catalogue batch, never the one a pending move
  * left. It is null for a gateway and for a node with no batch set. It is optional, so the answer of a manager that
- * does not read batches still parses. A later phase adds the node's chequebook as another optional field.
+ * does not read batches still parses.
+ *
+ * `chequebook` is the node's chequebook, read with its wallet. It is null when the node answered that it has none, as
+ * an ultra-light node or one with its chequebook off answers, and optional, so the answer of a manager that does not
+ * read chequebooks still parses.
  */
 export const fundingNodeSchema = z.object({
   nodeId,
@@ -208,6 +252,7 @@ export const fundingNodeSchema = z.object({
   xbzzPlur: baseUnits.nullable(),
   readError: z.string().nullable(),
   batch: fundingBatchSchema.nullable().optional(),
+  chequebook: fundingChequebookSchema.nullable().optional(),
 });
 export type FundingNode = z.infer<typeof fundingNodeSchema>;
 
@@ -374,6 +419,52 @@ export const fundingStampOperationStatusSchema = z.object({
   error: z.string().nullable(),
 });
 export type FundingStampOperationStatus = z.infer<typeof fundingStampOperationStatusSchema>;
+
+/**
+ * An amount a chequebook operation moves: base units, more than none, and at most 30 digits, as the manager's
+ * chequebook journal takes one, which is more xBZZ than there is.
+ */
+const chequebookAmount = positiveBaseUnits.refine((amount) => amount.length <= 30, 'must be at most 30 digits');
+
+/**
+ * `POST /api/admin-funding/chequebook-operations`: one deposit into, or withdrawal from, a node's chequebook, which the
+ * node carries out and pays the gas of. `nodeId` must be a stage's own Bee node or a rung in the manager's current
+ * inventory: never a gateway, whose chequebook the manager does not move, nor the catalogue node, which no stage lists.
+ * A `deposit` moves `amountPlur` from the node's wallet into its chequebook, a `withdraw` from its chequebook back into
+ * its wallet. The same `requestId` sent again answers the operation's state and never runs it twice.
+ */
+export const fundingChequebookOperationRequestSchema = z.object({
+  requestId: uuid,
+  nodeId,
+  direction: z.enum(FUNDING_CHEQUEBOOK_DIRECTIONS),
+  amountPlur: chequebookAmount,
+});
+export type FundingChequebookOperationRequest = z.infer<typeof fundingChequebookOperationRequestSchema>;
+
+/**
+ * What `POST /api/admin-funding/chequebook-operations` answers, with 202: the operation's state, in the transfers'
+ * four states, and its transaction hash once there is one.
+ */
+export const fundingChequebookOperationAnswerSchema = z.object({
+  requestId: uuid,
+  direction: z.enum(FUNDING_CHEQUEBOOK_DIRECTIONS),
+  state: z.enum(FUNDING_TRANSFER_STATES),
+  txHash: txHash.nullable(),
+});
+export type FundingChequebookOperationAnswer = z.infer<typeof fundingChequebookOperationAnswerSchema>;
+
+/**
+ * `GET /api/admin-funding/chequebook-operations/:requestId`: where the operation stands. The hash and the error are
+ * each null until there is one.
+ */
+export const fundingChequebookOperationStatusSchema = z.object({
+  requestId: uuid,
+  direction: z.enum(FUNDING_CHEQUEBOOK_DIRECTIONS),
+  state: z.enum(FUNDING_TRANSFER_STATES),
+  txHash: txHash.nullable(),
+  error: z.string().nullable(),
+});
+export type FundingChequebookOperationStatus = z.infer<typeof fundingChequebookOperationStatusSchema>;
 
 /** An error answer of the funding API: one of the codes, with the status {@link FUNDING_ERROR_STATUS} gives it. */
 export const fundingErrorAnswerSchema = z.object({
