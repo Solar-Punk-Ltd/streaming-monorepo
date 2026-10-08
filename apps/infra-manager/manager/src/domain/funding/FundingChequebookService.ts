@@ -141,6 +141,17 @@ function sameMove(operation: ChequebookOperation, request: FundingChequebookOper
   return operation;
 }
 
+/** An `operate()` under way in this process: the request it carries, and the promise of its answer or its refusal. */
+interface UnderWay {
+  readonly request: FundingChequebookOperationRequest;
+  readonly answer: Promise<FundingChequebookOperationAnswer>;
+}
+
+/** Whether a request sent under the id of one under way is the same move: same node, same direction, same amount. */
+function sameRequest(a: FundingChequebookOperationRequest, b: FundingChequebookOperationRequest): boolean {
+  return a.nodeId === b.nodeId && a.direction === b.direction && a.amountPlur === b.amountPlur;
+}
+
 /**
  * A refusal of the chequebook path's that came before anything was journalled or sent, with the manager's own sentence
  * for its cause, or null for any other failure, which is the manager's own error: a journal that could not be
@@ -240,12 +251,21 @@ async function within<T>(promise: Promise<T>, ms: number): Promise<T | null> {
  * `unknown` stays `unknown`, as does any row whose evidence conflicts with another's. A status read has the chequebook
  * path check an open operation first, at most once every {@link FUNDING_CHEQUEBOOK_CHECK_MS} per request id, and
  * answers the journal as it stands when that check fails or takes longer than {@link FUNDING_CHEQUEBOOK_CHECK_WAIT_MS}.
+ *
+ * The chequebook path journals a move only once it has prepared it, which can take it half a minute, so until then
+ * the request is known by its call under way in this process, the manager's one API process. A status read of a
+ * request id nothing is journalled under yet, whose call is under way, answers it `submitted` with no hash and no
+ * error, never `unknown_request`, on which the web2 admin would send it again. The same request sent again meanwhile
+ * waits for that call and answers what it answered, the same refusal when it was refused, and another move under its
+ * id is a conflict at once; neither reads anything or runs beside it. The id is freed once the call has answered.
  */
 export class FundingChequebookService {
   private readonly now: () => number;
   private readonly checkWaitMs: number;
   /** When a status read last had each request id's operation checked, for {@link FUNDING_CHEQUEBOOK_CHECK_MS}. */
   private readonly lastCheck = new Map<string, number>();
+  /** The request ids whose `operate()` is under way in this process, from its first step until it has answered. */
+  private readonly underWay = new Map<string, UnderWay>();
 
   constructor(private readonly deps: FundingChequebookDeps) {
     this.now = deps.now ?? (() => Date.now());
@@ -253,6 +273,51 @@ export class FundingChequebookService {
   }
 
   async operate(request: FundingChequebookOperationRequest): Promise<FundingChequebookOperationAnswer> {
+    const running = this.underWay.get(request.requestId);
+    if (running) {
+      if (!sameRequest(running.request, request)) throw new FundingApiError('conflict', OTHER_MOVE);
+      return running.answer;
+    }
+    const answer = this.carryOut(request);
+    this.underWay.set(request.requestId, { request, answer });
+    try {
+      return await answer;
+    } finally {
+      this.underWay.delete(request.requestId);
+    }
+  }
+
+  async status(requestId: string): Promise<FundingChequebookOperationStatus> {
+    const journalled = await this.journalled(requestId);
+    // Looked up after the journal read, so a call that has answered by now is never taken for one under way.
+    const running = journalled ? undefined : this.underWay.get(requestId);
+    if (running) {
+      return { requestId, direction: running.request.direction, state: 'submitted', txHash: null, error: null };
+    }
+    // An operator's own transfer under this id is not the funding API's to answer: the admin's request was never taken.
+    if (!journalled || journalled.requestedBy !== FUNDING_CHEQUEBOOK_REQUESTER) {
+      throw new FundingApiError(
+        'unknown_request',
+        'The funding API journalled no chequebook operation under this request id, so sending it again under the same id is safe.',
+      );
+    }
+    const operation = awaitsCheck(journalled, this.now()) ? await this.checked(journalled) : journalled;
+    const { state, error } = outcomeOf(operation);
+    if (state === 'confirmed' || state === 'failed') this.lastCheck.delete(operation.requestId);
+    return {
+      requestId: operation.requestId,
+      direction: operation.direction,
+      state,
+      txHash: operation.transactionHash,
+      error,
+    };
+  }
+
+  /**
+   * One request carried out: answered from the journal when its id is journalled already, otherwise checked against
+   * the inventory read now and handed to the chequebook path.
+   */
+  private async carryOut(request: FundingChequebookOperationRequest): Promise<FundingChequebookOperationAnswer> {
     const known = await this.journalled(request.requestId);
     if (known) return answerOf(sameMove(known, request));
 
@@ -285,27 +350,6 @@ export class FundingChequebookService {
       }`,
     );
     return answerOf(operation);
-  }
-
-  async status(requestId: string): Promise<FundingChequebookOperationStatus> {
-    const journalled = await this.journalled(requestId);
-    // An operator's own transfer under this id is not the funding API's to answer: the admin's request was never taken.
-    if (!journalled || journalled.requestedBy !== FUNDING_CHEQUEBOOK_REQUESTER) {
-      throw new FundingApiError(
-        'unknown_request',
-        'The funding API journalled no chequebook operation under this request id, so sending it again under the same id is safe.',
-      );
-    }
-    const operation = awaitsCheck(journalled, this.now()) ? await this.checked(journalled) : journalled;
-    const { state, error } = outcomeOf(operation);
-    if (state === 'confirmed' || state === 'failed') this.lastCheck.delete(operation.requestId);
-    return {
-      requestId: operation.requestId,
-      direction: operation.direction,
-      state,
-      txHash: operation.transactionHash,
-      error,
-    };
   }
 
   /** The operation journalled under a request id, or null. A journal that cannot be read is the manager's own error. */
