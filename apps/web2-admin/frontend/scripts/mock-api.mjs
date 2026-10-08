@@ -105,12 +105,13 @@ const stages =
  * with a sentence, and MOCK_FUNDING=lost answers every one `unknown` first, then sent, then confirmed.
  *
  * Phase 3, the Chequebooks tab: each stage node answers its chequebook, or none, or why it could not be read about it.
- * A chequebook bulk names a target and, for each chequebook, the available balance the page showed, from which the
- * mock works out each move as the API does: a deposit of the difference from the node's wallet under the target, a
- * withdrawal of the difference into it over the target. It takes the moves in turn as a stamp bulk takes its
- * operations, and once one is confirmed the chequebook and the wallet hold their new balances and the node pays some
- * gas. The route checks what the API checks, refusing with its sentence. MOCK_FUNDING=refuse and MOCK_FUNDING=lost
- * answer chequebook operations as they answer stamp operations.
+ * A chequebook bulk names a target and, for each chequebook, the available balance the page showed, from which and the
+ * balance the chequebook holds then the mock works out each move again as the API does, never more than the page
+ * showed: a deposit of the difference from the node's wallet under the target, a withdrawal of the difference into it
+ * over the target. It takes the moves in turn as a stamp bulk takes its operations, and once one is confirmed the
+ * chequebook and the wallet hold their new balances and the node pays some gas. The route checks what the API checks,
+ * refusing with its sentence. MOCK_FUNDING=refuse and MOCK_FUNDING=lost answer chequebook operations as they answer
+ * stamp operations.
  */
 const FUNDING_CONFIGURED = process.env.MOCK_FUNDING !== 'off';
 const FUNDING_REFUSE = process.env.MOCK_FUNDING === 'refuse';
@@ -537,6 +538,18 @@ function chequebookMove(target, available) {
     : { direction: 'withdraw', amount: available - target };
 }
 
+/**
+ * The move a chequebook bulk makes, as the common chequebookMoveNow works it out again when the request comes in: from
+ * the available balance the page showed, `shown`, and the one the chequebook holds now, never more than the page
+ * showed. A deposit is the target less the larger of the two, a withdrawal the smaller less the target, and null when
+ * the page showed none or the chequebook is at the target or past it now. BigInt PLUR.
+ */
+function chequebookMoveNow(target, shown, now) {
+  if (shown < target && now < target) return { direction: 'deposit', amount: target - (shown > now ? shown : now) };
+  if (shown > target && now > target) return { direction: 'withdraw', amount: (shown < now ? shown : now) - target };
+  return null;
+}
+
 /** Whether a chequebook operation holds up a new chequebook bulk, as a stamp operation holds up a new stamp bulk. */
 function chequebookHoldsNext(item, now = Date.now()) {
   return stampHoldsNext(item, now);
@@ -613,9 +626,9 @@ const PLUR = /^(0|[1-9]\d{0,77})$/;
 /**
  * Why the mock refuses a chequebook request, as the API checks one, or null: a target of base units and 1 xBZZ or
  * more; each node once, a stage's own Bee node or a rung with its wallet and chequebook read, never a gateway nor the
- * catalogue node, with the available balance the page showed, from which its move is worked out, and never one at the
- * target; a deposit refused when the chequebook holds more now than the page showed or the wallet less xBZZ than the
- * deposit, a withdrawal when the chequebook holds less than it, and either when the node has no xDAI for the gas.
+ * catalogue node, with the available balance the page showed, never one at the target; its move worked out again from
+ * that and the balance the chequebook holds now, and refused when the chequebook is at the target or past it now; a
+ * deposit when the wallet holds less xBZZ than it, and either way when the node has no xDAI for the gas.
  */
 function chequebookRefusal(body) {
   const target = body?.targetPlur;
@@ -635,15 +648,14 @@ function chequebookRefusal(body) {
     if (typeof item.availablePlur !== 'string' || !PLUR.test(item.availablePlur)) {
       return 'Each chequebook names the available balance the page showed.';
     }
-    const move = chequebookMove(BigInt(target), BigInt(item.availablePlur));
-    if (move === null) return `The chequebook of ${node.label} is at the target already.`;
-    if (move.direction === 'deposit') {
-      if (chequebook.availablePlur > BigInt(item.availablePlur)) {
-        return `The chequebook of ${node.label} holds more than the page showed. Read the page again.`;
-      }
-      if (move.amount > node.xbzzPlur) return `${node.label} holds less xBZZ than its deposit.`;
-    } else if (move.amount > chequebook.availablePlur) {
-      return `The chequebook of ${node.label} holds less than the withdrawal.`;
+    const shown = BigInt(item.availablePlur);
+    if (chequebookMove(BigInt(target), shown) === null) {
+      return `The chequebook of ${node.label} is at the target already.`;
+    }
+    const move = chequebookMoveNow(BigInt(target), shown, chequebook.availablePlur);
+    if (move === null) return `The chequebook of ${node.label} is at the target or past it now. Read the page again.`;
+    if (move.direction === 'deposit' && move.amount > node.xbzzPlur) {
+      return `${node.label} holds less xBZZ than its deposit.`;
     }
     if (node.xdaiWei === 0n) return `${node.label} holds no xDAI to pay the gas.`;
   }
@@ -1200,7 +1212,7 @@ async function handle(req, res) {
     const target = BigInt(body.targetPlur);
     const items = body.items.map((item, index) => {
       const node = fundingNodes.get(item.nodeId);
-      const move = chequebookMove(target, BigInt(item.availablePlur));
+      const move = chequebookMoveNow(target, BigInt(item.availablePlur), node.chequebook.availablePlur);
       return {
         requestId: randomUUID(),
         index,

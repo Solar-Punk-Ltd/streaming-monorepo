@@ -12,6 +12,7 @@ import {
   type ChequebookItemRequest,
   type ChequebookMove,
   chequebookMove,
+  chequebookMoveNow,
   type FundingChequebookBulkAnswer,
   type FundingChequebookItem,
   type FundingChequebookOperationsAnswer,
@@ -61,21 +62,24 @@ import { ManagerFundingError, type ManagerFundingClient } from './ManagerFunding
  * inventory, read fresh, journals it, and relays it item by item through the manager's funding API
  * (`packages/contracts/src/funding.ts`).
  *
- * Each item moves exactly what the page's confirm dialog showed: `chequebookMove(target, availablePlur)`, from the
- * available balance the page read, a deposit of the difference into a chequebook under the target and a withdrawal of
- * the difference from one over it (`chequebookPlan.ts` of web2-admin-common, the arithmetic the page uses as well). A
- * busy node keeps paying its peers out of its chequebook, so its balance lands near the target, not on it.
+ * Each item's move is worked out again when the request comes in, and never moves more than the page's confirm dialog
+ * showed: `chequebookMoveNow(target, availablePlur, available now)`, from the available balance the page read and the
+ * one the manager's inventory reads now (`chequebookPlan.ts` of web2-admin-common, whose `chequebookMove` the page
+ * shows). A deposit is the target less the larger of the two, so it keeps the amount shown into a chequebook its node
+ * drew on since and lands a little under the target, and shrinks into one that grew, landing on it; a withdrawal is
+ * the smaller of the two less the target, so it shrinks from a chequebook that drew down, landing on the target, and
+ * keeps the amount shown from one that grew. The journal keeps the balance the move was worked out from, beside the
+ * target. A busy node keeps paying its peers out of its chequebook, so its balance lands near the target, not on it.
  *
  * A request is refused, in this order, nothing journalled: a target that is not whole PLUR of 30 digits at most or is
  * under 1 xBZZ (`CHEQUEBOOK_TARGET_MIN_PLUR`), no item, an available balance that is not whole PLUR of 30 digits at
  * most, or a node named twice (`RequestShapeError`); funding not set up; a manager on another chain; an item whose node
  * no stage lists (the catalogue node alone is not listed) or whose chequebook the tab does not move
  * (`movableChequebook`: a gateway's, one the node has not got or that was not read, or one whose node's wallet was not
- * read), whose chequebook stands at the target as the page showed it, or no longer holds what the move needs: a
- * deposit into a chequebook that holds more now than the page showed, something having been deposited since, or a
- * withdrawal of more than it holds available now; a node that holds no xDAI for the gas, or less xBZZ than its deposit;
- * an earlier chequebook bulk with an item that still holds up a new one, once refreshed, or another request at the same
- * moment (`FundingBusyError`). The manager checks again, and its preflight on the chain once more.
+ * read), whose chequebook stands at the target as the page showed it, or is at the target or past it now; a node that
+ * holds no xDAI for the gas, or less xBZZ than its deposit; an earlier chequebook bulk with an item that still holds up
+ * a new one, once refreshed, or another request at the same moment (`FundingBusyError`). The manager checks again, and
+ * its preflight on the chain once more.
  *
  * Every item is journalled (`funding_chequebook_operations`) before any is relayed, one request at a time under the
  * chequebook lock, and the request answers at once, every item `queued`. The items are then relayed in turn behind
@@ -191,12 +195,25 @@ export function checkChequebookShape(request: FundingChequebookOperationsRequest
 
 /**
  * One item of a request, checked against the inventory: the stage's node whose chequebook moves, its wallet and its
- * chequebook read, and the move that brings the available balance the page showed to the target.
+ * chequebook read, and the move that brings its chequebook to the target, worked out again from the balance read now
+ * and never more than the page showed.
  */
 export interface ChequebookTarget {
   item: ChequebookItemRequest;
   node: FundingNode;
   move: ChequebookMove;
+  /**
+   * The available balance the move was worked out from, PLUR: the larger of the page's and the one read now for a
+   * deposit, the smaller for a withdrawal, so the move is the one that brings it to the target. The journal keeps it.
+   */
+  fromPlur: string;
+}
+
+/** The available balance `move` brings to `targetPlur`: the target less a deposit, or the target plus a withdrawal. */
+function balanceMovedFrom(targetPlur: string, move: ChequebookMove): string {
+  const target = BigInt(targetPlur);
+  const amount = BigInt(move.amountPlur);
+  return (move.direction === 'deposit' ? target - amount : target + amount).toString();
 }
 
 /** Why a stage's node's chequebook is not moved from the tab, in a sentence that names it. Only for one refused. */
@@ -237,9 +254,9 @@ function immovable(node: FundingNode): FundingRefusedError {
  * fails refuses the request. An item names a node a stage lists, its own Bee node or a rung: the catalogue node alone
  * is not, whose chequebook the tab leaves alone. A node two stages list, as a stage's own and as another's rung, is
  * read once, so only its role differs between its listings. Its chequebook must be one the tab moves
- * ({@link movableChequebook}), and the move the page worked out must still hold: an item at the target is not one, a
- * deposit is refused when the chequebook holds more now than the page showed, since something was deposited since and
- * the deposit would overshoot, and a withdrawal when it is more than the chequebook holds available now.
+ * ({@link movableChequebook}). Its move is {@link chequebookMoveNow}, worked out again from the available balance the
+ * page showed and the one read now, never more than the page showed: an item the page showed at the target is not
+ * one, and nor is one whose chequebook is at the target or past it now, which the page should read again.
  */
 export function chequebookTargetsOf(
   request: FundingChequebookOperationsRequest,
@@ -263,26 +280,20 @@ export function chequebookTargetsOf(
     const availableNow = node.chequebook?.availablePlur ?? null;
     if (!movableChequebook(node) || availableNow === null) throw immovable(node);
 
-    const move = chequebookMove(request.targetPlur, item.availablePlur);
-    if (!move) {
+    if (!chequebookMove(request.targetPlur, item.availablePlur)) {
       throw new FundingRefusedError(
         'chequebook',
         `The chequebook of ${nodeName(node)} is at the target as the page showed it, so there is nothing to move. Nothing was sent.`,
       );
     }
-    if (move.direction === 'deposit' && BigInt(availableNow) > BigInt(item.availablePlur)) {
+    const move = chequebookMoveNow(request.targetPlur, item.availablePlur, availableNow);
+    if (!move) {
       throw new FundingRefusedError(
         'chequebook',
-        `The chequebook of ${nodeName(node)} holds ${xbzz(availableNow)} xBZZ available now, more than the ${xbzz(item.availablePlur)} the page showed: something was deposited since. Read the page again. Nothing was sent.`,
+        `The chequebook of ${nodeName(node)} holds ${xbzz(availableNow)} xBZZ available now, at the target or past it, so there is nothing to move. Read the page again. Nothing was sent.`,
       );
     }
-    if (move.direction === 'withdraw' && BigInt(move.amountPlur) > BigInt(availableNow)) {
-      throw new FundingRefusedError(
-        'chequebook',
-        `The chequebook of ${nodeName(node)} holds ${xbzz(availableNow)} xBZZ available now, less than the ${xbzz(move.amountPlur)} xBZZ the page would withdraw. Read the page again. Nothing was sent.`,
-      );
-    }
-    return { item, node, move };
+    return { item, node, move, fromPlur: balanceMovedFrom(request.targetPlur, move) };
   });
 }
 
@@ -424,9 +435,9 @@ export class FundingChequebookService {
 
   /**
    * `POST /api/funding/chequebook-operations`: checks the request against the manager's inventory, read fresh,
-   * journals every item under the chequebook lock, and answers at once with the bulk id and every item `queued`. The
-   * items are relayed in turn behind the answer, in this process; a read of the bulk follows them. The refusals,
-   * nothing journalled, are the module's.
+   * journals every item under the chequebook lock, each with the move worked out again from that reading, and answers
+   * at once with the bulk id and every item `queued`, as journalled. The items are relayed in turn behind the answer,
+   * in this process; a read of the bulk follows them. The refusals, nothing journalled, are the module's.
    */
   async request(
     actor: OperatorActor,
@@ -463,7 +474,7 @@ export class FundingChequebookService {
         direction: target.move.direction,
         amountPlur: target.move.amountPlur,
         targetPlur: request.targetPlur,
-        availablePlur: target.item.availablePlur,
+        availablePlur: target.fromPlur,
         requestedByUserId: actor.userId,
         requestedBy: actor.username,
       }));

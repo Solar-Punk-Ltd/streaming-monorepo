@@ -2,13 +2,14 @@
  * The chequebook operations of the Funding page against fakes: the manager journals what it is relayed and runs each
  * move once per request id, and the journals and the pins are in memory. `pnpm test`.
  *
- * Pinned here: the move each item makes, the target less the available balance the page showed, to the PLUR, a
- * deposit under the target and a withdrawal over it; every refusal and its problem, nothing journalled, the floor of
- * 1 xBZZ and a node named twice among them; a request answered at once, every item journalled `queued`, then relayed
- * in turn behind it, a refusal failing its item alone; a refresh that relays again only an item the manager never
- * received, the same fields under the same request id, and never one it answered for; one chequebook bulk at a time,
- * apart from sends and stamp bulks; a read that shares the relays under way; the view's open chequebook bulk; the
- * settled and watched flags; and the audit rows of a request and of each outcome.
+ * Pinned here: the move each item makes, to the PLUR, a deposit under the target and a withdrawal over it, worked out
+ * again from the available balance read now and never more than the page showed, with the balance it was worked out
+ * from journalled and the amount answered; every refusal and its problem, nothing journalled, the floor of 1 xBZZ, a
+ * node named twice and a chequebook at the target or past it now among them; a request answered at once, every item
+ * journalled `queued`, then relayed in turn behind it, a refusal failing its item alone; a refresh that relays again
+ * only an item the manager never received, the same fields under the same request id, and never one it answered for;
+ * one chequebook bulk at a time, apart from sends and stamp bulks; a read that shares the relays under way; the view's
+ * open chequebook bulk; the settled and watched flags; and the audit rows of a request and of each outcome.
  */
 import assert from 'node:assert/strict';
 import { beforeEach, describe, it } from 'node:test';
@@ -227,8 +228,8 @@ describe('a request, answered at once', () => {
   });
 });
 
-describe('the move, as the confirm dialog showed it', () => {
-  it('deposits the target less the balance the page showed, and withdraws the balance less the target', async () => {
+describe('the move, worked out again from the balance read now, never more than the confirm dialog showed', () => {
+  it('deposits the target less the balance the page showed, and withdraws the balance less the target, while it still holds that', async () => {
     const answer = await requested(toTarget(STAGE_NODE, RUNG_NODE));
 
     const [stage, rung] = answer.items;
@@ -246,7 +247,7 @@ describe('the move, as the confirm dialog showed it', () => {
     );
   });
 
-  it('works the move out from the balance the page showed, not the one the manager reads now', async () => {
+  it('keeps the move shown for a deposit into a chequebook that drew down since, and a withdrawal from one that grew', async () => {
     // Since the page read them, the stage's node paid its peers 0.1 xBZZ, and 0.25 was deposited into the rung's.
     const inventory = withNode(NODE_A, (node) => {
       node.chequebook = fundingChequebook({ availablePlur: xbzz('1.4') });
@@ -254,14 +255,91 @@ describe('the move, as the confirm dialog showed it', () => {
     inventory.stages[0]!.nodes[2]!.chequebook = fundingChequebook({ availablePlur: xbzz('3.5') });
     manager.inventoryAnswer = inventory;
 
-    await requested(toTarget(STAGE_NODE, RUNG_NODE));
+    const answer = await funding.chequebookOperations(TEST_OPERATOR, toTarget(STAGE_NODE, RUNG_NODE));
+    await chequebooks.idle();
 
+    // The deposit lands a little under the target, at 1.9, and the withdrawal a little over it, at 2.25.
+    const moves = [
+      ['deposit', xbzz('0.5')],
+      ['withdraw', xbzz('1.25')],
+    ];
+    assert.deepEqual(
+      answer.items.map((one) => [one.direction, one.amountPlur]),
+      moves,
+    );
     assert.deepEqual(
       manager.chequebookOperations.map((operation) => [operation.direction, operation.amountPlur]),
+      moves,
+    );
+    // Worked out from the larger balance for the deposit and the smaller for the withdrawal: the page's, both times.
+    assert.deepEqual(
+      (await journal.listBulk(answer.bulkId)).map((row) => [row.amountPlur, row.availablePlur]),
       [
-        ['deposit', xbzz('0.5')],
-        ['withdraw', xbzz('1.25')],
+        [xbzz('0.5'), xbzz('1.5')],
+        [xbzz('1.25'), xbzz('3.25')],
       ],
+    );
+  });
+
+  it('shrinks a deposit into a chequebook that grew since, and a withdrawal from one that drew down, to the target', async () => {
+    // Since the page read them, 0.3 xBZZ was deposited into the stage's node's, and the rung paid its peers 0.25.
+    const inventory = withNode(NODE_A, (node) => {
+      node.chequebook = fundingChequebook({ availablePlur: xbzz('1.8') });
+    });
+    inventory.stages[0]!.nodes[2]!.chequebook = fundingChequebook({ availablePlur: xbzz('3') });
+    manager.inventoryAnswer = inventory;
+
+    const answer = await funding.chequebookOperations(TEST_OPERATOR, toTarget(STAGE_NODE, RUNG_NODE));
+    await chequebooks.idle();
+
+    // The request answers the moves it journalled, not the ones the dialog listed, 0.5 and 1.25.
+    const moves = [
+      ['deposit', xbzz('0.2')],
+      ['withdraw', xbzz('1')],
+    ];
+    assert.deepEqual(
+      answer.items.map((one) => [one.direction, one.amountPlur, one.targetPlur, one.state]),
+      moves.map((move) => [...move, TARGET, 'queued']),
+    );
+    assert.deepEqual(
+      manager.chequebookOperations.map((operation) => [operation.direction, operation.amountPlur]),
+      moves,
+    );
+    // Worked out from the balances read now, the larger for the deposit and the smaller for the withdrawal.
+    assert.deepEqual(
+      (await journal.listBulk(answer.bulkId)).map((row) => [
+        row.direction,
+        row.amountPlur,
+        row.targetPlur,
+        row.availablePlur,
+      ]),
+      [
+        ['deposit', xbzz('0.2'), TARGET, xbzz('1.8')],
+        ['withdraw', xbzz('1'), TARGET, xbzz('3')],
+      ],
+    );
+    const [request] = audit.withAction('funding.chequebook.request');
+    const audited = (request?.details?.items ?? []) as { amountPlur: string; availablePlur: string }[];
+    assert.deepEqual(
+      audited.map((one) => [one.amountPlur, one.availablePlur]),
+      [
+        [xbzz('0.2'), xbzz('1.8')],
+        [xbzz('1'), xbzz('3')],
+      ],
+    );
+  });
+
+  it('never takes a chequebook under the target by a withdrawal, nor under the floor of 1 xBZZ', async () => {
+    // The page showed 3.25 against a target of 1, a withdrawal of 2.25, and the rung has paid its peers down to 1.5.
+    manager.inventoryAnswer = withNode(NODE_RUNG, (node) => {
+      node.chequebook = fundingChequebook({ availablePlur: xbzz('1.5') });
+    });
+
+    const answer = await requested({ targetPlur: xbzz('1'), items: [RUNG_NODE] });
+
+    assert.deepEqual(
+      answer.items.map((one) => [one.direction, one.amountPlur]),
+      [['withdraw', xbzz('0.5')]],
     );
   });
 
@@ -437,50 +515,78 @@ describe('refusing a request, nothing journalled', () => {
     );
   });
 
-  it('refuses a deposit into a chequebook that holds more now than the page showed, and takes one that holds as much or less', async () => {
-    manager.inventoryAnswer = withNode(NODE_A, (node) => {
-      node.chequebook = fundingChequebook({ availablePlur: (BigInt(xbzz('1.5')) + 1n).toString() });
-    });
-    const error = await refused(toTarget(STAGE_NODE));
-    assert.equal(error.problem, 'chequebook');
-    assert.equal(
-      error.message,
-      'The chequebook of Main stage uploader (stage-1:uploader) holds 1.5000000000000001 xBZZ available now, more than the 1.5 the page showed: something was deposited since. Read the page again. Nothing was sent.',
-    );
+  it('refuses a deposit into a chequebook at the target or past it now, and takes one a PLUR under it', async () => {
+    // The page showed 1.5 against the target of 2, a deposit of 0.5, and something was deposited since.
+    for (const [now, said] of [
+      [TARGET, '2'],
+      [xbzz('2.5'), '2.5'],
+    ] as const) {
+      manager.inventoryAnswer = withNode(NODE_A, (node) => {
+        node.chequebook = fundingChequebook({ availablePlur: now });
+      });
+      const error = await refused(toTarget(STAGE_NODE));
+      assert.equal(error.problem, 'chequebook');
+      assert.equal(
+        error.message,
+        `The chequebook of Main stage uploader (stage-1:uploader) holds ${said} xBZZ available now, at the target or past it, so there is nothing to move. Read the page again. Nothing was sent.`,
+      );
+    }
 
-    // A busy node paid its peers since: the deposit the page showed still goes, and the balance lands near the target.
+    const short = (BigInt(TARGET) - 1n).toString();
     manager.inventoryAnswer = withNode(NODE_A, (node) => {
-      node.chequebook = fundingChequebook({ availablePlur: xbzz('1.2') });
+      node.chequebook = fundingChequebook({ availablePlur: short });
     });
     const answer = await requested(toTarget(STAGE_NODE));
     assert.deepEqual(
       answer.items.map((one) => [one.direction, one.amountPlur]),
-      [['deposit', xbzz('0.5')]],
+      [['deposit', '1']],
+    );
+    assert.deepEqual(
+      (await journal.listBulk(answer.bulkId)).map((row) => row.availablePlur),
+      [short],
     );
   });
 
-  it('refuses a withdrawal of more than the chequebook holds available now, and takes one of all of it', async () => {
-    // The page showed 3.25 against a target of 1: a withdrawal of 2.25, and the chequebook holds a PLUR less now.
-    const all = xbzz('2.25');
-    manager.inventoryAnswer = withNode(NODE_RUNG, (node) => {
-      node.chequebook = fundingChequebook({ availablePlur: (BigInt(all) - 1n).toString() });
-    });
-    const request = { targetPlur: xbzz('1'), items: [RUNG_NODE] };
-    const error = await refused(request);
-    assert.equal(error.problem, 'chequebook');
-    assert.equal(
-      error.message,
-      'The chequebook of Main stage 720p rung (stage-2:uploader) holds 2.2499999999999999 xBZZ available now, less than the 2.25 xBZZ the page would withdraw. Read the page again. Nothing was sent.',
-    );
+  it('refuses a withdrawal from a chequebook at the target or past it now, and takes one a PLUR over it', async () => {
+    // The page showed 3.25 against the target of 2, a withdrawal of 1.25, and the rung has paid its peers since.
+    for (const [now, said] of [
+      [TARGET, '2'],
+      [xbzz('1.5'), '1.5'],
+    ] as const) {
+      manager.inventoryAnswer = withNode(NODE_RUNG, (node) => {
+        node.chequebook = fundingChequebook({ availablePlur: now });
+      });
+      const error = await refused(toTarget(RUNG_NODE));
+      assert.equal(error.problem, 'chequebook');
+      assert.equal(
+        error.message,
+        `The chequebook of Main stage 720p rung (stage-2:uploader) holds ${said} xBZZ available now, at the target or past it, so there is nothing to move. Read the page again. Nothing was sent.`,
+      );
+    }
 
+    const over = (BigInt(TARGET) + 1n).toString();
     manager.inventoryAnswer = withNode(NODE_RUNG, (node) => {
-      node.chequebook = fundingChequebook({ availablePlur: all });
+      node.chequebook = fundingChequebook({ availablePlur: over });
     });
-    const answer = await requested(request);
+    const answer = await requested(toTarget(RUNG_NODE));
     assert.deepEqual(
       answer.items.map((one) => [one.direction, one.amountPlur]),
-      [['withdraw', all]],
+      [['withdraw', '1']],
     );
+    assert.deepEqual(
+      (await journal.listBulk(answer.bulkId)).map((row) => row.availablePlur),
+      [over],
+    );
+  });
+
+  it('refuses the whole request for one chequebook past the target now, the others with it', async () => {
+    manager.inventoryAnswer = withNode(NODE_RUNG, (node) => {
+      node.chequebook = fundingChequebook({ availablePlur: xbzz('1.5') });
+    });
+
+    const error = await refused(toTarget(STAGE_NODE, RUNG_NODE));
+
+    assert.match(error.message, /^The chequebook of Main stage 720p rung \(stage-2:uploader\) holds 1\.5 xBZZ/);
   });
 
   it('refuses a node with no xDAI for the gas, for a deposit and a withdrawal alike', async () => {
@@ -516,6 +622,28 @@ describe('refusing a request, nothing journalled', () => {
     });
     const answer = await requested(toTarget(STAGE_NODE));
     assert.equal(answer.items[0]?.state, 'submitted');
+  });
+
+  it('holds the wallet to the deposit worked out now, not the one the page showed', async () => {
+    // The page showed 1.5, a deposit of 0.5; the chequebook holds 1.8 now, so the deposit is 0.2.
+    const grown = (xbzzPlur: string) =>
+      withNode(NODE_A, (node) => {
+        node.chequebook = fundingChequebook({ availablePlur: xbzz('1.8') });
+        node.xbzzPlur = xbzzPlur;
+      });
+    manager.inventoryAnswer = grown((BigInt(xbzz('0.2')) - 1n).toString());
+    const error = await refused(toTarget(STAGE_NODE));
+    assert.equal(
+      error.message,
+      'The nodes cannot pay for this: Main stage uploader (stage-1:uploader) is 0.0000000000000001 xBZZ short: it deposits 0.2 xBZZ, and its wallet holds 0.1999999999999999. Nothing was sent.',
+    );
+
+    manager.inventoryAnswer = grown(xbzz('0.2'));
+    const answer = await requested(toTarget(STAGE_NODE));
+    assert.deepEqual(
+      answer.items.map((one) => [one.direction, one.amountPlur, one.state]),
+      [['deposit', xbzz('0.2'), 'submitted']],
+    );
   });
 
   it('lets a withdrawal through whatever the wallet holds in xBZZ, since it pays only the gas', async () => {

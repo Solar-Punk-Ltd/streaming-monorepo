@@ -32,6 +32,13 @@ import {
 export const PAYS_NOTE =
   "Each node pays a deposit from its own wallet, in xBZZ, and the gas of either move in xDAI. A withdrawal goes into the node's own wallet.";
 
+/**
+ * Said under the moves to confirm: the API works each move out again from the balance it reads when the request comes
+ * in, `chequebookMoveNow`, and never moves more than the dialog lists.
+ */
+export const WORKED_OUT_AGAIN_NOTE =
+  'Each move is worked out again from the balance read when it is sent, and never moves more than listed here.';
+
 /** Said under the moves to confirm: why a chequebook's balance lands near the target rather than on it. */
 export const BUSY_NODE_NOTE =
   'A busy node keeps paying its peers out of its chequebook, so its balance lands near the target, not on it.';
@@ -61,10 +68,11 @@ function exact(plur: string): string {
  * and the chequebook's available balance before and after, before anything is asked of a node. The tab reads the view
  * again as it opens it, and the dialog lists and asks for the moves from that reading alone: while the reading is on
  * its way, or when it failed, the dialog lists and asks for nothing. Each item names the available balance the reading
- * shows, from which the API works out the very move the dialog listed. A chequebook operation pays from the nodes' own
- * wallets and moves nothing out of the brand wallet, so there is no password, only this dialog. A refusal is said in
- * it, and `onFailed` lets the tab read the view again, which finds a bulk that went out even though its answer did not
- * come back.
+ * shows, from which, and the balance it reads when the request comes in, the API works the move out again, never more
+ * than the dialog listed; the dialog says so, and the progress then shows what the API answered. A chequebook operation
+ * pays from the nodes' own wallets and moves nothing out of the brand wallet, so there is no password, only this
+ * dialog. A refusal is said in it, and `onFailed` lets the tab read the view again, which finds a bulk that went out
+ * even though its answer did not come back.
  */
 export function ChequebookDialog({
   check,
@@ -160,6 +168,9 @@ export function ChequebookDialog({
           <Stack spacing={0.5}>
             <Typography variant="caption" sx={{ color: 'text.secondary' }}>
               {PAYS_NOTE}
+            </Typography>
+            <Typography variant="caption" sx={{ color: 'text.secondary' }}>
+              {WORKED_OUT_AGAIN_NOTE}
             </Typography>
             <Typography variant="caption" sx={{ color: 'text.secondary' }}>
               {BUSY_NODE_NOTE}

@@ -16,10 +16,10 @@
  * for 30 minutes from its relay, an update only while an item is asked about that keeps a hash once known, and a
  * stamp lock of its own, which the send lock does not hold up. And the same of the chequebook journal: a request
  * journalled together or not at all and read back in its order with its amounts as they went in, the move each item
- * makes being the one that brings the balance the page showed to the target, the floor of 1 xBZZ, a node once per
- * request, the hold of a queued item whatever its age and of a submitted or unknown one for 30 minutes from its relay,
- * an update only while an item is asked about, and a chequebook lock of its own, which neither the send lock nor the
- * stamp lock holds up.
+ * makes being the one that brings the balance it was worked out from to the target, the floor of 1 xBZZ, a node once
+ * per request, the hold of a queued item whatever its age and of a submitted or unknown one for 30 minutes from its
+ * relay, an update only while an item is asked about, and a chequebook lock of its own, which neither the send lock nor
+ * the stamp lock holds up.
  *
  * Every row it writes is in the suite's throwaway database; it empties the four tables before each test.
  */
@@ -623,7 +623,7 @@ const ONE_XBZZ = 10n ** 16n;
 /** The most a chequebook amount holds: 30 digits. */
 const THIRTY_NINES = '9'.repeat(30);
 
-/** A deposit of 0.5 xBZZ into a chequebook the page showed at 1.5, to a target of 2. */
+/** A deposit of 0.5 xBZZ into a chequebook, worked out from 1.5 available, to a target of 2. */
 function depositItem(
   bulkId: string,
   position: number,
@@ -645,7 +645,7 @@ function depositItem(
   };
 }
 
-/** A withdrawal of 1.25 xBZZ from a chequebook the page showed at 3.25, to a target of 2. */
+/** A withdrawal of 1.25 xBZZ from a chequebook, worked out from 3.25 available, to a target of 2. */
 function withdrawItem(
   bulkId: string,
   position: number,
@@ -739,7 +739,7 @@ describe('funding_chequebook_operations', () => {
         targetPlur: (ONE_XBZZ - 1n).toString(),
         availablePlur: '1',
       }),
-      // A move that is not the one from the balance the page showed to the target, either way.
+      // A move that is not the one from the balance it was worked out from to the target, either way.
       depositItem(bulkId, 0, { amountPlur: (ONE_XBZZ / 2n + 1n).toString() }),
       depositItem(bulkId, 0, { availablePlur: ((13n * ONE_XBZZ) / 4n).toString() }),
       withdrawItem(bulkId, 0, { amountPlur: ((5n * ONE_XBZZ) / 4n - 1n).toString() }),

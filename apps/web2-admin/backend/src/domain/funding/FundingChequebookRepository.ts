@@ -61,7 +61,11 @@ export interface FundingChequebookRow {
   amountPlur: string;
   /** The available balance the request brings the chequebook to, PLUR as a decimal string. */
   targetPlur: string;
-  /** The chequebook's available balance as the page showed it, PLUR as a decimal string: the move's starting point. */
+  /**
+   * The chequebook's available balance the move was worked out from, PLUR as a decimal string: of the page's and the
+   * one read when the request came in, the larger for a deposit and the smaller for a withdrawal. The move brings it
+   * to the target.
+   */
   availablePlur: string;
   state: FundingItemState;
   /** The hash the manager answered, or null until it answered one. */

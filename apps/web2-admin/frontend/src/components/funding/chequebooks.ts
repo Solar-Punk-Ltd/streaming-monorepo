@@ -15,8 +15,9 @@ import { nodeGroups, type NodeGroup } from './balance';
 
 /**
  * The Chequebooks tab's arithmetic and checks: the chequebooks the page lists, which of them can be ticked, and what
- * bringing the ticked ones to the target comes to. Every move is the common `chequebookMove`, the one the backend
- * checks a request with, and every amount is BigInt in PLUR.
+ * bringing the ticked ones to the target comes to. Every move is the common `chequebookMove`, which the backend works
+ * out again from the balance it reads when the request comes in, `chequebookMoveNow`, never moving more, and every
+ * amount is BigInt in PLUR.
  */
 
 /** The least target, as the page says it: 1, in xBZZ, as the owner set it. */
@@ -191,7 +192,8 @@ export interface ChequebookCheck {
   withdrawals: ChequebookTotal;
   /**
    * What Apply asks for: the target, and each ticked chequebook that moves with the available balance the page shows,
-   * from which the backend works out the very move the page shows. Null while nothing would move.
+   * from which, and the balance it reads when the request comes in, the backend works the move out again,
+   * `chequebookMoveNow`, never more than the page shows. Null while nothing would move.
    */
   request: FundingChequebookOperationsRequest | null;
   /** Why Apply cannot ask for it, in the order the page says them; empty when it can. */
