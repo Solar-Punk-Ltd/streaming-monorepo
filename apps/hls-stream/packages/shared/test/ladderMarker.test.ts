@@ -4,7 +4,6 @@ import { describe, it } from 'node:test';
 
 import {
   encodeLadderMarker,
-  LADDER_MARKER_MAX_BYTES,
   ladderMarkerIdentifier,
   type LadderMarker,
   MARKER_PERIOD_SECONDS,
@@ -128,7 +127,7 @@ describe('encodeLadderMarker and parseLadderMarker', () => {
     const rungs = Object.fromEntries(
       Array.from({ length: 80 }, (_, i) => [i.toString(16).padStart(64, '0'), Number.MAX_SAFE_INTEGER]),
     );
-    assert.throws(() => encodeLadderMarker(validMarker({ rungs })), new RegExp(String(LADDER_MARKER_MAX_BYTES)));
+    assert.throws(() => encodeLadderMarker(validMarker({ rungs })), /4096 byte chunk/);
   });
 
   it('refuses to encode a marker its own parser would reject', () => {

@@ -28,7 +28,7 @@ export const LADDER_MARKER_VERSION = 2;
 const LADDER_MARKER_VERSION_WITHOUT_LENGTH = 1;
 
 /** One Swarm chunk's payload. A marker that does not fit would need a second chunk and a second read. */
-export const LADDER_MARKER_MAX_BYTES = 4096;
+const LADDER_MARKER_MAX_BYTES = 4096;
 
 const IDENTIFIER_PREFIX = new TextEncoder().encode('ladder-marker');
 
