@@ -1,6 +1,6 @@
 import { FeedIndex, Topic } from '@ethersphere/bee-js';
 import { feedSlotPath } from '@swarm-hls-stream/shared';
-import { HLS_M3U } from '@swarm-hls-stream/shared';
+import { HLS_M3U, HLS_TARGET_DURATION } from '@swarm-hls-stream/shared';
 import { programDateTimeMs, segmentDuration } from '@swarm-hls-stream/shared';
 
 import type { FeedEntry, FeedRead, FeedReader } from './following/feedReader';
@@ -9,20 +9,48 @@ import { parseManifest } from './playlist';
 import { isSlotNotWrittenYet } from './refusedSlot';
 
 /**
- * A slot as the strategies in `following/` see it, worked out from the playlist it carries.
+ * A slot as the strategies in `following/` see it, worked out from the playlist it carries, or null for
+ * a playlist that names no segment length, which nothing could follow.
  *
  * The newest segment's end is its PROGRAM-DATE-TIME plus its duration. A playlist that carries no
  * stamp is placed at the moment it was read, on the viewer's clock, which keeps the follower's learned
  * lag meaningful because that lag is only ever a difference between the two.
  */
-export function feedEntryOf(index: number, playlist: string, readAtMs: number): FeedEntry {
-  const newest = parseManifest(playlist).segments.at(-1);
+export function feedEntryOf(index: number, playlist: string, readAtMs: number): FeedEntry | null {
+  const { headers, segments } = parseManifest(playlist);
+  const segmentMs = segmentLengthMs(
+    segments.map((segment) => segmentDuration(segment.extinf)),
+    headers,
+  );
+  if (segmentMs === null) {
+    return null;
+  }
+  const newest = segments.at(-1);
   const startMs = newest?.programDateTime ? programDateTimeMs(newest.programDateTime) : null;
   const durationS = newest ? segmentDuration(newest.extinf) : null;
   return {
     index,
     newestSegmentEndMs: startMs === null ? readAtMs : startMs + (durationS ?? 0) * 1000,
+    segmentMs,
   };
+}
+
+/**
+ * The median of the segments' own durations, so one segment cut short by a reconnect does not move
+ * it. The target duration only answers when no segment names a usable length: the uploader writes the
+ * longest segment so far rounded up, and never lowers it, so it is a ceiling rather than the cadence.
+ */
+function segmentLengthMs(durationsS: readonly (number | null)[], headers: readonly string[]): number | null {
+  const usable = durationsS.filter((duration): duration is number => duration !== null && duration > 0);
+  if (usable.length > 0) {
+    const sorted = [...usable].sort((a, b) => a - b);
+    const middle = Math.floor(sorted.length / 2);
+    const medianS = sorted.length % 2 === 1 ? sorted[middle] : (sorted[middle - 1] + sorted[middle]) / 2;
+    return Math.round(medianS * 1000);
+  }
+  const target = headers.find((line) => line.startsWith(`${HLS_TARGET_DURATION}:`));
+  const targetS = target === undefined ? Number.NaN : Number(target.slice(HLS_TARGET_DURATION.length + 1));
+  return Number.isFinite(targetS) && targetS > 0 ? targetS * 1000 : null;
 }
 
 /**
@@ -68,6 +96,9 @@ export class RungFeedReader implements FeedReader {
       return { found: false };
     }
     const entry = feedEntryOf(index, response.text, this.now());
+    if (entry === null) {
+      return { found: false };
+    }
     this.playlists.set(entry, response.text);
     return { found: true, entry };
   }

@@ -2,7 +2,7 @@ import type { FeedEntry } from '../../src/components/SwarmHlsPlayer/following/fe
 
 import type { Random } from './random';
 
-const SEGMENT_MS = 2_000;
+export const SEGMENT_MS = 2_000;
 /** Publishes are sequential, so a slot is never readable before the one before it. */
 const SEQUENTIAL_GAP_MS = 20;
 /** At most this many segments fold into one playlist, which bounds a run of coalesced publishes. */
@@ -71,7 +71,7 @@ export class QualityFeed {
   }
 
   entry(index: number): FeedEntry {
-    return { index, newestSegmentEndMs: this.segmentEndMs[index] };
+    return { index, newestSegmentEndMs: this.segmentEndMs[index], segmentMs: SEGMENT_MS };
   }
 
   /** The newest slot readable at true time `atMs`, or -1. */

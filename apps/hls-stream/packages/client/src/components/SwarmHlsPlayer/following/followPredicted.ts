@@ -1,4 +1,4 @@
-import { FeedEntry, FollowContext, HeadMarkers, SEGMENT_MS } from './feedReader';
+import { FeedEntry, FollowContext, HeadMarkers } from './feedReader';
 import { pollsTriggerFires, probeAhead, RefusedSlotTrigger } from './probeAhead';
 
 interface FollowPredictedOptions {
@@ -11,8 +11,11 @@ interface FollowPredictedOptions {
   readonly secondEarlyRate: number;
   /** Unanswered asks a slot may take before the follower backs off it, since Bee skips peers for an address asked too early too often. */
   readonly earlyAskBudget: number;
-  /** The wait after the last ask the budget allows, doubled after every further miss up to `maxBackoffMs`. */
-  readonly firstBackoffMs: number;
+  /**
+   * The wait after the last ask the budget allows, in segments of the entry being followed, doubled
+   * after every further miss up to `maxBackoffMs`.
+   */
+  readonly firstBackoffSegments: number;
   readonly maxBackoffMs: number;
   /**
    * The most asks one slot takes when the feed has markers. Past it the publisher has gone quiet, and
@@ -27,10 +30,10 @@ export const PREDICTED_DEFAULTS: FollowPredictedOptions = {
   earlyRate: 0.25,
   secondEarlyRate: 0.1,
   earlyAskBudget: 3,
-  firstBackoffMs: SEGMENT_MS,
+  firstBackoffSegments: 1,
   maxBackoffMs: 4_000,
   slotAsksWithMarkers: 5,
-  trigger: { kind: 'time', lateMs: 2 * SEGMENT_MS },
+  trigger: { kind: 'time', lateSegments: 2 },
 };
 
 /** The step a tracked lag moves on its first update, and the floor it settles to. */
@@ -81,7 +84,8 @@ interface Ask {
  * Ask for the next slot when it is predicted to appear, rather than as often as possible.
  *
  * The next playlist follows the next segment's end, so it is predicted as the current entry's newest
- * segment end, plus a segment, plus a learned lag. The first ask goes at a lag that comes too early a
+ * segment end, plus a segment, plus a learned lag. A segment is as long as the current entry's playlist
+ * says, so the follower keeps the pace of whatever length the stage cuts. The first ask goes at a lag that comes too early a
  * quarter of the time, a second at one that rarely does. A slot still missing after both is asked once
  * per segment after that, at the later lag, which is what a coalesced publish looks like: one playlist
  * covering two segments. After a small budget of unanswered asks the follower backs off, so a paused
@@ -107,22 +111,23 @@ export async function followPredicted(
   // Before any evidence: the entry we start from is readable now and is the newest, so its successor's
   // lag lies within one segment below what this one's lag is at most.
   const sinceStart = clock.now() - current.newestSegmentEndMs;
-  const firstLag = new TrackedLag(sinceStart - SEGMENT_MS, options.earlyRate);
+  const firstLag = new TrackedLag(sinceStart - current.segmentMs, options.earlyRate);
   const secondLag = new TrackedLag(sinceStart, options.secondEarlyRate);
 
   while (!isStopped()) {
     const next = current.index + 1;
     const baseMs = current.newestSegmentEndMs;
+    const segmentMs = current.segmentMs;
     const asks: Ask[] = [];
     let step = 1;
     let kind: AskKind = 'first';
-    let backoffMs = options.firstBackoffMs;
+    let backoffMs = Math.min(options.maxBackoffMs, options.firstBackoffSegments * segmentMs);
     let lastAskMs = -Infinity;
     let lookedPastLate = false;
     let found: FeedEntry | null = null;
 
     const planFor = (): number => {
-      const stepMs = baseMs + step * SEGMENT_MS;
+      const stepMs = baseMs + step * segmentMs;
       if (kind === 'backoff') {
         return lastAskMs + backoffMs;
       }
@@ -135,7 +140,7 @@ export async function followPredicted(
     while (found === null && !isStopped()) {
       const plannedMs = Math.max(planFor(), lastAskMs + MIN_RETRY_GAP_MS);
 
-      const lateLookMs = baseMs + SEGMENT_MS + secondLag.valueMs + lateMsOf(options.trigger);
+      const lateLookMs = baseMs + segmentMs + secondLag.valueMs + lateMsOf(options.trigger, segmentMs);
       if (!lookedPastLate && lateLookMs <= plannedMs) {
         await sleepUntil(context, lateLookMs);
         lookedPastLate = true;
@@ -192,7 +197,7 @@ export async function followPredicted(
       return;
     }
     if (found.index === next) {
-      learn(asks, Math.round((found.newestSegmentEndMs - baseMs) / SEGMENT_MS), firstLag, secondLag);
+      learn(asks, Math.round((found.newestSegmentEndMs - baseMs) / segmentMs), firstLag, secondLag);
     }
     current = found;
     onEntry(found);
@@ -257,8 +262,8 @@ async function waitOutQuietFeed(context: FollowContext, markers: HeadMarkers, ne
   return null;
 }
 
-function lateMsOf(trigger: RefusedSlotTrigger): number {
-  return trigger.kind === 'time' ? trigger.lateMs : Infinity;
+function lateMsOf(trigger: RefusedSlotTrigger, segmentMs: number): number {
+  return trigger.kind === 'time' ? trigger.lateSegments * segmentMs : Infinity;
 }
 
 async function sleepUntil(context: FollowContext, atMs: number): Promise<void> {

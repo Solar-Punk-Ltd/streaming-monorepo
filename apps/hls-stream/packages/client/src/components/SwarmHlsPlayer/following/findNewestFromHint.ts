@@ -1,4 +1,4 @@
-import { FeedReader, FollowClock, MAX_PARALLEL_READS, SEGMENT_MS } from './feedReader';
+import { FeedReader, FollowClock, MAX_PARALLEL_READS } from './feedReader';
 import { findNewestFromScratch } from './findNewestFromScratch';
 import {
   Bracket,
@@ -20,6 +20,11 @@ export interface SwitchHint {
   readonly index: number;
   /** Its newest segment end, on the publisher's clock. */
   readonly newestSegmentEndMs: number;
+  /**
+   * How long its segments last, from its playlist or its time marker, or null for a hint that came
+   * without one, as a version 1 marker does.
+   */
+  readonly segmentMs: number | null;
   /** When the viewer read it, on the viewer's clock. */
   readonly seenAtMs: number;
 }
@@ -48,14 +53,15 @@ export async function findNewestFromHint(
   const tally: SearchTally = { rounds: 0, reads: 0 };
   const bracket = emptyBracket();
   const elapsedMs = Math.max(0, clock.now() - hint.seenAtMs);
-  const centre = hint.index + Math.floor(elapsedMs / SEGMENT_MS);
+  // A hint that names no length is searched from where it stood, and the first slot read supplies it.
+  const centre = hint.index + (hint.segmentMs === null ? 0 : Math.floor(elapsedMs / hint.segmentMs));
   // Where the head is by the publisher's clock: as many slots past the newest one found as the hint's
   // newest segment, moved on by the time since it was read, is segments past that slot's.
   const byHint = (known: Bracket): number | null =>
     known.newest === null
       ? null
       : known.newest.index +
-        Math.round((hint.newestSegmentEndMs + elapsedMs - known.newest.newestSegmentEndMs) / SEGMENT_MS);
+        Math.round((hint.newestSegmentEndMs + elapsedMs - known.newest.newestSegmentEndMs) / known.newest.segmentMs);
 
   await readRound(reader, roundAround(centre, bracket, 3), bracket, tally);
   if (bracket.newest === null) {

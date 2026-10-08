@@ -4,9 +4,6 @@
  * against a Bee node in the player and against the simulator in `test/feedModel`.
  */
 
-/** How long one segment lasts, which is also how often the publisher starts a new playlist. */
-export const SEGMENT_MS = 2_000;
-
 /**
  * The most reads a search keeps open at once. Eight is what Bee's own lookup opens per round, so a
  * search here never asks more of a node at one moment than the lookup it replaces did.
@@ -22,6 +19,11 @@ export interface FeedEntry {
    * difference against the viewer's clock that a follower learns rather than trusts.
    */
   readonly newestSegmentEndMs: number;
+  /**
+   * How long the segments its playlist names last, which is also how often the publisher starts a new
+   * playlist. Read from the playlist, never assumed, because the stage's own setting decides it.
+   */
+  readonly segmentMs: number;
 }
 
 export type FeedRead = { readonly found: true; readonly entry: FeedEntry } | { readonly found: false };

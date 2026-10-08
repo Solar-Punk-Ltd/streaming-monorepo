@@ -1,4 +1,4 @@
-import { FeedEntry, FeedReader, FollowClock, MAX_PARALLEL_READS, SEGMENT_MS } from './feedReader';
+import { FeedEntry, FeedReader, FollowClock, MAX_PARALLEL_READS } from './feedReader';
 import {
   Bracket,
   emptyBracket,
@@ -32,10 +32,10 @@ const ZOOM_READS_IN_GUESS_ROUND = 5;
 const PACE_MIN_SPAN = 32;
 
 /**
- * A pace slower than this between two slots means a pause lies between them, so it says nothing
- * about how fast the feed moves now.
+ * A pace slower than this share of one slot per segment between two slots means a pause lies between
+ * them, so it says nothing about how fast the feed moves now.
  */
-const SLOWEST_LIVE_PACE = 0.5 / SEGMENT_MS;
+const SLOWEST_LIVE_PACE_SHARE = 0.5;
 
 /**
  * Find a feed's newest slot by reading slots by index, never through Bee's own lookup.
@@ -75,7 +75,7 @@ export async function findNewestFromScratch(
   }
 
   const newest = bracket.newest;
-  const bound = newest.index + Math.max(1, Math.ceil((clock.now() - newest.newestSegmentEndMs) / SEGMENT_MS));
+  const bound = newest.index + Math.max(1, Math.ceil((clock.now() - newest.newestSegmentEndMs) / newest.segmentMs));
   const guess = Math.min(bound, estimate(bracket)!);
   const below = bracket.firstMissing ?? Infinity;
   // Five reads around the guess. The rest reach up from the newest slot found by fourfold steps, so a
@@ -105,11 +105,12 @@ function byClock(bracket: Bracket, hits: readonly FeedEntry[], nowMs: number): n
   if (newest === null) {
     return null;
   }
+  const livePace = 1 / newest.segmentMs;
   const older = [...hits]
     .filter((hit) => hit.index <= newest.index - PACE_MIN_SPAN)
     .sort((a, b) => b.index - a.index)
-    .find((hit) => paceBetween(hit, newest) >= SLOWEST_LIVE_PACE);
-  const pace = older === undefined ? 1 / SEGMENT_MS : Math.min(1 / SEGMENT_MS, paceBetween(older, newest));
+    .find((hit) => paceBetween(hit, newest) >= SLOWEST_LIVE_PACE_SHARE * livePace);
+  const pace = older === undefined ? livePace : Math.min(livePace, paceBetween(older, newest));
   return newest.index + Math.round(pace * (nowMs - newest.newestSegmentEndMs - ASSUMED_LAG_MS));
 }
 

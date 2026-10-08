@@ -7,6 +7,8 @@ interface TimedFeedShape {
   readonly readableAtMs: (index: number) => number;
   /** The newest segment end an index's playlist carries, on the publisher's clock. */
   readonly segmentEndMs: (index: number) => number;
+  /** How long each segment the playlists name lasts. */
+  readonly segmentMs: number;
   readonly roundTripMs: number;
   /**
    * Answer as a Bee node answers an address asked before it exists (Bee 2.8.2,
@@ -51,7 +53,10 @@ export class TimedFeed implements FeedReader {
         this.inFlight -= 1;
         resolve(
           readable
-            ? { found: true, entry: { index, newestSegmentEndMs: this.shape.segmentEndMs(index) } }
+            ? {
+                found: true,
+                entry: { index, newestSegmentEndMs: this.shape.segmentEndMs(index), segmentMs: this.shape.segmentMs },
+              }
             : { found: false },
         );
       });
@@ -84,16 +89,21 @@ export class TimedFeed implements FeedReader {
   }
 }
 
-/** A feed publishing one index every two seconds from true time zero, each readable `lagMs` after its segment ends. */
+/**
+ * A feed publishing one index per segment, two seconds unless `segmentMs` says otherwise, from true
+ * time zero, each readable `lagMs` after its segment ends.
+ */
 export function steadyFeed(
   time: VirtualTime,
-  options: { firstIndex?: number; lagMs: number; roundTripMs: number; stopsAfter?: number },
+  options: { firstIndex?: number; lagMs: number; roundTripMs: number; stopsAfter?: number; segmentMs?: number },
 ): TimedFeed {
   const firstIndex = options.firstIndex ?? 0;
   const stopsAfter = options.stopsAfter ?? Infinity;
-  const segmentEndMs = (index: number) => (index - firstIndex) * 2_000;
+  const segmentMs = options.segmentMs ?? 2_000;
+  const segmentEndMs = (index: number) => (index - firstIndex) * segmentMs;
   return new TimedFeed(time, {
     segmentEndMs,
+    segmentMs,
     readableAtMs: (index) => (index > stopsAfter ? Infinity : segmentEndMs(index) + options.lagMs),
     roundTripMs: options.roundTripMs,
   });

@@ -5,12 +5,12 @@ import type { FeedEntry, FeedReader } from './feedReader';
  *
  * `polls` is the rule from before the polling study: after that many unanswered asks in a row, below
  * a ceiling. The study still compares the player against it. `time` looks once, when the slot is that
- * late past the moment it was expected to appear, so the trigger does not depend on how often the
- * follower happens to ask.
+ * many segments late past the moment it was expected to appear, so the trigger does not depend on how
+ * often the follower happens to ask.
  */
 export type RefusedSlotTrigger =
   | { readonly kind: 'polls'; readonly polls: number; readonly ceiling: number }
-  | { readonly kind: 'time'; readonly lateMs: number };
+  | { readonly kind: 'time'; readonly lateSegments: number };
 
 export function pollsTriggerFires(trigger: RefusedSlotTrigger, unservedPolls: number): boolean {
   return trigger.kind === 'polls' && unservedPolls >= trigger.polls && unservedPolls < trigger.ceiling;
