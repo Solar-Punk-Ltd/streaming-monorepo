@@ -44,6 +44,11 @@ In production builds or when pointing to a remote gateway, requests go directly 
 | `VITE_APP_RAW_TOPIC`  | Yes      | Feed topic for the stream catalog, must match `STREAM_LIST_TOPIC`                                                                                                            |
 | `VITE_EXPOSE_PLAYER`  | No       | Test builds only. Puts the player, gateway and fetch-backend handles on `window` for the e2e browser suites. No shipping build sets it, and `bundle.test.ts` holds that line |
 
+The dockerized client is also built with `VITE_APP_RELEASE_LABEL` and `VITE_APP_RELEASE_COMMIT`, the release
+`deploy.sh` was told it deploys with `--release-label` and `--release-commit`, which the QoE overlay shows. They are not
+`.env` settings: `deploy.sh` writes both for every client it builds, empty without the flags. See
+[deploy/README.md](../../deploy/README.md#--release-label-and---release-commit).
+
 ## The build stamp
 
 A deployed client serves `/build-stamp.json` beside `index.html`, recording which sources the bundle
@@ -74,6 +79,11 @@ hashes, which that gate reads as a client predating the stamp and answers with a
 ## QoE Overlay
 
 Append `?qoe=1` to a stream watcher URL to enable a draggable overlay with playback quality metrics (startup time, rebuffering, bitrate, dropped frames, live latency, etc.). Press `Q` to toggle visibility.
+
+Under its header the overlay names the release the player was built as, `Player QA-build-2026-10-07 (1702aff1b)`: the
+label the deploy named and the first nine characters of its commit, or the label alone when it already starts with
+those nine or there is no commit, with the whole commit as the line's title. A build whose deploy named no release
+shows no such line. The overlay is the only place the player shows it (`src/utils/playerRelease.ts`).
 
 ## ABR ladder
 

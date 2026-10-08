@@ -25,6 +25,10 @@ export default defineConfig({
       VITE_READER_BEE_URL: 'http://127.0.0.1:1633',
       VITE_APP_OWNER: '0x0000000000000000000000000000000000000000',
       VITE_APP_RAW_TOPIC: 'test-topic',
+      // A build whose deploy named no release, as deploy.sh builds one, whatever the shell running
+      // the suite exports. A case that wants a release states it.
+      VITE_APP_RELEASE_LABEL: '',
+      VITE_APP_RELEASE_COMMIT: '',
     },
   },
 });

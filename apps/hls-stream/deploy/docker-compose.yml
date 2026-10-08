@@ -396,6 +396,11 @@ services:
         VITE_EXPOSE_PLAYER: ${VITE_EXPOSE_PLAYER:-}
         # Empty for the gateway, `weeb3` for an in-tab Swarm node. See Dockerfile.client.
         VITE_BROWSER_FETCH_BACKEND: ${VITE_BROWSER_FETCH_BACKEND:-}
+        # The release this bundle is built as, which the player shows in its QoE overlay. deploy.sh
+        # writes both from --release-label and --release-commit, empty without them, so a value an env
+        # file sets never reaches the build.
+        VITE_APP_RELEASE_LABEL: ${VITE_APP_RELEASE_LABEL:-}
+        VITE_APP_RELEASE_COMMIT: ${VITE_APP_RELEASE_COMMIT:-}
         # Which sources this bundle was built from, minted from git by deploy.sh and served as
         # `/build-stamp.json`. Empty when whatever ran compose could not read git, which the
         # `client-shape` e2e preflight refuses rather than treating as a match.

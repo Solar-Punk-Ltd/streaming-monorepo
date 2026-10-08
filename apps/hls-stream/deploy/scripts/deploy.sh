@@ -10,7 +10,8 @@ require_config
 # --- Usage ---
 
 usage() {
-  echo "Usage: deploy.sh [--profile=<name>] [--portSlot=<N>] [--host=<target>] [service...]"
+  echo "Usage: deploy.sh [--profile=<name>] [--portSlot=<N>] [--host=<target>]"
+  echo "                 [--release-label=<label>] [--release-commit=<commit>] [service...]"
   echo ""
   echo "  deploy.sh                                                             Deploy enabled services (default profile)"
   echo "  deploy.sh --profile=streamer1                                         Deploy under profile streamer1 (.env.streamer1)"
@@ -30,6 +31,9 @@ usage() {
   echo "--host=<target> ignores per-service targets in config.json and sends every enabled"
   echo "service to <target> (\"localhost\" or any host reachable via ~/.ssh/config)."
   echo "Disabled services (\"false\" in config.json) remain disabled."
+  echo "--release-label=<label> and --release-commit=<commit> name the release being deployed,"
+  echo "which the client builds in and its QoE overlay shows (?qoe=1 on a watch URL). A label is"
+  echo "letters, digits and . _ + / -, at most 96, and a commit is 40 lower-case hex characters."
 }
 
 if [ "${1:-}" = "--help" ] || [ "${1:-}" = "-h" ]; then
@@ -721,7 +725,7 @@ generate_env_overrides() {
   # exports to be ignored in some Compose versions for vars not present in that file.
   # Engine lines go FIRST: on duplicate keys the later lines win, so slot ports and
   # the auto-resolved keys below (BEE_URL, OME_HLS_URL, *_ADAPTER_HOST) take over.
-  local overrides
+  local overrides builds_client=false
   overrides="$(engine_env_overrides_text)"
   overrides+="$PORT_OVERRIDES_TEXT"
   local bridge_lines
@@ -759,6 +763,7 @@ generate_env_overrides() {
       # baked into the Vite build and break the deployed viewer.
       overrides="${overrides}VITE_READER_BEE_URL=/bee\n"
       overrides="${overrides}$(client_build_stamp_text)"
+      builds_client=true
     fi
   done
 
@@ -774,6 +779,13 @@ generate_env_overrides() {
   # Printing them last also means they win on a duplicate key, which is what a flag typed at the
   # deploy should do to anything a file said.
   parameter_overrides_text
+
+  # The release, from argv as well, so after the expansion too. Only where the client is built, which
+  # is the one service that reads it, so every other target's file is what it was before the release
+  # existed.
+  if [ "$builds_client" = "true" ]; then
+    release_overrides_text
+  fi
 }
 
 # --- Deploy to a target ---
