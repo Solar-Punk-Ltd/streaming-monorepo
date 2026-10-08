@@ -35,6 +35,12 @@ const POLL_MS = 2;
 const BOUND_MS = 150;
 const RETURN_MS = 5;
 /**
+ * The bound for a case where the sibling does move. The sibling's read must land inside the bound, which a 150 ms
+ * timer did not always give a loaded machine, and failover is decided when the bound ends, so it stays well under
+ * a wait's two seconds.
+ */
+const SIBLING_MOVES_BOUND_MS = 600;
+/**
  * How much faster than real time the follower runs: a two second segment is twenty milliseconds. Slow
  * enough that a switch's search, which moves its hint on by the segments since it was read, still
  * starts close to the playing rung.
@@ -76,7 +82,9 @@ interface Rig {
 
 let rigs: Rig[] = [];
 
-function makeRig(options: { finderFor?: (gateway: FakeLadderGateway) => NewestIndexFinder } = {}): Rig {
+function makeRig(
+  options: { finderFor?: (gateway: FakeLadderGateway) => NewestIndexFinder; progressBoundMs?: number } = {},
+): Rig {
   const gateway = new FakeLadderGateway(OWNER);
   const clock = makeClock();
   const health = new FeedHealthTracker(clock.now);
@@ -86,7 +94,7 @@ function makeRig(options: { finderFor?: (gateway: FakeLadderGateway) => NewestIn
   const finder = options.finderFor?.(gateway) ?? new IndexSearchFinder(gateway.reader, followClock);
   const poller = new LadderFeedPoller(state, gateway.reader, POLL_MS, health, undefined, () => RETURN_MS, {
     now: clock.now,
-    progressBoundMs: BOUND_MS,
+    progressBoundMs: options.progressBoundMs ?? BOUND_MS,
     playheadMs: () => playhead.ms,
     finder: {
       findNewest: (rung, hint, isStopped) => {
@@ -536,7 +544,7 @@ describe('Q4: ended is the playing rung finishing, confirmed by one sibling', ()
   });
 
   it('fails over instead when the sibling is still publishing, because one rung alone stopped', async () => {
-    const rig = makeRig();
+    const rig = makeRig({ progressBoundMs: SIBLING_MOVES_BOUND_MS });
     rig.gateway.publishLive(TOP, 'top', 20);
     rig.gateway.publishLive(MID, 'mid', 20);
 
@@ -582,7 +590,7 @@ describe('Q4: ended is the playing rung finishing, confirmed by one sibling', ()
   });
 
   it('runs the end check when the quality failed over to finishes before the player has switched to it', async () => {
-    const rig = makeRig();
+    const rig = makeRig({ progressBoundMs: SIBLING_MOVES_BOUND_MS });
     rig.gateway.publishLive(TOP, 'top', 20);
     rig.gateway.publishLive(MID, 'mid', 20);
     rig.gateway.publishLive(LOW, 'low', 20);
