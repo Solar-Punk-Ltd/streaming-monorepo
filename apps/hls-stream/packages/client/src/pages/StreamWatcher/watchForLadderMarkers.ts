@@ -36,15 +36,11 @@ interface LadderMarkerWatch {
 export function watchForLadderMarkers(watch: LadderMarkerWatch): () => void {
   const now = watch.now ?? (() => Date.now());
   const group = Topic.fromString(watch.topic);
-  const markers = new PeriodMarkers<true>(
-    { now, sleep: waitMs },
-    watch.clockOffsetMs,
-    async (period) => {
-      const identifier = ladderMarkerIdentifier(group, period).toHex();
-      const answer = await watch.reader().readSoc(watch.owner, identifier);
-      return answer.kind === 'content' && parseLadderMarker(contentText(answer), period) !== null ? true : null;
-    },
-  );
+  const markers = new PeriodMarkers<true>({ now, sleep: waitMs }, watch.clockOffsetMs, async (period) => {
+    const identifier = ladderMarkerIdentifier(group, period).toHex();
+    const answer = await watch.reader().readSoc(watch.owner, identifier);
+    return answer.kind === 'content' && parseLadderMarker(contentText(answer), period) !== null ? true : null;
+  });
 
   let stopped = false;
   let timer: ReturnType<typeof setTimeout> | undefined;
