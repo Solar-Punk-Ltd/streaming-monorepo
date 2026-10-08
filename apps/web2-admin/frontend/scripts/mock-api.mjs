@@ -398,8 +398,8 @@ function stampItemAnswer(item) {
 
 /**
  * Why the mock refuses a stamp request, as the API checks one, or null: one kind, each batch once, each the batch of
- * its node, read, usable and at the depth the page saw; whole days of 1 or more; 1 or 2 steps that leave 7 days; every
- * node's xBZZ covering its top-ups and some xDAI for the gas.
+ * its node, read, usable and at the depth the page saw; whole days of 1 or more, at a price of postage no lower than
+ * today's; 1 or 2 steps that leave 7 days; every node's xBZZ covering its top-ups and some xDAI for the gas.
  */
 function stampRefusal(asked) {
   if (asked.length === 0) return 'Tick a batch first.';
@@ -416,6 +416,13 @@ function stampRefusal(asked) {
     }
     if (item.kind === 'topup') {
       if (!Number.isSafeInteger(item.days) || item.days < 1) return 'The days are a whole number, 1 or more.';
+      const quoted = item.pricePerChunkPerBlockPlur;
+      if (typeof quoted !== 'string' || !/^[1-9]\d{0,77}$/.test(quoted)) {
+        return 'A top-up names the price of postage the page quoted it at.';
+      }
+      if (BigInt(FUNDING_POSTAGE.pricePerChunkPerBlockPlur) > BigInt(quoted)) {
+        return 'The price of postage has risen since the page read it. Read the page again.';
+      }
       costs.set(node, (costs.get(node) ?? 0n) + topUpCost(item.days, batch.depth));
     } else if (item.kind === 'dilute') {
       if (item.steps !== 1 && item.steps !== 2) return 'A dilution takes 1 or 2 steps.';

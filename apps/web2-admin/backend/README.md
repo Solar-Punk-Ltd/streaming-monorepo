@@ -1182,17 +1182,20 @@ which the funding service answers the two routes and the view's open stamp
 bulk with. The arithmetic is `stampQuote.ts` of `web2-admin-common`, the one
 the page shows.
 
-| Method | Path                                        | Answer                                                                                                                                                                                                                                                                                                                                                                                                                                        |
-| ------ | ------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| POST   | `/api/funding/stamp-operations`             | `{ items }` in, all of one kind, each `{ kind: "topup", nodeId, batchId, expectedDepth, days }` or `{ kind: "dilute", nodeId, batchId, expectedDepth, steps }`; `202` with `{ bulkId, items }` out, at once, every item `queued`: its `requestId`, `kind`, `nodeId`, `nodeLabel`, `batchId`, `days` or `steps`, `costPlur` (a top-up's, null for a dilution), `state`, `txHash`, `error`, `settled` and `watched` (below). The refusals below |
-| GET    | `/api/funding/stamp-operations?bulkId=<id>` | `{ items }` of that stamp bulk, as above, refreshed from the manager first (below). `400` without a UUID, `404 bulk_not_found` for a bulk the admin never journalled                                                                                                                                                                                                                                                                          |
+| Method | Path                                        | Answer                                                                                                                                                                                                                                                                                                                                                                                                                                                                   |
+| ------ | ------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| POST   | `/api/funding/stamp-operations`             | `{ items }` in, all of one kind, each `{ kind: "topup", nodeId, batchId, expectedDepth, days, pricePerChunkPerBlockPlur }` or `{ kind: "dilute", nodeId, batchId, expectedDepth, steps }`; `202` with `{ bulkId, items }` out, at once, every item `queued`: its `requestId`, `kind`, `nodeId`, `nodeLabel`, `batchId`, `days` or `steps`, `costPlur` (a top-up's, null for a dilution), `state`, `txHash`, `error`, `settled` and `watched` (below). The refusals below |
+| GET    | `/api/funding/stamp-operations?bulkId=<id>` | `{ items }` of that stamp bulk, as above, refreshed from the manager first (below). `400` without a UUID, `404 bulk_not_found` for a bulk the admin never journalled                                                                                                                                                                                                                                                                                                     |
 
 A request's body is checked first, `400 validation_error`: one item at least
 and 200 at most, a node id as the contract takes it, a batch id of `0x` and
 64 hex digits in either case, an `expectedDepth` from 0 to 255, a top-up's
 `days` a whole number from 1 with no cap but the journal column's
-(2^31 - 1), and a dilution's `steps` 1 or 2, each a JSON number, and no field
-of the other kind. Then it is refused, in this order, nothing journalled:
+(2^31 - 1), and a dilution's `steps` 1 or 2, each a JSON number; a top-up's
+`pricePerChunkPerBlockPlur`, the price of postage the page quoted it at, PLUR
+per chunk per block as a string of decimal digits, more than nothing and at
+most 2^256 - 1; and no field of the other kind. Then it is refused, in this
+order, nothing journalled:
 
 1. a request of both kinds, or one that names a batch twice:
    `400 validation_error` with the sentence;
@@ -1206,7 +1209,8 @@ of the other kind. Then it is refused, in this order, nothing journalled:
    operation goes only to a batch read whole, usable and not expired,
    `operableBatch`), one no longer at the depth the page showed, or a dilution
    that would leave it under 7 days; `problem: "price"` for a top-up when the
-   manager read no price of postage;
+   manager read no price of postage, or one higher than the page quoted it
+   at;
 4. a node whose wallet could not be read (`problem: "node"`), or a wallet that
    holds no xDAI for the gas, or less xBZZ than the top-ups it pays for
    (`problem: "insufficient_funds"`, naming each shortfall). A wallet is
@@ -1222,8 +1226,11 @@ of the other kind. Then it is refused, in this order, nothing journalled:
 the days in blocks, rounded up so the days are never short, at the price the
 manager read for this request:
 `ceil(days × 86400 / blockSeconds) × pricePerChunkPerBlockPlur` PLUR, and it
-costs that for each of the batch's `2^depth` chunks. A dilution raises the
-depth by its steps, `expectedDepth + steps`, for the gas alone.
+costs that for each of the batch's `2^depth` chunks. That price may be lower
+than the one the page quoted the top-up at, never higher: a top-up whose
+price has risen since the page read it is refused, so it never costs more
+than the confirm dialog showed. A dilution raises the depth by its steps,
+`expectedDepth + steps`, for the gas alone.
 
 **Journalled, answered, then relayed in turn.** Every item is written to
 `funding_stamp_operations`, `queued`, with the fields of the manager's

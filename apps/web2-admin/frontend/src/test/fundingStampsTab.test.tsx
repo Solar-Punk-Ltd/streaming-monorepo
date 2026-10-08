@@ -10,9 +10,11 @@ import { READ_BACK_NOTE, STAMP_DROPPED_NOTE, STAMP_NOT_KNOWN_YET_NOTE } from '..
 import { DAYS_PROBLEM, EXPIRED_TEXT, NO_PRICE_PROBLEM } from '../components/funding/stamps';
 import { NO_BATCHES_REPORTED, TODAYS_PRICE_CAPTION } from '../components/funding/StampsTab';
 import { FundingPage } from '../pages/FundingPage';
-import { BATCH, makeBatch, makeNode, makeStampItem, makeStampView, makeView } from './fundingFixtures';
+import { BATCH, makeBatch, makeNode, makeStampItem, makeStampView, makeView, POSTAGE } from './fundingFixtures';
 import { jsonError, jsonOk, mockFetch, renderWithProviders, type Route } from './helpers';
 
+/** The price of postage the view shows, which every top-up is asked for with. */
+const PRICE = POSTAGE.pricePerChunkPerBlockPlur;
 const FUNDING = '/api/funding';
 const STAMPS = '/api/funding/stamp-operations';
 const TX_HASH = `0x${'ab'.repeat(32)}`;
@@ -260,7 +262,16 @@ describe('topping up', () => {
     fireEvent.click(dialog.getByRole('button', { name: 'Top up' }));
     await waitFor(() =>
       expect(bodyOf(fetchMock, STAMPS)).toEqual({
-        items: [{ kind: 'topup', nodeId: 'pool:720p', batchId: pooled, expectedDepth: 20, days: 30 }],
+        items: [
+          {
+            kind: 'topup',
+            nodeId: 'pool:720p',
+            batchId: pooled,
+            expectedDepth: 20,
+            days: 30,
+            pricePerChunkPerBlockPlur: PRICE,
+          },
+        ],
       }),
     );
   });
@@ -381,8 +392,22 @@ describe('asking for a stamp bulk', () => {
     expect(await screen.findByRole('heading', { name: 'Stamp operations' })).toBeInTheDocument();
     expect(bodyOf(fetchMock, STAMPS)).toEqual({
       items: [
-        { kind: 'topup', nodeId: 'catalogue:bee', batchId: BATCH.catalogue, expectedDepth: 20, days: 30 },
-        { kind: 'topup', nodeId: 'stage-2:360p', batchId: BATCH.rung, expectedDepth: 20, days: 30 },
+        {
+          kind: 'topup',
+          nodeId: 'catalogue:bee',
+          batchId: BATCH.catalogue,
+          expectedDepth: 20,
+          days: 30,
+          pricePerChunkPerBlockPlur: PRICE,
+        },
+        {
+          kind: 'topup',
+          nodeId: 'stage-2:360p',
+          batchId: BATCH.rung,
+          expectedDepth: 20,
+          days: 30,
+          pricePerChunkPerBlockPlur: PRICE,
+        },
       ],
     });
     expect(screen.queryByRole('dialog')).not.toBeInTheDocument();

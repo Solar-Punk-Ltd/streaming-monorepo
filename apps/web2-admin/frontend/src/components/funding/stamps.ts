@@ -158,7 +158,7 @@ export interface StampSelection {
 export interface StampLine {
   node: AdminFundingNode;
   batch: OperableBatch;
-  /** The item to send, or null while the days cannot be read. */
+  /** The item to send, or null while a top-up's days cannot be read or there is no price of postage to quote it at. */
   request: StampOperationItemRequest | null;
   /** A top-up's cost in PLUR, at today's price, or null for a dilution and while the days or the price are not known. */
   costPlur: string | null;
@@ -197,19 +197,30 @@ export interface StampCheck {
   problems: string[];
 }
 
+/**
+ * A ticked top-up, priced at `postage`, the view's price, which its request names: the API refuses it when postage
+ * costs more by the time it asks, so it never costs more than the page shows.
+ */
 function topUpLine(
   node: AdminFundingNode,
   batch: OperableBatch,
   days: ReadDays,
   postage: FundingPostage | null,
 ): StampLine {
-  const ok = days.kind === 'ok';
-  const quote = ok && postage ? stampTopUpQuote(days.days, batch.depth, batch.ttlSeconds, postage) : null;
+  const priced = days.kind === 'ok' && postage ? { days: days.days, postage } : null;
+  const quote = priced ? stampTopUpQuote(priced.days, batch.depth, batch.ttlSeconds, priced.postage) : null;
   return {
     node,
     batch,
-    request: ok
-      ? { kind: 'topup', nodeId: node.nodeId, batchId: batch.batchId, expectedDepth: batch.depth, days: days.days }
+    request: priced
+      ? {
+          kind: 'topup',
+          nodeId: node.nodeId,
+          batchId: batch.batchId,
+          expectedDepth: batch.depth,
+          days: priced.days,
+          pricePerChunkPerBlockPlur: priced.postage.pricePerChunkPerBlockPlur,
+        }
       : null,
     costPlur: quote?.costPlur ?? null,
     ttlAfterSeconds: quote?.ttlAfterSeconds ?? null,
