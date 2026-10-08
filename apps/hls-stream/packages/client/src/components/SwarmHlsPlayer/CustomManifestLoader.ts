@@ -52,7 +52,7 @@ export class CustomManifestLoader extends PlaylistLoader {
       return;
     }
 
-    // `manifest` is the top-level request — the one whose answer decides whether this stream is a
+    // `manifest` is the top-level request, the one whose answer decides whether this stream is a
     // ladder at all, so it goes through the path that reads the source feed and looks. `level` is
     // one rung, which is a feed like any other.
     const manifest =

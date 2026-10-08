@@ -6,8 +6,8 @@
  * covers, and the bug this exists to prevent was entirely in the branching.
  *
  * That bug: every card took its frame by fetching the stream's manifest feed and decoding its first
- * segment. A **scheduled** entry has no manifest feed at all — it is an announcement, and the topic
- * is not written to until the broadcast starts — so the probe is a guaranteed miss that costs a slot
+ * segment. A **scheduled** entry has no manifest feed at all: it is an announcement, and the topic
+ * is not written to until the broadcast starts, so the probe is a guaranteed miss that costs a slot
  * on a queue of concurrency 1 and, on a build where the miss left the loading flag set, spun
  * forever. Meanwhile the image the broadcaster actually uploaded was ignored.
  */

@@ -8,7 +8,7 @@ import {
 } from '@swarm-hls-stream/shared';
 
 /**
- * Playlist text and feed URIs — the pure half of the Swarm HLS loader.
+ * Playlist text and feed URIs, the pure half of the Swarm HLS loader.
  *
  * Kept apart from `ManifestManagement` so it can be exercised without a Bee node, a gateway URL or
  * a browser: this is the code that decides what hls.js actually parses, and getting a tag or a URI
@@ -37,7 +37,7 @@ export function isMasterPlaylist(text: string): boolean {
  * The variant feeds a master points at, in the order it lists them.
  *
  * Read off the master rather than out of the catalog, because these are the feeds hls.js will
- * actually request — polling any other set would leave the rungs it asks for un-walked while
+ * actually request: polling any other set would leave the rungs it asks for un-walked while
  * keeping ones it never touches at the live edge. The owner comes from the URIs for the same
  * reason: the master is what says where its own variants live.
  */

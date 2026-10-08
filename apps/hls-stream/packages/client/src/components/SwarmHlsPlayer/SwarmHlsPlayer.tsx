@@ -23,7 +23,7 @@ import { attachActiveRungFollower, attachRungFailover, attachWatchedRungReporter
 
 import './SwarmHlsPlayer.scss';
 
-/** Pins playback to a named rung; `AUTO_LEVEL` hands the choice back to hls.js's ABR. */
+/** Pins playback to a named rung, `AUTO_LEVEL` hands the choice back to hls.js's ABR. */
 const AUTO_LEVEL = 'auto';
 
 // TODO Consider switching to React.MediaHTMLAttributes<HTMLMediaElement> to support <audio> as well
@@ -88,7 +88,7 @@ const DEFAULT_HLS_TUNING: Readonly<HlsTuning> = Object.freeze({
   // measurement of a pipe. Over Swarm it is not: a 2s 1080p segment is a few hundred chunks fanned
   // out across neighbourhoods, and the elapsed time is dominated by retrieval latency rather than
   // by any rate. Consecutive samples therefore swing hard, and hls.js's default half-lives turn
-  // that swing into level flapping — so both are lengthened well past them (3 and 9).
+  // that swing into level flapping, so both are lengthened well past them (3 and 9).
   abrEwmaFastLive: 9,
   abrEwmaSlowLive: 27,
 
@@ -99,16 +99,16 @@ const DEFAULT_HLS_TUNING: Readonly<HlsTuning> = Object.freeze({
   abrEwmaDefaultEstimate: 2_000_000,
 
   // hls.js's startup probe fetches the first fragment at a low level to measure throughput. That
-  // measurement is retrieval latency here, so it produces a number that is not bandwidth; the
+  // measurement is retrieval latency here, so it produces a number that is not bandwidth. The
   // seeded estimate is the more honest input.
   testBandwidth: false,
 
   // Off, and this is load-bearing rather than a preference. `capLevelToPlayerSize` caps ABR at the
   // first rung whose width or height reaches `max(playerWidth, playerHeight) x devicePixelRatio`,
   // and it sets `autoLevelCapping`, which ABR cannot exceed for any bandwidth. In a 420px-wide
-  // player at devicePixelRatio 1 that resolves to 640x360 — the bottom rung, pinned there
+  // player at devicePixelRatio 1 that resolves to 640x360, the bottom rung, pinned there
   // permanently and regardless of how fast Swarm is answering. Sizing the ladder to the box is the
-  // right production default; it is the wrong thing to leave on while measuring what the ladder can
+  // right production default. It is the wrong thing to leave on while measuring what the ladder can
   // reach. See the watch page, which is laid out wide for the same reason.
   capLevelToPlayerSize: false,
 
@@ -151,8 +151,8 @@ function tuningKey(tuning: HlsTuning): string {
  *
  * Deliberately excludes bandwidth. The uploader keeps correcting each rung's measured bandwidth,
  * and rebuilding the player every time it did would restart playback every half minute. A session
- * therefore runs on the bandwidths that had landed by the time hls.js read the master — which for
- * a live stream is once, at the start — and later corrections benefit later sessions.
+ * therefore runs on the bandwidths that had landed by the time hls.js read the master, which for
+ * a live stream is once, at the start, and later corrections benefit later sessions.
  */
 function ladderKey(renditions: Rendition[] | undefined): string {
   if (!renditions || renditions.length === 0) {
@@ -178,14 +178,14 @@ function topLevelIndex(levels: readonly { height: number; maxBitrate: number }[]
  *
  * The second is what hls.js does by default and it cannot work over Swarm. `findBestLevel` will
  * only move up to a rung when `abrBandWidthUpFactor x bandwidthEstimate >= BANDWIDTH`, and
- * `bandwidthEstimate` moves only on fragments actually fetched — with `testBandwidth` off there is
+ * `bandwidthEstimate` moves only on fragments actually fetched: with `testBandwidth` off there is
  * no probe, and a probe would measure retrieval latency rather than a rate anyway. So a viewer
  * fetching 700 kbps segments measures roughly 700 kbps, concludes 700 kbps is all it can afford,
  * and never tries the rung that would have told it otherwise. The floor is self-fulfilling.
  *
  * Seeding the estimate at exactly what the top rung needs under the up-switch factor inverts that:
  * the whole ladder is affordable from cold, and the first real fragments then move the estimate.
- * If Swarm keeps up it stays high; if it does not, the EWMA falls and — faster — the starvation
+ * If Swarm keeps up it stays high. If it does not, the EWMA falls and, faster, the starvation
  * path in `findBestLevel` drops the level as the buffer drains. Falling back on evidence, rather
  * than never climbing for want of it.
  *
@@ -201,7 +201,7 @@ function startAtTopRung(hls: Hls): void {
 
   // Clamped because this is a divisor and the factor is caller-tunable for exactly this kind of
   // sweep. A zero would seed an infinite estimate, which hls.js then multiplies by the same zero
-  // and compares as NaN — no rung is ever selectable and playback simply never starts.
+  // and compares as NaN: no rung is ever selectable and playback simply never starts.
   const upFactor = Math.min(Math.max(hls.config.abrBandWidthUpFactor, 0.1), 1);
   const top = topLevelIndex(levels);
   const affordable = levels[top].maxBitrate / upFactor;
@@ -209,20 +209,20 @@ function startAtTopRung(hls: Hls): void {
   // Never downward: a caller that deliberately seeded higher keeps its number.
   hls.bandwidthEstimate = Math.max(hls.config.abrEwmaDefaultEstimate, Math.round(affordable));
 
-  // `startLevel` picks the first fragment only, and leaves ABR enabled — unlike `currentLevel`,
+  // `startLevel` picks the first fragment only, and leaves ABR enabled, unlike `currentLevel`,
   // which would pin the session to this rung for good.
   hls.startLevel = top;
 }
 
 /**
- * Pins hls.js to one rung. Called only when a rung was asked for; otherwise ABR chooses.
+ * Pins hls.js to one rung. Called only when a rung was asked for. Otherwise ABR chooses.
  *
  * Matched by feed URI where the catalog supplied one, because a rung's topic is the one attribute
  * of a level that came from this ladder and cannot collide with another rung's. Falling back to the
  * height in the rung's name covers the session driven purely by a published master, which knows
  * every level's resolution but has no rendition names to match against.
  *
- * Assigning `currentLevel` is also what turns ABR off — a `startLevel` alone only picks where it
+ * Assigning `currentLevel` is also what turns ABR off: a `startLevel` alone only picks where it
  * begins, and it would switch away on the first throughput sample.
  */
 function applyLevel(hls: Hls, owner: string, renditions: Rendition[], level: string): void {
@@ -262,7 +262,7 @@ interface HlsPlayerProps extends React.VideoHTMLAttributes<HTMLVideoElement> {
   renditions?: Rendition[];
   /**
    * Rung to pin playback to, by name. Omitted, or {@link AUTO_LEVEL}, leaves the choice to ABR,
-   * which is the default. Pinning is for isolating one rung — comparing it against the others, or
+   * which is the default. Pinning is for isolating one rung, comparing it against the others, or
    * telling a bad rung apart from a bad switch. Ignored without a ladder.
    */
   level?: string;
@@ -540,7 +540,7 @@ export const SwarmHlsPlayer: React.FC<HlsPlayerProps> = ({
 
       if (hls) {
         // The source feed, on top of the rungs `unregisterLadder` has already stopped. For a
-        // single-rendition stream it is the media playlist and holds the only state there is; for a
+        // single-rendition stream it is the media playlist and holds the only state there is. For a
         // ladder it is the master, and clearing it is a no-op. Leaving either behind would have the
         // next session resume someone else's playlist.
         //
