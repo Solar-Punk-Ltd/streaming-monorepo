@@ -118,6 +118,45 @@ describe('the Funding page', () => {
     expect(fetchMock.mock.calls.filter(([url]) => String(url) === FUNDING)).toHaveLength(2);
   });
 
+  it('keeps the view of its latest read when an earlier read answers after it', async () => {
+    const named = (label: string) =>
+      makeView({ stages: [{ stageId: 'stage-1', name: 'Main stage', nodes: [makeNode({ label })] }] });
+    let releaseEarlier!: () => void;
+    const earlier = new Promise<void>((resolve) => {
+      releaseEarlier = resolve;
+    });
+    let reads = 0;
+    mockFetch([
+      {
+        path: FUNDING,
+        respond: async () => {
+          reads += 1;
+          if (reads === 1) return jsonOk(named('first-node'));
+          // The second read answers last, after the third.
+          if (reads === 2) {
+            await earlier;
+            return jsonOk(named('earlier-node'));
+          }
+          return jsonOk(named('later-node'));
+        },
+      },
+    ]);
+    renderWithProviders(<FundingPage />);
+    expect(await screen.findByText('first-node')).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole('button', { name: 'refresh funding' }));
+    fireEvent.click(screen.getByRole('button', { name: 'refresh funding' }));
+    expect(await screen.findByText('later-node')).toBeInTheDocument();
+
+    await act(async () => {
+      releaseEarlier();
+      await new Promise((resolve) => setTimeout(resolve, 20));
+    });
+    expect(reads).toBe(3);
+    expect(screen.getByText('later-node')).toBeInTheDocument();
+    expect(screen.queryByText('earlier-node')).not.toBeInTheDocument();
+  });
+
   it('says what the manager answered when it could not be read', async () => {
     serve(() => makeView({ managerError: 'The manager did not answer in time.', stages: [], catalogue: null }));
     renderWithProviders(<FundingPage />);

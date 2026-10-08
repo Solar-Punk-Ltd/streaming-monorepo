@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { Alert, Box, Button, CircularProgress, IconButton, Paper, Stack, Tooltip, Typography } from '@mui/material';
 import RefreshIcon from '@mui/icons-material/Refresh';
 import type { FundingView } from '@streaming-monorepo/web2-admin-common';
@@ -17,25 +17,40 @@ export interface FundingRead {
 }
 
 /**
- * Reads the Funding page's view when the tab mounts, and again on `load`. `onRead` hears each view in the render that
- * shows it, so a tab can follow the bulk the view says is open; it must keep its identity from render to render.
+ * Reads the Funding page's view when the tab mounts, and again on `load`. Only the latest read is answered: one that
+ * started earlier and answers after it is dropped, view, error and all, so an older view never replaces a newer one.
+ * `onRead` hears each view in the render that shows it, so a tab can follow the bulk the view says is open. It is kept
+ * in a ref, so `load` keeps one identity whatever the tab passes.
  */
 export function useFundingView(onRead: (view: FundingView) => void): FundingRead {
   const [view, setView] = useState<FundingView | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [now, setNow] = useState(() => Date.now());
+  /** How many reads have started: an answer is taken only while its read is still the latest. */
+  const reads = useRef(0);
+  const onReadRef = useRef(onRead);
+
+  useEffect(() => {
+    onReadRef.current = onRead;
+  }, [onRead]);
 
   const load = useCallback(() => {
+    reads.current += 1;
+    const read = reads.current;
     setError(null);
     api
       .fetchFunding()
       .then((next) => {
+        if (read !== reads.current) return;
         setView(next);
         setNow(Date.now());
-        onRead(next);
+        onReadRef.current(next);
       })
-      .catch((e: unknown) => setError(errorMessage(e, 'Failed to load the funding page')));
-  }, [onRead]);
+      .catch((e: unknown) => {
+        if (read !== reads.current) return;
+        setError(errorMessage(e, 'Failed to load the funding page'));
+      });
+  }, []);
 
   useEffect(load, [load]);
 
