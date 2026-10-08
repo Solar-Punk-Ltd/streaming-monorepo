@@ -1,10 +1,17 @@
 import {
+  FUNDING_CHEQUEBOOK_OPERATIONS_PATH,
   FUNDING_INVENTORY_PATH,
   FUNDING_STAMP_OPERATIONS_PATH,
   FUNDING_TRANSFERS_PATH,
   type FundingAccountAnswer,
   fundingAccountAnswerSchema,
   fundingAccountPath,
+  type FundingChequebookOperationAnswer,
+  fundingChequebookOperationAnswerSchema,
+  fundingChequebookOperationPath,
+  type FundingChequebookOperationRequest,
+  type FundingChequebookOperationStatus,
+  fundingChequebookOperationStatusSchema,
   type FundingErrorCode,
   fundingErrorAnswerSchema,
   type FundingInventory,
@@ -32,8 +39,9 @@ import {
 
 /**
  * The client of the manager's funding API (`packages/contracts/src/funding.ts`, docs/architecture/funding.md): the
- * stages' nodes with their wallets and batches, the brand wallet's account, the transfers the admin signs and the
- * manager sends, and the stamp operations the manager asks the nodes for. The funding services are its users.
+ * stages' nodes with their wallets, batches and chequebooks, the brand wallet's account, the transfers the admin signs
+ * and the manager sends, and the stamp and chequebook operations the manager asks the nodes for. The funding services
+ * are its users.
  *
  * Every request carries `Authorization: Bearer <MANAGER_FUNDING_TOKEN>` to the manager's address and nowhere else:
  * the address is held to the funding rules (https, or plain http to this host), and no redirect is followed. Each
@@ -52,6 +60,17 @@ export const MANAGER_FUNDING_TIMEOUT_MS = 10_000;
  * (`ON_CHAIN_TIMEOUT_MS` in its `BeeClient.ts`). This leaves room for the manager's own checks besides.
  */
 export const MANAGER_FUNDING_STAMP_TIMEOUT_MS = 200_000;
+
+/**
+ * How long a chequebook operation's call may take, its answer read whole, unless the client is given another
+ * deadline: the 240 seconds the manager's edge gives its funding API (`proxy_read_timeout` of `/api/admin-funding` in
+ * the manager's `frontend/nginx.conf`). The manager answers it once it has reached the node, prepared the move,
+ * journalled it and had the node's answer to it: seconds as a rule, and about 230 at worst, 15 to reach the node's Bee
+ * API, 30 to prepare the move and the 180 it gives the node's answer, with its cleanup after. An answer lost past this
+ * deadline is read on the status route, which answers the operation, since the manager journals it before it asks the
+ * node.
+ */
+export const MANAGER_FUNDING_CHEQUEBOOK_TIMEOUT_MS = 240_000;
 
 /**
  * The largest answer the client reads, the bound the manager's own chain client keeps. An inventory of a hundred
@@ -77,8 +96,8 @@ export type ManagerFundingFailure = (typeof MANAGER_FUNDING_FAILURES)[number];
  * when no answer came. After `relay`, `unreachable` and `timeout` leave it unknown whether the manager took the
  * transfer: relaying it again under the same request id answers its state, and the manager never sends it twice. A
  * status read that answers `unknown_request` says the manager journalled no transfer under the id, so the relay never
- * reached it and relaying again is safe; `unknown_node` refuses the node. A stamp operation's status read answers
- * `unknown_request` in the same way, when the manager journalled no stamp operation under the id.
+ * reached it and relaying again is safe; `unknown_node` refuses the node. A stamp or chequebook operation's status
+ * read answers `unknown_request` in the same way, when the manager journalled no such operation under the id.
  */
 export class ManagerFundingError extends Error {
   readonly code: FundingErrorCode | ManagerFundingFailure;
@@ -109,6 +128,11 @@ export interface ManagerFundingClientOptions {
    * by default. A stamp operation's status read keeps `timeoutMs`.
    */
   stampTimeoutMs?: number;
+  /**
+   * The deadline of a chequebook operation's call, its answer read whole, in ms.
+   * {@link MANAGER_FUNDING_CHEQUEBOOK_TIMEOUT_MS} by default. A chequebook operation's status read keeps `timeoutMs`.
+   */
+  chequebookTimeoutMs?: number;
   /** The largest answer read, in bytes. {@link MANAGER_FUNDING_MAX_ANSWER_BYTES} by default. */
   maxAnswerBytes?: number;
   /** The fetch to call: the global one by default, a fake in the unit tests. */
@@ -182,6 +206,7 @@ export class ManagerFundingClient {
   readonly #token: string;
   readonly #timeoutMs: number;
   readonly #stampTimeoutMs: number;
+  readonly #chequebookTimeoutMs: number;
   readonly #maxAnswerBytes: number;
   readonly #fetch: typeof fetch;
 
@@ -191,8 +216,9 @@ export class ManagerFundingClient {
     if (problem) throw new Error(problem);
     const timeoutMs = options.timeoutMs ?? MANAGER_FUNDING_TIMEOUT_MS;
     const stampTimeoutMs = options.stampTimeoutMs ?? MANAGER_FUNDING_STAMP_TIMEOUT_MS;
+    const chequebookTimeoutMs = options.chequebookTimeoutMs ?? MANAGER_FUNDING_CHEQUEBOOK_TIMEOUT_MS;
     const maxAnswerBytes = options.maxAnswerBytes ?? MANAGER_FUNDING_MAX_ANSWER_BYTES;
-    for (const deadline of [timeoutMs, stampTimeoutMs]) {
+    for (const deadline of [timeoutMs, stampTimeoutMs, chequebookTimeoutMs]) {
       if (!Number.isSafeInteger(deadline) || deadline < 1) {
         throw new Error("The funding client's deadline must be a whole number of milliseconds above 0.");
       }
@@ -204,6 +230,7 @@ export class ManagerFundingClient {
     this.#token = options.token;
     this.#timeoutMs = timeoutMs;
     this.#stampTimeoutMs = stampTimeoutMs;
+    this.#chequebookTimeoutMs = chequebookTimeoutMs;
     this.#maxAnswerBytes = maxAnswerBytes;
     this.#fetch = options.fetch ?? ((input, init) => fetch(input, init));
   }
@@ -281,6 +308,34 @@ export class ManagerFundingClient {
    */
   async stampOperationStatus(requestId: string): Promise<FundingStampOperationStatus> {
     return this.#call('GET', fundingStampOperationPath(requestId), fundingStampOperationStatusSchema);
+  }
+
+  /**
+   * `POST /api/admin-funding/chequebook-operations`: one deposit into or withdrawal from a node's chequebook, which the
+   * manager checks, journals and asks the node for. Only the contract's fields go, so a request cannot name where a
+   * withdrawal goes: Bee withdraws into the node's own wallet. The manager answers once the node has, so the call has a
+   * deadline of its own, the longest ({@link MANAGER_FUNDING_CHEQUEBOOK_TIMEOUT_MS}). The same request id sent again
+   * with the same fields answers the operation's state and never runs it twice, so a call that ended in `unreachable`
+   * or `timeout` is made again as it was, once a status read says the manager never received it.
+   */
+  async chequebookOperation(operation: FundingChequebookOperationRequest): Promise<FundingChequebookOperationAnswer> {
+    const { requestId, nodeId, direction, amountPlur } = operation;
+    return this.#call(
+      'POST',
+      FUNDING_CHEQUEBOOK_OPERATIONS_PATH,
+      fundingChequebookOperationAnswerSchema,
+      { requestId, nodeId, direction, amountPlur },
+      this.#chequebookTimeoutMs,
+    );
+  }
+
+  /**
+   * `GET /api/admin-funding/chequebook-operations/:requestId`: where a chequebook operation stands. `unknown_request`
+   * (404) when the manager journalled no chequebook operation under the id. Throws, asking nothing, for what is not a
+   * UUID.
+   */
+  async chequebookOperationStatus(requestId: string): Promise<FundingChequebookOperationStatus> {
+    return this.#call('GET', fundingChequebookOperationPath(requestId), fundingChequebookOperationStatusSchema);
   }
 
   async #call<T>(
