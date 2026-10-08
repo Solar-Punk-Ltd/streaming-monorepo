@@ -35,6 +35,9 @@ const REQUIRED_ENV: EnvVar[] = [
   { name: 'STREAM_KEY', field: 'streamKey', sample: 'stream-key' },
   { name: 'STREAM_LIST_TOPIC', field: 'streamListTopic', sample: 'stream-list-topic' },
   { name: 'API_AUTH_TOKEN', field: 'apiAuthToken', sample: 'api-auth-token' },
+  // The stage's segment length, which has no default anywhere, so the uploader never dates a
+  // recording against a length nobody chose.
+  { name: 'HLS_FRAGMENT', field: 'fragmentSeconds', sample: '1.5' },
 ];
 
 const OPTIONAL_ENV: OptionalEnvVar[] = [
@@ -126,7 +129,11 @@ describe('the environment contract', () => {
     });
 
     for (const variable of REQUIRED_ENV) {
-      assert.equal(config[variable.field], variable.sample, `${variable.name} did not reach config.${variable.field}`);
+      assert.equal(
+        String(config[variable.field]),
+        variable.sample,
+        `${variable.name} did not reach config.${variable.field}`,
+      );
     }
     for (const variable of OPTIONAL_ENV) {
       assert.equal(
@@ -157,6 +164,12 @@ describe('the environment contract', () => {
       delete env[variable.name];
 
       await assert.rejects(() => loadConfig(env), new RegExp(variable.name));
+    });
+  }
+
+  for (const value of ['0', '-1', 'two', '3601']) {
+    it(`refuses to start on HLS_FRAGMENT=${value}, which is no segment length`, async () => {
+      await assert.rejects(() => loadConfig({ ...requiredEnv(), HLS_FRAGMENT: value }), /HLS_FRAGMENT/);
     });
   }
 

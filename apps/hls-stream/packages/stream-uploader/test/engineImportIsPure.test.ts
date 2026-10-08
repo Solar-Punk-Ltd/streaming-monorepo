@@ -18,7 +18,7 @@ const IMPORT_ONLY = join(PACKAGE_ROOT, 'test', 'helpers', 'importOnly.ts');
 const ENGINE_MODULES = ['src/engines/srs.js', 'src/engines/ome.js', 'src/engines/registry.js', 'src/engines/load.js'];
 
 /**
- * The five variables `utils/config.ts` calls `required()` on, present and empty.
+ * The six variables `utils/config.ts` calls `required()` on, present and empty.
  *
  * Present and empty rather than absent, and the difference is what makes this test mean the same
  * thing on every machine. `utils/env.ts` runs `dotenv.config()` at import against the repository
@@ -33,9 +33,10 @@ const BLANKED = {
   STREAM_KEY: '',
   STREAM_LIST_TOPIC: '',
   API_AUTH_TOKEN: '',
+  HLS_FRAGMENT: '',
 };
 
-/** Imports one module in a fresh process whose five required variables are blank. */
+/** Imports one module in a fresh process whose six required variables are blank. */
 function importInHostileEnv(specifier: string): { status: number | null; stderr: string } {
   const run = spawnSync(TSX, [IMPORT_ONLY, join(PACKAGE_ROOT, specifier)], {
     cwd: PACKAGE_ROOT,
@@ -73,7 +74,7 @@ describe('importing an engine reads nothing the environment has to supply', () =
       assert.equal(
         run.status,
         0,
-        `importing ${specifier} failed with the five required variables blank, so something in its ` +
+        `importing ${specifier} failed with the six required variables blank, so something in its ` +
           `graph reads them at module scope:\n${run.stderr}`,
       );
     });

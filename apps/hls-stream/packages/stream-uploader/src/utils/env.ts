@@ -127,7 +127,18 @@ export function optionalNumber(name: string, fallback: number, range: NumericRan
   if (!value || value.trim() === '') {
     return fallback;
   }
+  return parsedNumber(name, value, range);
+}
 
+/**
+ * Value of a mandatory environment variable that may carry decimals, read as strictly as
+ * `optionalNumber` reads one. Absent and blank are refused the way `required` refuses them.
+ */
+export function requiredNumber(name: string, range: NumericRange = {}): number {
+  return parsedNumber(name, required(name), range);
+}
+
+function parsedNumber(name: string, value: string, range: NumericRange): number {
   const written = value.trim();
   if (!/^-?(?:\d+(?:\.\d*)?|\.\d+)$/.test(written)) {
     throw new Error(`Env var ${name} is not a number: "${value}"`);

@@ -554,6 +554,7 @@ The API server starts on port 3000 (default).
 | `STREAM_KEY`        | Private key (hex) for signing feeds                                                                                                                                           |
 | `STREAM_LIST_TOPIC` | Feed topic for the stream catalog                                                                                                                                             |
 | `API_AUTH_TOKEN`    | Bearer token for `/stream/*` and `GET /metrics`, minimum 32 characters. `openssl rand -hex 32`                                                                                |
+| `HLS_FRAGMENT`      | The stage's segment length in seconds, the same variable the engine reads and the grid a segment's date snaps to within one percent. No default, `2` in `.env.sample`         |
 
 **Optional:**
 
@@ -575,7 +576,6 @@ The API server starts on port 3000 (default).
 | `STAMP_MIN_TTL_HOURS`    | `12`                 | Hours a postage batch must have left for the postage gate to call it usable                                                                                                                                                                        |
 | `STAMP_MAX_UTILIZATION`  | `0.9`                | How full an immutable batch may be, as a ratio, for the postage gate to call it usable. A mutable batch overwrites its oldest chunks when full rather than refusing, so it is never held to this                                                   |
 | `BEE_REQUEST_TIMEOUT_MS` | `4000`               | Per-request deadline on every upload-loop call to a Bee node, derived from the retry windows                                                                                                                                                       |
-| `HLS_FRAGMENT`           | `0.5`                | Nominal seconds per fragment, the grid a segment's date snaps to within one percent. Same variable the engine reads                                                                                                                                |
 | `SEGMENT_DEDUP_WINDOW`   | `10000`              | Segment indexes remembered per stream, twice this many held at most                                                                                                                                                                                |
 | `SEGMENT_REDUNDANCY`     | `1`                  | Erasure-coding parity on segment uploads, `0` turns it off                                                                                                                                                                                         |
 | `ENGINE`                 | _(empty)_            | Engine plugin to load (`srs`, `ome` or empty)                                                                                                                                                                                                      |
@@ -589,7 +589,7 @@ The API server starts on port 3000 (default).
 | `LOG_FORMAT`             | _(empty)_            | `json` for one `{ts, level, msg}` object per line. Anything else keeps the readable format                                                                                                                                                         |
 
 Admin mode changes who owns the stream catalog. It does not change the uploader's Bee startup
-requirements. `BEE_URL`, `STREAM_KEY`, `STREAM_LIST_TOPIC` and `API_AUTH_TOKEN` remain required.
+requirements. `BEE_URL`, `STREAM_KEY`, `STREAM_LIST_TOPIC`, `API_AUTH_TOKEN` and `HLS_FRAGMENT` remain required.
 `STAMP` remains conditional on `BEE_PUBLISHERS`. Once `ADMIN_API_URL` is set,
 `ADMIN_API_TOKEN` is required as well.
 
