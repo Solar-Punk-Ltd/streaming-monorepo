@@ -126,8 +126,9 @@ the master feed goes on advertising it.
 | `light-client` now    | 1.0s     | **4.0/s**   | 40% spare      | 600s run, lag flat at 0.0s, zero lost   |
 | `in-browser`          | 2.0s     | 2.0/s       | 70% spare      | never exposed to this                   |
 
-So light-client's `1.0` is **not** where the gateway path measures best. 0.5s is, and that
-measurement stands. 0.5s is simply unreachable while four rungs are being announced. If the ladder
+So a four-rung ladder needs at least `1.0`, and the sample ships 2. light-client's `1.0` is **not**
+where the gateway path measures best. 0.5s is, and that measurement stands. 0.5s is simply
+unreachable while four rungs are being announced. If the ladder
 loses rungs, or the ceiling is understood and raised, 0.5 is the value to come back to.
 
 `preflight/segment-length` refuses a run pointed at the other one:

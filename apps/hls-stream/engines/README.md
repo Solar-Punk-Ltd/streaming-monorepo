@@ -253,8 +253,9 @@ the media at 0.46s per second of video until the lag passes `HLS_WINDOW`, after 
 each segment before announcing it: the uploader gets a callback naming a file that is already gone,
 the tallest rung is unpublished about two minutes in, and the master feed goes on advertising it.
 
-A four-rung ladder therefore runs at `HLS_FRAGMENT=1.0` (4.0/s, verified over 600s with lag flat and
-zero segments lost) and **not** the 0.5s that measures best on latency, which asks 8.0/s. A single
+A four-rung ladder therefore needs `HLS_FRAGMENT` of at least 1.0 (4.0/s, verified over 600s with lag
+flat and zero segments lost), and ships at 2. It can **not** run the 0.5s that measures best on
+latency, which asks 8.0/s. A single
 rendition at 0.5s asks 2.0/s and is unaffected. ⚠️ The 6.7/s is one measurement on a co-tenanted host,
 nothing refuses a ladder that exceeds it, and what SRS spends the time on is not known: the uploader
 answers each callback in 1ms.
