@@ -1,4 +1,4 @@
-import { MANAGER_SLOT_CAP, portExposureProblem, type StackPortVar } from '@streaming-infra-manager/common';
+import { MANAGER_SLOT_CAP, type StackPortVar } from '@streaming-infra-manager/common';
 
 import { PortReservedError } from '../../src/domain/errors/index.js';
 import type { PortReservationRepository } from '../../src/domain/ports/PortReservationRepository.js';
@@ -11,6 +11,7 @@ import {
   portKeyOf,
   portPlanFor,
   ownersAfterHandover,
+  slotTakesNewDeployment,
 } from '../../src/domain/ports/portReservations.js';
 
 /**
@@ -43,8 +44,8 @@ export class InMemoryPortReservations implements PortReservationRepository {
   ): number | null {
     for (let slot = 1; slot <= Math.min(slotCap, MANAGER_SLOT_CAP); slot += 1) {
       if (takenSlots.has(slot)) continue;
+      if (!slotTakesNewDeployment(table, slot)) continue;
       const plan = portPlanFor(table, slot);
-      if (plan.some((entry) => portExposureProblem(entry))) continue;
       if (plan.some((entry) => this.holderOf(daemonId, entry))) continue;
       return slot;
     }

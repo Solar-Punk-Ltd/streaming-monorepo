@@ -88,6 +88,8 @@ All form fields filled in group mode are applied verbatim to every member:
 Members differ in `name` and in their port slot, which each takes for itself as it is inserted:
 the lowest free slot, with the ports that slot reserves (`insertMemberWithFreeSlot` in
 `manager/src/domain/DeploymentGroupRepository.ts`). All of them carry the group's `group_id`.
+A slot any of whose ports is a bad port of the fetch standard is never given out, as for a
+single deployment (`manager/README.md`, Limitations).
 
 A group's members start with the engine settings the create body carries, and the wizard
 pre-fills a two-second segment length wherever the deployment runs SRS, so the whole group
