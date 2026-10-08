@@ -39,7 +39,7 @@ import { SEGMENTS_AS_WRITTEN } from '../src/components/SwarmHlsPlayer/ManifestMa
 const OWNER = 'aabbcc';
 const GROUP = Topic.fromString('one-quality-group').toString();
 const POLL_MS = 2;
-/** The progress bound, short so a trial ends inside a test. Production's is `RUNG_PROGRESS_BOUND_MS`. */
+/** The progress bound, short so a trial ends inside a test. Production's is `rungProgressBoundMs`. */
 const BOUND_MS = 150;
 const RETURN_MS = 5;
 /**
