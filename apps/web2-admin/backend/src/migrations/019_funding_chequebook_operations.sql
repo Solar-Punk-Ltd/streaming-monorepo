@@ -11,17 +11,18 @@
 -- of the manager's request BEFORE any is relayed; then they are relayed in
 -- turn. So a relay whose answer never came, or a process that stops before or
 -- during the relays, leaves a row a refresh picks up: the manager is asked
--- where the request id stands, and an item it never received is relayed
+-- where the request id stands, and an item it holds nothing under is relayed
 -- again, the same fields under the same request id, which the manager runs at
--- most once. An item the manager answered for is never relayed again. While
--- any item is queued, no new bulk starts, since a move still under way changes
--- the balances the next one is checked against. Nor while an item is submitted
--- or unknown and the manager answered its relay at most 30 minutes ago, the
--- manager's receipt budget (RECEIPT_POLL_BUDGET_MS): past it, the manager may
--- hold the move so until an operator settles it in the manager's console, and
--- it refuses a second move on a node while one is in flight there. A
--- submitted or unknown item older than that holds up no bulk, but is still
--- asked about.
+-- most once: one queued, or submitted with no hash, as the manager answers a
+-- move it is still preparing, before it journals anything. An item with a
+-- hash or an outcome is never relayed again. While any item is queued, no new
+-- bulk starts, since a move still under way changes the balances the next one
+-- is checked against. Nor while an item is submitted or unknown and the
+-- manager answered its relay at most 30 minutes ago, the manager's receipt
+-- budget (RECEIPT_POLL_BUDGET_MS): past it, the manager may hold the move so
+-- until an operator settles it in the manager's console, and it refuses a
+-- second move on a node while one is in flight there. A submitted or unknown
+-- item older than that holds up no bulk, but is still asked about.
 --
 --   request_id   the item's id, which the manager journals it under.
 --   bulk_id      the request it belongs to, which the page reads it back by.
@@ -53,7 +54,8 @@
 --   error        why it failed, or what the manager said of it, in a sentence.
 --   relayed_at   when the admin recorded the manager's first answer for it, to
 --                a relay, or, for a relay whose answer was lost, to the status
---                read that found it, by the service's clock. A submitted or
+--                read that found it, by the service's clock; and its answer to
+--                a relay again, for one submitted with no hash. A submitted or
 --                unknown item's 30 minutes count from it. Null while the item
 --                is queued, and on an item failed before the manager ever
 --                answered for it; created_at stands in only as a backstop for

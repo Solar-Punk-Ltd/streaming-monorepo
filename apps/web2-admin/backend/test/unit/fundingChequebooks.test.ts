@@ -7,9 +7,10 @@
  * from journalled and the amount answered; every refusal and its problem, nothing journalled, the floor of 1 xBZZ, a
  * node named twice and a chequebook at the target or past it now among them; a request answered at once, every item
  * journalled `queued`, then relayed in turn behind it, a refusal failing its item alone; a refresh that relays again
- * only an item the manager never received, the same fields under the same request id, and never one it answered for;
- * one chequebook bulk at a time, apart from sends and stamp bulks; a read that shares the relays under way; the view's
- * open chequebook bulk; the settled and watched flags; and the audit rows of a request and of each outcome.
+ * only an item the manager holds nothing under that is `queued`, or `submitted` with no hash, the same fields under
+ * the same request id, and never one with a hash or an outcome; one chequebook bulk at a time, apart from sends and
+ * stamp bulks; a read that shares the relays under way; the view's open chequebook bulk; the settled and watched
+ * flags; and the audit rows of a request and of each outcome.
  */
 import assert from 'node:assert/strict';
 import { beforeEach, describe, it } from 'node:test';
@@ -813,6 +814,61 @@ describe('refreshing a chequebook bulk', () => {
 
     assert.equal(manager.chequebookCalls.operation, relays, 'a second run would move the balance again');
     assert.equal(refreshed.items[0]?.state, 'unknown');
+  });
+
+  it('relays again an item found submitted with no hash, while the manager prepared it, once it holds nothing under its id', async () => {
+    // The relay's answer is lost while the manager is still preparing the move, with nothing journalled yet.
+    manager.chequebookErrors.set(0, managerFailure('timeout', null));
+    const sent = await requested(toTarget(STAGE_NODE));
+    const requestId = sent.items[0]!.requestId;
+    manager.chequebookStatusAnswers.set(requestId, { state: 'submitted', txHash: null, error: null });
+    const foundAt = clock.now;
+
+    const preparing = await funding.chequebookBulk(sent.bulkId);
+
+    assert.deepEqual(
+      preparing.items.map((one) => [one.state, one.txHash, one.settled]),
+      [['submitted', null, false]],
+    );
+    assert.equal(journal.get(requestId)?.relayedAt?.getTime(), foundAt);
+    assert.equal(manager.chequebookCalls.operation, 1);
+
+    // The preparation ended with nothing journalled, so the node was asked for nothing.
+    manager.chequebookStatusAnswers.delete(requestId);
+    clock.now += 60_000;
+    const again = await funding.chequebookBulk(sent.bulkId);
+
+    assert.equal(manager.chequebookCalls.operation, 2, 'exactly one more relay');
+    assert.deepEqual(
+      manager.chequebookOperations[1],
+      manager.chequebookOperations[0],
+      'the same fields under the same id',
+    );
+    assert.deepEqual(
+      again.items.map((one) => [one.state, one.txHash]),
+      [['submitted', chequebookTxHash(requestId)]],
+    );
+    // Its 30 minutes count from the answer to the relay again.
+    assert.equal(journal.get(requestId)?.relayedAt?.getTime(), clock.now);
+    assert.equal(manager.chequebookRuns.length, 1, 'the manager ran it once');
+  });
+
+  it('never relays again a submitted item with a hash that the manager no longer knows', async () => {
+    const sent = await requested(toTarget(STAGE_NODE));
+    const requestId = sent.items[0]!.requestId;
+    assert.equal(sent.items[0]?.txHash, chequebookTxHash(requestId));
+    manager.chequebookJournal.clear();
+    const relays = manager.chequebookCalls.operation;
+    const reads = manager.chequebookCalls.status;
+
+    const refreshed = await funding.chequebookBulk(sent.bulkId);
+
+    assert.equal(manager.chequebookCalls.status, reads + 1);
+    assert.equal(manager.chequebookCalls.operation, relays, 'a second run could move the balance again');
+    assert.deepEqual(
+      refreshed.items.map((one) => [one.state, one.txHash]),
+      [['submitted', chequebookTxHash(requestId)]],
+    );
   });
 
   it('records what the manager says of each item, and audits each outcome once, as the system', async () => {

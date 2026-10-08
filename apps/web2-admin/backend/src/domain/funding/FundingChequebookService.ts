@@ -92,9 +92,12 @@ import { ManagerFundingError, type ManagerFundingClient } from './ManagerFunding
  * manager's sentence, nothing having been asked of the node, and the next item is relayed: each node moves its own.
  * Any other failure, an answer lost among them or the manager's journal out of reach (its 503), leaves the item
  * `queued`, and the ones after it, for a refresh, which asks the manager where each stands and relays again, the same
- * fields under the same request id, only one the manager never received (`unknown_request`). The manager journals a
- * move before it asks the node, so one that reached it is never `unknown_request`. An item the manager answered for is
- * never relayed again, since a second run of it would move the balance again: the manager journals it and runs it once.
+ * fields under the same request id, only one it holds nothing under (`unknown_request`) that is `queued`, or
+ * `submitted` with no hash: a status read answers a move the manager is still preparing `submitted` with no hash, and
+ * its preparation may then end with nothing journalled. A request that reached the manager and was refused before
+ * anything was journalled answers `unknown_request` as well, and is as safe to send again: the manager journals a move
+ * before it asks the node. An item with a hash or an outcome is never relayed again, since a second run of it could
+ * move the balance again: the manager journals it and runs it once.
  *
  * A `queued` item holds up the next chequebook bulk until the manager has it, and a `submitted` or `unknown` one for
  * the manager's 30-minute receipt budget ({@link holdsChequebookBulk}). Past it the manager may hold the move so until
@@ -139,6 +142,19 @@ function relayFailure(error: unknown): string | null {
   return (CHEQUEBOOK_REFUSALS as readonly string[]).includes(error.code)
     ? `The manager refused it: ${error.message}`
     : null;
+}
+
+/**
+ * Whether an item the manager holds nothing under, its status read answering `unknown_request`, is relayed again, the
+ * same fields under the same request id: one still `queued`, which the manager never received, or received and
+ * refused, or failed to journal; and one `submitted` with no hash, which a status read found while the manager was
+ * still preparing the move, before it journalled anything, and whose preparation then ended with nothing journalled,
+ * refused, failed, or cut short by a restart. The manager journals a move before it asks the node, so `unknown_request`
+ * means the node was asked for nothing. An item with a hash, or with an outcome, is never relayed again, whatever the
+ * manager answers, since a second run could move the balance again.
+ */
+function relaysAgain(row: Pick<FundingChequebookRow, 'state' | 'txHash'>): boolean {
+  return row.state === 'queued' || (row.state === 'submitted' && row.txHash === null);
 }
 
 /** The error of an item the manager calls failed with no sentence the admin could read. */
@@ -615,11 +631,11 @@ export class FundingChequebookService {
   }
 
   /**
-   * In the bulk's order, reads where each item still asked about stands on the manager, and records it. A `queued`
-   * item the manager never received (`unknown_request`) is relayed again, the journalled fields under the same request
-   * id. One the manager answered for before and no longer knows is left as it is, never relayed again, since a second
-   * run would move the balance again. The refresh stops at the first item the manager cannot answer for, and leaves it
-   * and those after it as they are.
+   * In the bulk's order, reads where each item still asked about stands on the manager, and records it. An item the
+   * manager holds nothing under (`unknown_request`) is relayed again, the journalled fields under the same request id,
+   * when {@link relaysAgain} says so: one `queued`, or `submitted` with no hash. Any other it no longer knows is left as
+   * it is, never relayed again, since a second run could move the balance again. The refresh stops at the first item
+   * the manager cannot answer for, and leaves it and those after it as they are.
    */
   private async refresh(manager: FundingChequebookManager, journalled: readonly FundingChequebookRow[]): Promise<void> {
     for (const row of journalled) {
@@ -634,13 +650,15 @@ export class FundingChequebookService {
           );
           return;
         }
-        if (row.state !== 'queued') {
+        if (!relaysAgain(row)) {
           logger.warn(
-            `[Funding] the manager has no chequebook operation ${row.requestId}, which it answered for before: it stays ${row.state}, and is never relayed again`,
+            `[Funding] the manager has no chequebook operation ${row.requestId}, which it answered for before: it stays ${row.state}${
+              row.txHash ? `, transaction ${row.txHash}` : ''
+            }, and is never relayed again`,
           );
           continue;
         }
-        // The manager never received it: relayed again as journalled.
+        // The manager holds nothing under the id, so it asked the node for nothing: relayed again as journalled.
         const relayed = await this.relay(manager, row, FUNDING_SYSTEM);
         if (relayed.outcome === 'held') return;
         continue;
@@ -662,8 +680,9 @@ export class FundingChequebookService {
       state: status.state,
       error,
       txHash,
-      // A queued row the manager answers for was relayed after all, its answer lost: the manager journalled it no
-      // later than now, so an `unknown` item's window starts here, as after an answered relay.
+      // A queued row the manager answers for was relayed after all, its answer lost: the manager had it no later than
+      // now, journalled or, `submitted` with no hash, still being prepared, so its window starts here, as after an
+      // answered relay.
       ...(row.state === 'queued' ? { relayedAt: new Date(this.now()) } : {}),
     });
     if (updated) await this.auditMove(row, updated, actor);
