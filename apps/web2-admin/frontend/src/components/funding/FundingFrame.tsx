@@ -13,6 +13,8 @@ export interface FundingRead {
   error: string | null;
   /** When the view was last read, which "read 5 minutes ago" counts from. */
   now: number;
+  /** Whether a read is on its way: the latest one, whose answer the view and the error will be. */
+  loading: boolean;
   load: () => void;
 }
 
@@ -26,6 +28,7 @@ export function useFundingView(onRead: (view: FundingView) => void): FundingRead
   const [view, setView] = useState<FundingView | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [now, setNow] = useState(() => Date.now());
+  const [loading, setLoading] = useState(false);
   /** How many reads have started: an answer is taken only while its read is still the latest. */
   const reads = useRef(0);
   const onReadRef = useRef(onRead);
@@ -38,23 +41,26 @@ export function useFundingView(onRead: (view: FundingView) => void): FundingRead
     reads.current += 1;
     const read = reads.current;
     setError(null);
+    setLoading(true);
     api
       .fetchFunding()
       .then((next) => {
         if (read !== reads.current) return;
         setView(next);
         setNow(Date.now());
+        setLoading(false);
         onReadRef.current(next);
       })
       .catch((e: unknown) => {
         if (read !== reads.current) return;
         setError(errorMessage(e, 'Failed to load the funding page'));
+        setLoading(false);
       });
   }, []);
 
   useEffect(load, [load]);
 
-  return { view, error, now, load };
+  return { view, error, now, loading, load };
 }
 
 function NotSetUp() {

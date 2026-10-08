@@ -225,11 +225,12 @@ function StampBar({
 /**
  * The Stamps tab: top up or dilute the batches the nodes upload with, each node paying from its own wallet. The
  * catalogue batch comes on top, then each stage's batches. Tick batches, choose the days or the steps, which apply to
- * every ticked one, and confirm; each operation is then followed until it comes to its end, and the view is read again
- * once they have settled. A ticked batch shows what it costs and leaves, and its node's xBZZ after; a node short of xBZZ
- * for its top-ups has a Fund link to the Balance tab, with what it lacks entered. A new stamp bulk waits while one is on
- * its way, the one made here or the one the view says is open, which the page follows after a reload too. Switching
- * the operation clears the ticks, since a dilution cannot be undone.
+ * every ticked one, and confirm, in a dialog that reads the view again as it opens and asks for what that reading
+ * shows; each operation is then followed until it comes to its end, and the view is read again once they have
+ * settled. A ticked batch shows what it costs and leaves, and its node's xBZZ after; a node short of xBZZ for its
+ * top-ups has a Fund link to the Balance tab, with what it lacks entered. A new stamp bulk waits while one is on its
+ * way, the one made here or the one the view says is open, which the page follows after a reload too. Switching the
+ * operation clears the ticks, since a dilution cannot be undone.
  */
 export function StampsTab({ onFund }: { onFund: (nodeId: string, xbzzPlur: string) => void }) {
   const [operation, setOperation] = useState<FundingStampOperationKind>('topup');
@@ -270,6 +271,12 @@ export function StampsTab({ onFund }: { onFund: (nodeId: string, xbzzPlur: strin
   const switchOperation = (next: FundingStampOperationKind) => {
     setOperation(next);
     setTicked(new Set());
+  };
+
+  /** Opens the confirm dialog and reads the view again, which the dialog lists what it asks for from. */
+  const openConfirm = () => {
+    setConfirming(true);
+    load();
   };
 
   return (
@@ -321,7 +328,7 @@ export function StampsTab({ onFund }: { onFund: (nodeId: string, xbzzPlur: strin
               days={days}
               steps={steps}
               blocked={followed && !followed.settled ? WAIT_FOR_STAMPS : null}
-              onGo={() => setConfirming(true)}
+              onGo={openConfirm}
             />
           ) : null}
         </>
@@ -331,6 +338,8 @@ export function StampsTab({ onFund }: { onFund: (nodeId: string, xbzzPlur: strin
         <StampDialog
           operation={operation}
           check={check}
+          reading={read.loading}
+          readError={read.error}
           onSent={(answer) => {
             setConfirming(false);
             setTicked(new Set());
