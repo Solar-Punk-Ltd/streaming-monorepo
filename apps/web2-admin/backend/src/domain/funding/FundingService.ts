@@ -11,6 +11,9 @@ import type {
 import {
   type AdminFundingNode,
   type FundingBulkAnswer,
+  type FundingChequebookBulkAnswer,
+  type FundingChequebookOperationsAnswer,
+  type FundingChequebookOperationsRequest,
   type FundingPinsAnswer,
   type FundingPinState,
   type FundingStampBulkAnswer,
@@ -40,6 +43,7 @@ import {
 import { Logger } from '../Logger.js';
 
 import type { BrandWallet, BrandWalletTransaction } from './BrandWallet.js';
+import type { FundingChequebookService } from './FundingChequebookService.js';
 import type { FundingPinRow, FundingPinStore, NewFundingPin } from './FundingPinRepository.js';
 import type { FundingStampService } from './FundingStampService.js';
 import {
@@ -73,7 +77,9 @@ import { ManagerFundingError, type ManagerFundingClient } from './ManagerFunding
  * Neither the signed transaction nor the wallet's key reaches an answer, a log line or the audit log.
  *
  * The page's stamp operations, the top-ups and dilutions of the nodes' batches, are the stamp service's
- * (`FundingStampService.ts`): this service answers their routes and the view's open stamp bulk through it.
+ * (`FundingStampService.ts`): this service answers their routes and the view's open stamp bulk through it. Its
+ * chequebook operations, the deposits and withdrawals that bring the nodes' chequebooks to a target, are the
+ * chequebook service's (`FundingChequebookService.ts`), answered through it in the same way.
  */
 
 const logger = Logger.getInstance();
@@ -107,6 +113,12 @@ export type FundingManager = Pick<ManagerFundingClient, 'inventory' | 'account' 
 
 /** What the service uses of the stamp service: the stamp routes it answers, and what the view says of stamp bulks. */
 export type FundingStamps = Pick<FundingStampService, 'request' | 'bulk' | 'refreshAsked' | 'openBulkId'>;
+
+/**
+ * What the service uses of the chequebook service: the chequebook routes it answers, and what the view says of
+ * chequebook bulks.
+ */
+export type FundingChequebooks = Pick<FundingChequebookService, 'request' | 'bulk' | 'refreshAsked' | 'openBulkId'>;
 
 /**
  * The codes a relay is refused with for good: the manager checked the transfer and will refuse the same bytes again.
@@ -165,9 +177,10 @@ export function pinStateOf(node: FundingNode, pin: FundingPinRow | undefined): F
 }
 
 /**
- * A node as the page shows it: the manager's node with its pin state, and its batch as the manager read it, null for a
- * node with none. A manager older than the Stamps tab names no batch at all, and then the node has no `batch`, so the
- * page can tell such a manager from one whose nodes have none.
+ * A node as the page shows it: the manager's node with its pin state, and its batch and its chequebook as the manager
+ * read them, each null for a node with none. A manager older than the Stamps tab names no batch at all, and one older
+ * than the Chequebooks tab no chequebook, and then the node has no `batch` or no `chequebook`, so the page can tell
+ * such a manager from one whose nodes have none.
  */
 function withPin(node: FundingNode, pins: Map<string, FundingPinRow>): AdminFundingNode {
   const pin = pins.get(node.nodeId);
@@ -250,6 +263,11 @@ export interface FundingServiceDeps {
   pins: FundingPinStore;
   /** The stamp operations of the page, which it answers the stamp routes with and reads the open stamp bulk from. */
   stamps: FundingStamps;
+  /**
+   * The chequebook operations of the page, which it answers the chequebook routes with and reads the open chequebook
+   * bulk from.
+   */
+  chequebooks: FundingChequebooks;
   audit: AuditLog;
   /** A new request id or bulk id: `randomUUID` by default. */
   newId?: () => string;
@@ -266,6 +284,7 @@ export class FundingService {
   private readonly transfers: FundingTransferStore;
   private readonly pins: FundingPinStore;
   private readonly stamps: FundingStamps;
+  private readonly chequebooks: FundingChequebooks;
   private readonly audit: AuditLog;
   private readonly newId: () => string;
   private readonly now: () => number;
@@ -278,6 +297,7 @@ export class FundingService {
     this.transfers = deps.transfers;
     this.pins = deps.pins;
     this.stamps = deps.stamps;
+    this.chequebooks = deps.chequebooks;
     this.audit = deps.audit;
     this.newId = deps.newId ?? randomUUID;
     this.now = deps.now ?? Date.now;
@@ -291,12 +311,13 @@ export class FundingService {
 
   /**
    * `GET /api/funding`. Not configured, it asks the manager nothing. Otherwise it first refreshes the latest sends with
-   * an item still asked about, {@link FUNDING_REFRESH_LIMIT} at most, and the latest stamp bulks likewise, then reads
-   * the inventory and the wallet's account together; when either cannot be read, `managerError` says why and every
-   * reading of the manager is empty. Each node comes with its batch and the chain with the price of postage, as the
-   * manager read them, null where it read none; a node has no batch at all from a manager that names none, one older
-   * than the Stamps tab. `openBulkId` names the send that still holds up a new one, and `openStampBulkId` the stamp
-   * bulk, so the page resumes either after a reload.
+   * an item still asked about, {@link FUNDING_REFRESH_LIMIT} at most, and the latest stamp bulks and chequebook bulks
+   * likewise, then reads the inventory and the wallet's account together; when either cannot be read, `managerError`
+   * says why and every reading of the manager is empty. Each node comes with its batch and its chequebook and the chain
+   * with the price of postage, as the manager read them, null where it read none; a node has no batch at all from a
+   * manager that names none, one older than the Stamps tab, and no chequebook from one older than the Chequebooks tab.
+   * `openBulkId` names the send that still holds up a new one, `openStampBulkId` the stamp bulk and
+   * `openChequebookBulkId` the chequebook bulk, so the page resumes each after a reload.
    */
   async view(): Promise<FundingView> {
     const address = this.wallet?.address() ?? null;
@@ -305,10 +326,12 @@ export class FundingService {
       for (const bulkId of await this.transfers.askedBulkIds(FUNDING_REFRESH_LIMIT)) {
         await this.refreshBulk(manager, bulkId);
       }
-      await this.stamps.refreshAsked();
+      // Each waits on its own bulks for a moment at most, so the two wait side by side.
+      await Promise.all([this.stamps.refreshAsked(), this.chequebooks.refreshAsked()]);
     }
     const [openBulkId = null] = await this.transfers.openBulkIds(1, new Date(this.now()));
     const openStampBulkId = await this.stamps.openBulkId();
+    const openChequebookBulkId = await this.chequebooks.openBulkId();
     const view: FundingView = {
       configured: this.manager !== null,
       wallet: address ? { address, xdaiWei: null, xbzzPlur: null } : null,
@@ -320,7 +343,7 @@ export class FundingService {
       managerError: null,
       openBulkId,
       openStampBulkId,
-      openChequebookBulkId: null,
+      openChequebookBulkId,
     };
     if (!manager) return view;
 
@@ -547,6 +570,23 @@ export class FundingService {
   /** `GET /api/funding/stamp-operations?bulkId=`: the items of a stamp bulk, refreshed from the manager. */
   stampBulk(bulkId: string): Promise<FundingStampBulkAnswer> {
     return this.stamps.bulk(bulkId);
+  }
+
+  /**
+   * `POST /api/funding/chequebook-operations`, behind the page's confirm dialog and no password: the chequebook
+   * service's request, which brings the nodes' chequebooks to a target, each move paid from or into its node's own
+   * wallet.
+   */
+  chequebookOperations(
+    actor: OperatorActor,
+    request: FundingChequebookOperationsRequest,
+  ): Promise<FundingChequebookOperationsAnswer> {
+    return this.chequebooks.request(actor, request);
+  }
+
+  /** `GET /api/funding/chequebook-operations?bulkId=`: the items of a chequebook bulk, refreshed from the manager. */
+  chequebookBulk(bulkId: string): Promise<FundingChequebookBulkAnswer> {
+    return this.chequebooks.bulk(bulkId);
   }
 
   /**

@@ -20,6 +20,7 @@ import {
   FundingManagerUnavailableError,
   FundingRefusedError,
 } from '../../src/domain/errors/index.js';
+import { FundingChequebookService } from '../../src/domain/funding/FundingChequebookService.js';
 import { FUNDING_SYSTEM, FundingService } from '../../src/domain/funding/FundingService.js';
 import { FundingStampService } from '../../src/domain/funding/FundingStampService.js';
 
@@ -32,8 +33,10 @@ import {
   FakeFundingWallet,
   fundingAccount,
   fundingBatch,
+  fundingChequebook,
   fundingInventory,
   fundingNode,
+  InMemoryFundingChequebookStore,
   InMemoryFundingPinStore,
   InMemoryFundingStampStore,
   managerFailure,
@@ -54,6 +57,7 @@ let manager: FakeFundingManager;
 let transfers: InMemoryFundingTransferStore;
 let pins: InMemoryFundingPinStore;
 let stampJournal: InMemoryFundingStampStore;
+let chequebookJournal: InMemoryFundingChequebookStore;
 let audit: InMemoryAuditLog;
 let service: FundingService;
 /** The service's clock, which a test moves by hand. */
@@ -67,6 +71,12 @@ function build(over: { wallet?: FakeFundingWallet | null; manager?: FakeFundingM
     transfers,
     pins,
     stamps: new FundingStampService({ manager: builtManager, journal: stampJournal, audit, now: () => clock.now }),
+    chequebooks: new FundingChequebookService({
+      manager: builtManager,
+      journal: chequebookJournal,
+      audit,
+      now: () => clock.now,
+    }),
     audit,
     now: () => clock.now,
   });
@@ -79,6 +89,7 @@ beforeEach(() => {
   transfers = new InMemoryFundingTransferStore();
   pins = new InMemoryFundingPinStore();
   stampJournal = new InMemoryFundingStampStore();
+  chequebookJournal = new InMemoryFundingChequebookStore();
   audit = new InMemoryAuditLog();
   service = build();
 });
@@ -234,6 +245,37 @@ describe('the Funding page view', () => {
     assert.equal('batch' in uploader, false, 'answered without a batch, it has none: not even a null');
     assert.equal('batch' in view.catalogue, false);
     assert.equal(gateway.batch, null, 'named with none, it keeps its null');
+  });
+
+  it("answers each node's chequebook as the manager read it, and none from a manager that reads none", async () => {
+    const read = fundingChequebook();
+    const unread = {
+      address: null,
+      availablePlur: null,
+      totalPlur: null,
+      readError: 'The node did not answer in time.',
+    };
+    const inventory = fundingInventory();
+    inventory.stages[0]!.nodes[0]!.chequebook = read;
+    // The gateway answered that it has none: an ultra-light node, or one with its chequebook off.
+    inventory.stages[0]!.nodes[1]!.chequebook = null;
+    inventory.catalogue!.chequebook = unread;
+    manager.inventoryAnswer = inventory;
+
+    const view = await service.view();
+
+    assert.deepEqual(
+      view.stages[0]?.nodes.map((node) => node.chequebook),
+      [read, null],
+    );
+    assert.deepEqual(view.catalogue?.chequebook, unread);
+
+    // A manager older than the Chequebooks tab names no chequebook at all: the node has none, not even a null.
+    manager.inventoryAnswer = fundingInventory();
+    const older = await service.view();
+    const [uploader] = older.stages[0]?.nodes ?? [];
+    assert.ok(uploader);
+    assert.equal('chequebook' in uploader, false);
   });
 
   it('answers no price from a manager on another chain', async () => {

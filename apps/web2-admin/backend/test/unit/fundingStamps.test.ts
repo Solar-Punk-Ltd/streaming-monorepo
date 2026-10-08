@@ -23,6 +23,7 @@ import {
   FundingRefusedError,
   RequestShapeError,
 } from '../../src/domain/errors/index.js';
+import { FundingChequebookService } from '../../src/domain/funding/FundingChequebookService.js';
 import { FUNDING_SYSTEM, FundingService } from '../../src/domain/funding/FundingService.js';
 import { FundingStampService, toFundingStampItem } from '../../src/domain/funding/FundingStampService.js';
 
@@ -36,6 +37,7 @@ import {
   FakeFundingManager,
   FakeFundingWallet,
   fundingBatch,
+  InMemoryFundingChequebookStore,
   InMemoryFundingPinStore,
   InMemoryFundingStampStore,
   InMemoryFundingTransferStore,
@@ -79,6 +81,12 @@ function build(over: { manager?: FakeFundingManager | null; waitMs?: number } = 
     transfers,
     pins,
     stamps,
+    chequebooks: new FundingChequebookService({
+      manager: builtManager,
+      journal: new InMemoryFundingChequebookStore(),
+      audit,
+      now: () => clock.now,
+    }),
     audit,
     now: () => clock.now,
   });

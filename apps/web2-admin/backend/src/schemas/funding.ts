@@ -1,8 +1,10 @@
 import { UUID_PATTERN } from '@streaming-monorepo/contracts';
 import {
+  CHEQUEBOOK_TARGET_MIN_PLUR,
   DILUTE_MAX_STEPS,
   FUNDING_STAMP_OPERATION_KINDS,
   FUNDING_TRANSFER_KINDS,
+  type FundingChequebookOperationsRequest,
   type FundingStampOperationKind,
   type FundingTransferKind,
   PASSWORD_MAX_LENGTH,
@@ -11,7 +13,10 @@ import {
 } from '@streaming-monorepo/web2-admin-common';
 import { array, type InferType, mixed, number, object, string } from 'yup';
 
-/** The most nodes one pin names, and the most items one send or stamp request carries: far over what a brand runs. */
+/**
+ * The most nodes one pin names, and the most items one send, stamp request or chequebook request carries: far over
+ * what a brand runs.
+ */
 export const FUNDING_MAX_ITEMS = 200;
 
 /**
@@ -92,8 +97,8 @@ export const fundingTransfersSchema = object({
 export type FundingTransfersBody = InferType<typeof fundingTransfersSchema>;
 
 /**
- * `GET /api/funding/transfers?bulkId=` and `GET /api/funding/stamp-operations?bulkId=`: a UUID in either case, read
- * in lower case as the journals keep it.
+ * `GET /api/funding/transfers?bulkId=`, `GET /api/funding/stamp-operations?bulkId=` and
+ * `GET /api/funding/chequebook-operations?bulkId=`: a UUID in either case, read in lower case as the journals keep it.
  */
 export const fundingBulkQuerySchema = object({
   bulkId: string().strict().required('bulkId is required').matches(UUID_PATTERN, 'bulkId must be a UUID'),
@@ -192,4 +197,57 @@ export function stampOperationItemsOf(body: FundingStampOperationsBody): StampOp
     }
     return { kind: 'dilute', nodeId: id, batchId, expectedDepth, steps: item.steps === 2 ? 2 : 1 };
   });
+}
+
+/**
+ * Whole PLUR as a chequebook request carries it: decimal digits, no sign, prefix or leading zero, and 30 at most, so
+ * the move worked out from the target and an available balance is never longer than the manager's chequebook journal
+ * holds an amount, 30 digits.
+ */
+const CHEQUEBOOK_PLUR_RE = /^(0|[1-9]\d{0,29})$/;
+
+/** Whether PLUR that passed {@link CHEQUEBOOK_PLUR_RE}, or none, is at least the owner's floor of 1 xBZZ. */
+function atLeastTheFloor(value: string | undefined): boolean {
+  return value === undefined || !CHEQUEBOOK_PLUR_RE.test(value)
+    ? true
+    : BigInt(value) >= BigInt(CHEQUEBOOK_TARGET_MIN_PLUR);
+}
+
+/**
+ * One chequebook of a chequebook request: its node, and its available balance as the page showed it, PLUR as a decimal
+ * string, never a JSON number, which loses digits past 2^53.
+ */
+const chequebookItemSchema = object({
+  nodeId,
+  availablePlur: string()
+    .strict()
+    .required('availablePlur is required')
+    .matches(CHEQUEBOOK_PLUR_RE, 'availablePlur must be a whole number of PLUR, as at most 30 decimal digits'),
+}).noUnknown(true);
+
+/**
+ * `POST /api/funding/chequebook-operations`: `FundingChequebookOperationsRequest`. The target is PLUR as a decimal
+ * string, at least the owner's floor of 1 xBZZ (`CHEQUEBOOK_TARGET_MIN_PLUR`). A node at most once, and an item at the
+ * target, are the service's checks, which answer a 400 and a 409.
+ */
+export const fundingChequebookOperationsSchema = object({
+  targetPlur: string()
+    .strict()
+    .required('targetPlur is required')
+    .matches(CHEQUEBOOK_PLUR_RE, 'targetPlur must be a whole number of PLUR, as at most 30 decimal digits')
+    .test('floor', `targetPlur must be at least ${CHEQUEBOOK_TARGET_MIN_PLUR} PLUR, 1 xBZZ`, atLeastTheFloor),
+  items: array(chequebookItemSchema)
+    .required('items is required')
+    .min(1, 'items must name a chequebook')
+    .max(FUNDING_MAX_ITEMS, `items names ${FUNDING_MAX_ITEMS} chequebooks at most`),
+}).noUnknown(true);
+
+export type FundingChequebookOperationsBody = InferType<typeof fundingChequebookOperationsSchema>;
+
+/** The chequebook request the schema took, as the contract's request. */
+export function chequebookOperationsOf(body: FundingChequebookOperationsBody): FundingChequebookOperationsRequest {
+  return {
+    targetPlur: body.targetPlur,
+    items: body.items.map((item) => ({ nodeId: item.nodeId, availablePlur: item.availablePlur })),
+  };
 }
