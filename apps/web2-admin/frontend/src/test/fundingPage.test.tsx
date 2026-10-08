@@ -291,6 +291,10 @@ describe('sending from the brand wallet', () => {
 
     type('xDAI to send to stage-1-uploader', '1.5');
     type('xBZZ to send to stage-1-uploader', '1,5');
+    expect(screen.getByRole('textbox', { name: 'xBZZ to send to stage-1-uploader' })).toHaveValue('');
+    expect(send).toBeEnabled();
+
+    type('xBZZ to send to stage-1-uploader', '.');
     expect(send).toBeDisabled();
     expect(screen.getAllByText('Digits and one dot only, such as 1.5.').length).toBeGreaterThan(0);
 

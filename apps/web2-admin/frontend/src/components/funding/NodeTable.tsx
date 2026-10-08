@@ -16,7 +16,7 @@ import type { AdminFundingNode, FundingTransferKind } from '@streaming-monorepo/
 
 import { shortHex } from '../../format';
 import { CopyButton } from '../CopyButton';
-import { formatUnits, readAmount } from './amounts';
+import { acceptsAmountTyping, formatUnits, readAmount } from './amounts';
 import { TOKENS, type Drafts, type NodeDraft, type NodeGroup } from './balance';
 
 const NO_DRAFT: NodeDraft = { ticked: false, xdai: '', xbzz: '' };
@@ -49,14 +49,18 @@ function AmountField({
   onChange: (value: string) => void;
 }) {
   const read = readAmount(value, TOKENS[kind].decimals);
+  // A character a number cannot hold is refused as it is typed or pasted, and the field keeps what it had. The line
+  // under the box appears only with a problem to say: an empty one kept for it would sit the box above the row's middle.
   return (
     <TextField
       size="small"
       label={TOKENS[kind].name}
       value={value}
-      onChange={(e) => onChange(e.target.value)}
+      onChange={(e) => {
+        if (acceptsAmountTyping(e.target.value)) onChange(e.target.value);
+      }}
       error={read.kind === 'invalid'}
-      helperText={read.kind === 'invalid' ? read.problem : ' '}
+      helperText={read.kind === 'invalid' ? read.problem : undefined}
       slotProps={{ htmlInput: { inputMode: 'decimal', 'aria-label': `${TOKENS[kind].name} to send to ${node.label}` } }}
       sx={{ width: 150 }}
     />
@@ -151,7 +155,8 @@ export function NodeTable({
                     </TableCell>
                     <TableCell>
                       {draft.ticked ? (
-                        <Stack direction="row" spacing={1}>
+                        // The cell centres the pair in the row; the boxes stay level when one has a problem under it.
+                        <Stack direction="row" spacing={1} sx={{ alignItems: 'flex-start' }}>
                           <AmountField kind="xdai" node={node} value={draft.xdai} onChange={(xdai) => set({ xdai })} />
                           <AmountField kind="xbzz" node={node} value={draft.xbzz} onChange={(xbzz) => set({ xbzz })} />
                         </Stack>

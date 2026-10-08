@@ -1,7 +1,7 @@
 import { XBZZ_DECIMALS, XDAI_DECIMALS } from '@streaming-monorepo/web2-admin-common';
 import { describe, expect, it } from 'vitest';
 
-import { formatUnits, readAmount } from '../components/funding/amounts';
+import { acceptsAmountTyping, formatUnits, readAmount } from '../components/funding/amounts';
 
 describe('an amount in base units, as the Funding page shows it', () => {
   it('writes wei as xDAI and PLUR as xBZZ exactly, with no trailing zeros', () => {
@@ -21,6 +21,20 @@ describe('an amount in base units, as the Funding page shows it', () => {
   it('shows a dash for a value that is not an amount in base units', () => {
     for (const bad of ['', '-1', '1.5', '0x10', 'abc', ' 1']) {
       expect(formatUnits(bad, XDAI_DECIMALS), bad).toBe('—');
+    }
+  });
+});
+
+describe('what an amount field lets in as it is typed', () => {
+  it('takes digits and at most one dot, at every step of typing a number', () => {
+    for (const typed of ['', '1', '12', '1.', '1.5', '.', '.5', '0.01', '007', '123456789.123456789']) {
+      expect(acceptsAmountTyping(typed), typed).toBe(true);
+    }
+  });
+
+  it('refuses any other character, a second dot, and a space', () => {
+    for (const typed of ['0.01a', '12.3.3', '1,5', '-1', '+1', '1e3', '0x10', ' 1', '1 ', '1 000', 'Infinity', '١']) {
+      expect(acceptsAmountTyping(typed), typed).toBe(false);
     }
   });
 });

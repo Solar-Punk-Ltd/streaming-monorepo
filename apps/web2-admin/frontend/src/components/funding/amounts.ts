@@ -19,6 +19,15 @@ export type ReadAmount = { kind: 'empty' } | { kind: 'ok'; value: string } | { k
 
 const DECIMAL = /^\d*(?:\.(\d*))?$/;
 
+/**
+ * Whether an amount field may hold `typed`, checked as the operator types or pastes: digits and at most one dot, as a
+ * number field takes them, so any other character never reaches the field. What the characters alone cannot settle,
+ * a dot on its own or too many decimals, `readAmount` still says.
+ */
+export function acceptsAmountTyping(typed: string): boolean {
+  return DECIMAL.test(typed);
+}
+
 /** What the operator typed, in base units. An empty field is nothing to send, which is not an error. */
 export function readAmount(typed: string, decimals: number): ReadAmount {
   const text = typed.trim();
