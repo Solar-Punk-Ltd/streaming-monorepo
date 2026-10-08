@@ -142,9 +142,8 @@ export class CustomFragmentLoader extends FragmentLoader {
 
     // Every playlist this client hands hls.js names its segments absolutely, so anything else here is
     // a bug upstream rather than a URL to repair, and it is not repairable anyway. A preview playlist
-    // is a blob, and hls.js resolving `/bytes/<ref>` against `blob:http://viewer/<uuid>` returns
-    // `blob:http:/bytes/<ref>`: the origin and the blob id are gone, so there is no gateway left to
-    // resolve against.
+    // is answered from memory under its own scheme, and hls.js resolving `/bytes/<ref>` against it
+    // returns `memory:preview.m3u8/bytes/<ref>`, so there is no gateway left to resolve against.
     //
     // This used to rebuild the path against `window.location.origin`, which is the client. Its nginx
     // proxies `/bee/` and not `/bytes/`, so the fragment 404'd at a host that never had it and
