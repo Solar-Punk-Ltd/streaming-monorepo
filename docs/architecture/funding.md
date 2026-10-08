@@ -138,10 +138,11 @@ against a real node before phase 2, so its first trial is theirs too.
 - The catalogue node's chequebook is not listed.
 - A gateway's chequebook is shown, not moved: the manager moves only a deployment's own Bee node's
   chequebook, from its console and from the admin alike.
-- The admin moves what the confirm dialog showed, the target less the available balance the page
-  read, and refuses a request a fresh read no longer bears out: a deposit into a chequebook that
-  grew since, or a withdrawal larger than what it holds now. A busy node keeps paying its peers
-  from its chequebook, so it lands near the target rather than on it.
+- The admin works each move out again from the balance it reads when the request comes in, and
+  never moves more than the confirm dialog showed: a chequebook that grew since takes a smaller
+  deposit, and one that paid out since a smaller withdrawal, so a withdrawal never leaves it under
+  the target. One already at the target or past it refuses the request. A busy node keeps paying
+  its peers from its chequebook, so a deposit lands near the target rather than on it.
 - The manager carries each move out through its own chequebook path and journal, the ones its
   console's Fill chequebook and Withdraw use, so a move from the admin shows in its chequebook
   history too.
