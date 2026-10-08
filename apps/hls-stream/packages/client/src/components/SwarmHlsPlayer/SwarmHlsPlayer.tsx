@@ -53,10 +53,8 @@ interface HlsTuning {
 }
 
 /**
- * How this player is tuned for a Swarm-backed live stream.
- *
- * Exported so a caller can start from these numbers and override only what it needs, rather than
- * rediscover them. They are deliberately not hls.js's own defaults.
+ * How this player is tuned for a Swarm-backed live stream. The numbers are deliberately not hls.js's
+ * own defaults.
  *
  * The one worth knowing about is `liveSyncDuration`. It is a latency *target*: hls.js parks the
  * playhead that many seconds behind the live edge (`latency-controller.ts`, `targetLatency` then

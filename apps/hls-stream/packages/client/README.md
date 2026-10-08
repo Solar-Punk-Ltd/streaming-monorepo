@@ -201,7 +201,7 @@ A recording published before the uploader stamped its segments carries no date-t
 
 ### Tuning
 
-`DEFAULT_HLS_TUNING` carries the ABR settings, and the ones that differ from hls.js's own defaults do so for one reason: hls.js measures throughput as `bytes / (loading.end - loading.first)`, which over a CDN is a pipe and over Swarm is mostly retrieval latency. So the EWMA half-lives are lengthened well past the defaults to stop that noise becoming level flapping, and the startup bandwidth probe is off because what it measures here is not bandwidth. `abrBandWidthFactor`, `abrBandWidthUpFactor` and `maxStarvationDelay` are exposed at hls.js's defaults so they can be swept without editing the component.
+The player's built-in tuning, private to `SwarmHlsPlayer.tsx` and overridden key by key through the component's `hlsConfig` prop, carries the ABR settings, and the ones that differ from hls.js's own defaults do so for one reason: hls.js measures throughput as `bytes / (loading.end - loading.first)`, which over a CDN is a pipe and over Swarm is mostly retrieval latency. So the EWMA half-lives are lengthened well past the defaults to stop that noise becoming level flapping, and the startup bandwidth probe is off because what it measures here is not bandwidth. `abrBandWidthFactor`, `abrBandWidthUpFactor` and `maxStarvationDelay` are exposed at hls.js's defaults so they can be swept without editing the component.
 
 Two settings are load-bearing rather than preferences, because without them the ladder cannot leave its bottom rung at all:
 
