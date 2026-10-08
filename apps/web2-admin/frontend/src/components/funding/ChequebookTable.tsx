@@ -46,13 +46,16 @@ interface Column {
 /**
  * The columns after the node, with fixed widths, so no row changes its size when it is ticked or a target is typed.
  * The chequebook's is as wide as its exact amounts need: every digit of a balance under 1000 xBZZ, on one line beside
- * its name. A move's amount is exact too, and wraps after its direction when it is long.
+ * its name. A move's amount is exact too, and wraps after its direction when it is long. The others are as narrow as
+ * their content lets them, the wallet's 74 pixels and the wallet after's 113 beside a cell's padding, and the move's
+ * longest line about 180, so that on the console's page the node's column keeps the 270 its card's address line needs
+ * beside a New address or Address changed chip, and such a row is no taller than the others.
  */
 const COLUMNS: readonly Column[] = [
   { label: 'Chequebook', width: 304 },
-  { label: 'Wallet', width: 140 },
-  { label: 'Move', width: 224 },
-  { label: 'Wallet after', width: 160 },
+  { label: 'Wallet', width: 120 },
+  { label: 'Move', width: 214 },
+  { label: 'Wallet after', width: 150 },
 ];
 
 /** The least width the node column keeps for the node's card. */
