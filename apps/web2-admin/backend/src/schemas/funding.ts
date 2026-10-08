@@ -55,6 +55,11 @@ export const fundingPinsSchema = object({
 
 export type FundingPinsBody = InferType<typeof fundingPinsSchema>;
 
+/** Whether base units that passed {@link POSITIVE_BASE_UNITS_RE}, or none, fit in 256 bits. */
+function fitsUint256(value: string | undefined): boolean {
+  return value === undefined || !POSITIVE_BASE_UNITS_RE.test(value) ? true : BigInt(value) <= MAX_UINT256;
+}
+
 /**
  * One item of a send. The amount is a string, never a JSON number, which loses digits past 2^53: a whole number of
  * base units, more than nothing, at most 2^256 - 1.
@@ -68,9 +73,7 @@ const fundingItemSchema = object({
     .strict()
     .required('amount is required')
     .matches(POSITIVE_BASE_UNITS_RE, 'amount must be a whole number of base units above 0, as decimal digits')
-    .test('uint256', 'amount must be at most 2^256 - 1', (value) =>
-      value === undefined || !POSITIVE_BASE_UNITS_RE.test(value) ? true : BigInt(value) <= MAX_UINT256,
-    ),
+    .test('uint256', 'amount must be at most 2^256 - 1', fitsUint256),
 }).noUnknown(true);
 
 /** `POST /api/funding/transfers`: `FundingTransfersRequest`. */
@@ -93,9 +96,10 @@ export const fundingBulkQuerySchema = object({
 });
 
 /**
- * One item of a stamp request: a top-up in whole days, 1 or more, or a dilution of 1 or 2 steps, of one batch of one
- * node, at the depth the page showed. Every number is a JSON number, never a string, and a field of the other kind is
- * refused rather than ignored.
+ * One item of a stamp request: a top-up in whole days, 1 or more, at the price of postage the page quoted it at, or a
+ * dilution of 1 or 2 steps, of one batch of one node, at the depth the page showed. Every count is a JSON number, never
+ * a string; the price is base units as a decimal string, as every amount is, since a JSON number loses digits past
+ * 2^53. A field of the other kind is refused rather than ignored.
  */
 const stampItemSchema = object({
   kind: mixed<FundingStampOperationKind>()
@@ -121,6 +125,19 @@ const stampItemSchema = object({
       is: 'topup',
       then: (schema) => schema.required('days is required for a top-up'),
       otherwise: (schema) => schema.test('topup-only', 'days is for a top-up only', (value) => value === undefined),
+    }),
+  pricePerChunkPerBlockPlur: string()
+    .strict()
+    .matches(
+      POSITIVE_BASE_UNITS_RE,
+      'pricePerChunkPerBlockPlur must be a whole number of base units above 0, as decimal digits',
+    )
+    .test('uint256', 'pricePerChunkPerBlockPlur must be at most 2^256 - 1', fitsUint256)
+    .when('kind', {
+      is: 'topup',
+      then: (schema) => schema.required('pricePerChunkPerBlockPlur is required for a top-up'),
+      otherwise: (schema) =>
+        schema.test('topup-only', 'pricePerChunkPerBlockPlur is for a top-up only', (value) => value === undefined),
     }),
   steps: number()
     .strict()
@@ -152,7 +169,14 @@ export function stampOperationItemsOf(body: FundingStampOperationsBody): StampOp
   return body.items.map((item) => {
     const { nodeId: id, batchId, expectedDepth } = item;
     if (item.kind === 'topup') {
-      return { kind: 'topup', nodeId: id, batchId, expectedDepth, days: Number(item.days) };
+      return {
+        kind: 'topup',
+        nodeId: id,
+        batchId,
+        expectedDepth,
+        days: Number(item.days),
+        pricePerChunkPerBlockPlur: String(item.pricePerChunkPerBlockPlur),
+      };
     }
     return { kind: 'dilute', nodeId: id, batchId, expectedDepth, steps: item.steps === 2 ? 2 : 1 };
   });

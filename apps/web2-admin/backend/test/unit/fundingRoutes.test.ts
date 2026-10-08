@@ -448,13 +448,22 @@ describe('the Funding page view', () => {
 });
 
 describe('a stamp request', () => {
-  const TOP_UP = { kind: 'topup', nodeId: NODE_A, batchId: BATCH_STAGE, expectedDepth: 20, days: 30 };
+  const PRICE = POSTAGE.pricePerChunkPerBlockPlur;
+  const TOP_UP = {
+    kind: 'topup',
+    nodeId: NODE_A,
+    batchId: BATCH_STAGE,
+    expectedDepth: 20,
+    days: 30,
+    pricePerChunkPerBlockPlur: PRICE,
+  };
   const CATALOGUE_TOP_UP = {
     kind: 'topup',
     nodeId: NODE_CATALOGUE,
     batchId: BATCH_CATALOGUE,
     expectedDepth: 18,
     days: 7,
+    pricePerChunkPerBlockPlur: PRICE,
   };
   const DILUTION = { kind: 'dilute', nodeId: NODE_CATALOGUE, batchId: BATCH_CATALOGUE, expectedDepth: 18, steps: 1 };
 
@@ -520,7 +529,20 @@ describe('a stamp request', () => {
       { items: [{ ...TOP_UP, days: '30' }] },
       { items: [{ ...TOP_UP, days: 1.5 }] },
       { items: [{ ...TOP_UP, days: 2 ** 31 }] },
-      { items: [{ kind: 'topup', nodeId: NODE_A, batchId: BATCH_STAGE, expectedDepth: 20 }] },
+      {
+        items: [
+          { kind: 'topup', nodeId: NODE_A, batchId: BATCH_STAGE, expectedDepth: 20, pricePerChunkPerBlockPlur: PRICE },
+        ],
+      },
+      { items: [{ kind: 'topup', nodeId: NODE_A, batchId: BATCH_STAGE, expectedDepth: 20, days: 30 }] },
+      { items: [{ ...TOP_UP, pricePerChunkPerBlockPlur: 24000 }] },
+      { items: [{ ...TOP_UP, pricePerChunkPerBlockPlur: '0' }] },
+      { items: [{ ...TOP_UP, pricePerChunkPerBlockPlur: '024000' }] },
+      { items: [{ ...TOP_UP, pricePerChunkPerBlockPlur: '-24000' }] },
+      { items: [{ ...TOP_UP, pricePerChunkPerBlockPlur: '0x5dc0' }] },
+      { items: [{ ...TOP_UP, pricePerChunkPerBlockPlur: '24000.5' }] },
+      { items: [{ ...TOP_UP, pricePerChunkPerBlockPlur: (2n ** 256n).toString() }] },
+      { items: [{ ...DILUTION, pricePerChunkPerBlockPlur: PRICE }] },
       { items: [{ ...TOP_UP, steps: 1 }] },
       { items: [{ ...DILUTION, steps: 3 }] },
       { items: [{ ...DILUTION, steps: '1' }] },
@@ -567,6 +589,19 @@ describe('a stamp request', () => {
         'The batch of Main stage uploader (stage-1:uploader) is at depth 20 now, not the 19 the page showed: read the page again. Nothing was sent.',
     });
     assert.equal(app.stampJournal.rows.size, 0);
+  });
+
+  it('refuses a top-up quoted at a lower price than postage costs now with 409 and problem price', async () => {
+    const res = await stampRequest({ items: [{ ...TOP_UP, pricePerChunkPerBlockPlur: '23999' }] });
+
+    assert.equal(res.status, 409);
+    assert.deepEqual(res.body, {
+      error: 'funding_refused',
+      problem: 'price',
+      message: 'The price of postage has risen since the page read it. Read the page again. Nothing was sent.',
+    });
+    assert.equal(app.stampJournal.rows.size, 0);
+    assert.equal(app.manager.stampCalls.operation, 0);
   });
 
   it('refuses a request while an earlier stamp bulk is not settled with 409 conflict', async () => {

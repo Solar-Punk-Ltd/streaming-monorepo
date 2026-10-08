@@ -96,13 +96,28 @@ beforeEach(() => {
   build();
 });
 
-const topUp = (nodeId: string, batchId: string, expectedDepth: number, days: number): StampOperationItemRequest => ({
+/** A top-up, quoted by the page at the test's price of postage unless another is given. */
+const topUp = (
+  nodeId: string,
+  batchId: string,
+  expectedDepth: number,
+  days: number,
+  pricePerChunkPerBlockPlur = POSTAGE.pricePerChunkPerBlockPlur,
+): StampOperationItemRequest => ({
   kind: 'topup',
   nodeId,
   batchId,
   expectedDepth,
   days,
+  pricePerChunkPerBlockPlur,
 });
+
+/** The stamp inventory with postage at this price per chunk per block. */
+function pricedAt(pricePerChunkPerBlockPlur: string): FundingInventory {
+  const inventory = stampInventory();
+  inventory.chain.postage = { ...POSTAGE, pricePerChunkPerBlockPlur };
+  return inventory;
+}
 
 const dilute = (nodeId: string, batchId: string, expectedDepth: number, steps: 1 | 2): StampOperationItemRequest => ({
   kind: 'dilute',
@@ -273,16 +288,47 @@ describe('a top-up, priced at the price the manager reads now', () => {
 
   it('prices each request at the price the manager reads for it, not one read before', async () => {
     await requested([topUp(NODE_A, BATCH_STAGE, 20, 30)]);
-    const inventory = stampInventory();
-    inventory.chain.postage = { ...POSTAGE, pricePerChunkPerBlockPlur: '48000' };
-    manager.inventoryAnswer = inventory;
+    manager.inventoryAnswer = pricedAt('12000');
 
+    // The page still quotes the price it read before, 24000: postage has become cheaper since.
     await requested([topUp(NODE_A, BATCH_STAGE, 20, 30)]);
 
     assert.deepEqual(
       manager.stampOperations.map((operation) => (operation.kind === 'topup' ? operation.amountPerChunkPlur : null)),
-      [amountFor(30).toString(), (amountFor(30) * 2n).toString()],
+      [amountFor(30).toString(), (amountFor(30) / 2n).toString()],
     );
+  });
+
+  it('is refused, nothing journalled, when postage costs more now than the price the page quoted it at', async () => {
+    manager.inventoryAnswer = pricedAt('24001');
+
+    const error = await refusal(funding.stampOperations(TEST_OPERATOR, TWO_TOP_UPS));
+
+    assert.ok(error instanceof FundingRefusedError, String(error));
+    assert.equal(error.problem, 'price');
+    assert.equal(
+      error.message,
+      'The price of postage has risen since the page read it. Read the page again. Nothing was sent.',
+    );
+    assert.equal(journal.rows.size, 0, 'nothing was journalled');
+    assert.equal(manager.stampCalls.operation, 0, 'nothing was relayed');
+    assert.equal(audit.withAction('funding.stamp.request').length, 0);
+  });
+
+  it('goes ahead at the price the page quoted, or at a lower one, priced at the price of now', async () => {
+    // Postage costs 24000 now: the page quoted that for one top-up, and a higher price for the other.
+    await requested([
+      topUp(NODE_A, BATCH_STAGE, 20, 30, '24000'),
+      topUp(NODE_CATALOGUE, BATCH_CATALOGUE, 18, 7, '30000'),
+    ]);
+
+    assert.deepEqual(
+      manager.stampOperations.map((operation) => (operation.kind === 'topup' ? operation.amountPerChunkPlur : null)),
+      [amountFor(30).toString(), amountFor(7).toString()],
+    );
+    const costOf = (batchId: string) => [...journal.rows.values()].find((row) => row.batchId === batchId)?.costPlur;
+    assert.equal(costOf(BATCH_STAGE), (amountFor(30) * 2n ** 20n).toString());
+    assert.equal(costOf(BATCH_CATALOGUE), (amountFor(7) * 2n ** 18n).toString());
   });
 
   it('rounds the days up to whole blocks, so a top-up never buys less than its days', async () => {

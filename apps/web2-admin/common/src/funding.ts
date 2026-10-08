@@ -232,6 +232,12 @@ export interface StampTopUpItemRequest {
   expectedDepth: number;
   /** A whole number of days, 1 or more, with no cap. */
   days: number;
+  /**
+   * The price of postage the page quoted the top-up at, PLUR per chunk per block as a decimal string, more than
+   * nothing: the view's `postage`. A top-up is priced at the price the manager reads when it is asked for, and refused
+   * when that is higher than this one, so it never costs more than the page showed.
+   */
+  pricePerChunkPerBlockPlur: string;
 }
 
 /** Dilute one batch by one step or two, the gas paid from its node's wallet in xDAI. */

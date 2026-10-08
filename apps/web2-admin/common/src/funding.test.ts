@@ -182,6 +182,15 @@ describe('the answers', () => {
       batchId: BATCH_ID,
       expectedDepth: 22,
       days: 30,
+      pricePerChunkPerBlockPlur: '24000',
+    };
+    // @ts-expect-error: a top-up names the price of postage the page quoted it at.
+    const unpriced: StampOperationItemRequest = {
+      kind: 'topup',
+      nodeId: 'stage-1:bee',
+      batchId: BATCH_ID,
+      expectedDepth: 22,
+      days: 30,
     };
     const dilute: StampOperationItemRequest = {
       kind: 'dilute',
@@ -201,7 +210,7 @@ describe('the answers', () => {
       ['topup', 'dilute'],
     );
     assert.equal(dilute.kind === 'dilute' && dilute.steps, 2);
-    assert.ok(threeSteps && topUpInSteps, 'the compiler refuses both, so neither is read further');
+    assert.ok(threeSteps && topUpInSteps && unpriced, 'the compiler refuses all three, so none is read further');
   });
 
   it("carry a top-up's days and cost and a dilution's steps, each null for the other kind", () => {

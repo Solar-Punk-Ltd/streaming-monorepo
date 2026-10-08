@@ -62,10 +62,11 @@ import { ManagerFundingError, type ManagerFundingClient } from './ManagerFunding
  * A request is refused, in this order, nothing journalled: a request of both kinds, or one that names a batch twice;
  * funding not set up; a manager on another chain; an item whose node or batch the manager does not hold, whose batch
  * could not be read, is not usable, has expired or is no longer at the depth the page showed, whose dilution would
- * leave the batch under 7 days, or whose top-up has no price of postage to go by; a node whose wallet could not be
- * read, holds no xDAI for the gas, or cannot pay for its top-ups in xBZZ; an earlier stamp bulk with an item that still
- * holds up a new one, once refreshed, or another request at the same moment (`FundingBusyError`). The arithmetic is
- * the console's own, `stampQuote.ts` of web2-admin-common, which the page shows. The manager checks all of it again.
+ * leave the batch under 7 days, or whose top-up has no price of postage to go by, or one higher than the page quoted
+ * it at; a node whose wallet could not be read, holds no xDAI for the gas, or cannot pay for its top-ups in xBZZ; an
+ * earlier stamp bulk with an item that still holds up a new one, once refreshed, or another request at the same moment
+ * (`FundingBusyError`). The arithmetic is the console's own, `stampQuote.ts` of web2-admin-common, which the page
+ * shows. The manager checks all of it again.
  *
  * Every item is journalled (`funding_stamp_operations`) before any is relayed, one request at a time under the stamp
  * lock, and the request answers at once, every item `queued`. The items are then relayed in turn behind it, in this
@@ -196,7 +197,8 @@ function inoperable(batch: FundingBatch, node: FundingNode): string {
  * fails refuses the request. An item names a node and a batch the node uploads with, which the inventory lists
  * together: a node is listed once for each batch it uploads with, as a stage's own node and as the catalogue node,
  * say. The batch must be read whole, usable and not expired ({@link operableBatch}), and at the depth the page showed.
- * A top-up is priced at the price of postage the manager read now ({@link stampTopUpQuote}); a dilution must leave the
+ * A top-up is priced at the price of postage the manager read now ({@link stampTopUpQuote}), and refused when that is
+ * higher than the price the page quoted it at, so it never costs more than the page showed; a dilution must leave the
  * batch 7 days or more ({@link stampDiluteQuote}).
  */
 export function stampTargetsOf(
@@ -234,6 +236,13 @@ export function stampTargetsOf(
         throw new FundingRefusedError(
           'price',
           'The manager could not read the price of postage from any node, so no top-up can be priced. Nothing was sent.',
+        );
+      }
+      // Priced at the price of now, which may be lower than the page's, never higher: the page showed what it costs.
+      if (BigInt(postage.pricePerChunkPerBlockPlur) > BigInt(item.pricePerChunkPerBlockPlur)) {
+        throw new FundingRefusedError(
+          'price',
+          'The price of postage has risen since the page read it. Read the page again. Nothing was sent.',
         );
       }
       const quote = stampTopUpQuote(item.days, batch.depth, batch.ttlSeconds, postage);

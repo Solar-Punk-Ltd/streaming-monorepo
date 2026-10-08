@@ -23,9 +23,13 @@ import {
   makeNode,
   makeStampView,
   makeView,
+  POSTAGE,
   THIRTY_DAYS_DEPTH_20,
   unreadBatch,
 } from './fundingFixtures';
+
+/** The price of postage the view shows, which every top-up is quoted at and asked for with. */
+const PRICE = POSTAGE.pricePerChunkPerBlockPlur;
 
 /** A top-up of 30 days, or the operation and days given, with these batches ticked. */
 function selection(ticked: string[], over: Partial<StampSelection> = {}): StampSelection {
@@ -140,12 +144,26 @@ describe('what a top-up comes to', () => {
     expect(check.totalCostPlur).toBe('0');
   });
 
-  it('asks for each ticked batch at the depth it shows, with its cost at today’s price and its time left after', () => {
+  it('asks for each ticked batch at the depth and the price it shows, with its cost at that price and its time left after', () => {
     const check = checkStamps(makeStampView(), selection([BATCH.catalogue, BATCH.rung]));
     expect(check.problems).toEqual([]);
     expect(check.lines.map((line) => line.request)).toEqual([
-      { kind: 'topup', nodeId: 'catalogue:bee', batchId: BATCH.catalogue, expectedDepth: 20, days: 30 },
-      { kind: 'topup', nodeId: 'stage-2:360p', batchId: BATCH.rung, expectedDepth: 20, days: 30 },
+      {
+        kind: 'topup',
+        nodeId: 'catalogue:bee',
+        batchId: BATCH.catalogue,
+        expectedDepth: 20,
+        days: 30,
+        pricePerChunkPerBlockPlur: PRICE,
+      },
+      {
+        kind: 'topup',
+        nodeId: 'stage-2:360p',
+        batchId: BATCH.rung,
+        expectedDepth: 20,
+        days: 30,
+        pricePerChunkPerBlockPlur: PRICE,
+      },
     ]);
     expect(check.lineOf.get(BATCH.catalogue)).toMatchObject({
       costPlur: THIRTY_DAYS_DEPTH_20,
@@ -159,6 +177,13 @@ describe('what a top-up comes to', () => {
       shortPlur: null,
       fundPlur: null,
     });
+  });
+
+  it('quotes each top-up at the price of postage the view shows, which the request names', () => {
+    const view = makeStampView({ postage: { ...POSTAGE, pricePerChunkPerBlockPlur: '48000' } });
+    const check = checkStamps(view, selection([BATCH.catalogue]));
+    expect(check.lines[0]?.request).toMatchObject({ kind: 'topup', pricePerChunkPerBlockPlur: '48000' });
+    expect(check.lines[0]?.costPlur).toBe((BigInt(THIRTY_DAYS_DEPTH_20) * 2n).toString());
   });
 
   it('says what a node lacks for its top-ups, exactly and rounded up to three decimals', () => {
@@ -197,7 +222,14 @@ describe('what a top-up comes to', () => {
     view.stages[1]?.nodes.push(shared);
     const check = checkStamps(view, selection([pooled]));
     expect(check.lines.map((line) => line.request)).toEqual([
-      { kind: 'topup', nodeId: 'pool:720p', batchId: pooled, expectedDepth: 20, days: 30 },
+      {
+        kind: 'topup',
+        nodeId: 'pool:720p',
+        batchId: pooled,
+        expectedDepth: 20,
+        days: 30,
+        pricePerChunkPerBlockPlur: PRICE,
+      },
     ]);
     expect(check.ledgerOf.get('pool:720p')?.costPlur).toBe(THIRTY_DAYS_DEPTH_20);
   });
@@ -214,15 +246,10 @@ describe('what a top-up comes to', () => {
     expect(noDays.lines[0]).toMatchObject({ request: null, costPlur: null, ttlAfterSeconds: null });
     expect(noDays.totalCostPlur).toBeNull();
 
+    // A top-up names the price it was quoted at, so with none there is nothing to ask for.
     const noPrice = checkStamps(makeStampView({ postage: null }), selection([BATCH.catalogue]));
     expect(noPrice.problems).toEqual([NO_PRICE_PROBLEM]);
-    expect(noPrice.lines[0]?.request).toEqual({
-      kind: 'topup',
-      nodeId: 'catalogue:bee',
-      batchId: BATCH.catalogue,
-      expectedDepth: 20,
-      days: 30,
-    });
+    expect(noPrice.lines[0]).toMatchObject({ request: null, costPlur: null, ttlAfterSeconds: null });
     expect(noPrice.ledgerOf.size).toBe(0);
     expect(noPrice.totalCostPlur).toBeNull();
   });
