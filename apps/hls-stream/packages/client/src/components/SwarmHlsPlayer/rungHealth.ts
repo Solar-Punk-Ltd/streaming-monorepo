@@ -57,6 +57,12 @@ function rungTopicOfLevel(uri: string): string | null {
   }
 }
 
+/** The rung of the level at this index, or null when there is no such level or it is not one of ours. */
+function rungOfLevel(hls: Hls, index: number): string | null {
+  const level = hls.levels[index];
+  return level ? rungTopicOfLevel(level.uri) : null;
+}
+
 /** Where a rung sits in the ladder hls.js currently holds, or -1 when it holds no such rung. */
 function levelIndexOfRung(hls: Hls, rungTopicId: string): number {
   return hls.levels.findIndex((level) => rungTopicOfLevel(level.uri) === rungTopicId);
@@ -100,15 +106,13 @@ export function attachActiveRungFollower(
   hls: Hls,
   followOnly: (rungTopicId: string, loadingRungTopicId: string | null) => void,
 ): () => void {
-  const rungOf = (index: number): string | null => {
-    const level = hls.levels[index];
-    return level ? rungTopicOfLevel(level.uri) : null;
-  };
+  const rungOf = (index: number): string | null => rungOfLevel(hls, index);
   const follow = (_event: unknown, data: { level: number }): void => {
     const rung = rungOf(data.level);
     if (rung !== null) {
       const loading = rungOf(hls.loadLevel);
       followOnly(rung, loading === rung ? null : loading);
+      forgetUnfollowedPlaylists(hls, [data.level, hls.loadLevel]);
     }
   };
 
@@ -119,6 +123,7 @@ export function attachActiveRungFollower(
     const rung = data.level === hls.currentLevel ? rungOf(data.level) : null;
     if (rung !== null) {
       followOnly(rung, null);
+      forgetUnfollowedPlaylists(hls, [data.level]);
     }
   };
 
@@ -182,6 +187,8 @@ export function attachRungFailover(hls: Hls, feedHealth: FeedHealthTracker): () 
     // -1, and steering that one forces a level while hls.js is still settling the ladder. Only a
     // viewer whose own rung was just taken away needs somewhere to go.
     const tookThePlayingLevel = hls.loadLevel === index;
+    // Read before the removal too, which renumbers the levels and leaves the removed one's fragments at -1.
+    const playingRung = rungOfLevel(hls, hls.currentLevel);
 
     console.warn(`Rung ${level.height}p has stopped being produced (${reason}), dropping it from the ladder`);
     hls.removeLevel(index);
@@ -191,8 +198,69 @@ export function attachRungFailover(hls: Hls, feedHealth: FeedHealthTracker): () 
     // end. The poller names the rung it found moving, which is the one the viewer goes to. Read after
     // the removal, because hls.js renumbers the levels above it. Without one, ABR chooses.
     if (tookThePlayingLevel) {
-      const target = detail.failoverTo === null ? -1 : levelIndexOfRung(hls, detail.failoverTo);
-      hls.nextLoadLevel = target >= 0 ? target : hls.nextAutoLevel;
+      const found = detail.failoverTo === null ? -1 : levelIndexOfRung(hls, detail.failoverTo);
+      const target = found >= 0 ? found : hls.nextAutoLevel;
+      // A refused switch hands the viewer back to the rung they play. Its playlist is the one hls.js aligns
+      // that rung's next reload against, since the refused playlist never reached hls.js, and the fragment
+      // appended last is that rung's own, so there is nothing to forget.
+      const backToThePlayingRung = playingRung !== null && detail.failoverTo === playingRung;
+      if (!backToThePlayingRung) {
+        forgetEarlierPlaylist(hls, target);
+      }
+      hls.nextLoadLevel = target;
+      if (!backToThePlayingRung) {
+        forgetLastAppendedFragment(hls);
+      }
     }
   });
+}
+
+/**
+ * Drops what hls.js holds for every level the poller has just stopped following, which is every level but
+ * the ones named. A switch back to one of them then finds no playlist and places the new one by date, as
+ * {@link forgetEarlierPlaylist} explains.
+ */
+function forgetUnfollowedPlaylists(hls: Hls, followed: readonly number[]): void {
+  hls.levels.forEach((_level, index) => {
+    if (!followed.includes(index)) {
+      forgetEarlierPlaylist(hls, index);
+    }
+  });
+}
+
+/**
+ * ⛔ Drops the playlist hls.js still holds for a level from an earlier visit to its rung.
+ *
+ * The poller forgets a rung's playlist when it stops following it and starts a new one from the rung's
+ * newest window when it follows it again, so whatever hls.js kept for that level is minutes old and starts
+ * at another sequence number. hls.js places a reloaded live playlist against the one it held by counting
+ * sequence numbers at the target duration, which is wrong by every short segment and gap in between. On
+ * 2026-10-08 it put 1080p about 16 s away from the 360p it replaced. A level with no playlist is placed by
+ * date against the level loaded last, which is the rung being replaced.
+ */
+function forgetEarlierPlaylist(hls: Hls, levelIndex: number): void {
+  const level = hls.levels[levelIndex];
+  if (level) {
+    level.details = undefined;
+  }
+}
+
+/**
+ * ⛔⛔ Makes hls.js forget the fragment it appended last, which belonged to the rung just removed.
+ *
+ * hls.js renumbers the levels on a removal, so the rung moved to can take the removed one's number, and
+ * the uploader numbers every rung's segments alike. hls.js then reads the new rung's first fragment as the
+ * next one of the same level, and its remuxer runs the video on from the last frame appended while the
+ * audio goes where the playlist puts it. On 2026-10-08 the two landed about 16 s apart, the picture and the
+ * sound never overlapped where hls.js kept seeking to every 6 s, and a viewer on a fast line saw nothing
+ * for 8.8 minutes after an SRS restart. `startLoad` is what resets that memory, and from `-1` it carries
+ * on from the playhead. A player whose loading is stopped, because the viewer paused, is left stopped,
+ * since starting again on play resets the same memory.
+ */
+function forgetLastAppendedFragment(hls: Hls): void {
+  // Before the first fragment is buffered `startLoad` sets the next level to the start level, which would
+  // undo the move, and nothing has been appended yet for hls.js to read as continuing.
+  if (hls.loadingEnabled && hls.hasEnoughToStart) {
+    hls.startLoad(-1);
+  }
 }

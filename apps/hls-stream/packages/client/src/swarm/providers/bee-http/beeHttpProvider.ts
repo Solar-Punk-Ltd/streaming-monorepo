@@ -155,9 +155,9 @@ export class BeeHttpProvider implements SwarmProvider {
 
   /**
    * A segment's URL is absolute because it is written into a playlist, and hls.js resolves a playlist's
-   * lines against the playlist's own URL, which here is a blob or a `swarm://` URI. A picture's is left
-   * as the gateway was given, because the page itself loads it. Its reference is encoded because it
-   * comes from the stream list, external input, and its trailing slash makes Bee serve the uploaded
+   * lines against the playlist's own URL, which here is a `memory:` or a `swarm://` URI. A picture's is
+   * left as the gateway was given, because the page itself loads it. Its reference is encoded because
+   * it comes from the stream list, external input, and its trailing slash makes Bee serve the uploaded
    * file rather than redirect.
    */
   urlFor(reference: string, use: UrlUse): string | null {

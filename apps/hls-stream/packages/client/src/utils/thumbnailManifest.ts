@@ -13,11 +13,11 @@ const BYTES_PATH = '/bytes/';
  * The one media line in a preview's playlist, always absolute against the gateway, or null when no
  * provider gives a URL for it.
  *
- * A preview playlist is handed to hls.js as a blob, and hls.js resolves a relative media line against
- * the playlist's own URL. Resolving `/bytes/<ref>` against `blob:http://viewer/<uuid>` returns
- * `blob:http:/bytes/<ref>`, measured against hls.js 1.6.15's own resolver: the page origin and the
- * blob id are both consumed, so nothing downstream can work out which gateway was meant. The line has
- * to name it here or it cannot be named at all, so it is the URL the Swarm client gives for the
+ * A preview playlist is handed to hls.js from memory under `PREVIEW_PLAYLIST_URL`, and hls.js resolves
+ * a relative media line against the playlist's own URL. Resolving `/bytes/<ref>` against it returns
+ * `memory:preview.m3u8/bytes/<ref>`, measured against hls.js 1.7.3's own resolver, which names no
+ * gateway, so nothing downstream can work out which one was meant. The line has to name it here or it
+ * cannot be named at all, so it is the URL the Swarm client gives for the
  * reference, which a Bee gateway makes absolute against the page's own address.
  *
  * A bare reference is what the uploader writes, and what every manifest published since 2026-08-13
