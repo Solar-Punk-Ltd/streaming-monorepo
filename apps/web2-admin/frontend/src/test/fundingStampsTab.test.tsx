@@ -134,6 +134,33 @@ describe('the batches', () => {
     expect(rowOf('Batches of Main stage', 'stage-1-uploader').getByRole('checkbox')).not.toBeChecked();
   });
 
+  it('keeps the header row one line high for either operation, in columns as wide as their headers need', async () => {
+    serve(() => makeStampView());
+    await openStamps();
+    const catalogue = () => screen.getByRole('table', { name: 'Catalogue batch' });
+    const headers = () => within(catalogue()).getAllByRole('columnheader');
+    const px = (element: HTMLElement, property: 'width' | 'minWidth') =>
+      Number.parseFloat(getComputedStyle(element)[property]);
+    /** The least width the batch column keeps beside the others, as the table had it at its first widths. */
+    const batchLeast = 256;
+
+    for (const operation of ['Top up', 'Dilute']) {
+      fireEvent.click(screen.getByRole('button', { name: operation }));
+      for (const header of headers()) expect(header, header.textContent ?? '').toHaveStyle({ whiteSpace: 'nowrap' });
+      const fixed = headers()
+        .filter((header) => header.textContent !== 'Batch')
+        .reduce((sum, header) => sum + px(header, 'width'), 0);
+      expect(px(catalogue(), 'minWidth'), operation).toBeGreaterThanOrEqual(fixed + batchLeast);
+    }
+    const widthOf = (label: string) =>
+      px(headers().find((header) => header.textContent === label) as HTMLElement, 'width');
+    // Dilute is on, with its new depth; then Top up, whose time left after is the longest header of all.
+    expect(widthOf('New depth')).toBeGreaterThanOrEqual(112);
+    expect(widthOf('Depth')).toBeGreaterThanOrEqual(80);
+    fireEvent.click(screen.getByRole('button', { name: 'Top up' }));
+    expect(widthOf('Time left after')).toBeGreaterThanOrEqual(140);
+  });
+
   it('says when the manager reports no batches, as one older than the Stamps tab does', async () => {
     serve(() => makeView());
     await openStamps();
