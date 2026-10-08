@@ -18,6 +18,8 @@ import { feedIdentityFrom } from './domain/feedIdentity.js';
 import { FeedWriteRepository } from './domain/FeedWriteRepository.js';
 import { BrandWallet } from './domain/funding/BrandWallet.js';
 import { BrandWalletRepository } from './domain/funding/BrandWalletRepository.js';
+import { FundingChequebookRepository } from './domain/funding/FundingChequebookRepository.js';
+import { FundingChequebookService } from './domain/funding/FundingChequebookService.js';
 import { FundingPinRepository } from './domain/funding/FundingPinRepository.js';
 import { FundingService } from './domain/funding/FundingService.js';
 import { FundingStampRepository } from './domain/funding/FundingStampRepository.js';
@@ -244,7 +246,7 @@ async function main(): Promise<void> {
   stageService.onCatalogueStampStored(() => void feedBootCheck.catalogueStampStored());
   // The brand wallet started above, its address null without BRAND_WALLET_SECRET, and the client of the manager's
   // funding API, none without MANAGER_FUNDING_URL and MANAGER_FUNDING_TOKEN: then the Funding page answers that
-  // funding is not set up, and every pin, send and stamp request is refused.
+  // funding is not set up, and every pin, send, stamp request and chequebook request is refused.
   const managerFunding = config.managerFunding ? new ManagerFundingClient(config.managerFunding) : null;
   const fundingService = new FundingService({
     wallet: brandWallet,
@@ -254,6 +256,11 @@ async function main(): Promise<void> {
     stamps: new FundingStampService({
       manager: managerFunding,
       journal: new FundingStampRepository(database.pool),
+      audit: auditLog,
+    }),
+    chequebooks: new FundingChequebookService({
+      manager: managerFunding,
+      journal: new FundingChequebookRepository(database.pool),
       audit: auditLog,
     }),
     audit: auditLog,

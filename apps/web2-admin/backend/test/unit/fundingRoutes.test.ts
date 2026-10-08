@@ -7,23 +7,28 @@
  * count as the password change; the password is checked before anything else of a send; a node named twice is 400;
  * the 202 answer's shape; one of two sends at once is 409 `{ error: 'conflict' }`; a stamp request takes no password,
  * answers 202 at once with every item queued, refuses a body that is not one with 400, a failed check with 409 and its
- * problem, and an earlier stamp bulk not settled with 409 `{ error: 'conflict' }`; and no answer, nor any audit row,
- * carries a signed transaction or the password.
+ * problem, and an earlier stamp bulk not settled with 409 `{ error: 'conflict' }`; a chequebook request likewise, with
+ * a target under 1 xBZZ and a node named twice refused with 400, and the open chequebook bulk named in the view; and no
+ * answer, nor any audit row, carries a signed transaction or the password.
  */
 import http from 'node:http';
 import assert from 'node:assert/strict';
 import { after, afterEach, before, beforeEach, describe, it } from 'node:test';
 
 import {
+  FUNDING_CHEQUEBOOK_OPERATIONS_ADMIN_PATH,
   FUNDING_PATH,
   FUNDING_PINS_PATH,
   FUNDING_STAMP_OPERATIONS_ADMIN_PATH,
   FUNDING_TRANSFERS_ADMIN_PATH,
+  type FundingChequebookBulkAnswer,
+  type FundingChequebookOperationsAnswer,
   type FundingStampBulkAnswer,
   type FundingStampOperationsAnswer,
   type FundingTransfersAnswer,
   type FundingView,
   fundingBulkPath,
+  fundingChequebookBulkPath,
   fundingStampBulkPath,
 } from '@streaming-monorepo/web2-admin-common';
 import { LoginLimiter } from '@streaming-monorepo/web-auth';
@@ -36,6 +41,7 @@ import { requireSameSite } from '../../src/api/middleware/requireSameSite.js';
 import { createAuthRouter } from '../../src/api/routes/auth.js';
 import { createFundingRouter } from '../../src/api/routes/funding.js';
 import { AuthService } from '../../src/domain/auth/AuthService.js';
+import { FundingChequebookService } from '../../src/domain/funding/FundingChequebookService.js';
 import { FundingService } from '../../src/domain/funding/FundingService.js';
 import { FundingStampService } from '../../src/domain/funding/FundingStampService.js';
 
@@ -50,8 +56,11 @@ import { InMemoryAuditLog } from './support/fakes.js';
 import {
   BATCH_CATALOGUE,
   BATCH_STAGE,
+  chequebookInventory,
   FakeFundingManager,
   FakeFundingWallet,
+  fundingChequebook,
+  InMemoryFundingChequebookStore,
   InMemoryFundingPinStore,
   InMemoryFundingStampStore,
   InMemoryFundingTransferStore,
@@ -59,6 +68,8 @@ import {
   NODE_A,
   NODE_B,
   NODE_CATALOGUE,
+  NODE_RUNG,
+  ONE_XBZZ,
   POSTAGE,
   stampInventory,
   WALLET_A,
@@ -76,6 +87,8 @@ interface FundingTestApp extends AuthTestApp {
   pins: InMemoryFundingPinStore;
   stampJournal: InMemoryFundingStampStore;
   stamps: FundingStampService;
+  chequebookJournal: InMemoryFundingChequebookStore;
+  chequebooks: FundingChequebookService;
   clock: { now: number };
 }
 
@@ -101,12 +114,19 @@ async function startFundingTestApp(options: { configured?: boolean } = {}): Prom
     journal: stampJournal,
     audit,
   });
+  const chequebookJournal = new InMemoryFundingChequebookStore();
+  const chequebooks = new FundingChequebookService({
+    manager: options.configured === false ? null : manager,
+    journal: chequebookJournal,
+    audit,
+  });
   const fundingService = new FundingService({
     wallet,
     manager: options.configured === false ? null : manager,
     transfers,
     pins,
     stamps,
+    chequebooks,
     audit,
   });
   const requireAuth = createRequireAuth(authService);
@@ -136,6 +156,8 @@ async function startFundingTestApp(options: { configured?: boolean } = {}): Prom
     pins,
     stampJournal,
     stamps,
+    chequebookJournal,
+    chequebooks,
     clock,
     close: () => new Promise<void>((resolve, reject) => server.close((err) => (err ? reject(err) : resolve()))),
   };
@@ -677,6 +699,225 @@ describe('a stamp request', () => {
   });
 });
 
+describe('a chequebook request', () => {
+  const xbzz = (tenths: bigint) => ((tenths * ONE_XBZZ) / 10n).toString();
+  const TARGET = xbzz(20n);
+  /** The stage's own node, 1.5 xBZZ available: a deposit of 0.5. The rung, 3.25: a withdrawal of 1.25. */
+  const STAGE_NODE = { nodeId: NODE_A, availablePlur: ((3n * ONE_XBZZ) / 2n).toString() };
+  const RUNG_NODE = { nodeId: NODE_RUNG, availablePlur: ((13n * ONE_XBZZ) / 4n).toString() };
+
+  const chequebookRequest = (body: unknown) => fundingCall('POST', FUNDING_CHEQUEBOOK_OPERATIONS_ADMIN_PATH, body);
+
+  beforeEach(() => {
+    app.manager.inventoryAnswer = chequebookInventory();
+  });
+
+  it('takes no password, and answers 202 at once with the bulk id and every item queued', async () => {
+    const res = await chequebookRequest({ targetPlur: TARGET, items: [STAGE_NODE, RUNG_NODE] });
+
+    assert.equal(res.status, 202);
+    const answer = res.body as FundingChequebookOperationsAnswer;
+    assert.deepEqual(Object.keys(answer).sort(), ['bulkId', 'items']);
+    assert.deepEqual(
+      answer.items.map((item) => [
+        item.nodeId,
+        item.nodeLabel,
+        item.direction,
+        item.amountPlur,
+        item.targetPlur,
+        item.state,
+        item.settled,
+      ]),
+      [
+        [NODE_A, 'Main stage uploader', 'deposit', xbzz(5n), TARGET, 'queued', false],
+        [NODE_RUNG, 'Main stage 720p rung', 'withdraw', ((5n * ONE_XBZZ) / 4n).toString(), TARGET, 'queued', false],
+      ],
+    );
+    for (const item of answer.items) {
+      assert.deepEqual(Object.keys(item).sort(), [
+        'amountPlur',
+        'direction',
+        'error',
+        'nodeId',
+        'nodeLabel',
+        'requestId',
+        'settled',
+        'state',
+        'targetPlur',
+        'txHash',
+        'watched',
+      ]);
+      assert.match(item.requestId, /^[0-9a-f-]{36}$/);
+    }
+
+    // The relays end behind the answer: the node sent each move, which holds up the next bulk until it is mined.
+    await app.chequebooks.idle();
+    const bulk = await fundingCall('GET', fundingChequebookBulkPath(answer.bulkId));
+    assert.equal(bulk.status, 200);
+    const items = (bulk.body as FundingChequebookBulkAnswer).items;
+    assert.deepEqual(
+      items.map((item) => [item.requestId, item.state, item.settled, item.watched]),
+      answer.items.map((item) => [item.requestId, 'submitted', false, false]),
+    );
+    for (const item of items) assert.match(item.txHash ?? '', /^0x[0-9a-f]{64}$/);
+
+    for (const item of answer.items) app.manager.chequebookJournalState.set(item.requestId, 'confirmed');
+    const settled = await fundingCall('GET', fundingChequebookBulkPath(answer.bulkId));
+    assert.deepEqual(
+      (settled.body as FundingChequebookBulkAnswer).items.map((item) => [item.state, item.settled]),
+      [
+        ['confirmed', true],
+        ['confirmed', true],
+      ],
+    );
+  });
+
+  it('refuses a body that is not a chequebook request with 400', async () => {
+    const bodies: unknown[] = [
+      {},
+      { targetPlur: TARGET },
+      { targetPlur: TARGET, items: [] },
+      { items: [STAGE_NODE] },
+      { targetPlur: 20_000_000_000_000_000, items: [STAGE_NODE] },
+      { targetPlur: '0', items: [STAGE_NODE] },
+      { targetPlur: `0${TARGET}`, items: [STAGE_NODE] },
+      { targetPlur: '-20000000000000000', items: [STAGE_NODE] },
+      { targetPlur: '2.5', items: [STAGE_NODE] },
+      { targetPlur: '0x470de4df820000', items: [STAGE_NODE] },
+      { targetPlur: '1'.repeat(31), items: [STAGE_NODE] },
+      { targetPlur: TARGET, items: [{ nodeId: NODE_A }] },
+      { targetPlur: TARGET, items: [{ ...STAGE_NODE, availablePlur: 15_000_000_000_000_000 }] },
+      { targetPlur: TARGET, items: [{ ...STAGE_NODE, availablePlur: '-1' }] },
+      { targetPlur: TARGET, items: [{ ...STAGE_NODE, availablePlur: '1.5' }] },
+      { targetPlur: TARGET, items: [{ ...STAGE_NODE, availablePlur: '01' }] },
+      { targetPlur: TARGET, items: [{ ...STAGE_NODE, availablePlur: '9'.repeat(31) }] },
+      { targetPlur: TARGET, items: [{ availablePlur: STAGE_NODE.availablePlur }] },
+      { targetPlur: TARGET, items: [{ ...STAGE_NODE, nodeId: 'a/b' }] },
+    ];
+    for (const body of bodies) {
+      const res = await chequebookRequest(body);
+      assert.equal(res.status, 400, JSON.stringify(body));
+      assert.equal((res.body as { error: string }).error, 'validation_error');
+    }
+    assert.equal(app.chequebookJournal.rows.size, 0);
+    assert.equal(app.manager.calls.inventory, 0);
+  });
+
+  it('refuses a target under 1 xBZZ, and a node named twice, with 400 and a sentence', async () => {
+    const under = await chequebookRequest({ targetPlur: '9999999999999999', items: [STAGE_NODE] });
+    assert.equal(under.status, 400);
+    assert.deepEqual(under.body, {
+      error: 'validation_error',
+      errors: ['targetPlur must be at least 10000000000000000 PLUR, 1 xBZZ'],
+    });
+
+    const twice = await chequebookRequest({ targetPlur: TARGET, items: [STAGE_NODE, STAGE_NODE] });
+    assert.equal(twice.status, 400);
+    assert.deepEqual(twice.body, {
+      error: 'validation_error',
+      errors: [`${NODE_A} is named twice: a request brings a chequebook to the target once.`],
+    });
+    assert.equal(app.chequebookJournal.rows.size, 0);
+    assert.equal(app.manager.calls.inventory, 0);
+
+    // 1 xBZZ itself is the floor, and taken.
+    assert.equal((await chequebookRequest({ targetPlur: xbzz(10n), items: [RUNG_NODE] })).status, 202);
+    await app.chequebooks.idle();
+  });
+
+  it('refuses a check that fails with 409 funding_refused, its problem and its sentence', async () => {
+    const gateway = await chequebookRequest({
+      targetPlur: TARGET,
+      items: [{ nodeId: NODE_B, availablePlur: (3n * ONE_XBZZ).toString() }],
+    });
+    assert.equal(gateway.status, 409);
+    assert.deepEqual(gateway.body, {
+      error: 'funding_refused',
+      problem: 'node',
+      message:
+        "Main stage gateway (stage-1:gateway) is a gateway: the manager moves only the chequebook of a stage's own Bee node or of a rung. Nothing was sent.",
+    });
+
+    // The page showed 1 xBZZ available, and the chequebook holds 1.5 now: something was deposited since.
+    const moved = await chequebookRequest({
+      targetPlur: TARGET,
+      items: [{ nodeId: NODE_A, availablePlur: xbzz(10n) }],
+    });
+    assert.equal(moved.status, 409);
+    assert.deepEqual(moved.body, {
+      error: 'funding_refused',
+      problem: 'chequebook',
+      message:
+        'The chequebook of Main stage uploader (stage-1:uploader) holds 1.5 xBZZ available now, more than the 1 the page showed: something was deposited since. Read the page again. Nothing was sent.',
+    });
+    assert.equal(app.chequebookJournal.rows.size, 0);
+    assert.equal(app.manager.chequebookCalls.operation, 0);
+  });
+
+  it('refuses a request while an earlier chequebook bulk is not settled with 409 conflict', async () => {
+    assert.equal((await chequebookRequest({ targetPlur: TARGET, items: [STAGE_NODE] })).status, 202);
+    await app.chequebooks.idle();
+
+    const res = await chequebookRequest({ targetPlur: TARGET, items: [RUNG_NODE] });
+
+    assert.equal(res.status, 409);
+    assert.deepEqual(res.body, { error: 'conflict' });
+  });
+
+  it('answers 502 with a sentence when the manager cannot be read', async () => {
+    app.manager.inventoryError = managerFailure('unreachable', null, 'GET http://manager.example failed');
+
+    const res = await chequebookRequest({ targetPlur: TARGET, items: [STAGE_NODE] });
+
+    assert.equal(res.status, 502);
+    assert.deepEqual(res.body, {
+      error: 'manager_unavailable',
+      message: 'The manager could not be reached. Nothing was sent.',
+    });
+  });
+
+  it('refuses a write without the cross-site header, and any call without a session', async () => {
+    const body = { targetPlur: TARGET, items: [STAGE_NODE] };
+    const crossSite = await call(app, 'POST', FUNDING_CHEQUEBOOK_OPERATIONS_ADMIN_PATH, {
+      cookie,
+      requestedWith: false,
+      body,
+    });
+    assert.equal(crossSite.status, 403);
+
+    const anonymous = await call(app, 'POST', FUNDING_CHEQUEBOOK_OPERATIONS_ADMIN_PATH, { body });
+    assert.equal(anonymous.status, 401);
+    const anonymousRead = await call(app, 'GET', fundingChequebookBulkPath('00000000-0000-4000-8000-00000000000a'));
+    assert.equal(anonymousRead.status, 401);
+    assert.equal(app.chequebookJournal.rows.size, 0);
+  });
+
+  it('reads a chequebook bulk back by its id: 400 without a UUID, 404 for one never journalled', async () => {
+    assert.equal((await fundingCall('GET', FUNDING_CHEQUEBOOK_OPERATIONS_ADMIN_PATH)).status, 400);
+    assert.equal(
+      (await fundingCall('GET', `${FUNDING_CHEQUEBOOK_OPERATIONS_ADMIN_PATH}?bulkId=not-a-uuid`)).status,
+      400,
+    );
+
+    const unknown = await fundingCall('GET', fundingChequebookBulkPath('00000000-0000-4000-8000-00000000000a'));
+    assert.equal(unknown.status, 404);
+    assert.deepEqual(unknown.body, { error: 'bulk_not_found', bulkId: '00000000-0000-4000-8000-00000000000a' });
+  });
+
+  it("is named on the Funding page while it is open, beside each node's chequebook", async () => {
+    const sent = (await chequebookRequest({ targetPlur: TARGET, items: [STAGE_NODE] }))
+      .body as FundingChequebookOperationsAnswer;
+    await app.chequebooks.idle();
+
+    const view = (await fundingCall('GET', FUNDING_PATH)).body as FundingView;
+
+    assert.equal(view.openChequebookBulkId, sent.bulkId);
+    assert.equal(view.openStampBulkId, null);
+    assert.equal(view.openBulkId, null);
+    assert.deepEqual(view.stages[0]?.nodes[0]?.chequebook, fundingChequebook());
+  });
+});
+
 describe('without manager funding settings', () => {
   let off: FundingTestApp;
   let offCookie: string;
@@ -707,5 +948,14 @@ describe('without manager funding settings', () => {
     assert.equal(stamp.status, 409);
     assert.equal((stamp.body as { problem: string }).problem, 'not_set_up');
     assert.equal(off.manager.calls.inventory, 0);
+
+    const chequebook = await call(off, 'POST', FUNDING_CHEQUEBOOK_OPERATIONS_ADMIN_PATH, {
+      cookie: offCookie,
+      body: { targetPlur: (2n * ONE_XBZZ).toString(), items: [{ nodeId: NODE_A, availablePlur: '0' }] },
+    });
+    assert.equal(chequebook.status, 409);
+    assert.equal((chequebook.body as { problem: string }).problem, 'not_set_up');
+    assert.equal(off.manager.calls.inventory, 0);
+    assert.equal((view.body as FundingView).openChequebookBulkId, null);
   });
 });

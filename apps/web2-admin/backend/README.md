@@ -831,13 +831,14 @@ curl -sS -X DELETE http://127.0.0.1:9877/api/internal/stages/5f0c2a8e-1b2c-4d3e-
 ## Funding
 
 The Funding page sends xDAI and xBZZ from the brand wallet to the wallets of
-the brand's nodes, and tops up and dilutes the batches the nodes upload with,
-through the infra manager's funding API
-([docs/architecture/funding.md](../../../docs/architecture/funding.md)). The
-admin signs each transfer and the manager sends it, so the admin needs no
-chain connection of its own and the wallet's key never leaves it. A stamp
-operation the admin signs nothing for: the manager asks the node, which pays
-from its own wallet ([Stamp operations](#stamp-operations)).
+the brand's nodes, tops up and dilutes the batches the nodes upload with, and
+brings the nodes' chequebooks to a target, through the infra manager's funding
+API ([docs/architecture/funding.md](../../../docs/architecture/funding.md)).
+The admin signs each transfer and the manager sends it, so the admin needs no
+chain connection of its own and the wallet's key never leaves it. A stamp or
+chequebook operation the admin signs nothing for: the manager asks the node,
+which pays from its own wallet ([Stamp operations](#stamp-operations),
+[Chequebook operations](#chequebook-operations)).
 
 ### The brand wallet
 
@@ -923,8 +924,8 @@ printable ASCII with no space, since it travels in a header.
 which the funding service uses, `stampOperation(operation)` and
 `stampOperationStatus(requestId)`, which the stamp service uses
 ([Stamp operations](#stamp-operations)), and `chequebookOperation(operation)`
-and `chequebookOperationStatus(requestId)`, for the deposits into and
-withdrawals from the nodes' chequebooks.
+and `chequebookOperationStatus(requestId)`, which the chequebook service uses
+([Chequebook operations](#chequebook-operations)).
 
 - Every request carries `Authorization: Bearer <MANAGER_FUNDING_TOKEN>`, to the
   manager's address alone: the client holds the address to the rule above as
@@ -980,12 +981,12 @@ with the client, or with none while `MANAGER_FUNDING_URL` is unset.
 behind the same-site check as well. The answers are the types of
 `web2-admin-common`'s `funding.ts`.
 
-| Method | Path                                 | Answer                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                        |
-| ------ | ------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| GET    | `/api/funding`                       | `FundingView`: `configured` (false while the manager funding settings are unset, and then the manager is not asked), the brand wallet's address and balances or null while there is none, `chainId` 100, every stage's nodes and the catalogue node, each with `pin` and `pinnedAddress` (below) and the `batch` the manager uses for its uploads as the manager read it (null for a gateway and a node with no batch, and left out altogether from a manager that reads none, one older than the Stamps tab, so the page can say so; every reading of it null, with `readError`, when the node could not be read about it), `postage`, what postage costs now as the manager read it from a node (the price per chunk per block in PLUR, the block time and the contract's floor in blocks, or null when no node answered), `observedAt`, and `openBulkId`, the latest send that still has an item holding up a new one (`queued`, `submitted`, or `unknown` within the manager's 30 minutes), or null, so the page resumes it after a reload or in another tab, and `openStampBulkId`, the same for stamp bulks ([Stamp operations](#stamp-operations)). It first refreshes the latest sends with an item still asked about, three at most ([Settling](#settling)), and the latest stamp bulks likewise. When the manager cannot be read, `managerError` says why in a sentence of the admin's own, never the manager's address or token, and the balances, the nodes, `postage` and `observedAt` are empty |
-| POST   | `/api/funding/pins`                  | `{ password, nodeIds }` in: pins the address each node answers now, read from the manager's inventory, and answers `{ pinned }`. A node the inventory does not hold is `409 funding_refused`, `problem: "node"`; a node whose address could not be read is `400 validation_error` with the sentence, since there is no address to pin. Either way nothing is pinned                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                           |
-| POST   | `/api/funding/transfers`             | `{ password, items: [{ nodeId, kind, amount }] }` in, `202` with `{ bulkId, items }` out: each item's `requestId`, `nodeId`, `kind`, `amount`, `state`, `txHash`, `blockNumber` (null until it is mined), `error`, and the flags `settled` (it no longer holds up a new send) and `watched` (it is still asked about) ([Settling](#settling)). The refusals below                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                             |
-| GET    | `/api/funding/transfers?bulkId=<id>` | `{ items }` of that send, as above, each refreshed from the manager first ([Settling](#settling)). `400` without a UUID, `404 bulk_not_found` for a send the admin never journalled                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                           |
+| Method | Path                                 | Answer                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                     |
+| ------ | ------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| GET    | `/api/funding`                       | `FundingView`: `configured` (false while the manager funding settings are unset, and then the manager is not asked), the brand wallet's address and balances or null while there is none, `chainId` 100, every stage's nodes and the catalogue node, each with `pin` and `pinnedAddress` (below) and the `batch` the manager uses for its uploads as the manager read it (null for a gateway and a node with no batch, and left out altogether from a manager that reads none, one older than the Stamps tab, so the page can say so; every reading of it null, with `readError`, when the node could not be read about it) and its `chequebook` as the manager read it (null for a node that answered it has none, left out altogether from a manager older than the Chequebooks tab, and every reading of it null, with `readError`, when the node could not be read about it), `postage`, what postage costs now as the manager read it from a node (the price per chunk per block in PLUR, the block time and the contract's floor in blocks, or null when no node answered), `observedAt`, and `openBulkId`, the latest send that still has an item holding up a new one (`queued`, `submitted`, or `unknown` within the manager's 30 minutes), or null, so the page resumes it after a reload or in another tab, `openStampBulkId`, the same for stamp bulks ([Stamp operations](#stamp-operations)), and `openChequebookBulkId`, the same for chequebook bulks ([Chequebook operations](#chequebook-operations)). It first refreshes the latest sends with an item still asked about, three at most ([Settling](#settling)), and the latest stamp and chequebook bulks likewise. When the manager cannot be read, `managerError` says why in a sentence of the admin's own, never the manager's address or token, and the balances, the nodes, `postage` and `observedAt` are empty |
+| POST   | `/api/funding/pins`                  | `{ password, nodeIds }` in: pins the address each node answers now, read from the manager's inventory, and answers `{ pinned }`. A node the inventory does not hold is `409 funding_refused`, `problem: "node"`; a node whose address could not be read is `400 validation_error` with the sentence, since there is no address to pin. Either way nothing is pinned                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                        |
+| POST   | `/api/funding/transfers`             | `{ password, items: [{ nodeId, kind, amount }] }` in, `202` with `{ bulkId, items }` out: each item's `requestId`, `nodeId`, `kind`, `amount`, `state`, `txHash`, `blockNumber` (null until it is mined), `error`, and the flags `settled` (it no longer holds up a new send) and `watched` (it is still asked about) ([Settling](#settling)). The refusals below                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                          |
+| GET    | `/api/funding/transfers?bulkId=<id>` | `{ items }` of that send, as above, each refreshed from the manager first ([Settling](#settling)). `400` without a UUID, `404 bulk_not_found` for a send the admin never journalled                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                        |
 
 A node's `pin` is `pinned` when its pin is the address it answers now, `new`
 when it has none, and `changed` when it answers another. A node whose wallet
@@ -1306,6 +1307,133 @@ operation the manager confirmed from the chain ([Audit log](#audit-log)).
 | -------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `funding_stamp_operations` | migration 018: one row per item of a stamp bulk, by `request_id`, with `bulk_id`, its `position` in the bulk, the node's id and label, the batch, `kind`, a top-up's `days`, `amount_per_chunk_plur` and `cost_plur` or a dilution's `steps` and `new_depth`, `expected_depth`, `state`, `tx_hash`, `error`, `relayed_at`, the operator's id and name, and when. One item per batch and one per place in a bulk |
 
+### Chequebook operations
+
+The Chequebooks tab brings the chequebooks of the stages' nodes to a target the
+operator types, in xBZZ. A ticked chequebook under the target takes a deposit
+of the difference from its node's wallet, and one over it a withdrawal of the
+difference into its node's wallet, the one place Bee withdraws to; one at the
+target is not sent. Each node pays from its own wallet: a deposit's xBZZ, and
+the gas of either way in xDAI. The admin signs nothing for them and nothing
+leaves the brand wallet, so a chequebook request takes the page's confirm
+dialog and no password. `src/domain/funding/FundingChequebookService.ts` is the
+service, which `src/index.ts` builds with the client of the manager's funding
+API and which the funding service answers the two routes and the view's open
+chequebook bulk with. The arithmetic is `chequebookPlan.ts` of
+`web2-admin-common`, the one the page shows.
+
+| Method | Path                                             | Answer                                                                                                                                                                                                                                                                                                                                                                                                                                                |
+| ------ | ------------------------------------------------ | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| POST   | `/api/funding/chequebook-operations`             | `{ targetPlur, items: [{ nodeId, availablePlur }] }` in: the target, and each ticked node with the available balance of its chequebook as the page showed it, PLUR as strings of digits; `202` with `{ bulkId, items }` out, at once, every item `queued`: its `requestId`, `nodeId`, `nodeLabel`, `direction` (`deposit` or `withdraw`), `amountPlur`, `targetPlur`, `state`, `txHash`, `error`, `settled` and `watched` (below). The refusals below |
+| GET    | `/api/funding/chequebook-operations?bulkId=<id>` | `{ items }` of that chequebook bulk, as above, refreshed from the manager first (below). `400` without a UUID, `404 bulk_not_found` for a bulk the admin never journalled                                                                                                                                                                                                                                                                             |
+
+A request's body is checked first, `400 validation_error`: a `targetPlur` of
+whole PLUR as a string of decimal digits, 30 at most, and at least 1 xBZZ, the
+owner's floor (`CHEQUEBOOK_TARGET_MIN_PLUR` of `web2-admin-common`, 10^16
+PLUR); one item at least and 200 at most, each a node id as the contract takes
+it and an `availablePlur` of whole PLUR, 30 digits at most. Thirty digits keep
+the move within what the manager's chequebook journal holds, and are far more
+xBZZ than there is. Then it is refused, in this order, nothing journalled:
+
+1. a node named twice: `400 validation_error` with the sentence;
+2. funding not set up, or a manager on another chain than Gnosis Chain:
+   `409 funding_refused`, `problem` `not_set_up` or `chain`. A manager whose
+   inventory cannot be read is `502 manager_unavailable`;
+3. each item in turn, against the manager's inventory, read fresh:
+   `409 funding_refused` with the sentence. `problem: "node"` for a node no
+   stage lists (the catalogue node alone is not listed: the tab leaves its
+   chequebook alone), a gateway, whose chequebook the manager does not move,
+   and a node whose wallet could not be read; `problem: "chequebook"` for a
+   node that has no chequebook, one the manager did not read or could not, an
+   item at the target as the page showed it, a deposit into a chequebook that
+   holds more available now than the page showed (something was deposited
+   since, and the deposit would overshoot: read the page again), and a
+   withdrawal of more than the chequebook holds available now. A node two
+   stages list, as a stage's own and as another's rung, is one node, read
+   once, and moved once;
+4. a wallet that holds no xDAI for the gas, or less xBZZ than its deposit
+   (`problem: "insufficient_funds"`, naming each shortfall);
+5. an item of an earlier chequebook bulk that still holds up a new one, after
+   the latest such bulks were refreshed, or another chequebook request at that
+   moment: `409 { "error": "conflict" }`. A send and a stamp bulk do not hold a
+   chequebook bulk up, nor a chequebook bulk either of them: each has a lock
+   and a check of its own.
+
+**The move the dialog showed.** Each item moves `chequebookMove(target,
+availablePlur)`: the target less the available balance the page showed, a
+deposit of the difference when the chequebook is under the target and a
+withdrawal of it when the chequebook is over. It is worked out from the page's
+balance, not the one the manager reads now, so the admin moves exactly what the
+confirm dialog listed. A busy node keeps paying its peers out of its chequebook
+meanwhile, so its balance lands near the target, not on it.
+
+**Journalled, answered, then relayed in turn.** Every item is written to
+`funding_chequebook_operations`, `queued`, with the fields of the manager's
+request, the target and the balance the page showed, before any is relayed,
+under a Postgres advisory lock of the chequebooks' own, and the request answers
+at once. The items are then relayed in turn behind the answer, in this process,
+each relay with the client's 240 seconds: the manager answers once the node has
+sent the move, `submitted` with its hash, and the move is mined after. A
+request names a node once, so no item waits on another. A relay the manager
+refuses (`chequebook_refused`, `unknown_node`, `conflict`, `bad_transaction`)
+fails its item with the manager's sentence, nothing having been asked of the
+node, and the next item is relayed. An item the manager answers `failed`, its
+preflight having refused the move, takes the manager's sentence from a status
+read, since the answer carries none. Any other failure (the manager out of
+reach, its answer lost to the deadline, the funding API off, an answer that
+cannot be read, the manager's own 5xx, its journal's 503 among them) leaves the
+item, and the ones after it, `queued` for a refresh, which asks the manager
+where it stands. The manager journals a move before it asks the node, so one
+that reached it is never `unknown_request`. A process that stops mid-way leaves
+its items as recorded, for the next refresh.
+
+**Settling.** A `queued` item holds up a new chequebook bulk whatever its age,
+since the manager may not have it yet. A `submitted` or `unknown` one holds it
+up for 30 minutes from when the manager answered its relay, or a status read
+first found it: the manager's receipt budget (`RECEIPT_POLL_BUDGET_MS` in
+`apps/infra-manager/common/src/chequebookOperations.ts`), which
+`FUNDING_CHEQUEBOOK_SETTLES_AFTER_MS` mirrors and must stay equal to. The
+manager reads the chain for a submitted move's receipt for those 30 minutes,
+and answers `unknown` when it cannot tell whether the node made the move. Past
+them it may hold the move so until an operator settles it in the manager's
+console, after a crash in the middle of it, say. The next bulk goes ahead
+then, which is safe: the manager refuses a second move on a node while one is
+in flight there, `409 conflict` ("Another chequebook move on this node is still
+under way."), and that item fails with the sentence. The older item is still
+asked about. A `confirmed` or `failed` item is settled for good. The flags each
+item answers:
+
+| State                                          | `settled` | `watched` |
+| ---------------------------------------------- | --------- | --------- |
+| `queued`, whatever its age                     | false     | false     |
+| `submitted`, relay answered at most 30 min ago | false     | false     |
+| `submitted`, older                             | true      | true      |
+| `unknown`, relay answered at most 30 min ago   | false     | true      |
+| `unknown`, older                               | true      | true      |
+| `confirmed`, `failed`                          | true      | false     |
+
+**The refresh** reads, in the bulk's order, where each `queued`, `submitted` or
+`unknown` item stands on the manager, and records it, its hash once the manager
+answers one. A `queued` item the manager never received (`unknown_request`) is
+relayed again, the same fields under the same request id, which the manager
+runs at most once. An item the manager answered for before is never relayed
+again, whatever the manager says of it, since a second run would move the
+balance again. The refresh stops at the first item the manager cannot answer
+for. It runs for `GET /api/funding/chequebook-operations?bulkId=` on that bulk,
+for `GET /api/funding` on the latest chequebook bulks with an item still asked
+about, three at most, and for a chequebook request before its check, on those
+and on the open ones, three at most each. One run of relays or reads per bulk
+at a time in the process, which every caller shares: a read waits on it for 2
+seconds at most (`FUNDING_CHEQUEBOOK_WAIT_MS`), answers the journal as it
+stands, and the run goes on behind it.
+
+Each `funding.chequebook.confirmed` or `.failed` audit row is written once,
+when the item first comes to that state, with its hash ([Audit log](#audit-log)).
+
+| Table                           | What it holds                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                               |
+| ------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `funding_chequebook_operations` | migration 019: one row per item of a chequebook bulk, by `request_id`, with `bulk_id`, its `position` in the bulk, the node's id and label, `direction`, `amount_plur`, `target_plur`, `available_plur` (the balance the page showed, which the move is worked out from), `state`, `tx_hash`, `error`, `relayed_at`, the operator's id and name, and when. One item per node and one per place in a bulk; the move is the one that brings `available_plur` to `target_plur`, the target at least 1 xBZZ, and every amount 30 digits at most |
+
 ## Migrations
 
 `src/migrations/NNN_name.sql`, applied in order inside a transaction at every
@@ -1338,7 +1466,10 @@ and its key, encrypted ([The brand wallet](#the-brand-wallet)).
 operator confirmed, `funding_node_pins` ([Funding transfers](#funding-transfers)).
 `018_funding_stamp_operations.sql` is the journal of the top-ups and dilutions
 the admin asks the manager for, `funding_stamp_operations`
-([Stamp operations](#stamp-operations)).
+([Stamp operations](#stamp-operations)), and
+`019_funding_chequebook_operations.sql` the journal of the deposits into and
+withdrawals from the nodes' chequebooks, `funding_chequebook_operations`
+([Chequebook operations](#chequebook-operations)).
 
 ## Audit log
 
@@ -1444,7 +1575,13 @@ item's bulk, request id, node, label, batch, kind, days, steps, depths,
 amount, cost, hash (null for an operation the manager confirmed from the
 chain), state and error. The operator is the actor of a request and of what
 its relays learned, though they end after the request answered; `system`
-with the reason `funding` of what a refresh learned.
+with the reason `funding` of what a refresh learned. The chequebook
+operations ([Chequebook operations](#chequebook-operations)), likewise:
+`funding.chequebook.request` (one row per chequebook bulk, with its `bulkId`,
+its `targetPlur`, and each item's request id, node, label, direction, amount
+and the available balance the page showed), and `funding.chequebook.confirmed`
+and `funding.chequebook.failed`, each with the item's bulk, request id, node,
+label, direction, amount, target, available balance, hash, state and error.
 
 **A failed audit write never fails the operation.** The row is written after
 the mutation it describes, which has already happened by then; the failure is

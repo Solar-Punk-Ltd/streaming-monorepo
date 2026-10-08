@@ -48,7 +48,10 @@ export type AuditAction =
   | 'funding.transfer.failed'
   | 'funding.stamp.request'
   | 'funding.stamp.confirmed'
-  | 'funding.stamp.failed';
+  | 'funding.stamp.failed'
+  | 'funding.chequebook.request'
+  | 'funding.chequebook.confirmed'
+  | 'funding.chequebook.failed';
 
 /**
  * One row of `audit_log`: who did what to which stream, and what it moved.
@@ -57,7 +60,8 @@ export type AuditAction =
  * edit changed, the feed index a write landed at and what it published, the
  * error a publish failed with, the user a user action was done to, the stage
  * a stage action was about, the amounts and nodes of a funding send, the
- * batches, nodes and costs of a stamp operation. Never a secret: no publish
+ * batches, nodes and costs of a stamp operation, the target, nodes and moves
+ * of a chequebook operation. Never a secret: no publish
  * key, no password or hash, no session token, no SRT passphrase, no uploader
  * token or its hash, and no signed transaction or wallet key.
  */

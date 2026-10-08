@@ -1,7 +1,7 @@
 /**
- * Migrations 016, 017 and 018 against the real database: `funding_transfers`, `funding_node_pins` and
- * `funding_stamp_operations`, and the repositories the funding services keep their journals and their pins with.
- * Needs Postgres, like the rest of this suite; `DATABASE_URL` overrides the connection.
+ * Migrations 016, 017, 018 and 019 against the real database: `funding_transfers`, `funding_node_pins`,
+ * `funding_stamp_operations` and `funding_chequebook_operations`, and the repositories the funding services keep their
+ * journals and their pins with. Needs Postgres, like the rest of this suite; `DATABASE_URL` overrides the connection.
  *
  * What the in-memory stores of the unit tests cannot stand in for is the SQL: that the send lock is one across
  * connections, taken without waiting and released when the work is over, failed or not; that a send's items are
@@ -14,15 +14,24 @@
  * the stamp journal: a request journalled together or not at all and read back in its order with its amounts as they
  * went in, what each kind carries and nothing of the other's, a batch once per request, the hold of an unknown item
  * for 30 minutes from its relay, an update only while an item is asked about that keeps a hash once known, and a
- * stamp lock of its own, which the send lock does not hold up.
+ * stamp lock of its own, which the send lock does not hold up. And the same of the chequebook journal: a request
+ * journalled together or not at all and read back in its order with its amounts as they went in, the move each item
+ * makes being the one that brings the balance the page showed to the target, the floor of 1 xBZZ, a node once per
+ * request, the hold of a queued item whatever its age and of a submitted or unknown one for 30 minutes from its relay,
+ * an update only while an item is asked about, and a chequebook lock of its own, which neither the send lock nor the
+ * stamp lock holds up.
  *
- * Every row it writes is in the suite's throwaway database; it empties the three tables before each test.
+ * Every row it writes is in the suite's throwaway database; it empties the four tables before each test.
  */
 import assert from 'node:assert/strict';
 import { randomUUID } from 'node:crypto';
 import { after, before, beforeEach, describe, it } from 'node:test';
 
 import { Database } from '../../src/domain/Database.js';
+import {
+  FundingChequebookRepository,
+  type NewFundingChequebookOperation,
+} from '../../src/domain/funding/FundingChequebookRepository.js';
 import { FundingPinRepository } from '../../src/domain/funding/FundingPinRepository.js';
 import {
   FundingStampRepository,
@@ -39,6 +48,7 @@ let database: Database;
 let transfers: FundingTransferRepository;
 let pins: FundingPinRepository;
 let stamps: FundingStampRepository;
+let chequebooks: FundingChequebookRepository;
 
 const WALLET_A = '0x1111111111111111111111111111111111111111';
 const WALLET_B = '0x2222222222222222222222222222222222222222';
@@ -55,6 +65,7 @@ before(async () => {
   transfers = new FundingTransferRepository(database.pool);
   pins = new FundingPinRepository(database.pool);
   stamps = new FundingStampRepository(database.pool);
+  chequebooks = new FundingChequebookRepository(database.pool);
 });
 
 after(async () => {
@@ -70,6 +81,7 @@ beforeEach(async () => {
   await database.pool.query('DELETE FROM funding_transfers');
   await database.pool.query('DELETE FROM funding_node_pins');
   await database.pool.query('DELETE FROM funding_stamp_operations');
+  await database.pool.query('DELETE FROM funding_chequebook_operations');
 });
 
 function item(bulkId: string, nonce: number, over: Partial<NewFundingTransfer> = {}): NewFundingTransfer {
@@ -603,5 +615,278 @@ describe('the stamp lock', () => {
       /the work failed/,
     );
     assert.deepEqual(await stamps.withStampLock(async () => 1), { locked: true, result: 1 });
+  });
+});
+
+/** One xBZZ in PLUR, the floor a chequebook is brought to. */
+const ONE_XBZZ = 10n ** 16n;
+/** The most a chequebook amount holds: 30 digits. */
+const THIRTY_NINES = '9'.repeat(30);
+
+/** A deposit of 0.5 xBZZ into a chequebook the page showed at 1.5, to a target of 2. */
+function depositItem(
+  bulkId: string,
+  position: number,
+  over: Partial<NewFundingChequebookOperation> = {},
+): NewFundingChequebookOperation {
+  return {
+    requestId: randomUUID(),
+    bulkId,
+    position,
+    nodeId: `stage-1:node-${position}`,
+    nodeLabel: `Node ${position}`,
+    direction: 'deposit',
+    amountPlur: (ONE_XBZZ / 2n).toString(),
+    targetPlur: (2n * ONE_XBZZ).toString(),
+    availablePlur: ((3n * ONE_XBZZ) / 2n).toString(),
+    requestedByUserId: null,
+    requestedBy: 'alice',
+    ...over,
+  };
+}
+
+/** A withdrawal of 1.25 xBZZ from a chequebook the page showed at 3.25, to a target of 2. */
+function withdrawItem(
+  bulkId: string,
+  position: number,
+  over: Partial<NewFundingChequebookOperation> = {},
+): NewFundingChequebookOperation {
+  return {
+    ...depositItem(bulkId, position),
+    direction: 'withdraw',
+    amountPlur: ((5n * ONE_XBZZ) / 4n).toString(),
+    availablePlur: ((13n * ONE_XBZZ) / 4n).toString(),
+    ...over,
+  };
+}
+
+describe('funding_chequebook_operations', () => {
+  it('journals a request queued, and reads it back in its order with every field as it went in', async () => {
+    const bulkId = randomUUID();
+    // The most a request carries: a target of 30 digits, and a deposit into an empty chequebook of all of it.
+    const big = depositItem(bulkId, 0, { amountPlur: THIRTY_NINES, targetPlur: THIRTY_NINES, availablePlur: '0' });
+    await chequebooks.insertAll([withdrawItem(bulkId, 2), big, depositItem(bulkId, 1)]);
+
+    const rows = await chequebooks.listBulk(bulkId);
+
+    assert.deepEqual(
+      rows.map((row) => row.position),
+      [0, 1, 2],
+    );
+    assert.deepEqual(
+      [rows[0]?.amountPlur, rows[0]?.targetPlur, rows[0]?.availablePlur],
+      [THIRTY_NINES, THIRTY_NINES, '0'],
+    );
+    const [, deposit, withdrawal] = rows;
+    assert.deepEqual(
+      [
+        deposit?.direction,
+        deposit?.nodeId,
+        deposit?.nodeLabel,
+        deposit?.amountPlur,
+        deposit?.targetPlur,
+        deposit?.availablePlur,
+        deposit?.requestedBy,
+        deposit?.requestedByUserId,
+      ],
+      [
+        'deposit',
+        'stage-1:node-1',
+        'Node 1',
+        '5000000000000000',
+        '20000000000000000',
+        '15000000000000000',
+        'alice',
+        null,
+      ],
+    );
+    assert.deepEqual(
+      [withdrawal?.direction, withdrawal?.amountPlur, withdrawal?.availablePlur],
+      ['withdraw', '12500000000000000', '32500000000000000'],
+    );
+    for (const row of rows) {
+      assert.equal(row.state, 'queued');
+      assert.equal(row.txHash, null);
+      assert.equal(row.error, null);
+      assert.equal(row.relayedAt, null);
+      assert.equal(row.bulkId, bulkId);
+    }
+    assert.deepEqual(await chequebooks.listBulk(randomUUID()), []);
+  });
+
+  it('journals all the items of a request or none', async () => {
+    const bulkId = randomUUID();
+    await assert.rejects(
+      chequebooks.insertAll([depositItem(bulkId, 0), depositItem(bulkId, 1, { nodeId: 'not/a node' })]),
+    );
+
+    assert.deepEqual(await chequebooks.listBulk(bulkId), []);
+  });
+
+  it('refuses what the service never writes', async () => {
+    const bulkId = randomUUID();
+    const refused: NewFundingChequebookOperation[] = [
+      depositItem(bulkId, 0, { nodeId: 'a/b' }),
+      depositItem(bulkId, 0, { nodeLabel: '' }),
+      depositItem(bulkId, 0, { position: -1 }),
+      // A direction the contract does not name, which the type refuses as well.
+      depositItem(bulkId, 0, { direction: 'cashout' as unknown as 'deposit' }),
+      // A move of nothing, which the service never sends.
+      depositItem(bulkId, 0, { amountPlur: '0', availablePlur: (2n * ONE_XBZZ).toString() }),
+      // A target under the floor of 1 xBZZ.
+      depositItem(bulkId, 0, {
+        amountPlur: (ONE_XBZZ - 2n).toString(),
+        targetPlur: (ONE_XBZZ - 1n).toString(),
+        availablePlur: '1',
+      }),
+      // A move that is not the one from the balance the page showed to the target, either way.
+      depositItem(bulkId, 0, { amountPlur: (ONE_XBZZ / 2n + 1n).toString() }),
+      depositItem(bulkId, 0, { availablePlur: ((13n * ONE_XBZZ) / 4n).toString() }),
+      withdrawItem(bulkId, 0, { amountPlur: ((5n * ONE_XBZZ) / 4n - 1n).toString() }),
+      withdrawItem(bulkId, 0, { availablePlur: ((3n * ONE_XBZZ) / 2n).toString() }),
+      // More than 30 digits, which the manager's chequebook journal does not hold.
+      depositItem(bulkId, 0, {
+        amountPlur: `1${'0'.repeat(30)}`,
+        targetPlur: `1${'0'.repeat(30)}`,
+        availablePlur: '0',
+      }),
+    ];
+    for (const item of refused) {
+      await assert.rejects(chequebooks.insertAll([item]), JSON.stringify(item));
+    }
+    // A node at most once in a request, and one item at each place of it.
+    await chequebooks.insertAll([depositItem(bulkId, 0)]);
+    await assert.rejects(chequebooks.insertAll([withdrawItem(bulkId, 1, { nodeId: 'stage-1:node-0' })]));
+    await assert.rejects(chequebooks.insertAll([depositItem(bulkId, 0, { nodeId: 'stage-1:other' })]));
+    await chequebooks.insertAll([depositItem(randomUUID(), 0)]);
+  });
+
+  it('updates an item while it is asked about, keeps a hash once known, and never moves one settled for good', async () => {
+    const bulkId = randomUUID();
+    const item = depositItem(bulkId, 0);
+    await chequebooks.insertAll([item]);
+    const hash = `0x${'cd'.repeat(32)}`;
+    const answered = new Date('2026-10-08T18:00:00.000Z');
+
+    const submitted = await chequebooks.update(item.requestId, {
+      state: 'submitted',
+      error: null,
+      txHash: hash,
+      relayedAt: answered,
+    });
+    assert.deepEqual(
+      [submitted?.state, submitted?.error, submitted?.txHash, submitted?.relayedAt?.getTime()],
+      ['submitted', null, hash, answered.getTime()],
+    );
+
+    const confirmed = await chequebooks.update(item.requestId, { state: 'confirmed', error: null, txHash: null });
+    assert.deepEqual(
+      [confirmed?.state, confirmed?.txHash, confirmed?.relayedAt?.getTime()],
+      ['confirmed', hash, answered.getTime()],
+    );
+
+    assert.equal(await chequebooks.update(item.requestId, { state: 'failed', error: 'late' }), null);
+    assert.equal((await chequebooks.listBulk(bulkId))[0]?.state, 'confirmed');
+    assert.equal(await chequebooks.update(randomUUID(), { state: 'failed', error: 'none' }), null);
+
+    const other = depositItem(bulkId, 1);
+    await chequebooks.insertAll([other]);
+    await assert.rejects(
+      chequebooks.update(other.requestId, { state: 'submitted', error: null, txHash: '0x12' }),
+      'a hash is 0x and 64 hex digits',
+    );
+    await chequebooks.update(other.requestId, { state: 'failed', error: 'The manager refused it.' });
+    assert.equal(
+      await chequebooks.update(other.requestId, { state: 'confirmed', error: null }),
+      null,
+      'failed is final',
+    );
+  });
+
+  it('holds up a bulk for a queued item whatever its age, and a submitted or unknown one for 30 minutes from its relay', async () => {
+    const journalled = new Date();
+    assert.equal(await chequebooks.hasUnsettled(journalled), false);
+    const older = randomUUID();
+    const [a, b] = [depositItem(older, 0), withdrawItem(older, 1)];
+    await chequebooks.insertAll([a, b]);
+    assert.equal(await chequebooks.hasUnsettled(journalled), true);
+    assert.deepEqual(await chequebooks.openBulkIds(3, journalled), [older]);
+    assert.deepEqual(await chequebooks.askedBulkIds(3), [older]);
+    // Queued, so the manager may not have them yet: a day on, they hold up a bulk all the same.
+    const aDayOn = new Date(journalled.getTime() + 24 * 60 * 60 * 1000);
+    assert.equal(await chequebooks.hasUnsettled(aDayOn), true);
+    assert.deepEqual(await chequebooks.openBulkIds(3, aDayOn), [older]);
+
+    // The relays land 40 minutes after the journal: one the node sent, the other one the manager cannot tell about.
+    const relayed = new Date(journalled.getTime() + 40 * 60 * 1000);
+    await chequebooks.update(a.requestId, {
+      state: 'submitted',
+      error: null,
+      txHash: `0x${'cd'.repeat(32)}`,
+      relayedAt: relayed,
+    });
+    await chequebooks.update(b.requestId, { state: 'unknown', error: null, relayedAt: relayed });
+    assert.equal(await chequebooks.hasUnsettled(relayed), true, 'a young submitted or unknown item holds up a bulk');
+
+    const thirty = 30 * 60 * 1000;
+    assert.equal(await chequebooks.hasUnsettled(new Date(relayed.getTime() + thirty)), true, 'at 30 minutes, still');
+    const later = new Date(relayed.getTime() + thirty + 1);
+    assert.equal(await chequebooks.hasUnsettled(later), false, 'past 30 minutes, neither holds up a bulk');
+    assert.deepEqual(await chequebooks.openBulkIds(3, later), []);
+    assert.deepEqual(await chequebooks.askedBulkIds(3), [older], 'and both are still asked about');
+
+    // The manager settles both: asked about no more.
+    await chequebooks.update(a.requestId, { state: 'confirmed', error: null });
+    await chequebooks.update(b.requestId, { state: 'failed', error: 'The chain reverted the move; nothing moved.' });
+    assert.deepEqual(await chequebooks.askedBulkIds(3), []);
+
+    // An item answered with no relay recorded counts from its journal, and never holds a bulk for good.
+    const fallback = randomUUID();
+    const c = depositItem(fallback, 0);
+    await chequebooks.insertAll([c]);
+    await chequebooks.update(c.requestId, { state: 'submitted', error: null });
+    assert.deepEqual(await chequebooks.openBulkIds(3, new Date()), [fallback]);
+    assert.deepEqual(await chequebooks.openBulkIds(3, new Date(Date.now() + thirty + 60_000)), []);
+    assert.deepEqual(await chequebooks.askedBulkIds(3), [fallback]);
+  });
+});
+
+describe('the chequebook lock', () => {
+  it('is held by one request at a time, across connections, and taken without waiting', async () => {
+    let release!: () => void;
+    const held = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    let entered!: () => void;
+    const inside = new Promise<void>((resolve) => {
+      entered = resolve;
+    });
+
+    const first = chequebooks.withChequebookLock(async () => {
+      entered();
+      await held;
+      return 'first';
+    });
+    await inside;
+    const second = await chequebooks.withChequebookLock(async () => 'second');
+    // Neither a send nor a stamp request is held up by a chequebook request.
+    const send = await transfers.withSendLock(async () => 'send');
+    const stamp = await stamps.withStampLock(async () => 'stamp');
+    release();
+
+    assert.deepEqual(second, { locked: false });
+    assert.deepEqual(send, { locked: true, result: 'send' });
+    assert.deepEqual(stamp, { locked: true, result: 'stamp' });
+    assert.deepEqual(await first, { locked: true, result: 'first' });
+  });
+
+  it('is released when the work is over, and when it throws', async () => {
+    await assert.rejects(
+      chequebooks.withChequebookLock(async () => {
+        throw new Error('the work failed');
+      }),
+      /the work failed/,
+    );
+    assert.deepEqual(await chequebooks.withChequebookLock(async () => 1), { locked: true, result: 1 });
   });
 });

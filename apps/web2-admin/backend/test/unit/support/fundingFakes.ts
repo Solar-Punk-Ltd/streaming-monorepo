@@ -2,18 +2,22 @@
  * In-memory stand-ins for what the funding services depend on, and the readings a test starts from.
  *
  * The stores copy the semantics of the SQL that matter: a journal's update writes only while an item is unsettled
- * (a stamp item: still asked about) and answers null otherwise; the send lock and the stamp lock are taken without
- * waiting, as `pg_try_advisory_lock` is, and a second taker gets `{ locked: false }`; rows go in and come out as
- * copies. The wallet signs for real, with a key the test generates, so a test reads back exactly what would go to the
- * chain. The manager journals what it is relayed, as the real one does, so a status read for a request id it never
- * took answers `unknown_request`; it runs a stamp operation once per request id, answers the same request id again
- * with its state, and another body under it with `conflict`.
+ * (a stamp or chequebook item: still asked about) and answers null otherwise; the send, stamp and chequebook locks are
+ * taken without waiting, as `pg_try_advisory_lock` is, and a second taker gets `{ locked: false }`; rows go in and come
+ * out as copies. The wallet signs for real, with a key the test generates, so a test reads back exactly what would go
+ * to the chain. The manager journals what it is relayed, as the real one does, so a status read for a request id it
+ * never took answers `unknown_request`; it runs a stamp or chequebook operation once per request id, answers the same
+ * request id again with its state, and another body under it with `conflict`.
  *
  * Addresses are fixtures the leak gate allows (`scripts/public-leaks/allow.json`) or derived from a generated key.
  */
 import type {
   FundingAccountAnswer,
   FundingBatch,
+  FundingChequebook,
+  FundingChequebookOperationAnswer,
+  FundingChequebookOperationRequest,
+  FundingChequebookOperationStatus,
   FundingInventory,
   FundingNode,
   FundingPostage,
@@ -28,6 +32,16 @@ import type {
 import { type Address, type Hex, keccak256, toHex } from 'viem';
 import { generatePrivateKey, privateKeyToAccount } from 'viem/accounts';
 
+import {
+  type ChequebookLockOutcome,
+  type FundingChequebookRow,
+  type FundingChequebookStore,
+  type FundingChequebookUpdate,
+  holdsChequebookBulk,
+  isChequebookAsked,
+  type NewFundingChequebookOperation,
+} from '../../../src/domain/funding/FundingChequebookRepository.js';
+import type { FundingChequebookManager } from '../../../src/domain/funding/FundingChequebookService.js';
 import type {
   FundingPinRow,
   FundingPinStore,
@@ -187,6 +201,71 @@ export function stampTxHash(requestId: string): string {
   return keccak256(toHex(requestId));
 }
 
+/** A chequebook's address: the fixture of one repeated digit, the same for every node, since nothing checks it. */
+export const CHEQUEBOOK_ADDRESS = '0x3333333333333333333333333333333333333333';
+
+/** A chequebook read whole: 1.5 xBZZ available of 2 in all, so 0.5 xBZZ in cheques its peers have not cashed. */
+export function fundingChequebook(over: Partial<FundingChequebook> = {}): FundingChequebook {
+  return {
+    address: CHEQUEBOOK_ADDRESS,
+    availablePlur: ((3n * ONE_XBZZ) / 2n).toString(),
+    totalPlur: (2n * ONE_XBZZ).toString(),
+    readError: null,
+    ...over,
+  };
+}
+
+/**
+ * The inventory a chequebook request is checked against: the stage's own node with 1.5 xBZZ available in its
+ * chequebook, its gateway with 3, a rung's node with 3.25, and the catalogue node with 1; every wallet holds 5 xBZZ
+ * and 0.1 xDAI. Against a target of 2 xBZZ, the stage's node takes a deposit of 0.5 and the rung a withdrawal of 1.25.
+ */
+export function chequebookInventory(): FundingInventory {
+  const funded = { xdaiWei: (ONE_XDAI / 10n).toString(), xbzzPlur: (5n * ONE_XBZZ).toString() };
+  return fundingInventory({
+    stages: [
+      {
+        stageId: STAGE_ID,
+        name: 'Main stage',
+        nodes: [
+          fundingNode({ ...funded, chequebook: fundingChequebook() }),
+          fundingNode({
+            nodeId: NODE_B,
+            label: 'Main stage gateway',
+            role: 'gateway',
+            walletAddress: WALLET_B,
+            ...funded,
+            chequebook: fundingChequebook({ availablePlur: (3n * ONE_XBZZ).toString() }),
+          }),
+          fundingNode({
+            nodeId: NODE_RUNG,
+            label: 'Main stage 720p rung',
+            role: 'rung',
+            walletAddress: WALLET_RUNG,
+            ...funded,
+            chequebook: fundingChequebook({
+              availablePlur: ((13n * ONE_XBZZ) / 4n).toString(),
+              totalPlur: (4n * ONE_XBZZ).toString(),
+            }),
+          }),
+        ],
+      },
+    ],
+    catalogue: fundingNode({
+      nodeId: NODE_CATALOGUE,
+      label: 'Catalogue node',
+      walletAddress: WALLET_C,
+      ...funded,
+      chequebook: fundingChequebook({ availablePlur: ONE_XBZZ.toString() }),
+    }),
+  });
+}
+
+/** The hash the fake manager answers for a chequebook operation the node submitted. */
+export function chequebookTxHash(requestId: string): string {
+  return keccak256(toHex(`chequebook ${requestId}`));
+}
+
 /** The brand wallet's account: 10 xDAI, 100 xBZZ, nonce 7, a fee cap of 2 gwei and a tip of 1. */
 export function fundingAccount(address: string, over: Partial<FundingAccountAnswer> = {}): FundingAccountAnswer {
   return {
@@ -245,10 +324,11 @@ export class FakeFundingWallet implements FundingWallet {
  * The manager's funding API. By default it answers the inventory and the account above, takes every relay as
  * `submitted` and journals it, and answers a status read from that journal, in the state the relay was answered with,
  * `unknown_request` for an id it never took. A stamp operation it journals and runs once per request id, answered
- * `confirmed` by default; the same request again answers its state, and another body under its id `conflict`. Each
- * call can be made to fail, or to wait on a gate.
+ * `confirmed` by default; the same request again answers its state, and another body under its id `conflict`. A
+ * chequebook operation likewise, answered `submitted` with its hash by default, as the manager answers once the node
+ * has sent the move, and settled only when a test says so. Each call can be made to fail, or to wait on a gate.
  */
-export class FakeFundingManager implements FundingManager, FundingStampManager {
+export class FakeFundingManager implements FundingManager, FundingStampManager, FundingChequebookManager {
   inventoryAnswer: FundingInventory = fundingInventory();
   accountAnswer: (address: string) => FundingAccountAnswer = (address) => fundingAccount(address);
   inventoryError: Error | null = null;
@@ -301,6 +381,34 @@ export class FakeFundingManager implements FundingManager, FundingStampManager {
   readonly stampJournalState = new Map<string, FundingTransferState>();
   /** What the manager asked the nodes for: one operation per request id, however often it was relayed. */
   readonly stampRuns: FundingStampOperationRequest[] = [];
+
+  /** The state a chequebook operation is answered with when the manager runs it. */
+  chequebookState: FundingTransferState = 'submitted';
+  /** When set, the state each chequebook operation is answered with when the manager runs it, over `chequebookState`. */
+  chequebookStateOf: ((operation: FundingChequebookOperationRequest) => FundingTransferState) | null = null;
+  /** The sentence a chequebook status read gives an operation that failed, unless told otherwise. */
+  chequebookFailure = "The node's wallet holds too little xBZZ for the deposit. Nothing was sent.";
+  /** A chequebook operation's failure by the order of the call, 0 first, or for every call with the `Always` one. */
+  chequebookErrors = new Map<number, Error>();
+  chequebookErrorAlways: Error | null = null;
+  chequebookStatusError: Error | null = null;
+  /** What a chequebook status read answers for a request id, over the journal. */
+  chequebookStatusAnswers = new Map<string, Partial<FundingChequebookOperationStatus>>();
+  /** Called at the start of each chequebook operation, before anything is answered. */
+  onChequebookOperation: ((operation: FundingChequebookOperationRequest) => void) | null = null;
+  /** When set, a chequebook operation waits for it before it is answered, as the manager waits on the node. */
+  chequebookGate: Promise<void> | null = null;
+
+  readonly chequebookCalls = { operation: 0, status: 0 };
+  /** Every chequebook operation relayed to it, in order, as it came. */
+  readonly chequebookOperations: FundingChequebookOperationRequest[] = [];
+  readonly chequebookStatusReads: string[] = [];
+  /** What the manager journalled: each chequebook operation it took, by request id. */
+  readonly chequebookJournal = new Map<string, FundingChequebookOperationRequest>();
+  /** The state each journalled chequebook operation stands in, which a status read answers until told otherwise. */
+  readonly chequebookJournalState = new Map<string, FundingTransferState>();
+  /** What the manager asked the nodes for: one move per request id, however often it was relayed. */
+  readonly chequebookRuns: FundingChequebookOperationRequest[] = [];
 
   async inventory(): Promise<FundingInventory> {
     this.calls.inventory += 1;
@@ -398,6 +506,54 @@ export class FakeFundingManager implements FundingManager, FundingStampManager {
       state,
       txHash: state === 'confirmed' ? stampTxHash(requestId) : null,
       error: state === 'failed' ? this.stampFailure : null,
+      ...answer,
+    };
+  }
+
+  async chequebookOperation(operation: FundingChequebookOperationRequest): Promise<FundingChequebookOperationAnswer> {
+    const call = this.chequebookCalls.operation;
+    this.chequebookCalls.operation += 1;
+    this.onChequebookOperation?.(operation);
+    this.chequebookOperations.push(structuredClone(operation));
+    if (this.chequebookGate) await this.chequebookGate;
+    await Promise.resolve();
+    const error = this.chequebookErrorAlways ?? this.chequebookErrors.get(call);
+    if (error) throw error;
+    const taken = this.chequebookJournal.get(operation.requestId);
+    if (taken && JSON.stringify(taken) !== JSON.stringify(operation)) {
+      throw managerFailure('conflict', 409, 'Another chequebook operation has this request id.');
+    }
+    if (!taken) {
+      this.chequebookJournal.set(operation.requestId, structuredClone(operation));
+      this.chequebookJournalState.set(operation.requestId, this.chequebookStateOf?.(operation) ?? this.chequebookState);
+      this.chequebookRuns.push(structuredClone(operation));
+    }
+    const state = this.chequebookJournalState.get(operation.requestId) ?? this.chequebookState;
+    return {
+      requestId: operation.requestId,
+      direction: operation.direction,
+      state,
+      txHash: state === 'submitted' || state === 'confirmed' ? chequebookTxHash(operation.requestId) : null,
+    };
+  }
+
+  async chequebookOperationStatus(requestId: string): Promise<FundingChequebookOperationStatus> {
+    this.chequebookCalls.status += 1;
+    this.chequebookStatusReads.push(requestId);
+    await Promise.resolve();
+    if (this.chequebookStatusError) throw this.chequebookStatusError;
+    const taken = this.chequebookJournal.get(requestId);
+    const answer = this.chequebookStatusAnswers.get(requestId);
+    if (!taken && !answer) {
+      throw managerFailure('unknown_request', 404, 'No chequebook operation was journalled under this request id.');
+    }
+    const state = this.chequebookJournalState.get(requestId) ?? 'submitted';
+    return {
+      requestId,
+      direction: taken?.direction ?? 'deposit',
+      state,
+      txHash: state === 'submitted' || state === 'confirmed' ? chequebookTxHash(requestId) : null,
+      error: state === 'failed' ? this.chequebookFailure : null,
       ...answer,
     };
   }
@@ -658,6 +814,130 @@ export class InMemoryFundingStampStore implements FundingStampStore {
     requestId: string,
     state: FundingStampRow['state'],
     over: Partial<Pick<FundingStampRow, 'error' | 'txHash' | 'relayedAt' | 'createdAt'>> = {},
+  ): void {
+    const row = this.rows.get(requestId);
+    if (!row) throw new Error(`no such row: ${requestId}`);
+    this.rows.set(requestId, { ...row, state, ...over });
+  }
+}
+
+/** Whole PLUR of 30 digits at most, as migration 019's NUMERIC(30, 0) columns take it. */
+const JOURNAL_PLUR = /^(0|[1-9]\d{0,29})$/;
+
+/** The chequebook journal in memory, with migration 019's checks that matter to the service. */
+export class InMemoryFundingChequebookStore implements FundingChequebookStore {
+  readonly rows = new Map<string, FundingChequebookRow>();
+  private locked = false;
+  /** How many times the lock was refused to a second taker. */
+  lockRefusals = 0;
+  /** When set, a taker holds the lock until it resolves before its work runs, so a test can meet it there. */
+  lockGate: Promise<void> | null = null;
+
+  async withChequebookLock<T>(work: () => Promise<T>): Promise<ChequebookLockOutcome<T>> {
+    if (this.locked) {
+      this.lockRefusals += 1;
+      return { locked: false };
+    }
+    this.locked = true;
+    try {
+      if (this.lockGate) await this.lockGate;
+      return { locked: true, result: await work() };
+    } finally {
+      this.locked = false;
+    }
+  }
+
+  async hasUnsettled(now: Date): Promise<boolean> {
+    return [...this.rows.values()].some((row) => holdsChequebookBulk(row, now.getTime()));
+  }
+
+  async openBulkIds(limit: number, now: Date): Promise<string[]> {
+    return this.bulkIdsWhere((row) => holdsChequebookBulk(row, now.getTime()), limit);
+  }
+
+  async askedBulkIds(limit: number): Promise<string[]> {
+    return this.bulkIdsWhere(isChequebookAsked, limit);
+  }
+
+  /** The bulks with a row that matches, the latest first, as the SQL orders them by their rows' moment. */
+  private bulkIdsWhere(matches: (row: FundingChequebookRow) => boolean, limit: number): string[] {
+    const latest = new Map<string, number>();
+    for (const row of this.rows.values()) {
+      if (!matches(row)) continue;
+      latest.set(row.bulkId, Math.max(latest.get(row.bulkId) ?? 0, row.createdAt.getTime()));
+    }
+    return [...latest]
+      .sort(([a, at], [b, bt]) => bt - at || a.localeCompare(b))
+      .slice(0, limit)
+      .map(([bulkId]) => bulkId);
+  }
+
+  async insertAll(items: readonly NewFundingChequebookOperation[]): Promise<void> {
+    // The database's clock, as the SQL's NOW() writes it.
+    const at = new Date();
+    const all = [...this.rows.values(), ...items];
+    for (const item of items) {
+      if (this.rows.has(item.requestId)) throw new Error(`duplicate request id ${item.requestId}`);
+      const sameBulk = all.filter((other) => other !== item && other.bulkId === item.bulkId);
+      if (sameBulk.some((other) => other.nodeId === item.nodeId)) throw new Error('one_per_node');
+      if (sameBulk.some((other) => other.position === item.position)) throw new Error('bulk_position');
+      for (const plur of [item.amountPlur, item.targetPlur, item.availablePlur]) {
+        if (!JOURNAL_PLUR.test(plur)) throw new Error(`numeric field overflow: ${item.requestId}`);
+      }
+      const [amount, target, available] = [item.amountPlur, item.targetPlur, item.availablePlur].map(BigInt);
+      const move =
+        (item.direction === 'deposit' && amount === target - available) ||
+        (item.direction === 'withdraw' && amount === available - target);
+      if (amount <= 0n || target < 10n ** 16n || !move) {
+        throw new Error(`funding_chequebook_operations CHECK: ${item.requestId}`);
+      }
+    }
+    for (const item of items) {
+      this.rows.set(item.requestId, {
+        ...item,
+        state: 'queued',
+        txHash: null,
+        error: null,
+        relayedAt: null,
+        createdAt: at,
+        updatedAt: at,
+      });
+    }
+  }
+
+  async listBulk(bulkId: string): Promise<FundingChequebookRow[]> {
+    return [...this.rows.values()]
+      .filter((row) => row.bulkId === bulkId)
+      .sort((a, b) => a.position - b.position)
+      .map((row) => ({ ...row }));
+  }
+
+  async update(requestId: string, update: FundingChequebookUpdate): Promise<FundingChequebookRow | null> {
+    const row = this.rows.get(requestId);
+    if (!row || !isChequebookAsked(row)) return null;
+    const next: FundingChequebookRow = {
+      ...row,
+      state: update.state,
+      error: update.error,
+      txHash: update.txHash ?? row.txHash,
+      relayedAt: update.relayedAt ?? row.relayedAt,
+      updatedAt: new Date(),
+    };
+    this.rows.set(requestId, next);
+    return { ...next };
+  }
+
+  /** A row as stored, for a test to read. */
+  get(requestId: string): FundingChequebookRow | undefined {
+    const row = this.rows.get(requestId);
+    return row ? { ...row } : undefined;
+  }
+
+  /** Sets a row's state outside the service, as an earlier request would have left it. */
+  force(
+    requestId: string,
+    state: FundingChequebookRow['state'],
+    over: Partial<Pick<FundingChequebookRow, 'error' | 'txHash' | 'relayedAt' | 'createdAt'>> = {},
   ): void {
     const row = this.rows.get(requestId);
     if (!row) throw new Error(`no such row: ${requestId}`);

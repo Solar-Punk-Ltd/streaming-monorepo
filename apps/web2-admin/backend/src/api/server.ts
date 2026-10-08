@@ -50,7 +50,10 @@ export interface ApiDeps {
   catalogueBatch: CatalogueBatchService;
   /** Moving the catalogue's history onto another batch, started from the Stages page. */
   catalogueMove: CatalogueMoveService;
-  /** The Funding page: the brand wallet, the nodes' pins, and the sends and stamp operations relayed through the manager. */
+  /**
+   * The Funding page: the brand wallet, the nodes' pins, and the sends, stamp operations and chequebook operations
+   * relayed through the manager.
+   */
   fundingService: FundingService;
   /**
    * The registrar token: the only one the manager's routes under /api/internal take. An uploader's routes refuse it.

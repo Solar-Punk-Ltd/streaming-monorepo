@@ -1,5 +1,7 @@
 import type {
   FundingBulkAnswer,
+  FundingChequebookBulkAnswer,
+  FundingChequebookOperationsAnswer,
   FundingPinsAnswer,
   FundingStampBulkAnswer,
   FundingStampOperationsAnswer,
@@ -11,9 +13,12 @@ import { Request, RequestHandler, Response, Router } from 'express';
 import type { AuthService } from '../../domain/auth/AuthService.js';
 import type { FundingService } from '../../domain/funding/FundingService.js';
 import {
+  chequebookOperationsOf,
+  type FundingChequebookOperationsBody,
   type FundingPinsBody,
   type FundingStampOperationsBody,
   fundingBulkQuerySchema,
+  fundingChequebookOperationsSchema,
   fundingPinsSchema,
   fundingStampOperationsSchema,
   type FundingTransfersBody,
@@ -25,14 +30,17 @@ import { actorOf, signedInSession } from '../middleware/requireAuth.js';
 import { validateBody } from '../middleware/validate.js';
 
 export interface FundingRoutesDeps {
-  fundingService: Pick<FundingService, 'view' | 'pin' | 'send' | 'bulk' | 'stampOperations' | 'stampBulk'>;
+  fundingService: Pick<
+    FundingService,
+    'view' | 'pin' | 'send' | 'bulk' | 'stampOperations' | 'stampBulk' | 'chequebookOperations' | 'chequebookBulk'
+  >;
   /** The password check a pin and a send ask for, the password change's own. */
   authService: Pick<AuthService, 'confirmPassword'>;
   requireAuth: RequestHandler;
 }
 
 /**
- * The Funding page's routes, under `/api/funding` (`FUNDING_PATH`), behind the session; the three writes behind the
+ * The Funding page's routes, under `/api/funding` (`FUNDING_PATH`), behind the session; the four writes behind the
  * same-site check as well, which `src/api/server.ts` runs ahead of every console route.
  *
  * - `GET /` answers `FundingView`.
@@ -41,11 +49,15 @@ export interface FundingRoutesDeps {
  * - `GET /transfers?bulkId=` answers `FundingBulkAnswer`, refreshed from the manager.
  * - `POST /stamp-operations` takes `FundingStampOperationsRequest` and answers `FundingStampOperationsAnswer` with 202.
  * - `GET /stamp-operations?bulkId=` answers `FundingStampBulkAnswer`, refreshed from the manager.
+ * - `POST /chequebook-operations` takes `FundingChequebookOperationsRequest` and answers
+ *   `FundingChequebookOperationsAnswer` with 202.
+ * - `GET /chequebook-operations?bulkId=` answers `FundingChequebookBulkAnswer`, refreshed from the manager.
  *
  * A pin and a send ask for the operator's password first, checked as the password change checks the current one: 401
- * `invalid_credentials` when it is wrong, 429 `too_many_attempts` once locked out. A stamp request asks for none: the
- * page's confirm dialog stands before it, since a node pays for its own stamp operations and nothing leaves the brand
- * wallet. No answer carries a signed transaction: every item goes out through `toFundingTransferItem`.
+ * `invalid_credentials` when it is wrong, 429 `too_many_attempts` once locked out. A stamp request and a chequebook
+ * request ask for none: the page's confirm dialog stands before them, since a node pays for its own stamp and
+ * chequebook operations and nothing leaves the brand wallet. No answer carries a signed transaction: every item goes
+ * out through `toFundingTransferItem`.
  */
 export function createFundingRouter(deps: FundingRoutesDeps): Router {
   const { fundingService, authService, requireAuth } = deps;
@@ -116,6 +128,31 @@ export function createFundingRouter(deps: FundingRoutesDeps): Router {
         { abortEarly: false, stripUnknown: true },
       );
       const response: FundingStampBulkAnswer = await fundingService.stampBulk(query.bulkId.toLowerCase());
+      res.json(response);
+    }),
+  );
+
+  router.post(
+    '/chequebook-operations',
+    validateBody(fundingChequebookOperationsSchema),
+    asyncHandler(async (req: Request, res: Response) => {
+      const body = req.body as FundingChequebookOperationsBody;
+      const response: FundingChequebookOperationsAnswer = await fundingService.chequebookOperations(
+        actorOf(req),
+        chequebookOperationsOf(body),
+      );
+      res.status(202).json(response);
+    }),
+  );
+
+  router.get(
+    '/chequebook-operations',
+    asyncHandler(async (req: Request, res: Response) => {
+      const query = await fundingBulkQuerySchema.validate(
+        { bulkId: req.query.bulkId },
+        { abortEarly: false, stripUnknown: true },
+      );
+      const response: FundingChequebookBulkAnswer = await fundingService.chequebookBulk(query.bulkId.toLowerCase());
       res.json(response);
     }),
   );
