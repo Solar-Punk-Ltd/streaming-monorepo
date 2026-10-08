@@ -287,7 +287,8 @@ export function checkStamps(view: Inventory & Pick<FundingView, 'postage'>, sele
   }
 
   if (topUp && days.kind === 'invalid') problems.push(days.problem);
-  if (topUp && view.postage === null) problems.push(NO_PRICE_PROBLEM);
+  // Read as topUpLine reads it: a view with no price at all has none, as one whose price is null.
+  if (topUp && !view.postage) problems.push(NO_PRICE_PROBLEM);
   for (const line of lines) {
     if (line.problem) problems.push(`The batch ${shortHex(line.batch.batchId)} of ${line.node.label}: ${line.problem}`);
   }
