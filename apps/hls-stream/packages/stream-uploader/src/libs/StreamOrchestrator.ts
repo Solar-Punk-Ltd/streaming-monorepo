@@ -417,13 +417,22 @@ export class StreamOrchestrator {
    * nothing until somebody restarts it by hand. On a ladder the slowest rung is the one this happens
    * to, and it is then missing from the master for the rest of the broadcast.
    *
-   * ⛔ **Bounded at one grace past the ORIGINAL deadline, which is what keeps it from being a way to
+   * ⛔ **Bounded at one grace past the window's deadline, which is what keeps it from being a way to
    * hold a dead broadcast open.** See {@link resumeLiveSession}: however many times an encoder
-   * announces without delivering, the broadcast still ends at `streamIngestAt + orphanReapMs +
-   * segmentStallMs`. Cleared by the first accepted segment, which is the event it is
-   * waiting for, and by the session retiring.
+   * announces without delivering, the broadcast still ends at {@link windowStartOf} plus
+   * `orphanReapMs` plus `segmentStallMs`. Cleared by the first accepted segment, which is the event
+   * it is waiting for, and by the session retiring.
    */
   private resumeGraceUntil = new Map<string, number>();
+  /**
+   * Per stream, the monotonic reading of the first return of its encoder since its last media, which
+   * starts a reconnect window of its own. See {@link windowStartOf}.
+   *
+   * ⛔ **Only the first return after the last media counts.** A later one finds a return newer than
+   * the last media already here and leaves it, so an encoder reconnecting every few seconds and never
+   * sending a frame moves the deadline once, by at most one window.
+   */
+  private streamReturnedAt = new Map<string, number>();
   /**
    * Per stream, the publisher admitted to resume this live session whose resume waits for the
    * engine's word. See {@link resumeDeferredReturn}.
@@ -669,9 +678,9 @@ export class StreamOrchestrator {
    * back inside the window resumes the same session through {@link resumeLiveSession}; one that never
    * comes back is finalized by {@link scheduleStallReap} exactly as an engine that died is.
    *
-   * ⛔ **It does not move the reaper's clock either**, which is what keeps a broadcaster reconnecting
-   * every two seconds and never sending a frame from holding a dead recording open for ever: the
-   * window runs from the last segment, so reconnect churn buys nothing.
+   * ⛔ **It does not move the reaper's clock either.** The window runs from the last segment, or from
+   * the encoder's first return after it, so a disconnect starts nothing and reconnect churn moves the
+   * deadline once at most. See {@link windowStartOf}.
    *
    * A stream that is not live, or one already draining, is logged and ignored. That was the shape of
    * the old stale-unpublish guard and it is now the answer for every state but the one above: a stop
@@ -992,14 +1001,21 @@ export class StreamOrchestrator {
   }
 
   /**
-   * Give a returning encoder long enough to cut and deliver its first segment before the reaper may
-   * end the broadcast, and never longer than one grace past the deadline the broadcast already had.
+   * Give a returning encoder a reconnect window of its own, and long enough to cut and deliver its
+   * first segment, before the reaper may end the broadcast.
    *
-   * ⛔ **The cap is the whole safety of it.** `min(now + grace, lastMedia + window + grace)` means an
-   * announce arriving early in the window buys nothing at all, one arriving late moves the deadline
-   * by at most the grace, and a hundred of them move it by exactly the same amount as one. So an
-   * encoder reconnecting over and over and never sending a frame still ends,
-   * one grace later than it would have, rather than being held open for as long as it keeps trying.
+   * ⛔⛔ **The first return after the last media restarts the window at the return.** Measured from
+   * the media before the outage, a return 26 s into it left the encoder 34 s to deliver, and on the
+   * test stage on 2026-10-08 a rung on a lossy RTMP link was finalized one second before its first
+   * returning segment arrived, which was then refused as an unknown stream and the viewer showed the
+   * broadcast ended. Only the first return counts, see {@link streamReturnedAt}.
+   *
+   * ⛔ **The grace cap is the safety of the later returns.** `min(now + grace, windowStart + window +
+   * grace)` means a later announce early in the window buys nothing at all, one arriving late moves
+   * the deadline by at most the grace, and a hundred of them move it by exactly the same amount as
+   * one. So an encoder reconnecting over and over and never sending a frame still ends, at most one
+   * window and one grace after its first return, rather than being held open for as long as it keeps
+   * trying.
    *
    * ⭐ **The grace is `segmentStallMs` because it is the same question.** That value answers "how
    * long may something that is connected go without delivering a segment before we stop believing in
@@ -1018,9 +1034,31 @@ export class StreamOrchestrator {
       return;
     }
 
+    if (!this.cameBackSinceLastMedia(streamId)) {
+      this.streamReturnedAt.set(streamId, this.clock.now());
+    }
     const grace = this.config.segmentStallMs;
-    const ceiling = lastMedia + this.config.orphanReapMs + grace;
+    const ceiling = (this.windowStartOf(streamId) ?? lastMedia) + this.config.orphanReapMs + grace;
     this.resumeGraceUntil.set(streamId, Math.min(this.clock.now() + grace, ceiling));
+  }
+
+  /** Whether this stream's encoder has announced its return since its last media arrived. */
+  private cameBackSinceLastMedia(streamId: string): boolean {
+    const lastMedia = this.streamIngestAt.get(streamId);
+    const returnedAt = this.streamReturnedAt.get(streamId);
+    return lastMedia !== undefined && returnedAt !== undefined && returnedAt >= lastMedia;
+  }
+
+  /**
+   * The monotonic reading the reconnect window of this stream runs from: its last media, or its
+   * encoder's first return after that media when there is one. Undefined for a stream with no reading.
+   */
+  private windowStartOf(streamId: string): number | undefined {
+    const lastMedia = this.streamIngestAt.get(streamId);
+    if (lastMedia === undefined) {
+      return undefined;
+    }
+    return this.cameBackSinceLastMedia(streamId) ? this.streamReturnedAt.get(streamId) : lastMedia;
   }
 
   /**
@@ -1044,8 +1082,9 @@ export class StreamOrchestrator {
    * ⛔ **`streamIngestAt` and `streamActivityAt` are deliberately not touched.** Only media may move
    * them. An encoder that announces, sends nothing, drops and announces again would otherwise re-arm
    * the window on every attempt and hold a recording with no media in it open for ever, which is the
-   * case of an encoder that never sends a frame. What the returning encoder does get is a bounded grace for its first segment to
-   * arrive, which is {@link holdTheReaperForAFirstSegment}.
+   * case of an encoder that never sends a frame. What the returning encoder does get is a window from
+   * its first return and a bounded grace for its first segment, which is
+   * {@link holdTheReaperForAFirstSegment}.
    *
    * Every other per-session latch `retireSession` clears — the fragment watch, the opening-video
    * gate, the unread-duration report, the loss timestamp — is deliberately KEPT. This is the same
@@ -1263,6 +1302,7 @@ export class StreamOrchestrator {
     this.streamDisconnectedAt.delete(streamId);
     // Same reasoning: a grace is a promise made to one returning encoder, and this session is over.
     this.resumeGraceUntil.delete(streamId);
+    this.streamReturnedAt.delete(streamId);
     this.deferredReturns.delete(streamId);
     // Cleared with the session rather than kept for the id, so that a later broadcast on the same id
     // says it again. Whether an engine's segments are readable is a fact about the session producing
@@ -2202,7 +2242,7 @@ export class StreamOrchestrator {
    * hand every reconnect a fresh sixty seconds, and an encoder that reconnects every few seconds and
    * never sends a frame would hold a recording with no media in it open for as long as it kept
    * trying. The already-armed timer needs no help: it re-derives the deadline
-   * from `streamIngestAt` when it wakes, so it either reaps or sleeps exactly the remainder.
+   * from {@link windowStartOf} when it wakes, so it either reaps or sleeps exactly the remainder.
    *
    * The arm is for the state that should not occur: a live session with no watchdog is the unreaped
    * orphan again.
@@ -2232,10 +2272,11 @@ export class StreamOrchestrator {
       }
 
       const idleMs = this.clock.now() - ingestAt;
-      if (idleMs < this.config.orphanReapMs) {
-        // Fed since this was armed, so the window restarts from the last segment rather than from
+      const windowMs = this.clock.now() - (this.windowStartOf(streamId) ?? ingestAt);
+      if (windowMs < this.config.orphanReapMs) {
+        // Fed or returned to since this was armed, so the window restarts from that rather than from
         // now. Sleeping exactly the remainder is what keeps the check off the per-segment path.
-        this.stallReapers.set(streamId, this.scheduleStallReap(streamId, this.config.orphanReapMs - idleMs));
+        this.stallReapers.set(streamId, this.scheduleStallReap(streamId, this.config.orphanReapMs - windowMs));
         return;
       }
 
@@ -2243,7 +2284,7 @@ export class StreamOrchestrator {
       // has not arrived yet. Ending the broadcast here leaves it connected and publishing into a
       // stream id nothing holds any more, because it will not announce again. See
       // {@link holdTheReaperForAFirstSegment} for why this cannot be used to hold a dead broadcast
-      // open: the grace is measured from the original deadline, not from the announce.
+      // open: the grace is capped at the window's deadline, not measured from each announce.
       const graceUntil = this.resumeGraceUntil.get(streamId);
       if (graceUntil !== undefined && this.clock.now() < graceUntil) {
         this.stallReapers.set(streamId, this.scheduleStallReap(streamId, graceUntil - this.clock.now()));
@@ -2274,6 +2315,16 @@ export class StreamOrchestrator {
         `[StreamOrchestrator] The encoder feeding ${streamId} left and did not come back within the ` +
           `${Math.round(this.config.orphanReapMs / 1000)}s reconnect window, so its broadcast ends here and ` +
           'is finalized as a VOD',
+      );
+      return;
+    }
+
+    const returnedAt = this.streamReturnedAt.get(streamId);
+    if (this.cameBackSinceLastMedia(streamId) && returnedAt !== undefined) {
+      this.logger.warn(
+        `[StreamOrchestrator] The encoder feeding ${streamId} came back ` +
+          `${Math.round((this.clock.now() - returnedAt) / 1000)}s ago and delivered no segment since, ` +
+          `${Math.round(idleMs)}ms after its last one, so its broadcast ends here and is finalized as a VOD`,
       );
       return;
     }

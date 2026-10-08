@@ -262,9 +262,9 @@ describe('a live stream whose engine dies without saying so', () => {
    * Connection attempts that never deliver a frame must not keep a dead recording
    * open, and an announce is not media.
    *
-   * ⛔ Six announces move the deadline by exactly one grace, which is what one announce moves it by.
-   * The grace is measured from the broadcast's original deadline rather than from each announce, so
-   * churn cannot walk it forward. See `StreamOrchestrator.holdTheReaperForAFirstSegment`.
+   * ⛔ Six announces move the deadline exactly as far as the first one does: that one starts a window
+   * of its own, and each later one buys at most a grace capped at that window's deadline, so churn
+   * cannot walk it forward. See `StreamOrchestrator.holdTheReaperForAFirstSegment`.
    */
   it('does not let reconnect churn that delivers nothing push the deadline back', async () => {
     const harness = makeHarness();
@@ -332,13 +332,13 @@ describe('a live stream whose engine dies without saying so', () => {
 
   /**
    * ⛔⛔ **The ceiling itself, which every other case here leaves untested.** They all announce before
-   * the window is up, where `min(now + grace, lastMedia + window + grace)` is always the first term,
-   * so a build with no ceiling at all passes them. Here the announces walk PAST the deadline: at 57 s,
-   * again at 65 s and again at 80 s, each of which would buy another thirty seconds if the grace were
-   * measured from the announce. It is measured from the broadcast's own deadline instead, so all
-   * three land on the same instant and the broadcast ends at 90 s rather than at 110 s.
+   * the window is up, where `min(now + grace, windowStart + window + grace)` is always the first term,
+   * so a build with no ceiling at all passes them. Here the first return at 57 s starts a window to
+   * 117 s, and the later announces walk PAST it: at 110 s and again at 139 s, the second of which would
+   * buy another thirty seconds if the grace were measured from the announce. It is capped at the
+   * window's own deadline plus one grace instead, so the broadcast ends at 147 s rather than at 169 s.
    */
-  it('never lets repeated returns walk the deadline past one grace from the last media', async () => {
+  it('never lets repeated returns walk the deadline past one grace from the first return’s window', async () => {
     const harness = makeHarness();
     const { orch, clock, published } = harness;
 
@@ -346,13 +346,14 @@ describe('a live stream whose engine dies without saying so', () => {
     await startAndFeed(harness, 0);
 
     orch.noteDisconnect(STREAM_ID);
-    for (const at of [REAP_MS - 3_000, REAP_MS + 5_000, REAP_MS + 20_000]) {
+    const firstReturn = REAP_MS - 3_000;
+    for (const at of [firstReturn, firstReturn + REAP_MS - 7_000, firstReturn + REAP_MS + 22_000]) {
       await clock.advance(at - clock.now());
       orch.startStream(STREAM_ID, MEDIA_TYPE_VIDEO);
     }
 
-    // One millisecond short of the last media plus one window plus one grace.
-    await clock.advance(REAP_MS + STALL_MS - 1 - clock.now());
+    // One millisecond short of the first return plus one window plus one grace.
+    await clock.advance(firstReturn + REAP_MS + STALL_MS - 1 - clock.now());
     await waitAndConfirmNothingHappened(() => !hasFinalized(published), NOTHING_HAPPENED_MS);
 
     await clock.advance(2);
@@ -366,12 +367,13 @@ describe('a live stream whose engine dies without saying so', () => {
   });
 
   /**
-   * The bound on that grace, which is what keeps it from being a way to hold a dead broadcast open.
-   * An encoder that announces and then delivers nothing ends one grace after it announced, and the
-   * ceiling — one grace past the deadline the broadcast already had — is what the case above reaches.
-   * Either way the end comes, and it comes at a time this test can name.
+   * ⛔⛔ **The reconnect window runs from the return, not from the media before the outage.** Seen on
+   * the test stage on 2026-10-08 under a lossy RTMP link: a rung's last segment arrived at 12:05:38,
+   * its encoder re-announced at 12:06:04, and the reaper finalized the broadcast at 12:06:38, 34 s
+   * after the return and one second before the returning encoder's first segment, which was then
+   * refused as an unknown stream. The viewer showed the stream ended in the middle of a broadcast.
    */
-  it('ends a broadcast one grace after a return that delivers nothing', async () => {
+  it('gives an encoder that came back a whole window from its return', async () => {
     const harness = makeHarness();
     const { orch, clock, published } = harness;
 
@@ -379,14 +381,36 @@ describe('a live stream whose engine dies without saying so', () => {
     await startAndFeed(harness, 0);
 
     orch.noteDisconnect(STREAM_ID);
-    await clock.advance(REAP_MS - 3_000);
+    await clock.advance(26_000);
+    assert.equal(orch.startStream(STREAM_ID, MEDIA_TYPE_VIDEO), true, 'the encoder is back inside the window');
+
+    // One window from the last media, and 35 s after the return, the returning encoder is still cutting.
+    await clock.advance(REAP_MS - 26_000 + 1_000);
+    await waitAndConfirmNothingHappened(() => !hasFinalized(published), NOTHING_HAPPENED_MS);
+    assert.equal(orch.getActiveStreamCount(), 1, 'the window was measured from the media before the outage');
+
+    await startAndFeed(harness, 1);
+    assert.equal(hasFinalized(published), false, 'and its first segment carries the broadcast on');
+  });
+
+  /**
+   * The bound that keeps the window from the return safe: an encoder that announces and then delivers
+   * nothing ends one window after it announced, and the ceiling for the returns after it is what the
+   * case of three returns above reaches. Either way the end comes, at a time this test can name.
+   */
+  it('ends a broadcast one window after a return that delivers nothing', async () => {
+    const harness = makeHarness();
+    const { orch, clock, published } = harness;
+
+    orch.startStream(STREAM_ID, MEDIA_TYPE_VIDEO);
+    await startAndFeed(harness, 0);
+
+    orch.noteDisconnect(STREAM_ID);
+    await clock.advance(26_000);
     orch.startStream(STREAM_ID, MEDIA_TYPE_VIDEO);
 
-    // One millisecond short of one grace after that announce, which is inside the ceiling of the
-    // original deadline plus a grace and is therefore what decides here.
-    await clock.advance(STALL_MS - 1);
+    await clock.advance(REAP_MS - 1);
     await waitAndConfirmNothingHappened(() => !hasFinalized(published), NOTHING_HAPPENED_MS);
-
     await clock.advance(2);
     await waitFor(() => hasFinalized(published), SETTLE_CEILING_MS);
     assert.equal(orch.getActiveStreamCount(), 0, 'an encoder that came back and sent nothing still ends');
@@ -520,6 +544,40 @@ describe('what a reap says about why the broadcast ended', () => {
     assert.ok(
       linesAboutTheStream(lines, LOG_LEVEL_INFO).some((captured) => captured.line.includes(`${REAP_MS / 1000}s`)),
       'the end is logged with the reconnect window the encoder did not come back inside',
+    );
+  });
+
+  /**
+   * Seen on the test stage on 2026-10-08: a rung disconnected, came back 26 s after its last segment
+   * and was finalized 34 s later with a warning that no disconnect was ever reported. SRS had reported
+   * it, and the resume had cleared the record of it.
+   */
+  it('says the encoder came back and delivered nothing, not that no disconnect was reported', async () => {
+    const harness = makeHarness();
+    const { orch, clock, published } = harness;
+
+    orch.startStream(STREAM_ID, MEDIA_TYPE_VIDEO);
+    await startAndFeed(harness, 0);
+
+    const lines = await linesDuring(async () => {
+      orch.noteDisconnect(STREAM_ID);
+      await clock.advance(26_000);
+      orch.startStream(STREAM_ID, MEDIA_TYPE_VIDEO);
+      await clock.advance(REAP_MS + 1);
+      await waitFor(() => hasFinalized(published), SETTLE_CEILING_MS);
+    });
+
+    const reapLines = lines.filter(
+      (captured) => captured.line.includes('Finaliz') || captured.line.includes('finaliz'),
+    );
+    assert.ok(reapLines.length > 0, 'the reap says why the broadcast ended');
+    assert.ok(
+      lines.every((captured) => !captured.line.includes('no disconnect was ever reported')),
+      'a disconnect was reported, so the reap must not say otherwise',
+    );
+    assert.ok(
+      linesAboutTheStream(lines, LOG_LEVEL_WARN).some((captured) => captured.line.includes('came back')),
+      'the reap names what happened: the encoder came back and then delivered nothing',
     );
   });
 

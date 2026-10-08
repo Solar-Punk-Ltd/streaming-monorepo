@@ -226,23 +226,27 @@ playlist at the head simply stops advancing. What decides a broadcast is over is
 decided it for an engine that died without saying anything — `ORPHAN_REAP_MS` (60 s) with no media
 in it.
 
-| What the encoder does        | What a viewer gets                                                                                                                                                                                                                                                                                          |
-| ---------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Comes back inside the window | The same session, the same recording and the same feed, with one `#EXT-X-DISCONTINUITY` at the seam and the dating re-anchored on the clock it returned at. No `#EXT-X-ENDLIST` was written in between, so a player following the feed head is handed the next update of the playlist it is already playing |
-| Does not come back           | The reaper finalizes the broadcast one window after its last segment: closing playlist, recording, and `vod` to the admin. An encoder returning after that starts a **new** session, which inherits the recording at the feed head, so the recording a viewer opens still carries every session             |
+| What the encoder does        | What a viewer gets                                                                                                                                                                                                                                                                                                                                           |
+| ---------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| Comes back inside the window | The same session, the same recording and the same feed, with one `#EXT-X-DISCONTINUITY` at the seam and the dating re-anchored on the clock it returned at. No `#EXT-X-ENDLIST` was written in between, so a player following the feed head is handed the next update of the playlist it is already playing                                                  |
+| Does not come back           | The reaper finalizes the broadcast one window after its last segment, or after its return when it came back and then sent nothing: closing playlist, recording, and `vod` to the admin. An encoder returning after that starts a **new** session, which inherits the recording at the feed head, so the recording a viewer opens still carries every session |
 
 So **the admin shows `live` for up to one window after the encoder leaves**, and a clean stop reaches
 its recording about a window later than it used to. That is the cost of the row above it, and it is
 the owner's decision of 2026-09-22.
 
-⛔ **A reconnect buys the first segment time to arrive, and nothing more.** The window runs from the
-last segment rather than from the webhook, so an announce does not move the deadline. What it does
-buy is a grace of `SEGMENT_STALL_MS` for the segment it is about to deliver, capped at one grace past
-the deadline the broadcast already had — without it an announce accepted three seconds before the
-window was up was followed three seconds later by a reap, and the encoder went on publishing into an
-id nothing held any more, because it does not announce again for a publish session it already has. An
-encoder that reconnects every few seconds and never sends a frame therefore still ends, one grace
-later than it would have, rather than being held open for as long as it keeps trying.
+⛔ **A reconnect buys one window from the return, once.** The window runs from the last segment,
+or from the encoder's first return after that segment, whichever is later. So an encoder back 26
+seconds into an outage still has the whole 60 seconds to deliver its first segment rather than the
+34 left of the old window: on the test stage on 2026-10-08 a rung on a lossy RTMP link was
+finalized one second before that segment arrived, and the viewer showed the broadcast ended. Only the
+first return after the last media starts a window. A later announce with no media in between buys a
+grace of `SEGMENT_STALL_MS` for the segment it is about to deliver, capped at one grace past that
+window's deadline, so an announce accepted just before the window is up is not reaped seconds later,
+and an encoder that reconnects every few seconds and never sends a frame still ends, at most one
+window and one grace after it first came back, rather than being held open for as long as it keeps
+trying. A reap after a return that delivered nothing says so in its warning, and the warning that no
+disconnect was ever reported is kept for an engine that went quiet without a word.
 
 ⛔ **SRS's own publish timeout is deliberately not lengthened to match.** A clean stop sends an
 explicit goodbye, so no timeout applies to it at all, and a publish SRS still believes in refuses the
