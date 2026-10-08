@@ -621,18 +621,22 @@ function chequebookItemAnswer(item) {
   };
 }
 
-const PLUR = /^(0|[1-9]\d{0,77})$/;
+/** PLUR as a chequebook request carries it, as the API takes it: whole, and 30 digits at most. */
+const CHEQUEBOOK_PLUR = /^(0|[1-9]\d{0,29})$/;
 
 /**
- * Why the mock refuses a chequebook request, as the API checks one, or null: a target of base units and 1 xBZZ or
- * more; each node once, a stage's own Bee node or a rung with its wallet and chequebook read, never a gateway nor the
- * catalogue node, with the available balance the page showed, never one at the target; its move worked out again from
- * that and the balance the chequebook holds now, and refused when the chequebook is at the target or past it now; a
- * deposit when the wallet holds less xBZZ than it, and either way when the node has no xDAI for the gas.
+ * Why the mock refuses a chequebook request, as the API checks one, or null: a target of base units, 30 digits at
+ * most, and 1 xBZZ or more; each node once, a stage's own Bee node or a rung with its wallet and chequebook read, never
+ * a gateway nor the catalogue node, with the available balance the page showed, never one at the target; its move
+ * worked out again from that and the balance the chequebook holds now, and refused when the chequebook is at the
+ * target or past it now; a deposit when the wallet holds less xBZZ than it, and either way when the node has no xDAI
+ * for the gas.
  */
 function chequebookRefusal(body) {
   const target = body?.targetPlur;
-  if (typeof target !== 'string' || !PLUR.test(target)) return 'The target is a whole number of PLUR.';
+  if (typeof target !== 'string' || !CHEQUEBOOK_PLUR.test(target)) {
+    return 'The target is a whole number of PLUR, 30 digits at most.';
+  }
   if (BigInt(target) < CHEQUEBOOK_TARGET_MIN_PLUR) return 'The target is at least 1 xBZZ.';
   const asked = Array.isArray(body.items) ? body.items : [];
   if (asked.length === 0) return 'Tick a chequebook first.';
@@ -645,7 +649,7 @@ function chequebookRefusal(body) {
     if (!chequebook || chequebook.readError || node.walletAddress === null) {
       return `The chequebook of ${node.label} cannot be moved now.`;
     }
-    if (typeof item.availablePlur !== 'string' || !PLUR.test(item.availablePlur)) {
+    if (typeof item.availablePlur !== 'string' || !CHEQUEBOOK_PLUR.test(item.availablePlur)) {
       return 'Each chequebook names the available balance the page showed.';
     }
     const shown = BigInt(item.availablePlur);

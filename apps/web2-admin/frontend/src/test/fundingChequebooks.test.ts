@@ -19,6 +19,7 @@ import {
   reportsChequebooks,
   TARGET_EMPTY_PROBLEM,
   TARGET_FLOOR_TEXT,
+  TARGET_TOO_LARGE_PROBLEM,
   TARGET_UNDER_FLOOR_PROBLEM,
   WALLET_UNREAD_TEXT,
   whyNotMovable,
@@ -134,6 +135,22 @@ describe('the target', () => {
     expect(TARGET_UNDER_FLOOR_PROBLEM).toBe('The target is at least 1 xBZZ.');
     expect(readTarget('.')).toEqual({ kind: 'invalid', problem: 'The target: Digits and one dot only, such as 1.5.' });
     expect(readTarget('1.00000000000000001')).toEqual({ kind: 'invalid', problem: 'The target: At most 16 decimals.' });
+  });
+
+  it('takes a target of 30 digits of PLUR, the most the API takes, and refuses one more, saying so', () => {
+    expect(readTarget(`${'9'.repeat(14)}.${'9'.repeat(16)}`)).toEqual({ kind: 'ok', plur: '9'.repeat(30) });
+    expect(TARGET_TOO_LARGE_PROBLEM).toBe('The target: That is more than any chequebook holds.');
+    // 31 digits of PLUR, and past the 78 any amount field reads, alike.
+    for (const typed of [`1${'0'.repeat(14)}`, `${'9'.repeat(15)}.5`, `1${'0'.repeat(70)}`]) {
+      expect(readTarget(typed), typed).toEqual({ kind: 'invalid', problem: TARGET_TOO_LARGE_PROBLEM });
+    }
+  });
+
+  it('holds Apply for a target over 30 digits of PLUR, with no move shown', () => {
+    const check = checkChequebooks(makeChequebookView(), select(`1${'0'.repeat(14)}`, [UNDER]));
+    expect(check.problems).toEqual([TARGET_TOO_LARGE_PROBLEM]);
+    expect(check.lines).toEqual([]);
+    expect(check.request).toBeNull();
   });
 });
 
