@@ -1,5 +1,6 @@
 import { FeedIndex, Topic } from '@ethersphere/bee-js';
 import { makeFeedIdentifier } from '@swarm-hls-stream/shared';
+import { ladderMarkerIdentifier } from '@swarm-hls-stream/shared';
 
 import type { PlayerReader } from '../../src/components/SwarmHlsPlayer/playerReads.js';
 import { ManifestFetchError } from '../../src/components/SwarmHlsPlayer/refusedSlot.js';
@@ -26,7 +27,7 @@ interface PlaylistShape {
 }
 
 /** A media playlist in the shape the uploader publishes, every segment stamped with its instant. */
-function ladderPlaylist({ name, firstSequence, count, startMs, finalized = false }: PlaylistShape): string {
+export function ladderPlaylist({ name, firstSequence, count, startMs, finalized = false }: PlaylistShape): string {
   const lines = [
     '#EXTM3U',
     '#EXT-X-VERSION:3',
@@ -72,12 +73,36 @@ export class FakeLadderGateway {
   private readonly feeds = new Map<string, FakeFeed>();
   private readonly slotOwners = new Map<string, { hex: string; index: number }>();
   private readonly faulted = new Set<string>();
+  private readonly markers = new Map<string, string>();
+  private skipList: { peers: number; skipMs: number; now: () => number } | null = null;
+  /** Per path, until when each skipped peer stays skipped. */
+  private readonly skippedUntil = new Map<string, number[]>();
 
   constructor(readonly owner: string) {}
 
   /** Reads of this slot fail in transport, as a gateway that drops the connection does. */
   faultSlot(topic: Topic, index: number): void {
     this.faulted.add(this.slotPath(topic, index));
+  }
+
+  /**
+   * Answer from now on as a Bee node answers an address asked before it exists (Bee 2.8.2,
+   * `pkg/retrieval/retrieval.go`): each such ask puts one of `peers` peers on a skip list for that
+   * address for `skipMs` of `now`, and with every peer skipped the address answers not found at once,
+   * written or not.
+   */
+  modelSkipList(peers: number, skipMs: number, now: () => number): void {
+    this.skipList = { peers, skipMs, now };
+  }
+
+  /** Writes a ladder's time marker for `period`, at the address a reader computes. */
+  publishMarker(group: Topic, period: number, marker: string): void {
+    this.markers.set(`soc/${this.owner}/${ladderMarkerIdentifier(group, period).toHex()}`, marker);
+  }
+
+  /** Reads of the ladder's time markers, by path. */
+  markerRequests(): string[] {
+    return this.requests.filter((request) => this.markers.has(request.path)).map((request) => request.path);
   }
 
   /** The rung name a hex topic was published under. */
@@ -187,12 +212,26 @@ export class FakeLadderGateway {
     if (this.faulted.has(path)) {
       throw new TypeError('Failed to fetch');
     }
-    const body = owner ? this.feeds.get(owner.hex)?.slots.get(owner.index) : undefined;
-    if (body === undefined) {
+    const body = owner ? this.feeds.get(owner.hex)?.slots.get(owner.index) : this.markers.get(path);
+    if (!this.peerLeftFor(path, body !== undefined) || body === undefined) {
       throw new ManifestFetchError(path, 404);
     }
     return { ok: true, status: 200, headers: new Headers(), text: body };
   };
+
+  private peerLeftFor(path: string, written: boolean): boolean {
+    if (this.skipList === null) {
+      return true;
+    }
+    const now = this.skipList.now();
+    const skipped = (this.skippedUntil.get(path) ?? []).filter((until) => until > now);
+    const peerLeft = skipped.length < this.skipList.peers;
+    if (peerLeft && !written) {
+      skipped.push(now + this.skipList.skipMs);
+    }
+    this.skippedUntil.set(path, skipped);
+    return peerLeft;
+  }
 
   private feedOf(topic: Topic): FakeFeed {
     const feed = this.feeds.get(topic.toString());

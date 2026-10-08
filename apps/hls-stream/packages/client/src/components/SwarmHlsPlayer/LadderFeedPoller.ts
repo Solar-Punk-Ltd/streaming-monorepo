@@ -3,7 +3,7 @@ import { feedSlotPath } from '@swarm-hls-stream/shared';
 
 import { FeedReturnWatch } from './feedReturn';
 import { FeedHealthTracker, UNSERVED_SLOT_STALL_MS } from './feedState';
-import type { FeedEntry, FeedReader, FollowClock } from './following/feedReader';
+import type { FeedEntry, FeedReader, FollowClock, HeadMarkers } from './following/feedReader';
 import { followPredicted } from './following/followPredicted';
 import { ManifestStateManager } from './ManifestManagement';
 import { FeedRung, IndexSearchFinder, NewestIndex, NewestIndexFinder, SwitchHint } from './newestIndexFinder';
@@ -69,6 +69,12 @@ type RungReadiness = 'ready' | 'refused' | 'inactive' | 'unregistered';
 /** The seams the walk is built from. Every one has a default that is today's behaviour. */
 export interface LadderFeedPollerOptions {
   readonly finder?: NewestIndexFinder;
+  /**
+   * The time markers of a rung's ladder, which its follower waits on while the rung is quiet rather
+   * than asking for a slot that does not come. None by default, and a rung without them is asked on a
+   * backoff.
+   */
+  readonly headMarkers?: (rung: FeedRung, clock: FollowClock) => HeadMarkers | null;
   /** The clock a rung is followed on. The wall clock unless a test drives time itself. */
   readonly followClock?: FollowClock;
   /** A monotonic clock, the same one the feed health reads. */
@@ -167,6 +173,7 @@ export class LadderFeedPoller {
   private readonly ladders = new Map<string, LadderEntry>();
   private unnamedLadders = 0;
   private readonly finder: NewestIndexFinder;
+  private readonly headMarkers: (rung: FeedRung, clock: FollowClock) => HeadMarkers | null;
   private readonly followClock: FollowClock;
   private readonly now: () => number;
   private readonly progressBoundMs: number;
@@ -194,6 +201,7 @@ export class LadderFeedPoller {
   ) {
     this.followClock = options.followClock ?? WALL_CLOCK;
     this.finder = options.finder ?? new IndexSearchFinder(reader, this.followClock);
+    this.headMarkers = options.headMarkers ?? (() => null);
     this.now = options.now ?? (() => performance.now());
     this.progressBoundMs = options.progressBoundMs ?? RUNG_PROGRESS_BOUND_MS;
     this.candidateFindDeadlineMs = options.candidateFindDeadlineMs ?? CANDIDATE_FIND_DEADLINE_MS;
@@ -479,13 +487,43 @@ export class LadderFeedPoller {
       },
     };
 
+    const clock: FollowClock = {
+      now: this.followClock.now,
+      sleep: (ms) => Promise.race([this.followClock.sleep(ms), walk.ended]),
+    };
     await followPredicted({
       reader: counted,
-      clock: { now: this.followClock.now, sleep: (ms) => Promise.race([this.followClock.sleep(ms), walk.ended]) },
+      clock,
       from,
       isStopped: () => walk.stopped,
       onEntry: (found) => this.take(entry, walk, found, reader.playlistOf(found)),
+      markers: this.countedMarkers(entry, walk, clock),
     });
+  }
+
+  /**
+   * The rung's markers, where a marker that shows the rung no further on counts as a slot unserved, so
+   * the feed health and the stall rule see a quiet rung the follower no longer asks as they saw one
+   * it did. A turn with no marker asks the slot itself, which counts through the reader.
+   */
+  private countedMarkers(entry: RungEntry, walk: Walk, clock: FollowClock): HeadMarkers | undefined {
+    const markers = this.headMarkers(feedRungOf(entry), clock);
+    if (markers === null) {
+      return undefined;
+    }
+    return {
+      nextDueMs: () => markers.nextDueMs(),
+      readNext: async () => {
+        const head = await markers.readNext();
+        const current = walk.current;
+        if (!walk.stopped && head !== null && current !== null && head <= current.index) {
+          this.recordMiss(entry, walk, null);
+          this.feedHealth.recordUnservedSlot(entry.hexTopic);
+          this.tryFailoverIfStalled(entry, walk);
+        }
+        return head;
+      },
+    };
   }
 
   /** Folds in a slot the follower found. The follower never hands over a slot out of order. */

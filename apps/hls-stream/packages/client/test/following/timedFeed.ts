@@ -8,6 +8,13 @@ interface TimedFeedShape {
   /** The newest segment end an index's playlist carries, on the publisher's clock. */
   readonly segmentEndMs: (index: number) => number;
   readonly roundTripMs: number;
+  /**
+   * Answer as a Bee node answers an address asked before it exists (Bee 2.8.2,
+   * `pkg/retrieval/retrieval.go`): each such ask puts one of `peers` peers on a skip list for that
+   * address for `skipMs`, and with every peer skipped the address answers not found at once, written
+   * or not, and puts nobody else on the list.
+   */
+  readonly skipList?: { readonly peers: number; readonly skipMs: number };
 }
 
 /**
@@ -20,6 +27,8 @@ export class TimedFeed implements FeedReader {
   readonly askTimes = new Map<number, number[]>();
   maxInFlight = 0;
   private inFlight = 0;
+  /** Per index, until when each skipped peer stays skipped. */
+  private readonly skippedUntil = new Map<number, number[]>();
 
   constructor(
     private readonly time: VirtualTime,
@@ -31,10 +40,12 @@ export class TimedFeed implements FeedReader {
     this.askTimes.set(index, [...(this.askTimes.get(index) ?? []), this.time.trueNowMs]);
     this.inFlight += 1;
     this.maxInFlight = Math.max(this.maxInFlight, this.inFlight);
-    const readable = this.shape.readableAtMs(index) <= this.time.trueNowMs;
-    if (!readable && Number.isFinite(this.shape.readableAtMs(index))) {
+    const written = this.shape.readableAtMs(index) <= this.time.trueNowMs;
+    if (!written && Number.isFinite(this.shape.readableAtMs(index))) {
       this.earlyAsks.set(index, (this.earlyAsks.get(index) ?? 0) + 1);
     }
+    const peerLeft = this.servedPast(index, written);
+    const readable = written && peerLeft;
     return new Promise((resolve) => {
       this.time.at(this.time.trueNowMs + this.shape.roundTripMs, () => {
         this.inFlight -= 1;
@@ -45,6 +56,22 @@ export class TimedFeed implements FeedReader {
         );
       });
     });
+  }
+
+  /** Whether the node still has a peer to ask for this index, and the skip an early ask leaves. */
+  private servedPast(index: number, written: boolean): boolean {
+    const skipList = this.shape.skipList;
+    if (skipList === undefined) {
+      return true;
+    }
+    const now = this.time.trueNowMs;
+    const skipped = (this.skippedUntil.get(index) ?? []).filter((until) => until > now);
+    const peerLeft = skipped.length < skipList.peers;
+    if (peerLeft && !written) {
+      skipped.push(now + skipList.skipMs);
+    }
+    this.skippedUntil.set(index, skipped);
+    return peerLeft;
   }
 
   /** The newest index readable at true time `atMs`, or -1 when none is. */

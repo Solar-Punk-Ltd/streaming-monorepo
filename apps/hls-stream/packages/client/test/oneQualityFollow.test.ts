@@ -10,14 +10,22 @@ import {
   FeedHealthTracker,
   UNSERVED_SLOT_STALL_MS,
 } from '../src/components/SwarmHlsPlayer/feedState.js';
-import { LadderFeedPoller, STALL_REPROBE_MS } from '../src/components/SwarmHlsPlayer/LadderFeedPoller.js';
+import type { FollowClock } from '../src/components/SwarmHlsPlayer/following/feedReader.js';
+import { MARKER_READ_DELAY_MS } from '../src/components/SwarmHlsPlayer/following/headMarkers.js';
+import {
+  LadderFeedPoller,
+  type LadderFeedPollerOptions,
+  STALL_REPROBE_MS,
+} from '../src/components/SwarmHlsPlayer/LadderFeedPoller.js';
 import { ManifestStateManager } from '../src/components/SwarmHlsPlayer/ManifestManagement.js';
 import { IndexSearchFinder, type NewestIndexFinder } from '../src/components/SwarmHlsPlayer/newestIndexFinder.js';
 import { parseManifest } from '../src/components/SwarmHlsPlayer/playlist.js';
+import { rungHeadMarkers } from '../src/components/SwarmHlsPlayer/rungHeadMarkers.js';
 import { STALE_RUNG_LAG_MS } from '../src/components/SwarmHlsPlayer/rungPosition.js';
+import { MARKER_PERIOD_SECONDS, markerPeriodAt, markerPeriodStartMs } from '@swarm-hls-stream/shared';
 
 import { fastClock } from './helpers/fastClock.js';
-import { FakeLadderGateway, LADDER_EPOCH_MS, SEGMENT_S } from './helpers/fakeLadderGateway.js';
+import { FakeLadderGateway, LADDER_EPOCH_MS, ladderPlaylist, SEGMENT_S } from './helpers/fakeLadderGateway.js';
 import { waitFor } from './helpers/waiting.js';
 import { SEGMENTS_AS_WRITTEN } from '../src/components/SwarmHlsPlayer/ManifestManagement';
 
@@ -78,12 +86,17 @@ interface Rig {
   playhead: { ms: number | null };
   /** The rungs the finder was asked about, in order, by hex topic. */
   finds: string[];
+  followClock: FollowClock;
 }
 
 let rigs: Rig[] = [];
 
 function makeRig(
-  options: { finderFor?: (gateway: FakeLadderGateway) => NewestIndexFinder; progressBoundMs?: number } = {},
+  options: {
+    finderFor?: (gateway: FakeLadderGateway) => NewestIndexFinder;
+    progressBoundMs?: number;
+    headMarkersFor?: (gateway: FakeLadderGateway) => LadderFeedPollerOptions['headMarkers'];
+  } = {},
 ): Rig {
   const gateway = new FakeLadderGateway(OWNER);
   const clock = makeClock();
@@ -103,12 +116,13 @@ function makeRig(
       },
     },
     followClock,
+    headMarkers: options.headMarkersFor?.(gateway),
   });
   const stopped: Rig['stopped'] = [];
   health.onRungStopped((rung, detail) => {
     stopped.push({ rung, failoverTo: detail.failoverTo, reason: detail.reason });
   });
-  const rig = { gateway, health, poller, clock, stopped, playhead, finds };
+  const rig = { gateway, health, poller, clock, stopped, playhead, finds, followClock };
   rigs.push(rig);
   return rig;
 }
@@ -759,5 +773,106 @@ describe('Q7: a switch while the viewer is behind live keeps their position', ()
     );
     assert.ok(rig.health.backoffRemainingMs(hex(MID)) > 0, 'the fault was not recorded against the rung');
     assert.equal(segmentUris(MID).at(-1), 'mid-seg-40', 'the switch still lands on the live edge');
+  });
+});
+
+describe('Q8: a quality whose broadcaster went quiet waits on the time markers, not on its next slot', () => {
+  /** A quiet spell of twenty seconds, longer than the follower's asks for one slot last. */
+  const QUIET_MS = 20_000;
+  /** Asked for before it exists this many times, an address is not found for a minute. */
+  const PEERS = 4;
+  const SKIP_MS = 60_000;
+
+  /** The newest segment index a rung holds, by the segment names the player has merged. */
+  function newestSegment(topic: Topic): number {
+    return Math.max(-1, ...segmentUris(topic).map((uri) => Number(uri.split('-').at(-1))));
+  }
+
+  /**
+   * The uploader on the follow clock: a playlist of the top rung every two seconds, stamped when it is
+   * written, paused for `QUIET_MS` from `pauseAtMs`, and the ladder's marker 250 ms into every period,
+   * which it keeps writing through the pause. Resolves once `isDone` says so.
+   */
+  async function broadcast(rig: Rig, pauseAtMs: number, isDone: () => boolean, resumed: { atMs: number | null }) {
+    const { gateway, followClock } = rig;
+    const group = new Topic(GROUP);
+    let index = gateway.head(TOP);
+    let nextSlotMs = followClock.now() + SEGMENT_S * 1000;
+    let nextMarkerPeriod = markerPeriodAt(followClock.now()) + 1;
+    while (!isDone()) {
+      const markerAtMs = markerPeriodStartMs(nextMarkerPeriod) + 250;
+      const atMs = Math.min(nextSlotMs, markerAtMs);
+      await followClock.sleep(Math.max(0, atMs - followClock.now()));
+      const nowMs = followClock.now();
+      if (atMs === markerAtMs) {
+        const period = markerPeriodAt(nowMs);
+        const marker = { v: 1, period, writtenAt: Math.floor(nowMs), rungs: { [TOP.toHex()]: index } };
+        gateway.publishMarker(group, period, JSON.stringify(marker));
+        nextMarkerPeriod = period + 1;
+        continue;
+      }
+      nextSlotMs += SEGMENT_S * 1000;
+      if (nowMs >= pauseAtMs && nowMs < pauseAtMs + QUIET_MS) {
+        continue;
+      }
+      index += 1;
+      resumed.atMs ??= nowMs >= pauseAtMs ? nowMs : null;
+      const firstSequence = Math.max(0, index - 4);
+      gateway.publishSlot(
+        TOP,
+        index,
+        ladderPlaylist({
+          name: 'top',
+          firstSequence,
+          count: index - firstSequence + 1,
+          startMs: LADDER_EPOCH_MS + nowMs - (index - firstSequence) * SEGMENT_S * 1000,
+        }),
+      );
+    }
+  }
+
+  it('is back within about one marker period of the broadcaster, where asking the next slot costs a minute', async () => {
+    const rig = makeRig({
+      headMarkersFor: (gateway) => (rung, clock) => rungHeadMarkers(gateway.reader, rung, clock, () => 0),
+    });
+    rig.gateway.publishLive(TOP, 'top', 5);
+    rig.poller.register(OWNER, [{ topic: TOP, bandwidth: 5_000_000 }], GROUP);
+    rig.poller.activate(hex(TOP));
+    await rig.poller.ready(hex(TOP));
+    // From here, so the search that starts the walk, whose round reaches past the head, is not counted.
+    rig.gateway.modelSkipList(PEERS, SKIP_MS, rig.followClock.now);
+
+    const lastBefore = { index: -1 };
+    let behindAtPause: number | null = null;
+    const resumed = { atMs: null as number | null };
+    let backAtMs: number | null = null;
+    const pauseAtMs = rig.followClock.now() + 15_000;
+    const giveUpAtMs = pauseAtMs + QUIET_MS + 2 * SKIP_MS;
+    const uploader = broadcast(rig, pauseAtMs, () => backAtMs !== null || rig.followClock.now() > giveUpAtMs, resumed);
+    while (backAtMs === null && rig.followClock.now() <= giveUpAtMs) {
+      await sleep(1);
+      if (resumed.atMs === null) {
+        lastBefore.index = rig.gateway.head(TOP);
+        if (rig.followClock.now() >= pauseAtMs) {
+          behindAtPause ??= lastBefore.index - newestSegment(TOP);
+        }
+      } else if (newestSegment(TOP) > lastBefore.index) {
+        backAtMs = rig.followClock.now();
+      }
+    }
+    await uploader;
+
+    assert.ok(resumed.atMs !== null && backAtMs !== null, 'the player never caught up after the quiet spell');
+    assert.ok(
+      behindAtPause !== null && behindAtPause <= 2,
+      `${behindAtPause} slots behind when the broadcaster paused`,
+    );
+    const waitedMs = backAtMs - resumed.atMs;
+    assert.ok(
+      waitedMs <= MARKER_PERIOD_SECONDS * 1_000 + MARKER_READ_DELAY_MS + 6_000,
+      `back ${Math.round(waitedMs)} ms after the broadcaster`,
+    );
+    const markerReads = rig.gateway.markerRequests();
+    assert.equal(new Set(markerReads).size, markerReads.length, 'a marker address was read twice');
   });
 });
