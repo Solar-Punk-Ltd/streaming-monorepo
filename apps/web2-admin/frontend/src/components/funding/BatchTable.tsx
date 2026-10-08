@@ -39,26 +39,51 @@ import {
  */
 const CHECKBOX_WIDTH = 56;
 
-/** Wide enough for the batch and its node's card beside every number column, as the page is at its widest. */
-const TABLE_MIN_WIDTH = 960;
-
+/** A column after the batch: its header, and its fixed width, wide enough for the header on one line. */
 interface Column {
   label: string;
   width: number;
 }
 
+/** The batch's own readings, in every row whichever the operation. */
+const READING_COLUMNS: readonly Column[] = [
+  { label: 'Depth', width: 80 },
+  { label: 'Time left', width: 112 },
+  { label: 'Fill', width: 64 },
+];
+
 /** The columns a ticked row fills in, for each operation, with fixed widths, so no row changes its size. */
 const AFTER_COLUMNS: Readonly<Record<FundingStampOperationKind, readonly Column[]>> = {
   topup: [
-    { label: 'Time left after', width: 120 },
+    { label: 'Time left after', width: 140 },
     { label: 'Cost', width: 120 },
     { label: 'Wallet after', width: 160 },
   ],
   dilute: [
-    { label: 'New depth', width: 104 },
+    { label: 'New depth', width: 112 },
     { label: 'Time left after', width: 176 },
   ],
 };
+
+/** The least width the batch column keeps for the batch and its node's card under it. */
+const BATCH_MIN_WIDTH = 256;
+
+function widthOf(columns: readonly Column[]): number {
+  return columns.reduce((sum, column) => sum + column.width, 0);
+}
+
+/**
+ * The table's least width: the tick, the batch's least, its readings and the widest operation's columns, so the batch
+ * keeps its room whichever operation is on, and a narrow page scrolls the table rather than squeeze it.
+ */
+const TABLE_MIN_WIDTH =
+  CHECKBOX_WIDTH +
+  BATCH_MIN_WIDTH +
+  widthOf(READING_COLUMNS) +
+  Math.max(...Object.values(AFTER_COLUMNS).map((columns) => widthOf(columns)));
+
+/** A header cell on one line, so the header row keeps one height whichever operation's columns it shows. */
+const HEADER = { whiteSpace: 'nowrap' } as const;
 
 const NUMBERS = { fontVariantNumeric: 'tabular-nums' } as const;
 
@@ -333,19 +358,10 @@ export function BatchTable({
           >
             <TableHead>
               <TableRow>
-                <TableCell sx={{ width: CHECKBOX_WIDTH }} />
-                <TableCell>Batch</TableCell>
-                <TableCell align="right" sx={{ width: 72 }}>
-                  Depth
-                </TableCell>
-                <TableCell align="right" sx={{ width: 112 }}>
-                  Time left
-                </TableCell>
-                <TableCell align="right" sx={{ width: 64 }}>
-                  Fill
-                </TableCell>
-                {AFTER_COLUMNS[operation].map((column) => (
-                  <TableCell key={column.label} align="right" sx={{ width: column.width }}>
+                <TableCell sx={{ ...HEADER, width: CHECKBOX_WIDTH }} />
+                <TableCell sx={HEADER}>Batch</TableCell>
+                {[...READING_COLUMNS, ...AFTER_COLUMNS[operation]].map((column) => (
+                  <TableCell key={column.label} align="right" sx={{ ...HEADER, width: column.width }}>
                     {column.label}
                   </TableCell>
                 ))}
