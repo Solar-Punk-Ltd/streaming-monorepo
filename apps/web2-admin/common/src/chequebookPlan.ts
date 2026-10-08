@@ -2,8 +2,10 @@ import type { FundingChequebook, FundingChequebookDirection, FundingNode } from 
 
 /**
  * The arithmetic of a chequebook operation, one rule for the admin's backend, which checks and sends one, and for its
- * Funding page, which shows what each ticked chequebook takes: docs/architecture/funding.md, "Chequebooks tab". Every
- * amount is a whole number of PLUR as a decimal string, worked in BigInt.
+ * Funding page, which shows what each ticked chequebook takes: docs/architecture/funding.md, "Chequebooks tab". The page
+ * shows `chequebookMove` from the balance it read; the backend moves `chequebookMoveNow`, the same worked out again
+ * from the balance read when the request comes in, and never more. Every amount is a whole number of PLUR as a decimal
+ * string, worked in BigInt.
  */
 
 /** The least a chequebook may be brought to, in PLUR: 1 xBZZ, as the owner decided on 2026-10-08. */
@@ -35,6 +37,39 @@ export function chequebookMove(targetPlur: string, availablePlur: string): Chequ
   return target > available
     ? { direction: 'deposit', amountPlur: (target - available).toString() }
     : { direction: 'withdraw', amountPlur: (available - target).toString() };
+}
+
+/**
+ * The move that brings a chequebook to `targetPlur` from its available balance read now, `availableNowPlur`, when the
+ * confirm dialog showed it at `shownAvailablePlur`: worked out again when the request comes in, and never more than
+ * the move the dialog listed, `chequebookMove(targetPlur, shownAvailablePlur)`.
+ *
+ * A deposit is the target less the larger of the two balances. Into a chequebook that grew since, it shrinks and lands
+ * on the target; into one its node drew on since, paying its peers, it keeps the amount shown and lands a little under
+ * the target. A withdrawal is the smaller of the two balances less the target. From a chequebook its node drew on since,
+ * it shrinks and lands on the target; from one that grew since, it keeps the amount shown and lands a little over it.
+ * Either way the balance read now is never taken past the target. Null when the dialog showed no move, when the
+ * chequebook is at the target or past it now, so that the move now would go the other way, or nowhere.
+ *
+ * Every amount is a whole number of PLUR as a decimal string; anything else throws, as for {@link chequebookMove}.
+ */
+export function chequebookMoveNow(
+  targetPlur: string,
+  shownAvailablePlur: string,
+  availableNowPlur: string,
+): ChequebookMove | null {
+  const target = plur(targetPlur, 'targetPlur');
+  const shown = plur(shownAvailablePlur, 'shownAvailablePlur');
+  const now = plur(availableNowPlur, 'availableNowPlur');
+  if (shown < target && now < target) {
+    const from = shown > now ? shown : now;
+    return { direction: 'deposit', amountPlur: (target - from).toString() };
+  }
+  if (shown > target && now > target) {
+    const from = shown < now ? shown : now;
+    return { direction: 'withdraw', amountPlur: (from - target).toString() };
+  }
+  return null;
 }
 
 /**
