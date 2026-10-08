@@ -133,6 +133,9 @@ export class StreamCatalog implements LadderRegistry {
     this.republishIfLadderShapeChanged(group, this.liveness.recordUploadFailed(group, rung));
   }
 
+  /** Nothing to hand back: a flip here is the catalog write itself. See {@link LadderRegistry.recordingNotReported}. */
+  public recordingNotReported(_group: string): void {}
+
   /**
    * Rewrite the master when the set of producing rungs changes, and only then.
    *

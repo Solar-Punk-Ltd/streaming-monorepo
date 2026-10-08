@@ -851,9 +851,11 @@ export class StreamUploader {
       // list. This is `StreamCatalog.upsertRendition`'s `flippedToVod` rule, read off the other side
       // of a wire rather than off a feed read.
       if (announced && announced.flippedToFinished && announced.masterIndex !== null) {
-        await this.reportAdminState(
-          this.ladderRecordingReport(announced, announced.masterIndex),
-          'so the recording is in the feed and the admin does not know it, which the recovery entry lets the next boot retry',
+        await this.reportLadderRecording(
+          this.reportAdminState(
+            this.ladderRecordingReport(announced, announced.masterIndex),
+            'so the recording is in the feed and the admin does not know it, which the recovery entry lets the next boot retry',
+          ),
         );
         // ⛔⛔⛔ After the report and only when the ladder really flipped, which is the same rule the
         // standalone halves of this method both state at length: written earlier it announces a flip
@@ -948,9 +950,11 @@ export class StreamUploader {
     const announced = await this.ladderRegistry.recordRungUnfinished(this.ladderIdentity(), this.buildRendition());
 
     if (this.admin && announced.flippedToFinished && announced.masterIndex !== null) {
-      await this.sendAdminState(
-        this.ladderRecordingReport(announced, announced.masterIndex),
-        'so the ladder is a recording in its master and the admin still lists it as live',
+      await this.reportLadderRecording(
+        this.sendAdminState(
+          this.ladderRecordingReport(announced, announced.masterIndex),
+          'so the ladder is a recording in its master and the admin still lists it as live',
+        ),
       );
       this.logger.log(ladderFinalized(this.ladder.group));
     }
@@ -1432,6 +1436,20 @@ export class StreamUploader {
     }
     if (!stateWasReported(outcome)) {
       throw new Error(`Could not report ${report.state} for stream ${this.streamId} to the admin API, ${whatIsLost}`);
+    }
+  }
+
+  /**
+   * Await the `vod` report a ladder's flip asked for, handing the flip back to the registry when it did
+   * not go through. The registry gives a finished ladder's flip to one rung only, so a rung keeping it
+   * after a failed report would leave every sibling finishing later unable to report the recording.
+   */
+  private async reportLadderRecording(report: Promise<void>): Promise<void> {
+    try {
+      await report;
+    } catch (error) {
+      this.ladderRegistry.recordingNotReported(this.ladder!.group);
+      throw error;
     }
   }
 

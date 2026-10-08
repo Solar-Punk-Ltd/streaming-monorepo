@@ -763,6 +763,8 @@ describe('a rung of a declared ladder', () => {
     /** Every record of this rung registered as one that will not finish. */
     unfinished: Upsert[];
     delivered: string[];
+    /** Every ladder group the registry was told its flip's vod report did not go through for. */
+    notReported: string[];
   }
 
   interface LadderSessionOptions {
@@ -787,6 +789,7 @@ describe('a rung of a declared ladder', () => {
     const upserts: Upsert[] = [];
     const unfinished: Upsert[] = [];
     const delivered: string[] = [];
+    const notReported: string[] = [];
 
     const bee = makeFakeBee({
       uploadPayload: async (index, payload) => {
@@ -825,6 +828,9 @@ describe('a rung of a declared ladder', () => {
         unfinished.push(upsert);
         return options.unfinished?.(upsert) ?? { masterIndex: null, flippedToFinished: false, duration: null };
       },
+      recordingNotReported: (group) => {
+        notReported.push(group);
+      },
     };
 
     const uploader = new StreamUploader({
@@ -850,7 +856,7 @@ describe('a rung of a declared ladder', () => {
       catalogAnnounceRetryMs: options.catalogAnnounceRetryMs,
     });
 
-    return { uploader, published, catalogEntries, reports, upserts, unfinished, delivered };
+    return { uploader, published, catalogEntries, reports, upserts, unfinished, delivered, notReported };
   }
 
   /**
@@ -971,6 +977,40 @@ describe('a rung of a declared ladder', () => {
   });
 
   /**
+   * The registry hands a finished ladder's flip to one rung only, so a vod report that rung could not
+   * deliver has to hand it back, or the sibling finishing next finds it taken and the recording stays
+   * listed as live.
+   */
+  it('hands the flip back to the registry when its vod report could not be delivered', async () => {
+    const session = newLadderSession({
+      announce: (upsert) =>
+        upsert.rendition.index === undefined
+          ? { masterIndex: 0, flippedToFinished: false, duration: null }
+          : { masterIndex: 4, flippedToFinished: true, duration: 12 },
+      reportOutcome: (report) => (report.state === ADMIN_STATE_VOD ? STATE_REPORT_FAILED : STATE_REPORT_ACCEPTED),
+    });
+
+    await feedOneSegment(session.uploader, 0);
+    await assert.rejects(() => session.uploader.notifyStop(), /admin API/);
+
+    assert.deepEqual(session.notReported, [DECLARED_TOPIC]);
+  });
+
+  it('keeps the flip when its vod report was delivered', async () => {
+    const session = newLadderSession({
+      announce: (upsert) =>
+        upsert.rendition.index === undefined
+          ? { masterIndex: 0, flippedToFinished: false, duration: null }
+          : { masterIndex: 4, flippedToFinished: true, duration: 12 },
+    });
+
+    await feedOneSegment(session.uploader, 0);
+    await session.uploader.notifyStop();
+
+    assert.deepEqual(session.notReported, []);
+  });
+
+  /**
    * ⛔ A rung draining while its siblings are still live has ended its own recording and nothing more.
    * The broadcast is over when the LAST of them finalizes, which is the only report the admin answers
    * with a flip, so a rung announcing the end off its own drain would take three live rungs off the
@@ -1064,6 +1104,11 @@ describe('a rung of a declared ladder', () => {
       });
 
       assert.equal(lines.filter((line) => line.includes(ladderFinalized(DECLARED_TOPIC))).length, 0);
+      assert.deepEqual(
+        session.notReported,
+        [DECLARED_TOPIC],
+        'the flip it could not report was kept from the next rung',
+      );
     });
   });
 

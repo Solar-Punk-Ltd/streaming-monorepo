@@ -258,6 +258,62 @@ describe('what a rendition announce does in admin mode', () => {
   });
 
   /**
+   * ⛔⛔ Measured live 2026-10-08 on the test stack: four rungs finalized within 30 ms, the admin's write
+   * for each read the ladder under its mutex after all four rungs were stored, so three answers carried a
+   * finished ladder while the stream was still `live`. Only the first carried the admin's own flip, and
+   * each of the other two was read as the lost flip of a failed master write. Three `vod` reports went
+   * out and `Ladder … finalized to VOD` was logged three times for one broadcast.
+   */
+  describe('sibling answers that all carry the finished ladder before the vod report lands', () => {
+    const finished = ['360p', '480p', '720p', '1080p'].map((name, at) =>
+      rung(name, Number.parseInt(name, 10), { index: 7 + at, duration: 12 }),
+    );
+    const finishedWhileLive = (adminFlipped: boolean): Response =>
+      new Response(merged(finished, { finished: true, flippedToFinished: adminFlipped, duration: 12 }, 'live'), {
+        status: 200,
+      });
+
+    it('hands the flip to one of them only', async () => {
+      const harness = makeRegistry({ answer: (_rendition, attempt) => finishedWhileLive(attempt === 2) });
+
+      const announces = await Promise.all(finished.map((final) => harness.registry.upsertRendition(IDENTITY, final)));
+
+      assert.equal(
+        announces.filter((announced) => announced.flippedToFinished).length,
+        1,
+        'one broadcast ending was handed out as more than one flip, so it is reported and logged more than once',
+      );
+    });
+
+    it('hands the flip out again once the rung it went to says its vod report did not go through', async () => {
+      const harness = makeRegistry({ answer: () => finishedWhileLive(false) });
+      const first = await harness.registry.upsertRendition(IDENTITY, finished[0]);
+      assert.equal(first.flippedToFinished, true);
+
+      harness.registry.recordingNotReported(IDENTITY.group);
+      const retried = await harness.registry.upsertRendition(IDENTITY, finished[1]);
+
+      assert.equal(retried.flippedToFinished, true, 'a ladder whose only vod report failed stays live at the admin');
+    });
+
+    it('hands the flip out again for the next broadcast of the same declared stream', async () => {
+      let finishedNow = true;
+      const harness = makeRegistry({
+        answer: (rendition) =>
+          finishedNow ? finishedWhileLive(false) : new Response(merged([rendition]), { status: 200 }),
+      });
+      await harness.registry.upsertRendition(IDENTITY, finished[0]);
+
+      finishedNow = false;
+      await harness.registry.upsertRendition(IDENTITY, rung('360p', 360));
+      finishedNow = true;
+      const next = await harness.registry.upsertRendition(IDENTITY, finished[0]);
+
+      assert.equal(next.flippedToFinished, true, 'the next broadcast′s recording was never reported');
+    });
+  });
+
+  /**
    * ⛔ A failed report has to cost what a failed catalog write costs, or the two deployments behave
    * differently at the one moment that decides whether a broadcast is findable at all. The uploader's
    * `announceToCatalog` catches this, records the age `/health` reports, and re-attempts on its own
