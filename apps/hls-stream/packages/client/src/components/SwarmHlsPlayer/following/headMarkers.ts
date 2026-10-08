@@ -1,6 +1,6 @@
 import { markerPeriodAt, markerPeriodStartMs } from '@swarm-hls-stream/shared';
 
-import type { FollowClock, HeadMarkers } from './feedReader';
+import type { FollowClock } from './feedReader';
 
 /**
  * How long after its period starts a ladder marker is asked for. The uploader writes it 250 ms into
@@ -10,7 +10,9 @@ import type { FollowClock, HeadMarkers } from './feedReader';
 export const MARKER_READ_DELAY_MS = 4_000;
 
 /**
- * The ladder markers of one feed, one per period, each asked at most once.
+ * The ladder markers of one feed, one per period, each asked at most once. What a read yields is the
+ * caller's: a follower takes the index a marker names for its rung, a page waiting on a broadcast takes
+ * only that a marker is there.
  *
  * ⛔ **A marker address is never asked twice.** Asking one again and again before it is written would
  * be the very pile of early asks this exists to avoid, so one found missing is let go and the next
@@ -18,21 +20,21 @@ export const MARKER_READ_DELAY_MS = 4_000;
  * newer marker says more.
  * Periods are counted on the gateway's clock, which is the viewer's plus `offsetMs`.
  */
-export class PeriodMarkers implements HeadMarkers {
+export class PeriodMarkers<T = number> {
   private nextPeriod = 0;
 
   constructor(
     private readonly clock: FollowClock,
     private readonly offsetMs: () => number,
-    /** One read of the marker of `period`: the index it names for this feed, or null. */
-    private readonly readPeriod: (period: number) => Promise<number | null>,
+    /** One read of the marker of `period`, or null when it is missing or says nothing to the caller. */
+    private readonly readPeriod: (period: number) => Promise<T | null>,
   ) {}
 
   nextDueMs(): number {
     return markerPeriodStartMs(this.duePeriod()) + MARKER_READ_DELAY_MS - this.offsetMs();
   }
 
-  readNext(): Promise<number | null> {
+  readNext(): Promise<T | null> {
     const period = this.duePeriod();
     this.nextPeriod = period + 1;
     return this.readPeriod(period);

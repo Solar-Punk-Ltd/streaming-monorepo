@@ -6,11 +6,18 @@ import { useAppContext } from '@/providers/App';
 import { watchPageCatalogPollMs } from '@/providers/catalogPoll';
 import { useCatalogPoll } from '@/providers/useCatalogPoll';
 import { ROUTES } from '@/routes';
-import { MEDIA_TYPE_AUDIO, MEDIA_TYPE_VIDEO, MediaType } from '@/types/stream';
+import {
+  MEDIA_TYPE_AUDIO,
+  MEDIA_TYPE_VIDEO,
+  MediaType,
+  STREAM_STATUS_LIVE,
+  STREAM_STATUS_SCHEDULED,
+} from '@/types/stream';
 import { playableRenditions } from '@/utils/playableRenditions';
 import { scheduledStartLabel } from '@/utils/scheduledStart';
 import { WATCH_VIEW_PLAYER, watchPageView } from '@/utils/watchPageView';
 
+import { useIsLiveByMarker } from './useIsLiveByMarker';
 import { useIsWaitingForStart } from './useIsWaitingForStart';
 import { WatchPlaceholder } from './WatchPlaceholder';
 
@@ -30,15 +37,19 @@ export function StreamWatcher() {
   }>();
   const [searchParams] = useSearchParams();
   const navigate = useNavigate();
-  const { streamList, isStreamListLoaded } = useAppContext();
+  const { streamList, isStreamListLoaded, swarm } = useAppContext();
 
   // The ladder lives in the catalog, keyed by the primary feed the browser links to. Current
   // entries name the master, older ones the lowest rung. Waiting for the first catalog read
   // rather than rendering without
   // it keeps a deep link from starting single-rendition and rebuilding a second later.
-  const stream = streamList.find((entry) => entry.owner === owner && entry.topic === topic);
+  const listed = streamList.find((entry) => entry.owner === owner && entry.topic === topic);
 
   // Above the early return, because a hook may not be skipped on some renders.
+  const isAnnounced = listed?.state === STREAM_STATUS_SCHEDULED;
+  const isLiveByMarker = useIsLiveByMarker(swarm, owner, topic, isAnnounced);
+  // The ladder's first marker says live before the list's next slot can, see `watchForLiveMarker`.
+  const stream = isAnnounced && isLiveByMarker ? { ...listed, state: STREAM_STATUS_LIVE } : listed;
   const isWaiting = useIsWaitingForStart(`${owner}/${topic}`, stream);
   const view = watchPageView(isStreamListLoaded, stream, isWaiting);
   useCatalogPoll(watchPageCatalogPollMs(view));
