@@ -69,6 +69,10 @@ const tick = (label: string, verb = 'Top up') =>
 const typeDays = (value: string) =>
   fireEvent.change(screen.getByRole('textbox', { name: 'Days' }), { target: { value } });
 
+/** The bar's line of what the ticked batches come to, by its whole text, the total's own element and all. */
+const summary = (text: string) =>
+  screen.getByText((_content, element) => element?.tagName === 'P' && element.textContent === text);
+
 /**
  * Opens the confirm dialog with the bar's button, `button`, and answers it once the view it reads again as it opens is
  * back and its own button, `verb`, is free.
@@ -185,7 +189,9 @@ describe('topping up', () => {
     expect(catalogue.getByText('70 days')).toBeInTheDocument();
     expect(catalogue.getByText('1.305 xBZZ')).toHaveAttribute('title', '1.30459631616 xBZZ');
     expect(catalogue.getByText('3.695 xBZZ')).toHaveAttribute('title', '3.69540368384 xBZZ');
-    expect(screen.getByText('To top up: 1 batch, 30 days more each, 1.30459631616 xBZZ in all.')).toBeInTheDocument();
+    // The total to three decimals, as the rows have their amounts, and the exact amount on hover.
+    const total = within(summary('To top up: 1 batch, 30 days more each, 1.305 xBZZ in all.')).getByText('1.305 xBZZ');
+    expect(total).toHaveAttribute('title', '1.30459631616 xBZZ');
     expect(screen.getByRole('button', { name: 'Top up 1 batch' })).toBeEnabled();
 
     tick('catalogue-node');
@@ -219,7 +225,7 @@ describe('topping up', () => {
     typeDays('400');
     expect(slider).toHaveAttribute('aria-valuenow', '365');
     expect(catalogue.getByText('440 days')).toBeInTheDocument();
-    expect(screen.getByText(/^To top up: 2 batches, 400 days more each, /)).toBeInTheDocument();
+    expect(summary('To top up: 2 batches, 400 days more each, 34.789 xBZZ in all.')).toBeInTheDocument();
 
     // Only digits reach the field.
     typeDays('40.5');
