@@ -562,6 +562,17 @@ describe('a stamp request', () => {
     assert.equal(app.manager.calls.inventory, 0);
   });
 
+  it("bounds a dilution's depth at 40, the manager's ceiling, and a top-up's at a byte's, 255", async () => {
+    const deep = await stampRequest({ items: [{ ...DILUTION, expectedDepth: 41 }] });
+    assert.equal(deep.status, 400);
+    assert.equal((deep.body as { error: string }).error, 'validation_error');
+
+    // Past the schema, both are checked against the inventory, where the batch is at another depth.
+    assert.equal((await stampRequest({ items: [{ ...DILUTION, expectedDepth: 40 }] })).status, 409);
+    assert.equal((await stampRequest({ items: [{ ...TOP_UP, expectedDepth: 255 }] })).status, 409);
+    assert.equal(app.stampJournal.rows.size, 0);
+  });
+
   it('refuses both kinds in one request, and a batch named twice, with 400 and a sentence', async () => {
     const mixed = await stampRequest({ items: [TOP_UP, DILUTION] });
     assert.equal(mixed.status, 400);

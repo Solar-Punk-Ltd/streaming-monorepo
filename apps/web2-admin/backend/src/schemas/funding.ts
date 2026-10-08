@@ -6,6 +6,7 @@ import {
   type FundingStampOperationKind,
   type FundingTransferKind,
   PASSWORD_MAX_LENGTH,
+  STAMP_MAX_DEPTH,
   type StampOperationItemRequest,
 } from '@streaming-monorepo/web2-admin-common';
 import { array, type InferType, mixed, number, object, string } from 'yup';
@@ -19,7 +20,10 @@ export const FUNDING_MAX_ITEMS = 200;
  */
 export const FUNDING_STAMP_MAX_DAYS = 2 ** 31 - 1;
 
-/** The deepest a batch is: the postage contract keeps a depth in a byte. */
+/**
+ * The deepest a batch is: the postage contract keeps a depth in a byte. A dilution's is bounded lower, at the
+ * manager's ceiling, `STAMP_MAX_DEPTH` of web2-admin-common.
+ */
 const MAX_DEPTH = 255;
 
 /** A batch id, `0x` and 64 hex digits, in either case. */
@@ -115,7 +119,15 @@ const stampItemSchema = object({
     .required('expectedDepth is required')
     .integer('expectedDepth must be a whole number')
     .min(0, 'expectedDepth must be 0 or more')
-    .max(MAX_DEPTH, `expectedDepth must be at most ${MAX_DEPTH}`),
+    .max(MAX_DEPTH, `expectedDepth must be at most ${MAX_DEPTH}`)
+    .when('kind', {
+      is: 'dilute',
+      then: (schema) =>
+        schema.max(
+          STAMP_MAX_DEPTH,
+          `a dilution's expectedDepth must be at most ${STAMP_MAX_DEPTH}, the deepest the manager dilutes a batch to`,
+        ),
+    }),
   days: number()
     .strict()
     .integer('days must be a whole number')

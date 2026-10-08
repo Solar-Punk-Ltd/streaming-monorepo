@@ -62,11 +62,11 @@ import { ManagerFundingError, type ManagerFundingClient } from './ManagerFunding
  * A request is refused, in this order, nothing journalled: a request of both kinds, or one that names a batch twice;
  * funding not set up; a manager on another chain; an item whose node or batch the manager does not hold, whose batch
  * could not be read, is not usable, has expired or is no longer at the depth the page showed, whose dilution would
- * leave the batch under 7 days, or whose top-up has no price of postage to go by, or one higher than the page quoted
- * it at; a node whose wallet could not be read, holds no xDAI for the gas, or cannot pay for its top-ups in xBZZ; an
- * earlier stamp bulk with an item that still holds up a new one, once refreshed, or another request at the same moment
- * (`FundingBusyError`). The arithmetic is the console's own, `stampQuote.ts` of web2-admin-common, which the page
- * shows. The manager checks all of it again.
+ * leave the batch under 7 days or take it past the manager's ceiling of depth 40, or whose top-up has no price of
+ * postage to go by, or one higher than the page quoted it at; a node whose wallet could not be read, holds no xDAI for
+ * the gas, or cannot pay for its top-ups in xBZZ; an earlier stamp bulk with an item that still holds up a new one,
+ * once refreshed, or another request at the same moment (`FundingBusyError`). The arithmetic is the console's own,
+ * `stampQuote.ts` of web2-admin-common, which the page shows. The manager checks all of it again.
  *
  * Every item is journalled (`funding_stamp_operations`) before any is relayed, one request at a time under the stamp
  * lock, and the request answers at once, every item `queued`. The items are then relayed in turn behind it, in this
@@ -93,9 +93,6 @@ const logger = Logger.getInstance();
  * manager answers it only once the node has, and a node answers once the chain has mined what it asked for.
  */
 export const FUNDING_STAMP_WAIT_MS = 2_000;
-
-/** The deepest a batch goes: the postage contract keeps its depth in a byte. */
-const MAX_DEPTH = 255;
 
 /** What the stamp service uses of the client of the manager's funding API. */
 export type FundingStampManager = Pick<ManagerFundingClient, 'inventory' | 'stampOperation' | 'stampOperationStatus'>;
@@ -199,7 +196,7 @@ function inoperable(batch: FundingBatch, node: FundingNode): string {
  * say. The batch must be read whole, usable and not expired ({@link operableBatch}), and at the depth the page showed.
  * A top-up is priced at the price of postage the manager read now ({@link stampTopUpQuote}), and refused when that is
  * higher than the price the page quoted it at, so it never costs more than the page showed; a dilution must leave the
- * batch 7 days or more ({@link stampDiluteQuote}).
+ * batch 7 days or more, and take it no deeper than the manager's ceiling, `STAMP_MAX_DEPTH` ({@link stampDiluteQuote}).
  */
 export function stampTargetsOf(
   items: readonly StampOperationItemRequest[],
@@ -255,17 +252,12 @@ export function stampTargetsOf(
         costPlur: quote.costPlur,
       };
     }
+    // The quote refuses a dilution past the manager's ceiling, STAMP_MAX_DEPTH, as it refuses one that leaves 7 days.
     const quote = stampDiluteQuote(item.steps, batch.depth, batch.ttlSeconds);
     if (quote.problem) {
       throw new FundingRefusedError(
         'batch',
         `The batch of ${nodeName(node)} cannot be diluted ${plural(item.steps, 'step')}: ${quote.problem} Nothing was sent.`,
-      );
-    }
-    if (quote.newDepth > MAX_DEPTH) {
-      throw new FundingRefusedError(
-        'batch',
-        `The batch of ${nodeName(node)} is at depth ${batch.depth}, and ${plural(item.steps, 'step')} more would take it past ${MAX_DEPTH}. Nothing was sent.`,
       );
     }
     return { item, node, batch, newDepth: quote.newDepth, amountPerChunkPlur: null, costPlur: null };

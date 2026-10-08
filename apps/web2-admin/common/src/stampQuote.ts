@@ -15,6 +15,13 @@ export const DILUTE_MAX_STEPS = 2;
 /** The time left a dilution must leave its batch: 7 days, as the owner decided on 2026-10-08. */
 export const DILUTE_MIN_SECONDS_AFTER = 7 * SECONDS_PER_DAY;
 
+/**
+ * The deepest the manager dilutes a batch to: the manager's own ceiling, `MAX_STAMP_DEPTH` of its common package, which
+ * it refuses a dilution past. The admin cannot import it, since apps never import each other, so it keeps the same
+ * number here and refuses such a dilution first.
+ */
+export const STAMP_MAX_DEPTH = 40;
+
 /** What a top-up costs and leaves, at the price the chain asks now. */
 export interface StampTopUpQuote {
   /** What a node's `PATCH /stamps/topup` takes: PLUR per chunk, for every block of the days. */
@@ -57,9 +64,9 @@ export interface StampDiluteQuote {
 }
 
 /**
- * A dilution of `steps` on a batch of `depth` with `ttlSeconds` left. It is refused for other than 1 or 2 steps, and
- * when it would leave the batch under 7 days: the floor is on the time left after it, so a batch of 10 days cannot be
- * diluted two steps to 2.5.
+ * A dilution of `steps` on a batch of `depth` with `ttlSeconds` left. It is refused for other than 1 or 2 steps, when
+ * it would take the batch past {@link STAMP_MAX_DEPTH}, and when it would leave the batch under 7 days: the floor is on
+ * the time left after it, so a batch of 10 days cannot be diluted two steps to 2.5.
  */
 export function stampDiluteQuote(steps: number, depth: number, ttlSeconds: number): StampDiluteQuote {
   const newDepth = depth + steps;
@@ -67,6 +74,8 @@ export function stampDiluteQuote(steps: number, depth: number, ttlSeconds: numbe
   let problem: string | null = null;
   if (!Number.isInteger(steps) || steps < 1 || steps > DILUTE_MAX_STEPS) {
     problem = `A dilution takes 1 or ${DILUTE_MAX_STEPS} steps.`;
+  } else if (newDepth > STAMP_MAX_DEPTH) {
+    problem = `It would take the batch past depth ${STAMP_MAX_DEPTH}, the deepest the manager dilutes a batch to.`;
   } else if (ttlAfterSeconds < DILUTE_MIN_SECONDS_AFTER) {
     problem = 'It would leave the batch under 7 days.';
   }

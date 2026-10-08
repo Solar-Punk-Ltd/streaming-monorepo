@@ -7,6 +7,7 @@ import {
   DILUTE_MIN_SECONDS_AFTER,
   operableBatch,
   SECONDS_PER_DAY,
+  STAMP_MAX_DEPTH,
   stampDiluteQuote,
   stampTopUpQuote,
 } from './stampQuote.js';
@@ -70,6 +71,16 @@ describe('a dilution, quoted', () => {
       stampDiluteQuote(1, 20, 2 * DILUTE_MIN_SECONDS_AFTER - 2).problem,
       'It would leave the batch under 7 days.',
     );
+  });
+
+  it("is refused past depth 40, the manager's ceiling, and allowed up to it", () => {
+    const year = 365 * SECONDS_PER_DAY;
+    const past = 'It would take the batch past depth 40, the deepest the manager dilutes a batch to.';
+    assert.equal(STAMP_MAX_DEPTH, 40);
+    assert.deepEqual(stampDiluteQuote(2, 38, year), { newDepth: 40, ttlAfterSeconds: year / 4, problem: null });
+    assert.equal(stampDiluteQuote(1, 39, year).problem, null);
+    assert.deepEqual(stampDiluteQuote(2, 39, year), { newDepth: 41, ttlAfterSeconds: year / 4, problem: past });
+    assert.equal(stampDiluteQuote(1, 40, year).problem, past);
   });
 
   it('is refused for other than 1 or 2 steps', () => {
