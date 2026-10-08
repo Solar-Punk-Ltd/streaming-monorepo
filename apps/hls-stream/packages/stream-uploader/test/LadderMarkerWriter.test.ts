@@ -321,9 +321,4 @@ describe('LadderMarkerWriter', () => {
     assert.equal(h.uploads.length, 0);
     assert.equal(h.clock.pendingCount(), 0);
   });
-
-  it('is owned by the signer the master is owned by', () => {
-    const h = harness();
-    assert.equal(h.writer.owner, new PrivateKey(TEST_KEY).publicKey().address().toHex());
-  });
 });

@@ -98,10 +98,6 @@ export class LadderMarkerWriter implements LadderMarkerSink {
     this.logger = options.logger ?? Logger.getInstance();
   }
 
-  public get owner(): string {
-    return this.options.signer.publicKey().address().toHex();
-  }
-
   /**
    * One rung of a ladder published a playlist at `index` of its feed. The first call for a ladder
    * starts its markers, at the next period boundary.
