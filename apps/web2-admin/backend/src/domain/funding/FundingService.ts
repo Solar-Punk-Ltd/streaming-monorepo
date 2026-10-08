@@ -291,9 +291,11 @@ export class FundingService {
       chainId: ADMIN_FUNDING_CHAIN_ID,
       stages: [],
       catalogue: null,
+      postage: null,
       observedAt: null,
       managerError: null,
       openBulkId,
+      openStampBulkId: null,
     };
     if (!manager) return view;
 

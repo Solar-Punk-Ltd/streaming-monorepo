@@ -1,22 +1,33 @@
 /**
- * The console's Funding page: the brand wallet, the nodes of every stage with their wallets, the pins that confirm
- * each node's address, and transfers from the brand wallet to node wallets. The admin learns the nodes from the
- * manager's funding API (`packages/contracts/src/funding.ts`) and relays every transfer through it; it has no chain
- * connection of its own. `docs/architecture/funding.md` is the design.
+ * The console's Funding page: the brand wallet, the nodes of every stage with their wallets and batches, the pins
+ * that confirm each node's address, transfers from the brand wallet to node wallets, and stamp operations, the
+ * top-ups and dilutions of the nodes' batches, which each node pays for from its own wallet. The admin learns the
+ * nodes from the manager's funding API (`packages/contracts/src/funding.ts`) and relays every transfer and stamp
+ * operation through it; it has no chain connection of its own. `docs/architecture/funding.md` is the design.
  *
  * Every route is a session route, so a write also needs the same-site header. Amounts are integer strings in base
  * units, never floats: wei for xDAI ({@link XDAI_DECIMALS}, 18 decimals) and PLUR for xBZZ ({@link XBZZ_DECIMALS},
  * 16 decimals). {@link parseBaseUnits} and {@link formatBaseUnits} convert to and from what a person types and reads.
  */
 
-import { type FundingNode, type FundingTransferKind, UUID_PATTERN } from '@streaming-monorepo/contracts';
+import {
+  type FundingNode,
+  type FundingPostage,
+  type FundingStampOperationKind,
+  type FundingTransferKind,
+  UUID_PATTERN,
+} from '@streaming-monorepo/contracts';
 
 export {
   FUNDING_NODE_ROLES,
+  FUNDING_STAMP_OPERATION_KINDS,
   FUNDING_TRANSFER_KINDS,
   FUNDING_TRANSFER_STATES,
+  type FundingBatch,
   type FundingNode,
   type FundingNodeRole,
+  type FundingPostage,
+  type FundingStampOperationKind,
   type FundingTransferKind,
   type FundingTransferState,
 } from '@streaming-monorepo/contracts';
@@ -34,6 +45,15 @@ export const FUNDING_TRANSFERS_ADMIN_PATH = `${FUNDING_PATH}/transfers`;
 export function fundingBulkPath(bulkId: string): string {
   if (!UUID_PATTERN.test(bulkId)) throw new Error('A bulk id is a UUID.');
   return `${FUNDING_TRANSFERS_ADMIN_PATH}?bulkId=${bulkId.toLowerCase()}`;
+}
+
+/** `POST`: top up or dilute batches. `GET` with `?bulkId=`: where one such bulk stands. */
+export const FUNDING_STAMP_OPERATIONS_ADMIN_PATH = `${FUNDING_PATH}/stamp-operations`;
+
+/** `GET`: the items of one stamp bulk, by the `bulkId` its request answered. */
+export function fundingStampBulkPath(bulkId: string): string {
+  if (!UUID_PATTERN.test(bulkId)) throw new Error('A bulk id is a UUID.');
+  return `${FUNDING_STAMP_OPERATIONS_ADMIN_PATH}?bulkId=${bulkId.toLowerCase()}`;
 }
 
 /** xDAI's decimals: one xDAI is 10^18 wei. */
@@ -67,7 +87,10 @@ export type FundingPinState = (typeof FUNDING_PIN_STATES)[number];
 export const FUNDING_ITEM_STATES = ['queued', 'submitted', 'confirmed', 'failed', 'unknown'] as const;
 export type FundingItemState = (typeof FUNDING_ITEM_STATES)[number];
 
-/** A node as the console shows it: the manager's node, and whether its address is the confirmed one. */
+/**
+ * A node as the console shows it: the manager's node, with its batch when the manager read one, and whether its
+ * address is the confirmed one.
+ */
 export interface AdminFundingNode extends FundingNode {
   pin: FundingPinState;
   /** The address an operator confirmed for this node, or null when none was. */
@@ -93,7 +116,7 @@ export interface BrandWalletView {
 /**
  * `GET /api/funding`. `configured` is false while the admin has no manager funding URL and token, and then the page
  * says it is not set up. `wallet` is null while there is no brand wallet. `managerError` says in a sentence why the
- * manager could not be read, and then `stages` is empty, `catalogue` null and `observedAt` null.
+ * manager could not be read, and then `stages` is empty, `catalogue` null, `postage` null and `observedAt` null.
  */
 export interface FundingView {
   configured: boolean;
@@ -102,6 +125,11 @@ export interface FundingView {
   chainId: number;
   stages: AdminFundingStage[];
   catalogue: AdminFundingNode | null;
+  /**
+   * What postage costs now, as the manager read it from a node's chain state: the price per chunk per block in PLUR,
+   * the chain's block time and the postage contract's floor in blocks. Null when no node answered.
+   */
+  postage: FundingPostage | null;
   /** When the manager read the nodes, ISO 8601, or null when it was not read. */
   observedAt: string | null;
   managerError: string | null;
@@ -110,6 +138,11 @@ export interface FundingView {
    * progress from it after a reload or in another tab.
    */
   openBulkId: string | null;
+  /**
+   * The latest stamp bulk that still has an item which holds up a new one, or null, as `openBulkId` is for sends.
+   * A stamp bulk and a send do not hold each other up.
+   */
+  openStampBulkId: string | null;
 }
 
 /** `POST /api/funding/pins`: confirm the current addresses of these nodes, behind the operator's password. */
@@ -184,6 +217,80 @@ export interface FundingTransfersAnswer {
 /** What `GET /api/funding/transfers?bulkId=` answers: each item of the send, refreshed from the manager. */
 export interface FundingBulkAnswer {
   items: FundingTransferItem[];
+}
+
+/** How many steps a dilution takes: each doubles what the batch holds and halves its time left. */
+export type FundingDiluteSteps = 1 | 2;
+
+/** Top up one batch for `days` more days at today's price, paid from its node's wallet in xBZZ. */
+export interface StampTopUpItemRequest {
+  kind: 'topup';
+  nodeId: string;
+  /** `0x` and 64 hex digits, lower case. */
+  batchId: string;
+  /** The depth the page showed, so a batch whose depth moved since is refused. */
+  expectedDepth: number;
+  /** A whole number of days, 1 or more, with no cap. */
+  days: number;
+}
+
+/** Dilute one batch by one step or two, the gas paid from its node's wallet in xDAI. */
+export interface StampDiluteItemRequest {
+  kind: 'dilute';
+  nodeId: string;
+  /** `0x` and 64 hex digits, lower case. */
+  batchId: string;
+  /** The depth the page showed, so a batch whose depth moved since is refused. */
+  expectedDepth: number;
+  steps: FundingDiluteSteps;
+}
+
+/** One item of a stamp bulk: a top-up or a dilution of one batch. */
+export type StampOperationItemRequest = StampTopUpItemRequest | StampDiluteItemRequest;
+
+/**
+ * `POST /api/funding/stamp-operations`: top up or dilute these batches, behind a confirm dialog and no password. One
+ * kind per request, and a batch at most once.
+ */
+export interface FundingStampOperationsRequest {
+  items: StampOperationItemRequest[];
+}
+
+/** One item of a stamp bulk, as the admin journalled it and as it stands now. */
+export interface FundingStampItem {
+  requestId: string;
+  kind: FundingStampOperationKind;
+  nodeId: string;
+  /** The node's label when the item was journalled. */
+  nodeLabel: string;
+  /** `0x` and 64 hex digits, lower case. */
+  batchId: string;
+  /** The days a top-up buys, or null for a dilution. */
+  days: number | null;
+  /** The steps a dilution takes, or null for a top-up. */
+  steps: FundingDiluteSteps | null;
+  /** What a top-up takes from the node's wallet, PLUR as a decimal string, or null for a dilution, which costs gas. */
+  costPlur: string | null;
+  state: FundingItemState;
+  /** The transaction hash once the manager reported one, or null. */
+  txHash: string | null;
+  /** Why it failed, in a sentence, or null. */
+  error: string | null;
+  /** Whether it no longer holds up a new stamp bulk, as a transfer's `settled` is for a new send. */
+  settled: boolean;
+  /** Whether the admin still asks the manager about it although it has an outcome, as a transfer's `watched`. */
+  watched: boolean;
+}
+
+/** What `POST /api/funding/stamp-operations` answers, with 202: the bulk's id and its items. */
+export interface FundingStampOperationsAnswer {
+  bulkId: string;
+  items: FundingStampItem[];
+}
+
+/** What `GET /api/funding/stamp-operations?bulkId=` answers: each item of the bulk, refreshed from the manager. */
+export interface FundingStampBulkAnswer {
+  items: FundingStampItem[];
 }
 
 const AMOUNT_PATTERN = /^(\d+)?(?:\.(\d*))?$/;

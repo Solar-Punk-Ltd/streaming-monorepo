@@ -7,14 +7,23 @@ import {
   FUNDING_ERROR_STATUS,
   FUNDING_INVENTORY_PATH,
   FUNDING_NODE_ROLES,
+  FUNDING_STAMP_OPERATION_KINDS,
+  FUNDING_STAMP_OPERATIONS_PATH,
   FUNDING_TRANSFER_KINDS,
   FUNDING_TRANSFER_STATES,
   FUNDING_TRANSFERS_PATH,
   fundingAccountAnswerSchema,
   fundingAccountPath,
+  fundingBatchSchema,
+  fundingChainSchema,
   fundingErrorAnswerSchema,
   fundingInventorySchema,
   fundingNodeSchema,
+  fundingPostageSchema,
+  fundingStampOperationAnswerSchema,
+  fundingStampOperationPath,
+  fundingStampOperationRequestSchema,
+  fundingStampOperationStatusSchema,
   fundingTransferAnswerSchema,
   fundingTransferPath,
   fundingTransferRequestSchema,
@@ -27,6 +36,7 @@ const WALLET = '0x1111111111111111111111111111111111111111';
 const BRAND = '0x2222222222222222222222222222222222222222';
 const BZZ_TOKEN = '0xdbf3ea6f5bee45c02255b2c26a16f300502f68da';
 const TX_HASH = `0x${'ab'.repeat(32)}`;
+const BATCH_ID = `0x${'c3'.repeat(32)}`;
 
 const node = () => ({
   nodeId: `${STAGE_ID}:bee-uploader`,
@@ -66,6 +76,36 @@ const transferRequest = () => ({
   rawTransaction: `0x02f8${'0a'.repeat(100)}`,
 });
 
+const batch = () => ({
+  batchId: BATCH_ID,
+  depth: 22,
+  immutable: true,
+  usable: true,
+  ttlSeconds: 1_296_000,
+  fillRatio: 0.25,
+  readError: null,
+});
+
+const postage = () => ({ pricePerChunkPerBlockPlur: '24000', blockSeconds: 5, minimumValidityBlocks: 17280 });
+
+const topUpRequest = () => ({
+  requestId: REQUEST_ID,
+  kind: 'topup',
+  nodeId: `${STAGE_ID}:bee-uploader`,
+  batchId: BATCH_ID,
+  expectedDepth: 22,
+  amountPerChunkPlur: '414720000',
+});
+
+const diluteRequest = () => ({
+  requestId: REQUEST_ID,
+  kind: 'dilute',
+  nodeId: `${STAGE_ID}:bee-uploader`,
+  batchId: BATCH_ID,
+  expectedDepth: 22,
+  newDepth: 23,
+});
+
 describe('the paths under /api/admin-funding', () => {
   it('names each route under the one prefix', () => {
     assert.equal(ADMIN_FUNDING_PATH, '/api/admin-funding');
@@ -86,6 +126,17 @@ describe('the paths under /api/admin-funding', () => {
       assert.throws(() => fundingTransferPath(bad), /UUID/);
     }
   });
+
+  it('builds a stamp operation path from a UUID in lower case, and refuses anything else', () => {
+    assert.equal(FUNDING_STAMP_OPERATIONS_PATH, '/api/admin-funding/stamp-operations');
+    assert.equal(
+      fundingStampOperationPath(REQUEST_ID.toUpperCase()),
+      `/api/admin-funding/stamp-operations/${REQUEST_ID}`,
+    );
+    for (const bad of ['', 'self', '../transfers', `${REQUEST_ID}/x`]) {
+      assert.throws(() => fundingStampOperationPath(bad), /UUID/);
+    }
+  });
 });
 
 describe('the closed lists', () => {
@@ -93,6 +144,7 @@ describe('the closed lists', () => {
     assert.deepEqual(FUNDING_NODE_ROLES, ['uploader', 'gateway', 'rung']);
     assert.deepEqual(FUNDING_TRANSFER_KINDS, ['xdai', 'xbzz']);
     assert.deepEqual(FUNDING_TRANSFER_STATES, ['submitted', 'confirmed', 'failed', 'unknown']);
+    assert.deepEqual(FUNDING_STAMP_OPERATION_KINDS, ['topup', 'dilute']);
     assert.deepEqual(FUNDING_ERROR_CODES, [
       'funding_off',
       'unauthorized',
@@ -101,11 +153,15 @@ describe('the closed lists', () => {
       'chain_unreachable',
       'conflict',
       'unknown_request',
+      'stamp_refused',
+      'node_unreachable',
     ]);
     assert.deepEqual(Object.keys(FUNDING_ERROR_STATUS).sort(), [...FUNDING_ERROR_CODES].sort());
     assert.equal(FUNDING_ERROR_STATUS.funding_off, 404, 'an API that is off looks like no API');
     assert.equal(FUNDING_ERROR_STATUS.unauthorized, 401);
     assert.equal(FUNDING_ERROR_STATUS.unknown_request, 404, 'a transfer the manager never received');
+    assert.equal(FUNDING_ERROR_STATUS.stamp_refused, 422, 'a stamp operation a check refused');
+    assert.equal(FUNDING_ERROR_STATUS.node_unreachable, 502, 'a node whose Bee API did not answer');
   });
 });
 
@@ -157,6 +213,78 @@ describe('GET /api/admin-funding/inventory', () => {
   it('refuses a node id that would not survive a path or a log line', () => {
     for (const nodeId of ['', 'a b', 'a/b', 'x'.repeat(201), 'line\nbreak']) {
       assert.equal(fundingNodeSchema.safeParse({ ...node(), nodeId }).success, false, JSON.stringify(nodeId));
+    }
+  });
+});
+
+describe("a node's batch and the price of postage, in the inventory", () => {
+  it("takes a node's batch and keeps its id in lower case", () => {
+    const parsed = fundingNodeSchema.parse({
+      ...node(),
+      batch: { ...batch(), batchId: BATCH_ID.toUpperCase().replace('0X', '0x') },
+    });
+    assert.deepEqual(parsed.batch, batch());
+  });
+
+  it('takes a node with no batch, such as a gateway, and the node of a manager that answers no batch at all', () => {
+    assert.equal(fundingNodeSchema.parse({ ...node(), role: 'gateway', batch: null }).batch, null);
+    const older = fundingNodeSchema.parse(node());
+    assert.equal(older.batch, undefined);
+    assert.equal('batch' in older, false);
+  });
+
+  it('takes a batch the node could not be read about, with null readings and the reason', () => {
+    const unread = {
+      batchId: BATCH_ID,
+      depth: null,
+      immutable: null,
+      usable: null,
+      ttlSeconds: null,
+      fillRatio: null,
+      readError: 'The node did not answer in time.',
+    };
+    assert.deepEqual(fundingBatchSchema.parse(unread), unread);
+  });
+
+  it('takes an expired batch, whose time left is 0, and a full one, whose fill is 1', () => {
+    assert.equal(fundingBatchSchema.parse({ ...batch(), ttlSeconds: 0, usable: false }).ttlSeconds, 0);
+    assert.equal(fundingBatchSchema.parse({ ...batch(), fillRatio: 1 }).fillRatio, 1);
+    assert.equal(fundingBatchSchema.parse({ ...batch(), fillRatio: 0 }).fillRatio, 0);
+  });
+
+  it('refuses a batch id that is not 0x and 64 hex digits, and readings that are not what a batch has', () => {
+    const refused = (over: Record<string, unknown>) =>
+      fundingBatchSchema.safeParse({ ...batch(), ...over }).success === false;
+    for (const batchId of ['c3'.repeat(32), `0x${'c3'.repeat(31)}`, `0x${'zz'.repeat(32)}`, '']) {
+      assert.ok(refused({ batchId }), JSON.stringify(batchId));
+    }
+    for (const depth of [-1, 22.5, 256, '22']) assert.ok(refused({ depth }), JSON.stringify(depth));
+    for (const ttlSeconds of [-1, 1.5, 2 ** 53, '60']) assert.ok(refused({ ttlSeconds }), JSON.stringify(ttlSeconds));
+    for (const fillRatio of [-0.1, 1.01, '0.5']) assert.ok(refused({ fillRatio }), JSON.stringify(fillRatio));
+    assert.ok(refused({ usable: 'yes' }));
+    assert.ok(refused({ immutable: 1 }));
+  });
+
+  it('takes the price of postage, null when no node answered, and none from a manager that reads none', () => {
+    const chain = { chainId: 100, bzzToken: BZZ_TOKEN };
+    assert.deepEqual(fundingChainSchema.parse({ ...chain, postage: postage() }).postage, postage());
+    assert.equal(fundingChainSchema.parse({ ...chain, postage: null }).postage, null);
+    assert.equal('postage' in fundingChainSchema.parse(chain), false);
+    assert.deepEqual(
+      fundingInventorySchema.parse({ ...inventory(), chain: { ...chain, postage: postage() } }).chain.postage,
+      postage(),
+    );
+  });
+
+  it('refuses a price, a block time or a floor that is not a whole number above 0', () => {
+    const refused = (over: Record<string, unknown>) =>
+      fundingPostageSchema.safeParse({ ...postage(), ...over }).success === false;
+    for (const pricePerChunkPerBlockPlur of ['0', '1.5', '-1', 24000, '']) {
+      assert.ok(refused({ pricePerChunkPerBlockPlur }), JSON.stringify(pricePerChunkPerBlockPlur));
+    }
+    for (const blockSeconds of [0, -5, 5.5, '5']) assert.ok(refused({ blockSeconds }), JSON.stringify(blockSeconds));
+    for (const minimumValidityBlocks of [0, 17280.5, '17280']) {
+      assert.ok(refused({ minimumValidityBlocks }), JSON.stringify(minimumValidityBlocks));
     }
   });
 });
@@ -258,6 +386,101 @@ describe('GET /api/admin-funding/transfers/:requestId', () => {
       false,
       'only the four states',
     );
+  });
+});
+
+describe('POST /api/admin-funding/stamp-operations', () => {
+  it('takes a top-up and keeps the ids in lower case', () => {
+    const parsed = fundingStampOperationRequestSchema.parse({
+      ...topUpRequest(),
+      requestId: REQUEST_ID.toUpperCase(),
+      batchId: BATCH_ID.toUpperCase().replace('0X', '0x'),
+    });
+    assert.deepEqual(parsed, topUpRequest());
+  });
+
+  it('takes a dilution of one step or of two', () => {
+    assert.equal(fundingStampOperationRequestSchema.parse(diluteRequest()).kind, 'dilute');
+    const twoSteps = fundingStampOperationRequestSchema.parse({ ...diluteRequest(), newDepth: 24 });
+    assert.equal(twoSteps.kind === 'dilute' && twoSteps.newDepth, 24);
+  });
+
+  it('refuses a dilution of no step, of three, or to a shallower depth', () => {
+    for (const newDepth of [22, 25, 21]) {
+      const result = fundingStampOperationRequestSchema.safeParse({ ...diluteRequest(), newDepth });
+      assert.equal(result.success, false, `to depth ${newDepth} from 22`);
+      assert.deepEqual(result.error?.issues[0]?.path, ['newDepth']);
+    }
+  });
+
+  it('refuses a top-up of nothing, a kind it does not know, and an operation missing its own field', () => {
+    const refused = (body: Record<string, unknown>) =>
+      fundingStampOperationRequestSchema.safeParse(body).success === false;
+    assert.ok(refused({ ...topUpRequest(), amountPerChunkPlur: '0' }), 'a top-up of nothing buys nothing');
+    assert.ok(refused({ ...topUpRequest(), amountPerChunkPlur: '1.5' }));
+    assert.ok(refused({ ...topUpRequest(), kind: 'buy' }));
+    const { amountPerChunkPlur: _amount, ...noAmount } = topUpRequest();
+    assert.ok(refused(noAmount), 'a top-up with no amount');
+    const { newDepth: _newDepth, ...noDepth } = diluteRequest();
+    assert.ok(refused(noDepth), 'a dilution with no depth');
+    assert.ok(refused({ ...topUpRequest(), kind: 'dilute' }), 'a top-up body named a dilution');
+    assert.ok(refused({ ...topUpRequest(), requestId: 'not-a-uuid' }));
+    assert.ok(refused({ ...topUpRequest(), batchId: 'c3'.repeat(32) }), 'a batch id without 0x');
+    assert.ok(refused({ ...topUpRequest(), expectedDepth: 22.5 }));
+    assert.ok(refused({ ...topUpRequest(), nodeId: 'a/b' }));
+  });
+
+  it("drops a field the operation's kind does not name", () => {
+    const parsed = fundingStampOperationRequestSchema.parse({ ...topUpRequest(), newDepth: 30, days: 30 });
+    assert.equal('newDepth' in parsed, false);
+    assert.equal('days' in parsed, false);
+  });
+
+  it('answers the request id, the kind, a state and the transaction hash once there is one', () => {
+    assert.deepEqual(
+      fundingStampOperationAnswerSchema.parse({
+        requestId: REQUEST_ID,
+        kind: 'topup',
+        state: 'confirmed',
+        txHash: TX_HASH,
+      }),
+      { requestId: REQUEST_ID, kind: 'topup', state: 'confirmed', txHash: TX_HASH },
+    );
+    assert.equal(
+      fundingStampOperationAnswerSchema.parse({ requestId: REQUEST_ID, kind: 'dilute', state: 'unknown', txHash: null })
+        .txHash,
+      null,
+    );
+    assert.equal(
+      fundingStampOperationAnswerSchema.safeParse({
+        requestId: REQUEST_ID,
+        kind: 'buy',
+        state: 'confirmed',
+        txHash: null,
+      }).success,
+      false,
+    );
+  });
+});
+
+describe('GET /api/admin-funding/stamp-operations/:requestId', () => {
+  it('answers the state with the hash and the error, each null until there is one, in the four states only', () => {
+    const failed = fundingStampOperationStatusSchema.parse({
+      requestId: REQUEST_ID,
+      kind: 'dilute',
+      state: 'failed',
+      txHash: null,
+      error: 'The node refused it: the batch is not usable.',
+    });
+    assert.equal(failed.error, 'The node refused it: the batch is not usable.');
+    const confirmed = fundingStampOperationStatusSchema.parse({
+      ...failed,
+      state: 'confirmed',
+      txHash: TX_HASH,
+      error: null,
+    });
+    assert.equal(confirmed.txHash, TX_HASH);
+    assert.equal(fundingStampOperationStatusSchema.safeParse({ ...confirmed, state: 'pending' }).success, false);
   });
 });
 

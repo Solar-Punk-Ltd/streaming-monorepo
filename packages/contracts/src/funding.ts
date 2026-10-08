@@ -4,8 +4,10 @@ import { UUID_PATTERN } from './adminApi.js';
 
 /**
  * The manager's funding API, which the web2 admin calls to keep a brand's stages funded from the brand wallet: the
- * nodes and their wallets, the brand account's balances and nonce, and transfers the admin signs and the manager
- * checks and broadcasts. The admin has no chain connection of its own. `docs/architecture/funding.md` is the design.
+ * nodes with their wallets and batches, the brand account's balances and nonce, transfers the admin signs and the
+ * manager checks and broadcasts, and stamp operations, the top-ups and dilutions of the nodes' batches, which each node
+ * pays for from its own wallet. The admin has no chain connection of its own. `docs/architecture/funding.md` is the
+ * design.
  *
  * Every route is under {@link ADMIN_FUNDING_PATH}, takes `Authorization: Bearer` with the manager's
  * `FUNDING_API_TOKEN`, and refuses a session cookie; the manager's operator routes refuse that bearer.
@@ -39,6 +41,15 @@ export function fundingTransferPath(requestId: string): string {
   return `${FUNDING_TRANSFERS_PATH}/${requestId.toLowerCase()}`;
 }
 
+/** `POST`: one top-up or dilution of a node's batch, which the manager checks, journals and asks the node for. */
+export const FUNDING_STAMP_OPERATIONS_PATH = `${ADMIN_FUNDING_PATH}/stamp-operations`;
+
+/** `GET`: the state of one stamp operation, by the request id the admin gave it. */
+export function fundingStampOperationPath(requestId: string): string {
+  if (!UUID_PATTERN.test(requestId)) throw new Error('A stamp operation request id is a UUID.');
+  return `${FUNDING_STAMP_OPERATIONS_PATH}/${requestId.toLowerCase()}`;
+}
+
 /** What a funded node does for its stage. The catalogue node is answered on its own, as a node of role `uploader`. */
 export const FUNDING_NODE_ROLES = ['uploader', 'gateway', 'rung'] as const;
 export type FundingNodeRole = (typeof FUNDING_NODE_ROLES)[number];
@@ -54,6 +65,14 @@ export type FundingTransferKind = (typeof FUNDING_TRANSFER_KINDS)[number];
  */
 export const FUNDING_TRANSFER_STATES = ['submitted', 'confirmed', 'failed', 'unknown'] as const;
 export type FundingTransferState = (typeof FUNDING_TRANSFER_STATES)[number];
+
+/**
+ * What a stamp operation does to a batch: `topup` adds balance to each of its chunks, paid in xBZZ from the node's
+ * wallet, which buys it life; `dilute` raises its depth, each step doubling what it holds and halving its time left,
+ * for the gas alone, paid in xDAI.
+ */
+export const FUNDING_STAMP_OPERATION_KINDS = ['topup', 'dilute'] as const;
+export type FundingStampOperationKind = (typeof FUNDING_STAMP_OPERATION_KINDS)[number];
 
 /** The codes an error answer carries. */
 export const FUNDING_ERROR_CODES = [
@@ -74,6 +93,10 @@ export const FUNDING_ERROR_CODES = [
    * same id is safe.
    */
   'unknown_request',
+  /** A check of a stamp operation failed, and the sentence says which. Nothing was asked of the node. */
+  'stamp_refused',
+  /** The node's Bee API did not answer the manager. */
+  'node_unreachable',
 ] as const;
 export type FundingErrorCode = (typeof FUNDING_ERROR_CODES)[number];
 
@@ -89,6 +112,8 @@ export const FUNDING_ERROR_STATUS: Readonly<Record<FundingErrorCode, number>> = 
   chain_unreachable: 502,
   conflict: 409,
   unknown_request: 404,
+  stamp_refused: 422,
+  node_unreachable: 502,
 };
 
 const someText = z.string().min(1);
@@ -114,6 +139,15 @@ const txHash = z
   .regex(/^0x[0-9a-fA-F]{64}$/, 'must be 0x and 64 hex digits')
   .transform((text) => text.toLowerCase());
 
+/** A postage batch id, `0x` and 64 hex digits, kept in lower case. */
+const batchId = z
+  .string()
+  .regex(/^0x[0-9a-fA-F]{64}$/, 'must be 0x and 64 hex digits')
+  .transform((text) => text.toLowerCase());
+
+/** A batch's depth, a whole number up to 255, a byte in the postage contract: the batch holds `2^depth` chunks. */
+const depth = z.number().int().min(0).max(255);
+
 /**
  * A whole number of base units as a decimal string, with no sign, fraction, exponent or leading zero, and no more
  * digits than a 256-bit number has.
@@ -138,9 +172,32 @@ const rawTransaction = z
   .transform((text) => text.toLowerCase());
 
 /**
+ * The batch the manager uses for a node's uploads, as the node reports it in `GET /stamps/{id}`. `usable` is Bee's
+ * own word, `immutable` its `immutableFlag`, `ttlSeconds` the seconds left at today's price, where 0 is expired, and
+ * `fillRatio` its fullest bucket's share of what one bucket holds, where 1 is full, as the manager's postage page
+ * reads it. Every reading is null when the node could not be read about the batch, and `readError` says why in a
+ * sentence; it is null otherwise. `ttlSeconds` is null as well when the node could not work it out, and `fillRatio`
+ * when the node did not say enough to work it out.
+ */
+export const fundingBatchSchema = z.object({
+  batchId,
+  depth: depth.nullable(),
+  immutable: z.boolean().nullable(),
+  usable: z.boolean().nullable(),
+  ttlSeconds: z.number().int().nonnegative().nullable(),
+  fillRatio: z.number().min(0).max(1).nullable(),
+  readError: z.string().nullable(),
+});
+export type FundingBatch = z.infer<typeof fundingBatchSchema>;
+
+/**
  * One node a stage, or the catalogue, runs, with its wallet as the manager read it from the node. The wallet and its
  * balances are null when the node could not be read, and `readError` says why in a sentence; it is null otherwise.
- * Later phases add the node's batch and chequebook as optional fields.
+ *
+ * `batch` is the batch the manager uses for the node's uploads: a rung's is its rung's batch, a stage's own Bee
+ * node's the stage's batch, and the catalogue node's the designated catalogue batch, never the one a pending move
+ * left. It is null for a gateway and for a node with no batch set. It is optional, so the answer of a manager that
+ * does not read batches still parses. A later phase adds the node's chequebook as another optional field.
  */
 export const fundingNodeSchema = z.object({
   nodeId,
@@ -150,6 +207,7 @@ export const fundingNodeSchema = z.object({
   xdaiWei: baseUnits.nullable(),
   xbzzPlur: baseUnits.nullable(),
   readError: z.string().nullable(),
+  batch: fundingBatchSchema.nullable().optional(),
 });
 export type FundingNode = z.infer<typeof fundingNodeSchema>;
 
@@ -161,10 +219,26 @@ export const fundingStageSchema = z.object({
 });
 export type FundingStage = z.infer<typeof fundingStageSchema>;
 
-/** The chain the manager's nodes run on, and the BZZ token's address on it. */
+/**
+ * What postage costs now: the price of keeping one chunk for one block, in PLUR, as a node reads it from the chain
+ * (`currentPrice` in its `/chainstate`); the chain's block time in seconds, 5 on Gnosis Chain; and the postage
+ * contract's floor in blocks, the least life a batch may be left with, 17280, a day of blocks.
+ */
+export const fundingPostageSchema = z.object({
+  pricePerChunkPerBlockPlur: positiveBaseUnits,
+  blockSeconds: z.number().int().positive(),
+  minimumValidityBlocks: z.number().int().positive(),
+});
+export type FundingPostage = z.infer<typeof fundingPostageSchema>;
+
+/**
+ * The chain the manager's nodes run on, the BZZ token's address on it, and what postage costs now, which is null when
+ * no node answered. `postage` is optional, so the answer of a manager that does not read it still parses.
+ */
 export const fundingChainSchema = z.object({
   chainId,
   bzzToken: address,
+  postage: fundingPostageSchema.nullable().optional(),
 });
 export type FundingChain = z.infer<typeof fundingChainSchema>;
 
@@ -235,6 +309,71 @@ export const fundingTransferStatusSchema = z.object({
   error: z.string().nullable(),
 });
 export type FundingTransferStatus = z.infer<typeof fundingTransferStatusSchema>;
+
+/** What every stamp operation names: its request id, the node, the node's batch and the depth the admin saw. */
+const stampOperationFields = {
+  requestId: uuid,
+  nodeId,
+  batchId,
+  expectedDepth: depth,
+};
+
+/**
+ * `POST /api/admin-funding/stamp-operations`: one top-up or dilution of a batch, which the node that holds it carries
+ * out and pays for from its own wallet. `nodeId` and `batchId` must be a node and its batch in the manager's current
+ * inventory, and `expectedDepth` the depth the admin saw, so a batch whose depth moved since is refused. A `topup`
+ * adds `amountPerChunkPlur` to each of the batch's chunks, which costs that amount times `2^depth` in xBZZ. A `dilute`
+ * raises the batch to `newDepth`, one or two steps deeper than `expectedDepth`. The same `requestId` sent again
+ * answers the operation's state and never runs it twice.
+ */
+export const fundingStampOperationRequestSchema = z.discriminatedUnion('kind', [
+  z.object({
+    ...stampOperationFields,
+    kind: z.literal('topup'),
+    amountPerChunkPlur: positiveBaseUnits,
+  }),
+  z
+    .object({
+      ...stampOperationFields,
+      kind: z.literal('dilute'),
+      newDepth: depth,
+    })
+    .refine(
+      (request) => request.newDepth === request.expectedDepth + 1 || request.newDepth === request.expectedDepth + 2,
+      {
+        message: 'must be one or two steps deeper than expectedDepth',
+        path: ['newDepth'],
+      },
+    ),
+]);
+export type FundingStampOperationRequest = z.infer<typeof fundingStampOperationRequestSchema>;
+export type FundingStampTopUpRequest = Extract<FundingStampOperationRequest, { kind: 'topup' }>;
+export type FundingStampDiluteRequest = Extract<FundingStampOperationRequest, { kind: 'dilute' }>;
+
+/**
+ * What `POST /api/admin-funding/stamp-operations` answers, with 202: the operation's state, in the transfers' four
+ * states, and its transaction hash once there is one.
+ */
+export const fundingStampOperationAnswerSchema = z.object({
+  requestId: uuid,
+  kind: z.enum(FUNDING_STAMP_OPERATION_KINDS),
+  state: z.enum(FUNDING_TRANSFER_STATES),
+  txHash: txHash.nullable(),
+});
+export type FundingStampOperationAnswer = z.infer<typeof fundingStampOperationAnswerSchema>;
+
+/**
+ * `GET /api/admin-funding/stamp-operations/:requestId`: where the operation stands. The hash and the error are each
+ * null until there is one.
+ */
+export const fundingStampOperationStatusSchema = z.object({
+  requestId: uuid,
+  kind: z.enum(FUNDING_STAMP_OPERATION_KINDS),
+  state: z.enum(FUNDING_TRANSFER_STATES),
+  txHash: txHash.nullable(),
+  error: z.string().nullable(),
+});
+export type FundingStampOperationStatus = z.infer<typeof fundingStampOperationStatusSchema>;
 
 /** An error answer of the funding API: one of the codes, with the status {@link FUNDING_ERROR_STATUS} gives it. */
 export const fundingErrorAnswerSchema = z.object({

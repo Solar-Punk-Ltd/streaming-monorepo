@@ -2,22 +2,30 @@ import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 
 import {
+  type AdminFundingNode,
   FUNDING_ITEM_STATES,
   FUNDING_PATH,
   FUNDING_PIN_STATES,
   FUNDING_PINS_PATH,
+  FUNDING_STAMP_OPERATION_KINDS,
+  FUNDING_STAMP_OPERATIONS_ADMIN_PATH,
   FUNDING_TRANSFERS_ADMIN_PATH,
   XBZZ_DECIMALS,
   XDAI_DECIMALS,
   formatBaseUnits,
+  type FundingStampItem,
+  type FundingStampOperationsRequest,
   type FundingTransferItem,
   type FundingView,
   fundingBulkPath,
+  fundingStampBulkPath,
   parseBaseUnits,
+  type StampOperationItemRequest,
   sumBaseUnits,
 } from './funding.js';
 
 const BULK_ID = '0b8f6a3e-2c4d-4e5f-8a9b-1c2d3e4f5a6b';
+const BATCH_ID = `0x${'c3'.repeat(32)}`;
 
 describe('the console routes', () => {
   it('names the paths and builds the bulk query from a UUID alone', () => {
@@ -26,6 +34,18 @@ describe('the console routes', () => {
     assert.equal(FUNDING_TRANSFERS_ADMIN_PATH, '/api/funding/transfers');
     assert.equal(fundingBulkPath(BULK_ID.toUpperCase()), `/api/funding/transfers?bulkId=${BULK_ID}`);
     assert.throws(() => fundingBulkPath('x&y=1'), /UUID/);
+  });
+
+  it('names the stamp operations path and builds its bulk query from a UUID alone', () => {
+    assert.equal(FUNDING_STAMP_OPERATIONS_ADMIN_PATH, '/api/funding/stamp-operations');
+    assert.equal(fundingStampBulkPath(BULK_ID.toUpperCase()), `/api/funding/stamp-operations?bulkId=${BULK_ID}`);
+    for (const bad of ['', 'x&y=1', `${BULK_ID}&bulkId=other`]) {
+      assert.throws(() => fundingStampBulkPath(bad), /UUID/, JSON.stringify(bad));
+    }
+  });
+
+  it('names the two stamp operations, as the manager does', () => {
+    assert.deepEqual(FUNDING_STAMP_OPERATION_KINDS, ['topup', 'dilute']);
   });
 
   it('names the pin and item states', () => {
@@ -94,21 +114,118 @@ describe('base units', () => {
 });
 
 describe('the answers', () => {
+  const view: FundingView = {
+    configured: true,
+    wallet: null,
+    chainId: 100,
+    stages: [],
+    catalogue: null,
+    postage: null,
+    observedAt: null,
+    managerError: null,
+    openBulkId: BULK_ID,
+    openStampBulkId: null,
+  };
+
   it('name the open send on the Funding page, so a reload resumes it', () => {
-    const view: FundingView = {
-      configured: true,
-      wallet: null,
-      chainId: 100,
-      stages: [],
-      catalogue: null,
-      observedAt: null,
-      managerError: null,
-      openBulkId: BULK_ID,
-    };
     const idle: FundingView = { ...view, openBulkId: null };
 
     assert.equal(view.openBulkId, BULK_ID);
     assert.equal(idle.openBulkId, null);
+  });
+
+  it('name the open stamp bulk apart from the open send, and the price of postage once a node answered', () => {
+    const stamping: FundingView = {
+      ...view,
+      openBulkId: null,
+      openStampBulkId: BULK_ID,
+      postage: { pricePerChunkPerBlockPlur: '24000', blockSeconds: 5, minimumValidityBlocks: 17280 },
+    };
+
+    assert.equal(stamping.openStampBulkId, BULK_ID);
+    assert.equal(stamping.openBulkId, null);
+    assert.equal(stamping.postage?.blockSeconds, 5);
+    assert.equal(view.postage, null, 'no node answered');
+  });
+
+  it("carry a node's batch through, and none for a gateway", () => {
+    const node: AdminFundingNode = {
+      nodeId: 'stage-1:bee',
+      label: 'stage-1-uploader',
+      role: 'uploader',
+      walletAddress: '0x1111111111111111111111111111111111111111',
+      xdaiWei: '1',
+      xbzzPlur: '1',
+      readError: null,
+      batch: {
+        batchId: BATCH_ID,
+        depth: 22,
+        immutable: true,
+        usable: true,
+        ttlSeconds: 86_400,
+        fillRatio: 0.5,
+        readError: null,
+      },
+      pin: 'pinned',
+      pinnedAddress: '0x1111111111111111111111111111111111111111',
+    };
+    const gateway: AdminFundingNode = { ...node, role: 'gateway', batch: null };
+
+    assert.equal(node.batch?.depth, 22);
+    assert.equal(gateway.batch, null);
+  });
+
+  it('take one kind of stamp operation per item, a top-up in days and a dilution in one step or two', () => {
+    const topUp: StampOperationItemRequest = {
+      kind: 'topup',
+      nodeId: 'stage-1:bee',
+      batchId: BATCH_ID,
+      expectedDepth: 22,
+      days: 30,
+    };
+    const dilute: StampOperationItemRequest = {
+      kind: 'dilute',
+      nodeId: 'stage-1:bee',
+      batchId: BATCH_ID,
+      expectedDepth: 22,
+      steps: 2,
+    };
+    // @ts-expect-error: a dilution takes one step or two, never three.
+    const threeSteps: StampOperationItemRequest = { ...dilute, steps: 3 };
+    // @ts-expect-error: a top-up names its days, not steps.
+    const topUpInSteps: StampOperationItemRequest = { ...topUp, steps: 1 };
+    const request: FundingStampOperationsRequest = { items: [topUp, dilute] };
+
+    assert.deepEqual(
+      request.items.map((item) => item.kind),
+      ['topup', 'dilute'],
+    );
+    assert.equal(dilute.kind === 'dilute' && dilute.steps, 2);
+    assert.ok(threeSteps && topUpInSteps, 'the compiler refuses both, so neither is read further');
+  });
+
+  it("carry a top-up's days and cost and a dilution's steps, each null for the other kind", () => {
+    const topUp: FundingStampItem = {
+      requestId: BULK_ID,
+      kind: 'topup',
+      nodeId: 'stage-1:bee',
+      nodeLabel: 'stage-1-uploader',
+      batchId: BATCH_ID,
+      days: 30,
+      steps: null,
+      // 30 days at 24000 PLUR a chunk a block, 12441600000 a chunk, for the 2^22 chunks of a depth 22 batch.
+      costPlur: '52183852646400000',
+      state: 'confirmed',
+      txHash: `0x${'ab'.repeat(32)}`,
+      error: null,
+      settled: true,
+      watched: false,
+    };
+    const dilute: FundingStampItem = { ...topUp, kind: 'dilute', days: null, steps: 1, costPlur: null };
+
+    assert.equal(topUp.steps, null);
+    assert.equal(dilute.days, null);
+    assert.equal(dilute.costPlur, null, 'a dilution costs gas alone');
   });
 
   it("carry an item's block, null until it is mined, so a refusal at the relay reads apart from a revert", () => {
