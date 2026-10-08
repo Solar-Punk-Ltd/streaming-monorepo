@@ -38,12 +38,10 @@ const MB = 1024 * 1024;
  * 2026-08-05 was taken through an instrument with six known defects, two of which made a faster
  * deployment report worse.
  *
- * The floor is not proportional to the segment length across those rows, and two segment lengths are
- * not a scaling law, so **a deployment running segments longer than 0.5s has no fresh measurement
- * here** and the old table put the 2.0s floor at 4.45s. Raising this is what such a deployment
- * would need, and the coupling is the same one {@link LIVE_MAX_LATENCY_DURATION_S} describes: the
- * target duration is whatever the uploader's segment length makes it, and this side does not choose
- * it.
+ * **Six seconds is the floor, not the whole target.** Longer segments are covered by the
+ * three-segment rule in {@link liveLatencyFor}, which raises the target to three segments of the
+ * length the playlist names whenever that is more than six seconds. The target duration is whatever
+ * the uploader's segment length makes it, and this side does not choose it.
  *
  * ## The uploader has to name enough media for this to be reachable
  *
@@ -100,6 +98,10 @@ const LIVE_SYNC_SEGMENTS = 3;
  * makes it, not a number this side chooses. Larger values are not all broken, since a long enough
  * target duration closes the gap on its own, but which ones are safe then depends on a number this
  * side does not control.
+ *
+ * This constant is the floor's pair, the limit that goes with {@link LIVE_SYNC_DURATION_S}. The pair a
+ * live player runs with is computed from the segment length by {@link liveLatencyFor}, on the same
+ * twice-the-target rule.
  */
 export const LIVE_MAX_LATENCY_DURATION_S = 2 * LIVE_SYNC_DURATION_S;
 
