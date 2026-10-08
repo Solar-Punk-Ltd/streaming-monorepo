@@ -6,7 +6,7 @@ import { PeriodMarkers } from '@/components/SwarmHlsPlayer/following/headMarkers
 import type { PlayerReader } from '@/components/SwarmHlsPlayer/playerReads';
 import { contentText } from '@/swarm/answers';
 
-export interface LadderMarkerWatch {
+interface LadderMarkerWatch {
   /** Read when each marker is asked, so a gateway switch while waiting reaches the next ask. */
   readonly reader: () => Pick<PlayerReader, 'readSoc'>;
   /** The entry's owner, who signs the ladder and writes its markers. */
