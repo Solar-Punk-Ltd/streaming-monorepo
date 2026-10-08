@@ -66,16 +66,22 @@ function makeLadderPlayer({
   const switchedListeners = new Set<(event: unknown, data: { level: number }) => void>();
   const switchingListeners = new Set<(event: unknown, data: { level: number }) => void>();
   const removed: number[] = [];
+  const loadStarts: number[] = [];
 
   const hls = {
     levels: parsed.map((rung) => ({
       uri: buildSwarmUri(OWNER, rung),
       height: HEIGHTS[RUNG_NAMES.indexOf(rung as (typeof RUNG_NAMES)[number])],
+      details: { heldFrom: 'an earlier visit to this rung' } as object | undefined,
     })),
     loadLevel: 0,
     currentLevel: -1,
     nextLoadLevel: -1,
     nextAutoLevel: 1,
+    loadingEnabled: true,
+    startLoad(startPosition = -1) {
+      loadStarts.push(startPosition);
+    },
     removeLevel(index: number) {
       removed.push(index);
       if (this.levels.length === 1) {
@@ -110,6 +116,9 @@ function makeLadderPlayer({
     feedHealth,
     hls: hls as unknown as Hls,
     removed,
+    loadStarts,
+    stopLoading: () => void (hls.loadingEnabled = false),
+    playlistHeld: (height: number) => hls.levels.find((level) => level.height === height)?.details,
     heightsLeft: () => hls.levels.map((level) => level.height),
     loadLevel: () => hls.loadLevel,
     setLoadLevel: (level: number) => void (hls.loadLevel = level),
@@ -270,6 +279,59 @@ describe('dropping a rung that has stopped being produced', () => {
     // 480p was level 2 before 1080p went, and is level 1 after.
     assert.equal(player.nextLoadLevel(), 1);
     assert.deepEqual(player.heightsLeft(), [720, 480, 360]);
+  });
+
+  /**
+   * The SRS restart of 2026-10-08 (round 3, the viewer on a fast line). 360p was dropped while it played and
+   * 1080p inherited its level number, so hls.js read 1080p's first fragment as the next one of the same level
+   * and kept its video running on from 360p's last frame while its audio went where the playlist put it, 16 s
+   * earlier. The picture and the sound never overlapped where hls.js kept seeking to, every 6 s, and the
+   * viewer saw nothing for 8.8 minutes. Restarting the load is how hls.js forgets the fragment it appended last.
+   */
+  it('restarts loading when the playing rung is dropped, so the next rung is not appended as its continuation', () => {
+    const player = makeLadderPlayer();
+    attachRungFailover(player.hls, player.feedHealth);
+
+    player.silence('rung-1080p', 'rung-720p');
+
+    assert.equal(player.nextLoadLevel(), 0);
+    assert.deepEqual(player.loadStarts, [-1], 'the next fragment would be appended as the dropped rung continuing');
+  });
+
+  /**
+   * The poller forgets a rung's playlist when it stops following it, so what hls.js still holds for that level is
+   * a playlist from an earlier visit, minutes old. hls.js places a reloaded live playlist against that by counting
+   * sequence numbers at the target duration, which put 1080p 16 s away from the rung it replaced. Without it hls.js
+   * places the playlist by date beside the rung it last played.
+   */
+  it('forgets the playlist the next rung held from an earlier visit, so hls.js places it by date', () => {
+    const player = makeLadderPlayer();
+    attachRungFailover(player.hls, player.feedHealth);
+
+    player.silence('rung-1080p', 'rung-720p');
+
+    assert.equal(player.playlistHeld(720), undefined, 'hls.js would align 720p against its minutes old playlist');
+    assert.notEqual(player.playlistHeld(480), undefined, 'a rung nobody is moving to lost its playlist');
+  });
+
+  it('leaves loading stopped for a viewer who paused', () => {
+    const player = makeLadderPlayer();
+    player.stopLoading();
+    attachRungFailover(player.hls, player.feedHealth);
+
+    player.silence('rung-1080p', 'rung-720p');
+
+    assert.deepEqual(player.loadStarts, [], 'a paused player started loading again');
+  });
+
+  it('does not restart loading when the dropped rung was not the one playing', () => {
+    const player = makeLadderPlayer();
+    attachRungFailover(player.hls, player.feedHealth);
+
+    player.silence('rung-480p');
+
+    assert.deepEqual(player.loadStarts, []);
+    assert.notEqual(player.playlistHeld(1080), undefined, 'the playing rung lost its playlist');
   });
 
   it('keeps a viewer whose switch was refused on the rung they play', () => {

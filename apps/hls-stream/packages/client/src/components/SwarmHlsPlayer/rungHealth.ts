@@ -191,8 +191,46 @@ export function attachRungFailover(hls: Hls, feedHealth: FeedHealthTracker): () 
     // end. The poller names the rung it found moving, which is the one the viewer goes to. Read after
     // the removal, because hls.js renumbers the levels above it. Without one, ABR chooses.
     if (tookThePlayingLevel) {
-      const target = detail.failoverTo === null ? -1 : levelIndexOfRung(hls, detail.failoverTo);
-      hls.nextLoadLevel = target >= 0 ? target : hls.nextAutoLevel;
+      const found = detail.failoverTo === null ? -1 : levelIndexOfRung(hls, detail.failoverTo);
+      const target = found >= 0 ? found : hls.nextAutoLevel;
+      forgetEarlierPlaylist(hls, target);
+      hls.nextLoadLevel = target;
+      forgetLastAppendedFragment(hls);
     }
   });
+}
+
+/**
+ * ⛔ Drops the playlist hls.js still holds for a level from an earlier visit to its rung.
+ *
+ * The poller forgets a rung's playlist when it stops following it and starts a new one from the rung's
+ * newest window when it follows it again, so whatever hls.js kept for that level is minutes old and starts
+ * at another sequence number. hls.js places a reloaded live playlist against the one it held by counting
+ * sequence numbers at the target duration, which is wrong by every short segment and gap in between. On
+ * 2026-10-08 it put 1080p about 16 s away from the 360p it replaced. A level with no playlist is placed by
+ * date against the level loaded last, which is the rung being replaced.
+ */
+function forgetEarlierPlaylist(hls: Hls, levelIndex: number): void {
+  const level = hls.levels[levelIndex];
+  if (level) {
+    level.details = undefined;
+  }
+}
+
+/**
+ * ⛔⛔ Makes hls.js forget the fragment it appended last, which belonged to the rung just removed.
+ *
+ * hls.js renumbers the levels on a removal, so the rung moved to can take the removed one's number, and
+ * the uploader numbers every rung's segments alike. hls.js then reads the new rung's first fragment as the
+ * next one of the same level, and its remuxer runs the video on from the last frame appended while the
+ * audio goes where the playlist puts it. On 2026-10-08 the two landed about 16 s apart, the picture and the
+ * sound never overlapped where hls.js kept seeking to every 6 s, and a viewer on a fast line saw nothing
+ * for 8.8 minutes after an SRS restart. `startLoad` is what resets that memory, and from `-1` it carries
+ * on from the playhead. A player whose loading is stopped, because the viewer paused, is left stopped,
+ * since starting again on play resets the same memory.
+ */
+function forgetLastAppendedFragment(hls: Hls): void {
+  if (hls.loadingEnabled) {
+    hls.startLoad(-1);
+  }
 }
