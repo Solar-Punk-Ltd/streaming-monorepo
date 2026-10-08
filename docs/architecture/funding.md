@@ -113,8 +113,8 @@ against a real node before phase 2, so its first trial is theirs too.
 - Dilute comes with phase 2, beside the top-up.
 - One days slider, any whole number of days from 1 with no cap, applies to every ticked batch; a
   dilution takes 1 or 2 steps.
-- Every batch that has not expired can be topped up. A dilution must leave the batch 7 days or more
-  after it.
+- Every batch read whole, usable and not expired can be topped up. A dilution must leave the batch 7
+  days or more after it.
 - A stamp operation takes a confirm dialog, without the password: a node pays for its own, and
   nothing leaves the brand wallet.
 - A catalogue move is not handled: the tab lists only the designated catalogue batch.
