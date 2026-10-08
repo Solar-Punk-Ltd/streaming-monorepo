@@ -448,8 +448,14 @@ signed-in users.**
   untagged commit, a deploy offers the tag script first.
 - Signed-in users see it: the manager's sidebar, the web2 admin's toolbar, and
   on the manager's pages the release of each stack build, which for a Watch a
-  stream deployment is the viewer client it serves. The public viewer and every
-  unauthenticated endpoint show nothing.
+  stream deployment is the viewer client it serves. No unauthenticated endpoint
+  of the manager or the admin shows it.
+- The player shows its own release in its QoE overlay, the panel a watch URL
+  opens with `?qoe=1` (decided 2026-10-08). The manager hands the stack's
+  deploy script the release of the build it deploys, as `--release-label` and
+  `--release-commit`, and only to a stack version whose script takes them, so
+  older versions deploy as before. The release is built into the player's
+  JavaScript: viewers are not shown it, but it is not hidden from them.
 
 ## Checkpoint 4: brand console
 
