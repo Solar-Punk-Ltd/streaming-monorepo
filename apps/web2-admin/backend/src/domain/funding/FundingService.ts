@@ -166,11 +166,12 @@ export function pinStateOf(node: FundingNode, pin: FundingPinRow | undefined): F
 
 /**
  * A node as the page shows it: the manager's node with its pin state, and its batch as the manager read it, null for a
- * node with none and from a manager that reads no batches.
+ * node with none. A manager older than the Stamps tab names no batch at all, and then the node has no `batch`, so the
+ * page can tell such a manager from one whose nodes have none.
  */
 function withPin(node: FundingNode, pins: Map<string, FundingPinRow>): AdminFundingNode {
   const pin = pins.get(node.nodeId);
-  return { ...node, batch: node.batch ?? null, pin: pinStateOf(node, pin), pinnedAddress: pin?.walletAddress ?? null };
+  return { ...node, pin: pinStateOf(node, pin), pinnedAddress: pin?.walletAddress ?? null };
 }
 
 /** Every node of the inventory, the catalogue node included, by its id. */
@@ -293,8 +294,9 @@ export class FundingService {
    * an item still asked about, {@link FUNDING_REFRESH_LIMIT} at most, and the latest stamp bulks likewise, then reads
    * the inventory and the wallet's account together; when either cannot be read, `managerError` says why and every
    * reading of the manager is empty. Each node comes with its batch and the chain with the price of postage, as the
-   * manager read them, null where it read none. `openBulkId` names the send that still holds up a new one, and
-   * `openStampBulkId` the stamp bulk, so the page resumes either after a reload.
+   * manager read them, null where it read none; a node has no batch at all from a manager that names none, one older
+   * than the Stamps tab. `openBulkId` names the send that still holds up a new one, and `openStampBulkId` the stamp
+   * bulk, so the page resumes either after a reload.
    */
   async view(): Promise<FundingView> {
     const address = this.wallet?.address() ?? null;

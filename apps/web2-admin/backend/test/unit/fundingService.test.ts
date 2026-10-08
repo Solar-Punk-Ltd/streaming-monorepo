@@ -216,9 +216,24 @@ describe('the Funding page view', () => {
 
     assert.equal(view.postage, null);
     assert.deepEqual(
-      [...(view.stages[0]?.nodes ?? []), view.catalogue].map((node) => node?.batch),
+      [...(view.stages[0]?.nodes ?? []), view.catalogue].map((node) => node?.batch ?? null),
       [null, null, null],
     );
+  });
+
+  it('leaves the batch out of a node the manager answered without one, as a manager older than the Stamps tab does', async () => {
+    const inventory = fundingInventory();
+    // The gateway is named with no batch, as a manager that reads batches names a node that has none.
+    inventory.stages[0]!.nodes[1]!.batch = null;
+    manager.inventoryAnswer = inventory;
+
+    const view = await service.view();
+
+    const [uploader, gateway] = view.stages[0]?.nodes ?? [];
+    assert.ok(uploader && gateway && view.catalogue);
+    assert.equal('batch' in uploader, false, 'answered without a batch, it has none: not even a null');
+    assert.equal('batch' in view.catalogue, false);
+    assert.equal(gateway.batch, null, 'named with none, it keeps its null');
   });
 
   it('answers no price from a manager on another chain', async () => {
