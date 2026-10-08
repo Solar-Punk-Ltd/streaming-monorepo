@@ -233,16 +233,6 @@ export class ServiceMetrics {
     this.takeoversRefused += 1;
   }
 
-  /**
-   * A paid write bee answered with a status the upload policy will not retry, which is a postage
-   * batch that has stopped accepting chunks.
-   *
-   * `at` is the caller's instant and is kept only for the first refusal on a publisher, because what
-   * an operator needs is when the batch started failing rather than when it last did. The statuses
-   * accumulate instead, for the reason `StreamUploader.batchRefusalStatuses` keeps a set rather than a
-   * flag: a different status is a different condition, and keeping only the first would let an early
-   * 400 or 404 stand in the payload while the postage refusal that followed it went unnamed.
-   */
   /** One ladder time marker reached Swarm. See `LadderMarkerWriter`. */
   public recordLadderMarkerWritten(): void {
     this.ladderMarkersWritten += 1;
@@ -256,6 +246,16 @@ export class ServiceMetrics {
     this.ladderMarkersFailed += 1;
   }
 
+  /**
+   * A paid write bee answered with a status the upload policy will not retry, which is a postage
+   * batch that has stopped accepting chunks.
+   *
+   * `at` is the caller's instant and is kept only for the first refusal on a publisher, because what
+   * an operator needs is when the batch started failing rather than when it last did. The statuses
+   * accumulate instead, for the reason `StreamUploader.batchRefusalStatuses` keeps a set rather than a
+   * flag: a different status is a different condition, and keeping only the first would let an early
+   * 400 or 404 stand in the payload while the postage refusal that followed it went unnamed.
+   */
   public recordPostageRefusal(publisher: PublisherIdentity, status: number, at: number): void {
     const key = publisherKey(publisher);
     const seen = this.postageRefusals.get(key);
