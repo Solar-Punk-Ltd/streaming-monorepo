@@ -80,9 +80,18 @@ export const LIVE_SYNC_DURATION_S = 6;
 /**
  * Segments behind the live edge the player aims at. Three, which is {@link LIVE_SYNC_DURATION_S} at
  * the event's 2 s segment, and that value is the floor: below it the measured arrivals above are no
- * longer covered, whatever the segment length.
+ * longer covered, whatever the segment length. A quality's progress bound in `rungPosition.ts` is the
+ * same three segments over the same floor.
  */
-const LIVE_SYNC_SEGMENTS = 3;
+export const LIVE_SYNC_SEGMENTS = 3;
+
+/** How many times the live target the catch-up limit sits at, for the reason {@link LIVE_MAX_LATENCY_DURATION_S} gives. */
+const CATCH_UP_LIMIT_FACTOR = 2;
+
+/** Whether a segment length is one a target can be computed from: a positive, finite number of milliseconds. */
+export function isKnownSegmentMs(segmentMs: number | null | undefined): segmentMs is number {
+  return segmentMs != null && Number.isFinite(segmentMs) && segmentMs > 0;
+}
 
 /**
  * The latency at which hls.js stops trying to recover gradually and seeks to the live edge instead.
@@ -103,7 +112,7 @@ const LIVE_SYNC_SEGMENTS = 3;
  * live player runs with is computed from the segment length by {@link liveLatencyFor}, on the same
  * twice-the-target rule.
  */
-export const LIVE_MAX_LATENCY_DURATION_S = 2 * LIVE_SYNC_DURATION_S;
+export const LIVE_MAX_LATENCY_DURATION_S = CATCH_UP_LIMIT_FACTOR * LIVE_SYNC_DURATION_S;
 
 /** The live target and catch-up limit hls.js works with. */
 interface LiveLatency {
@@ -117,11 +126,10 @@ interface LiveLatency {
  * {@link LIVE_MAX_LATENCY_DURATION_S} gives. A length not known yet answers the floor.
  */
 export function liveLatencyFor(segmentMs: number | null | undefined): LiveLatency {
-  const known = segmentMs != null && Number.isFinite(segmentMs) && segmentMs > 0;
-  const liveSyncDuration = known
+  const liveSyncDuration = isKnownSegmentMs(segmentMs)
     ? Math.max(LIVE_SYNC_DURATION_S, (LIVE_SYNC_SEGMENTS * segmentMs) / 1000)
     : LIVE_SYNC_DURATION_S;
-  return { liveSyncDuration, liveMaxLatencyDuration: 2 * liveSyncDuration };
+  return { liveSyncDuration, liveMaxLatencyDuration: CATCH_UP_LIMIT_FACTOR * liveSyncDuration };
 }
 
 /**

@@ -1,28 +1,26 @@
 import { programDateTimeMs, type Segment } from '@swarm-hls-stream/shared';
 
+import { isKnownSegmentMs, LIVE_SYNC_DURATION_S, LIVE_SYNC_SEGMENTS } from './playerConfig';
+
+/** The least time a rung has to show a new index, the live target's own floor. */
+const RUNG_PROGRESS_FLOOR_MS = LIVE_SYNC_DURATION_S * 1000;
+
 /**
- * The least time a rung has to show a new index before it is called not live.
+ * How long a rung cutting segments of `segmentMs` has to show a new index before it is called not
+ * live: the same three segments and the same six second floor as the live target, so a stage cutting
+ * very short segments keeps the six seconds the player has always given a rung. A length not known
+ * yet answers the floor.
  *
  * ⛔ **Liveness is a rung's own progress, never a comparison with another rung.** A rung's feed index
  * counts the playlists the uploader published to it, publishes coalesce under load, and late starts,
  * failed uploads and resumed feeds move each rung on its own. So the rungs of one ladder drift apart
  * without bound, and no index or stamp of one says where another should be.
- *
- * Six seconds is three of the event's 2 s segments. The bound itself is three segments of the length
- * the rung's playlist names, see {@link rungProgressBoundMs}, and this is its floor, so a stage cutting
- * very short segments keeps the six seconds the player has always given a rung.
  */
-const RUNG_PROGRESS_BOUND_MS = 6_000;
-
-/** Segments a rung being written shows a new index well inside. One that shows none is not keeping up. */
-const RUNG_PROGRESS_BOUND_SEGMENTS = 3;
-
-/** How long a rung cutting segments of `segmentMs` has to show a new index, never under the floor. */
 export function rungProgressBoundMs(segmentMs: number | null | undefined): number {
-  if (segmentMs == null || !Number.isFinite(segmentMs) || segmentMs <= 0) {
-    return RUNG_PROGRESS_BOUND_MS;
+  if (!isKnownSegmentMs(segmentMs)) {
+    return RUNG_PROGRESS_FLOOR_MS;
   }
-  return Math.max(RUNG_PROGRESS_BOUND_MS, RUNG_PROGRESS_BOUND_SEGMENTS * segmentMs);
+  return Math.max(RUNG_PROGRESS_FLOOR_MS, LIVE_SYNC_SEGMENTS * segmentMs);
 }
 
 /**
