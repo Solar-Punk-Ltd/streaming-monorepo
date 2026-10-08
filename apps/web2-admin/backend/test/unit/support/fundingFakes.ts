@@ -11,8 +11,10 @@
  */
 import type {
   FundingAccountAnswer,
+  FundingBatch,
   FundingInventory,
   FundingNode,
+  FundingPostage,
   FundingTransferAnswer,
   FundingTransferRequest,
   FundingTransferStatus,
@@ -53,6 +55,35 @@ export const NODE_CATALOGUE = 'catalogue:uploader';
 
 export const ONE_XDAI = 10n ** 18n;
 export const ONE_XBZZ = 10n ** 16n;
+
+/** Batch ids: fixtures of one repeated byte, as the contract keeps them, in lower case. */
+export const BATCH_STAGE = `0x${'b1'.repeat(32)}`;
+export const BATCH_CATALOGUE = `0x${'c2'.repeat(32)}`;
+export const BATCH_RUNG = `0x${'d3'.repeat(32)}`;
+
+/** Seconds in a day. */
+export const DAY = 86_400;
+
+/** What postage costs in the tests: 24000 PLUR a chunk a block, 5-second blocks, and a day of blocks as the floor. */
+export const POSTAGE: FundingPostage = {
+  pricePerChunkPerBlockPlur: '24000',
+  blockSeconds: 5,
+  minimumValidityBlocks: 17_280,
+};
+
+/** A batch read whole: depth 20, mutable, usable, 10 days left, a quarter full. */
+export function fundingBatch(over: Partial<FundingBatch> = {}): FundingBatch {
+  return {
+    batchId: BATCH_STAGE,
+    depth: 20,
+    immutable: false,
+    usable: true,
+    ttlSeconds: 10 * DAY,
+    fillRatio: 0.25,
+    readError: null,
+    ...over,
+  };
+}
 
 export function fundingNode(over: Partial<FundingNode> = {}): FundingNode {
   return {

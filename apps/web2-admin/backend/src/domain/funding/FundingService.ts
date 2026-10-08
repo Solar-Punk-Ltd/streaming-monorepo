@@ -154,9 +154,13 @@ export function pinStateOf(node: FundingNode, pin: FundingPinRow | undefined): F
   return pin.walletAddress === node.walletAddress ? 'pinned' : 'changed';
 }
 
+/**
+ * A node as the page shows it: the manager's node with its pin state, and its batch as the manager read it, null for a
+ * node with none and from a manager that reads no batches.
+ */
 function withPin(node: FundingNode, pins: Map<string, FundingPinRow>): AdminFundingNode {
   const pin = pins.get(node.nodeId);
-  return { ...node, pin: pinStateOf(node, pin), pinnedAddress: pin?.walletAddress ?? null };
+  return { ...node, batch: node.batch ?? null, pin: pinStateOf(node, pin), pinnedAddress: pin?.walletAddress ?? null };
 }
 
 /** Every node of the inventory, the catalogue node included, by its id. */
@@ -273,7 +277,8 @@ export class FundingService {
   /**
    * `GET /api/funding`. Not configured, it asks the manager nothing. Otherwise it first refreshes the latest sends with
    * an item still asked about, {@link FUNDING_REFRESH_LIMIT} at most, then reads the inventory and the wallet's account
-   * together; when either cannot be read, `managerError` says why and every reading of the manager is empty.
+   * together; when either cannot be read, `managerError` says why and every reading of the manager is empty. Each node
+   * comes with its batch and the chain with the price of postage, as the manager read them, null where it read none.
    * `openBulkId` names the send that still holds up a new one, so the page resumes it after a reload.
    */
   async view(): Promise<FundingView> {
@@ -323,6 +328,7 @@ export class FundingService {
         nodes: stage.nodes.map((node) => withPin(node, pins)),
       })),
       catalogue: inventory.catalogue ? withPin(inventory.catalogue, pins) : null,
+      postage: inventory.chain.postage ?? null,
       observedAt: inventory.observedAt,
     };
   }

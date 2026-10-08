@@ -24,10 +24,13 @@ import { FUNDING_SYSTEM, FundingService } from '../../src/domain/funding/Funding
 
 import { TEST_OPERATOR, InMemoryAuditLog } from './support/fakes.js';
 import {
+  BATCH_CATALOGUE,
   BZZ_TOKEN,
+  DAY,
   FakeFundingManager,
   FakeFundingWallet,
   fundingAccount,
+  fundingBatch,
   fundingInventory,
   fundingNode,
   InMemoryFundingPinStore,
@@ -38,6 +41,7 @@ import {
   NODE_CATALOGUE,
   ONE_XBZZ,
   ONE_XDAI,
+  POSTAGE,
   WALLET_A,
   WALLET_B,
   WALLET_C,
@@ -167,8 +171,58 @@ describe('the Funding page view', () => {
     assert.deepEqual(view.wallet, { address: wallet.address(), xdaiWei: null, xbzzPlur: null });
     assert.deepEqual(view.stages, []);
     assert.equal(view.catalogue, null);
+    assert.equal(view.postage, null);
     assert.equal(view.observedAt, null);
     assert.doesNotMatch(JSON.stringify(view), /manager\.example|secret-token/);
+  });
+
+  it("answers each node's batch and the price of postage as the manager read them", async () => {
+    const stageBatch = fundingBatch();
+    const unread = {
+      ...fundingBatch({ batchId: BATCH_CATALOGUE }),
+      depth: null,
+      immutable: null,
+      usable: null,
+      ttlSeconds: null,
+      fillRatio: null,
+      readError: 'The node did not answer about the batch.',
+    };
+    const inventory = fundingInventory();
+    inventory.chain.postage = POSTAGE;
+    inventory.stages[0]!.nodes[0]!.batch = stageBatch;
+    inventory.stages[0]!.nodes[1]!.batch = null;
+    inventory.catalogue!.batch = unread;
+    manager.inventoryAnswer = inventory;
+
+    const view = await service.view();
+
+    assert.deepEqual(view.postage, POSTAGE);
+    assert.deepEqual(
+      view.stages[0]?.nodes.map((node) => node.batch),
+      [stageBatch, null],
+    );
+    assert.deepEqual(view.catalogue?.batch, unread);
+    assert.equal(view.stages[0]?.nodes[0]?.batch?.ttlSeconds, 10 * DAY);
+  });
+
+  it('answers no batch and no price from a manager that reads neither', async () => {
+    const view = await service.view();
+
+    assert.equal(view.postage, null);
+    assert.deepEqual(
+      [...(view.stages[0]?.nodes ?? []), view.catalogue].map((node) => node?.batch),
+      [null, null, null],
+    );
+  });
+
+  it('answers no price from a manager on another chain', async () => {
+    manager.inventoryAnswer = fundingInventory({ chain: { chainId: 1, bzzToken: BZZ_TOKEN, postage: POSTAGE } });
+
+    const view = await service.view();
+
+    assert.match(view.managerError ?? '', /chain 1/);
+    assert.equal(view.postage, null);
+    assert.deepEqual(view.stages, []);
   });
 
   it('reads the balances as unknown when the account alone cannot be read', async () => {
