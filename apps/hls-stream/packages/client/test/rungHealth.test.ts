@@ -79,6 +79,7 @@ function makeLadderPlayer({
     nextLoadLevel: -1,
     nextAutoLevel: 1,
     loadingEnabled: true,
+    hasEnoughToStart: true,
     startLoad(startPosition = -1) {
       loadStarts.push(startPosition);
     },
@@ -118,6 +119,8 @@ function makeLadderPlayer({
     removed,
     loadStarts,
     stopLoading: () => void (hls.loadingEnabled = false),
+    /** No fragment has been buffered yet, which is when hls.js's `startLoad` picks its start level itself. */
+    notStartedYet: () => void (hls.hasEnoughToStart = false),
     playlistHeld: (height: number) => hls.levels.find((level) => level.height === height)?.details,
     heightsLeft: () => hls.levels.map((level) => level.height),
     loadLevel: () => hls.loadLevel,
@@ -340,6 +343,21 @@ describe('dropping a rung that has stopped being produced', () => {
     assert.equal(player.nextLoadLevel(), 0);
     assert.notEqual(player.playlistHeld(1080), undefined, 'the rung the viewer plays lost its playlist');
     assert.deepEqual(player.loadStarts, [], 'a refused switch restarted loading on the rung the viewer plays');
+  });
+
+  /**
+   * Before any fragment is buffered `startLoad` sets the next level to hls.js's start level, which would undo the
+   * move to the rung the poller found moving. Nothing has been appended then, so there is no fragment to forget.
+   */
+  it('does not restart loading before the first fragment, so the viewer stays on the rung they were moved to', () => {
+    const player = makeLadderPlayer();
+    player.notStartedYet();
+    attachRungFailover(player.hls, player.feedHealth);
+
+    player.silence('rung-1080p', 'rung-720p');
+
+    assert.equal(player.nextLoadLevel(), 0);
+    assert.deepEqual(player.loadStarts, [], 'startLoad would have replaced the rung the viewer was moved to');
   });
 
   it('does not restart loading when the dropped rung was not the one playing', () => {

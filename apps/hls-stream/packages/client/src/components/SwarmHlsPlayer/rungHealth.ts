@@ -258,7 +258,9 @@ function forgetEarlierPlaylist(hls: Hls, levelIndex: number): void {
  * since starting again on play resets the same memory.
  */
 function forgetLastAppendedFragment(hls: Hls): void {
-  if (hls.loadingEnabled) {
+  // Before the first fragment is buffered `startLoad` sets the next level to the start level, which would
+  // undo the move, and nothing has been appended yet for hls.js to read as continuing.
+  if (hls.loadingEnabled && hls.hasEnoughToStart) {
     hls.startLoad(-1);
   }
 }
