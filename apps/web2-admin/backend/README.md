@@ -1396,8 +1396,10 @@ other failure (the manager out of reach, its answer lost to the deadline, the
 funding API off, an answer that cannot be read, the manager's own 5xx, its
 journal's 503 among them) leaves the item, and the ones after it, `queued` for
 a refresh, which asks the manager where it stands. The manager journals a move
-before it asks the node, so one that reached it is never `unknown_request`. A
-process that stops mid-way leaves its items as recorded, for the next refresh.
+before it asks the node, so `unknown_request` means the node was asked for
+nothing, even for a request that reached the manager and was refused before
+anything was journalled. A process that stops mid-way leaves its items as
+recorded, for the next refresh.
 
 **Settling.** A `queued` item holds up a new chequebook bulk whatever its age,
 since the manager may not have it yet. A `submitted` or `unknown` one holds it
@@ -1426,10 +1428,14 @@ item answers:
 
 **The refresh** reads, in the bulk's order, where each `queued`, `submitted` or
 `unknown` item stands on the manager, and records it, its hash once the manager
-answers one. A `queued` item the manager never received (`unknown_request`) is
+answers one. An item the manager holds nothing under (`unknown_request`) is
 relayed again, the same fields under the same request id, which the manager
-runs at most once. An item the manager answered for before is never relayed
-again, whatever the manager says of it, since a second run would move the
+runs at most once, when it is `queued`, or `submitted` with no hash: the
+manager answers a move it is still preparing, before it journals anything,
+`submitted` with no hash, and that preparation may end with nothing journalled,
+refused, failed, or cut short by a restart. Its 30 minutes then count from the
+answer to the relay again. An item with a hash or an outcome is never relayed
+again, whatever the manager says of it, since a second run could move the
 balance again. The refresh stops at the first item the manager cannot answer
 for. It runs for `GET /api/funding/chequebook-operations?bulkId=` on that bulk,
 for `GET /api/funding` on the latest chequebook bulks with an item still asked

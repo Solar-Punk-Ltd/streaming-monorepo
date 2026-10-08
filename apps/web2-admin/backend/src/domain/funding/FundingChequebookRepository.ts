@@ -73,7 +73,8 @@ export interface FundingChequebookRow {
   error: string | null;
   /**
    * When the admin recorded the manager's first answer for it, to a relay or to the status read that found a relay
-   * whose answer was lost, by the service's clock. Null while the item is `queued`, and on an item failed before the
+   * whose answer was lost, by the service's clock; and its answer to a relay again, for an item `submitted` with no
+   * hash that the manager then held nothing under. Null while the item is `queued`, and on an item failed before the
    * manager ever answered for it. A `submitted` or `unknown` item's 30 minutes count from it.
    */
   relayedAt: Date | null;
