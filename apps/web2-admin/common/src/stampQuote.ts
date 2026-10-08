@@ -28,13 +28,17 @@ export interface StampTopUpQuote {
   amountPerChunkPlur: string;
   /** What the node pays in all, in PLUR: the amount per chunk, for each of the batch's 2^depth chunks. */
   costPlur: string;
-  /** The batch's time left after it, at today's price. */
+  /**
+   * The batch's time left after it, at today's price: exact while it is a safe integer, some 285 million years, and
+   * the nearest number past that, never NaN or Infinity.
+   */
   ttlAfterSeconds: number;
 }
 
 /**
  * A top-up of `days` more days on a batch of `depth` with `ttlSeconds` left, at `postage`'s price. The blocks are
- * rounded up, so the days are never short. `days` is a whole number of 1 or more, with no cap; anything else throws,
+ * rounded up, so the days are never short, and counted in BigInt, so any whole number of days stays exact: its seconds
+ * in a number would lose digits past 2^53. `days` is a whole number of 1 or more, with no cap; anything else throws,
  * since the page and the routes refuse it before they ask.
  */
 export function stampTopUpQuote(
@@ -44,13 +48,15 @@ export function stampTopUpQuote(
   postage: FundingPostage,
 ): StampTopUpQuote {
   if (!Number.isSafeInteger(days) || days < 1) throw new RangeError('days must be a whole number of 1 or more');
-  const seconds = days * SECONDS_PER_DAY;
-  const blocks = BigInt(Math.ceil(seconds / postage.blockSeconds));
+  const seconds = BigInt(days) * BigInt(SECONDS_PER_DAY);
+  const blockSeconds = BigInt(postage.blockSeconds);
+  const blocks = (seconds + blockSeconds - 1n) / blockSeconds;
   const amountPerChunk = blocks * BigInt(postage.pricePerChunkPerBlockPlur);
   return {
     amountPerChunkPlur: amountPerChunk.toString(),
     costPlur: (amountPerChunk * 2n ** BigInt(depth)).toString(),
-    ttlAfterSeconds: ttlSeconds + seconds,
+    // The exact seconds become a number only here, rounded only past 2^53, so the sum is exact while it can be.
+    ttlAfterSeconds: ttlSeconds + Number(seconds),
   };
 }
 

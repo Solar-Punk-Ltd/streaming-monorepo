@@ -319,10 +319,11 @@ function openFundingBulkId() {
 
 /**
  * What a top-up of `days` costs a batch of `depth` at today's price, in PLUR, as the admin's stampQuote works it out:
- * every block of the days, rounded up, for each of the batch's 2^depth chunks.
+ * every block of the days, rounded up and counted in BigInt, for each of the batch's 2^depth chunks.
  */
 function topUpCost(days, depth) {
-  const blocks = BigInt(Math.ceil((days * 86_400) / FUNDING_POSTAGE.blockSeconds));
+  const blockSeconds = BigInt(FUNDING_POSTAGE.blockSeconds);
+  const blocks = (BigInt(days) * 86_400n + blockSeconds - 1n) / blockSeconds;
   return blocks * BigInt(FUNDING_POSTAGE.pricePerChunkPerBlockPlur) * 2n ** BigInt(depth);
 }
 
