@@ -564,6 +564,21 @@ describe('both SRS compose files carry the same tuning knobs', () => {
     });
   }
 
+  /**
+   * The segment length has no default anywhere, so compose refuses to start a stack that names none
+   * rather than handing either container a length nobody chose. Every block that passes it is held
+   * to that, the uploader's as well as SRS's, since both read it.
+   */
+  it('requires HLS_FRAGMENT in every block that passes it, and names it when it is missing', () => {
+    for (const composePath of [COMPOSE, STANDALONE]) {
+      const passes = [...readFileSync(composePath, 'utf8').matchAll(/^\s*HLS_FRAGMENT:\s*(.*)$/gm)].map((m) => m[1]);
+      assert.ok(passes.length > 0, `${composePath} passes no HLS_FRAGMENT`);
+      for (const value of passes) {
+        assert.match(value, /^\$\{HLS_FRAGMENT:\?HLS_FRAGMENT is not set[^}]*\}$/, `${composePath}: ${value}`);
+      }
+    }
+  });
+
   it('gives each knob the same default in both files, so which one started the engine cannot matter', () => {
     const [primary, standalone] = [COMPOSE, STANDALONE].map((p) => readFileSync(p, 'utf8'));
 

@@ -312,12 +312,11 @@ services:
       RECOVERY_TIMEOUT: ${RECOVERY_TIMEOUT:-60000}
       SEGMENT_STALL_MS: ${SEGMENT_STALL_MS:-30000}
       FIRST_RUNG_DEADLINE_MS: ${FIRST_RUNG_DEADLINE_MS:-45000}
-      # The same variable the SRS block below sets, and the same default on purpose: it is what the
-      # engine is asked to cut at and what every segment's `#EXT-X-PROGRAM-DATE-TIME` steps by, so
-      # the two reading different values would date a recording against a fragment length nothing
-      # produced. Absent here the uploader falls back to the same 0.5, which is right for a
-      # deployment that never overrode it and wrong for every one that did.
-      HLS_FRAGMENT: ${HLS_FRAGMENT:-0.5}
+      # The same variable the SRS block below sets: it is what the engine is asked to cut at and what
+      # every segment's `#EXT-X-PROGRAM-DATE-TIME` steps by, so the two reading different values would
+      # date a recording against a fragment length nothing produced. It has no default, so a stack
+      # that names none is refused here rather than started on a length nobody chose.
+      HLS_FRAGMENT: ${HLS_FRAGMENT:?HLS_FRAGMENT is not set, the stage's segment length in seconds, for example 2}
       SEGMENT_DEDUP_WINDOW: ${SEGMENT_DEDUP_WINDOW:-10000}
       ORPHAN_REAP_MS: ${ORPHAN_REAP_MS:-60000}
       SEGMENT_REDUNDANCY: ${SEGMENT_REDUNDANCY:-1}
@@ -480,10 +479,11 @@ services:
       #
       # ⛔ `HLS_FRAGMENT` is NOT the segment length. Measured over 20 arms and replicated to three
       # decimals, the segment is `ceil(HLS_FRAGMENT / GOP) * GOP`, so the publisher's keyframe
-      # interval decides it and the fragment only sets a floor. This was 1.0, which put the floor
+      # interval decides it and the fragment only sets a floor. A default of 1.0 once put the floor
       # above the 0.5s GOP that a funded sitting found best and silently produced 1.0s segments for a
       # broadcaster who asked for 0.5s ones. See the `gop-vs-fragment-2026-08-12` measurement (kept outside the repository).
-      HLS_FRAGMENT: ${HLS_FRAGMENT:-0.5}
+      # There is no default now. The deployment names its length, 2 in the example config.
+      HLS_FRAGMENT: ${HLS_FRAGMENT:?HLS_FRAGMENT is not set, the stage's segment length in seconds, for example 2}
       # SRS force-closes a segment at `HLS_FRAGMENT * HLS_AOF_RATIO` regardless of keyframes, so this
       # is the ceiling on the pair rather than a detail.
       #
