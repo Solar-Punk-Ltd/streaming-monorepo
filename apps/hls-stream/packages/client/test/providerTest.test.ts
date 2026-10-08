@@ -379,10 +379,11 @@ describe("the node picker's Test, on a live ladder", () => {
   const markerUrl = `${GW}/soc/${OWNER}/${ladderMarkerIdentifier(Topic.fromString(GROUP), PERIOD).toHex()}`;
   const marker = new TextDecoder().decode(
     encodeLadderMarker({
-      v: 1,
+      v: 2,
       period: PERIOD,
       writtenAt: PERIOD * 10_000 + 250,
       rungs: { [Topic.fromString(RUNG).toHex()]: 42 },
+      segmentMs: 2_000,
     }),
   );
 

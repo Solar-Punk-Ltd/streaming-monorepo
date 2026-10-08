@@ -97,6 +97,7 @@ function harness(): Harness {
   const writer = new LadderMarkerWriter({
     publishers,
     signer: new PrivateKey(TEST_KEY),
+    segmentMs: 2_000,
     clock,
     wallClockMs: wallMs,
     metrics,
@@ -165,10 +166,11 @@ describe('LadderMarkerWriter', () => {
     assert.equal(h.writerRung(), '360p');
     assert.equal(upload.deferred, false);
     assert.deepEqual(markerOf(upload), {
-      v: 1,
+      v: 2,
       period,
       writtenAt: upload.wallMs,
       rungs: { [topicHex(RUNG_360)]: 41, [topicHex(RUNG_720)]: 7 },
+      segmentMs: 2_000,
     });
     assert.deepEqual(counters(h.metrics), { written: 1, failed: 0 });
   });

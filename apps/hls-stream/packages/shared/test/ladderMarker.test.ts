@@ -49,12 +49,19 @@ const VECTORS = [
 
 function validMarker(overrides: Partial<LadderMarker> = {}): LadderMarker {
   return {
-    v: 1,
+    v: 2,
     period: 175_983_840,
     writtenAt: 1_759_838_400_250,
     rungs: { [RUNG_360]: 41, [RUNG_720]: 0 },
+    segmentMs: 2_000,
     ...overrides,
   };
+}
+
+/** A marker as the uploader wrote them before they named a segment length. */
+function versionOneText(): string {
+  const { segmentMs: _segmentMs, ...rest } = validMarker();
+  return JSON.stringify({ ...rest, v: 1 });
 }
 
 describe('ladder marker period', () => {
@@ -99,6 +106,24 @@ describe('encodeLadderMarker and parseLadderMarker', () => {
     assert.deepEqual(parseLadderMarker(text, marker.period), marker);
   });
 
+  it('names the segment length the stage cuts, so a reader can move a head on before it has a playlist', () => {
+    const text = new TextDecoder().decode(encodeLadderMarker(validMarker({ segmentMs: 500 })));
+    assert.equal(JSON.parse(text).segmentMs, 500);
+    assert.equal(parseLadderMarker(text)?.segmentMs, 500);
+  });
+
+  it('still reads a version 1 marker, which names no segment length', () => {
+    const marker = parseLadderMarker(versionOneText());
+    assert.notEqual(marker, null);
+    assert.equal(marker?.v, 1);
+    assert.equal(marker?.segmentMs, null);
+  });
+
+  it('refuses to encode a marker that names no segment length', () => {
+    assert.throws(() => encodeLadderMarker(validMarker({ segmentMs: null })));
+    assert.throws(() => encodeLadderMarker(JSON.parse(versionOneText()) as LadderMarker));
+  });
+
   it('refuses to encode a marker larger than one chunk', () => {
     const rungs = Object.fromEntries(
       Array.from({ length: 80 }, (_, i) => [i.toString(16).padStart(64, '0'), Number.MAX_SAFE_INTEGER]),
@@ -114,7 +139,12 @@ describe('encodeLadderMarker and parseLadderMarker', () => {
     ['text that is not JSON', '{"v":1,'],
     ['an array', '[]'],
     ['null', 'null'],
-    ['another version', JSON.stringify(validMarker({ v: 2 as 1 }))],
+    ['another version', JSON.stringify(validMarker({ v: 3 as 2 }))],
+    ['a version 2 marker without a segment length', JSON.stringify({ ...validMarker(), segmentMs: undefined })],
+    ['a version 1 marker with a segment length', JSON.stringify(validMarker({ v: 1 }))],
+    ['a segment length of zero', JSON.stringify(validMarker({ segmentMs: 0 }))],
+    ['a fractional segment length', JSON.stringify(validMarker({ segmentMs: 500.5 }))],
+    ['a segment length written as a string', JSON.stringify({ ...validMarker(), segmentMs: '500' })],
     ['a missing field', JSON.stringify({ v: 1, period: 1, rungs: { [RUNG_360]: 1 } })],
     ['an extra field', JSON.stringify({ ...validMarker(), note: 'x' })],
     ['a negative period', JSON.stringify(validMarker({ period: -1 }))],
