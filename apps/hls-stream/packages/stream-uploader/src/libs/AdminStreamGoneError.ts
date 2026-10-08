@@ -1,5 +1,6 @@
 /**
- * The admin answered that the stream a report named does not exist, which no retry can change.
+ * The admin answered that the stream a report named does not exist, which no retry can change. The
+ * rendition report throws it, and a `vod` state report's `STATE_REPORT_STREAM_GONE` becomes it.
  *
  * Told apart from every other refusal because it is the one that is permanent for the broadcast:
  * the stream was deleted on the admin, or was never there. A timeout, a 5xx or a refused connection

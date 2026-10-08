@@ -52,6 +52,8 @@ interface Refusal {
 
 const STREAM_DELETED: Refusal = { status: 404, body: { error: 'stream_not_found', id: DECLARED.id } };
 const ADMIN_UNAVAILABLE: Refusal = { status: 503, body: { error: 'unavailable' } };
+/** The 404 a wrong base url or a proxy answers, which says nothing about the stream. */
+const PATH_NOT_ROUTED: Refusal = { status: 404, body: { error: 'not_found', path: '/api/internal/streams' } };
 
 interface FakeAdmin {
   client: AdminApiClient;
@@ -113,47 +115,77 @@ const acceptingMasterWriter = {
   publish: async (group: string) => ({ topic: group, index: 0 }),
 } as unknown as MasterFeedWriter;
 
-function adminOrchestrator(admin: FakeAdmin, store: RecoveryStore, uploads: FakeUploads): StreamOrchestrator {
+function adminOrchestrator(
+  admin: FakeAdmin,
+  store: RecoveryStore,
+  uploads: FakeUploads,
+  ladder = true,
+): StreamOrchestrator {
   return makeTestOrchestrator(
-    {
-      ladder: AbrLadder.parse(DEFAULT_LADDER_SPEC),
-      adminApi: admin.client,
-      ladderRegistry: new AdminLadderRegistry({ client: admin.client, masterWriter: acceptingMasterWriter }),
-    },
+    ladder
+      ? {
+          ladder: AbrLadder.parse(DEFAULT_LADDER_SPEC),
+          adminApi: admin.client,
+          ladderRegistry: new AdminLadderRegistry({ client: admin.client, masterWriter: acceptingMasterWriter }),
+        }
+      : { adminApi: admin.client },
     uploads,
     store,
   );
 }
 
-/**
- * Broadcast one segment per rung, have the admin refuse every report from then on, and stop each rung,
- * which is the finalize the live log showed failing at its report. Answers the store the entries are in.
- */
-async function broadcastThenStopWhileAdminRefuses(refusal: Refusal): Promise<RecoveryStore> {
+/** One broadcast shape: the stream ids it publishes under and whether the admin holds it as a ladder. */
+interface Shape {
+  streamIds: string[];
+  ladder: boolean;
+  /** Whether the admin has taken what this shape reports once it is up. */
+  isUp(admin: FakeAdmin): boolean;
+}
+
+const LADDER: Shape = {
+  streamIds: RUNGS.map(rungId),
+  ladder: true,
+  isUp: (admin) => admin.rungs.size === RUNGS.length,
+};
+
+/** One rendition, which the admin is told about through its state report alone. */
+const SINGLE_RENDITION: Shape = {
+  streamIds: [BASE],
+  ladder: false,
+  isUp: (admin) => admin.states.some((report) => report.state === ADMIN_STATE_LIVE),
+};
+
+function newStore(): RecoveryStore {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'deleted-admin-stream-'));
   stateDirs.push(dir);
-  const store = new RecoveryStore(dir);
+  return new RecoveryStore(dir);
+}
+
+/**
+ * Broadcast one segment per stream, have the admin refuse every report from then on, and stop each
+ * stream, which is the finalize the live log showed failing at its report. Answers the store the
+ * entries are in.
+ */
+async function broadcastThenStopWhileAdminRefuses(refusal: Refusal, shape: Shape = LADDER): Promise<RecoveryStore> {
+  const store = newStore();
   const admin = fakeAdmin();
   // A broadcast that has written nothing yet, so its first live publish opens the feed.
-  const orch = adminOrchestrator(admin, store, { feedHead: () => null });
+  const orch = adminOrchestrator(admin, store, { feedHead: () => null }, shape.ladder);
 
   try {
-    for (const rung of RUNGS) {
-      orch.startStream(rungId(rung), MEDIA_TYPE_VIDEO, undefined, DECLARED);
+    for (const streamId of shape.streamIds) {
+      orch.startStream(streamId, MEDIA_TYPE_VIDEO, undefined, DECLARED);
     }
-    for (const rung of RUNGS) {
-      orch.handleSegment(rungId(rung), 0, 2, Buffer.from(`${rung}-segment-0`));
+    for (const streamId of shape.streamIds) {
+      orch.handleSegment(streamId, 0, 2, Buffer.from(`${streamId}-segment-0`));
     }
-    await waitFor(
-      () => admin.rungs.size === RUNGS.length && store.listActive().length === RUNGS.length,
-      SETTLE_CEILING_MS,
-    );
+    await waitFor(() => shape.isUp(admin) && store.listActive().length === shape.streamIds.length, SETTLE_CEILING_MS);
 
     admin.refuseWith(refusal);
-    for (const rung of RUNGS) {
-      await orch.stopStream(rungId(rung));
+    for (const streamId of shape.streamIds) {
+      await orch.stopStream(streamId);
       assert.equal(
-        orch.getStreamStatus(rungId(rung)).state,
+        orch.getStreamStatus(streamId).state,
         STREAM_LIFECYCLE_FAILED,
         'the report was refused, so the finalize was supposed to fail and nothing here is tested',
       );
@@ -165,10 +197,10 @@ async function broadcastThenStopWhileAdminRefuses(refusal: Refusal): Promise<Rec
 }
 
 /** What the next uploader start recovers from the same directory. */
-async function nextBootRecovers(store: RecoveryStore): Promise<string[]> {
+async function nextBootRecovers(store: RecoveryStore, shape: Shape = LADDER): Promise<string[]> {
   // The feed a crash left mid-broadcast, which is what the head of a recovered rung answers. Read as
   // never written, the recovered finalizes this boot's cleanup runs retry the head for many seconds.
-  const orch = adminOrchestrator(fakeAdmin(), store, {});
+  const orch = adminOrchestrator(fakeAdmin(), store, {}, shape.ladder);
   try {
     return await orch.recoverStreams();
   } finally {
@@ -192,5 +224,26 @@ describe('a broadcast whose stream the admin no longer knows', () => {
       RUNGS.map(rungId).sort(),
       'an admin that was down for a moment cost the recording',
     );
+  });
+});
+
+describe('a single-rendition broadcast whose stream the admin no longer knows', () => {
+  it('lets its recovery entry go when the admin answers its recording report that the stream does not exist', async () => {
+    const store = await broadcastThenStopWhileAdminRefuses(STREAM_DELETED, SINGLE_RENDITION);
+
+    assert.deepEqual(store.listActive(), [], 'a deleted stream′s entry was kept to be refused at every boot');
+    assert.deepEqual(await nextBootRecovers(store, SINGLE_RENDITION), []);
+  });
+
+  it('keeps its entry when the admin is only unavailable, so the next boot can still finish it', async () => {
+    const store = await broadcastThenStopWhileAdminRefuses(ADMIN_UNAVAILABLE, SINGLE_RENDITION);
+
+    assert.deepEqual(await nextBootRecovers(store, SINGLE_RENDITION), [BASE]);
+  });
+
+  it('keeps its entry when the admin answers a 404 that does not name the stream as missing', async () => {
+    const store = await broadcastThenStopWhileAdminRefuses(PATH_NOT_ROUTED, SINGLE_RENDITION);
+
+    assert.deepEqual(await nextBootRecovers(store, SINGLE_RENDITION), [BASE]);
   });
 });

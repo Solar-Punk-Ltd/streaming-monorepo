@@ -26,6 +26,7 @@ import {
   STATE_REPORT_ACCEPTED,
   STATE_REPORT_BACKOFF_MS,
   STATE_REPORT_FAILED,
+  STATE_REPORT_STREAM_GONE,
   stateWasReported,
 } from '../src/libs/AdminApiClient.js';
 import { AdminStreamGoneError } from '../src/libs/AdminStreamGoneError.js';
@@ -319,6 +320,31 @@ describe('the admin API client, reporting where a broadcast got to', () => {
         [...STATE_REPORT_BACKOFF_MS],
         'one wait between each pair of attempts, and none after the last',
       );
+    });
+  });
+
+  /**
+   * ⛔ Told apart from every other refusal because it is the one no later boot can turn around: the
+   * stream was deleted on the admin, and a finalize that kept its recovery entry for it was recovered
+   * and refused again at every start.
+   */
+  it('answers that the stream is gone on the admin′s own 404 for it, a failure, and asks once', async () => {
+    await withAdmin(
+      always(404, { error: 'stream_not_found', id: ADMIN_STREAM_ID }),
+      async ({ client, received, sleeps }) => {
+        const outcome = await client.reportState(ADMIN_STREAM_ID, { state: ADMIN_STATE_VOD, index: 3, duration: 10 });
+        assert.equal(outcome, STATE_REPORT_STREAM_GONE);
+        assert.equal(stateWasReported(outcome), false, 'a deleted stream did not take the report');
+        assert.equal(received.length, 1);
+        assert.deepEqual(sleeps, []);
+      },
+    );
+  });
+
+  /** A wrong base url or a proxy answers 404 too, and that says nothing about the stream. */
+  it('fails a 404 that does not name the stream as missing, as any other refusal', async () => {
+    await withAdmin(always(404, { error: 'not_found', path: '/api/internal/streams' }), async ({ client }) => {
+      assert.equal(await client.reportState(ADMIN_STREAM_ID, { state: ADMIN_STATE_LIVE }), STATE_REPORT_FAILED);
     });
   });
 

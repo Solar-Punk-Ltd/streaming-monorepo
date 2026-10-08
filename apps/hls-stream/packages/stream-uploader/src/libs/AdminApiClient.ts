@@ -125,15 +125,24 @@ export interface AdminStreamDraft {
  */
 export const STATE_REPORT_ACCEPTED = 'accepted' as const;
 export const STATE_REPORT_FAILED = 'failed' as const;
+/**
+ * The admin answered that it has no such stream, the one failure no later attempt can turn around.
+ * Kept apart from {@link STATE_REPORT_FAILED} so a finalize can let go of a broadcast the admin
+ * deleted. See {@link AdminStreamGoneError}.
+ */
+export const STATE_REPORT_STREAM_GONE = 'stream-gone' as const;
 
-export type StateReportOutcome = typeof STATE_REPORT_ACCEPTED | typeof STATE_REPORT_FAILED;
+export type StateReportOutcome =
+  | typeof STATE_REPORT_ACCEPTED
+  | typeof STATE_REPORT_FAILED
+  | typeof STATE_REPORT_STREAM_GONE;
 
 /** The admin's state for a stream that was never published, or was unpublished, which refuses every report. */
 const ADMIN_STATUS_DRAFT = 'draft';
 
 /** Whether the admin now holds the state that was reported, however it got there. */
 export function stateWasReported(outcome: StateReportOutcome): boolean {
-  return outcome !== STATE_REPORT_FAILED;
+  return outcome === STATE_REPORT_ACCEPTED;
 }
 
 /**
@@ -546,7 +555,9 @@ export class AdminApiClient {
       }
       if (!isRetryableReportStatus(response.status)) {
         this.logger.error(`[Admin] Report of ${report.state} refused with ${response.status} for ${url}`);
-        return STATE_REPORT_FAILED;
+        return isStreamNotFound(response.status, await this.readJson(response))
+          ? STATE_REPORT_STREAM_GONE
+          : STATE_REPORT_FAILED;
       }
       this.logger.warn(`[Admin] Report of ${report.state} answered ${response.status} for ${url}, attempt ${attempt}`);
       return null;
