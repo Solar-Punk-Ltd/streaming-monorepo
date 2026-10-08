@@ -1,13 +1,14 @@
 /**
- * Which Bee API a stamp operation asks, by the opaque id the funding inventory names a node with: a deployment's own
- * `bee-uploader`, at the address the inventory read it at, and nothing else.
+ * Which Bee API a stamp operation asks, and which deployment a chequebook operation moves the chequebook of, by the
+ * opaque id the funding inventory names a node with: a deployment's own `bee-uploader`, at the address the inventory
+ * read it at, and nothing else.
  *
  * Unit test, no database and no node: fake deployments. `pnpm test` in manager/.
  */
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 
-import { fundingNodeApiUrl } from '../../src/domain/funding/fundingNodeApi.js';
+import { fundingNodeApiUrl, fundingNodeDeployment } from '../../src/domain/funding/fundingNodeApi.js';
 import type { Profile } from '../../src/types/index.js';
 import { makeProfile } from '../support/profileFixtures.js';
 
@@ -16,7 +17,17 @@ const RUNG_ID = '2dab8c50-4e6f-4071-8c1d-3e4f5a6b7c8d';
 const ABR_ID = '1c9a7b4f-3d5e-4f60-9b0c-2d3e4f5a6b7c';
 const LEAVING_ID = '3ebc9d61-5f70-4182-9d2e-4f5a6b7c8d9e';
 
-function lookup(): (nodeId: string) => Promise<string | null> {
+/** The ids no deployment's own Bee node answers to. */
+const NOT_A_NODE = [
+  `${STAGE_ID}:bee-gateway`,
+  `${ABR_ID}:bee-uploader`,
+  `${LEAVING_ID}:bee-uploader`,
+  '4fcdae72-6081-4293-ae3f-5a6b7c8d9eaf:bee-uploader',
+  'bee-uploader',
+  `:bee-uploader`,
+];
+
+function deployments(): { list(): Promise<Profile[]> } {
   const profiles: Profile[] = [
     makeProfile({
       name: 'stage-one',
@@ -47,8 +58,12 @@ function lookup(): (nodeId: string) => Promise<string | null> {
       status: 'REMOVING',
     }),
   ];
+  return { list: async () => profiles };
+}
+
+function lookup(): (nodeId: string) => Promise<string | null> {
   return fundingNodeApiUrl({
-    profiles: { list: async () => profiles },
+    profiles: deployments(),
     uploaderApiUrl: (profile) => `http://${profile.name}.invalid:1633`,
   });
 }
@@ -62,15 +77,25 @@ describe('the Bee API of a funding node', () => {
 
   it('is none for a gateway, a deployment with no Bee node, one being removed, one not here, or no id', async () => {
     const apiOf = lookup();
-    for (const nodeId of [
-      `${STAGE_ID}:bee-gateway`,
-      `${ABR_ID}:bee-uploader`,
-      `${LEAVING_ID}:bee-uploader`,
-      '4fcdae72-6081-4293-ae3f-5a6b7c8d9eaf:bee-uploader',
-      'bee-uploader',
-      `:bee-uploader`,
-    ]) {
+    for (const nodeId of NOT_A_NODE) {
       assert.equal(await apiOf(nodeId), null, nodeId);
+    }
+  });
+});
+
+describe('the deployment of a funding node', () => {
+  it('is the deployment whose own bee-uploader the node is, by its instance id', async () => {
+    const deploymentOf = fundingNodeDeployment({ profiles: deployments() });
+    const stage = await deploymentOf(`${STAGE_ID}:bee-uploader`);
+    assert.deepEqual([stage?.name, stage?.instance_id], ['stage-one', STAGE_ID]);
+    const rung = await deploymentOf(`${RUNG_ID}:bee-uploader`);
+    assert.deepEqual([rung?.name, rung?.instance_id], ['pool-720p', RUNG_ID]);
+  });
+
+  it('is none where the Bee API is none', async () => {
+    const deploymentOf = fundingNodeDeployment({ profiles: deployments() });
+    for (const nodeId of NOT_A_NODE) {
+      assert.equal(await deploymentOf(nodeId), null, nodeId);
     }
   });
 });

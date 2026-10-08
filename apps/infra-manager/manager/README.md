@@ -456,7 +456,10 @@ gate uses.
 
 The deployment page's Fill chequebook and Withdraw move BZZ between a Bee
 node's wallet and its chequebook. They work on any host a deployment runs on,
-with nothing to set up first.
+with nothing to set up first. The web2 admin's funding API moves chequebooks
+through the same path and the same journal, its moves recorded as requested by
+`web2-admin` ([Chequebook operations](#chequebook-operations)), so everything
+below holds for them too.
 
 **What a new host needs: nothing, by default.** A transfer reaches the node the
 way the manager already reaches that host, and reads the chain the way the node
@@ -879,8 +882,10 @@ api. The shapes are `packages/contracts/src/funding.ts`; added 2026-10-05.
   `funding_off` 404, `unauthorized` 401, `unknown_node` 404, `bad_transaction`
   422, `chain_unreachable` 502, `conflict` 409, `unknown_request` 404,
   `stamp_refused` 422 (a check of a stamp operation failed, and the sentence
-  says which) and `node_unreachable` 502 (the manager could not connect to the
-  node's Bee API).
+  says which), `node_unreachable` 502 (the manager could not connect to the
+  node's Bee API) and `chequebook_refused` 422 (a check of a chequebook
+  operation failed, or the manager could not prepare it, and the sentence says
+  which; nothing was asked of the node).
 
 | Method | Path                                      | Answer                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                  |
 | ------ | ----------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
@@ -996,6 +1001,68 @@ its own wallet: xBZZ for a top-up, xDAI for the gas of either.
   after it was asked for still reads `failed`; the inventory shows the batch
   as it is. Nothing here has run against a real node or chain: the tests use
   fakes.
+
+#### Chequebook operations
+
+Added 2026-10-08. The web2 admin brings the nodes' chequebooks to a target
+through these routes, one deposit or withdrawal a request. They are a thin
+adapter over the manager's own chequebook path, the one behind the deployment
+page's Fill chequebook and Withdraw
+([docs/features/chequebook.md](../docs/features/chequebook.md)): the same
+preparation over the node's own Docker connection, the same last check before
+sending, the same single POST to the node and the same journal,
+`chequebook_operations`, where the move is recorded as requested by
+`web2-admin`. There is no table of its own and no migration. The node pays: a
+deposit's xBZZ from its wallet, and the gas of either in xDAI. A withdrawal goes
+into the node's own wallet, the one place Bee withdraws to.
+
+| Method | Path                                                  | Answer                                                                                                                                                                                                                                                                                                                                                                                                                                                                           |
+| ------ | ----------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| POST   | `/api/admin-funding/chequebook-operations`            | 202 `{ requestId, direction, state, txHash }`, once the chequebook path has answered. Takes `{ requestId, nodeId, direction, amountPlur }`, the contract's shape: `direction` is `deposit` or `withdraw`, and `amountPlur` 30 digits at most. Anything else is 422 `chequebook_refused` naming the field. Checked and handed to the chequebook path as below. The same `requestId` again answers the journalled state and sends nothing; another move under it is 409 `conflict` |
+| GET    | `/api/admin-funding/chequebook-operations/:requestId` | `{ requestId, direction, state, txHash, error }`, `no-store`, an open operation checked first, as below. 404 `unknown_request` for a request id the funding API never journalled, which is safe to send again under the same id, and the manager's 404 for a path that names none                                                                                                                                                                                                |
+
+- **A request id already journalled** answers that operation's state when it
+  is the same move, the funding API's, on the same node, in the same direction
+  and of the same amount, and 409 `conflict` otherwise, an operator's own
+  transfer under that id included. This comes before the inventory is read, so
+  a replay answers even once the node has gone, and nothing is sent twice.
+- **The checks**, each refused before anything is journalled, against the
+  inventory read now: `nodeId` is listed in a stage as its own Bee node or a
+  rung (404 `unknown_node` for a node listed nowhere, or one whose deployment
+  is gone; 422 `chequebook_refused` for a gateway, and for the catalogue node
+  where no stage lists it, since the chequebook path moves only a deployment's
+  own `bee-uploader`). Then, each 422 `chequebook_refused` with a sentence: the
+  node's wallet and its chequebook were read, a deposit is at most the wallet's
+  xBZZ, a withdrawal at most what the chequebook has available, and the wallet
+  holds some xDAI for the gas.
+- **The chequebook path** takes the move as requested by `web2-admin`, for the
+  deployment whose instance id the node id names, and does what it does for an
+  operator's transfer. What it could not prepare is 422 `chequebook_refused`
+  with the manager's own sentence for the cause, ending "Nothing was sent."
+  (the causes are under "Funding a chequebook on a new host" above), and another
+  move still open on the node is 409 `conflict`. A journal the manager could not
+  read or write is its own 503 `chequebook_journal_unavailable`, which says
+  nothing of whether the move was made.
+- **The states** are the transfers' four: `submitting` and `submitted` are
+  `submitted`; `settled` is `confirmed`; `reverted`, `rejected` (the last check
+  refused it before sending, with that check's sentence) and `asserted` (an
+  operator recorded that it was never made) are `failed`, with a sentence; and
+  `unknown` is `unknown`, as is any operation whose transaction another
+  operation's evidence names too, until an operator reviews it. `txHash` is the
+  journal's.
+- **The `GET`** has the chequebook path check a `submitting` or `unknown`
+  operation first, through its recovery, and a `submitted` one past its
+  `receiptPollUntil` or with none, through its receipt check, at most once
+  every 30 seconds per request id. When that check fails, or is still under way
+  after five seconds, the journal is answered as it stands; a check that runs
+  on journals what it finds for the next read.
+- **Timing**: the `POST` holds until the chequebook path is done. By that
+  path's budgets that is at most about 225 seconds and the journal's own
+  queries: 15 to reach the node's container, 30 more for the checks before the
+  node is sent the move, and 180 for its answer. In practice it is seconds,
+  since Bee answers once it has sent the transaction. A caller that gives up
+  sooner reads the state on the `GET`. Nothing here has run against a real node
+  or chain: the tests use fakes.
 
 ### Engine control
 

@@ -202,6 +202,17 @@ A busy response can name another operation. The browser must not attach that
 operation to its own saved intent as though its submission succeeded. History
 is available independently of the deployment page.
 
+Since 2026-10-08 the web2 admin's funding API submits deposits and withdrawals
+through this same path and journal, on its bearer token rather than these
+routes: `POST /api/admin-funding/chequebook-operations`, under "Chequebook
+operations" in `manager/README.md`. The actor it records is `web2-admin`, never
+a `user:<id>`, and there is no browser intent behind it: the admin keeps its
+own request and asks again under the same request id. The history and the
+detail page show such an operation like any other, with `web2-admin` as the
+requester, and the page never takes it for the signed-in operator's own, since
+that match requires `user:<accountId>` (`isExactTransfer`). Check, resolve and
+assert work on it as on any other.
+
 A submission the manager could not prepare answers `503` with
 `{ error: 'chequebook_preparation_unavailable', cause, check, message }`.
 `cause` is one of the closed list in `common/src/chequebookRefusals.ts`, set
