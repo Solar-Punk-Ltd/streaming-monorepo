@@ -1,6 +1,7 @@
 import { useCallback, useMemo, useState } from 'react';
 import {
   Alert,
+  Box,
   Button,
   InputAdornment,
   Paper,
@@ -19,7 +20,7 @@ import {
   type FundingView,
 } from '@streaming-monorepo/web2-admin-common';
 
-import { formatUnits } from './amounts';
+import { formatShort, formatUnits } from './amounts';
 import { BatchTable } from './BatchTable';
 import { followBulk, type FollowedBulk } from './BulkProgress';
 import { FundingFrame, useFundingView } from './FundingFrame';
@@ -173,14 +174,39 @@ function StampControls({
   );
 }
 
-/** What the ticked batches come to, in a line. */
-function summaryOf(check: StampCheck, operation: FundingStampOperationKind, days: string, steps: FundingDiluteSteps) {
+/**
+ * What the ticked batches come to, in a line: a top-up's total in xBZZ to three decimals, as the rows have their
+ * amounts, with the exact amount on hover.
+ */
+function Summary({
+  check,
+  operation,
+  days,
+  steps,
+}: {
+  check: StampCheck;
+  operation: FundingStampOperationKind;
+  days: string;
+  steps: FundingDiluteSteps;
+}) {
   const batches = batchCount(check.lines.length);
-  if (operation === 'dilute') return `To dilute: ${batches}, ${stepCount(steps)} deeper each.`;
+  if (operation === 'dilute') return <>{`To dilute: ${batches}, ${stepCount(steps)} deeper each.`}</>;
   const read = readDays(days);
   const each = read.kind === 'ok' ? `, ${dayCount(read.days)} more each` : '';
-  const total = check.totalCostPlur === null ? '' : `, ${formatUnits(check.totalCostPlur, XBZZ_DECIMALS)} xBZZ in all`;
-  return `To top up: ${batches}${each}${total}.`;
+  if (check.totalCostPlur === null) return <>{`To top up: ${batches}${each}.`}</>;
+  return (
+    <>
+      {`To top up: ${batches}${each}, `}
+      <Box
+        component="span"
+        title={`${formatUnits(check.totalCostPlur, XBZZ_DECIMALS)} xBZZ`}
+        sx={{ fontVariantNumeric: 'tabular-nums' }}
+      >
+        {`${formatShort(check.totalCostPlur, XBZZ_DECIMALS)} xBZZ`}
+      </Box>
+      {' in all.'}
+    </>
+  );
 }
 
 /** What the ticked batches come to, why the operation cannot be asked for yet, and the button that asks for it. */
@@ -205,7 +231,9 @@ function StampBar({
   return (
     <Paper variant="outlined" sx={{ p: 2 }}>
       <Stack spacing={1}>
-        <Typography variant="body2">{summaryOf(check, operation, days, steps)}</Typography>
+        <Typography variant="body2">
+          <Summary check={check} operation={operation} days={days} steps={steps} />
+        </Typography>
         {problems.map((problem) => (
           <Typography key={problem} variant="caption" sx={{ color: 'text.secondary' }}>
             {problem}
