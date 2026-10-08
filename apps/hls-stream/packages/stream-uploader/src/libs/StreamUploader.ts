@@ -386,7 +386,7 @@ export class StreamUploader {
    */
   private readonly batchRefusalStatuses = new Set<number>();
   /**
-   * The newest segment index a published live manifest has named, or null before the first publish.
+   * The newest sequence a published live manifest has named, or null before the first publish.
    *
    * Null rather than restored from persisted state after a crash: the window a recovered uploader
    * publishes is built from segments it did reload, so a restored value would report the whole
@@ -1487,7 +1487,7 @@ export class StreamUploader {
       // Both read here, beside the build and before anything is awaited. `handleSegment` runs between
       // awaits, so either read taken after the publish returns would describe a manifest other than
       // the one being published.
-      const newestNamed = this.manifestManager.liveWindowNewestIndex();
+      const newestNamed = this.manifestManager.liveWindowNewestSequence();
       const neverNamed =
         this.announcedThrough === null ? 0 : this.manifestManager.segmentsNeverNamed(this.announcedThrough);
 

@@ -900,6 +900,9 @@ describe('the live window is bounded by bytes rather than by a segment count', (
  * produced and uploaded faster than the window that names them advances. The bytes are in Swarm and
  * perfectly retrievable. No viewer is ever told the address.
  */
+/** Enough two second segments that a live window holds only part of them. */
+const OUTRUN_SEGMENTS = 400;
+
 describe('segments the window slid past before anything named them', () => {
   it('reports none while every segment still fits', () => {
     assert.equal(withSegments(3, 2).segmentsNeverNamed(0), 0);
@@ -937,8 +940,41 @@ describe('segments the window slid past before anything named them', () => {
   });
 
   it('names the newest segment the window reaches, which is what was announced', () => {
-    assert.equal(withSegments(500, 2).liveWindowNewestIndex(), 499);
-    assert.equal(new ManifestManager(TEST_ANCHOR).liveWindowNewestIndex(), null);
+    assert.equal(withSegments(500, 2).liveWindowNewestSequence(), 499);
+    assert.equal(new ManifestManager(TEST_ANCHOR).liveWindowNewestSequence(), null);
+  });
+
+  /**
+   * SRS reaps an idle source a few seconds after its publisher leaves, so an encoder returning inside
+   * the reconnect window usually feeds a fresh muxer whose counter starts at 0 again. The run before
+   * the gap then holds engine indexes above every one the resumed run has, and was counted lost on
+   * every publish once the window left it, although all of it had been named.
+   */
+  it('counts nothing for a run before the gap whose engine indexes sit above the resumed run', () => {
+    const manager = withSegments(OUTRUN_SEGMENTS, 2);
+    manager.buildLiveManifest();
+    manager.resumeAfterReconnect('a-return');
+
+    for (let index = 0; index < OUTRUN_SEGMENTS; index++) {
+      const announced = manager.liveWindowNewestSequence();
+      manager.addSegment(index, 2, ref(index));
+      manager.buildLiveManifest();
+      assert.equal(manager.segmentsNeverNamed(announced ?? 0), 0, `after resumed segment ${index}`);
+    }
+  });
+
+  it('still counts the resumed run when the window outran it, once for each segment', () => {
+    const manager = withSegments(OUTRUN_SEGMENTS, 2);
+    manager.buildLiveManifest();
+    const announced = manager.liveWindowNewestSequence() ?? 0;
+    manager.resumeAfterReconnect('a-return');
+
+    for (let index = 0; index < OUTRUN_SEGMENTS; index++) {
+      manager.addSegment(index, 2, ref(index));
+    }
+    const held = segmentUris(manager.buildLiveManifest()).length;
+
+    assert.equal(manager.segmentsNeverNamed(announced), OUTRUN_SEGMENTS - held);
   });
 });
 

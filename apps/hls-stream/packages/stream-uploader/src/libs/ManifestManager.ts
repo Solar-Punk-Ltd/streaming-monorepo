@@ -990,15 +990,17 @@ export class ManifestManager {
    * The newest segment the live window reaches, which is the newest segment there is.
    *
    * Read together with {@link buildLiveManifest} and before anything is awaited, since `addSegment`
-   * runs between awaits: an index read after the publish returns would name a segment the published
+   * runs between awaits: a sequence read after the publish returns would name a segment the published
    * manifest did not hold.
+   *
+   * ⛔ A sequence and never an engine index. See {@link segmentsNeverNamed}.
    */
-  public liveWindowNewestIndex(): number | null {
-    return this.segments.length === 0 ? null : this.segments[this.segments.length - 1].index;
+  public liveWindowNewestSequence(): number | null {
+    return this.segments.length === 0 ? null : sequenceOf(this.segments[this.segments.length - 1]);
   }
 
   /**
-   * Segments held here that start before the live window and after `announcedThrough`.
+   * Segments held here that start before the live window and after the sequence `announcedThrough`.
    *
    * These were uploaded, so their bytes are in Swarm and any viewer handed the address could fetch
    * them. The window slid past them before a manifest naming them was published, and a viewer learns
@@ -1009,10 +1011,16 @@ export class ManifestManager {
    * Counted over the segments actually held rather than as an index range, so a segment whose upload
    * failed and which was therefore never added is not counted a second time here on top of
    * `recordSegmentDropped`.
+   *
+   * ⛔ Compared by sequence, which only ever moves forward once published, and never by engine index,
+   * which does not. An encoder returning inside the reconnect window usually feeds a fresh muxer whose
+   * counter starts again from 0, so the run before the gap holds indexes above everything the resumed
+   * run announces. Compared by index, that whole run counted as never named on every publish once the
+   * window left it, which on 2026-10-08 reported thousands of segments lost from intact playlists.
    */
   public segmentsNeverNamed(announcedThrough: number): number {
     const windowStart = this.segments.length - this.liveWindowLength();
-    return this.segments.slice(0, windowStart).filter((seg) => seg.index > announcedThrough).length;
+    return this.segments.slice(0, windowStart).filter((seg) => sequenceOf(seg) > announcedThrough).length;
   }
 
   /**
