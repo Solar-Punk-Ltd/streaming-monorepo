@@ -323,8 +323,9 @@ export interface FundingStampBulkAnswer {
 export interface ChequebookItemRequest {
   nodeId: string;
   /**
-   * The chequebook's available balance the page worked the move out from, PLUR as a decimal string. The move is the
-   * target less it, as `chequebookMove` works it out on both sides, so the admin moves what the confirm dialog showed.
+   * The chequebook's available balance the page worked the move out from, PLUR as a decimal string: the confirm dialog
+   * listed `chequebookMove(target, availablePlur)`. The admin works the move out again from it and the balance it reads
+   * when the request comes in, `chequebookMoveNow`, so it never moves more than the dialog listed.
    */
   availablePlur: string;
 }
