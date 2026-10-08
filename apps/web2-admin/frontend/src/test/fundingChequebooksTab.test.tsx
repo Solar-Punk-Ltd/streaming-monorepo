@@ -171,7 +171,7 @@ describe('the chequebooks', () => {
     expect(noWallet.getAllByText('1 xBZZ')).toHaveLength(2);
   });
 
-  it('keeps the header row one line high, in fixed columns that fit the page without scrolling it sideways', async () => {
+  it('keeps the header row one line high, in fixed columns that fit the page and leave the node card its address line', async () => {
     serve(() => makeChequebookView());
     await openChequebooks();
     const main = screen.getByRole('table', { name: 'Chequebooks of Main stage' });
@@ -189,6 +189,11 @@ describe('the chequebooks', () => {
     const nodeLeast = 240;
     /** The console's page at its widest: a large container, 1200 pixels, less its two gutters of 24. */
     const pageWidth = 1152;
+    /** A small cell's padding, 16 pixels either side, and the outlined table's border, 1 either side. */
+    const padding = 32;
+    const border = 2;
+    /** What each column's content needs, as measured in a browser at the console's font. */
+    const needs = { addressLine: 270, wallet: 74, move: 180, walletAfter: 113 };
 
     for (const header of headers()) expect(header, header.textContent ?? '').toHaveStyle({ whiteSpace: 'nowrap' });
     const fixed = fixedWidths().reduce((sum, width) => sum + width, 0);
@@ -196,7 +201,12 @@ describe('the chequebooks', () => {
     expect(px(main, 'minWidth')).toBeLessThanOrEqual(pageWidth);
     // Every digit of a balance under 1000 xBZZ, beside its name, and a move's exact amount once it wraps.
     expect(widthOf('Chequebook')).toBeGreaterThanOrEqual(300);
-    expect(widthOf('Move')).toBeGreaterThanOrEqual(224);
+    expect(widthOf('Move') - padding).toBeGreaterThanOrEqual(needs.move);
+    expect(widthOf('Wallet') - padding).toBeGreaterThanOrEqual(needs.wallet);
+    expect(widthOf('Wallet after') - padding).toBeGreaterThanOrEqual(needs.walletAfter);
+    // On the console's page the node's card keeps its address line on one line beside a New address or Address
+    // changed chip, so such a row is no taller than the others.
+    expect(pageWidth - border - fixed - padding).toBeGreaterThanOrEqual(needs.addressLine);
 
     // Typing a target and ticking a row change no width.
     const before = fixedWidths();
