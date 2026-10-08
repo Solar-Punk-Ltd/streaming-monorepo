@@ -242,6 +242,13 @@ describe('engineSettingsEnv', () => {
     assert.deepEqual(engineSettingsEnv(SRS_SERVICE, { HLS_WINDOW: '  ' }), {});
   });
 
+  it('writes the segment length on every deploy that stores none, because the stack has no default', () => {
+    const defaults = effectiveEngineDefaults(SRS_SERVICE, {}, { HLS_FRAGMENT: '0.5' });
+
+    assert.deepEqual(engineSettingsEnv(SRS_SERVICE, {}, { abr: false, defaults }).HLS_FRAGMENT, '2');
+    assert.deepEqual(engineSettingsEnv(SRS_SERVICE, { HLS_FRAGMENT: '4' }, { abr: false, defaults }).HLS_FRAGMENT, '4');
+  });
+
   it('drops a key the engine does not read', () => {
     assert.deepEqual(
       engineSettingsEnv(OME_SERVICE, {
@@ -456,14 +463,15 @@ describe('the SRT latency', () => {
     );
   });
 
-  it('is the one default the manager owns rather than each version', () => {
+  it('are the defaults the manager owns rather than each version', () => {
     // A default the manager owns is written into every deployment's env file
-    // that stores none, so adding one is a decision and not a detail.
+    // that stores none, so adding one is a decision and not a detail. The
+    // segment length joined on 2026-10-08, when the stack lost its own.
     const owned = [...SRS_SETTINGS, ...OME_SETTINGS]
       .filter((field) => field.managerOwnsDefault)
       .map((field) => field.key);
 
-    assert.deepEqual(owned, ['SRT_LATENCY']);
+    assert.deepEqual(owned, ['HLS_FRAGMENT', 'SRT_LATENCY']);
   });
 });
 
@@ -479,21 +487,24 @@ describe("engineSettingsEnv and the manager's own SRT latency", () => {
   });
 
   it('writes 2000 where neither the deployment nor the host sets it', () => {
-    assert.deepEqual(engineSettingsEnv(SRS_SERVICE, {}, onV31()), { SRT_LATENCY: '2000' });
+    assert.deepEqual(engineSettingsEnv(SRS_SERVICE, {}, onV31()), { HLS_FRAGMENT: '2', SRT_LATENCY: '2000' });
   });
 
   it("writes none of the version's own defaults", () => {
     const env = engineSettingsEnv(SRS_SERVICE, { HLS_WINDOW: '30' }, onV31());
 
-    assert.deepEqual(env, { HLS_WINDOW: '30', SRT_LATENCY: '2000' });
+    assert.deepEqual(env, { HLS_FRAGMENT: '2', HLS_WINDOW: '30', SRT_LATENCY: '2000' });
   });
 
   it('leaves a value set on the host to the base env, which the file is a copy of', () => {
-    assert.deepEqual(engineSettingsEnv(SRS_SERVICE, {}, onV31({ SRT_LATENCY: '500' })), {});
+    assert.deepEqual(engineSettingsEnv(SRS_SERVICE, {}, onV31({ HLS_FRAGMENT: '1', SRT_LATENCY: '500' })), {});
   });
 
   it('writes what the deployment stored over the manager default', () => {
-    assert.deepEqual(engineSettingsEnv(SRS_SERVICE, { SRT_LATENCY: '3000' }, onV31()), { SRT_LATENCY: '3000' });
+    assert.deepEqual(engineSettingsEnv(SRS_SERVICE, { SRT_LATENCY: '3000' }, onV31()), {
+      HLS_FRAGMENT: '2',
+      SRT_LATENCY: '3000',
+    });
   });
 
   it('writes nothing of it for OvenMediaEngine', () => {

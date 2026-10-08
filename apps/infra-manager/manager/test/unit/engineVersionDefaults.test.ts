@@ -60,7 +60,6 @@ describe('GET /profiles/:name/engine on a version with its own defaults', () => 
     const overview = res.body as EngineOverview;
 
     assert.equal(res.status, 200);
-    assert.equal(overview.defaults.HLS_FRAGMENT, '0.5');
     assert.equal(overview.defaults.HLS_WINDOW, '15');
     assert.equal(overview.defaultSources.HLS_WINDOW, 'stack');
   });
@@ -77,6 +76,14 @@ describe('GET /profiles/:name/engine on a version with its own defaults', () => 
     assert.equal(overview.observations.SRT_LATENCY.source, 'manager');
   });
 
+  it("names the manager's two second segment rather than the version's 0.5, because the stack has none of its own", async () => {
+    const res = await callEngine(app, 'GET', '/profiles/stream1/engine');
+    const overview = res.body as EngineOverview;
+
+    assert.equal(overview.defaults.HLS_FRAGMENT, '2');
+    assert.equal(overview.defaultSources.HLS_FRAGMENT, 'manager');
+  });
+
   it('says the API port is published but not read, rather than not there', async () => {
     const res = await callEngine(app, 'GET', '/profiles/stream1/engine');
     const overview = res.body as EngineOverview;
@@ -89,7 +96,7 @@ describe('GET /profiles/:name/engine on a version with its own defaults', () => 
     const res = await callEngine(app, 'GET', '/profiles/stream1/engine');
     const overview = res.body as EngineOverview;
 
-    assert.equal(overview.effective.HLS_FRAGMENT, '0.5');
+    assert.equal(overview.effective.HLS_FRAGMENT, '2');
     assert.equal(overview.effective.HLS_WINDOW, '15');
   });
 
@@ -110,7 +117,7 @@ describe('GET /profiles/:name/engine on a version with its own defaults', () => 
       const cleared = (await callEngine(ownApp, 'GET', '/profiles/stream1/engine')).body as EngineOverview;
 
       assert.equal(overridden.effective.HLS_WINDOW, '20');
-      assert.equal(overridden.effective.HLS_FRAGMENT, '0.5', 'the other key keeps the version default');
+      assert.equal(overridden.effective.HLS_SEGMENT_MAX, '2.5', 'the other key keeps its default');
       assert.equal(cleared.effective.HLS_WINDOW, '15');
     } finally {
       await ownApp.close();
