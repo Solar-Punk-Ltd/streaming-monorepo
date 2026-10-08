@@ -492,10 +492,16 @@ searches the feeds exactly as before. The convention lives in `@swarm-hls-stream
   identifier `keccak256("ladder-marker" ‖ group topic ‖ p as 8 bytes big-endian)`. The group topic is
   the master feed's topic, `Topic.fromString(group)`.
 - **Payload.** Small JSON naming only rungs that have published, keyed by each rung's feed topic in
-  hex. `parseLadderMarker` rejects anything else, so a reader never jumps on a malformed marker.
+  hex, and `segmentMs`, the stage's `HLS_FRAGMENT` in milliseconds, which is what every rung of a
+  ladder cuts. A viewer joining from a marker has read no playlist yet, and moves the head on by the
+  time since the write in segments of that length. `parseLadderMarker` rejects anything else, so a
+  reader never jumps on a malformed marker.
+- **Version.** 2 since markers named the segment length. Readers still take a version 1 marker, which
+  has no `segmentMs`, and a reader from before version 2 treats a version 2 marker as absent and
+  searches instead, so the viewer has to be deployed before the uploader for joins to stay one round.
 
 ```json
-{ "v": 1, "period": 175983840, "writtenAt": 1759838400250, "rungs": { "<rung feed topic hex>": 41 } }
+{ "v": 2, "period": 175983840, "writtenAt": 1759838400250, "rungs": { "<rung feed topic hex>": 41 }, "segmentMs": 2000 }
 ```
 
 `LadderMarkerWriter` starts a ladder's markers with its first published playlist and writes each

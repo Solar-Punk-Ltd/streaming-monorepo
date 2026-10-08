@@ -652,6 +652,12 @@ export class LadderFeedPoller {
       return false;
     }
 
+    const current = feedEntryOf(Number(found.index.toBigInt()), found.playlist, this.followClock.now());
+    if (current === null) {
+      // A playlist naming no segment length cannot be followed, so it counts as a slot not served.
+      this.recordMiss(entry, walk, null);
+      return false;
+    }
     for (const playlist of older) {
       this.ingest(entry, walk, playlist, found.index);
     }
@@ -660,7 +666,7 @@ export class LadderFeedPoller {
     }
 
     this.stateManager.setIndex(entry.hexTopic, found.index);
-    walk.current = feedEntryOf(Number(found.index.toBigInt()), found.playlist, this.followClock.now());
+    walk.current = current;
     walk.currentSeenAtMs = this.followClock.now();
     const onFound = walk.onFound;
     walk.onFound = undefined;
@@ -683,6 +689,7 @@ export class LadderFeedPoller {
     return {
       index: current.index,
       newestSegmentEndMs: current.newestSegmentEndMs,
+      segmentMs: current.segmentMs,
       seenAtMs: playing.walk.currentSeenAtMs,
     };
   }
@@ -819,7 +826,9 @@ export class LadderFeedPoller {
     const watched = ladder.playing === entry || ladder.failoverTarget === entry;
     if (parsed.isFinalized && watched && !walk.isCandidate) {
       const finished = feedEntryOf(Number(index.toBigInt()), text, this.followClock.now());
-      void this.confirmEnd(entry, index, { ...finished, seenAtMs: this.followClock.now() });
+      if (finished !== null) {
+        void this.confirmEnd(entry, index, { ...finished, seenAtMs: this.followClock.now() });
+      }
     }
 
     return shouldContinue;

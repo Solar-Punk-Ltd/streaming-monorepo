@@ -176,7 +176,7 @@ export class TimedGateway {
         rungs[feed.topic.toHex()] = newest;
       }
     }
-    return Object.keys(rungs).length === 0 ? null : { v: 1, period, writtenAt, rungs };
+    return Object.keys(rungs).length === 0 ? null : { v: 2, period, writtenAt, rungs, segmentMs: SEGMENT_MS };
   }
 
   /** The player's reads, answered by {@link answerPath}. */

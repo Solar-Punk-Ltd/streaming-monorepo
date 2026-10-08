@@ -54,6 +54,8 @@ interface LadderMarkerWriterOptions {
   publishers: BeePublisherPool;
   /** The ladder's signer, the key the master feed is written with. */
   signer: PrivateKey;
+  /** What every rung cuts, from the stage's `HLS_FRAGMENT`, named in each marker for a viewer that has no playlist yet. */
+  segmentMs: number;
   /** Timers only. Its `now` is monotonic and never decides a period. */
   clock?: Clock;
   /** Unix milliseconds, which is what a period is counted in and what every reader computes from. */
@@ -173,7 +175,13 @@ export class LadderMarkerWriter implements LadderMarkerSink {
       if (writtenAt >= deadline) {
         throw new Error('its period ended before the write could start');
       }
-      const payload = encodeLadderMarker({ v: LADDER_MARKER_VERSION, period, writtenAt, rungs });
+      const payload = encodeLadderMarker({
+        v: LADDER_MARKER_VERSION,
+        period,
+        writtenAt,
+        rungs,
+        segmentMs: this.options.segmentMs,
+      });
       await this.uploadWithin(ladder, group, period, payload, deadline);
       this.options.metrics?.recordLadderMarkerWritten();
       this.noteWritten(group, ladder, period);

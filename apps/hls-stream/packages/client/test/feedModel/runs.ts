@@ -5,7 +5,7 @@ import { findNewestFromScratch } from '../../src/components/SwarmHlsPlayer/follo
 import { EarlyAskPenalty, SimNode } from './beeNode';
 import { Delivery, playBehind } from './player';
 import type { NodeProfile } from './profiles';
-import { historyPauses, Pause, QualityFeed } from './publisher';
+import { historyPauses, Pause, QualityFeed, SEGMENT_MS } from './publisher';
 import { Random } from './random';
 import { VirtualTime } from './virtualTime';
 
@@ -218,6 +218,7 @@ export async function runFind(seed: number, scenario: FindScenario, finder: Find
     const hint = {
       index: playingHead,
       newestSegmentEndMs: target.segmentEndMs[head] + pdtSkewMs - random.uniform(0, 2_000),
+      segmentMs: SEGMENT_MS,
       seenAtMs: clock.now() - random.uniform(0, 500),
     };
     const answer = await time.runToCompletion(findNewestFromHint(node, clock, hint));

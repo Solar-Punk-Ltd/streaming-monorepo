@@ -72,6 +72,7 @@ export class MarkerFinder implements NewestIndexFinder {
       // The newest segment of that index ended a little before the marker was written, by the upload's
       // own lag. Close enough to steer a second round, which the first one rarely leaves.
       newestSegmentEndMs: marker.writtenAt,
+      segmentMs: marker.segmentMs,
       seenAtMs: marker.writtenAt - this.clockOffsetMs(),
     });
     const playlist = newest === null ? undefined : reader.playlistOf(newest);

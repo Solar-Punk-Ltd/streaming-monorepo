@@ -26,7 +26,7 @@ async function follow(time: VirtualTime, feed: TimedFeed, follower: Follower, st
   const newest = feed.newestAt(startMs);
   const delivered: FeedEntry[] = [];
   let stopped = false;
-  const from = { index: newest, newestSegmentEndMs: newest * 2_000 };
+  const from = { index: newest, newestSegmentEndMs: newest * 2_000, segmentMs: 2_000 };
   void follower({
     reader: feed,
     clock: time.clock(),
@@ -82,7 +82,7 @@ describe('the predicted follower', () => {
     void followPredicted({
       reader: feed,
       clock: time.clock(),
-      from: { index: newest, newestSegmentEndMs: newest * 2_000 },
+      from: { index: newest, newestSegmentEndMs: newest * 2_000, segmentMs: 2_000 },
       onEntry: (entry) => found.set(entry.index, time.trueNowMs),
       isStopped: () => stopped,
     });
@@ -90,6 +90,34 @@ describe('the predicted follower', () => {
     stopped = true;
     const waits = [...found].slice(30).map(([index, at]) => at - (index * 2_000 + 900));
     assert.ok(Math.max(...waits) < 2_000, `waited up to ${Math.max(...waits)} ms`);
+  });
+
+  /**
+   * The stage's own setting decides the segment length, and a stage created outside the manager's
+   * wizard cuts half-second segments. A follower that assumed two seconds asked each slot two seconds
+   * after the last and fell further behind with every one. The round trip is under one segment, since
+   * the follower asks one slot at a time and a longer one could not keep this pace whatever it knew.
+   */
+  it('follows half-second segments at their own pace, by the length the playlists name', async () => {
+    const time = new VirtualTime();
+    const feed = steadyFeed(time, { lagMs: 900, roundTripMs: 300, segmentMs: 500 });
+    const found = new Map<number, number>();
+    await time.runUntil(61_000);
+    let stopped = false;
+    const newest = feed.newestAt(61_000);
+    void followPredicted({
+      reader: feed,
+      clock: time.clock(),
+      from: { index: newest, newestSegmentEndMs: newest * 500, segmentMs: 500 },
+      onEntry: (entry) => found.set(entry.index, time.trueNowMs),
+      isStopped: () => stopped,
+    });
+    await time.runUntil(181_000);
+    stopped = true;
+
+    const waits = [...found].slice(60).map(([index, at]) => at - (index * 500 + 900));
+    assert.ok(waits.length > 100, `only ${found.size} slots found in two minutes of half-second segments`);
+    assert.ok(Math.max(...waits) < 1_000, `waited up to ${Math.max(...waits)} ms`);
   });
 
   it('spends at most its early-ask budget on a slot that does not come, then backs off', async () => {
@@ -130,6 +158,7 @@ describe('the predicted follower through an outage', () => {
     return new TimedFeed(time, {
       readableAtMs,
       segmentEndMs: (index) => readableAtMs(index) - LAG_MS,
+      segmentMs: 2_000,
       roundTripMs: 650,
       skipList: { peers: 3, skipMs: 60_000 },
     });
@@ -161,7 +190,7 @@ describe('the predicted follower through an outage', () => {
     void followPredicted({
       reader: feed,
       clock: time.clock(),
-      from: { index: newest, newestSegmentEndMs: readableAtMs(newest) - LAG_MS },
+      from: { index: newest, newestSegmentEndMs: readableAtMs(newest) - LAG_MS, segmentMs: 2_000 },
       onEntry: (entry) => found.push({ index: entry.index, atMs: time.trueNowMs }),
       isStopped: () => stopped,
       markers: markersOf(time, feed, markerReads),

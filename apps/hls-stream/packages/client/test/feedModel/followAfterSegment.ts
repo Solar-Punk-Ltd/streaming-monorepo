@@ -1,4 +1,4 @@
-import { FeedEntry, FollowContext, SEGMENT_MS } from '../../src/components/SwarmHlsPlayer/following/feedReader';
+import { FeedEntry, FollowContext } from '../../src/components/SwarmHlsPlayer/following/feedReader';
 import {
   pollsTriggerFires,
   probeAhead,
@@ -7,6 +7,7 @@ import {
 import { PROBE_DISTANCES } from '../../src/components/SwarmHlsPlayer/refusedSlot';
 
 import { TODAY_TRIGGER } from './followImmediately';
+import { SEGMENT_MS } from './publisher';
 
 interface FollowAfterSegmentOptions {
   /**

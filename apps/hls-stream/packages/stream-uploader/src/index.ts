@@ -142,7 +142,12 @@ async function start() {
     // LADDER_MARKERS=false turns them off.
     const ladderMarkers =
       config.abr && config.ladderMarkers
-        ? new LadderMarkerWriter({ publishers, signer: new PrivateKey(config.streamKey), metrics })
+        ? new LadderMarkerWriter({
+            publishers,
+            signer: new PrivateKey(config.streamKey),
+            segmentMs: Math.round(config.fragmentSeconds * 1_000),
+            metrics,
+          })
         : undefined;
 
     // Also ladder-only, and in a subdirectory for the same reason the catalog index is: RecoveryStore
