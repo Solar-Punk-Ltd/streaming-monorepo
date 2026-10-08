@@ -51,9 +51,11 @@ export function makeView(over: Partial<FundingView> = {}): FundingView {
       walletAddress: '0x1234567890123456789012345678901234567890',
       pinnedAddress: '0x1234567890123456789012345678901234567890',
     }),
+    postage: null,
     observedAt: '2026-10-05T10:00:00.000Z',
     managerError: null,
     openBulkId: null,
+    openStampBulkId: null,
     ...over,
   };
 }
