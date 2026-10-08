@@ -31,7 +31,7 @@ const V3_CONTRACT: StackContract = {
   maxSlot: 99,
   requiredSecrets: ['API_AUTH_TOKEN', 'SRS_WEBHOOK_TOKEN'],
   engineDefaults: { HLS_FRAGMENT: '0.5' },
-  features: { srsApiPort: true, chequebookGate: true, sharedImageTags: true },
+  features: { srsApiPort: true, chequebookGate: true, sharedImageTags: true, playerRelease: false },
   chequebookMinBzz: '0.5',
   engineConfig: { srs: true, ome: true },
   engineImages: { srs: 'ossrs/srs:6', ome: 'airensoft/ovenmediaengine:latest' },
@@ -50,7 +50,7 @@ const V2_CONTRACT: StackContract = {
   maxSlot: 999,
   requiredSecrets: [],
   engineDefaults: { HLS_FRAGMENT: '1.5' },
-  features: { srsApiPort: false, chequebookGate: false, sharedImageTags: true },
+  features: { srsApiPort: false, chequebookGate: false, sharedImageTags: true, playerRelease: false },
   chequebookMinBzz: null,
   engineConfig: { srs: false, ome: false },
   engineImages: { srs: 'ossrs/srs:6', ome: 'airensoft/ovenmediaengine:latest' },
@@ -165,6 +165,13 @@ describe('describeStackContract', () => {
       /needs 1 generated secret,|needs 1 generated secret$/,
     );
   });
+
+  it('says when the player shows the release its deploy names', () => {
+    assert.equal(
+      describeStackContract({ ...V3_CONTRACT, features: { ...V3_CONTRACT.features, playerRelease: true } }),
+      '10 ports, slots 1 to 99, needs 2 generated secrets, SRS API published, chequebook gate 0.5 BZZ, own config file for both engines, player shows its release',
+    );
+  });
 });
 
 describe('parseStackContract', () => {
@@ -204,6 +211,26 @@ describe('parseStackContract', () => {
       'a port stored without a service is unmapped',
     );
     assert.equal(parsed.allocationProblem, null);
+  });
+
+  it('keeps a version that takes the release as one', () => {
+    const declared = { ...V3_CONTRACT, features: { ...V3_CONTRACT.features, playerRelease: true } };
+
+    assert.equal(parseStackContract(JSON.parse(JSON.stringify(declared)))?.features.playerRelease, true);
+  });
+
+  /**
+   * A contract an older manager stored never asked whether the version takes
+   * the release, and a flag its parser has no arm for fails every deploy of
+   * it, so not asked reads as not taken.
+   */
+  it('reads a contract stored without the release feature, or with anything but true, as not taking it', () => {
+    const stored = JSON.parse(JSON.stringify(V3_CONTRACT)) as { features: Record<string, unknown> };
+    delete stored.features.playerRelease;
+    assert.equal(parseStackContract(stored)?.features.playerRelease, false);
+
+    stored.features.playerRelease = 'true';
+    assert.equal(parseStackContract(stored)?.features.playerRelease, false);
   });
 
   it('keeps udp, and reads any other protocol word as tcp', () => {

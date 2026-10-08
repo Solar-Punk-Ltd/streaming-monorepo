@@ -63,7 +63,12 @@ describe('readStackContract on main-v2', () => {
   });
 
   it('reports neither the SRS API nor a chequebook gate', () => {
-    assert.deepEqual(v2.features, { srsApiPort: false, chequebookGate: false, sharedImageTags: true });
+    assert.deepEqual(v2.features, {
+      srsApiPort: false,
+      chequebookGate: false,
+      sharedImageTags: true,
+      playerRelease: false,
+    });
     assert.equal(v2.chequebookMinBzz, null);
   });
 
@@ -160,7 +165,12 @@ describe('readStackContract on main-v3', () => {
   });
 
   it('reports the SRS API and the chequebook floor of 0.5 BZZ', () => {
-    assert.deepEqual(v3.features, { srsApiPort: true, chequebookGate: true, sharedImageTags: true });
+    assert.deepEqual(v3.features, {
+      srsApiPort: true,
+      chequebookGate: true,
+      sharedImageTags: true,
+      playerRelease: false,
+    });
     assert.equal(v3.chequebookMinBzz, '0.5');
   });
 
@@ -173,6 +183,69 @@ describe('readStackContract on main-v3', () => {
 
   it('runs both engines on a config file of their own, because it ships the overrides', () => {
     assert.deepEqual(v3.engineConfig, { srs: true, ome: true });
+  });
+});
+
+/**
+ * Whether a version's deploy script takes the release of the build it
+ * deploys. Its parser hands a flag it has no arm for on as a service name and
+ * the deploy refuses it, so a version that only might take the release is
+ * treated as one that does not, and its deploys are handed what they always
+ * were.
+ */
+describe('readStackContract and the release a deploy names', () => {
+  /** The v3 fixture with these lines added to its `_lib.sh`. */
+  const withLib = (lines: string[]): string => {
+    const root = mkdtempSync(join(tmpdir(), 'stack-contract-release-'));
+    cpSync(fixture('v3'), root, { recursive: true });
+    const lib = join(root, 'deploy', 'scripts', '_lib.sh');
+    writeFileSync(lib, `${readFileSync(lib, 'utf8')}\n${lines.join('\n')}\n`);
+    return root;
+  };
+
+  /** A parser shaped like the stack's own, with an arm for each flag named. */
+  const parser = (flags: string[]): string[] => [
+    'parse_profile_args() {',
+    '  while [ $# -gt 0 ]; do',
+    '    case "$1" in',
+    ...flags.flatMap((flag) => [`      ${flag}=*)`, '        shift', '        ;;']),
+    '      *)',
+    '        REST_ARGS+=("$1")',
+    '        shift',
+    '        ;;',
+    '    esac',
+    '  done',
+    '}',
+  ];
+
+  it('reports neither older branch as taking it, since neither parser has the arms', () => {
+    assert.equal(v2.features.playerRelease, false);
+    assert.equal(v3.features.playerRelease, false);
+  });
+
+  it('reports a version whose parser has an arm for both flags', () => {
+    const contract = readStackContract(withLib(parser(['--feed-topic', '--release-label', '--release-commit'])));
+
+    assert.equal(contract.features.playerRelease, true);
+    assert.match(describeStackContract(contract), /, player shows its release$/);
+  });
+
+  it('does not report one whose parser takes only the label, because the commit would be refused', () => {
+    const contract = readStackContract(withLib(parser(['--release-label'])));
+
+    assert.equal(contract.features.playerRelease, false);
+  });
+
+  it('does not count a flag named only in a comment or a message, which accepts nothing', () => {
+    const contract = readStackContract(
+      withLib([
+        '# --release-label=*) is what a newer parser has',
+        '#   --release-commit=*)',
+        'echo "--release-label=* and --release-commit=* are not taken here"',
+      ]),
+    );
+
+    assert.equal(contract.features.playerRelease, false);
   });
 });
 

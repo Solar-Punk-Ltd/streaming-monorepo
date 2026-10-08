@@ -49,7 +49,8 @@ shows it beside the account button on a screen wider than a phone's. In the mana
 release of each stack build, and each deployment's **At a glance** card shows the release its containers run: under
 **Player** on a Watch a stream deployment, whose release is the viewer client its viewers load, and under **Release** on
 any other. A deployment keeps the build it runs until it is deployed again, so one that has not been redeployed since
-the release still shows the build it was made from.
+the release still shows the build it was made from. The player shows the release it was built as in its QoE overlay,
+which `?qoe=1` on a watch URL opens, under the overlay's header as `Player <release>`.
 
 ## A deploy without a tag
 
