@@ -1026,6 +1026,13 @@ into the node's own wallet, the one place Bee withdraws to.
   and of the same amount, and 409 `conflict` otherwise, an operator's own
   transfer under that id included. This comes before the inventory is read, so
   a replay answers even once the node has gone, and nothing is sent twice.
+- **A request still under way** is known by its call in this process, since
+  the chequebook path journals a move only once it has prepared it, up to about
+  half a minute after the `POST` arrived: until that call has answered, the
+  `GET` answers its request id `submitted`, with no hash and no error, rather
+  than 404 `unknown_request`; the same request sent again waits for the call
+  and answers what it answered, its refusal included; and another move under
+  the id is 409 `conflict` at once.
 - **The checks**, each refused before anything is journalled, against the
   inventory read now: `nodeId` is listed in a stage as its own Bee node or a
   rung (404 `unknown_node` for a node listed nowhere, or one whose deployment

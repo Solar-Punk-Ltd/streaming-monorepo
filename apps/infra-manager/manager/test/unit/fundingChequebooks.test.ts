@@ -156,12 +156,18 @@ class FakeNode {
   readonly prepared: ChequebookTransferIntent[] = [];
   readonly sent: string[] = [];
   prepareFailure: unknown = null;
+  /** What each preparation in turn fails with, ahead of `prepareFailure`: null for one that does not fail. */
+  prepareFailures: unknown[] = [];
   preflightFailure: unknown = null;
   sendFailure: unknown = null;
+  /** While set, a preparation waits for it, as one over a slow connection to the node's container does. */
+  held: Promise<void> | null = null;
 
   readonly prepare = async (intent: ChequebookTransferIntent): Promise<PreparedChequebookTransfer> => {
     this.prepared.push(intent);
-    if (this.prepareFailure) throw this.prepareFailure;
+    const failure = this.prepareFailures[this.prepared.length - 1] ?? this.prepareFailure;
+    if (this.held) await this.held;
+    if (failure) throw failure;
     return {
       dispose: () => undefined,
       context: { ...transferContext, nodeAddress: NODE_ADDRESSES[intent.profileInstanceId]! },
@@ -262,6 +268,44 @@ async function refusedWith(promise: Promise<unknown>, code: string, expected?: R
     else if (expected) assert.match(err.message, expected);
     return true;
   });
+}
+
+/** Holds the node's preparations, as a slow connection to its container would, until the function returned is called. */
+function hold(bee: FakeNode): () => void {
+  let release: () => void = () => undefined;
+  bee.held = new Promise<void>((resolve) => (release = resolve));
+  return release;
+}
+
+/** Only so a call that never gets where a test waits for it says so, instead of hanging the suite. */
+const ARRIVAL_BUDGET_MS = 2_000;
+
+/** Lets the calls under way run until `reached` holds. */
+async function until(reached: () => boolean, description: string): Promise<void> {
+  const deadline = Date.now() + ARRIVAL_BUDGET_MS;
+  while (!reached()) {
+    if (Date.now() > deadline)
+      throw new Error(`waited ${ARRIVAL_BUDGET_MS} ms for ${description} and it never happened`);
+    await new Promise((resolve) => setImmediate(resolve));
+  }
+}
+
+/** What a call comes to while another is held, or a plain error when it has not answered within the budget. */
+async function promptly<T>(call: Promise<T>, description: string): Promise<T> {
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  try {
+    return await Promise.race([
+      call,
+      new Promise<never>((_, reject) => {
+        timer = setTimeout(
+          () => reject(new Error(`${description} had no answer after ${ARRIVAL_BUDGET_MS} ms`)),
+          ARRIVAL_BUDGET_MS,
+        );
+      }),
+    ]);
+  } finally {
+    clearTimeout(timer);
+  }
 }
 
 /** An operation of the funding API's as the journal holds it, a stage node's deposit, in whatever state is needed. */
@@ -764,5 +808,105 @@ describe('GET /api/admin-funding/chequebook-operations/:requestId', () => {
       await service.status(REQUEST);
       assert.deepEqual(check.runs, [], row.state);
     }
+  });
+});
+
+/**
+ * The chequebook path journals a move only once it has prepared it, so until then the manager knows a request by the
+ * call under way. The web2 admin sends an item again under the same id when the `GET` answers `unknown_request`, as
+ * it does after its first send lost its answer; the call under way must neither be taken for one never received nor
+ * run beside a second.
+ */
+describe('a request id whose call is still under way', () => {
+  const submittedDeposit = { requestId: REQUEST, direction: 'deposit', state: 'submitted', txHash: TX };
+
+  it('answers the GET submitted, with no hash and no error, while the move is still being prepared', async () => {
+    const { check, node: bee, service } = setup();
+    const release = hold(bee);
+    const call = service.operate(withdrawal());
+    await until(() => bee.prepared.length === 1, 'the withdrawal to be prepared');
+    const answer = await service.status(REQUEST);
+    assert.deepEqual(answer, {
+      requestId: REQUEST,
+      direction: 'withdraw',
+      state: 'submitted',
+      txHash: null,
+      error: null,
+    });
+    fundingChequebookOperationStatusSchema.parse(answer);
+    assert.deepEqual(check.runs, [], 'nothing journalled, so nothing to check');
+    release();
+    assert.equal((await call).txHash, TX);
+    assert.deepEqual(await service.status(REQUEST), { ...answer, txHash: TX }, 'the journal answers once it holds it');
+  });
+
+  it('has the same request sent again wait for the call under way and answer alike, prepared and sent once', async () => {
+    const { inventoryReads, journal, node: bee, service } = setup();
+    // A preparation beside the first would fail for a passing cause, as a second connection to the node might.
+    bee.prepareFailures = [null, new ChequebookPreparationError('chain_unreachable')];
+    const release = hold(bee);
+    const first = service.operate(deposit());
+    await until(() => bee.prepared.length === 1, 'the deposit to be prepared');
+    const again = service.operate(deposit());
+    await new Promise((resolve) => setImmediate(resolve));
+    release();
+    assert.deepEqual(await Promise.all([first, again]), [submittedDeposit, submittedDeposit]);
+    assert.equal(bee.prepared.length, 1, 'the chequebook path prepared it once');
+    assert.deepEqual(bee.sent, [REQUEST]);
+    assert.equal(inventoryReads(), 1);
+    assert.equal(journal.rows.size, 1);
+    const [row] = [...journal.rows.values()];
+    journal.rows.set(row!.id, { ...row!, state: 'settled' });
+    assert.equal(
+      (await service.operate(deposit())).state,
+      'confirmed',
+      'once answered, the id is freed: the journal answers as it stands now',
+    );
+  });
+
+  it('answers another move under the id 409 conflict at once, reading and preparing nothing for it', async () => {
+    const { inventoryReads, node: bee, service } = setup();
+    const release = hold(bee);
+    const first = service.operate(deposit());
+    await until(() => bee.prepared.length === 1, 'the deposit to be prepared');
+    for (const other of [deposit({ amountPlur: '1' }), deposit({ direction: 'withdraw' }), deposit({ nodeId: RUNG })]) {
+      await refusedWith(
+        promptly(service.operate(other), `another move, ${JSON.stringify(other)},`),
+        'conflict',
+        'This request id names another chequebook operation.',
+      );
+    }
+    assert.equal(inventoryReads(), 1);
+    assert.equal(bee.prepared.length, 1);
+    release();
+    assert.deepEqual(await first, submittedDeposit);
+    assert.deepEqual(bee.sent, [REQUEST]);
+  });
+
+  it('refuses the same request sent again as the call under way was refused, preparing once', async () => {
+    const { journal, node: bee, service } = setup();
+    // The first preparation fails for a passing cause; a second, were there one, would not.
+    bee.prepareFailures = [new ChequebookPreparationError('chain_unreachable')];
+    const release = hold(bee);
+    const first = service.operate(deposit());
+    await until(() => bee.prepared.length === 1, 'the deposit to be prepared');
+    const again = service.operate(deposit());
+    await new Promise((resolve) => setImmediate(resolve));
+    release();
+    const sentence = chequebookRefusalSentence(chequebookRefusal('chain_unreachable'));
+    await Promise.all([
+      refusedWith(first, 'chequebook_refused', sentence),
+      refusedWith(again, 'chequebook_refused', sentence),
+    ]);
+    assert.equal(bee.prepared.length, 1);
+    assert.deepEqual(bee.sent, []);
+    assert.equal(journal.rows.size, 0);
+    await refusedWith(service.status(REQUEST), 'unknown_request', /safe/);
+    assert.deepEqual(
+      await service.operate(deposit()),
+      submittedDeposit,
+      'once refused, the id is freed: sent again, it runs',
+    );
+    assert.equal(bee.prepared.length, 2);
   });
 });
