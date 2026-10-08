@@ -42,8 +42,8 @@ function noteOf(item: FundingChequebookItem): string | null {
 
 /**
  * The operations of one chequebook bulk, item by item, as `BulkProgress` follows a bulk: each node and its move, every
- * digit of its amount, then where it stands. A new chequebook bulk is free again once the server says every operation
- * is `settled`.
+ * digit of its amount as the API journalled it, which may be less than the confirm dialog listed, then where it
+ * stands. A new chequebook bulk is free again once the server says every operation is `settled`.
  */
 export function ChequebookProgress({
   bulkId,

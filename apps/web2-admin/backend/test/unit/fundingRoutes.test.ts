@@ -838,9 +838,9 @@ describe('a chequebook request', () => {
         "Main stage gateway (stage-1:gateway) is a gateway: the manager moves only the chequebook of a stage's own Bee node or of a rung. Nothing was sent.",
     });
 
-    // The page showed 1 xBZZ available, and the chequebook holds 1.5 now: something was deposited since.
+    // The page showed 1 xBZZ available against a target of 1.5, and the chequebook holds 1.5 now: at the target.
     const moved = await chequebookRequest({
-      targetPlur: TARGET,
+      targetPlur: xbzz(15n),
       items: [{ nodeId: NODE_A, availablePlur: xbzz(10n) }],
     });
     assert.equal(moved.status, 409);
@@ -848,7 +848,7 @@ describe('a chequebook request', () => {
       error: 'funding_refused',
       problem: 'chequebook',
       message:
-        'The chequebook of Main stage uploader (stage-1:uploader) holds 1.5 xBZZ available now, more than the 1 the page showed: something was deposited since. Read the page again. Nothing was sent.',
+        'The chequebook of Main stage uploader (stage-1:uploader) holds 1.5 xBZZ available now, at the target or past it, so there is nothing to move. Read the page again. Nothing was sent.',
     });
     assert.equal(app.chequebookJournal.rows.size, 0);
     assert.equal(app.manager.chequebookCalls.operation, 0);

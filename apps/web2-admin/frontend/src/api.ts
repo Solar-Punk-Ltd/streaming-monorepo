@@ -410,8 +410,9 @@ export async function fetchFundingStampOperations(bulkId: string): Promise<Fundi
 
 /**
  * Brings these chequebooks to the target, each with a deposit from its own node's wallet or a withdrawal into it, and
- * answers the chequebook bulk they went out under. Each item names the available balance the page showed, from which
- * the API works out the very move the page showed. No password: nothing leaves the brand wallet, so the page asks in a
+ * answers the chequebook bulk they went out under, with the moves as the API journalled them. Each item names the
+ * available balance the page showed, from which, and the balance it reads when the request comes in, the API works the
+ * move out again, never more than the page showed. No password: nothing leaves the brand wallet, so the page asks in a
  * confirm dialog.
  */
 export function sendFundingChequebookOperations(

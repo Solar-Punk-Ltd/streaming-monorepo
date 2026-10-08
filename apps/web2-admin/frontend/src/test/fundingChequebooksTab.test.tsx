@@ -11,6 +11,7 @@ import {
   PAYS_NOTE,
   readChequebooksAgainFailed,
   READING_CHEQUEBOOKS_AGAIN,
+  WORKED_OUT_AGAIN_NOTE,
 } from '../components/funding/ChequebookDialog';
 import {
   CHEQUEBOOK_DROPPED_NOTE,
@@ -445,6 +446,10 @@ describe('applying', () => {
     expect(asked.queryByText('rung-1080p')).not.toBeInTheDocument();
     expect(dialog.getByText(atTargetText(1))).toBeInTheDocument();
     expect(dialog.getByText(PAYS_NOTE)).toBeInTheDocument();
+    expect(dialog.getByText(WORKED_OUT_AGAIN_NOTE)).toBeInTheDocument();
+    expect(WORKED_OUT_AGAIN_NOTE).toBe(
+      'Each move is worked out again from the balance read when it is sent, and never moves more than listed here.',
+    );
     expect(dialog.getByText(BUSY_NODE_NOTE)).toBeInTheDocument();
     expect(dialog.queryByLabelText('Your password')).not.toBeInTheDocument();
 
@@ -490,6 +495,44 @@ describe('applying', () => {
     expect(pollsOf(fetchMock)).toBe(ended);
   });
 
+  it('follows the moves the API journalled, which may be less than the dialog listed', async () => {
+    // Since the page read them, the uploader's chequebook grew and the rung's drew down: each moves less than listed.
+    const journalled = [
+      makeChequebookItem({ amountPlur: xbzz('0.25') }),
+      makeChequebookItem({
+        requestId: 'chequebook-request-2',
+        nodeId: 'stage-1:720p',
+        nodeLabel: 'rung-720p',
+        direction: 'withdraw',
+        amountPlur: xbzz('1'),
+        state: 'queued',
+      }),
+    ];
+    serve(
+      () => makeChequebookView(),
+      [
+        { path: CHEQUEBOOKS, method: 'POST', respond: () => jsonOk({ bulkId: BULK, items: journalled }, 202) },
+        { path: CHEQUEBOOKS, respond: () => jsonOk({ items: journalled }) },
+      ],
+    );
+    await openChequebooks();
+    typeTarget('2');
+    tick('stage-1-uploader');
+    tick('rung-720p');
+
+    const dialog = await openDialog('Bring 2 chequebooks to 2 xBZZ?');
+    const asked = within(dialog.getByRole('table', { name: 'Chequebook operations to ask for' }));
+    expect(asked.getByText('deposit +0.5 xBZZ')).toBeInTheDocument();
+    expect(asked.getByText(`withdraw ${MINUS}1.2500000000000001 xBZZ`)).toBeInTheDocument();
+    fireEvent.click(dialog.getByRole('button', { name: 'Apply' }));
+
+    const progress = within(await screen.findByRole('table', { name: 'Chequebook operations sent' }));
+    expect(progress.getByText('deposit +0.25 xBZZ')).toBeInTheDocument();
+    expect(progress.getByText(`withdraw ${MINUS}1 xBZZ`)).toBeInTheDocument();
+    expect(progress.queryByText('deposit +0.5 xBZZ')).not.toBeInTheDocument();
+    expect(progress.queryByText(`withdraw ${MINUS}1.2500000000000001 xBZZ`)).not.toBeInTheDocument();
+  });
+
   it('says in the dialog why it was refused, an earlier bulk still settling in its own words, and reads the view again', async () => {
     let answer = jsonError(409, { error: 'conflict' });
     const fetchMock = serve(() => makeChequebookView(), [{ path: CHEQUEBOOKS, method: 'POST', respond: () => answer }]);
@@ -505,7 +548,8 @@ describe('applying', () => {
     await waitFor(() => expect(viewsOf(fetchMock)).toBe(views + 2));
     await waitFor(() => expect(dialog.getByRole('button', { name: 'Apply' })).toBeEnabled());
 
-    const refused = 'stage-1-uploader has had a deposit since the page read it. Read the page again.';
+    const refused =
+      'The chequebook of stage-1-uploader (stage-1:bee) holds 2 xBZZ available now, at the target or past it, so there is nothing to move. Read the page again. Nothing was sent.';
     answer = jsonError(409, { error: 'funding_refused', message: refused });
     fireEvent.click(dialog.getByRole('button', { name: 'Apply' }));
     expect(await dialog.findByText(refused)).toBeInTheDocument();

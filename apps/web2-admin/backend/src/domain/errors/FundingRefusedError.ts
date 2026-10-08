@@ -13,8 +13,7 @@
  *   or is no longer at the depth the page showed, or a dilution would leave it under 7 days;
  * - `price`: the manager read no price of postage, so a top-up cannot be priced;
  * - `chequebook`: a chequebook operation's chequebook: the node has none, the manager did not read it or could not,
- *   it stands at the target already, or it moved since the page read it so that the move the page worked out no
- *   longer holds.
+ *   it stood at the target as the page showed it, or it is at the target or past it now, so there is nothing to move.
  */
 export type FundingRefusalProblem =
   | 'not_set_up'

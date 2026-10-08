@@ -1345,47 +1345,59 @@ xBZZ than there is. Then it is refused, in this order, nothing journalled:
    chequebook alone), a gateway, whose chequebook the manager does not move,
    and a node whose wallet could not be read; `problem: "chequebook"` for a
    node that has no chequebook, one the manager did not read or could not, an
-   item at the target as the page showed it, a deposit into a chequebook that
-   holds more available now than the page showed (something was deposited
-   since, and the deposit would overshoot: read the page again), and a
-   withdrawal of more than the chequebook holds available now. A node two
-   stages list, as a stage's own and as another's rung, is one node, read
-   once, and moved once;
-4. a wallet that holds no xDAI for the gas, or less xBZZ than its deposit
-   (`problem: "insufficient_funds"`, naming each shortfall);
+   item at the target as the page showed it, and one whose chequebook is at
+   the target or past it now, which moves nothing (below: read the page
+   again). A node two stages list, as a stage's own and as another's rung, is
+   one node, read once, and moved once;
+4. a wallet that holds no xDAI for the gas, or less xBZZ than its deposit as
+   worked out now (`problem: "insufficient_funds"`, naming each shortfall);
 5. an item of an earlier chequebook bulk that still holds up a new one, after
    the latest such bulks were refreshed, or another chequebook request at that
    moment: `409 { "error": "conflict" }`. A send and a stamp bulk do not hold a
    chequebook bulk up, nor a chequebook bulk either of them: each has a lock
    and a check of its own.
 
-**The move the dialog showed.** Each item moves `chequebookMove(target,
-availablePlur)`: the target less the available balance the page showed, a
-deposit of the difference when the chequebook is under the target and a
-withdrawal of it when the chequebook is over. It is worked out from the page's
-balance, not the one the manager reads now, so the admin moves exactly what the
-confirm dialog listed. A busy node keeps paying its peers out of its chequebook
-meanwhile, so its balance lands near the target, not on it.
+**The move, worked out again, never more than the dialog showed.** The
+confirm dialog listed `chequebookMove(target, availablePlur)`, the target less
+the available balance the page showed: a deposit of the difference when the
+chequebook is under the target and a withdrawal of it when the chequebook is
+over. Between that reading and the request a busy node pays its peers out of
+its chequebook, and another move may land in it, so each item moves
+`chequebookMoveNow(target, availablePlur, available now)` of
+`web2-admin-common`, worked out again against the available balance in the
+inventory read for the request, and never more than the dialog listed. A
+deposit is the target less the larger of the two balances: into a chequebook
+that grew since, it shrinks and lands on the target; into one its node drew on
+since, it keeps the amount listed and lands a little under the target. A
+withdrawal is the smaller of the two less the target: from a chequebook that
+drew down since, it shrinks and lands on the target, so it never takes a
+chequebook under the target, nor under the floor; from one that grew, it keeps
+the amount listed and lands a little over the target. A chequebook at the
+target or past it now moves nothing, and refuses the request. The node keeps
+paying its peers after the move as well, so its balance lands near the target,
+not on it. The journal keeps the balance each move was worked out from, the
+larger of the two for a deposit and the smaller for a withdrawal, and the
+request answers the amounts journalled, which the page then follows.
 
 **Journalled, answered, then relayed in turn.** Every item is written to
 `funding_chequebook_operations`, `queued`, with the fields of the manager's
-request, the target and the balance the page showed, before any is relayed,
-under a Postgres advisory lock of the chequebooks' own, and the request answers
-at once. The items are then relayed in turn behind the answer, in this process,
-each relay with the client's 240 seconds: the manager answers once the node has
-sent the move, `submitted` with its hash, and the move is mined after. A
-request names a node once, so no item waits on another. A relay the manager
-refuses (`chequebook_refused`, `unknown_node`, `conflict`, `bad_transaction`)
-fails its item with the manager's sentence, nothing having been asked of the
-node, and the next item is relayed. An item the manager answers `failed`, its
-preflight having refused the move, takes the manager's sentence from a status
-read, since the answer carries none. Any other failure (the manager out of
-reach, its answer lost to the deadline, the funding API off, an answer that
-cannot be read, the manager's own 5xx, its journal's 503 among them) leaves the
-item, and the ones after it, `queued` for a refresh, which asks the manager
-where it stands. The manager journals a move before it asks the node, so one
-that reached it is never `unknown_request`. A process that stops mid-way leaves
-its items as recorded, for the next refresh.
+request, the target and the balance the move was worked out from, before any
+is relayed, under a Postgres advisory lock of the chequebooks' own, and the
+request answers at once. The items are then relayed in turn behind the
+answer, in this process, each relay with the client's 240 seconds: the
+manager answers once the node has sent the move, `submitted` with its hash,
+and the move is mined after. A request names a node once, so no item waits on
+another. A relay the manager refuses (`chequebook_refused`, `unknown_node`,
+`conflict`, `bad_transaction`) fails its item with the manager's sentence,
+nothing having been asked of the node, and the next item is relayed. An item
+the manager answers `failed`, its preflight having refused the move, takes the
+manager's sentence from a status read, since the answer carries none. Any
+other failure (the manager out of reach, its answer lost to the deadline, the
+funding API off, an answer that cannot be read, the manager's own 5xx, its
+journal's 503 among them) leaves the item, and the ones after it, `queued` for
+a refresh, which asks the manager where it stands. The manager journals a move
+before it asks the node, so one that reached it is never `unknown_request`. A
+process that stops mid-way leaves its items as recorded, for the next refresh.
 
 **Settling.** A `queued` item holds up a new chequebook bulk whatever its age,
 since the manager may not have it yet. A `submitted` or `unknown` one holds it
@@ -1430,9 +1442,9 @@ stands, and the run goes on behind it.
 Each `funding.chequebook.confirmed` or `.failed` audit row is written once,
 when the item first comes to that state, with its hash ([Audit log](#audit-log)).
 
-| Table                           | What it holds                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                               |
-| ------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `funding_chequebook_operations` | migration 019: one row per item of a chequebook bulk, by `request_id`, with `bulk_id`, its `position` in the bulk, the node's id and label, `direction`, `amount_plur`, `target_plur`, `available_plur` (the balance the page showed, which the move is worked out from), `state`, `tx_hash`, `error`, `relayed_at`, the operator's id and name, and when. One item per node and one per place in a bulk; the move is the one that brings `available_plur` to `target_plur`, the target at least 1 xBZZ, and every amount 30 digits at most |
+| Table                           | What it holds                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                              |
+| ------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `funding_chequebook_operations` | migration 019: one row per item of a chequebook bulk, by `request_id`, with `bulk_id`, its `position` in the bulk, the node's id and label, `direction`, `amount_plur`, `target_plur`, `available_plur` (the available balance the move was worked out from: of the page's and the one read for the request, the larger for a deposit and the smaller for a withdrawal), `state`, `tx_hash`, `error`, `relayed_at`, the operator's id and name, and when. One item per node and one per place in a bulk; the move is the one that brings `available_plur` to `target_plur`, the target at least 1 xBZZ, and every amount 30 digits at most |
 
 ## Migrations
 
@@ -1579,9 +1591,10 @@ with the reason `funding` of what a refresh learned. The chequebook
 operations ([Chequebook operations](#chequebook-operations)), likewise:
 `funding.chequebook.request` (one row per chequebook bulk, with its `bulkId`,
 its `targetPlur`, and each item's request id, node, label, direction, amount
-and the available balance the page showed), and `funding.chequebook.confirmed`
-and `funding.chequebook.failed`, each with the item's bulk, request id, node,
-label, direction, amount, target, available balance, hash, state and error.
+and the available balance the move was worked out from), and
+`funding.chequebook.confirmed` and `funding.chequebook.failed`, each with the
+item's bulk, request id, node, label, direction, amount, target, that
+available balance, hash, state and error.
 
 **A failed audit write never fails the operation.** The row is written after
 the mutation it describes, which has already happened by then; the failure is

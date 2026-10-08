@@ -37,10 +37,13 @@
 --   target_plur  the available balance the request brings the chequebook to,
 --                in PLUR: 1 xBZZ or more, the owner's floor.
 --   available_plur
---                the chequebook's available balance as the page showed it,
---                which the move is worked out from: a deposit of the target
---                less it, or a withdrawal of it less the target, what the
---                confirm dialog showed (chequebookMove, web2-admin-common).
+--                the chequebook's available balance the move was worked out
+--                from, again when the request came in: of the one the page
+--                showed and the one the manager read then, the larger for a
+--                deposit and the smaller for a withdrawal, so that the move
+--                never moves more than the confirm dialog showed
+--                (chequebookMoveNow, web2-admin-common). A deposit is the
+--                target less it, a withdrawal it less the target.
 --                node_id, direction and amount_plur are the manager's request
 --                as it went out: a relay again sends them as they are, under
 --                the same id.
@@ -84,8 +87,8 @@ CREATE TABLE funding_chequebook_operations (
   requested_by           TEXT NOT NULL,
   created_at             TIMESTAMPTZ NOT NULL DEFAULT NOW(),
   updated_at             TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-  -- The move is the one that brings the balance the page showed to the target,
-  -- and its direction the way it goes.
+  -- The move is the one that brings the balance it was worked out from to the
+  -- target, and its direction the way it goes.
   CONSTRAINT funding_chequebook_operations_move CHECK (
     (direction = 'deposit' AND amount_plur = target_plur - available_plur)
     OR (direction = 'withdraw' AND amount_plur = available_plur - target_plur)
