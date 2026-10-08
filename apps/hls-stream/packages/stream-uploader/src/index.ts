@@ -149,6 +149,9 @@ async function start() {
             metrics,
           })
         : undefined;
+    if (ladderMarkers) {
+      lifecycle.trackLadderMarkers(ladderMarkers);
+    }
 
     // Also ladder-only, and in a subdirectory for the same reason the catalog index is: RecoveryStore
     // scans stateDir for `*.json` and would otherwise offer this file up as a stream to recover.
