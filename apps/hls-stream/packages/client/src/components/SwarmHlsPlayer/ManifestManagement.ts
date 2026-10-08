@@ -531,6 +531,7 @@ export class ManifestFetcher {
     readSoc: (owner, identifier, options) => this.swarm.readSoc(owner, identifier, options),
   };
   private ladders = new Map<string, RegisteredLadder>();
+  private readonly markers = new MarkerFinder(this.reads, WALL_CLOCK, () => gatewayClock.offsetMs());
   private poller: LadderFeedPoller;
   private lastLoggedMaster = '';
 
@@ -593,7 +594,7 @@ export class ManifestFetcher {
       () => this.drawReturnWatchWaitMs(),
       {
         playheadMs: (group) => (group === null ? null : (this.playheads.get(group)?.() ?? null)),
-        finder: new MarkerFinder(this.reads, WALL_CLOCK, () => gatewayClock.offsetMs()),
+        finder: this.markers,
         headMarkers: (rung, clock) => rungHeadMarkers(this.reads, rung, clock, () => gatewayClock.offsetMs()),
       },
     );
@@ -724,6 +725,32 @@ export class ManifestFetcher {
       this.feedHealth.recordGatewayFailure(hexTopic, retryAfterMsOf(error));
       throw error;
     }
+  }
+
+  /**
+   * The rungs the ladder's time marker names that the stream list's entry did not, by hex topic.
+   *
+   * The entry turns live once the first rung has reported to the admin, and the others report a moment
+   * later, up to about 20 s when an encoder reconnects. A viewer who joined in that moment holds an
+   * entry short of rungs, and its master is built once. The marker names every rung that has published,
+   * so a rung here is one the viewer should be offered once the stream list catches up.
+   *
+   * Empty for a source with no ladder from the list, and when there is no marker to read, which is the
+   * case of a broadcast whose uploader writes none, so such a stream plays as it did.
+   */
+  async rungsMissingFromLadder(sourceUrl: string): Promise<string[]> {
+    const ladder = this.ladders.get(sourceUrl)?.resolve?.();
+    const group = groupHexOf(sourceUrl);
+    if (!ladder || ladder.renditions.length === 0 || group === null) {
+      return [];
+    }
+
+    const marker = await this.markers.markerFor(ladder.owner, group);
+    if (marker === null) {
+      return [];
+    }
+    const listed = new Set(ladderTopics(ladder).map((topic) => topic.toString()));
+    return Object.keys(marker.rungs).filter((hex) => !listed.has(hex));
   }
 
   /** The master playlist for a registered ladder, or null when this source is single-rendition. */

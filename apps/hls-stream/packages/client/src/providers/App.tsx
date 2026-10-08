@@ -44,7 +44,8 @@ type AppContextState = {
    * and rebuild it the moment the ladder arrived, losing playback position on every deep link.
    *
    * ⛔ Not reset by a gateway switch, and that is deliberate. The ladder belongs to the broadcast
-   * rather than to the node serving it, and the watch page has no catalog poll of its own, so
+   * rather than to the node serving it, and the watch page has no catalog poll of its own while the player
+   * is showing (except while the player says its ladder is short, see `watchPageCatalogPollMs`), so
    * clearing this there would unmount the player and leave nothing to bring it back.
    */
   isStreamListLoaded: boolean;

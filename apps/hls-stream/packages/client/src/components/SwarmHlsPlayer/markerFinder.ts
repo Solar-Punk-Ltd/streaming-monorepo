@@ -81,8 +81,13 @@ export class MarkerFinder implements NewestIndexFinder {
     return { index: FeedIndex.fromBigInt(BigInt(newest.index)), playlist };
   }
 
-  /** The newest marker of this ladder there is to read, or null when neither recent period has one. */
-  private async markerFor(owner: string, groupHex: string): Promise<LadderMarker | null> {
+  /**
+   * The newest marker of this ladder there is to read, or null when neither recent period has one.
+   *
+   * Shared with the player's check that the stream list named every rung, so that check and the start
+   * rung's search ask the marker's address once between them.
+   */
+  async markerFor(owner: string, groupHex: string): Promise<LadderMarker | null> {
     const ladder = `${owner}/${groupHex}`;
     const period = markerPeriodAt(this.clock.now() + this.clockOffsetMs());
     const last = this.last;

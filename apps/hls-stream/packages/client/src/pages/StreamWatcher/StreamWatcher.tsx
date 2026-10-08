@@ -1,3 +1,4 @@
+import { useCallback, useState } from 'react';
 import { useNavigate, useParams, useSearchParams } from 'react-router';
 
 import { Button, ButtonVariant } from '@/components/Button/Button';
@@ -39,9 +40,16 @@ export function StreamWatcher() {
   const stream = streamList.find((entry) => entry.owner === owner && entry.topic === topic);
 
   // Above the early return, because a hook may not be skipped on some renders.
-  const isWaiting = useIsWaitingForStart(`${owner}/${topic}`, stream);
+  const streamKey = `${owner}/${topic}`;
+  const isWaiting = useIsWaitingForStart(streamKey, stream);
   const view = watchPageView(isStreamListLoaded, stream, isWaiting);
-  useCatalogPoll(watchPageCatalogPollMs(view));
+  // Kept per stream, because React Router keeps this page mounted when only the route changes.
+  const [shortLadderOf, setShortLadderOf] = useState<string | null>(null);
+  const onLadderIncomplete = useCallback(
+    (incomplete: boolean) => setShortLadderOf(incomplete ? streamKey : null),
+    [streamKey],
+  );
+  useCatalogPoll(watchPageCatalogPollMs(view, shortLadderOf === streamKey));
 
   const handleBackButtonClick = () => {
     navigate(ROUTES.STREAM_BROWSER);
@@ -71,6 +79,7 @@ export function StreamWatcher() {
           enableQoeOverlay={enableQoeOverlay}
           renditions={playableRenditions(stream)}
           level={level}
+          onLadderIncomplete={onLadderIncomplete}
         />
       )}
       <Button variant={ButtonVariant.SECONDARY} onClick={() => handleBackButtonClick()}>
