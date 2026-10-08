@@ -11,7 +11,7 @@ import {
   UNSERVED_SLOT_STALL_MS,
 } from '../src/components/SwarmHlsPlayer/feedState.js';
 import type { FollowClock } from '../src/components/SwarmHlsPlayer/following/feedReader.js';
-import { MARKER_READ_DELAY_MS } from '../src/components/SwarmHlsPlayer/following/headMarkers.js';
+import { PREDICTED_DEFAULTS } from '../src/components/SwarmHlsPlayer/following/followPredicted.js';
 import {
   LadderFeedPoller,
   type LadderFeedPollerOptions,
@@ -22,7 +22,7 @@ import { IndexSearchFinder, type NewestIndexFinder } from '../src/components/Swa
 import { parseManifest } from '../src/components/SwarmHlsPlayer/playlist.js';
 import { rungHeadMarkers } from '../src/components/SwarmHlsPlayer/rungHeadMarkers.js';
 import { STALE_RUNG_LAG_MS } from '../src/components/SwarmHlsPlayer/rungPosition.js';
-import { MARKER_PERIOD_SECONDS, markerPeriodAt, markerPeriodStartMs } from '@swarm-hls-stream/shared';
+import { markerPeriodAt, markerPeriodStartMs } from '@swarm-hls-stream/shared';
 
 import { fastClock } from './helpers/fastClock.js';
 import { FakeLadderGateway, LADDER_EPOCH_MS, ladderPlaylist, SEGMENT_S } from './helpers/fakeLadderGateway.js';
@@ -831,7 +831,7 @@ describe('Q8: a quality whose broadcaster went quiet waits on the time markers, 
     }
   }
 
-  it('is back within about one marker period of the broadcaster, where asking the next slot costs a minute', async () => {
+  it('stops asking the missing slot while the broadcaster is quiet, reads each marker once, and resumes', async () => {
     const rig = makeRig({
       headMarkersFor: (gateway) => (rung, clock) => rungHeadMarkers(gateway.reader, rung, clock, () => 0),
     });
@@ -842,37 +842,34 @@ describe('Q8: a quality whose broadcaster went quiet waits on the time markers, 
     // From here, so the search that starts the walk, whose round reaches past the head, is not counted.
     rig.gateway.modelSkipList(PEERS, SKIP_MS, rig.followClock.now);
 
-    const lastBefore = { index: -1 };
-    let behindAtPause: number | null = null;
+    let lastBefore = -1;
     const resumed = { atMs: null as number | null };
-    let backAtMs: number | null = null;
+    let caughtUp = false;
     const pauseAtMs = rig.followClock.now() + 15_000;
-    const giveUpAtMs = pauseAtMs + QUIET_MS + 2 * SKIP_MS;
-    const uploader = broadcast(rig, pauseAtMs, () => backAtMs !== null || rig.followClock.now() > giveUpAtMs, resumed);
-    while (backAtMs === null && rig.followClock.now() <= giveUpAtMs) {
+    const giveUpAtMs = pauseAtMs + QUIET_MS + 3 * SKIP_MS;
+    const uploader = broadcast(rig, pauseAtMs, () => caughtUp || rig.followClock.now() > giveUpAtMs, resumed);
+    while (!caughtUp && rig.followClock.now() <= giveUpAtMs) {
       await sleep(1);
       if (resumed.atMs === null) {
-        lastBefore.index = rig.gateway.head(TOP);
-        if (rig.followClock.now() >= pauseAtMs) {
-          behindAtPause ??= lastBefore.index - newestSegment(TOP);
-        }
-      } else if (newestSegment(TOP) > lastBefore.index) {
-        backAtMs = rig.followClock.now();
+        lastBefore = rig.gateway.head(TOP);
+      } else {
+        caughtUp = newestSegment(TOP) > lastBefore;
       }
     }
     await uploader;
 
-    assert.ok(resumed.atMs !== null && backAtMs !== null, 'the player never caught up after the quiet spell');
+    // Timings on this clock are real timers sped up, so this checks what the player asked, never how
+    // fast it came back. The time it takes is proved on virtual time in `following/followers.test.ts`.
+    assert.ok(caughtUp, 'the player never caught up after the quiet spell');
+    const missingAsks = rig.gateway
+      .requestsFor(hex(TOP))
+      .filter((request) => rig.gateway.slotIndexOf(request.path) === lastBefore + 1).length;
     assert.ok(
-      behindAtPause !== null && behindAtPause <= 2,
-      `${behindAtPause} slots behind when the broadcaster paused`,
-    );
-    const waitedMs = backAtMs - resumed.atMs;
-    assert.ok(
-      waitedMs <= MARKER_PERIOD_SECONDS * 1_000 + MARKER_READ_DELAY_MS + 6_000,
-      `back ${Math.round(waitedMs)} ms after the broadcaster`,
+      missingAsks <= PREDICTED_DEFAULTS.slotAsksWithMarkers + 2,
+      `the slot after the quiet spell's start was asked ${missingAsks} times`,
     );
     const markerReads = rig.gateway.markerRequests();
+    assert.ok(markerReads.length > 0, 'no marker was read while the broadcaster was quiet');
     assert.equal(new Set(markerReads).size, markerReads.length, 'a marker address was read twice');
   });
 });
