@@ -689,7 +689,7 @@ player's own configured buffer. Writes a markdown report and its JSON to `BENCH_
 in the stack's folder, ignored by git.
 
 Nothing else in this repository can measure that. `liveSyncDuration` was 10 when this bench was written
-and the client ships 6 today (`LIVE_SYNC_DURATION_S` in `packages/client/src/components/SwarmHlsPlayer/playerConfig.ts`),
+and the client now targets three segments with a floor of 6 s (`LIVE_SYNC_DURATION_S` in `packages/client/src/components/SwarmHlsPlayer/playerConfig.ts`),
 so a report is read against the value the client carried on the day. Every other LAT row asks for an
 improvement, and Sprint 5 grades them against a baseline that has to exist first.
 
