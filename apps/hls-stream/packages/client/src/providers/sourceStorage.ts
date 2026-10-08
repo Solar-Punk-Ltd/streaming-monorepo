@@ -12,12 +12,12 @@ import { type AddedSource, migratedSources, parseAddedSources, serializeAddedSou
 /**
  * Where the node picker kept the one address a viewer chose before sources existed.
  *
- * Exported because the arm harness seeds it before the app runs, which is the only way an arm can be
- * on its own gateway for the join rather than from the first render onwards. The first load moves it
- * into a source. `e2e` mirrors the string and `e2e/test/gatewaySweep.test.ts` reads this line to prove
- * the two still agree.
+ * The arm harness seeds it before the app runs, which is the only way an arm can be on its own gateway
+ * for the join rather than from the first render onwards. The first load moves it into a source. `e2e`
+ * mirrors the string rather than importing it, and `e2e/test/gatewaySweep.test.ts` reads this line to
+ * prove the two still agree.
  */
-export const GATEWAY_STORAGE_KEY = 'swarm-gateway-url';
+const GATEWAY_STORAGE_KEY = 'swarm-gateway-url';
 
 export const SOURCE_STORAGE_KEYS = {
   sources: 'swarm-sources',
