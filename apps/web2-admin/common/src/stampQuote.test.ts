@@ -43,6 +43,27 @@ describe('a top-up, quoted', () => {
     assert.equal(quote.costPlur, (172_800_000n * 24000n * 2n ** 41n).toString());
   });
 
+  it('keeps every block exact for the largest whole number of days, past where seconds in a number lose digits', () => {
+    const days = Number.MAX_SAFE_INTEGER;
+    const quote = stampTopUpQuote(days, 20, 30 * SECONDS_PER_DAY, POSTAGE);
+    // 86400 seconds are 17280 blocks of 5 seconds, exactly.
+    assert.equal(quote.amountPerChunkPlur, (BigInt(days) * 17_280n * 24_000n).toString());
+    assert.equal(quote.costPlur, (BigInt(days) * 17_280n * 24_000n * 2n ** 20n).toString());
+
+    // 7-second blocks do not divide a day: the blocks are rounded up, exactly.
+    const sevens = stampTopUpQuote(days, 20, 0, { ...POSTAGE, blockSeconds: 7 });
+    assert.equal(sevens.amountPerChunkPlur, (((BigInt(days) * 86_400n + 6n) / 7n) * 24_000n).toString());
+  });
+
+  it('keeps the time left after a number, exact while it is a safe integer and the nearest number past it', () => {
+    const year = 365 * SECONDS_PER_DAY;
+    assert.equal(stampTopUpQuote(1_000_000_000, 20, year, POSTAGE).ttlAfterSeconds, year + 86_400_000_000_000);
+
+    const largest = stampTopUpQuote(Number.MAX_SAFE_INTEGER, 20, year, POSTAGE).ttlAfterSeconds;
+    assert.ok(Number.isFinite(largest));
+    assert.equal(largest, Number(BigInt(year) + BigInt(Number.MAX_SAFE_INTEGER) * 86_400n));
+  });
+
   it('throws for days that are not a whole number of 1 or more', () => {
     for (const days of [0, -1, 1.5, Number.NaN, Number.POSITIVE_INFINITY]) {
       assert.throws(() => stampTopUpQuote(days, 20, 0, POSTAGE), RangeError, String(days));
