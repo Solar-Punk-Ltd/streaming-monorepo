@@ -1,10 +1,10 @@
 # Funding from the admin: brand wallet, stamps and chequebooks
 
-Plan, 2026-10-05. Phase 1, the brand wallet, the Balance tab and sends to node wallets, and phase 2,
-the Stamps tab's top-ups and dilutions, are built on `feat/funds`; phase 3 is not. It lets a brand
-keep its stages alive after handover, from
-the web2 admin: fund the nodes, top up the batches, fill the chequebooks, and later dilute. Every
-funding operation goes through the infra manager.
+Plan, 2026-10-05. Phase 1, the brand wallet, the Balance tab and sends to node wallets, phase 2,
+the Stamps tab's top-ups and dilutions, and phase 3, the Chequebooks tab's deposits and
+withdrawals, are built on `feat/funds`. It lets a brand keep its stages alive after handover, from
+the web2 admin: fund the nodes, top up and dilute the batches, and keep the chequebooks at a
+target. Every funding operation goes through the infra manager.
 
 ## The flow
 
@@ -18,8 +18,11 @@ funding operation goes through the infra manager.
    and tick batches: one days slider, or 1 or 2 steps, applies to every ticked batch, and each row
    shows what its batch has left after and what it costs. Confirm. Each node pays from its own
    wallet, so the tab shows any node short of xBZZ, with a shortcut to fund it on the Balance tab.
-5. **Chequebooks tab**: the same, for each stage's nodes; the catalogue node is not listed. Tick,
-   choose the amount, confirm. Each node deposits from its own wallet.
+5. **Chequebooks tab**: each stage's nodes with their chequebooks, the available balance, the
+   total and the uncashed cheques to the last digit; the catalogue node is not listed. Type a
+   target and tick chequebooks: one under the target takes a deposit of the difference from its
+   node's wallet, one over it a withdrawal of the difference into its node's wallet. Apply, then
+   confirm. A gateway's chequebook is shown, not moved.
 6. The admin asks the infra manager for all of it, through a new manager API with a bearer token.
    The manager talks to the nodes and to the chain; the admin talks to neither.
 
@@ -29,7 +32,7 @@ funding operation goes through the infra manager.
 | ----------------- | ------------------------------ | --------------------- | ------------------------------------------------- |
 | Fund node wallets | the brand wallet, in the admin | the brand wallet      | the manager sends the admin's signed transfer out |
 | Top up batches    | the node                       | the node's wallet     | the manager, through each node's Bee API          |
-| Fill chequebooks  | the node                       | the node's wallet     | the manager, through each node's Bee API          |
+| Move chequebooks  | the node                       | the node's wallet     | the manager, through each node's Bee API          |
 | Dilute a batch    | the node                       | the node's xDAI (gas) | the manager, through each node's Bee API          |
 
 The brand wallet's key never leaves the admin. For a transfer, the admin builds and signs the
@@ -51,7 +54,7 @@ admin needs no chain connection of its own.
   - sends a signed transfer and reports its receipt;
   - tops up batches;
   - dilutes batches;
-  - deposits into chequebooks.
+  - deposits into and withdraws from chequebooks.
 - Each operation is a list, run item by item with each item's result reported, under a request
   id, so a retry never runs twice. The manager journals each item before it starts, as it already
   does for chequebook deposits.
@@ -59,7 +62,9 @@ admin needs no chain connection of its own.
   host, as the admin link already requires.
 - Safety rules, not limits:
   - an operation names only the manager's own nodes and batches;
-  - a dilution takes at most two steps, leaves at least 7 days, and is refused if the depth moved.
+  - a dilution takes at most two steps, leaves at least 7 days, and is refused if the depth moved;
+  - a chequebook is brought to no target under 1 xBZZ, and a withdrawal goes to its node's own
+    wallet, the one place Bee sends one.
 
 ## The admin's side
 
@@ -93,7 +98,7 @@ admin needs no chain connection of its own.
 | --- | ----------------------------------------------------------------------------------------------------- | ---- |
 | 1   | Brand wallet and Balance tab: the manager API's inventory and balances, send to node wallets          | M    |
 | 2   | Stamps tab: bulk top-up and dilute through the manager, the days slider, the "short of xBZZ" shortcut | M    |
-| 3   | Chequebooks tab: bulk deposit through the manager                                                     | S    |
+| 3   | Chequebooks tab: to a target, a deposit or withdrawal per ticked chequebook, through the manager      | S    |
 | 4   | Dilute through the manager: built with phase 2, decided 2026-10-08                                    | —    |
 
 The Stamps tab follows msrs-client's bulk stamp pages, ticked lists, a days slider and per-item
@@ -121,3 +126,22 @@ against a real node before phase 2, so its first trial is theirs too.
 - The catalogue batch may be diluted like any other. This supersedes the rollout note in the
   [roadmap](../ROADMAP.md) that the batch from before stages is never diluted until the catalogue is
   moved.
+
+## Decided, 2026-10-08, the Chequebooks tab
+
+- One target, typed in xBZZ, applies to every ticked chequebook: one under it takes a deposit of
+  the difference from its node's wallet, one over it a withdrawal of the difference into its
+  node's wallet, and one at it is left as it is. One button, Apply, behind a confirm dialog
+  without the password, as for stamps.
+- The target is 1 xBZZ or more.
+- The tab shows each chequebook's available balance, total and uncashed cheques, every digit.
+- The catalogue node's chequebook is not listed.
+- A gateway's chequebook is shown, not moved: the manager moves only a deployment's own Bee node's
+  chequebook, from its console and from the admin alike.
+- The admin moves what the confirm dialog showed, the target less the available balance the page
+  read, and refuses a request a fresh read no longer bears out: a deposit into a chequebook that
+  grew since, or a withdrawal larger than what it holds now. A busy node keeps paying its peers
+  from its chequebook, so it lands near the target rather than on it.
+- The manager carries each move out through its own chequebook path and journal, the ones its
+  console's Fill chequebook and Withdraw use, so a move from the admin shows in its chequebook
+  history too.
