@@ -1189,13 +1189,14 @@ the page shows.
 
 A request's body is checked first, `400 validation_error`: one item at least
 and 200 at most, a node id as the contract takes it, a batch id of `0x` and
-64 hex digits in either case, an `expectedDepth` from 0 to 255, a top-up's
-`days` a whole number from 1 with no cap but the journal column's
-(2^31 - 1), and a dilution's `steps` 1 or 2, each a JSON number; a top-up's
-`pricePerChunkPerBlockPlur`, the price of postage the page quoted it at, PLUR
-per chunk per block as a string of decimal digits, more than nothing and at
-most 2^256 - 1; and no field of the other kind. Then it is refused, in this
-order, nothing journalled:
+64 hex digits in either case, an `expectedDepth` from 0 to 255, and to 40
+for a dilution, the deepest the manager dilutes a batch to (`STAMP_MAX_DEPTH`
+of `web2-admin-common`), a top-up's `days` a whole number from 1 with no cap
+but the journal column's (2^31 - 1), and a dilution's `steps` 1 or 2, each a
+JSON number; a top-up's `pricePerChunkPerBlockPlur`, the price of postage the
+page quoted it at, PLUR per chunk per block as a string of decimal digits,
+more than nothing and at most 2^256 - 1; and no field of the other kind. Then
+it is refused, in this order, nothing journalled:
 
 1. a request of both kinds, or one that names a batch twice:
    `400 validation_error` with the sentence;
@@ -1208,7 +1209,8 @@ order, nothing journalled:
    upload with, one that could not be read, is not usable or has expired (an
    operation goes only to a batch read whole, usable and not expired,
    `operableBatch`), one no longer at the depth the page showed, or a dilution
-   that would leave it under 7 days; `problem: "price"` for a top-up when the
+   that would leave it under 7 days or take it past depth 40, the manager's
+   ceiling; `problem: "price"` for a top-up when the
    manager read no price of postage, or one higher than the page quoted it
    at;
 4. a node whose wallet could not be read (`problem: "node"`), or a wallet that

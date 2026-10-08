@@ -299,6 +299,20 @@ describe('what a dilution comes to', () => {
     expect(dilute([BATCH.catalogue], 2).problems).toEqual([]);
   });
 
+  it('refuses one that would take its batch past depth 40, the manager’s ceiling, in the quote’s own words', () => {
+    const view = makeStampView();
+    if (view.catalogue) view.catalogue = { ...view.catalogue, batch: makeBatch({ depth: 39, ttlSeconds: 365 * DAY }) };
+    const check = dilute([BATCH.catalogue], 2, view);
+    expect(check.lineOf.get(BATCH.catalogue)).toMatchObject({
+      newDepth: 41,
+      problem: 'It would take the batch past depth 40, the deepest the manager dilutes a batch to.',
+    });
+    expect(check.problems).toEqual([
+      'The batch 0xaaaaaa…aaaaaa of catalogue-node: It would take the batch past depth 40, the deepest the manager dilutes a batch to.',
+    ]);
+    expect(dilute([BATCH.catalogue], 1, view).problems).toEqual([]);
+  });
+
   it('pays no xBZZ, so a node short of it may dilute, but not one with no xDAI for the gas', () => {
     const poor = makeStampView();
     if (poor.catalogue) poor.catalogue = { ...poor.catalogue, xbzzPlur: '0' };

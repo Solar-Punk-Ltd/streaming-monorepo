@@ -407,6 +407,28 @@ describe('a dilution', () => {
     assert.equal(journal.rows.size, 1);
   });
 
+  it("is refused past depth 40, the manager's ceiling, and taken up to it", async () => {
+    manager.inventoryAnswer = withNode(NODE_A, (node) => {
+      node.batch = fundingBatch({ depth: 39, ttlSeconds: 365 * DAY });
+    });
+
+    const past = await refusal(funding.stampOperations(TEST_OPERATOR, [dilute(NODE_A, BATCH_STAGE, 39, 2)]));
+    assert.ok(past instanceof FundingRefusedError, String(past));
+    assert.equal(past.problem, 'batch');
+    assert.equal(
+      past.message,
+      'The batch of Main stage uploader (stage-1:uploader) cannot be diluted 2 steps: It would take the batch past depth 40, the deepest the manager dilutes a batch to. Nothing was sent.',
+    );
+    assert.equal(journal.rows.size, 0);
+
+    const answer = await requested([dilute(NODE_A, BATCH_STAGE, 39, 1)]);
+    assert.equal(answer.items[0]?.state, 'confirmed');
+    assert.deepEqual(
+      manager.stampOperations.map((operation) => (operation.kind === 'dilute' ? operation.newDepth : null)),
+      [40],
+    );
+  });
+
   it('needs no price of postage', async () => {
     const inventory = stampInventory();
     inventory.chain.postage = null;
