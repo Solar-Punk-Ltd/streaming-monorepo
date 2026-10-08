@@ -127,7 +127,7 @@ ends within its request, so `requireAuth` is the only place an ended session has
 to be noticed on the server. Porting `OpenStreams` would have been a registry
 that never held anything and a timer that never closed anything. **It is absent
 on purpose, not by oversight.** If this backend ever grows a live-updates
-stream, that is the moment to port both files — the manager's
+stream, that is the moment to port both files. The manager's
 `AuthService.closeStreamsOfEndedSessions` is the whole of it, and the comment
 there about a stream deliberately not counting as activity is the part that is
 easy to get wrong.
@@ -148,7 +148,7 @@ limit. The other tabs of the same browser hear about it at once on a
 
 A reload after a revoke says the same thing. The cookie is `httpOnly`, so the
 console keeps a one-bit mark in `localStorage` while someone is signed in (no
-token, nothing about the user); a 401 on the boot probe with the mark present
+token, nothing about the user). A 401 on the boot probe with the mark present
 reads as a session that ended rather than one that never was. A deliberate
 sign-out clears the mark, so it shows no notice.
 

@@ -422,8 +422,8 @@ export class AdminApiClient {
    * reason: the caller is a live announce path and a finalize, neither of which is improved by an
    * exception travelling up through it. The exception is the admin saying the stream does not exist,
    * thrown as {@link AdminStreamGoneError} because it is the one failure a finalize must not keep its
-   * recovery entry for. `null` is the one failure value otherwise — the admin refused it, or could not
-   * be reached across the whole ladder — and the caller turns that into a failed announce, which the
+   * recovery entry for. `null` is the one failure value otherwise, when the admin refused it or could
+   * not be reached across the whole ladder, and the caller turns that into a failed announce, which the
    * uploader re-attempts on `CATALOG_ANNOUNCE_RETRY_MS`. The merge is idempotent, so a whole report
    * repeating is safe.
    *
