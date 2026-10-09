@@ -58,7 +58,7 @@ export const RESIZE_EDGES: readonly ResizeEdge[] = ['n', 's', 'e', 'w', 'ne', 'n
 /** The round toggle button, as QoeOverlay.scss draws it. */
 export const BUTTON_SIZE = 32;
 /** The space between the button's bottom and the panel's top. */
-export const BUTTON_GAP = 4;
+const BUTTON_GAP = 4;
 /** The band above the panel that the button occupies, which the bounds apply to as well. */
 export const BUTTON_BAND = BUTTON_SIZE + BUTTON_GAP;
 
@@ -71,8 +71,8 @@ export const BUTTON_BAND = BUTTON_SIZE + BUTTON_GAP;
 export const MIN_PANEL_SIZE: Size = { width: 160, height: 120 };
 
 /** The button's default place, where it has always opened: 50 px from the player's right, 10 from its top. */
-export const DEFAULT_BUTTON_RIGHT_OFFSET = 50;
-export const DEFAULT_BUTTON_TOP = 10;
+const DEFAULT_BUTTON_RIGHT_OFFSET = 50;
+const DEFAULT_BUTTON_TOP = 10;
 /** Wide enough for every row of the panel on one line, the release row aside. */
 export const DEFAULT_PANEL_WIDTH = 300;
 /**
