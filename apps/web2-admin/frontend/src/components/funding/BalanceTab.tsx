@@ -7,6 +7,7 @@ import { formatUnits } from './amounts';
 import {
   allNodes,
   checkSend,
+  hasDrafts,
   nodeGroups,
   TOKENS,
   unconfirmedNodes,
@@ -78,8 +79,9 @@ function SendBar({
  * reload too.
  *
  * What is ticked and typed, `drafts`, is the Funding page's, so it stays while another tab is shown, and Fund all of
- * the Stamps or the Chequebooks tab enters what its nodes lack in it. A send clears it. `focus` is the first field Fund
- * all entered, which takes the focus as the tab is drawn.
+ * the Stamps or the Chequebooks tab enters what its nodes lack in it. A send clears it, and so does Clear all, above
+ * the tables, which unticks every node and empties every amount typed; there is no Select all, since typing an amount
+ * ticks its node. `focus` is the first field Fund all entered, which takes the focus as the tab is drawn.
  */
 export function BalanceTab({
   drafts,
@@ -148,6 +150,13 @@ export function BalanceTab({
                 The manager reports no nodes yet.
               </Typography>
             </Paper>
+          ) : null}
+          {groups.length > 0 ? (
+            <Stack direction="row">
+              <Button size="small" disabled={!hasDrafts(view, drafts)} onClick={() => onDrafts({})}>
+                Clear all
+              </Button>
+            </Stack>
           ) : null}
           {groups.map((group) => (
             <NodeTable

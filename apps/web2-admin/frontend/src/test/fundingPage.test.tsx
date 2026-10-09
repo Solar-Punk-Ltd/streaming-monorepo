@@ -331,6 +331,34 @@ describe('the nodes', () => {
     expect(screen.getByRole('textbox', { name: 'xBZZ to send to stage-1-uploader' })).toHaveValue('');
   });
 
+  it('unticks every node and empties every amount typed with Clear all, and has no Select all', async () => {
+    serve(() => makeView());
+    renderWithProviders(<FundingPage />);
+    await screen.findByRole('heading', { name: 'Brand wallet' });
+    const clearAll = screen.getByRole('button', { name: 'Clear all' });
+    expect(clearAll).toBeDisabled();
+
+    type('xDAI to send to stage-1-uploader', '0.1');
+    type('xBZZ to send to catalogue-node', '2.5');
+    tick('pool-360p');
+    expect(clearAll).toBeEnabled();
+
+    fireEvent.click(clearAll);
+    for (const label of ['stage-1-uploader', 'catalogue-node', 'pool-360p']) {
+      expect(screen.getByRole('checkbox', { name: `Send to ${label}` }), label).not.toBeChecked();
+      expect(screen.getByRole('textbox', { name: `xDAI to send to ${label}` }), label).toHaveValue('');
+      expect(screen.getByRole('textbox', { name: `xBZZ to send to ${label}` }), label).toHaveValue('');
+    }
+    expect(screen.getByText('Enter an amount beside a node to send it.')).toBeInTheDocument();
+    expect(clearAll).toBeDisabled();
+
+    // Typing an amount ticks its node, so the tab has no Select all and no tick box in front of a stage's name.
+    expect(screen.queryByRole('button', { name: 'Select all' })).not.toBeInTheDocument();
+    for (const box of screen.getAllByRole('checkbox')) {
+      expect(box.getAttribute('aria-label') ?? '').toMatch(/^Send to /);
+    }
+  });
+
   it('confirms the new and changed addresses with the password, showing the old and the new address', async () => {
     const view = makeView();
     view.stages[0]?.nodes.push(
