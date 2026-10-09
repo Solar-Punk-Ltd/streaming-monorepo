@@ -85,15 +85,16 @@ around. Its text keeps its size: a narrow panel wraps each row, the value under 
 panel scrolls when the rows don't fit. It never gets smaller than 160 × 120 px. The panel and its
 button stay inside the browser window's visible area, not the player's: they may hang over the page
 outside the player, which an audio stream's player needs, a control bar too short to hold the panel.
-It opens with the button at the player's top right and the panel below it, and grows as tall as the
-window, less the button above it. A window resize pulls the two back inside; a scroll does not, since
-the overlay is placed in the player and scrolls with the page. The video's own fullscreen, from its
-native controls, shows the video alone, without the overlay. With the panel hidden, the button drags
-on its own, anywhere in the window; shown again, the panel hangs from the button's corner, and the
-two are pulled back inside the window together. The panel's size and place, relative to the player,
-are remembered in this browser, under the localStorage key `swarm-hls.qoe-overlay.v1`, and restored
-on the next load, pulled back inside the window (shrunk first, then moved) if they no longer fit. The
-geometry is in `src/components/SwarmHlsPlayer/overlays/qoe/qoeGeometry.ts`.
+It opens 250 × 800 px, with the button at the player's top right and the panel below it, shorter
+where the window's bottom is nearer, and can be resized as tall as the window, less the button above
+it. A window resize pulls the two back inside; a scroll does not, since the overlay is placed in the
+player and scrolls with the page. The video's own fullscreen, from its native controls, shows the
+video alone, without the overlay. With the panel hidden, the button drags on its own, anywhere in
+the window; shown again, the panel hangs from the button's corner, and the two are pulled back
+inside the window together. The panel's size and place, relative to the player, are remembered in
+this browser, under the localStorage key `swarm-hls.qoe-overlay.v1`, and restored on the next load,
+pulled back inside the window (shrunk first, then moved) if they no longer fit. The geometry is in
+`src/components/SwarmHlsPlayer/overlays/qoe/qoeGeometry.ts`.
 
 Under its header the overlay names the release the player was built as, `Player QA-build-2026-10-07 (1702aff1b)`: the
 label the deploy named and the first nine characters of its commit, or the label alone when it already starts with
