@@ -79,9 +79,10 @@ function SendBar({
  * reload too.
  *
  * What is ticked and typed, `drafts`, is the Funding page's, so it stays while another tab is shown, and Fund all of
- * the Stamps or the Chequebooks tab enters what its nodes lack in it. A send clears it, and so does Clear all, above
- * the tables, which unticks every node and empties every amount typed; there is no Select all, since typing an amount
- * ticks its node. `focus` is the first field Fund all entered, which takes the focus as the tab is drawn.
+ * the Stamps or the Chequebooks tab raises its nodes' fields in it to what they lack. A send clears it, and so does
+ * Clear all, above the tables, which unticks every node and empties every amount typed; there is no Select all, since
+ * typing an amount ticks its node. `focus` is the first field Fund all entered, which takes the focus as the tab is
+ * drawn.
  */
 export function BalanceTab({
   drafts,

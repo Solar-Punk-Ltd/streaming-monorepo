@@ -625,36 +625,44 @@ describe('topping up', () => {
     expect(kept).not.toHaveFocus();
   });
 
-  it('sets only what Fund all enters on the Balance tab, and keeps every other field and node as typed', async () => {
+  it('raises what was typed on the Balance tab to what the node lacks, never lowers it, and keeps every other node as typed', async () => {
     const view = makeStampView();
     const [uploader, ...rest] = view.stages[0]?.nodes ?? [];
     if (view.stages[0] && uploader) view.stages[0].nodes = [{ ...uploader, xdaiWei: '0' }, ...rest];
     serve(() => view);
     renderWithProviders(<FundingPage />);
     await screen.findByRole('heading', { name: 'Brand wallet' });
-    fireEvent.change(screen.getByRole('textbox', { name: 'xDAI to send to stage-1-uploader' }), {
-      target: { value: '0.5' },
-    });
-    fireEvent.change(screen.getByRole('textbox', { name: 'xBZZ to send to stage-1-uploader' }), {
-      target: { value: '1' },
-    });
-    fireEvent.change(screen.getByRole('textbox', { name: 'xBZZ to send to catalogue-node' }), {
-      target: { value: '2' },
-    });
-
+    const field = (name: string) => screen.getByRole('textbox', { name });
+    const typeIn = (name: string, value: string) => fireEvent.change(field(name), { target: { value } });
+    /** Shows the Stamps tab with the uploader's batch still ticked, presses Fund all, and waits for the Balance tab. */
+    const fundAllFromStamps = async () => {
+      fireEvent.click(screen.getByRole('tab', { name: 'Stamps' }));
+      await screen.findByRole('heading', { name: 'Catalogue batch' });
+      expect(screen.getByText('stage-1-uploader holds no xDAI to pay the gas.')).toBeInTheDocument();
+      fireEvent.click(screen.getByRole('button', { name: 'Fund all' }));
+      return screen.findByRole('textbox', { name: 'xBZZ to send to stage-1-uploader' });
+    };
+    typeIn('xDAI to send to stage-1-uploader', '0.005');
+    typeIn('xBZZ to send to stage-1-uploader', '0.1');
+    typeIn('xBZZ to send to catalogue-node', '2');
     fireEvent.click(screen.getByRole('tab', { name: 'Stamps' }));
     await screen.findByRole('heading', { name: 'Catalogue batch' });
     tick('stage-1-uploader');
-    expect(screen.getByText('stage-1-uploader holds no xDAI to pay the gas.')).toBeInTheDocument();
-    fireEvent.click(screen.getByRole('button', { name: 'Fund all' }));
 
-    // Short of 0.219 xBZZ and with no xDAI: both its fields are set, and the catalogue node's amount stays.
-    const xbzzField = await screen.findByRole('textbox', { name: 'xBZZ to send to stage-1-uploader' });
+    // Short of 0.219 xBZZ and with no xDAI: both its fields, typed lower, are raised; the catalogue node's stays.
+    const xbzzField = await fundAllFromStamps();
     expect(xbzzField).toHaveValue('0.219');
     expect(xbzzField).toHaveFocus();
-    expect(screen.getByRole('textbox', { name: 'xDAI to send to stage-1-uploader' })).toHaveValue('0.01');
-    expect(screen.getByRole('textbox', { name: 'xBZZ to send to catalogue-node' })).toHaveValue('2');
+    expect(field('xDAI to send to stage-1-uploader')).toHaveValue('0.01');
+    expect(field('xBZZ to send to catalogue-node')).toHaveValue('2');
     expect(screen.getByRole('checkbox', { name: 'Send to catalogue-node' })).toBeChecked();
+
+    // Typed higher than it lacks, both stay as typed.
+    typeIn('xBZZ to send to stage-1-uploader', '9');
+    typeIn('xDAI to send to stage-1-uploader', '0.5');
+    await fundAllFromStamps();
+    expect(field('xBZZ to send to stage-1-uploader')).toHaveValue('9');
+    expect(field('xDAI to send to stage-1-uploader')).toHaveValue('0.5');
   });
 
   it('holds a node with no xDAI for the gas, and one whose price of postage is not known, with Fund all for the gas', async () => {

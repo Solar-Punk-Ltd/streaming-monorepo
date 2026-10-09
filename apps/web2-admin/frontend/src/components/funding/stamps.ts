@@ -231,7 +231,7 @@ export interface StampLine {
 export interface NodeLedger {
   /** What its ticked top-ups cost in all, in PLUR, or null for a dilution and while a top-up is not priced. */
   costPlur: string | null;
-  /** Its xBZZ after them, in PLUR, or null when it cannot pay for them, for a dilution and while they are not priced. */
+  /** Its xBZZ after them, in PLUR, or null when it cannot pay for them, and for a dilution or an unpriced top-up. */
   afterPlur: string | null;
   /** What it lacks for them, exactly, in PLUR, or null when it lacks nothing or that is not known. */
   shortPlur: string | null;

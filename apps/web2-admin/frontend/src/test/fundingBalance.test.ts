@@ -217,7 +217,7 @@ describe('what Fund all of the Stamps or the Chequebooks tab enters', () => {
     ]);
   });
 
-  it('sets only those fields: every other field, and every other node, keeps what was typed', () => {
+  it('touches only those fields: every other field, and every other node, keeps what was typed', () => {
     const typed = {
       'stage-1:bee': draft('0.1', '9'),
       'stage-2:360p': draft('', '3'),
@@ -225,12 +225,30 @@ describe('what Fund all of the Stamps or the Chequebooks tab enters', () => {
       'pool:720p': { ticked: false, xdai: '', xbzz: '' },
     };
     expect(fundAll(typed, fundNeeds(ledgers))).toEqual({
-      'stage-1:bee': draft('0.1', '0.219'),
+      // 9 xBZZ typed is more than the 0.219 the node lacks, so it stays.
+      'stage-1:bee': draft('0.1', '9'),
       'stage-2:360p': draft('0.01', '3'),
       'catalogue:bee': draft('', '2'),
       'pool:720p': draft('0.01', '1'),
     });
     expect(fundAll(typed, new Map())).toEqual(typed);
+  });
+
+  it('raises a field to what the node lacks and never lowers what was typed; an empty or unreadable one is replaced', () => {
+    /** One node, short of 0.219 xBZZ and with no xDAI. */
+    const needs = new Map([['stage-1:bee', { fundPlur: '2190000000000000', noGas: true }]]);
+    const funded = (xdai: string, xbzz: string) =>
+      fundAll({ 'stage-1:bee': { ticked: false, xdai, xbzz } }, needs)['stage-1:bee'];
+
+    // Less than it lacks: raised, every digit of it.
+    expect(funded('0.001', '0.1')).toEqual(draft('0.01', '0.219'));
+    expect(funded('0', '0')).toEqual(draft('0.01', '0.219'));
+    // As much or more: kept as typed.
+    expect(funded('0.5', '9')).toEqual(draft('0.5', '9'));
+    expect(funded('0.0100', '0.2190')).toEqual(draft('0.0100', '0.2190'));
+    // Empty, or what an amount field cannot read: replaced.
+    expect(funded('', '')).toEqual(draft('0.01', '0.219'));
+    expect(funded('.', '0.00000000000000001')).toEqual(draft('0.01', '0.219'));
   });
 
   it("focuses the first node's xBZZ field when it entered xBZZ for it, its xDAI field when the gas is all it lacks", () => {
