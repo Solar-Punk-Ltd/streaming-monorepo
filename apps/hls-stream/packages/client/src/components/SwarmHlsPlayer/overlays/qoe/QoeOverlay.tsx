@@ -120,9 +120,10 @@ export const QoeOverlay: React.FC<QoeOverlayProps> = ({ metrics, release = confi
     }
   }, [setRect]);
 
-  // The player resizes (window resize, fullscreen): clamp again into its new bounds. Not saved, so a
-  // brief fullscreen round trip does not overwrite what the viewer chose. A reading of 0 on a side is
-  // skipped and the geometry left as it was.
+  // The player resizes (a window resize, the page's layout): clamp again into its new bounds. Not
+  // saved, so a brief resize does not overwrite what the viewer chose. The video's native fullscreen
+  // shows the video alone, so it neither shows the overlay nor resizes the player. A reading of 0 on
+  // a side is skipped and the geometry left as it was.
   useEffect(() => {
     const parent = overlayRef.current?.offsetParent;
     if (!parent) {
