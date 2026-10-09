@@ -187,6 +187,32 @@ export function panelAtButton(button: Point, size: Size, bounds: Bounds, min: Si
   return clampRect(rectAtButton(button, size), bounds, min);
 }
 
+/**
+ * Whether a reading of the player's size can be clamped to. A player that is hidden, display:none or
+ * not laid out yet measures 0 on a side; clamping to that would crush the geometry, and the next drag
+ * would save it. Such a reading is ignored and the geometry left as it was.
+ */
+export function usableBounds(bounds: Bounds | null | undefined): bounds is Bounds {
+  return (
+    bounds != null &&
+    Number.isFinite(bounds.width) &&
+    Number.isFinite(bounds.height) &&
+    bounds.width > 0 &&
+    bounds.height > 0
+  );
+}
+
+/**
+ * `rect` clamped again after the player resized: the panel and its button together while the panel
+ * is shown, the button alone while it is hidden. Untouched for a reading that is not `usableBounds`.
+ */
+export function reclampRect(rect: Rect, bounds: Bounds, visible: boolean): Rect {
+  if (!usableBounds(bounds)) {
+    return rect;
+  }
+  return visible ? clampRect(rect, bounds, MIN_PANEL_SIZE) : moveHiddenRect(rect, 0, 0, bounds);
+}
+
 /** The panel when nothing is saved: the button where it has always opened, the panel below it. */
 export function defaultRect(bounds: Bounds): Rect {
   const right = bounds.width - DEFAULT_BUTTON_RIGHT_OFFSET + BUTTON_SIZE;

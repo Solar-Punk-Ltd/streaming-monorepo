@@ -18,12 +18,14 @@ import {
   moveHiddenRect,
   moveRect,
   panelAtButton,
+  reclampRect,
   RESIZE_EDGES,
   type Rect,
   type ResizeEdge,
   resizeRect,
   saveGeometry,
   type StorageLike,
+  usableBounds,
 } from './qoeGeometry';
 import { QoePanel } from './QoePanel';
 import { QoeMetrics } from './useHlsQoeMetrics';
@@ -39,10 +41,21 @@ function browserStorage(): StorageLike | null {
   }
 }
 
-/** The player's size: the padding box of the overlay's offsetParent, which its left and top are relative to. */
+/**
+ * The player's size: the padding box of the overlay's offsetParent, which its left and top are
+ * relative to. Null when there is none, or it measures nothing on a side (hidden, display:none, not
+ * laid out yet): every reader then leaves the geometry as it is.
+ */
 function playerBounds(overlay: HTMLElement | null): Bounds | null {
   const parent = overlay?.offsetParent;
-  return parent ? { width: parent.clientWidth, height: parent.clientHeight } : null;
+  const bounds = parent ? { width: parent.clientWidth, height: parent.clientHeight } : null;
+  return usableBounds(bounds) ? bounds : null;
+}
+
+/** The saved geometry pulled back inside the player, or the default. */
+function initialRect(bounds: Bounds): Rect {
+  const saved = loadGeometry(browserStorage());
+  return saved ? clampRect(saved, bounds, MIN_PANEL_SIZE) : defaultRect(bounds);
 }
 
 const sameRect = (a: Rect | null, b: Rect) =>
@@ -98,18 +111,18 @@ export const QoeOverlay: React.FC<QoeOverlayProps> = ({ metrics, release = confi
     setRectState(next);
   }, []);
 
-  // Before the first paint: the saved geometry pulled back inside the player, or the default.
+  // Before the first paint: the saved geometry pulled back inside the player, or the default. A player
+  // not laid out yet gets it from the first reading of its size that is usable, below.
   useLayoutEffect(() => {
     const bounds = playerBounds(overlayRef.current);
-    if (!bounds) {
-      return;
+    if (bounds) {
+      setRect(initialRect(bounds));
     }
-    const saved = loadGeometry(browserStorage());
-    setRect(saved ? clampRect(saved, bounds, MIN_PANEL_SIZE) : defaultRect(bounds));
   }, [setRect]);
 
   // The player resizes (window resize, fullscreen): clamp again into its new bounds. Not saved, so a
-  // brief fullscreen round trip does not overwrite what the viewer chose.
+  // brief fullscreen round trip does not overwrite what the viewer chose. A reading of 0 on a side is
+  // skipped and the geometry left as it was.
   useEffect(() => {
     const parent = overlayRef.current?.offsetParent;
     if (!parent) {
@@ -117,11 +130,9 @@ export const QoeOverlay: React.FC<QoeOverlayProps> = ({ metrics, release = confi
     }
     const reclamp = () => {
       const bounds = playerBounds(overlayRef.current);
-      const current = rectRef.current;
-      if (bounds && current) {
-        setRect(
-          visibleRef.current ? clampRect(current, bounds, MIN_PANEL_SIZE) : moveHiddenRect(current, 0, 0, bounds),
-        );
+      if (bounds) {
+        const current = rectRef.current;
+        setRect(current ? reclampRect(current, bounds, visibleRef.current) : initialRect(bounds));
       }
     };
     if (typeof ResizeObserver !== 'undefined') {
