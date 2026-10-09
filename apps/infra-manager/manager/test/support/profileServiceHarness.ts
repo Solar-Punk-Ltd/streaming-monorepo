@@ -23,6 +23,7 @@ import { DeploymentGroup, Profile, ProfileStatus } from '../../src/types/index.j
 
 import { InMemoryStackVersionRepository } from './InMemoryStackVersionRepository.js';
 import type { DeployTargets } from '../../src/domain/ports/DeployTargets.js';
+import type { KnownHostNetworkPorts } from '../../src/domain/ports/knownHostNetworkPorts.js';
 import { ALLOCATION_CONTRACT } from './allocationContract.js';
 import { portPlanFor } from '../../src/domain/ports/portReservations.js';
 import { FakeContainers, InMemoryProfiles, makeProfile } from './profileFixtures.js';
@@ -382,6 +383,8 @@ export function profileServiceHarness(
   rows: readonly Profile[] = [],
   /** BEE_RPC_ENDPOINT, or null for a manager configured with none. */
   managerRpcEndpoint: string | null = null,
+  /** KNOWN_HOST_NETWORK_PORTS as the manager read it. */
+  knownHostNetworkPorts: KnownHostNetworkPorts = new Map(),
 ): ProfileServiceHarness {
   const profiles = new InMemoryProfiles(rows);
   profiles.reservations.seededAt = new Date(0);
@@ -406,6 +409,7 @@ export function profileServiceHarness(
     undefined,
     managerRpcEndpoint,
     profiles.managerAdminLink,
+    knownHostNetworkPorts,
   );
 
   return { service, profiles, containers, groups, orchestrator, events, versions };

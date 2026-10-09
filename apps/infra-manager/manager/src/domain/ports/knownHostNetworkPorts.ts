@@ -54,3 +54,26 @@ export function knownHostNetworkPorts(raw: string | undefined): KnownHostNetwork
   }
   return known;
 }
+
+function declaredText(project: string, ports: readonly PortKey[]): string {
+  return `${project}=${ports.map(({ port, protocol }) => `${port}/${protocol}`).join(',')}`;
+}
+
+/**
+ * Why a deployment may not be called this, or null when it may.
+ *
+ * The setting is matched on the compose project label alone, and a managed
+ * deployment's compose project is its name. A deployment named after a
+ * declared project would have its host-network containers count as holding
+ * only the declared ports, so whatever else it listens on would never be
+ * reserved and could be handed to another deployment.
+ */
+export function knownHostNetworkNameProblem(name: string, known: KnownHostNetworkPorts): string | null {
+  const declared = known.get(name);
+  if (!declared) return null;
+  return (
+    `name ${name} is a compose project KNOWN_HOST_NETWORK_PORTS declares (${declaredText(name, declared)}), ` +
+    `and a deployment's compose project is its name, so its host-network ports would go unreserved. Choose another name`
+  );
+}
+
