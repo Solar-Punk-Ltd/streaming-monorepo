@@ -653,9 +653,14 @@ KNOWN_HOST_NETWORK_PORTS=edge=80/tcp,443/tcp,443/udp
 
 Those ports then count as the edge's bindings, so a deployment still cannot
 reserve them. Name only a reverse proxy or a similar container whose ports you
-know. Any host-network container the setting does not name still blocks, and a
-malformed value stops the manager at startup. `manager/.env.sample` has the
-format.
+know. The trust is per compose project: every host-network container in a named
+project counts as holding only the ports listed for it. So list every port
+those containers hold, because a port left out counts as free and can be handed
+to a deployment. A deployment's compose project is its name, so no deployment
+may be called `edge` while the edge is named here. Creating one is refused, and
+an existing one stops the manager at startup. Any host-network container the
+setting does not name still blocks, and a malformed value stops the manager at
+startup. `manager/.env.sample` has the format.
 
 ### 5. Keep the tunnel
 
