@@ -464,6 +464,7 @@ describe('topping up', () => {
     expect(row.getByText('42 days')).toBeInTheDocument();
     expect(row.getByText('5.218 xBZZ')).toHaveAttribute('title', '5.21838526464 xBZZ');
     expect(row.getByText('Short 0.219 xBZZ')).toHaveAttribute('title', '0.21838526464 xBZZ short');
+    expect(row.queryByText('No xDAI for gas')).not.toBeInTheDocument();
     expect(row.queryByRole('button', { name: /Fund/ })).not.toBeInTheDocument();
     expect(screen.getByText('stage-1-uploader is short of 0.219 xBZZ for its top-ups.')).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Top up 1 batch' })).toBeDisabled();
@@ -474,6 +475,43 @@ describe('topping up', () => {
     expect(screen.queryByRole('button', { name: 'Fund all' })).not.toBeInTheDocument();
     tick('catalogue-node');
     expect(screen.queryByRole('button', { name: 'Fund all' })).not.toBeInTheDocument();
+  });
+
+  it("says in red in a ticked batch's Wallet after that its node holds no xDAI, under what it lacks, in a row no taller", async () => {
+    const view = makeStampView();
+    const [uploader, ...rest] = view.stages[0]?.nodes ?? [];
+    if (view.stages[0] && uploader) view.stages[0].nodes = [{ ...uploader, xdaiWei: '0' }, ...rest];
+    if (view.catalogue) view.catalogue = { ...view.catalogue, xdaiWei: '0' };
+    serve(() => view);
+    await openStamps();
+    const uploaderRow = rowOf('Batches of Main stage', 'stage-1-uploader');
+    expect(uploaderRow.queryByText('No xDAI for gas')).not.toBeInTheDocument();
+
+    tick('stage-1-uploader');
+    tick('catalogue-node');
+    // Short of xBZZ as well: the line stands under what the node lacks, in the same cell and the same red.
+    const short = uploaderRow.getByText('Short 0.219 xBZZ');
+    const noGas = uploaderRow.getByText('No xDAI for gas');
+    const cell = short.closest('td') as HTMLElement;
+    expect(noGas.closest('td')).toBe(cell);
+    expect(short.compareDocumentPosition(noGas) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    expect(getComputedStyle(noGas).color).not.toBe('');
+    expect(getComputedStyle(noGas).color).toBe(getComputedStyle(short).color);
+    expect(noGas).toHaveStyle({ whiteSpace: 'nowrap' });
+    // Under the xBZZ after of a node that can pay for its top-up.
+    const catalogue = rowOf('Catalogue batch', 'catalogue-node');
+    expect(catalogue.getByText('3.695 xBZZ')).toBeInTheDocument();
+    expect(catalogue.getByText('No xDAI for gas')).toBeInTheDocument();
+    // The bar still says it, and Fund all stands beside the button.
+    expect(screen.getByText('stage-1-uploader holds no xDAI to pay the gas.')).toBeInTheDocument();
+    expect(screen.getByText('catalogue-node holds no xDAI to pay the gas.')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Fund all' })).toBeInTheDocument();
+
+    // Two lines of one line each, fewer than the batch cell's beside it, whose batch and node card set the row's height.
+    const lines = (element: Element) => element.querySelectorAll('.MuiTypography-root').length;
+    const batchCell = uploaderRow.getByText('0xbbbbbb…bbbbbb').closest('td') as HTMLElement;
+    expect(lines(cell)).toBe(2);
+    expect(lines(batchCell)).toBeGreaterThan(lines(cell));
   });
 
   it('goes from Fund all to the Balance tab with what the node lacks entered, and back to the selection as it was', async () => {
@@ -550,7 +588,9 @@ describe('topping up', () => {
     await openStamps();
 
     tick('catalogue-node');
+    // No price, so the time left after, the cost and the xBZZ after are dashes; the missing xDAI is known all the same.
     expect(rowOf('Catalogue batch', 'catalogue-node').getAllByText('—')).toHaveLength(3);
+    expect(rowOf('Catalogue batch', 'catalogue-node').getByText('No xDAI for gas')).toBeInTheDocument();
     expect(screen.getByText(NO_PRICE_PROBLEM)).toBeInTheDocument();
     expect(screen.getByText('catalogue-node holds no xDAI to pay the gas.')).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Top up 1 batch' })).toBeDisabled();
