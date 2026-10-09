@@ -43,7 +43,7 @@ export function qoeExportFileName(topic: string | undefined, at: Date): string {
 }
 
 /** What Copy came to: on the clipboard, or refused by the browser, as it refuses a page served over plain http. */
-export type QoeCopyOutcome = 'copied' | 'refused';
+type QoeCopyOutcome = 'copied' | 'refused';
 
 /** What Copy says when the browser refused it. Save still works, so it points there. */
 export const QOE_COPY_REFUSED =
@@ -52,7 +52,7 @@ export const QOE_COPY_REFUSED =
 export const QOE_COPIED = 'Copied';
 
 /** What Copy reaches the clipboard through, the browser's own when left out. */
-export interface QoeCopyDeps {
+interface QoeCopyDeps {
   /** The asynchronous clipboard, which a browser offers only to a page served over https or on localhost. */
   clipboard?: Pick<Clipboard, 'writeText'> | undefined;
   /** The older copy of a selection, which some browsers still allow where the clipboard is refused. */
@@ -107,7 +107,7 @@ export async function copyQoeExport(json: string, deps: QoeCopyDeps = {}): Promi
 export const QOE_SAVE_REVOKE_MS = 40_000;
 
 /** What Save downloads through, the browser's own when left out. */
-export interface QoeSaveDeps {
+interface QoeSaveDeps {
   document?: Pick<Document, 'createElement' | 'body'>;
   url?: Pick<typeof URL, 'createObjectURL' | 'revokeObjectURL'>;
 }
