@@ -236,6 +236,59 @@ describe('the chequebooks', () => {
   });
 });
 
+describe('Select all and Clear', () => {
+  const selectAll = () => screen.getByRole('button', { name: 'Select all' });
+  const clear = () => screen.getByRole('button', { name: 'Clear' });
+  const ticks = () =>
+    screen
+      .getAllByRole('checkbox', { name: /^Bring the chequebook of .* to the target$/ })
+      .map((box) => (box as HTMLInputElement).checked);
+
+  it('ticks every chequebook that can be moved, and Clear unticks them all', async () => {
+    serve(() => makeChequebookView());
+    await openChequebooks();
+    typeTarget('2');
+    expect(selectAll()).toBeEnabled();
+    expect(clear()).toBeDisabled();
+
+    fireEvent.click(selectAll());
+    // The uploader's and two rungs': the gateway's, the unread one and the one whose wallet was not read have none.
+    expect(ticks()).toEqual([true, true, true]);
+    expect(rowOf('Main stage', 'rung-1080p').getByText('no change')).toBeInTheDocument();
+    expect(summary(`To apply: 1 deposit, +0.500 xBZZ; 1 withdrawal, ${MINUS}1.250 xBZZ.`)).toBeInTheDocument();
+    expect(selectAll()).toBeDisabled();
+    expect(clear()).toBeEnabled();
+
+    fireEvent.click(clear());
+    expect(ticks()).toEqual([false, false, false]);
+    expect(screen.getByText(NOTHING_TICKED_PROBLEM)).toBeInTheDocument();
+    expect(screen.getByRole('textbox', { name: 'Target' })).toHaveValue('2');
+    expect(clear()).toBeDisabled();
+  });
+
+  it('ticks a chequebook two stages share in both places, and asks for it once', async () => {
+    const shared = makeNode({ nodeId: 'pool:720p', label: 'shared-720p', role: 'rung', chequebook: makeChequebook() });
+    const view = makeChequebookView();
+    view.stages[0]?.nodes.push(shared);
+    view.stages[1]?.nodes.push(shared);
+    serve(() => view);
+    await openChequebooks();
+    typeTarget('2');
+
+    fireEvent.click(selectAll());
+    const boxes = screen.getAllByRole('checkbox', { name: 'Bring the chequebook of shared-720p to the target' });
+    expect(boxes.map((box) => (box as HTMLInputElement).checked)).toEqual([true, true]);
+    expect(summary(`To apply: 2 deposits, +1.000 xBZZ; 1 withdrawal, ${MINUS}1.250 xBZZ.`)).toBeInTheDocument();
+  });
+
+  it('is disabled while no chequebook has a tick box', async () => {
+    serve(() => makeView());
+    await openChequebooks();
+    expect(selectAll()).toBeDisabled();
+    expect(clear()).toBeDisabled();
+  });
+});
+
 describe('the target', () => {
   it('takes digits and one dot only, and holds Apply with a sentence while it is empty, under 1 xBZZ or too large', async () => {
     serve(() => makeChequebookView());

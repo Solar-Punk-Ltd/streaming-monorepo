@@ -96,6 +96,11 @@ export function allBatchRows(view: Inventory): BatchRow[] {
   return [...byId.values()];
 }
 
+/** The batches of a group that have a tick box, by id, each once: what Select all ticks, from every group. */
+export function tickableBatches(group: BatchGroup): string[] {
+  return [...new Set(group.rows.flatMap((row) => (operableBatch(row.batch) ? [row.batch.batchId] : [])))];
+}
+
 /** Whether the manager names any node's batch: one older than the Stamps tab answers its nodes without them. */
 export function reportsBatches(view: Inventory): boolean {
   return nodeGroups(view).some((group) => group.nodes.some((node) => node.batch !== undefined));

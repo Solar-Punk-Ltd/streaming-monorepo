@@ -175,6 +175,68 @@ describe('the batches', () => {
   });
 });
 
+describe('Select all and Clear', () => {
+  const selectAll = () => screen.getByRole('button', { name: 'Select all' });
+  const clear = () => screen.getByRole('button', { name: 'Clear' });
+  const ticks = () =>
+    screen.getAllByRole('checkbox', { name: /the batch of/ }).map((box) => (box as HTMLInputElement).checked);
+
+  it("ticks every batch that has a tick box, the catalogue's among them, and Clear unticks them all", async () => {
+    serve(() => makeStampView());
+    await openStamps();
+    expect(selectAll()).toBeEnabled();
+    expect(clear()).toBeDisabled();
+
+    fireEvent.click(selectAll());
+    // The catalogue's, the uploader's and the rung's: the expired batch and the unread one have no tick box.
+    expect(ticks()).toEqual([true, true, true]);
+    expect(screen.getByRole('checkbox', { name: 'Top up the batch of catalogue-node' })).toBeChecked();
+    expect(screen.getByRole('button', { name: 'Top up 3 batches' })).toBeInTheDocument();
+    expect(selectAll()).toBeDisabled();
+    expect(clear()).toBeEnabled();
+
+    tick('pool-360p');
+    expect(selectAll()).toBeEnabled();
+    fireEvent.click(clear());
+    expect(ticks()).toEqual([false, false, false]);
+    expect(screen.getByRole('button', { name: 'Top up 0 batches' })).toBeDisabled();
+    expect(clear()).toBeDisabled();
+
+    // The same for a dilution.
+    fireEvent.click(screen.getByRole('button', { name: 'Dilute' }));
+    fireEvent.click(selectAll());
+    expect(screen.getByRole('checkbox', { name: 'Dilute the batch of stage-1-uploader' })).toBeChecked();
+    expect(screen.getByRole('button', { name: 'Dilute 3 batches' })).toBeInTheDocument();
+  });
+
+  it('ticks a batch two stages share in both places, and counts it once', async () => {
+    const pooled = `0x${'ff'.repeat(32)}`;
+    const shared = makeNode({
+      nodeId: 'pool:720p',
+      label: 'shared-720p',
+      role: 'rung',
+      batch: makeBatch({ batchId: pooled }),
+    });
+    const view = makeStampView();
+    view.stages[0]?.nodes.push(shared);
+    view.stages[1]?.nodes.push(shared);
+    serve(() => view);
+    await openStamps();
+
+    fireEvent.click(selectAll());
+    const boxes = screen.getAllByRole('checkbox', { name: 'Top up the batch of shared-720p' });
+    expect(boxes.map((box) => (box as HTMLInputElement).checked)).toEqual([true, true]);
+    expect(screen.getByRole('button', { name: 'Top up 4 batches' })).toBeInTheDocument();
+  });
+
+  it('is disabled while no batch has a tick box', async () => {
+    serve(() => makeView());
+    await openStamps();
+    expect(selectAll()).toBeDisabled();
+    expect(clear()).toBeDisabled();
+  });
+});
+
 describe('topping up', () => {
   it("shows a ticked batch's time left after, its cost and its node's xBZZ after, and what they come to", async () => {
     serve(() => makeStampView());
