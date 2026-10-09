@@ -133,14 +133,17 @@ function BatchLine({ batch }: { batch: FundingBatch }) {
 
 /**
  * What the node's wallet holds after its ticked top-ups, all of them, since one wallet pays for each of its batches;
- * or, when it cannot pay for them, what it lacks in red, rounded up, with the exact amount on hover. Fund all, beside
- * the tab's button, enters that amount for the node on the Balance tab.
+ * or, when it cannot pay for them, what it lacks in red, rounded up, with the exact amount on hover; and under either,
+ * in red, that it holds no xDAI for the gas, as the Chequebooks tab's rows say it. Each is one line, so the cell stays
+ * shorter than the batch's beside it and the row keeps its height. Fund all, beside the tab's button, enters what the
+ * node lacks on the Balance tab.
  */
 function WalletAfter({ ledger }: { ledger: NodeLedger | undefined }) {
   if (!ledger) return <Dash />;
-  const { shortPlur, fundPlur, afterPlur } = ledger;
+  const { shortPlur, fundPlur, afterPlur, noGas } = ledger;
+  let xbzz = afterPlur === null ? <Dash /> : <Xbzz value={afterPlur} />;
   if (shortPlur !== null && fundPlur !== null) {
-    return (
+    xbzz = (
       <Typography
         variant="body2"
         noWrap
@@ -151,7 +154,15 @@ function WalletAfter({ ledger }: { ledger: NodeLedger | undefined }) {
       </Typography>
     );
   }
-  return afterPlur === null ? <Dash /> : <Xbzz value={afterPlur} />;
+  if (!noGas) return xbzz;
+  return (
+    <Stack spacing={0.25} sx={{ alignItems: 'flex-end' }}>
+      {xbzz}
+      <Typography variant="body2" noWrap sx={{ color: 'error.main' }}>
+        No xDAI for gas
+      </Typography>
+    </Stack>
+  );
 }
 
 /** A ticked dilution's time left after, in red with the quote's own refusal under it when it would be under 7 days. */
