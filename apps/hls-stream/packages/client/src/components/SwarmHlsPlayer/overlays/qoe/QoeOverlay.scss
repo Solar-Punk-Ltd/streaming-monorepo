@@ -133,6 +133,11 @@
 }
 
 .qoe-overlay__header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 6px;
   font-size: 12px;
   font-weight: bold;
   color: #fff;
@@ -141,6 +146,49 @@
   border-bottom: 1px solid rgba(255, 255, 255, 0.2);
   letter-spacing: 0.05em;
   text-transform: uppercase;
+}
+
+// Copy and Save, which export what the panel shows.
+.qoe-overlay__actions {
+  display: flex;
+  gap: 4px;
+}
+
+.qoe-overlay__action {
+  padding: 1px 6px;
+  border: 1px solid rgba(255, 255, 255, 0.25);
+  border-radius: 3px;
+  background: rgba(255, 255, 255, 0.08);
+  color: #e8e8e8;
+  font: inherit;
+  font-size: 10px;
+  font-weight: normal;
+  letter-spacing: normal;
+  text-transform: none;
+  cursor: pointer;
+
+  &:hover {
+    background: rgba(255, 255, 255, 0.18);
+    color: #fff;
+  }
+
+  &:focus {
+    outline: none;
+  }
+
+  &:focus-visible {
+    outline: 2px solid rgba(120, 170, 255, 0.8);
+    outline-offset: 1px;
+  }
+}
+
+// What Copy came to. A refusal is a sentence, so it wraps rather than widening the panel.
+.qoe-overlay__notice {
+  margin-bottom: 4px;
+  color: #aaa;
+  font-size: 10px;
+  white-space: normal;
+  overflow-wrap: anywhere;
 }
 
 .qoe-overlay__section {

@@ -85,6 +85,24 @@ label the deploy named and the first nine characters of its commit, or the label
 those nine or there is no commit, with the whole commit as the line's title. A build whose deploy named no release
 shows no such line. The overlay is the only place the player shows it (`src/utils/playerRelease.ts`).
 
+**Copy** and **Save** in the panel's header export what the panel shows, as JSON pretty-printed with two spaces: the
+title, the release line as `player` when the panel shows one, every section and row in the panel's order, the ABR
+ladder rows with their labels as shown, and the footer. Every value is the string the panel prints, rounding and all,
+and nothing the panel does not show; the panel and the export are built by one function,
+`overlays/qoe/qoeContent.ts`. Copy puts it on the clipboard. A browser refuses the clipboard to a page served over plain
+http, so Copy then tries the older copy of a selection, and where that is refused too it says so. Save downloads the
+same JSON as `qoe-<stream>-<YYYYMMDD-HHMMSS>.json`, the stream's topic made file-safe and the viewer's local time, and
+works wherever the page is served. Without `?qoe=1` neither the overlay nor its buttons appear.
+
+```json
+{
+  "title": "QoE Metrics",
+  "player": "QA-build-2026-10-07 (1702aff1b)",
+  "sections": [{ "title": "Startup", "rows": [{ "label": "Startup Time", "value": "1234 ms" }] }],
+  "footer": "Playback: 45678 ms"
+}
+```
+
 ## ABR ladder
 
 A stream published with the SRS ABR ladder is **five feeds**: one media playlist per rung, plus a multivariant playlist, the master, on a feed of its own whose topic is the ladder's group id. The catalog entry's `topic` points at the master, so one URL yields the whole ladder and any Swarm-aware HLS client can consume it, not just this player. The entry also keeps a `renditions` array (one per rung, with its measured bandwidth), which is what lets the UI describe a ladder without fetching anything. Once the ladder is a recording, the uploader's entry names only the rungs that recorded, and a rung whose stop failed is listed in `unfinishedRungs` instead. An entry the admin layer holds can still list such a rung with no index, so the watch page leaves out any rung with no index on a finished entry (`utils/playableRenditions.ts`).
