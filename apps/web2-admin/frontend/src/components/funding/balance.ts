@@ -90,14 +90,18 @@ export function hasDrafts(view: Inventory, drafts: Drafts): boolean {
 }
 
 /**
- * The xDAI Fund all enters for a node that holds none, as typed: 0.01 xDAI, for the gas of its operations. The tabs
- * count a node as having no xDAI only when it holds 0.
+ * The least xDAI Fund all leaves in the xDAI field of a node that holds none, in wei: 0.01 xDAI, for the gas of its
+ * operations. The tabs count a node as having no xDAI only when it holds 0.
  */
-export const GAS_XDAI = '0.01';
+export const GAS_WEI = '10000000000000000';
+
+/** {@link GAS_WEI} as the xDAI field takes it: `0.01`. */
+export const GAS_XDAI = formatUnits(GAS_WEI, FUNDING_KIND_DECIMALS.xdai);
 
 /**
  * What a node lacks for what is ticked on the Stamps or the Chequebooks tab, as that tab's ledger of it says: the xBZZ
- * it lacks, rounded up to three decimals, in PLUR, or null when it lacks none, and whether it holds no xDAI for the gas.
+ * it lacks, rounded up to three decimals, in PLUR, or null when it lacks none, and whether it holds no xDAI for the
+ * gas.
  */
 export interface FundNeed {
   readonly fundPlur: string | null;
@@ -113,9 +117,19 @@ export function fundNeeds(ledgers: ReadonlyMap<string, FundNeed>): ReadonlyMap<s
 }
 
 /**
- * The Balance tab's drafts once Fund all has entered what each node needs: the node ticked, the xBZZ it lacks in its
- * xBZZ field, every digit of it, and {@link GAS_XDAI} in its xDAI field when it holds no xDAI. Only those fields are
- * set: every other field, and every other node, keeps what was typed.
+ * An amount field raised to `least`, in base units: what was typed, kept as typed, when it reads as that much or more;
+ * otherwise `least`, every digit of it, in place of a smaller amount, an empty field or one that cannot be read.
+ */
+function raisedTo(typed: string, least: string, kind: FundingTransferKind): string {
+  const decimals = FUNDING_KIND_DECIMALS[kind];
+  const read = readAmount(typed, decimals);
+  return read.kind === 'ok' && BigInt(read.value) >= BigInt(least) ? typed : formatUnits(least, decimals);
+}
+
+/**
+ * The Balance tab's drafts once Fund all has entered what each node needs: the node ticked, its xBZZ field raised to
+ * the xBZZ it lacks, and its xDAI field to {@link GAS_XDAI} when it holds no xDAI. A field never goes lower than
+ * what was typed in it, and every other field, and every other node, keeps what was typed.
  */
 export function fundAll(drafts: Drafts, needs: ReadonlyMap<string, FundNeed>): Drafts {
   const next: Record<string, NodeDraft> = { ...drafts };
@@ -123,8 +137,8 @@ export function fundAll(drafts: Drafts, needs: ReadonlyMap<string, FundNeed>): D
     const draft = drafts[nodeId] ?? NO_DRAFT;
     next[nodeId] = {
       ticked: true,
-      xdai: need.noGas ? GAS_XDAI : draft.xdai,
-      xbzz: need.fundPlur === null ? draft.xbzz : formatUnits(need.fundPlur, FUNDING_KIND_DECIMALS.xbzz),
+      xdai: need.noGas ? raisedTo(draft.xdai, GAS_WEI, 'xdai') : draft.xdai,
+      xbzz: need.fundPlur === null ? draft.xbzz : raisedTo(draft.xbzz, need.fundPlur, 'xbzz'),
     };
   }
   return next;
@@ -138,7 +152,7 @@ export interface NodeFocus {
 
 /**
  * Where the Balance tab puts the focus when Fund all opens it, which scrolls the field into view: in the first node's
- * xBZZ field when Fund all entered xBZZ for it, and in its xDAI field when the gas is all it lacks. None without a node.
+ * xBZZ field when it lacks xBZZ, and in its xDAI field when the gas is all it lacks. None without a node.
  */
 export function fundFocus(needs: ReadonlyMap<string, FundNeed>): NodeFocus | null {
   const [entry] = needs;

@@ -17,13 +17,13 @@ type FundingTab = 'balance' | 'stamps' | 'chequebooks';
  *
  * The tabs are drawn one at a time, so what each holds lives here, not in the tab: the Balance tab's ticks and amounts,
  * the Stamps tab's operation, days, steps and ticks, and the Chequebooks tab's target and ticks. Switching tabs keeps
- * them; a reload or leaving the page does not. Each tab still reads the view afresh when it is shown, and clears its own
- * ticks, with the Balance tab's amounts, once what they ask for is sent.
+ * them; a reload or leaving the page does not. Each tab still reads the view afresh when it is shown, and clears its
+ * own ticks, with the Balance tab's amounts, once what they ask for is sent.
  *
  * Fund all, on the Stamps or the Chequebooks tab, opens the Balance tab with every node the tab finds short of xBZZ
- * or without xDAI ticked, and what each lacks entered into what the Balance tab already holds: the xBZZ, rounded up
- * to three decimals, and 0.01 xDAI for one that holds none. The first such field takes the focus; a tab picked by hand
- * takes none.
+ * or without xDAI ticked, and its fields raised to what it lacks, into what the Balance tab already holds: the xBZZ,
+ * rounded up to three decimals, and 0.01 xDAI for one that holds none, never lower than what was typed there. The
+ * first such field takes the focus; a tab picked by hand takes none.
  */
 export function FundingPage() {
   const [tab, setTab] = useState<FundingTab>('balance');
