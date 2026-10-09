@@ -646,6 +646,38 @@ describe('GET /api/admin-funding/chequebook-operations/:requestId', () => {
       assert.equal(fundingChequebookOperationStatusSchema.safeParse({ ...confirmed, state }).success, false, state);
     }
   });
+
+  const submitted = () => ({
+    requestId: REQUEST_ID,
+    direction: 'withdraw',
+    state: 'submitted',
+    txHash: TX_HASH,
+    error: null,
+  });
+
+  it('says whether a submitted move is mined and waits for its block to be final, or not yet', () => {
+    assert.deepEqual(fundingChequebookOperationStatusSchema.parse({ ...submitted(), mined: true }), {
+      ...submitted(),
+      mined: true,
+    });
+    assert.equal(fundingChequebookOperationStatusSchema.parse({ ...submitted(), mined: false }).mined, false);
+  });
+
+  it('takes the answer of a manager that does not say whether the move is mined, with no mined at all', () => {
+    const older = fundingChequebookOperationStatusSchema.parse(submitted());
+    assert.equal(older.mined, undefined);
+    assert.equal('mined' in older, false);
+  });
+
+  it('refuses a mined that is not true or false', () => {
+    for (const mined of ['true', 1, 0, null, 'yes']) {
+      assert.equal(
+        fundingChequebookOperationStatusSchema.safeParse({ ...submitted(), mined }).success,
+        false,
+        JSON.stringify(mined),
+      );
+    }
+  });
 });
 
 describe('an error answer', () => {

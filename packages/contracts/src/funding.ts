@@ -456,6 +456,12 @@ export type FundingChequebookOperationAnswer = z.infer<typeof fundingChequebookO
 /**
  * `GET /api/admin-funding/chequebook-operations/:requestId`: where the operation stands. The hash and the error are
  * each null until there is one.
+ *
+ * `mined` is true while the move's transaction is in a block that is not final yet: the manager confirms a chequebook
+ * move only once its block is final on the chain, about 3 minutes after it is mined on Gnosis Chain, so the operation
+ * stays `submitted` until then. It is true when the manager's journal row is `submitted` and its last look at the
+ * receipt found it pending for finality (`awaiting_finality`), and false otherwise. It is optional, so the answer of a
+ * manager that does not say still parses, and absent is read as false.
  */
 export const fundingChequebookOperationStatusSchema = z.object({
   requestId: uuid,
@@ -463,6 +469,7 @@ export const fundingChequebookOperationStatusSchema = z.object({
   state: z.enum(FUNDING_TRANSFER_STATES),
   txHash: txHash.nullable(),
   error: z.string().nullable(),
+  mined: z.boolean().optional(),
 });
 export type FundingChequebookOperationStatus = z.infer<typeof fundingChequebookOperationStatusSchema>;
 
