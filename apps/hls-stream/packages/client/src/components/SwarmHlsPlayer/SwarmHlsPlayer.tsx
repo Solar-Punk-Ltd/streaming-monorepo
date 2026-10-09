@@ -581,7 +581,7 @@ export const SwarmHlsPlayer: React.FC<HlsPlayerProps> = ({
     <div className="swarm-hls-player-wrapper">
       {videoEl}
       <FeedStateOverlay state={feedState} />
-      {enableQoeOverlay && <QoeOverlay metrics={metrics} />}
+      {enableQoeOverlay && <QoeOverlay metrics={metrics} topic={topicString} />}
     </div>
   );
 };
