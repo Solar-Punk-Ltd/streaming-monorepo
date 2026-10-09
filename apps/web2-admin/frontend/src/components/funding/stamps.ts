@@ -45,6 +45,12 @@ export const NOT_USABLE_TEXT = 'Not usable yet, so it cannot be topped up or dil
 /** Said in place of the tick box of a batch the node did not say enough about, with no read error to say why. */
 export const NOT_READ_IN_FULL_TEXT = 'The node did not say enough about it to top it up or dilute it.';
 
+/**
+ * Said in place of the tick box of a batch whose node's wallet could not be read: the wallet pays a top-up, and the
+ * gas of either operation.
+ */
+export const WALLET_UNREAD_TEXT = "Its node's wallet could not be read, so it cannot be topped up or diluted.";
+
 /** Why the days field cannot be read. */
 export const DAYS_PROBLEM = 'The days are a whole number, 1 or more.';
 
@@ -58,6 +64,26 @@ type Inventory = Pick<FundingView, 'stages' | 'catalogue'>;
 export interface BatchRow {
   node: AdminFundingNode;
   batch: FundingBatch;
+}
+
+/** A row that has a tick box: its batch can take an operation, and its node's wallet was read. */
+export type TickableRow = BatchRow & { batch: OperableBatch };
+
+/**
+ * Whether a node's wallet was read, its address and both its balances, as the common `movableChequebook` has it for
+ * the Chequebooks tab: the wallet pays a top-up's xBZZ, and the gas of either operation.
+ */
+function walletRead(node: AdminFundingNode): boolean {
+  return node.walletAddress !== null && node.xdaiWei !== null && node.xbzzPlur !== null;
+}
+
+/**
+ * Whether a row has a tick box: its batch read whole, usable and not expired, the common `operableBatch` the backend
+ * checks too, and its node's wallet read. Select all, the group's tick box and the operation follow the same rule, so
+ * a tick left on a row that has lost its tick box since is neither counted nor asked for.
+ */
+export function hasTickBox(row: BatchRow): row is TickableRow {
+  return operableBatch(row.batch) && walletRead(row.node);
 }
 
 /** The catalogue batch, or one stage's batches, with the node group they come from, which the node cards need. */
@@ -83,15 +109,16 @@ export function batchGroups(view: Inventory): BatchGroup[] {
 
 /**
  * Every batch once, in the order the page lists them. A batch listed twice, by a node pool two stages share, is ticked
- * in both places and counted and asked for once, for the first listing that can take an operation, or the first of all
- * while none can: a listing whose node could not be read about the batch never hides one whose node could.
+ * in both places and counted and asked for once, for the first listing that has a tick box, or the first of all while
+ * none has: a listing whose node could not be read about the batch, or about its wallet, never hides one whose node
+ * could.
  */
 export function allBatchRows(view: Inventory): BatchRow[] {
   const byId = new Map<string, BatchRow>();
   for (const row of batchGroups(view).flatMap((group) => group.rows)) {
     const kept = byId.get(row.batch.batchId);
     // A batch keeps the place it is first listed in, whichever listing it is kept for.
-    if (!kept || (!operableBatch(kept.batch) && operableBatch(row.batch))) byId.set(row.batch.batchId, row);
+    if (!kept || (!hasTickBox(kept) && hasTickBox(row))) byId.set(row.batch.batchId, row);
   }
   return [...byId.values()];
 }
@@ -101,7 +128,7 @@ export function allBatchRows(view: Inventory): BatchRow[] {
  * from every group, what Select all ticks.
  */
 export function tickableBatches(group: BatchGroup): string[] {
-  return [...new Set(group.rows.flatMap((row) => (operableBatch(row.batch) ? [row.batch.batchId] : [])))];
+  return [...new Set(group.rows.flatMap((row) => (hasTickBox(row) ? [row.batch.batchId] : [])))];
 }
 
 /** Whether the manager names any node's batch: one older than the Stamps tab answers its nodes without them. */
@@ -110,8 +137,8 @@ export function reportsBatches(view: Inventory): boolean {
 }
 
 /**
- * Why a batch has no tick box, said in its row instead, or null when it has one. The rule is the common
- * `operableBatch`, which the backend checks too: a batch read whole, usable and not expired.
+ * Why a batch cannot take an operation, or null when it can. The rule is the common `operableBatch`, which the
+ * backend checks too: a batch read whole, usable and not expired.
  */
 export function whyNotOperable(batch: FundingBatch): string | null {
   if (operableBatch(batch)) return null;
@@ -119,6 +146,14 @@ export function whyNotOperable(batch: FundingBatch): string | null {
   if (batch.ttlSeconds === 0) return EXPIRED_TEXT;
   if (batch.usable === false) return NOT_USABLE_TEXT;
   return NOT_READ_IN_FULL_TEXT;
+}
+
+/**
+ * Why a row has no tick box, said in its row instead, or null when it has one: what is wrong with its batch first,
+ * then that its node's wallet was not read.
+ */
+export function whyNoTickBox(row: BatchRow): string | null {
+  return whyNotOperable(row.batch) ?? (hasTickBox(row) ? null : WALLET_UNREAD_TEXT);
 }
 
 export type ReadDays = { kind: 'ok'; days: number } | { kind: 'invalid'; problem: string };
@@ -303,17 +338,18 @@ function ledgerFor(cost: bigint | null, balance: bigint, xdai: bigint): NodeLedg
 /**
  * The ticked batches the operation asks for, what each costs and leaves, what each node pays and holds after, and
  * every reason the operation cannot be asked for: nothing ticked; for a top-up, days it cannot read or no price; for a
- * dilution, one that would leave its batch under 7 days; a node whose wallet was not read, one short of xBZZ for its
- * top-ups, and one with no xDAI for the gas, which both operations pay. These are the backend's checks, made here
- * first, so the operator learns them before asking. A batch that cannot be ticked is never counted, even when a tick
- * from before a refresh is still on it.
+ * dilution, one that would leave its batch under 7 days; a node short of xBZZ for its top-ups, and one with no xDAI for
+ * the gas, which both operations pay. These are the backend's checks, made here first, so the operator learns them
+ * before asking. A row that has no tick box, its batch unable to take an operation or its node's wallet not read, is
+ * never counted, even when a tick from before a refresh is still on it.
  */
 export function checkStamps(view: Inventory & Pick<FundingView, 'postage'>, selection: StampSelection): StampCheck {
   const topUp = selection.operation === 'topup';
   const days = readDays(selection.days);
   const lines: StampLine[] = [];
-  for (const { node, batch } of allBatchRows(view)) {
-    if (!selection.ticked.has(batch.batchId) || !operableBatch(batch)) continue;
+  for (const row of allBatchRows(view)) {
+    if (!selection.ticked.has(row.batch.batchId) || !hasTickBox(row)) continue;
+    const { node, batch } = row;
     lines.push(topUp ? topUpLine(node, batch, days, view.postage) : diluteLine(node, batch, selection.steps));
   }
   const lineOf = new Map(lines.map((line) => [line.batch.batchId, line]));
@@ -343,6 +379,7 @@ export function checkStamps(view: Inventory & Pick<FundingView, 'postage'>, sele
   for (const { node, costs } of byNode.values()) {
     const xdai = unitsOf(node.xdaiWei);
     const xbzz = unitsOf(node.xbzzPlur);
+    // hasTickBox has the wallet read, so only a balance that is not base units comes here.
     if (xdai === null || xbzz === null) {
       problems.push(`The wallet of ${node.label} could not be read.`);
       continue;

@@ -8,11 +8,15 @@ import {
   checkStamps,
   DAYS_PROBLEM,
   EXPIRED_TEXT,
+  hasTickBox,
   NO_PRICE_PROBLEM,
   NOT_READ_IN_FULL_TEXT,
   NOT_USABLE_TEXT,
   readDays,
   reportsBatches,
+  tickableBatches,
+  WALLET_UNREAD_TEXT,
+  whyNoTickBox,
   whyNotOperable,
   type StampSelection,
 } from '../components/funding/stamps';
@@ -139,6 +143,45 @@ describe('which batches can be ticked', () => {
     expect(whyNotOperable(makeBatch({ ttlSeconds: null }))).toBe(NOT_READ_IN_FULL_TEXT);
     expect(whyNotOperable(makeBatch({ usable: null }))).toBe(NOT_READ_IN_FULL_TEXT);
     expect(whyNotOperable(makeBatch({ readError: '' }))).toBe(NOT_READ_IN_FULL_TEXT);
+  });
+
+  it("has no tick box for a batch whose node's wallet was not read, and says so after what is wrong with the batch", () => {
+    const unread = makeNode({
+      walletAddress: null,
+      xdaiWei: null,
+      xbzzPlur: null,
+      readError: 'The node did not answer.',
+    });
+    expect(hasTickBox({ node: makeNode(), batch: makeBatch() })).toBe(true);
+    expect(whyNoTickBox({ node: makeNode(), batch: makeBatch() })).toBeNull();
+    expect(hasTickBox({ node: unread, batch: makeBatch() })).toBe(false);
+    expect(whyNoTickBox({ node: unread, batch: makeBatch() })).toBe(WALLET_UNREAD_TEXT);
+    // Any of the three unread, as the Chequebooks tab's rule has it.
+    for (const over of [{ walletAddress: null }, { xdaiWei: null }, { xbzzPlur: null }]) {
+      expect(whyNoTickBox({ node: makeNode(over), batch: makeBatch() }), JSON.stringify(over)).toBe(WALLET_UNREAD_TEXT);
+    }
+    // What is wrong with the batch comes first.
+    expect(whyNoTickBox({ node: unread, batch: makeBatch({ ttlSeconds: 0, usable: false }) })).toBe(EXPIRED_TEXT);
+    expect(WALLET_UNREAD_TEXT).toBe("Its node's wallet could not be read, so it cannot be topped up or diluted.");
+  });
+
+  it('leaves it out of what Select all and its group tick, and keeps a shared batch for a listing whose wallet was read', () => {
+    const view = makeStampView();
+    const [rung] = view.stages[1]?.nodes ?? [];
+    if (view.stages[1] && rung) view.stages[1].nodes = [{ ...rung, xdaiWei: null, xbzzPlur: null }];
+    expect(batchGroups(view).map((group) => tickableBatches(group))).toEqual([[BATCH.catalogue], [BATCH.stage], []]);
+
+    // A batch a pool shares, listed first by a stage whose reading of the node's wallet failed.
+    const pooled = `0x${'ff'.repeat(32)}`;
+    const pool = { nodeId: 'pool:720p', role: 'rung', batch: makeBatch({ batchId: pooled }) } as const;
+    view.stages[0]?.nodes.push(makeNode({ ...pool, label: 'main-720p', walletAddress: null }));
+    view.stages[1]?.nodes.push(makeNode({ ...pool, label: 'second-720p' }));
+    expect(
+      allBatchRows(view)
+        .filter((row) => row.batch.batchId === pooled)
+        .map((row) => row.node.label),
+    ).toEqual(['second-720p']);
+    expect(checkStamps(view, selection([pooled])).lines.map((line) => line.node.label)).toEqual(['second-720p']);
   });
 });
 
@@ -303,18 +346,19 @@ describe('what a top-up comes to', () => {
     expect(check.lines[0]).toMatchObject({ request: null, costPlur: null });
   });
 
-  it('cannot ask a node with no xDAI for the gas, or one whose wallet was not read', () => {
+  it('cannot ask a node with no xDAI for the gas, and never counts a tick on a batch whose node’s wallet was not read', () => {
     const view = makeStampView();
     if (view.catalogue) view.catalogue = { ...view.catalogue, xdaiWei: '0' };
     if (view.stages[1]?.nodes[0])
       view.stages[1].nodes[0] = { ...view.stages[1].nodes[0], xdaiWei: null, xbzzPlur: null };
     const check = checkStamps(view, selection([BATCH.catalogue, BATCH.rung]));
-    expect(check.problems).toEqual([
-      'catalogue-node holds no xDAI to pay the gas.',
-      'The wallet of pool-360p could not be read.',
-    ]);
+    expect(check.lines.map((line) => line.batch.batchId)).toEqual([BATCH.catalogue]);
+    expect(check.problems).toEqual(['catalogue-node holds no xDAI to pay the gas.']);
     expect(check.ledgerOf.get('catalogue:bee')).toMatchObject({ shortPlur: null, fundPlur: null, noGas: true });
     expect(check.ledgerOf.has('stage-2:360p')).toBe(false);
+
+    // With nothing else ticked, there is nothing to ask for.
+    expect(checkStamps(view, selection([BATCH.rung])).problems).toEqual(['Tick a batch to top it up.']);
   });
 
   it('knows a node holds no xDAI for the gas while its top-ups cannot be priced', () => {

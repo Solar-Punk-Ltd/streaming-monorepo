@@ -7,7 +7,7 @@ import { EXPLORER_TX_URL } from '../components/funding/balance';
 import { BULK_POLL_LIMIT_MS, BULK_POLL_MS } from '../components/funding/BulkProgress';
 import { DILUTE_NOTE, readAgainFailed, READING_AGAIN, TOP_UP_NOTE } from '../components/funding/StampDialog';
 import { READ_BACK_NOTE, STAMP_DROPPED_NOTE, STAMP_NOT_KNOWN_YET_NOTE } from '../components/funding/StampProgress';
-import { DAYS_PROBLEM, EXPIRED_TEXT, NO_PRICE_PROBLEM } from '../components/funding/stamps';
+import { DAYS_PROBLEM, EXPIRED_TEXT, NO_PRICE_PROBLEM, WALLET_UNREAD_TEXT } from '../components/funding/stamps';
 import { NO_BATCHES_REPORTED, TODAYS_PRICE_CAPTION } from '../components/funding/StampsTab';
 import { FundingPage } from '../pages/FundingPage';
 import {
@@ -172,6 +172,82 @@ describe('the batches', () => {
     expect(screen.getByText(NO_BATCHES_REPORTED)).toBeInTheDocument();
     expect(screen.getByText('The manager reports no catalogue batch.')).toBeInTheDocument();
     expect(screen.getAllByText('The manager reports no batch for this stage.')).toHaveLength(2);
+  });
+});
+
+describe("a batch whose node's wallet was not read", () => {
+  /** The Stamps view whose second stage's rung could not be read about its wallet, its batch read whole. */
+  function withWalletUnread(): FundingView {
+    const view = makeStampView();
+    const [rung] = view.stages[1]?.nodes ?? [];
+    if (view.stages[1] && rung) {
+      view.stages[1].nodes = [
+        { ...rung, walletAddress: null, xdaiWei: null, xbzzPlur: null, readError: 'The node did not answer.' },
+      ];
+    }
+    return view;
+  }
+
+  it("has no tick box, says why in its row, and is skipped by Select all and its group's tick box", async () => {
+    serve(() => withWalletUnread());
+    await openStamps();
+
+    const row = rowOf('Batches of Second stage', 'pool-360p');
+    expect(row.queryByRole('checkbox')).not.toBeInTheDocument();
+    expect(row.getByText(WALLET_UNREAD_TEXT)).toBeInTheDocument();
+    expect(row.getByText('Wallet not read')).toBeInTheDocument();
+    expect(screen.getByRole('checkbox', { name: 'Top up every batch of Second stage' })).toBeDisabled();
+
+    fireEvent.click(screen.getByRole('button', { name: 'Select all' }));
+    expect(screen.getByRole('checkbox', { name: 'Top up the batch of catalogue-node' })).toBeChecked();
+    expect(screen.getByRole('checkbox', { name: 'Top up the batch of stage-1-uploader' })).toBeChecked();
+    expect(screen.getByRole('button', { name: 'Top up 2 batches' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Select all' })).toBeDisabled();
+    expect(screen.queryByText('The wallet of pool-360p could not be read.')).not.toBeInTheDocument();
+  });
+
+  it('neither counts nor asks for a tick left on it from before its wallet went unread', async () => {
+    let view = makeStampView();
+    const sent = makeStampItem();
+    const fetchMock = serve(
+      () => view,
+      [
+        { path: STAMPS, method: 'POST', respond: () => jsonOk({ bulkId: BULK, items: [sent] }, 202) },
+        { path: STAMPS, respond: () => jsonOk({ items: [sent] }) },
+      ],
+    );
+    await openStamps();
+    tick('catalogue-node');
+    tick('pool-360p');
+    expect(screen.getByRole('button', { name: 'Top up 2 batches' })).toBeEnabled();
+
+    // The rung's node does not answer about its wallet the next time the view is read.
+    view = withWalletUnread();
+    fireEvent.click(screen.getByRole('tab', { name: 'Balance' }));
+    await screen.findAllByRole('heading', { level: 3 });
+    fireEvent.click(screen.getByRole('tab', { name: 'Stamps' }));
+    await screen.findByRole('heading', { name: 'Catalogue batch' });
+    expect(rowOf('Batches of Second stage', 'pool-360p').queryByRole('checkbox')).not.toBeInTheDocument();
+    expect(summary('To top up: 1 batch, 30 days more each, 1.305 xBZZ in all.')).toBeInTheDocument();
+    expect(screen.queryByText('The wallet of pool-360p could not be read.')).not.toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Top up 1 batch' })).toBeEnabled();
+
+    const dialog = await openDialog('Top up 1 batch', 'Top up', 'Top up 1 batch?');
+    fireEvent.click(dialog.getByRole('button', { name: 'Top up' }));
+    await waitFor(() =>
+      expect(bodyOf(fetchMock, STAMPS)).toEqual({
+        items: [
+          {
+            kind: 'topup',
+            nodeId: 'catalogue:bee',
+            batchId: BATCH.catalogue,
+            expectedDepth: 20,
+            days: 30,
+            pricePerChunkPerBlockPlur: PRICE,
+          },
+        ],
+      }),
+    );
   });
 });
 
