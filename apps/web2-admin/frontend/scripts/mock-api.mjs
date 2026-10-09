@@ -30,8 +30,9 @@
  * batches, one of each kind the Stamps tab shows, and a top-up or a dilution
  * confirms a few seconds after it is asked for, the stamp bulk named in the
  * view until then. They hold chequebooks too, one of each kind the Chequebooks
- * tab shows, and a deposit or a withdrawal confirms a few seconds after it is
- * asked for, the chequebook bulk named in the view until then.
+ * tab shows, and a deposit or a withdrawal is mined two seconds after it is
+ * sent and confirmed six seconds after that, once its block is final, the
+ * chequebook bulk named in the view until then.
  * MOCK_FUNDING=off answers the page as not set up, and MOCK_FUNDING=refuse has
  * the chain's node refuse every transfer at the relay, which is then mined
  * anyway, and the nodes refuse every stamp and chequebook operation.
@@ -108,10 +109,11 @@ const stages =
  * A chequebook bulk names a target and, for each chequebook, the available balance the page showed, from which and the
  * balance the chequebook holds then the mock works out each move again as the API does, never more than the page
  * showed: a deposit of the difference from the node's wallet under the target, a withdrawal of the difference into it
- * over the target. It takes the moves in turn as a stamp bulk takes its operations, and once one is confirmed the
- * chequebook and the wallet hold their new balances and the node pays some gas. The route checks what the API checks,
- * refusing with its sentence. MOCK_FUNDING=refuse and MOCK_FUNDING=lost answer chequebook operations as they answer
- * stamp operations.
+ * over the target. It takes the moves in turn as a stamp bulk takes its operations; each is answered `mined` two seconds
+ * after it is sent and confirmed six seconds after that, once its block is final, as the manager confirms a chequebook
+ * move, and once one is confirmed the chequebook and the wallet hold their new balances and the node pays some gas.
+ * The route checks what the API checks, refusing with its sentence. MOCK_FUNDING=refuse and MOCK_FUNDING=lost answer
+ * chequebook operations as they answer stamp operations.
  */
 const FUNDING_CONFIGURED = process.env.MOCK_FUNDING !== 'off';
 const FUNDING_REFUSE = process.env.MOCK_FUNDING === 'refuse';
@@ -145,9 +147,14 @@ const STAMP_GAS_WEI = 200_000_000_000_000n;
 const STAMP_REFUSED = 'The node refused it, so the batch is as it was.';
 /** The least target a chequebook bulk takes, 1 xBZZ, in PLUR, as the common CHEQUEBOOK_TARGET_MIN_PLUR. */
 const CHEQUEBOOK_TARGET_MIN_PLUR = 10_000_000_000_000_000n;
-/** When the move of a chequebook bulk at `index` is sent, after the one before it, and when it is confirmed. */
+/**
+ * When the move of a chequebook bulk at `index` is sent, after the one before it; when it is mined, after it is sent;
+ * and when it is confirmed, its block final, after it is mined. The manager confirms a chequebook move only once its
+ * block is final, about 3 minutes after it is mined on Gnosis Chain, which the mock shortens to six seconds.
+ */
 const CHEQUEBOOK_SEND_EVERY_MS = 2_000;
-const CHEQUEBOOK_CONFIRM_AFTER_MS = 6_000;
+const CHEQUEBOOK_MINED_AFTER_MS = 2_000;
+const CHEQUEBOOK_FINAL_AFTER_MS = 6_000;
 /** How long a `lost` chequebook operation stays `unknown` before the manager finds it on the chain. */
 const CHEQUEBOOK_FOUND_AFTER_MS = 3_000;
 /** The gas a chequebook operation costs its node, in wei. */
@@ -556,10 +563,11 @@ function chequebookHoldsNext(item, now = Date.now()) {
 }
 
 /**
- * Sends each queued chequebook operation in its turn, finds the lost ones, and confirms each sent long enough ago: a
- * deposit moves its amount from the node's wallet into its chequebook, a withdrawal from its chequebook into its
- * wallet, and the node pays the gas. One whose wallet or chequebook no longer holds its amount by then, since a stamp
- * bulk may have spent the wallet's xBZZ meanwhile, fails with nothing moved.
+ * Sends each queued chequebook operation in its turn, finds the lost ones, says each sent long enough ago is mined, and
+ * confirms each mined long enough ago, its block final: a deposit moves its amount from the node's wallet into its
+ * chequebook, a withdrawal from its chequebook into its wallet, and the node pays the gas. One whose wallet or
+ * chequebook no longer holds its amount by then, since a stamp bulk may have spent the wallet's xBZZ meanwhile, fails
+ * with nothing moved.
  */
 function settleChequebookOperations() {
   const now = Date.now();
@@ -574,7 +582,11 @@ function settleChequebookOperations() {
         item.state = 'submitted';
         item.watched = false;
       }
-      if (item.state !== 'submitted' || now - sentAt < CHEQUEBOOK_CONFIRM_AFTER_MS) continue;
+      if (item.state !== 'submitted') continue;
+      const minedAt = sentAt + CHEQUEBOOK_MINED_AFTER_MS;
+      item.mined = now >= minedAt;
+      if (now - minedAt < CHEQUEBOOK_FINAL_AFTER_MS) continue;
+      item.mined = false;
       const node = fundingNodes.get(item.nodeId);
       const chequebook = node.chequebook;
       const deposit = item.direction === 'deposit';
@@ -616,6 +628,7 @@ function chequebookItemAnswer(item) {
     state: item.state,
     txHash: item.txHash,
     error: item.error,
+    mined: item.mined,
     settled: !chequebookHoldsNext(item),
     watched: item.watched,
   };
@@ -1228,6 +1241,7 @@ async function handle(req, res) {
         state: FUNDING_REFUSE ? 'failed' : FUNDING_LOST ? 'unknown' : 'queued',
         txHash: FUNDING_LOST ? `0x${hex(32)}` : null,
         error: FUNDING_REFUSE ? CHEQUEBOOK_REFUSED : null,
+        mined: false,
         watched: FUNDING_LOST,
         requestedAt,
       };

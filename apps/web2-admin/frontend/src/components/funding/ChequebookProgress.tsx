@@ -28,6 +28,14 @@ export const CHEQUEBOOK_DROPPED_NOTE =
 export const CHEQUEBOOK_READ_AGAIN_NOTE =
   'The page reads the chequebooks again once the operations have settled. A busy node keeps paying its peers, so its balance lands near the target, not on it.';
 
+/**
+ * Said under the summary of the operations: the manager confirms a chequebook move only once its block is final on
+ * the chain, so a move shows Mined, between Sent and Confirmed, for those minutes. Stamp operations and transfers are
+ * confirmed on their receipt, and have no such step.
+ */
+export const CHEQUEBOOK_FINAL_NOTE =
+  'A chequebook move is confirmed once its block is final, about 3 minutes after it is mined.';
+
 const WORDS: BulkWords = {
   title: 'Chequebook operations',
   one: 'chequebook operation',
@@ -43,7 +51,9 @@ function noteOf(item: FundingChequebookItem): string | null {
 /**
  * The operations of one chequebook bulk, item by item, as `BulkProgress` follows a bulk: each node and its move, every
  * digit of its amount as the API journalled it, which may be less than the confirm dialog listed, then where it
- * stands. A new chequebook bulk is free again once the server says every operation is `settled`.
+ * stands, Mined between Sent and Confirmed while its block is not final yet, which the summary counts and
+ * {@link CHEQUEBOOK_FINAL_NOTE} explains under it. A new chequebook bulk is free again once the server says every
+ * operation is `settled`.
  */
 export function ChequebookProgress({
   bulkId,
@@ -73,6 +83,7 @@ export function ChequebookProgress({
         </>
       )}
       note={noteOf}
+      timing={CHEQUEBOOK_FINAL_NOTE}
       footnote={CHEQUEBOOK_READ_AGAIN_NOTE}
       onSettled={onSettled}
       onDismiss={onDismiss}

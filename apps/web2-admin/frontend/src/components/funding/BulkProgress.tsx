@@ -40,6 +40,11 @@ export interface BulkItem {
   error: string | null;
   settled: boolean;
   watched: boolean;
+  /**
+   * Whether its move is mined and waits for its block to be final, which only a chequebook operation says: the
+   * manager confirms one only once its block is final. Shown as Mined, between Sent and Confirmed.
+   */
+  mined?: boolean;
 }
 
 /** How a bulk's progress names what it follows. */
@@ -87,6 +92,20 @@ const STATES: Readonly<Record<string, { label: string; color: ChipColor }>> = {
   unknown: { label: 'Not known yet', color: 'warning' },
 };
 
+/** The chip of a sent item whose move is mined and waits for its block to be final: still under way, as Sent is. */
+const MINED: { label: string; color: ChipColor } = { label: 'Mined', color: 'info' };
+
+/** Whether an item is mined and waits for its block to be final: a step of a sent one, never of one with an outcome. */
+function isMined(item: BulkItem): boolean {
+  return item.state === 'submitted' && item.mined === true;
+}
+
+/** An item's chip: Mined for one mined and not final yet, otherwise its state's. */
+function chipOf(item: BulkItem): { label: string; color: ChipColor } {
+  if (isMined(item)) return MINED;
+  return STATES[item.state] ?? { label: item.state, color: 'default' };
+}
+
 /**
  * Whether an item has come to an end that cannot change, so the page stops reading it: settled, and no longer
  * watched. Both are the server's flags.
@@ -95,14 +114,15 @@ function ended(item: BulkItem): boolean {
   return item.settled && !item.watched;
 }
 
-/** The line above the items: how far they are, and whether the page still reads them. */
+/** The line above the items: how far they are, how many are mined, and whether the page still reads them. */
 function summaryOf(items: readonly BulkItem[], stopped: boolean, words: BulkWords): string {
   const halted = 'The page stopped reading them after 10 minutes.';
   if (items.length === 0) return stopped ? halted : `Reading the ${words.many} still on their way.`;
+  const mined = items.filter(isMined).length;
   const onTheWay = items.filter((item) => !item.settled).length;
   if (onTheWay > 0) {
     const reading = stopped ? halted : 'This page reads them again every few seconds.';
-    return `${items.length - onTheWay} of ${items.length} done. ${reading}`;
+    return `${items.length - onTheWay} of ${items.length} done${mined > 0 ? `, ${mined} mined` : ''}. ${reading}`;
   }
 
   // Settled. Said as a tally, then whether the page still reads the ones that may yet change.
@@ -115,6 +135,7 @@ function summaryOf(items: readonly BulkItem[], stopped: boolean, words: BulkWord
     tally = items.length === 1 ? `the ${words.one} is confirmed` : `all ${items.length} ${words.many} are confirmed`;
   } else {
     const parts = [`${confirmed} confirmed`];
+    if (mined > 0) parts.push(`${mined} mined`);
     if (failed > 0) parts.push(`${failed} failed`);
     if (unknown > 0) parts.push(`${unknown} not known`);
     tally = parts.join(', ');
@@ -128,11 +149,13 @@ function summaryOf(items: readonly BulkItem[], stopped: boolean, words: BulkWord
 }
 
 /**
- * The items of one bulk, a send's transfers or a stamp bulk's operations, item by item, each with its transaction on
- * the block explorer once it has one, read again every three seconds while any of them can still change. The next
- * bulk of its kind is free once the server says every item is `settled`; one it still `watched` is read on, since it
- * may still change. After ten minutes the page stops reading and offers Check again. A bulk the page resumed comes
- * with no items and is read at once.
+ * The items of one bulk, a send's transfers, a stamp bulk's or a chequebook bulk's operations, item by item, each with
+ * its transaction on the block explorer once it has one, read again every three seconds while any of them can still
+ * change. A sent item whose move is mined and waits for its block to be final, which only a chequebook operation
+ * says, shows Mined between Sent and Confirmed, and the summary counts those. The next bulk of its kind is free once
+ * the server says every item is `settled`; one it still `watched` is read on, since it may still change. After ten
+ * minutes the page stops reading and offers Check again. A bulk the page resumed comes with no items and is read at
+ * once.
  */
 export function BulkProgress<Item extends BulkItem>({
   bulkId,
@@ -141,6 +164,7 @@ export function BulkProgress<Item extends BulkItem>({
   read: readItems,
   describe,
   note,
+  timing,
   footnote,
   onSettled,
   onDismiss,
@@ -155,6 +179,8 @@ export function BulkProgress<Item extends BulkItem>({
   describe: (item: Item) => ReactNode;
   /** A line under an item's state, such as why the server cannot tell yet, or null. */
   note: (item: Item) => string | null;
+  /** A line under the summary that says how long an item takes to be confirmed, or none. */
+  timing?: string;
   /** A line under the items, or none. */
   footnote?: string;
   /** Said when the items no longer hold the next bulk back, and again each time one more comes to its end after that. */
@@ -239,6 +265,11 @@ export function BulkProgress<Item extends BulkItem>({
           ) : null}
         </Stack>
         <Typography variant="body2">{summaryOf(items, stopped, words)}</Typography>
+        {timing ? (
+          <Typography variant="body2" sx={{ color: 'text.secondary' }}>
+            {timing}
+          </Typography>
+        ) : null}
         {readError && !final ? (
           <Typography variant="body2" sx={{ color: 'error.main' }}>
             {stopped ? readError : `${readError} Trying again in a few seconds.`}
@@ -252,7 +283,7 @@ export function BulkProgress<Item extends BulkItem>({
         <Table size="small" aria-label={`${words.title} sent`}>
           <TableBody>
             {items.map((item) => {
-              const state = STATES[item.state] ?? { label: item.state, color: 'default' as const };
+              const state = chipOf(item);
               const line = note(item);
               return (
                 <TableRow key={item.requestId}>
