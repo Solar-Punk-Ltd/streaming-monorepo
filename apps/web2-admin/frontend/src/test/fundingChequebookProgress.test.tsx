@@ -43,6 +43,9 @@ function follow(initial: FundingChequebookItem[], items: () => FundingChequebook
 const rowOf = (progress: ReturnType<typeof follow>, label: string) =>
   within(progress.getByText(label).closest('tr') as HTMLElement);
 
+/** The chip that says `label` in a row, whose classes say whether it is filled or outlined, and its colour. */
+const chipIn = (row: ReturnType<typeof rowOf>, label: string) => row.getByText(label).closest('.MuiChip-root');
+
 /** Lets the page read the bulk again. */
 const readAgain = () => act(() => vi.advanceTimersByTimeAsync(BULK_POLL_MS));
 
@@ -56,7 +59,7 @@ describe('the Mined step of a chequebook operation', () => {
     let items = [deposit(), withdrawal()];
     const progress = follow(items, () => items);
 
-    expect(rowOf(progress, 'stage-1-uploader').getByText('Sent')).toBeInTheDocument();
+    expect(chipIn(rowOf(progress, 'stage-1-uploader'), 'Sent')).toHaveClass('MuiChip-outlined', 'MuiChip-colorInfo');
     expect(rowOf(progress, 'rung-720p').getByText('Sent')).toBeInTheDocument();
     expect(screen.getByText('0 of 2 done. This page reads them again every few seconds.')).toBeInTheDocument();
     expect(screen.getByText(CHEQUEBOOK_FINAL_NOTE)).toBeInTheDocument();
@@ -65,11 +68,14 @@ describe('the Mined step of a chequebook operation', () => {
     );
     expect(screen.getByText(CHEQUEBOOK_READ_AGAIN_NOTE)).toBeInTheDocument();
 
-    // The deposit is mined; its block is not final yet.
+    // The deposit is mined; its block is not final yet. Its chip has Sent's colour, filled: a step beyond the
+    // outlined Sent.
     items = [deposit({ mined: true }), withdrawal()];
     await readAgain();
     expect(await rowOf(progress, 'stage-1-uploader').findByText('Mined')).toBeInTheDocument();
-    expect(rowOf(progress, 'rung-720p').getByText('Sent')).toBeInTheDocument();
+    expect(chipIn(rowOf(progress, 'stage-1-uploader'), 'Mined')).toHaveClass('MuiChip-filled', 'MuiChip-colorInfo');
+    expect(chipIn(rowOf(progress, 'stage-1-uploader'), 'Mined')).not.toHaveClass('MuiChip-outlined');
+    expect(chipIn(rowOf(progress, 'rung-720p'), 'Sent')).toHaveClass('MuiChip-outlined', 'MuiChip-colorInfo');
     expect(screen.getByText('0 of 2 done, 1 mined. This page reads them again every few seconds.')).toBeInTheDocument();
 
     items = [deposit({ mined: true }), withdrawal({ mined: true })];
@@ -84,6 +90,10 @@ describe('the Mined step of a chequebook operation', () => {
     items = [deposit({ state: 'confirmed', settled: true }), withdrawal({ mined: true })];
     await readAgain();
     expect(await rowOf(progress, 'stage-1-uploader').findByText('Confirmed')).toBeInTheDocument();
+    expect(chipIn(rowOf(progress, 'stage-1-uploader'), 'Confirmed')).toHaveClass(
+      'MuiChip-outlined',
+      'MuiChip-colorSuccess',
+    );
     expect(rowOf(progress, 'rung-720p').getByText('Mined')).toBeInTheDocument();
     expect(screen.getByText('1 of 2 done, 1 mined. This page reads them again every few seconds.')).toBeInTheDocument();
 

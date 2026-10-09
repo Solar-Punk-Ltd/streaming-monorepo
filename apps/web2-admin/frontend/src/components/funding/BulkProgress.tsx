@@ -92,18 +92,29 @@ const STATES: Readonly<Record<string, { label: string; color: ChipColor }>> = {
   unknown: { label: 'Not known yet', color: 'warning' },
 };
 
-/** The chip of a sent item whose move is mined and waits for its block to be final: still under way, as Sent is. */
-const MINED: { label: string; color: ChipColor } = { label: 'Mined', color: 'info' };
+/** How a chip looks: its label, its colour, and whether it is filled or outlined. */
+interface ChipLook {
+  label: string;
+  color: ChipColor;
+  variant: 'filled' | 'outlined';
+}
+
+/**
+ * The chip of a sent item whose move is mined and waits for its block to be final: Sent's colour, since the move is
+ * still under way, and filled, so it reads as a step beyond the outlined Sent.
+ */
+const MINED: ChipLook = { label: 'Mined', color: 'info', variant: 'filled' };
 
 /** Whether an item is mined and waits for its block to be final: a step of a sent one, never of one with an outcome. */
 function isMined(item: BulkItem): boolean {
   return item.state === 'submitted' && item.mined === true;
 }
 
-/** An item's chip: Mined for one mined and not final yet, otherwise its state's. */
-function chipOf(item: BulkItem): { label: string; color: ChipColor } {
+/** An item's chip: Mined for one mined and not final yet, otherwise its state's, outlined. */
+function chipOf(item: BulkItem): ChipLook {
   if (isMined(item)) return MINED;
-  return STATES[item.state] ?? { label: item.state, color: 'default' };
+  const state = STATES[item.state] ?? { label: item.state, color: 'default' };
+  return { ...state, variant: 'outlined' };
 }
 
 /**
@@ -289,7 +300,7 @@ export function BulkProgress<Item extends BulkItem>({
                 <TableRow key={item.requestId}>
                   {describe(item)}
                   <TableCell>
-                    <Chip size="small" variant="outlined" color={state.color} label={state.label} />
+                    <Chip size="small" variant={state.variant} color={state.color} label={state.label} />
                   </TableCell>
                   <TableCell>
                     <Stack spacing={0.25}>
