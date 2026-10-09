@@ -100,6 +100,12 @@ export async function copyQoeExport(json: string, deps: QoeCopyDeps = {}): Promi
   }
 }
 
+/**
+ * How long a saved file's address is kept after the click. WebKit starts a `blob:` download only after the click has
+ * returned, and an address let go at once is the known cause of a Safari download that fails; FileSaver.js waits 40 s.
+ */
+export const QOE_SAVE_REVOKE_MS = 40_000;
+
 /** What Save downloads through, the browser's own when left out. */
 export interface QoeSaveDeps {
   document?: Pick<Document, 'createElement' | 'body'>;
@@ -120,7 +126,6 @@ export function saveQoeExport(json: string, fileName: string, deps: QoeSaveDeps 
     link.click();
   } finally {
     link.remove();
-    // After the click has handed the file to the browser.
-    setTimeout(() => url.revokeObjectURL(href), 0);
+    setTimeout(() => url.revokeObjectURL(href), QOE_SAVE_REVOKE_MS);
   }
 }
