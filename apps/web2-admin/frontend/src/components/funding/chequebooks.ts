@@ -161,6 +161,9 @@ export interface ChequebookSelection {
   ticked: ReadonlySet<string>;
 }
 
+/** What the Chequebooks tab starts with: no target typed, and nothing ticked. */
+export const FIRST_CHEQUEBOOK_SELECTION: ChequebookSelection = { target: '', ticked: new Set() };
+
 /** One ticked chequebook, once the target can be read: the balance the page shows, and the move to the target. */
 export interface ChequebookLine {
   node: AdminFundingNode;

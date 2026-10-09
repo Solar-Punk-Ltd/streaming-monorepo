@@ -157,6 +157,14 @@ export interface StampSelection {
   ticked: ReadonlySet<string>;
 }
 
+/** What the Stamps tab starts with: a top-up of {@link DEFAULT_DAYS} days, a dilution's 1 step, and nothing ticked. */
+export const FIRST_STAMP_SELECTION: StampSelection = {
+  operation: 'topup',
+  days: String(DEFAULT_DAYS),
+  steps: 1,
+  ticked: new Set(),
+};
+
 /** One ticked batch: the item it asks for, and what the operation costs and leaves. */
 export interface StampLine {
   node: AdminFundingNode;

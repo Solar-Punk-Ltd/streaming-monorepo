@@ -166,6 +166,69 @@ describe('the Funding page', () => {
   });
 });
 
+describe('what the tabs hold, while the page stays open', () => {
+  /** Shows a tab by hand, once its view is read and drawn. */
+  async function show(name: 'Balance' | 'Stamps' | 'Chequebooks') {
+    fireEvent.click(screen.getByRole('tab', { name }));
+    if (name === 'Balance') await screen.findByRole('heading', { name: 'Brand wallet' });
+    if (name === 'Stamps') await screen.findByRole('group', { name: 'Operation' });
+    if (name === 'Chequebooks') await screen.findByRole('textbox', { name: 'Target' });
+  }
+
+  it("keeps the Balance tab's ticks and amounts while another tab is shown, and not once the page is left", async () => {
+    const fetchMock = serve(() => makeView());
+    const page = renderWithProviders(<FundingPage />);
+    await screen.findByRole('heading', { name: 'Brand wallet' });
+    type('xDAI to send to stage-1-uploader', '0.1');
+    type('xBZZ to send to catalogue-node', '2.5');
+
+    await show('Stamps');
+    await show('Chequebooks');
+    const reads = fetchMock.mock.calls.filter(([url]) => String(url) === FUNDING).length;
+    await show('Balance');
+    // The tab reads the view again as it is shown, and keeps what was entered.
+    expect(fetchMock.mock.calls.filter(([url]) => String(url) === FUNDING)).toHaveLength(reads + 1);
+    expect(screen.getByRole('textbox', { name: 'xDAI to send to stage-1-uploader' })).toHaveValue('0.1');
+    expect(screen.getByRole('checkbox', { name: 'Send to stage-1-uploader' })).toBeChecked();
+    expect(screen.getByRole('textbox', { name: 'xBZZ to send to catalogue-node' })).toHaveValue('2.5');
+    expect(screen.getByText(/0\.1 of 1\.5 xDAI/)).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Send' })).toBeEnabled();
+
+    // Leaving the page and coming back starts afresh.
+    page.unmount();
+    renderWithProviders(<FundingPage />);
+    await screen.findByRole('heading', { name: 'Brand wallet' });
+    expect(screen.getByRole('textbox', { name: 'xDAI to send to stage-1-uploader' })).toHaveValue('');
+    expect(screen.getByRole('checkbox', { name: 'Send to stage-1-uploader' })).not.toBeChecked();
+  });
+
+  it('clears the ticks and amounts once a send is made, and they stay cleared on another tab and back', async () => {
+    serve(
+      () => makeView(),
+      [
+        {
+          path: TRANSFERS,
+          method: 'POST',
+          respond: () => jsonOk({ bulkId: '4e5f6a7b-8c9d-4e0f-a1b2-c3d4e5f6a7b8', items: [makeItem()] }, 202),
+        },
+        { path: TRANSFERS, respond: () => jsonOk({ items: [makeItem()] }) },
+      ],
+    );
+    renderWithProviders(<FundingPage />);
+
+    const dialog = await openSend();
+    fireEvent.click(dialog.getByRole('button', { name: 'Send' }));
+    await screen.findByRole('heading', { name: 'Transfers' });
+    expect(screen.getByRole('textbox', { name: 'xDAI to send to stage-1-uploader' })).toHaveValue('');
+    expect(screen.getByRole('checkbox', { name: 'Send to stage-1-uploader' })).not.toBeChecked();
+
+    await show('Stamps');
+    await show('Balance');
+    expect(screen.getByRole('textbox', { name: 'xDAI to send to stage-1-uploader' })).toHaveValue('');
+    expect(screen.getByRole('checkbox', { name: 'Send to stage-1-uploader' })).not.toBeChecked();
+  });
+});
+
 describe('the brand wallet', () => {
   it('shows its address with a copy button and a QR code, its balances, and where to fund it from, with no link', async () => {
     serve(() => makeView());

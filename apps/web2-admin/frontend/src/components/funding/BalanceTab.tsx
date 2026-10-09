@@ -1,4 +1,4 @@
-import { useCallback, useMemo, useState } from 'react';
+import { useCallback, useMemo, useState, type Dispatch, type SetStateAction } from 'react';
 import { Alert, Box, Button, Paper, Stack, Typography } from '@mui/material';
 import type { FundingTransferItem, FundingView } from '@streaming-monorepo/web2-admin-common';
 
@@ -7,11 +7,11 @@ import { formatUnits } from './amounts';
 import {
   allNodes,
   checkSend,
-  fundFocus,
   nodeGroups,
   TOKENS,
   unconfirmedNodes,
   type Drafts,
+  type NodeFocus,
   type SendCheck,
 } from './balance';
 import { followBulk, type FollowedBulk } from './BulkProgress';
@@ -77,14 +77,20 @@ function SendBar({
  * waits while a send is on its way, the one made here or the one the view says is open, which the page follows after a
  * reload too.
  *
- * `initialDrafts` is what the tab opens with, read once when it mounts: what a Fund link of the Stamps or the
- * Chequebooks tab enters for the node it names. Its xBZZ field then takes the focus, or its xDAI field when the link
- * entered no xBZZ, the gas being all the node lacks.
+ * What is ticked and typed, `drafts`, is the Funding page's, so it stays while another tab is shown, and a Fund link of
+ * the Stamps or the Chequebooks tab enters what its node lacks in it. A send clears it. `focus` is the field the link
+ * entered, which takes the focus as the tab is drawn.
  */
-export function BalanceTab({ initialDrafts }: { initialDrafts?: Drafts }) {
+export function BalanceTab({
+  drafts,
+  onDrafts,
+  focus,
+}: {
+  drafts: Drafts;
+  onDrafts: Dispatch<SetStateAction<Drafts>>;
+  focus: NodeFocus | null;
+}) {
   const snackbar = useSnackbar();
-  const [drafts, setDrafts] = useState<Drafts>(initialDrafts ?? {});
-  const [focus] = useState(() => fundFocus(initialDrafts));
   const [pinning, setPinning] = useState(false);
   const [sending, setSending] = useState(false);
   const [followed, setFollowed] = useState<FollowedBulk<FundingTransferItem> | null>(null);
@@ -149,7 +155,7 @@ export function BalanceTab({ initialDrafts }: { initialDrafts?: Drafts }) {
               group={group}
               drafts={drafts}
               focus={focus}
-              onChange={(nodeId, draft) => setDrafts((prev) => ({ ...prev, [nodeId]: draft }))}
+              onChange={(nodeId, draft) => onDrafts((prev) => ({ ...prev, [nodeId]: draft }))}
             />
           ))}
           {check ? (
@@ -180,7 +186,7 @@ export function BalanceTab({ initialDrafts }: { initialDrafts?: Drafts }) {
           check={check}
           onSent={(answer) => {
             setSending(false);
-            setDrafts({});
+            onDrafts({});
             setFollowed({ bulkId: answer.bulkId, items: answer.items, settled: false });
           }}
           onCancel={() => setSending(false)}

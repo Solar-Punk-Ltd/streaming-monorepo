@@ -1,4 +1,4 @@
-import { useCallback, useMemo, useState } from 'react';
+import { useCallback, useMemo, useState, type Dispatch, type SetStateAction } from 'react';
 import {
   Alert,
   Box,
@@ -35,11 +35,11 @@ import {
   DAYS_MIN,
   DAYS_PRESETS,
   DAYS_SLIDER_MAX,
-  DEFAULT_DAYS,
   readDays,
   reportsBatches,
   stepCount,
   type StampCheck,
+  type StampSelection,
 } from './stamps';
 
 /** Said while a stamp bulk is still on its way, so a second one does not start before the first has settled. */
@@ -259,12 +259,21 @@ function StampBar({
  * top-ups has a Fund link to the Balance tab, with what it lacks entered. A new stamp bulk waits while one is on its
  * way, the one made here or the one the view says is open, which the page follows after a reload too. Switching the
  * operation clears the ticks, since a dilution cannot be undone.
+ *
+ * The operation, the days, the steps and the ticks, `selection`, are the Funding page's, so they stay while another
+ * tab is shown; the operations sent clear the ticks. The tab reads the view again each time it is shown, and a tick
+ * left on a batch that has lost its tick box since is neither counted nor asked for.
  */
-export function StampsTab({ onFund }: { onFund: (nodeId: string, xbzzPlur: string) => void }) {
-  const [operation, setOperation] = useState<FundingStampOperationKind>('topup');
-  const [days, setDays] = useState(String(DEFAULT_DAYS));
-  const [steps, setSteps] = useState<FundingDiluteSteps>(1);
-  const [ticked, setTicked] = useState<ReadonlySet<string>>(() => new Set());
+export function StampsTab({
+  selection,
+  onSelection,
+  onFund,
+}: {
+  selection: StampSelection;
+  onSelection: Dispatch<SetStateAction<StampSelection>>;
+  onFund: (nodeId: string, xbzzPlur: string) => void;
+}) {
+  const { operation, days, steps, ticked } = selection;
   const [confirming, setConfirming] = useState(false);
   const [followed, setFollowed] = useState<FollowedBulk<FundingStampItem> | null>(null);
 
@@ -276,10 +285,7 @@ export function StampsTab({ onFund }: { onFund: (nodeId: string, xbzzPlur: strin
   const { view, load } = read;
 
   const groups = useMemo(() => (view ? batchGroups(view) : []), [view]);
-  const check = useMemo(
-    () => (view ? checkStamps(view, { operation, days, steps, ticked }) : null),
-    [view, operation, days, steps, ticked],
-  );
+  const check = useMemo(() => (view ? checkStamps(view, selection) : null), [view, selection]);
 
   const onSettled = useCallback(() => {
     setFollowed((current) => current && { ...current, settled: true });
@@ -288,18 +294,18 @@ export function StampsTab({ onFund }: { onFund: (nodeId: string, xbzzPlur: strin
 
   const tick = useCallback(
     (batchId: string) =>
-      setTicked((current) => {
-        const next = new Set(current);
+      onSelection((current) => {
+        const next = new Set(current.ticked);
         if (!next.delete(batchId)) next.add(batchId);
-        return next;
+        return { ...current, ticked: next };
       }),
-    [],
+    [onSelection],
   );
 
-  const switchOperation = (next: FundingStampOperationKind) => {
-    setOperation(next);
-    setTicked(new Set());
-  };
+  const switchOperation = (next: FundingStampOperationKind) =>
+    onSelection((current) => ({ ...current, operation: next, ticked: new Set() }));
+  const setDays = (next: string) => onSelection((current) => ({ ...current, days: next }));
+  const setSteps = (next: FundingDiluteSteps) => onSelection((current) => ({ ...current, steps: next }));
 
   /** Opens the confirm dialog and reads the view again, which the dialog lists what it asks for from. */
   const openConfirm = () => {
@@ -370,7 +376,7 @@ export function StampsTab({ onFund }: { onFund: (nodeId: string, xbzzPlur: strin
           readError={read.error}
           onSent={(answer) => {
             setConfirming(false);
-            setTicked(new Set());
+            onSelection((current) => ({ ...current, ticked: new Set() }));
             setFollowed({ bulkId: answer.bulkId, items: answer.items, settled: false });
           }}
           onFailed={load}

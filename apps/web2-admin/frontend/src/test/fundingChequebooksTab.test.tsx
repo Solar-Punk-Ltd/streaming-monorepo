@@ -42,6 +42,7 @@ import {
   makeNode,
   makeView,
   OVER_TARGET,
+  unreadChequebook,
   xbzz,
 } from './fundingFixtures';
 import { jsonError, jsonOk, mockFetch, renderWithProviders, type Route } from './helpers';
@@ -353,6 +354,12 @@ describe('the moves', () => {
     expect(field).toHaveValue('0.501');
     expect(field).toHaveFocus();
     expect(screen.getByRole('checkbox', { name: 'Send to stage-1-uploader' })).toBeChecked();
+
+    // Back on the Chequebooks tab, the target and the tick are as they were.
+    fireEvent.click(screen.getByRole('tab', { name: 'Chequebooks' }));
+    await screen.findByRole('heading', { name: 'Main stage' });
+    expect(screen.getByRole('textbox', { name: 'Target' })).toHaveValue('7.0004');
+    expect(rowOf('Main stage', 'stage-1-uploader').getByText('Short 0.501 xBZZ')).toBeInTheDocument();
   });
 
   it('says a node holds no xDAI for the gas, and its Fund link opens the Balance tab on its xDAI field', async () => {
@@ -661,6 +668,68 @@ describe('applying', () => {
     fireEvent.click(dialog.getByRole('button', { name: 'Apply' }));
     expect(fetchMock.mock.calls.some(([url, init]) => String(url) === CHEQUEBOOKS && init?.method === 'POST')).toBe(
       false,
+    );
+  });
+});
+
+describe('the selection, while the page stays open', () => {
+  /** Shows another tab, then the Chequebooks tab again, once its first stage is drawn. */
+  async function away(to: 'Balance' | 'Stamps') {
+    fireEvent.click(screen.getByRole('tab', { name: to }));
+    await screen.findAllByRole('heading', { level: 3 });
+    fireEvent.click(screen.getByRole('tab', { name: 'Chequebooks' }));
+    await screen.findByRole('heading', { name: 'Main stage' });
+  }
+
+  it('keeps the target and the ticks while another tab is shown', async () => {
+    serve(() => makeChequebookView());
+    await openChequebooks();
+    typeTarget('2');
+    tick('stage-1-uploader');
+    tick('rung-720p');
+
+    await away('Balance');
+    await away('Stamps');
+    expect(screen.getByRole('textbox', { name: 'Target' })).toHaveValue('2');
+    expect(rowOf('Main stage', 'stage-1-uploader').getByRole('checkbox')).toBeChecked();
+    expect(rowOf('Main stage', 'rung-720p').getByRole('checkbox')).toBeChecked();
+    expect(summary(`To apply: 1 deposit, +0.500 xBZZ; 1 withdrawal, ${MINUS}1.250 xBZZ.`)).toBeInTheDocument();
+  });
+
+  it('reads the chequebooks again as it is shown, and neither counts nor asks for a tick left on one now unread', async () => {
+    let view = makeChequebookView();
+    const sent = makeChequebookItem();
+    const fetchMock = serve(
+      () => view,
+      [
+        { path: CHEQUEBOOKS, method: 'POST', respond: () => jsonOk({ bulkId: BULK, items: [sent] }, 202) },
+        { path: CHEQUEBOOKS, respond: () => jsonOk({ items: [sent] }) },
+      ],
+    );
+    await openChequebooks();
+    typeTarget('2');
+    tick('stage-1-uploader');
+    tick('rung-720p');
+
+    // The rung's node does not answer about its chequebook the next time the view is read.
+    view = makeChequebookView();
+    const [uploader, rung, ...rest] = view.stages[0]?.nodes ?? [];
+    if (view.stages[0] && uploader && rung)
+      view.stages[0].nodes = [uploader, { ...rung, chequebook: unreadChequebook() }, ...rest];
+    const reads = viewsOf(fetchMock);
+    await away('Balance');
+    expect(viewsOf(fetchMock)).toBe(reads + 2);
+    expect(rowOf('Main stage', 'rung-720p').queryByRole('checkbox')).not.toBeInTheDocument();
+    expect(rowOf('Main stage', 'rung-720p').getByText(CHEQUEBOOK_UNREAD_TEXT)).toBeInTheDocument();
+    expect(summary('To apply: 1 deposit, +0.500 xBZZ; 0 withdrawals.')).toBeInTheDocument();
+
+    const dialog = await openDialog('Bring 1 chequebook to 2 xBZZ?');
+    fireEvent.click(dialog.getByRole('button', { name: 'Apply' }));
+    await waitFor(() =>
+      expect(bodyOf(fetchMock, CHEQUEBOOKS)).toEqual({
+        targetPlur: xbzz('2'),
+        items: [{ nodeId: 'stage-1:bee', availablePlur: xbzz('1.5') }],
+      }),
     );
   });
 });

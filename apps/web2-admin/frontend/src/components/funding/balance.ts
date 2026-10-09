@@ -78,14 +78,19 @@ export interface NodeDraft {
 
 export type Drafts = Readonly<Record<string, NodeDraft>>;
 
+/** A node nothing is entered for: not ticked, and both amounts empty. */
+export const NO_DRAFT: NodeDraft = { ticked: false, xdai: '', xbzz: '' };
+
 /**
- * What the Balance tab opens with when a Fund link of the Stamps or the Chequebooks tab sends it a node: that node
- * ticked, with the xBZZ the link names typed in, every digit of it, and no xDAI; or with nothing typed when the link
- * names no xBZZ, as for a node that lacks only the xDAI for the gas.
+ * The Balance tab's drafts once a Fund link of the Stamps or the Chequebooks tab has entered what the node it names
+ * lacks: the node ticked, with the xBZZ the link names in its xBZZ field, every digit of it, or nothing more when the
+ * link names no xBZZ, as for a node that lacks only the xDAI for the gas. Every other field, and every other node,
+ * keeps what was typed.
  */
-export function fundDrafts(nodeId: string, xbzzPlur: string | null): Drafts {
-  const xbzz = xbzzPlur === null ? '' : formatUnits(xbzzPlur, FUNDING_KIND_DECIMALS.xbzz);
-  return { [nodeId]: { ticked: true, xdai: '', xbzz } };
+export function fundDrafts(drafts: Drafts, nodeId: string, xbzzPlur: string | null): Drafts {
+  const draft = drafts[nodeId] ?? NO_DRAFT;
+  const xbzz = xbzzPlur === null ? draft.xbzz : formatUnits(xbzzPlur, FUNDING_KIND_DECIMALS.xbzz);
+  return { ...drafts, [nodeId]: { ...draft, ticked: true, xbzz } };
 }
 
 /** The amount field that takes the focus as the Balance tab is drawn: one node's field of one token. */
@@ -95,14 +100,12 @@ export interface NodeFocus {
 }
 
 /**
- * Where the Balance tab puts the focus when a Fund link opens it: in the xBZZ field of the node the link names when
- * the link entered xBZZ for it, and in its xDAI field when it entered nothing, the gas being all the node lacks.
+ * Where the Balance tab puts the focus when a Fund link opens it, which scrolls the field into view: in the xBZZ field
+ * of the node the link names when the link entered xBZZ for it, and in its xDAI field when it entered none, the gas
+ * being all the node lacks.
  */
-export function fundFocus(drafts: Drafts | undefined): NodeFocus | null {
-  const [entry] = Object.entries(drafts ?? {});
-  if (!entry) return null;
-  const [nodeId, draft] = entry;
-  return { nodeId, kind: draft.xbzz === '' ? 'xdai' : 'xbzz' };
+export function fundFocus(nodeId: string, xbzzPlur: string | null): NodeFocus {
+  return { nodeId, kind: xbzzPlur === null ? 'xdai' : 'xbzz' };
 }
 
 /** One transfer Send would ask for: an amount of one kind, in base units, to one node. */
