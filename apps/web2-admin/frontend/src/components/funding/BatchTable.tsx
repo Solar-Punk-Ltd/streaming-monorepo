@@ -25,7 +25,7 @@ import { formatShort, formatUnits } from './amounts';
 import { NodeCard } from './NodeTable';
 import {
   tickableBatches,
-  whyNotOperable,
+  whyNoTickBox,
   type BatchGroup,
   type BatchRow,
   type NodeLedger,
@@ -247,7 +247,7 @@ function BatchRowView({
   onTick: (batchId: string) => void;
 }) {
   const { node, batch } = row;
-  const why = whyNotOperable(batch);
+  const why = whyNoTickBox(row);
   const verb = operation === 'topup' ? 'Top up' : 'Dilute';
   const line = why === null && ticked ? check?.lineOf.get(batch.batchId) : undefined;
   return (
