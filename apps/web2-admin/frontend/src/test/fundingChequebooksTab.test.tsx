@@ -336,7 +336,7 @@ describe('the moves', () => {
     expect(over.getAllByText('—')).toHaveLength(2);
   });
 
-  it('shows a node short of xBZZ for its deposit in red, and its Fund link opens the Balance tab with it entered', async () => {
+  it('shows a node short of xBZZ for its deposit in red, and Fund all opens the Balance tab with it entered', async () => {
     serve(() => makeChequebookView());
     await openChequebooks();
 
@@ -345,24 +345,27 @@ describe('the moves', () => {
     const row = rowOf('Main stage', 'stage-1-uploader');
     expect(row.getByText('deposit +5.5004 xBZZ')).toBeInTheDocument();
     expect(row.getByText('Short 0.501 xBZZ')).toHaveAttribute('title', '0.5004 xBZZ short');
+    expect(row.queryByRole('button', { name: /Fund/ })).not.toBeInTheDocument();
     expect(screen.getByText('stage-1-uploader is short of 0.501 xBZZ for its deposit.')).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Apply' })).toBeDisabled();
 
-    fireEvent.click(row.getByRole('button', { name: 'Fund stage-1-uploader' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Fund all' }));
     expect(screen.getByRole('tab', { name: 'Balance', selected: true })).toBeInTheDocument();
     const field = await screen.findByRole('textbox', { name: 'xBZZ to send to stage-1-uploader' });
     expect(field).toHaveValue('0.501');
     expect(field).toHaveFocus();
+    expect(screen.getByRole('textbox', { name: 'xDAI to send to stage-1-uploader' })).toHaveValue('');
     expect(screen.getByRole('checkbox', { name: 'Send to stage-1-uploader' })).toBeChecked();
 
     // Back on the Chequebooks tab, the target and the tick are as they were.
     fireEvent.click(screen.getByRole('tab', { name: 'Chequebooks' }));
     await screen.findByRole('heading', { name: 'Main stage' });
     expect(screen.getByRole('textbox', { name: 'Target' })).toHaveValue('7.0004');
+    expect(rowOf('Main stage', 'stage-1-uploader').getByRole('checkbox')).toBeChecked();
     expect(rowOf('Main stage', 'stage-1-uploader').getByText('Short 0.501 xBZZ')).toBeInTheDocument();
   });
 
-  it('says a node holds no xDAI for the gas, and its Fund link opens the Balance tab on its xDAI field', async () => {
+  it('says a node holds no xDAI for the gas, and Fund all enters 0.01 xDAI for it on the Balance tab', async () => {
     const view = makeChequebookView();
     const [uploader, ...rest] = view.stages[0]?.nodes ?? [];
     if (view.stages[0] && uploader) view.stages[0].nodes = [{ ...uploader, xdaiWei: '0' }, ...rest];
@@ -374,15 +377,46 @@ describe('the moves', () => {
     const row = rowOf('Main stage', 'stage-1-uploader');
     expect(row.getByText('4.500 xBZZ')).toBeInTheDocument();
     expect(row.getByText('No xDAI for gas')).toBeInTheDocument();
+    expect(row.queryByRole('button', { name: /Fund/ })).not.toBeInTheDocument();
     expect(screen.getByText('stage-1-uploader holds no xDAI to pay the gas.')).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Apply' })).toBeDisabled();
 
-    fireEvent.click(row.getByRole('button', { name: 'Fund stage-1-uploader' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Fund all' }));
     const xdai = await screen.findByRole('textbox', { name: 'xDAI to send to stage-1-uploader' });
     expect(xdai).toHaveFocus();
-    expect(xdai).toHaveValue('');
+    expect(xdai).toHaveValue('0.01');
     expect(screen.getByRole('textbox', { name: 'xBZZ to send to stage-1-uploader' })).toHaveValue('');
     expect(screen.getByRole('checkbox', { name: 'Send to stage-1-uploader' })).toBeChecked();
+  });
+
+  it('funds every ticked node that lacks something at once, and none that lacks nothing', async () => {
+    // The uploader cannot pay a deposit to 7 xBZZ; the rung over it holds no xDAI for its withdrawal.
+    const view = makeChequebookView();
+    const [uploader, rung, ...rest] = view.stages[0]?.nodes ?? [];
+    if (view.stages[0] && uploader && rung) view.stages[0].nodes = [uploader, { ...rung, xdaiWei: '0' }, ...rest];
+    serve(() => view);
+    await openChequebooks();
+
+    typeTarget('2');
+    tick('rung-1080p');
+    // At the target, nothing moves, so nothing is lacking and there is nothing to fund.
+    expect(screen.queryByRole('button', { name: 'Fund all' })).not.toBeInTheDocument();
+    tick('rung-720p');
+    expect(screen.getByRole('button', { name: 'Fund all' })).toBeInTheDocument();
+    typeTarget('7');
+    tick('stage-1-uploader');
+    expect(rowOf('Main stage', 'stage-1-uploader').getByText('Short 0.500 xBZZ')).toBeInTheDocument();
+    expect(rowOf('Main stage', 'rung-720p').getByText('No xDAI for gas')).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole('button', { name: 'Fund all' }));
+    // The first node the tab lists takes the focus.
+    const xbzzField = await screen.findByRole('textbox', { name: 'xBZZ to send to stage-1-uploader' });
+    expect(xbzzField).toHaveValue('0.5');
+    expect(xbzzField).toHaveFocus();
+    expect(screen.getByRole('textbox', { name: 'xDAI to send to rung-720p' })).toHaveValue('0.01');
+    expect(screen.getByRole('textbox', { name: 'xBZZ to send to rung-720p' })).toHaveValue('');
+    expect(screen.getByRole('checkbox', { name: 'Send to rung-720p' })).toBeChecked();
+    expect(screen.getByRole('checkbox', { name: 'Send to rung-1080p' })).not.toBeChecked();
   });
 
   it('ticks a chequebook two stages share in both places, and asks for it once', async () => {

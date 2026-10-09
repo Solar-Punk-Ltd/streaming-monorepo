@@ -1,7 +1,6 @@
 import {
   Checkbox,
   Chip,
-  Link,
   Paper,
   Stack,
   Table,
@@ -138,41 +137,22 @@ function BatchLine({ batch }: { batch: FundingBatch }) {
 
 /**
  * What the node's wallet holds after its ticked top-ups, all of them, since one wallet pays for each of its batches;
- * or, when it cannot pay for them, what it lacks in red, rounded up, with the exact amount on hover and a Fund link to
- * the Balance tab with that amount entered for the node.
+ * or, when it cannot pay for them, what it lacks in red, rounded up, with the exact amount on hover. Fund all, beside
+ * the tab's button, enters that amount for the node on the Balance tab.
  */
-function WalletAfter({
-  node,
-  ledger,
-  onFund,
-}: {
-  node: AdminFundingNode;
-  ledger: NodeLedger | undefined;
-  onFund: (nodeId: string, xbzzPlur: string) => void;
-}) {
+function WalletAfter({ ledger }: { ledger: NodeLedger | undefined }) {
   if (!ledger) return <Dash />;
   const { shortPlur, fundPlur, afterPlur } = ledger;
   if (shortPlur !== null && fundPlur !== null) {
     return (
-      <Stack spacing={0.25} sx={{ alignItems: 'flex-end' }}>
-        <Typography
-          variant="body2"
-          noWrap
-          title={`${formatUnits(shortPlur, XBZZ_DECIMALS)} xBZZ short`}
-          sx={{ ...NUMBERS, color: 'error.main' }}
-        >
-          Short {formatShort(fundPlur, XBZZ_DECIMALS)} xBZZ
-        </Typography>
-        <Link
-          component="button"
-          type="button"
-          variant="body2"
-          aria-label={`Fund ${node.label}`}
-          onClick={() => onFund(node.nodeId, fundPlur)}
-        >
-          Fund
-        </Link>
-      </Stack>
+      <Typography
+        variant="body2"
+        noWrap
+        title={`${formatUnits(shortPlur, XBZZ_DECIMALS)} xBZZ short`}
+        sx={{ ...NUMBERS, color: 'error.main' }}
+      >
+        Short {formatShort(fundPlur, XBZZ_DECIMALS)} xBZZ
+      </Typography>
     );
   }
   return afterPlur === null ? <Dash /> : <Xbzz value={afterPlur} />;
@@ -205,13 +185,11 @@ function AfterCells({
   node,
   line,
   check,
-  onFund,
 }: {
   operation: FundingStampOperationKind;
   node: AdminFundingNode;
   line: StampLine | undefined;
   check: StampCheck | null;
-  onFund: (nodeId: string, xbzzPlur: string) => void;
 }) {
   if (operation === 'dilute') {
     return (
@@ -241,9 +219,7 @@ function AfterCells({
         )}
       </TableCell>
       <TableCell align="right">{line?.costPlur ? <Xbzz value={line.costPlur} /> : <Dash />}</TableCell>
-      <TableCell align="right">
-        {line ? <WalletAfter node={node} ledger={check?.ledgerOf.get(node.nodeId)} onFund={onFund} /> : <Dash />}
-      </TableCell>
+      <TableCell align="right">{line ? <WalletAfter ledger={check?.ledgerOf.get(node.nodeId)} /> : <Dash />}</TableCell>
     </>
   );
 }
@@ -255,7 +231,6 @@ function BatchRowView({
   ticked,
   check,
   onTick,
-  onFund,
 }: {
   row: BatchRow;
   group: BatchGroup;
@@ -263,7 +238,6 @@ function BatchRowView({
   ticked: boolean;
   check: StampCheck | null;
   onTick: (batchId: string) => void;
-  onFund: (nodeId: string, xbzzPlur: string) => void;
 }) {
   const { node, batch } = row;
   const why = whyNotOperable(batch);
@@ -308,7 +282,7 @@ function BatchRowView({
         )}
       </TableCell>
       {why === null ? (
-        <AfterCells operation={operation} node={node} line={line} check={check} onFund={onFund} />
+        <AfterCells operation={operation} node={node} line={line} check={check} />
       ) : (
         <TableCell colSpan={AFTER_COLUMNS[operation].length}>
           <Typography variant="body2" sx={{ color: batch.readError ? 'error.main' : 'text.secondary' }}>
@@ -331,14 +305,12 @@ export function BatchTable({
   ticked,
   check,
   onTick,
-  onFund,
 }: {
   group: BatchGroup;
   operation: FundingStampOperationKind;
   ticked: ReadonlySet<string>;
   check: StampCheck | null;
   onTick: (batchId: string) => void;
-  onFund: (nodeId: string, xbzzPlur: string) => void;
 }) {
   const catalogue = group.nodes.catalogue;
   return (
@@ -378,7 +350,6 @@ export function BatchTable({
                   ticked={ticked.has(row.batch.batchId)}
                   check={check}
                   onTick={onTick}
-                  onFund={onFund}
                 />
               ))}
             </TableBody>

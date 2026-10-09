@@ -183,8 +183,8 @@ export interface ChequebookLedger {
   /** What it lacks for its deposit, exactly, in PLUR, or null when it lacks nothing. */
   shortPlur: string | null;
   /**
-   * What it lacks rounded up to three decimals of xBZZ, in PLUR, or null: the amount the row says, and the one its Fund
-   * link hands the Balance tab, so a node funded with it is not short by a rounding.
+   * What it lacks rounded up to three decimals of xBZZ, in PLUR, or null: the amount the row says, and the one Fund
+   * all enters on the Balance tab, so a node funded with it is not short by a rounding.
    */
   fundPlur: string | null;
   /** Whether it holds no xDAI to pay the gas, which a deposit and a withdrawal both cost. */
@@ -205,7 +205,10 @@ export interface ChequebookCheck {
   lines: ChequebookLine[];
   /** The line of each ticked chequebook, by its node's id. */
   lineOf: ReadonlyMap<string, ChequebookLine>;
-  /** What each node's wallet holds after its move, by node id: only the nodes whose chequebook moves. */
+  /**
+   * What each node's wallet holds after its move, by node id, in the order the page lists them: only the nodes whose
+   * chequebook moves, the ones Fund all may fund.
+   */
   ledgerOf: ReadonlyMap<string, ChequebookLedger>;
   deposits: ChequebookTotal;
   withdrawals: ChequebookTotal;

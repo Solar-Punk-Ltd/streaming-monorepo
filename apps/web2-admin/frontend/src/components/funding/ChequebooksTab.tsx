@@ -3,6 +3,7 @@ import { Alert, Box, Button, InputAdornment, Paper, Stack, TextField, Typography
 import { XBZZ_DECIMALS, type FundingChequebookItem, type FundingView } from '@streaming-monorepo/web2-admin-common';
 
 import { acceptsAmountTyping, formatShort, formatUnits } from './amounts';
+import { fundNeeds, type FundNeed } from './balance';
 import { followBulk, type FollowedBulk } from './BulkProgress';
 import { ChequebookDialog } from './ChequebookDialog';
 import { ChequebookProgress } from './ChequebookProgress';
@@ -109,10 +110,24 @@ function Summary({ check }: { check: ChequebookCheck }) {
   );
 }
 
-/** What Apply would do, why it cannot ask for it yet, and Apply. */
-function ChequebookBar({ check, blocked, onGo }: { check: ChequebookCheck; blocked: string | null; onGo: () => void }) {
+/**
+ * What Apply would do, why it cannot ask for it yet, Apply, and beside it Fund all while a ticked chequebook's node is
+ * short of xBZZ for its deposit or has no xDAI for the gas: the nodes the bar names so.
+ */
+function ChequebookBar({
+  check,
+  blocked,
+  onGo,
+  onFund,
+}: {
+  check: ChequebookCheck;
+  blocked: string | null;
+  onGo: () => void;
+  onFund: (needs: ReadonlyMap<string, FundNeed>) => void;
+}) {
   // Said once each: two nodes that share a label would otherwise give the same sentence twice.
   const problems = [...new Set(blocked ? [...check.problems, blocked] : check.problems)];
+  const needs = fundNeeds(check.ledgerOf);
   return (
     <Paper variant="outlined" sx={{ p: 2 }}>
       <Stack spacing={1}>
@@ -124,10 +139,15 @@ function ChequebookBar({ check, blocked, onGo }: { check: ChequebookCheck; block
             {problem}
           </Typography>
         ))}
-        <Stack direction="row">
+        <Stack direction="row" spacing={1}>
           <Button variant="contained" disabled={problems.length > 0} onClick={onGo}>
             Apply
           </Button>
+          {needs.size > 0 ? (
+            <Button variant="outlined" onClick={() => onFund(needs)}>
+              Fund all
+            </Button>
+          ) : null}
         </Stack>
       </Stack>
     </Paper>
@@ -140,9 +160,10 @@ function ChequebookBar({ check, blocked, onGo }: { check: ChequebookCheck; block
  * target, tick chequebooks, and each ticked one shows its move: a deposit of the difference from its node's wallet when
  * it is under the target, a withdrawal of the difference into its node's wallet when it is over it, and no change at
  * it. Apply opens a confirm dialog, which reads the view again as it opens and asks for what that reading shows; each
- * operation is then followed until it comes to its end, and the view is read again once they have settled. A node
- * short of xBZZ for its deposit, or of xDAI for the gas, has a Fund link to the Balance tab. A gateway's chequebook is
- * shown read-only. A new chequebook bulk waits while one is on its way, the one made here or the one the view says is
+ * operation is then followed until it comes to its end, and the view is read again once they have settled. While a
+ * ticked chequebook's node is short of xBZZ for its deposit, or of xDAI for the gas, which its row says in red, Fund
+ * all beside Apply opens the Balance tab with what each such node lacks entered. A gateway's chequebook is shown
+ * read-only. A new chequebook bulk waits while one is on its way, the one made here or the one the view says is
  * open, which the page follows after a reload too.
  *
  * The target and the ticks, `selection`, are the Funding page's, so they stay while another tab is shown; the
@@ -156,7 +177,8 @@ export function ChequebooksTab({
 }: {
   selection: ChequebookSelection;
   onSelection: Dispatch<SetStateAction<ChequebookSelection>>;
-  onFund: (nodeId: string, xbzzPlur: string | null) => void;
+  /** Fund all: opens the Balance tab with what each of these nodes lacks entered. */
+  onFund: (needs: ReadonlyMap<string, FundNeed>) => void;
 }) {
   const { target, ticked } = selection;
   const [confirming, setConfirming] = useState(false);
@@ -221,20 +243,14 @@ export function ChequebooksTab({
             <Alert severity="info">{NO_CHEQUEBOOKS_REPORTED}</Alert>
           ) : null}
           {groups.map((group) => (
-            <ChequebookTable
-              key={group.key}
-              group={group}
-              ticked={ticked}
-              check={check}
-              onTick={tick}
-              onFund={onFund}
-            />
+            <ChequebookTable key={group.key} group={group} ticked={ticked} check={check} onTick={tick} />
           ))}
           {check ? (
             <ChequebookBar
               check={check}
               blocked={followed && !followed.settled ? WAIT_FOR_CHEQUEBOOKS : null}
               onGo={openConfirm}
+              onFund={onFund}
             />
           ) : null}
         </>

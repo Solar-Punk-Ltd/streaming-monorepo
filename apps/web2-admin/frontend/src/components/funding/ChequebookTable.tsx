@@ -1,6 +1,5 @@
 import {
   Checkbox,
-  Link,
   Paper,
   Stack,
   Table,
@@ -127,24 +126,14 @@ function MoveLine({ move }: { move: ChequebookMove | null }) {
 
 /**
  * What the node's wallet holds after its chequebook's move, to three decimals with the exact amount on hover; or, when
- * it cannot pay for its deposit, what it lacks in red, rounded up; and no xDAI for the gas in red. Either comes with a
- * Fund link to the Balance tab, with what the node lacks in xBZZ entered for it, or nothing entered when it lacks only
- * the xDAI.
+ * it cannot pay for its deposit, what it lacks in red, rounded up; and no xDAI for the gas in red. Fund all, beside
+ * Apply, enters what the node lacks for it on the Balance tab.
  */
-function WalletAfter({
-  node,
-  ledger,
-  onFund,
-}: {
-  node: AdminFundingNode;
-  ledger: ChequebookLedger | undefined;
-  onFund: (nodeId: string, xbzzPlur: string | null) => void;
-}) {
+function WalletAfter({ ledger }: { ledger: ChequebookLedger | undefined }) {
   if (!ledger) return <Dash />;
   const { afterPlur, shortPlur, fundPlur, noGas } = ledger;
-  const short = shortPlur !== null && fundPlur !== null;
   let xbzz = <Dash />;
-  if (short) {
+  if (shortPlur !== null && fundPlur !== null) {
     xbzz = (
       <Typography
         variant="body2"
@@ -166,17 +155,6 @@ function WalletAfter({
           No xDAI for gas
         </Typography>
       ) : null}
-      {short || noGas ? (
-        <Link
-          component="button"
-          type="button"
-          variant="body2"
-          aria-label={`Fund ${node.label}`}
-          onClick={() => onFund(node.nodeId, short ? fundPlur : null)}
-        >
-          Fund
-        </Link>
-      ) : null}
     </Stack>
   );
 }
@@ -187,14 +165,12 @@ function ChequebookRow({
   ticked,
   check,
   onTick,
-  onFund,
 }: {
   node: AdminFundingNode;
   group: ChequebookGroup;
   ticked: boolean;
   check: ChequebookCheck | null;
   onTick: (nodeId: string) => void;
-  onFund: (nodeId: string, xbzzPlur: string | null) => void;
 }) {
   const why = whyNotMovable(node);
   const line = why === null && ticked ? check?.lineOf.get(node.nodeId) : undefined;
@@ -225,11 +201,7 @@ function ChequebookRow({
         <>
           <TableCell align="right">{line ? <MoveLine move={line.move} /> : <Dash />}</TableCell>
           <TableCell align="right">
-            {line?.move ? (
-              <WalletAfter node={node} ledger={check?.ledgerOf.get(node.nodeId)} onFund={onFund} />
-            ) : (
-              <Dash />
-            )}
+            {line?.move ? <WalletAfter ledger={check?.ledgerOf.get(node.nodeId)} /> : <Dash />}
           </TableCell>
         </>
       ) : (
@@ -254,13 +226,11 @@ export function ChequebookTable({
   ticked,
   check,
   onTick,
-  onFund,
 }: {
   group: ChequebookGroup;
   ticked: ReadonlySet<string>;
   check: ChequebookCheck | null;
   onTick: (nodeId: string) => void;
-  onFund: (nodeId: string, xbzzPlur: string | null) => void;
 }) {
   return (
     <Stack spacing={1}>
@@ -298,7 +268,6 @@ export function ChequebookTable({
                   ticked={ticked.has(node.nodeId)}
                   check={check}
                   onTick={onTick}
-                  onFund={onFund}
                 />
               ))}
             </TableBody>

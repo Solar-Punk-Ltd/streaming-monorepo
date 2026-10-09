@@ -244,7 +244,7 @@ describe('topping up', () => {
     expect(screen.queryByText(DAYS_PROBLEM)).not.toBeInTheDocument();
   });
 
-  it('shows a node short of xBZZ in red, and its Fund link opens the Balance tab with what it lacks entered', async () => {
+  it('shows a node short of xBZZ in red, with no link in its row, and Fund all beside the button', async () => {
     serve(() => makeStampView());
     await openStamps();
 
@@ -253,31 +253,86 @@ describe('topping up', () => {
     expect(row.getByText('42 days')).toBeInTheDocument();
     expect(row.getByText('5.218 xBZZ')).toHaveAttribute('title', '5.21838526464 xBZZ');
     expect(row.getByText('Short 0.219 xBZZ')).toHaveAttribute('title', '0.21838526464 xBZZ short');
+    expect(row.queryByRole('button', { name: /Fund/ })).not.toBeInTheDocument();
     expect(screen.getByText('stage-1-uploader is short of 0.219 xBZZ for its top-ups.')).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Top up 1 batch' })).toBeDisabled();
+    expect(screen.getByRole('button', { name: 'Fund all' })).toBeEnabled();
 
-    fireEvent.click(row.getByRole('button', { name: 'Fund stage-1-uploader' }));
+    // Gone once nothing ticked lacks anything.
+    tick('stage-1-uploader');
+    expect(screen.queryByRole('button', { name: 'Fund all' })).not.toBeInTheDocument();
+    tick('catalogue-node');
+    expect(screen.queryByRole('button', { name: 'Fund all' })).not.toBeInTheDocument();
+  });
+
+  it('goes from Fund all to the Balance tab with what the node lacks entered, and back to the selection as it was', async () => {
+    serve(() => makeStampView());
+    await openStamps();
+    typeDays('45');
+    tick('stage-1-uploader');
+    tick('catalogue-node');
+    const short = 'Short 2.828 xBZZ';
+    expect(rowOf('Batches of Main stage', 'stage-1-uploader').getByText(short)).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole('button', { name: 'Fund all' }));
     expect(screen.getByRole('tab', { name: 'Balance', selected: true })).toBeInTheDocument();
     const field = await screen.findByRole('textbox', { name: 'xBZZ to send to stage-1-uploader' });
-    expect(field).toHaveValue('0.219');
+    expect(field).toHaveValue('2.828');
     expect(field).toHaveFocus();
     expect(screen.getByRole('checkbox', { name: 'Send to stage-1-uploader' })).toBeChecked();
-    expect(screen.getByText(/0\.219 of 12\.5 xBZZ/)).toBeInTheDocument();
+    expect(screen.getByRole('textbox', { name: 'xDAI to send to stage-1-uploader' })).toHaveValue('');
+    // The catalogue node lacks nothing, so Fund all leaves it as it was.
+    expect(screen.getByRole('checkbox', { name: 'Send to catalogue-node' })).not.toBeChecked();
+    expect(screen.getByText(/2\.828 of 12\.5 xBZZ/)).toBeInTheDocument();
 
-    // Back on the Stamps tab, the batch is still ticked, as short as before, since nothing was sent.
+    // Back on the Stamps tab, the days and the ticks are as they were, the node as short, since nothing was sent.
     fireEvent.click(screen.getByRole('tab', { name: 'Stamps' }));
     await screen.findByRole('heading', { name: 'Catalogue batch' });
+    expect(screen.getByRole('textbox', { name: 'Days' })).toHaveValue('45');
     expect(screen.getByRole('checkbox', { name: 'Top up the batch of stage-1-uploader' })).toBeChecked();
-    expect(rowOf('Batches of Main stage', 'stage-1-uploader').getByText('Short 0.219 xBZZ')).toBeInTheDocument();
+    expect(screen.getByRole('checkbox', { name: 'Top up the batch of catalogue-node' })).toBeChecked();
+    expect(rowOf('Batches of Main stage', 'stage-1-uploader').getByText(short)).toBeInTheDocument();
 
-    // A Balance tab picked by hand keeps what the link entered, and puts the focus nowhere.
+    // A Balance tab picked by hand keeps what Fund all entered, and puts the focus nowhere.
     fireEvent.click(screen.getByRole('tab', { name: 'Balance' }));
     const kept = await screen.findByRole('textbox', { name: 'xBZZ to send to stage-1-uploader' });
-    expect(kept).toHaveValue('0.219');
+    expect(kept).toHaveValue('2.828');
     expect(kept).not.toHaveFocus();
   });
 
-  it('holds a node with no xDAI for the gas, and one whose price of postage is not known', async () => {
+  it('sets only what Fund all enters on the Balance tab, and keeps every other field and node as typed', async () => {
+    const view = makeStampView();
+    const [uploader, ...rest] = view.stages[0]?.nodes ?? [];
+    if (view.stages[0] && uploader) view.stages[0].nodes = [{ ...uploader, xdaiWei: '0' }, ...rest];
+    serve(() => view);
+    renderWithProviders(<FundingPage />);
+    await screen.findByRole('heading', { name: 'Brand wallet' });
+    fireEvent.change(screen.getByRole('textbox', { name: 'xDAI to send to stage-1-uploader' }), {
+      target: { value: '0.5' },
+    });
+    fireEvent.change(screen.getByRole('textbox', { name: 'xBZZ to send to stage-1-uploader' }), {
+      target: { value: '1' },
+    });
+    fireEvent.change(screen.getByRole('textbox', { name: 'xBZZ to send to catalogue-node' }), {
+      target: { value: '2' },
+    });
+
+    fireEvent.click(screen.getByRole('tab', { name: 'Stamps' }));
+    await screen.findByRole('heading', { name: 'Catalogue batch' });
+    tick('stage-1-uploader');
+    expect(screen.getByText('stage-1-uploader holds no xDAI to pay the gas.')).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: 'Fund all' }));
+
+    // Short of 0.219 xBZZ and with no xDAI: both its fields are set, and the catalogue node's amount stays.
+    const xbzzField = await screen.findByRole('textbox', { name: 'xBZZ to send to stage-1-uploader' });
+    expect(xbzzField).toHaveValue('0.219');
+    expect(xbzzField).toHaveFocus();
+    expect(screen.getByRole('textbox', { name: 'xDAI to send to stage-1-uploader' })).toHaveValue('0.01');
+    expect(screen.getByRole('textbox', { name: 'xBZZ to send to catalogue-node' })).toHaveValue('2');
+    expect(screen.getByRole('checkbox', { name: 'Send to catalogue-node' })).toBeChecked();
+  });
+
+  it('holds a node with no xDAI for the gas, and one whose price of postage is not known, with Fund all for the gas', async () => {
     const view = makeStampView({ postage: null });
     if (view.catalogue) view.catalogue = { ...view.catalogue, xdaiWei: '0' };
     serve(() => view);
@@ -288,6 +343,14 @@ describe('topping up', () => {
     expect(screen.getByText(NO_PRICE_PROBLEM)).toBeInTheDocument();
     expect(screen.getByText('catalogue-node holds no xDAI to pay the gas.')).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Top up 1 batch' })).toBeDisabled();
+
+    // Fund all enters 0.01 xDAI for the gas, and no xBZZ, which no price says the node lacks.
+    fireEvent.click(screen.getByRole('button', { name: 'Fund all' }));
+    const xdai = await screen.findByRole('textbox', { name: 'xDAI to send to catalogue-node' });
+    expect(xdai).toHaveValue('0.01');
+    expect(xdai).toHaveFocus();
+    expect(screen.getByRole('textbox', { name: 'xBZZ to send to catalogue-node' })).toHaveValue('');
+    expect(screen.getByRole('checkbox', { name: 'Send to catalogue-node' })).toBeChecked();
   });
 
   it('ticks a batch two stages share in both places, and asks for it once', async () => {
@@ -371,6 +434,35 @@ describe('diluting', () => {
       screen.getByText('The batch 0xbbbbbb…bbbbbb of stage-1-uploader: It would leave the batch under 7 days.'),
     ).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Dilute 2 batches' })).toBeDisabled();
+  });
+
+  it('offers Fund all for a node with no xDAI for the gas of its dilution, and not for one short of xBZZ', async () => {
+    const view = makeStampView();
+    if (view.catalogue) view.catalogue = { ...view.catalogue, xbzzPlur: '0' };
+    const [uploader, ...rest] = view.stages[0]?.nodes ?? [];
+    if (view.stages[0] && uploader) view.stages[0].nodes = [{ ...uploader, xdaiWei: '0' }, ...rest];
+    serve(() => view);
+    await openStamps();
+    fireEvent.click(screen.getByRole('button', { name: 'Dilute' }));
+
+    // A dilution costs no xBZZ, so a node that holds none may dilute, and is not funded.
+    tick('catalogue-node', 'Dilute');
+    expect(screen.getByRole('button', { name: 'Dilute 1 batch' })).toBeEnabled();
+    expect(screen.queryByRole('button', { name: 'Fund all' })).not.toBeInTheDocument();
+
+    tick('stage-1-uploader', 'Dilute');
+    expect(screen.getByText('stage-1-uploader holds no xDAI to pay the gas.')).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: 'Fund all' }));
+    const xdai = await screen.findByRole('textbox', { name: 'xDAI to send to stage-1-uploader' });
+    expect(xdai).toHaveValue('0.01');
+    expect(xdai).toHaveFocus();
+    expect(screen.getByRole('textbox', { name: 'xBZZ to send to stage-1-uploader' })).toHaveValue('');
+    expect(screen.getByRole('checkbox', { name: 'Send to catalogue-node' })).not.toBeChecked();
+
+    // Back on the Stamps tab, the dilution and its ticks are as they were.
+    fireEvent.click(screen.getByRole('tab', { name: 'Stamps' }));
+    expect(await screen.findByRole('checkbox', { name: 'Dilute the batch of stage-1-uploader' })).toBeChecked();
+    expect(screen.getByRole('checkbox', { name: 'Dilute the batch of catalogue-node' })).toBeChecked();
   });
 
   it('asks for dilutions in a dialog that says they cost only gas, with no password', async () => {

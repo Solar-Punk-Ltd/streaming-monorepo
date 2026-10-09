@@ -208,6 +208,7 @@ describe('what a top-up comes to', () => {
       afterPlur: (FIVE_XBZZ - BigInt(THIRTY_DAYS_DEPTH_20)).toString(),
       shortPlur: null,
       fundPlur: null,
+      noGas: false,
     });
   });
 
@@ -226,6 +227,7 @@ describe('what a top-up comes to', () => {
       afterPlur: null,
       shortPlur: '2183852646400000',
       fundPlur: '2190000000000000',
+      noGas: false,
     });
     expect(check.problems).toEqual(['stage-1-uploader is short of 0.219 xBZZ for its top-ups.']);
   });
@@ -242,6 +244,7 @@ describe('what a top-up comes to', () => {
       afterPlur: (FIVE_XBZZ - cost).toString(),
       shortPlur: null,
       fundPlur: null,
+      noGas: false,
     });
     expect(check.ledgerOf.size).toBe(1);
   });
@@ -278,11 +281,17 @@ describe('what a top-up comes to', () => {
     expect(noDays.lines[0]).toMatchObject({ request: null, costPlur: null, ttlAfterSeconds: null });
     expect(noDays.totalCostPlur).toBeNull();
 
-    // A top-up names the price it was quoted at, so with none there is nothing to ask for.
+    // A top-up names the price it was quoted at, so with none there is nothing to ask for, nor a shortfall to know.
     const noPrice = checkStamps(makeStampView({ postage: null }), selection([BATCH.catalogue]));
     expect(noPrice.problems).toEqual([NO_PRICE_PROBLEM]);
     expect(noPrice.lines[0]).toMatchObject({ request: null, costPlur: null, ttlAfterSeconds: null });
-    expect(noPrice.ledgerOf.size).toBe(0);
+    expect(noPrice.ledgerOf.get('catalogue:bee')).toEqual({
+      costPlur: null,
+      afterPlur: null,
+      shortPlur: null,
+      fundPlur: null,
+      noGas: false,
+    });
     expect(noPrice.totalCostPlur).toBeNull();
   });
 
@@ -304,7 +313,34 @@ describe('what a top-up comes to', () => {
       'catalogue-node holds no xDAI to pay the gas.',
       'The wallet of pool-360p could not be read.',
     ]);
+    expect(check.ledgerOf.get('catalogue:bee')).toMatchObject({ shortPlur: null, fundPlur: null, noGas: true });
     expect(check.ledgerOf.has('stage-2:360p')).toBe(false);
+  });
+
+  it('knows a node holds no xDAI for the gas while its top-ups cannot be priced', () => {
+    const view = makeStampView({ postage: null });
+    if (view.catalogue) view.catalogue = { ...view.catalogue, xdaiWei: '0' };
+    const check = checkStamps(view, selection([BATCH.catalogue]));
+    expect(check.ledgerOf.get('catalogue:bee')).toEqual({
+      costPlur: null,
+      afterPlur: null,
+      shortPlur: null,
+      fundPlur: null,
+      noGas: true,
+    });
+    expect(check.problems).toEqual([NO_PRICE_PROBLEM, 'catalogue-node holds no xDAI to pay the gas.']);
+  });
+
+  it('flags a node both short of xBZZ and with no xDAI, in its one ledger', () => {
+    const view = makeStampView();
+    const [uploader, ...rest] = view.stages[0]?.nodes ?? [];
+    if (view.stages[0] && uploader) view.stages[0].nodes = [{ ...uploader, xdaiWei: '0' }, ...rest];
+    const check = checkStamps(view, selection([BATCH.stage]));
+    expect(check.ledgerOf.get('stage-1:bee')).toMatchObject({ fundPlur: '2190000000000000', noGas: true });
+    expect(check.problems).toEqual([
+      'stage-1-uploader is short of 0.219 xBZZ for its top-ups.',
+      'stage-1-uploader holds no xDAI to pay the gas.',
+    ]);
   });
 });
 
@@ -324,7 +360,14 @@ describe('what a dilution comes to', () => {
     });
     expect(dilute([BATCH.catalogue], 2).lines[0]).toMatchObject({ newDepth: 22, ttlAfterSeconds: 10 * DAY });
     expect(one.totalCostPlur).toBeNull();
-    expect(one.ledgerOf.size).toBe(0);
+    // A dilution costs no xBZZ: its node's ledger has no amounts, only whether it can pay the gas.
+    expect(one.ledgerOf.get('catalogue:bee')).toEqual({
+      costPlur: null,
+      afterPlur: null,
+      shortPlur: null,
+      fundPlur: null,
+      noGas: false,
+    });
   });
 
   it('refuses one that would leave its batch under 7 days, in the quote’s own words', () => {
@@ -357,8 +400,13 @@ describe('what a dilution comes to', () => {
     const poor = makeStampView();
     if (poor.catalogue) poor.catalogue = { ...poor.catalogue, xbzzPlur: '0' };
     expect(dilute([BATCH.catalogue], 1, poor).problems).toEqual([]);
+    expect(dilute([BATCH.catalogue], 1, poor).ledgerOf.get('catalogue:bee')).toMatchObject({
+      fundPlur: null,
+      noGas: false,
+    });
     if (poor.catalogue) poor.catalogue = { ...poor.catalogue, xdaiWei: '0' };
     expect(dilute([BATCH.catalogue], 1, poor).problems).toEqual(['catalogue-node holds no xDAI to pay the gas.']);
+    expect(dilute([BATCH.catalogue], 1, poor).ledgerOf.get('catalogue:bee')).toMatchObject({ noGas: true });
   });
 
   it('asks for nothing with nothing ticked', () => {

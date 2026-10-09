@@ -82,15 +82,44 @@ export type Drafts = Readonly<Record<string, NodeDraft>>;
 export const NO_DRAFT: NodeDraft = { ticked: false, xdai: '', xbzz: '' };
 
 /**
- * The Balance tab's drafts once a Fund link of the Stamps or the Chequebooks tab has entered what the node it names
- * lacks: the node ticked, with the xBZZ the link names in its xBZZ field, every digit of it, or nothing more when the
- * link names no xBZZ, as for a node that lacks only the xDAI for the gas. Every other field, and every other node,
- * keeps what was typed.
+ * The xDAI Fund all enters for a node that holds none, as typed: 0.01 xDAI, for the gas of its operations. The tabs
+ * count a node as having no xDAI only when it holds 0.
  */
-export function fundDrafts(drafts: Drafts, nodeId: string, xbzzPlur: string | null): Drafts {
-  const draft = drafts[nodeId] ?? NO_DRAFT;
-  const xbzz = xbzzPlur === null ? draft.xbzz : formatUnits(xbzzPlur, FUNDING_KIND_DECIMALS.xbzz);
-  return { ...drafts, [nodeId]: { ...draft, ticked: true, xbzz } };
+export const GAS_XDAI = '0.01';
+
+/**
+ * What a node lacks for what is ticked on the Stamps or the Chequebooks tab, as that tab's ledger of it says: the xBZZ
+ * it lacks, rounded up to three decimals, in PLUR, or null when it lacks none, and whether it holds no xDAI for the gas.
+ */
+export interface FundNeed {
+  readonly fundPlur: string | null;
+  readonly noGas: boolean;
+}
+
+/**
+ * The nodes Fund all funds, by id, in the order the ledgers list them: each one short of xBZZ or with no xDAI, the
+ * nodes the tab's bar names. Fund all stands beside the tab's button while there is any.
+ */
+export function fundNeeds(ledgers: ReadonlyMap<string, FundNeed>): ReadonlyMap<string, FundNeed> {
+  return new Map([...ledgers].filter(([, need]) => need.fundPlur !== null || need.noGas));
+}
+
+/**
+ * The Balance tab's drafts once Fund all has entered what each node needs: the node ticked, the xBZZ it lacks in its
+ * xBZZ field, every digit of it, and {@link GAS_XDAI} in its xDAI field when it holds no xDAI. Only those fields are
+ * set: every other field, and every other node, keeps what was typed.
+ */
+export function fundAll(drafts: Drafts, needs: ReadonlyMap<string, FundNeed>): Drafts {
+  const next: Record<string, NodeDraft> = { ...drafts };
+  for (const [nodeId, need] of needs) {
+    const draft = drafts[nodeId] ?? NO_DRAFT;
+    next[nodeId] = {
+      ticked: true,
+      xdai: need.noGas ? GAS_XDAI : draft.xdai,
+      xbzz: need.fundPlur === null ? draft.xbzz : formatUnits(need.fundPlur, FUNDING_KIND_DECIMALS.xbzz),
+    };
+  }
+  return next;
 }
 
 /** The amount field that takes the focus as the Balance tab is drawn: one node's field of one token. */
@@ -100,12 +129,14 @@ export interface NodeFocus {
 }
 
 /**
- * Where the Balance tab puts the focus when a Fund link opens it, which scrolls the field into view: in the xBZZ field
- * of the node the link names when the link entered xBZZ for it, and in its xDAI field when it entered none, the gas
- * being all the node lacks.
+ * Where the Balance tab puts the focus when Fund all opens it, which scrolls the field into view: in the first node's
+ * xBZZ field when Fund all entered xBZZ for it, and in its xDAI field when the gas is all it lacks. None without a node.
  */
-export function fundFocus(nodeId: string, xbzzPlur: string | null): NodeFocus {
-  return { nodeId, kind: xbzzPlur === null ? 'xdai' : 'xbzz' };
+export function fundFocus(needs: ReadonlyMap<string, FundNeed>): NodeFocus | null {
+  const [entry] = needs;
+  if (!entry) return null;
+  const [nodeId, need] = entry;
+  return { nodeId, kind: need.fundPlur === null ? 'xdai' : 'xbzz' };
 }
 
 /** One transfer Send would ask for: an amount of one kind, in base units, to one node. */
