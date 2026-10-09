@@ -21,9 +21,11 @@ import {
   parseSavedGeometry,
   type Rect,
   type ResizeEdge,
+  reclampRect,
   rectAtButton,
   resizeRect,
   saveGeometry,
+  usableBounds,
 } from '../src/components/SwarmHlsPlayer/overlays/qoe/qoeGeometry';
 
 const BOUNDS: Bounds = { width: 1000, height: 800 };
@@ -328,6 +330,56 @@ describe('the button while the panel is hidden', () => {
   it('reopened in a player that shrank, shrinks the panel to fit, never below the minimum', () => {
     const panel = panelAtButton({ x: 0, y: 0 }, { width: 2000, height: 2000 }, SMALL, MIN);
     assert.deepEqual(panel, { x: 0, y: BUTTON_BAND, width: SMALL.width, height: SMALL.height - BUTTON_BAND });
+  });
+});
+
+/**
+ * A player that is hidden, display:none or not laid out yet measures 0 on a side. Clamping to that
+ * would crush the geometry, and the next drag would save it, so such a reading is ignored.
+ */
+describe('usableBounds', () => {
+  it('accepts a player with a positive, finite width and height', () => {
+    assert.equal(usableBounds({ width: 640, height: 360 }), true);
+    assert.equal(usableBounds({ width: 1, height: 1 }), true);
+  });
+
+  it('refuses a zero, negative or not finite side, and no reading at all', () => {
+    for (const bounds of [
+      { width: 0, height: 360 },
+      { width: 640, height: 0 },
+      { width: 0, height: 0 },
+      { width: -640, height: 360 },
+      { width: 640, height: -1 },
+      { width: Number.NaN, height: 360 },
+      { width: 640, height: Number.NaN },
+      { width: Infinity, height: 360 },
+    ]) {
+      assert.equal(usableBounds(bounds), false, JSON.stringify(bounds));
+    }
+    assert.equal(usableBounds(null), false);
+  });
+});
+
+describe('reclampRect, when the player resizes', () => {
+  it('leaves the rect untouched for a player measuring 0 on a side', () => {
+    for (const visible of [true, false]) {
+      assert.equal(reclampRect(START, { width: 0, height: 0 }, visible), START);
+      assert.equal(reclampRect(START, { width: 1000, height: 0 }, visible), START);
+      assert.equal(reclampRect(START, { width: Number.NaN, height: 800 }, visible), START);
+    }
+  });
+
+  it('clamps the panel and its button together while the panel is shown', () => {
+    const small = { width: 400, height: 300 };
+    assert.deepEqual(reclampRect(START, small, true), clampRect(START, small, MIN));
+  });
+
+  it('clamps the button alone while the panel is hidden', () => {
+    const small = { width: 400, height: 300 };
+    const r = reclampRect(START, small, false);
+    assert.deepEqual(r, moveHiddenRect(START, 0, 0, small));
+    assert.equal(r.width, START.width);
+    assert.equal(r.height, START.height);
   });
 });
 
