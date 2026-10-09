@@ -10,8 +10,8 @@
  * only an item the manager holds nothing under that is `queued`, or `submitted` with no hash, the same fields under
  * the same request id, and never one with a hash or an outcome; one chequebook bulk at a time, apart from sends and
  * stamp bulks; a read that shares the relays under way; the view's open chequebook bulk; the settled and watched
- * flags; the mined step, recorded from a status read on a submitted item alone, an answer with none read as not mined;
- * and the audit rows of a request and of each outcome.
+ * flags; the mined step, recorded from a status read on a submitted item alone and kept while it stays submitted, an
+ * answer with none read as not mined; and the audit rows of a request and of each outcome.
  */
 import assert from 'node:assert/strict';
 import { beforeEach, describe, it } from 'node:test';
@@ -948,10 +948,11 @@ describe('refreshing a chequebook bulk', () => {
 
 /**
  * The manager confirms a chequebook move only once its block is final, minutes after it is mined, and says meanwhile
- * that the move is mined. A refresh records that on a submitted item, which carries it to the page's Mined step.
+ * that the move is mined. A refresh records that on a submitted item, which carries it to the page's Mined step, and
+ * keeps it while the item stays submitted, so the page never steps back from Mined to Sent.
  */
 describe('the mined step of a chequebook item', () => {
-  it('records a submitted move mined while its block is not final, though nothing else of it moved, then confirmed', async () => {
+  it('records a submitted move mined while its block is not final, though nothing else of it moved, and not once confirmed', async () => {
     const sent = await requested(toTarget(STAGE_NODE));
     const requestId = sent.items[0]!.requestId;
     assert.deepEqual(
@@ -985,17 +986,69 @@ describe('the mined step of a chequebook item', () => {
   it('reads an answer with no mined, as a manager older than it gives, as not mined', async () => {
     const sent = await requested(toTarget(STAGE_NODE));
     const requestId = sent.items[0]!.requestId;
-    manager.chequebookStatusAnswers.set(requestId, { mined: true });
-    assert.equal((await funding.chequebookBulk(sent.bulkId)).items[0]?.mined, true);
+    const reads = manager.chequebookCalls.status;
 
     // The fake manager's own answer carries no mined at all.
-    manager.chequebookStatusAnswers.delete(requestId);
     const older = await funding.chequebookBulk(sent.bulkId);
 
+    assert.equal(manager.chequebookCalls.status, reads + 1, 'the refresh read where the move stands');
     assert.deepEqual(
       older.items.map((one) => [one.state, one.txHash, one.mined]),
       [['submitted', chequebookTxHash(requestId), false]],
     );
+  });
+
+  it('keeps a move mined while it is submitted, though a later read says it is not, as after a failed look at its receipt', async () => {
+    const sent = await requested(toTarget(STAGE_NODE));
+    const requestId = sent.items[0]!.requestId;
+    manager.chequebookStatusAnswers.set(requestId, { mined: true });
+    assert.equal((await funding.chequebookBulk(sent.bulkId)).items[0]?.mined, true);
+
+    // The manager's next look at the receipt could not be made: it answers the move submitted, and not mined.
+    manager.chequebookStatusAnswers.set(requestId, { mined: false });
+    const still = await funding.chequebookBulk(sent.bulkId);
+
+    assert.deepEqual(
+      still.items.map((one) => [one.state, one.txHash, one.mined, one.settled]),
+      [['submitted', chequebookTxHash(requestId), true, false]],
+    );
+    assert.equal(journal.get(requestId)?.mined, true);
+    // Nor does an answer that does not say, from a manager older than the field, clear it.
+    manager.chequebookStatusAnswers.delete(requestId);
+    assert.equal((await funding.chequebookBulk(sent.bulkId)).items[0]?.mined, true);
+  });
+
+  it('is no longer mined once the move leaves submitted: not known, or failed', async () => {
+    const sent = await requested(toTarget(STAGE_NODE, RUNG_NODE));
+    const [first, second] = sent.items;
+    manager.chequebookStatusAnswers.set(first!.requestId, { mined: true });
+    manager.chequebookStatusAnswers.set(second!.requestId, { mined: true });
+    assert.deepEqual(
+      (await funding.chequebookBulk(sent.bulkId)).items.map((one) => one.mined),
+      [true, true],
+    );
+
+    manager.chequebookStatusAnswers.set(first!.requestId, {
+      state: 'unknown',
+      mined: false,
+      error:
+        'The manager could not tell whether the node made the move; its chequebook history in the manager can settle it.',
+    });
+    manager.chequebookStatusAnswers.set(second!.requestId, {
+      state: 'failed',
+      mined: false,
+      error: 'The chain reverted the move; nothing moved.',
+    });
+    const left = await funding.chequebookBulk(sent.bulkId);
+
+    assert.deepEqual(
+      left.items.map((one) => [one.state, one.mined]),
+      [
+        ['unknown', false],
+        ['failed', false],
+      ],
+    );
+    assert.deepEqual([journal.get(first!.requestId)?.mined, journal.get(second!.requestId)?.mined], [false, false]);
   });
 
   it('never records a move mined that is not submitted: Mined is a step between Sent and Confirmed', async () => {

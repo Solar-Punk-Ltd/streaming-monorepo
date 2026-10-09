@@ -72,8 +72,9 @@ export interface FundingChequebookRow {
   txHash: string | null;
   error: string | null;
   /**
-   * Whether its move is mined and waits for its block to be final, as the manager's last status read said: true only
-   * while it is `submitted`. False until a status read says so, and on every row written before migration 020.
+   * Whether its move is mined and waits for its block to be final: true from the status read that first said so, for
+   * as long as it is `submitted`. False until then, once it leaves `submitted`, and on every row written before
+   * migration 020.
    */
   mined: boolean;
   /**
@@ -102,8 +103,8 @@ export interface FundingChequebookUpdate {
   /** The hash the manager answered. Left out or null keeps the one recorded: a hash, once known, stays. */
   txHash?: string | null;
   /**
-   * Whether its move is mined and waits for its block to be final, as a status read answered it. Left out keeps the
-   * one recorded: a relay's answer does not say, and an item a relay is sent for is in no block yet.
+   * Whether its move is mined and waits for its block to be final, as the refresh works it out from a status read.
+   * Left out keeps the one recorded: a relay's answer does not say, and an item a relay is sent for is in no block yet.
    */
   mined?: boolean;
   /** Set when this records the manager's first answer for the item: the moment that answer came back. */
