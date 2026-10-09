@@ -99,7 +99,7 @@ async function gate({ fragment = 0.25, aofRatio = 10, segment = 0.501, segments 
 }
 
 describe('stage-fingerprint accepts a stage that matches', () => {
-  it('passes the shipping profile: hls_fragment 0.25 against a 0.5s GOP', async () => {
+  it('passes the profile of 2026-08-17: hls_fragment 0.25 against a 0.5s GOP', async () => {
     const { code, output } = await gate({});
     assert.equal(code, 0);
     assert.match(output, /matches what the driver asked for/);

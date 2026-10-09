@@ -26,7 +26,7 @@ import { waitFor } from './helpers/waiting.js';
 const STREAM_ID = 'live/one';
 const SETTLE_CEILING_MS = 4_000;
 
-/** Eight frames at 30fps, which is what a fragment at the shipping profile holds. */
+/** Eight frames at 30fps, about what a 0.25 s fragment holds. */
 const FRAMES = 8;
 const DECLARED_SECONDS = 0.32;
 

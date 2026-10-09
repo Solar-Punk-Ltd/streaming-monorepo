@@ -1849,7 +1849,7 @@ export class StreamOrchestrator {
     }
 
     this.metrics.recordSegmentDurationUnread();
-    // Once per stream, not once per segment. At the shipping profile this path runs four times a
+    // Once per stream, not once per segment. At a 0.25 s segment this path runs four times a
     // second for the length of a broadcast, and an engine whose segments are never readable is one
     // fact about that engine rather than thousands about its segments.
     if (!this.unreadDurationReported.has(streamId)) {

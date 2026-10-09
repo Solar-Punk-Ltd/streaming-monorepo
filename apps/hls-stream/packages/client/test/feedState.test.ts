@@ -370,7 +370,7 @@ describe('FeedHealthTracker proof that did not come from a feed read', () => {
   });
 
   /**
-   * This runs once per segment loaded, which is four times a second at the shipping profile, so the
+   * This runs once per segment loaded, which is four times a second at a 0.25 s segment, so the
    * healthy case has to be free. Nothing is in trouble, so there is nothing to release and nothing
    * to say.
    */
