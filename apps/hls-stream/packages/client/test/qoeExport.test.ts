@@ -10,6 +10,7 @@ import {
   copyQoeExport,
   fileSafeTopic,
   QOE_COPY_REFUSED,
+  QOE_SAVE_REVOKE_MS,
   qoeExportFileName,
   qoeExportJson,
   saveQoeExport,
@@ -242,7 +243,7 @@ describe('Copy', () => {
 });
 
 describe('Save', () => {
-  it('downloads the JSON under the file name, and lets the address go after the click', () => {
+  it('downloads the JSON under the file name, and lets the address go 40 s after the click, as Safari needs', () => {
     vi.useFakeTimers();
     const clicked: { href: string; download: string }[] = [];
     const appended: unknown[] = [];
@@ -279,8 +280,10 @@ describe('Save', () => {
     assert.equal(appended.length, 1);
     assert.equal(removed, 1);
     assert.equal((blob as Blob | null)?.type, 'application/json');
-    assert.deepEqual(revoked, []);
-    vi.runAllTimers();
+    assert.equal(QOE_SAVE_REVOKE_MS, 40_000);
+    vi.advanceTimersByTime(QOE_SAVE_REVOKE_MS - 1);
+    assert.deepEqual(revoked, [], 'kept while WebKit may still be starting the download');
+    vi.advanceTimersByTime(1);
     assert.deepEqual(revoked, ['blob:qoe-1']);
   });
 });
