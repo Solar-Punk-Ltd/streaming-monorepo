@@ -5,6 +5,7 @@ import { isIP } from 'node:net';
 import { bzzToPlur, DEFAULT_CHEQUEBOOK_FLOOR_BZZ, rpcEndpointProblem } from '@streaming-infra-manager/common';
 
 import { DEFAULT_LOG_LEVEL, isLogLevel, LOG_LEVELS, type LogLevel } from '../domain/Logger.js';
+import { type KnownHostNetworkPorts, knownHostNetworkPorts } from '../domain/ports/knownHostNetworkPorts.js';
 import { parseStackSources, type StackSource } from '../domain/versions/stackSources.js';
 
 function required(name: string): string {
@@ -169,6 +170,8 @@ export interface AppConfig {
   adminLinkAllowPlainHttp: boolean;
   /** The repositories stack versions are built from, the first for a new version. See `parseStackSources`. */
   stackSources: readonly StackSource[];
+  /** See `knownHostNetworkPorts`. Empty when the operator configured none. */
+  knownHostNetworkPorts: KnownHostNetworkPorts;
 }
 
 export const config: AppConfig = {
@@ -183,4 +186,5 @@ export const config: AppConfig = {
   beeLocalHost: beeLocalHost(process.env.BEE_LOCAL_HOST),
   adminLinkAllowPlainHttp: adminLinkAllowPlainHttp(process.env.ADMIN_LINK_ALLOW_PLAIN_HTTP),
   stackSources: parseStackSources(process.env.STACK_SOURCES),
+  knownHostNetworkPorts: knownHostNetworkPorts(process.env.KNOWN_HOST_NETWORK_PORTS),
 };

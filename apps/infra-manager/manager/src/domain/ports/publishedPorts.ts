@@ -1,5 +1,7 @@
 import type { PublishedPortBinding, PublishedPortsSnapshot } from './PublishedPortsProbe.js';
-import { portKeyOf } from './portReservations.js';
+import { config } from '../../utils/config.js';
+import type { KnownHostNetworkPorts } from './knownHostNetworkPorts.js';
+import { type PortKey, portKeyOf } from './portReservations.js';
 
 function record(value: unknown): Record<string, unknown> {
   if (!value || typeof value !== 'object' || Array.isArray(value))
@@ -44,13 +46,37 @@ export function publishedBindings(value: unknown): PublishedPortBinding[] {
   return [...bindings.values()];
 }
 
-export function collectPublishedPorts(rows: readonly unknown[]): Omit<PublishedPortsSnapshot, 'daemonId'> {
+function declaredBindings(
+  row: Record<string, unknown>,
+  project: string,
+  declared: readonly PortKey[],
+): PublishedPortBinding[] {
+  const containerId = row.id;
+  if (typeof containerId !== 'string' || !containerId) throw new Error('Missing container identity');
+  const service = nullableLabel(row.service);
+  return declared.map(({ port, protocol }) => ({ containerId, project, service, port, protocol }));
+}
+
+/**
+ * Every binding the running containers hold, and the projects whose bindings cannot be known.
+ *
+ * A host-network container has no port map, so it is unverified unless its
+ * compose project is one the operator declared in KNOWN_HOST_NETWORK_PORTS,
+ * whose declared ports then count as that container's bindings.
+ */
+export function collectPublishedPorts(
+  rows: readonly unknown[],
+  known: KnownHostNetworkPorts = config.knownHostNetworkPorts,
+): Omit<PublishedPortsSnapshot, 'daemonId'> {
   const bindings: PublishedPortBinding[] = [];
   const unverifiedProjects = new Set<string>();
   for (const value of rows) {
     const row = record(value);
     if (row.networkMode === 'host') {
-      unverifiedProjects.add(nullableLabel(row.project) ?? `external:${row.id}`);
+      const project = nullableLabel(row.project);
+      const declared = project === null ? undefined : known.get(project);
+      if (project !== null && declared) bindings.push(...declaredBindings(row, project, declared));
+      else unverifiedProjects.add(project ?? `external:${row.id}`);
     }
     bindings.push(...publishedBindings(row));
   }
