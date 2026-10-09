@@ -13,17 +13,23 @@ target. Every funding operation goes through the infra manager.
 2. The brand sends xDAI and xBZZ to that address from any wallet, for example with Swarm's
    Multichain app. The page shows the address, a QR code and a link to the app.
 3. **Balance tab**: the brand wallet's balances, then every node grouped by stage, each with its
-   wallet's balances. Enter amounts beside the nodes' balances, send from the brand wallet.
+   wallet's balances. Enter amounts beside the nodes' balances, send from the brand wallet. Clear
+   all empties every amount at once.
 4. **Stamps tab**: the catalogue batch on top, then each stage's batches. Choose Top up or Dilute
-   and tick batches: one days slider, or 1 or 2 steps, applies to every ticked batch, and each row
-   shows what its batch has left after and what it costs. Confirm. Each node pays from its own
-   wallet, so the tab shows any node short of xBZZ, with a shortcut to fund it on the Balance tab.
+   and tick batches, one by one, a stage at a time or all at once: one days slider, or 1 or 2
+   steps, applies to every ticked batch, and each row shows what its batch has left after and what
+   it costs. Confirm. Each node pays from its own wallet, so the tab shows any node short of xBZZ
+   or out of xDAI, and one Fund all fills in on the Balance tab what each of them lacks.
 5. **Chequebooks tab**: each stage's nodes with their chequebooks, the available balance, the
    total and the uncashed cheques to the last digit; the catalogue node is not listed. Type a
-   target and tick chequebooks: one under the target takes a deposit of the difference from its
-   node's wallet, one over it a withdrawal of the difference into its node's wallet. Apply, then
-   confirm. A gateway's chequebook is shown, not moved.
-6. The admin asks the infra manager for all of it, through a new manager API with a bearer token.
+   target and tick chequebooks, as on the Stamps tab: one under the target takes a deposit of the
+   difference from its node's wallet, one over it a withdrawal of the difference into its node's
+   wallet. Apply, then confirm. A move reads Mined once its block is in and Confirmed once that
+   block is final, about 3 minutes later. Fund all works as on the Stamps tab. A gateway's
+   chequebook is shown, not moved.
+6. The tabs keep what you tick, type and choose while you stay on the Funding page, so a round
+   trip to the Balance tab to fund the nodes loses nothing.
+7. The admin asks the infra manager for all of it, through a new manager API with a bearer token.
    The manager talks to the nodes and to the chain; the admin talks to neither.
 
 ## Who does what
@@ -146,3 +152,16 @@ against a real node before phase 2, so its first trial is theirs too.
 - The manager carries each move out through its own chequebook path and journal, the ones its
   console's Fill chequebook and Withdraw use, so a move from the admin shows in its chequebook
   history too.
+
+## Decided, 2026-10-09
+
+- The Stamps and Chequebooks tabs take Select all and Clear, and a checkbox in front of each
+  group's name that ticks or clears that group's rows. The Balance tab takes Clear all only:
+  typing an amount already ticks a row.
+- One Fund all, beside the tab's action button, replaces a Fund link in each row. It fills in on
+  the Balance tab what every short node lacks: its xBZZ rounded up to three decimals, and 0.01
+  xDAI for one with none, leaving everything else typed there as it was.
+- The tabs keep their state while you stay on the Funding page; a reload starts afresh.
+- A chequebook move counts as confirmed only once its block is final, as the manager's chequebook
+  path has it, about 3 minutes after it is mined on Gnosis Chain; stamp operations and transfers
+  count once mined. The progress shows the step between as Mined.
