@@ -77,3 +77,22 @@ export function knownHostNetworkNameProblem(name: string, known: KnownHostNetwor
   );
 }
 
+/**
+ * Stops the manager when an existing deployment carries a declared project's
+ * name, which happens when the setting names a project after the deployment
+ * was created. Refusing to start is the side that fails closed: running would
+ * leave that deployment's host-network ports unreserved until someone noticed.
+ */
+export function refuseDeploymentsNamedAsKnownHostNetworkProjects(
+  deploymentNames: readonly string[],
+  known: KnownHostNetworkPorts,
+): void {
+  const clashes = deploymentNames.filter((name) => known.has(name));
+  if (clashes.length === 0) return;
+  const declared = clashes.map((name) => declaredText(name, known.get(name)!)).join(';');
+  throw new Error(
+    `Deployment ${clashes.join(', ')} has the name of a compose project KNOWN_HOST_NETWORK_PORTS declares (${declared}). ` +
+      `A deployment's compose project is its name, so its host-network ports would go unreserved. ` +
+      `Take that project out of KNOWN_HOST_NETWORK_PORTS, start the manager, and remove the deployment before declaring the project again.`,
+  );
+}
