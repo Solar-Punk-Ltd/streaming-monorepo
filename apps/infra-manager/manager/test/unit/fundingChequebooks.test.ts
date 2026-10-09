@@ -710,11 +710,98 @@ describe('GET /api/admin-funding/chequebook-operations/:requestId', () => {
       const answer = await service.status(REQUEST);
       assert.deepEqual(
         answer,
-        { requestId: REQUEST, direction: row.direction, state, txHash: row.transactionHash, error },
+        { requestId: REQUEST, direction: row.direction, state, txHash: row.transactionHash, error, mined: false },
         what,
       );
       fundingChequebookOperationStatusSchema.parse(answer);
     }
+  });
+
+  it('answers mined while a submitted move’s block is not final yet, and not before it is mined nor once it has an outcome', async () => {
+    const awaitingFinality = { kind: 'pending', reason: 'awaiting_finality' } as const;
+    const settledReceipt = {
+      kind: 'settled',
+      receiptBlockNumber: '520',
+      receiptBlockHash: `0x${'78'.repeat(32)}`,
+      finalizedBlockNumber: '560',
+      finalizedBlockHash: `0x${'9b'.repeat(32)}`,
+    } as const;
+    const cases: Array<[string, ChequebookOperation, FundingTransferState, boolean]> = [
+      ['a submitted move whose receipt was not looked for yet', journalled(), 'submitted', false],
+      [
+        'a submitted move the chain has not taken yet',
+        journalled({ receiptObservation: { kind: 'pending', reason: 'awaiting_transaction' } }),
+        'submitted',
+        false,
+      ],
+      [
+        'a submitted move with no receipt yet',
+        journalled({ receiptObservation: { kind: 'pending', reason: 'awaiting_receipt' } }),
+        'submitted',
+        false,
+      ],
+      [
+        'a submitted move whose block is not final yet',
+        journalled({ receiptObservation: awaitingFinality }),
+        'submitted',
+        true,
+      ],
+      [
+        'a submitted move whose last look at the chain could not be made',
+        journalled({ receiptObservation: { kind: 'could_not_check', reason: 'rpc_unavailable' } }),
+        'submitted',
+        false,
+      ],
+      ['a settled move', journalled({ state: 'settled', receiptObservation: settledReceipt }), 'confirmed', false],
+      [
+        'a reverted move',
+        journalled({ state: 'reverted', receiptObservation: { ...settledReceipt, kind: 'reverted' } }),
+        'failed',
+        false,
+      ],
+      [
+        'a submitted move whose transaction another operation’s evidence names too',
+        journalled({ failureReason: 'hash_conflict', receiptObservation: awaitingFinality }),
+        'unknown',
+        false,
+      ],
+    ];
+    for (const [what, row, state, mined] of cases) {
+      const { check, journal, service } = setup();
+      seed(journal, row);
+      const answer = await service.status(REQUEST);
+      assert.deepEqual([answer.state, answer.txHash, answer.mined], [state, TX, mined], what);
+      fundingChequebookOperationStatusSchema.parse(answer);
+      assert.deepEqual(check.runs, [], `${what}: answered from the journal, the receipt polled by the manager`);
+    }
+  });
+
+  it('answers mined from what the receipt check found, then confirmed once the block is final', async () => {
+    const { advance, check, journal, service } = setup();
+    seed(journal, journalled({ receiptPollUntil: null }));
+    check.finds = { receiptObservation: { kind: 'pending', reason: 'awaiting_finality' } };
+    assert.deepEqual(await service.status(REQUEST), {
+      requestId: REQUEST,
+      direction: 'deposit',
+      state: 'submitted',
+      txHash: TX,
+      error: null,
+      mined: true,
+    });
+    advance(FUNDING_CHEQUEBOOK_CHECK_MS);
+    check.finds = {
+      state: 'settled',
+      receiptObservation: {
+        kind: 'settled',
+        receiptBlockNumber: '520',
+        receiptBlockHash: `0x${'78'.repeat(32)}`,
+        finalizedBlockNumber: '560',
+        finalizedBlockHash: `0x${'9b'.repeat(32)}`,
+      },
+    };
+    const confirmed = await service.status(REQUEST);
+    assert.deepEqual([confirmed.state, confirmed.mined], ['confirmed', false]);
+    assert.deepEqual(check.runs, ['receipt', 'receipt']);
   });
 
   it('has the chequebook path check a submitting or unknown move first, and answers what it found', async () => {
@@ -727,6 +814,7 @@ describe('GET /api/admin-funding/chequebook-operations/:requestId', () => {
       state: 'submitted',
       txHash: TX,
       error: null,
+      mined: false,
     });
     assert.deepEqual(check.runs, ['recovery']);
   });
@@ -769,6 +857,7 @@ describe('GET /api/admin-funding/chequebook-operations/:requestId', () => {
       state: 'unknown',
       txHash: null,
       error: NOT_KNOWN,
+      mined: false,
     });
   });
 
@@ -792,6 +881,7 @@ describe('GET /api/admin-funding/chequebook-operations/:requestId', () => {
       state: 'submitted',
       txHash: TX,
       error: null,
+      mined: false,
     });
     assert.deepEqual(check.runs, ['recovery'], 'the check that ran on is the only one');
   });
@@ -832,6 +922,7 @@ describe('a request id whose call is still under way', () => {
       state: 'submitted',
       txHash: null,
       error: null,
+      mined: false,
     });
     fundingChequebookOperationStatusSchema.parse(answer);
     assert.deepEqual(check.runs, [], 'nothing journalled, so nothing to check');

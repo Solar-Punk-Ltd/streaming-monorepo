@@ -190,6 +190,21 @@ function outcomeOf(operation: ChequebookOperation): { state: FundingTransferStat
   }
 }
 
+/**
+ * Whether a journalled move's transaction is in a block that is not final yet: the row maps to `submitted`, and the
+ * chequebook path's last look at its receipt found it pending for finality. The chequebook path settles a move only
+ * once its block is final, about 3 minutes after it is mined on Gnosis Chain, and its receipt polling looks every
+ * `RECEIPT_POLL_INTERVAL_MS`, so a move reads `submitted` for those minutes, mined.
+ */
+function isMined(operation: ChequebookOperation): boolean {
+  const observation = operation.receiptObservation;
+  return (
+    outcomeOf(operation).state === 'submitted' &&
+    observation?.kind === 'pending' &&
+    observation.reason === 'awaiting_finality'
+  );
+}
+
 function answerOf(operation: ChequebookOperation): FundingChequebookOperationAnswer {
   return {
     requestId: operation.requestId,
@@ -251,6 +266,9 @@ async function within<T>(promise: Promise<T>, ms: number): Promise<T | null> {
  * `unknown` stays `unknown`, as does any row whose evidence conflicts with another's. A status read has the chequebook
  * path check an open operation first, at most once every {@link FUNDING_CHEQUEBOOK_CHECK_MS} per request id, and
  * answers the journal as it stands when that check fails or takes longer than {@link FUNDING_CHEQUEBOOK_CHECK_WAIT_MS}.
+ * It answers `mined` true while a `submitted` move's transaction is in a block that is not final yet, the chequebook
+ * path's last look at its receipt having found it pending for finality, and false otherwise: the path settles a move
+ * only once its block is final, minutes after it is mined.
  *
  * The chequebook path journals a move only once it has prepared it, which can take it half a minute, so until then
  * the request is known by its call under way in this process, the manager's one API process. A status read of a
@@ -292,7 +310,14 @@ export class FundingChequebookService {
     // Looked up after the journal read, so a call that has answered by now is never taken for one under way.
     const running = journalled ? undefined : this.underWay.get(requestId);
     if (running) {
-      return { requestId, direction: running.request.direction, state: 'submitted', txHash: null, error: null };
+      return {
+        requestId,
+        direction: running.request.direction,
+        state: 'submitted',
+        txHash: null,
+        error: null,
+        mined: false,
+      };
     }
     // An operator's own transfer under this id is not the funding API's to answer: the admin's request was never taken.
     if (!journalled || journalled.requestedBy !== FUNDING_CHEQUEBOOK_REQUESTER) {
@@ -310,6 +335,7 @@ export class FundingChequebookService {
       state,
       txHash: operation.transactionHash,
       error,
+      mined: isMined(operation),
     };
   }
 

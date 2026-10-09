@@ -1019,7 +1019,7 @@ into the node's own wallet, the one place Bee withdraws to.
 | Method | Path                                                  | Answer                                                                                                                                                                                                                                                                                                                                                                                                                                                                           |
 | ------ | ----------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | POST   | `/api/admin-funding/chequebook-operations`            | 202 `{ requestId, direction, state, txHash }`, once the chequebook path has answered. Takes `{ requestId, nodeId, direction, amountPlur }`, the contract's shape: `direction` is `deposit` or `withdraw`, and `amountPlur` 30 digits at most. Anything else is 422 `chequebook_refused` naming the field. Checked and handed to the chequebook path as below. The same `requestId` again answers the journalled state and sends nothing; another move under it is 409 `conflict` |
-| GET    | `/api/admin-funding/chequebook-operations/:requestId` | `{ requestId, direction, state, txHash, error }`, `no-store`, an open operation checked first, as below. 404 `unknown_request` for a request id the funding API never journalled, which is safe to send again under the same id, and the manager's 404 for a path that names none                                                                                                                                                                                                |
+| GET    | `/api/admin-funding/chequebook-operations/:requestId` | `{ requestId, direction, state, txHash, error, mined }`, `no-store`, an open operation checked first, as below. 404 `unknown_request` for a request id the funding API never journalled, which is safe to send again under the same id, and the manager's 404 for a path that names none                                                                                                                                                                                         |
 
 - **A request id already journalled** answers that operation's state when it
   is the same move, the funding API's, on the same node, in the same direction
@@ -1057,6 +1057,14 @@ into the node's own wallet, the one place Bee withdraws to.
   `unknown` is `unknown`, as is any operation whose transaction another
   operation's evidence names too, until an operator reviews it. `txHash` is the
   journal's.
+- **`mined`**, since 2026-10-09, is true while a `submitted` operation's
+  transaction is in a block that is not final yet: the chequebook path's last
+  look at its receipt found it waiting for finality (`awaiting_finality`). It
+  is false otherwise, before the move is mined and once it has an outcome. The
+  chequebook path settles a move only once its block is final, about 3 minutes
+  after it is mined on Gnosis Chain, and looks for its receipt every 20
+  seconds, so a move mined within seconds reads `submitted` with `mined` true
+  for those minutes, which the web2 admin shows as Mined.
 - **The `GET`** has the chequebook path check a `submitting` or `unknown`
   operation first, through its recovery, and a `submitted` one past its
   `receiptPollUntil` or with none, through its receipt check, at most once
