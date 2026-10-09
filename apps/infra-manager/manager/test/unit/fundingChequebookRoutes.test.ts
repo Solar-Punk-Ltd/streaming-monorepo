@@ -15,6 +15,7 @@ import {
   FUNDING_CHEQUEBOOK_OPERATIONS_PATH,
   type FundingChequebookOperationRequest,
   fundingChequebookOperationPath,
+  fundingChequebookOperationStatusSchema,
 } from '@streaming-monorepo/contracts';
 
 import { errorHandler } from '../../src/api/middleware/errorHandler.js';
@@ -25,6 +26,8 @@ import { FundingApiError } from '../../src/domain/funding/FundingApiError.js';
 
 const TOKEN = 't'.repeat(40);
 const REQUEST = '7d1e2f3a-4b5c-4d6e-9f0a-b1c2d3e4f5a6';
+/** The request id the fake service answers as a move whose block is mined and not final yet. */
+const MINED_REQUEST = '8e2f3a4b-5c6d-4e7f-8a1b-c2d3e4f5a6b7';
 const HASH = `0x${'9a'.repeat(32)}`;
 
 const DEPOSIT: FundingChequebookOperationRequest = {
@@ -54,13 +57,24 @@ async function testApi(t: TestContext, token: string | null = TOKEN) {
       if (request.nodeId.startsWith('journal')) throw new ChequebookJournalError();
       return { requestId: request.requestId, direction: request.direction, state: 'submitted' as const, txHash: HASH };
     },
-    status: async (requestId: string) => ({
-      requestId,
-      direction: 'withdraw' as const,
-      state: 'unknown' as const,
-      txHash: null,
-      error: 'The manager could not tell whether the node made the move.',
-    }),
+    status: async (requestId: string) =>
+      requestId === MINED_REQUEST
+        ? {
+            requestId,
+            direction: 'withdraw' as const,
+            state: 'submitted' as const,
+            txHash: HASH,
+            error: null,
+            mined: true,
+          }
+        : {
+            requestId,
+            direction: 'withdraw' as const,
+            state: 'unknown' as const,
+            txHash: null,
+            error: 'The manager could not tell whether the node made the move.',
+            mined: false,
+          },
   };
   const app = express();
   app.use(ADMIN_FUNDING_PATH, createAdminFundingRouter(token, [createFundingChequebookRouter(service)]));
@@ -165,9 +179,25 @@ describe('the funding API’s chequebook routes', () => {
       state: 'unknown',
       txHash: null,
       error: 'The manager could not tell whether the node made the move.',
+      mined: false,
     });
     assert.equal(answer.cache, 'no-store');
     assert.equal((await api.send(`${FUNDING_CHEQUEBOOK_OPERATIONS_PATH}/not-a-uuid`)).status, 404);
+  });
+
+  it('answer whether a submitted move is mined and waits for its block to be final, as the contract reads it', async (t) => {
+    const api = await testApi(t);
+    const answer = await api.send(fundingChequebookOperationPath(MINED_REQUEST));
+    assert.equal(answer.status, 200);
+    assert.deepEqual(answer.body, {
+      requestId: MINED_REQUEST,
+      direction: 'withdraw',
+      state: 'submitted',
+      txHash: HASH,
+      error: null,
+      mined: true,
+    });
+    assert.equal(fundingChequebookOperationStatusSchema.parse(answer.body).mined, true);
   });
 
   it('read a request id in either case', async (t) => {
