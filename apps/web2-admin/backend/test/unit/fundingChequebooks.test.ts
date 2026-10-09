@@ -10,7 +10,8 @@
  * only an item the manager holds nothing under that is `queued`, or `submitted` with no hash, the same fields under
  * the same request id, and never one with a hash or an outcome; one chequebook bulk at a time, apart from sends and
  * stamp bulks; a read that shares the relays under way; the view's open chequebook bulk; the settled and watched
- * flags; and the audit rows of a request and of each outcome.
+ * flags; the mined step, recorded from a status read on a submitted item alone, an answer with none read as not mined;
+ * and the audit rows of a request and of each outcome.
  */
 import assert from 'node:assert/strict';
 import { beforeEach, describe, it } from 'node:test';
@@ -162,8 +163,8 @@ function withNode(nodeId: string, change: (node: FundingNode) => void): FundingI
   return inventory;
 }
 
-/** Settles each item as the manager does once the node's move is mined. */
-function mined(answer: FundingChequebookOperationsAnswer): void {
+/** Settles each item as the manager does once the node's move is mined and its block final. */
+function settledOnChain(answer: FundingChequebookOperationsAnswer): void {
   for (const one of answer.items) manager.chequebookJournalState.set(one.requestId, 'confirmed');
 }
 
@@ -188,6 +189,7 @@ describe('a request, answered at once', () => {
       state: 'queued',
       txHash: null,
       error: null,
+      mined: false,
       settled: false,
       watched: false,
     });
@@ -198,7 +200,7 @@ describe('a request, answered at once', () => {
 
     release();
     await chequebooks.idle();
-    // The manager answers once the node has sent the move: under way until it is mined, holding up the next bulk.
+    // The manager answers once the node has sent the move: under way until its block is final, holding up the next bulk.
     assert.deepEqual(
       (await itemsOf(answer.bulkId)).map((one) => [one.state, one.txHash, one.settled, one.watched]),
       [
@@ -944,8 +946,93 @@ describe('refreshing a chequebook bulk', () => {
   });
 });
 
+/**
+ * The manager confirms a chequebook move only once its block is final, minutes after it is mined, and says meanwhile
+ * that the move is mined. A refresh records that on a submitted item, which carries it to the page's Mined step.
+ */
+describe('the mined step of a chequebook item', () => {
+  it('records a submitted move mined while its block is not final, though nothing else of it moved, then confirmed', async () => {
+    const sent = await requested(toTarget(STAGE_NODE));
+    const requestId = sent.items[0]!.requestId;
+    assert.deepEqual(
+      sent.items.map((one) => [one.state, one.mined]),
+      [['submitted', false]],
+      'sent, and in no block the manager has seen yet',
+    );
+
+    // The manager's look at the receipt found the move in a block that is not final yet.
+    manager.chequebookStatusAnswers.set(requestId, { mined: true });
+    const mined = await funding.chequebookBulk(sent.bulkId);
+    assert.deepEqual(
+      mined.items.map((one) => [one.state, one.txHash, one.error, one.mined, one.settled, one.watched]),
+      [['submitted', chequebookTxHash(requestId), null, true, false, false]],
+    );
+    assert.equal(journal.get(requestId)?.mined, true);
+    assert.equal(audit.withAction('funding.chequebook.confirmed').length, 0);
+
+    // Its block is final: the manager settles the move, no longer mined but confirmed, and it is audited once.
+    manager.chequebookStatusAnswers.set(requestId, { mined: false });
+    manager.chequebookJournalState.set(requestId, 'confirmed');
+    const confirmed = await funding.chequebookBulk(sent.bulkId);
+    assert.deepEqual(
+      confirmed.items.map((one) => [one.state, one.mined, one.settled]),
+      [['confirmed', false, true]],
+    );
+    assert.equal(journal.get(requestId)?.mined, false);
+    assert.equal(audit.withAction('funding.chequebook.confirmed').length, 1);
+  });
+
+  it('reads an answer with no mined, as a manager older than it gives, as not mined', async () => {
+    const sent = await requested(toTarget(STAGE_NODE));
+    const requestId = sent.items[0]!.requestId;
+    manager.chequebookStatusAnswers.set(requestId, { mined: true });
+    assert.equal((await funding.chequebookBulk(sent.bulkId)).items[0]?.mined, true);
+
+    // The fake manager's own answer carries no mined at all.
+    manager.chequebookStatusAnswers.delete(requestId);
+    const older = await funding.chequebookBulk(sent.bulkId);
+
+    assert.deepEqual(
+      older.items.map((one) => [one.state, one.txHash, one.mined]),
+      [['submitted', chequebookTxHash(requestId), false]],
+    );
+  });
+
+  it('never records a move mined that is not submitted: Mined is a step between Sent and Confirmed', async () => {
+    const sent = await requested(toTarget(STAGE_NODE, RUNG_NODE));
+    const [first, second] = sent.items;
+    manager.chequebookStatusAnswers.set(first!.requestId, { state: 'unknown', mined: true });
+    manager.chequebookStatusAnswers.set(second!.requestId, { state: 'confirmed', mined: true });
+
+    const read = await funding.chequebookBulk(sent.bulkId);
+
+    assert.deepEqual(
+      read.items.map((one) => [one.state, one.mined]),
+      [
+        ['unknown', false],
+        ['confirmed', false],
+      ],
+    );
+  });
+
+  it('holds up a new chequebook bulk while mined, as any submitted item does, until it is confirmed', async () => {
+    const first = await requested(toTarget(STAGE_NODE));
+    const requestId = first.items[0]!.requestId;
+    manager.chequebookStatusAnswers.set(requestId, { mined: true });
+
+    const busy = await refusal(funding.chequebookOperations(TEST_OPERATOR, toTarget(RUNG_NODE)));
+
+    assert.ok(busy instanceof FundingBusyError);
+    assert.equal(journal.get(requestId)?.mined, true, 'the request refreshed the earlier bulk before its check');
+    manager.chequebookStatusAnswers.set(requestId, { mined: false });
+    manager.chequebookJournalState.set(requestId, 'confirmed');
+    const second = await requested(toTarget(RUNG_NODE));
+    assert.equal(second.items[0]?.state, 'submitted');
+  });
+});
+
 describe('one chequebook bulk at a time', () => {
-  it('refuses a request while an earlier chequebook bulk has an item under way, and takes one once it is mined', async () => {
+  it('refuses a request while an earlier chequebook bulk has an item under way, and takes one once it is confirmed', async () => {
     const first = await requested(toTarget(STAGE_NODE));
 
     const busy = await refusal(funding.chequebookOperations(TEST_OPERATOR, toTarget(RUNG_NODE)));
@@ -953,8 +1040,8 @@ describe('one chequebook bulk at a time', () => {
     assert.equal(busy.message, 'An earlier chequebook bulk is not settled yet, so no new one starts.');
     assert.equal(journal.rows.size, 1);
 
-    // Refreshed before the check: the manager has seen the move mined meanwhile.
-    mined(first);
+    // Refreshed before the check: the manager has seen the move's block final meanwhile.
+    settledOnChain(first);
     const second = await requested(toTarget(RUNG_NODE));
     assert.equal(second.items[0]?.state, 'submitted');
   });
@@ -1196,7 +1283,7 @@ describe("the Funding page's open chequebook bulk", () => {
     assert.equal(open.openBulkId, null);
     assert.equal(manager.chequebookCalls.status, reads + 1, 'the view refreshed the open chequebook bulk');
 
-    mined(sent);
+    settledOnChain(sent);
     assert.equal((await funding.view()).openChequebookBulkId, null);
   });
 

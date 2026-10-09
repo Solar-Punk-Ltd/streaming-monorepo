@@ -738,6 +738,7 @@ describe('a chequebook request', () => {
         'amountPlur',
         'direction',
         'error',
+        'mined',
         'nodeId',
         'nodeLabel',
         'requestId',
@@ -748,9 +749,10 @@ describe('a chequebook request', () => {
         'watched',
       ]);
       assert.match(item.requestId, /^[0-9a-f-]{36}$/);
+      assert.equal(item.mined, false);
     }
 
-    // The relays end behind the answer: the node sent each move, which holds up the next bulk until it is mined.
+    // The relays end behind the answer: the node sent each move, which holds up the next bulk until its block is final.
     await app.chequebooks.idle();
     const bulk = await fundingCall('GET', fundingChequebookBulkPath(answer.bulkId));
     assert.equal(bulk.status, 200);

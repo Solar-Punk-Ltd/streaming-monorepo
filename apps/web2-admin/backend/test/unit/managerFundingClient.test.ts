@@ -522,6 +522,14 @@ describe('ManagerFundingClient: chequebook operations', () => {
 
     assert.deepEqual(answer, { requestId: REQUEST_ID, direction: 'deposit', state: 'unknown', txHash: TX_HASH });
     assert.deepEqual(status, chequebookStatus());
+    assert.equal('mined' in status, false, 'a manager that does not say whether the move is mined');
+  });
+
+  it("carries whether a submitted move is mined, its block not final yet, as the manager's status says", async () => {
+    const mined = { ...chequebookStatus(), state: 'submitted', txHash: TX_HASH, error: null, mined: true };
+    const { client } = clientOn(() => Response.json(mined));
+
+    assert.deepEqual(await client.chequebookOperationStatus(REQUEST_ID), mined);
   });
 
   it("carries the manager's refusals of a move as its code, its status and its sentence", async () => {
