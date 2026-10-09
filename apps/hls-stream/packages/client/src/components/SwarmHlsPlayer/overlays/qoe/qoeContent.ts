@@ -11,7 +11,7 @@ export interface QoeRow {
   bad?: boolean;
 }
 
-export interface QoeSection {
+interface QoeSection {
   title: string;
   rows: QoeRow[];
 }
@@ -28,7 +28,7 @@ export interface QoeContent {
   footer: string;
 }
 
-export const QOE_TITLE = 'QoE Metrics';
+const QOE_TITLE = 'QoE Metrics';
 
 const fmtMs = (ms: number | null) => (ms == null ? '—' : `${Math.round(ms)} ms`);
 const fmtPct = (n: number) => `${(n * 100).toFixed(1)}%`;
