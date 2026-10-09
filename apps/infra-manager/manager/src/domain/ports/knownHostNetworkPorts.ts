@@ -23,6 +23,12 @@ function refuse(problem: string, raw: string): never {
  * on, as in `edge=80/tcp,443/tcp,443/udp`, makes those ports bindings of that
  * container instead of an unknown.
  *
+ * The trust is per compose project: every host-network container in a named
+ * project counts as holding only the declared ports, so a port such a
+ * container holds and the entry leaves out counts as free. A deployment's
+ * compose project is its name, which is why `knownHostNetworkNameProblem`
+ * keeps deployments off the declared names.
+ *
  * A malformed value stops the manager at startup rather than being dropped,
  * because a dropped entry is a host where nothing can be removed again, and a
  * wrong one is a port the manager believes free while a proxy holds it.
