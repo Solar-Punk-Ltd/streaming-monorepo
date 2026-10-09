@@ -8,12 +8,15 @@
 -- move's transaction is in a block that is not final yet, so the page shows
 -- the step between Sent and Confirmed: Mined.
 --
---   mined        true while the item is submitted and the manager's last
---                status read said its move is mined and its block not final
---                yet. False otherwise: before the move is mined, once it has
---                an outcome, and on every row written before this migration.
---                A refresh records it from each status read, an answer with
---                none, as a manager older than it gives, read as false. A
+--   mined        true from the status read that first said the item's move
+--                is mined and its block not final yet, for as long as the
+--                item is submitted: a later read that says otherwise while
+--                it is still submitted, as after a failed look at the
+--                receipt, does not clear it, so the page never steps back
+--                from Mined to Sent. False before the move is mined, once
+--                the item leaves submitted (confirmed, failed or not known),
+--                and on every row written before this migration. An answer
+--                with none, as a manager older than it gives, says false. A
 --                relay's answer does not say, and leaves it as it is: an
 --                item a relay is sent for, queued or submitted with no hash,
 --                is in no block yet. Nothing else reads it: a mined item

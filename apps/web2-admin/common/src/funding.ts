@@ -359,10 +359,11 @@ export interface FundingChequebookItem {
   /** Why it failed, in a sentence, or null. */
   error: string | null;
   /**
-   * Whether its move is mined and waits for its block to be final: true only while it is `submitted` and the manager
-   * last said its transaction is in a block that is not final yet. The manager confirms a chequebook move only once
-   * its block is final, about 3 minutes after it is mined, so the page shows this step between Sent and Confirmed.
-   * False before the move is mined, once it has an outcome, and from a manager that does not say.
+   * Whether its move is mined and waits for its block to be final: true from the manager's first word that its
+   * transaction is in a block that is not final yet, for as long as it is `submitted`, whatever the manager says of
+   * its block after. The manager confirms a chequebook move only once its block is final, about 3 minutes after it is
+   * mined, so the page shows this step between Sent and Confirmed. False before the move is mined, once it has an
+   * outcome or is not known, and from a manager that does not say.
    */
   mined: boolean;
   /** Whether it no longer holds up a new chequebook bulk, as a transfer's `settled` is for a new send. */

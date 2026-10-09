@@ -107,8 +107,9 @@ import { ManagerFundingError, type ManagerFundingClient } from './ManagerFunding
  *
  * The manager confirms a chequebook move only once its block is final, about 3 minutes after it is mined on Gnosis
  * Chain, and its status read says meanwhile that the move is mined (`mined`). A refresh records that on a `submitted`
- * item, and the item carries it, so the page shows the step between Sent and Confirmed. An answer with no `mined`, from
- * a manager older than it, reads as not mined.
+ * item and keeps it for as long as the item stays `submitted`, whatever a later read says of its block, and the item
+ * carries it, so the page shows the step between Sent and Confirmed and never steps back from it. An answer with no
+ * `mined`, from a manager older than it, says not mined.
  */
 
 const logger = Logger.getInstance();
@@ -375,8 +376,8 @@ export function checkChequebookFunds(targets: readonly ChequebookTarget[]): void
  * ({@link holdsChequebookBulk}): while it is `queued`, and while it is `submitted` or `unknown` for at most the
  * manager's 30-minute receipt budget. `watched` is true while it is `unknown`, and while it is `submitted` past that
  * budget: the manager may still settle such a move from the chain, or an operator in the manager's console. A
- * chequebook item `confirmed` or `failed` is settled for good. `mined` is the journal's: true while it is `submitted`
- * and the manager last said its move is mined and its block not final yet.
+ * chequebook item `confirmed` or `failed` is settled for good. `mined` is the journal's: true from the status read that
+ * first said its move is mined and its block not final yet, for as long as it is `submitted`.
  */
 export function toFundingChequebookItem(row: FundingChequebookRow, now: number): FundingChequebookItem {
   const settled = !holdsChequebookBulk(row, now);
@@ -676,8 +677,10 @@ export class FundingChequebookService {
 
   /**
    * Records where the manager says an item stands, when anything of it moved, and answers the item as it now stands.
-   * Whether its move is mined is the status's, an answer with none read as false, and only ever true while it is
-   * `submitted`: Mined is a step between Sent and Confirmed.
+   * Mined is a step between Sent and Confirmed, and never steps back: once a status read has said the item's move is
+   * mined, it stays so for as long as the item is `submitted`, whatever a later read says of its block, as after a
+   * failed look at the receipt between two that found it waiting for finality. It is false again once the item
+   * leaves `submitted`, confirmed, failed or not known. An answer with no `mined` says false.
    */
   private async record(
     row: FundingChequebookRow,
@@ -686,7 +689,8 @@ export class FundingChequebookService {
   ): Promise<FundingChequebookRow> {
     const error = status.error ?? (status.state === 'failed' ? FAILED_WITHOUT_REASON : null);
     const txHash = status.txHash ?? row.txHash;
-    const mined = status.state === 'submitted' && status.mined === true;
+    const minedBefore = row.state === 'submitted' && row.mined;
+    const mined = status.state === 'submitted' && (status.mined === true || minedBefore);
     if (status.state === row.state && error === row.error && txHash === row.txHash && mined === row.mined) return row;
     const updated = await this.journal.update(row.requestId, {
       state: status.state,

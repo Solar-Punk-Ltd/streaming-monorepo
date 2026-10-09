@@ -1449,12 +1449,16 @@ stands, and the run goes on behind it.
 final on the chain, about 3 minutes after it is mined on Gnosis Chain, and
 answers it `submitted` until then, with `mined` true once the move is in a
 block that is not final yet. The refresh records that on the item, in
-`funding_chequebook_operations.mined` (migration 020), true only while the
-item is `submitted`, and the item answers it as `mined`, so the page shows the
-step between Sent and Confirmed. A status read with no `mined`, from a manager
-older than it, reads as false, and a relay's answer, which does not say,
-leaves it as it is. Nothing else reads it: a mined item holds up a new bulk
-and is asked about as any submitted one is.
+`funding_chequebook_operations.mined` (migration 020), and the item answers it
+as `mined`, so the page shows the step between Sent and Confirmed. Once
+recorded it stays true for as long as the item is `submitted`: a later status
+read that says `false` while the move is still `submitted`, as after a failed
+look at its receipt between two that found it waiting for finality, does not
+clear it, so the page never steps back from Mined to Sent. It is false again
+only once the item leaves `submitted`: confirmed, failed or not known. A
+status read with no `mined`, from a manager older than it, says false, and a
+relay's answer, which does not say, leaves it as it is. Nothing else reads it:
+a mined item holds up a new bulk and is asked about as any submitted one is.
 
 Each `funding.chequebook.confirmed` or `.failed` audit row is written once,
 when the item first comes to that state, with its hash ([Audit log](#audit-log)).
