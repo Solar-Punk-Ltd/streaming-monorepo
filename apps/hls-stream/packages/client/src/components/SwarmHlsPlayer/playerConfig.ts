@@ -41,7 +41,10 @@ const MB = 1024 * 1024;
  * **Six seconds is the floor, not the whole target.** Longer segments are covered by the
  * three-segment rule in {@link liveLatencyFor}, which raises the target to three segments of the
  * length the playlist names whenever that is more than six seconds. The target duration is whatever
- * the uploader's segment length makes it, and this side does not choose it.
+ * the uploader's segment length makes it, and this side does not choose it. The engine's playlist
+ * window does not grow with it: SRS keeps a fixed `HLS_WINDOW`, 15 s by default, so from segments of
+ * about 5 s the target sits on the window's oldest fragment (see `DEFAULT_HLS_TUNING` in
+ * `SwarmHlsPlayer.tsx`).
  *
  * ## The uploader has to name enough media for this to be reachable
  *

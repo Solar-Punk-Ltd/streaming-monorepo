@@ -142,7 +142,10 @@ gop-floor-replicate, are kept outside the repository.
 segment. A GOP below it is rounded up, so lowering the encoder's keyframe interval without lowering
 `HLS_FRAGMENT` to match changes nothing. The pair is a range: a GOP outside
 `[HLS_FRAGMENT, HLS_SEGMENT_MAX]`, `[2, 2.5]` in the sample, is either rounded up or force-cut without
-a keyframe.
+a keyframe. Raising `HLS_FRAGMENT` takes two more settings with it: `HLS_WINDOW`, 15 s unless set, has
+to grow with it, because the player sits three segments behind the live edge and from segments of
+about 5 s that is the window's oldest fragment, and `HLS_SEGMENT_MAX`, 2.5 unless set, makes SRS
+refuse to start with any fragment longer than it.
 
 ⛔ **`HLS_FRAGMENT` now reaches the stream-uploader as well as the engine, and it is the grid every
 segment's `#EXT-X-PROGRAM-DATE-TIME` reads its media against.** Set it once in the profile's `.env`
