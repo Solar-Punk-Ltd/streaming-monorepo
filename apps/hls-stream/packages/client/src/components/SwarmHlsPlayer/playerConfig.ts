@@ -54,7 +54,7 @@ const MB = 1024 * 1024;
  * and was short in **both** clean runs, by 172ms and 550ms, while clearing the worst 0.5s run by 91ms.
  * The window is now budgeted against one chunk rather than counted in segments. A segment line is a
  * duration and a bare Swarm reference, so measured against the shipped builder it holds **12.5s at a
- * 0.25s segment and 25.5s at the 0.5s profile that ships**. The deployment these arrival times were
+ * 0.25s segment and 25.5s at a 0.5s segment**. The deployment these arrival times were
  * measured on had a gateway URL prepended to every line and reached only 9.0s at 0.25s, so the
  * runway a joining viewer gets has since roughly doubled. `ManifestManager.test.ts` reads this
  * constant out of this file and fails if the window stops covering it.
