@@ -12,7 +12,11 @@
  * - Dragging the button moves the rectangle (`moveRect`). Dragging an edge or a corner of the panel
  *   moves that edge and holds the opposite one (`resizeRect`); the n edge moves the panel's top, and
  *   the button with it.
- * - A hidden panel keeps its rectangle, so the button stays where it was.
+ * - A hidden panel keeps its rectangle, size and all, and the button still derives from it. Only the
+ *   button's own 32 px box is then kept inside the player (`moveButton`), so the rectangle may lie
+ *   partly outside it: the panel isn't drawn, and its size must not box the button in. Shown again,
+ *   the panel hangs at the button's corner with its last size and the pair is pulled back inside
+ *   together (`panelAtButton`), the button moving with it if it has to.
  * - A saved or stale rectangle, and one whose player has just shrunk, is pulled back in by
  *   `clampRect`: shrunk to fit first, never below the minimum, then moved inside.
  *
@@ -39,6 +43,12 @@ export interface Bounds {
 export interface Size {
   width: number;
   height: number;
+}
+
+/** The toggle button's top-left corner, in the player's coordinates. */
+export interface Point {
+  x: number;
+  y: number;
 }
 
 export type ResizeEdge = 'n' | 's' | 'e' | 'w' | 'ne' | 'nw' | 'se' | 'sw';
@@ -137,6 +147,44 @@ export function clampRect(rect: Rect, bounds: Bounds, min: Size): Rect {
   const width = Math.max(min.width, Math.min(rect.width, bounds.width));
   const height = Math.max(min.height, Math.min(rect.height, bounds.height - BUTTON_BAND));
   return placeInside({ x: rect.x, y: rect.y, width, height }, bounds);
+}
+
+/** The button of a panel rectangle: on its top-right corner, `BUTTON_GAP` px above it. */
+export function buttonOf(rect: Rect): Point {
+  return { x: rect.x + rect.width - BUTTON_SIZE, y: rect.y - BUTTON_BAND };
+}
+
+/** The panel rectangle of `size` hanging at `button`'s corner, as it is, unclamped. */
+export function rectAtButton(button: Point, size: Size): Rect {
+  return { x: button.x + BUTTON_SIZE - size.width, y: button.y + BUTTON_BAND, width: size.width, height: size.height };
+}
+
+/**
+ * The button dragged by `(dx, dy)` while the panel is hidden: only its own box is kept inside the
+ * player. In a player smaller than the button it aligns right and top, as the panel does.
+ */
+export function moveButton(button: Point, dx: number, dy: number, bounds: Bounds): Point {
+  return {
+    x: clampAxis(button.x + finiteOr0(dx), BUTTON_SIZE, 0, bounds.width, true),
+    y: clampAxis(button.y + finiteOr0(dy), BUTTON_SIZE, 0, bounds.height, false),
+  };
+}
+
+/**
+ * A hidden panel's rectangle with its button dragged by `(dx, dy)`: the size kept, the rectangle
+ * following the button, and only the button kept inside the player. With `dx = dy = 0`, the clamp
+ * of a hidden panel when the player resizes.
+ */
+export function moveHiddenRect(start: Rect, dx: number, dy: number, bounds: Bounds): Rect {
+  return rectAtButton(moveButton(buttonOf(start), dx, dy, bounds), start);
+}
+
+/**
+ * The panel shown again: `size` hung at `button`'s corner, then the pair shrunk to fit and moved
+ * inside the player like any other rectangle (`clampRect`). The button is wherever the result puts it.
+ */
+export function panelAtButton(button: Point, size: Size, bounds: Bounds, min: Size): Rect {
+  return clampRect(rectAtButton(button, size), bounds, min);
 }
 
 /** The panel when nothing is saved: the button where it has always opened, the panel below it. */
