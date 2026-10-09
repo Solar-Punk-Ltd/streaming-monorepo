@@ -11,6 +11,7 @@ import { AppContextProvider, useAppContext } from '../src/providers/App';
 import { CATALOG_POLL_INTERVAL_MS } from '../src/providers/catalogPoll';
 import { useCatalogPoll } from '../src/providers/useCatalogPoll';
 import { Stream, STREAM_STATUS_LIVE, STREAM_STATUS_SCHEDULED } from '../src/types/stream';
+import { chooseSource } from '../src/swarm/routing';
 import { config } from '../src/utils/config';
 import { DEFAULT_READ_TIMEOUT_MS } from '../src/swarm/provider';
 
@@ -153,9 +154,13 @@ function gateway({
   return state;
 }
 
+/** The app's context as the browse page last rendered it, for a test that switches source. */
+let appContext: ReturnType<typeof useAppContext> | null = null;
+
 /** The browse page's use of the poll, reduced to what this checks: the list and the poll. */
 function Browser() {
-  const { streamList } = useAppContext();
+  appContext = useAppContext();
+  const { streamList } = appContext;
   useCatalogPoll(CATALOG_POLL_INTERVAL_MS);
   return createElement(
     'ul',
@@ -310,5 +315,34 @@ describe('a failed read on a page that has not shown the list yet', () => {
     assert.ok(bee.nextSlotAsksAt.length >= 2, 'the failed slot read was never tried again');
     const retriedAfter = bee.nextSlotAsksAt[1] - bee.nextSlotAsksAt[0];
     assert.ok(retriedAfter >= CATALOG_POLL_INTERVAL_MS, `a failed read was tried again after ${retriedAfter}ms`);
+  });
+
+  /**
+   * The source is part of the poll's key, so a viewer who switches node starts a first load on that
+   * node. Its first read failing must be retried as quickly as the app's very first read was.
+   */
+  it('is tried again within a few seconds on a source the viewer has just switched to', async () => {
+    const bee = gateway({ failure: 'refused' });
+    mount();
+    assert.ok(await advanceUntil(() => shown().length > 0, 1_000), 'the list never showed on the first source');
+
+    // The read asks the new node, then the build's gateway behind it, so failing it takes two.
+    bee.failingHeads = 2;
+    act(() => {
+      const id = appContext!.addSource({ type: 'bee-node', name: 'Desk node', url: 'http://localhost:1733' });
+      appContext!.setRouting(chooseSource(appContext!.routing, id));
+    });
+    assert.ok(await advanceUntil(() => bee.failingHeads === 0, 1_000), 'the first read on the new source never failed');
+    const failedAt = bee.lastFailureAt;
+    const asksBefore = bee.headAsksAt.length;
+
+    await advanceUntil(() => bee.headAsksAt.length > asksBefore, 2 * CATALOG_POLL_INTERVAL_MS);
+
+    assert.ok(bee.headAsksAt.length > asksBefore, 'a failed first read on the new source was never tried again');
+    const retriedAfter = bee.headAsksAt[asksBefore] - failedAt;
+    assert.ok(
+      retriedAfter <= 10_000,
+      `a failed first read on the new source was tried again only after ${retriedAfter}ms`,
+    );
   });
 });

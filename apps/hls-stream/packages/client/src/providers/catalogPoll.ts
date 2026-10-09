@@ -25,12 +25,14 @@ import { WATCH_VIEW_NOT_STARTED, WATCH_VIEW_UNAVAILABLE, WatchPageView } from '@
 export const CATALOG_POLL_INTERVAL_MS = 60_000;
 
 /**
- * How soon a failed read is tried again while the page has never shown the list, in milliseconds.
+ * How soon a failed read is tried again while the page has not shown the list from the source selected
+ * now, in milliseconds.
  *
- * ⛔ **Only on the first load.** A viewer whose first read fails would otherwise look at an empty page
- * for a whole {@link CATALOG_POLL_INTERVAL_MS}. A retry asks the list's next slot again, which is not
- * written yet, and Bee skips each peer asked that early for a minute, so once the list has been shown a
- * failed read waits the routine interval instead.
+ * ⛔ **Only on a first load, the app's own or the first after a switch of node.** A viewer whose first
+ * read fails would otherwise wait a whole {@link CATALOG_POLL_INTERVAL_MS} for the list. A retry asks
+ * the list's next slot again, which is not written yet, and Bee skips each peer asked that early for a
+ * minute, so once the list has been shown from that source a failed read waits the routine interval
+ * instead.
  */
 export const FIRST_LOAD_RETRY_MS = 5_000;
 

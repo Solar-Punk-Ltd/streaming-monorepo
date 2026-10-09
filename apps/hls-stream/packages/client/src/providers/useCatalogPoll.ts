@@ -21,10 +21,11 @@ interface CatalogPollState {
  * the one the viewer has left.
  *
  * ⛔ **A failed read is followed by the next one at the same cadence, never by a backoff.** Until the
- * list has been shown once, the next one comes after {@link FIRST_LOAD_RETRY_MS} instead, so a first
- * read that fails does not leave the page empty for a whole interval. SWR skips
- * its refresh timer while its cache holds an error and leaves the next read to `onErrorRetry`, whose
- * default waits longer after every failure, from 5 to 10 s after one up to minutes after a few in a
+ * list has been shown from the source selected now, the next one comes after
+ * {@link FIRST_LOAD_RETRY_MS} instead, so a first read that fails, on the app's first load or after a
+ * switch of node, does not leave the page waiting a whole interval. SWR skips its refresh timer while
+ * its cache holds an error and leaves the next read to `onErrorRetry`, whose default waits longer
+ * after every failure, from 5 to 10 s after one up to minutes after a few in a
  * row. One slow or refused read used to hold an open page that far behind, so a stream published or
  * gone live reached it only after a reload. A retry is scheduled only while the page is visible, which
  * is SWR's own rule, and is dropped if the page has been hidden by the time it is due, since SWR reads
@@ -34,29 +35,29 @@ interface CatalogPollState {
  */
 export function useCatalogPoll(pollMs: number | null): CatalogPollState {
   const { fetchAppState, setNewStreamList, streamListSourceId } = useAppContext();
-  const hasShownList = useRef(false);
+  const shownListSourceId = useRef<string | null>(null);
   const { data, error, isLoading } = useSWR(pollMs === null ? null : ['app-state', streamListSourceId], fetchAppState, {
     revalidateOnFocus: true,
     refreshInterval: pollMs ?? 0,
     dedupingInterval: pollMs ?? 0,
     shouldRetryOnError: true,
-    onErrorRetry: retryAfter(pollMs, () => hasShownList.current),
+    onErrorRetry: retryAfter(pollMs, () => shownListSourceId.current === streamListSourceId),
   });
 
   useEffect(() => {
     if (data) {
-      hasShownList.current = true;
+      shownListSourceId.current = streamListSourceId;
       setNewStreamList(data);
     }
-  }, [data, setNewStreamList]);
+  }, [data, setNewStreamList, streamListSourceId]);
 
   return { error, isLoading };
 }
 
 /**
  * SWR's error retry, flat: the next read comes a fixed time after a failure, however many came before
- * it. That time is {@link FIRST_LOAD_RETRY_MS} while the page has never shown the list, and `pollMs`
- * once it has.
+ * it. That time is {@link FIRST_LOAD_RETRY_MS} while the page has not shown the list from the source
+ * selected now, and `pollMs` once it has.
  */
 function retryAfter(pollMs: number | null, hasShownList: () => boolean): SWRConfiguration['onErrorRetry'] {
   return (_error, _key, config, revalidate, options) => {
