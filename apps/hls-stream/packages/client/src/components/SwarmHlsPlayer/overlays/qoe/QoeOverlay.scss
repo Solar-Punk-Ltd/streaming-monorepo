@@ -113,18 +113,98 @@
   }
 }
 
-.qoe-overlay__panel {
+// The panel's frame hangs 4 px below the button, right edges aligned, and takes its width and height
+// from the geometry (qoeGeometry.ts). It holds the resize handles, which therefore stay on the edges
+// while the panel inside scrolls.
+.qoe-overlay__frame {
   pointer-events: all;
   position: absolute;
   top: calc(100% + 4px);
   right: 0;
+}
+
+// The header stays at the top while the rows scroll under it. Its own rule is the panel's; this one
+// only pins it, at the panel's top edge (a sticky offset counts from the scroll container's padding
+// box), on a near opaque background so the rows passing under it don't show through.
+.qoe-overlay__frame .qoe-overlay__header {
+  position: sticky;
+  top: 0;
+  z-index: 1;
+  background: rgba(10, 10, 10, 0.96);
+}
+
+// Thin invisible grips straddling the frame's border, above the panel. Corners are larger than edges
+// so they are easy to hit, and sit above the edges where the two overlap.
+$qoe-handle-edge: 6px;
+$qoe-handle-corner: 12px;
+
+.qoe-overlay__handle {
+  position: absolute;
+  z-index: 1;
+  touch-action: none;
+
+  &--n,
+  &--s {
+    left: $qoe-handle-corner * 0.5;
+    right: $qoe-handle-corner * 0.5;
+    height: $qoe-handle-edge;
+  }
+  &--e,
+  &--w {
+    top: $qoe-handle-corner * 0.5;
+    bottom: $qoe-handle-corner * 0.5;
+    width: $qoe-handle-edge;
+  }
+  &--n {
+    top: -$qoe-handle-edge * 0.5;
+  }
+  &--s {
+    bottom: -$qoe-handle-edge * 0.5;
+  }
+  &--e {
+    right: -$qoe-handle-edge * 0.5;
+  }
+  &--w {
+    left: -$qoe-handle-edge * 0.5;
+  }
+
+  &--ne,
+  &--nw,
+  &--se,
+  &--sw {
+    z-index: 2;
+    width: $qoe-handle-corner;
+    height: $qoe-handle-corner;
+  }
+  &--ne {
+    top: -$qoe-handle-corner * 0.5;
+    right: -$qoe-handle-corner * 0.5;
+  }
+  &--nw {
+    top: -$qoe-handle-corner * 0.5;
+    left: -$qoe-handle-corner * 0.5;
+  }
+  &--se {
+    bottom: -$qoe-handle-corner * 0.5;
+    right: -$qoe-handle-corner * 0.5;
+  }
+  &--sw {
+    bottom: -$qoe-handle-corner * 0.5;
+    left: -$qoe-handle-corner * 0.5;
+  }
+}
+
+// Fills the frame and scrolls: vertically as the rows need, horizontally only for a single word too
+// long to wrap. The font sizes are fixed px and nothing scales, whatever the panel's size.
+.qoe-overlay__panel {
+  box-sizing: border-box;
+  width: 100%;
+  height: 100%;
   background: rgba(0, 0, 0, 0.82);
   border: 1px solid rgba(255, 255, 255, 0.15);
   border-radius: 6px;
   padding: 8px 10px;
-  min-width: 220px;
-  max-height: 70vh;
-  overflow-y: auto;
+  overflow: auto;
   backdrop-filter: blur(4px);
   color: #e8e8e8;
   font-family: monospace;
@@ -204,10 +284,13 @@
   margin-top: 4px;
 }
 
+// A narrow panel wraps a row rather than overlapping or clipping it: the value drops under its label,
+// still right-aligned, and a value too long for a line of its own breaks anywhere.
 .qoe-overlay__row {
   display: flex;
+  flex-wrap: wrap;
   justify-content: space-between;
-  gap: 8px;
+  column-gap: 8px;
   padding: 1px 0;
 
   &--bad .qoe-overlay__value {
@@ -217,12 +300,13 @@
 
 .qoe-overlay__label {
   color: #bbb;
-  white-space: nowrap;
 }
 .qoe-overlay__value {
+  min-width: 0;
+  margin-left: auto;
   color: #fff;
   text-align: right;
-  white-space: nowrap;
+  overflow-wrap: anywhere;
 }
 
 // The release under the header. A label can run to 96 characters, so it wraps rather than widening

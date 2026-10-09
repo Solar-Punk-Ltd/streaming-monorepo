@@ -80,6 +80,14 @@ hashes, which that gate reads as a client predating the stamp and answers with a
 
 Append `?qoe=1` to a stream watcher URL to enable a draggable overlay with playback quality metrics (startup time, rebuffering, bitrate, dropped frames, live latency, etc.). Press `Q` to toggle visibility.
 
+The panel resizes like a desktop window, from every edge and corner, and the toggle button drags it
+around. Its text keeps its size: a narrow panel wraps each row, the value under its label, and the
+panel scrolls when the rows don't fit. It never gets smaller than 160 × 120 px, and the panel and its
+button stay inside the player, also when the player resizes or goes fullscreen. Its size and place
+are remembered in this browser, under the localStorage key `swarm-hls.qoe-overlay.v1`, and restored
+on the next load, pulled back inside the player (shrunk first, then moved) if it no longer fits. The
+geometry is in `src/components/SwarmHlsPlayer/overlays/qoe/qoeGeometry.ts`.
+
 Under its header the overlay names the release the player was built as, `Player QA-build-2026-10-07 (1702aff1b)`: the
 label the deploy named and the first nine characters of its commit, or the label alone when it already starts with
 those nine or there is no commit, with the whole commit as the line's title. A build whose deploy named no release
