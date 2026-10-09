@@ -115,8 +115,9 @@ function timelineGateway(now: () => number, timeline: Timeline = ONE_THEN_FOUR) 
       continue;
     }
     const marker = {
-      v: 1,
+      v: 2,
       period,
+      segmentMs: 2_000,
       writtenAt: writtenAtMs,
       rungs: Object.fromEntries(named.map((q) => [q.hex, 3])),
     };
@@ -315,7 +316,7 @@ describe('the ladder marker reads shared by the player', () => {
             ok: true,
             status: 200,
             headers: new Headers(),
-            text: JSON.stringify({ v: 1, period: 7, writtenAt, rungs: { [QUALITIES[0].hex]: 3 } }),
+            text: JSON.stringify({ v: 2, period: 7, writtenAt, rungs: { [QUALITIES[0].hex]: 3 }, segmentMs: 2_000 }),
           };
         }
         throw new ManifestFetchError(path, 404);

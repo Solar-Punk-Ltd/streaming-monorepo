@@ -806,7 +806,13 @@ describe('Q8: a quality whose broadcaster went quiet waits on the time markers, 
       const nowMs = followClock.now();
       if (atMs === markerAtMs) {
         const period = markerPeriodAt(nowMs);
-        const marker = { v: 1, period, writtenAt: Math.floor(nowMs), rungs: { [TOP.toHex()]: index } };
+        const marker = {
+          v: 2,
+          period,
+          writtenAt: Math.floor(nowMs),
+          rungs: { [TOP.toHex()]: index },
+          segmentMs: SEGMENT_S * 1000,
+        };
         gateway.publishMarker(group, period, JSON.stringify(marker));
         nextMarkerPeriod = period + 1;
         continue;

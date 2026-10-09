@@ -496,9 +496,10 @@ searches the feeds exactly as before. The convention lives in `@swarm-hls-stream
   ladder cuts. A viewer joining from a marker has read no playlist yet, and moves the head on by the
   time since the write in segments of that length. `parseLadderMarker` rejects anything else, so a
   reader never jumps on a malformed marker.
-- **Version.** 2 since markers named the segment length. Readers still take a version 1 marker, which
-  has no `segmentMs`, and a reader from before version 2 treats a version 2 marker as absent and
-  searches instead, so the viewer has to be deployed before the uploader for joins to stay one round.
+- **Version.** 2 since markers named the segment length. Readers treat any other version as absent and
+  search instead. Version 1, which had no `segmentMs`, was written only by test builds, and readers stopped
+  taking it once nothing wrote it (2026-10-09). A reader from before version 2 treats a version 2 marker
+  as absent, so the viewer has to be deployed before the uploader for joins to stay one round.
 
 ```json
 { "v": 2, "period": 175983840, "writtenAt": 1759838400250, "rungs": { "<rung feed topic hex>": 41 }, "segmentMs": 2000 }

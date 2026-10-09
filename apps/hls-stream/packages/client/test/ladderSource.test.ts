@@ -316,8 +316,9 @@ describe('the ladder entry points', () => {
           if (path.startsWith('soc/') && path.endsWith(ladderMarkerIdentifier(sourceTopic, wanted).toHex())) {
             requested.push(path);
             const marker = {
-              v: 1,
+              v: 2,
               period: wanted,
+              segmentMs: 2_000,
               writtenAt: markerPeriodStartMs(wanted) + 1,
               rungs: Object.fromEntries(rungs.map((hex) => [hex, RUNG_HEAD])),
             };

@@ -152,7 +152,13 @@ function openWaitingPage(): FakeLadderGateway {
 
 /** The uploader's marker for `period`, written 250 ms into it. */
 function writeMarker(gateway: FakeLadderGateway, period: number): void {
-  const marker = { v: 1, period, writtenAt: markerPeriodStartMs(period) + 250, rungs: { ['b'.repeat(64)]: 0 } };
+  const marker = {
+    v: 2,
+    period,
+    writtenAt: markerPeriodStartMs(period) + 250,
+    rungs: { ['b'.repeat(64)]: 0 },
+    segmentMs: 2_000,
+  };
   gateway.publishMarker(Topic.fromString(TOPIC), period, JSON.stringify(marker));
 }
 

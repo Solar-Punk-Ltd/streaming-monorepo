@@ -144,18 +144,16 @@ describe('finding the newest index from a time marker', () => {
     assert.deepEqual(gateway.readsOf(TOP), [], 'no slot was read before the fallback');
   });
 
-  it('finds the head from a version 1 marker, which names no segment length, without the old search', async () => {
-    const setup = await rig();
-    const { time, gateway, fallbacks, finder } = setup;
+  /** Only test builds wrote version 1, which names no segment length, and nothing has written it since 2026-10-09. */
+  it('treats a version 1 marker as no marker', async () => {
+    const { time, gateway, fallbacks, finder } = await rig();
     gateway.serveMarkers(GROUP, {
       body: ({ v: _v, segmentMs: _segmentMs, ...rest }) => JSON.stringify({ ...rest, v: 1 }),
     });
-    const head = gateway.newestAt(TOP, time.trueNowMs);
 
-    const found = await time.runToCompletion(finder.findNewest(rungOf(TOP), null));
+    await time.runToCompletion(finder.findNewest(rungOf(TOP), null));
 
-    assert.deepEqual(fallbacks, []);
-    assertHead(setup, TOP, found, head);
+    assert.deepEqual(fallbacks, [{ rung: TOP.toHex(), hint: null }]);
   });
 
   it('treats a malformed marker as no marker', async () => {

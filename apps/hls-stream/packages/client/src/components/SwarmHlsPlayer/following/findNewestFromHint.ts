@@ -20,11 +20,8 @@ export interface SwitchHint {
   readonly index: number;
   /** Its newest segment end, on the publisher's clock. */
   readonly newestSegmentEndMs: number;
-  /**
-   * How long its segments last, from its playlist or its time marker, or null for a hint that came
-   * without one, as a version 1 marker does.
-   */
-  readonly segmentMs: number | null;
+  /** How long its segments last, from its playlist or its time marker. */
+  readonly segmentMs: number;
   /** When the viewer read it, on the viewer's clock. */
   readonly seenAtMs: number;
 }
@@ -53,8 +50,7 @@ export async function findNewestFromHint(
   const tally: SearchTally = { rounds: 0, reads: 0 };
   const bracket = emptyBracket();
   const elapsedMs = Math.max(0, clock.now() - hint.seenAtMs);
-  // A hint that names no length is searched from where it stood, and the first slot read supplies it.
-  const centre = hint.index + (hint.segmentMs === null ? 0 : Math.floor(elapsedMs / hint.segmentMs));
+  const centre = hint.index + Math.floor(elapsedMs / hint.segmentMs);
   // Where the head is by the publisher's clock: as many slots past the newest one found as the hint's
   // newest segment, moved on by the time since it was read, is segments past that slot's.
   const byHint = (known: Bracket): number | null =>

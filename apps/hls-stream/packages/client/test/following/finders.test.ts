@@ -123,23 +123,6 @@ describe('finding the newest index from another quality as a hint', () => {
     assert.ok((result.newest?.index ?? -1) >= 3_010, `found ${result.newest?.index}`);
     assert.equal(result.rounds, 1);
   });
-
-  /**
-   * A hint read off a time marker names no length, since a marker carries no playlist. The search
-   * still pins the head, moving the hint on by the length of the first slot it reads.
-   */
-  it('pins the head from a hint that names no segment length', async () => {
-    const time = new VirtualTime();
-    const seenAtMs = 100_000_000;
-    await time.runUntil(seenAtMs + 5_000);
-    const feed = liveFeed(time, 3_010, seenAtMs + 5_000, 500);
-    const hint = { index: 3_000, newestSegmentEndMs: seenAtMs - LAG_MS - 500, segmentMs: null, seenAtMs };
-    const result = await time.runToCompletion(findNewestFromHint(feed, time.clock(), hint));
-
-    const found = result.newest?.index ?? -1;
-    assert.ok(found >= 3_010 && found <= feed.newestAt(time.trueNowMs), `found ${found}`);
-    assert.equal(result.firstMissing, found + 1);
-  });
 });
 
 describe('finding the newest index of half-second segments from nothing', () => {

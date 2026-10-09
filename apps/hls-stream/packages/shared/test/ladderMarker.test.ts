@@ -57,7 +57,7 @@ function validMarker(overrides: Partial<LadderMarker> = {}): LadderMarker {
   };
 }
 
-/** A marker as the uploader wrote them before they named a segment length. */
+/** A marker as test builds of the uploader wrote them before markers named a segment length. */
 function versionOneText(): string {
   const { segmentMs: _segmentMs, ...rest } = validMarker();
   return JSON.stringify({ ...rest, v: 1 });
@@ -111,15 +111,14 @@ describe('encodeLadderMarker and parseLadderMarker', () => {
     assert.equal(parseLadderMarker(text)?.segmentMs, 500);
   });
 
-  it('still reads a version 1 marker, which names no segment length', () => {
-    const marker = parseLadderMarker(versionOneText());
-    assert.notEqual(marker, null);
-    assert.equal(marker?.v, 1);
-    assert.equal(marker?.segmentMs, null);
+  /** Only test builds wrote version 1, and nothing has written it since the 2026-10-09 deploy. */
+  it('reads a version 1 marker as no marker, as any version it does not know', () => {
+    assert.equal(parseLadderMarker(versionOneText()), null);
+    assert.equal(parseLadderMarker(versionOneText(), validMarker().period), null);
   });
 
   it('refuses to encode a marker that names no segment length', () => {
-    assert.throws(() => encodeLadderMarker(validMarker({ segmentMs: null })));
+    assert.throws(() => encodeLadderMarker({ ...validMarker(), segmentMs: null } as unknown as LadderMarker));
     assert.throws(() => encodeLadderMarker(JSON.parse(versionOneText()) as LadderMarker));
   });
 
@@ -140,7 +139,7 @@ describe('encodeLadderMarker and parseLadderMarker', () => {
     ['null', 'null'],
     ['another version', JSON.stringify(validMarker({ v: 3 as 2 }))],
     ['a version 2 marker without a segment length', JSON.stringify({ ...validMarker(), segmentMs: undefined })],
-    ['a version 1 marker with a segment length', JSON.stringify(validMarker({ v: 1 }))],
+    ['a version 1 marker with a segment length', JSON.stringify(validMarker({ v: 1 as 2 }))],
     ['a segment length of zero', JSON.stringify(validMarker({ segmentMs: 0 }))],
     ['a fractional segment length', JSON.stringify(validMarker({ segmentMs: 500.5 }))],
     ['a segment length written as a string', JSON.stringify({ ...validMarker(), segmentMs: '500' })],
