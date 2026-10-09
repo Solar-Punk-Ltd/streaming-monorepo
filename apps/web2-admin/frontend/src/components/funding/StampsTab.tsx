@@ -21,6 +21,7 @@ import {
 } from '@streaming-monorepo/web2-admin-common';
 
 import { formatShort, formatUnits } from './amounts';
+import { fundNeeds, type FundNeed } from './balance';
 import { BatchTable } from './BatchTable';
 import { followBulk, type FollowedBulk } from './BulkProgress';
 import { FundingFrame, useFundingView } from './FundingFrame';
@@ -209,7 +210,10 @@ function Summary({
   );
 }
 
-/** What the ticked batches come to, why the operation cannot be asked for yet, and the button that asks for it. */
+/**
+ * What the ticked batches come to, why the operation cannot be asked for yet, the button that asks for it, and beside
+ * it Fund all while a ticked batch's node is short of xBZZ or has no xDAI: the nodes the bar names so.
+ */
 function StampBar({
   check,
   operation,
@@ -217,6 +221,7 @@ function StampBar({
   steps,
   blocked,
   onGo,
+  onFund,
 }: {
   check: StampCheck;
   operation: FundingStampOperationKind;
@@ -224,10 +229,12 @@ function StampBar({
   steps: FundingDiluteSteps;
   blocked: string | null;
   onGo: () => void;
+  onFund: (needs: ReadonlyMap<string, FundNeed>) => void;
 }) {
   // Said once each: two nodes that share a label would otherwise give the same sentence twice.
   const problems = [...new Set(blocked ? [...check.problems, blocked] : check.problems)];
   const verb = operation === 'topup' ? 'Top up' : 'Dilute';
+  const needs = fundNeeds(check.ledgerOf);
   return (
     <Paper variant="outlined" sx={{ p: 2 }}>
       <Stack spacing={1}>
@@ -239,11 +246,16 @@ function StampBar({
             {problem}
           </Typography>
         ))}
-        <Stack direction="row">
+        <Stack direction="row" spacing={1}>
           {/* Always with its count, which also tells it from the operation switch's button of the same verb. */}
           <Button variant="contained" disabled={problems.length > 0} onClick={onGo}>
             {verb} {batchCount(check.lines.length)}
           </Button>
+          {needs.size > 0 ? (
+            <Button variant="outlined" onClick={() => onFund(needs)}>
+              Fund all
+            </Button>
+          ) : null}
         </Stack>
       </Stack>
     </Paper>
@@ -255,10 +267,11 @@ function StampBar({
  * catalogue batch comes on top, then each stage's batches. Tick batches, choose the days or the steps, which apply to
  * every ticked one, and confirm, in a dialog that reads the view again as it opens and asks for what that reading
  * shows; each operation is then followed until it comes to its end, and the view is read again once they have
- * settled. A ticked batch shows what it costs and leaves, and its node's xBZZ after; a node short of xBZZ for its
- * top-ups has a Fund link to the Balance tab, with what it lacks entered. A new stamp bulk waits while one is on its
- * way, the one made here or the one the view says is open, which the page follows after a reload too. Switching the
- * operation clears the ticks, since a dilution cannot be undone.
+ * settled. A ticked batch shows what it costs and leaves, and its node's xBZZ after, or in red what it lacks for its
+ * top-ups. While a ticked batch's node is short of xBZZ or has no xDAI for the gas, Fund all beside the button opens
+ * the Balance tab with what each such node lacks entered. A new stamp bulk waits while one is on its way, the one made
+ * here or the one the view says is open, which the page follows after a reload too. Switching the operation clears the
+ * ticks, since a dilution cannot be undone.
  *
  * The operation, the days, the steps and the ticks, `selection`, are the Funding page's, so they stay while another
  * tab is shown; the operations sent clear the ticks. The tab reads the view again each time it is shown, and a tick
@@ -271,7 +284,8 @@ export function StampsTab({
 }: {
   selection: StampSelection;
   onSelection: Dispatch<SetStateAction<StampSelection>>;
-  onFund: (nodeId: string, xbzzPlur: string) => void;
+  /** Fund all: opens the Balance tab with what each of these nodes lacks entered. */
+  onFund: (needs: ReadonlyMap<string, FundNeed>) => void;
 }) {
   const { operation, days, steps, ticked } = selection;
   const [confirming, setConfirming] = useState(false);
@@ -352,7 +366,6 @@ export function StampsTab({
               ticked={ticked}
               check={check}
               onTick={tick}
-              onFund={onFund}
             />
           ))}
           {check ? (
@@ -363,6 +376,7 @@ export function StampsTab({
               steps={steps}
               blocked={followed && !followed.settled ? WAIT_FOR_STAMPS : null}
               onGo={openConfirm}
+              onFund={onFund}
             />
           ) : null}
         </>

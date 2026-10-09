@@ -77,9 +77,9 @@ function SendBar({
  * waits while a send is on its way, the one made here or the one the view says is open, which the page follows after a
  * reload too.
  *
- * What is ticked and typed, `drafts`, is the Funding page's, so it stays while another tab is shown, and a Fund link of
- * the Stamps or the Chequebooks tab enters what its node lacks in it. A send clears it. `focus` is the field the link
- * entered, which takes the focus as the tab is drawn.
+ * What is ticked and typed, `drafts`, is the Funding page's, so it stays while another tab is shown, and Fund all of
+ * the Stamps or the Chequebooks tab enters what its nodes lack in it. A send clears it. `focus` is the first field Fund
+ * all entered, which takes the focus as the tab is drawn.
  */
 export function BalanceTab({
   drafts,

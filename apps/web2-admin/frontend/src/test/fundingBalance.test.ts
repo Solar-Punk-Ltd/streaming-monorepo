@@ -2,8 +2,10 @@ import { describe, expect, it } from 'vitest';
 
 import {
   checkSend,
-  fundDrafts,
+  fundAll,
   fundFocus,
+  fundNeeds,
+  GAS_XDAI,
   nodeCaption,
   nodeGroups,
   nodeName,
@@ -173,34 +175,59 @@ describe('what Send would send, and why it cannot', () => {
   });
 });
 
-describe('what a Fund link of the Stamps or the Chequebooks tab enters', () => {
-  it('ticks the node with the xBZZ it lacks, exactly, and no xDAI, which Send then sends as it is', () => {
-    const drafts = fundDrafts({}, 'stage-1:bee', '2190000000000000');
-    expect(drafts).toEqual({ 'stage-1:bee': { ticked: true, xdai: '', xbzz: '0.219' } });
-    expect(checkSend(makeView(), drafts).lines).toEqual([
+describe('what Fund all of the Stamps or the Chequebooks tab enters', () => {
+  /** A tab's ledgers: one node short of 0.219 xBZZ, one with no xDAI, one lacking both, and one lacking nothing. */
+  const ledgers = new Map([
+    ['stage-1:bee', { fundPlur: '2190000000000000', noGas: false }],
+    ['catalogue:bee', { fundPlur: null, noGas: false }],
+    ['stage-2:360p', { fundPlur: null, noGas: true }],
+    ['pool:720p', { fundPlur: '10000000000000000', noGas: true }],
+  ]);
+
+  it('funds each node short of xBZZ or with no xDAI, in the order the ledgers list them, and none that lacks nothing', () => {
+    expect([...fundNeeds(ledgers).keys()]).toEqual(['stage-1:bee', 'stage-2:360p', 'pool:720p']);
+    expect(fundNeeds(new Map([['catalogue:bee', { fundPlur: null, noGas: false }]])).size).toBe(0);
+  });
+
+  it('ticks each node with the xBZZ it lacks, every digit of it, and 0.01 xDAI when it holds none', () => {
+    const drafts = fundAll({}, fundNeeds(ledgers));
+    expect(GAS_XDAI).toBe('0.01');
+    expect(drafts).toEqual({
+      'stage-1:bee': draft('', '0.219'),
+      'stage-2:360p': draft('0.01', ''),
+      'pool:720p': draft('0.01', '1'),
+    });
+    expect(checkSend(makeView(), { 'stage-1:bee': draft('', '0.219') }).lines).toEqual([
       { nodeId: 'stage-1:bee', label: 'stage-1-uploader', kind: 'xbzz', amount: '2190000000000000' },
     ]);
-    expect(fundFocus('stage-1:bee', '2190000000000000')).toEqual({ nodeId: 'stage-1:bee', kind: 'xbzz' });
+    expect(checkSend(makeView(), { 'stage-1:bee': draft(GAS_XDAI, '') }).lines).toEqual([
+      { nodeId: 'stage-1:bee', label: 'stage-1-uploader', kind: 'xdai', amount: '10000000000000000' },
+    ]);
   });
 
-  it('ticks the node with nothing entered when it lacks only the xDAI for the gas, and focuses its xDAI field', () => {
-    const drafts = fundDrafts({}, 'stage-1:bee', null);
-    expect(drafts).toEqual({ 'stage-1:bee': { ticked: true, xdai: '', xbzz: '' } });
-    expect(fundFocus('stage-1:bee', null)).toEqual({ nodeId: 'stage-1:bee', kind: 'xdai' });
-    expect(checkSend(makeView(), drafts).problems).toEqual(['Enter an amount beside a node to send it.']);
-  });
-
-  it('keeps what was typed: the node’s xDAI, and every other node', () => {
-    const typed = { 'stage-1:bee': draft('0.1', '9'), 'catalogue:bee': draft('', '2') };
-    expect(fundDrafts(typed, 'stage-1:bee', '2190000000000000')).toEqual({
-      'stage-1:bee': draft('0.1', '0.219'),
+  it('sets only those fields: every other field, and every other node, keeps what was typed', () => {
+    const typed = {
+      'stage-1:bee': draft('0.1', '9'),
+      'stage-2:360p': draft('', '3'),
       'catalogue:bee': draft('', '2'),
+      'pool:720p': { ticked: false, xdai: '', xbzz: '' },
+    };
+    expect(fundAll(typed, fundNeeds(ledgers))).toEqual({
+      'stage-1:bee': draft('0.1', '0.219'),
+      'stage-2:360p': draft('0.01', '3'),
+      'catalogue:bee': draft('', '2'),
+      'pool:720p': draft('0.01', '1'),
     });
-    expect(fundDrafts(typed, 'stage-1:bee', null)).toEqual(typed);
-    // An unticked node it names is ticked, its amounts as they were.
-    expect(fundDrafts({ 'stage-2:360p': { ticked: false, xdai: '', xbzz: '' } }, 'stage-2:360p', null)).toEqual({
-      'stage-2:360p': draft(),
+    expect(fundAll(typed, new Map())).toEqual(typed);
+  });
+
+  it("focuses the first node's xBZZ field when it entered xBZZ for it, its xDAI field when the gas is all it lacks", () => {
+    expect(fundFocus(fundNeeds(ledgers))).toEqual({ nodeId: 'stage-1:bee', kind: 'xbzz' });
+    expect(fundFocus(new Map([['stage-2:360p', { fundPlur: null, noGas: true }]]))).toEqual({
+      nodeId: 'stage-2:360p',
+      kind: 'xdai',
     });
+    expect(fundFocus(new Map())).toBeNull();
   });
 });
 

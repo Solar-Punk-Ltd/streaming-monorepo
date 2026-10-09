@@ -181,26 +181,34 @@ export interface StampLine {
   problem: string | null;
 }
 
-/** What one node pays for its ticked top-ups, and what its wallet holds after them. */
+/**
+ * What one node pays for its ticked batches, what its wallet holds after them, and whether it can pay the gas. The
+ * amounts are its top-ups', while they are priced: a dilution costs no xBZZ.
+ */
 export interface NodeLedger {
-  /** What its ticked top-ups cost in all, in PLUR. */
-  costPlur: string;
-  /** Its xBZZ after them, in PLUR, or null when it cannot pay for them. */
+  /** What its ticked top-ups cost in all, in PLUR, or null for a dilution and while a top-up is not priced. */
+  costPlur: string | null;
+  /** Its xBZZ after them, in PLUR, or null when it cannot pay for them, for a dilution and while they are not priced. */
   afterPlur: string | null;
-  /** What it lacks for them, exactly, in PLUR, or null when it lacks nothing. */
+  /** What it lacks for them, exactly, in PLUR, or null when it lacks nothing or that is not known. */
   shortPlur: string | null;
   /**
-   * What it lacks rounded up to three decimals of xBZZ, in PLUR, or null: the amount the row says, and the one its Fund
-   * link hands the Balance tab, so a node funded with it is not short by a rounding.
+   * What it lacks rounded up to three decimals of xBZZ, in PLUR, or null: the amount the row says, and the one Fund
+   * all enters on the Balance tab, so a node funded with it is not short by a rounding.
    */
   fundPlur: string | null;
+  /** Whether it holds no xDAI to pay the gas, which a top-up and a dilution both cost. */
+  noGas: boolean;
 }
 
 export interface StampCheck {
   lines: StampLine[];
   /** The line of each ticked batch, by its id. */
   lineOf: ReadonlyMap<string, StampLine>;
-  /** What each node pays for its ticked top-ups, by node id. Empty for a dilution, and while a top-up has no price. */
+  /**
+   * The ledger of each node with a ticked batch whose wallet was read, by node id, in the order its first ticked batch
+   * is listed: the nodes Fund all funds come from it.
+   */
   ledgerOf: ReadonlyMap<string, NodeLedger>;
   /** What the ticked top-ups cost in all, in PLUR, or null for a dilution and while a cost is not known. */
   totalCostPlur: string | null;
@@ -258,10 +266,21 @@ function unitsOf(value: string | null): bigint | null {
   return value !== null && DIGITS.test(value) ? BigInt(value) : null;
 }
 
-/** The ledger of a node whose wallet holds `balance` and whose ticked top-ups cost `cost`. */
-function ledgerFor(cost: bigint, balance: bigint): NodeLedger {
+/**
+ * The ledger of a node whose wallet holds `balance` xBZZ and `xdai`, and whose ticked top-ups cost `cost`: null for a
+ * dilution and while a top-up is not priced, which leaves the ledger's amounts null.
+ */
+function ledgerFor(cost: bigint | null, balance: bigint, xdai: bigint): NodeLedger {
+  const noGas = xdai === 0n;
+  if (cost === null) return { costPlur: null, afterPlur: null, shortPlur: null, fundPlur: null, noGas };
   if (cost <= balance) {
-    return { costPlur: cost.toString(), afterPlur: (balance - cost).toString(), shortPlur: null, fundPlur: null };
+    return {
+      costPlur: cost.toString(),
+      afterPlur: (balance - cost).toString(),
+      shortPlur: null,
+      fundPlur: null,
+      noGas,
+    };
   }
   const short = cost - balance;
   return {
@@ -269,6 +288,7 @@ function ledgerFor(cost: bigint, balance: bigint): NodeLedger {
     afterPlur: null,
     shortPlur: short.toString(),
     fundPlur: roundUpUnits(short, XBZZ_DECIMALS).toString(),
+    noGas,
   };
 }
 
@@ -319,15 +339,13 @@ export function checkStamps(view: Inventory & Pick<FundingView, 'postage'>, sele
       problems.push(`The wallet of ${node.label} could not be read.`);
       continue;
     }
-    if (priced) {
-      const cost = costs.reduce((sum, each) => sum + BigInt(each ?? '0'), 0n);
-      const ledger = ledgerFor(cost, xbzz);
-      ledgers.set(node.nodeId, ledger);
-      if (ledger.fundPlur !== null) {
-        problems.push(`${node.label} is short of ${formatShort(ledger.fundPlur, XBZZ_DECIMALS)} xBZZ for its top-ups.`);
-      }
+    const cost = priced ? costs.reduce((sum, each) => sum + BigInt(each ?? '0'), 0n) : null;
+    const ledger = ledgerFor(cost, xbzz, xdai);
+    ledgers.set(node.nodeId, ledger);
+    if (ledger.fundPlur !== null) {
+      problems.push(`${node.label} is short of ${formatShort(ledger.fundPlur, XBZZ_DECIMALS)} xBZZ for its top-ups.`);
     }
-    if (xdai === 0n) problems.push(`${node.label} holds no xDAI to pay the gas.`);
+    if (ledger.noGas) problems.push(`${node.label} holds no xDAI to pay the gas.`);
   }
 
   const totalCostPlur = priced ? sumBaseUnits(lines.map((line) => line.costPlur ?? '0')) : null;

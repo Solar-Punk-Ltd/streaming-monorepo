@@ -216,7 +216,7 @@ export function NodeTable({
 }: {
   group: NodeGroup;
   drafts: Drafts;
-  /** The amount field that takes the focus when the table is drawn: the one a Fund link of another tab is about. */
+  /** The amount field that takes the focus when the table is drawn: the first one Fund all of another tab entered. */
   focus?: NodeFocus | null;
   onChange: (nodeId: string, draft: NodeDraft) => void;
 }) {

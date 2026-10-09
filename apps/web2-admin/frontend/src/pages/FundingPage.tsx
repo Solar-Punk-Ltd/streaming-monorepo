@@ -2,7 +2,7 @@ import { useCallback, useState } from 'react';
 import { Stack, Tab, Tabs, Typography } from '@mui/material';
 
 import { BalanceTab } from '../components/funding/BalanceTab';
-import { fundDrafts, fundFocus, type Drafts, type NodeFocus } from '../components/funding/balance';
+import { fundAll, fundFocus, type Drafts, type FundNeed, type NodeFocus } from '../components/funding/balance';
 import { FIRST_CHEQUEBOOK_SELECTION, type ChequebookSelection } from '../components/funding/chequebooks';
 import { ChequebooksTab } from '../components/funding/ChequebooksTab';
 import { FIRST_STAMP_SELECTION, type StampSelection } from '../components/funding/stamps';
@@ -20,9 +20,10 @@ type FundingTab = 'balance' | 'stamps' | 'chequebooks';
  * them; a reload or leaving the page does not. Each tab still reads the view afresh when it is shown, and clears its own
  * ticks, with the Balance tab's amounts, once what they ask for is sent.
  *
- * A Fund link of the Stamps or the Chequebooks tab opens the Balance tab with what the node lacks entered for it, or
- * the node ticked when all it lacks is the xDAI for the gas, into what that tab already holds; the field it entered
- * takes the focus. A tab picked by hand takes no focus.
+ * Fund all, on the Stamps or the Chequebooks tab, opens the Balance tab with every node the tab finds short of xBZZ
+ * or without xDAI ticked, and what each lacks entered into what the Balance tab already holds: the xBZZ, rounded up
+ * to three decimals, and 0.01 xDAI for one that holds none. The first such field takes the focus; a tab picked by hand
+ * takes none.
  */
 export function FundingPage() {
   const [tab, setTab] = useState<FundingTab>('balance');
@@ -31,9 +32,9 @@ export function FundingPage() {
   const [stamps, setStamps] = useState<StampSelection>(FIRST_STAMP_SELECTION);
   const [chequebooks, setChequebooks] = useState<ChequebookSelection>(FIRST_CHEQUEBOOK_SELECTION);
 
-  const fund = useCallback((nodeId: string, xbzzPlur: string | null) => {
-    setDrafts((current) => fundDrafts(current, nodeId, xbzzPlur));
-    setFocus(fundFocus(nodeId, xbzzPlur));
+  const fund = useCallback((needs: ReadonlyMap<string, FundNeed>) => {
+    setDrafts((current) => fundAll(current, needs));
+    setFocus(fundFocus(needs));
     setTab('balance');
   }, []);
 
