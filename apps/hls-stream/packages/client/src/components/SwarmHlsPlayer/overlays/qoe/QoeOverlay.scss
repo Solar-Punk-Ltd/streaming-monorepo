@@ -320,8 +320,8 @@ $qoe-handle-corner: 12px;
   overflow-wrap: anywhere;
 }
 
-// The release under the header. A label can run to 96 characters, so it wraps rather than widening
-// the panel past the player.
+// The release under the header. A label can run to 96 characters, so it wraps rather than running
+// past the panel's edge.
 .qoe-overlay__release {
   margin-bottom: 4px;
 
