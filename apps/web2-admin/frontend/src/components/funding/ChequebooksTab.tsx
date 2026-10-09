@@ -1,4 +1,4 @@
-import { useCallback, useMemo, useState } from 'react';
+import { useCallback, useMemo, useState, type Dispatch, type SetStateAction } from 'react';
 import { Alert, Box, Button, InputAdornment, Paper, Stack, TextField, Typography } from '@mui/material';
 import { XBZZ_DECIMALS, type FundingChequebookItem, type FundingView } from '@streaming-monorepo/web2-admin-common';
 
@@ -19,6 +19,7 @@ import {
   TARGET_FLOOR_TEXT,
   withdrawalCount,
   type ChequebookCheck,
+  type ChequebookSelection,
   type ChequebookTotal,
 } from './chequebooks';
 import { FundingFrame, useFundingView } from './FundingFrame';
@@ -143,10 +144,21 @@ function ChequebookBar({ check, blocked, onGo }: { check: ChequebookCheck; block
  * short of xBZZ for its deposit, or of xDAI for the gas, has a Fund link to the Balance tab. A gateway's chequebook is
  * shown read-only. A new chequebook bulk waits while one is on its way, the one made here or the one the view says is
  * open, which the page follows after a reload too.
+ *
+ * The target and the ticks, `selection`, are the Funding page's, so they stay while another tab is shown; the
+ * operations sent clear the ticks and keep the target. The tab reads the view again each time it is shown, and a tick
+ * left on a chequebook that has lost its tick box since is neither counted nor asked for.
  */
-export function ChequebooksTab({ onFund }: { onFund: (nodeId: string, xbzzPlur: string | null) => void }) {
-  const [target, setTarget] = useState('');
-  const [ticked, setTicked] = useState<ReadonlySet<string>>(() => new Set());
+export function ChequebooksTab({
+  selection,
+  onSelection,
+  onFund,
+}: {
+  selection: ChequebookSelection;
+  onSelection: Dispatch<SetStateAction<ChequebookSelection>>;
+  onFund: (nodeId: string, xbzzPlur: string | null) => void;
+}) {
+  const { target, ticked } = selection;
   const [confirming, setConfirming] = useState(false);
   const [followed, setFollowed] = useState<FollowedBulk<FundingChequebookItem> | null>(null);
 
@@ -158,7 +170,7 @@ export function ChequebooksTab({ onFund }: { onFund: (nodeId: string, xbzzPlur: 
   const { view, load } = read;
 
   const groups = useMemo(() => (view ? chequebookGroups(view) : []), [view]);
-  const check = useMemo(() => (view ? checkChequebooks(view, { target, ticked }) : null), [view, target, ticked]);
+  const check = useMemo(() => (view ? checkChequebooks(view, selection) : null), [view, selection]);
 
   const onSettled = useCallback(() => {
     setFollowed((current) => current && { ...current, settled: true });
@@ -167,13 +179,14 @@ export function ChequebooksTab({ onFund }: { onFund: (nodeId: string, xbzzPlur: 
 
   const tick = useCallback(
     (nodeId: string) =>
-      setTicked((current) => {
-        const next = new Set(current);
+      onSelection((current) => {
+        const next = new Set(current.ticked);
         if (!next.delete(nodeId)) next.add(nodeId);
-        return next;
+        return { ...current, ticked: next };
       }),
-    [],
+    [onSelection],
   );
+  const setTarget = (next: string) => onSelection((current) => ({ ...current, target: next }));
 
   /** Opens the confirm dialog and reads the view again, which the dialog lists what it asks for from. */
   const openConfirm = () => {
@@ -234,7 +247,7 @@ export function ChequebooksTab({ onFund }: { onFund: (nodeId: string, xbzzPlur: 
           readError={read.error}
           onSent={(answer) => {
             setConfirming(false);
-            setTicked(new Set());
+            onSelection((current) => ({ ...current, ticked: new Set() }));
             setFollowed({ bulkId: answer.bulkId, items: answer.items, settled: false });
           }}
           onFailed={load}

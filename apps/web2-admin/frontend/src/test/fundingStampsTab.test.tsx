@@ -264,11 +264,17 @@ describe('topping up', () => {
     expect(screen.getByRole('checkbox', { name: 'Send to stage-1-uploader' })).toBeChecked();
     expect(screen.getByText(/0\.219 of 12\.5 xBZZ/)).toBeInTheDocument();
 
-    // A Balance tab picked by hand opens with nothing entered.
+    // Back on the Stamps tab, the batch is still ticked, as short as before, since nothing was sent.
     fireEvent.click(screen.getByRole('tab', { name: 'Stamps' }));
     await screen.findByRole('heading', { name: 'Catalogue batch' });
+    expect(screen.getByRole('checkbox', { name: 'Top up the batch of stage-1-uploader' })).toBeChecked();
+    expect(rowOf('Batches of Main stage', 'stage-1-uploader').getByText('Short 0.219 xBZZ')).toBeInTheDocument();
+
+    // A Balance tab picked by hand keeps what the link entered, and puts the focus nowhere.
     fireEvent.click(screen.getByRole('tab', { name: 'Balance' }));
-    expect(await screen.findByRole('textbox', { name: 'xBZZ to send to stage-1-uploader' })).toHaveValue('');
+    const kept = await screen.findByRole('textbox', { name: 'xBZZ to send to stage-1-uploader' });
+    expect(kept).toHaveValue('0.219');
+    expect(kept).not.toHaveFocus();
   });
 
   it('holds a node with no xDAI for the gas, and one whose price of postage is not known', async () => {
@@ -587,6 +593,88 @@ describe('asking for a stamp bulk', () => {
     expect(dialog.getByRole('button', { name: 'Top up' })).toBeDisabled();
     fireEvent.click(dialog.getByRole('button', { name: 'Top up' }));
     expect(fetchMock.mock.calls.some(([url, init]) => String(url) === STAMPS && init?.method === 'POST')).toBe(false);
+  });
+});
+
+describe('the selection, while the page stays open', () => {
+  /** Shows another tab, then the Stamps tab again, once its batches are drawn. */
+  async function away(to: 'Balance' | 'Chequebooks') {
+    fireEvent.click(screen.getByRole('tab', { name: to }));
+    await screen.findAllByRole('heading', { level: 3 });
+    fireEvent.click(screen.getByRole('tab', { name: 'Stamps' }));
+    await screen.findByRole('heading', { name: 'Catalogue batch' });
+  }
+
+  it('keeps the operation, the days, the steps and the ticks while another tab is shown', async () => {
+    serve(() => makeStampView());
+    await openStamps();
+    fireEvent.click(screen.getByRole('button', { name: 'Dilute' }));
+    fireEvent.click(screen.getByRole('button', { name: '2 steps' }));
+    tick('catalogue-node', 'Dilute');
+
+    await away('Balance');
+    expect(screen.getByRole('button', { name: 'Dilute' })).toHaveAttribute('aria-pressed', 'true');
+    expect(screen.getByRole('button', { name: '2 steps' })).toHaveAttribute('aria-pressed', 'true');
+    expect(screen.getByRole('checkbox', { name: 'Dilute the batch of catalogue-node' })).toBeChecked();
+    expect(screen.getByText('To dilute: 1 batch, 2 steps deeper each.')).toBeInTheDocument();
+
+    // Switching the operation still clears the ticks; a top-up's days stay as typed.
+    fireEvent.click(screen.getByRole('button', { name: 'Top up' }));
+    expect(screen.getByRole('checkbox', { name: 'Top up the batch of catalogue-node' })).not.toBeChecked();
+    typeDays('7');
+    tick('pool-360p');
+    await away('Chequebooks');
+    expect(screen.getByRole('textbox', { name: 'Days' })).toHaveValue('7');
+    expect(screen.getByRole('checkbox', { name: 'Top up the batch of pool-360p' })).toBeChecked();
+    expect(rowOf('Batches of Second stage', 'pool-360p').getByText('17 days')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Top up 1 batch' })).toBeEnabled();
+  });
+
+  it('reads the batches again as it is shown, and neither counts nor asks for a tick left on one that has expired', async () => {
+    let view = makeStampView();
+    const sent = makeStampItem();
+    const fetchMock = serve(
+      () => view,
+      [
+        { path: STAMPS, method: 'POST', respond: () => jsonOk({ bulkId: BULK, items: [sent] }, 202) },
+        { path: STAMPS, respond: () => jsonOk({ items: [sent] }) },
+      ],
+    );
+    await openStamps();
+    tick('catalogue-node');
+    tick('pool-360p');
+    expect(screen.getByRole('button', { name: 'Top up 2 batches' })).toBeEnabled();
+
+    // The rung's batch runs out while the Balance tab is shown.
+    view = makeStampView();
+    const [rung] = view.stages[1]?.nodes ?? [];
+    if (view.stages[1] && rung?.batch) {
+      view.stages[1].nodes = [{ ...rung, batch: { ...rung.batch, usable: false, ttlSeconds: 0 } }];
+    }
+    const reads = viewsOf(fetchMock);
+    await away('Balance');
+    expect(viewsOf(fetchMock)).toBe(reads + 2);
+    expect(rowOf('Batches of Second stage', 'pool-360p').queryByRole('checkbox')).not.toBeInTheDocument();
+    expect(rowOf('Batches of Second stage', 'pool-360p').getByText(EXPIRED_TEXT)).toBeInTheDocument();
+    expect(screen.getByRole('checkbox', { name: 'Top up the batch of catalogue-node' })).toBeChecked();
+    expect(summary('To top up: 1 batch, 30 days more each, 1.305 xBZZ in all.')).toBeInTheDocument();
+
+    const dialog = await openDialog('Top up 1 batch', 'Top up', 'Top up 1 batch?');
+    fireEvent.click(dialog.getByRole('button', { name: 'Top up' }));
+    await waitFor(() =>
+      expect(bodyOf(fetchMock, STAMPS)).toEqual({
+        items: [
+          {
+            kind: 'topup',
+            nodeId: 'catalogue:bee',
+            batchId: BATCH.catalogue,
+            expectedDepth: 20,
+            days: 30,
+            pricePerChunkPerBlockPlur: PRICE,
+          },
+        ],
+      }),
+    );
   });
 });
 

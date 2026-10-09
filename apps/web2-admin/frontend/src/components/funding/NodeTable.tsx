@@ -20,9 +20,16 @@ import type { AdminFundingNode, FundingTransferKind } from '@streaming-monorepo/
 import { shortHex } from '../../format';
 import { CopyButton } from '../CopyButton';
 import { acceptsAmountTyping, formatShort, formatUnits, readAmount } from './amounts';
-import { nodeCaption, nodeName, TOKENS, type Drafts, type NodeDraft, type NodeFocus, type NodeGroup } from './balance';
-
-const NO_DRAFT: NodeDraft = { ticked: false, xdai: '', xbzz: '' };
+import {
+  NO_DRAFT,
+  nodeCaption,
+  nodeName,
+  TOKENS,
+  type Drafts,
+  type NodeDraft,
+  type NodeFocus,
+  type NodeGroup,
+} from './balance';
 
 const KINDS: readonly FundingTransferKind[] = ['xdai', 'xbzz'];
 
