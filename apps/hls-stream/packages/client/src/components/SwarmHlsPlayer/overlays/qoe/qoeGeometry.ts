@@ -93,13 +93,19 @@ export const MIN_PANEL_SIZE: Size = { width: 160, height: 120 };
 /** The button's default place, where it has always opened: 50 px from the player's right, 10 from its top. */
 const DEFAULT_BUTTON_RIGHT_OFFSET = 50;
 const DEFAULT_BUTTON_TOP = 10;
-/** Wide enough for every row of the panel on one line, the release row aside. */
-export const DEFAULT_PANEL_WIDTH = 300;
 /**
- * About two thirds of the panel's natural height, the old `max-height: 70vh` of a common laptop
- * window. It is shortened to the space down to the window's bottom where there is less.
+ * The owner's default width. Inside its 1 px border and 10 px padding it leaves 228 px, about 33
+ * characters of the 11 px monospace once the rows' 8 px gap is taken: a label with its usual value
+ * fits on one line. A deployed build's release line wraps at this width, and so does a ladder rung
+ * marked both capped and unaffordable.
  */
-export const DEFAULT_PANEL_HEIGHT = 420;
+export const DEFAULT_PANEL_WIDTH = 250;
+/**
+ * The owner's default height, tall enough for every row of a local build's panel with a three-rung
+ * ladder. A deployed build's release line, a longer ladder or a rung that wraps add lines, which
+ * scroll. It is shortened to the space down to the window's bottom where there is less.
+ */
+export const DEFAULT_PANEL_HEIGHT = 800;
 
 /** One key, versioned, so a later change of shape starts from the defaults instead of misreading. */
 export const GEOMETRY_STORAGE_KEY = 'swarm-hls.qoe-overlay.v1';

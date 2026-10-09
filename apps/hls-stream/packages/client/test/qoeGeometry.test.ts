@@ -240,11 +240,42 @@ describe('a window smaller than the minimum panel and its button band', () => {
 
 describe('defaultRect', () => {
   it('puts the toggle button where it always opened, 50 px from the right and 10 px from the top', () => {
-    const r = defaultRect(BOUNDS.width, BOUNDS);
-    assert.equal(right(r) - BUTTON_SIZE, BOUNDS.width - 50);
+    // A window tall enough for the whole default panel below the button.
+    const tall: Bounds = { x: 0, y: 0, width: 1000, height: 1000 };
+    const r = defaultRect(tall.width, tall);
+    assert.equal(right(r) - BUTTON_SIZE, tall.width - 50);
     assert.equal(r.y - BUTTON_BAND, 10);
     assert.equal(r.width, DEFAULT_PANEL_WIDTH);
     assert.equal(r.height, DEFAULT_PANEL_HEIGHT);
+  });
+
+  it("opens 250 × 800 below the owner's audio bar, a 420 px player at 635, 163 in a 1692 × 1311 window", () => {
+    const window = windowBounds({
+      viewportWidth: 1692,
+      viewportHeight: 1311,
+      parentLeft: 635,
+      parentTop: 163,
+      clientLeft: 0,
+      clientTop: 0,
+    });
+    // The button at 420 - 50 = 370, so the panel's right edge at 402 and its left at 152; its top at
+    // 10 + 32 + 4 = 46, with 1311 - 163 - 46 = 1102 px left below it, more than 800.
+    assert.deepEqual(defaultRect(420, window), { x: 152, y: 46, width: 250, height: 800 });
+  });
+
+  it("keeps the width and shortens the height to the window's bottom where that is nearer", () => {
+    const window = windowBounds({
+      viewportWidth: 1692,
+      viewportHeight: 700,
+      parentLeft: 635,
+      parentTop: 163,
+      clientLeft: 0,
+      clientTop: 0,
+    });
+    const r = defaultRect(420, window);
+    // The window's bottom is at 700 - 163 = 537 in the player's coordinates: 537 - 46 = 491 px.
+    assert.deepEqual(r, { x: 152, y: 46, width: 250, height: 491 });
+    assert.equal(bottom(r), window.y + window.height);
   });
 
   it('shortens the panel to the space down to the window bottom', () => {
@@ -439,7 +470,9 @@ describe("an audio stream's player, a 490×60 bar at 395, 200 in a 1280×720 win
   it('opens with the button where it always did and the panel hanging below the bar, over the page', () => {
     assert.deepEqual(buttonOf(PANEL), { x: BAR.width - 50, y: 10 });
     assert.equal(PANEL.width, DEFAULT_PANEL_WIDTH);
-    assert.equal(PANEL.height, DEFAULT_PANEL_HEIGHT);
+    // 720 px of window, 200 of it above the bar: the panel ends at the window's bottom, short of 800.
+    assert.equal(PANEL.height, Math.min(DEFAULT_PANEL_HEIGHT, winBottom - PANEL.y));
+    assert.equal(bottom(PANEL), winBottom);
     assert.ok(bottom(PANEL) > BAR.height);
   });
 
@@ -495,8 +528,10 @@ describe("an audio stream's player, a 490×60 bar at 395, 200 in a 1280×720 win
   });
 
   it("reopens at the button's corner, over the page, where the window has room", () => {
+    // A panel resized shorter than the default, which now reaches the window's bottom, so there is room.
+    const size = { width: DEFAULT_PANEL_WIDTH, height: 300 };
     const button = moveButton(buttonOf(PANEL), -300, 50, WIN);
-    assert.deepEqual(buttonOf(panelAtButton(button, PANEL, WIN, MIN)), button);
+    assert.deepEqual(buttonOf(panelAtButton(button, size, WIN, MIN)), button);
   });
 });
 
@@ -515,10 +550,9 @@ describe('a large video player filling most of the window', () => {
 
   it("opens at the player's top right, as before", () => {
     assert.deepEqual(buttonOf(PANEL), { x: PLAYER_WIDTH - 50, y: 10 });
-    assert.deepEqual(
-      { width: PANEL.width, height: PANEL.height },
-      { width: DEFAULT_PANEL_WIDTH, height: DEFAULT_PANEL_HEIGHT },
-    );
+    assert.equal(PANEL.width, DEFAULT_PANEL_WIDTH);
+    // Shortened to the window's bottom, which is nearer than 800 px below the button here.
+    assert.equal(PANEL.height, Math.min(DEFAULT_PANEL_HEIGHT, WIN.y + WIN.height - PANEL.y));
   });
 
   it("drags to the window's edges, a little past the player's", () => {
