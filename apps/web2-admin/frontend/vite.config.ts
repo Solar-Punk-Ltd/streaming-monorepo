@@ -29,5 +29,10 @@ export default defineConfig({
     setupFiles: ['./src/test/setup.ts'],
     include: ['src/**/*.test.tsx', 'src/**/*.test.ts'],
     restoreMocks: true,
+    // 30 s, not vitest's 5 s. The page tests render a whole page in jsdom, the Funding page with its
+    // tabs among them; the slowest take 0.5 to 0.8 s on a laptop, and a CI runner runs them several
+    // times slower, enough to have pushed one past 5 s. The timeout is there to catch a hang, not to
+    // time the page.
+    testTimeout: 30_000,
   },
 });
