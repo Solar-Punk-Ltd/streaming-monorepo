@@ -1,5 +1,5 @@
 /**
- * Migrations 016, 017, 018 and 019 against the real database: `funding_transfers`, `funding_node_pins`,
+ * Migrations 016 to 020 against the real database: `funding_transfers`, `funding_node_pins`,
  * `funding_stamp_operations` and `funding_chequebook_operations`, and the repositories the funding services keep their
  * journals and their pins with. Needs Postgres, like the rest of this suite; `DATABASE_URL` overrides the connection.
  *
@@ -18,8 +18,9 @@
  * journalled together or not at all and read back in its order with its amounts as they went in, the move each item
  * makes being the one that brings the balance it was worked out from to the target, the floor of 1 xBZZ, a node once
  * per request, the hold of a queued item whatever its age and of a submitted or unknown one for 30 minutes from its
- * relay, an update only while an item is asked about, and a chequebook lock of its own, which neither the send lock nor
- * the stamp lock holds up.
+ * relay, an update only while an item is asked about, which keeps a hash once known, and whether its move is mined
+ * (migration 020, false by default) when it does not say, and a chequebook lock of its own, which neither the send
+ * lock nor the stamp lock holds up.
  *
  * Every row it writes is in the suite's throwaway database; it empties the four tables before each test.
  */
@@ -708,6 +709,7 @@ describe('funding_chequebook_operations', () => {
       assert.equal(row.state, 'queued');
       assert.equal(row.txHash, null);
       assert.equal(row.error, null);
+      assert.equal(row.mined, false);
       assert.equal(row.relayedAt, null);
       assert.equal(row.bulkId, bulkId);
     }
@@ -775,14 +777,24 @@ describe('funding_chequebook_operations', () => {
       relayedAt: answered,
     });
     assert.deepEqual(
-      [submitted?.state, submitted?.error, submitted?.txHash, submitted?.relayedAt?.getTime()],
-      ['submitted', null, hash, answered.getTime()],
+      [submitted?.state, submitted?.error, submitted?.txHash, submitted?.relayedAt?.getTime(), submitted?.mined],
+      ['submitted', null, hash, answered.getTime(), false],
     );
 
-    const confirmed = await chequebooks.update(item.requestId, { state: 'confirmed', error: null, txHash: null });
+    // Mined, its block not final yet: recorded, and kept by an update that does not say, as a relay's answer does not.
+    const mined = await chequebooks.update(item.requestId, { state: 'submitted', error: null, mined: true });
+    assert.deepEqual([mined?.mined, mined?.txHash], [true, hash]);
+    assert.equal((await chequebooks.update(item.requestId, { state: 'submitted', error: null }))?.mined, true);
+
+    const confirmed = await chequebooks.update(item.requestId, {
+      state: 'confirmed',
+      error: null,
+      txHash: null,
+      mined: false,
+    });
     assert.deepEqual(
-      [confirmed?.state, confirmed?.txHash, confirmed?.relayedAt?.getTime()],
-      ['confirmed', hash, answered.getTime()],
+      [confirmed?.state, confirmed?.txHash, confirmed?.relayedAt?.getTime(), confirmed?.mined],
+      ['confirmed', hash, answered.getTime(), false],
     );
 
     assert.equal(await chequebooks.update(item.requestId, { state: 'failed', error: 'late' }), null);

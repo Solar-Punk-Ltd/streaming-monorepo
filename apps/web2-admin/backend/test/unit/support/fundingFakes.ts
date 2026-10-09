@@ -898,6 +898,8 @@ export class InMemoryFundingChequebookStore implements FundingChequebookStore {
         state: 'queued',
         txHash: null,
         error: null,
+        // Migration 020's default.
+        mined: false,
         relayedAt: null,
         createdAt: at,
         updatedAt: at,
@@ -920,6 +922,7 @@ export class InMemoryFundingChequebookStore implements FundingChequebookStore {
       state: update.state,
       error: update.error,
       txHash: update.txHash ?? row.txHash,
+      mined: update.mined ?? row.mined,
       relayedAt: update.relayedAt ?? row.relayedAt,
       updatedAt: new Date(),
     };
@@ -937,7 +940,7 @@ export class InMemoryFundingChequebookStore implements FundingChequebookStore {
   force(
     requestId: string,
     state: FundingChequebookRow['state'],
-    over: Partial<Pick<FundingChequebookRow, 'error' | 'txHash' | 'relayedAt' | 'createdAt'>> = {},
+    over: Partial<Pick<FundingChequebookRow, 'error' | 'txHash' | 'mined' | 'relayedAt' | 'createdAt'>> = {},
   ): void {
     const row = this.rows.get(requestId);
     if (!row) throw new Error(`no such row: ${requestId}`);

@@ -104,6 +104,11 @@ import { ManagerFundingError, type ManagerFundingClient } from './ManagerFunding
  * an operator settles it in the manager's console, so the next bulk goes ahead while the item is still asked about:
  * the manager itself refuses a second move on a node while one is in flight there, `conflict`, and that item fails
  * with its sentence.
+ *
+ * The manager confirms a chequebook move only once its block is final, about 3 minutes after it is mined on Gnosis
+ * Chain, and its status read says meanwhile that the move is mined (`mined`). A refresh records that on a `submitted`
+ * item, and the item carries it, so the page shows the step between Sent and Confirmed. An answer with no `mined`, from
+ * a manager older than it, reads as not mined.
  */
 
 const logger = Logger.getInstance();
@@ -370,7 +375,8 @@ export function checkChequebookFunds(targets: readonly ChequebookTarget[]): void
  * ({@link holdsChequebookBulk}): while it is `queued`, and while it is `submitted` or `unknown` for at most the
  * manager's 30-minute receipt budget. `watched` is true while it is `unknown`, and while it is `submitted` past that
  * budget: the manager may still settle such a move from the chain, or an operator in the manager's console. A
- * chequebook item `confirmed` or `failed` is settled for good.
+ * chequebook item `confirmed` or `failed` is settled for good. `mined` is the journal's: true while it is `submitted`
+ * and the manager last said its move is mined and its block not final yet.
  */
 export function toFundingChequebookItem(row: FundingChequebookRow, now: number): FundingChequebookItem {
   const settled = !holdsChequebookBulk(row, now);
@@ -384,6 +390,7 @@ export function toFundingChequebookItem(row: FundingChequebookRow, now: number):
     state: row.state,
     txHash: row.txHash,
     error: row.error,
+    mined: row.mined,
     settled,
     watched: row.state === 'unknown' || (row.state === 'submitted' && settled),
   };
@@ -667,7 +674,11 @@ export class FundingChequebookService {
     }
   }
 
-  /** Records where the manager says an item stands, when anything of it moved, and answers the item as it now stands. */
+  /**
+   * Records where the manager says an item stands, when anything of it moved, and answers the item as it now stands.
+   * Whether its move is mined is the status's, an answer with none read as false, and only ever true while it is
+   * `submitted`: Mined is a step between Sent and Confirmed.
+   */
   private async record(
     row: FundingChequebookRow,
     status: FundingChequebookOperationStatus,
@@ -675,11 +686,13 @@ export class FundingChequebookService {
   ): Promise<FundingChequebookRow> {
     const error = status.error ?? (status.state === 'failed' ? FAILED_WITHOUT_REASON : null);
     const txHash = status.txHash ?? row.txHash;
-    if (status.state === row.state && error === row.error && txHash === row.txHash) return row;
+    const mined = status.state === 'submitted' && status.mined === true;
+    if (status.state === row.state && error === row.error && txHash === row.txHash && mined === row.mined) return row;
     const updated = await this.journal.update(row.requestId, {
       state: status.state,
       error,
       txHash,
+      mined,
       // A queued row the manager answers for was relayed after all, its answer lost: the manager had it no later than
       // now, journalled or, `submitted` with no hash, still being prepared, so its window starts here, as after an
       // answered relay.

@@ -338,6 +338,7 @@ export function makeChequebookItem(over: Partial<FundingChequebookItem> = {}): F
     state: 'submitted',
     txHash: null,
     error: null,
+    mined: false,
     settled: false,
     watched: false,
     ...over,

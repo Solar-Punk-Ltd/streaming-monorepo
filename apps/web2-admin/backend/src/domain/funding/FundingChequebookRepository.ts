@@ -48,7 +48,7 @@ export function chequebookCutoff(now: Date): Date {
   return new Date(now.getTime() - FUNDING_CHEQUEBOOK_SETTLES_AFTER_MS);
 }
 
-/** One row of `funding_chequebook_operations`, migration 019. */
+/** One row of `funding_chequebook_operations`, migrations 019 and 020. */
 export interface FundingChequebookRow {
   requestId: string;
   bulkId: string;
@@ -72,6 +72,11 @@ export interface FundingChequebookRow {
   txHash: string | null;
   error: string | null;
   /**
+   * Whether its move is mined and waits for its block to be final, as the manager's last status read said: true only
+   * while it is `submitted`. False until a status read says so, and on every row written before migration 020.
+   */
+  mined: boolean;
+  /**
    * When the admin recorded the manager's first answer for it, to a relay or to the status read that found a relay
    * whose answer was lost, by the service's clock; and its answer to a relay again, for an item `submitted` with no
    * hash that the manager then held nothing under. Null while the item is `queued`, and on an item failed before the
@@ -84,10 +89,10 @@ export interface FundingChequebookRow {
   updatedAt: Date;
 }
 
-/** An item as a request journals it, before any relay: `queued`, with no hash, no error, not relayed. */
+/** An item as a request journals it, before any relay: `queued`, with no hash, no error, not mined, not relayed. */
 export type NewFundingChequebookOperation = Omit<
   FundingChequebookRow,
-  'state' | 'txHash' | 'error' | 'relayedAt' | 'createdAt' | 'updatedAt'
+  'state' | 'txHash' | 'error' | 'mined' | 'relayedAt' | 'createdAt' | 'updatedAt'
 >;
 
 /** What an answer of the manager, or the admin's own refusal, moves on an item. */
@@ -96,6 +101,11 @@ export interface FundingChequebookUpdate {
   error: string | null;
   /** The hash the manager answered. Left out or null keeps the one recorded: a hash, once known, stays. */
   txHash?: string | null;
+  /**
+   * Whether its move is mined and waits for its block to be final, as a status read answered it. Left out keeps the
+   * one recorded: a relay's answer does not say, and an item a relay is sent for is in no block yet.
+   */
+  mined?: boolean;
   /** Set when this records the manager's first answer for the item: the moment that answer came back. */
   relayedAt?: Date;
 }
@@ -151,6 +161,7 @@ interface Row {
   state: FundingItemState;
   tx_hash: string | null;
   error: string | null;
+  mined: boolean;
   relayed_at: Date | null;
   requested_by_user_id: string | null;
   requested_by: string;
@@ -160,7 +171,7 @@ interface Row {
 
 const COLUMNS = `request_id::text AS request_id, bulk_id::text AS bulk_id, position, node_id, node_label, direction,
   amount_plur::text AS amount_plur, target_plur::text AS target_plur, available_plur::text AS available_plur, state,
-  tx_hash, error, relayed_at, requested_by_user_id::text AS requested_by_user_id, requested_by, created_at,
+  tx_hash, error, mined, relayed_at, requested_by_user_id::text AS requested_by_user_id, requested_by, created_at,
   updated_at`;
 
 /** The columns a request writes, in the order {@link valuesOf} answers them. */
@@ -195,6 +206,7 @@ function rowOf(row: Row): FundingChequebookRow {
     state: row.state,
     txHash: row.tx_hash,
     error: row.error,
+    mined: row.mined,
     relayedAt: row.relayed_at,
     requestedByUserId: row.requested_by_user_id,
     requestedBy: row.requested_by,
@@ -222,7 +234,7 @@ function valuesOf(item: NewFundingChequebookOperation): unknown[] {
 }
 
 /**
- * The chequebook journal, migration 019. The chequebook lock is a session advisory lock of its own
+ * The chequebook journal, migrations 019 and 020. The chequebook lock is a session advisory lock of its own
  * ({@link withAdvisoryLock}): one chequebook request at a time across every process on the database, whatever a send
  * or a stamp request does meanwhile.
  */
@@ -288,10 +300,11 @@ export class FundingChequebookRepository implements FundingChequebookStore {
               error = $3,
               tx_hash = COALESCE($4, tx_hash),
               relayed_at = COALESCE($5, relayed_at),
+              mined = COALESCE($6, mined),
               updated_at = NOW()
         WHERE request_id = $1 AND ${ASKED_SQL}
         RETURNING ${COLUMNS}`,
-      [requestId, update.state, update.error, update.txHash ?? null, update.relayedAt ?? null],
+      [requestId, update.state, update.error, update.txHash ?? null, update.relayedAt ?? null, update.mined ?? null],
     );
     return result.rows[0] ? rowOf(result.rows[0]) : null;
   }
