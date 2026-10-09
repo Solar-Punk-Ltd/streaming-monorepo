@@ -167,7 +167,7 @@ function ChequebookBar({
  * all beside Apply opens the Balance tab with what each such node lacks entered. A gateway's chequebook is shown
  * read-only. A new chequebook bulk waits while one is on its way, the one made here or the one the view says is
  * open, which the page follows after a reload too. Select all, above the tables, ticks every chequebook that has a tick
- * box, and Clear unticks them all.
+ * box, and Clear unticks them all; the tick box in front of a stage's name ticks or clears the stage's.
  *
  * The target and the ticks, `selection`, are the Funding page's, so they stay while another tab is shown; the
  * operations sent clear the ticks and keep the target. The tab reads the view again each time it is shown, and a tick
@@ -256,7 +256,14 @@ export function ChequebooksTab({
             <SelectAllBar keys={movable} ticked={ticked} onTicks={setTicks} onClear={clearTicks} />
           ) : null}
           {groups.map((group) => (
-            <ChequebookTable key={group.key} group={group} ticked={ticked} check={check} onTick={tick} />
+            <ChequebookTable
+              key={group.key}
+              group={group}
+              ticked={ticked}
+              check={check}
+              onTick={tick}
+              onTicks={setTicks}
+            />
           ))}
           {check ? (
             <ChequebookBar

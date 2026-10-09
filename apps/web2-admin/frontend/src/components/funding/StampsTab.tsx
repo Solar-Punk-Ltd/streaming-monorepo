@@ -274,7 +274,8 @@ function StampBar({
  * the Balance tab with what each such node lacks entered. A new stamp bulk waits while one is on its way, the one made
  * here or the one the view says is open, which the page follows after a reload too. Switching the operation clears the
  * ticks, since a dilution cannot be undone. Select all, above the tables, ticks every batch that has a tick box, the
- * catalogue's among them, and Clear unticks them all.
+ * catalogue's among them, and Clear unticks them all; the tick box in front of a group's name ticks or clears the
+ * group's.
  *
  * The operation, the days, the steps and the ticks, `selection`, are the Funding page's, so they stay while another
  * tab is shown; the operations sent clear the ticks. The tab reads the view again each time it is shown, and a tick
@@ -379,6 +380,7 @@ export function StampsTab({
               ticked={ticked}
               check={check}
               onTick={tick}
+              onTicks={setTicks}
             />
           ))}
           {check ? (

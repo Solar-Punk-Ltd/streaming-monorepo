@@ -1,4 +1,4 @@
-import { act, fireEvent, screen, waitFor, within } from '@testing-library/react';
+import { act, cleanup, fireEvent, screen, waitFor, within } from '@testing-library/react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import type { FundingStampItem, FundingView } from '@streaming-monorepo/web2-admin-common';
 
@@ -234,6 +234,155 @@ describe('Select all and Clear', () => {
     await openStamps();
     expect(selectAll()).toBeDisabled();
     expect(clear()).toBeDisabled();
+  });
+});
+
+describe("a group's tick box", () => {
+  const group = (name: string) => screen.getByRole('checkbox', { name });
+  const ROW_480P = `0x${'99'.repeat(32)}`;
+
+  /** The Stamps view with a second batch on the main stage that can take an operation: a rung's of 480p. */
+  function withTwoOnMain(): FundingView {
+    const view = makeStampView();
+    view.stages[0]?.nodes.push(
+      makeNode({ nodeId: 'stage-1:480p', label: 'rung-480p', role: 'rung', batch: makeBatch({ batchId: ROW_480P }) }),
+    );
+    return view;
+  }
+
+  it('ticks every batch of its group that has a tick box, clears them once all are, and shows a dash while some are', async () => {
+    serve(() => withTwoOnMain());
+    await openStamps();
+    const main = group('Top up every batch of Main stage');
+    expect(main).not.toBeChecked();
+    expect(main).not.toBePartiallyChecked();
+
+    tick('rung-480p');
+    expect(main).toBePartiallyChecked();
+    expect(main).not.toBeChecked();
+
+    fireEvent.click(main);
+    expect(main).toBeChecked();
+    expect(main).not.toBePartiallyChecked();
+    expect(screen.getByRole('checkbox', { name: 'Top up the batch of stage-1-uploader' })).toBeChecked();
+    expect(screen.getByRole('checkbox', { name: 'Top up the batch of rung-480p' })).toBeChecked();
+    // Only its own group's: the catalogue's and the second stage's are as they were.
+    expect(screen.getByRole('checkbox', { name: 'Top up the batch of catalogue-node' })).not.toBeChecked();
+    expect(screen.getByRole('checkbox', { name: 'Top up the batch of pool-360p' })).not.toBeChecked();
+    expect(screen.getByRole('button', { name: 'Top up 2 batches' })).toBeInTheDocument();
+
+    fireEvent.click(main);
+    expect(screen.getByRole('checkbox', { name: 'Top up the batch of stage-1-uploader' })).not.toBeChecked();
+    expect(screen.getByRole('checkbox', { name: 'Top up the batch of rung-480p' })).not.toBeChecked();
+    expect(main).not.toBePartiallyChecked();
+
+    // The catalogue's has the one batch, and a dilution's tick boxes say so.
+    fireEvent.click(group('Top up the catalogue batch'));
+    expect(screen.getByRole('checkbox', { name: 'Top up the batch of catalogue-node' })).toBeChecked();
+    fireEvent.click(screen.getByRole('button', { name: 'Dilute' }));
+    fireEvent.click(group('Dilute every batch of Main stage'));
+    expect(screen.getByRole('checkbox', { name: 'Dilute the batch of rung-480p' })).toBeChecked();
+    expect(group('Dilute the catalogue batch')).not.toBeChecked();
+  });
+
+  it('is disabled for a group none of whose batches has a tick box, and for one with no batch', async () => {
+    const view = makeStampView();
+    const [rung] = view.stages[1]?.nodes ?? [];
+    if (view.stages[1] && rung?.batch) {
+      view.stages[1].nodes = [{ ...rung, batch: { ...rung.batch, usable: false, ttlSeconds: 0 } }];
+    }
+    serve(() => view);
+    await openStamps();
+    expect(group('Top up every batch of Second stage')).toBeDisabled();
+    expect(group('Top up every batch of Main stage')).toBeEnabled();
+
+    cleanup();
+    serve(() => makeView());
+    await openStamps();
+    expect(group('Top up the catalogue batch')).toBeDisabled();
+    expect(group('Top up every batch of Main stage')).toBeDisabled();
+  });
+
+  it('ticks a batch two stages share by its id, so it shows ticked under both and is asked for once', async () => {
+    const pooled = `0x${'ff'.repeat(32)}`;
+    const shared = makeNode({
+      nodeId: 'pool:720p',
+      label: 'shared-720p',
+      role: 'rung',
+      batch: makeBatch({ batchId: pooled }),
+    });
+    const view = makeStampView();
+    view.stages[0]?.nodes.push(shared);
+    view.stages[1]?.nodes.push(shared);
+    const sent = makeStampItem({ nodeId: 'pool:720p', nodeLabel: 'shared-720p', batchId: pooled });
+    const fetchMock = serve(
+      () => view,
+      [
+        { path: STAMPS, method: 'POST', respond: () => jsonOk({ bulkId: BULK, items: [sent] }, 202) },
+        { path: STAMPS, respond: () => jsonOk({ items: [sent] }) },
+      ],
+    );
+    await openStamps();
+
+    fireEvent.click(group('Top up every batch of Second stage'));
+    const boxes = screen.getAllByRole('checkbox', { name: 'Top up the batch of shared-720p' });
+    expect(boxes.map((box) => (box as HTMLInputElement).checked)).toEqual([true, true]);
+    expect(group('Top up every batch of Second stage')).toBeChecked();
+    // The main stage has the shared batch ticked and its uploader's not.
+    expect(group('Top up every batch of Main stage')).toBePartiallyChecked();
+
+    const dialog = await openDialog('Top up 2 batches', 'Top up', 'Top up 2 batches?');
+    fireEvent.click(dialog.getByRole('button', { name: 'Top up' }));
+    await waitFor(() =>
+      expect(bodyOf(fetchMock, STAMPS)).toEqual({
+        items: [
+          {
+            kind: 'topup',
+            nodeId: 'pool:720p',
+            batchId: pooled,
+            expectedDepth: 20,
+            days: 30,
+            pricePerChunkPerBlockPlur: PRICE,
+          },
+          {
+            kind: 'topup',
+            nodeId: 'stage-2:360p',
+            batchId: BATCH.rung,
+            expectedDepth: 20,
+            days: 30,
+            pricePerChunkPerBlockPlur: PRICE,
+          },
+        ],
+      }),
+    );
+  });
+
+  it("stands in line with the rows' tick boxes, in the tick column's width, and its name with the batch column", async () => {
+    serve(() => makeStampView());
+    await openStamps();
+    const px = (element: Element, property: 'width' | 'paddingLeft') =>
+      Number.parseFloat(getComputedStyle(element)[property]);
+    const header = within(screen.getByRole('table', { name: 'Batches of Main stage' })).getAllByRole('columnheader');
+    const tickColumn = header[0] as HTMLElement;
+    const rowBox = screen.getByRole('checkbox', { name: 'Top up the batch of stage-1-uploader' });
+    const rowCell = rowBox.closest('td') as HTMLElement;
+    const groupBox = group('Top up every batch of Main stage');
+    const holder = groupBox.closest('div') as HTMLElement;
+    /** The outlined table's border, which the rows stand inside of. */
+    const border = 1;
+
+    // The box holding it is as wide as the tick column and the border, and sets it in as far as a row's cell does.
+    expect(px(tickColumn, 'width')).toBe(56);
+    expect(px(rowCell, 'paddingLeft')).toBe(16);
+    expect(px(holder, 'width')).toBe(px(tickColumn, 'width') + border);
+    expect(px(holder, 'paddingLeft')).toBe(px(rowCell, 'paddingLeft') + border);
+    expect(getComputedStyle(holder).boxSizing).toBe('border-box');
+    // Neither tick box pads itself, so both stand at the same place.
+    expect(px(groupBox.parentElement as HTMLElement, 'paddingLeft')).toBe(0);
+    expect(px(rowBox.parentElement as HTMLElement, 'paddingLeft')).toBe(0);
+    // The name starts where the batch column's text does.
+    const name = screen.getByRole('heading', { name: 'Main stage' });
+    expect(px(name, 'paddingLeft')).toBe(px(header[1] as HTMLElement, 'paddingLeft'));
   });
 });
 

@@ -289,6 +289,79 @@ describe('Select all and Clear', () => {
   });
 });
 
+describe("a stage's tick box", () => {
+  const group = (stage: string) =>
+    screen.getByRole('checkbox', { name: `Bring every chequebook of ${stage} to the target` });
+
+  it('ticks every chequebook of its stage that can be moved, clears them once all are, and shows a dash while some are', async () => {
+    serve(() => makeChequebookView());
+    await openChequebooks();
+    typeTarget('2');
+    const main = group('Main stage');
+    expect(main).not.toBeChecked();
+
+    tick('rung-720p');
+    expect(main).toBePartiallyChecked();
+
+    fireEvent.click(main);
+    expect(main).toBeChecked();
+    expect(main).not.toBePartiallyChecked();
+    for (const label of ['stage-1-uploader', 'rung-720p', 'rung-1080p']) {
+      expect(rowOf('Main stage', label).getByRole('checkbox'), label).toBeChecked();
+    }
+    // A gateway's chequebook and an unread one have no tick box, and are not counted.
+    expect(rowOf('Main stage', 'stage-1-gateway').queryByRole('checkbox')).not.toBeInTheDocument();
+    expect(rowOf('Main stage', 'rung-480p').queryByRole('checkbox')).not.toBeInTheDocument();
+    expect(summary(`To apply: 1 deposit, +0.500 xBZZ; 1 withdrawal, ${MINUS}1.250 xBZZ.`)).toBeInTheDocument();
+
+    fireEvent.click(main);
+    expect(main).not.toBeChecked();
+    expect(rowOf('Main stage', 'stage-1-uploader').getByRole('checkbox')).not.toBeChecked();
+    expect(screen.getByText(NOTHING_TICKED_PROBLEM)).toBeInTheDocument();
+  });
+
+  it('is disabled for a stage none of whose chequebooks can be moved, and for one with none', async () => {
+    serve(() => makeChequebookView());
+    await openChequebooks();
+    // The second stage's one chequebook is its node's whose wallet was not read; the third stage has none.
+    expect(group('Second stage')).toBeDisabled();
+    expect(group('Third stage')).toBeDisabled();
+    expect(group('Main stage')).toBeEnabled();
+  });
+
+  it('ticks a chequebook two stages share by its node, so it shows ticked under both and is asked for once', async () => {
+    const shared = makeNode({ nodeId: 'pool:720p', label: 'shared-720p', role: 'rung', chequebook: makeChequebook() });
+    const view = makeChequebookView();
+    view.stages[0]?.nodes.push(shared);
+    view.stages[1]?.nodes.push(shared);
+    const sent = makeChequebookItem({ nodeId: 'pool:720p', nodeLabel: 'shared-720p' });
+    const fetchMock = serve(
+      () => view,
+      [
+        { path: CHEQUEBOOKS, method: 'POST', respond: () => jsonOk({ bulkId: BULK, items: [sent] }, 202) },
+        { path: CHEQUEBOOKS, respond: () => jsonOk({ items: [sent] }) },
+      ],
+    );
+    await openChequebooks();
+    typeTarget('2');
+
+    fireEvent.click(group('Second stage'));
+    const boxes = screen.getAllByRole('checkbox', { name: 'Bring the chequebook of shared-720p to the target' });
+    expect(boxes.map((box) => (box as HTMLInputElement).checked)).toEqual([true, true]);
+    expect(group('Second stage')).toBeChecked();
+    expect(group('Main stage')).toBePartiallyChecked();
+
+    const dialog = await openDialog('Bring 1 chequebook to 2 xBZZ?');
+    fireEvent.click(dialog.getByRole('button', { name: 'Apply' }));
+    await waitFor(() =>
+      expect(bodyOf(fetchMock, CHEQUEBOOKS)).toEqual({
+        targetPlur: xbzz('2'),
+        items: [{ nodeId: 'pool:720p', availablePlur: xbzz('1.5') }],
+      }),
+    );
+  });
+});
+
 describe('the target', () => {
   it('takes digits and one dot only, and holds Apply with a sentence while it is empty, under 1 xBZZ or too large', async () => {
     serve(() => makeChequebookView());
