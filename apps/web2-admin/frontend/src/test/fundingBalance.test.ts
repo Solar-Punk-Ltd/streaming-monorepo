@@ -6,6 +6,7 @@ import {
   fundFocus,
   fundNeeds,
   GAS_XDAI,
+  hasDrafts,
   nodeCaption,
   nodeGroups,
   nodeName,
@@ -172,6 +173,17 @@ describe('what Send would send, and why it cannot', () => {
     expect(checkSend(unread, { 'stage-1:bee': draft('0.1') }).problems).toEqual([
       "The brand wallet's xDAI balance could not be read.",
     ]);
+  });
+});
+
+describe('what Clear all would clear', () => {
+  it('is any node the page lists that is ticked or has an amount typed', () => {
+    expect(hasDrafts(makeView(), {})).toBe(false);
+    expect(hasDrafts(makeView(), { 'stage-1:bee': { ticked: false, xdai: '', xbzz: '' } })).toBe(false);
+    expect(hasDrafts(makeView(), { 'stage-1:bee': draft() })).toBe(true);
+    expect(hasDrafts(makeView(), { 'catalogue:bee': { ticked: false, xdai: '', xbzz: '1' } })).toBe(true);
+    // A node the page no longer lists shows nothing to clear.
+    expect(hasDrafts(makeView(), { 'stage-9:gone': draft('1') })).toBe(false);
   });
 });
 

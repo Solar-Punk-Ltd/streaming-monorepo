@@ -81,6 +81,14 @@ export type Drafts = Readonly<Record<string, NodeDraft>>;
 /** A node nothing is entered for: not ticked, and both amounts empty. */
 export const NO_DRAFT: NodeDraft = { ticked: false, xdai: '', xbzz: '' };
 
+/** Whether any node the page lists is ticked or has an amount typed: what Clear all would clear. */
+export function hasDrafts(view: Inventory, drafts: Drafts): boolean {
+  return allNodes(view).some((node) => {
+    const draft = drafts[node.nodeId];
+    return draft !== undefined && (draft.ticked || draft.xdai !== '' || draft.xbzz !== '');
+  });
+}
+
 /**
  * The xDAI Fund all enters for a node that holds none, as typed: 0.01 xDAI, for the gas of its operations. The tabs
  * count a node as having no xDAI only when it holds 0.
