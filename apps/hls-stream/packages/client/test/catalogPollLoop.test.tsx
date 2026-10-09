@@ -101,7 +101,14 @@ function gateway({
   failingSlots?: number;
   failure: Failure;
 }) {
-  const state = { failingHeads, failingSlots, lastFailureAt: -1, unwrittenAsksAt: [] as number[] };
+  const state = {
+    failingHeads,
+    failingSlots,
+    lastFailureAt: -1,
+    headAsksAt: [] as number[],
+    nextSlotAsksAt: [] as number[],
+    unwrittenAsksAt: [] as number[],
+  };
   const nextSlot = pathOfSlotAfter(HEAD_SLOT);
   const afterNext = pathOfSlotAfter(HEAD_SLOT + 1);
 
@@ -121,6 +128,7 @@ function gateway({
 
   fakes.answer = async (url, signal) => {
     if (url.includes('/feeds/')) {
+      state.headAsksAt.push(Date.now());
       if (state.failingHeads > 0) {
         state.failingHeads--;
         return fail(signal);
@@ -129,6 +137,7 @@ function gateway({
       return answered(200, [scheduled], header);
     }
     if (url.endsWith(nextSlot)) {
+      state.nextSlotAsksAt.push(Date.now());
       if (state.failingSlots > 0) {
         state.failingSlots--;
         return fail(signal);
@@ -271,5 +280,35 @@ describe('an open browse page with nothing new on the list', () => {
     for (const gap of gaps) {
       assert.ok(gap >= 60_000, `the next slot was asked again after ${gap}ms`);
     }
+  });
+});
+
+/**
+ * A viewer whose first read fails would otherwise look at an empty page for a whole poll interval. A
+ * retry asks the same unwritten slot again, so the quick ones are kept to the first load.
+ */
+describe('a failed read on a page that has not shown the list yet', () => {
+  it('is tried again within a few seconds, and the list shows once a read answers', async () => {
+    const bee = gateway({ failingHeads: 2, failure: 'refused' });
+    mount();
+
+    const shownAt = await advanceUntil(() => shown().length > 0, 30_000);
+
+    assert.notEqual(shownAt, null, 'a failed first read was not retried within half a minute');
+    const gaps = bee.headAsksAt.slice(1).map((atMs, i) => atMs - bee.headAsksAt[i]);
+    for (const gap of gaps) {
+      assert.ok(gap <= 10_000, `a failed first read was tried again only after ${gap}ms`);
+    }
+  });
+
+  it('waits the routine interval once the list has been shown', async () => {
+    const bee = gateway({ failingSlots: 1, failure: 'refused' });
+    mount();
+
+    await advanceUntil(() => shown() === STREAM_STATUS_LIVE, 4 * CATALOG_POLL_INTERVAL_MS);
+
+    assert.ok(bee.nextSlotAsksAt.length >= 2, 'the failed slot read was never tried again');
+    const retriedAfter = bee.nextSlotAsksAt[1] - bee.nextSlotAsksAt[0];
+    assert.ok(retriedAfter >= CATALOG_POLL_INTERVAL_MS, `a failed read was tried again after ${retriedAfter}ms`);
   });
 });

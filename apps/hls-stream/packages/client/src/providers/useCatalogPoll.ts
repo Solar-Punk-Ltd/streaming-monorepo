@@ -1,7 +1,8 @@
-import { useEffect } from 'react';
+import { useEffect, useRef } from 'react';
 import useSWR, { SWRConfiguration } from 'swr';
 
 import { useAppContext } from '@/providers/App';
+import { FIRST_LOAD_RETRY_MS } from '@/providers/catalogPoll';
 
 /** How the latest read of the catalog went, for a page that says so. */
 interface CatalogPollState {
@@ -19,7 +20,9 @@ interface CatalogPollState {
  * again while the new node is being asked, and an `error` belongs to the node now selected instead of
  * the one the viewer has left.
  *
- * ⛔ **A failed read is followed by the next one at the same cadence, never by a backoff.** SWR skips
+ * ⛔ **A failed read is followed by the next one at the same cadence, never by a backoff.** Until the
+ * list has been shown once, the next one comes after {@link FIRST_LOAD_RETRY_MS} instead, so a first
+ * read that fails does not leave the page empty for a whole interval. SWR skips
  * its refresh timer while its cache holds an error and leaves the next read to `onErrorRetry`, whose
  * default waits longer after every failure, from 5 to 10 s after one up to minutes after a few in a
  * row. One slow or refused read used to hold an open page that far behind, so a stream published or
@@ -31,31 +34,40 @@ interface CatalogPollState {
  */
 export function useCatalogPoll(pollMs: number | null): CatalogPollState {
   const { fetchAppState, setNewStreamList, streamListSourceId } = useAppContext();
+  const hasShownList = useRef(false);
   const { data, error, isLoading } = useSWR(pollMs === null ? null : ['app-state', streamListSourceId], fetchAppState, {
     revalidateOnFocus: true,
     refreshInterval: pollMs ?? 0,
     dedupingInterval: pollMs ?? 0,
     shouldRetryOnError: true,
-    onErrorRetry: retryAfter(pollMs),
+    onErrorRetry: retryAfter(pollMs, () => hasShownList.current),
   });
 
   useEffect(() => {
-    if (data) setNewStreamList(data);
+    if (data) {
+      hasShownList.current = true;
+      setNewStreamList(data);
+    }
   }, [data, setNewStreamList]);
 
   return { error, isLoading };
 }
 
-/** SWR's error retry, flat: the next read comes `pollMs` after a failure, however many came before it. */
-function retryAfter(pollMs: number | null): SWRConfiguration['onErrorRetry'] {
+/**
+ * SWR's error retry, flat: the next read comes a fixed time after a failure, however many came before
+ * it. That time is {@link FIRST_LOAD_RETRY_MS} while the page has never shown the list, and `pollMs`
+ * once it has.
+ */
+function retryAfter(pollMs: number | null, hasShownList: () => boolean): SWRConfiguration['onErrorRetry'] {
   return (_error, _key, config, revalidate, options) => {
     if (pollMs === null) {
       return;
     }
+    const waitMs = hasShownList() ? pollMs : Math.min(pollMs, FIRST_LOAD_RETRY_MS);
     setTimeout(() => {
       if (config.isVisible()) {
         void revalidate(options);
       }
-    }, pollMs);
+    }, waitMs);
   };
 }
