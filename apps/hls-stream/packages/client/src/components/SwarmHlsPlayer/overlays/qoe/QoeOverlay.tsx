@@ -26,6 +26,7 @@ import {
   saveGeometry,
   type StorageLike,
   usableBounds,
+  windowBounds,
 } from './qoeGeometry';
 import { QoePanel } from './QoePanel';
 import { QoeMetrics } from './useHlsQoeMetrics';
@@ -42,20 +43,34 @@ function browserStorage(): StorageLike | null {
 }
 
 /**
- * The player's size: the padding box of the overlay's offsetParent, which its left and top are
- * relative to. Null when there is none, or it measures nothing on a side (hidden, display:none, not
- * laid out yet): every reader then leaves the geometry as it is.
+ * Where the overlay may go: the browser window's visible area, in the coordinates of the padding box
+ * of the overlay's offsetParent (the player), which its left and top are relative to. Read off the
+ * page here and computed in `windowBounds`. With it, the player's width, which places the default.
+ * Null when there is no offsetParent, or the window measures nothing on a side: every reader then
+ * leaves the geometry as it is.
  */
-function playerBounds(overlay: HTMLElement | null): Bounds | null {
+function measure(overlay: HTMLElement | null): { bounds: Bounds; playerWidth: number } | null {
   const parent = overlay?.offsetParent;
-  const bounds = parent ? { width: parent.clientWidth, height: parent.clientHeight } : null;
-  return usableBounds(bounds) ? bounds : null;
+  if (!parent) {
+    return null;
+  }
+  const { left, top } = parent.getBoundingClientRect();
+  const viewport = document.documentElement;
+  const bounds = windowBounds({
+    viewportWidth: viewport.clientWidth,
+    viewportHeight: viewport.clientHeight,
+    parentLeft: left,
+    parentTop: top,
+    clientLeft: parent.clientLeft,
+    clientTop: parent.clientTop,
+  });
+  return usableBounds(bounds) ? { bounds, playerWidth: parent.clientWidth } : null;
 }
 
-/** The saved geometry pulled back inside the player, or the default. */
-function initialRect(bounds: Bounds): Rect {
+/** The saved geometry pulled back inside the window, or the default at the player's top right. */
+function initialRect({ bounds, playerWidth }: { bounds: Bounds; playerWidth: number }): Rect {
   const saved = loadGeometry(browserStorage());
-  return saved ? clampRect(saved, bounds, MIN_PANEL_SIZE) : defaultRect(bounds);
+  return saved ? clampRect(saved, bounds, MIN_PANEL_SIZE) : defaultRect(playerWidth, bounds);
 }
 
 const sameRect = (a: Rect | null, b: Rect) =>
@@ -76,19 +91,20 @@ interface QoeOverlayProps {
 /**
  * The toggle button and, below it, the metrics panel, which resizes from every edge and corner like
  * a desktop window. All of the geometry, one panel rectangle in the player's coordinates with the
- * button on its top-right corner, is in qoeGeometry.ts; this component only feeds it pointer deltas
- * and the player's size, and remembers the result in this browser.
+ * button on its top-right corner, kept inside the browser window, is in qoeGeometry.ts; this
+ * component only feeds it pointer deltas and the window's place, and remembers the result in this
+ * browser.
  */
 export const QoeOverlay: React.FC<QoeOverlayProps> = ({ metrics, release = config.release, topic }) => {
   const [visible, setVisible] = useState(true);
-  // Null until the player has been measured, which a server render never does.
+  // Null until the window has been measured, which a server render never does.
   const [rect, setRectState] = useState<Rect | null>(null);
   const [isDragging, setIsDragging] = useState(false);
   const [resizing, setResizing] = useState<ResizeEdge | null>(null);
 
   // The latest rectangle and visibility, for the handlers and observers that outlive a render. While
   // the panel is hidden the rectangle keeps its size and the button still derives from it, but only
-  // the button is kept inside the player (see qoeGeometry.ts).
+  // the button is kept inside the window (see qoeGeometry.ts).
   const rectRef = useRef<Rect | null>(null);
   const visibleRef = useRef(true);
   const drag = useRef<{ startX: number; startY: number; start: Rect; bounds: Bounds } | null>(null);
@@ -111,52 +127,43 @@ export const QoeOverlay: React.FC<QoeOverlayProps> = ({ metrics, release = confi
     setRectState(next);
   }, []);
 
-  // Before the first paint: the saved geometry pulled back inside the player, or the default. A player
-  // not laid out yet gets it from the first reading of its size that is usable, below.
+  // Before the first paint: the saved geometry pulled back inside the window, or the default. A window
+  // not measurable yet gets it from the first usable reading, on a resize below.
   useLayoutEffect(() => {
-    const bounds = playerBounds(overlayRef.current);
-    if (bounds) {
-      setRect(initialRect(bounds));
+    const measured = measure(overlayRef.current);
+    if (measured) {
+      setRect(initialRect(measured));
     }
   }, [setRect]);
 
-  // The player resizes (a window resize, the page's layout): clamp again into its new bounds. Not
-  // saved, so a brief resize does not overwrite what the viewer chose. The video's native fullscreen
-  // shows the video alone, so it neither shows the overlay nor resizes the player. A reading of 0 on
-  // a side is skipped and the geometry left as it was.
+  // The window resizes: clamp again into its new visible area. Not saved, so a brief resize does not
+  // overwrite what the viewer chose. A scroll is not a resize: the overlay is positioned in the player
+  // and scrolls with the page. Nothing watches the player's own size: it does not bound the overlay.
+  // A reading of 0 on a side is skipped and the geometry left as it was.
   useEffect(() => {
-    const parent = overlayRef.current?.offsetParent;
-    if (!parent) {
-      return;
-    }
     const reclamp = () => {
-      const bounds = playerBounds(overlayRef.current);
-      if (bounds) {
+      const measured = measure(overlayRef.current);
+      if (measured) {
         const current = rectRef.current;
-        setRect(current ? reclampRect(current, bounds, visibleRef.current) : initialRect(bounds));
+        setRect(current ? reclampRect(current, measured.bounds, visibleRef.current) : initialRect(measured));
       }
     };
-    if (typeof ResizeObserver !== 'undefined') {
-      const observer = new ResizeObserver(reclamp);
-      observer.observe(parent);
-      return () => observer.disconnect();
-    }
     window.addEventListener('resize', reclamp);
     return () => window.removeEventListener('resize', reclamp);
   }, [setRect]);
 
   // Hiding the panel unmounts its handles, so a resize under way ends with it. Showing it hangs it at
-  // the button's corner with its last size and pulls the pair back inside the player.
+  // the button's corner with its last size and pulls the pair back inside the window.
   const toggle = useCallback(() => {
     resize.current = null;
     setResizing(null);
     const opening = !visibleRef.current;
     visibleRef.current = opening;
     setVisible(opening);
-    const bounds = playerBounds(overlayRef.current);
+    const measured = measure(overlayRef.current);
     const current = rectRef.current;
-    if (opening && bounds && current) {
-      setRect(panelAtButton(buttonOf(current), current, bounds, MIN_PANEL_SIZE));
+    if (opening && measured && current) {
+      setRect(panelAtButton(buttonOf(current), current, measured.bounds, MIN_PANEL_SIZE));
     }
   }, [setRect]);
 
@@ -230,13 +237,13 @@ export const QoeOverlay: React.FC<QoeOverlayProps> = ({ metrics, release = confi
   }, [isDragging, resizing]);
 
   const onMouseDown = (e: React.MouseEvent<HTMLButtonElement>) => {
-    const bounds = playerBounds(overlayRef.current);
+    const measured = measure(overlayRef.current);
     const start = rectRef.current;
-    if (!bounds || !start) {
+    if (!measured || !start) {
       return;
     }
 
-    drag.current = { startX: e.clientX, startY: e.clientY, start, bounds };
+    drag.current = { startX: e.clientX, startY: e.clientY, start, bounds: measured.bounds };
     didDrag.current = false;
     setIsDragging(true);
 
@@ -250,9 +257,9 @@ export const QoeOverlay: React.FC<QoeOverlayProps> = ({ metrics, release = confi
   };
 
   const onResizeStart = (edge: ResizeEdge) => (e: React.PointerEvent<HTMLDivElement>) => {
-    const bounds = playerBounds(overlayRef.current);
+    const measured = measure(overlayRef.current);
     const start = rectRef.current;
-    if (e.button !== 0 || !bounds || !start) {
+    if (e.button !== 0 || !measured || !start) {
       return;
     }
 
@@ -261,7 +268,14 @@ export const QoeOverlay: React.FC<QoeOverlayProps> = ({ metrics, release = confi
     } catch {
       // The pointer is already gone; the move and up events still arrive while it is over the handle.
     }
-    resize.current = { pointerId: e.pointerId, edge, startX: e.clientX, startY: e.clientY, start, bounds };
+    resize.current = {
+      pointerId: e.pointerId,
+      edge,
+      startX: e.clientX,
+      startY: e.clientY,
+      start,
+      bounds: measured.bounds,
+    };
     setResizing(edge);
     e.preventDefault();
     e.stopPropagation();

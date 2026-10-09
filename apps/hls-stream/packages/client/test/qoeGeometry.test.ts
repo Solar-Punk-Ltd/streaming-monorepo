@@ -26,11 +26,13 @@ import {
   resizeRect,
   saveGeometry,
   usableBounds,
+  windowBounds,
 } from '../src/components/SwarmHlsPlayer/overlays/qoe/qoeGeometry';
 
-const BOUNDS: Bounds = { width: 1000, height: 800 };
+/** A window seen from a player at its top-left corner: the origin is 0, 0. */
+const BOUNDS: Bounds = { x: 0, y: 0, width: 1000, height: 800 };
 const MIN = MIN_PANEL_SIZE;
-/** A panel well inside the player, with room on every side. */
+/** A panel well inside the window, with room on every side. */
 const START: Rect = { x: 300, y: 200, width: 300, height: 300 };
 
 const right = (r: Rect) => r.x + r.width;
@@ -102,26 +104,26 @@ describe('resizeRect: the minimum size holds the opposite edge', () => {
   });
 });
 
-describe('resizeRect: the player bounds', () => {
-  it('stops the w edge at the player left', () => {
+describe('resizeRect: the window bounds', () => {
+  it('stops the w edge at the window left', () => {
     const r = resizeRect(START, 'w', -1000, 0, BOUNDS, MIN);
     assert.equal(r.x, 0);
     assert.equal(right(r), right(START));
   });
 
-  it('stops the e edge at the player right', () => {
+  it('stops the e edge at the window right', () => {
     const r = resizeRect(START, 'e', 1000, 0, BOUNDS, MIN);
     assert.equal(right(r), BOUNDS.width);
     assert.equal(r.x, START.x);
   });
 
-  it('stops the s edge at the player bottom', () => {
+  it('stops the s edge at the window bottom', () => {
     const r = resizeRect(START, 's', 0, 1000, BOUNDS, MIN);
     assert.equal(bottom(r), BOUNDS.height);
     assert.equal(r.y, START.y);
   });
 
-  it('stops the n edge where the toggle button above the panel meets the player top', () => {
+  it('stops the n edge where the toggle button above the panel meets the window top', () => {
     const r = resizeRect(START, 'n', 0, -1000, BOUNDS, MIN);
     assert.equal(r.y, BUTTON_BAND);
     assert.equal(bottom(r), bottom(START));
@@ -143,19 +145,19 @@ describe('moveRect', () => {
     assert.deepEqual(moveRect(START, -40, 25, BOUNDS), { ...START, x: START.x - 40, y: START.y + 25 });
   });
 
-  it('stops at the player left', () => {
+  it('stops at the window left', () => {
     assert.deepEqual(moveRect(START, -1000, 0, BOUNDS), { ...START, x: 0 });
   });
 
-  it('stops at the player right', () => {
+  it('stops at the window right', () => {
     assert.deepEqual(moveRect(START, 1000, 0, BOUNDS), { ...START, x: BOUNDS.width - START.width });
   });
 
-  it('stops with the toggle button at the player top', () => {
+  it('stops with the toggle button at the window top', () => {
     assert.deepEqual(moveRect(START, 0, -1000, BOUNDS), { ...START, y: BUTTON_BAND });
   });
 
-  it('stops at the player bottom', () => {
+  it('stops at the window bottom', () => {
     assert.deepEqual(moveRect(START, 0, 1000, BOUNDS), { ...START, y: BOUNDS.height - START.height });
   });
 });
@@ -165,12 +167,12 @@ describe('clampRect', () => {
     assert.deepEqual(clampRect(START, BOUNDS, MIN), START);
   });
 
-  it('shrinks an oversize rect to the player, below the button band', () => {
+  it('shrinks an oversize rect to the window, below the button band', () => {
     const r = clampRect({ x: 0, y: BUTTON_BAND, width: 2000, height: 2000 }, BOUNDS, MIN);
     assert.deepEqual(r, { x: 0, y: BUTTON_BAND, width: BOUNDS.width, height: BOUNDS.height - BUTTON_BAND });
   });
 
-  it('brings a rect lying wholly outside the player back to the nearest corner', () => {
+  it('brings a rect lying wholly outside the window back to the nearest corner', () => {
     assert.deepEqual(clampRect({ x: 5000, y: 5000, width: 300, height: 300 }, BOUNDS, MIN), {
       x: BOUNDS.width - 300,
       y: BOUNDS.height - 300,
@@ -200,8 +202,8 @@ describe('clampRect', () => {
   });
 });
 
-describe('a player smaller than the minimum panel and its button band', () => {
-  const TINY: Bounds = { width: 100, height: 100 };
+describe('a window smaller than the minimum panel and its button band', () => {
+  const TINY: Bounds = { x: 0, y: 0, width: 100, height: 100 };
 
   it('keeps the minimum size, aligns to the right and to the top, so the toggle button stays inside', () => {
     const r = clampRect({ x: 0, y: 0, width: 500, height: 500 }, TINY, MIN);
@@ -210,7 +212,7 @@ describe('a player smaller than the minimum panel and its button band', () => {
     assert.equal(r.height, MIN.height);
     assert.equal(right(r), TINY.width);
     assert.equal(r.y, BUTTON_BAND);
-    // The button sits on the panel's top-right corner, so it is inside the player.
+    // The button sits on the panel's top-right corner, so it is inside the window.
     assert.ok(right(r) - BUTTON_SIZE >= 0);
     assert.ok(r.y - BUTTON_BAND >= 0);
   });
@@ -231,35 +233,35 @@ describe('a player smaller than the minimum panel and its button band', () => {
   });
 
   it('makes the default the minimum in the same place', () => {
-    const r = defaultRect(TINY);
+    const r = defaultRect(TINY.width, TINY);
     assert.deepEqual(r, { x: TINY.width - MIN.width, y: BUTTON_BAND, width: MIN.width, height: MIN.height });
   });
 });
 
 describe('defaultRect', () => {
   it('puts the toggle button where it always opened, 50 px from the right and 10 px from the top', () => {
-    const r = defaultRect(BOUNDS);
+    const r = defaultRect(BOUNDS.width, BOUNDS);
     assert.equal(right(r) - BUTTON_SIZE, BOUNDS.width - 50);
     assert.equal(r.y - BUTTON_BAND, 10);
     assert.equal(r.width, DEFAULT_PANEL_WIDTH);
     assert.equal(r.height, DEFAULT_PANEL_HEIGHT);
   });
 
-  it('shortens the panel to the space down to the player bottom', () => {
-    const r = defaultRect({ width: 1000, height: 300 });
+  it('shortens the panel to the space down to the window bottom', () => {
+    const r = defaultRect(1000, { x: 0, y: 0, width: 1000, height: 300 });
     assert.equal(bottom(r), 300);
     assert.equal(r.y - BUTTON_BAND, 10);
   });
 });
 
 /**
- * While the panel is hidden only the button's own box is kept inside the player, so a hidden panel's
+ * While the panel is hidden only the button's own box is kept inside the window, so a hidden panel's
  * size never boxes the button in. Reopened, the panel hangs at the button's corner again and the pair
  * is pulled back inside together.
  */
 describe('the button while the panel is hidden', () => {
-  const SMALL: Bounds = { width: 640, height: 360 };
-  const PANEL = defaultRect(SMALL);
+  const SMALL: Bounds = { x: 0, y: 0, width: 640, height: 360 };
+  const PANEL = defaultRect(SMALL.width, SMALL);
   const max = { x: SMALL.width - BUTTON_SIZE, y: SMALL.height - BUTTON_SIZE };
 
   it("sits on the panel rect's top-right corner, 4 px above it", () => {
@@ -271,13 +273,13 @@ describe('the button while the panel is hidden', () => {
     );
   });
 
-  it('moves freely to every corner of a 640×360 player whatever the default panel size', () => {
+  it('moves freely to every corner of a 640×360 window whatever the default panel size', () => {
     const button = buttonOf(PANEL);
     assert.deepEqual(moveButton(button, -5000, -5000, SMALL), { x: 0, y: 0 });
     assert.deepEqual(moveButton(button, 5000, -5000, SMALL), { x: max.x, y: 0 });
     assert.deepEqual(moveButton(button, -5000, 5000, SMALL), { x: 0, y: max.y });
     assert.deepEqual(moveButton(button, 5000, 5000, SMALL), max);
-    // The panel it would reopen at is far outside the player at the bottom-left; it does not matter.
+    // The panel it would reopen at is far outside the window at the bottom-left; it does not matter.
     assert.ok(PANEL.height + BUTTON_BAND > SMALL.height - max.y);
   });
 
@@ -293,15 +295,18 @@ describe('the button while the panel is hidden', () => {
     assert.deepEqual(buttonOf(moved), { x: 0, y: max.y });
     assert.equal(moved.width, PANEL.width);
     assert.equal(moved.height, PANEL.height);
-    // A player that shrank while the panel was hidden pulls only the button back in.
-    assert.deepEqual(buttonOf(moveHiddenRect(moved, 0, 0, { width: 200, height: 100 })), {
+    // A window that shrank while the panel was hidden pulls only the button back in.
+    assert.deepEqual(buttonOf(moveHiddenRect(moved, 0, 0, { x: 0, y: 0, width: 200, height: 100 })), {
       x: 0,
       y: 100 - BUTTON_SIZE,
     });
   });
 
-  it('stays at the right and the top in a player smaller than itself', () => {
-    assert.deepEqual(moveButton({ x: 0, y: 0 }, 50, 50, { width: 20, height: 20 }), { x: 20 - BUTTON_SIZE, y: 0 });
+  it('stays at the right and the top in a window smaller than itself', () => {
+    assert.deepEqual(moveButton({ x: 0, y: 0 }, 50, 50, { x: 0, y: 0, width: 20, height: 20 }), {
+      x: 20 - BUTTON_SIZE,
+      y: 0,
+    });
   });
 
   it('reopened near the bottom-left, hangs the panel at its corner and moves the pair inside', () => {
@@ -312,7 +317,7 @@ describe('the button while the panel is hidden', () => {
     assert.equal(panel.height, PANEL.height);
     assert.equal(panel.x, 0);
     assert.equal(bottom(panel), SMALL.height);
-    // The button came along, still on the panel's corner and inside the player.
+    // The button came along, still on the panel's corner and inside the window.
     const moved = buttonOf(panel);
     assert.equal(moved.x + BUTTON_SIZE, right(panel));
     assert.equal(moved.y + BUTTON_BAND, panel.y);
@@ -327,32 +332,35 @@ describe('the button while the panel is hidden', () => {
     assert.deepEqual(buttonOf(panel), button);
   });
 
-  it('reopened in a player that shrank, shrinks the panel to fit, never below the minimum', () => {
+  it('reopened in a window that shrank, shrinks the panel to fit, never below the minimum', () => {
     const panel = panelAtButton({ x: 0, y: 0 }, { width: 2000, height: 2000 }, SMALL, MIN);
     assert.deepEqual(panel, { x: 0, y: BUTTON_BAND, width: SMALL.width, height: SMALL.height - BUTTON_BAND });
   });
 });
 
 /**
- * A player that is hidden, display:none or not laid out yet measures 0 on a side. Clamping to that
+ * A window that measures 0 on a side (a document not laid out yet, a frame collapsed to nothing)
  * would crush the geometry, and the next drag would save it, so such a reading is ignored.
  */
 describe('usableBounds', () => {
-  it('accepts a player with a positive, finite width and height', () => {
-    assert.equal(usableBounds({ width: 640, height: 360 }), true);
-    assert.equal(usableBounds({ width: 1, height: 1 }), true);
+  it('accepts a window with a positive, finite size at a finite origin, negative included', () => {
+    assert.equal(usableBounds({ x: 0, y: 0, width: 640, height: 360 }), true);
+    assert.equal(usableBounds({ x: -395, y: -200, width: 1280, height: 720 }), true);
+    assert.equal(usableBounds({ x: 0, y: 0, width: 1, height: 1 }), true);
   });
 
-  it('refuses a zero, negative or not finite side, and no reading at all', () => {
+  it('refuses a zero, negative or not finite side or origin, and no reading at all', () => {
     for (const bounds of [
-      { width: 0, height: 360 },
-      { width: 640, height: 0 },
-      { width: 0, height: 0 },
-      { width: -640, height: 360 },
-      { width: 640, height: -1 },
-      { width: Number.NaN, height: 360 },
-      { width: 640, height: Number.NaN },
-      { width: Infinity, height: 360 },
+      { x: 0, y: 0, width: 0, height: 360 },
+      { x: 0, y: 0, width: 640, height: 0 },
+      { x: 0, y: 0, width: 0, height: 0 },
+      { x: 0, y: 0, width: -640, height: 360 },
+      { x: 0, y: 0, width: 640, height: -1 },
+      { x: 0, y: 0, width: Number.NaN, height: 360 },
+      { x: 0, y: 0, width: 640, height: Number.NaN },
+      { x: 0, y: 0, width: Infinity, height: 360 },
+      { x: Number.NaN, y: 0, width: 640, height: 360 },
+      { x: 0, y: -Infinity, width: 640, height: 360 },
     ]) {
       assert.equal(usableBounds(bounds), false, JSON.stringify(bounds));
     }
@@ -360,26 +368,164 @@ describe('usableBounds', () => {
   });
 });
 
-describe('reclampRect, when the player resizes', () => {
-  it('leaves the rect untouched for a player measuring 0 on a side', () => {
+describe('reclampRect, when the window resizes', () => {
+  it('leaves the rect untouched for a window measuring 0 on a side', () => {
     for (const visible of [true, false]) {
-      assert.equal(reclampRect(START, { width: 0, height: 0 }, visible), START);
-      assert.equal(reclampRect(START, { width: 1000, height: 0 }, visible), START);
-      assert.equal(reclampRect(START, { width: Number.NaN, height: 800 }, visible), START);
+      assert.equal(reclampRect(START, { x: 0, y: 0, width: 0, height: 0 }, visible), START);
+      assert.equal(reclampRect(START, { x: -10, y: -10, width: 1000, height: 0 }, visible), START);
+      assert.equal(reclampRect(START, { x: 0, y: 0, width: Number.NaN, height: 800 }, visible), START);
     }
   });
 
   it('clamps the panel and its button together while the panel is shown', () => {
-    const small = { width: 400, height: 300 };
+    const small = { x: 0, y: 0, width: 400, height: 300 };
     assert.deepEqual(reclampRect(START, small, true), clampRect(START, small, MIN));
   });
 
   it('clamps the button alone while the panel is hidden', () => {
-    const small = { width: 400, height: 300 };
+    const small = { x: 0, y: 0, width: 400, height: 300 };
     const r = reclampRect(START, small, false);
     assert.deepEqual(r, moveHiddenRect(START, 0, 0, small));
     assert.equal(r.width, START.width);
     assert.equal(r.height, START.height);
+  });
+
+  it('re-clamps a rect that no longer fits a smaller window, at a negative origin', () => {
+    const shrunk = { x: -395, y: -200, width: 800, height: 400 };
+    const r = reclampRect({ x: 600, y: 300, width: 300, height: 420 }, shrunk, true);
+
+    assert.deepEqual(r, { x: 105, y: -200 + BUTTON_BAND, width: 300, height: 400 - BUTTON_BAND });
+    assert.equal(right(r), shrunk.x + shrunk.width);
+    assert.equal(bottom(r), shrunk.y + shrunk.height);
+  });
+});
+
+/**
+ * The bounds are the browser window's visible area, in the overlay's coordinates: px from the
+ * top-left of the player's padding box, which the overlay's left and top are relative to. A player
+ * lower on the page or further right puts the window's corner at a negative origin.
+ */
+describe('windowBounds', () => {
+  const at = (parentLeft: number, parentTop: number, clientLeft = 0, clientTop = 0) =>
+    windowBounds({ viewportWidth: 1280, viewportHeight: 720, parentLeft, parentTop, clientLeft, clientTop });
+
+  it('is the viewport, its corner at minus the player corner', () => {
+    assert.deepEqual(at(395, 200), { x: -395, y: -200, width: 1280, height: 720 });
+  });
+
+  it("measures from inside the player's border, which its padding box starts after", () => {
+    assert.deepEqual(at(395, 200, 2, 3), { x: -397, y: -203, width: 1280, height: 720 });
+  });
+
+  it("puts the window's top below the player's top on a page scrolled past it", () => {
+    assert.deepEqual(at(395, -150), { x: -395, y: 150, width: 1280, height: 720 });
+  });
+});
+
+describe("an audio stream's player, a 490×60 bar at 395, 200 in a 1280×720 window", () => {
+  const BAR = { width: 490, height: 60 };
+  const WIN = windowBounds({
+    viewportWidth: 1280,
+    viewportHeight: 720,
+    parentLeft: 395,
+    parentTop: 200,
+    clientLeft: 0,
+    clientTop: 0,
+  });
+  const PANEL = defaultRect(BAR.width, WIN);
+  const winRight = WIN.x + WIN.width;
+  const winBottom = WIN.y + WIN.height;
+
+  it('opens with the button where it always did and the panel hanging below the bar, over the page', () => {
+    assert.deepEqual(buttonOf(PANEL), { x: BAR.width - 50, y: 10 });
+    assert.equal(PANEL.width, DEFAULT_PANEL_WIDTH);
+    assert.equal(PANEL.height, DEFAULT_PANEL_HEIGHT);
+    assert.ok(bottom(PANEL) > BAR.height);
+  });
+
+  it('drags the panel and its button to every corner of the window', () => {
+    const topLeft = moveRect(PANEL, -5000, -5000, WIN);
+    assert.equal(topLeft.x, WIN.x);
+    assert.equal(buttonOf(topLeft).y, WIN.y);
+
+    const topRight = moveRect(PANEL, 5000, -5000, WIN);
+    assert.equal(right(topRight), winRight);
+    assert.equal(buttonOf(topRight).y, WIN.y);
+
+    const bottomLeft = moveRect(PANEL, -5000, 5000, WIN);
+    assert.equal(bottomLeft.x, WIN.x);
+    assert.equal(bottom(bottomLeft), winBottom);
+
+    const bottomRight = moveRect(PANEL, 5000, 5000, WIN);
+    assert.equal(right(bottomRight), winRight);
+    assert.equal(bottom(bottomRight), winBottom);
+  });
+
+  it('drags the button alone to every corner of the window while the panel is hidden', () => {
+    const button = buttonOf(PANEL);
+    assert.deepEqual(moveButton(button, -5000, -5000, WIN), { x: WIN.x, y: WIN.y });
+    assert.deepEqual(moveButton(button, 5000, -5000, WIN), { x: winRight - BUTTON_SIZE, y: WIN.y });
+    assert.deepEqual(moveButton(button, -5000, 5000, WIN), { x: WIN.x, y: winBottom - BUTTON_SIZE });
+    assert.deepEqual(moveButton(button, 5000, 5000, WIN), { x: winRight - BUTTON_SIZE, y: winBottom - BUTTON_SIZE });
+  });
+
+  it("resizes vertically to the window's height less the button band, well over 500 px", () => {
+    const up = resizeRect(PANEL, 'n', 0, -5000, WIN, MIN);
+    assert.equal(up.y, WIN.y + BUTTON_BAND);
+    assert.equal(bottom(up), bottom(PANEL));
+
+    const tall = resizeRect(up, 's', 0, 5000, WIN, MIN);
+    assert.equal(tall.height, WIN.height - BUTTON_BAND);
+    assert.ok(tall.height > 500);
+  });
+
+  it("resizes sideways to the window's edges, beyond the bar", () => {
+    assert.equal(resizeRect(PANEL, 'w', -5000, 0, WIN, MIN).x, WIN.x);
+    assert.equal(right(resizeRect(PANEL, 'e', 5000, 0, WIN, MIN)), winRight);
+  });
+
+  it('still holds the minimum size', () => {
+    assert.equal(resizeRect(PANEL, 'n', 0, 5000, WIN, MIN).height, MIN.height);
+    assert.equal(resizeRect(PANEL, 'w', 5000, 0, WIN, MIN).width, MIN.width);
+    assert.deepEqual(clampRect({ ...PANEL, width: 10, height: 10 }, WIN, MIN), {
+      ...PANEL,
+      width: MIN.width,
+      height: MIN.height,
+    });
+  });
+
+  it("reopens at the button's corner, over the page, where the window has room", () => {
+    const button = moveButton(buttonOf(PANEL), -300, 50, WIN);
+    assert.deepEqual(buttonOf(panelAtButton(button, PANEL, WIN, MIN)), button);
+  });
+});
+
+describe('a large video player filling most of the window', () => {
+  // A 1200 px wide player at 40, 20 in a 1280×720 window.
+  const PLAYER_WIDTH = 1200;
+  const WIN = windowBounds({
+    viewportWidth: 1280,
+    viewportHeight: 720,
+    parentLeft: 40,
+    parentTop: 20,
+    clientLeft: 0,
+    clientTop: 0,
+  });
+  const PANEL = defaultRect(PLAYER_WIDTH, WIN);
+
+  it("opens at the player's top right, as before", () => {
+    assert.deepEqual(buttonOf(PANEL), { x: PLAYER_WIDTH - 50, y: 10 });
+    assert.deepEqual(
+      { width: PANEL.width, height: PANEL.height },
+      { width: DEFAULT_PANEL_WIDTH, height: DEFAULT_PANEL_HEIGHT },
+    );
+  });
+
+  it("drags to the window's edges, a little past the player's", () => {
+    assert.equal(right(moveRect(PANEL, 5000, 0, WIN)), WIN.x + WIN.width);
+    assert.equal(buttonOf(moveRect(PANEL, 0, -5000, WIN)).y, WIN.y);
+    assert.equal(moveRect(PANEL, -5000, 0, WIN).x, WIN.x);
+    assert.equal(bottom(moveRect(PANEL, 0, 5000, WIN)), WIN.y + WIN.height);
   });
 });
 
