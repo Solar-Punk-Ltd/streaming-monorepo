@@ -15,10 +15,11 @@ export const SLOT_NOT_WRITTEN_YET = 404;
  *
  * Not zero, and that is the whole of the tuning. A reader riding the live edge is refused on plenty
  * of polls simply because the publisher has not written yet, and probing each one would add a
- * request per poll for every viewer in order to find nothing. Three polls is about a second at the
- * shipping profile, short against the nineteen and forty-six second stalls this is for, and long
- * enough that the ordinary refusal never reaches it: nine of the ten distinct refusals measured on
- * 2026-08-06 cleared within a single poll.
+ * request per poll for every viewer in order to find nothing. The polls are hls.js's reloads of an
+ * unchanged live playlist, each half a target duration (`computeReloadInterval`), so three of them
+ * are about 1.5 s at a sub-second segment and 3 s at a 2 s one. That is short against the nineteen
+ * and forty-six second stalls this is for, and long enough that the ordinary refusal never reaches
+ * it: nine of the ten distinct refusals measured on 2026-08-06 cleared within a single poll.
  */
 export const UNSERVED_POLLS_BEFORE_PROBE = 3;
 
