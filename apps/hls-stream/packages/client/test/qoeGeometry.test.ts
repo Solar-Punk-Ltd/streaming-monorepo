@@ -5,6 +5,7 @@ import {
   BUTTON_BAND,
   BUTTON_SIZE,
   type Bounds,
+  buttonOf,
   clampRect,
   cursorFor,
   DEFAULT_PANEL_HEIGHT,
@@ -13,10 +14,14 @@ import {
   GEOMETRY_STORAGE_KEY,
   loadGeometry,
   MIN_PANEL_SIZE,
+  moveButton,
+  moveHiddenRect,
   moveRect,
+  panelAtButton,
   parseSavedGeometry,
   type Rect,
   type ResizeEdge,
+  rectAtButton,
   resizeRect,
   saveGeometry,
 } from '../src/components/SwarmHlsPlayer/overlays/qoe/qoeGeometry';
@@ -242,6 +247,87 @@ describe('defaultRect', () => {
     const r = defaultRect({ width: 1000, height: 300 });
     assert.equal(bottom(r), 300);
     assert.equal(r.y - BUTTON_BAND, 10);
+  });
+});
+
+/**
+ * While the panel is hidden only the button's own box is kept inside the player, so a hidden panel's
+ * size never boxes the button in. Reopened, the panel hangs at the button's corner again and the pair
+ * is pulled back inside together.
+ */
+describe('the button while the panel is hidden', () => {
+  const SMALL: Bounds = { width: 640, height: 360 };
+  const PANEL = defaultRect(SMALL);
+  const max = { x: SMALL.width - BUTTON_SIZE, y: SMALL.height - BUTTON_SIZE };
+
+  it("sits on the panel rect's top-right corner, 4 px above it", () => {
+    assert.deepEqual(buttonOf(START), { x: right(START) - BUTTON_SIZE, y: START.y - BUTTON_BAND });
+    assert.deepEqual(buttonOf(rectAtButton({ x: 40, y: 50 }, START)), { x: 40, y: 50 });
+    assert.deepEqual(
+      { width: rectAtButton({ x: 40, y: 50 }, START).width, height: rectAtButton({ x: 40, y: 50 }, START).height },
+      { width: START.width, height: START.height },
+    );
+  });
+
+  it('moves freely to every corner of a 640×360 player whatever the default panel size', () => {
+    const button = buttonOf(PANEL);
+    assert.deepEqual(moveButton(button, -5000, -5000, SMALL), { x: 0, y: 0 });
+    assert.deepEqual(moveButton(button, 5000, -5000, SMALL), { x: max.x, y: 0 });
+    assert.deepEqual(moveButton(button, -5000, 5000, SMALL), { x: 0, y: max.y });
+    assert.deepEqual(moveButton(button, 5000, 5000, SMALL), max);
+    // The panel it would reopen at is far outside the player at the bottom-left; it does not matter.
+    assert.ok(PANEL.height + BUTTON_BAND > SMALL.height - max.y);
+  });
+
+  it('is clamped to its own 32×32 box, and moves by the drag inside it', () => {
+    assert.deepEqual(moveButton({ x: 100, y: 100 }, 25, -40, SMALL), { x: 125, y: 60 });
+    assert.deepEqual(moveButton({ x: 100, y: 100 }, 1000, 0, SMALL), { x: SMALL.width - BUTTON_SIZE, y: 100 });
+    assert.deepEqual(moveButton({ x: 100, y: 100 }, 0, 1000, SMALL), { x: 100, y: SMALL.height - BUTTON_SIZE });
+    assert.deepEqual(moveButton({ x: 100, y: 100 }, -1000, -1000, SMALL), { x: 0, y: 0 });
+  });
+
+  it("drags a hidden panel's rect along with the button, size kept, only the button clamped", () => {
+    const moved = moveHiddenRect(PANEL, -5000, 5000, SMALL);
+    assert.deepEqual(buttonOf(moved), { x: 0, y: max.y });
+    assert.equal(moved.width, PANEL.width);
+    assert.equal(moved.height, PANEL.height);
+    // A player that shrank while the panel was hidden pulls only the button back in.
+    assert.deepEqual(buttonOf(moveHiddenRect(moved, 0, 0, { width: 200, height: 100 })), {
+      x: 0,
+      y: 100 - BUTTON_SIZE,
+    });
+  });
+
+  it('stays at the right and the top in a player smaller than itself', () => {
+    assert.deepEqual(moveButton({ x: 0, y: 0 }, 50, 50, { width: 20, height: 20 }), { x: 20 - BUTTON_SIZE, y: 0 });
+  });
+
+  it('reopened near the bottom-left, hangs the panel at its corner and moves the pair inside', () => {
+    const button = { x: 0, y: max.y };
+    const panel = panelAtButton(button, PANEL, SMALL, MIN);
+
+    assert.equal(panel.width, PANEL.width);
+    assert.equal(panel.height, PANEL.height);
+    assert.equal(panel.x, 0);
+    assert.equal(bottom(panel), SMALL.height);
+    // The button came along, still on the panel's corner and inside the player.
+    const moved = buttonOf(panel);
+    assert.equal(moved.x + BUTTON_SIZE, right(panel));
+    assert.equal(moved.y + BUTTON_BAND, panel.y);
+    assert.ok(moved.y >= 0 && moved.x >= 0);
+  });
+
+  it('reopened where the panel fits, leaves the button where it is', () => {
+    const button = { x: 500, y: 10 };
+    const panel = panelAtButton(button, { width: 300, height: 300 }, BOUNDS, MIN);
+
+    assert.deepEqual(panel, { x: 232, y: 46, width: 300, height: 300 });
+    assert.deepEqual(buttonOf(panel), button);
+  });
+
+  it('reopened in a player that shrank, shrinks the panel to fit, never below the minimum', () => {
+    const panel = panelAtButton({ x: 0, y: 0 }, { width: 2000, height: 2000 }, SMALL, MIN);
+    assert.deepEqual(panel, { x: 0, y: BUTTON_BAND, width: SMALL.width, height: SMALL.height - BUTTON_BAND });
   });
 });
 

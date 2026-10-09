@@ -6,9 +6,8 @@ import { config } from '@/utils/config';
 import type { PlayerRelease } from '@/utils/playerRelease';
 
 import {
-  BUTTON_BAND,
-  BUTTON_SIZE,
   type Bounds,
+  buttonOf,
   clampRect,
   cursorFor,
   DEFAULT_PANEL_HEIGHT,
@@ -16,7 +15,9 @@ import {
   defaultRect,
   loadGeometry,
   MIN_PANEL_SIZE,
+  moveHiddenRect,
   moveRect,
+  panelAtButton,
   RESIZE_EDGES,
   type Rect,
   type ResizeEdge,
@@ -72,8 +73,11 @@ export const QoeOverlay: React.FC<QoeOverlayProps> = ({ metrics, release = confi
   const [isDragging, setIsDragging] = useState(false);
   const [resizing, setResizing] = useState<ResizeEdge | null>(null);
 
-  // The latest rectangle, for the handlers and observers that outlive a render.
+  // The latest rectangle and visibility, for the handlers and observers that outlive a render. While
+  // the panel is hidden the rectangle keeps its size and the button still derives from it, but only
+  // the button is kept inside the player (see qoeGeometry.ts).
   const rectRef = useRef<Rect | null>(null);
+  const visibleRef = useRef(true);
   const drag = useRef<{ startX: number; startY: number; start: Rect; bounds: Bounds } | null>(null);
   const didDrag = useRef(false);
   const resize = useRef<{
@@ -113,8 +117,11 @@ export const QoeOverlay: React.FC<QoeOverlayProps> = ({ metrics, release = confi
     }
     const reclamp = () => {
       const bounds = playerBounds(overlayRef.current);
-      if (bounds && rectRef.current) {
-        setRect(clampRect(rectRef.current, bounds, MIN_PANEL_SIZE));
+      const current = rectRef.current;
+      if (bounds && current) {
+        setRect(
+          visibleRef.current ? clampRect(current, bounds, MIN_PANEL_SIZE) : moveHiddenRect(current, 0, 0, bounds),
+        );
       }
     };
     if (typeof ResizeObserver !== 'undefined') {
@@ -126,12 +133,20 @@ export const QoeOverlay: React.FC<QoeOverlayProps> = ({ metrics, release = confi
     return () => window.removeEventListener('resize', reclamp);
   }, [setRect]);
 
-  // Hiding the panel unmounts its handles, so a resize under way ends with it.
+  // Hiding the panel unmounts its handles, so a resize under way ends with it. Showing it hangs it at
+  // the button's corner with its last size and pulls the pair back inside the player.
   const toggle = useCallback(() => {
     resize.current = null;
     setResizing(null);
-    setVisible((v) => !v);
-  }, []);
+    const opening = !visibleRef.current;
+    visibleRef.current = opening;
+    setVisible(opening);
+    const bounds = playerBounds(overlayRef.current);
+    const current = rectRef.current;
+    if (opening && bounds && current) {
+      setRect(panelAtButton(buttonOf(current), current, bounds, MIN_PANEL_SIZE));
+    }
+  }, [setRect]);
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
@@ -143,7 +158,7 @@ export const QoeOverlay: React.FC<QoeOverlayProps> = ({ metrics, release = confi
     return () => window.removeEventListener('keydown', onKey);
   }, [toggle]);
 
-  // Dragging the button moves the button and the panel together.
+  // Dragging the button moves the button and the panel together; with the panel hidden, the button alone.
   useEffect(() => {
     const onMove = (e: MouseEvent) => {
       const d = drag.current;
@@ -152,17 +167,25 @@ export const QoeOverlay: React.FC<QoeOverlayProps> = ({ metrics, release = confi
       }
 
       didDrag.current = true;
-      setRect(moveRect(d.start, e.clientX - d.startX, e.clientY - d.startY, d.bounds));
+      const dx = e.clientX - d.startX;
+      const dy = e.clientY - d.startY;
+      setRect(visibleRef.current ? moveRect(d.start, dx, dy, d.bounds) : moveHiddenRect(d.start, dx, dy, d.bounds));
     };
     const onUp = () => {
-      if (!drag.current) {
+      const d = drag.current;
+      if (!d) {
         return;
       }
 
       drag.current = null;
       setIsDragging(false);
-      if (didDrag.current && rectRef.current) {
-        saveGeometry(browserStorage(), rectRef.current);
+      const current = rectRef.current;
+      if (didDrag.current && current) {
+        // Hidden, what is saved is where the panel will open, so a reload with it open agrees.
+        saveGeometry(
+          browserStorage(),
+          visibleRef.current ? current : panelAtButton(buttonOf(current), current, d.bounds, MIN_PANEL_SIZE),
+        );
       }
       setTimeout(() => {
         didDrag.current = false;
@@ -256,8 +279,9 @@ export const QoeOverlay: React.FC<QoeOverlayProps> = ({ metrics, release = confi
   };
 
   // The overlay element is the button's box; the panel's frame hangs below it, right edges aligned.
-  const floatStyle: React.CSSProperties | undefined = rect
-    ? { left: rect.x + rect.width - BUTTON_SIZE, top: rect.y - BUTTON_BAND, right: 'auto' }
+  const button = rect ? buttonOf(rect) : null;
+  const floatStyle: React.CSSProperties | undefined = button
+    ? { left: button.x, top: button.y, right: 'auto' }
     : undefined;
   const frameStyle: React.CSSProperties = {
     width: rect?.width ?? DEFAULT_PANEL_WIDTH,
