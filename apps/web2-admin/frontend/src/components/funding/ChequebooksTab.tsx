@@ -13,6 +13,7 @@ import {
   checkChequebooks,
   depositCount,
   MINUS,
+  movableChequebooks,
   NO_CHEQUEBOOKS_REPORTED,
   readTarget,
   reportsChequebooks,
@@ -24,6 +25,7 @@ import {
   type ChequebookTotal,
 } from './chequebooks';
 import { FundingFrame, useFundingView } from './FundingFrame';
+import { SelectAllBar, withTicks } from './Ticks';
 
 /** Said while a chequebook bulk is still on its way, so a second one does not start before the first has settled. */
 export const WAIT_FOR_CHEQUEBOOKS = 'Wait for the chequebook operations above to finish.';
@@ -164,7 +166,8 @@ function ChequebookBar({
  * ticked chequebook's node is short of xBZZ for its deposit, or of xDAI for the gas, which its row says in red, Fund
  * all beside Apply opens the Balance tab with what each such node lacks entered. A gateway's chequebook is shown
  * read-only. A new chequebook bulk waits while one is on its way, the one made here or the one the view says is
- * open, which the page follows after a reload too.
+ * open, which the page follows after a reload too. Select all, above the tables, ticks every chequebook that has a tick
+ * box, and Clear unticks them all.
  *
  * The target and the ticks, `selection`, are the Funding page's, so they stay while another tab is shown; the
  * operations sent clear the ticks and keep the target. The tab reads the view again each time it is shown, and a tick
@@ -192,6 +195,7 @@ export function ChequebooksTab({
   const { view, load } = read;
 
   const groups = useMemo(() => (view ? chequebookGroups(view) : []), [view]);
+  const movable = useMemo(() => [...new Set(groups.flatMap((group) => movableChequebooks(group)))], [groups]);
   const check = useMemo(() => (view ? checkChequebooks(view, selection) : null), [view, selection]);
 
   const onSettled = useCallback(() => {
@@ -208,6 +212,12 @@ export function ChequebooksTab({
       }),
     [onSelection],
   );
+  const setTicks = useCallback(
+    (nodeIds: readonly string[], on: boolean) =>
+      onSelection((current) => ({ ...current, ticked: withTicks(current.ticked, nodeIds, on) })),
+    [onSelection],
+  );
+  const clearTicks = useCallback(() => onSelection((current) => ({ ...current, ticked: new Set() })), [onSelection]);
   const setTarget = (next: string) => onSelection((current) => ({ ...current, target: next }));
 
   /** Opens the confirm dialog and reads the view again, which the dialog lists what it asks for from. */
@@ -242,6 +252,9 @@ export function ChequebooksTab({
           {groups.length > 0 && !reportsChequebooks(view) ? (
             <Alert severity="info">{NO_CHEQUEBOOKS_REPORTED}</Alert>
           ) : null}
+          {groups.length > 0 ? (
+            <SelectAllBar keys={movable} ticked={ticked} onTicks={setTicks} onClear={clearTicks} />
+          ) : null}
           {groups.map((group) => (
             <ChequebookTable key={group.key} group={group} ticked={ticked} check={check} onTick={tick} />
           ))}
@@ -263,7 +276,7 @@ export function ChequebooksTab({
           readError={read.error}
           onSent={(answer) => {
             setConfirming(false);
-            onSelection((current) => ({ ...current, ticked: new Set() }));
+            clearTicks();
             setFollowed({ bulkId: answer.bulkId, items: answer.items, settled: false });
           }}
           onFailed={load}

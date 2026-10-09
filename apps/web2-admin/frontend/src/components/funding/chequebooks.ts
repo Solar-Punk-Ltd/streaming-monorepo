@@ -115,6 +115,14 @@ export function allChequebookNodes(view: Inventory): AdminFundingNode[] {
   return [...byId.values()];
 }
 
+/**
+ * The chequebooks of a group that have a tick box, by their node's id, each once: what Select all ticks, from every
+ * group.
+ */
+export function movableChequebooks(group: ChequebookGroup): string[] {
+  return [...new Set(group.rows.flatMap((node) => (movableChequebook(node) ? [node.nodeId] : [])))];
+}
+
 /** Whether the manager names any stage node's chequebook: one older than the Chequebooks tab answers without them. */
 export function reportsChequebooks(view: Inventory): boolean {
   return view.stages.some((stage) => stage.nodes.some((node) => node.chequebook !== undefined));

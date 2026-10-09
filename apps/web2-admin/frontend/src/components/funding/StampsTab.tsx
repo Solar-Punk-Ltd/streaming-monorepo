@@ -39,9 +39,11 @@ import {
   readDays,
   reportsBatches,
   stepCount,
+  tickableBatches,
   type StampCheck,
   type StampSelection,
 } from './stamps';
+import { SelectAllBar, withTicks } from './Ticks';
 
 /** Said while a stamp bulk is still on its way, so a second one does not start before the first has settled. */
 const WAIT_FOR_STAMPS = 'Wait for the stamp operations above to finish.';
@@ -271,7 +273,8 @@ function StampBar({
  * top-ups. While a ticked batch's node is short of xBZZ or has no xDAI for the gas, Fund all beside the button opens
  * the Balance tab with what each such node lacks entered. A new stamp bulk waits while one is on its way, the one made
  * here or the one the view says is open, which the page follows after a reload too. Switching the operation clears the
- * ticks, since a dilution cannot be undone.
+ * ticks, since a dilution cannot be undone. Select all, above the tables, ticks every batch that has a tick box, the
+ * catalogue's among them, and Clear unticks them all.
  *
  * The operation, the days, the steps and the ticks, `selection`, are the Funding page's, so they stay while another
  * tab is shown; the operations sent clear the ticks. The tab reads the view again each time it is shown, and a tick
@@ -299,6 +302,7 @@ export function StampsTab({
   const { view, load } = read;
 
   const groups = useMemo(() => (view ? batchGroups(view) : []), [view]);
+  const tickable = useMemo(() => [...new Set(groups.flatMap((group) => tickableBatches(group)))], [groups]);
   const check = useMemo(() => (view ? checkStamps(view, selection) : null), [view, selection]);
 
   const onSettled = useCallback(() => {
@@ -315,6 +319,12 @@ export function StampsTab({
       }),
     [onSelection],
   );
+  const setTicks = useCallback(
+    (batchIds: readonly string[], on: boolean) =>
+      onSelection((current) => ({ ...current, ticked: withTicks(current.ticked, batchIds, on) })),
+    [onSelection],
+  );
+  const clearTicks = useCallback(() => onSelection((current) => ({ ...current, ticked: new Set() })), [onSelection]);
 
   const switchOperation = (next: FundingStampOperationKind) =>
     onSelection((current) => ({ ...current, operation: next, ticked: new Set() }));
@@ -358,6 +368,9 @@ export function StampsTab({
             </Paper>
           ) : null}
           {groups.length > 0 && !reportsBatches(view) ? <Alert severity="info">{NO_BATCHES_REPORTED}</Alert> : null}
+          {groups.length > 0 ? (
+            <SelectAllBar keys={tickable} ticked={ticked} onTicks={setTicks} onClear={clearTicks} />
+          ) : null}
           {groups.map((group) => (
             <BatchTable
               key={group.key}
@@ -390,7 +403,7 @@ export function StampsTab({
           readError={read.error}
           onSent={(answer) => {
             setConfirming(false);
-            onSelection((current) => ({ ...current, ticked: new Set() }));
+            clearTicks();
             setFollowed({ bulkId: answer.bulkId, items: answer.items, settled: false });
           }}
           onFailed={load}
