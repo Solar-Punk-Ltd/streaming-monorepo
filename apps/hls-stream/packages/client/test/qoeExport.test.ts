@@ -4,11 +4,12 @@ import { renderToStaticMarkup } from 'react-dom/server';
 import { afterEach, describe, it, vi } from 'vitest';
 
 import { QoeOverlay } from '../src/components/SwarmHlsPlayer/overlays/qoe/QoeOverlay';
-import { QoePanel } from '../src/components/SwarmHlsPlayer/overlays/qoe/QoePanel';
+import { QoeNotice, QoePanel } from '../src/components/SwarmHlsPlayer/overlays/qoe/QoePanel';
 import { qoeContent } from '../src/components/SwarmHlsPlayer/overlays/qoe/qoeContent';
 import {
   copyQoeExport,
   fileSafeTopic,
+  QOE_COPIED,
   QOE_COPY_REFUSED,
   QOE_SAVE_REVOKE_MS,
   qoeExportFileName,
@@ -239,6 +240,24 @@ describe('Copy', () => {
       'refused',
     );
     assert.match(QOE_COPY_REFUSED, /Save still works/);
+  });
+
+  it('says what it came to in one status region, always in the panel and empty until there is a notice', () => {
+    const html = renderPanel(initialMetrics(), RELEASE);
+
+    assert.equal(html.match(/role="status"/g)?.length, 1);
+    assert.match(html, /<div class="qoe-overlay__notice" role="status"><\/div>/);
+    // A notice changes the region's text and nothing else about it.
+    for (const text of [QOE_COPIED, QOE_COPY_REFUSED]) {
+      assert.equal(
+        renderToStaticMarkup(createElement(QoeNotice, { text })),
+        `<div class="qoe-overlay__notice" role="status">${text.replace(/'/g, '&#x27;')}</div>`,
+      );
+    }
+    assert.equal(
+      renderToStaticMarkup(createElement(QoeNotice, { text: null })),
+      '<div class="qoe-overlay__notice" role="status"></div>',
+    );
   });
 });
 

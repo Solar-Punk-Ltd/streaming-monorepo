@@ -70,11 +70,7 @@ export const QoePanel: React.FC<{ metrics: QoeMetrics; release: PlayerRelease | 
           </button>
         </span>
       </div>
-      {notice && (
-        <div className="qoe-overlay__notice" role="status">
-          {notice.text}
-        </div>
-      )}
+      <QoeNotice text={notice?.text ?? null} />
       {content.player !== null && <ReleaseRow text={content.player} commit={release?.commit ?? null} />}
 
       {content.sections.map((section) => (
@@ -90,6 +86,16 @@ export const QoePanel: React.FC<{ metrics: QoeMetrics; release: PlayerRelease | 
     </div>
   );
 };
+
+/**
+ * What Copy came to, under the header. The element is always there, empty between notices, and only its text changes:
+ * a screen reader announces a live region whose text changes, and often not one that arrives already filled.
+ */
+export const QoeNotice: React.FC<{ text: string | null }> = ({ text }) => (
+  <div className="qoe-overlay__notice" role="status">
+    {text}
+  </div>
+);
 
 const Row: React.FC<{ row: QoeRow }> = ({ row: { label, value, bad } }) => (
   <div className={`qoe-overlay__row${bad ? ' qoe-overlay__row--bad' : ''}`}>
