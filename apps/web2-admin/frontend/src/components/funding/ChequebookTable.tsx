@@ -20,6 +20,7 @@ import {
 
 import { formatShort, formatUnits } from './amounts';
 import {
+  movableChequebooks,
   moveText,
   NO_BREAK,
   NO_CHEQUEBOOK_IN_STAGE,
@@ -29,12 +30,7 @@ import {
   type ChequebookLedger,
 } from './chequebooks';
 import { BalanceLine, NodeCard } from './NodeTable';
-
-/**
- * The tick column's width, as the Balance and Stamps tabs have it: a table of fixed column widths takes them from its
- * header, and a small table's checkbox cell is 28 pixels, padding included, which the checkbox would stand out of.
- */
-const CHECKBOX_WIDTH = 56;
+import { CHECKBOX_WIDTH, GroupTitle } from './Ticks';
 
 /** A column after the node: its header, and its fixed width, wide enough for the header on one line. */
 interface Column {
@@ -220,23 +216,32 @@ function ChequebookRow({
  * uncashed cheques, every digit of each, the node's wallet, then, once the row is ticked and a target typed, the move
  * that brings the chequebook to the target and the node's xBZZ after it. A chequebook that cannot be ticked says why
  * in place of those. The columns keep fixed widths, and no row changes its size when it is ticked or a target typed.
+ * The stage's name has a tick box in front of it, in line with the rows' tick boxes, which ticks or clears every
+ * chequebook of the stage that has one; a node two stages share is ticked by its id, so it shows ticked under both.
  */
 export function ChequebookTable({
   group,
   ticked,
   check,
   onTick,
+  onTicks,
 }: {
   group: ChequebookGroup;
   ticked: ReadonlySet<string>;
   check: ChequebookCheck | null;
   onTick: (nodeId: string) => void;
+  /** Ticks every one of `nodeIds`, or clears them: what the stage's tick box asks for. */
+  onTicks: (nodeIds: readonly string[], tick: boolean) => void;
 }) {
   return (
     <Stack spacing={1}>
-      <Typography variant="subtitle1" component="h3">
-        {group.title}
-      </Typography>
+      <GroupTitle
+        title={group.title}
+        label={`Bring every chequebook of ${group.title} to the target`}
+        keys={movableChequebooks(group)}
+        ticked={ticked}
+        onTicks={onTicks}
+      />
       {group.rows.length === 0 ? (
         <Typography variant="body2" sx={{ color: 'text.secondary' }}>
           {NO_CHEQUEBOOK_IN_STAGE}

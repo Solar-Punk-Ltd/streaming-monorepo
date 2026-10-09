@@ -30,14 +30,9 @@ import {
   type NodeFocus,
   type NodeGroup,
 } from './balance';
+import { CHECKBOX_WIDTH } from './Ticks';
 
 const KINDS: readonly FundingTransferKind[] = ['xdai', 'xbzz'];
-
-/**
- * The tick column's width, set on a plain header cell. A table of fixed column widths takes them from its header, and
- * a small table's checkbox cell is 28 pixels, padding included, which the checkbox would stand out of.
- */
-const CHECKBOX_WIDTH = 56;
 
 /** The height of one token's line in the Balance, Send and After columns, the amount field's, so the three line up. */
 const LINE_HEIGHT = 32;

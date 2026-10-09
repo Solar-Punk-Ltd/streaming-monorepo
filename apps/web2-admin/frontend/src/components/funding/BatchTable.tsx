@@ -24,6 +24,7 @@ import { CopyButton } from '../CopyButton';
 import { formatShort, formatUnits } from './amounts';
 import { NodeCard } from './NodeTable';
 import {
+  tickableBatches,
   whyNotOperable,
   type BatchGroup,
   type BatchRow,
@@ -31,12 +32,7 @@ import {
   type StampCheck,
   type StampLine,
 } from './stamps';
-
-/**
- * The tick column's width, as the Balance tab's node table has it: a table of fixed column widths takes them from its
- * header, and a small table's checkbox cell is 28 pixels, padding included, which the checkbox would stand out of.
- */
-const CHECKBOX_WIDTH = 56;
+import { CHECKBOX_WIDTH, GroupTitle } from './Ticks';
 
 /** A column after the batch: its header, and its fixed width, wide enough for the header on one line. */
 interface Column {
@@ -298,6 +294,8 @@ function BatchRowView({
  * One group of batches, the catalogue's or one stage's, a row each: the tick box, the batch with its node's card under
  * it, its depth, time left and fill, then, once it is ticked, what the operation leaves and costs. A batch that cannot
  * be ticked says why in place of those. The columns keep fixed widths, and no row changes its size when it is ticked.
+ * The group's name has a tick box in front of it, in line with the rows' tick boxes, which ticks or clears every batch
+ * of the group that has one; a batch two stages list is ticked by its id, so it shows ticked under both.
  */
 export function BatchTable({
   group,
@@ -305,19 +303,27 @@ export function BatchTable({
   ticked,
   check,
   onTick,
+  onTicks,
 }: {
   group: BatchGroup;
   operation: FundingStampOperationKind;
   ticked: ReadonlySet<string>;
   check: StampCheck | null;
   onTick: (batchId: string) => void;
+  /** Ticks every one of `batchIds`, or clears them: what the group's tick box asks for. */
+  onTicks: (batchIds: readonly string[], tick: boolean) => void;
 }) {
   const catalogue = group.nodes.catalogue;
+  const verb = operation === 'topup' ? 'Top up' : 'Dilute';
   return (
     <Stack spacing={1}>
-      <Typography variant="subtitle1" component="h3">
-        {group.title}
-      </Typography>
+      <GroupTitle
+        title={group.title}
+        label={catalogue ? `${verb} the catalogue batch` : `${verb} every batch of ${group.title}`}
+        keys={tickableBatches(group)}
+        ticked={ticked}
+        onTicks={onTicks}
+      />
       {group.rows.length === 0 ? (
         <Typography variant="body2" sx={{ color: 'text.secondary' }}>
           {catalogue ? 'The manager reports no catalogue batch.' : 'The manager reports no batch for this stage.'}

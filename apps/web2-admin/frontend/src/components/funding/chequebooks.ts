@@ -116,8 +116,8 @@ export function allChequebookNodes(view: Inventory): AdminFundingNode[] {
 }
 
 /**
- * The chequebooks of a group that have a tick box, by their node's id, each once: what Select all ticks, from every
- * group.
+ * The chequebooks of a group that have a tick box, by their node's id, each once: what the group's own tick box ticks
+ * and clears, and, from every group, what Select all ticks.
  */
 export function movableChequebooks(group: ChequebookGroup): string[] {
   return [...new Set(group.rows.flatMap((node) => (movableChequebook(node) ? [node.nodeId] : [])))];
