@@ -2,6 +2,7 @@ import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
 
 import { ALLOWED_ADVISORIES } from './allowlist.js';
+import { findAvailableFixes, parseNpmViewVersions } from './availableFixes.js';
 import { evaluateAudit } from './evaluateAudit.js';
 import { parseAuditReport } from './parseAuditReport.js';
 
@@ -21,9 +22,37 @@ const MAX_REPORT_BYTES = 16 * 1024 * 1024;
  */
 const DEFAULT_AUDIT_TIMEOUT_MS = 5 * 60 * 1000;
 
-function auditTimeoutMs(): number {
+/** One registry question per allowlisted advisory, each far smaller than the audit's whole resolution. */
+const DEFAULT_LOOKUP_TIMEOUT_MS = 60 * 1000;
+
+function timeoutOverrideMs(): number | undefined {
   const override = Number(process.env.AUDIT_GATE_TIMEOUT_MS);
-  return Number.isFinite(override) && override > 0 ? override : DEFAULT_AUDIT_TIMEOUT_MS;
+  return Number.isFinite(override) && override > 0 ? override : undefined;
+}
+
+function auditTimeoutMs(): number {
+  return timeoutOverrideMs() ?? DEFAULT_AUDIT_TIMEOUT_MS;
+}
+
+/** The releases of a package that satisfy a range, as the registry matches them. */
+async function publishedVersionsIn(packageName: string, range: string): Promise<string[]> {
+  const spec = `${packageName}@${range}`;
+  try {
+    const { stdout } = await execFileAsync('npm', ['view', spec, 'version', '--json'], {
+      maxBuffer: MAX_REPORT_BYTES,
+      timeout: timeoutOverrideMs() ?? DEFAULT_LOOKUP_TIMEOUT_MS,
+    });
+    return parseNpmViewVersions(0, stdout, spec);
+  } catch (error) {
+    // npm exits 1 when the range matches no release, which is the ordinary answer
+    // here. A missing npm, a timeout or a signal leaves no exit number to read,
+    // and those rethrow, so the gate stops rather than passing.
+    const { code, stdout } = error as { code?: unknown; stdout?: unknown };
+    if (typeof code === 'number' && typeof stdout === 'string') {
+      return parseNpmViewVersions(code, stdout, spec);
+    }
+    throw error;
+  }
 }
 
 async function readAuditReport(): Promise<string> {
@@ -47,7 +76,10 @@ async function readAuditReport(): Promise<string> {
 
 async function main(): Promise<void> {
   const advisories = parseAuditReport(await readAuditReport());
-  const failures = evaluateAudit(advisories, ALLOWED_ADVISORIES);
+  const failures = [
+    ...evaluateAudit(advisories, ALLOWED_ADVISORIES),
+    ...(await findAvailableFixes(advisories, ALLOWED_ADVISORIES, publishedVersionsIn)),
+  ];
 
   if (failures.length === 0) {
     console.log(`Audit gate passed. ${advisories.length} advisories reported, every one of them allowlisted.`);

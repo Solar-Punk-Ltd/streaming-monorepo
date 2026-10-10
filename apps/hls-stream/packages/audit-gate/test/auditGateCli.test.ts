@@ -62,13 +62,41 @@ function workspace(): string {
 interface StubbedGate extends StubbedRun {
   /** What the gate actually asked `pnpm` to do. Without recording this the stub answers any command at all. */
   argv: string;
+  /** Every question the gate asked `npm`, one per line, in order. */
+  npmArgv: string[];
 }
+
+/** What npm printed on 2026-09-27 for `npm view elliptic@>=6.6.2 version --json`, while no such release existed. */
+const NPM_NO_MATCH = JSON.stringify({
+  error: {
+    code: 'E404',
+    summary: 'No match found for version >=6.6.2',
+    detail: "'elliptic@>=6.6.2' is not in this registry.",
+  },
+});
 
 interface StubOptions {
   /** Replaces the canned answer entirely, for stubs that hang or misbehave. */
   body?: string;
   /** Only the hang case sets this. Left unset elsewhere so a slow machine cannot make an ordinary run flaky. */
   timeoutMs?: number;
+  /** What the stubbed `npm` answers every lookup with. By default, that no published release matches. */
+  npm?: { stdout: string; exitCode: number };
+}
+
+/** A stub `npm`, so no test reaches the registry. It records each question and gives every one the same answer. */
+function writeNpmStub(dir: string, answer: { stdout: string; exitCode: number }): string {
+  const outPath = join(dir, 'npm-out.json');
+  const argvPath = join(dir, 'npm-argv');
+  writeFileSync(outPath, answer.stdout);
+  writeFileSync(
+    join(dir, 'npm'),
+    `#!/bin/sh\nprintf '%s\\n' "$*" >> ${JSON.stringify(argvPath)}\ncat ${JSON.stringify(outPath)}\nexit ${
+      answer.exitCode
+    }\n`,
+  );
+  chmodSync(join(dir, 'npm'), 0o755);
+  return argvPath;
 }
 
 async function runGateAgainstStub(stdout: string, exitCode: number, options: StubOptions = {}): Promise<StubbedGate> {
@@ -82,10 +110,15 @@ async function runGateAgainstStub(stdout: string, exitCode: number, options: Stu
   const answer = options.body ?? `cat ${JSON.stringify(reportPath)}\nexit ${exitCode}\n`;
   writeFileSync(stubPath, `#!/bin/sh\nprintf '%s' "$*" > ${JSON.stringify(argvPath)}\n${answer}`);
   chmodSync(stubPath, 0o755);
+  const npmArgvPath = writeNpmStub(dir, options.npm ?? { stdout: NPM_NO_MATCH, exitCode: 1 });
 
   const env = options.timeoutMs ? { AUDIT_GATE_TIMEOUT_MS: String(options.timeoutMs) } : {};
   const run = await runGateWithPath(`${dir}:${process.env.PATH ?? ''}`, env);
-  return { ...run, argv: existsSync(argvPath) ? readFileSync(argvPath, 'utf8') : '' };
+  return {
+    ...run,
+    argv: existsSync(argvPath) ? readFileSync(argvPath, 'utf8') : '',
+    npmArgv: existsSync(npmArgvPath) ? readFileSync(npmArgvPath, 'utf8').split('\n').filter(Boolean) : [],
+  };
 }
 
 interface StubbedAdvisory {
@@ -172,6 +205,32 @@ describe('the audit gate command', () => {
     // finishes its sleep and the gate reaches the same verdict a minute later,
     // so giving up early is the behaviour and the elapsed time is the assertion.
     assert.ok(run.elapsedMs < 20_000, `gave up after ${run.elapsedMs}ms, so the timeout did not fire`);
+  });
+
+  it('asks the registry whether a published release satisfies each allowlisted patched range', async () => {
+    const run = await runGateAgainstStub(reportOf(ALLOWED_ADVISORIES), 1);
+
+    assert.equal(run.exitCode, 0, run.stderr);
+    assert.deepEqual(
+      run.npmArgv,
+      ALLOWED_ADVISORIES.map((entry) => `view ${entry.packageName}@${entry.reviewedPatchedVersions} version --json`),
+    );
+  });
+
+  it('exits 1 and names the release when one now satisfies an allowlisted patched range', async () => {
+    const [entry] = ALLOWED_ADVISORIES;
+    const run = await runGateAgainstStub(reportOf(ALLOWED_ADVISORIES), 1, { npm: { stdout: '"9.9.9"', exitCode: 0 } });
+
+    assert.equal(run.exitCode, 1);
+    assert.ok(run.stderr.includes(`[fix-available] ${entry.ghsa} (${entry.packageName})`), run.stderr);
+    assert.match(run.stderr, /9\.9\.9/);
+  });
+
+  it('exits 1 rather than passing when the registry cannot say whether a fix exists', async () => {
+    const run = await runGateAgainstStub(reportOf(ALLOWED_ADVISORIES), 1, { npm: { stdout: '', exitCode: 1 } });
+
+    assert.equal(run.exitCode, 1);
+    assert.match(run.stderr, /could not run/);
   });
 
   it('blames the command rather than the report when pnpm cannot be run at all', async () => {
