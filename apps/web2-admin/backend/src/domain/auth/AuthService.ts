@@ -297,25 +297,7 @@ export class AuthService {
    * otherwise be an unlimited guessing machine for the password behind it.
    */
   async changePassword(session: SessionInfo, current: string, next: string): Promise<UserRow> {
-    const attempt = this.limiter.begin({
-      account: passwordChangeKey(session.user.id),
-    });
-    if (attempt.lockedForSeconds > 0) {
-      logger.warn(
-        `[Auth] password change refused, locked out: ${session.user.username} retryAfter=${attempt.lockedForSeconds}s`,
-      );
-      throw new TooManyAttemptsError(attempt.lockedForSeconds);
-    }
-
-    const user = await this.users.findById(session.user.id);
-    if (!user) throw new UserNotFoundError(session.user.id);
-
-    if (!(await verifyPassword(current, user.password_hash))) {
-      attempt.fail();
-      logger.warn(`[Auth] password change refused, wrong current password: ${user.username}`);
-      throw new InvalidCredentialsError();
-    }
-    attempt.succeed();
+    const user = await this.checkOwnPassword(session, current, 'password change');
 
     const problem = passwordProblem(next, user.username);
     if (problem) throw new WeakPasswordError(problem);
@@ -339,6 +321,41 @@ export class AuthService {
       details: { userId: user.id, username: user.username },
     });
     return { ...user, password_changed_at: changedAt, updated_at: changedAt };
+  }
+
+  /**
+   * Asks the signed-in user's own password again, for a write that needs it besides the session: pinning a node's
+   * wallet or sending from the brand wallet (docs/architecture/funding.md). Checked exactly as a password change
+   * checks the current one, behind the same limiter and under the same key, so a stolen session gets no more guesses
+   * by spreading them over both: a wrong one is `InvalidCredentialsError`, and once locked out every one is
+   * `TooManyAttemptsError`. `purpose` names the write in the log line of a refusal. Answers the user as stored now.
+   */
+  confirmPassword(session: SessionInfo, password: string, purpose: string): Promise<UserRow> {
+    return this.checkOwnPassword(session, password, purpose);
+  }
+
+  /** The current password of the session's user, throttled like a sign-in under the password change's key. */
+  private async checkOwnPassword(session: SessionInfo, password: string, purpose: string): Promise<UserRow> {
+    const attempt = this.limiter.begin({
+      account: passwordChangeKey(session.user.id),
+    });
+    if (attempt.lockedForSeconds > 0) {
+      logger.warn(
+        `[Auth] ${purpose} refused, locked out: ${session.user.username} retryAfter=${attempt.lockedForSeconds}s`,
+      );
+      throw new TooManyAttemptsError(attempt.lockedForSeconds);
+    }
+
+    const user = await this.users.findById(session.user.id);
+    if (!user) throw new UserNotFoundError(session.user.id);
+
+    if (!(await verifyPassword(password, user.password_hash))) {
+      attempt.fail();
+      logger.warn(`[Auth] ${purpose} refused, wrong current password: ${user.username}`);
+      throw new InvalidCredentialsError();
+    }
+    attempt.succeed();
+    return user;
   }
 
   async deleteExpiredSessions(): Promise<number> {

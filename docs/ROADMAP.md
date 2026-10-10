@@ -264,15 +264,17 @@ stops carrying one stage in its env file and learns every stage from the
 manager.
 
 - The manager pushes a record per stage into the admin over the admin link it
-  already holds. The admin never calls the manager, so the manager grows no
-  machine login, and the admin keeps what it was told in its own database.
+  already holds, and the admin keeps what it was told in its own database.
+  The admin's one call to the manager is the funding API, decided 2026-10-05
+  (below).
 - One catalogue per brand, signed by the brand key. A stream's stage is picked
   per stream and fixed at publish.
 - Every stage signs with its own key and presents its own token. The admin
   answers a token only about its own stage's streams.
 - The catalogue has a batch of its own, immutable, on a dedicated catalogue
   node, pinned by id. It never shares a batch a rung stamps segments with.
-- The admin reads stamps and chequebooks; spending stays in the manager.
+- The admin reads stamps and chequebooks; buying batches stays in the
+  manager, and funding moved to the admin on 2026-10-05 (below).
 
 Built in nine phases, each a pull request into `feat/stages`: phases 1 to 8
 merged there on 2026-09-28, and the fix and phase 9 below opened for review on
@@ -349,9 +351,15 @@ Left open after the nine phases:
   installation is upgraded.
 - **Pending retirements** show only in the manager's log; the Stages page
   could count them.
-- **Top-ups from the admin.** The admin reads every rung's stamp and
-  chequebook and the catalogue batch; buying, topping up and funding stay in
-  the manager's console until this is decided.
+- **Top-ups from the admin.** Decided 2026-10-05: a brand wallet in the
+  admin, and every funding operation through the manager's funding API, as
+  [funding.md](architecture/funding.md) plans. Phase 1, the brand wallet, the
+  Balance tab and sends to node wallets, is built on `feat/funds` in #101 to
+  #106, phase 2, the Stamps tab's top-ups and dilutions, in #114, and phase 3,
+  the Chequebooks tab, on `feat/funds-chequebook` (decided 2026-10-08): one
+  target of 1 xBZZ or more brings each ticked chequebook there, with a deposit
+  from its node's wallet or a withdrawal into it. A gateway's chequebook is
+  read but not moved, here or in the manager's console.
 - **Brand separation** inside one admin, and a second admin link per manager
   for a second brand, among the open decisions below.
 - **Rollout**, decided 2026-09-29, for a host that runs the admin and
@@ -366,7 +374,9 @@ Left open after the nine phases:
   the shared token (phase 9); then a `STREAM_KEY` of its own for each stage.
   Until the catalogue is moved, the batch from before stages holds every slot
   written before the intermediate admin: it stays topped up and alive, is
-  never diluted, replaced or put in a pool string, and the move runs first
+  never diluted (superseded on 2026-10-08: the catalogue batch may be diluted
+  like any other, as [funding.md](architecture/funding.md) records), replaced
+  or put in a pool string, and the move runs first
   after the real-node trial. That is the one remaining way the catalogue can
   go dark. "Upgrading" in `docs/self-hosting.md` has each step. A fresh
   installation needs none of this.
@@ -383,11 +393,16 @@ Left open after the nine phases:
 - Stamp top-up and cheque balance read-through. The read-through is done:
   every stage record carries its rungs' stamps and chequebooks and the
   manager's readiness verdict, and the catalogue stamp record the catalogue
-  batch's. Top-ups from the admin are not built and stay an open decision.
+  batch's. Funding from the admin was decided on 2026-10-05
+  ([funding.md](architecture/funding.md)): phase 1, sends from the brand
+  wallet to node wallets, and phase 2, stamp top-ups and dilutions, are built
+  on `feat/funds`.
 - Decide how the admin layer authenticates to the manager once they are on
   different hosts. Decided 2026-09-28: it does not, because the manager
   pushes, on the admin's registrar token, and every uploader presents a token
-  of its own (done in phases 5 and 9).
+  of its own (done in phases 5 and 9). Funding is the one exception since
+  2026-10-05: the admin calls the manager's funding API on that API's own
+  bearer token, `FUNDING_API_TOKEN`.
 
 ## RTMP ingest beside SRT
 
@@ -472,6 +487,6 @@ signed-in users.**
 - Authentication and ownership: OIDC, wallet signature, or magic link.
 - Manager API authentication and per-brand attribution.
 - Brand separation inside one admin: which brand a stage and a stream belong
-  to, and a second admin link per manager. Top-ups from the admin, which
-  today reads stamps and chequebooks and leaves spending to the manager.
+  to, and a second admin link per manager. (Top-ups from the admin were
+  decided on 2026-10-05: [funding.md](architecture/funding.md).)
 - Chat placement (SPA question; only lands here if a websocket wins).

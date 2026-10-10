@@ -24,6 +24,19 @@
  * starts with none, which is the Stages page's empty state and a picker with
  * nothing to pick.
  *
+ * The Funding page has a brand wallet and the mock stage's nodes, one of each
+ * address state, and a send confirms a few seconds after it is made. The view
+ * names the send still on its way, so a reload resumes it. The nodes hold
+ * batches, one of each kind the Stamps tab shows, and a top-up or a dilution
+ * confirms a few seconds after it is asked for, the stamp bulk named in the
+ * view until then. They hold chequebooks too, one of each kind the Chequebooks
+ * tab shows, and a deposit or a withdrawal is mined two seconds after it is
+ * sent and confirmed six seconds after that, once its block is final, the
+ * chequebook bulk named in the view until then.
+ * MOCK_FUNDING=off answers the page as not set up, and MOCK_FUNDING=refuse has
+ * the chain's node refuse every transfer at the relay, which is then mined
+ * anyway, and the nodes refuse every stamp and chequebook operation.
+ *
  * No dependencies: plain node:http, plain node:crypto.
  */
 
@@ -74,6 +87,661 @@ const stages =
           retiredAt: null,
         },
       ];
+
+/**
+ * The Funding page's API, phase 1 of docs/architecture/funding.md: the brand wallet, every stage's nodes with their
+ * wallet balances, confirming their addresses, and sends from the wallet. Nothing reaches a chain. A send takes its
+ * amount off the wallet at once and lands on the node when its transfer reads as confirmed, a few seconds later.
+ * MOCK_FUNDING=off answers configured false, the page's "not set up" state. MOCK_FUNDING=refuse answers every
+ * transfer as the chain's node refusing it at the relay, failed with no block, which frees a new send; it is mined
+ * anyway when a sent one would be. MOCK_FUNDING=lost answers every transfer `unknown`, as the manager does when the
+ * answer of its broadcast was lost: within the manager's 30 minutes it holds up a new send, and a few seconds later the
+ * manager finds it in the pool and it turns `submitted`, then confirmed. Each item carries `settled` and `watched` by
+ * the API's rules. The addresses are the repository's allow-listed fixtures.
+ *
+ * Phase 2, the Stamps tab: each node with a batch answers it, and the view answers today's price of postage. A stamp
+ * bulk takes its items in turn, each queued until the one before it is on its way, sent, then confirmed a few seconds
+ * later, when the batch gains its days or its depth and the node pays the cost and some gas. The route checks what the
+ * API checks, so the page's refusals can be tried. MOCK_FUNDING=refuse has the node refuse every operation, failed
+ * with a sentence, and MOCK_FUNDING=lost answers every one `unknown` first, then sent, then confirmed.
+ *
+ * Phase 3, the Chequebooks tab: each stage node answers its chequebook, or none, or why it could not be read about it.
+ * A chequebook bulk names a target and, for each chequebook, the available balance the page showed, from which and the
+ * balance the chequebook holds then the mock works out each move again as the API does, never more than the page
+ * showed: a deposit of the difference from the node's wallet under the target, a withdrawal of the difference into it
+ * over the target. It takes the moves in turn as a stamp bulk takes its operations; each is answered `mined` two seconds
+ * after it is sent and confirmed six seconds after that, once its block is final, as the manager confirms a chequebook
+ * move, and once one is confirmed the chequebook and the wallet hold their new balances and the node pays some gas.
+ * The route checks what the API checks, refusing with its sentence. MOCK_FUNDING=refuse and MOCK_FUNDING=lost answer
+ * chequebook operations as they answer stamp operations.
+ */
+const FUNDING_CONFIGURED = process.env.MOCK_FUNDING !== 'off';
+const FUNDING_REFUSE = process.env.MOCK_FUNDING === 'refuse';
+const FUNDING_LOST = process.env.MOCK_FUNDING === 'lost';
+const FUNDING_CONFIRM_AFTER_MS = 6_000;
+/** How long a `lost` transfer stays `unknown` before the manager finds it in the pool. */
+const FUNDING_FOUND_AFTER_MS = 3_000;
+/** The API's FUNDING_UNKNOWN_SETTLES_AFTER_MS: how long an `unknown` item holds up a new send. */
+const FUNDING_UNKNOWN_SETTLES_AFTER_MS = 30 * 60 * 1000;
+
+/** The admin's sentence for a transfer the chain's node refused at the relay. */
+const FUNDING_REFUSED_AT_RELAY =
+  "The chain's node refused it when the manager sent it. If it is mined anyway, this row will say so: check the node's balance before sending to it again.";
+const fundingWallet = {
+  address: '0x7e5f4552091a69125d5dfcb7b8c2659029395bdf',
+  xdaiWei: 1_500_000_000_000_000_000n,
+  xbzzPlur: 125_000_000_000_000_000n,
+};
+
+/** Today's price of postage as a node's chain state gives it on Gnosis Chain, with its block time and floor. */
+const FUNDING_POSTAGE = { pricePerChunkPerBlockPlur: '24000', blockSeconds: 5, minimumValidityBlocks: 17280 };
+const DAY_MS = 86_400_000;
+/** When the item of a stamp bulk at `index` is sent, after the one before it, and when it is confirmed after that. */
+const STAMP_SEND_EVERY_MS = 2_000;
+const STAMP_CONFIRM_AFTER_MS = 6_000;
+/** How long a `lost` stamp operation stays `unknown` before the manager finds it on the chain. */
+const STAMP_FOUND_AFTER_MS = 3_000;
+/** The gas a stamp operation costs its node, in wei. */
+const STAMP_GAS_WEI = 200_000_000_000_000n;
+/** The sentence of a stamp operation the node refused, as MOCK_FUNDING=refuse answers every one. */
+const STAMP_REFUSED = 'The node refused it, so the batch is as it was.';
+/** The least target a chequebook bulk takes, 1 xBZZ, in PLUR, as the common CHEQUEBOOK_TARGET_MIN_PLUR. */
+const CHEQUEBOOK_TARGET_MIN_PLUR = 10_000_000_000_000_000n;
+/**
+ * When the move of a chequebook bulk at `index` is sent, after the one before it; when it is mined, after it is sent;
+ * and when it is confirmed, its block final, after it is mined. The manager confirms a chequebook move only once its
+ * block is final, about 3 minutes after it is mined on Gnosis Chain, which the mock shortens to six seconds.
+ */
+const CHEQUEBOOK_SEND_EVERY_MS = 2_000;
+const CHEQUEBOOK_MINED_AFTER_MS = 2_000;
+const CHEQUEBOOK_FINAL_AFTER_MS = 6_000;
+/** How long a `lost` chequebook operation stays `unknown` before the manager finds it on the chain. */
+const CHEQUEBOOK_FOUND_AFTER_MS = 3_000;
+/** The gas a chequebook operation costs its node, in wei. */
+const CHEQUEBOOK_GAS_WEI = 150_000_000_000_000n;
+/** The sentence of a chequebook operation the node refused, as MOCK_FUNDING=refuse answers every one. */
+const CHEQUEBOOK_REFUSED = 'The node refused it, so its chequebook is as it was.';
+/** The repository's allow-listed fixture address, which every mock chequebook answers as its own. */
+const CHEQUEBOOK_ADDRESS = '0x3333333333333333333333333333333333333333';
+/** One xBZZ, in PLUR. */
+const XBZZ = 10_000_000_000_000_000n;
+
+/**
+ * A batch as the mock holds it: what the node says of it, and when it runs out, from which its time left is worked
+ * out on every read, so it shrinks as a real one does. One the node could not be read about holds only why.
+ */
+function fundingBatch(batchId, depth, immutable, daysLeft, fillRatio) {
+  return { batchId, depth, immutable, expiresAt: Date.now() + daysLeft * DAY_MS, fillRatio, readError: null };
+}
+
+/**
+ * A chequebook as the mock holds it: its balances in PLUR, BigInt, or, for one its node could not be read about, no
+ * balances and why.
+ */
+function fundingChequebook(availablePlur, totalPlur, readError = null) {
+  return { address: CHEQUEBOOK_ADDRESS, availablePlur, totalPlur, readError };
+}
+
+function fundingNode(
+  nodeId,
+  label,
+  role,
+  walletAddress,
+  pinnedAddress,
+  readError = null,
+  batch = null,
+  chequebook = null,
+) {
+  return {
+    nodeId,
+    label,
+    role,
+    walletAddress,
+    pinnedAddress,
+    readError,
+    xdaiWei: 200_000_000_000_000_000n,
+    xbzzPlur: 50_000_000_000_000_000n,
+    batch,
+    chequebook,
+  };
+}
+
+/**
+ * The catalogue node, then the mock stage's nodes: one confirmed, one new, one changed and one the manager could not
+ * read, by address; and by batch, the catalogue's with 40 days, the stage's immutable one whose 30 days cost more
+ * than its node holds, a rung's that no dilution leaves 7 days, an expired one, one the node could not be read about,
+ * and the gateways, which have none. By chequebook, against a target of 2 xBZZ: the stage's own node's, 0.4 xBZZ,
+ * under it, whose node cannot pay a deposit to a target over 5.4 xBZZ; a rung's, every digit of 3.1234567890123456
+ * xBZZ, over it; a rung's at it, whose node holds no xDAI for the gas of a move to another target; a rung's its node
+ * could not be read about; the light gateway's, which the tab shows read-only; and the other gateway, an ultra-light
+ * node, with none. The catalogue node's chequebook is answered and never listed.
+ */
+const fundingNodes = new Map(
+  [
+    fundingNode(
+      'catalogue:bee-uploader',
+      'catalogue-node',
+      'uploader',
+      '0x1234567890123456789012345678901234567890',
+      '0x1234567890123456789012345678901234567890',
+      null,
+      fundingBatch(`0x${'c0'.repeat(32)}`, 20, false, 40, 0.12),
+      fundingChequebook(XBZZ, XBZZ),
+    ),
+    fundingNode(
+      `${MOCK_STAGE_ID}:bee-uploader`,
+      'mock-stage-uploader',
+      'uploader',
+      '0x1111111111111111111111111111111111111111',
+      '0x1111111111111111111111111111111111111111',
+      null,
+      fundingBatch(`0x${'5a'.repeat(32)}`, 22, true, 12, 0.4),
+      fundingChequebook(4_000_000_000_000_000n, 4_500_000_000_000_000n),
+    ),
+    fundingNode(
+      `${MOCK_STAGE_ID}:360p`,
+      'mock-pool-360p',
+      'rung',
+      '0x2222222222222222222222222222222222222222',
+      null,
+      null,
+      fundingBatch(`0x${'36'.repeat(32)}`, 20, false, 10, 0.7),
+      fundingChequebook(31_234_567_890_123_456n, 32_500_000_000_000_000n),
+    ),
+    {
+      ...fundingNode(
+        `${MOCK_STAGE_ID}:720p`,
+        'mock-pool-720p',
+        'rung',
+        '0x4f0e1c2b3a49586772635441302f1e0d0c0b0a09',
+        '0x3f1a9c2b4d5e6f708192a3b4c5d6e7f809a1b2c3',
+        null,
+        fundingBatch(`0x${'72'.repeat(32)}`, 20, false, 0, 0.95),
+        fundingChequebook(2n * XBZZ, 25_000_000_000_000_000n),
+      ),
+      xdaiWei: 0n,
+    },
+    fundingNode(
+      `${MOCK_STAGE_ID}:1080p`,
+      'mock-pool-1080p',
+      'rung',
+      '0x3f1a9c2b4d5e6f708192a3b4c5d6e7f809a1b2c3',
+      '0x3f1a9c2b4d5e6f708192a3b4c5d6e7f809a1b2c3',
+      null,
+      { ...fundingBatch(`0x${'10'.repeat(32)}`, 20, false, 20, 0.3), readError: 'The node did not answer in time.' },
+      fundingChequebook(null, null, 'The node did not answer in time.'),
+    ),
+    fundingNode(`${MOCK_STAGE_ID}:gateway`, 'mock-gateway', 'gateway', null, null, 'The node did not answer.'),
+    fundingNode(
+      `${MOCK_STAGE_ID}:light-gateway`,
+      'mock-light-gateway',
+      'gateway',
+      '0x3333333333333333333333333333333333333333',
+      '0x3333333333333333333333333333333333333333',
+      null,
+      null,
+      fundingChequebook(15_000_000_000_000_000n, 16_000_000_000_000_000n),
+    ),
+  ].map((node) => [node.nodeId, node]),
+);
+
+/** bulkId -> the transfers one send asked for. */
+const fundingBulks = new Map();
+
+/** bulkId -> the top-ups or dilutions one stamp request asked for. */
+const stampBulks = new Map();
+
+/** bulkId -> the deposits and withdrawals one chequebook request asked for. */
+const chequebookBulks = new Map();
+
+/** userId -> wrong passwords in a row on the funding routes, and until when they are locked, as the API throttles them. */
+const fundingFailures = new Map();
+const fundingLockedUntil = new Map();
+
+function pinOf(node) {
+  if (node.pinnedAddress === null) return 'new';
+  return node.pinnedAddress === node.walletAddress ? 'pinned' : 'changed';
+}
+
+/** The seconds a batch has left now, 0 once it has run out. */
+function ttlOf(batch, now = Date.now()) {
+  return Math.max(0, Math.floor((batch.expiresAt - now) / 1000));
+}
+
+/** A batch as the manager answers it: every reading null, and why, for one its node could not be read about. */
+function batchAnswer(batch) {
+  if (batch === null) return null;
+  if (batch.readError) {
+    return {
+      batchId: batch.batchId,
+      depth: null,
+      immutable: null,
+      usable: null,
+      ttlSeconds: null,
+      fillRatio: null,
+      readError: batch.readError,
+    };
+  }
+  const ttlSeconds = ttlOf(batch);
+  return {
+    batchId: batch.batchId,
+    depth: batch.depth,
+    immutable: batch.immutable,
+    usable: ttlSeconds > 0,
+    ttlSeconds,
+    fillRatio: batch.fillRatio,
+    readError: null,
+  };
+}
+
+/**
+ * A chequebook as the manager answers it: every reading null, and why, for one its node could not be read about, and
+ * null for a node that has none.
+ */
+function chequebookAnswer(chequebook) {
+  if (chequebook === null) return null;
+  if (chequebook.readError) {
+    return { address: null, availablePlur: null, totalPlur: null, readError: chequebook.readError };
+  }
+  return {
+    address: chequebook.address,
+    availablePlur: chequebook.availablePlur.toString(),
+    totalPlur: chequebook.totalPlur.toString(),
+    readError: null,
+  };
+}
+
+function adminFundingNode(node) {
+  const read = node.walletAddress !== null;
+  return {
+    nodeId: node.nodeId,
+    label: node.label,
+    role: node.role,
+    walletAddress: node.walletAddress,
+    xdaiWei: read ? node.xdaiWei.toString() : null,
+    xbzzPlur: read ? node.xbzzPlur.toString() : null,
+    readError: node.readError,
+    batch: batchAnswer(node.batch),
+    chequebook: chequebookAnswer(node.chequebook),
+    pin: pinOf(node),
+    pinnedAddress: node.pinnedAddress,
+  };
+}
+
+/** Whether a transfer may still be mined: sent, or refused at the relay with no block. */
+function fundingLandable(item) {
+  return item.state === 'submitted' || (item.state === 'failed' && item.blockNumber === null);
+}
+
+/**
+ * Whether an item holds up a new send, as the API decides it: queued or sent, or `unknown` and the manager answered
+ * its relay at most its 30 minutes ago. The mock relays at once, so that is when it was sent.
+ */
+function fundingHoldsSend(item, now = Date.now()) {
+  if (item.state === 'queued' || item.state === 'submitted') return true;
+  return item.state === 'unknown' && now - item.sentAt <= FUNDING_UNKNOWN_SETTLES_AFTER_MS;
+}
+
+/** Turns lost transfers sent, confirms every transfer sent long enough ago, and lands its amount on its node. */
+function settleFundingTransfers() {
+  const now = Date.now();
+  for (const items of fundingBulks.values()) {
+    for (const item of items) {
+      if (item.state === 'unknown' && now - item.sentAt >= FUNDING_FOUND_AFTER_MS) {
+        item.state = 'submitted';
+        item.watched = false;
+      }
+      if (!fundingLandable(item) || now - item.sentAt < FUNDING_CONFIRM_AFTER_MS) continue;
+      item.state = 'confirmed';
+      item.blockNumber = Math.floor(now / 5_000);
+      item.error = null;
+      item.watched = false;
+      const node = fundingNodes.get(item.nodeId);
+      if (item.kind === 'xdai') node.xdaiWei += item.amount;
+      else node.xbzzPlur += item.amount;
+    }
+  }
+}
+
+/** The latest send with a transfer that holds up a new one, as the API names it, or null. */
+function openFundingBulkId() {
+  let open = null;
+  for (const [bulkId, items] of fundingBulks) {
+    if (items.some((item) => fundingHoldsSend(item))) open = bulkId;
+  }
+  return open;
+}
+
+/**
+ * What a top-up of `days` costs a batch of `depth` at today's price, in PLUR, as the admin's stampQuote works it out:
+ * every block of the days, rounded up and counted in BigInt, for each of the batch's 2^depth chunks.
+ */
+function topUpCost(days, depth) {
+  const blockSeconds = BigInt(FUNDING_POSTAGE.blockSeconds);
+  const blocks = (BigInt(days) * 86_400n + blockSeconds - 1n) / blockSeconds;
+  return blocks * BigInt(FUNDING_POSTAGE.pricePerChunkPerBlockPlur) * 2n ** BigInt(depth);
+}
+
+/** Whether a stamp operation holds up a new stamp bulk, as a transfer holds up a new send. */
+function stampHoldsNext(item, now = Date.now()) {
+  if (item.state === 'queued' || item.state === 'submitted') return true;
+  return item.state === 'unknown' && now - item.requestedAt <= FUNDING_UNKNOWN_SETTLES_AFTER_MS;
+}
+
+/**
+ * Sends each queued stamp operation in its turn, finds the lost ones, and confirms each sent long enough ago: its batch
+ * gains its days, or its depth with its time left halved and its fill halved for each step, and its node pays the cost
+ * and the gas.
+ */
+function settleStampOperations() {
+  const now = Date.now();
+  for (const items of stampBulks.values()) {
+    for (const item of items) {
+      const sentAt = item.requestedAt + item.index * STAMP_SEND_EVERY_MS;
+      if (item.state === 'queued' && now >= sentAt) {
+        item.state = 'submitted';
+        item.txHash = `0x${hex(32)}`;
+      }
+      if (item.state === 'unknown' && now - sentAt >= STAMP_FOUND_AFTER_MS) {
+        item.state = 'submitted';
+        item.watched = false;
+      }
+      if (item.state !== 'submitted' || now - sentAt < STAMP_CONFIRM_AFTER_MS) continue;
+      item.state = 'confirmed';
+      const node = fundingNodes.get(item.nodeId);
+      const batch = node.batch;
+      if (item.kind === 'topup') {
+        batch.expiresAt += item.days * DAY_MS;
+        node.xbzzPlur -= item.cost;
+      } else {
+        const scale = 2 ** item.steps;
+        batch.depth += item.steps;
+        batch.expiresAt = now + Math.max(0, batch.expiresAt - now) / scale;
+        batch.fillRatio /= scale;
+      }
+      node.xdaiWei = node.xdaiWei > STAMP_GAS_WEI ? node.xdaiWei - STAMP_GAS_WEI : 0n;
+    }
+  }
+}
+
+/** The latest stamp bulk with an operation that holds up a new one, as the API names it, or null. */
+function openStampBulkId() {
+  let open = null;
+  for (const [bulkId, items] of stampBulks) {
+    if (items.some((item) => stampHoldsNext(item))) open = bulkId;
+  }
+  return open;
+}
+
+/** A stamp operation as the API answers it, on the request and on every read. */
+function stampItemAnswer(item) {
+  return {
+    requestId: item.requestId,
+    kind: item.kind,
+    nodeId: item.nodeId,
+    nodeLabel: item.nodeLabel,
+    batchId: item.batchId,
+    days: item.kind === 'topup' ? item.days : null,
+    steps: item.kind === 'dilute' ? item.steps : null,
+    costPlur: item.kind === 'topup' ? item.cost.toString() : null,
+    state: item.state,
+    txHash: item.txHash,
+    error: item.error,
+    settled: !stampHoldsNext(item),
+    watched: item.watched,
+  };
+}
+
+/**
+ * Why the mock refuses a stamp request, as the API checks one, or null: one kind, each batch once, each the batch of
+ * its node, read, usable and at the depth the page saw; whole days of 1 or more, at a price of postage no lower than
+ * today's; 1 or 2 steps that leave 7 days; every node's xBZZ covering its top-ups and some xDAI for the gas.
+ */
+function stampRefusal(asked) {
+  if (asked.length === 0) return 'Tick a batch first.';
+  if (new Set(asked.map((item) => item?.kind)).size !== 1) return 'A stamp request takes one kind of operation.';
+  if (new Set(asked.map((item) => item?.batchId)).size !== asked.length) return 'A batch is named twice.';
+  const costs = new Map();
+  for (const item of asked) {
+    const node = fundingNodes.get(item?.nodeId);
+    const batch = node?.batch;
+    if (!batch || batch.batchId !== item.batchId) return `${item?.batchId} is not the batch of ${item?.nodeId}.`;
+    if (batch.readError || ttlOf(batch) === 0) return `The batch of ${node.label} cannot take it now.`;
+    if (batch.depth !== item.expectedDepth) {
+      return `The batch of ${node.label} is at depth ${batch.depth} now, not ${item.expectedDepth}.`;
+    }
+    if (item.kind === 'topup') {
+      if (!Number.isSafeInteger(item.days) || item.days < 1) return 'The days are a whole number, 1 or more.';
+      const quoted = item.pricePerChunkPerBlockPlur;
+      if (typeof quoted !== 'string' || !/^[1-9]\d{0,77}$/.test(quoted)) {
+        return 'A top-up names the price of postage the page quoted it at.';
+      }
+      if (BigInt(FUNDING_POSTAGE.pricePerChunkPerBlockPlur) > BigInt(quoted)) {
+        return 'The price of postage has risen since the page read it. Read the page again.';
+      }
+      costs.set(node, (costs.get(node) ?? 0n) + topUpCost(item.days, batch.depth));
+    } else if (item.kind === 'dilute') {
+      if (item.steps !== 1 && item.steps !== 2) return 'A dilution takes 1 or 2 steps.';
+      if (ttlOf(batch) / 2 ** item.steps < 7 * 86_400) return `It would leave the batch of ${node.label} under 7 days.`;
+    } else {
+      return 'An operation is a top-up or a dilution.';
+    }
+    if (node.xdaiWei === 0n) return `${node.label} holds no xDAI to pay the gas.`;
+  }
+  for (const [node, cost] of costs) {
+    if (cost > node.xbzzPlur) return `${node.label} holds less xBZZ than its top-ups cost.`;
+  }
+  return null;
+}
+
+/**
+ * What brings a chequebook whose available balance is `available` to `target`, as the common chequebookMove works it
+ * out: a deposit of the difference under it, a withdrawal of the difference over it, and null at it. BigInt PLUR.
+ */
+function chequebookMove(target, available) {
+  if (target === available) return null;
+  return target > available
+    ? { direction: 'deposit', amount: target - available }
+    : { direction: 'withdraw', amount: available - target };
+}
+
+/**
+ * The move a chequebook bulk makes, as the common chequebookMoveNow works it out again when the request comes in: from
+ * the available balance the page showed, `shown`, and the one the chequebook holds now, never more than the page
+ * showed. A deposit is the target less the larger of the two, a withdrawal the smaller less the target, and null when
+ * the page showed none or the chequebook is at the target or past it now. BigInt PLUR.
+ */
+function chequebookMoveNow(target, shown, now) {
+  if (shown < target && now < target) return { direction: 'deposit', amount: target - (shown > now ? shown : now) };
+  if (shown > target && now > target) return { direction: 'withdraw', amount: (shown < now ? shown : now) - target };
+  return null;
+}
+
+/** Whether a chequebook operation holds up a new chequebook bulk, as a stamp operation holds up a new stamp bulk. */
+function chequebookHoldsNext(item, now = Date.now()) {
+  return stampHoldsNext(item, now);
+}
+
+/**
+ * Sends each queued chequebook operation in its turn, finds the lost ones, says each sent long enough ago is mined, and
+ * confirms each mined long enough ago, its block final: a deposit moves its amount from the node's wallet into its
+ * chequebook, a withdrawal from its chequebook into its wallet, and the node pays the gas. One whose wallet or
+ * chequebook no longer holds its amount by then, since a stamp bulk may have spent the wallet's xBZZ meanwhile, fails
+ * with nothing moved.
+ */
+function settleChequebookOperations() {
+  const now = Date.now();
+  for (const items of chequebookBulks.values()) {
+    for (const item of items) {
+      const sentAt = item.requestedAt + item.index * CHEQUEBOOK_SEND_EVERY_MS;
+      if (item.state === 'queued' && now >= sentAt) {
+        item.state = 'submitted';
+        item.txHash = `0x${hex(32)}`;
+      }
+      if (item.state === 'unknown' && now - sentAt >= CHEQUEBOOK_FOUND_AFTER_MS) {
+        item.state = 'submitted';
+        item.watched = false;
+      }
+      if (item.state !== 'submitted') continue;
+      const minedAt = sentAt + CHEQUEBOOK_MINED_AFTER_MS;
+      item.mined = now >= minedAt;
+      if (now - minedAt < CHEQUEBOOK_FINAL_AFTER_MS) continue;
+      item.mined = false;
+      const node = fundingNodes.get(item.nodeId);
+      const chequebook = node.chequebook;
+      const deposit = item.direction === 'deposit';
+      if (item.amount > (deposit ? node.xbzzPlur : chequebook.availablePlur)) {
+        item.state = 'failed';
+        item.error = deposit
+          ? "The node's wallet held less xBZZ than the deposit by then, so nothing moved."
+          : 'The chequebook held less than the withdrawal by then, so nothing moved.';
+        continue;
+      }
+      item.state = 'confirmed';
+      const signed = deposit ? item.amount : -item.amount;
+      chequebook.availablePlur += signed;
+      chequebook.totalPlur += signed;
+      node.xbzzPlur -= signed;
+      node.xdaiWei = node.xdaiWei > CHEQUEBOOK_GAS_WEI ? node.xdaiWei - CHEQUEBOOK_GAS_WEI : 0n;
+    }
+  }
+}
+
+/** The latest chequebook bulk with an operation that holds up a new one, as the API names it, or null. */
+function openChequebookBulkId() {
+  let open = null;
+  for (const [bulkId, items] of chequebookBulks) {
+    if (items.some((item) => chequebookHoldsNext(item))) open = bulkId;
+  }
+  return open;
+}
+
+/** A chequebook operation as the API answers it, on the request and on every read. */
+function chequebookItemAnswer(item) {
+  return {
+    requestId: item.requestId,
+    nodeId: item.nodeId,
+    nodeLabel: item.nodeLabel,
+    direction: item.direction,
+    amountPlur: item.amount.toString(),
+    targetPlur: item.target.toString(),
+    state: item.state,
+    txHash: item.txHash,
+    error: item.error,
+    mined: item.mined,
+    settled: !chequebookHoldsNext(item),
+    watched: item.watched,
+  };
+}
+
+/** PLUR as a chequebook request carries it, as the API takes it: whole, and 30 digits at most. */
+const CHEQUEBOOK_PLUR = /^(0|[1-9]\d{0,29})$/;
+
+/**
+ * Why the mock refuses a chequebook request, as the API checks one, or null: a target of base units, 30 digits at
+ * most, and 1 xBZZ or more; each node once, a stage's own Bee node or a rung with its wallet and chequebook read, never
+ * a gateway nor the catalogue node, with the available balance the page showed, never one at the target; its move
+ * worked out again from that and the balance the chequebook holds now, and refused when the chequebook is at the
+ * target or past it now; a deposit when the wallet holds less xBZZ than it, and either way when the node has no xDAI
+ * for the gas.
+ */
+function chequebookRefusal(body) {
+  const target = body?.targetPlur;
+  if (typeof target !== 'string' || !CHEQUEBOOK_PLUR.test(target)) {
+    return 'The target is a whole number of PLUR, 30 digits at most.';
+  }
+  if (BigInt(target) < CHEQUEBOOK_TARGET_MIN_PLUR) return 'The target is at least 1 xBZZ.';
+  const asked = Array.isArray(body.items) ? body.items : [];
+  if (asked.length === 0) return 'Tick a chequebook first.';
+  if (new Set(asked.map((item) => item?.nodeId)).size !== asked.length) return 'A node is named twice.';
+  for (const item of asked) {
+    const node = fundingNodes.get(item?.nodeId);
+    if (!node || node.nodeId.startsWith('catalogue:')) return `${item?.nodeId} is not a node of any stage.`;
+    if (node.role === 'gateway') return "This manager moves only the chequebook of a stage's Bee node or a rung.";
+    const chequebook = node.chequebook;
+    if (!chequebook || chequebook.readError || node.walletAddress === null) {
+      return `The chequebook of ${node.label} cannot be moved now.`;
+    }
+    if (typeof item.availablePlur !== 'string' || !CHEQUEBOOK_PLUR.test(item.availablePlur)) {
+      return 'Each chequebook names the available balance the page showed.';
+    }
+    const shown = BigInt(item.availablePlur);
+    if (chequebookMove(BigInt(target), shown) === null) {
+      return `The chequebook of ${node.label} is at the target already.`;
+    }
+    const move = chequebookMoveNow(BigInt(target), shown, chequebook.availablePlur);
+    if (move === null) return `The chequebook of ${node.label} is at the target or past it now. Read the page again.`;
+    if (move.direction === 'deposit' && move.amount > node.xbzzPlur) {
+      return `${node.label} holds less xBZZ than its deposit.`;
+    }
+    if (node.xdaiWei === 0n) return `${node.label} holds no xDAI to pay the gas.`;
+  }
+  return null;
+}
+
+function fundingView() {
+  const observedAt = new Date().toISOString();
+  if (!FUNDING_CONFIGURED) {
+    return {
+      configured: false,
+      wallet: null,
+      chainId: 100,
+      stages: [],
+      catalogue: null,
+      postage: null,
+      observedAt,
+      managerError: null,
+      openBulkId: null,
+      openStampBulkId: null,
+      openChequebookBulkId: null,
+    };
+  }
+  settleFundingTransfers();
+  settleStampOperations();
+  settleChequebookOperations();
+  const nodesOf = (stageId) => [...fundingNodes.values()].filter((node) => node.nodeId.startsWith(`${stageId}:`));
+  return {
+    configured: true,
+    wallet: {
+      address: fundingWallet.address,
+      xdaiWei: fundingWallet.xdaiWei.toString(),
+      xbzzPlur: fundingWallet.xbzzPlur.toString(),
+    },
+    chainId: 100,
+    stages: stages.map((stage) => ({
+      stageId: stage.stageId,
+      name: stage.name,
+      nodes: nodesOf(stage.stageId).map(adminFundingNode),
+    })),
+    catalogue: adminFundingNode(fundingNodes.get('catalogue:bee-uploader')),
+    postage: FUNDING_POSTAGE,
+    observedAt,
+    managerError: null,
+    openBulkId: openFundingBulkId(),
+    openStampBulkId: openStampBulkId(),
+    openChequebookBulkId: openChequebookBulkId(),
+  };
+}
+
+/**
+ * An item as the API answers it, on the send and on every read: its block number is null until it is mined, `settled`
+ * is false while it holds up a new send, and `watched` is true while it is `unknown`, or failed at the relay with no
+ * block, and still asked about.
+ */
+function fundingItemAnswer(item) {
+  return {
+    requestId: item.requestId,
+    nodeId: item.nodeId,
+    kind: item.kind,
+    amount: item.amount.toString(),
+    state: item.state,
+    txHash: item.txHash,
+    blockNumber: item.blockNumber,
+    error: item.error,
+    settled: !fundingHoldsSend(item),
+    watched: item.watched,
+  };
+}
 
 /** A stage a stream may be put on, as the API decides it: known, not retired, supported. */
 function assignable(stageId) {
@@ -483,6 +1151,182 @@ async function handle(req, res) {
       if (id === user.id && token !== keep) sessions.delete(token);
     }
     return send(res, 200, { user });
+  }
+
+  if (path === '/api/funding' && method === 'GET') return send(res, 200, fundingView());
+
+  if (path === '/api/funding/transfers' && method === 'GET') {
+    const items = fundingBulks.get(url.searchParams.get('bulkId') ?? '');
+    if (!items) return send(res, 404, { error: 'not_found', path });
+    settleFundingTransfers();
+    return send(res, 200, { items: items.map(fundingItemAnswer) });
+  }
+
+  if (path === '/api/funding/stamp-operations' && method === 'GET') {
+    const items = stampBulks.get(url.searchParams.get('bulkId') ?? '');
+    if (!items) return send(res, 404, { error: 'not_found', path });
+    settleStampOperations();
+    return send(res, 200, { items: items.map(stampItemAnswer) });
+  }
+
+  // No password: a stamp operation pays from the nodes' own wallets, so the page asks in a confirm dialog alone. One
+  // stamp bulk at a time, as the API has it, whatever a send of the brand wallet is doing.
+  if (path === '/api/funding/stamp-operations' && method === 'POST') {
+    if (!FUNDING_CONFIGURED) return send(res, 404, { error: 'not_found', path });
+    const body = await readJson(req);
+    settleStampOperations();
+    if (openStampBulkId() !== null) {
+      return send(res, 409, { error: 'conflict', message: 'An earlier stamp bulk has not settled yet.' });
+    }
+    const asked = Array.isArray(body.items) ? body.items : [];
+    const refusal = stampRefusal(asked);
+    if (refusal) return send(res, 422, { error: 'stamp_refused', message: refusal });
+    const bulkId = randomUUID();
+    const requestedAt = Date.now();
+    const items = asked.map((item, index) => {
+      const node = fundingNodes.get(item.nodeId);
+      return {
+        requestId: randomUUID(),
+        index,
+        kind: item.kind,
+        nodeId: node.nodeId,
+        nodeLabel: node.label,
+        batchId: item.batchId,
+        days: item.kind === 'topup' ? item.days : null,
+        steps: item.kind === 'dilute' ? item.steps : null,
+        cost: item.kind === 'topup' ? topUpCost(item.days, node.batch.depth) : 0n,
+        state: FUNDING_REFUSE ? 'failed' : FUNDING_LOST ? 'unknown' : 'queued',
+        txHash: FUNDING_LOST ? `0x${hex(32)}` : null,
+        error: FUNDING_REFUSE ? STAMP_REFUSED : null,
+        watched: FUNDING_LOST,
+        requestedAt,
+      };
+    });
+    stampBulks.set(bulkId, items);
+    settleStampOperations();
+    return send(res, 202, { bulkId, items: items.map(stampItemAnswer) });
+  }
+
+  if (path === '/api/funding/chequebook-operations' && method === 'GET') {
+    const items = chequebookBulks.get(url.searchParams.get('bulkId') ?? '');
+    if (!items) return send(res, 404, { error: 'not_found', path });
+    settleChequebookOperations();
+    return send(res, 200, { items: items.map(chequebookItemAnswer) });
+  }
+
+  // No password: a chequebook operation pays from the node's own wallet, so the page asks in a confirm dialog alone.
+  // One chequebook bulk at a time, as the API has it, whatever a send or a stamp bulk is doing. A refusal is the API's
+  // own answer to a check that failed: 409 funding_refused with its sentence.
+  if (path === '/api/funding/chequebook-operations' && method === 'POST') {
+    if (!FUNDING_CONFIGURED) return send(res, 404, { error: 'not_found', path });
+    const body = await readJson(req);
+    settleChequebookOperations();
+    if (openChequebookBulkId() !== null) return send(res, 409, { error: 'conflict' });
+    const refusal = chequebookRefusal(body);
+    if (refusal) return send(res, 409, { error: 'funding_refused', problem: 'chequebook', message: refusal });
+    const bulkId = randomUUID();
+    const requestedAt = Date.now();
+    const target = BigInt(body.targetPlur);
+    const items = body.items.map((item, index) => {
+      const node = fundingNodes.get(item.nodeId);
+      const move = chequebookMoveNow(target, BigInt(item.availablePlur), node.chequebook.availablePlur);
+      return {
+        requestId: randomUUID(),
+        index,
+        nodeId: node.nodeId,
+        nodeLabel: node.label,
+        direction: move.direction,
+        amount: move.amount,
+        target,
+        state: FUNDING_REFUSE ? 'failed' : FUNDING_LOST ? 'unknown' : 'queued',
+        txHash: FUNDING_LOST ? `0x${hex(32)}` : null,
+        error: FUNDING_REFUSE ? CHEQUEBOOK_REFUSED : null,
+        mined: false,
+        watched: FUNDING_LOST,
+        requestedAt,
+      };
+    });
+    chequebookBulks.set(bulkId, items);
+    settleChequebookOperations();
+    return send(res, 202, { bulkId, items: items.map(chequebookItemAnswer) });
+  }
+
+  if ((path === '/api/funding/pins' || path === '/api/funding/transfers') && method === 'POST') {
+    if (!FUNDING_CONFIGURED) return send(res, 404, { error: 'not_found', path });
+    const body = await readJson(req);
+    const lockedFor = Math.ceil(((fundingLockedUntil.get(user.id) ?? 0) - Date.now()) / 1000);
+    if (lockedFor > 0) {
+      return send(
+        res,
+        429,
+        { error: 'too_many_attempts', retryAfterSeconds: lockedFor },
+        { 'retry-after': String(lockedFor) },
+      );
+    }
+    if (passwords.get(user.id) !== body.password) {
+      const failed = (fundingFailures.get(user.id) ?? 0) + 1;
+      fundingFailures.set(user.id, failed);
+      if (failed >= LOCKOUT_FREE_ATTEMPTS) {
+        fundingFailures.delete(user.id);
+        fundingLockedUntil.set(user.id, Date.now() + LOCKOUT_SECONDS * 1000);
+      }
+      return send(res, 401, { error: 'invalid_credentials' });
+    }
+    fundingFailures.delete(user.id);
+
+    if (path === '/api/funding/pins') {
+      const ids = Array.isArray(body.nodeIds) ? body.nodeIds : [];
+      const nodes = ids.map((id) => fundingNodes.get(id));
+      if (nodes.length === 0 || nodes.some((node) => !node || node.walletAddress === null)) {
+        return send(res, 400, { error: 'validation_error', errors: ['nodeIds must name nodes with a wallet address'] });
+      }
+      for (const node of nodes) node.pinnedAddress = node.walletAddress;
+      return send(res, 200, { pinned: ids });
+    }
+
+    // One send at a time: a second one while an earlier one still holds it up is refused, as the API refuses it. A
+    // transfer refused at the relay holds up no send; one not known yet does, for the manager's 30 minutes.
+    settleFundingTransfers();
+    if (openFundingBulkId() !== null) {
+      return send(res, 409, { error: 'conflict', message: 'An earlier send has not settled yet.' });
+    }
+    const asked = Array.isArray(body.items) ? body.items : [];
+    const valid = asked.every(
+      (item) =>
+        fundingNodes.has(item?.nodeId) && ['xdai', 'xbzz'].includes(item.kind) && /^[1-9]\d*$/.test(item.amount),
+    );
+    if (asked.length === 0 || !valid) {
+      return send(res, 400, {
+        error: 'validation_error',
+        errors: ['items must name nodes, a kind and an amount in base units'],
+      });
+    }
+    const unpinned = asked.map((item) => fundingNodes.get(item.nodeId)).find((node) => pinOf(node) !== 'pinned');
+    if (unpinned) {
+      return send(res, 409, { error: 'node_not_pinned', message: `Confirm the address of ${unpinned.label} first.` });
+    }
+    const total = (kind) =>
+      asked.filter((item) => item.kind === kind).reduce((sum, item) => sum + BigInt(item.amount), 0n);
+    if (total('xdai') > fundingWallet.xdaiWei || total('xbzz') > fundingWallet.xbzzPlur) {
+      return send(res, 409, { error: 'insufficient_balance', message: 'That is more than the brand wallet holds.' });
+    }
+    fundingWallet.xdaiWei -= total('xdai');
+    fundingWallet.xbzzPlur -= total('xbzz');
+    const bulkId = randomUUID();
+    const items = asked.map((item) => ({
+      requestId: randomUUID(),
+      nodeId: item.nodeId,
+      kind: item.kind,
+      amount: BigInt(item.amount),
+      state: FUNDING_REFUSE ? 'failed' : FUNDING_LOST ? 'unknown' : 'submitted',
+      txHash: `0x${hex(32)}`,
+      blockNumber: null,
+      error: FUNDING_REFUSE ? FUNDING_REFUSED_AT_RELAY : null,
+      watched: FUNDING_REFUSE || FUNDING_LOST,
+      sentAt: Date.now(),
+    }));
+    fundingBulks.set(bulkId, items);
+    return send(res, 202, { bulkId, items: items.map(fundingItemAnswer) });
   }
 
   // No manager pushes into the mock, so its stages are fixed and it has no

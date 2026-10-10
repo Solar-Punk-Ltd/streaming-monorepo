@@ -2,7 +2,9 @@ import type { ChequebookOperationsService } from '../domain/chequebook/Chequeboo
 import http from 'node:http';
 
 import type { VersionInfo } from '@streaming-infra-manager/common';
-import express from 'express';
+import express, { type Router } from 'express';
+
+import { ADMIN_FUNDING_PATH } from '@streaming-monorepo/contracts';
 
 import { AuthService } from '../domain/auth/AuthService.js';
 import { OpenStreams } from '../domain/auth/OpenStreams.js';
@@ -59,6 +61,8 @@ import { createStampRouter } from './routes/stamp.js';
 import { createAttemptsRouter } from './routes/attempts.js';
 import { createVersionsRouter } from './routes/versions.js';
 import { createTargetsRouter } from './routes/targets.js';
+import { createAdminFundingRouter } from './routes/adminFunding.js';
+import { refuseFundingBearer } from './middleware/fundingBearer.js';
 import type { PortInventory } from '../domain/ports/PortInventory.js';
 
 const logger = Logger.getInstance();
@@ -101,6 +105,11 @@ export interface ApiDeps {
   metricsCollector: MetricsCollector;
   /** The manager's own chain endpoint, BEE_RPC_ENDPOINT, or null for none. */
   beeRpcEndpoint: string | null;
+  /**
+   * The web2 admin's funding API: its bearer token, FUNDING_API_TOKEN, or null when it is off, and the routers of its
+   * routes, mounted in order behind its gate.
+   */
+  funding: { token: string | null; routes: readonly Router[] };
   /** The build this manager runs, as the deploy built it into the image. */
   managerVersion: VersionInfo;
 }
@@ -113,6 +122,13 @@ export function startApiServer(deps: ApiDeps, port: number, host: string): ApiSe
   const app = express();
 
   app.use(requestLogger);
+  // The web2 admin's funding API, ahead of the cross-site and session gates,
+  // which are the operator's: it is called server to server with a bearer
+  // token of its own, refuses a session cookie, and parses a body only once
+  // its own gate has passed. Every route after it refuses a bearer, so neither
+  // credential opens the other's routes.
+  app.use(ADMIN_FUNDING_PATH, createAdminFundingRouter(deps.funding.token, deps.funding.routes));
+  app.use(refuseFundingBearer);
   // Ahead of the body parser: a write from another site is refused before its
   // body is read, not after.
   app.use(requireSameSite);

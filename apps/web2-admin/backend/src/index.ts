@@ -16,6 +16,16 @@ import { FeedBootCheckRunner } from './domain/feedBootCheck.js';
 import type { CatalogueRestamper, FeedGateway } from './domain/FeedGateway.js';
 import { feedIdentityFrom } from './domain/feedIdentity.js';
 import { FeedWriteRepository } from './domain/FeedWriteRepository.js';
+import { BrandWallet } from './domain/funding/BrandWallet.js';
+import { BrandWalletRepository } from './domain/funding/BrandWalletRepository.js';
+import { FundingChequebookRepository } from './domain/funding/FundingChequebookRepository.js';
+import { FundingChequebookService } from './domain/funding/FundingChequebookService.js';
+import { FundingPinRepository } from './domain/funding/FundingPinRepository.js';
+import { FundingService } from './domain/funding/FundingService.js';
+import { FundingStampRepository } from './domain/funding/FundingStampRepository.js';
+import { FundingStampService } from './domain/funding/FundingStampService.js';
+import { FundingTransferRepository } from './domain/funding/FundingTransferRepository.js';
+import { ManagerFundingClient } from './domain/funding/ManagerFundingClient.js';
 import { IngestService } from './domain/IngestService.js';
 import { LadderService } from './domain/LadderService.js';
 import { Logger } from './domain/Logger.js';
@@ -79,6 +89,15 @@ function logStartupConfig(owner: string, topicHex: string): void {
   logger.info(`[Boot]   viewer: ${config.viewerBaseUrl || '(unset → no player links)'}`);
   logger.info(`[Boot]   internal API token: ${redactSecret(config.internalApiToken)}`);
   logger.info(`[Boot]   catalogue move: ${config.catalogueMoveEnabled ? 'enabled' : 'off'}`);
+  // Neither the secret nor the token is logged, not even in part.
+  logger.info(
+    `[Boot]   brand wallet secret: ${config.brandWalletSecret === null ? '(unset → no brand wallet)' : 'set'}`,
+  );
+  logger.info(
+    `[Boot]   manager funding: ${
+      config.managerFunding ? `${config.managerFunding.url}, with its token` : '(unset → funding is not set up)'
+    }`,
+  );
   logger.info("[Boot]   ingest: from each stream's stage, as the manager pushed it");
   const retired = retiredEnvKeysSet();
   if (retired.length > 0) {
@@ -144,6 +163,11 @@ async function main(): Promise<void> {
 
   database = new Database(config.databaseUrl);
   await database.migrate();
+
+  // Right after the migrations, so a BRAND_WALLET_SECRET that does not open the stored wallet stops the start before
+  // anything else runs. The first start with a secret creates the wallet.
+  const brandWallet = await BrandWallet.start(new BrandWalletRepository(database.pool), config.brandWalletSecret);
+  logger.info(`[Boot] brand wallet: ${brandWallet.address() ?? '(none)'}`);
 
   const userRepository = new PostgresUserRepository(database.pool);
   const sessionRepository = new PostgresSessionRepository(database.pool);
@@ -220,6 +244,27 @@ async function main(): Promise<void> {
     registrarToken: config.internalApiToken,
   });
   stageService.onCatalogueStampStored(() => void feedBootCheck.catalogueStampStored());
+  // The brand wallet started above, its address null without BRAND_WALLET_SECRET, and the client of the manager's
+  // funding API, none without MANAGER_FUNDING_URL and MANAGER_FUNDING_TOKEN: then the Funding page answers that
+  // funding is not set up, and every pin, send, stamp request and chequebook request is refused.
+  const managerFunding = config.managerFunding ? new ManagerFundingClient(config.managerFunding) : null;
+  const fundingService = new FundingService({
+    wallet: brandWallet,
+    manager: managerFunding,
+    transfers: new FundingTransferRepository(database.pool),
+    pins: new FundingPinRepository(database.pool),
+    stamps: new FundingStampService({
+      manager: managerFunding,
+      journal: new FundingStampRepository(database.pool),
+      audit: auditLog,
+    }),
+    chequebooks: new FundingChequebookService({
+      manager: managerFunding,
+      journal: new FundingChequebookRepository(database.pool),
+      audit: auditLog,
+    }),
+    audit: auditLog,
+  });
 
   apiServer = startApiServer(
     {
@@ -233,6 +278,7 @@ async function main(): Promise<void> {
       stageService,
       catalogueBatch,
       catalogueMove,
+      fundingService,
       internalApiToken: config.internalApiToken,
       uploaderTokens: stageRepository,
       feed,

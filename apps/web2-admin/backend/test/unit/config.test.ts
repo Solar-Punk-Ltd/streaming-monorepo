@@ -1,14 +1,19 @@
 /**
- * The env keys the catalogue stamp replaced, `CATALOGUE_MOVE_ENABLED`, and the build the deploy builds in. Unit test:
- * the config module loaded afresh in this process for each environment a test sets. `pnpm test`.
+ * The env keys the catalogue stamp replaced, `CATALOGUE_MOVE_ENABLED`, the funding keys and the build the deploy
+ * builds in. Unit test: the config module loaded afresh in this process for each environment a test sets.
+ * `pnpm test`.
  *
  * `BEE_URL` and `POSTAGE_BATCH_ID` named the catalogue's node and batch until the manager's catalogue stamp did. The
  * config reads only the keys it names, so a host whose env file still sets them starts as one whose file does not,
  * and neither value reaches the config.
+ *
+ * `BRAND_WALLET_SECRET`, `MANAGER_FUNDING_URL` and `MANAGER_FUNDING_TOKEN` (docs/architecture/funding.md) stop the
+ * start when they are set wrong, with a sentence that names the key and never the value.
  */
 import assert from 'node:assert/strict';
+import { randomBytes } from 'node:crypto';
 import { readFileSync } from 'node:fs';
-import { describe, it } from 'node:test';
+import { after, describe, it } from 'node:test';
 
 import { versionFrom } from '../../src/utils/buildVersion.js';
 
@@ -101,6 +106,203 @@ describe('FEED_PRIVATE_KEY', () => {
   it('is shipped empty in the env sample', () => {
     const sample = readFileSync(new URL('../../.env.sample', import.meta.url), 'utf8');
     assert.match(sample, /^FEED_PRIVATE_KEY=$/m);
+  });
+});
+
+const FUNDING_KEYS = ['BRAND_WALLET_SECRET', 'MANAGER_FUNDING_URL', 'MANAGER_FUNDING_TOKEN'] as const;
+
+/**
+ * None of the funding keys set, as an install without funding. Each funding suite ends with it, because every suite
+ * after them loads the config with the required keys alone, and a funding address left set refuses that load.
+ */
+function clearFunding(): void {
+  for (const key of FUNDING_KEYS) delete process.env[key];
+}
+
+/** The required keys, and of the funding keys exactly `keys`, the others unset. */
+function withFunding(keys: Partial<Record<(typeof FUNDING_KEYS)[number], string>>): void {
+  Object.assign(process.env, REQUIRED);
+  clearFunding();
+  Object.assign(process.env, keys);
+}
+
+/** A config load that must stop the start: the sentence names `key` and holds none of `values`. */
+async function refusedNaming(tag: string, key: string, values: string[]): Promise<void> {
+  const error = await loadConfig(tag).then(
+    () => assert.fail(`${tag}: the config took it`),
+    (refusal: unknown) => refusal,
+  );
+  assert.ok(error instanceof Error, tag);
+  assert.match(error.message, new RegExp(key), tag);
+  for (const value of values)
+    assert.equal(error.message.includes(value), false, `${tag}: the sentence holds the value`);
+}
+
+const SECRET = randomBytes(32).toString('hex');
+const TOKEN = 'config-test-funding-token-of-more-than-thirty-two-characters';
+
+describe('BRAND_WALLET_SECRET', () => {
+  after(clearFunding);
+
+  it('is null when unset or empty: no brand wallet is created', async () => {
+    for (const [tag, keys] of [
+      ['secret-unset', {}],
+      ['secret-empty', { BRAND_WALLET_SECRET: '  ' }],
+    ] as const) {
+      withFunding(keys);
+      const config = await loadConfig(tag);
+      assert.equal(config.brandWalletSecret, null, tag);
+    }
+  });
+
+  it('takes 64 hex characters, in either case', async () => {
+    for (const [tag, secret] of [
+      ['secret-lower', SECRET],
+      ['secret-upper', SECRET.toUpperCase()],
+    ]) {
+      withFunding({ BRAND_WALLET_SECRET: ` ${secret} ` });
+      const config = await loadConfig(tag!);
+      assert.equal(config.brandWalletSecret, secret, tag);
+    }
+  });
+
+  it('stops the start on anything else, with a sentence that names the key and never the value', async () => {
+    for (const [tag, secret] of [
+      ['secret-short', SECRET.slice(1)],
+      ['secret-long', `${SECRET}a`],
+      ['secret-0x', `0x${SECRET}`],
+      ['secret-not-hex', `${SECRET.slice(2)}zz`],
+      ['secret-base64', randomBytes(32).toString('base64')],
+    ]) {
+      withFunding({ BRAND_WALLET_SECRET: secret! });
+      await refusedNaming(tag!, 'BRAND_WALLET_SECRET', [secret!, secret!.replace(/^0x/, '')]);
+    }
+  });
+
+  it('ships in the env sample as a placeholder the API starts with and deploy.sh refuses', async () => {
+    const sample = readFileSync(new URL('../../.env.sample', import.meta.url), 'utf8');
+    const placeholder = /^BRAND_WALLET_SECRET=(\S*)$/m.exec(sample)?.[1];
+    assert.ok(placeholder, 'the sample sets no BRAND_WALLET_SECRET');
+
+    withFunding({ BRAND_WALLET_SECRET: placeholder });
+    const config = await loadConfig('secret-sample');
+
+    assert.equal(config.brandWalletSecret, placeholder, 'a test install keeps it with --allow-sample-secrets');
+  });
+});
+
+describe('MANAGER_FUNDING_URL and MANAGER_FUNDING_TOKEN', () => {
+  after(clearFunding);
+
+  it('leave funding not set up when neither is set', async () => {
+    withFunding({ MANAGER_FUNDING_URL: '', MANAGER_FUNDING_TOKEN: ' ' });
+    const config = await loadConfig('funding-unset');
+    assert.equal(config.managerFunding, null);
+  });
+
+  it('take https to any host, as the address with no trailing slash', async () => {
+    for (const [tag, url, kept] of [
+      ['https-root', 'https://manager.example.org/', 'https://manager.example.org'],
+      ['https-port', 'https://manager.example.org:8443', 'https://manager.example.org:8443'],
+      ['https-path', 'https://example.org/manager/', 'https://example.org/manager'],
+      ['https-ip', 'https://203.0.113.7', 'https://203.0.113.7'],
+    ]) {
+      withFunding({ MANAGER_FUNDING_URL: url!, MANAGER_FUNDING_TOKEN: TOKEN, BRAND_WALLET_SECRET: SECRET });
+      const config = await loadConfig(tag!);
+      assert.deepEqual(config.managerFunding, { url: kept, token: TOKEN }, tag);
+    }
+  });
+
+  it('take plain http to this host: a loopback address, host.docker.internal or a Docker service name', async () => {
+    for (const url of [
+      'http://127.0.0.1:9876',
+      'http://127.1.2.3:9876',
+      'http://localhost:9876',
+      'http://LOCALHOST:9876/',
+      'http://[::1]:9876',
+      'http://host.docker.internal:9876',
+      'http://manager:9876',
+      'http://streaming-manager-api:9876',
+    ]) {
+      withFunding({ MANAGER_FUNDING_URL: url, MANAGER_FUNDING_TOKEN: TOKEN, BRAND_WALLET_SECRET: SECRET });
+      const config = await loadConfig(`http-own-${url}`);
+      assert.ok(config.managerFunding, url);
+    }
+  });
+
+  it('refuse plain http to any other host, naming the key and never the address', async () => {
+    for (const host of [
+      'manager.example.org',
+      '203.0.113.7',
+      '192.0.2.10',
+      '10.0.0.7',
+      '[2001:db8::1]',
+      '0.0.0.0',
+      'manager.',
+      'localhost.example.org',
+    ]) {
+      withFunding({
+        MANAGER_FUNDING_URL: `http://${host}:9876`,
+        MANAGER_FUNDING_TOKEN: TOKEN,
+        BRAND_WALLET_SECRET: SECRET,
+      });
+      await refusedNaming(`http-other-${host}`, 'MANAGER_FUNDING_URL', [host]);
+    }
+  });
+
+  it('refuse an address that is not http or https, or that carries a user, a query or a fragment', async () => {
+    for (const url of [
+      'funding.example.test',
+      'ftp://funding.example.test',
+      'https://',
+      'https://operator:password-1234@funding.example.test',
+      'https://funding.example.test/?via=edge',
+      'https://funding.example.test/#top',
+      'https://funding.example.test/#',
+    ]) {
+      withFunding({ MANAGER_FUNDING_URL: url, MANAGER_FUNDING_TOKEN: TOKEN, BRAND_WALLET_SECRET: SECRET });
+      await refusedNaming(`url-shape-${url}`, 'MANAGER_FUNDING_URL', ['password-1234', 'funding.example.test']);
+    }
+  });
+
+  it('refuse a token without the address, and the address without a token', async () => {
+    withFunding({ MANAGER_FUNDING_TOKEN: TOKEN });
+    await refusedNaming('token-alone', 'MANAGER_FUNDING_TOKEN', [TOKEN]);
+
+    withFunding({ MANAGER_FUNDING_URL: 'https://manager.example.org' });
+    await refusedNaming('url-alone', 'MANAGER_FUNDING_TOKEN', []);
+  });
+
+  it('refuse a token under 32 characters or with a space inside, naming the key and never the token', async () => {
+    for (const [tag, token] of [
+      ['token-short', 'short-funding-token-0123456789a'],
+      ['token-space', 'funding token with a space inside, long enough'],
+      ['token-not-ascii', 'funding-token-of-thirty-two-or-more-characters-é'],
+    ]) {
+      withFunding({
+        MANAGER_FUNDING_URL: 'https://manager.example.org',
+        MANAGER_FUNDING_TOKEN: token!,
+        BRAND_WALLET_SECRET: SECRET,
+      });
+      await refusedNaming(tag!, 'MANAGER_FUNDING_TOKEN', [token!]);
+    }
+  });
+
+  it('refuse the address without BRAND_WALLET_SECRET, since funding signs every transfer with the brand wallet', async () => {
+    withFunding({ MANAGER_FUNDING_URL: 'https://manager.example.org', MANAGER_FUNDING_TOKEN: TOKEN });
+
+    await refusedNaming('url-without-secret', 'BRAND_WALLET_SECRET is required with MANAGER_FUNDING_URL', [
+      TOKEN,
+      'manager.example.org',
+    ]);
+  });
+
+  it('ship in the env sample unset, with a token placeholder deploy.sh refuses', () => {
+    const sample = readFileSync(new URL('../../.env.sample', import.meta.url), 'utf8');
+    assert.match(sample, /^MANAGER_FUNDING_URL=$/m);
+    const placeholder = /^# MANAGER_FUNDING_TOKEN=(\S+)$/m.exec(sample)?.[1];
+    assert.ok(placeholder, 'the sample names no token placeholder');
+    assert.ok(placeholder.length >= 32, 'a test install keeps it with --allow-sample-secrets, so the API must take it');
   });
 });
 

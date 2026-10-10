@@ -29,6 +29,9 @@ interface ChainRpcOptions {
 
 type ReadMethod =
   | 'eth_chainId'
+  | 'eth_getBalance'
+  | 'eth_call'
+  | 'eth_maxPriorityFeePerGas'
   | 'eth_getTransactionCount'
   | 'eth_getTransactionByHash'
   | 'eth_getTransactionReceipt'
@@ -51,7 +54,51 @@ function blockHeader(value: unknown, expected: BlockReference): ChainBlockHeader
   return Object.freeze({ number, hash: chainHash(block.hash), parentHash: chainHash(block.parentHash) });
 }
 
-/** Bounded observations only. The endpoint and upstream diagnostics never enter returned errors. */
+/** What `sendRawTransaction` came to: the hash the chain took it under, or the kind of refusal, never its words. */
+export type SentTransaction =
+  | { kind: 'sent'; hash: string }
+  | { kind: 'refused'; reason: 'nonce' | 'funds' | 'known' | 'underpriced' | 'other' };
+
+/** The fees a type 2 transaction is priced against: the latest block's base fee and the node's suggested tip. */
+export interface ChainFeeSuggestion {
+  baseFeePerGas: string;
+  maxPriorityFeePerGas: string;
+}
+
+/** `balanceOf(address)` of an ERC-20 token, its selector and the address as one 32-byte word. */
+function balanceOfData(holder: string): string {
+  return `0x70a08231${chainAddress(holder).slice(2).padStart(64, '0')}`;
+}
+
+/**
+ * The kind of a refusal by the words a node uses, so none of its words, which may carry anything, travels on. Both
+ * geth's sentences ("already known", "nonce too low") and Nethermind's codes (`AlreadyKnown`, `OldNonce`,
+ * `InsufficientFunds`, `FeeTooLow`), which most Gnosis Chain endpoints answer with, are read: the words are compared
+ * with whitespace removed and case folded, in the message and in a `data` string beside it.
+ */
+function refusalReason(error: Record<string, unknown>): Extract<SentTransaction, { kind: 'refused' }>['reason'] {
+  const words = [error.message, error.data].filter((part): part is string => typeof part === 'string').join(' ');
+  const text = words.replace(/\s+/g, '').toLowerCase();
+  if (text.includes('alreadyknown')) return 'known';
+  if (text.includes('noncetoolow') || text.includes('oldnonce')) return 'nonce';
+  if (text.includes('insufficientfunds')) return 'funds';
+  if (text.includes('underpriced') || text.includes('feetoolow')) return 'underpriced';
+  return 'other';
+}
+
+/** Whether a JSON-RPC answer carries an error: an error object, never a null one beside a result. */
+function carriesError(
+  body: Record<string, unknown>,
+): body is Record<string, unknown> & { error: Record<string, unknown> } {
+  const error = body.error;
+  return error !== null && typeof error === 'object' && !Array.isArray(error);
+}
+
+/**
+ * Bounded observations, and one write: `sendRawTransaction`, which the funding API sends a transfer the web2 admin
+ * signed with. `call` is an observation too, a read-only contract call. The endpoint and upstream diagnostics never
+ * enter returned errors or answers.
+ */
 export class ChainRpc {
   #endpoint: string;
   #timeoutMs: number;
@@ -87,6 +134,75 @@ export class ChainRpc {
     return chainQuantity(
       await this.#call('eth_getTransactionCount', [chainAddress(address), blockTag(block)], signal),
     ).toString();
+  }
+
+  /** The xDAI of an address, in wei, at the latest block. */
+  async balance(address: string, signal?: AbortSignal): Promise<string> {
+    return chainQuantity(await this.#call('eth_getBalance', [chainAddress(address), 'latest'], signal)).toString();
+  }
+
+  /** An ERC-20 token's balance of an address, in its base units, at the latest block. */
+  async tokenBalance(token: string, holder: string, signal?: AbortSignal): Promise<string> {
+    const result = await this.#call(
+      'eth_call',
+      [{ to: chainAddress(token), data: balanceOfData(holder) }, 'latest'],
+      signal,
+    );
+    if (typeof result !== 'string' || !/^0x[0-9a-fA-F]{64}$/.test(result)) throw new ChainReadError();
+    return BigInt(result).toString();
+  }
+
+  /**
+   * A read-only call of a contract at the latest block, `eth_call` with no sender and no value, answered as the bytes
+   * the call returned, in lower case. The funding API reads the postage contract's record of a batch with it. An answer
+   * that is not whole bytes in hex throws `ChainReadError`, like any answer that is not one.
+   */
+  async call(to: string, data: string, signal?: AbortSignal): Promise<string> {
+    if (!/^0x(?:[0-9a-fA-F]{2})*$/.test(data)) throw new ChainReadError();
+    const result = await this.#call('eth_call', [{ to: chainAddress(to), data: data.toLowerCase() }, 'latest'], signal);
+    if (typeof result !== 'string' || !/^0x(?:[0-9a-fA-F]{2})*$/.test(result)) throw new ChainReadError();
+    return result.toLowerCase();
+  }
+
+  /** The nonce the next transaction from this address takes, counting the ones still pending. */
+  async pendingNonce(address: string, signal?: AbortSignal): Promise<number> {
+    const nonce = chainQuantity(
+      await this.#call('eth_getTransactionCount', [chainAddress(address), 'pending'], signal),
+    );
+    if (nonce > BigInt(Number.MAX_SAFE_INTEGER)) throw new ChainReadError();
+    return Number(nonce);
+  }
+
+  /** The latest block's base fee and the node's suggested priority fee, both in wei per gas. */
+  async feeSuggestion(signal?: AbortSignal): Promise<ChainFeeSuggestion> {
+    const block = await this.#call('eth_getBlockByNumber', ['latest', false], signal);
+    let baseFeePerGas: bigint;
+    try {
+      baseFeePerGas = chainQuantity(chainObject(block).baseFeePerGas);
+    } catch {
+      throw new ChainReadError();
+    }
+    const tip = chainQuantity(await this.#call('eth_maxPriorityFeePerGas', [], signal));
+    return { baseFeePerGas: baseFeePerGas.toString(), maxPriorityFeePerGas: tip.toString() };
+  }
+
+  /**
+   * Sends a signed transaction. A node's refusal is answered by its kind alone, and anything else that stops the
+   * call, a timeout, a lost connection or an answer that is not JSON-RPC, throws `ChainReadError`: then the
+   * transaction may or may not have reached the chain, which only its hash can tell later.
+   */
+  async sendRawTransaction(raw: string, signal?: AbortSignal): Promise<SentTransaction> {
+    if (!/^0x([0-9a-fA-F]{2})+$/.test(raw)) throw new ChainReadError();
+    const body = await this.#post('eth_sendRawTransaction', [raw], signal);
+    if (carriesError(body)) return { kind: 'refused', reason: refusalReason(body.error) };
+    if (!Object.hasOwn(body, 'result')) throw new ChainReadError();
+    let hash: string;
+    try {
+      hash = chainHash(body.result);
+    } catch {
+      throw new ChainReadError();
+    }
+    return { kind: 'sent', hash };
   }
 
   async transaction(hash: string, signal?: AbortSignal): Promise<ChainTransaction | null> {
@@ -138,6 +254,18 @@ export class ChainRpc {
   }
 
   async #call(method: ReadMethod, params: unknown[], callerSignal?: AbortSignal): Promise<unknown> {
+    const body = await this.#post(method, params, callerSignal);
+    // A read keeps the strict envelope: any `error` member, a null one included, is refused.
+    if (Object.hasOwn(body, 'error') || !Object.hasOwn(body, 'result')) throw new ChainReadError();
+    return body.result;
+  }
+
+  /** One JSON-RPC call, answered as the response object, its `error` included; anything else throws. */
+  async #post(
+    method: ReadMethod | 'eth_sendRawTransaction',
+    params: unknown[],
+    callerSignal?: AbortSignal,
+  ): Promise<Record<string, unknown>> {
     const cleanup = new AbortController();
     const signal = AbortSignal.any([
       cleanup.signal,
@@ -174,9 +302,8 @@ export class ChainRpc {
       const body = chainObject(
         JSON.parse(new TextDecoder('utf-8', { fatal: true }).decode(Buffer.concat(chunks, bytes))),
       );
-      if (body.jsonrpc !== '2.0' || body.id !== id || Object.hasOwn(body, 'error') || !Object.hasOwn(body, 'result'))
-        throw new ChainReadError();
-      return body.result;
+      if (body.jsonrpc !== '2.0' || body.id !== id) throw new ChainReadError();
+      return body;
     } catch {
       throw new ChainReadError();
     } finally {

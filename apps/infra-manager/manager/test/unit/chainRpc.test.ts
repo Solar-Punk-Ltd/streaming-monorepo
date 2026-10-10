@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 import { createServer, type ServerResponse } from 'node:http';
 import { afterEach, describe, it } from 'node:test';
 import { ChainRpc } from '../../src/domain/chequebook/ChainRpc.js';
+import { ChainReadError } from '../../src/domain/errors/ChainReadError.js';
 import { answeringRejections } from '../support/answeringRejections.js';
 
 const hash = `0x${'ab'.repeat(32)}`;
@@ -327,5 +328,116 @@ describe('bounded read-only chain RPC', () => {
     assert.equal(server.calls.length, 0);
     assert.throws(() => new ChainRpc(server.url, { timeoutMs: Infinity }), /could not be read/i);
     assert.throws(() => new ChainRpc(server.url, { maxResponseBytes: 0 }), /could not be read/i);
+  });
+});
+
+function replyError(response: ServerResponse, request: RequestBody, message: string) {
+  response.setHeader('content-type', 'application/json');
+  response.end(JSON.stringify({ jsonrpc: '2.0', id: request.id, error: { code: -32000, message } }));
+}
+
+describe('what funding reads and sends', () => {
+  const token = `0x${'dbf3ea6f5bee45c02255b2c26a16f300502f68da'}`;
+
+  it('reads a balance, a token balance, the pending nonce and the fees, each by its exact method', async () => {
+    const server = await rpcServer((body, response) => {
+      if (body.method === 'eth_getBalance') return reply(response, body, '0xde0b6b3a7640000');
+      if (body.method === 'eth_call')
+        return reply(response, body, `0x${'0'.repeat(48)}${'2386f26fc10000'.padStart(16, '0')}`);
+      if (body.method === 'eth_getTransactionCount') return reply(response, body, '0x7');
+      if (body.method === 'eth_getBlockByNumber')
+        return reply(response, body, { hash, parentHash, number: '0x10', baseFeePerGas: '0x3b9aca00' });
+      if (body.method === 'eth_maxPriorityFeePerGas') return reply(response, body, '0x77359400');
+      return replyError(response, body, 'unexpected');
+    });
+    const rpc = new ChainRpc(server.url);
+    assert.equal(await rpc.balance(address), '1000000000000000000');
+    assert.equal(await rpc.tokenBalance(token, address), '10000000000000000');
+    assert.equal(await rpc.pendingNonce(address), 7);
+    assert.deepEqual(await rpc.feeSuggestion(), { baseFeePerGas: '1000000000', maxPriorityFeePerGas: '2000000000' });
+    assert.deepEqual(
+      server.calls.map((call) => [call.method, call.params]),
+      [
+        ['eth_getBalance', [address, 'latest']],
+        ['eth_call', [{ to: token, data: `0x70a08231${'0'.repeat(24)}${address.slice(2)}` }, 'latest']],
+        ['eth_getTransactionCount', [address, 'pending']],
+        ['eth_getBlockByNumber', ['latest', false]],
+        ['eth_maxPriorityFeePerGas', []],
+      ],
+    );
+  });
+
+  it('refuses a token balance that is not one 32-byte word, and a block with no base fee', async () => {
+    const server = await rpcServer((body, response) =>
+      body.method === 'eth_call'
+        ? reply(response, body, '0x1234')
+        : reply(response, body, { hash, parentHash, number: '0x10' }),
+    );
+    const rpc = new ChainRpc(server.url);
+    await assert.rejects(rpc.tokenBalance(token, address), ChainReadError);
+    await assert.rejects(rpc.feeSuggestion(), ChainReadError);
+  });
+
+  it('calls a contract read-only at the latest block, and answers the bytes it returned in lower case', async () => {
+    const contract = `0x${'45a1502382541cd610cc9068e88727426b696293'}`;
+    const data = `0xc81e25ab${'AB'.repeat(32)}`;
+    const server = await rpcServer((body, response) => reply(response, body, `0x${'0A'.repeat(64)}`));
+    assert.equal(await new ChainRpc(server.url).call(contract, data), `0x${'0a'.repeat(64)}`);
+    assert.deepEqual(
+      server.calls.map((call) => [call.method, call.params]),
+      [['eth_call', [{ to: contract, data: data.toLowerCase() }, 'latest']]],
+    );
+  });
+
+  it('refuses call data that is not whole bytes, before sending, and an answer that is not', async () => {
+    const contract = `0x${'45a1502382541cd610cc9068e88727426b696293'}`;
+    const server = await rpcServer((body, response) => reply(response, body, '0x123'));
+    const rpc = new ChainRpc(server.url);
+    await assert.rejects(rpc.call(contract, '0xc81e25a'), ChainReadError);
+    assert.equal(server.calls.length, 0);
+    await assert.rejects(rpc.call(contract, '0xc81e25ab'), ChainReadError);
+    assert.equal(server.calls.length, 1);
+  });
+
+  it('reads an answer whose error is null as the success it is', async () => {
+    const server = await rpcServer((body, response) => {
+      response.setHeader('content-type', 'application/json');
+      response.end(JSON.stringify({ jsonrpc: '2.0', id: body.id, error: null, result: hash }));
+    });
+    assert.deepEqual(await new ChainRpc(server.url).sendRawTransaction('0x02f8aa'), { kind: 'sent', hash });
+  });
+
+  it('sends a signed transaction and answers the hash the chain gives it', async () => {
+    const server = await rpcServer((body, response) => reply(response, body, hash));
+    assert.deepEqual(await new ChainRpc(server.url).sendRawTransaction('0x02f8aa'), { kind: 'sent', hash });
+    assert.deepEqual(server.calls[0]?.params, ['0x02f8aa']);
+  });
+
+  it('tells a transaction the chain refused, by kind only, from one whose fate it cannot know', async () => {
+    const answers: Record<string, string> = {
+      'nonce too low: next nonce 8, tx nonce 7': 'nonce',
+      'insufficient funds for gas * price + value': 'funds',
+      'already known': 'known',
+      'replacement transaction underpriced': 'underpriced',
+      'max fee per gas less than block base fee https://rpc.example.org/key/abc': 'other',
+      AlreadyKnown: 'known',
+      OldNonce: 'nonce',
+      'Nonce Too Low': 'nonce',
+      InsufficientFunds: 'funds',
+      'InsufficientFunds, Balance is 0 less than sending value + gas 210000': 'funds',
+      FeeTooLow: 'underpriced',
+      FeeTooLowToCompete: 'underpriced',
+    };
+    for (const [message, reason] of Object.entries(answers)) {
+      const server = await rpcServer((body, response) => replyError(response, body, message));
+      const sent = await new ChainRpc(server.url).sendRawTransaction('0x02f8aa');
+      assert.deepEqual(sent, { kind: 'refused', reason }, message);
+      assert.ok(!JSON.stringify(sent).includes('example.org'));
+    }
+    const failing = await rpcServer((_body, response) => {
+      response.statusCode = 502;
+      response.end('bad gateway');
+    });
+    await assert.rejects(new ChainRpc(failing.url).sendRawTransaction('0x02f8aa'), ChainReadError);
   });
 });

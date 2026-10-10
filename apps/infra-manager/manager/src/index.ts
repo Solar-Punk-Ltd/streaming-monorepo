@@ -32,6 +32,19 @@ import { beeApiUrlFor, beePublisherUrlFor, StampService } from './domain/StampSe
 import { localPublisherHost } from './domain/localHost.js';
 import { CatalogueDesignationRepository } from './domain/stages/CatalogueDesignationRepository.js';
 import { CatalogueDesignationService } from './domain/stages/CatalogueDesignationService.js';
+import { FundingInventoryService } from './domain/funding/FundingInventoryService.js';
+import { createFundingInventoryRouter } from './api/routes/adminFunding.js';
+import { createFundingChainRouter } from './api/routes/fundingChain.js';
+import { FundingChainService } from './domain/funding/FundingChainService.js';
+import { PostgresFundingTransferJournal } from './domain/funding/FundingTransferJournal.js';
+import { createFundingStampRouter } from './api/routes/fundingStamps.js';
+import { createFundingChequebookRouter } from './api/routes/fundingChequebooks.js';
+import { fundingNodeApiUrl, fundingNodeDeployment } from './domain/funding/fundingNodeApi.js';
+import { FundingChequebookService } from './domain/funding/FundingChequebookService.js';
+import { FundingStampService } from './domain/funding/FundingStampService.js';
+import { PostgresFundingStampOperationJournal } from './domain/funding/FundingStampOperationJournal.js';
+import { ChainRpc } from './domain/chequebook/ChainRpc.js';
+import { BeeClient } from './domain/BeeClient.js';
 import { CataloguePublisher } from './domain/stages/CataloguePublisher.js';
 import { UploaderHealthService } from './domain/UploaderHealthService.js';
 import { UploaderStartGate } from './domain/UploaderStartGate.js';
@@ -66,6 +79,12 @@ import { resolveServerHost } from './utils/serverHost.js';
 
 const logger = Logger.getInstance();
 
+/**
+ * How long the funding inventory waits for each read of a node, its wallet, its batch, its chain state, or its
+ * chequebook's address or balance, so one silent node does not hold the whole answer.
+ */
+const FUNDING_NODE_READ_MS = 5_000;
+
 function redactDatabaseUrl(url: string): string {
   try {
     const parsed = new URL(url);
@@ -85,6 +104,12 @@ function logStartupConfig(): void {
   logger.info(`[Boot]   logLevel: ${config.logLevel}`);
   logger.info(`[Boot]   chequebookFloor: ${plurToBzz(config.chequebookFloorPlur)} BZZ`);
   logger.info(`[Boot]   database: ${redactDatabaseUrl(config.databaseUrl)}`);
+  // Whether it is on, never the token.
+  logger.info(`[Boot]   funding API: ${config.fundingApiToken ? 'on (FUNDING_API_TOKEN is set)' : 'off'}`);
+  // Which endpoint the funding API reads the chain through, by its variable alone: the address can carry a key.
+  logger.info(
+    `[Boot]   funding chain endpoint: ${config.fundingRpcUrl ? 'FUNDING_RPC_URL' : config.beeRpcEndpoint ? 'BEE_RPC_ENDPOINT' : 'none'}`,
+  );
   // The host alone, never the URL: an endpoint can carry an API key, and this
   // line goes to the log.
   logger.info(
@@ -437,6 +462,52 @@ async function main(): Promise<void> {
     changed: () => void catalogue.pushNow(),
     nodeUrls: async (profile) => [beeApiUrlFor(profile), beePublisherUrlFor(profile, await localPublisherHost())],
   });
+  // The web2 admin's funding API reads every stage's nodes and the catalogue node with it, each with its wallet, its
+  // batch and its chequebook, and the price of postage. A node's address stays here: the inventory names each node by
+  // an opaque id.
+  const fundingInventory = new FundingInventoryService({
+    profiles: profileRepository,
+    catalogue: catalogueDesignation,
+    uploaderApiUrl: beeApiUrlFor,
+    gatewayApiUrl: async (profile) => {
+      const port = (await orchestrator.nextEnvFor(profile)).env.BEE_GATEWAY_API_PORT ?? '';
+      if (!/^\d{1,5}$/.test(port)) throw new Error('the next deploy gives the gateway no API port');
+      const url = new URL(beeApiUrlFor(profile));
+      url.port = port;
+      return url.origin;
+    },
+    wallet: (apiUrl) => new BeeClient(apiUrl, FUNDING_NODE_READ_MS).getWallet(),
+    stamp: (apiUrl, batchId) => new BeeClient(apiUrl, FUNDING_NODE_READ_MS).getStamp(batchId),
+    chainState: (apiUrl) => new BeeClient(apiUrl, FUNDING_NODE_READ_MS).getChainState(),
+    chequebookAddress: (apiUrl) => new BeeClient(apiUrl, FUNDING_NODE_READ_MS).getChequebookAddress(),
+    chequebookBalance: (apiUrl) => new BeeClient(apiUrl, FUNDING_NODE_READ_MS).getChequebookBalance(),
+  });
+  // The funding API's chain side: the brand account the admin signs from, the transfers it signs, and their state,
+  // journalled in funding_transfers before anything is broadcast.
+  const fundingRpc = config.fundingRpcUrl ?? config.beeRpcEndpoint;
+  const fundingChain = new FundingChainService({
+    chain: fundingRpc ? new ChainRpc(fundingRpc) : null,
+    journal: new PostgresFundingTransferJournal(database.pool),
+    inventory: fundingInventory,
+  });
+  // The funding API's stamp operations: a top-up or a dilution of a node's batch, checked against the inventory and
+  // the postage contract read now, journalled in funding_stamp_operations before the node is asked, and paid from the
+  // node's own wallet. The node's Bee API is worked out the way the inventory works it out, and stays here.
+  const fundingStamps = new FundingStampService({
+    journal: new PostgresFundingStampOperationJournal(database.pool),
+    inventory: fundingInventory,
+    nodeApiUrl: fundingNodeApiUrl({ profiles: profileRepository, uploaderApiUrl: beeApiUrlFor }),
+    node: (apiUrl) => new BeeClient(apiUrl),
+    chain: fundingRpc ? new ChainRpc(fundingRpc) : null,
+  });
+  // The funding API's chequebook operations: a deposit into or a withdrawal from the chequebook of a stage's own Bee
+  // node or a rung, checked against the inventory read now, then carried out by the manager's own chequebook path and
+  // journalled in chequebook_operations as requested by web2-admin, beside the operators' own transfers.
+  const fundingChequebooks = new FundingChequebookService({
+    operations: chequebookOperations,
+    inventory: fundingInventory,
+    deployment: fundingNodeDeployment({ profiles: profileRepository }),
+  });
   profileService.setPoolStringGuard((beePublishers) => catalogueService.segmentBatchProblem(beePublishers));
   // An ABR stage deploys with its pool's current batches, and a batch set on a rung reaches its stages' stored copy.
   const stagePoolStrings = new StagePoolStrings({
@@ -513,6 +584,15 @@ async function main(): Promise<void> {
       eventBus,
       metricsCollector,
       beeRpcEndpoint: config.beeRpcEndpoint,
+      funding: {
+        token: config.fundingApiToken,
+        routes: [
+          createFundingInventoryRouter(fundingInventory),
+          createFundingChainRouter(fundingChain),
+          createFundingStampRouter(fundingStamps),
+          createFundingChequebookRouter(fundingChequebooks),
+        ],
+      },
       managerVersion: config.managerVersion,
     },
     config.port,

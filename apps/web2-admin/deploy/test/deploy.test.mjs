@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import { existsSync } from 'node:fs';
+import { existsSync, readFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { after, describe, it } from 'node:test';
 
@@ -339,5 +339,171 @@ describe('deploy.sh and the published test values', () => {
     assert.equal(help.status, 0, help.stderr);
     assert.match(help.stdout, /^\s+--allow-sample-secrets\s+\S/m);
     assert.match(help.stdout, /^Usage: deploy\.sh .*\[--allow-sample-secrets\]/m);
+  });
+});
+
+describe('deploy.sh and the funding keys', () => {
+  /** Values of the right shape that are not the sample's. */
+  const SECRET = 'a1'.repeat(32);
+  const TOKEN = 'fixture-funding-token-of-more-than-thirty-two-characters';
+  const SET_UP = 'MANAGER_FUNDING_URL=https://manager.example.org';
+  const SAMPLE_SECRET = '0123456789abcdef'.repeat(4);
+  const SAMPLE_TOKEN = 'change-me-to-the-managers-funding-api-token';
+
+  /** A deploy of the qa profile whose env file is the fixture with `lines` added, with `args` added to the command. */
+  const deployWith = (lines, args = []) => {
+    const env = `${fakeAdminEnv('funding')}${lines.map((line) => `${line}\n`).join('')}`;
+    return makeSandbox({ checkout: { [ENV_FILES.qa.now]: env } }).runScript(DEPLOY, [...LOCAL_QA, ...args]);
+  };
+
+  it('deploys an env file with none of them, and says nothing of them', () => {
+    const deployed = deployWith([]);
+
+    assert.equal(deployed.status, 0, deployed.stderr);
+    assert.doesNotMatch(deployed.stderr, /BRAND_WALLET_SECRET|MANAGER_FUNDING/);
+  });
+
+  it('deploys funding set up with a secret and a token of its own, and prints neither', () => {
+    const deployed = deployWith([SET_UP, `BRAND_WALLET_SECRET=${SECRET}`, `MANAGER_FUNDING_TOKEN=${TOKEN}`]);
+
+    assert.equal(deployed.status, 0, deployed.stderr);
+    assert.doesNotMatch(deployed.stderr, /BRAND_WALLET_SECRET|MANAGER_FUNDING/);
+    assert.equal((deployed.stdout + deployed.stderr).includes(SECRET), false);
+    assert.equal((deployed.stdout + deployed.stderr).includes(TOKEN), false);
+  });
+
+  it('deploys a secret alone, which gives the API its wallet before funding is set up', () => {
+    const deployed = deployWith([`BRAND_WALLET_SECRET=${SECRET.toUpperCase()}`]);
+
+    assert.equal(deployed.status, 0, deployed.stderr);
+  });
+
+  it('refuses funding set up without a BRAND_WALLET_SECRET, and runs nothing', () => {
+    for (const lines of [
+      [SET_UP, `MANAGER_FUNDING_TOKEN=${TOKEN}`],
+      [SET_UP, 'BRAND_WALLET_SECRET=', `MANAGER_FUNDING_TOKEN=${TOKEN}`],
+    ]) {
+      const refused = deployWith(lines);
+
+      assert.equal(refused.status, 1, refused.stderr);
+      assert.match(refused.stderr, /ERROR: \S+: BRAND_WALLET_SECRET is missing or empty/);
+      assert.match(refused.stderr, /1 problem\(s\) in /);
+      assert.deepEqual(refused.calls, [], 'a tool ran before the refusal');
+    }
+  });
+
+  it('refuses a BRAND_WALLET_SECRET that is not 64 hex characters, set up or not, and prints none of it', () => {
+    for (const secret of [SECRET.slice(2), `0x${SECRET}`, `${SECRET.slice(2)}zz`]) {
+      for (const lines of [
+        [`BRAND_WALLET_SECRET=${secret}`],
+        [SET_UP, `BRAND_WALLET_SECRET=${secret}`, `MANAGER_FUNDING_TOKEN=${TOKEN}`],
+      ]) {
+        const refused = deployWith(lines);
+
+        assert.equal(refused.status, 1, refused.stderr);
+        assert.match(refused.stderr, /BRAND_WALLET_SECRET must be 64 hex characters/);
+        assert.equal((refused.stdout + refused.stderr).includes(secret.replace(/^0x/, '')), false, secret);
+      }
+    }
+  });
+
+  it('refuses a MANAGER_FUNDING_TOKEN under 32 characters or with a space, and prints none of it', () => {
+    for (const [token, problem] of [
+      ['', /MANAGER_FUNDING_TOKEN must be at least 32 characters \(got 0\)/],
+      ['short-funding-token', /MANAGER_FUNDING_TOKEN must be at least 32 characters \(got 19\)/],
+      ['"a funding token with spaces, long enough"', /MANAGER_FUNDING_TOKEN must be printable ASCII with no space/],
+    ]) {
+      const refused = deployWith([SET_UP, `BRAND_WALLET_SECRET=${SECRET}`, `MANAGER_FUNDING_TOKEN=${token}`]);
+
+      assert.equal(refused.status, 1, refused.stderr);
+      assert.match(refused.stderr, problem);
+      if (token !== '') assert.equal((refused.stdout + refused.stderr).includes(token.replaceAll('"', '')), false);
+    }
+  });
+
+  it('refuses a MANAGER_FUNDING_TOKEN with any character beyond printable ASCII, as the API does, and prints none of it', () => {
+    for (const [what, token] of [
+      ['a letter beyond ASCII', 'fixture-funding-token-of-thirty-two-characters-é'],
+      ['a tab', '"fixture-funding-token\twith-a-tab-inside-it"'],
+      ['a zero-width space', 'fixture-funding-token\u200bwith-a-zero-width-space'],
+    ]) {
+      const refused = deployWith([SET_UP, `BRAND_WALLET_SECRET=${SECRET}`, `MANAGER_FUNDING_TOKEN=${token}`]);
+
+      assert.equal(refused.status, 1, `${what}: ${refused.stderr}`);
+      assert.match(refused.stderr, /MANAGER_FUNDING_TOKEN must be printable ASCII with no space/, what);
+      assert.equal((refused.stdout + refused.stderr).includes('fixture-funding-token'), false, what);
+    }
+  });
+
+  it('deploys a MANAGER_FUNDING_TOKEN of any printable ASCII, punctuation included', () => {
+    const deployed = deployWith([
+      SET_UP,
+      `BRAND_WALLET_SECRET=${SECRET}`,
+      'MANAGER_FUNDING_TOKEN=!fixture~funding+token/0123456789=_-*',
+    ]);
+
+    assert.equal(deployed.status, 0, deployed.stderr);
+    assert.doesNotMatch(deployed.stderr, /MANAGER_FUNDING/);
+  });
+
+  it('refuses a MANAGER_FUNDING_TOKEN without MANAGER_FUNDING_URL, as the API does', () => {
+    const refused = deployWith([`BRAND_WALLET_SECRET=${SECRET}`, `MANAGER_FUNDING_TOKEN=${TOKEN}`]);
+
+    assert.equal(refused.status, 1, refused.stderr);
+    assert.match(refused.stderr, /MANAGER_FUNDING_TOKEN is set without MANAGER_FUNDING_URL/);
+  });
+
+  it("refuses the sample's secret and token, naming both and the option that lets a test install through", () => {
+    const refused = deployWith([
+      SET_UP,
+      `BRAND_WALLET_SECRET=${SAMPLE_SECRET}`,
+      `MANAGER_FUNDING_TOKEN=${SAMPLE_TOKEN}`,
+    ]);
+
+    assert.equal(refused.status, 1, refused.stderr);
+    assert.match(refused.stderr, /ERROR: \S+: BRAND_WALLET_SECRET is the placeholder from \.env\.sample/);
+    assert.match(refused.stderr, /ERROR: \S+: MANAGER_FUNDING_TOKEN is the placeholder from \.env\.sample/);
+    assert.match(refused.stderr, /2 problem\(s\) in /);
+    assert.match(refused.stderr, /--allow-sample-secrets/);
+    assert.deepEqual(refused.calls, [], 'a tool ran before the refusal');
+  });
+
+  it("refuses the sample's secret before funding is set up too, since the first start creates the wallet with it", () => {
+    const refused = deployWith([`BRAND_WALLET_SECRET=${SAMPLE_SECRET.toUpperCase()}`]);
+
+    assert.equal(refused.status, 1, refused.stderr);
+    assert.match(refused.stderr, /BRAND_WALLET_SECRET is the placeholder from \.env\.sample/);
+  });
+
+  it('deploys them with --allow-sample-secrets, and warns about each', () => {
+    const deployed = deployWith(
+      [SET_UP, `BRAND_WALLET_SECRET=${SAMPLE_SECRET}`, `MANAGER_FUNDING_TOKEN=${SAMPLE_TOKEN}`],
+      ['--allow-sample-secrets'],
+    );
+
+    assert.equal(deployed.status, 0, deployed.stderr);
+    assert.match(deployed.stderr, /WARNING: BRAND_WALLET_SECRET is the placeholder/);
+    assert.match(deployed.stderr, /WARNING: MANAGER_FUNDING_TOKEN is the placeholder/);
+    assert.doesNotMatch(deployed.stderr, /ERROR/);
+  });
+
+  it('refuses the values the committed .env.sample ships, once its token line is uncommented', () => {
+    const sample = readFileSync(new URL('../../backend/.env.sample', import.meta.url), 'utf8');
+    const secret = /^BRAND_WALLET_SECRET=(\S+)$/m.exec(sample)?.[1];
+    const token = /^# MANAGER_FUNDING_TOKEN=(\S+)$/m.exec(sample)?.[1];
+    assert.ok(secret && token, 'the sample no longer carries both placeholders');
+
+    const refused = deployWith([SET_UP, `BRAND_WALLET_SECRET=${secret}`, `MANAGER_FUNDING_TOKEN=${token}`]);
+
+    assert.equal(refused.status, 1, refused.stderr);
+    assert.match(refused.stderr, /BRAND_WALLET_SECRET is the placeholder/);
+    assert.match(refused.stderr, /MANAGER_FUNDING_TOKEN is the placeholder/);
+  });
+
+  it('names the funding keys under the option in --help', () => {
+    const help = makeSandbox().runScript(DEPLOY, ['--help']);
+
+    assert.equal(help.status, 0, help.stderr);
+    assert.match(help.stdout, /--allow-sample-secrets[^]*BRAND_WALLET_SECRET[^]*MANAGER_FUNDING_TOKEN[^]*-h, --help/);
   });
 });

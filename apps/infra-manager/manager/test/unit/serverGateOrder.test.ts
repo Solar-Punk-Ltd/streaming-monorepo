@@ -58,6 +58,16 @@ describe('server.ts mount order', () => {
     }
   });
 
+  it('mounts the funding API first, then refuses a bearer on everything after it, before the cross-site check', () => {
+    const lines = mountLines(serverSource());
+    const funding = lines.findIndex((line) => line.startsWith('app.use(ADMIN_FUNDING_PATH,'));
+    const refusal = lines.indexOf('app.use(refuseFundingBearer);');
+    assert.notEqual(funding, -1, 'the funding API is not mounted at ADMIN_FUNDING_PATH');
+    assert.equal(lines[funding - 1], 'app.use(requestLogger);', 'only the request log may run before the funding API');
+    assert.equal(refusal, funding + 1, 'the bearer refusal must sit right after the funding API');
+    assert.ok(refusal < lines.indexOf('app.use(requireSameSite);'), 'the bearer is refused before anything else');
+  });
+
   it('checks every write for cross-site before anything else looks at it', () => {
     const lines = mountLines(serverSource());
 

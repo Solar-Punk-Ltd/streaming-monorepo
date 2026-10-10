@@ -40,7 +40,18 @@ export type AuditAction =
   | 'catalogue.batch.pin'
   | 'catalogue.move.start'
   | 'catalogue.move.done'
-  | 'catalogue.move.failed';
+  | 'catalogue.move.failed'
+  | 'funding.pin'
+  | 'funding.transfer.request'
+  | 'funding.transfer.sent'
+  | 'funding.transfer.confirmed'
+  | 'funding.transfer.failed'
+  | 'funding.stamp.request'
+  | 'funding.stamp.confirmed'
+  | 'funding.stamp.failed'
+  | 'funding.chequebook.request'
+  | 'funding.chequebook.confirmed'
+  | 'funding.chequebook.failed';
 
 /**
  * One row of `audit_log`: who did what to which stream, and what it moved.
@@ -48,8 +59,11 @@ export type AuditAction =
  * `details` is whatever the action has to say beyond that — the fields an
  * edit changed, the feed index a write landed at and what it published, the
  * error a publish failed with, the user a user action was done to, the stage
- * a stage action was about. Never a secret: no publish key, no password or
- * hash, no session token, no SRT passphrase and no uploader token or its hash.
+ * a stage action was about, the amounts and nodes of a funding send, the
+ * batches, nodes and costs of a stamp operation, the target, nodes and moves
+ * of a chequebook operation. Never a secret: no publish
+ * key, no password or hash, no session token, no SRT passphrase, no uploader
+ * token or its hash, and no signed transaction or wallet key.
  */
 export interface AuditEntry {
   actor: Actor;

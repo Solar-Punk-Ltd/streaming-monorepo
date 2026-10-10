@@ -1,0 +1,459 @@
+import { describe, expect, it } from 'vitest';
+import type { FundingView } from '@streaming-monorepo/web2-admin-common';
+
+import {
+  acceptsDaysTyping,
+  allBatchRows,
+  batchGroups,
+  checkStamps,
+  DAYS_PROBLEM,
+  EXPIRED_TEXT,
+  hasTickBox,
+  NO_PRICE_PROBLEM,
+  NOT_READ_IN_FULL_TEXT,
+  NOT_USABLE_TEXT,
+  readDays,
+  reportsBatches,
+  tickableBatches,
+  WALLET_UNREAD_TEXT,
+  whyNoTickBox,
+  whyNotOperable,
+  type StampSelection,
+} from '../components/funding/stamps';
+import {
+  BATCH,
+  DAY,
+  makeBatch,
+  makeNode,
+  makeStampView,
+  makeView,
+  POSTAGE,
+  THIRTY_DAYS_DEPTH_20,
+  unreadBatch,
+} from './fundingFixtures';
+
+/** The price of postage the view shows, which every top-up is quoted at and asked for with. */
+const PRICE = POSTAGE.pricePerChunkPerBlockPlur;
+
+/** A top-up of 30 days, or the operation and days given, with these batches ticked. */
+function selection(ticked: string[], over: Partial<StampSelection> = {}): StampSelection {
+  return { operation: 'topup', days: '30', steps: 1, ticked: new Set(ticked), ...over };
+}
+
+/** What 30 days cost the main stage's batch of depth 22: four times a batch of depth 20. */
+const THIRTY_DAYS_DEPTH_22 = (BigInt(THIRTY_DAYS_DEPTH_20) * 4n).toString();
+
+/** Every node holds 5 xBZZ. */
+const FIVE_XBZZ = 50_000_000_000_000_000n;
+
+describe('the batches, grouped', () => {
+  it('puts the catalogue batch on top, then each stage, with a row for each node that has a batch', () => {
+    const groups = batchGroups(makeStampView());
+    expect(
+      groups.map((group) => [group.title, group.nodes.catalogue, group.rows.map((row) => row.node.label)]),
+    ).toEqual([
+      ['Catalogue batch', true, ['catalogue-node']],
+      ['Main stage', false, ['stage-1-uploader', 'rung-720p', 'rung-1080p']],
+      ['Second stage', false, ['pool-360p']],
+    ]);
+  });
+
+  it('keeps a stage with no batch, and a catalogue node without one, as a group with no rows', () => {
+    const groups = batchGroups(makeView());
+    expect(groups.map((group) => [group.title, group.rows.length])).toEqual([
+      ['Catalogue batch', 0],
+      ['Main stage', 0],
+      ['Second stage', 0],
+    ]);
+  });
+
+  it('lists a batch two stages share once, under the node that lists it first', () => {
+    const pooled = `0x${'ff'.repeat(32)}`;
+    const shared = makeNode({
+      nodeId: 'pool:720p',
+      label: 'Main stage 720p rung',
+      batch: makeBatch({ batchId: pooled }),
+    });
+    const view = makeStampView();
+    view.stages[0]?.nodes.push(shared);
+    view.stages[1]?.nodes.push({ ...shared, label: 'Second stage 720p rung' });
+    expect(batchGroups(view).filter((group) => group.rows.some((row) => row.batch.batchId === pooled))).toHaveLength(2);
+    const rows = allBatchRows(view).filter((row) => row.batch.batchId === pooled);
+    expect(rows.map((row) => row.node.label)).toEqual(['Main stage 720p rung']);
+    expect(allBatchRows(view).map((row) => row.batch.batchId)).toEqual([
+      BATCH.catalogue,
+      BATCH.stage,
+      BATCH.expired,
+      BATCH.unread,
+      pooled,
+      BATCH.rung,
+    ]);
+  });
+
+  it('asks for a batch two listings carry under the first that can take it, or the first when neither can', () => {
+    const pooled = `0x${'ff'.repeat(32)}`;
+    const pool = { nodeId: 'pool:720p', role: 'rung' } as const;
+    const view = makeStampView();
+    // The main stage's listing could not be read about the batch; the second stage's could.
+    view.stages[0]?.nodes.push(makeNode({ ...pool, label: 'main-720p', batch: unreadBatch(pooled) }));
+    view.stages[1]?.nodes.push(makeNode({ ...pool, label: 'second-720p', batch: makeBatch({ batchId: pooled }) }));
+    const listedFor = (batchId: string) =>
+      allBatchRows(view)
+        .filter((row) => row.batch.batchId === batchId)
+        .map((row) => row.node.label);
+
+    expect(listedFor(pooled)).toEqual(['second-720p']);
+    const check = checkStamps(view, selection([pooled]));
+    expect(check.lines.map((line) => [line.node.label, line.batch.batchId])).toEqual([['second-720p', pooled]]);
+    expect(check.problems).toEqual([]);
+    // Still in the place the batch is first listed.
+    expect(allBatchRows(view).map((row) => row.batch.batchId)).toEqual([
+      BATCH.catalogue,
+      BATCH.stage,
+      BATCH.expired,
+      BATCH.unread,
+      pooled,
+      BATCH.rung,
+    ]);
+
+    // Expired in the second listing as well: neither can take it, and the first is kept.
+    const second = view.stages[1]?.nodes[1];
+    if (second) view.stages[1]!.nodes[1] = { ...second, batch: makeBatch({ batchId: pooled, ttlSeconds: 0 }) };
+    expect(listedFor(pooled)).toEqual(['main-720p']);
+  });
+
+  it('knows whether the manager reports batches at all, which one older than the Stamps tab does not', () => {
+    expect(reportsBatches(makeView())).toBe(false);
+    expect(reportsBatches(makeStampView())).toBe(true);
+    const none = makeView();
+    if (none.catalogue) none.catalogue = { ...none.catalogue, batch: null };
+    expect(reportsBatches(none)).toBe(true);
+  });
+});
+
+describe('which batches can be ticked', () => {
+  it('ticks a batch read whole, usable and not expired', () => {
+    expect(whyNotOperable(makeBatch())).toBeNull();
+  });
+
+  it('says why it cannot tick one: the read error, expired, not usable, or not read in full', () => {
+    expect(whyNotOperable(unreadBatch())).toBe('The node did not answer in time.');
+    expect(whyNotOperable(makeBatch({ ttlSeconds: 0, usable: false }))).toBe(EXPIRED_TEXT);
+    expect(whyNotOperable(makeBatch({ usable: false }))).toBe(NOT_USABLE_TEXT);
+    expect(whyNotOperable(makeBatch({ ttlSeconds: null }))).toBe(NOT_READ_IN_FULL_TEXT);
+    expect(whyNotOperable(makeBatch({ usable: null }))).toBe(NOT_READ_IN_FULL_TEXT);
+    expect(whyNotOperable(makeBatch({ readError: '' }))).toBe(NOT_READ_IN_FULL_TEXT);
+  });
+
+  it("has no tick box for a batch whose node's wallet was not read, and says so after what is wrong with the batch", () => {
+    const unread = makeNode({
+      walletAddress: null,
+      xdaiWei: null,
+      xbzzPlur: null,
+      readError: 'The node did not answer.',
+    });
+    expect(hasTickBox({ node: makeNode(), batch: makeBatch() })).toBe(true);
+    expect(whyNoTickBox({ node: makeNode(), batch: makeBatch() })).toBeNull();
+    expect(hasTickBox({ node: unread, batch: makeBatch() })).toBe(false);
+    expect(whyNoTickBox({ node: unread, batch: makeBatch() })).toBe(WALLET_UNREAD_TEXT);
+    // Any of the three unread, as the Chequebooks tab's rule has it.
+    for (const over of [{ walletAddress: null }, { xdaiWei: null }, { xbzzPlur: null }]) {
+      expect(whyNoTickBox({ node: makeNode(over), batch: makeBatch() }), JSON.stringify(over)).toBe(WALLET_UNREAD_TEXT);
+    }
+    // What is wrong with the batch comes first.
+    expect(whyNoTickBox({ node: unread, batch: makeBatch({ ttlSeconds: 0, usable: false }) })).toBe(EXPIRED_TEXT);
+    expect(WALLET_UNREAD_TEXT).toBe("Its node's wallet could not be read, so it cannot be topped up or diluted.");
+  });
+
+  it('leaves it out of what Select all and its group tick, and keeps a shared batch for a listing whose wallet was read', () => {
+    const view = makeStampView();
+    const [rung] = view.stages[1]?.nodes ?? [];
+    if (view.stages[1] && rung) view.stages[1].nodes = [{ ...rung, xdaiWei: null, xbzzPlur: null }];
+    expect(batchGroups(view).map((group) => tickableBatches(group))).toEqual([[BATCH.catalogue], [BATCH.stage], []]);
+
+    // A batch a pool shares, listed first by a stage whose reading of the node's wallet failed.
+    const pooled = `0x${'ff'.repeat(32)}`;
+    const pool = { nodeId: 'pool:720p', role: 'rung', batch: makeBatch({ batchId: pooled }) } as const;
+    view.stages[0]?.nodes.push(makeNode({ ...pool, label: 'main-720p', walletAddress: null }));
+    view.stages[1]?.nodes.push(makeNode({ ...pool, label: 'second-720p' }));
+    expect(
+      allBatchRows(view)
+        .filter((row) => row.batch.batchId === pooled)
+        .map((row) => row.node.label),
+    ).toEqual(['second-720p']);
+    expect(checkStamps(view, selection([pooled])).lines.map((line) => line.node.label)).toEqual(['second-720p']);
+  });
+});
+
+describe('the days of a top-up', () => {
+  it('takes any whole number of days from 1, with no cap', () => {
+    for (const [typed, days] of [
+      ['1', 1],
+      ['30', 30],
+      [' 7 ', 7],
+      ['365', 365],
+      ['4000', 4000],
+      ['007', 7],
+    ] as const) {
+      expect(readDays(typed), typed).toEqual({ kind: 'ok', days });
+    }
+  });
+
+  it('refuses nothing, zero, a fraction, a sign, a letter and more than a whole number holds', () => {
+    for (const typed of ['', '0', '1.5', '-1', '+3', '3d', '9'.repeat(20)]) {
+      expect(readDays(typed), typed).toEqual({ kind: 'invalid', problem: DAYS_PROBLEM });
+    }
+  });
+
+  it('lets only digits into the field as they are typed', () => {
+    for (const typed of ['', '1', '30', '007']) expect(acceptsDaysTyping(typed), typed).toBe(true);
+    for (const typed of ['1.', '-', '3 ', 'a', '1e3']) expect(acceptsDaysTyping(typed), typed).toBe(false);
+  });
+});
+
+describe('what a top-up comes to', () => {
+  it('asks for nothing with nothing ticked', () => {
+    const check = checkStamps(makeStampView(), selection([]));
+    expect(check.lines).toEqual([]);
+    expect(check.problems).toEqual(['Tick a batch to top it up.']);
+    expect(check.totalCostPlur).toBe('0');
+  });
+
+  it('asks for each ticked batch at the depth and the price it shows, with its cost at that price and its time left after', () => {
+    const check = checkStamps(makeStampView(), selection([BATCH.catalogue, BATCH.rung]));
+    expect(check.problems).toEqual([]);
+    expect(check.lines.map((line) => line.request)).toEqual([
+      {
+        kind: 'topup',
+        nodeId: 'catalogue:bee',
+        batchId: BATCH.catalogue,
+        expectedDepth: 20,
+        days: 30,
+        pricePerChunkPerBlockPlur: PRICE,
+      },
+      {
+        kind: 'topup',
+        nodeId: 'stage-2:360p',
+        batchId: BATCH.rung,
+        expectedDepth: 20,
+        days: 30,
+        pricePerChunkPerBlockPlur: PRICE,
+      },
+    ]);
+    expect(check.lineOf.get(BATCH.catalogue)).toMatchObject({
+      costPlur: THIRTY_DAYS_DEPTH_20,
+      ttlAfterSeconds: 70 * DAY,
+    });
+    expect(check.lineOf.get(BATCH.rung)).toMatchObject({ costPlur: THIRTY_DAYS_DEPTH_20, ttlAfterSeconds: 40 * DAY });
+    expect(check.totalCostPlur).toBe((BigInt(THIRTY_DAYS_DEPTH_20) * 2n).toString());
+    expect(check.ledgerOf.get('catalogue:bee')).toEqual({
+      costPlur: THIRTY_DAYS_DEPTH_20,
+      afterPlur: (FIVE_XBZZ - BigInt(THIRTY_DAYS_DEPTH_20)).toString(),
+      shortPlur: null,
+      fundPlur: null,
+      noGas: false,
+    });
+  });
+
+  it('quotes each top-up at the price of postage the view shows, which the request names', () => {
+    const view = makeStampView({ postage: { ...POSTAGE, pricePerChunkPerBlockPlur: '48000' } });
+    const check = checkStamps(view, selection([BATCH.catalogue]));
+    expect(check.lines[0]?.request).toMatchObject({ kind: 'topup', pricePerChunkPerBlockPlur: '48000' });
+    expect(check.lines[0]?.costPlur).toBe((BigInt(THIRTY_DAYS_DEPTH_20) * 2n).toString());
+  });
+
+  it('says what a node lacks for its top-ups, exactly and rounded up to three decimals', () => {
+    const check = checkStamps(makeStampView(), selection([BATCH.stage]));
+    expect(check.lineOf.get(BATCH.stage)?.costPlur).toBe(THIRTY_DAYS_DEPTH_22);
+    expect(check.ledgerOf.get('stage-1:bee')).toEqual({
+      costPlur: THIRTY_DAYS_DEPTH_22,
+      afterPlur: null,
+      shortPlur: '2183852646400000',
+      fundPlur: '2190000000000000',
+      noGas: false,
+    });
+    expect(check.problems).toEqual(['stage-1-uploader is short of 0.219 xBZZ for its top-ups.']);
+  });
+
+  it('counts every batch a node pays for against its one wallet', () => {
+    // The catalogue node is the main stage's own node here, with the catalogue batch and the stage's batch.
+    const view = makeStampView();
+    if (view.catalogue) view.catalogue = { ...view.catalogue, nodeId: 'stage-1:bee' };
+    const check = checkStamps(view, selection([BATCH.catalogue, BATCH.stage], { days: '7' }));
+    const sevenDays = 120_960n * 24_000n * 2n ** 20n;
+    const cost = sevenDays + sevenDays * 4n;
+    expect(check.ledgerOf.get('stage-1:bee')).toEqual({
+      costPlur: cost.toString(),
+      afterPlur: (FIVE_XBZZ - cost).toString(),
+      shortPlur: null,
+      fundPlur: null,
+      noGas: false,
+    });
+    expect(check.ledgerOf.size).toBe(1);
+  });
+
+  it('asks for a batch two stages share once, and counts it once against its node', () => {
+    const pooled = `0x${'ff'.repeat(32)}`;
+    const shared = makeNode({ nodeId: 'pool:720p', label: 'shared-720p', batch: makeBatch({ batchId: pooled }) });
+    const view = makeStampView();
+    view.stages[0]?.nodes.push(shared);
+    view.stages[1]?.nodes.push(shared);
+    const check = checkStamps(view, selection([pooled]));
+    expect(check.lines.map((line) => line.request)).toEqual([
+      {
+        kind: 'topup',
+        nodeId: 'pool:720p',
+        batchId: pooled,
+        expectedDepth: 20,
+        days: 30,
+        pricePerChunkPerBlockPlur: PRICE,
+      },
+    ]);
+    expect(check.ledgerOf.get('pool:720p')?.costPlur).toBe(THIRTY_DAYS_DEPTH_20);
+  });
+
+  it('never counts a tick left on a batch that can no longer be ticked', () => {
+    const check = checkStamps(makeStampView(), selection([BATCH.expired, BATCH.unread]));
+    expect(check.lines).toEqual([]);
+    expect(check.problems).toEqual(['Tick a batch to top it up.']);
+  });
+
+  it('cannot price a top-up without days it can read or without the price of postage', () => {
+    const noDays = checkStamps(makeStampView(), selection([BATCH.catalogue], { days: '' }));
+    expect(noDays.problems).toEqual([DAYS_PROBLEM]);
+    expect(noDays.lines[0]).toMatchObject({ request: null, costPlur: null, ttlAfterSeconds: null });
+    expect(noDays.totalCostPlur).toBeNull();
+
+    // A top-up names the price it was quoted at, so with none there is nothing to ask for, nor a shortfall to know.
+    const noPrice = checkStamps(makeStampView({ postage: null }), selection([BATCH.catalogue]));
+    expect(noPrice.problems).toEqual([NO_PRICE_PROBLEM]);
+    expect(noPrice.lines[0]).toMatchObject({ request: null, costPlur: null, ttlAfterSeconds: null });
+    expect(noPrice.ledgerOf.get('catalogue:bee')).toEqual({
+      costPlur: null,
+      afterPlur: null,
+      shortPlur: null,
+      fundPlur: null,
+      noGas: false,
+    });
+    expect(noPrice.totalCostPlur).toBeNull();
+  });
+
+  it('reads a view that names no price of postage at all as one with none, and says so', () => {
+    // As an answer from before the price of postage would come: no `postage` at all, rather than null.
+    const { postage: _price, ...unpriced } = makeStampView();
+    const check = checkStamps(unpriced as FundingView, selection([BATCH.catalogue]));
+    expect(check.problems).toEqual([NO_PRICE_PROBLEM]);
+    expect(check.lines[0]).toMatchObject({ request: null, costPlur: null });
+  });
+
+  it('cannot ask a node with no xDAI for the gas, and never counts a tick on a batch whose node’s wallet was not read', () => {
+    const view = makeStampView();
+    if (view.catalogue) view.catalogue = { ...view.catalogue, xdaiWei: '0' };
+    if (view.stages[1]?.nodes[0])
+      view.stages[1].nodes[0] = { ...view.stages[1].nodes[0], xdaiWei: null, xbzzPlur: null };
+    const check = checkStamps(view, selection([BATCH.catalogue, BATCH.rung]));
+    expect(check.lines.map((line) => line.batch.batchId)).toEqual([BATCH.catalogue]);
+    expect(check.problems).toEqual(['catalogue-node holds no xDAI to pay the gas.']);
+    expect(check.ledgerOf.get('catalogue:bee')).toMatchObject({ shortPlur: null, fundPlur: null, noGas: true });
+    expect(check.ledgerOf.has('stage-2:360p')).toBe(false);
+
+    // With nothing else ticked, there is nothing to ask for.
+    expect(checkStamps(view, selection([BATCH.rung])).problems).toEqual(['Tick a batch to top it up.']);
+  });
+
+  it('knows a node holds no xDAI for the gas while its top-ups cannot be priced', () => {
+    const view = makeStampView({ postage: null });
+    if (view.catalogue) view.catalogue = { ...view.catalogue, xdaiWei: '0' };
+    const check = checkStamps(view, selection([BATCH.catalogue]));
+    expect(check.ledgerOf.get('catalogue:bee')).toEqual({
+      costPlur: null,
+      afterPlur: null,
+      shortPlur: null,
+      fundPlur: null,
+      noGas: true,
+    });
+    expect(check.problems).toEqual([NO_PRICE_PROBLEM, 'catalogue-node holds no xDAI to pay the gas.']);
+  });
+
+  it('flags a node both short of xBZZ and with no xDAI, in its one ledger', () => {
+    const view = makeStampView();
+    const [uploader, ...rest] = view.stages[0]?.nodes ?? [];
+    if (view.stages[0] && uploader) view.stages[0].nodes = [{ ...uploader, xdaiWei: '0' }, ...rest];
+    const check = checkStamps(view, selection([BATCH.stage]));
+    expect(check.ledgerOf.get('stage-1:bee')).toMatchObject({ fundPlur: '2190000000000000', noGas: true });
+    expect(check.problems).toEqual([
+      'stage-1-uploader is short of 0.219 xBZZ for its top-ups.',
+      'stage-1-uploader holds no xDAI to pay the gas.',
+    ]);
+  });
+});
+
+describe('what a dilution comes to', () => {
+  const dilute = (ticked: string[], steps: 1 | 2 = 1, view: FundingView = makeStampView()) =>
+    checkStamps(view, selection(ticked, { operation: 'dilute', steps }));
+
+  it('asks for each ticked batch one or two steps deeper, and halves its time left for each', () => {
+    const one = dilute([BATCH.catalogue]);
+    expect(one.problems).toEqual([]);
+    expect(one.lines[0]).toMatchObject({
+      request: { kind: 'dilute', nodeId: 'catalogue:bee', batchId: BATCH.catalogue, expectedDepth: 20, steps: 1 },
+      newDepth: 21,
+      ttlAfterSeconds: 20 * DAY,
+      costPlur: null,
+      problem: null,
+    });
+    expect(dilute([BATCH.catalogue], 2).lines[0]).toMatchObject({ newDepth: 22, ttlAfterSeconds: 10 * DAY });
+    expect(one.totalCostPlur).toBeNull();
+    // A dilution costs no xBZZ: its node's ledger has no amounts, only whether it can pay the gas.
+    expect(one.ledgerOf.get('catalogue:bee')).toEqual({
+      costPlur: null,
+      afterPlur: null,
+      shortPlur: null,
+      fundPlur: null,
+      noGas: false,
+    });
+  });
+
+  it('refuses one that would leave its batch under 7 days, in the quote’s own words', () => {
+    const check = dilute([BATCH.catalogue, BATCH.stage]);
+    expect(check.lineOf.get(BATCH.stage)).toMatchObject({
+      ttlAfterSeconds: 6 * DAY,
+      problem: 'It would leave the batch under 7 days.',
+    });
+    expect(check.problems).toEqual([
+      'The batch 0xbbbbbb…bbbbbb of stage-1-uploader: It would leave the batch under 7 days.',
+    ]);
+    expect(dilute([BATCH.catalogue], 2).problems).toEqual([]);
+  });
+
+  it('refuses one that would take its batch past depth 40, the manager’s ceiling, in the quote’s own words', () => {
+    const view = makeStampView();
+    if (view.catalogue) view.catalogue = { ...view.catalogue, batch: makeBatch({ depth: 39, ttlSeconds: 365 * DAY }) };
+    const check = dilute([BATCH.catalogue], 2, view);
+    expect(check.lineOf.get(BATCH.catalogue)).toMatchObject({
+      newDepth: 41,
+      problem: 'It would take the batch past depth 40, the deepest the manager dilutes a batch to.',
+    });
+    expect(check.problems).toEqual([
+      'The batch 0xaaaaaa…aaaaaa of catalogue-node: It would take the batch past depth 40, the deepest the manager dilutes a batch to.',
+    ]);
+    expect(dilute([BATCH.catalogue], 1, view).problems).toEqual([]);
+  });
+
+  it('pays no xBZZ, so a node short of it may dilute, but not one with no xDAI for the gas', () => {
+    const poor = makeStampView();
+    if (poor.catalogue) poor.catalogue = { ...poor.catalogue, xbzzPlur: '0' };
+    expect(dilute([BATCH.catalogue], 1, poor).problems).toEqual([]);
+    expect(dilute([BATCH.catalogue], 1, poor).ledgerOf.get('catalogue:bee')).toMatchObject({
+      fundPlur: null,
+      noGas: false,
+    });
+    if (poor.catalogue) poor.catalogue = { ...poor.catalogue, xdaiWei: '0' };
+    expect(dilute([BATCH.catalogue], 1, poor).problems).toEqual(['catalogue-node holds no xDAI to pay the gas.']);
+    expect(dilute([BATCH.catalogue], 1, poor).ledgerOf.get('catalogue:bee')).toMatchObject({ noGas: true });
+  });
+
+  it('asks for nothing with nothing ticked', () => {
+    expect(dilute([]).problems).toEqual(['Tick a batch to dilute it.']);
+  });
+});

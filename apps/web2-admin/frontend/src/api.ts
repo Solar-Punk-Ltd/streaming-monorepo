@@ -22,6 +22,34 @@ import type {
 } from '@streaming-monorepo/web2-admin-common';
 import { VERSION_PATH } from '@streaming-monorepo/web2-admin-common';
 
+import {
+  FUNDING_CHEQUEBOOK_OPERATIONS_ADMIN_PATH,
+  FUNDING_PATH,
+  FUNDING_PINS_PATH,
+  FUNDING_STAMP_OPERATIONS_ADMIN_PATH,
+  FUNDING_TRANSFERS_ADMIN_PATH,
+  fundingBulkPath,
+  fundingChequebookBulkPath,
+  fundingStampBulkPath,
+  type FundingBulkAnswer,
+  type FundingChequebookBulkAnswer,
+  type FundingChequebookItem,
+  type FundingChequebookOperationsAnswer,
+  type FundingChequebookOperationsRequest,
+  type FundingPinsAnswer,
+  type FundingPinsRequest,
+  type FundingStampBulkAnswer,
+  type FundingStampItem,
+  type FundingStampOperationsAnswer,
+  type FundingStampOperationsRequest,
+  type FundingTransferItem,
+  type FundingTransferItemRequest,
+  type FundingTransfersAnswer,
+  type FundingTransfersRequest,
+  type FundingView,
+  type StampOperationItemRequest,
+} from '@streaming-monorepo/web2-admin-common';
+
 import { SIGN_IN_MESSAGES, tooManyAttempts } from './authMessages';
 import {
   apiFetch,
@@ -295,6 +323,118 @@ export function startCatalogueMove(targetBatchId: string): Promise<CatalogueMove
 export async function fetchCatalogueWrite(): Promise<CatalogueWriteStatus> {
   const body = await getJson<CatalogueStampResponse>(`${API}/catalogue-stamp`);
   return body.catalogueWrite;
+}
+
+// --- funding ----------------------------------------------------------------
+
+/** The brand wallet and every stage's nodes with their balances and address checks, as the Funding page shows them. */
+export function fetchFunding(): Promise<FundingView> {
+  return getJson<FundingView>(FUNDING_PATH);
+}
+
+/**
+ * A funding write that carries the operator's own password. As with the password change, a 401 here is a wrong
+ * password and not a session that ended, unless the API says the session ended, and a 429 is the login limiter's
+ * lockout.
+ */
+async function sendWithPassword<T>(path: string, body: unknown, fallback: string): Promise<T> {
+  const res = await apiFetch(
+    path,
+    { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(body) },
+    { allowUnauthorized: true },
+  );
+  if (res.status === 401) {
+    const answer = (await res.json().catch(() => ({}))) as { error?: string };
+    if (answer.error === 'unauthenticated') sessionEnded();
+    throw new ApiError('That is not your password.', 'invalid_credentials', 401);
+  }
+  if (res.status === 429) throw new ApiError(tooManyAttempts(await retryAfterOf(res)), 'too_many_attempts', 429);
+  if (!res.ok) await failWith(res, fallback);
+  return (await res.json()) as T;
+}
+
+/** Confirms the wallet addresses the manager reports for these nodes now, the only ones a transfer may go to. */
+export function confirmFundingPins(password: string, nodeIds: string[]): Promise<FundingPinsAnswer> {
+  const body: FundingPinsRequest = { password, nodeIds };
+  return sendWithPassword(FUNDING_PINS_PATH, body, 'The addresses could not be confirmed.');
+}
+
+/** Sends these amounts from the brand wallet, one transfer each, and answers the bulk they went out under. */
+export function sendFundingTransfers(
+  password: string,
+  items: FundingTransferItemRequest[],
+): Promise<FundingTransfersAnswer> {
+  const body: FundingTransfersRequest = { password, items };
+  return sendWithPassword<FundingTransfersAnswer>(
+    FUNDING_TRANSFERS_ADMIN_PATH,
+    body,
+    'The transfers could not be sent.',
+  ).catch((e: unknown) => {
+    if (e instanceof ApiError && e.code === 'conflict') throw new ApiError(EARLIER_SEND_SETTLING, e.code, e.status);
+    throw e;
+  });
+}
+
+/** What a send says when the API refuses it, 409 `conflict`, because an earlier one has not settled yet. */
+export const EARLIER_SEND_SETTLING = 'An earlier send is still settling; check it again or wait.';
+
+/** Where each transfer of a bulk stands, as the admin last heard from the manager. */
+export async function fetchFundingTransfers(bulkId: string): Promise<FundingTransferItem[]> {
+  return (await getJson<FundingBulkAnswer>(fundingBulkPath(bulkId))).items;
+}
+
+/**
+ * Tops up or dilutes these batches, each paid for from its own node's wallet, and answers the stamp bulk they went out
+ * under. No password: a stamp operation moves nothing out of the brand wallet, so the page asks in a confirm dialog.
+ */
+export function sendFundingStampOperations(items: StampOperationItemRequest[]): Promise<FundingStampOperationsAnswer> {
+  const body: FundingStampOperationsRequest = { items };
+  return sendJson<FundingStampOperationsAnswer>('POST', FUNDING_STAMP_OPERATIONS_ADMIN_PATH, body, {
+    fallback: 'The stamp operations could not be sent.',
+  }).catch((e: unknown) => {
+    if (e instanceof ApiError && e.code === 'conflict') {
+      throw new ApiError(EARLIER_STAMP_OPERATIONS_SETTLING, e.code, e.status);
+    }
+    throw e;
+  });
+}
+
+/** What a stamp bulk says when the API refuses it, 409 `conflict`, because an earlier one has not settled yet. */
+export const EARLIER_STAMP_OPERATIONS_SETTLING =
+  'Earlier stamp operations are still settling; check them again or wait.';
+
+/** Where each operation of a stamp bulk stands, as the admin last heard from the manager. */
+export async function fetchFundingStampOperations(bulkId: string): Promise<FundingStampItem[]> {
+  return (await getJson<FundingStampBulkAnswer>(fundingStampBulkPath(bulkId))).items;
+}
+
+/**
+ * Brings these chequebooks to the target, each with a deposit from its own node's wallet or a withdrawal into it, and
+ * answers the chequebook bulk they went out under, with the moves as the API journalled them. Each item names the
+ * available balance the page showed, from which, and the balance it reads when the request comes in, the API works the
+ * move out again, never more than the page showed. No password: nothing leaves the brand wallet, so the page asks in a
+ * confirm dialog.
+ */
+export function sendFundingChequebookOperations(
+  request: FundingChequebookOperationsRequest,
+): Promise<FundingChequebookOperationsAnswer> {
+  return sendJson<FundingChequebookOperationsAnswer>('POST', FUNDING_CHEQUEBOOK_OPERATIONS_ADMIN_PATH, request, {
+    fallback: 'The chequebook operations could not be sent.',
+  }).catch((e: unknown) => {
+    if (e instanceof ApiError && e.code === 'conflict') {
+      throw new ApiError(EARLIER_CHEQUEBOOK_OPERATIONS_SETTLING, e.code, e.status);
+    }
+    throw e;
+  });
+}
+
+/** What a chequebook bulk says when the API refuses it, 409 `conflict`, because an earlier one has not settled yet. */
+export const EARLIER_CHEQUEBOOK_OPERATIONS_SETTLING =
+  'Earlier chequebook operations are still settling; check them again or wait.';
+
+/** Where each operation of a chequebook bulk stands, as the admin last heard from the manager. */
+export async function fetchFundingChequebookOperations(bulkId: string): Promise<FundingChequebookItem[]> {
+  return (await getJson<FundingChequebookBulkAnswer>(fundingChequebookBulkPath(bulkId))).items;
 }
 
 // --- public config ----------------------------------------------------------

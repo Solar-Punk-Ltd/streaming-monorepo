@@ -16,6 +16,7 @@ import {
   permitsNewTransfer,
   transferHeadline,
 } from './transferEvidence';
+import { isExactTransfer, type LinkedOperation, type StoredTransferIntent } from './transferIntentStore';
 
 const operation = {
   id: '11111111-1111-4111-8111-111111111111',
@@ -121,5 +122,40 @@ describe('a transfer the preflight refused', () => {
 
   it('is not a record when the reason is not one the manager writes', () => {
     assert.equal(isCompleteTransferDetail(refused('preflight_ran_out_of_luck')), false);
+  });
+});
+
+describe('a transfer the web2 admin’s funding API requested', () => {
+  const linked: LinkedOperation = {
+    id: operation.id,
+    requestId: operation.requestId,
+    profileName: operation.profileName,
+    profileInstanceId: operation.profileInstanceId,
+    requestedBy: operation.requestedBy,
+    direction: 'deposit',
+    amountPlur: operation.amountPlur,
+    chainId: operation.chainId,
+    nodeAddress: operation.nodeAddress,
+    chequebookAddress: operation.chequebookAddress,
+    tokenAddress: operation.tokenAddress,
+  };
+  /** What this browser saved for the signed-in operator, user 7, under the same request id. */
+  const intent: StoredTransferIntent = {
+    requestId: operation.requestId,
+    accountId: 7,
+    profileName: operation.profileName,
+    profileInstanceId: operation.profileInstanceId,
+    direction: 'deposit',
+    amountPlur: operation.amountPlur,
+    createdAt: operation.createdAt,
+  };
+
+  it('is a manager record the history and the detail page show, requester and all', () => {
+    assert.equal(isTransferOperation({ ...operation, requestedBy: 'web2-admin' }), true);
+  });
+
+  it('is never taken for the signed-in operator’s own, which only a user:<id> requester can be', () => {
+    assert.equal(isExactTransfer(intent, linked), true, 'the same transfer recorded as user:7 is theirs');
+    assert.equal(isExactTransfer(intent, { ...linked, requestedBy: 'web2-admin' }), false);
   });
 });

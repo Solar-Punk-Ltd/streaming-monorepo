@@ -55,6 +55,7 @@ export function AppShell({ children }: { children: ReactNode }) {
               <Menu anchorEl={anchor} open={anchor !== null} onClose={close}>
                 <MenuItem onClick={() => go('/')}>Streams</MenuItem>
                 <MenuItem onClick={() => go('/stages')}>Stages</MenuItem>
+                <MenuItem onClick={() => go('/funding')}>Funding</MenuItem>
                 <MenuItem onClick={() => go('/access')}>Access</MenuItem>
                 <MenuItem onClick={() => void handleLogOut()}>Log out</MenuItem>
               </Menu>

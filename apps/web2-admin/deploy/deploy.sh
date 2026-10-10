@@ -59,11 +59,15 @@ readonly KNOWN_SERVICES="postgres api web"
 # console is on 8080, and both are often tunnelled from one laptop.
 readonly DEFAULT_WEB_PORT=9090
 # Published values: the first Hardhat test account's key, which every Hardhat
-# install documents, and the placeholder token in .env.sample. They must never
-# sign a real catalogue or guard a real internal API, so a deploy refuses them
-# unless --allow-sample-secrets is given.
+# install documents, and the placeholders in .env.sample: the internal API
+# token, the brand wallet's secret and the manager funding token. They must
+# never sign a real catalogue, guard a real internal API, encrypt a brand
+# wallet's key or open a manager's funding API, so a deploy refuses them unless
+# --allow-sample-secrets is given.
 readonly PUBLIC_TEST_FEED_PRIVATE_KEY="0xac0974bec39a17e36ba4a6b4d238ff944bacb478cbed5efcae784d7bf4f2ff80"
 readonly SAMPLE_INTERNAL_API_TOKEN="change-me-to-32-or-more-random-characters"
+readonly SAMPLE_BRAND_WALLET_SECRET="0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"
+readonly SAMPLE_MANAGER_FUNDING_TOKEN="change-me-to-the-managers-funding-api-token"
 
 usage() {
     cat <<'USAGE'
@@ -91,10 +95,11 @@ Flags (each one with a value also accepts it separately, as in --host admin-host
                         /opt/streaming/streaming-monorepo, shared by every
                         profile. Not accepted with --host=localhost.
   --allow-sample-secrets
-                        Deploy a FEED_PRIVATE_KEY or INTERNAL_API_TOKEN that is
-                        a published test value, with a warning
-                        for each. For a test install only: without it, either
-                        value refuses the deploy.
+                        Deploy a FEED_PRIVATE_KEY, INTERNAL_API_TOKEN,
+                        BRAND_WALLET_SECRET or MANAGER_FUNDING_TOKEN that is a
+                        published test value, with a warning for each. For a
+                        test install only: without it, any of them refuses the
+                        deploy.
   -h, --help            Show this help.
 
 Services: postgres api web. None named means all three.
@@ -387,6 +392,43 @@ elif [ "$INTERNAL_API_TOKEN" = "$SAMPLE_INTERNAL_API_TOKEN" ]; then
     sample_secret "INTERNAL_API_TOKEN is the placeholder from .env.sample. It registers stages and designates the catalogue batch, so generate a real one."
 fi
 
+# Funding from the admin (docs/architecture/funding.md). The API's first start
+# with BRAND_WALLET_SECRET creates the brand wallet, its key encrypted under
+# the secret, so a secret is checked whenever it is set. MANAGER_FUNDING_URL
+# sets funding up, and then the secret is needed, to sign transfers, and so is
+# MANAGER_FUNDING_TOKEN, the manager's FUNDING_API_TOKEN. A token without the
+# address is refused, as the API refuses it. The address itself is left to the
+# API, which refuses one that is not https or plain http to this host and says
+# why in its log. No value is printed.
+MANAGER_FUNDING_URL="$(env_value MANAGER_FUNDING_URL)"
+BRAND_WALLET_SECRET="$(env_value BRAND_WALLET_SECRET)"
+MANAGER_FUNDING_TOKEN="$(env_value MANAGER_FUNDING_TOKEN)"
+if [ -z "$BRAND_WALLET_SECRET" ]; then
+    if [ -n "$MANAGER_FUNDING_URL" ]; then
+        problem "BRAND_WALLET_SECRET is missing or empty, and MANAGER_FUNDING_URL sets funding up. The brand wallet's key is encrypted under it: generate one with openssl rand -hex 32, and keep it."
+    fi
+elif ! [[ "$BRAND_WALLET_SECRET" =~ ^[0-9a-fA-F]{64}$ ]]; then
+    problem "BRAND_WALLET_SECRET must be 64 hex characters (32 bytes)."
+elif [ "$(lower "$BRAND_WALLET_SECRET")" = "$SAMPLE_BRAND_WALLET_SECRET" ]; then
+    sample_secret "BRAND_WALLET_SECRET is the placeholder from .env.sample. The brand wallet's key is encrypted under it, so generate a real one with openssl rand -hex 32 before the wallet is created."
+fi
+
+if [ -n "$MANAGER_FUNDING_URL" ]; then
+    if [ "${#MANAGER_FUNDING_TOKEN}" -lt 32 ]; then
+        problem "MANAGER_FUNDING_TOKEN must be at least 32 characters (got ${#MANAGER_FUNDING_TOKEN}): the manager's FUNDING_API_TOKEN, the same value."
+    # The C locale for this one test, so the range is bytes and a space, a
+    # control character or any character beyond ASCII falls outside it, as in
+    # the API's rule: the token travels in an HTTP header. The subshell keeps
+    # the rest of the script in its own locale.
+    elif (LC_ALL=C; [[ "$MANAGER_FUNDING_TOKEN" =~ [^!-~] ]]); then
+        problem "MANAGER_FUNDING_TOKEN must be printable ASCII with no space inside, since it travels in an HTTP header."
+    elif [ "$MANAGER_FUNDING_TOKEN" = "$SAMPLE_MANAGER_FUNDING_TOKEN" ]; then
+        sample_secret "MANAGER_FUNDING_TOKEN is the placeholder from .env.sample. It opens the manager's funding API, so give it the manager's own FUNDING_API_TOKEN."
+    fi
+elif [ -n "$MANAGER_FUNDING_TOKEN" ]; then
+    problem "MANAGER_FUNDING_TOKEN is set without MANAGER_FUNDING_URL. Set both to set funding up, or neither."
+fi
+
 # The INGEST_* keys are no longer read: each stream's OBS details come from its
 # stage, as the manager pushes it. An env file that still sets them deploys as
 # it did, and the API's boot log names them.
@@ -614,7 +656,8 @@ docker compose version >/dev/null 2>&1 || {
     exit 1
 }
 
-# It holds the feed signing key and the internal API token.
+# It holds the feed signing key and the internal API token, and with funding
+# the brand wallet's secret and the manager funding token.
 chmod 600 '$ENV_FILE'
 
 # Compose takes a variable from the shell over the env file, so a

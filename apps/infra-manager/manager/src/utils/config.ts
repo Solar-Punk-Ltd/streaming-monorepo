@@ -154,6 +154,44 @@ export function adminLinkAllowPlainHttp(raw: string | undefined): boolean {
 }
 
 /**
+ * The chain endpoint the funding API reads balances, nonces, fees and receipts through and broadcasts the web2
+ * admin's transfers to, or null to use BEE_RPC_ENDPOINT. With neither, the funding API's chain routes answer 502
+ * `chain_unreachable`. Held to the shape rules of BEE_RPC_ENDPOINT, and like it treated as a secret: it may carry a
+ * provider key, so it is never logged or answered, and a refusal names the variable and never the value.
+ *
+ * Exported so the refusal can be tested without the process exiting.
+ */
+export function fundingRpcUrl(raw: string | undefined): string | null {
+  const value = raw?.trim();
+  if (!value) return null;
+  const problem = rpcEndpointProblem(value);
+  if (problem) throw new Error(`FUNDING_RPC_URL: ${problem}`);
+  return value;
+}
+
+/** The fewest characters a funding token may have. */
+export const FUNDING_API_TOKEN_MIN_LENGTH = 32;
+
+/**
+ * The bearer token the web2 admin presents to the funding API under /api/admin-funding, or null when none is set,
+ * which turns that API off: every path under it then answers 404. A value shorter than 32 characters, or with a space
+ * inside, stops the manager at startup, as a malformed BEE_LOCAL_HOST does. The refusal names the variable and never
+ * the value.
+ *
+ * Exported so the refusal can be tested without the process exiting.
+ */
+export function fundingApiToken(raw: string | undefined): string | null {
+  const value = raw?.trim() ?? '';
+  if (value === '') return null;
+  if (value.length < FUNDING_API_TOKEN_MIN_LENGTH || /\s/.test(value)) {
+    throw new Error(
+      `FUNDING_API_TOKEN must be ${FUNDING_API_TOKEN_MIN_LENGTH} characters or more with no space inside, or unset to turn the funding API off`,
+    );
+  }
+  return value;
+}
+
+/**
  * The build this manager runs, read once at startup from MANAGER_VERSION and MANAGER_COMMIT, which
  * deploy/deploy.sh builds into the api image: the label tools/release/version.mjs named the deployed commit with,
  * and that commit. A label of another shape than version.mjs prints, or a commit that is not 40 lowercase hex
@@ -189,6 +227,10 @@ export interface AppConfig {
   adminLinkAllowPlainHttp: boolean;
   /** The repositories stack versions are built from, the first for a new version. See `parseStackSources`. */
   stackSources: readonly StackSource[];
+  /** See `fundingApiToken`. Null when the funding API is off. */
+  fundingApiToken: string | null;
+  /** See `fundingRpcUrl`. Null to use `beeRpcEndpoint`. */
+  fundingRpcUrl: string | null;
   /** See `managerVersion`. */
   managerVersion: VersionInfo;
 }
@@ -205,5 +247,7 @@ export const config: AppConfig = {
   beeLocalHost: beeLocalHost(process.env.BEE_LOCAL_HOST),
   adminLinkAllowPlainHttp: adminLinkAllowPlainHttp(process.env.ADMIN_LINK_ALLOW_PLAIN_HTTP),
   stackSources: parseStackSources(process.env.STACK_SOURCES),
+  fundingApiToken: fundingApiToken(process.env.FUNDING_API_TOKEN),
+  fundingRpcUrl: fundingRpcUrl(process.env.FUNDING_RPC_URL),
   managerVersion: managerVersion(process.env.MANAGER_VERSION, process.env.MANAGER_COMMIT),
 };
