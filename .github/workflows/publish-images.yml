@@ -1,0 +1,50 @@
+name: publish-images
+
+# Publishes the images a server runs, the manager's and the admin's, to GitHub's container registry for every release
+# tag, so a deploy pulls a tag instead of building on the host. tools/release/publish.mjs builds and uploads the images
+# whose app folder changed since an earlier release and only adds the tag to the others, which uploads nothing.
+# docs/releasing.md says how a release is tagged. A tag an image cannot carry, such as one with a slash, is refused.
+on:
+  push:
+    tags: ['*']
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: The release tag to publish, for a tag pushed before this workflow existed
+        type: string
+        required: true
+
+permissions:
+  contents: read
+  packages: write
+
+concurrency:
+  group: publish-images-${{ inputs.tag || github.ref_name }}
+  cancel-in-progress: false
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      # The whole history, because the manager api records the last commit that changed the stack it deploys first.
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: refs/tags/${{ inputs.tag || github.ref_name }}
+          fetch-depth: 0
+
+      # Node's standard library alone, which publish.mjs and in-copy.mjs need.
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version-file: .nvmrc
+
+      - name: Sign in to the registry
+        env:
+          ACTOR: ${{ github.actor }}
+          TOKEN: ${{ github.token }}
+        run: printf '%s' "$TOKEN" | docker login ghcr.io --username "$ACTOR" --password-stdin
+
+      - name: Publish
+        env:
+          TAG: ${{ inputs.tag || github.ref_name }}
+        run: node tools/release/publish.mjs --tag "$TAG"
