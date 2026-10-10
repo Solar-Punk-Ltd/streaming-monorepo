@@ -126,6 +126,9 @@
     &-title {
       flex: 1;
       min-width: 0;
+      // The wrapper lets clicks through to the card, which would also keep the full name's tooltip
+      // from ever showing. The click still reaches the card from here.
+      pointer-events: auto;
       font-size: 0.9rem;
       font-weight: 700;
       line-height: 1.3;
