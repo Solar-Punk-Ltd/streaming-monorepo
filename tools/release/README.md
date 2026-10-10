@@ -106,7 +106,7 @@ Publishes the images a server runs from a release tag to GitHub's container regi
 `publish-images` runs it on every tag pushed, so a release needs nothing more than its tag:
 
 ```bash
-node tools/release/publish.mjs --tag <tag> [--dry-run]
+node tools/release/publish.mjs --tag <tag> [--dry-run] [--registry <registry>] [--root <checkout>]
 ```
 
 Each image is built from its app folder as a deploy cuts it, through `tools/app-workspace/in-copy.mjs`, and also
@@ -117,4 +117,6 @@ the new tag, which uploads nothing. An app's images share its folder, so a chang
 
 An unchanged image keeps the version it was built as, so a console shows the release that last changed it. A tag an
 image cannot carry is refused: letters, digits, `_`, `.` and `-` only, such as `v2.4.0` or `2026-10-10-build-1`. The
-checkout must be at the tag. `--dry-run` says what would be built and what only tagged, and changes nothing.
+checkout must be at the tag, and a tag starting `inputs-` is refused, since those name images by their inputs.
+`--dry-run` says what would be built and what only tagged, and changes nothing. `--registry` publishes elsewhere than
+`ghcr.io/solar-punk-ltd`, and `--root` names another checkout, both for tests.

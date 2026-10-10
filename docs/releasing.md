@@ -21,13 +21,15 @@ It fetches the tags, shows the commit and the tags there are, asks for a name an
 creates an annotated tag on the commit and pushes it. Any name works within letters, digits and `. _ + / -`, starting
 with a letter or a digit, such as `QA-build-2026-10-07`, `v2.4.0` or `release/2026.10`. A name a tag already has on
 another commit, here or on the remote, is refused. On a commit that already has an annotated tag, Enter keeps it.
+A tag also names the release's published images, which take letters, digits and `. _ -` only, so a name with a `/` or
+a `+` is tagged but not published. `vX.Y.Z`, such as `v2.4.0`, is the shape a deploy's version list offers.
 
 It worked when it ends with "Pushed <tag> to origin." or, for a tag it kept, "origin already has <tag>."
 
 Pushing the tag starts the `publish-images` workflow, which publishes the manager's and the admin's images under the
-tag to `ghcr.io/solar-punk-ltd`, building only the apps that changed since an earlier release. A deploy pulls them by
-that tag. A tag with a slash or a `+` cannot name an image and
-is not published. [tools/release/README.md](../tools/release/README.md) says how the images are published.
+tag to `ghcr.io/solar-punk-ltd`, building only the apps that changed since an earlier release. A deploy that runs from
+the published images pulls them by that tag. The two deploy scripts below build on the host instead.
+[tools/release/README.md](../tools/release/README.md) says how the images are published.
 
 ## 2. Deploy each manager
 
@@ -48,6 +50,9 @@ Add `--remote-path=<dir>` where that host keeps its checkout elsewhere than `/op
 [apps/web2-admin/deploy/README.md](../apps/web2-admin/deploy/README.md) has the details.
 
 ## 4. Check
+
+An image the release did not change keeps the build name it was made with, so its console shows the release that last
+changed it.
 
 Sign in to each console. The manager's sidebar shows the build's name under its host, and the admin console's toolbar
 shows it beside the account button on a screen wider than a phone's. In the manager, the **Versions** page shows the
