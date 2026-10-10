@@ -21,6 +21,8 @@ interface EnvVar {
   field: keyof Config;
   /** Distinct from the default on purpose, so a variable read under the wrong name cannot pass. */
   sample: string;
+  /** The field holds a number, which the sample is compared with as a number. Every other field must stay text. */
+  numeric?: true;
 }
 
 interface OptionalEnvVar extends EnvVar {
@@ -37,7 +39,7 @@ const REQUIRED_ENV: EnvVar[] = [
   { name: 'API_AUTH_TOKEN', field: 'apiAuthToken', sample: 'api-auth-token' },
   // The stage's segment length, which has no default anywhere, so the uploader never dates a
   // recording against a length nobody chose.
-  { name: 'HLS_FRAGMENT', field: 'fragmentSeconds', sample: '1.5' },
+  { name: 'HLS_FRAGMENT', field: 'fragmentSeconds', sample: '1.5', numeric: true },
 ];
 
 const OPTIONAL_ENV: OptionalEnvVar[] = [
@@ -130,8 +132,8 @@ describe('the environment contract', () => {
 
     for (const variable of REQUIRED_ENV) {
       assert.equal(
-        String(config[variable.field]),
-        variable.sample,
+        config[variable.field],
+        variable.numeric ? Number(variable.sample) : variable.sample,
         `${variable.name} did not reach config.${variable.field}`,
       );
     }
