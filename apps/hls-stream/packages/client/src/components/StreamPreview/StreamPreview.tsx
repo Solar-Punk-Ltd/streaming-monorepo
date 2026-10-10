@@ -247,11 +247,20 @@ export const StreamPreview = ({
           {/* Nothing to play yet on an announced broadcast, so the card does not promise one. */}
           {!isScheduled && <img src={playIcon} alt="play-icon" />}
           <div className="stream-preview-button">
-            <span className="stream-preview-button-title">{title}</span>
-            {state === STREAM_STATUS_LIVE && <span className="stream-preview-button-state">{state}</span>}
-            {isScheduled && (
-              <span className="stream-preview-button-state stream-preview-button-state-scheduled">Upcoming</span>
-            )}
+            {/*
+              The badge shares the name's row instead of floating over its corner, so a name of a few
+              words is never hidden behind it. A longer name is cut with an ellipsis and stays whole
+              in the tooltip.
+            */}
+            <div className="stream-preview-button-header">
+              <span className="stream-preview-button-title" title={title}>
+                {title}
+              </span>
+              {state === STREAM_STATUS_LIVE && <span className="stream-preview-button-state">{state}</span>}
+              {isScheduled && (
+                <span className="stream-preview-button-state stream-preview-button-state-scheduled">Upcoming</span>
+              )}
+            </div>
             {isScheduled && startsAt && <span className="stream-preview-button-schedule">{startsAt}</span>}
             {duration && (
               <span className="stream-preview-button-duration">
