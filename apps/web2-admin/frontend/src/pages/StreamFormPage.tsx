@@ -1,4 +1,4 @@
-import { useEffect, useState, type FormEvent } from 'react';
+import { useEffect, useRef, useState, type FormEvent } from 'react';
 import { useNavigate, useParams } from 'react-router';
 import { Alert, Box, Button, CircularProgress, Divider, Grid, Paper, Stack, Typography } from '@mui/material';
 import {
@@ -136,6 +136,9 @@ export function StreamFormPage() {
   // A refused pick is shown beside the picker, at the foot of a long form. In the form's own error
   // line at the top it was off screen, and the operator saw nothing happen (SPDV-1667).
   const [thumbnailError, setThumbnailError] = useState<string | null>(null);
+  // Counts picks and route changes, so a pick whose file read finishes after a newer pick, or after
+  // the form moved to another stream, is dropped instead of landing on the wrong one.
+  const pickGeneration = useRef(0);
 
   // The stages the manager pushed, for the picker. Loaded once: a stage that
   // appears meanwhile shows on the next visit to the form.
@@ -161,6 +164,7 @@ export function StreamFormPage() {
     // One component serves /create and /edit/:id, so a change of route param
     // has to clear everything the previous stream put here — an unsaved file
     // pick included, or it would be applied to the wrong stream on save.
+    pickGeneration.current += 1;
     setPicked(null);
     setRemoveStored(false);
     setThumbnailError(null);
@@ -264,7 +268,9 @@ export function StreamFormPage() {
   // name says nothing about its content, so the pick is checked here too
   // rather than surfacing as a 415 after the row has already been saved.
   const pickThumbnail = async (file: File) => {
+    const generation = ++pickGeneration.current;
     const refusal = await thumbnailRefusal(file);
+    if (generation !== pickGeneration.current) return;
     if (refusal) {
       setThumbnailError(refusal);
       return;

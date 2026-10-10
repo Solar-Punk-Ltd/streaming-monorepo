@@ -464,6 +464,27 @@ describe('StreamFormPage thumbnail', () => {
     expect(screen.queryByText(THUMBNAIL_NOT_AN_IMAGE)).not.toBeInTheDocument();
   });
 
+  it('drops a pick whose file read finishes after a newer pick', async () => {
+    mockFetch([]);
+    renderCreateForm();
+
+    // The first file's bytes arrive late, and say it is not a picture.
+    let releaseSlowRead!: (bytes: ArrayBuffer) => void;
+    const slow = new File(['not a picture'], 'slow.png', { type: 'image/png' });
+    slow.slice = () =>
+      ({ arrayBuffer: () => new Promise<ArrayBuffer>((resolve) => (releaseSlowRead = resolve)) }) as Blob;
+
+    pickThumbnail(slow);
+    pickThumbnail(fakeImage('real.png', 1024));
+    expect(await screen.findByText('real.png')).toBeInTheDocument();
+
+    releaseSlowRead(new TextEncoder().encode('not a picture').buffer as ArrayBuffer);
+    await new Promise((resolve) => setTimeout(resolve, 0));
+
+    expect(screen.queryByText(THUMBNAIL_NOT_AN_IMAGE)).not.toBeInTheDocument();
+    expect(screen.getByText('real.png')).toBeInTheDocument();
+  });
+
   it('accepts an image exactly at the limit', async () => {
     mockFetch([]);
     renderCreateForm();
