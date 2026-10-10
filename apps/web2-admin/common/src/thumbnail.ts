@@ -8,7 +8,8 @@ export const THUMBNAIL_SNIFF_BYTES = 12;
 
 const PNG_SIGNATURE = [0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a];
 const JPEG_SIGNATURE = [0xff, 0xd8, 0xff];
-const GIF_SIGNATURE = [0x47, 0x49, 0x46, 0x38]; // "GIF8", shared by GIF87a and GIF89a
+const GIF87A_SIGNATURE = [0x47, 0x49, 0x46, 0x38, 0x37, 0x61]; // "GIF87a"
+const GIF89A_SIGNATURE = [0x47, 0x49, 0x46, 0x38, 0x39, 0x61]; // "GIF89a"
 const RIFF_SIGNATURE = [0x52, 0x49, 0x46, 0x46]; // "RIFF"
 const WEBP_FORM = [0x57, 0x45, 0x42, 0x50]; // "WEBP", at offset 8 of a RIFF file
 
@@ -25,7 +26,7 @@ function startsWith(bytes: Uint8Array, signature: readonly number[], offset = 0)
 export function sniffThumbnailMime(head: Uint8Array): ThumbnailMime | null {
   if (startsWith(head, PNG_SIGNATURE)) return 'image/png';
   if (startsWith(head, JPEG_SIGNATURE)) return 'image/jpeg';
-  if (startsWith(head, GIF_SIGNATURE)) return 'image/gif';
+  if (startsWith(head, GIF87A_SIGNATURE) || startsWith(head, GIF89A_SIGNATURE)) return 'image/gif';
   if (startsWith(head, RIFF_SIGNATURE) && startsWith(head, WEBP_FORM, 8)) return 'image/webp';
   return null;
 }

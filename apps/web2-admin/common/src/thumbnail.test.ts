@@ -19,6 +19,10 @@ test('both GIF versions are GIFs', () => {
   assert.equal(sniffThumbnailMime(ascii('GIF89a')), 'image/gif');
 });
 
+test('text that only starts like a GIF is not a picture', () => {
+  assert.equal(sniffThumbnailMime(ascii('GIF8-not-an-image')), null);
+});
+
 test('a RIFF file of form WEBP is a WebP', () => {
   const head = ascii('RIFF\u0000\u0000\u0000\u0000WEBP');
   assert.equal(sniffThumbnailMime(head), 'image/webp');
