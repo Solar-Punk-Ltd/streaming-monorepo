@@ -1,7 +1,7 @@
 import { Advisory, AllowedAdvisory, GateFailure } from './types.js';
 
 /** Answers which published releases of a package satisfy a semver range. The registry does the matching. */
-export type PublishedVersionsIn = (packageName: string, range: string) => Promise<string[]>;
+type PublishedVersionsIn = (packageName: string, range: string) => Promise<string[]>;
 
 /**
  * What npm says when a range matches no published release. It comes with E404, the code npm also gives a package the
