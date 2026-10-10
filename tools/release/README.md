@@ -111,7 +111,7 @@ node tools/release/publish.mjs --tag <tag> [--dry-run]
 
 Each image is built from its app folder as a deploy cuts it, through `tools/app-workspace/in-copy.mjs`, and also
 tagged `inputs-<hash>` after what it was built from: that folder, its Dockerfile's name, and for the manager api the
-last commit that changed `apps/hls-stream`, which it carries in the label `org.solarpunk.stack-commit` for the deploy
+last commit that changed `apps/hls-stream`, which it carries in the label `streaming.stack-commit` for the deploy
 to write where the manager reads its stack pin. An image whose inputs an earlier release built already is only given
 the new tag, which uploads nothing. An app's images share its folder, so a change anywhere in it builds both again.
 

@@ -21,7 +21,7 @@ const IMAGE_TAG = /^[A-Za-z0-9_][A-Za-z0-9_.-]{0,127}$/;
 const STACK_APP = 'apps/hls-stream';
 
 /** The label that carries the stack commit, for the deploy to write where the manager reads it. */
-export const STACK_COMMIT_LABEL = 'org.solarpunk.stack-commit';
+export const STACK_COMMIT_LABEL = 'streaming.stack-commit';
 
 /** The tag every image also carries for its build inputs, which is how a later release finds it unchanged. */
 const INPUTS_TAG_PREFIX = 'inputs-';

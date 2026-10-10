@@ -25,8 +25,8 @@ another commit, here or on the remote, is refused. On a commit that already has 
 It worked when it ends with "Pushed <tag> to origin." or, for a tag it kept, "origin already has <tag>."
 
 Pushing the tag starts the `publish-images` workflow, which publishes the manager's and the admin's images under the
-tag to `ghcr.io/solar-punk-ltd`, building only the apps that changed since an earlier release. A deploy from
-`Solar-Punk-Ltd/swarm-stream-terraform` pulls them by that tag. A tag with a slash or a `+` cannot name an image and
+tag to `ghcr.io/solar-punk-ltd`, building only the apps that changed since an earlier release. A deploy pulls them by
+that tag. A tag with a slash or a `+` cannot name an image and
 is not published. [tools/release/README.md](../tools/release/README.md) says how the images are published.
 
 ## 2. Deploy each manager

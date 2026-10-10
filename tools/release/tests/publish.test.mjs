@@ -85,7 +85,7 @@ describe('publish.mjs', () => {
       assert.ok(repo.pushed().some((ref) => ref.startsWith(`registry.example/${image.name}:inputs-`)), image.name);
     }
     assert.match(repo.called(), /--build-arg MANAGER_VERSION=v1\.0\.0/);
-    assert.match(repo.called(), /--label org\.solarpunk\.stack-commit=[0-9a-f]{40}/);
+    assert.match(repo.called(), /--label streaming\.stack-commit=[0-9a-f]{40}/);
   });
 
   it('only tags the images of an app whose folder did not change, and builds the images of the one that did', () => {
