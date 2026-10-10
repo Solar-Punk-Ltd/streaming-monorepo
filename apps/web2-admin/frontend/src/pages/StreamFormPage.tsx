@@ -2,7 +2,6 @@ import { useEffect, useState, type FormEvent } from 'react';
 import { useNavigate, useParams } from 'react-router';
 import { Alert, Box, Button, CircularProgress, Divider, Grid, Paper, Stack, Typography } from '@mui/material';
 import {
-  STREAM_LIMITS,
   type MediaType,
   type StageSummary,
   type Stream,
@@ -10,16 +9,10 @@ import {
 } from '@streaming-monorepo/web2-admin-common';
 
 import * as api from '../api';
-import { errorMessage, MEDIA_TYPE_LOCKED, SCHEDULE_LOCKED, STAGE_LOCKED, UNSUPPORTED_IMAGE_TYPE } from '../errors';
+import { errorMessage, MEDIA_TYPE_LOCKED, SCHEDULE_LOCKED, STAGE_LOCKED } from '../errors';
+import { thumbnailRefusal } from '../thumbnailCheck';
 import { dateTimeLocalValueToIso, isoToDateTimeLocalValue } from '../dateUtil';
-import {
-  DescriptionField,
-  MediaTypeField,
-  NameField,
-  TagsField,
-  THUMBNAIL_MIME_TYPES,
-  ThumbnailField,
-} from '../components/StreamFormFields';
+import { DescriptionField, MediaTypeField, NameField, TagsField, ThumbnailField } from '../components/StreamFormFields';
 import { ScheduleField } from '../components/schedule/ScheduleField';
 import { assignableStages, StageField, StageReadinessWarning } from '../components/stages/StageField';
 import { nextFullHourValue } from '../components/schedule/scheduleTime';
@@ -31,7 +24,6 @@ export const ERROR_MESSAGES = {
   NAME_REQUIRED: 'Stream name is required',
   DESCRIPTION_REQUIRED: 'Description is required',
   SCHEDULED_TIME_REQUIRED: 'Scheduled start time is required',
-  THUMBNAIL_TOO_LARGE: 'Thumbnail file size must be less than 5MB',
 };
 
 /**
@@ -141,6 +133,9 @@ export function StreamFormPage() {
   // operator just picked, and whether they asked for the stored one to go.
   const [picked, setPicked] = useState<File | null>(null);
   const [removeStored, setRemoveStored] = useState(false);
+  // A refused pick is shown beside the picker, at the foot of a long form. In the form's own error
+  // line at the top it was off screen, and the operator saw nothing happen (SPDV-1667).
+  const [thumbnailError, setThumbnailError] = useState<string | null>(null);
 
   // The stages the manager pushed, for the picker. Loaded once: a stage that
   // appears meanwhile shows on the next visit to the form.
@@ -168,6 +163,7 @@ export function StreamFormPage() {
     // pick included, or it would be applied to the wrong stream on save.
     setPicked(null);
     setRemoveStored(false);
+    setThumbnailError(null);
     setError(null);
     if (!id) {
       setLoaded(null);
@@ -264,24 +260,22 @@ export function StreamFormPage() {
 
   const storedThumbnail = loaded?.hasThumbnail && !removeStored && !picked ? api.thumbnailUrl(loaded) : null;
 
-  const pickThumbnail = (file: File) => {
-    // `accept` is a hint the operator can bypass with "all files", so the
-    // type is checked here too rather than surfacing as a 415 after the row
-    // has already been saved.
-    if (!(THUMBNAIL_MIME_TYPES as readonly string[]).includes(file.type)) {
-      setError(UNSUPPORTED_IMAGE_TYPE);
+  // `accept` is a hint the operator can bypass with "all files", and a file's
+  // name says nothing about its content, so the pick is checked here too
+  // rather than surfacing as a 415 after the row has already been saved.
+  const pickThumbnail = async (file: File) => {
+    const refusal = await thumbnailRefusal(file);
+    if (refusal) {
+      setThumbnailError(refusal);
       return;
     }
-    if (file.size > STREAM_LIMITS.THUMBNAIL_MAX_BYTES) {
-      setError(ERROR_MESSAGES.THUMBNAIL_TOO_LARGE);
-      return;
-    }
-    setError(null);
+    setThumbnailError(null);
     setPicked(file);
     setRemoveStored(false);
   };
 
   const removeThumbnail = () => {
+    setThumbnailError(null);
     setPicked(null);
     if (loaded?.hasThumbnail) setRemoveStored(true);
   };
@@ -435,8 +429,9 @@ export function StreamFormPage() {
             <ThumbnailField
               previewUrl={pickedPreview ?? storedThumbnail}
               fileName={picked?.name ?? null}
-              onPick={pickThumbnail}
+              onPick={(file) => void pickThumbnail(file)}
               onRemove={removeThumbnail}
+              error={thumbnailError}
               disabled={saving}
             />
 

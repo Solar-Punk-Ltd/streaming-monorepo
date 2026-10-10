@@ -1,5 +1,6 @@
 import { useState, type ChangeEvent, type KeyboardEvent } from 'react';
 import {
+  Alert,
   Box,
   Button,
   Chip,
@@ -14,19 +15,12 @@ import {
   Typography,
 } from '@mui/material';
 import CancelIcon from '@mui/icons-material/Cancel';
-import { STREAM_LIMITS, type MediaType } from '@streaming-monorepo/web2-admin-common';
+import { STREAM_LIMITS, THUMBNAIL_MIME_TYPES, type MediaType } from '@streaming-monorepo/web2-admin-common';
 
 /**
  * The fields, labels and limits are msrs-client's, reproduced in MUI so the
  * console its operators already know keeps reading the same.
  */
-
-/**
- * What `PUT /streams/:id/thumbnail` accepts. `image/*` would let the picker
- * offer SVG and HEIC, which save the row and then fail the thumbnail with a
- * 415 — better not to offer them at all.
- */
-export const THUMBNAIL_MIME_TYPES = ['image/png', 'image/jpeg', 'image/webp', 'image/gif'] as const;
 
 export function NameField({
   value,
@@ -192,12 +186,15 @@ export function ThumbnailField({
   fileName,
   onPick,
   onRemove,
+  error = null,
   disabled = false,
 }: {
   previewUrl: string | null;
   fileName: string | null;
   onPick: (file: File) => void;
   onRemove: () => void;
+  /** Why the last pick was refused, shown under the picker. */
+  error?: string | null;
   disabled?: boolean;
 }) {
   const onInputChange = (e: ChangeEvent<HTMLInputElement>) => {
@@ -219,7 +216,11 @@ export function ThumbnailField({
         component="input"
         id="stream-thumbnail"
         type="file"
+        // `image/*` would let the picker offer SVG and HEIC, which the
+        // thumbnail endpoint refuses, so only its four types are offered.
         accept={THUMBNAIL_MIME_TYPES.join(',')}
+        aria-invalid={error ? true : undefined}
+        aria-describedby={error ? 'stream-thumbnail-error' : undefined}
         onChange={onInputChange}
         disabled={disabled}
         sx={{
@@ -239,6 +240,11 @@ export function ThumbnailField({
           },
         }}
       />
+      {error ? (
+        <Alert id="stream-thumbnail-error" severity="error">
+          {error}
+        </Alert>
+      ) : null}
       {previewUrl || fileName ? (
         <Stack direction="row" spacing={2} sx={{ alignItems: 'center' }}>
           {previewUrl ? (
