@@ -94,6 +94,18 @@ function describe(snapshot: MetricsSnapshot): RenderedMetric[] {
       value: snapshot.takeoversRefusedTotal,
     },
     {
+      name: 'ladder_markers_written_total',
+      type: 'counter',
+      help: 'Ladder time markers written: one small chunk per ladder every ten seconds naming where every rung feed stands, so a viewer finds the newest playlist with one read.',
+      value: snapshot.ladderMarkersWrittenTotal,
+    },
+    {
+      name: 'ladder_markers_failed_total',
+      type: 'counter',
+      help: 'Ladder time markers given up on, refused or not finished inside their own ten second period. Playback is unaffected: a viewer that finds no marker searches the feeds instead, which is slower to start.',
+      value: snapshot.ladderMarkersFailedTotal,
+    },
+    {
       name: 'manifest_publish_failures_total',
       type: 'counter',
       help: 'Live manifest publishes that failed. Retried at the same index when the next segment arrives.',

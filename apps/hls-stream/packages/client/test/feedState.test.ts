@@ -12,7 +12,6 @@ import {
   type FeedState,
   PLAYBACK_STALL_BURST,
   PLAYBACK_STALL_WINDOW_MS,
-  RUNG_DEATH_LAG_SEGMENTS,
   TRACKED_TOPIC_LIMIT,
   UNSERVED_POLLS_PROBE_CEILING,
   UNSERVED_SLOT_STALL_MS,
@@ -371,7 +370,7 @@ describe('FeedHealthTracker proof that did not come from a feed read', () => {
   });
 
   /**
-   * This runs once per segment loaded, which is four times a second at the shipping profile, so the
+   * This runs once per segment loaded, which is four times a second at a 0.25 s segment, so the
    * healthy case has to be free. Nothing is in trouble, so there is nothing to release and nothing
    * to say.
    */
@@ -994,9 +993,10 @@ describe('FeedHealthTracker on a gateway that is slow rather than absent', () =>
  * because {@link LadderFeedPoller} was already taught to record it against the group, and `degraded`
  * reached them because playback stalls are counted off the video element against the entry topic.
  *
- * ⭐ **Every rung has to agree before the group says anything.** One gateway serves all five feeds,
- * so a single rung being served is proof the gateway is answering, and the others are then behind
- * for their own reasons. This is the same all-rungs rule the ended signal already uses.
+ * ⭐ **Every tracked rung has to agree before the group says anything.** One gateway serves every
+ * feed, so a single rung being served is proof the gateway is answering, and the others are then
+ * behind for their own reasons. The rungs tracked are the ones the poller follows: the playing rung,
+ * and during a switch the one being switched to, which is why these cases hold two.
  */
 describe('FeedHealthTracker on a ladder, where the faults land on rungs and the overlay watches the group', () => {
   const GROUP = 'entry-topic-the-viewer-linked';
@@ -1372,431 +1372,59 @@ describe('FeedHealthTracker judging the rung a viewer is actually watching', () 
 });
 
 /**
- * ⛔⛔⛔ **A Swarm feed that stops advancing does not error, so hls.js has nothing to react to.**
- *
- * hls.js changes level on a fragment load error. A rung whose transcode has stopped still serves its
- * playlist perfectly, it just never grows, so a player waiting for a segment it was never offered
- * waits for ever. Measured live 2026-08-30 on both byte paths: the viewer stayed on the dead rung for
- * the whole outage and the picture stopped for 87.2 and 103.2 seconds with three healthy rungs beside
- * it. The client already counted the unserved run per rung. Nothing read it.
- *
- * ⛔⛔⛔ **Telling that apart from a broadcast that stopped is the whole of the difficulty, and four
- * attempts to do it by a clock produced three live regressions.** A gateway outage, an uploader
- * crash and the ordinary gap between two segments each made a healthy rung look silent,
- * because a clock runs during every one of them. `RUNG_DEATH_LAG_SEGMENTS` replaced the clock with a
- * count of segments the ladder actually delivered, which cannot move while nothing is being
- * delivered, and the three cases below are kept as the regression tests they were bought with.
- *
- * ⭐ **Every case here has to make a sibling actually SERVE something.** Under the old rule a test
- * could set up a dead rung by advancing a clock and leaving the siblings untouched, and an untouched
- * sibling reads as healthy, so those cases were agreeing with an implementation that had nothing in
- * it. What judges a rung now is evidence the ladder moved on, and evidence has to be produced.
+ * The poller judges a rung by its own progress and announces one it found stopped. The tracker no
+ * longer compares rungs: the rungs of one ladder drift apart without bound, so nothing recorded
+ * against one says where another should be. It carries the announcement and the unserved run's age.
  */
-describe('FeedHealthTracker telling a rung that stopped being produced from a broadcast that stopped', () => {
-  const GROUP = 'entry-topic-the-viewer-linked';
-  const RUNG_1080 = 'rung-1080p';
-  const RUNG_720 = 'rung-720p';
-  const RUNG_480 = 'rung-480p';
-  const RUNG_360 = 'rung-360p';
+describe('FeedHealthTracker carrying what the poller found about a rung', () => {
+  const RUNG = 'rung-1080p';
 
-  /** One segment at the longest stage this project runs, so the clock in these cases is a real one. */
-  const SEGMENT_MS = 2_000;
-  const POLL_MS = 750;
-  /** `LadderFeedPoller.MAX_CATCH_UP_PER_PASS`: how far one rung can get ahead in a single pass. */
-  const CATCH_UP_PER_PASS = 25;
+  it('tells every listener which rung stopped, why, and where to go instead', () => {
+    const tracker = new FeedHealthTracker(makeClock().now);
+    const heard: unknown[] = [];
+    tracker.onRungStopped((rung, detail) => heard.push({ rung, ...detail }));
 
-  function makeLadder(rungs: readonly string[] = [RUNG_1080, RUNG_360]) {
+    tracker.recordRungStopped(RUNG, { reason: 'it stopped', failoverTo: 'rung-720p' });
+
+    assert.deepEqual(heard, [{ rung: RUNG, reason: 'it stopped', failoverTo: 'rung-720p' }]);
+  });
+
+  it('stops telling a listener that has gone, and keeps one that throws from the others', () => {
+    const tracker = new FeedHealthTracker(makeClock().now);
+    const heard: string[] = [];
+    const realError = console.error;
+    console.error = () => {};
+    try {
+      tracker.onRungStopped(() => {
+        throw new Error('a listener that throws');
+      });
+      const unsubscribe = tracker.onRungStopped((rung) => heard.push(`gone ${rung}`));
+      tracker.onRungStopped((rung) => heard.push(rung));
+      unsubscribe();
+
+      tracker.recordRungStopped(RUNG, { reason: 'it stopped', failoverTo: null });
+    } finally {
+      console.error = realError;
+    }
+
+    assert.deepEqual(heard, [RUNG]);
+  });
+
+  it('says how long a rung has been unserved, and nothing once it is served or the gateway fails', () => {
     const clock = makeClock();
-    const stopped: string[] = [];
     const tracker = new FeedHealthTracker(clock.now);
-    tracker.trackGroup(GROUP, rungs);
-    const unsubscribe = tracker.onRungStopped((rung) => stopped.push(rung));
-
-    return { clock, tracker, stopped, unsubscribe };
-  }
-
-  /** The ladder delivering, one segment at a time, to the rungs that are still being produced. */
-  function ladderDelivers(
-    tracker: FeedHealthTracker,
-    clock: { advance: (by: number) => void },
-    rungs: readonly string[],
-    segments: number,
-  ): void {
-    for (let n = 0; n < segments; n++) {
-      clock.advance(SEGMENT_MS);
-      for (const rung of rungs) {
-        tracker.recordGatewayResponse(rung);
-      }
-    }
-  }
-
-  /**
-   * The threshold pinned from above, and {@link saysNothingOneSegmentShort} pins it from below.
-   *
-   * Between them the pair fails at every value but the one the constant holds, which a single case
-   * loop-driven off the constant itself could not do.
-   */
-  it('announces a rung the ladder has run four whole segments past', () => {
-    const { tracker, clock, stopped } = makeLadder();
-
-    tracker.recordUnservedSlot(RUNG_1080);
-    ladderDelivers(tracker, clock, [RUNG_360], RUNG_DEATH_LAG_SEGMENTS);
-
-    assert.deepEqual(stopped, [RUNG_1080]);
-  });
-
-  const saysNothingOneSegmentShort = 'says nothing while the ladder is one segment short of it';
-  it(saysNothingOneSegmentShort, () => {
-    const { tracker, clock, stopped } = makeLadder();
-
-    tracker.recordUnservedSlot(RUNG_1080);
-    ladderDelivers(tracker, clock, [RUNG_360], RUNG_DEATH_LAG_SEGMENTS - 1);
-
-    assert.deepEqual(stopped, []);
-  });
-
-  /**
-   * ⭐⭐⭐ **The property the whole rewrite exists for, and the one no clock can have.** Time alone is
-   * never evidence about a rung. A ladder left quiet for an hour has told nobody anything about which
-   * of its rungs is broken, because none of them was offered a segment the others got.
-   */
-  it('says nothing on elapsed time alone, however long a rung is left quiet', () => {
-    const { tracker, clock, stopped } = makeLadder();
-    const ONE_HOUR_MS = 60 * 60 * 1_000;
-
-    tracker.recordUnservedSlot(RUNG_1080);
-    for (let elapsed = 0; elapsed < ONE_HOUR_MS; elapsed += POLL_MS) {
-      clock.advance(POLL_MS);
-      tracker.recordUnservedSlot(RUNG_1080);
-    }
-
-    assert.equal(tracker.state(RUNG_1080), FEED_STATE_STALLED, 'the rung should certainly read as stalled');
-    assert.deepEqual(stopped, [], 'an hour of silence with nothing delivered beside it was read as a death');
-  });
-
-  /**
-   * ⛔ A whole broadcast stopping is the case that would cost a viewer their entire ladder, because
-   * its rungs go quiet one after another rather than together. Under the old rule the first rung past
-   * the window found its sibling still reading live and was judged dead on its own, then the next.
-   *
-   * The stagger here is two segments, wider than a real stop produces, and the run is left for four
-   * stall windows afterwards. Neither the stagger nor the waiting can reach the threshold, because
-   * neither delivers a segment.
-   */
-  it('announces nothing when the whole broadcast stops, however staggered the rungs are', () => {
-    const { tracker, clock, stopped } = makeLadder();
-
-    ladderDelivers(tracker, clock, [RUNG_1080, RUNG_360], 5);
-
-    // 1080 runs out of segments first, and 360 publishes two more before it stops too.
-    tracker.recordUnservedSlot(RUNG_1080);
-    ladderDelivers(tracker, clock, [RUNG_360], 2);
-    tracker.recordUnservedSlot(RUNG_360);
-
-    for (let elapsed = 0; elapsed < UNSERVED_SLOT_STALL_MS * 4; elapsed += POLL_MS) {
-      clock.advance(POLL_MS);
-      tracker.recordUnservedSlot(RUNG_1080);
-      tracker.recordUnservedSlot(RUNG_360);
-    }
-
-    assert.deepEqual(stopped, [], 'a broadcast that stopped was read as its rungs dying one by one');
-    assert.equal(tracker.state(GROUP), FEED_STATE_STALLED, 'and the group should still say so');
-  });
-
-  /**
-   * ⛔⛔⛔ **The regression the gateway outage arm caught live on 2026-08-30, and it cost a viewer their picture.**
-   *
-   * A gateway was taken away for 20.5 seconds under a watching viewer and given back. The client then
-   * dropped 480p from the ladder, and the uploader log shows 480p publishing 24 segments across the
-   * window it was removed in. It was never dead. The viewer's playhead sat at zero for the rest of
-   * the run.
-   *
-   * The old rule read the length of an unserved run, and a rung that happened to be waiting on its
-   * next slot when the gateway went away carried that run right through the outage. Twenty seconds of
-   * nobody being able to read anything is not evidence about one rung, and a count of delivered
-   * segments does not accumulate any.
-   */
-  it('holds through a gateway outage, whatever the rungs were doing when it started', () => {
-    const { tracker, clock, stopped } = makeLadder();
-    const OUTAGE_MS = 20_500;
-
-    ladderDelivers(tracker, clock, [RUNG_1080, RUNG_360], 5);
-
-    // 1080 is between segments when the gateway goes away, which is the ordinary case.
-    tracker.recordUnservedSlot(RUNG_1080);
-    clock.advance(1_000);
-
-    // Neither rung can be reached, so both record failures rather than unserved slots.
-    for (let poll = 0; poll < 4; poll++) {
-      tracker.recordGatewayFailure(RUNG_1080);
-      tracker.recordGatewayFailure(RUNG_360);
-      clock.advance(OUTAGE_MS / 4);
-    }
-
-    // The gateway comes back. 360 is served first, 1080 asks once more and its slot is not up yet.
-    tracker.recordGatewayResponse(RUNG_360);
-    tracker.recordUnservedSlot(RUNG_1080);
-
-    assert.deepEqual(stopped, [], 'a rung that was merely waiting when the gateway died was called dead');
-  });
-
-  /**
-   * ⛔⛔⛔ **The SECOND regression, caught by the uploader crash arm live on 2026-08-30, which the gateway fix did not cover.**
-   *
-   * An uploader crash stops every rung at once, but unlike a gateway outage the gateway keeps
-   * ANSWERING throughout, so the rungs record unserved slots rather than failures and nothing clears
-   * them. When the uploader came back the rungs resumed at their own pace, the first one served read
-   * healthy on a fresh clock while the others still carried the whole outage, two rungs were
-   * amputated, and the viewer's playhead never left zero.
-   *
-   * A crash publishes nothing to anybody, so the counts come out of it exactly level.
-   */
-  it('holds through an uploader crash, where the gateway answers all the way through', () => {
-    const { tracker, clock, stopped } = makeLadder();
-    const CRASH_MS = 15_300;
-
-    ladderDelivers(tracker, clock, [RUNG_1080, RUNG_360], 5);
-
-    for (let elapsed = 0; elapsed < CRASH_MS; elapsed += POLL_MS) {
-      clock.advance(POLL_MS);
-      tracker.recordUnservedSlot(RUNG_1080);
-      tracker.recordUnservedSlot(RUNG_360);
-    }
-
-    // It comes back, and 360 is served one poll before 1080 is.
-    tracker.recordGatewayResponse(RUNG_360);
-    tracker.recordUnservedSlot(RUNG_1080);
-
-    assert.deepEqual(stopped, [], 'a rung a poll behind on recovery was called dead');
-  });
-
-  /**
-   * ⛔⛔⛔ **The THIRD regression, caught by the rung outage arm live on 2026-08-31, and it disabled the feature outright.**
-   *
-   * The recovery re-arm added for the uploader crash fired during ORDINARY operation. All four rungs of a ladder are
-   * written at about the same moment, so between segments every rung is unserved at once, which is
-   * indistinguishable from "the whole ladder went quiet" if you are looking at unserved runs. The
-   * dead rung's clock was re-armed every couple of seconds and never reached the window. The rung outage arm went
-   * straight back to its pre-fix numbers: 0 level changes, advance 0.099, froze 87.5s, overlay
-   * `live`.
-   *
-   * ⭐ This case was committed as a deliberately failing specification at `0a02361` while the rule was
-   * broken. It is a passing test now, which is what the `it.fails` there was waiting for.
-   */
-  it('judges a dead rung while its siblings are between segments, which is most of the time', () => {
-    const { tracker, clock, stopped } = makeLadder();
-
-    // 1080 has stopped. 360 keeps publishing, which means it is unserved between segments and served
-    // when one lands, over and over, exactly as the walker sees it.
-    tracker.recordUnservedSlot(RUNG_1080);
-    for (let elapsed = 0; elapsed < UNSERVED_SLOT_STALL_MS * 2; elapsed += SEGMENT_MS) {
-      tracker.recordUnservedSlot(RUNG_360);
-      clock.advance(POLL_MS);
-      tracker.recordUnservedSlot(RUNG_1080);
-      clock.advance(SEGMENT_MS - POLL_MS);
-      tracker.recordGatewayResponse(RUNG_360);
-      tracker.recordUnservedSlot(RUNG_1080);
-    }
-
-    assert.deepEqual(stopped, [RUNG_1080]);
-  });
-
-  /**
-   * ⭐⭐⭐ **The same lag, judged two ways, and the only difference is whether the rung is being served.**
-   *
-   * `LadderFeedPoller` lets one rung take up to 25 indices in a single pass, so two rungs walking a
-   * backlog after an outage can be a whole pass apart while both are perfectly healthy. Being far
-   * behind is therefore not enough on its own, and this pair is what says so: the first half would
-   * pass on the count alone, and only the second half proves the count is being read at all.
-   */
-  it('leaves a rung alone while it is walking a backlog, and judges it once it stops', () => {
-    const { tracker, clock, stopped } = makeLadder();
-
-    // Both rungs are catching up, and 360's pass runs to its limit before 1080's next one lands.
-    tracker.recordGatewayResponse(RUNG_1080);
-    ladderDelivers(tracker, clock, [RUNG_360], CATCH_UP_PER_PASS);
-
-    assert.deepEqual(stopped, [], 'a rung in the middle of its own catch-up was called dead for being behind');
-
-    tracker.recordUnservedSlot(RUNG_1080);
-
-    assert.deepEqual(stopped, [RUNG_1080], 'and the very same lag with nothing being served is a dead rung');
-  });
-
-  it('announces one death once, however far the ladder runs past it', () => {
-    const { tracker, clock, stopped } = makeLadder();
-
-    tracker.recordUnservedSlot(RUNG_1080);
-    ladderDelivers(tracker, clock, [RUNG_360], RUNG_DEATH_LAG_SEGMENTS * 5);
-
-    assert.deepEqual(stopped, [RUNG_1080]);
-  });
-
-  it('announces a rung that caught back up and then stopped again', () => {
-    const { tracker, clock, stopped } = makeLadder();
-
-    tracker.recordUnservedSlot(RUNG_1080);
-    ladderDelivers(tracker, clock, [RUNG_360], RUNG_DEATH_LAG_SEGMENTS);
-
-    // It comes back and walks its backlog until it is level with the ladder again.
-    ladderDelivers(tracker, clock, [RUNG_1080], RUNG_DEATH_LAG_SEGMENTS);
-
-    tracker.recordUnservedSlot(RUNG_1080);
-    ladderDelivers(tracker, clock, [RUNG_360], RUNG_DEATH_LAG_SEGMENTS);
-
-    assert.deepEqual(stopped, [RUNG_1080, RUNG_1080]);
-  });
-
-  /**
-   * ⛔ A second rung dying must not have its evidence erased by the first one being dealt with.
-   * Dropping a level makes the poller re-track the group, and a count that restarted there would put
-   * every surviving rung level again on the way out of every single death.
-   */
-  it('keeps what it has counted when the poller re-tracks the ladder it just dropped a rung from', () => {
-    const { tracker, clock, stopped } = makeLadder([RUNG_1080, RUNG_720, RUNG_480, RUNG_360]);
-
-    tracker.recordUnservedSlot(RUNG_1080);
-    tracker.recordUnservedSlot(RUNG_480);
-    ladderDelivers(tracker, clock, [RUNG_720, RUNG_360], RUNG_DEATH_LAG_SEGMENTS);
-
-    assert.deepEqual(stopped, [RUNG_1080, RUNG_480], 'both dead rungs should have been announced');
-
-    // The player drops 1080 and the poller re-tracks what is left, which is what really happens.
-    tracker.trackGroup(GROUP, [RUNG_720, RUNG_480, RUNG_360]);
-    tracker.recordUnservedSlot(RUNG_480);
-
-    assert.equal(
-      tracker.rungStoppedWhileOthersAdvance(RUNG_480),
-      true,
-      'a rung already four segments behind was made level again by its neighbour being dropped',
-    );
-  });
-
-  /**
-   * ⛔⛔⛔ **The fourth live regression, 2026-08-31, and the reference was a `Math.max`.**
-   *
-   * A viewer settled on 1080p and the client had already dropped 720p, 480p and 360p during the
-   * settle, before the run silenced anything. It then silenced the one rung left, the viewer had
-   * nowhere to go, and the result read exactly like the original defect it was meant to fix.
-   *
-   * ⭐⭐⭐ A maximum lets ONE rung condemn every other. It only takes one to run ahead, for any reason,
-   * and the rest of the ladder is instantly behind by however far it ran. `LadderFeedPoller` alone
-   * offers two ways in: a pass may consume up to 25 indices, and the rungs are separate feeds under
-   * no obligation to advance in step. A middle rung is a reference no single rung can move.
-   */
-  it('lets no single rung running ahead condemn the rest of a healthy ladder', () => {
-    const { tracker, clock, stopped } = makeLadder([RUNG_1080, RUNG_720, RUNG_480, RUNG_360]);
-
-    // Three rungs advance together, and one takes a whole catch-up pass in a single go.
-    ladderDelivers(tracker, clock, [RUNG_1080, RUNG_720, RUNG_480, RUNG_360], 3);
-    for (let index = 0; index < CATCH_UP_PER_PASS; index++) {
-      tracker.recordGatewayResponse(RUNG_1080);
-    }
-    // The moment that condemned them live: the other three are simply between segments.
-    for (const rung of [RUNG_720, RUNG_480, RUNG_360]) {
-      tracker.recordUnservedSlot(rung);
-    }
-
-    assert.deepEqual(stopped, [], 'one rung getting ahead was read as every other rung dying');
-  });
-
-  /**
-   * ⛔⛔⛔ **The fifth live regression, 2026-08-31, and it is why totals cannot be compared.**
-   *
-   * The rungs of a real ladder do not advance in lockstep. They are separate transcodes writing
-   * separate feeds at slightly different speeds, so any CUMULATIVE comparison drifts apart without
-   * bound for reasons that have nothing to do with failure. Live, the client dropped 480p, then
-   * 720p, then 1080p, then reported 360p as the only one left, each "4 segments behind the ladder"
-   * in turn, on a broadcast where nothing had been silenced.
-   *
-   * ⭐ Here 1080p is served once for every two segments its siblings get, for long enough that a
-   * cumulative rule would have condemned it many times over. What saves it is that its reading is
-   * reset every time it is served, so being slow costs it a bounded lag rather than a growing one.
-   */
-  it('never condemns a rung that is merely slower than the rest of the ladder', () => {
-    const { tracker, clock, stopped } = makeLadder([RUNG_1080, RUNG_720, RUNG_480, RUNG_360]);
-    const FAST = [RUNG_720, RUNG_480, RUNG_360];
-    const SEGMENTS = RUNG_DEATH_LAG_SEGMENTS * 20;
-
-    for (let segment = 0; segment < SEGMENTS; segment++) {
-      ladderDelivers(tracker, clock, FAST, 1);
-      // 1080p is between segments on the polls where it has nothing, exactly as the walker sees it.
-      if (segment % 2 === 1) {
-        ladderDelivers(tracker, clock, [RUNG_1080], 1);
-      } else {
-        tracker.recordUnservedSlot(RUNG_1080);
-      }
-    }
-
-    assert.deepEqual(stopped, [], 'a rung running at half the pace of its siblings was called dead');
-  });
-
-  /** And the ladder must still lose a rung that really stops, with the same reference. */
-  it('still judges a dead rung when the ladder around it is four strong', () => {
-    const { tracker, clock, stopped } = makeLadder([RUNG_1080, RUNG_720, RUNG_480, RUNG_360]);
-
-    tracker.recordUnservedSlot(RUNG_480);
-    ladderDelivers(tracker, clock, [RUNG_1080, RUNG_720, RUNG_360], RUNG_DEATH_LAG_SEGMENTS);
-
-    assert.deepEqual(stopped, [RUNG_480]);
-  });
-
-  /** A rung the ladder did not have a moment ago has missed nothing, whatever the others have counted. */
-  it('starts a newly announced rung level with the rung furthest ahead, never at zero', () => {
-    const { tracker, clock, stopped } = makeLadder();
-
-    ladderDelivers(tracker, clock, [RUNG_1080, RUNG_360], RUNG_DEATH_LAG_SEGMENTS * 5);
-    tracker.trackGroup(GROUP, [RUNG_1080, RUNG_480, RUNG_360]);
-    tracker.recordUnservedSlot(RUNG_480);
-
-    assert.deepEqual(stopped, [], 'a rung that had just joined was dropped for a history it was not there for');
-  });
-
-  /** A finished broadcast is not a broken rung, and dropping rungs off one helps nobody. */
-  it('says nothing about a rung whose own feed ended', () => {
-    const { tracker, clock, stopped } = makeLadder();
-
-    tracker.recordFeedEnded(RUNG_1080);
-    tracker.recordUnservedSlot(RUNG_1080);
-    ladderDelivers(tracker, clock, [RUNG_360], RUNG_DEATH_LAG_SEGMENTS * 2);
-
-    assert.deepEqual(stopped, []);
-  });
-
-  /**
-   * The same guard from the other side. A ladder's end is recorded once against the group, by
-   * `LadderFeedPoller.recordGroupEndedIfComplete`, and never against the rungs.
-   */
-  it('says nothing about a rung whose group has ended', () => {
-    const { tracker, clock, stopped } = makeLadder();
-
-    tracker.recordFeedEnded(GROUP);
-    tracker.recordUnservedSlot(RUNG_1080);
-    ladderDelivers(tracker, clock, [RUNG_360], RUNG_DEATH_LAG_SEGMENTS * 2);
-
-    assert.deepEqual(stopped, []);
-  });
-
-  /** A viewer of a single-rendition stream has nowhere to move to, so there is nothing to say. */
-  it('says nothing about a topic that is not a rung of any ladder', () => {
-    const clock = makeClock();
-    const stopped: string[] = [];
-    const tracker = new FeedHealthTracker(clock.now);
-    tracker.onRungStopped((rung) => stopped.push(rung));
-
-    unservedPastWindow(tracker, clock);
-
-    assert.equal(tracker.state(TOPIC), FEED_STATE_STALLED, 'the topic should still read as stalled');
-    assert.deepEqual(stopped, []);
-  });
-
-  it('stops announcing once the listener has gone', () => {
-    const { tracker, clock, stopped, unsubscribe } = makeLadder();
-
-    unsubscribe();
-    tracker.recordUnservedSlot(RUNG_1080);
-    ladderDelivers(tracker, clock, [RUNG_360], RUNG_DEATH_LAG_SEGMENTS * 2);
-
-    assert.deepEqual(stopped, []);
+    assert.equal(tracker.unservedRunMs(RUNG), null);
+
+    tracker.recordUnservedSlot(RUNG);
+    clock.advance(UNSERVED_SLOT_STALL_MS);
+    tracker.recordUnservedSlot(RUNG);
+    assert.equal(tracker.unservedRunMs(RUNG), UNSERVED_SLOT_STALL_MS);
+
+    tracker.recordGatewayResponse(RUNG);
+    assert.equal(tracker.unservedRunMs(RUNG), null);
+
+    tracker.recordUnservedSlot(RUNG);
+    tracker.recordGatewayFailure(RUNG);
+    assert.equal(tracker.unservedRunMs(RUNG), null);
   });
 });

@@ -467,7 +467,7 @@ function renderWithCopy(env) {
     {
       cwd: join(STACK, 'deploy'),
       encoding: 'utf-8',
-      env: { ...process.env, STAMP: 'x', STREAM_KEY: 'x', API_AUTH_TOKEN: 'x', ...env },
+      env: { ...process.env, STAMP: 'x', STREAM_KEY: 'x', API_AUTH_TOKEN: 'x', HLS_FRAGMENT: '2', ...env },
       timeout: COMPOSE_CONFIG_TIMEOUT_MS,
     },
   );

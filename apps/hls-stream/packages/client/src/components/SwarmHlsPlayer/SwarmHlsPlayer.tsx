@@ -11,6 +11,7 @@ import { attachQoeTracking, initialMetrics, QoeMetrics } from './overlays/qoe/us
 import { CustomFragmentLoader, CustomManifestLoader, manifestFetcher } from './CustomManifestLoader';
 import { FEED_STATE_LIVE, FeedState } from './feedState';
 import { attachLivePlaybackRateGuard } from './livePlaybackRate';
+import { attachLiveSyncToSegmentLength } from './liveSyncLength';
 import { ManifestStateManager } from './ManifestManagement';
 import { nextMediaErrorAction, NO_MEDIA_ERRORS_YET, recoverFromMediaError } from './mediaErrorRecovery';
 import { attachPlaybackStallReporter } from './playbackHealth';
@@ -18,11 +19,11 @@ import { buildPlayerConfig, HLS_TUNING } from './playerConfig';
 import { exposePlayerForInstrumentation } from './playerTestHandle';
 import { buildSwarmUri } from './playlist';
 import { attachReturningBroadcastRejoin } from './returningBroadcast';
-import { attachRungFailover, attachWatchedRungReporter } from './rungHealth';
+import { attachActiveRungFollower, attachRungFailover, attachWatchedRungReporter } from './rungHealth';
 
 import './SwarmHlsPlayer.scss';
 
-/** Pins playback to a named rung; `AUTO_LEVEL` hands the choice back to hls.js's ABR. */
+/** Pins playback to a named rung, `AUTO_LEVEL` hands the choice back to hls.js's ABR. */
 const AUTO_LEVEL = 'auto';
 
 // TODO Consider switching to React.MediaHTMLAttributes<HTMLMediaElement> to support <audio> as well
@@ -52,24 +53,28 @@ interface HlsTuning {
 }
 
 /**
- * How this player is tuned for a Swarm-backed live stream.
- *
- * Exported so a caller can start from these numbers and override only what it needs, rather than
- * rediscover them. They are deliberately not hls.js's own defaults.
+ * How this player is tuned for a Swarm-backed live stream. The numbers are deliberately not hls.js's
+ * own defaults.
  *
  * The one worth knowing about is `liveSyncDuration`. It is a latency *target*: hls.js parks the
  * playhead that many seconds behind the live edge (`latency-controller.ts`, `targetLatency` then
- * `liveSyncPosition = liveEdge - targetLatency`), and that distance is the same at any segment
- * length. hls.js's own default is `liveSyncDurationCount: 3`, a count multiplied by the playlist's
- * target duration, which does track segment length. Setting one of these forbids the other:
- * `mergeConfig` throws on a config carrying both.
+ * `liveSyncPosition = liveEdge - targetLatency`). The shipped target is three segments of the
+ * playlist's segment length, never under 6 s, and moves when a playlist names a new length (see
+ * `liveSyncLength.ts`). Only a caller's own override stays fixed. hls.js's own default is
+ * `liveSyncDurationCount: 3`, a count multiplied by the playlist's target duration, which tracks
+ * segment length but has no floor. Setting one of these forbids the other: `mergeConfig` throws on
+ * a config carrying both.
  *
- * What this has to be checked against is not segment length but the engine's **playlist window**,
- * because `liveSyncPosition` is clamped to `edge - levelDetails.totalduration`. A target as long as
- * the window parks the playhead on the oldest fragment, at the eviction boundary. The two engines
- * express that window differently, so the margin differs: SRS's `hls_window` is a duration and
- * holds regardless of fragment length, while OME's is `SegmentCount x SegmentDuration`, which at
- * its defaults is 5 x 2s = 10s, exactly this value.
+ * What the target also has to be checked against is the engine's **playlist window**, because
+ * `liveSyncPosition` is clamped to `edge - levelDetails.totalduration`. A target as long as the
+ * window parks the playhead on the oldest fragment, at the eviction boundary. The two engines
+ * express that window differently, so the margin differs. SRS's `hls_window` is a fixed duration,
+ * `HLS_WINDOW`, 15 s unless the deployment sets it, while the target grows with the segment. From
+ * segments of about 5 s three of them fill the whole 15 s and the target sits on the window's oldest
+ * fragment, so a deployment with segments that long has to raise `HLS_WINDOW` with them. OME's
+ * window is `SegmentCount x SegmentDuration`, which at its defaults is 5 x 2s = 10s, 4 s clear of the
+ * 6 s floor. At longer segments and OME's default count of five, it stays two segments ahead of the
+ * three-segment target.
  */
 const DEFAULT_HLS_TUNING: Readonly<HlsTuning> = Object.freeze({
   // Spread rather than restated. These are the buffering and latency numbers of
@@ -86,7 +91,7 @@ const DEFAULT_HLS_TUNING: Readonly<HlsTuning> = Object.freeze({
   // measurement of a pipe. Over Swarm it is not: a 2s 1080p segment is a few hundred chunks fanned
   // out across neighbourhoods, and the elapsed time is dominated by retrieval latency rather than
   // by any rate. Consecutive samples therefore swing hard, and hls.js's default half-lives turn
-  // that swing into level flapping — so both are lengthened well past them (3 and 9).
+  // that swing into level flapping, so both are lengthened well past them (3 and 9).
   abrEwmaFastLive: 9,
   abrEwmaSlowLive: 27,
 
@@ -97,16 +102,16 @@ const DEFAULT_HLS_TUNING: Readonly<HlsTuning> = Object.freeze({
   abrEwmaDefaultEstimate: 2_000_000,
 
   // hls.js's startup probe fetches the first fragment at a low level to measure throughput. That
-  // measurement is retrieval latency here, so it produces a number that is not bandwidth; the
+  // measurement is retrieval latency here, so it produces a number that is not bandwidth. The
   // seeded estimate is the more honest input.
   testBandwidth: false,
 
   // Off, and this is load-bearing rather than a preference. `capLevelToPlayerSize` caps ABR at the
   // first rung whose width or height reaches `max(playerWidth, playerHeight) x devicePixelRatio`,
   // and it sets `autoLevelCapping`, which ABR cannot exceed for any bandwidth. In a 420px-wide
-  // player at devicePixelRatio 1 that resolves to 640x360 — the bottom rung, pinned there
+  // player at devicePixelRatio 1 that resolves to 640x360, the bottom rung, pinned there
   // permanently and regardless of how fast Swarm is answering. Sizing the ladder to the box is the
-  // right production default; it is the wrong thing to leave on while measuring what the ladder can
+  // right production default. It is the wrong thing to leave on while measuring what the ladder can
   // reach. See the watch page, which is laid out wide for the same reason.
   capLevelToPlayerSize: false,
 
@@ -149,8 +154,8 @@ function tuningKey(tuning: HlsTuning): string {
  *
  * Deliberately excludes bandwidth. The uploader keeps correcting each rung's measured bandwidth,
  * and rebuilding the player every time it did would restart playback every half minute. A session
- * therefore runs on the bandwidths that had landed by the time hls.js read the master — which for
- * a live stream is once, at the start — and later corrections benefit later sessions.
+ * therefore runs on the bandwidths that had landed by the time hls.js read the master, which for
+ * a live stream is once, at the start, and later corrections benefit later sessions.
  */
 function ladderKey(renditions: Rendition[] | undefined): string {
   if (!renditions || renditions.length === 0) {
@@ -176,14 +181,14 @@ function topLevelIndex(levels: readonly { height: number; maxBitrate: number }[]
  *
  * The second is what hls.js does by default and it cannot work over Swarm. `findBestLevel` will
  * only move up to a rung when `abrBandWidthUpFactor x bandwidthEstimate >= BANDWIDTH`, and
- * `bandwidthEstimate` moves only on fragments actually fetched — with `testBandwidth` off there is
+ * `bandwidthEstimate` moves only on fragments actually fetched: with `testBandwidth` off there is
  * no probe, and a probe would measure retrieval latency rather than a rate anyway. So a viewer
  * fetching 700 kbps segments measures roughly 700 kbps, concludes 700 kbps is all it can afford,
  * and never tries the rung that would have told it otherwise. The floor is self-fulfilling.
  *
  * Seeding the estimate at exactly what the top rung needs under the up-switch factor inverts that:
  * the whole ladder is affordable from cold, and the first real fragments then move the estimate.
- * If Swarm keeps up it stays high; if it does not, the EWMA falls and — faster — the starvation
+ * If Swarm keeps up it stays high. If it does not, the EWMA falls and, faster, the starvation
  * path in `findBestLevel` drops the level as the buffer drains. Falling back on evidence, rather
  * than never climbing for want of it.
  *
@@ -199,7 +204,7 @@ function startAtTopRung(hls: Hls): void {
 
   // Clamped because this is a divisor and the factor is caller-tunable for exactly this kind of
   // sweep. A zero would seed an infinite estimate, which hls.js then multiplies by the same zero
-  // and compares as NaN — no rung is ever selectable and playback simply never starts.
+  // and compares as NaN: no rung is ever selectable and playback simply never starts.
   const upFactor = Math.min(Math.max(hls.config.abrBandWidthUpFactor, 0.1), 1);
   const top = topLevelIndex(levels);
   const affordable = levels[top].maxBitrate / upFactor;
@@ -207,20 +212,20 @@ function startAtTopRung(hls: Hls): void {
   // Never downward: a caller that deliberately seeded higher keeps its number.
   hls.bandwidthEstimate = Math.max(hls.config.abrEwmaDefaultEstimate, Math.round(affordable));
 
-  // `startLevel` picks the first fragment only, and leaves ABR enabled — unlike `currentLevel`,
+  // `startLevel` picks the first fragment only, and leaves ABR enabled, unlike `currentLevel`,
   // which would pin the session to this rung for good.
   hls.startLevel = top;
 }
 
 /**
- * Pins hls.js to one rung. Called only when a rung was asked for; otherwise ABR chooses.
+ * Pins hls.js to one rung. Called only when a rung was asked for. Otherwise ABR chooses.
  *
  * Matched by feed URI where the catalog supplied one, because a rung's topic is the one attribute
  * of a level that came from this ladder and cannot collide with another rung's. Falling back to the
  * height in the rung's name covers the session driven purely by a published master, which knows
  * every level's resolution but has no rendition names to match against.
  *
- * Assigning `currentLevel` is also what turns ABR off — a `startLevel` alone only picks where it
+ * Assigning `currentLevel` is also what turns ABR off: a `startLevel` alone only picks where it
  * begins, and it would switch away on the first throughput sample.
  */
 function applyLevel(hls: Hls, owner: string, renditions: Rendition[], level: string): void {
@@ -260,7 +265,7 @@ interface HlsPlayerProps extends React.VideoHTMLAttributes<HTMLVideoElement> {
   renditions?: Rendition[];
   /**
    * Rung to pin playback to, by name. Omitted, or {@link AUTO_LEVEL}, leaves the choice to ABR,
-   * which is the default. Pinning is for isolating one rung — comparing it against the others, or
+   * which is the default. Pinning is for isolating one rung, comparing it against the others, or
    * telling a bad rung apart from a bad switch. Ignored without a ladder.
    */
   level?: string;
@@ -272,6 +277,13 @@ interface HlsPlayerProps extends React.VideoHTMLAttributes<HTMLVideoElement> {
    * in the values themselves does rebuild the player, which loses playback position.
    */
   hlsConfig?: HlsTuning;
+  /**
+   * Called when a ladder marker names a rung that `renditions` lacks, which means the entry was read
+   * before every quality had reported to the admin, or before any had. The page reads the stream list's
+   * next slot once: an entry naming more rungs rebuilds the player. At most once per marker period, for
+   * a bounded time after each build.
+   */
+  onLadderShort?: () => void;
 }
 
 /** The key both the manifest state and the feed state are held under. Null if the name is unusable. */
@@ -294,6 +306,7 @@ export const SwarmHlsPlayer: React.FC<HlsPlayerProps> = ({
   renditions,
   level,
   hlsConfig,
+  onLadderShort,
   ...videoProps
 }) => {
   const [restartTrigger, setRestartTrigger] = useState(0);
@@ -308,6 +321,8 @@ export const SwarmHlsPlayer: React.FC<HlsPlayerProps> = ({
   // it on every poll. `renditionKey` is what the effect actually reacts to.
   const renditionsRef = useRef(renditions);
   renditionsRef.current = renditions;
+  const onLadderShortRef = useRef(onLadderShort);
+  onLadderShortRef.current = onLadderShort;
 
   // Deliberately not part of the effect below, which reruns on every restart. A fatal network error
   // is what causes a restart, so a subscription torn down and rebuilt with the player would be
@@ -330,8 +345,8 @@ export const SwarmHlsPlayer: React.FC<HlsPlayerProps> = ({
     const sourceUrl = buildSwarmUri(owner, topicString);
     const ladder = renditionsRef.current;
 
-    // A ladder the catalog knows about. Only the fallback path needs this — a stream whose feed
-    // holds a published master is recognised by the loader from the master itself, catalog or not.
+    // A ladder the stream list names. Its master is built from the list and the master feed is never
+    // read. A stream the list names no renditions for is recognised by the loader from its feed.
     const isLadder = renditionKey.length > 0 && !!ladder;
 
     if (isLadder) {
@@ -340,8 +355,19 @@ export const SwarmHlsPlayer: React.FC<HlsPlayerProps> = ({
         renditions: renditionsRef.current ?? ladder,
       }));
     }
+    // The list is not polled once the player is mounted, so a viewer who joined while only some
+    // qualities had reported, or none, would keep that ladder for the whole talk.
+    const stopLadderWatch = manifestFetcher.watchLadderCompletion(
+      sourceUrl,
+      owner,
+      () => (renditionsRef.current ?? []).map((rendition) => Topic.fromString(rendition.topic).toString()),
+      () => onLadderShortRef.current?.(),
+    );
 
     let hls: Hls | null = null;
+    // A caller that sets its own live target keeps it, whatever its value. Only the shipped one
+    // follows the segment length.
+    const callerTuning = JSON.parse(hlsConfigKey) as HlsTuning;
 
     const onHlsPause = () => {
       hls?.stopLoad();
@@ -351,12 +377,8 @@ export const SwarmHlsPlayer: React.FC<HlsPlayerProps> = ({
     };
 
     if (Hls.isSupported()) {
-      hls = new Hls(
-        buildPlayerConfig(
-          { pLoader: CustomManifestLoader, fLoader: CustomFragmentLoader },
-          { ...DEFAULT_HLS_TUNING, ...(JSON.parse(hlsConfigKey) as HlsTuning) },
-        ),
-      );
+      const tuning: HlsTuning = { ...DEFAULT_HLS_TUNING, ...callerTuning };
+      hls = new Hls(buildPlayerConfig({ pLoader: CustomManifestLoader, fLoader: CustomFragmentLoader }, tuning));
 
       const restartStream = () => {
         console.warn('Restarting stream due to manifest parsing error.');
@@ -443,6 +465,7 @@ export const SwarmHlsPlayer: React.FC<HlsPlayerProps> = ({
 
     const detachQoe = enableQoeOverlay ? attachQoeTracking(video, hls, setMetrics) : null;
     const detachRateGuard = hls ? attachLivePlaybackRateGuard(video, hls) : null;
+    const detachLiveSync = hls ? attachLiveSyncToSegmentLength(hls, callerTuning) : null;
     const detachTestHandle = hls ? exposePlayerForInstrumentation(hls) : null;
 
     // ⛔ Both halves of what a ladder viewer needs when one rung stops being produced, and neither
@@ -450,53 +473,30 @@ export const SwarmHlsPlayer: React.FC<HlsPlayerProps> = ({
     // during the seconds before it does. A single-rendition stream gets neither, because there is
     // no second rung to move to and nothing for a group's health to be folded from.
     //
-    // ⛔⛔⛔ **This was OFF from 2026-08-31 to 2026-09-01, and the condition it was waiting on has
-    // been met. Read all of this before touching it again.**
+    // ⛔⛔⛔ Read this before switching it off. Earlier versions of the rule judged a rung by comparing
+    // it with its siblings, and three of them dropped healthy rungs during the settle, before any
+    // fault. The poller now judges the playing rung by its own progress and confirms with one sibling's
+    // (`LadderFeedPoller`), so a rung is only ever dropped on evidence that a sibling is moving.
     //
-    // Seven attempts at the rule, and three of them amputated THREE OF FOUR HEALTHY RUNGS during the
-    // settle, before any fault was injected, on three consecutive live runs. That is worse than the
-    // defect it exists to fix: the defect freezes one viewer on one dead rung, this destroys the
-    // ladder on a broadcast where nothing is wrong. `a7b7220` switched it off.
-    //
-    // ⭐⭐⭐ **It was switched off "until the stage under it is understood", and the stage is now
-    // understood.** That commit's own reasoning is the reason this is back on: fourteen artifacts
-    // said a live viewer took 0.76 to 1.49 segments a second against the 2.00 that 0.5s segments
-    // need, with no fault injected, so every rung looked sick and a rule that compares rungs was
-    // reading the starvation rather than a dead rung.
-    //
-    // That starvation had a cause and it was not the client. SRS fires `on_hls` once per closed
-    // segment per rung, so a four-rung ladder at 0.5s asked for 8.00 announcements a second against
-    // the ~6.7 SRS was measured sustaining. It never errored: announcements fell behind the media at
-    // 0.46s per second of video until the lag passed `hls_window`, and then SRS deleted each segment
-    // before announcing it. Every rung really was intermittently silent, and the 1080p rung really
-    // was dying about two minutes in, on every broadcast the rule was ever judged against.
-    //
-    // The stage moved to 1.0s segments on 2026-09-01 and asks 4.00/s. Verified over 600s: every rung
-    // delivered at 1.00/s, announcement lag flat at 0.0s across 580 segments, ZERO segments lost on
-    // any rung. `suites/preflight/announcement-rate` refuses a stage that goes back over the line.
-    //
-    // ⭐ And the rule itself changed before it was switched off, which is why this is not attempt
-    // eight of the same thing. `6846309` judges a dead rung by **segments the ladder delivered that
-    // this rung did not**, never by a clock. All three amputations were clocks, and a clock runs
-    // during intervals in which nothing could have been served, so it measures the outage rather
-    // than the rung. A delivered-segment count freezes when the whole stage freezes. See
-    // `RUNG_DEATH_LAG_SEGMENTS` in `feedState.ts`.
-    //
-    // ⚠️ **What is still unproven: this rule has never run live at all.** It was written after the
-    // third amputation and switched off before it was ever armed on a stage. The 102 tests in
-    // `test/rungHealth.test.ts` and `test/feedState.test.ts` encode seven live faults and are the
-    // specification, and they pass, but a green spec is not an arm. The next live ladder run is the
-    // first real evidence either way, and the thing to watch for is the old failure: rungs dropped
-    // during the settle with no fault injected.
-    //
-    // The reporter stays on either way. It is measured and it works: a viewer on a dead rung is
-    // told the feed has stalled rather than being shown `live`.
+    // The reporter stays on either way: a viewer on a dead rung is told the feed has stalled rather
+    // than being shown `live`.
     const RUNG_FAILOVER_ENABLED = true;
     const ladderTopic = isLadder ? toHexTopic(topicString) : null;
     const detachRungFailover =
       hls && RUNG_FAILOVER_ENABLED ? attachRungFailover(hls, manifestFetcher.feedHealth) : null;
     const detachWatchedRung =
       hls && ladderTopic ? attachWatchedRungReporter(hls, ladderTopic, manifestFetcher.feedHealth) : null;
+
+    // The poller follows only the rung hls.js plays, so it is told when that changes, and reads the
+    // playhead at a switch so a viewer behind the live edge keeps their place. Both for any ladder,
+    // including one the catalog never named, which only the published master revealed.
+    const detachRungFollower = hls
+      ? attachActiveRungFollower(hls, (rung, loading) => manifestFetcher.followOnlyRung(rung, loading))
+      : null;
+    const playingHls = hls;
+    const detachPlayhead = playingHls
+      ? manifestFetcher.attachPlayhead(sourceUrl, () => playingHls.playingDate?.getTime() ?? null)
+      : null;
 
     // Attached with the player rather than with the subscription above, because it is the player
     // that stalls: a restart builds a fresh media pipeline and the stalls of the one before it are
@@ -523,23 +523,27 @@ export const SwarmHlsPlayer: React.FC<HlsPlayerProps> = ({
         : null;
 
     return () => {
+      stopLadderWatch();
       video.removeEventListener('pause', onHlsPause);
       video.removeEventListener('play', onHlsPlay);
       detachQoe?.();
       detachRateGuard?.();
+      detachLiveSync?.();
       detachStallReporter?.();
       detachReturnRejoin?.();
       detachTestHandle?.();
       detachRungFailover?.();
       detachWatchedRung?.();
+      detachRungFollower?.();
+      detachPlayhead?.();
 
-      // Stops every rung's walk and discards its accumulated playlist, including rungs discovered
+      // Stops every rung this source registered and discards its accumulated playlist, including rungs discovered
       // from a published master that this component never saw.
       manifestFetcher.unregisterLadder(sourceUrl);
 
       if (hls) {
         // The source feed, on top of the rungs `unregisterLadder` has already stopped. For a
-        // single-rendition stream it is the media playlist and holds the only state there is; for a
+        // single-rendition stream it is the media playlist and holds the only state there is. For a
         // ladder it is the master, and clearing it is a no-op. Leaving either behind would have the
         // next session resume someone else's playlist.
         //

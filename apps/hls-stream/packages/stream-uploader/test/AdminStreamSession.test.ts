@@ -35,8 +35,10 @@ import {
   AdminStateReport,
   STATE_REPORT_ACCEPTED,
   STATE_REPORT_FAILED,
+  STATE_REPORT_STREAM_GONE,
   StateReportOutcome,
 } from '../src/libs/AdminApiClient.js';
+import { AdminStreamGoneError } from '../src/libs/AdminStreamGoneError.js';
 import { LadderRegistry, RenditionAnnouncement } from '../src/libs/LadderRegistry.js';
 import { Logger } from '../src/libs/Logger.js';
 import { StreamUploader } from '../src/libs/StreamUploader.js';
@@ -763,6 +765,10 @@ describe('a rung of a declared ladder', () => {
     /** Every record of this rung registered as one that will not finish. */
     unfinished: Upsert[];
     delivered: string[];
+    /** Every ladder group the registry was told its flip's vod report did not go through for. */
+    notReported: string[];
+    /** Every stream id whose recovery entry was removed, in order. */
+    removedEntries: string[];
   }
 
   interface LadderSessionOptions {
@@ -787,6 +793,8 @@ describe('a rung of a declared ladder', () => {
     const upserts: Upsert[] = [];
     const unfinished: Upsert[] = [];
     const delivered: string[] = [];
+    const notReported: string[] = [];
+    const removedEntries: string[] = [];
 
     const bee = makeFakeBee({
       uploadPayload: async (index, payload) => {
@@ -825,6 +833,9 @@ describe('a rung of a declared ladder', () => {
         unfinished.push(upsert);
         return options.unfinished?.(upsert) ?? { masterIndex: null, flippedToFinished: false, duration: null };
       },
+      recordingNotReported: (group) => {
+        notReported.push(group);
+      },
     };
 
     const uploader = new StreamUploader({
@@ -837,7 +848,7 @@ describe('a rung of a declared ladder', () => {
         },
       }),
       ladderRegistry,
-      recoveryStore: makeFakeRecoveryStore(),
+      recoveryStore: makeFakeRecoveryStore({ remove: (streamId: string) => removedEntries.push(streamId) }),
       streamKey: TEST_STREAM_KEY,
       redundancyLevel: 0,
       streamId: `${STREAM_ID}_720p`,
@@ -850,7 +861,17 @@ describe('a rung of a declared ladder', () => {
       catalogAnnounceRetryMs: options.catalogAnnounceRetryMs,
     });
 
-    return { uploader, published, catalogEntries, reports, upserts, unfinished, delivered };
+    return {
+      uploader,
+      published,
+      catalogEntries,
+      reports,
+      upserts,
+      unfinished,
+      delivered,
+      notReported,
+      removedEntries,
+    };
   }
 
   /**
@@ -971,6 +992,95 @@ describe('a rung of a declared ladder', () => {
   });
 
   /**
+   * The registry hands a finished ladder's flip to one rung only, so a vod report that rung could not
+   * deliver has to hand it back, or the sibling finishing next finds it taken and the recording stays
+   * listed as live.
+   */
+  it('hands the flip back to the registry when its vod report could not be delivered', async () => {
+    const session = newLadderSession({
+      announce: (upsert) =>
+        upsert.rendition.index === undefined
+          ? { masterIndex: 0, flippedToFinished: false, duration: null }
+          : { masterIndex: 4, flippedToFinished: true, duration: 12 },
+      reportOutcome: (report) => (report.state === ADMIN_STATE_VOD ? STATE_REPORT_FAILED : STATE_REPORT_ACCEPTED),
+    });
+
+    await feedOneSegment(session.uploader, 0);
+    await assert.rejects(() => session.uploader.notifyStop(), /admin API/);
+
+    assert.deepEqual(session.notReported, [DECLARED_TOPIC]);
+  });
+
+  /**
+   * The last rung's finalize finishes the ladder, and the stream is deleted on the admin before the vod
+   * report naming the recording lands. That refusal never heals, so the entry kept for it would be
+   * recovered and refused at every start.
+   */
+  it('drops its recovery entry when the vod report that finishes the ladder meets a deleted stream', async () => {
+    const session = newLadderSession({
+      announce: (upsert) =>
+        upsert.rendition.index === undefined
+          ? { masterIndex: 0, flippedToFinished: false, duration: null }
+          : { masterIndex: 4, flippedToFinished: true, duration: 12 },
+      reportOutcome: (report) => (report.state === ADMIN_STATE_VOD ? STATE_REPORT_STREAM_GONE : STATE_REPORT_ACCEPTED),
+    });
+
+    await feedOneSegment(session.uploader, 0);
+    await assert.rejects(() => session.uploader.notifyStop(), AdminStreamGoneError);
+
+    assert.deepEqual(session.removedEntries, [`${STREAM_ID}_720p`], 'a deleted stream′s entry was kept for every boot');
+  });
+
+  /**
+   * A reconnect inside the drain, or a drain timeout, retires the rung while its final announce is in
+   * flight. The flip it was handed then meets the guard that keeps a retired session from reporting,
+   * so the report is skipped rather than failed. Kept, the flip blocked every sibling and the admin
+   * listed the broadcast as live for good, under a line saying the ladder had finalized.
+   */
+  it('hands the flip back, and does not say the ladder finalized, when it is retired before its vod report', async () => {
+    const holder: { uploader?: StreamUploader } = {};
+    const session = newLadderSession({
+      announce: (upsert) => {
+        if (upsert.rendition.index === undefined) {
+          return { masterIndex: 0, flippedToFinished: false, duration: null };
+        }
+        holder.uploader?.retire();
+        return { masterIndex: 4, flippedToFinished: true, duration: 12 };
+      },
+    });
+    holder.uploader = session.uploader;
+    await feedOneSegment(session.uploader, 0);
+
+    const lines = await logLinesDuring(() => session.uploader.notifyStop());
+
+    assert.deepEqual(
+      session.reports.map((report) => report.state),
+      [ADMIN_STATE_LIVE],
+      'a retired rung reports no vod, since the admin stream is shared with its replacement',
+    );
+    assert.deepEqual(session.notReported, [DECLARED_TOPIC], 'the flip it did not report was kept from its siblings');
+    assert.equal(
+      lines.filter((line) => line.includes(ladderFinalized(DECLARED_TOPIC))).length,
+      0,
+      'the ladder was said to have finalized for a report never sent',
+    );
+  });
+
+  it('keeps the flip when its vod report was delivered', async () => {
+    const session = newLadderSession({
+      announce: (upsert) =>
+        upsert.rendition.index === undefined
+          ? { masterIndex: 0, flippedToFinished: false, duration: null }
+          : { masterIndex: 4, flippedToFinished: true, duration: 12 },
+    });
+
+    await feedOneSegment(session.uploader, 0);
+    await session.uploader.notifyStop();
+
+    assert.deepEqual(session.notReported, []);
+  });
+
+  /**
    * ⛔ A rung draining while its siblings are still live has ended its own recording and nothing more.
    * The broadcast is over when the LAST of them finalizes, which is the only report the admin answers
    * with a flip, so a rung announcing the end off its own drain would take three live rungs off the
@@ -1064,6 +1174,11 @@ describe('a rung of a declared ladder', () => {
       });
 
       assert.equal(lines.filter((line) => line.includes(ladderFinalized(DECLARED_TOPIC))).length, 0);
+      assert.deepEqual(
+        session.notReported,
+        [DECLARED_TOPIC],
+        'the flip it could not report was kept from the next rung',
+      );
     });
   });
 

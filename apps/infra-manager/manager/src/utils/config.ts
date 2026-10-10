@@ -11,6 +11,7 @@ import {
 } from '@streaming-infra-manager/common';
 
 import { DEFAULT_LOG_LEVEL, isLogLevel, LOG_LEVELS, type LogLevel } from '../domain/Logger.js';
+import { type KnownHostNetworkPorts, knownHostNetworkPorts } from '../domain/ports/knownHostNetworkPorts.js';
 import { parseStackSources, type StackSource } from '../domain/versions/stackSources.js';
 
 function required(name: string): string {
@@ -233,6 +234,8 @@ export interface AppConfig {
   fundingRpcUrl: string | null;
   /** See `managerVersion`. */
   managerVersion: VersionInfo;
+  /** See `knownHostNetworkPorts`. Empty when the operator configured none. */
+  knownHostNetworkPorts: KnownHostNetworkPorts;
 }
 
 export const config: AppConfig = {
@@ -250,4 +253,5 @@ export const config: AppConfig = {
   fundingApiToken: fundingApiToken(process.env.FUNDING_API_TOKEN),
   fundingRpcUrl: fundingRpcUrl(process.env.FUNDING_RPC_URL),
   managerVersion: managerVersion(process.env.MANAGER_VERSION, process.env.MANAGER_COMMIT),
+  knownHostNetworkPorts: knownHostNetworkPorts(process.env.KNOWN_HOST_NETWORK_PORTS),
 };

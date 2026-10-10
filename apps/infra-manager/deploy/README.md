@@ -662,7 +662,8 @@ table is what closes them, and it has to be in place before the first deploy
 on that host. On a Bee host it admits the addresses named with
 `--bee-api-source` alone. The input hook covers host listeners. The forward hook covers
 published container traffic. Host-network containers with unprovable bindings
-cause the inventory export to refuse.
+cause the inventory export to refuse, unless `KNOWN_HOST_NETWORK_PORTS` names
+them, as step 4 does for the edge.
 
 ### 4. DNS, then the host's edge
 
@@ -690,6 +691,27 @@ manager answers there, and waits a while for the first certificate. Then open
 `https://manager.example.org` and sign in. The certificates live in the edge's
 volume `edge_caddy-data`, so running the edge again does not ask Let's Encrypt
 for another one.
+
+The edge runs on the host's network, and Docker reports no port map for such a
+container. Until the manager is told what it holds, every removal on that host
+refuses with "Container removal or port release could not be verified", and so
+do port handovers and the firewall export of step 3. Name it in the manager's
+env file with the ports Caddy listens on, then restart the manager:
+
+```sh
+KNOWN_HOST_NETWORK_PORTS=edge=80/tcp,443/tcp,443/udp
+```
+
+Those ports then count as the edge's bindings, so a deployment still cannot
+reserve them. Name only a reverse proxy or a similar container whose ports you
+know. The trust is per compose project: every host-network container in a named
+project counts as holding only the ports listed for it. So list every port
+those containers hold, because a port left out counts as free and can be handed
+to a deployment. A deployment's compose project is its name, so no deployment
+may be called `edge` while the edge is named here. Creating one is refused, and
+an existing one stops the manager at startup. Any host-network container the
+setting does not name still blocks, and a malformed value stops the manager at
+startup. `manager/.env.sample` has the format.
 
 ### 5. Keep the tunnel
 

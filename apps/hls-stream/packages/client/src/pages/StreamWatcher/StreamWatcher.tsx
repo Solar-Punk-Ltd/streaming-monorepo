@@ -6,12 +6,13 @@ import { useAppContext } from '@/providers/App';
 import { watchPageCatalogPollMs } from '@/providers/catalogPoll';
 import { useCatalogPoll } from '@/providers/useCatalogPoll';
 import { ROUTES } from '@/routes';
-import { MEDIA_TYPE_AUDIO, MEDIA_TYPE_VIDEO, MediaType } from '@/types/stream';
+import { MEDIA_TYPE_AUDIO, MEDIA_TYPE_VIDEO, MediaType, STREAM_STATUS_SCHEDULED } from '@/types/stream';
 import { playableRenditions } from '@/utils/playableRenditions';
 import { scheduledStartLabel } from '@/utils/scheduledStart';
 import { WATCH_VIEW_PLAYER, watchPageView } from '@/utils/watchPageView';
 
 import { useIsWaitingForStart } from './useIsWaitingForStart';
+import { useListReadAtMarkers } from './useListReadAtMarkers';
 import { WatchPlaceholder } from './WatchPlaceholder';
 
 import './StreamWatcher.scss';
@@ -30,7 +31,7 @@ export function StreamWatcher() {
   }>();
   const [searchParams] = useSearchParams();
   const navigate = useNavigate();
-  const { streamList, isStreamListLoaded } = useAppContext();
+  const { streamList, isStreamListLoaded, swarm, readNextStreamListSlot } = useAppContext();
 
   // The ladder lives in the catalog, keyed by the primary feed the browser links to. Current
   // entries name the master, older ones the lowest rung. Waiting for the first catalog read
@@ -39,6 +40,7 @@ export function StreamWatcher() {
   const stream = streamList.find((entry) => entry.owner === owner && entry.topic === topic);
 
   // Above the early return, because a hook may not be skipped on some renders.
+  useListReadAtMarkers(swarm, owner, topic, stream?.state === STREAM_STATUS_SCHEDULED, readNextStreamListSlot);
   const isWaiting = useIsWaitingForStart(`${owner}/${topic}`, stream);
   const view = watchPageView(isStreamListLoaded, stream, isWaiting);
   useCatalogPoll(watchPageCatalogPollMs(view));
@@ -71,6 +73,7 @@ export function StreamWatcher() {
           enableQoeOverlay={enableQoeOverlay}
           renditions={playableRenditions(stream)}
           level={level}
+          onLadderShort={readNextStreamListSlot}
         />
       )}
       <Button variant={ButtonVariant.SECONDARY} onClick={() => handleBackButtonClick()}>

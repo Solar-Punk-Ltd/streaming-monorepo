@@ -6,17 +6,12 @@ import { describe, it } from 'node:test';
 import { ROOT_DIR } from '../src/config.js';
 
 /**
- * The player and the master must agree about when a rung has stopped.
+ * The player and the master each decide when a rung has stopped, and this holds what each side declares.
  *
- * Two copies of one rule exist on purpose. `packages/client/.../feedState.ts` decides when a viewer
- * leaves a rung, and `packages/stream-uploader/src/libs/LadderLiveness.ts` decides when the master
- * stops advertising it. The uploader's is a deliberate port rather than a second invention, because
- * the client's took eight attempts and three of the failures shipped.
- *
- * ⛔ Both files say in prose that if one constant moves the other must move with it, and until
- * 2026-09-01 that sentence was the whole of the enforcement. Disagreement is not a crash: the master
- * would go on naming a rung the player had already left, or drop one the player was still happily
- * watching, and either reads as a viewer-side fault a long way from the number that caused it.
+ * Until 2026-10-07 there were two copies of one rule, the player's in `feedState.ts` and the uploader's
+ * in `packages/stream-uploader/src/libs/LadderLiveness.ts`, and they had to agree, because a master
+ * naming a rung the player had left reads as a viewer-side fault a long way from the number that
+ * caused it. The player has since moved to judging the rung it plays by that rung's own progress.
  *
  * Read out of the source rather than imported. e2e must not reach past a package boundary into
  * another package's internals, and the client is a browser package this runner cannot load anyway.
@@ -27,39 +22,31 @@ import { ROOT_DIR } from '../src/config.js';
 const CONSTANT = 'RUNG_DEATH_LAG_SEGMENTS';
 
 /**
- * How many rungs each side will act on at once, set on 2026-09-01 after a broadcast ending
- * made the player delete three rungs of four and hls.js go fatal.
+ * How many rungs the uploader takes out of what the master advertises at once, set on 2026-09-01
+ * after a broadcast ending made the player delete three rungs of four and hls.js go fatal.
  *
- * ⚠️ The two names differ on purpose. The player's removal is irreversible, so its limit is per
- * session; the uploader recomputes what to advertise on every delivery, so its limit is per
- * evaluation. Same number, different sentence, and they must not drift apart: a master that drops a
- * rung the player kept, or keeps one the player dropped, is a viewer-side fault a long way from the
- * number that caused it.
+ * ⛔ The player had the same limit, `MAX_RUNGS_DROPPED_PER_LADDER`, until decision 37 on 2026-10-07:
+ * it now drops every rung it announces until the viewer is on one that moves. It announces a rung only
+ * while another rung is seen moving, the playing one at a refused switch or a sibling at a failover, and
+ * a broadcast that stops everywhere shows none, so the cascade the limit was ruled in to stop has
+ * nothing to drive it. The uploader keeps its limit for the
+ * master, and the player's is pinned as absent, so a cap coming back into it is looked at.
  */
-const DROP_LIMITS = {
-  'the player': ['packages/client/src/components/SwarmHlsPlayer/rungHealth.ts', 'MAX_RUNGS_DROPPED_PER_LADDER'],
-  'the uploader': ['packages/stream-uploader/src/libs/LadderLiveness.ts', 'MAX_RUNGS_DROPPED_AT_ONCE'],
-} as const;
+const UPLOADER_DROP_LIMIT = 'MAX_RUNGS_DROPPED_AT_ONCE';
+const PLAYER_DROP_LIMIT = 'MAX_RUNGS_DROPPED_PER_LADDER';
+const PLAYER_RUNG_HEALTH = join(ROOT_DIR, 'packages', 'client', 'src', 'components', 'SwarmHlsPlayer', 'rungHealth.ts');
 
-const SOURCES = {
-  'the player, which decides when a viewer leaves a rung': join(
-    ROOT_DIR,
-    'packages',
-    'client',
-    'src',
-    'components',
-    'SwarmHlsPlayer',
-    'feedState.ts',
-  ),
-  'the uploader, which decides what the master advertises': join(
-    ROOT_DIR,
-    'packages',
-    'stream-uploader',
-    'src',
-    'libs',
-    'LadderLiveness.ts',
-  ),
-} as const;
+/**
+ * ⛔ **The player left this rule on 2026-10-07.** It follows only the quality it plays and judges that
+ * quality by its own progress, confirmed by one sibling that moves, because the rungs' feeds drift
+ * apart without bound and a count of segments one rung is behind the others stopped meaning anything
+ * once only one rung is read. The uploader keeps its count for what the master advertises. The player
+ * reads that master once at most, and not at all when the stream list names the renditions, so the
+ * two no longer have to agree. The player's side is pinned as absent, so a lag rule coming back into
+ * it is looked at rather than mirrored.
+ */
+const PLAYER_FEED_STATE = join(ROOT_DIR, 'packages', 'client', 'src', 'components', 'SwarmHlsPlayer', 'feedState.ts');
+const UPLOADER_LIVENESS = join(ROOT_DIR, 'packages', 'stream-uploader', 'src', 'libs', 'LadderLiveness.ts');
 
 /** The declared value of `name` in `path`, or null when it is not declared there at all. */
 function declaredValueOf(path: string, name: string): number | null {
@@ -71,70 +58,57 @@ function declaredValue(path: string): number | null {
   return declaredValueOf(path, CONSTANT);
 }
 
-describe('the player and the master agree about when a rung has stopped', () => {
-  for (const [whose, path] of Object.entries(SOURCES)) {
-    it(`finds ${CONSTANT} declared in ${whose}`, () => {
-      assert.notEqual(
-        declaredValue(path),
-        null,
-        `${CONSTANT} is not declared in ${path}. Either it was renamed, in which case rename it here ` +
-          'too, or one side stopped using segment lag to judge a rung, which is a change this test ' +
-          'exists to make someone look at rather than a rename.',
-      );
-    });
-  }
+describe('when a rung has stopped', () => {
+  it(`finds ${CONSTANT} declared in the uploader, which decides what the master advertises`, () => {
+    assert.notEqual(
+      declaredValue(UPLOADER_LIVENESS),
+      null,
+      `${CONSTANT} is not declared in ${UPLOADER_LIVENESS}. Either it was renamed, in which case rename it ` +
+        'here too, or the uploader stopped using segment lag to judge a rung, which is a change this test ' +
+        'exists to make someone look at rather than a rename.',
+    );
+  });
 
-  it('reads the same number on both sides', () => {
-    const [player, uploader] = Object.values(SOURCES).map(declaredValue);
-
+  it(`finds ${CONSTANT} gone from the player, which judges the rung it plays by its own progress`, () => {
     assert.equal(
-      player,
-      uploader,
-      `${CONSTANT} is ${player} in the player and ${uploader} in the uploader. They must match, or the ` +
-        'master will advertise a rung the viewer has already left, or drop one the viewer is still ' +
-        'watching. Neither shows up as an error: it shows up as a viewer-side fault a long way from ' +
-        'the number that caused it.',
+      declaredValue(PLAYER_FEED_STATE),
+      null,
+      `${CONSTANT} is declared in ${PLAYER_FEED_STATE} again. The player follows one rung, so a count of ` +
+        'segments the others delivered is not something it can read. Look at why it came back.',
     );
   });
 });
 
-describe('the player and the master agree how much of a ladder may be dropped at once', () => {
-  for (const [whose, [file, name]] of Object.entries(DROP_LIMITS)) {
-    it(`finds ${name} declared in ${whose}`, () => {
-      assert.notEqual(
-        declaredValueOf(join(ROOT_DIR, file), name),
-        null,
-        `${name} is not declared in ${file}. Either it was renamed, or one side stopped limiting how ` +
-          'much of a ladder it will take apart, which is the failure this limit was ruled in to stop.',
-      );
-    });
-  }
-
-  it('reads the same number on both sides', () => {
-    const [player, uploader] = Object.values(DROP_LIMITS).map(([file, name]) =>
-      declaredValueOf(join(ROOT_DIR, file), name),
-    );
-
-    assert.equal(
-      player,
-      uploader,
-      `the player will drop ${player} rung(s) and the master will drop ${uploader}. They must match, ` +
-        'or the two disagree about which rungs exist and neither says so.',
+describe('how much of a ladder may be dropped at once', () => {
+  it(`finds ${UPLOADER_DROP_LIMIT} declared in the uploader`, () => {
+    assert.notEqual(
+      declaredValueOf(UPLOADER_LIVENESS, UPLOADER_DROP_LIMIT),
+      null,
+      `${UPLOADER_DROP_LIMIT} is not declared in ${UPLOADER_LIVENESS}. Either it was renamed, or the uploader ` +
+        'stopped limiting how much of a ladder the master stops advertising at once, which is the failure ' +
+        'this limit was ruled in to stop.',
     );
   });
 
   /**
-   * ⛔ Pinned to the ruling rather than only to each other, because "both sides say 3" would satisfy
-   * the equality above and is not what was decided.
+   * ⛔ Pinned to the ruling, because a different number would satisfy the presence check above and is
+   * not what was decided.
    */
-  it('is one, which is what a broadcast ending needs', () => {
-    for (const [whose, [file, name]] of Object.entries(DROP_LIMITS)) {
-      assert.equal(
-        declaredValueOf(join(ROOT_DIR, file), name),
-        1,
-        `${whose} would take ${declaredValueOf(join(ROOT_DIR, file), name)} rungs out of a ladder. The ` +
-          'ruling was one: a second rung going quiet is a broadcast ending, not two rungs failing.',
-      );
-    }
+  it('is one in the uploader, which is what a broadcast ending needs', () => {
+    assert.equal(
+      declaredValueOf(UPLOADER_LIVENESS, UPLOADER_DROP_LIMIT),
+      1,
+      `the uploader would take ${declaredValueOf(UPLOADER_LIVENESS, UPLOADER_DROP_LIMIT)} rungs out of the ` +
+        'master at once. The ruling was one: a second rung going quiet is a broadcast ending, not two rungs failing.',
+    );
+  });
+
+  it(`finds ${PLAYER_DROP_LIMIT} gone from the player, which drops until the viewer is on a rung that moves`, () => {
+    assert.equal(
+      declaredValueOf(PLAYER_RUNG_HEALTH, PLAYER_DROP_LIMIT),
+      null,
+      `${PLAYER_DROP_LIMIT} is declared in ${PLAYER_RUNG_HEALTH} again. Decision 37 took the player's cap out, ` +
+        'because a refused switch used it up and left a viewer frozen on the next rung to stop.',
+    );
   });
 });

@@ -64,7 +64,7 @@ describe('an arm is the gateway it claims to be', () => {
     assert.match(verdict ?? '', /no gateway at all/);
   });
 
-  /** `setGatewayUrl` strips trailing slashes, so a readback of the normalised form is not a mismatch. */
+  /** The client's switch strips trailing slashes, so a readback of the normalised form is not a mismatch. */
   it('does not call a trailing slash a different gateway', () => {
     const verdict = gatewayArmIsComparable({ gatewayUrl: UNFUNDED, failure: null }, `${UNFUNDED}/`);
 
@@ -224,7 +224,7 @@ describe('an arm is on its own gateway before the client runs', () => {
    */
   it('spells the key the client actually reads', () => {
     const root = resolve(dirname(fileURLToPath(import.meta.url)), '../..');
-    const app = readFileSync(join(root, 'packages/client/src/providers/App.tsx'), 'utf8');
+    const app = readFileSync(join(root, 'packages/client/src/providers/sourceStorage.ts'), 'utf8');
 
     const declared = /GATEWAY_STORAGE_KEY = '([^']+)'/.exec(app);
     assert.ok(declared, 'the client no longer declares GATEWAY_STORAGE_KEY as a literal');
@@ -243,7 +243,7 @@ describe('reading the arm back does not disturb the arm', () => {
     const setup = await readGateway(pageWithSwitch(handle) as never);
 
     assert.deepEqual(setup, { gatewayUrl: 'http://127.0.0.1:10087', failure: null });
-    // ⛔ `setGatewayUrl` resets the catalog reader and marks every manifest dirty. That is correct for
+    // ⛔ Selecting resets the catalog reader and marks every manifest dirty. That is correct for
     // a mid-stream switch and is a disturbance a seeded arm has no reason to pay.
     assert.deepEqual(state.selections, []);
   });

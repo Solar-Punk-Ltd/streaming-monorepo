@@ -10,7 +10,7 @@ import './StreamList.scss';
  * Live first, then newest first, and that is all this ever tests for.
  *
  * ⭐ It reads `live` rather than switching on the status on purpose, so a status it has never heard
- * of — `scheduled` was one until the admin layer started writing it — lands in the same bucket as a
+ * of (`scheduled` was one until the admin layer started writing it) lands in the same bucket as a
  * recording and is ordered by timestamp with the rest. An announcement is not more urgent than a
  * broadcast that is actually running, and a comparator that had to be taught each new status would
  * have sorted the unknown one to an arbitrary end of the list instead.

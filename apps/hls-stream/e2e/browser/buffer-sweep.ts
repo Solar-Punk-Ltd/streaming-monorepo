@@ -1,10 +1,10 @@
 /**
- * `pnpm browser:buffer-sweep` — how far behind live a viewer has to sit before the picture breaks.
+ * `pnpm browser:buffer-sweep`: how far behind live a viewer has to sit before the picture breaks.
  *
- * `LIVE_SYNC_DURATION_S` is 6, the pipeline delivers a segment in about 1.56s at the shipping
- * profile, so roughly four fifths of what a viewer feels is a number we chose rather than a cost
+ * `LIVE_SYNC_DURATION_S` is 6, the pipeline delivered a segment in about 1.56s at the 0.5 s
+ * profile measured by 2026-08-12, so roughly four fifths of what a viewer feels is a number we chose rather than a cost
  * the network imposes. Nothing has measured whether 6 is right, and its own justification predates
- * the 0.5s segment the 0.5s fragment change ships.
+ * the 0.5s segment, which was the stage's default when this was written.
  *
  * ⭐ **Scored on stalls, not on latency.** A smaller buffer always shows a better latency, so latency
  * cannot say where the floor is. Only the picture breaking can.
@@ -64,7 +64,7 @@ const DEFAULT_ARM_SECONDS = 240;
 
 /**
  * Swept downward from the shipped 6, because the question is where stalls go from none to many
- * rather than how a rate differs. The shipping profile ran a sustained stretch with zero stalls, so
+ * rather than how a rate differs. The 0.5 s profile ran a sustained stretch with zero stalls, so
  * the signal, if there is one, lives at the bottom of this list.
  */
 const DEFAULT_COUNTED_TARGETS_S = [6, 3, 2, 1.5];

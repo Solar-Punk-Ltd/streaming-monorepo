@@ -220,3 +220,17 @@ describe('client image stamping the sources it was built from', () => {
     assert.match(locationBlock('/'), /try_files\s+\$uri\s/);
   });
 });
+
+/**
+ * The viewer's gateways, which a deployment may name as JSON in `VITE_SWARM_PROVIDERS` instead of the
+ * one `VITE_READER_BEE_URL`. Baked in at build time like every other Vite variable, so the compose
+ * service has to pass it and the Dockerfile has to hand it to the build, or a deployment that sets it
+ * gets a viewer on the one gateway with nothing saying why.
+ */
+describe('the providers setting', () => {
+  it('reaches the build from the compose service, empty unless a deployment sets it', () => {
+    assert.match(compose, /VITE_SWARM_PROVIDERS: \$\{VITE_SWARM_PROVIDERS:-\}/);
+    assert.match(dockerfile, /^ARG VITE_SWARM_PROVIDERS=$/m);
+    assert.match(dockerfile, /VITE_SWARM_PROVIDERS=\$VITE_SWARM_PROVIDERS/);
+  });
+});

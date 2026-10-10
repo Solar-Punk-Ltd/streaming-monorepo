@@ -21,8 +21,8 @@
 #
 # One broadcast, one fault, one viewer. Faults end broadcasts (`engine-restart` takes the SRT
 # connection with it, correctly), so arms cannot share one. The broadcast runs at the shipped profile
-# (0.5s GOP, 720p, 2500 kbps) unless overridden, because the question is what the shipping viewer
-# survives.
+# (720p, 2500 kbps, a GOP of the stage's own HLS_FRAGMENT) unless overridden, because the question is
+# what the shipping viewer survives.
 #
 # Usage, from the repo root on the deployment host:
 #   bash deploy/scripts/crash-arms.sh
@@ -35,7 +35,10 @@ PORT_SLOT="${PORT_SLOT:?set PORT_SLOT to the port slot of the stage this drives}
 MINUTES="${MINUTES:-7}"
 SIZE="${SIZE:-1280x720}"
 BITRATE_KBPS="${BITRATE_KBPS:-2500}"
-GOP="${GOP:-0.5}"
+# The publisher's keyframe interval, which has to be the stage's HLS_FRAGMENT so the stage cuts every
+# segment at the length it declares. Required rather than defaulted, because a driver cannot read the
+# stage's env and a default would be a second source for the segment length.
+GOP="${GOP:?set GOP to HLS_FRAGMENT of the stage, the segment length it cuts}"
 UPLOADER_API_PORT="${UPLOADER_API_PORT:-$((PORT_SLOT == 0 ? 3000 : 10000 + PORT_SLOT * 10))}"
 UPLOADER_BEE_PORT="${UPLOADER_BEE_PORT:-$((PORT_SLOT == 0 ? 1633 : 10005 + PORT_SLOT * 10))}"
 GATEWAY_BEE_PORT="${GATEWAY_BEE_PORT:-$((PORT_SLOT == 0 ? 1733 : 10007 + PORT_SLOT * 10))}"

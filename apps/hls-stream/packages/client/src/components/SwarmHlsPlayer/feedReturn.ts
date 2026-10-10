@@ -1,9 +1,9 @@
 import { FeedIndex, Topic } from '@ethersphere/bee-js';
 import { nextFeedRequest } from '@swarm-hls-stream/shared';
 
-import { TimedResponse } from '@/utils/fetchWithTimeout';
 import { RequestJitter } from '@/utils/requestJitter';
 
+import { type PlayerReader, servedText, type ServedText } from './playerReads';
 import { parseManifest } from './playlist';
 
 /**
@@ -25,10 +25,10 @@ import { parseManifest } from './playlist';
  * watched the broadcast end or opened its recording afterwards. Every one that finds nothing is a
  * Swarm retrieval the gateway attempts and fails, so this is paid by the gateway rather than by the
  * viewer. A wait is drawn between 22.5 and 30 seconds, 26.25 on average, which is **0.038 requests a
- * second** for a single rendition and **0.15** for the four rung ladder, which watches every rung. The
- * same ladder walked live asks 5.3 a second, four rungs at the 750ms poll interval, so the watch is
- * about one thirty-fifth of it. An hour on an old recording costs about 137 requests for a single
- * rendition and 549 for the ladder, and never more than 160 and 640.
+ * second**, for a single rendition and for a ladder alike, since a ladder watches only the rung that
+ * was playing when it ended. One rung walked live asks up to 1.3 a second at the 750ms poll interval,
+ * so the watch is about one thirty-fifth of it. An hour on an old recording costs about 137 requests,
+ * and never more than 160.
  *
  * ## Why thirty seconds
  *
@@ -103,16 +103,16 @@ const STILL_FINISHED: FeedStillFinished = { kind: 'stillFinished' };
  * @param finishedAt The slot whose playlist finished the feed. Only the slot after it is read.
  */
 async function askWhetherFeedReturned(
-  fetchResource: (path: string) => Promise<TimedResponse>,
+  reader: PlayerReader,
   owner: string,
   topic: Topic,
   finishedAt: FeedIndex,
 ): Promise<FeedReturnAnswer> {
   const { path, index } = nextFeedRequest(owner, topic, finishedAt);
 
-  let response: TimedResponse;
+  let response: ServedText;
   try {
-    response = await fetchResource(path);
+    response = await servedText(reader.readFeedEntry(owner, topic, Number(index.toBigInt())), path);
   } catch {
     // A refusal is the ordinary answer for a broadcast that stays over, and a gateway that did not
     // answer says nothing about the broadcaster either way. Neither is recorded anywhere: the feed is
@@ -131,8 +131,8 @@ async function askWhetherFeedReturned(
 
 /** The finished feed a {@link FeedReturnWatch} asks about, and whom it tells when the feed opens again. */
 interface FeedReturnWatchOptions {
-  /** The holding follower's own read of one path off the gateway. */
-  readonly fetchResource: (path: string) => Promise<TimedResponse>;
+  /** What the holding follower reads Swarm through. */
+  readonly reader: PlayerReader;
   readonly owner: string;
   readonly topic: Topic;
   /** The slot whose playlist finished the feed. */
@@ -197,8 +197,8 @@ export class FeedReturnWatch {
    * that finished again moves the watch past it, and anything else waits for the next ask.
    */
   private async ask(): Promise<void> {
-    const { fetchResource, owner, topic } = this.feed;
-    const answer = await askWhetherFeedReturned(fetchResource, owner, topic, this.finishedAt);
+    const { reader, owner, topic } = this.feed;
+    const answer = await askWhetherFeedReturned(reader, owner, topic, this.finishedAt);
 
     // Re-checked after the await, for the reason `LadderFeedPoller.advance` gives about responses that
     // land after a teardown. An answer that outlived its watch belongs to a session that is gone.

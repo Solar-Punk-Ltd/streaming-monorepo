@@ -1550,6 +1550,32 @@ describe('segments the live window outran before anything published them', () =>
   });
 
   /**
+   * The live log of 2026-10-08: after an encoder returned inside the reconnect window, every publish
+   * on every rung reported the same 68 segments skipped, the total climbing into the thousands, while
+   * the playlists were intact. The muxer the encoder came back to numbered from 0 again, so the run
+   * before the gap held engine indexes above everything the resumed run had announced.
+   */
+  it('counts nothing after a resumed run whose engine numbering started again from 0', async () => {
+    const uploader = uploaderWith(makeBee({}));
+
+    for (let index = 0; index < OVERFLOWING_SEGMENT_COUNT; index++) {
+      uploader.handleSegment(index, 2, Buffer.from('a'));
+      await drain(uploader);
+    }
+    uploader.resumeAfterReconnect('a-return');
+    for (let index = 0; index < OVERFLOWING_SEGMENT_COUNT; index++) {
+      uploader.handleSegment(index, 2, Buffer.from('a'));
+      await drain(uploader);
+    }
+
+    assert.ok(
+      liveWindowSize(OVERFLOWING_SEGMENT_COUNT) < OVERFLOWING_SEGMENT_COUNT,
+      'fixture must slide the run before the gap out of the window, or there is nothing to miscount',
+    );
+    assert.equal(uploader.getSegmentsNeverNamed(), 0, 'every segment was named by the publish that followed it');
+  });
+
+  /**
    * Segments a restart reloaded are not this session's to lose, which is why `announcedThrough`
    * starts at null rather than at whatever the recovery entry said. The window a recovered uploader
    * publishes is built from segments it did reload, so counting against a restored high-water reports

@@ -1,5 +1,6 @@
 import {
   ADMIN_API_TOKEN_MIN_LENGTH,
+  ADMIN_ERROR_STREAM_NOT_FOUND,
   feedOwnerOf,
   ingestLookupAnswerSchema,
   ingestLookupPath,
@@ -11,6 +12,7 @@ import {
 import { MediaType, Rendition } from '../types.js';
 import { getErrorMessage } from '../utils/common.js';
 
+import { AdminStreamGoneError } from './AdminStreamGoneError.js';
 import { Logger } from './Logger.js';
 
 /**
@@ -123,15 +125,24 @@ export interface AdminStreamDraft {
  */
 export const STATE_REPORT_ACCEPTED = 'accepted' as const;
 export const STATE_REPORT_FAILED = 'failed' as const;
+/**
+ * The admin answered that it has no such stream, the one failure no later attempt can turn around.
+ * Kept apart from {@link STATE_REPORT_FAILED} so a finalize can let go of a broadcast the admin
+ * deleted. See {@link AdminStreamGoneError}.
+ */
+export const STATE_REPORT_STREAM_GONE = 'stream-gone' as const;
 
-export type StateReportOutcome = typeof STATE_REPORT_ACCEPTED | typeof STATE_REPORT_FAILED;
+export type StateReportOutcome =
+  | typeof STATE_REPORT_ACCEPTED
+  | typeof STATE_REPORT_FAILED
+  | typeof STATE_REPORT_STREAM_GONE;
 
 /** The admin's state for a stream that was never published, or was unpublished, which refuses every report. */
 const ADMIN_STATUS_DRAFT = 'draft';
 
 /** Whether the admin now holds the state that was reported, however it got there. */
 export function stateWasReported(outcome: StateReportOutcome): boolean {
-  return outcome !== STATE_REPORT_FAILED;
+  return outcome === STATE_REPORT_ACCEPTED;
 }
 
 /**
@@ -205,6 +216,23 @@ interface AdminApiClientOptions {
  * answers with, which for a rendition report is a value the caller acts on rather than a sentinel.
  */
 const RENDITION_REPORT_RETRY = Symbol('rendition-report-retry');
+
+/** The admin's own answer that the stream a report named does not exist. See {@link AdminStreamGoneError}. */
+const RENDITION_REPORT_STREAM_GONE = Symbol('rendition-report-stream-gone');
+
+/**
+ * Whether a refusal is the admin saying it has no such stream, rather than a 404 from a path nobody
+ * routes. Read off the body's error code, because a wrong base url or a proxy in front of the admin
+ * answers 404 too, and taking that for a deleted stream would let every recovery entry go at once.
+ */
+function isStreamNotFound(status: number, body: unknown): boolean {
+  return (
+    status === 404 &&
+    typeof body === 'object' &&
+    body !== null &&
+    (body as Record<string, unknown>).error === ADMIN_ERROR_STREAM_NOT_FOUND
+  );
+}
 
 /** Statuses that mean "ask again": the admin is there and could not answer this time. */
 function isRetryableReportStatus(status: number): boolean {
@@ -390,11 +418,14 @@ export class AdminApiClient {
   /**
    * Merge one rung of a ladder into the ladder the admin holds, and read back what it now holds.
    *
-   * ⛔ Never throws, exactly like {@link reportState}, and for the same reason: the caller is a live
-   * announce path and a finalize, neither of which is improved by an exception travelling up through
-   * it. `null` is the one failure value — the admin refused it, or could not be reached across the
-   * whole ladder — and the caller turns that into a failed announce, which the uploader re-attempts on
-   * `CATALOG_ANNOUNCE_RETRY_MS`. The merge is idempotent, so a whole report repeating is safe.
+   * ⛔ Never throws but for one answer, exactly like {@link reportState} otherwise, and for the same
+   * reason: the caller is a live announce path and a finalize, neither of which is improved by an
+   * exception travelling up through it. The exception is the admin saying the stream does not exist,
+   * thrown as {@link AdminStreamGoneError} because it is the one failure a finalize must not keep its
+   * recovery entry for. `null` is the one failure value otherwise, when the admin refused it or could
+   * not be reached across the whole ladder, and the caller turns that into a failed announce, which the
+   * uploader re-attempts on `CATALOG_ANNOUNCE_RETRY_MS`. The merge is idempotent, so a whole report
+   * repeating is safe.
    *
    * ⚠️ A 409 is not retried inside the ladder here, which is where this parts company with
    * `reportState`. The admin answers it for a stream that is still a draft or has a catalog write in
@@ -409,6 +440,9 @@ export class AdminApiClient {
 
     for (let attempt = 1; attempt <= MAX_STATE_REPORT_ATTEMPTS; attempt++) {
       const outcome = await this.attemptRenditionReport(url, body, rendition.name, attempt);
+      if (outcome === RENDITION_REPORT_STREAM_GONE) {
+        throw new AdminStreamGoneError(id);
+      }
       if (outcome !== RENDITION_REPORT_RETRY) {
         return outcome;
       }
@@ -438,7 +472,7 @@ export class AdminApiClient {
     body: string,
     rung: string,
     attempt: number,
-  ): Promise<RenditionReportResponse | null | typeof RENDITION_REPORT_RETRY> {
+  ): Promise<RenditionReportResponse | null | typeof RENDITION_REPORT_RETRY | typeof RENDITION_REPORT_STREAM_GONE> {
     try {
       const response = await this.send(
         url,
@@ -461,7 +495,7 @@ export class AdminApiClient {
       }
       if (!isRetryableReportStatus(response.status)) {
         this.logger.error(`[Admin] Report of rendition ${rung} refused with ${response.status} for ${url}`);
-        return null;
+        return isStreamNotFound(response.status, await this.readJson(response)) ? RENDITION_REPORT_STREAM_GONE : null;
       }
       this.logger.warn(
         `[Admin] Report of rendition ${rung} answered ${response.status} for ${url}, attempt ${attempt}`,
@@ -521,7 +555,9 @@ export class AdminApiClient {
       }
       if (!isRetryableReportStatus(response.status)) {
         this.logger.error(`[Admin] Report of ${report.state} refused with ${response.status} for ${url}`);
-        return STATE_REPORT_FAILED;
+        return isStreamNotFound(response.status, await this.readJson(response))
+          ? STATE_REPORT_STREAM_GONE
+          : STATE_REPORT_FAILED;
       }
       this.logger.warn(`[Admin] Report of ${report.state} answered ${response.status} for ${url}, attempt ${attempt}`);
       return null;

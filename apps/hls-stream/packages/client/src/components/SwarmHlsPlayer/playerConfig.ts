@@ -38,12 +38,13 @@ const MB = 1024 * 1024;
  * 2026-08-05 was taken through an instrument with six known defects, two of which made a faster
  * deployment report worse.
  *
- * The floor is not proportional to the segment length across those rows, and two segment lengths are
- * not a scaling law, so **a deployment running segments longer than 0.5s has no fresh measurement
- * here** and the old table put the 2.0s floor at 4.45s. Raising this is what such a deployment
- * would need, and the coupling is the same one {@link LIVE_MAX_LATENCY_DURATION_S} describes: the
- * target duration is whatever the uploader's segment length makes it, and this side does not choose
- * it.
+ * **Six seconds is the floor, not the whole target.** Longer segments are covered by the
+ * three-segment rule in {@link liveLatencyFor}, which raises the target to three segments of the
+ * length the playlist names whenever that is more than six seconds. The target duration is whatever
+ * the uploader's segment length makes it, and this side does not choose it. The engine's playlist
+ * window does not grow with it: SRS keeps a fixed `HLS_WINDOW`, 15 s by default, so from segments of
+ * about 5 s the target sits on the window's oldest fragment (see `DEFAULT_HLS_TUNING` in
+ * `SwarmHlsPlayer.tsx`).
  *
  * ## The uploader has to name enough media for this to be reachable
  *
@@ -53,7 +54,7 @@ const MB = 1024 * 1024;
  * and was short in **both** clean runs, by 172ms and 550ms, while clearing the worst 0.5s run by 91ms.
  * The window is now budgeted against one chunk rather than counted in segments. A segment line is a
  * duration and a bare Swarm reference, so measured against the shipped builder it holds **12.5s at a
- * 0.25s segment and 25.5s at the 0.5s profile that ships**. The deployment these arrival times were
+ * 0.25s segment and 25.5s at a 0.5s segment**. The deployment these arrival times were
  * measured on had a gateway URL prepended to every line and reached only 9.0s at 0.25s, so the
  * runway a joining viewer gets has since roughly doubled. `ManifestManager.test.ts` reads this
  * constant out of this file and fails if the window stops covering it.
@@ -80,6 +81,22 @@ const MB = 1024 * 1024;
 export const LIVE_SYNC_DURATION_S = 6;
 
 /**
+ * Segments behind the live edge the player aims at. Three, which is {@link LIVE_SYNC_DURATION_S} at
+ * the event's 2 s segment, and that value is the floor: below it the measured arrivals above are no
+ * longer covered, whatever the segment length. A quality's progress bound in `rungPosition.ts` is the
+ * same three segments over the same floor.
+ */
+export const LIVE_SYNC_SEGMENTS = 3;
+
+/** How many times the live target the catch-up limit sits at, for the reason {@link LIVE_MAX_LATENCY_DURATION_S} gives. */
+const CATCH_UP_LIMIT_FACTOR = 2;
+
+/** Whether a segment length is one a target can be computed from: a positive, finite number of milliseconds. */
+export function isKnownSegmentMs(segmentMs: number | null | undefined): segmentMs is number {
+  return segmentMs != null && Number.isFinite(segmentMs) && segmentMs > 0;
+}
+
+/**
  * The latency at which hls.js stops trying to recover gradually and seeks to the live edge instead.
  *
  * hls.js refuses a value at or below {@link LIVE_SYNC_DURATION_S}, throwing from the constructor, so
@@ -93,8 +110,30 @@ export const LIVE_SYNC_DURATION_S = 6;
  * makes it, not a number this side chooses. Larger values are not all broken, since a long enough
  * target duration closes the gap on its own, but which ones are safe then depends on a number this
  * side does not control.
+ *
+ * This constant is the floor's pair, the limit that goes with {@link LIVE_SYNC_DURATION_S}. The pair a
+ * live player runs with is computed from the segment length by {@link liveLatencyFor}, on the same
+ * twice-the-target rule.
  */
-export const LIVE_MAX_LATENCY_DURATION_S = 2 * LIVE_SYNC_DURATION_S;
+export const LIVE_MAX_LATENCY_DURATION_S = CATCH_UP_LIMIT_FACTOR * LIVE_SYNC_DURATION_S;
+
+/** The live target and catch-up limit hls.js works with. */
+interface LiveLatency {
+  liveSyncDuration: number;
+  liveMaxLatencyDuration: number;
+}
+
+/**
+ * The live target for a stage cutting segments of `segmentMs`: three segments behind the live edge,
+ * never under {@link LIVE_SYNC_DURATION_S}, and the catch-up limit twice that, for the reason
+ * {@link LIVE_MAX_LATENCY_DURATION_S} gives. A length not known yet answers the floor.
+ */
+export function liveLatencyFor(segmentMs: number | null | undefined): LiveLatency {
+  const liveSyncDuration = isKnownSegmentMs(segmentMs)
+    ? Math.max(LIVE_SYNC_DURATION_S, (LIVE_SYNC_SEGMENTS * segmentMs) / 1000)
+    : LIVE_SYNC_DURATION_S;
+  return { liveSyncDuration, liveMaxLatencyDuration: CATCH_UP_LIMIT_FACTOR * liveSyncDuration };
+}
 
 /**
  * The fastest playback rate used to catch up after drifting behind the target.

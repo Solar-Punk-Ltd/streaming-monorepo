@@ -18,12 +18,14 @@ import {
   ManifestFetcher,
   ManifestStateManager,
   MAX_SLOTS_PER_POLL,
-  waitMs,
+  SEGMENTS_AS_WRITTEN,
 } from '../src/components/SwarmHlsPlayer/ManifestManagement';
 import { PROBE_DISTANCES, UNSERVED_POLLS_BEFORE_PROBE } from '../src/components/SwarmHlsPlayer/refusedSlot';
+import { waitMs } from '../src/components/SwarmHlsPlayer/waitMs';
 import { MANIFEST_BACKOFF_JITTER_FRACTION, RequestJitter } from '../src/utils/requestJitter';
 
 import { waitFor } from './helpers/waiting';
+import { segmentsUnder, swarmOverGlobalFetch } from './helpers/playerReader';
 
 /**
  * Neither staggers nor spreads, so every assertion in this file measures what it measured before the
@@ -135,7 +137,7 @@ describe('ManifestFetcher follow-up fetches (CON-29)', () => {
     clockMs = 0;
     health = new FeedHealthTracker(() => clockMs);
     fetcher = new ManifestFetcher(manager, health, undefined, NO_JITTER);
-    fetcher.beeUrl = BEE_URL;
+    fetcher.useSwarm(swarmOverGlobalFetch(BEE_URL));
     requested = [];
     publishedThrough = START_INDEX + 1n;
   });
@@ -283,7 +285,11 @@ describe('ManifestFetcher follow-up fetches (CON-29)', () => {
     await settle();
 
     assert.equal(manager.getIndex(hexTopic), null, 'a torn-down topic was resurrected at a stale index');
-    assert.equal(manager.serialize(hexTopic, `${BEE_URL}/bytes`), '', 'segments were appended to a cleared topic');
+    assert.equal(
+      manager.serialize(hexTopic, segmentsUnder(`${BEE_URL}/bytes`)),
+      '',
+      'segments were appended to a cleared topic',
+    );
   });
 
   // The same defect in the other order: the player restarts and resyncs to the live head before the
@@ -488,7 +494,7 @@ describe('keeping up with a publisher that writes faster than hls.js reloads', (
     keepUpClockMs = 0;
     health = new FeedHealthTracker(() => keepUpClockMs);
     fetcher = new ManifestFetcher(manager, health, undefined, NO_JITTER);
-    fetcher.beeUrl = BEE_URL;
+    fetcher.useSwarm(swarmOverGlobalFetch(BEE_URL));
     requested = [];
     publishedThrough = START_INDEX;
     finalSlot = null;
@@ -563,7 +569,7 @@ describe('keeping up with a publisher that writes faster than hls.js reloads', (
       publishedThrough,
       'one poll did not reach the publisher, so a viewer falls further behind with every segment',
     );
-    const manifest = manager.serialize(hexTopic, `${BEE_URL}/bytes`);
+    const manifest = manager.serialize(hexTopic, segmentsUnder(`${BEE_URL}/bytes`));
     for (let index = START_INDEX + 1n; index <= publishedThrough; index++) {
       assert.match(manifest, new RegExp(`seg-${index}\\.ts`), `slot ${index} was walked past without being played`);
     }
@@ -744,7 +750,7 @@ describe('ManifestFetcher against a gateway that stops answering', () => {
       },
       NO_JITTER,
     );
-    fetcher.beeUrl = BEE_URL;
+    fetcher.useSwarm(swarmOverGlobalFetch(BEE_URL));
   });
 
   afterEach(() => {
@@ -875,7 +881,11 @@ describe('ManifestFetcher against a gateway that stops answering', () => {
 
     await assert.rejects(pending, /torn down/);
     assert.equal(manager.getIndex(hexTopic), null, 'a torn-down topic was resurrected at a pre-teardown index');
-    assert.equal(manager.serialize(hexTopic, `${BEE_URL}/bytes`), '', 'segments were appended to a cleared topic');
+    assert.equal(
+      manager.serialize(hexTopic, segmentsUnder(`${BEE_URL}/bytes`)),
+      '',
+      'segments were appended to a cleared topic',
+    );
   });
 
   it('says the feed is reconnecting when the first fetch of a mount cannot reach the gateway', async () => {
@@ -1109,7 +1119,7 @@ describe('following the feed costs one head lookup', () => {
   beforeEach(() => {
     manager.clear(hexTopic);
     fetcher = new ManifestFetcher(manager, undefined, undefined, NO_JITTER);
-    fetcher.beeUrl = BEE_URL;
+    fetcher.useSwarm(swarmOverGlobalFetch(BEE_URL));
     requested = [];
     publishedThrough = START_INDEX + 3n;
 
@@ -1214,7 +1224,7 @@ describe('a refused slot that later slots are already behind', () => {
     probeClockMs = 0;
     health = new FeedHealthTracker(() => probeClockMs);
     fetcher = new ManifestFetcher(manager, health, undefined, NO_JITTER);
-    fetcher.beeUrl = BEE_URL;
+    fetcher.useSwarm(swarmOverGlobalFetch(BEE_URL));
     requested = [];
     publishedThrough = START_INDEX;
     unretrievable = new Set();
@@ -1302,7 +1312,7 @@ describe('a refused slot that later slots are already behind', () => {
       await poll();
     }
 
-    const manifest = manager.serialize(hexTopic, `${BEE_URL}/bytes`);
+    const manifest = manager.serialize(hexTopic, segmentsUnder(`${BEE_URL}/bytes`));
     assert.match(manifest, new RegExp(`seg-${START_INDEX + 1n}\\.ts`), 'the skipped slot took its segment with it');
   });
 
@@ -1405,7 +1415,7 @@ describe('a broadcast ending under a viewer who joined partway through', () => {
 
   const uris = (manager: ManifestStateManager) =>
     manager
-      .serialize(TOPIC_ID, '')
+      .serialize(TOPIC_ID, SEGMENTS_AS_WRITTEN)
       .split('\n')
       .filter((line) => line.length > 0 && !line.startsWith('#'));
 
@@ -1440,7 +1450,7 @@ describe('a broadcast ending under a viewer who joined partway through', () => {
 
     manager.updateManifest(TOPIC_ID, ['#EXTM3U', '#EXT-X-MEDIA-SEQUENCE:0'], live(0, 650), true);
 
-    assert.match(manager.serialize(TOPIC_ID, ''), /#EXT-X-ENDLIST/);
+    assert.match(manager.serialize(TOPIC_ID, SEGMENTS_AS_WRITTEN), /#EXT-X-ENDLIST/);
   });
 
   it('ignores a finished playlist that shares no segment with this one', () => {
@@ -1471,7 +1481,7 @@ describe('the probe landing on the recording instead of the manifest that ended 
     manager.updateManifest(hexTopic, ['#EXTM3U'], [{ extinf: '#EXTINF:2,', uri: 'seg-5.ts' }], false);
     manager.setIndex(hexTopic, FeedIndex.fromBigInt(START_INDEX));
     fetcher = new ManifestFetcher(manager, new FeedHealthTracker(() => 0), undefined, NO_JITTER);
-    fetcher.beeUrl = BEE_URL;
+    fetcher.useSwarm(swarmOverGlobalFetch(BEE_URL));
     requested = [];
 
     // Slot 6 is the closing manifest and cannot be fetched; slot 7 is the recording and can.
@@ -1503,7 +1513,7 @@ describe('the probe landing on the recording instead of the manifest that ended 
 
   const firstSegment = () =>
     manager
-      .serialize(hexTopic, '')
+      .serialize(hexTopic, SEGMENTS_AS_WRITTEN)
       .split('\n')
       .find((line) => line.length > 0 && !line.startsWith('#'));
 
@@ -1525,7 +1535,7 @@ describe('the probe landing on the recording instead of the manifest that ended 
       await poll();
     }
 
-    assert.match(manager.serialize(hexTopic, ''), /#EXT-X-ENDLIST/);
+    assert.match(manager.serialize(hexTopic, SEGMENTS_AS_WRITTEN), /#EXT-X-ENDLIST/);
   });
 });
 
@@ -1562,7 +1572,7 @@ describe('a single-rendition broadcast that comes back after it ended', () => {
     resumed = [];
     health.onFeedResumed((topicId) => resumed.push(topicId));
     fetcher = new ManifestFetcher(manager, health, undefined, NO_JITTER, undefined, WATCH_MS);
-    fetcher.beeUrl = BEE_URL;
+    fetcher.useSwarm(swarmOverGlobalFetch(BEE_URL));
     requested = [];
     written = new Map([[FINISHED_AT, finished(FINISHED_AT)]]);
 
@@ -1616,7 +1626,7 @@ describe('a single-rendition broadcast that comes back after it ended', () => {
       return 0;
     });
     fetcher = new ManifestFetcher(manager, health, undefined, counting, undefined, WATCH_MS);
-    fetcher.beeUrl = BEE_URL;
+    fetcher.useSwarm(swarmOverGlobalFetch(BEE_URL));
     await watchItEnd();
     const endedAfter = requested.length;
     const WATCHES = 3;
@@ -1820,7 +1830,7 @@ describe('ManifestFetcher keeping its requests off the instant every other viewe
       async (ms) => void waited.push(ms),
       new RequestJitter(0, () => 0.5),
     );
-    fetcher.beeUrl = BEE_URL;
+    fetcher.useSwarm(swarmOverGlobalFetch(BEE_URL));
 
     health.recordGatewayFailure(hexTopic);
     const raw = health.backoffRemainingMs(hexTopic);
@@ -1858,7 +1868,7 @@ describe('ManifestFetcher keeping its requests off the instant every other viewe
         },
       ),
     );
-    fetcher.beeUrl = BEE_URL;
+    fetcher.useSwarm(swarmOverGlobalFetch(BEE_URL));
 
     let requests = 0;
     globalThis.fetch = async () => {
@@ -1903,7 +1913,7 @@ describe('ManifestFetcher keeping its requests off the instant every other viewe
         },
       ),
     );
-    fetcher.beeUrl = BEE_URL;
+    fetcher.useSwarm(swarmOverGlobalFetch(BEE_URL));
     globalThis.fetch = async () => new Response('not found', { status: 404 });
 
     // Left pending: the question is how many walks three fetches in flight queue.

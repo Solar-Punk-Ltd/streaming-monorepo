@@ -33,8 +33,8 @@ interface GatewayHandleHolder {
  * between-sitting confound the interleaved GOP arms just caught: one configuration measured at a
  * different hour from the other, with every other difference between those hours inside the result.
  *
- * `setGatewayUrl` is already a real runtime switch. It repoints the fetcher, resets the catalog
- * reader's remembered position and marks every manifest dirty, so the next fetch genuinely goes
+ * The provider's source switch is already a real runtime switch. It repoints the fetcher, resets the
+ * catalog reader's remembered position and marks every manifest dirty, so the next fetch genuinely goes
  * somewhere else. What was missing is a way to reach it: the only caller is a UI control, and driving
  * a text field through CDP mid-arm is a worse instrument than calling the function.
  *

@@ -105,9 +105,12 @@ export const SRS_SETTINGS: readonly EngineSettingField[] = [
     label: 'Segment length',
     unit: 'seconds',
     kind: 'number',
-    // The manager's own default segment length is two seconds, as set on
-    // 2026-09-16, rather than anything a stack version cuts.
+    // The stack has no default segment length and refuses to start without
+    // one, so the manager writes this on every deploy that stores none. It is
+    // also what the wizard pre-fills. A version cut before that still falls
+    // back to a number of its own, which this replaces.
     defaultValue: '2',
+    managerOwnsDefault: true,
     min: 0.5,
     max: 30,
     help: 'The shortest a piece of the stream may be. The engine cuts on a keyframe, so the piece you actually get is the first keyframe at or after this, which means the interval the publisher sends decides the real length and this only puts a floor under it. Set your publisher to the length you want, and leave this at or below it.',

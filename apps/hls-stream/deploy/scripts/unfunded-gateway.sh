@@ -13,10 +13,9 @@
 #
 # ## Why both nodes have to be up at once
 #
-# The arms alternate under ONE broadcast, switched at runtime through the client's own
-# `setGatewayUrl`. Two soaks scored against each other is the between-sitting confound the interleaved
-# GOP arms caught on 2026-08-12, where every difference between two hours of the night sits inside the
-# result. Alternating needs both nodes warm, so the unfunded one cannot be the funded one reconfigured.
+# The arms alternate under ONE broadcast, switched at runtime through the client's own switch. Two
+# soaks scored against each other is the between-sitting confound the interleaved GOP arms caught on
+# 2026-08-12, where every difference between two hours of the night sits inside the result. Alternating needs both nodes warm, so the unfunded one cannot be the funded one reconfigured.
 #
 # ## Why it is standalone rather than a compose service, and that is a safety property
 #

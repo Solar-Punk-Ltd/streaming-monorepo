@@ -33,7 +33,13 @@ all (`main-v2` does not). The stack's `main` has fallen back to 2000 itself sinc
 its releases `v3.2`, `v3.3` and `v3.4` carry, and the manager has pinned it since 2026-09-24. On every version the manager writes
 `SRT_LATENCY=2000` into `.env.<profile>` for every SRS deployment that stores no value. The Engine
 card calls it **Manager default**, and the Stack settings card names it as the manager's own
-default. It is the only setting written while unset. A value set in the host's base `.env` still
+default. The **Segment length** default of 2 seconds is the manager's own in the same way, because
+the stack has none: SRS, the uploader and both compose files refuse to start without `HLS_FRAGMENT`,
+and the stack's example config sets 2. The manager writes `HLS_FRAGMENT=2` into `.env.<profile>` for
+every SRS deployment that stores no value, on every version. A version cut before the stack dropped
+its default falls back to 0.5 or 1.5 on its own and is handed the manager's 2 all the same, so an
+older deployment that never stored a length moves to 2 seconds on its next deploy. The manager reads
+no version's segment length fallback. These two are the only settings written while unset. A value set in the host's base `.env` still
 wins, as it does for every other setting, and both then say it was set on this host. A deployment
 that stores no value gets `SRT_LATENCY=2000` the next time its env file is written, on its next
 deploy, an Apply of its settings included. Whether SRS then waits that long on ingest depends on the

@@ -51,7 +51,7 @@ after(() => {
   }
 });
 
-const VALID = { SRS_WEBHOOK_TOKEN: 'x'.repeat(64), ABR_ENABLED: 'true' };
+const VALID = { SRS_WEBHOOK_TOKEN: 'x'.repeat(64), ABR_ENABLED: 'true', HLS_FRAGMENT: '2' };
 
 /**
  * Runs the real entrypoint end to end and returns the srs.conf it produced.
@@ -359,7 +359,11 @@ describe('who may play from SRS and who may publish to it', () => {
   });
 
   it('holds a single-rendition deployment’s ingest vhost to the same', () => {
-    const conf = renderLadderConf({ SRS_WEBHOOK_TOKEN: VALID.SRS_WEBHOOK_TOKEN, ABR_ENABLED: 'false' });
+    const conf = renderLadderConf({
+      SRS_WEBHOOK_TOKEN: VALID.SRS_WEBHOOK_TOKEN,
+      HLS_FRAGMENT: VALID.HLS_FRAGMENT,
+      ABR_ENABLED: 'false',
+    });
 
     assertLoopbackPlayOpenPublish(vhostBlock(conf, INGEST_VHOST), 'the single-rendition ingest vhost');
   });
@@ -382,6 +386,7 @@ describe('who may play from SRS and who may publish to it', () => {
   it('lets an operator allow play from every address with SRS_PLAY_FROM=all', () => {
     const conf = renderLadderConf({
       SRS_WEBHOOK_TOKEN: VALID.SRS_WEBHOOK_TOKEN,
+      HLS_FRAGMENT: VALID.HLS_FRAGMENT,
       ABR_ENABLED: 'false',
       SRS_PLAY_FROM: 'all',
     });
@@ -415,6 +420,7 @@ describe('the listen line the ladder input dials', () => {
   it('leaves a single-rendition deployment alone', () => {
     const conf = renderLadderConf({
       SRS_WEBHOOK_TOKEN: VALID.SRS_WEBHOOK_TOKEN,
+      HLS_FRAGMENT: VALID.HLS_FRAGMENT,
       ABR_ENABLED: 'false',
       SRS_RTMP_PORT: '10072',
     });

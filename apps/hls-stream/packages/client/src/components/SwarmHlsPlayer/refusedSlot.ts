@@ -1,9 +1,8 @@
 import { FeedIndex, Topic } from '@ethersphere/bee-js';
 import { feedSlotPath } from '@swarm-hls-stream/shared';
 
-import { TimedResponse } from '@/utils/fetchWithTimeout';
-
 import { UNSERVED_POLLS_PROBE_CEILING } from './feedState';
+import { type PlayerReader, servedText, type ServedText } from './playerReads';
 
 /**
  * A feed slot the publisher has not written yet, which is what a viewer who has caught up sees on
@@ -16,10 +15,11 @@ export const SLOT_NOT_WRITTEN_YET = 404;
  *
  * Not zero, and that is the whole of the tuning. A reader riding the live edge is refused on plenty
  * of polls simply because the publisher has not written yet, and probing each one would add a
- * request per poll for every viewer in order to find nothing. Three polls is about a second at the
- * shipping profile, short against the nineteen and forty-six second stalls this is for, and long
- * enough that the ordinary refusal never reaches it: nine of the ten distinct refusals measured on
- * 2026-08-06 cleared within a single poll.
+ * request per poll for every viewer in order to find nothing. The polls are hls.js's reloads of an
+ * unchanged live playlist, each half a target duration (`computeReloadInterval`), so three of them
+ * are about 1.5 s at a sub-second segment and 3 s at a 2 s one. That is short against the nineteen
+ * and forty-six second stalls this is for, and long enough that the ordinary refusal never reaches
+ * it: nine of the ten distinct refusals measured on 2026-08-06 cleared within a single poll.
  */
 export const UNSERVED_POLLS_BEFORE_PROBE = 3;
 
@@ -39,6 +39,8 @@ export class ManifestFetchError extends Error {
   constructor(
     path: string,
     readonly status: number,
+    /** How long the node asked to be left alone, which only a rate limit says. Zero otherwise. */
+    readonly retryAfterMs: number = 0,
   ) {
     super(`Failed to fetch: ${path}`);
     this.name = 'ManifestFetchError';
@@ -61,7 +63,7 @@ export function isSlotNotWrittenYet(error: unknown): boolean {
  * Bounded at both ends. Below the first, a refusal is too likely to be the publisher's head to be
  * worth asking about. Above the second the feed has been asked on every poll and found nothing every
  * time, so what is missing is not within reach and asking again just costs four requests a poll for
- * as long as the page stays open. Both followers keep asking for the slot they need either way, so a
+ * as long as the page stays open. The walk keeps asking for the slot it needs either way, so a
  * slot that becomes retrievable later is still picked up by the ordinary walk.
  *
  * @param unservedPolls The length of the unserved run this poll extends, which is what
@@ -75,7 +77,7 @@ export function shouldProbePastRefusal(unservedPolls: number): boolean {
 interface ProbeServed {
   readonly kind: 'served';
   readonly index: FeedIndex;
-  readonly response: TimedResponse;
+  readonly response: ServedText;
 }
 
 /** Every distance was refused too, so the refusal may really be the publisher's head. */
@@ -119,21 +121,16 @@ type ProbeResult = ProbeServed | ProbeFoundNothing | ProbeGatewayFailed;
  *
  * ## Why this stops at finding the slot
  *
- * ⛔ **The two followers are not equally free to be wrong about a refusal, which is why both make
- * this call and only one used to.** The single-rendition walk pays for a refusal it believed with a
- * slower poll, and the next poll asks again. On a ladder the same refusal is evidence in
- * {@link FeedHealthTracker.rungStoppedWhileOthersAdvance}, and a rung condemned there is handed to
- * `hls.removeLevel`, which has no undo inside the session. So the path where taking a 404 at face
- * value costs the least was the one checking, and the path where it costs a rung for the rest of the
- * broadcast was the one believing it.
- *
- * What a follower does with the slot is still its own, because what the slot has to be folded into
- * differs, so this returns the answer rather than applying it.
+ * What a follower does with the slot is its own, because what the slot has to be folded into
+ * differs, so this returns the answer rather than applying it. A ladder's rungs do not call this:
+ * the predicted follower they run looks past a late slot by one, on its own timing
+ * (`following/followPredicted.ts`), because a refusal there costs the rung itself once the stall rule
+ * moves the player to a sibling.
  *
  * @param missing The slot that was refused. The probe looks past it and never at it again.
  */
 export async function probePastRefusal(
-  fetchResource: (path: string) => Promise<TimedResponse>,
+  reader: PlayerReader,
   owner: string,
   topic: Topic,
   missing: FeedIndex,
@@ -142,7 +139,10 @@ export async function probePastRefusal(
     const index = FeedIndex.fromBigInt(missing.toBigInt() + BigInt(distance));
 
     try {
-      const response = await fetchResource(feedSlotPath(owner, topic, index));
+      const response = await servedText(
+        reader.readFeedEntry(owner, topic, Number(index.toBigInt())),
+        feedSlotPath(owner, topic, index),
+      );
       return { kind: 'served', index, response };
     } catch (error) {
       // A refusal here is the ordinary answer and the reason the probe has more than one distance:

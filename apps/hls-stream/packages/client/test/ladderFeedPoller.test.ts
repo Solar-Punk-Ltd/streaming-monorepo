@@ -12,18 +12,21 @@ import {
   FEED_STATE_STALLED,
   FeedHealthTracker,
   FeedState,
-  RUNG_DEATH_LAG_SEGMENTS,
-  UNSERVED_POLLS_PROBE_CEILING,
   UNSERVED_SLOT_STALL_MS,
 } from '../src/components/SwarmHlsPlayer/feedState.js';
 import { LadderFeedPoller } from '../src/components/SwarmHlsPlayer/LadderFeedPoller.js';
 import { ManifestStateManager } from '../src/components/SwarmHlsPlayer/ManifestManagement.js';
+import type { PlayerReader } from '../src/components/SwarmHlsPlayer/playerReads.js';
 import { parseManifest } from '../src/components/SwarmHlsPlayer/playlist.js';
-import { ManifestFetchError, PROBE_DISTANCES } from '../src/components/SwarmHlsPlayer/refusedSlot.js';
-import { TimedResponse } from '../src/utils/fetchWithTimeout.js';
+import { ManifestFetchError } from '../src/components/SwarmHlsPlayer/refusedSlot.js';
+import type { PathResponse } from './helpers/playerReader';
 import { RequestJitter } from '../src/utils/requestJitter.js';
 
+import { fastClock } from './helpers/fastClock.js';
+import { headLookupFinder } from './helpers/headLookupFinder.js';
+import { readerOverPaths } from './helpers/playerReader.js';
 import { waitFor } from './helpers/waiting.js';
+import { SEGMENTS_AS_WRITTEN } from '../src/components/SwarmHlsPlayer/ManifestManagement';
 
 const OWNER = 'aabbcc';
 const POLL_MS = 2;
@@ -58,11 +61,11 @@ function feedHeadPath(topic: Topic): string {
 class FakeGateway {
   public readonly responses = new Map<string, string>();
   public readonly requests: string[] = [];
-  /** Reproduces a proxy that drops the header extractFeedIndex needs, which makes it throw. */
+  /** Reproduces a proxy that drops the `swarm-feed-index` header, so a head lookup carries no index. */
   public stripFeedIndexHeader = false;
   /**
    * Status a missing path is refused with. Set to 404 to model a slot the publisher has not written
-   * yet, the way the real fetcher does; left undefined it throws a transport-style error, which is a
+   * yet, the way the real fetcher does. Left undefined it throws a transport-style error, which is a
    * gateway that is not answering at all.
    */
   public missingSlotStatus?: number;
@@ -102,12 +105,11 @@ class FakeGateway {
     return () => release();
   }
 
-  /**
-   * A `TimedResponse`, which is what the poller is handed in production: `ManifestFetcher` reads
-   * through `fetchWithTimeout`, so the body arrives already read and inside the bounded window. A
-   * fake returning a `Response` would leave `text` a method the poller never calls.
-   */
-  fetchResource = async (path: string): Promise<TimedResponse> => {
+  /** The player's reads, answered by {@link answerPath}. */
+  readonly reader: PlayerReader = readerOverPaths((path) => this.answerPath(path));
+
+  /** Answers one Bee path, as the gateway the player's reads are asked of. */
+  answerPath = async (path: string): Promise<PathResponse> => {
     this.requests.push(path);
 
     const blocked = this.held.get(path);
@@ -137,8 +139,39 @@ class FakeGateway {
   };
 }
 
+/**
+ * The poller with its follower on a clock a test can outrun, and finding a rung through the fake's feed
+ * head, since this file is about the walk once a rung is found rather than about the search.
+ */
+class FastPoller extends LadderFeedPoller {
+  constructor(
+    ...[state, fetch, interval, health, backoff, returnWait, options]: ConstructorParameters<typeof LadderFeedPoller>
+  ) {
+    super(state, fetch, interval, health, backoff, returnWait, {
+      followClock: fastClock(),
+      finder: headLookupFinder(fetch),
+      ...options,
+    });
+  }
+}
+
+/**
+ * Registers these rungs and follows every one of them, which is the shape of a switch under way: the
+ * rung playing and the rung being switched to. The first one named becomes the playing rung.
+ */
+function follow(poller: LadderFeedPoller, owner: string, topics: Topic[], group: string | null = null): void {
+  poller.register(
+    owner,
+    topics.map((topic) => ({ topic })),
+    group,
+  );
+  for (const topic of topics) {
+    poller.activate(topic.toString());
+  }
+}
+
 function segmentCount(state: ManifestStateManager, topic: Topic): number {
-  const serialized = state.serialize(topic.toString(), '');
+  const serialized = state.serialize(topic.toString(), SEGMENTS_AS_WRITTEN);
   return serialized ? parseManifest(serialized).segments.length : 0;
 }
 
@@ -157,14 +190,14 @@ describe('LadderFeedPoller', () => {
     gateway.publishSoc(topic, 1, manifest(2));
     gateway.publishSoc(topic, 2, manifest(3));
 
-    const poller = new LadderFeedPoller(state, gateway.fetchResource, POLL_MS);
-    poller.start(OWNER, [topic]);
+    const poller = new FastPoller(state, gateway.reader, POLL_MS);
+    follow(poller, OWNER, [topic]);
 
     try {
       await waitFor(() => segmentCount(state, topic) === 3, 'three segments');
       assert.equal(state.getIndex(topic.toString())?.toBigInt(), 2n);
     } finally {
-      poller.stop([topic]);
+      poller.unregister([topic]);
     }
   });
 
@@ -178,19 +211,19 @@ describe('LadderFeedPoller', () => {
       gateway.publishSoc(topic, i, manifest(i + 1));
     }
 
-    const poller = new LadderFeedPoller(state, gateway.fetchResource, 10_000);
-    poller.start(OWNER, [topic]);
+    const poller = new FastPoller(state, gateway.reader, 10_000);
+    follow(poller, OWNER, [topic]);
 
     try {
       // A 10s poll interval means a second pass cannot have happened: everything below was
       // consumed by the first one.
       await waitFor(() => segmentCount(state, topic) === 21, 'the whole backlog');
     } finally {
-      poller.stop([topic]);
+      poller.unregister([topic]);
     }
   });
 
-  it('keeps every rung current, not just one', async () => {
+  it('walks only the rung it was asked to follow, of every rung registered', async () => {
     const topics = ['group-1-360p', 'group-1-720p', 'group-1-1080p'].map((t) => Topic.fromString(t));
     const gateway = new FakeGateway();
     for (const topic of topics) {
@@ -198,13 +231,27 @@ describe('LadderFeedPoller', () => {
       gateway.publishSoc(topic, 1, manifest(2));
     }
 
-    const poller = new LadderFeedPoller(state, gateway.fetchResource, POLL_MS);
-    poller.start(OWNER, topics);
+    const poller = new FastPoller(state, gateway.reader, POLL_MS);
+    poller.register(
+      OWNER,
+      topics.map((topic) => ({ topic })),
+      null,
+    );
+    poller.activate(topics[2].toString());
 
     try {
-      await waitFor(() => topics.every((t) => segmentCount(state, t) === 2), 'all rungs at index 1');
+      await waitFor(() => segmentCount(state, topics[2]) === 2, 'the followed rung at index 1');
+      await sleep(20);
+      const unfollowed = topics
+        .slice(0, 2)
+        .flatMap((topic) => [feedHeadPath(topic), socPath(topic, 1), socPath(topic, 2)]);
+      assert.deepEqual(
+        gateway.requests.filter((path) => unfollowed.includes(path)),
+        [],
+        'a rung nobody plays was read',
+      );
     } finally {
-      poller.stop(topics);
+      poller.unregister(topics);
     }
   });
 
@@ -219,8 +266,8 @@ describe('LadderFeedPoller', () => {
     gateway.publishFeedHead(topic, 0, manifest(1));
     gateway.publishSoc(topic, 1, manifest(2, true));
 
-    const poller = new LadderFeedPoller(state, gateway.fetchResource, POLL_MS);
-    poller.start(OWNER, [topic]);
+    const poller = new FastPoller(state, gateway.reader, POLL_MS);
+    follow(poller, OWNER, [topic]);
 
     try {
       await waitFor(() => segmentCount(state, topic) === 2, 'the final playlist');
@@ -230,62 +277,81 @@ describe('LadderFeedPoller', () => {
       await sleep(20);
       assert.equal(gateway.requests.length, afterStop, 'a finished rung was still polled at the live cadence');
     } finally {
-      poller.stop([topic]);
+      poller.unregister([topic]);
     }
   });
 
   /**
-   * The ended overlay listens on the GROUP topic and finalization arrives one RUNG at a time. The
-   * single-rendition walk records both against the same topic, so only the ladder has to bridge
-   * them — and the first live V5 run proved it did not: the broadcast finalized as a VOD and the
-   * viewer sat on `live` over a frozen frame for the rest of the watch.
+   * The ended overlay listens on the GROUP topic, and the poller follows one rung. So the end is the
+   * playing rung's ENDLIST, confirmed by one sibling, and recorded against the group. Without that
+   * bridge the broadcast finalized as a VOD while the viewer sat on `live` over a frozen frame.
    */
   describe('telling the viewer the broadcast ended', () => {
     const groupHex = Topic.fromString('group-1').toString();
 
-    it('records ended on the group once every rung is finalized', async () => {
-      const topics = ['group-1-360p', 'group-1-720p'].map((t) => Topic.fromString(t));
+    it('records ended on the group once the playing rung finished and its sibling has too', async () => {
+      const [playing, sibling] = ['group-1-720p', 'group-1-360p'].map((t) => Topic.fromString(t));
       const gateway = new FakeGateway();
       const tracker = new FeedHealthTracker();
-      for (const topic of topics) {
-        gateway.publishFeedHead(topic, 0, manifest(1));
-        gateway.publishSoc(topic, 1, manifest(2, true));
-      }
+      gateway.publishFeedHead(playing, 0, manifest(1));
+      gateway.publishSoc(playing, 1, manifest(2, true));
+      gateway.publishFeedHead(sibling, 4, manifest(2, true));
 
-      const poller = new LadderFeedPoller(state, gateway.fetchResource, POLL_MS, tracker);
-      poller.start(OWNER, topics, groupHex);
+      const poller = new FastPoller(state, gateway.reader, POLL_MS, tracker);
+      poller.register(
+        OWNER,
+        [
+          { topic: sibling, bandwidth: 1 },
+          { topic: playing, bandwidth: 2 },
+        ],
+        groupHex,
+      );
+      poller.activate(playing.toString());
 
       try {
         await waitFor(() => tracker.state(groupHex) === FEED_STATE_ENDED, 'the group to end');
       } finally {
-        poller.stop(topics);
+        poller.unregister([playing, sibling]);
       }
     });
 
     /**
-     * All rungs rather than any, mirroring the uploader's own rule (a ladder goes to VOD only once
-     * every announced rung has finalized): one finalized rung beside live ones is a rung retired,
-     * not a broadcast over.
+     * A finished rung beside a sibling that still publishes is a rung retired, not a broadcast over.
+     * The uploader finishes a ladder without a rung whose stop failed, and that mark lives in the
+     * catalog, which this poller never reads.
      */
-    it('does not record ended while any rung is still live', async () => {
-      const finalized = Topic.fromString('group-1-360p');
-      const live = Topic.fromString('group-1-720p');
+    it('does not record ended while the sibling still publishes, and fails over to it instead', async () => {
+      const [finished, live] = ['group-1-720p', 'group-1-360p'].map((t) => Topic.fromString(t));
       const gateway = new FakeGateway();
       const tracker = new FeedHealthTracker();
+      const stopped: string[] = [];
+      tracker.onRungStopped((rung) => stopped.push(rung));
       gateway.missingSlotStatus = 404;
-      gateway.publishFeedHead(finalized, 0, manifest(2, true));
+      gateway.publishFeedHead(finished, 0, manifest(2, true));
       gateway.publishFeedHead(live, 0, manifest(1));
+      gateway.publishSoc(live, 1, manifest(2));
 
-      const poller = new LadderFeedPoller(state, gateway.fetchResource, POLL_MS, tracker);
-      poller.start(OWNER, [finalized, live], groupHex);
+      const poller = new FastPoller(state, gateway.reader, POLL_MS, tracker, undefined, undefined, {
+        progressBoundMs: 2_000,
+      });
+      poller.register(
+        OWNER,
+        [
+          { topic: live, bandwidth: 1 },
+          { topic: finished, bandwidth: 2 },
+        ],
+        groupHex,
+      );
+      poller.activate(finished.toString());
 
       try {
-        await waitFor(() => segmentCount(state, finalized) === 2, 'the finalized rung read');
-        await sleep(20);
+        // The sibling is watched for the whole bound before it counts as carrying on.
+        await waitFor(() => stopped.length > 0, 'the finished rung to be failed over', 4_000);
 
+        assert.deepEqual(stopped, [finished.toString()]);
         assert.equal(tracker.state(groupHex), FEED_STATE_LIVE);
       } finally {
-        poller.stop([finalized, live]);
+        poller.unregister([finished, live]);
       }
     });
 
@@ -295,8 +361,8 @@ describe('LadderFeedPoller', () => {
       const tracker = new FeedHealthTracker();
       gateway.publishFeedHead(topic, 0, manifest(2, true));
 
-      const poller = new LadderFeedPoller(state, gateway.fetchResource, POLL_MS, tracker);
-      poller.start(OWNER, [topic]);
+      const poller = new FastPoller(state, gateway.reader, POLL_MS, tracker);
+      follow(poller, OWNER, [topic]);
 
       try {
         await waitFor(() => segmentCount(state, topic) === 2, 'the finalized rung read');
@@ -304,7 +370,7 @@ describe('LadderFeedPoller', () => {
 
         assert.equal(tracker.state(groupHex), FEED_STATE_LIVE);
       } finally {
-        poller.stop([topic]);
+        poller.unregister([topic]);
       }
     });
   });
@@ -350,17 +416,29 @@ describe('LadderFeedPoller', () => {
       return { tracker, resumed };
     }
 
-    /** A poller following the ladder with no backoff, whose finished rungs ask every {@link WATCH_MS}. */
+    /** The rung the viewer plays. The other is its lower sibling, read once to confirm an end. */
+    const PLAYING = RUNGS[1];
+
+    /**
+     * A poller playing {@link PLAYING} with no backoff, whose finished rung asks every
+     * {@link WATCH_MS}, and whose sibling is given a short bound to show progress in.
+     */
     function watchingPoller(gateway: FakeGateway, tracker: FeedHealthTracker): LadderFeedPoller {
-      const poller = new LadderFeedPoller(
+      const poller = new FastPoller(
         state,
-        gateway.fetchResource,
+        gateway.reader,
         POLL_MS,
         tracker,
         () => 0,
         () => WATCH_MS,
+        { progressBoundMs: 30 },
       );
-      poller.start(OWNER, RUNGS, groupHex);
+      poller.register(
+        OWNER,
+        RUNGS.map((topic, rank) => ({ topic, bandwidth: rank })),
+        groupHex,
+      );
+      poller.activate(PLAYING.toString());
       return poller;
     }
 
@@ -377,18 +455,17 @@ describe('LadderFeedPoller', () => {
         await waitFor(() => tracker.state(groupHex) === FEED_STATE_LIVE, 'the ladder to come back');
         assert.ok(resumed.includes(groupHex), 'the group, which is the topic a player listens on, was never told');
       } finally {
-        poller.stop(RUNGS);
+        poller.unregister(RUNGS);
       }
     });
 
     /**
-     * The whole of a live end as a viewer on one rung lives it. Every rung waits on its publisher
+     * The whole of a live end as a viewer on one rung lives it. The rung waits on its publisher
      * through the reconnect window, the ladder finishes, and the broadcaster comes back. The viewer is
      * told the broadcast is waiting, then that it has ended, and then nothing.
      *
-     * ⛔ Found back on the rung the viewer is NOT on, which is the order that failed: the rungs' watches
-     * find the return one at a time, and the viewer's own rung still carried its wait from before the
-     * end, so the group came back reading as waiting to continue.
+     * ⛔ The viewer's rung still carried its wait from before the end, so the group used to come back
+     * reading as waiting to continue.
      */
     it('comes back live for the viewer on a rung, rather than as the wait before the end', async () => {
       let clockMs = 0;
@@ -400,13 +477,13 @@ describe('LadderFeedPoller', () => {
       for (const topic of RUNGS) {
         gateway.publishFeedHead(topic, 0, manifest(1));
       }
-      const [foundFirst, watchedByTheViewer] = RUNGS;
+      const watchedByTheViewer = PLAYING;
       const poller = watchingPoller(gateway, tracker);
 
       try {
         await waitFor(
-          () => RUNGS.every((topic) => tracker.unservedPollsRecorded(topic.toString()) > 0),
-          'every rung to wait on its publisher',
+          () => tracker.unservedPollsRecorded(watchedByTheViewer.toString()) > 0,
+          'the playing rung to wait on its publisher',
         );
         tracker.watchRung(groupHex, watchedByTheViewer.toString());
         clockMs += UNSERVED_SLOT_STALL_MS;
@@ -414,12 +491,12 @@ describe('LadderFeedPoller', () => {
 
         publishOnEveryRung(gateway, FINISHED_AT, manifest(2, true));
         await waitFor(() => tracker.state(groupHex) === FEED_STATE_ENDED, 'the ladder to end');
-        gateway.publishSoc(foundFirst, FINISHED_AT + 1, manifest(3));
+        gateway.publishSoc(watchedByTheViewer, FINISHED_AT + 1, manifest(3));
         await waitFor(() => tracker.state(groupHex) !== FEED_STATE_ENDED, 'the ladder to come back');
 
         assert.deepEqual(seen, [FEED_STATE_LIVE, FEED_STATE_STALLED, FEED_STATE_ENDED, FEED_STATE_LIVE]);
       } finally {
-        poller.stop(RUNGS);
+        poller.unregister(RUNGS);
       }
     });
 
@@ -436,7 +513,7 @@ describe('LadderFeedPoller', () => {
       const earlier = watchingPoller(gateway, tracker);
       await waitFor(() => tracker.state(groupHex) === FEED_STATE_ENDED, 'the earlier session to see the end');
       // What `unregisterLadder` does when that viewer leaves.
-      earlier.stop(RUNGS);
+      earlier.unregister(RUNGS);
       for (const topic of RUNGS) {
         state.clear(topic.toString());
       }
@@ -451,7 +528,7 @@ describe('LadderFeedPoller', () => {
         await waitFor(() => tracker.state(groupHex) === FEED_STATE_LIVE, 'the stale end to be cleared');
         assert.deepEqual(resumed, [], 'a stale end was announced as a return, which would arm a rejoin');
       } finally {
-        later.stop(RUNGS);
+        later.unregister(RUNGS);
       }
     });
 
@@ -461,7 +538,7 @@ describe('LadderFeedPoller', () => {
       const { tracker } = makeWatchedTracker();
       const earlier = watchingPoller(gateway, tracker);
       await waitFor(() => tracker.state(groupHex) === FEED_STATE_ENDED, 'the earlier session to see the end');
-      earlier.stop(RUNGS);
+      earlier.unregister(RUNGS);
       for (const topic of RUNGS) {
         state.clear(topic.toString());
         gateway.publishFeedHead(topic, FINISHED_AT, manifest(2, true));
@@ -469,13 +546,10 @@ describe('LadderFeedPoller', () => {
       const later = watchingPoller(gateway, tracker);
 
       try {
-        await waitFor(
-          () => RUNGS.every((topic) => segmentCount(state, topic) === 2),
-          'the fresh session to read every finished rung',
-        );
+        await waitFor(() => segmentCount(state, PLAYING) === 2, 'the fresh session to read the finished rung');
         assert.equal(tracker.state(groupHex), FEED_STATE_ENDED);
       } finally {
-        later.stop(RUNGS);
+        later.unregister(RUNGS);
       }
     });
 
@@ -497,7 +571,7 @@ describe('LadderFeedPoller', () => {
         await waitFor(() => resumed.includes(groupHex), 'the broadcaster coming back to be announced');
         assert.equal(tracker.state(groupHex), FEED_STATE_LIVE);
       } finally {
-        poller.stop(RUNGS);
+        poller.unregister(RUNGS);
       }
     });
 
@@ -515,8 +589,8 @@ describe('LadderFeedPoller', () => {
 
         publishOnEveryRung(gateway, FINISHED_AT + 1, manifest(3, true));
         await waitFor(
-          () => RUNGS.every((topic) => gateway.requests.includes(socPath(topic, FINISHED_AT + 2))),
-          'every rung to move its watch past the second finished playlist',
+          () => gateway.requests.includes(socPath(PLAYING, FINISHED_AT + 2)),
+          'the watch to move past the second finished playlist',
         );
         assert.equal(tracker.state(groupHex), FEED_STATE_ENDED, 'a finished playlist was read as a return');
         assert.deepEqual(resumed, []);
@@ -525,17 +599,20 @@ describe('LadderFeedPoller', () => {
 
         await waitFor(() => tracker.state(groupHex) === FEED_STATE_LIVE, 'the ladder to come back');
       } finally {
-        poller.stop(RUNGS);
+        poller.unregister(RUNGS);
       }
     });
 
-    /** Nothing changes for a broadcast that never comes back, and the watch asks for one slot only. */
+    /**
+     * Nothing changes for a broadcast that never comes back, and one watch asks for one slot only, on
+     * the rung that was playing.
+     */
     it('keeps a ladder that never comes back ended, asking only for the slot after its end', async () => {
       const gateway = finishedLadder();
       const { tracker, resumed } = makeWatchedTracker();
       const poller = watchingPoller(gateway, tracker);
-      const slotsAfterTheEnd = new Set(RUNGS.map((topic) => socPath(topic, FINISHED_AT + 1)));
-      const WATCHES_PER_RUNG = 3;
+      const slotsAfterTheEnd = new Set([socPath(PLAYING, FINISHED_AT + 1)]);
+      const WATCHES = 3;
 
       try {
         await waitFor(() => tracker.state(groupHex) === FEED_STATE_ENDED, 'the ladder to end');
@@ -543,9 +620,8 @@ describe('LadderFeedPoller', () => {
         const watchesSinceTheEnd = () => gateway.requests.slice(endedAfter);
 
         await waitFor(
-          () =>
-            watchesSinceTheEnd().filter((path) => slotsAfterTheEnd.has(path)).length >= WATCHES_PER_RUNG * RUNGS.length,
-          'several watches on every rung',
+          () => watchesSinceTheEnd().filter((path) => slotsAfterTheEnd.has(path)).length >= WATCHES,
+          'several watches on the playing rung',
         );
 
         assert.deepEqual(
@@ -556,7 +632,7 @@ describe('LadderFeedPoller', () => {
         assert.equal(tracker.state(groupHex), FEED_STATE_ENDED);
         assert.deepEqual(resumed, []);
       } finally {
-        poller.stop(RUNGS);
+        poller.unregister(RUNGS);
       }
     });
 
@@ -566,7 +642,7 @@ describe('LadderFeedPoller', () => {
       const poller = watchingPoller(gateway, tracker);
 
       await waitFor(() => tracker.state(groupHex) === FEED_STATE_ENDED, 'the ladder to end');
-      poller.stop(RUNGS);
+      poller.unregister(RUNGS);
       const stoppedAfter = gateway.requests.length;
       publishOnEveryRung(gateway, FINISHED_AT + 1, manifest(3));
 
@@ -584,14 +660,14 @@ describe('LadderFeedPoller', () => {
     it('drops the answer to a watch read that lands after the teardown', async () => {
       const gateway = finishedLadder();
       const { tracker, resumed } = makeWatchedTracker();
-      const [rung] = RUNGS;
+      const rung = PLAYING;
       const heldSlot = socPath(rung, FINISHED_AT + 1);
       // Armed before the walk starts, since nothing but the watch ever asks for this slot.
       const release = gateway.hold(heldSlot);
       const poller = watchingPoller(gateway, tracker);
 
       await waitFor(() => gateway.requests.includes(heldSlot), 'a watch read pinned in flight');
-      poller.stop(RUNGS);
+      poller.unregister(RUNGS);
       gateway.publishSoc(rung, FINISHED_AT + 1, manifest(3));
       release();
       await sleep(WATCH_MS * 5);
@@ -606,18 +682,18 @@ describe('LadderFeedPoller', () => {
     const gateway = new FakeGateway();
     gateway.publishFeedHead(topic, 0, manifest(1));
 
-    const poller = new LadderFeedPoller(state, gateway.fetchResource, POLL_MS);
-    poller.start(OWNER, [topic]);
+    const poller = new FastPoller(state, gateway.reader, POLL_MS);
+    follow(poller, OWNER, [topic]);
 
     try {
       await waitFor(() => gateway.requests.filter((p) => p.startsWith('soc/')).length >= 3, 'repeated attempts');
       assert.equal(segmentCount(state, topic), 1, 'a miss must not lose what is already there');
 
-      // The uploader publishes the next index; the walk picks it up without being asked to.
+      // The uploader publishes the next index. The walk picks it up without being asked to.
       gateway.publishSoc(topic, 1, manifest(2));
       await waitFor(() => segmentCount(state, topic) === 2, 'the newly published index');
     } finally {
-      poller.stop([topic]);
+      poller.unregister([topic]);
     }
   });
 
@@ -626,16 +702,16 @@ describe('LadderFeedPoller', () => {
     const gateway = new FakeGateway();
     gateway.publishFeedHead(topic, 0, manifest(1));
 
-    const poller = new LadderFeedPoller(state, gateway.fetchResource, POLL_MS);
-    poller.start(OWNER, [topic]);
+    const poller = new FastPoller(state, gateway.reader, POLL_MS);
+    follow(poller, OWNER, [topic]);
 
     await poller.ready(topic.toString());
     assert.equal(segmentCount(state, topic), 1);
 
     const stalled = Topic.fromString('group-1-1080p');
-    poller.start(OWNER, [stalled]);
+    follow(poller, OWNER, [stalled]);
     const pending = poller.ready(stalled.toString());
-    poller.stop([stalled, topic]);
+    poller.unregister([stalled, topic]);
 
     await pending;
   });
@@ -643,15 +719,15 @@ describe('LadderFeedPoller', () => {
   it('survives a throw that is not a failed fetch, rather than dying silently', async () => {
     // A gateway behind a proxy that strips Swarm-Feed-Index, or a truncated body, throws from
     // outside the fetch. Before this was handled, the walk's promise rejected, the rung stayed in
-    // `polled` so nothing restarted it, and ready() never settled — the loader then awaited a
+    // `polled` so nothing restarted it, and ready() never settled. The loader then awaited a
     // level that would never load or error.
     const topic = Topic.fromString('group-1-720p');
     const gateway = new FakeGateway();
     gateway.publishFeedHead(topic, 0, manifest(1));
     gateway.stripFeedIndexHeader = true;
 
-    const poller = new LadderFeedPoller(state, gateway.fetchResource, POLL_MS);
-    poller.start(OWNER, [topic]);
+    const poller = new FastPoller(state, gateway.reader, POLL_MS);
+    follow(poller, OWNER, [topic]);
 
     try {
       await waitFor(() => gateway.requests.length >= 3, 'the walk to keep retrying');
@@ -660,7 +736,7 @@ describe('LadderFeedPoller', () => {
       gateway.publishSoc(topic, 1, manifest(2));
       await waitFor(() => segmentCount(state, topic) === 2, 'recovery once the gateway behaves');
     } finally {
-      poller.stop([topic]);
+      poller.unregister([topic]);
     }
   });
 
@@ -672,12 +748,12 @@ describe('LadderFeedPoller', () => {
     const gateway = new FakeGateway();
     gateway.publishFeedHead(topic, 0, manifest(1));
 
-    const poller = new LadderFeedPoller(state, gateway.fetchResource, POLL_MS);
-    poller.start(OWNER, [topic]);
+    const poller = new FastPoller(state, gateway.reader, POLL_MS);
+    follow(poller, OWNER, [topic]);
 
     await waitFor(() => state.getIndex(topic.toString()) !== null, 'bootstrap');
 
-    // Arm the block before publishing, so the walk cannot consume index 1 before it is held —
+    // Arm the block before publishing, so the walk cannot consume index 1 before it is held,
     // otherwise there is nothing in flight at teardown and the test proves nothing.
     const held = socPath(topic, 1);
     const attemptsBeforeHold = gateway.requests.filter((p) => p === held).length;
@@ -689,7 +765,7 @@ describe('LadderFeedPoller', () => {
       'a request pinned in flight',
     );
 
-    poller.stop([topic]);
+    poller.unregister([topic]);
     state.clear(topic.toString());
 
     release();
@@ -702,15 +778,15 @@ describe('LadderFeedPoller', () => {
   it('reports a topic as unpolled once stopped, so the loader falls back to reading it itself', () => {
     const topic = Topic.fromString('group-1-720p');
     const gateway = new FakeGateway();
-    const poller = new LadderFeedPoller(state, gateway.fetchResource, POLL_MS);
+    const poller = new FastPoller(state, gateway.reader, POLL_MS);
 
-    assert.equal(poller.isPolling(topic.toString()), false);
+    assert.equal(poller.isRegistered(topic.toString()), false);
 
-    poller.start(OWNER, [topic]);
-    assert.equal(poller.isPolling(topic.toString()), true);
+    follow(poller, OWNER, [topic]);
+    assert.equal(poller.isRegistered(topic.toString()), true);
 
-    poller.stop([topic]);
-    assert.equal(poller.isPolling(topic.toString()), false);
+    poller.unregister([topic]);
+    assert.equal(poller.isRegistered(topic.toString()), false);
   });
 });
 
@@ -736,8 +812,8 @@ describe('LadderFeedPoller feed health', () => {
       return health.backoffRemainingMs(hexTopic);
     };
 
-    const poller = new LadderFeedPoller(state, gateway.fetchResource, POLL_MS, health, backoffMs);
-    poller.start(OWNER, [topic]);
+    const poller = new FastPoller(state, gateway.reader, POLL_MS, health, backoffMs);
+    follow(poller, OWNER, [topic]);
 
     try {
       await waitFor(
@@ -753,7 +829,7 @@ describe('LadderFeedPoller feed health', () => {
       await sleep(30);
       assert.equal(gateway.requests.length, requestsWhileBackedOff, 'a backed-off rung must stop asking');
     } finally {
-      poller.stop([topic]);
+      poller.unregister([topic]);
     }
   });
 
@@ -765,15 +841,15 @@ describe('LadderFeedPoller feed health', () => {
     const seen: FeedState[] = [];
     const unsubscribe = health.subscribe(topic.toString(), (feedState) => seen.push(feedState));
 
-    // Backoff held at zero so the outage is reached quickly; this test is about the state reaching a
+    // Backoff held at zero so the outage is reached quickly. This test is about the state reaching a
     // subscriber, not the pacing, which the test above covers.
-    const poller = new LadderFeedPoller(state, gateway.fetchResource, POLL_MS, health, () => 0);
-    poller.start(OWNER, [topic]);
+    const poller = new FastPoller(state, gateway.reader, POLL_MS, health, () => 0);
+    follow(poller, OWNER, [topic]);
 
     try {
       await waitFor(() => seen.includes(FEED_STATE_RECONNECTING), 'the overlay to hear reconnecting');
     } finally {
-      poller.stop([topic]);
+      poller.unregister([topic]);
       unsubscribe();
     }
 
@@ -811,10 +887,10 @@ describe('LadderFeedPoller feed health', () => {
       const health = new FeedHealthTracker(() => 0);
       holdAtTheCap(health, held.toString());
 
-      const poller = new LadderFeedPoller(state, gateway.fetchResource, POLL_MS, health, (hexTopic) =>
+      const poller = new FastPoller(state, gateway.reader, POLL_MS, health, (hexTopic) =>
         health.backoffRemainingMs(hexTopic),
       );
-      poller.start(OWNER, [served, held]);
+      follow(poller, OWNER, [served, held]);
 
       try {
         await waitFor(() => segmentCount(state, served) === 1, 'the sibling rung to be served');
@@ -823,7 +899,7 @@ describe('LadderFeedPoller feed health', () => {
           'the held rung to come back on the sibling evidence rather than on its own timer',
         );
       } finally {
-        poller.stop([served, held]);
+        poller.unregister([served, held]);
       }
     });
 
@@ -871,16 +947,14 @@ describe('LadderFeedPoller feed health', () => {
           : Math.max(0, OWED_MS - (performance.now() - startedAt));
       };
 
-      const poller = new LadderFeedPoller(state, gateway.fetchResource, SLICE_MS, health, () =>
-        jitter.spread(owedMs()),
-      );
-      poller.start(OWNER, [topic]);
+      const poller = new FastPoller(state, gateway.reader, SLICE_MS, health, () => jitter.spread(owedMs()));
+      follow(poller, OWNER, [topic]);
 
       try {
         await waitFor(() => segmentCount(state, topic) === 1, 'the rung to finish waiting and read');
         assert.equal(draws, 1, `the spread was drawn ${draws} times across one backoff`);
       } finally {
-        poller.stop([topic]);
+        poller.unregister([topic]);
       }
     });
 
@@ -902,10 +976,10 @@ describe('LadderFeedPoller feed health', () => {
       const health = new FeedHealthTracker(() => 0);
       holdAtTheCap(health, broken.toString());
 
-      const poller = new LadderFeedPoller(state, gateway.fetchResource, POLL_MS, health, (hexTopic) =>
+      const poller = new FastPoller(state, gateway.reader, POLL_MS, health, (hexTopic) =>
         health.backoffRemainingMs(hexTopic),
       );
-      poller.start(OWNER, [served, broken]);
+      follow(poller, OWNER, [served, broken]);
 
       try {
         await waitFor(() => segmentCount(state, served) === 1, 'the sibling rung to be served');
@@ -930,7 +1004,7 @@ describe('LadderFeedPoller feed health', () => {
           `the broken rung was asked ${brokenAsks()} times against ${healthyAsks()} for a healthy one`,
         );
       } finally {
-        poller.stop([served, broken]);
+        poller.unregister([served, broken]);
       }
     });
   });
@@ -944,8 +1018,8 @@ describe('LadderFeedPoller feed health', () => {
     gateway.publishFeedHead(topic, 0, manifest(1));
 
     const health = new FeedHealthTracker(() => 0);
-    const poller = new LadderFeedPoller(state, gateway.fetchResource, POLL_MS, health, () => 0);
-    poller.start(OWNER, [topic]);
+    const poller = new FastPoller(state, gateway.reader, POLL_MS, health, () => 0);
+    follow(poller, OWNER, [topic]);
 
     try {
       await waitFor(() => segmentCount(state, topic) === 1, 'the rung to bootstrap');
@@ -962,13 +1036,13 @@ describe('LadderFeedPoller feed health', () => {
         'a caught-up rung must keep polling at full cadence',
       );
     } finally {
-      poller.stop([topic]);
+      poller.unregister([topic]);
     }
   });
 });
 
 /**
- * ⛔ **The half of the overlay a ladder could not reach.** The gateway outage arm, live, 2026-08-29: a viewer's gateway
+ * ⛔ **The half of the overlay a ladder could not reach.** A viewer's gateway
  * was taken away, the picture froze for 26.6 seconds, and the client rendered nothing at all, which
  * is how it says the feed is live. The viewer was told everything was fine over a frozen frame.
  *
@@ -991,14 +1065,14 @@ describe('LadderFeedPoller telling the viewer the gateway is gone', () => {
     const seen: FeedState[] = [];
     tracker.subscribe(groupHex, (feedState) => seen.push(feedState));
 
-    const poller = new LadderFeedPoller(state, gateway.fetchResource, POLL_MS, tracker);
-    poller.start(OWNER, topics, groupHex);
+    const poller = new FastPoller(state, gateway.reader, POLL_MS, tracker);
+    follow(poller, OWNER, topics, groupHex);
 
     try {
       await waitFor(() => tracker.state(groupHex) === FEED_STATE_RECONNECTING, 'the group to go reconnecting');
       assert.deepEqual(seen, [FEED_STATE_LIVE, FEED_STATE_RECONNECTING]);
     } finally {
-      poller.stop(topics);
+      poller.unregister(topics);
     }
   });
 
@@ -1015,14 +1089,14 @@ describe('LadderFeedPoller telling the viewer the gateway is gone', () => {
     gateway.unreachableHeads.add(feedHeadPath(dark));
 
     const tracker = new FeedHealthTracker();
-    const poller = new LadderFeedPoller(state, gateway.fetchResource, POLL_MS, tracker);
-    poller.start(OWNER, [served, dark], groupHex);
+    const poller = new FastPoller(state, gateway.reader, POLL_MS, tracker);
+    follow(poller, OWNER, [served, dark], groupHex);
 
     try {
       await waitFor(() => tracker.state(dark.toString()) === FEED_STATE_RECONNECTING, 'the dark rung to notice');
       assert.equal(tracker.state(groupHex), FEED_STATE_LIVE);
     } finally {
-      poller.stop([served, dark]);
+      poller.unregister([served, dark]);
     }
   });
 
@@ -1033,14 +1107,14 @@ describe('LadderFeedPoller telling the viewer the gateway is gone', () => {
     const gateway = new FakeGateway();
     const tracker = new FeedHealthTracker();
 
-    const poller = new LadderFeedPoller(state, gateway.fetchResource, POLL_MS, tracker);
-    poller.start(OWNER, [kept, dropped], groupHex);
-    poller.stop([dropped]);
+    const poller = new FastPoller(state, gateway.reader, POLL_MS, tracker);
+    follow(poller, OWNER, [kept, dropped], groupHex);
+    poller.unregister([dropped]);
 
     try {
       await waitFor(() => tracker.state(groupHex) === FEED_STATE_RECONNECTING, 'the group to still be reporting');
     } finally {
-      poller.stop([kept]);
+      poller.unregister([kept]);
     }
   });
 });
@@ -1071,13 +1145,13 @@ describe('LadderFeedPoller telling the viewer the publisher has gone quiet', () 
     gateway.publishFeedHead(topic, 0, manifest(1));
 
     const tracker = new FeedHealthTracker();
-    const poller = new LadderFeedPoller(state, gateway.fetchResource, POLL_MS, tracker);
-    poller.start(OWNER, [topic], groupHex);
+    const poller = new FastPoller(state, gateway.reader, POLL_MS, tracker);
+    follow(poller, OWNER, [topic], groupHex);
 
     try {
       await waitFor(() => tracker.unservedPollsRecorded(topic.toString()) > 0, 'the rung to record its unserved slot');
     } finally {
-      poller.stop([topic]);
+      poller.unregister([topic]);
     }
   });
 
@@ -1089,15 +1163,15 @@ describe('LadderFeedPoller telling the viewer the publisher has gone quiet', () 
     gateway.publishFeedHead(topic, 0, manifest(1));
 
     const tracker = new FeedHealthTracker();
-    const poller = new LadderFeedPoller(state, gateway.fetchResource, POLL_MS, tracker);
-    poller.start(OWNER, [topic], groupHex);
+    const poller = new FastPoller(state, gateway.reader, POLL_MS, tracker);
+    follow(poller, OWNER, [topic], groupHex);
 
     try {
       await waitFor(() => tracker.unservedPollsRecorded(topic.toString()) > 2, 'a run of unserved polls to build up');
       assert.equal(tracker.state(groupHex), FEED_STATE_LIVE, 'a caught-up viewer was told something was wrong');
       assert.equal(tracker.backoffRemainingMs(topic.toString()), 0, 'a caught-up rung was backed off');
     } finally {
-      poller.stop([topic]);
+      poller.unregister([topic]);
     }
   });
 
@@ -1108,8 +1182,8 @@ describe('LadderFeedPoller telling the viewer the publisher has gone quiet', () 
     gateway.publishFeedHead(topic, 0, manifest(1));
 
     const tracker = new FeedHealthTracker();
-    const poller = new LadderFeedPoller(state, gateway.fetchResource, POLL_MS, tracker);
-    poller.start(OWNER, [topic], groupHex);
+    const poller = new FastPoller(state, gateway.reader, POLL_MS, tracker);
+    follow(poller, OWNER, [topic], groupHex);
 
     // A long run before the slot lands, and a generous drop after it. At this poll interval the
     // walk is back on the NEXT unwritten slot within milliseconds, so watching for the count to
@@ -1124,19 +1198,15 @@ describe('LadderFeedPoller telling the viewer the publisher has gone quiet', () 
         'the served slot to end the unserved run',
       );
     } finally {
-      poller.stop([topic]);
+      poller.unregister([topic]);
     }
   });
 });
 
 /**
- * ⛔⛔⛔ **The layer every unit test of this rule skips, and the one the live run failed in.**
- *
- * `feedState.test.ts` drives `FeedHealthTracker` by hand and its whole failover block is green.
- * The rung outage arm went red anyway on 2026-08-31 against the deployed client, with three healthy rungs served 5.4
- * times a second beside a dead one for 90.4 seconds and zero level changes. A rule that is right and
- * a rule that is reached are different claims, and only the poller can settle the second one: it is
- * what calls `recordGatewayResponse`, and nothing below it had ever been exercised end to end.
+ * The playing rung is judged by its own progress. Unserved for the stall threshold, the next lower
+ * rung is walked as a candidate, and a new index there is what calls the playing rung dead. The
+ * cases for each turn of that are in `test/oneQualityFollow.test.ts`, Q3.
  */
 describe('LadderFeedPoller telling the player a rung has stopped being produced', () => {
   let state: ManifestStateManager;
@@ -1147,74 +1217,71 @@ describe('LadderFeedPoller telling the player a rung has stopped being produced'
   });
 
   const GROUP = Topic.fromString('the-broadcast-a-viewer-linked-to').toString();
-  const DEAD = Topic.fromString('group-1-480p');
-  const LIVING = ['group-1-360p', 'group-1-720p', 'group-1-1080p'].map((name) => Topic.fromString(name));
-  const ALL = [DEAD, ...LIVING];
-  /** Comfortably more than the ladder has to deliver past a rung before that rung is called dead. */
-  const SEGMENTS_PUBLISHED = 40;
+  const LOWER = Topic.fromString('group-1-360p');
+  const PLAYING = Topic.fromString('group-1-480p');
+  const BOTH = [LOWER, PLAYING];
 
-  /** Every rung bootstrapped, then only the living ones ever get another index. */
-  function ladderWithOneDeadRung(): FakeGateway {
-    const gateway = new FakeGateway();
-    // A slot the publisher has not written yet, which is what a stopped rung looks like, rather
-    // than a transport error, which is a gateway fault and a different thing entirely.
-    gateway.missingSlotStatus = 404;
-    for (const topic of ALL) {
-      gateway.publishFeedHead(topic, 0, manifest(1));
-    }
-    for (const topic of LIVING) {
-      for (let index = 1; index <= SEGMENTS_PUBLISHED; index++) {
-        gateway.publishSoc(topic, index, manifest(index + 1));
-      }
-    }
-    return gateway;
-  }
-
-  it('announces the dead rung, and only it', async () => {
-    const gateway = ladderWithOneDeadRung();
-    const feedHealth = new FeedHealthTracker();
+  function makeLadder(gateway: FakeGateway) {
+    let clockMs = 0;
+    const clock = { now: () => clockMs, advance: (by: number) => void (clockMs += by) };
+    const feedHealth = new FeedHealthTracker(clock.now);
     const stopped: string[] = [];
     feedHealth.onRungStopped((rung) => stopped.push(rung));
+    const poller = new FastPoller(state, gateway.reader, POLL_MS, feedHealth, undefined, undefined, {
+      now: clock.now,
+      progressBoundMs: 2_000,
+    });
+    poller.register(
+      OWNER,
+      [
+        { topic: LOWER, bandwidth: 1 },
+        { topic: PLAYING, bandwidth: 2 },
+      ],
+      GROUP,
+    );
+    poller.activate(PLAYING.toString());
+    return { clock, feedHealth, stopped, poller };
+  }
 
-    const poller = new LadderFeedPoller(state, gateway.fetchResource, POLL_MS, feedHealth);
-    poller.start(OWNER, ALL, GROUP);
+  it('announces the playing rung once it stalls while the lower rung shows a new index', async () => {
+    const gateway = new FakeGateway();
+    gateway.missingSlotStatus = 404;
+    gateway.publishFeedHead(PLAYING, 0, manifest(1));
+    gateway.publishFeedHead(LOWER, 0, manifest(1));
+    const { clock, feedHealth, stopped, poller } = makeLadder(gateway);
 
     try {
-      await waitFor(() => stopped.length > 0, 'the dead rung to be announced');
-      assert.deepEqual(stopped, [DEAD.toString()]);
+      await waitFor(() => feedHealth.unservedPollsRecorded(PLAYING.toString()) > 0, 'the playing rung to go quiet');
+      clock.advance(UNSERVED_SLOT_STALL_MS);
+      await waitFor(() => poller.isActive(LOWER.toString()), 'the lower rung to be tried');
+      gateway.publishSoc(LOWER, 1, manifest(2));
+
+      await waitFor(() => stopped.length > 0, 'the playing rung to be announced');
+      assert.deepEqual(stopped, [PLAYING.toString()]);
     } finally {
-      poller.stop(ALL);
+      poller.unregister(BOTH);
     }
   });
 
-  /**
-   * The control, and it is what keeps the case above from passing on a rule that fires at anything.
-   * The same ladder with nothing silenced has to stay silent.
-   */
-  it('says nothing while every rung is still being produced', async () => {
+  /** The control: a playing rung that keeps being produced is never judged, and no sibling is read. */
+  it('says nothing, and reads no sibling, while the playing rung is still being produced', async () => {
     const gateway = new FakeGateway();
     gateway.missingSlotStatus = 404;
-    for (const topic of ALL) {
-      gateway.publishFeedHead(topic, 0, manifest(1));
-      for (let index = 1; index <= SEGMENTS_PUBLISHED; index++) {
-        gateway.publishSoc(topic, index, manifest(index + 1));
-      }
-    }
-    const feedHealth = new FeedHealthTracker();
-    const stopped: string[] = [];
-    feedHealth.onRungStopped((rung) => stopped.push(rung));
-
-    const poller = new LadderFeedPoller(state, gateway.fetchResource, POLL_MS, feedHealth);
-    poller.start(OWNER, ALL, GROUP);
+    gateway.publishFeedHead(PLAYING, 0, manifest(1));
+    gateway.publishFeedHead(LOWER, 0, manifest(1));
+    const { clock, stopped, poller } = makeLadder(gateway);
 
     try {
-      await waitFor(
-        () => ALL.every((topic) => segmentCount(state, topic) === SEGMENTS_PUBLISHED + 1),
-        'every rung to reach the live edge',
-      );
-      assert.deepEqual(stopped, [], 'a healthy ladder had one of its rungs called dead');
+      for (let index = 1; index <= 5; index++) {
+        gateway.publishSoc(PLAYING, index, manifest(index + 1));
+        await waitFor(() => segmentCount(state, PLAYING) === index + 1, `the playing rung at index ${index}`);
+        clock.advance(UNSERVED_SLOT_STALL_MS / 2);
+      }
+
+      assert.deepEqual(stopped, [], 'a healthy rung was called dead');
+      assert.ok(!gateway.requests.includes(feedHeadPath(LOWER)), 'a sibling was read while nothing was wrong');
     } finally {
-      poller.stop(ALL);
+      poller.unregister(BOTH);
     }
   });
 });
@@ -1224,14 +1291,10 @@ describe('LadderFeedPoller telling the player a rung has stopped being produced'
  *
  * The single-rendition walk has asked what is behind a refused slot since 2026-08-06, because on
  * this deployment a 404 usually is not the publisher's head: seventy-four of seventy-six refused
- * slots already had a served slot behind them, seventy-three of those at +1. The ladder walk never
- * asked. It recorded the refusal, the rung went unserved, and once its siblings had delivered
- * `RUNG_DEATH_LAG_SEGMENTS` segments it did not, the rung was handed to `hls.removeLevel`, which
- * has no undo inside the session.
- *
- * So the walk where a wrong answer costs one slower poll was the one checking, and the walk where
- * the same wrong answer costs a rung for the rest of the broadcast was the one believing it. An
- * outside reviewer watched 720p leave a ladder that way with all of its media on Swarm.
+ * slots already had a served slot behind them, seventy-three of those at +1. A rung walk that never
+ * asked would sit unserved on the hole until the stall rule tried a sibling and failed the rung over,
+ * which has no undo inside the session. An outside reviewer watched 720p leave a ladder that way with
+ * all of its media on Swarm.
  */
 describe('LadderFeedPoller asking what is behind a slot the gateway refuses', () => {
   let state: ManifestStateManager;
@@ -1242,45 +1305,46 @@ describe('LadderFeedPoller asking what is behind a slot the gateway refuses', ()
 
   const GROUP = Topic.fromString('the-broadcast-a-viewer-linked-to').toString();
   const HOLED = Topic.fromString('group-1-720p');
-  const LIVING = ['group-1-360p', 'group-1-480p', 'group-1-1080p'].map((name) => Topic.fromString(name));
-  const ALL = [HOLED, ...LIVING];
+  const LOWER = Topic.fromString('group-1-480p');
+  const BOTH = [LOWER, HOLED];
 
   /** The one index of the holed rung the gateway will not serve, although the publisher wrote it. */
   const HOLE_AT = 1;
 
-  /** Comfortably past the hole, and more than twice what the ladder must deliver to condemn a rung. */
-  const PUBLISHED_THROUGH = HOLE_AT + 1 + 2 * RUNG_DEATH_LAG_SEGMENTS;
+  /** Comfortably past the hole. */
+  const PUBLISHED_THROUGH = HOLE_AT + 9;
+
+  function makeLadder(gateway: FakeGateway) {
+    let clockMs = 0;
+    const clock = { now: () => clockMs, advance: (by: number) => void (clockMs += by) };
+    const feedHealth = new FeedHealthTracker(clock.now);
+    const stopped: string[] = [];
+    feedHealth.onRungStopped((rung) => stopped.push(rung));
+    const poller = new FastPoller(state, gateway.reader, POLL_MS, feedHealth, undefined, undefined, {
+      now: clock.now,
+      progressBoundMs: 2_000,
+    });
+    poller.register(
+      OWNER,
+      [
+        { topic: LOWER, bandwidth: 1 },
+        { topic: HOLED, bandwidth: 2 },
+      ],
+      GROUP,
+    );
+    poller.activate(HOLED.toString());
+    return { clock, feedHealth, stopped, poller };
+  }
 
   function ladderAt404(): FakeGateway {
     const gateway = new FakeGateway();
     // A slot the publisher has not written yet rather than a transport error, which is a gateway
     // fault and a different thing entirely.
     gateway.missingSlotStatus = 404;
-    for (const topic of ALL) {
+    for (const topic of BOTH) {
       gateway.publishFeedHead(topic, 0, manifest(1));
     }
     return gateway;
-  }
-
-  /**
-   * Publishes one index to each of `rungs` and waits for the ladder to take it before the caller
-   * publishes the next.
-   *
-   * ⛔ **The pacing is the fixture's whole job here, and without it the fixture decides the test.**
-   * The probe is gated on the refused rung's own poll count, three of them, while the condemnation
-   * is gated on what the LADDER delivered past that rung, four segments. At a two millisecond poll
-   * interval a sibling with a backlog delivers four in well under one of the holed rung's polls, so
-   * an unpaced fixture condemns the rung before it has had a chance to ask, whatever the client
-   * does. A real broadcast writes one index per rung per segment interval, which is this.
-   */
-  async function publishAndWait(gateway: FakeGateway, index: number, rungs: readonly Topic[]): Promise<void> {
-    for (const topic of rungs) {
-      gateway.publishSoc(topic, index, manifest(index + 1));
-    }
-    await waitFor(
-      () => rungs.every((topic) => segmentCount(state, topic) === index + 1),
-      `every rung of ${rungs.length} to reach index ${index}`,
-    );
   }
 
   /**
@@ -1289,19 +1353,13 @@ describe('LadderFeedPoller asking what is behind a slot the gateway refuses', ()
    */
   it('steps onto the slot behind the refusal instead of waiting on one the gateway will not serve', async () => {
     const gateway = ladderAt404();
-    const feedHealth = new FeedHealthTracker();
-    const stopped: string[] = [];
-    feedHealth.onRungStopped((rung) => stopped.push(rung));
-
-    const poller = new LadderFeedPoller(state, gateway.fetchResource, POLL_MS, feedHealth);
-    poller.start(OWNER, ALL, GROUP);
+    const { stopped, poller } = makeLadder(gateway);
 
     try {
-      // The hole. Every rung but this one is written at this index, and this one never is.
-      await publishAndWait(gateway, HOLE_AT, LIVING);
       for (let index = HOLE_AT + 1; index <= PUBLISHED_THROUGH; index++) {
-        await publishAndWait(gateway, index, ALL);
+        gateway.publishSoc(HOLED, index, manifest(index + 1));
       }
+      await waitFor(() => segmentCount(state, HOLED) === PUBLISHED_THROUGH + 1, 'the rung to walk past the hole');
 
       assert.ok(
         gateway.requests.includes(socPath(HOLED, HOLE_AT + 1)),
@@ -1309,83 +1367,71 @@ describe('LadderFeedPoller asking what is behind a slot the gateway refuses', ()
       );
       assert.deepEqual(stopped, [], 'a rung one request away from its own media was dropped from the ladder');
     } finally {
-      poller.stop(ALL);
+      poller.unregister(BOTH);
     }
   });
 
   /**
    * The control the case above needs. Asking is a bet that a refusal is a hole, and a rung that
-   * really has stopped loses the bet on every distance, so it has to be dropped exactly as it was
-   * before anything asked.
+   * really has stopped loses the bet on every distance, so it still stalls, and is failed over once
+   * its sibling moves, having asked first.
    */
-  it('still drops a rung there is genuinely nothing behind, having asked first', async () => {
+  it('still fails over a rung there is genuinely nothing behind, having asked first', async () => {
     const gateway = ladderAt404();
-    const feedHealth = new FeedHealthTracker();
-    const stopped: string[] = [];
-    feedHealth.onRungStopped((rung) => stopped.push(rung));
-
-    const poller = new LadderFeedPoller(state, gateway.fetchResource, POLL_MS, feedHealth);
-    poller.start(OWNER, ALL, GROUP);
+    const { clock, feedHealth, stopped, poller } = makeLadder(gateway);
 
     try {
-      // Nothing is ever written for the holed rung, at the hole or behind it, so every distance the
-      // probe reaches for is refused too.
-      for (let index = HOLE_AT; index <= PUBLISHED_THROUGH; index++) {
-        await publishAndWait(gateway, index, LIVING);
-      }
-
-      await waitFor(() => stopped.length > 0, 'the dead rung to be dropped');
-      assert.deepEqual(stopped, [HOLED.toString()]);
-      assert.ok(
-        gateway.requests.includes(socPath(HOLED, HOLE_AT + 1)),
-        'the rung was dropped without anyone asking what was behind its refusal',
+      await waitFor(
+        () => gateway.requests.includes(socPath(HOLED, HOLE_AT + 1)),
+        'the rung to ask what was behind its refusal',
       );
+      assert.ok(feedHealth.unservedPollsRecorded(HOLED.toString()) > 0);
+      clock.advance(UNSERVED_SLOT_STALL_MS);
+      await waitFor(() => poller.isActive(LOWER.toString()), 'the lower rung to be tried');
+      gateway.publishSoc(LOWER, 1, manifest(2));
+
+      await waitFor(() => stopped.length > 0, 'the dead rung to be failed over');
+      assert.deepEqual(stopped, [HOLED.toString()]);
     } finally {
-      poller.stop(ALL);
+      poller.unregister(BOTH);
     }
   });
 
   /**
-   * The bet is settled by the time the run reaches the ceiling. By then it has been placed on every
-   * poll and lost every one, so whatever is missing is not within reach and carrying on costs four
-   * extra requests a poll for as long as the page stays open. The walk still asks for the slot it
-   * needs at full cadence, so a slot that becomes retrievable later is picked up anyway.
+   * The bet costs one read a turn and no more. A slot that stays missing is asked for on the follower's
+   * backoff, and each turn looks past it by one slot only: of seventy-four refused slots with something
+   * behind them, seventy-three had it at +1, so a wider look costs reads on a gateway that is already
+   * the reason the slot is missing.
    */
-  it('stops asking once it has asked on every poll and found nothing', async () => {
+  it('looks past a slot that stays missing by one slot, at most once for each ask of it', async () => {
     const topic = Topic.fromString('group-1-360p');
     const gateway = new FakeGateway();
     gateway.missingSlotStatus = 404;
     gateway.publishFeedHead(topic, 0, manifest(1));
 
     const tracker = new FeedHealthTracker();
-    const poller = new LadderFeedPoller(state, gateway.fetchResource, POLL_MS, tracker);
-    poller.start(OWNER, [topic]);
+    const poller = new FastPoller(state, gateway.reader, POLL_MS, tracker);
+    follow(poller, OWNER, [topic]);
 
-    const probePaths = PROBE_DISTANCES.map((distance) => socPath(topic, HOLE_AT + distance));
-    const probesMade = () => gateway.requests.filter((path) => probePaths.includes(path)).length;
+    const looksPast = () => gateway.requests.filter((path) => path === socPath(topic, HOLE_AT + 1)).length;
     const asksForTheSlotItNeeds = () => gateway.requests.filter((path) => path === socPath(topic, HOLE_AT)).length;
-    /** More polls than one probe is worth of requests, so a probe that carried on would be visible. */
-    const POLLS_PAST_THE_CEILING = PROBE_DISTANCES.length + 1;
+    const further = [2, 4, 8].map((distance) => socPath(topic, HOLE_AT + distance));
 
     try {
-      // Strictly past the ceiling, so the last poll that was allowed to ask has already finished and
-      // the count below cannot be read in the middle of one.
-      await waitFor(
-        () => tracker.unservedPollsRecorded(topic.toString()) > UNSERVED_POLLS_PROBE_CEILING,
-        'the run of refusals to pass the ceiling',
-      );
-      const probedByTheCeiling = probesMade();
-      const askedByTheCeiling = asksForTheSlotItNeeds();
+      await waitFor(() => asksForTheSlotItNeeds() >= 12, 'a dozen asks for the missing slot');
 
-      await waitFor(
-        () => asksForTheSlotItNeeds() >= askedByTheCeiling + POLLS_PAST_THE_CEILING,
-        'several more polls past the ceiling',
+      assert.ok(looksPast() > 0, 'nothing looked past the refusal at all');
+      assert.ok(
+        looksPast() <= asksForTheSlotItNeeds(),
+        `${looksPast()} looks past for ${asksForTheSlotItNeeds()} asks`,
       );
-
-      assert.ok(probedByTheCeiling > 0, 'nothing asked past the refusal at all, so this bound proves nothing');
-      assert.equal(probesMade(), probedByTheCeiling, 'the rung kept asking past a refusal it had already given up on');
+      assert.deepEqual(
+        gateway.requests.filter((path) => further.includes(path)),
+        [],
+        'it looked further than one slot past',
+      );
     } finally {
-      poller.stop([topic]);
+      poller.unregister([topic]);
     }
   });
 
@@ -1409,8 +1455,8 @@ describe('LadderFeedPoller asking what is behind a slot the gateway refuses', ()
     // A poll interval the test cannot outlive, so the whole backlog is consumed without the run of
     // refusals ever reaching the length a probe needs. What is asserted is then the client's rule
     // rather than how fast the machine happened to be.
-    const poller = new LadderFeedPoller(state, gateway.fetchResource, 10_000);
-    poller.start(OWNER, [topic]);
+    const poller = new FastPoller(state, gateway.reader, 10_000);
+    follow(poller, OWNER, [topic]);
 
     try {
       await waitFor(() => segmentCount(state, topic) === BACKLOG + 1, 'the whole backlog');
@@ -1419,7 +1465,7 @@ describe('LadderFeedPoller asking what is behind a slot the gateway refuses', ()
       const beyond = gateway.requests.filter((path) => path.startsWith('soc/') && !contiguous.has(path));
       assert.deepEqual(beyond, [], 'a rung that was being served went looking past the publisher');
     } finally {
-      poller.stop([topic]);
+      poller.unregister([topic]);
     }
   });
 });

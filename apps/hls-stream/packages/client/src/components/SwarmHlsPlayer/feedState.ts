@@ -35,6 +35,16 @@ export type FeedState =
 
 type FeedStateListener = (state: FeedState) => void;
 
+/** Why the poller took a rung out, and the rung the player should play instead. */
+interface RungStoppedDetail {
+  /** Said in the console line that drops the level, so a drop can be checked against the broadcast. */
+  readonly reason: string;
+  /** The rung to load next, or null to leave the choice to ABR. */
+  readonly failoverTo: string | null;
+}
+
+type RungStoppedListener = (rungTopicId: string, detail: RungStoppedDetail) => void;
+
 /**
  * How long to wait before asking a failing gateway again, after its first failure. Doubles per
  * consecutive failure up to {@link MANIFEST_RETRY_CAP_MS}.
@@ -76,16 +86,16 @@ const MANIFEST_RETRY_BASE_MS = 2_000;
  *
  * The same number was reached from a third direction, three weeks before any of this was measured:
  * `docs/reviews/roadmap.md` item 0.8b named 8s as the secondary lever if clearing the hold on a
- * segment arrival turned out not to be enough. On the ladder it was not enough, because a ladder
- * holds five feeds and the segment path only ever cleared one of them at a time.
+ * segment arrival turned out not to be enough. On the ladder it was not enough, because a ladder then
+ * held five feeds and the segment path only ever cleared one of them at a time.
  *
  * ## Why the load argument that set thirty still holds
  *
- * The flood this bounds is flat polling: four rungs at the 750ms poll interval is 5.3 requests a
- * second, or the **160 requests per 30s** recorded in `LadderFeedPoller`. At a thirty second ceiling
- * a fully dark gateway sees 4 of those per 30s from a viewer, and at eight it sees 15. That is still
- * a **10.7x** reduction against the flood, and half a request a second from a viewer is not what
- * tips a gateway that is already struggling.
+ * The flood this bounds is flat polling. Since 2026-10-07 a viewer follows the one quality it plays,
+ * two during a switch, and one rung at the 750ms poll interval is **40 requests per 30s**. At a thirty
+ * second ceiling a fully dark gateway sees one of those per 30s from a viewer, and at eight it sees
+ * about four. That is still a **10.7x** reduction against the flood, and one request every eight
+ * seconds is not what tips a gateway that is already struggling.
  *
  * The ceiling is also no longer the only thing shortening a recovery. A rung is released the moment
  * a rung beside it is served (see {@link FeedHealthTracker.recordGatewayReachable}), so this bounds
@@ -117,39 +127,6 @@ export const MANIFEST_RETRY_CAP_MS = 8_000;
  * the publisher really has stopped.
  */
 export const UNSERVED_SLOT_STALL_MS = 8_000;
-
-/**
- * How many segments the rest of a ladder may deliver past a rung before that rung is called dead.
- *
- * ⛔⛔⛔ **SEGMENTS, AND DELIBERATELY NOT SECONDS. Every regression this rule has had was a clock.**
- * Four attempts judged a rung by how long it had been quiet, and three of them shipped a fault:
- * a gateway outage (2026-08-30) amputated a healthy 480p rung that had merely been between
- * segments when the gateway went away; an uploader crash (same day) amputated two rungs because
- * the rungs resumed staggered; and the patch for that (2026-08-31) fired during ordinary
- * operation, because "every rung is quiet at once" is also what a ladder looks like between
- * segments, and it disabled the feature outright.
- *
- * All three are the same fault. **A clock runs during intervals in which nothing could have been
- * served**, so it measures the outage, the crash or the gap rather than the rung. A count of
- * delivered segments cannot: it does not move while nothing is being delivered, so an outage, a
- * crash and a whole-broadcast stop all freeze it and leave the comparison exactly where it was.
- * Nothing has to be excused afterwards, which is what the previous three fixes were each doing.
- *
- * ⭐ **Four, because a healthy rung is never more than one or two behind the leader.** Rungs of one
- * ladder are cut by one encoder on one keyframe cadence, so they advance together; what separates
- * them is the stagger in which they are uploaded and read, which is under a segment. Four is twice
- * the widest healthy gap, and the ladder has to deliver four whole segments that this rung did not
- * before anything is said.
- *
- * ⚠️ **How long that takes is a property of the deployment, on purpose.** Four segments is about 8
- * seconds at the 2s in-browser stage and about 2 at the 0.5s gateway stage, and a viewer on shorter
- * segments starves sooner, so noticing sooner is right. Against the 87.2s and 103.2s freezes
- * measured on 2026-08-30, both are the same answer.
- */
-export const RUNG_DEATH_LAG_SEGMENTS = 4;
-
-/** Below this there is no middle rung to measure against, and nowhere for a viewer to go anyway. */
-const MIN_RUNGS_TO_COMPARE = 2;
 
 /**
  * How many consecutive unserved polls the walk keeps probing past a refusal for.
@@ -262,19 +239,6 @@ function isWorthTracking(health: TopicHealth): boolean {
   );
 }
 
-/**
- * Whether this feed's last poll got something, either a slot or an answer it could use.
- *
- * A boolean about the last poll and never a duration, which is the distinction that matters: how
- * long a feed has been quiet is the reading that {@link RUNG_DEATH_LAG_SEGMENTS} exists to stop
- * anyone judging a rung by. This says only whether the rung is being served right now, which is what
- * separates a rung that has stopped from one that is walking a backlog. No entry at all means
- * nothing is wrong with it, which is the healthiest answer there is.
- */
-function isBeingServed(health: TopicHealth | undefined): boolean {
-  return health === undefined || (health.unservedSinceMs === null && health.gatewayFailures === 0);
-}
-
 function stateOfHealth(health: TopicHealth | undefined, nowMs: number): FeedState {
   if (!health) {
     return FEED_STATE_LIVE;
@@ -300,10 +264,11 @@ function stateOfHealth(health: TopicHealth | undefined, nowMs: number): FeedStat
 }
 
 /**
- * One ladder's health as its viewer experiences it: what every rung agrees on, plus what was
- * recorded against the entry topic directly.
+ * One ladder's health as its viewer experiences it: what every followed rung agrees on, plus what was
+ * recorded against the entry topic directly. The poller follows only the playing rung, and the one
+ * being switched to during a switch, so the rungs folded here are one or two.
  *
- * ⭐ **Agreement across the rungs, not the worst of them.** One gateway serves all five feeds, so a
+ * ⭐ **Agreement across the rungs, not the worst of them.** One gateway serves every feed, so a
  * rung being served is proof the gateway answers, and a rung failing beside it is behind for a
  * reason of its own rather than cut off. Taking the worst would raise the overlay on any single
  * rung's flake. This is the same all-rungs rule the ended signal already uses.
@@ -396,7 +361,7 @@ export class FeedHealthTracker {
   private readonly lastPublished = new Map<string, FeedState>();
 
   /**
-   * The rungs each ladder walks, keyed by the topic the viewer's own link names.
+   * The rungs each ladder follows right now, keyed by the topic the viewer's own link names.
    *
    * ⛔ **Without this the overlay is blind on a ladder.** A viewer subscribes to the entry topic,
    * the only one their link carries and the only one that survives a restart, while the rung topics
@@ -419,34 +384,7 @@ export class FeedHealthTracker {
    */
   private readonly watchedRungOfGroup = new Map<string, string>();
 
-  /**
-   * Segments delivered to each rung of a tracked ladder since this viewer started watching it.
-   *
-   * ⛔⛔⛔ **This is the whole of how a dead rung is told from a stopped broadcast, and it is a count
-   * rather than a clock for the reason written out at {@link RUNG_DEATH_LAG_SEGMENTS}.** It advances
-   * only when a segment actually arrives, so an outage, a crash, a pause and the gap between two
-   * segments all leave every rung's number exactly where it was, and a comparison between two of
-   * them says nothing during any of those. The three regressions this rule shipped were all a clock
-   * running through one of them.
-   *
-   * Rungs only, and only while their ladder is tracked. A single-rendition stream has no sibling to
-   * be compared against, so it is never counted and never judged.
-   */
-  private readonly segmentsServed = new Map<string, number>();
-
-  /**
-   * What {@link ladderReference} read the last time each rung was served.
-   *
-   * ⛔ The reset that makes a slow rung safe. Without it the comparison is between two cumulative
-   * totals, and two feeds running at slightly different speeds drift apart for ever, so a healthy
-   * rung is condemned eventually no matter what the threshold is. See {@link ladderLagSegments}.
-   */
-  private readonly referenceAtLastServe = new Map<string, number>();
-
-  /** Rungs already announced as stopped, so one death is one announcement. */
-  private readonly stoppedRungsAnnounced = new Set<string>();
-
-  private readonly rungStoppedListeners = new Set<(rungTopicId: string) => void>();
+  private readonly rungStoppedListeners = new Set<RungStoppedListener>();
 
   private readonly feedResumedListeners = new Set<(topicId: string) => void>();
 
@@ -468,42 +406,23 @@ export class FeedHealthTracker {
    * group's state is read, never what any topic has recorded against it.
    */
   trackGroup(groupId: string, rungTopicIds: readonly string[]): void {
-    // Read before the untrack that clears it. A poller stopping one rung re-tracks the group with
-    // the rest, and losing the watched rung there would put the overlay back on the agreement rule
-    // for a viewer who is still on a rung this walk still owns.
+    // Read before the untrack that clears it. A poller that stops following one rung re-tracks the
+    // group with the rest, and losing the watched rung there would put the overlay back on the
+    // agreement rule for a viewer who is still on a rung this walk follows.
     const watched = this.watchedRungOfGroup.get(groupId);
-    // Carried across the untrack for the same reason, and it matters more here: a count that
-    // restarted whenever the poller re-tracked would put every rung level again, and dropping one
-    // dead rung re-tracks the group, so a second dead rung would have its evidence erased by the
-    // first one being dealt with.
-    const known = this.rungsOfGroup.get(groupId) ?? [];
-    const carried = new Map(known.map((rung) => [rung, this.segmentsServed.get(rung) ?? 0]));
-    const carriedReference = new Map(
-      known.flatMap((rung) => {
-        const at = this.referenceAtLastServe.get(rung);
-        return at === undefined ? [] : [[rung, at] as const];
-      }),
-    );
-    this.untrackGroup(groupId);
+    // Forgotten without publishing, then published once below. Publishing between the two would tell
+    // the overlay the group was healthy for an instant every time the followed rungs change, which a
+    // switch and every sibling try do.
+    this.forgetMembership(groupId);
     const rungs = [...new Set(rungTopicIds)].filter((rung) => rung !== groupId);
     if (rungs.length === 0) {
+      this.publish(groupId, this.state(groupId));
       return;
     }
 
     this.rungsOfGroup.set(groupId, rungs);
-    // A rung this ladder did not have starts level with the rung furthest ahead, never at zero. From
-    // zero it would read as the whole broadcast's worth of segments behind on its first poll and be
-    // dropped for having just arrived.
-    const furthestAhead = Math.max(0, ...carried.values());
     for (const rung of rungs) {
       this.groupOfRung.set(rung, groupId);
-      this.segmentsServed.set(rung, carried.get(rung) ?? furthestAhead);
-    }
-    // After every count is in place, so a rung joining now reads as level with the ladder it joined
-    // rather than owing it the whole broadcast.
-    const joiningAt = this.ladderReference(rungs);
-    for (const rung of rungs) {
-      this.referenceAtLastServe.set(rung, carriedReference.get(rung) ?? joiningAt);
     }
     if (watched !== undefined && rungs.includes(watched)) {
       this.watchedRungOfGroup.set(groupId, watched);
@@ -513,20 +432,24 @@ export class FeedHealthTracker {
 
   /** Forget a ladder's membership. Each topic keeps whatever it had recorded against it. */
   untrackGroup(groupId: string): void {
+    if (this.forgetMembership(groupId)) {
+      this.publish(groupId, this.state(groupId));
+    }
+  }
+
+  /** @returns Whether there was a membership to forget. */
+  private forgetMembership(groupId: string): boolean {
     const rungs = this.rungsOfGroup.get(groupId);
     if (rungs === undefined) {
-      return;
+      return false;
     }
 
     for (const rung of rungs) {
       this.groupOfRung.delete(rung);
-      this.stoppedRungsAnnounced.delete(rung);
-      this.segmentsServed.delete(rung);
-      this.referenceAtLastServe.delete(rung);
     }
     this.rungsOfGroup.delete(groupId);
     this.watchedRungOfGroup.delete(groupId);
-    this.publish(groupId, this.state(groupId));
+    return true;
   }
 
   /**
@@ -558,127 +481,28 @@ export class FeedHealthTracker {
   }
 
   /**
-   * How far this ladder has got, as most of it agrees rather than as its fastest rung claims.
+   * Watch for a rung the poller has found stopped, which the player takes out of its ladder.
    *
-   * ⛔⛔⛔ **This was `Math.max` and it amputated three healthy rungs before a fault was even
-   * injected.** Measured live 2026-08-31: a viewer settled on 1080p, and the client had already
-   * dropped 720p, 480p and 360p during the settle, leaving one rung. The run then silenced that one,
-   * the viewer had nowhere to go, and the failure read exactly like the original defect.
-   *
-   * ⭐⭐⭐ **A maximum lets any single rung condemn every other one.** It only takes one rung to run
-   * ahead, for any reason at all, and the whole rest of the ladder is instantly "behind" by the
-   * amount it ran ahead by. `LadderFeedPoller` alone gives two ways in: a pass may consume up to 25
-   * indices, and the rungs are separate feeds that need not advance in step. The rule was never
-   * measuring the ladder, it was measuring the distance to whichever rung happened to lead.
-   *
-   * So the reference is a middle rung, which no single rung can move. This is the same
-   * agreement-over-worst-case rule {@link foldLadderHealth} already uses, for the same reason.
-   *
-   * ⚠️ **The upper middle, not the lower**, so that two rungs dying together are both still judged
-   * against the two that live. Its limit is honest and worth knowing: on a four rung ladder, if
-   * THREE rungs die at once the middle sits among the dead and none of them is called dead. That is
-   * a broadcast falling apart rather than a rung failing, and the overlay covers it.
+   * Announced by the poller and never judged here. A rung is judged by its own progress, a new index
+   * within `rungProgressBoundMs`, and only the poller sees that: the rungs of one ladder drift
+   * apart without bound, so nothing recorded against one says where another should be.
    */
-  private ladderReference(rungs: readonly string[]): number {
-    const progress = rungs.map((rung) => this.segmentsServed.get(rung) ?? 0).sort((a, b) => a - b);
-    return progress[Math.floor(progress.length / 2)] ?? 0;
-  }
-
-  /**
-   * How far the ladder has moved on **since this rung was last served**.
-   *
-   * ⛔⛔⛔ **Comparing cumulative totals was wrong, and a fifth live run is what proved it.** The
-   * rungs of a real ladder do not advance in lockstep. They are separate transcodes writing separate
-   * feeds, they run at slightly different speeds, and a cumulative count therefore drifts apart
-   * WITHOUT BOUND for reasons that have nothing to do with any of them failing. Measured 2026-08-31:
-   * the client dropped 480p, then 720p, then 1080p, then reported 360p as the last one left, each of
-   * them "4 segments behind the ladder" in turn, on a broadcast where nothing had been silenced. A
-   * few percent of rate difference over a 45 second settle is four segments.
-   *
-   * ⭐⭐⭐ **So the question is not how far apart two totals are, it is how much the ladder delivered
-   * while this rung delivered nothing.** Every time a rung is served its reading is reset, so a rung
-   * that is merely slow can never accumulate: its lag is bounded by how much the ladder moves between
-   * two of its own segments, whatever their ratio. A rung that has stopped is never reset, so its lag
-   * grows for as long as the ladder runs. Drift cannot reach it, and neither can any of the four
-   * earlier faults, because nothing accumulates while nothing is being delivered.
-   *
-   * Zero for a ladder with no middle rung to measure against, and for anything that is not a rung.
-   */
-  private ladderLagSegments(rungTopicId: string): number {
-    const group = this.groupOfRung.get(rungTopicId);
-    if (group === undefined) {
-      return 0;
-    }
-    const rungs = this.rungsOfGroup.get(group) ?? [];
-    if (rungs.length < MIN_RUNGS_TO_COMPARE) {
-      return 0;
-    }
-    const sinceOwnLastServe = this.referenceAtLastServe.get(rungTopicId) ?? this.ladderReference(rungs);
-    return Math.max(0, this.ladderReference(rungs) - sinceOwnLastServe);
-  }
-
-  /**
-   * Whether this rung has stopped being produced while the ladder around it carries on.
-   *
-   * ⛔⛔⛔ **Not the same question as whether the rung is stalled.** A stalled rung has been quiet for
-   * a while, and a whole broadcast that stops makes every one of its rungs stalled without any of
-   * them being broken. What this asks instead is whether the ladder **delivered segments this rung
-   * did not**, which a stopped broadcast cannot produce, because it delivers nothing to anyone. See
-   * {@link RUNG_DEATH_LAG_SEGMENTS} for the three regressions that came of asking the first question
-   * and the reason the second one cannot repeat them.
-   *
-   * Two conditions, and each rules out a different healthy rung:
-   *
-   * 1. **The ladder has moved on without it**, by {@link RUNG_DEATH_LAG_SEGMENTS} whole segments.
-   *    This is the evidence. Nothing else here is.
-   * 2. **This rung is not being served right now.** A rung walking a backlog after an outage is
-   *    legitimately behind and catching up, and `LadderFeedPoller` lets one take up to 25 indices in
-   *    a pass, so two rungs recovering can be far apart for a moment while both are perfectly
-   *    healthy. Being served is what tells that apart from having stopped, and it is read as a
-   *    yes-or-no about the last poll rather than as a duration.
-   *
-   * ⚠️ **A rung whose reads all fail while its siblings succeed is included**, because condition 2
-   * counts a gateway failure as not being served. That is deliberate: the viewer cannot get bytes
-   * from it either way, so moving them off it is the right answer. It is safe here and was not safe
-   * before, because an outage that takes the whole gateway away stops every rung's count together
-   * and so can never satisfy condition 1.
-   *
-   * False for anything that is not a rung of a tracked ladder: a viewer of a single-rendition stream
-   * has nowhere to move to, so there is nothing this could tell them.
-   */
-  rungStoppedWhileOthersAdvance(rungTopicId: string): boolean {
-    const group = this.groupOfRung.get(rungTopicId);
-    if (group === undefined) {
-      return false;
-    }
-    // The rung's own record, and the group's, because a ladder's end is recorded once against the
-    // group by the poller and a single rung's finalization is recorded against the rung.
-    if (this.topics.get(rungTopicId)?.hasEnded || this.topics.get(group)?.hasEnded) {
-      return false;
-    }
-    if (isBeingServed(this.topics.get(rungTopicId))) {
-      return false;
-    }
-
-    return this.ladderLagSegments(rungTopicId) >= RUNG_DEATH_LAG_SEGMENTS;
-  }
-
-  /**
-   * Watch for a rung that has stopped being produced while the rest of its ladder carries on.
-   *
-   * ⛔ Announced from here rather than read off {@link subscribe}, because the four states are
-   * published once per change and this judgement is not a function of one rung alone. The lag it
-   * compares with {@link RUNG_DEATH_LAG_SEGMENTS} is how far the ladder has moved on since this rung
-   * was last served, so it can be short of the threshold on the poll where the rung first reads
-   * stalled and reach it on a later one, and a listener watching for a `stalled` edge would have
-   * heard its one notification and missed the answer. This is re-judged for every rung of the ladder
-   * whenever anything is recorded against any of them, and announced once.
-   */
-  onRungStopped(listener: (rungTopicId: string) => void): () => void {
+  onRungStopped(listener: RungStoppedListener): () => void {
     this.rungStoppedListeners.add(listener);
     return () => {
       this.rungStoppedListeners.delete(listener);
     };
+  }
+
+  /** Tells every {@link onRungStopped} listener that this rung stopped, and where to go instead. */
+  recordRungStopped(rungTopicId: string, detail: RungStoppedDetail): void {
+    for (const listener of [...this.rungStoppedListeners]) {
+      try {
+        listener(rungTopicId, detail);
+      } catch (error) {
+        console.error('Rung stopped listener threw:', error);
+      }
+    }
   }
 
   /**
@@ -728,18 +552,6 @@ export class FeedHealthTracker {
   }
 
   /**
-   * How many segments the ladder has had that this rung has not, as the rule sees it.
-   *
-   * ⛔ Read by the player so the console line that announces a dead rung carries the arithmetic that
-   * condemned it. A warning that says only "this rung stopped" cannot be checked against a broadcast
-   * afterwards, and on 2026-08-31 that cost two sittings: the client dropped three healthy rungs and
-   * said so, and there was no way to tell from what it said whether the count or the rule was wrong.
-   */
-  ladderLagOf(rungTopicId: string): number {
-    return this.ladderLagSegments(rungTopicId);
-  }
-
-  /**
    * How long a run of unserved polls a topic is currently riding.
    *
    * Read by tests only, and there because a walk that never records one is indistinguishable from a
@@ -748,6 +560,15 @@ export class FeedHealthTracker {
    */
   unservedPollsRecorded(topicId: string): number {
     return this.topics.get(topicId)?.unservedSlotPolls ?? 0;
+  }
+
+  /**
+   * How long this topic has been on an unserved run, or null when its last read was served or the
+   * gateway is failing. What the poller's stall rule reads, against {@link UNSERVED_SLOT_STALL_MS}.
+   */
+  unservedRunMs(topicId: string): number | null {
+    const since = this.topics.get(topicId)?.unservedSinceMs;
+    return since === undefined || since === null ? null : this.now() - since;
   }
 
   /**
@@ -784,14 +605,17 @@ export class FeedHealthTracker {
    * A gateway that answered with a failure, or did not answer. Counted apart from an unserved slot:
    * this one gets asked less often, because asking a gateway that is down every two seconds for as
    * long as the tab is open helps nobody and adds load to something already struggling.
+   *
+   * @param atLeastMs The wait the gateway itself asked for, a rate limit's Retry-After, which the
+   *   backoff never undercuts.
    */
-  recordGatewayFailure(topicId: string): void {
+  recordGatewayFailure(topicId: string, atLeastMs = 0): void {
     this.update(topicId, (health) => {
       const gatewayFailures = health.gatewayFailures + 1;
       return {
         ...health,
         gatewayFailures,
-        retryAtMs: this.now() + backoffDelayMs(gatewayFailures),
+        retryAtMs: this.now() + Math.max(backoffDelayMs(gatewayFailures), atLeastMs),
         // ⛔⛔⛔ **The unserved run ends here, and leaving it running cost a viewer their picture.**
         // An unserved slot means the gateway ANSWERED and had nothing in it. A gateway that did not
         // answer is no evidence at all about the slot, so a run carried through an outage measures
@@ -799,9 +623,8 @@ export class FeedHealthTracker {
         // viewer, and 480p was dropped from the ladder on the other side of it while the uploader
         // was publishing it normally, 24 segments across the window it was removed in. That rung had
         // simply been between segments when the gateway went away, so it came back looking silent
-        // for the whole outage while a sibling served first read healthy, which is precisely the
-        // shape {@link rungStoppedWhileOthersAdvance} fires on. The viewer's playhead then sat at
-        // zero for the rest of the run.
+        // for the whole outage. A run carried through an outage would also trip the poller's stall
+        // rule on the far side of every outage longer than its threshold.
         //
         // The poll count goes with it, for the same reason and so the two describe one run.
         unservedSinceMs: null,
@@ -822,10 +645,11 @@ export class FeedHealthTracker {
    *
    * ⭐ **Every topic held off stops waiting, whichever one was proven.** One gateway serves every
    * feed this tracker holds, so a read getting through is the same evidence a segment arriving is.
-   * A viewer on the four rung ladder holds five entries, each backing off on its own count, and
-   * leaving four of them asleep while the fifth is demonstrably being served is four rungs of
-   * nothing to switch to. Measured 2026-08-29: three unrelated faults under a watching ladder viewer
-   * each froze the picture for 58.5 to 59.0 seconds, an eight second writer-bee pause included.
+   * A ladder viewer holds an entry for the quality it plays, one more while a switch is under way,
+   * each backing off on its own count, and leaving the switch target asleep while the playing rung is
+   * demonstrably being served is a switch with nothing to switch to. Measured 2026-08-29, when every
+   * rung was followed: three unrelated faults under a watching ladder viewer each froze the picture
+   * for 58.5 to 59.0 seconds, an eight second writer-bee pause included.
    *
    * What the other topics do **not** get is their failure counts back, because a named read proves
    * two different things about two different sets. That the gateway answers is proven for everyone.
@@ -905,19 +729,6 @@ export class FeedHealthTracker {
    * stalls here would make the state that run exists to add unreachable on the run itself.
    */
   recordGatewayResponse(topicId: string): void {
-    // The one place a rung's count moves, and it moves by exactly one segment. Rungs of a tracked
-    // ladder only: a single-rendition topic has no sibling to be compared with.
-    const group = this.groupOfRung.get(topicId);
-    if (group !== undefined) {
-      this.segmentsServed.set(topicId, (this.segmentsServed.get(topicId) ?? 0) + 1);
-      // After its own count has moved, so a rung that has just been served reads as level with the
-      // ladder rather than one segment behind it.
-      this.referenceAtLastServe.set(topicId, this.ladderReference(this.rungsOfGroup.get(group) ?? []));
-      // A rung being served again is what re-arms it, so a rung that dies twice is announced twice.
-      // Not the judgement going false, which would re-announce a rung every time the ladder around
-      // it happened to catch up with the gap.
-      this.stoppedRungsAnnounced.delete(topicId);
-    }
     this.update(topicId, (health) => ({ ...HEALTHY, hasEnded: health.hasEnded, stallsAtMs: health.stallsAtMs }));
   }
 
@@ -954,12 +765,10 @@ export class FeedHealthTracker {
    * ends its walk before anything records it as served, and the end hides the run from then on.
    * Without this a ladder that came back would be announced as still waiting to continue.
    *
-   * ⛔ **For a ladder's group, every rung's run ends with it, not only the rung that was found back.**
-   * The rungs are found back one watch at a time, up to a whole watch interval apart when the uploader
-   * writes a rung just after its watch looked, and the rung a viewer is on decides the unserved half
-   * of the group's state. So the group would read as waiting until the viewer's own rung happened to
-   * be asked again. Those runs were waiting on the broadcast that has just come back, so they are over
-   * whichever rung showed it. Failures are left alone: they describe the gateway, not the broadcaster.
+   * ⛔ **For a ladder's group, every followed rung's run ends with it, not only the rung that was found
+   * back.** One rung is watched, and the rung a viewer is on decides the unserved half of the group's
+   * state. Those runs were waiting on the broadcast that has just come back, so they are over whichever
+   * rung showed it. Failures are left alone: they describe the gateway, not the broadcaster.
    *
    * Announced to {@link onFeedResumed} whether or not this topic was recorded as ended. A viewer who
    * opened a recording never had the end recorded on the single-rendition path, and a ladder rung never
@@ -1047,9 +856,6 @@ export class FeedHealthTracker {
     if (topicId === undefined) {
       const forgotten = [...this.topics.keys()];
       this.topics.clear();
-      this.stoppedRungsAnnounced.clear();
-      this.segmentsServed.clear();
-      this.referenceAtLastServe.clear();
       this.publishAll(forgotten);
       return;
     }
@@ -1074,52 +880,6 @@ export class FeedHealthTracker {
 
     this.publish(topicId, this.state(topicId));
     this.publishGroupOf(topicId);
-    this.announceStoppedRungs(topicId);
-  }
-
-  /**
-   * Re-judge every rung of the ladder this change belongs to, and announce any that has died.
-   *
-   * ⛔⛔⛔ **Every rung, not the one that just recorded something.** What kills a rung under
-   * {@link rungStoppedWhileOthersAdvance} is a SIBLING pulling ahead of it, so the change that makes
-   * a rung dead is usually recorded against a different rung. Judging only the topic that moved
-   * leaves a rung that has stopped being polled entirely, which is what a finalized rung is, waiting
-   * for a poll of its own that will never come while the viewer sits frozen on it.
-   *
-   * Copied before iterating, because a listener that drops a level makes the poller re-track the
-   * group, and re-tracking rewrites this very list.
-   */
-  private announceStoppedRungs(topicId: string): void {
-    const group = this.groupOfRung.get(topicId);
-    if (group === undefined) {
-      return;
-    }
-
-    for (const rung of [...(this.rungsOfGroup.get(group) ?? [])]) {
-      this.announceIfRungStopped(rung);
-    }
-  }
-
-  /**
-   * Say once that a rung has stopped being produced, and say it again if it dies a second time.
-   *
-   * Re-armed on the rung being served, in {@link recordGatewayResponse}, rather than on the
-   * judgement going false. The judgement also goes false when the ladder around a dead rung stops
-   * too, and re-arming there would re-announce a rung that had already been dealt with.
-   */
-  private announceIfRungStopped(topicId: string): void {
-    if (this.stoppedRungsAnnounced.has(topicId) || !this.rungStoppedWhileOthersAdvance(topicId)) {
-      return;
-    }
-
-    this.stoppedRungsAnnounced.add(topicId);
-    for (const listener of [...this.rungStoppedListeners]) {
-      try {
-        listener(topicId);
-      } catch (error) {
-        console.error('Rung stopped listener threw:', error);
-      }
-    }
   }
 
   /** A rung's change is its group's change too, because the overlay watches only the group. */

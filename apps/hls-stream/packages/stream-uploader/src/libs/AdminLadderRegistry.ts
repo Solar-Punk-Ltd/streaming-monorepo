@@ -115,6 +115,12 @@ export class AdminLadderRegistry implements LadderRegistry {
    */
   private readonly unfinished = new Map<string, Set<string>>();
 
+  /**
+   * Groups whose finished ladder this process has already handed to one rung as a flip, which that rung
+   * answers with the one `vod` report. See {@link takeFlip} and {@link recordingNotReported}.
+   */
+  private readonly flipHandedOut = new Set<string>();
+
   constructor(options: AdminLadderRegistryOptions) {
     this.client = options.client;
     this.masterWriter = options.masterWriter;
@@ -194,11 +200,13 @@ export class AdminLadderRegistry implements LadderRegistry {
       this.rewrites.recordAdvertised(group, ladderShape(advertised.map((r) => r.name)));
     }
 
-    return { masterIndex: published?.index ?? null, ...this.recordingOf(report, group) };
+    return { masterIndex: published?.index ?? null, ...this.takeFlip(report, group) };
   }
 
   /**
    * Whether this answer is the moment the ladder became a recording, and how long the recording plays.
+   * A flip handed back here is taken: no other answer is given it until the ladder stops being finished,
+   * the admin holds the recording, or {@link recordingNotReported} hands it back.
    *
    * The admin raises `flippedToFinished` on the report that completed ITS merge, where every rung has an
    * index, and it cannot see a rung that will not finish. So the flip is read off `LadderCompletion`'s
@@ -207,7 +215,7 @@ export class AdminLadderRegistry implements LadderRegistry {
    * own merge first finishes because the rung left out finished after all, which adds that rung to the
    * master and is not a second ending. Judged on this answer's own ladder, the way the admin's flag is.
    */
-  private recordingOf(
+  private takeFlip(
     report: RenditionReportResponse,
     group: string,
   ): Pick<RenditionAnnouncement, 'flippedToFinished' | 'duration'> {
@@ -217,8 +225,23 @@ export class AdminLadderRegistry implements LadderRegistry {
     // that finished it, as the class doc says. Null status is a body that did not say, and then only the
     // admin's own flip decides, which cannot see a rung that will not finish.
     const finishedButUnreported = finished && report.streamStatus !== null && !heldAsRecording;
+    // ⛔⛔ Once per finished ladder, whichever rung's answer comes first. On 2026-10-08 four rungs
+    // finalized within 30 ms and the admin read the ladder for each answer after all four were stored, so
+    // three answers carried it finished while the stream was still `live`, and each was taken for a flip:
+    // three `vod` reports and three `finalized to VOD` lines for one broadcast. A ladder that is not
+    // finished is a broadcast that has not ended, the next one of the same declared stream included. A
+    // ladder the admin holds as `vod` has had its flip reported, and no answer holding it can flip.
+    if (!finished || heldAsRecording) {
+      this.flipHandedOut.delete(group);
+    }
+    const flipped =
+      ((report.ladder.flippedToFinished && !heldAsRecording) || finishedButUnreported) &&
+      !this.flipHandedOut.has(group);
+    if (flipped) {
+      this.flipHandedOut.add(group);
+    }
     return {
-      flippedToFinished: (report.ladder.flippedToFinished && !heldAsRecording) || finishedButUnreported,
+      flippedToFinished: flipped,
       duration:
         finished && !report.ladder.finished
           ? recordingDuration(recordedRungs(report.renditions))
@@ -236,6 +259,16 @@ export class AdminLadderRegistry implements LadderRegistry {
     const isRecording =
       this.heldStatus.get(group) === ADMIN_STATE_VOD || isFinishedLadder(ladder, this.markedUnfinished(group));
     return isRecording ? recordedRungs(ladder) : ladder;
+  }
+
+  /**
+   * The `vod` report a flip from this registry asked for did not go through, so the next answer that
+   * carries this ladder finished is a flip again. Without it a sibling finishing afterwards, or this
+   * rung's own stopped-without-a-recording report, would find the flip already handed out and leave the
+   * admin listing a recording as live.
+   */
+  public recordingNotReported(group: string): void {
+    this.flipHandedOut.delete(group);
   }
 
   private markedUnfinished(group: string): ReadonlySet<string> {

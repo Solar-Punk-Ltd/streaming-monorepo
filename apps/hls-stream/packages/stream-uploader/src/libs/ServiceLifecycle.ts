@@ -7,6 +7,11 @@ export interface StreamCleanup {
   cleanup(): Promise<void>;
 }
 
+/** The ladder marker writer, as shutdown needs it. */
+interface MarkerStop {
+  stop(): void;
+}
+
 /**
  * How the process ends. Injected because the alternative is a module that calls `process.exit` and can
  * therefore only be run once, by the process it kills.
@@ -33,6 +38,7 @@ export class ServiceLifecycle {
   private isShuttingDown = false;
   private orchestrator: StreamCleanup | undefined;
   private apiServer: ApiServerHandle | undefined;
+  private ladderMarkers: MarkerStop | undefined;
 
   constructor(
     private readonly exit: ExitProcess,
@@ -49,6 +55,10 @@ export class ServiceLifecycle {
     this.apiServer = apiServer;
   }
 
+  public trackLadderMarkers(ladderMarkers: MarkerStop): void {
+    this.ladderMarkers = ladderMarkers;
+  }
+
   public async shutdown(signal: string): Promise<void> {
     if (this.isShuttingDown) {
       this.logger.warn('Shutdown already in progress...');
@@ -63,6 +73,9 @@ export class ServiceLifecycle {
         await this.orchestrator.cleanup();
         this.logger.info('All streams stopped');
       }
+
+      // After the streams, because a publish during their flush would start a ladder's markers again.
+      this.ladderMarkers?.stop();
 
       if (this.apiServer) {
         await this.apiServer.close();

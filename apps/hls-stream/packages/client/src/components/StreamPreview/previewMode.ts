@@ -6,8 +6,8 @@
  * covers, and the bug this exists to prevent was entirely in the branching.
  *
  * That bug: every card took its frame by fetching the stream's manifest feed and decoding its first
- * segment. A **scheduled** entry has no manifest feed at all — it is an announcement, and the topic
- * is not written to until the broadcast starts — so the probe is a guaranteed miss that costs a slot
+ * segment. A **scheduled** entry has no manifest feed at all: it is an announcement, and the topic
+ * is not written to until the broadcast starts, so the probe is a guaranteed miss that costs a slot
  * on a queue of concurrency 1 and, on a build where the miss left the loading flag set, spun
  * forever. Meanwhile the image the broadcaster actually uploaded was ignored.
  */
@@ -68,19 +68,4 @@ export function thumbnailFailed(failedThumbnail: string | null, thumbnail: strin
 /** Absent and empty are the same answer: the publisher gave no image. */
 function hasThumbnail(thumbnail: string | undefined): thumbnail is string {
   return typeof thumbnail === 'string' && thumbnail.trim().length > 0;
-}
-
-/**
- * Where the gateway serves a catalog entry's thumbnail.
- *
- * The trailing slash is not decoration: `/bzz/<ref>` without it is a redirect on a collection, and
- * the reference an uploader writes addresses the uploaded file's manifest rather than its bytes.
- *
- * ⭐ Encoded rather than interpolated raw. The catalog is JSON pulled off a feed and parsed
- * unchecked, so this field is external input however trusted its author, and a value carrying `../`
- * or a query would otherwise address a path on the gateway that this URL never meant to name. A real
- * reference is hex, which encoding leaves untouched.
- */
-export function thumbnailImageUrl(gatewayUrl: string, thumbnail: string): string {
-  return `${gatewayUrl}/bzz/${encodeURIComponent(thumbnail.trim())}/`;
 }

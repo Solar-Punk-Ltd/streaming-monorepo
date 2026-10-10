@@ -1,153 +1,96 @@
-import { useRef, useState } from 'react';
+import { useEffect, useState } from 'react';
 
 import { useAppContext } from '@/providers/App';
-import { config } from '@/utils/config';
+import { ROUTING_MODES, type RoutingMode, setMode } from '@/swarm/routing';
+import { sourceName } from '@/swarm/sources';
 
-import {
-  beeBaseUrlFromTypedAddress,
-  describeProbeFailure,
-  gatewayLabel,
-  isDefaultGateway,
-  probeGateway,
-} from './gatewayProbe';
+import { GatewayTools } from './GatewayTools';
+import { PartRoutes } from './PartRoutes';
+import { isServingFromFallback } from './providerStatus';
 
 import './DomainSelector.scss';
 
-const KEY_ENTER = 'Enter';
 const KEY_ESCAPE = 'Escape';
 
-type PickerStatus = { kind: 'idle' } | { kind: 'checking' } | { kind: 'error'; text: string };
+const MODE_LABELS: Readonly<Record<RoutingMode, string>> = { one: 'One source', 'per-part': 'Per part' };
 
-const IDLE: PickerStatus = { kind: 'idle' };
-
-const EMPTY_ADDRESS_TEXT = 'Enter the address of your Bee node, for example http://localhost:1633.';
+/** How often the button reads the client's counts again for its fallback marker. */
+const MARKER_REFRESH_MS = 2_000;
 
 /**
- * The picker a viewer uses to watch through their own Bee node instead of this site's gateway.
+ * The picker a viewer uses to choose where the video, the stream list and the previews load from: the
+ * build's gateways and any gateways and Bee nodes of their own, one source for everything or one per
+ * part, and the order the fallbacks are asked in. Every change applies at once and is remembered in
+ * this browser.
  *
- * Nothing is saved until the address has answered a health check, so a typo, or a node that refuses
- * this site's origin, is reported here in words rather than reaching the viewer later as a catalog
- * with nothing in it. The default gateway is one click away again, because a viewer who tried their
- * own node and gave up has no other route back: a deployed build's default is an environment value
- * they have never seen.
+ * A source is added only once its address has answered a check, so a typo, or a node that refuses this
+ * site's origin, is reported here in words rather than reaching the viewer later as a catalog with
+ * nothing in it. The build's default gateway is always in the list, one click away, because a viewer
+ * who tried their own node and gave up has no other route back.
+ *
+ * The list, its checks and the debug tools are {@link GatewayTools}.
  */
 export function DomainSelector() {
-  const { gatewayUrl, setGatewayUrl } = useAppContext();
+  const { sources, routing, parts, setRouting, swarm } = useAppContext();
   const [isOpen, setIsOpen] = useState(false);
-  const [inputValue, setInputValue] = useState('');
-  const [status, setStatus] = useState<PickerStatus>(IDLE);
-  // Bumped on every confirm and on close, so a probe that comes back after the viewer cancelled or
-  // retyped cannot save an address they no longer meant.
-  const probeGeneration = useRef(0);
+  const [, setRefreshes] = useState(0);
 
-  const isOnDefault = isDefaultGateway(gatewayUrl, config.beeUrl);
+  useEffect(() => {
+    const timer = setInterval(() => setRefreshes((count) => count + 1), MARKER_REFRESH_MS);
+    return () => clearInterval(timer);
+  }, []);
 
-  const handleOpen = () => {
-    setInputValue(isOnDefault ? '' : gatewayUrl);
-    setStatus(IDLE);
-    setIsOpen(true);
-  };
-
-  const close = () => {
-    probeGeneration.current += 1;
-    setIsOpen(false);
-  };
-
-  // probeGateway answers every failure as an outcome, so the button calls this without awaiting.
-  const handleConfirm = async () => {
-    if (status.kind === 'checking') {
-      return;
-    }
-
-    const candidate = beeBaseUrlFromTypedAddress(inputValue);
-    if (!candidate) {
-      setStatus({ kind: 'error', text: EMPTY_ADDRESS_TEXT });
-      return;
-    }
-
-    const generation = ++probeGeneration.current;
-    setStatus({ kind: 'checking' });
-    const outcome = await probeGateway(candidate);
-    if (generation !== probeGeneration.current) {
-      return;
-    }
-
-    if (outcome.kind === 'ok') {
-      setGatewayUrl(candidate);
-      close();
-      return;
-    }
-    setStatus({ kind: 'error', text: describeProbeFailure(outcome) });
-  };
-
-  const handleUseDefault = () => {
-    setGatewayUrl(config.beeUrl);
-    close();
-  };
-
-  const handleKeyDown = (e: React.KeyboardEvent) => {
-    if (e.key === KEY_ENTER) {
-      void handleConfirm();
-    }
-    if (e.key === KEY_ESCAPE) {
-      close();
-    }
-  };
-
-  const handleTyping = (value: string) => {
-    setInputValue(value);
-    if (status.kind !== 'idle') {
-      // A result about the previous address must not stand under a new one, and a probe still in
-      // flight for it must not land on this one either.
-      probeGeneration.current += 1;
-      setStatus(IDLE);
-    }
-  };
+  const close = () => setIsOpen(false);
+  const current = routing.mode === 'per-part' ? MODE_LABELS['per-part'] : sourceName(sources, parts.player);
 
   return (
     <>
-      <button className="gateway-button" onClick={handleOpen} title="Choose which Bee node streams load through">
-        <span className="gateway-button-label">Bee node</span>
-        <span className="gateway-button-current">{gatewayLabel(gatewayUrl, config.beeUrl)}</span>
+      <button className="gateway-button" onClick={() => setIsOpen(true)} title="Choose where streams load from">
+        <span className="gateway-button-label">Sources</span>
+        <span className="gateway-button-current">{current}</span>
+        {isServingFromFallback(swarm.activity(), swarm.health()) && (
+          <span className="gateway-button-marker">Using fallback</span>
+        )}
       </button>
 
       {isOpen && (
         <div className="gateway-modal-backdrop" onClick={close}>
-          <div className="gateway-modal" onClick={(e) => e.stopPropagation()}>
-            <h3 className="gateway-modal-title">Watch through your own Bee node</h3>
+          <div
+            className="gateway-modal"
+            onClick={(e) => e.stopPropagation()}
+            onKeyDown={(e) => {
+              if (e.key === KEY_ESCAPE) {
+                close();
+              }
+            }}
+          >
+            <h3 className="gateway-modal-title">Sources</h3>
             <p className="gateway-modal-description">
-              Streams normally load through this site&apos;s gateway. If you run a Bee node, for example with Swarm
-              Desktop, enter its address and the video will be fetched by your node instead.
+              Streams normally load through this site&apos;s gateway. Pick another gateway, or a Bee node of your own
+              such as Swarm Desktop, for everything or for each part. Changes apply at once and are remembered in this
+              browser.
             </p>
-            <input
-              className="gateway-modal-input"
-              type="text"
-              autoFocus
-              value={inputValue}
-              onChange={(e) => handleTyping(e.target.value)}
-              onKeyDown={handleKeyDown}
-              placeholder="http://localhost:1633"
-            />
-            <p className={`gateway-modal-status ${status.kind}`} role="status">
-              {status.kind === 'checking' && 'Checking the node...'}
-              {status.kind === 'error' && status.text}
-            </p>
+            <div className="gateway-modes" role="radiogroup" aria-label="Routing">
+              {ROUTING_MODES.map((mode) => (
+                <label key={mode} className="gateway-mode">
+                  <input
+                    type="radio"
+                    aria-label={MODE_LABELS[mode]}
+                    checked={routing.mode === mode}
+                    onChange={() => setRouting(setMode(routing, mode))}
+                  />{' '}
+                  {MODE_LABELS[mode]}
+                </label>
+              ))}
+            </div>
+            {routing.mode === 'per-part' && (
+              <PartRoutes sources={sources} routing={routing} parts={parts} onChange={setRouting} />
+            )}
+            <GatewayTools />
             <div className="gateway-modal-actions">
-              {!isOnDefault && (
-                <button className="gateway-modal-default" onClick={handleUseDefault}>
-                  Back to default gateway
-                </button>
-              )}
               <span className="gateway-modal-actions-spacer" />
               <button className="gateway-modal-cancel" onClick={close}>
-                Cancel
-              </button>
-              <button
-                className="gateway-modal-confirm"
-                onClick={() => void handleConfirm()}
-                disabled={status.kind === 'checking'}
-              >
-                {status.kind === 'checking' ? 'Checking...' : 'Check and use'}
+                Close
               </button>
             </div>
           </div>

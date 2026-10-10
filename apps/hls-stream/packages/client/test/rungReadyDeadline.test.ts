@@ -1,13 +1,15 @@
 import { Topic } from '@ethersphere/bee-js';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 
+import { CANDIDATE_FIND_DEADLINE_MS } from '../src/components/SwarmHlsPlayer/LadderFeedPoller';
 import {
   ManifestFetcher,
   ManifestStateManager,
-  RUNG_READY_DEADLINE_POLLS,
+  RUNG_READY_MARGIN_MS,
   RungNotReadyError,
 } from '../src/components/SwarmHlsPlayer/ManifestManagement';
 import { RequestJitter } from '../src/utils/requestJitter';
+import { swarmOverGlobalFetch } from './helpers/playerReader';
 
 /**
  * A level request for a rung the gateway cannot read used to wait for ever.
@@ -78,7 +80,7 @@ describe('a level request for a rung whose feed the gateway cannot read', () => 
       NO_JITTER,
       POLL_INTERVAL_MS,
     );
-    fetcher.beeUrl = 'http://gateway.test';
+    fetcher.useSwarm(swarmOverGlobalFetch('http://gateway.test'));
   });
 
   afterEach(async () => {
@@ -94,12 +96,12 @@ describe('a level request for a rung whose feed the gateway cannot read', () => 
     await expect(fetcher.fetch(RUNG_URL)).rejects.toBeInstanceOf(RungNotReadyError);
   });
 
-  it('waits the poller cadence multiplied by the bound, so a slower poll is waited on for longer', async () => {
+  it('waits as long as a search for a newest index may take, and a margin past it', async () => {
     await fetcher.fetchSource(SOURCE_URL);
 
     await fetcher.fetch(RUNG_URL).catch(() => {});
 
-    expect(waited).toEqual([RUNG_READY_DEADLINE_POLLS * POLL_INTERVAL_MS]);
+    expect(waited).toEqual([CANDIDATE_FIND_DEADLINE_MS + RUNG_READY_MARGIN_MS]);
   });
 
   it('names the rung in the error, because the level error hls.js raises names only a URL', async () => {

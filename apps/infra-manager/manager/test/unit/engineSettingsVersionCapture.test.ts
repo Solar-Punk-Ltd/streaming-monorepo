@@ -44,7 +44,9 @@ function build(
 ): StackVersionRecord {
   const dir = join(parent, 'bundled.builds', id);
   mkdirSync(dir, { recursive: true });
-  writeFileSync(join(dir, '.env'), `ENGINE=srs\nABR_FPS=${fps}\n`);
+  // The segment length is the manager's own default rather than a version's, so a version's
+  // differs from another's by what its host env sets.
+  writeFileSync(join(dir, '.env'), `ENGINE=srs\nABR_FPS=${fps}\nHLS_FRAGMENT=${fragment}\n`);
   writeFileSync(
     join(dir, '.stack-manifest.json'),
     JSON.stringify({ buildId: id, commit: id, builtAt: '2026-09-09T00:00:00Z', toolchain: 'synthetic fixture' }),
