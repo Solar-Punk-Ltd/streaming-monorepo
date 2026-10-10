@@ -1,7 +1,10 @@
-import type { StreamStatus } from '@streaming-monorepo/web2-admin-common';
+import {
+  THUMBNAIL_MIME_TYPES as SHARED_THUMBNAIL_MIME_TYPES,
+  type StreamStatus,
+} from '@streaming-monorepo/web2-admin-common';
 
-/** What `Content-Type` a thumbnail PUT may carry. */
-export const THUMBNAIL_MIME_TYPES: readonly string[] = ['image/png', 'image/jpeg', 'image/webp', 'image/gif'];
+/** What `Content-Type` a thumbnail PUT may carry. The list lives in the API contract. */
+export const THUMBNAIL_MIME_TYPES: readonly string[] = SHARED_THUMBNAIL_MIME_TYPES;
 
 /**
  * Statuses a *first* publish may claim. `live` and `vod` are deliberately not

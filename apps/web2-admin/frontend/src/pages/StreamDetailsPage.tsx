@@ -267,7 +267,11 @@ export function StreamDetailsPage() {
     // screens do not jump about between each other.
     <Stack spacing={3} sx={{ width: '100%', maxWidth: 760, mx: 'auto' }}>
       <Stack direction="row" spacing={2} sx={{ alignItems: 'center', flexWrap: 'wrap' }}>
-        <Typography variant="h5" component="h1" sx={{ flexGrow: 1 }}>
+        {/*
+          A name or description may be one unbroken word of the full length the
+          form allows, so both break anywhere rather than run off the card.
+        */}
+        <Typography variant="h5" component="h1" sx={{ flexGrow: 1, minWidth: 0, overflowWrap: 'anywhere' }}>
           {stream.title}
         </Typography>
         <StatusChip status={stream.status} publishError={stream.publishError} />
@@ -337,7 +341,9 @@ export function StreamDetailsPage() {
           <Grid size={{ xs: 12, sm: 8, md: 9 }}>
             <Stack spacing={2}>
               <Field label="Description">
-                <Typography variant="body2">{stream.description}</Typography>
+                <Typography variant="body2" sx={{ whiteSpace: 'pre-wrap', overflowWrap: 'anywhere' }}>
+                  {stream.description}
+                </Typography>
               </Field>
               <Field label="Tags">
                 {stream.tags.length ? (

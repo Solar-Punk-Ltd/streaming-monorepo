@@ -29,6 +29,7 @@ import {
   StreamLockedError,
   StreamNotFoundError,
   StreamPublishedError,
+  ThumbnailNotAnImageError,
   ThumbnailNotFoundError,
   TooManyAttemptsError,
   UnauthenticatedError,
@@ -200,6 +201,10 @@ export function errorHandler(err: unknown, req: Request, res: Response, next: Ne
   }
   if (err instanceof MediaTypeLockedError) {
     res.status(409).json({ error: 'media_type_locked', message: err.message });
+    return;
+  }
+  if (err instanceof ThumbnailNotAnImageError) {
+    res.status(415).json({ error: 'thumbnail_not_an_image', message: err.message });
     return;
   }
   if (err instanceof UnsupportedMediaTypeError) {

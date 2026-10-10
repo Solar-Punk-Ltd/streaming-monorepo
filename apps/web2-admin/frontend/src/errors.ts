@@ -1,3 +1,5 @@
+import { STREAM_LIMITS } from '@streaming-monorepo/web2-admin-common';
+
 /**
  * Shown both as the edit form's helper text, so the radio explains why it is
  * locked, and as the answer to the backend's `media_type_locked` — one
@@ -30,6 +32,20 @@ export const STAGE_LOCKED = {
 export const UNSUPPORTED_IMAGE_TYPE = 'That image type is not supported. Use PNG, JPEG, WebP or GIF.';
 
 /**
+ * The same sentence for the backend's `thumbnail_not_an_image` and for the form's own check of the
+ * file's first bytes: a text file renamed to `.png` has the right name and type and is still not a
+ * picture.
+ */
+export const THUMBNAIL_NOT_AN_IMAGE = 'This file is not a PNG, JPEG, WebP or GIF picture. Choose a real image file.';
+
+const THUMBNAIL_LIMIT_SENTENCE = `A thumbnail can be at most 5 MB (${STREAM_LIMITS.THUMBNAIL_MAX_BYTES.toLocaleString('en-US')} bytes).`;
+
+/** Why a picked file is refused for its size, with both numbers so the operator can see by how much. */
+export function thumbnailTooLargeMessage(size: number): string {
+  return `This file is too large: ${size.toLocaleString('en-US')} bytes. ${THUMBNAIL_LIMIT_SENTENCE}`;
+}
+
+/**
  * The API answers with snake_case codes. Showing "invalid_credentials" to an
  * operator is not an error message, so the codes the console can actually
  * provoke get sentences. Anything unmapped falls through as-is, which keeps
@@ -55,7 +71,8 @@ const FRIENDLY: Record<string, string> = {
   stream_live: 'Stop the broadcast first: a live stream stays on the feed.',
   invalid_state_transition:
     'The uploader reported a state this stream cannot be in. Reload to see where it actually is.',
-  payload_too_large: 'The thumbnail is larger than the 5MB limit.',
+  payload_too_large: `The thumbnail is too large. ${THUMBNAIL_LIMIT_SENTENCE}`,
+  thumbnail_not_an_image: THUMBNAIL_NOT_AN_IMAGE,
   unsupported_media_type: UNSUPPORTED_IMAGE_TYPE,
   not_found: 'Not found.',
   internal_error: 'The server hit an unexpected error.',

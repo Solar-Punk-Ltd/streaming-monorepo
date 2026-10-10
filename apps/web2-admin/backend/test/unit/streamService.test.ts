@@ -12,12 +12,23 @@ import assert from 'node:assert/strict';
 import { describe, it, mock } from 'node:test';
 
 import { describeStream } from '../../src/domain/actor.js';
+import { ThumbnailNotAnImageError } from '../../src/domain/errors/index.js';
 import type { FeedIdentity } from '../../src/domain/feedIdentity.js';
 import { IngestService } from '../../src/domain/IngestService.js';
 import { changedFields, StreamService, type StreamInputValues } from '../../src/domain/StreamService.js';
 
 import { FakeStreamStore, InMemoryAuditLog, streamRow, TEST_OPERATOR, TEST_OWNER } from './support/fakes.js';
 import { FakeStageStore } from './support/stageFakes.js';
+
+const PNG_SIGNATURE = [0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a];
+const JPEG_SIGNATURE = [0xff, 0xd8, 0xff, 0xe0];
+
+/** A buffer of `size` bytes that starts with a picture format's signature. */
+function pictureBytes(signature: number[], size: number): Buffer {
+  const bytes = Buffer.alloc(size);
+  Buffer.from(signature).copy(bytes);
+  return bytes;
+}
 
 const feed: FeedIdentity = {
   owner: TEST_OWNER,
@@ -127,7 +138,7 @@ describe('StreamService audit', () => {
     const { store, audit, service } = setup();
     const row = store.add(streamRow());
 
-    await service.setThumbnail(TEST_OPERATOR, row.id, 'image/png; charset=binary', Buffer.alloc(1234));
+    await service.setThumbnail(TEST_OPERATOR, row.id, 'image/png; charset=binary', pictureBytes(PNG_SIGNATURE, 1234));
     await service.removeThumbnail(MATE, row.id);
 
     assert.deepEqual(
@@ -137,6 +148,28 @@ describe('StreamService audit', () => {
         { actor: MATE, action: 'stream.thumbnail.clear', details: undefined },
       ],
     );
+  });
+
+  it('refuses a thumbnail whose bytes are not a picture, whatever its type claims (SPDV-1668)', async () => {
+    const { store, audit, service } = setup();
+    const row = store.add(streamRow());
+
+    await assert.rejects(
+      () => service.setThumbnail(TEST_OPERATOR, row.id, 'image/png', Buffer.from('a text file renamed to fake.png\n')),
+      ThumbnailNotAnImageError,
+    );
+
+    assert.equal(store.get(row.id).has_thumbnail, false);
+    assert.deepEqual(audit.entries, []);
+  });
+
+  it('stores a thumbnail as the format its bytes are, not the one it was sent as', async () => {
+    const { store, audit, service } = setup();
+    const row = store.add(streamRow());
+
+    await service.setThumbnail(TEST_OPERATOR, row.id, 'image/png', pictureBytes(JPEG_SIGNATURE, 64));
+
+    assert.deepEqual(audit.withAction('stream.thumbnail.set')[0]?.details, { mime: 'image/jpeg', bytes: 64 });
   });
 
   it('records nothing for clearing a thumbnail that was never set', async () => {

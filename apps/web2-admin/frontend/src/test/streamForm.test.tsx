@@ -4,7 +4,13 @@ import { Route, Routes } from 'react-router';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { STREAM_LIMITS } from '@streaming-monorepo/web2-admin-common';
 
-import { MEDIA_TYPE_LOCKED, SCHEDULE_LOCKED, UNSUPPORTED_IMAGE_TYPE } from '../errors';
+import {
+  MEDIA_TYPE_LOCKED,
+  SCHEDULE_LOCKED,
+  THUMBNAIL_NOT_AN_IMAGE,
+  thumbnailTooLargeMessage,
+  UNSUPPORTED_IMAGE_TYPE,
+} from '../errors';
 import { ScheduleField } from '../components/schedule/ScheduleField';
 import { formatHumanDateTime } from '../dateUtil';
 import { nextFullHour } from '../components/schedule/scheduleTime';
@@ -45,10 +51,19 @@ const typeIn = (label: string, value: string) =>
   });
 
 /** A File whose reported size is `size`, without allocating that many bytes. */
+const PNG_SIGNATURE = Uint8Array.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 0, 0, 0, 13]);
+
+/** A file whose first bytes are a real PNG's, reporting `size` without holding that many bytes. */
 function fakeImage(name: string, size: number, type = 'image/png'): File {
-  const file = new File(['x'], name, { type });
+  const file = new File([PNG_SIGNATURE], name, { type });
   Object.defineProperty(file, 'size', { value: size });
   return file;
+}
+
+const THUMBNAIL_PICKER = 'Upload Thumbnail (Max 5MB)';
+
+function pickThumbnail(file: File) {
+  fireEvent.change(screen.getByLabelText(THUMBNAIL_PICKER), { target: { files: [file] } });
 }
 
 describe('StreamFormPage validation', () => {
@@ -149,9 +164,8 @@ describe('StreamFormPage validation', () => {
     typeIn('Tags', 'eth');
     fireEvent.click(screen.getByRole('button', { name: 'Add' }));
     fireEvent.click(screen.getByRole('radio', { name: 'Audio Only' }));
-    fireEvent.change(screen.getByLabelText('Upload Thumbnail (Max 5MB)'), {
-      target: { files: [fakeImage('cover.png', 1024)] },
-    });
+    pickThumbnail(fakeImage('cover.png', 1024));
+    await screen.findByText('cover.png');
 
     submit();
 
@@ -180,9 +194,8 @@ describe('StreamFormPage validation', () => {
 
     typeIn('Stream Name *', 'Opening keynote');
     typeIn('Description *', 'The opening talk');
-    fireEvent.change(screen.getByLabelText('Upload Thumbnail (Max 5MB)'), {
-      target: { files: [fakeImage('cover.png', 1024)] },
-    });
+    pickThumbnail(fakeImage('cover.png', 1024));
+    await screen.findByText('cover.png');
 
     submit();
 
@@ -388,18 +401,17 @@ describe('StreamFormPage tags', () => {
 });
 
 describe('StreamFormPage thumbnail', () => {
-  it('rejects an image over 5MB and keeps it out of the form', () => {
+  it('rejects an image over 5MB beside the picker, with both sizes, and keeps it out of the form (SPDV-1667)', async () => {
     mockFetch([]);
     renderCreateForm();
 
-    const input = screen.getByLabelText('Upload Thumbnail (Max 5MB)');
-    fireEvent.change(input, {
-      target: {
-        files: [fakeImage('huge.png', STREAM_LIMITS.THUMBNAIL_MAX_BYTES + 1)],
-      },
-    });
+    pickThumbnail(fakeImage('huge.png', STREAM_LIMITS.THUMBNAIL_MAX_BYTES + 1));
 
-    expect(screen.getByText(ERROR_MESSAGES.THUMBNAIL_TOO_LARGE)).toBeInTheDocument();
+    const message = await screen.findByText(thumbnailTooLargeMessage(STREAM_LIMITS.THUMBNAIL_MAX_BYTES + 1));
+    expect(message).toHaveTextContent('5,242,881 bytes');
+    expect(message).toHaveTextContent('5,242,880 bytes');
+    // Under the picker, where the operator is looking, not in the error line at the top of the form.
+    expect(screen.getByLabelText(THUMBNAIL_PICKER)).toHaveAccessibleDescription(message.textContent ?? '');
     expect(screen.queryByText('huge.png')).not.toBeInTheDocument();
     expect(screen.queryByRole('button', { name: 'Remove' })).not.toBeInTheDocument();
   });
@@ -410,38 +422,77 @@ describe('StreamFormPage thumbnail', () => {
 
     // image/* would let the picker offer SVG and HEIC, which the thumbnail
     // endpoint answers with a 415 after the row has already been saved.
-    expect(screen.getByLabelText('Upload Thumbnail (Max 5MB)')).toHaveAttribute(
+    expect(screen.getByLabelText(THUMBNAIL_PICKER)).toHaveAttribute(
       'accept',
       'image/png,image/jpeg,image/webp,image/gif',
     );
   });
 
-  it('rejects a type the backend would answer with a 415', () => {
+  it('rejects a type the backend would answer with a 415', async () => {
     mockFetch([]);
     renderCreateForm();
 
     // "All files" in the OS picker bypasses `accept`, so the type is checked
     // here too.
-    fireEvent.change(screen.getByLabelText('Upload Thumbnail (Max 5MB)'), {
-      target: { files: [fakeImage('logo.svg', 1024, 'image/svg+xml')] },
-    });
+    pickThumbnail(fakeImage('logo.svg', 1024, 'image/svg+xml'));
 
-    expect(screen.getByText(UNSUPPORTED_IMAGE_TYPE)).toBeInTheDocument();
+    expect(await screen.findByText(UNSUPPORTED_IMAGE_TYPE)).toBeInTheDocument();
     expect(screen.queryByRole('button', { name: 'Remove' })).not.toBeInTheDocument();
   });
 
-  it('accepts an image exactly at the limit', () => {
+  it('rejects a text file renamed to .png (SPDV-1668)', async () => {
     mockFetch([]);
     renderCreateForm();
 
-    fireEvent.change(screen.getByLabelText('Upload Thumbnail (Max 5MB)'), {
-      target: {
-        files: [fakeImage('exact.png', STREAM_LIMITS.THUMBNAIL_MAX_BYTES)],
-      },
-    });
+    pickThumbnail(new File(['this is a text file, not a picture\n'], 'fake.png', { type: 'image/png' }));
 
-    expect(screen.queryByText(ERROR_MESSAGES.THUMBNAIL_TOO_LARGE)).not.toBeInTheDocument();
-    expect(screen.getByText('exact.png')).toBeInTheDocument();
+    expect(await screen.findByText(THUMBNAIL_NOT_AN_IMAGE)).toBeInTheDocument();
+    expect(screen.queryByText('fake.png')).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Remove' })).not.toBeInTheDocument();
+  });
+
+  it('clears the refusal once a good picture is picked', async () => {
+    mockFetch([]);
+    renderCreateForm();
+
+    pickThumbnail(new File(['not a picture'], 'fake.png', { type: 'image/png' }));
+    await screen.findByText(THUMBNAIL_NOT_AN_IMAGE);
+
+    pickThumbnail(fakeImage('real.png', 1024));
+
+    expect(await screen.findByText('real.png')).toBeInTheDocument();
+    expect(screen.queryByText(THUMBNAIL_NOT_AN_IMAGE)).not.toBeInTheDocument();
+  });
+
+  it('drops a pick whose file read finishes after a newer pick', async () => {
+    mockFetch([]);
+    renderCreateForm();
+
+    // The first file's bytes arrive late, and say it is not a picture.
+    let releaseSlowRead!: (bytes: ArrayBuffer) => void;
+    const slow = new File(['not a picture'], 'slow.png', { type: 'image/png' });
+    slow.slice = () =>
+      ({ arrayBuffer: () => new Promise<ArrayBuffer>((resolve) => (releaseSlowRead = resolve)) }) as Blob;
+
+    pickThumbnail(slow);
+    pickThumbnail(fakeImage('real.png', 1024));
+    expect(await screen.findByText('real.png')).toBeInTheDocument();
+
+    releaseSlowRead(new TextEncoder().encode('not a picture').buffer as ArrayBuffer);
+    await new Promise((resolve) => setTimeout(resolve, 0));
+
+    expect(screen.queryByText(THUMBNAIL_NOT_AN_IMAGE)).not.toBeInTheDocument();
+    expect(screen.getByText('real.png')).toBeInTheDocument();
+  });
+
+  it('accepts an image exactly at the limit', async () => {
+    mockFetch([]);
+    renderCreateForm();
+
+    pickThumbnail(fakeImage('exact.png', STREAM_LIMITS.THUMBNAIL_MAX_BYTES));
+
+    expect(await screen.findByText('exact.png')).toBeInTheDocument();
+    expect(screen.queryByText(/too large/)).not.toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Remove' })).toBeInTheDocument();
   });
 });
