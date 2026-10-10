@@ -46,6 +46,11 @@ export const FIRST_LOAD_RETRY_MS = 5_000;
  * page waited on it is read for too: publishing it again only reaches a page that is still reading.
  * Once the player is mounted it follows the stream's own feeds, and the page deliberately keeps no
  * catalog poll for that case, see `isStreamListLoaded` in `providers/App.tsx`.
+ *
+ * A known limit, accepted by the owner on 2026-10-10: only a ladder writes markers, so a page waiting on
+ * a scheduled single-rendition stream learns that it went live from this poll alone, up to a minute
+ * late. The event's streams are ladders, and markers for a single rendition would need the uploader to
+ * write them for a one-rung ladder.
  */
 export function watchPageCatalogPollMs(view: WatchPageView): number | null {
   return view === WATCH_VIEW_NOT_STARTED || view === WATCH_VIEW_UNAVAILABLE ? CATALOG_POLL_INTERVAL_MS : null;
