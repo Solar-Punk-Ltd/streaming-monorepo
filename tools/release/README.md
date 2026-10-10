@@ -98,3 +98,25 @@ it does not know.
 
 The git it runs ignores `GIT_DIR`, `GIT_WORK_TREE` and the other variables a hook or `git rebase --exec` exports, so
 it always reads the checkout its folder is in.
+
+## publish.mjs
+
+Publishes the images a server runs from a release tag to GitHub's container registry, `ghcr.io/solar-punk-ltd`:
+`streaming-manager-api`, `streaming-manager-web`, `streaming-admin-api` and `streaming-admin-web`. The workflow
+`publish-images` runs it on every tag pushed, so a release needs nothing more than its tag:
+
+```bash
+node tools/release/publish.mjs --tag <tag> [--dry-run] [--registry <registry>] [--root <checkout>]
+```
+
+Each image is built from its app folder as a deploy cuts it, through `tools/app-workspace/in-copy.mjs`, and also
+tagged `inputs-<hash>` after what it was built from: that folder, its Dockerfile's name, and for the manager api the
+last commit that changed `apps/hls-stream`, which it carries in the label `streaming.stack-commit` for the deploy
+to write where the manager reads its stack pin. An image whose inputs an earlier release built already is only given
+the new tag, which uploads nothing. An app's images share its folder, so a change anywhere in it builds both again.
+
+An unchanged image keeps the version it was built as, so a console shows the release that last changed it. A tag an
+image cannot carry is refused: letters, digits, `_`, `.` and `-` only, such as `v2.4.0` or `2026-10-10-build-1`. The
+checkout must be at the tag, and a tag starting `inputs-` is refused, since those name images by their inputs.
+`--dry-run` says what would be built and what only tagged, and changes nothing. `--registry` publishes elsewhere than
+`ghcr.io/solar-punk-ltd`, and `--root` names another checkout, both for tests.
