@@ -306,6 +306,18 @@ describe('stream lifecycle', () => {
     assert.equal((response.body as { error: string }).error, 'unsupported_media_type');
   });
 
+  it('refuses a text file sent as a PNG and keeps the stored thumbnail (SPDV-1668)', async () => {
+    const response = await raw('PUT', `/api/streams/${stream.id}/thumbnail`, {
+      raw: Buffer.from('a text file renamed to fake.png\n'),
+      contentType: 'image/png',
+    });
+    assert.equal(response.status, 415);
+    assert.equal((response.body as { error: string }).error, 'thumbnail_not_an_image');
+
+    const served = await raw('GET', `/api/streams/${stream.id}/thumbnail`);
+    assert.deepEqual(served.bytes, PNG_1X1, 'the picture stored before is untouched');
+  });
+
   it('publishes: entry on the feed, thumbnail uploaded, status published', async () => {
     const result = await api<PublishResult>('POST', `/api/streams/${stream.id}/publish`);
 

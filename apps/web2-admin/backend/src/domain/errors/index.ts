@@ -30,6 +30,7 @@ export { StreamLockedError } from './StreamLockedError.js';
 export { StreamNotFoundError } from './StreamNotFoundError.js';
 export { StreamPublishedError } from './StreamPublishedError.js';
 export { ThumbnailCheckError } from './ThumbnailCheckError.js';
+export { ThumbnailNotAnImageError } from './ThumbnailNotAnImageError.js';
 export { ThumbnailNotFoundError } from './ThumbnailNotFoundError.js';
 export { TooManyAttemptsError } from './TooManyAttemptsError.js';
 export { UnauthenticatedError } from './UnauthenticatedError.js';

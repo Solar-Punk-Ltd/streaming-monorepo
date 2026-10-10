@@ -1,7 +1,7 @@
 import { randomBytes, randomUUID } from 'node:crypto';
 
 import { sameFeedOwner } from '@streaming-monorepo/contracts';
-import type { MediaType, StreamStatus } from '@streaming-monorepo/web2-admin-common';
+import { sniffThumbnailMime, type MediaType, type StreamStatus } from '@streaming-monorepo/web2-admin-common';
 
 import {
   EDITABLE_STATUSES,
@@ -23,6 +23,7 @@ import {
   StreamLockedError,
   StreamNotFoundError,
   StreamPublishedError,
+  ThumbnailNotAnImageError,
   ThumbnailNotFoundError,
   UnsupportedMediaTypeError,
   type StageLockReason,
@@ -359,11 +360,15 @@ export class StreamService {
     if (!THUMBNAIL_MIME_TYPES.includes(mime)) {
       throw new UnsupportedMediaTypeError(contentType, THUMBNAIL_MIME_TYPES);
     }
-    const updated = await this.streams.setThumbnail(id, bytes, mime, EDITABLE_STATUSES);
+    // The bytes decide, not the claim: a renamed text file would otherwise be stored and served as
+    // a picture nobody can see, and a JPEG named .png is stored as what it really is.
+    const actual = sniffThumbnailMime(bytes);
+    if (!actual) throw new ThumbnailNotAnImageError(mime);
+    const updated = await this.streams.setThumbnail(id, bytes, actual, EDITABLE_STATUSES);
     if (!updated) return this.refuse(id);
 
     logger.info(
-      `[Stream] ${describeActor(actor)} set the thumbnail of ${describeStream(updated)}: ${mime}, ${bytes.length} bytes`,
+      `[Stream] ${describeActor(actor)} set the thumbnail of ${describeStream(updated)}: ${actual}, ${bytes.length} bytes`,
     );
     await recordAudit(this.audit, {
       actor,
@@ -372,7 +377,7 @@ export class StreamService {
       topic: updated.topic,
       statusBefore: updated.status,
       statusAfter: updated.status,
-      details: { mime, bytes: bytes.length },
+      details: { mime: actual, bytes: bytes.length },
     });
     return updated;
   }
