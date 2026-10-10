@@ -46,15 +46,13 @@ export function publishedBindings(value: unknown): PublishedPortBinding[] {
   return [...bindings.values()];
 }
 
-function declaredBindings(
-  row: Record<string, unknown>,
-  project: string,
-  declared: readonly PortKey[],
-): PublishedPortBinding[] {
-  const containerId = row.id;
-  if (typeof containerId !== 'string' || !containerId) throw new Error('Missing container identity');
-  const service = nullableLabel(row.service);
-  return declared.map(({ port, protocol }) => ({ containerId, project, service, port, protocol }));
+/**
+ * A declared project's ports, owned by the project rather than by any one of its containers: the declaration is per
+ * project, and a project with several host-network containers would otherwise claim each port once per container
+ * under a different owner, which the inventory refuses as a port reserved twice.
+ */
+function declaredBindings(project: string, declared: readonly PortKey[]): PublishedPortBinding[] {
+  return declared.map(({ port, protocol }) => ({ project, service: null, port, protocol }));
 }
 
 /**
@@ -62,7 +60,7 @@ function declaredBindings(
  *
  * A host-network container has no port map, so it is unverified unless its
  * compose project is one the operator declared in KNOWN_HOST_NETWORK_PORTS,
- * whose declared ports then count as that container's bindings.
+ * whose declared ports then count once as that project's bindings.
  */
 export function collectPublishedPorts(
   rows: readonly unknown[],
@@ -70,13 +68,19 @@ export function collectPublishedPorts(
 ): Omit<PublishedPortsSnapshot, 'daemonId'> {
   const bindings: PublishedPortBinding[] = [];
   const unverifiedProjects = new Set<string>();
+  const declaredProjects = new Set<string>();
   for (const value of rows) {
     const row = record(value);
     if (row.networkMode === 'host') {
+      if (typeof row.id !== 'string' || !row.id) throw new Error('Missing container identity');
       const project = nullableLabel(row.project);
       const declared = project === null ? undefined : known.get(project);
-      if (project !== null && declared) bindings.push(...declaredBindings(row, project, declared));
-      else unverifiedProjects.add(project ?? `external:${row.id}`);
+      if (project !== null && declared) {
+        if (!declaredProjects.has(project)) bindings.push(...declaredBindings(project, declared));
+        declaredProjects.add(project);
+      } else {
+        unverifiedProjects.add(project ?? `external:${row.id}`);
+      }
     }
     bindings.push(...publishedBindings(row));
   }

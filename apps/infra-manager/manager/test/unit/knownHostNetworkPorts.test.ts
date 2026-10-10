@@ -38,15 +38,26 @@ describe('host-network containers the operator declares', () => {
     assert.deepEqual(snapshot.unverifiedProjects, []);
   });
 
-  it('counts the declared ports as bindings of that container, so a reservation on them is still refused', () => {
+  it('counts the declared ports as bindings of that project, so a reservation on them is still refused', () => {
     const snapshot = collectPublishedPorts([edgeProxy, stage], EDGE_PORTS);
     const edge = snapshot.bindings.filter((binding) => binding.project === 'edge');
     assert.deepEqual(edge, [
-      { containerId: EDGE_ID, project: 'edge', service: 'caddy', port: 80, protocol: 'tcp' },
-      { containerId: EDGE_ID, project: 'edge', service: 'caddy', port: 443, protocol: 'tcp' },
-      { containerId: EDGE_ID, project: 'edge', service: 'caddy', port: 443, protocol: 'udp' },
+      { project: 'edge', service: null, port: 80, protocol: 'tcp' },
+      { project: 'edge', service: null, port: 443, protocol: 'tcp' },
+      { project: 'edge', service: null, port: 443, protocol: 'udp' },
     ]);
     assert.ok(snapshot.bindings.some((binding) => binding.project === 'stage' && binding.port === 10012));
+  });
+
+  // Copilot's review of #120: a declared project with several host-network containers claimed each port once per
+  // container, under owners the inventory takes for different holders of one port.
+  it('counts a declared project with several host-network containers once, under the project', () => {
+    const sidecar = { ...edgeProxy, id: OTHER_ID, service: 'certbot' };
+    const snapshot = collectPublishedPorts([edgeProxy, sidecar], EDGE_PORTS);
+    assert.deepEqual(snapshot.unverifiedProjects, []);
+    const edge = snapshot.bindings.filter((binding) => binding.project === 'edge');
+    assert.equal(edge.length, 3);
+    for (const binding of edge) assert.equal(binding.containerId, undefined);
   });
 
   it('keeps a host-network project the setting does not name unverified', () => {
