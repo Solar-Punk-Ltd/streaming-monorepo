@@ -132,6 +132,8 @@ describe('publish.mjs', () => {
   it('refuses a tag an image cannot carry, a missing tag, and a checkout away from the tag', () => {
     const repo = setup();
     assert.match(repo.publish('--tag', 'manager/v2').output, /cannot be an image tag/);
+    repo.git('tag', 'inputs-0123');
+    assert.match(repo.publish('--tag', 'inputs-0123').output, /names an image by its build inputs, not a release/);
     assert.match(repo.publish('--tag', 'v9.9.9').output, /there is no tag v9\.9\.9/);
     repo.git('tag', 'v1.0.0');
     repo.write('apps/web2-admin/backend/src/index.ts', 'export const later = true;\n');

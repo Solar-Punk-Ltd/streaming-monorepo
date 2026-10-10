@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 // Publishes the images of the apps a server runs from a release tag: each image whose build inputs changed since an
 // earlier tag is built and uploaded, and each one whose inputs did not is only given the new tag, which uploads nothing.
-// README.md says how a release reaches the registry.
+// tools/release/README.md says how a release reaches the registry.
 import { spawnSync } from 'node:child_process';
 import { createHash } from 'node:crypto';
 import { readdirSync, readFileSync } from 'node:fs';
@@ -146,6 +146,10 @@ function parse(argv) {
   if (!options.tag) throw new Refusal(USAGE);
   if (!IMAGE_TAG.test(options.tag)) {
     throw new Refusal(`${options.tag} cannot be an image tag, which takes letters, digits, _ . and - only`);
+  }
+  // The inputs tags are how a later release finds an unchanged image, so a release must never be able to repoint one.
+  if (options.tag.startsWith(INPUTS_TAG_PREFIX)) {
+    throw new Refusal(`${options.tag} starts with ${INPUTS_TAG_PREFIX}, which names an image by its build inputs, not a release`);
   }
   return options;
 }
