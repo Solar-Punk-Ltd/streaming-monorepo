@@ -96,7 +96,7 @@ function loadPlaylist({ url, config }: Handoff): Promise<string> {
 }
 
 /**
- * The Devcon client's image names no blob source in connect-src, and hls.js reads a playlist with XHR,
+ * The event viewer's image names no blob source in connect-src, and hls.js reads a playlist with XHR,
  * so a card that handed it a blob URL showed nothing on that deployed site while every unpoliced run
  * passed. This image sets no policy yet, and the card keeps off blob URLs so one can stay that narrow.
  */

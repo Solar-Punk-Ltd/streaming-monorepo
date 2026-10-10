@@ -6,7 +6,7 @@ import Hls from 'hls.js';
  * from memory, so nothing ever asks the network for it.
  *
  * ⛔ Not a blob URL. hls.js reads a playlist with XHR, so a blob URL is governed by `connect-src`, and
- * the Devcon client's image names no blob source there. A card handed a blob showed nothing on that
+ * the event viewer's image names no blob source there. A card handed a blob showed nothing on that
  * deployed site, while every run without the policy passed. This image sets no policy yet, and
  * answering here means one that does can stay that narrow.
  *

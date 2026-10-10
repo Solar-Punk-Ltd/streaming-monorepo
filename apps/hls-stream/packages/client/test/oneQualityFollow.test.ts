@@ -30,7 +30,7 @@ import { waitFor } from './helpers/waiting.js';
 import { SEGMENTS_AS_WRITTEN } from '../src/components/SwarmHlsPlayer/ManifestManagement';
 
 /**
- * The player follows only the quality it plays (Levi, 2026-10-07: "only one quality request at the
+ * The player follows only the quality it plays (the owner, 2026-10-07: "only one quality request at the
  * time. Not 4! We only request what we watch."). One case per row of the plan's behaviour checklist,
  * Q1 to Q7, plus the two traps the uploader's own code sets: rungs whose indexes do not line up, and
  * rungs whose stamps run seconds apart. Neither may be read as a dead rung.
