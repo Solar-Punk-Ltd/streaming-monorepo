@@ -72,7 +72,9 @@ services:
       # because the ceiling has to clear `GOP + 0.135s` and not the GOP: a segment overshoots its
       # settled length by that constant before ramping back down. At 2.1 the common 2.0s GOP was
       # force-closed intermittently. 0.5 * 5.0 = 2.5s, the ceiling the stages have always run.
-      HLS_FRAGMENT: ${HLS_FRAGMENT:-0.5}
+      #
+      # The segment length has no default in either file. A stack that names none is refused.
+      HLS_FRAGMENT: ${HLS_FRAGMENT:?HLS_FRAGMENT is not set, the stage's segment length in seconds, for example 2}
       # In seconds, and derived into SRS's own ratio by the entrypoint. Set HLS_AOF_RATIO to drive
       # that ratio directly instead, which the deploy/scripts probes do.
       HLS_SEGMENT_MAX: ${HLS_SEGMENT_MAX:-2.5}

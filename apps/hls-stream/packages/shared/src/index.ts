@@ -5,6 +5,7 @@ export * from './catalog.js';
 export * from './clientLog.js';
 export * from './feedFollow.js';
 export * from './hlsTags.js';
+export * from './ladderMarker.js';
 export * from './manifest.js';
 export * from './masterPlaylist.js';
 export * from './mediaType.js';

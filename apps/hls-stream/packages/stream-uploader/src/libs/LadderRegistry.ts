@@ -85,6 +85,16 @@ export interface LadderRegistry {
   recordRungUnfinished(identity: LadderIdentity, rendition: Rendition): Promise<RenditionAnnouncement>;
 
   /**
+   * The `vod` report an announce's flip asked for did not go through, so the ladder's next finished
+   * answer is to be handed out as a flip again.
+   *
+   * Only admin mode hands a flip out on the strength of what it was told, a ladder finished while the
+   * admin still holds the stream as live, and only there can that flip be owed again. Standalone, the
+   * flip is the catalog write itself, which either landed or threw.
+   */
+  recordingNotReported(group: string): void;
+
+  /**
    * One segment of this rung reached Swarm.
    *
    * Called from the uploader's segment path beside the per-rung metric, because that is the one place

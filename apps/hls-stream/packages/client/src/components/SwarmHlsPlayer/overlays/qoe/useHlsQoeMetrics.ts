@@ -22,15 +22,15 @@ export interface QoeMetrics {
   // ABR
   /** Whether hls.js is choosing the level, or it is pinned. */
   abrEnabled: boolean;
-  /** The rung ABR has selected, by height — not necessarily what is on screen yet. */
+  /** The rung ABR has selected, by height, not necessarily what is on screen yet. */
   selectedHeight: number | null;
   /** hls.js's own throughput estimate. Over Swarm this is the number expected to oscillate. */
   bandwidthEstimateKbps: number | null;
   /**
    * Every rung hls.js parsed from the master, with the bitrate it was told and whether it is
-   * reachable. `capped` means capLevelToPlayerSize ruled it out for the current player size;
+   * reachable. `capped` means capLevelToPlayerSize ruled it out for the current player size.
    * `unaffordable` means the bandwidth estimate does not cover it under abrBandWidthUpFactor.
-   * A rung that is neither, and still not selected, is a rung hls.js excluded — usually because
+   * A rung that is neither, and still not selected, is a rung hls.js excluded, usually because
    * its playlist or a fragment failed to load.
    */
   ladder: LadderLevel[];
@@ -38,7 +38,7 @@ export interface QoeMetrics {
   nextHeight: number | null;
   /**
    * How long a level switch took: from hls.js deciding, to the first fragment of the new rung
-   * being buffered. This is the measurement the ABR-over-Swarm POC exists to produce — it is
+   * being buffered. This is the measurement the ABR-over-Swarm POC exists to produce. It is
    * where a stale rung's feed walk would show up.
    */
   lastSwitchLatencyMs: number | null;
@@ -222,14 +222,14 @@ export const attachQoeTracking = (
   };
 
   // A switch is measured from the moment hls.js commits to a rung until a fragment of that rung is
-  // buffered — the interval in which a rung whose feed had gone stale would have to catch up.
+  // buffered: the interval in which a rung whose feed had gone stale would have to catch up.
   let switchStartedAt: number | null = null;
   let switchTargetLevel: number | null = null;
   let switchLatencyTotalMs = 0;
   let hasBufferedOnce = false;
 
   const onLevelSwitching = (_event: unknown, data: { level: number }) => {
-    // The first selection is startup, not a switch; startupTimeMs already covers it.
+    // The first selection is startup, not a switch, startupTimeMs already covers it.
     if (!hasBufferedOnce) {
       return;
     }
@@ -342,7 +342,7 @@ export const attachQoeTracking = (
       metrics.abrEnabled = hls.autoLevelEnabled;
 
       // Defaulted rather than assumed. This poller starts with the player and the ladder does not
-      // exist until a master has been parsed, which `autoStartLoad: false` deliberately delays — and
+      // exist until a master has been parsed, which `autoStartLoad: false` deliberately delays, and
       // an overlay that throws inside its own interval takes the tracking down for the session
       // rather than showing one blank row.
       const levels = hls.levels ?? [];
@@ -352,7 +352,7 @@ export const attachQoeTracking = (
       metrics.bandwidthEstimateKbps = Number.isFinite(estimate) && estimate > 0 ? Math.round(estimate / 1000) : null;
 
       // The whole ABR decision, laid out. Which rungs exist, what hls.js believes each costs, and
-      // which of the two gates — player size or bandwidth — is holding one back. Without this the
+      // which of the two gates, player size or bandwidth, is holding one back. Without this the
       // only visible symptom of a stuck ladder is a resolution that never changes.
       const capping = hls.autoLevelCapping ?? -1;
       const affordable = estimate * (hls.config?.abrBandWidthUpFactor ?? 1);

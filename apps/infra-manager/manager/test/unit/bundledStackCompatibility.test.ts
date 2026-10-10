@@ -67,7 +67,7 @@ describe('the bundled stack contract', () => {
       true,
       "the bundled stack's parser takes --release-label and --release-commit, so its deploys are handed the build's release",
     );
-    assert.equal(contract.engineDefaults.HLS_FRAGMENT, '0.5');
+    assert.equal(contract.engineDefaults.HLS_FRAGMENT, undefined, 'the stack has no default segment length');
     assert.equal(contract.engineDefaults.HLS_SEGMENT_DURATION, '2');
     assert.equal(
       contract.engineDefaults.SRT_LATENCY,

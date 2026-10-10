@@ -126,8 +126,9 @@ the master feed goes on advertising it.
 | `light-client` now    | 1.0s     | **4.0/s**   | 40% spare      | 600s run, lag flat at 0.0s, zero lost   |
 | `in-browser`          | 2.0s     | 2.0/s       | 70% spare      | never exposed to this                   |
 
-So light-client's `1.0` is **not** where the gateway path measures best. 0.5s is, and that
-measurement stands. 0.5s is simply unreachable while four rungs are being announced. If the ladder
+So a four-rung ladder needs at least `1.0`, and the sample ships 2. light-client's `1.0` is **not**
+where the gateway path measures best. 0.5s is, and that measurement stands. 0.5s is simply
+unreachable while four rungs are being announced. If the ladder
 loses rungs, or the ceiling is understood and raised, 0.5 is the value to come back to.
 
 `preflight/segment-length` refuses a run pointed at the other one:
@@ -144,7 +145,9 @@ in the profile env. The engine **cuts** segments by it, and the uploader **reads
 tolerance of it. On
 2026-09-04 an uploader running 1.0 sat in front of an SRS cutting 2.0, all ten gates passed, and the
 only thing that noticed was the ABR ladder suite's timeline subtest mid-sitting. The gate now refuses
-a pair that disagrees, and a pair that agrees on a length the run cannot use.
+a pair that disagrees, and a pair that agrees on a length the run cannot use. `HLS_FRAGMENT` has no
+default, so each profile's own env, `.env.<profile>`, must set it to match the `E2E_EXPECT_SEGMENT_S`
+its profile file declares.
 
 It reads the config the running SRS container was started on, through one `docker exec cat`, and each
 container's own environment through two `docker inspect` reads: **no broadcast, no stamp, nothing
@@ -686,7 +689,7 @@ player's own configured buffer. Writes a markdown report and its JSON to `BENCH_
 in the stack's folder, ignored by git.
 
 Nothing else in this repository can measure that. `liveSyncDuration` was 10 when this bench was written
-and the client ships 6 today (`LIVE_SYNC_DURATION_S` in `packages/client/src/components/SwarmHlsPlayer/playerConfig.ts`),
+and the client now targets three segments with a floor of 6 s (`LIVE_SYNC_DURATION_S` in `packages/client/src/components/SwarmHlsPlayer/playerConfig.ts`),
 so a report is read against the value the client carried on the day. Every other LAT row asks for an
 improvement, and Sprint 5 grades them against a baseline that has to exist first.
 

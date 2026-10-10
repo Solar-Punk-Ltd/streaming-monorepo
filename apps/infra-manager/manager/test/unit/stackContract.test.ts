@@ -55,7 +55,6 @@ describe('readStackContract on main-v2', () => {
   });
 
   it('reads the engine defaults from the entrypoints', () => {
-    assert.equal(v2.engineDefaults.HLS_FRAGMENT, '1.5');
     assert.equal(v2.engineDefaults.HLS_WINDOW, '22.5');
     assert.equal(v2.engineDefaults.SRT_LATENCY, undefined);
     assert.equal(v2.engineDefaults.HLS_SEGMENT_DURATION, '2');
@@ -158,8 +157,7 @@ describe('readStackContract on main-v3', () => {
     assert.equal(v3.requiredSecrets.includes('PUBLISH_KEY_SECRET'), false);
   });
 
-  it('reads the shorter fragment and the SRT latency knob', () => {
-    assert.equal(v3.engineDefaults.HLS_FRAGMENT, '0.5');
+  it('reads the window and the SRT latency knob', () => {
     assert.equal(v3.engineDefaults.HLS_WINDOW, '15');
     assert.equal(v3.engineDefaults.SRT_LATENCY, '200');
   });
@@ -265,15 +263,43 @@ describe('readStackContract on a table it cannot fully read', () => {
   });
 
   it('leaves out an engine default that is itself a substitution', () => {
-    // `${HLS_FRAGMENT:-${FALLBACK_FRAGMENT:-1.5}}` would come back as
-    // `${FALLBACK_FRAGMENT:-1.5` with the brace missing, and the settings
+    // `${SRT_LATENCY:-${FALLBACK_LATENCY:-200}}` would come back as
+    // `${FALLBACK_LATENCY:-200` with the brace missing, and the settings
     // page would offer that to an operator as a number.
-    assert.equal(odd.engineDefaults.HLS_FRAGMENT, undefined);
+    assert.equal(odd.engineDefaults.SRT_LATENCY, undefined);
     assert.equal(odd.engineDefaults.HLS_WINDOW, '22.5');
   });
 
   it('carries the count into the plain words the page shows', () => {
     assert.match(describeStackContract(odd), /2 ports, slots 1 to 999, no generated secrets, 1 line not understood/);
+  });
+});
+
+/**
+ * The stack has no default segment length since 2026-10-08, and the manager
+ * writes its own on every deploy, so a version's fallback is not read at all:
+ * an older version that names one is overridden, and a current one names none.
+ */
+describe('readStackContract and the segment length', () => {
+  it('reads no segment length from an older version that falls back to one', () => {
+    assert.equal(v2.engineDefaults.HLS_FRAGMENT, undefined);
+    assert.equal(v3.engineDefaults.HLS_FRAGMENT, undefined);
+  });
+
+  it('reads a current entrypoint that refuses to start without one', () => {
+    const root = mkdtempSync(join(tmpdir(), 'stack-contract-'));
+    cpSync(fixture('v3'), root, { recursive: true });
+    const entrypoint = join(root, 'engines', 'srs', 'entrypoint.sh');
+    writeFileSync(
+      entrypoint,
+      readFileSync(entrypoint, 'utf8')
+        .replace('require_number HLS_FRAGMENT "${HLS_FRAGMENT:-0.5}"', 'require_number HLS_FRAGMENT "$HLS_FRAGMENT"')
+        .replace('HLS_FRAGMENT="${HLS_FRAGMENT:-0.5}"\n', ''),
+    );
+
+    const contract = readStackContract(root);
+    assert.equal(contract.engineDefaults.HLS_FRAGMENT, undefined);
+    assert.equal(contract.engineDefaults.HLS_WINDOW, '15');
   });
 });
 

@@ -67,6 +67,7 @@ import { ImmutableFirewallContractReader } from './domain/ports/ImmutableFirewal
 import { PostgresDeployTargetRepository } from './domain/ports/PostgresDeployTargetRepository.js';
 import { TargetDocker } from './domain/ports/TargetDocker.js';
 import { PortInventory } from './domain/ports/PortInventory.js';
+import { refuseDeploymentsNamedAsKnownHostNetworkProjects } from './domain/ports/knownHostNetworkPorts.js';
 import { PostgresPortReservationRepository } from './domain/ports/PostgresPortReservationRepository.js';
 import { StackVersionService } from './domain/versions/StackVersionService.js';
 import { ExecutionRootService } from './domain/versions/ExecutionRootService.js';
@@ -245,6 +246,10 @@ async function main(): Promise<void> {
   }
 
   const profileRepository = new ProfileRepository(database.pool);
+  refuseDeploymentsNamedAsKnownHostNetworkProjects(
+    (await profileRepository.list()).map((profile) => profile.name),
+    config.knownHostNetworkPorts,
+  );
   const containerRepository = new ContainerRepository(database.pool);
 
   // What a gone manager left: attempts whose builder is gone go, containers

@@ -35,8 +35,10 @@ import {
   ADMIN_STATE_VOD,
   AdminApiClient,
   AdminStateReport,
+  STATE_REPORT_STREAM_GONE,
   stateWasReported,
 } from './AdminApiClient.js';
+import { AdminStreamGoneError } from './AdminStreamGoneError.js';
 import {
   AnnounceReadiness,
   needsCatalogAnnounce,
@@ -51,6 +53,7 @@ import { BeePublisher } from './BeePublisherPool.js';
 import { averageBandwidth, emptyBitrateSample, peakBandwidth, recordSegment } from './BitrateMeter.js';
 import { BroadcastDating } from './broadcastDating.js';
 import { ErrorHandler } from './ErrorHandler.js';
+import { LadderMarkerSink } from './LadderMarkerWriter.js';
 import { LadderIdentity, LadderRegistry, RenditionAnnouncement } from './LadderRegistry.js';
 import { Logger } from './Logger.js';
 import { continuesFrom, inheritedTimeline, ManifestManager } from './ManifestManager.js';
@@ -273,6 +276,8 @@ export interface StreamUploaderOptions {
    * announcing itself is the same act either way. Unread on a stream with no ladder.
    */
   ladderRegistry?: LadderRegistry;
+  /** Where a rung reports each manifest index it landed, for its ladder's time markers. Unread with no ladder. */
+  ladderMarkers?: LadderMarkerSink;
   recoveryStore: RecoveryStore;
   streamKey: string;
   streamId: string;
@@ -351,6 +356,7 @@ export class StreamUploader {
   private streamRawTopic: string;
   private streamCatalog: StreamCatalog;
   private ladderRegistry: LadderRegistry;
+  private readonly ladderMarkers?: LadderMarkerSink;
   private recoveryStore: RecoveryStore;
   private streamId: string;
   private stamp: string;
@@ -382,13 +388,15 @@ export class StreamUploader {
    */
   private readonly batchRefusalStatuses = new Set<number>();
   /**
-   * The newest segment index a published live manifest has named, or null before the first publish.
+   * The newest sequence a published live manifest has named, or null before the first publish.
    *
    * Null rather than restored from persisted state after a crash: the window a recovered uploader
    * publishes is built from segments it did reload, so a restored value would report the whole
    * outage as segments this uploader failed to name when nothing here failed at all.
    */
   private announcedThrough: number | null = null;
+  /** Whether {@link dropRecoveryEntryOfDeletedStream} has already let this stream's entry go. */
+  private droppedForDeletedStream = false;
   private segmentsNeverNamed = 0;
   /** Whether the recovery entry under this stream id still describes this uploader. See `retire`. */
   private ownsRecoveryEntry = true;
@@ -456,6 +464,7 @@ export class StreamUploader {
     this.streamSigner = new PrivateKey(options.streamKey);
     this.streamCatalog = options.streamCatalog;
     this.ladderRegistry = options.ladderRegistry ?? options.streamCatalog;
+    this.ladderMarkers = options.ladderMarkers;
     this.recoveryStore = options.recoveryStore;
     this.streamId = options.streamId;
     this.stamp = options.publisher.stamp;
@@ -710,10 +719,11 @@ export class StreamUploader {
     }
 
     if (this.admin) {
-      return this.reportAdminState(
+      await this.reportAdminState(
         { state: ADMIN_STATE_LIVE },
         'so the admin will go on showing it as a draft until the next attempt',
       );
+      return;
     }
 
     if (this.ladder) {
@@ -832,7 +842,7 @@ export class StreamUploader {
       const announced = await this.announceRendition({
         index: vodIndex,
         duration: this.manifestManager.getTotalDuration(),
-      });
+      }).catch((error: unknown) => this.letGoOfADeletedStream(error));
 
       // ⛔ Reported only by the rung whose own report finished the ladder, and only once. A rung
       // draining while its siblings are still live ends its own recording and nothing more: the
@@ -842,15 +852,20 @@ export class StreamUploader {
       // list. This is `StreamCatalog.upsertRendition`'s `flippedToVod` rule, read off the other side
       // of a wire rather than off a feed read.
       if (announced && announced.flippedToFinished && announced.masterIndex !== null) {
-        await this.reportAdminState(
-          this.ladderRecordingReport(announced, announced.masterIndex),
-          'so the recording is in the feed and the admin does not know it, which the recovery entry lets the next boot retry',
-        );
-        // ⛔⛔⛔ After the report and only when the ladder really flipped, which is the same rule the
-        // standalone halves of this method both state at length: written earlier it announces a flip
-        // the admin has not taken yet, and written unconditionally a resumed finalize announces a
-        // second flip for one broadcast.
-        this.logger.log(ladderFinalized(this.ladder.group));
+        const sent = await this.reportLadderRecording(
+          this.reportAdminState(
+            this.ladderRecordingReport(announced, announced.masterIndex),
+            'so the recording is in the feed and the admin does not know it, which the recovery entry lets the next boot retry',
+          ),
+        ).catch((error: unknown) => this.letGoOfADeletedStream(error));
+        // ⛔⛔⛔ After the report and only when the ladder really flipped and the report was sent, which
+        // is the same rule the standalone halves of this method both state at length: written earlier
+        // it announces a flip the admin has not taken yet, written unconditionally a resumed finalize
+        // announces a second flip for one broadcast, and written after a report a retired session
+        // skipped it announces one nobody was told of.
+        if (sent === true) {
+          this.logger.log(ladderFinalized(this.ladder.group));
+        }
       }
 
       this.metrics?.recordStreamFinalized();
@@ -868,7 +883,7 @@ export class StreamUploader {
       await this.reportAdminState(
         { state: ADMIN_STATE_VOD, index: vodIndex, duration: this.manifestManager.getTotalDuration() },
         'so the recording is in the feed and the admin does not know it, which the recovery entry lets the next boot retry',
-      );
+      ).catch((error: unknown) => this.letGoOfADeletedStream(error));
       this.metrics?.recordStreamFinalized();
       this.clearRecoveryEntry();
       return;
@@ -939,9 +954,11 @@ export class StreamUploader {
     const announced = await this.ladderRegistry.recordRungUnfinished(this.ladderIdentity(), this.buildRendition());
 
     if (this.admin && announced.flippedToFinished && announced.masterIndex !== null) {
-      await this.sendAdminState(
-        this.ladderRecordingReport(announced, announced.masterIndex),
-        'so the ladder is a recording in its master and the admin still lists it as live',
+      await this.reportLadderRecording(
+        this.sendAdminState(
+          this.ladderRecordingReport(announced, announced.masterIndex),
+          'so the ladder is a recording in its master and the admin still lists it as live',
+        ).then(() => true),
       );
       this.logger.log(ladderFinalized(this.ladder.group));
     }
@@ -1225,6 +1242,50 @@ export class StreamUploader {
     this.ownsRecoveryEntry = false;
   }
 
+  /**
+   * Give up the recovery entry of a broadcast the admin says it has no stream for, then fail as before.
+   *
+   * ⛔⛔ The one failed finalize that does not keep its entry. Every other failure heals, and the entry
+   * is how the next boot finishes the recording, which is the reasoning in
+   * `StreamOrchestrator.drainUploader`. A stream deleted on the admin never heals: on 2026-10-08 such an
+   * entry was recovered at every uploader start, held for the reconnect window and refused again, each
+   * time costing a minute and a wrong active stream count. The recording already in this stream's feed
+   * stays there, so all that is lost is a report nothing would ever accept. Reached from a ladder rung's
+   * rendition report, from the `vod` state report of the rung whose finalize finished the ladder, and
+   * from a single rendition's `vod` state report, whichever names the recording.
+   *
+   * Rethrows either way, so the stop still reads as failed: this stream did end without its recording
+   * being named anywhere.
+   */
+  private letGoOfADeletedStream(error: unknown): never {
+    if (error instanceof AdminStreamGoneError && this.ownsRecoveryEntry) {
+      this.dropRecoveryEntryOfDeletedStream(error);
+    }
+    throw error;
+  }
+
+  /**
+   * Remove this stream's recovery entry because the admin has deleted the stream, saying so in one line.
+   *
+   * ⛔ Without the ownership check {@link letGoOfADeletedStream} makes, because its other caller is the
+   * orchestrator after a failed stop, when this uploader has already been retired so that its entry
+   * survives for the next boot. The orchestrator makes the same check its own way, by removing only
+   * while no live session holds this stream id, which is also what a successor needs before it can
+   * write an entry of its own under the id.
+   */
+  public dropRecoveryEntryOfDeletedStream(error: AdminStreamGoneError): void {
+    // Once, because a finalize refused this way is followed by the unfinished report, refused the same way.
+    if (this.droppedForDeletedStream) {
+      return;
+    }
+    this.droppedForDeletedStream = true;
+    this.logger.warn(
+      `[StreamUploader] The admin has no stream ${error.adminStreamId} any more, so ${this.streamId} drops ` +
+        'its recovery entry rather than be recovered and refused again at every start',
+    );
+    this.recoveryStore.remove(this.streamId);
+  }
+
   private clearRecoveryEntry(): void {
     if (this.ownsRecoveryEntry) {
       this.recoveryStore.remove(this.streamId);
@@ -1353,31 +1414,56 @@ export class StreamUploader {
    * guard on `announceRendition`. Outside admin mode a retired session still owns its own feed topic,
    * so its VOD entry describes a recording nobody else is writing. In admin mode both sessions share
    * one declared stream, so a retired session reporting `vod` would mark the broadcast that replaced
-   * it as finished.
+   * it as finished. Answers false when it skipped, so a caller holding a ladder's flip can hand it back.
    *
    * ⛔ This covers the *report* and nothing else. The retired session still publishes manifests to the
    * declared topic the two of them share, and `ownsRecoveryEntry` does not gate that — what keeps the
    * two off one feed is the replacement waiting, not this session stopping. See {@link retire}.
    */
-  private async reportAdminState(report: AdminStateReport, whatIsLost: string): Promise<void> {
+  private async reportAdminState(report: AdminStateReport, whatIsLost: string): Promise<boolean> {
     if (!this.ownsRecoveryEntry) {
       this.logger.warn(
         `[StreamUploader] Not reporting ${report.state} for ${this.streamId}: a newer session holds it, ` +
           'and the admin stream is shared between them',
       );
-      return;
+      return false;
     }
 
     await this.sendAdminState(report, whatIsLost);
+    return true;
   }
 
   /** {@link reportAdminState} without its guard, for the one caller that has settled it another way. */
   private async sendAdminState(report: AdminStateReport, whatIsLost: string): Promise<void> {
     const admin = this.admin!;
     const outcome = await admin.client.reportState(admin.id, report);
+    if (outcome === STATE_REPORT_STREAM_GONE) {
+      throw new AdminStreamGoneError(admin.id);
+    }
     if (!stateWasReported(outcome)) {
       throw new Error(`Could not report ${report.state} for stream ${this.streamId} to the admin API, ${whatIsLost}`);
     }
+  }
+
+  /**
+   * Await the `vod` report a ladder's flip asked for, handing the flip back to the registry when it did
+   * not go through, whether it failed or was skipped because this session was retired while its final
+   * announce was in flight. The registry gives a finished ladder's flip to one rung only, so a rung
+   * keeping it after a report that never reached the admin would leave every sibling finishing later
+   * unable to report the recording. Answers whether the report was sent.
+   */
+  private async reportLadderRecording(report: Promise<boolean>): Promise<boolean> {
+    let sent: boolean;
+    try {
+      sent = await report;
+    } catch (error) {
+      this.ladderRegistry.recordingNotReported(this.ladder!.group);
+      throw error;
+    }
+    if (!sent) {
+      this.ladderRegistry.recordingNotReported(this.ladder!.group);
+    }
+    return sent;
   }
 
   /**
@@ -1482,7 +1568,7 @@ export class StreamUploader {
       // Both read here, beside the build and before anything is awaited. `handleSegment` runs between
       // awaits, so either read taken after the publish returns would describe a manifest other than
       // the one being published.
-      const newestNamed = this.manifestManager.liveWindowNewestIndex();
+      const newestNamed = this.manifestManager.liveWindowNewestSequence();
       const neverNamed =
         this.announcedThrough === null ? 0 : this.manifestManager.segmentsNeverNamed(this.announcedThrough);
 
@@ -1579,6 +1665,9 @@ export class StreamUploader {
     }
 
     this.socIndex = nextIndex;
+    if (this.ladder) {
+      this.ladderMarkers?.recordPublished(this.ladder.group, this.streamRawTopic, nextIndex);
+    }
 
     if (needsCatalogAnnounce(this.readiness)) {
       // ⛔ Both of these are below the `feedPositionSettled` refusal above, and that ordering is what

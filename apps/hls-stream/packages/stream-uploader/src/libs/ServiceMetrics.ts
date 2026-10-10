@@ -27,6 +27,8 @@ export class ServiceMetrics {
   private segmentsNeverNamed = 0;
   private authRejections = 0;
   private takeoversRefused = 0;
+  private ladderMarkersWritten = 0;
+  private ladderMarkersFailed = 0;
   /**
    * Uploads per ABR rung, which the totals above cannot give.
    *
@@ -231,6 +233,19 @@ export class ServiceMetrics {
     this.takeoversRefused += 1;
   }
 
+  /** One ladder time marker reached Swarm. See `LadderMarkerWriter`. */
+  public recordLadderMarkerWritten(): void {
+    this.ladderMarkersWritten += 1;
+  }
+
+  /**
+   * One ladder time marker was given up on, refused or not finished inside its own period. Nothing is
+   * lost but a shortcut: a viewer that finds no marker searches the feeds as it always did.
+   */
+  public recordLadderMarkerFailed(): void {
+    this.ladderMarkersFailed += 1;
+  }
+
   /**
    * A paid write bee answered with a status the upload policy will not retry, which is a postage
    * batch that has stopped accepting chunks.
@@ -313,6 +328,8 @@ export class ServiceMetrics {
       segmentDurationsUnreadTotal: this.segmentDurationsUnread,
       authRejectionsTotal: this.authRejections,
       takeoversRefusedTotal: this.takeoversRefused,
+      ladderMarkersWrittenTotal: this.ladderMarkersWritten,
+      ladderMarkersFailedTotal: this.ladderMarkersFailed,
       postageRefusedPublishers: this.postageRefusals.size,
       lastSegmentAt: this.lastSegmentAt,
     };
@@ -385,6 +402,8 @@ interface MetricsCounters {
   authRejectionsTotal: number;
   /** Announces refused because a live session on that stream id is still producing. */
   takeoversRefusedTotal: number;
+  ladderMarkersWrittenTotal: number;
+  ladderMarkersFailedTotal: number;
   /**
    * Publishers bee has refused a paid write on, which is how many rungs have lost their postage.
    *

@@ -20,6 +20,7 @@ import { CatalogIndexStore } from './libs/CatalogIndexStore.js';
 import { bzzToPlur, ChequebookGate, ChequebookNode, FundingLogger } from './libs/ChequebookGate.js';
 import { ChequebookRecheck } from './libs/ChequebookRecheck.js';
 import { LadderGroupStore } from './libs/LadderGroupStore.js';
+import { LadderMarkerWriter } from './libs/LadderMarkerWriter.js';
 import { LadderRegistry } from './libs/LadderRegistry.js';
 import { Logger } from './libs/Logger.js';
 import { MasterFeedWriter } from './libs/MasterFeedWriter.js';
@@ -27,6 +28,7 @@ import { assertNodeReachable, waitForNode } from './libs/NodeWait.js';
 import { PostageGate } from './libs/PostageGate.js';
 import { registerCrashHandlers, registerShutdownSignals } from './libs/processSignals.js';
 import { RecoveryStore } from './libs/RecoveryStore.js';
+import { ServiceMetrics } from './libs/ServiceMetrics.js';
 import { ServiceLifecycle } from './libs/ServiceLifecycle.js';
 import { runStartGates, StartGate } from './libs/StartGates.js';
 import { StreamCatalog } from './libs/StreamCatalog.js';
@@ -36,6 +38,8 @@ import { NodeWaitReport } from './types.js';
 
 /** The gate's floor is configured in hours, because that is the unit an operator tops a batch up in. */
 const SECONDS_PER_HOUR = 3_600;
+
+const MS_PER_SECOND = 1_000;
 
 const logger = Logger.getInstance();
 const lifecycle = new ServiceLifecycle((code) => process.exit(code), logger);
@@ -132,6 +136,25 @@ async function start() {
     // publishing a one-entry master for it would buy a second feed and no choice.
     const masterWriter = config.abr ? new MasterFeedWriter(publishers, new PrivateKey(config.streamKey)) : undefined;
 
+    // Shared with the orchestrator so the marker counters are served on `/metrics` beside the rest.
+    const metrics = new ServiceMetrics();
+
+    // Ladder-only like the master, written through the same publisher under the same signer, so a
+    // viewer holding the master's owner and group can compute every marker's address.
+    // LADDER_MARKERS=false turns them off.
+    const ladderMarkers =
+      config.abr && config.ladderMarkers
+        ? new LadderMarkerWriter({
+            publishers,
+            signer: new PrivateKey(config.streamKey),
+            segmentMs: Math.round(config.fragmentSeconds * MS_PER_SECOND),
+            metrics,
+          })
+        : undefined;
+    if (ladderMarkers) {
+      lifecycle.trackLadderMarkers(ladderMarkers);
+    }
+
     // Also ladder-only, and in a subdirectory for the same reason the catalog index is: RecoveryStore
     // scans stateDir for `*.json` and would otherwise offer this file up as a stream to recover.
     const ladderGroupStore = config.abr
@@ -178,6 +201,8 @@ async function start() {
       ladderGroupStore,
       adminApi,
       ladderRegistry,
+      ladderMarkers,
+      metrics,
     });
 
     lifecycle.trackOrchestrator(streamOrchestrator);

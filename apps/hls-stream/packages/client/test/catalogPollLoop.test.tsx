@@ -11,38 +11,52 @@ import { AppContextProvider, useAppContext } from '../src/providers/App';
 import { CATALOG_POLL_INTERVAL_MS } from '../src/providers/catalogPoll';
 import { useCatalogPoll } from '../src/providers/useCatalogPoll';
 import { Stream, STREAM_STATUS_LIVE, STREAM_STATUS_SCHEDULED } from '../src/types/stream';
+import { chooseSource } from '../src/swarm/routing';
 import { config } from '../src/utils/config';
-import { DEFAULT_FETCH_TIMEOUT_MS, FetchTimeoutError, type TimedResponse } from '../src/utils/fetchWithTimeout';
+import { DEFAULT_READ_TIMEOUT_MS } from '../src/swarm/provider';
+
+import type { PathResponse } from './helpers/playerReader';
 
 /**
  * ⛔ The browse page's catalog poll over time, through the real provider, SWR and catalog reader.
  *
- * The client promises to read the catalog again every five seconds, so a stream published, gone live
- * or unpublished shows on an open page without a reload. QA saw the opposite: changes reached an open
+ * The client promises to read the catalog again once a minute, so a stream published, gone live or
+ * unpublished shows on an open page without a reload. QA saw the opposite: changes reached an open
  * page only after a reload. One failed read was enough. SWR stops its refresh timer while its cache
  * holds an error and leaves the next read to `onErrorRetry`, whose default backs off exponentially,
  * and the catalog reader turned a slot read that timed out or was refused into exactly that error.
  * Every further failure doubled the wait, so a gateway with a slow tail kept an open page minutes
  * behind.
  *
- * Only the gateway is faked, at `fetchWithTimeout`, which is the reader's one way out. Everything
- * between that and the list on screen is the code that ships.
+ * Only the gateway is faked, at the global `fetch` the Swarm client's Bee provider reads through,
+ * which is the reader's one way out. Everything between that and the list on screen is the code that
+ * ships, the provider's own bounded window included.
  *
  * SWR's backoff has a random factor. It is pinned at the top of its range so that what these tests
  * measure does not depend on a coin toss: with it, the first retry after one failure comes two poll
  * intervals later rather than one, and each further failure doubles that.
  */
 
-const fakes = vi.hoisted(() => ({ answer: { current: (_url: string): Promise<unknown> => Promise.reject() } }));
+/** What the fake gateway answers a URL with, set by each test. */
+const fakes: { answer: (url: string, signal: AbortSignal | undefined) => Promise<PathResponse> } = {
+  answer: () => Promise.reject(new Error('no gateway set up')),
+};
 
-vi.mock('../src/utils/fetchWithTimeout', async (importOriginal) => {
-  const actual = await importOriginal<typeof import('../src/utils/fetchWithTimeout')>();
-  return { ...actual, fetchWithTimeout: (url: string) => fakes.answer.current(url) };
-});
+function abortError(): Error {
+  const error = new Error('The operation was aborted');
+  error.name = 'AbortError';
+  return error;
+}
 
-// The provider points the player's manifest fetcher at the gateway, and nothing here plays anything.
+/** The browser's fetch over the fake gateway, as the Bee provider calls it. */
+const fakeFetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
+  const answer = await fakes.answer(String(input), init?.signal ?? undefined);
+  return new Response(answer.text, { status: answer.status, headers: answer.headers });
+}) as typeof fetch;
+
+// The provider hands the player's manifest fetcher the Swarm client's reader, and nothing here plays anything.
 vi.mock('../src/components/SwarmHlsPlayer/CustomManifestLoader', () => ({
-  manifestFetcher: { beeUrl: '' },
+  manifestFetcher: { useSwarm: () => {} },
 }));
 
 const TOPIC = Topic.fromString(config.rawAppTopic);
@@ -63,13 +77,13 @@ function pathOfSlotAfter(held: number): string {
   return nextFeedRequest(config.appOwner, TOPIC, FeedIndex.fromBigInt(BigInt(held))).path;
 }
 
-function answered(status: number, streams: Stream[] | null, headers = new Headers()): TimedResponse {
+function answered(status: number, streams: Stream[] | null, headers = new Headers()): PathResponse {
   return { ok: status >= 200 && status < 300, status, headers, text: streams === null ? '' : JSON.stringify(streams) };
 }
 
 const NOT_WRITTEN_YET = answered(404, null);
 
-/** How a failed read reaches the reader: a status, or `fetchWithTimeout` giving up after its window. */
+/** How a failed read reaches the reader: a status, or the provider giving up after its window. */
 type Failure = 'refused' | 'timed out';
 
 /**
@@ -88,40 +102,51 @@ function gateway({
   failingSlots?: number;
   failure: Failure;
 }) {
-  const state = { failingHeads, failingSlots, lastFailureAt: -1 };
+  const state = {
+    failingHeads,
+    failingSlots,
+    lastFailureAt: -1,
+    headAsksAt: [] as number[],
+    nextSlotAsksAt: [] as number[],
+    unwrittenAsksAt: [] as number[],
+  };
   const nextSlot = pathOfSlotAfter(HEAD_SLOT);
   const afterNext = pathOfSlotAfter(HEAD_SLOT + 1);
 
-  const fail = (url: string): Promise<TimedResponse> => {
+  // A timed out read is one the gateway never answers, which the provider's own window ends.
+  const fail = (signal: AbortSignal | undefined): Promise<PathResponse> => {
     if (failure === 'refused') {
       state.lastFailureAt = Date.now();
       return Promise.resolve(answered(500, null));
     }
     return new Promise((_resolve, reject) => {
-      setTimeout(() => {
+      signal?.addEventListener('abort', () => {
         state.lastFailureAt = Date.now();
-        reject(new FetchTimeoutError(url, DEFAULT_FETCH_TIMEOUT_MS));
-      }, DEFAULT_FETCH_TIMEOUT_MS);
+        reject(abortError());
+      });
     });
   };
 
-  fakes.answer.current = async (url: string) => {
+  fakes.answer = async (url, signal) => {
     if (url.includes('/feeds/')) {
+      state.headAsksAt.push(Date.now());
       if (state.failingHeads > 0) {
         state.failingHeads--;
-        return fail(url);
+        return fail(signal);
       }
       const header = new Headers({ 'swarm-feed-index': HEAD_SLOT.toString(16).padStart(16, '0') });
       return answered(200, [scheduled], header);
     }
     if (url.endsWith(nextSlot)) {
+      state.nextSlotAsksAt.push(Date.now());
       if (state.failingSlots > 0) {
         state.failingSlots--;
-        return fail(url);
+        return fail(signal);
       }
       return answered(200, [wentLive]);
     }
     if (url.endsWith(afterNext)) {
+      state.unwrittenAsksAt.push(Date.now());
       return NOT_WRITTEN_YET;
     }
     throw new Error(`the reader asked for a slot this feed does not hold: ${url}`);
@@ -129,9 +154,13 @@ function gateway({
   return state;
 }
 
+/** The app's context as the browse page last rendered it, for a test that switches source. */
+let appContext: ReturnType<typeof useAppContext> | null = null;
+
 /** The browse page's use of the poll, reduced to what this checks: the list and the poll. */
 function Browser() {
-  const { streamList } = useAppContext();
+  appContext = useAppContext();
+  const { streamList } = appContext;
   useCatalogPoll(CATALOG_POLL_INTERVAL_MS);
   return createElement(
     'ul',
@@ -177,6 +206,8 @@ async function advanceUntil(predicate: () => boolean, limitMs: number): Promise<
 beforeEach(() => {
   (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
   vi.useFakeTimers();
+  // Before the app mounts, because the Bee provider keeps the fetch it was made with.
+  vi.stubGlobal('fetch', fakeFetch);
   vi.spyOn(Math, 'random').mockReturnValue(0.99);
   // The provider reports a first read that failed, which some of these cases make on purpose.
   vi.spyOn(console, 'error').mockImplementation(() => undefined);
@@ -190,6 +221,7 @@ afterEach(() => {
   container.remove();
   vi.useRealTimers();
   vi.restoreAllMocks();
+  vi.unstubAllGlobals();
 });
 
 /**
@@ -207,10 +239,10 @@ describe('when a catalog read fails on an open page', () => {
       mount();
 
       assert.ok(await advanceUntil(() => shown() === STREAM_STATUS_SCHEDULED, 1_000), 'the head never showed');
-      await advanceUntil(() => bee.lastFailureAt >= 0, 2 * CATALOG_POLL_INTERVAL_MS + DEFAULT_FETCH_TIMEOUT_MS + 1_000);
+      await advanceUntil(() => bee.lastFailureAt >= 0, 2 * CATALOG_POLL_INTERVAL_MS + DEFAULT_READ_TIMEOUT_MS + 1_000);
       assert.ok(bee.lastFailureAt >= 0, 'the slot read never failed');
 
-      const shownAt = await advanceUntil(() => shown() === STREAM_STATUS_LIVE, 120_000);
+      const shownAt = await advanceUntil(() => shown() === STREAM_STATUS_LIVE, 2 * CATALOG_POLL_INTERVAL_MS);
 
       assert.notEqual(shownAt, null, 'the stream gone live never reached the page');
       const late = (shownAt ?? 0) - bee.lastFailureAt;
@@ -227,10 +259,90 @@ describe('when a catalog read fails on an open page', () => {
     const bee = gateway({ failingHeads: 4, failure: 'refused' });
     mount();
 
-    const shownAt = await advanceUntil(() => shown().length > 0, 300_000);
+    const shownAt = await advanceUntil(() => shown().length > 0, 6 * CATALOG_POLL_INTERVAL_MS);
 
     assert.notEqual(shownAt, null, 'the catalog never reached the page');
     const late = (shownAt ?? 0) - bee.lastFailureAt;
     assert.ok(late <= NEXT_POLL_MS, `the page showed the catalog ${late}ms after the last failure`);
+  });
+});
+
+/**
+ * Bee skips each peer it asked for an address not written yet, for a minute. Every poll after the
+ * newest slot asks the slot after it, which is not written until the list changes, so each poll is
+ * one such early ask, and a page asking more than once a minute keeps its node's peers skipped for
+ * the slot the next change lands in.
+ */
+describe('an open browse page with nothing new on the list', () => {
+  it('keeps asking for the next slot, at most once a minute', async () => {
+    const bee = gateway({ failure: 'refused' });
+    mount();
+
+    await advanceUntil(() => false, 4 * 60_000);
+
+    assert.ok(bee.unwrittenAsksAt.length > 1, 'an open page stopped reading the list');
+    const gaps = bee.unwrittenAsksAt.slice(1).map((atMs, i) => atMs - bee.unwrittenAsksAt[i]);
+    for (const gap of gaps) {
+      assert.ok(gap >= 60_000, `the next slot was asked again after ${gap}ms`);
+    }
+  });
+});
+
+/**
+ * A viewer whose first read fails would otherwise look at an empty page for a whole poll interval. A
+ * retry asks the same unwritten slot again, so the quick ones are kept to the first load.
+ */
+describe('a failed read on a page that has not shown the list yet', () => {
+  it('is tried again within a few seconds, and the list shows once a read answers', async () => {
+    const bee = gateway({ failingHeads: 2, failure: 'refused' });
+    mount();
+
+    const shownAt = await advanceUntil(() => shown().length > 0, 30_000);
+
+    assert.notEqual(shownAt, null, 'a failed first read was not retried within half a minute');
+    const gaps = bee.headAsksAt.slice(1).map((atMs, i) => atMs - bee.headAsksAt[i]);
+    for (const gap of gaps) {
+      assert.ok(gap <= 10_000, `a failed first read was tried again only after ${gap}ms`);
+    }
+  });
+
+  it('waits the routine interval once the list has been shown', async () => {
+    const bee = gateway({ failingSlots: 1, failure: 'refused' });
+    mount();
+
+    await advanceUntil(() => shown() === STREAM_STATUS_LIVE, 4 * CATALOG_POLL_INTERVAL_MS);
+
+    assert.ok(bee.nextSlotAsksAt.length >= 2, 'the failed slot read was never tried again');
+    const retriedAfter = bee.nextSlotAsksAt[1] - bee.nextSlotAsksAt[0];
+    assert.ok(retriedAfter >= CATALOG_POLL_INTERVAL_MS, `a failed read was tried again after ${retriedAfter}ms`);
+  });
+
+  /**
+   * The source is part of the poll's key, so a viewer who switches node starts a first load on that
+   * node. Its first read failing must be retried as quickly as the app's very first read was.
+   */
+  it('is tried again within a few seconds on a source the viewer has just switched to', async () => {
+    const bee = gateway({ failure: 'refused' });
+    mount();
+    assert.ok(await advanceUntil(() => shown().length > 0, 1_000), 'the list never showed on the first source');
+
+    // The read asks the new node, then the build's gateway behind it, so failing it takes two.
+    bee.failingHeads = 2;
+    act(() => {
+      const id = appContext!.addSource({ type: 'bee-node', name: 'Desk node', url: 'http://localhost:1733' });
+      appContext!.setRouting(chooseSource(appContext!.routing, id));
+    });
+    assert.ok(await advanceUntil(() => bee.failingHeads === 0, 1_000), 'the first read on the new source never failed');
+    const failedAt = bee.lastFailureAt;
+    const asksBefore = bee.headAsksAt.length;
+
+    await advanceUntil(() => bee.headAsksAt.length > asksBefore, 2 * CATALOG_POLL_INTERVAL_MS);
+
+    assert.ok(bee.headAsksAt.length > asksBefore, 'a failed first read on the new source was never tried again');
+    const retriedAfter = bee.headAsksAt[asksBefore] - failedAt;
+    assert.ok(
+      retriedAfter <= 10_000,
+      `a failed first read on the new source was tried again only after ${retriedAfter}ms`,
+    );
   });
 });

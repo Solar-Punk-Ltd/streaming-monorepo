@@ -77,11 +77,16 @@ const REQUIRED_SECRETS: readonly { key: string; sample: string }[] = [
   { key: 'OME_ADMISSION_SECRET', sample: OME_ENV_SAMPLE },
 ];
 
-/** Engine knobs worth showing, and the entrypoint that decides each default. */
+/**
+ * Engine knobs worth showing, and the entrypoint that decides each default.
+ * `HLS_FRAGMENT` is not among them: the stack has no default segment length
+ * since 2026-10-08 and the manager writes its own on every deploy, so a
+ * fallback an older version names is never what a container starts with.
+ */
 const ENGINE_DEFAULTS: readonly { entrypoint: string; keys: string[] }[] = [
   {
     entrypoint: join('engines', 'srs', 'entrypoint.sh'),
-    keys: ['HLS_FRAGMENT', 'HLS_WINDOW', 'SRT_LATENCY'],
+    keys: ['HLS_WINDOW', 'SRT_LATENCY'],
   },
   {
     entrypoint: join('engines', 'ome', 'entrypoint.sh'),
@@ -600,9 +605,9 @@ function readEngineDefaults(root: string): Record<string, string> {
 /**
  * The `default` in the entrypoint's first `${KEY:-default}`.
  *
- * A default that is itself a substitution, `${HLS_FRAGMENT:-${FRAGMENT:-1.5}}`,
+ * A default that is itself a substitution, `${HLS_WINDOW:-${WINDOW:-22.5}}`,
  * is not supported: the match ends at the first closing brace, which is the
- * inner one, so the value would come back as `${FRAGMENT:-1.5` and the
+ * inner one, so the value would come back as `${WINDOW:-22.5` and the
  * settings page would offer that as a number to an operator. Null says the
  * manager does not know this default, which is true.
  */

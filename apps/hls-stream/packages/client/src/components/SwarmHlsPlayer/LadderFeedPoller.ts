@@ -1,256 +1,571 @@
 import { FeedIndex, Topic } from '@ethersphere/bee-js';
-import { extractFeedIndex, nextFeedRequest } from '@swarm-hls-stream/shared';
-
-import { TimedResponse } from '@/utils/fetchWithTimeout';
+import { feedSlotPath } from '@swarm-hls-stream/shared';
 
 import { FeedReturnWatch } from './feedReturn';
-import { FeedHealthTracker } from './feedState';
+import { FeedHealthTracker, UNSERVED_SLOT_STALL_MS } from './feedState';
+import type { FeedEntry, FeedReader, FollowClock, HeadMarkers } from './following/feedReader';
+import { followPredicted } from './following/followPredicted';
 import { ManifestStateManager } from './ManifestManagement';
+import { FeedRung, IndexSearchFinder, NewestIndex, NewestIndexFinder, SwitchHint } from './newestIndexFinder';
+import { type PlayerReader, retryAfterMsOf, servedText } from './playerReads';
 import { parseManifest } from './playlist';
-import { isSlotNotWrittenYet, probePastRefusal, shouldProbePastRefusal } from './refusedSlot';
+import { isSlotNotWrittenYet } from './refusedSlot';
+import { feedEntryOf, RungFeedReader } from './rungFeedReader';
+import { firstSegmentStartMs, joinsOnto, rungProgressBoundMs, switchRefusal } from './rungPosition';
+import { waitMs } from './waitMs';
 
-/**
- * Keeps every rung of a ladder at the live edge, whether or not it is the one playing.
- *
- * A Swarm feed is walked one SOC at a time: to reach index N you have to ask for N-1 first. While
- * hls.js drives that walk, it only ever advances the level it is currently playing — it does not
- * poll the playlists of levels it is not using. A rung switched away from therefore stops
- * advancing, and coming back to it two minutes later leaves it eighty indices behind, catching up
- * at one index per playlist refresh. That is minutes to reach live, which is not a switch.
- *
- * So the walk is inverted: this owns it for all four rungs at once, on its own clock, and the
- * loader becomes a read of whatever state is already there. The cost is four small SOC lookups per
- * segment interval instead of one — negligible next to the segments themselves, and it is what
- * makes a switch cost nothing.
- */
+/** The flat wait before a failed walk tries again, and the slice a backoff is waited out in. Not tuned to the segment length. */
 const DEFAULT_POLL_INTERVAL_MS = 750;
 
 /**
- * How many indices one pass may consume before yielding.
- *
- * A rung that has fallen behind should catch up as fast as the gateway will serve it, but an
- * unbounded loop over a gateway that answers everything would never yield to the other rungs.
+ * The wall clock, which a rung is followed and searched on. The strategies compare it with
+ * PROGRAM-DATE-TIME stamps, so it has to be the viewer's idea of the date, not a monotonic count.
  */
-const MAX_CATCH_UP_PER_PASS = 25;
+export const WALL_CLOCK: FollowClock = {
+  now: () => Date.now(),
+  sleep: waitMs,
+};
+
+/** How long a rung whose feed holds nothing yet waits before it is looked for again. */
+const EMPTY_FEED_RETRY_MS = 2_000;
 
 /**
- * Consecutive misses before saying so. A miss is the normal case — it means the next segment has
- * not been published yet — so the first several are silent, and only a run long enough to mean
+ * Consecutive misses before saying so. A miss is the normal case: it means the next segment has
+ * not been published yet, so the first several are silent, and only a run long enough to mean
  * "this feed has stopped, or the gateway is broken" is worth a line in the console.
  */
 const MISSES_BEFORE_WARNING = 20;
 
-interface PolledTopic {
-  topic: Topic;
-  hexTopic: string;
-  /** The topic the overlay watches, carried so the last rung to finalize can end it. Null for a walk started without one. */
-  group: string | null;
-  stopped: boolean;
-  /**
-   * Whether this rung's playlist carried ENDLIST, as opposed to being stopped by a teardown. False
-   * again once its broadcaster is found back, so a sibling finishing late cannot end the group anew.
-   */
-  finalized: boolean;
-  /**
-   * Asking for the slot after the playlist that finished this rung, until its broadcaster comes back.
-   * Null while the rung is being followed, and again once the watch has had its answer.
-   */
-  returnWatch: FeedReturnWatch | null;
-  ready: Promise<void>;
-  markReady: () => void;
-  misses: number;
-  /** Set while the rung is waiting out a poll interval, so stopping does not have to wait for it. */
-  wake?: () => void;
+/**
+ * How long a stalled playing rung waits before a sibling is tried again, once one try found nothing.
+ * A broadcast that paused stays paused for a while, and each try costs the sibling's finder reads and
+ * a walk of it for {@link rungProgressBoundMs}.
+ */
+export const STALL_REPROBE_MS = 30_000;
+
+/**
+ * How long a sibling tried as somewhere to fail over to may take to find its newest index. Its progress
+ * bound starts once that is found, so a slow search cannot use up the bound and have a live sibling
+ * judged paused. Past this the try ends as if the sibling had shown nothing. The polling study's
+ * slowest searches from a hint, a quality 500 slots behind, took 12 s at p90 on the gateway profile.
+ */
+export const CANDIDATE_FIND_DEADLINE_MS = 15_000;
+
+/**
+ * How many older indexes a switch reads to reach a viewer who is behind the live edge. Past it the
+ * switch goes to the live edge, because reading a long way back costs the viewer more waiting than the
+ * minutes they would skip.
+ */
+const MAX_READ_BACK_READS = 10;
+
+/** A rung as a ladder names it. */
+export interface LadderRung {
+  readonly topic: Topic;
+  /** Orders the rungs, so "the next lower rung" means something. Missing ranks lowest. */
+  readonly bandwidth?: number;
 }
 
+/** What a level request finds once it has waited for a rung. */
+type RungReadiness = 'ready' | 'refused' | 'inactive' | 'unregistered';
+
+/** The seams the walk is built from. Every one has a default that is today's behaviour. */
+export interface LadderFeedPollerOptions {
+  readonly finder?: NewestIndexFinder;
+  /**
+   * The time markers of a rung's ladder, which its follower waits on while the rung is quiet rather
+   * than asking for a slot that does not come. None by default, and a rung without them is asked on a
+   * backoff.
+   */
+  readonly headMarkers?: (rung: FeedRung, clock: FollowClock) => HeadMarkers | null;
+  /** The clock a rung is followed on. The wall clock unless a test drives time itself. */
+  readonly followClock?: FollowClock;
+  /** A monotonic clock, the same one the feed health reads. */
+  readonly now?: () => number;
+  /**
+   * The bound a rung has to show a new index in, fixed. Unset, it is three of the rung's own segments,
+   * see {@link rungProgressBoundMs}.
+   */
+  readonly progressBoundMs?: number;
+  /** See {@link CANDIDATE_FIND_DEADLINE_MS}. */
+  readonly candidateFindDeadlineMs?: number;
+  /**
+   * When the frame the viewer is watching was presented, by PROGRAM-DATE-TIME, for a ladder's group, or
+   * null when the player cannot say. Read only when switching, to keep a viewer behind live where they are.
+   */
+  readonly playheadMs?: (group: string | null) => number | null;
+}
+
+interface Walk {
+  stopped: boolean;
+  /** Settles once the walk is stopped, so a follower asleep on an injected clock is let go at once. */
+  ended: Promise<void>;
+  markEnded: () => void;
+  ready: Promise<void>;
+  markReady: () => void;
+  /** The newest slot this walk has taken, or null before it has found one. */
+  current: FeedEntry | null;
+  /** When `current` was taken, on the follow clock, which a switch's search is hinted with. */
+  currentSeenAtMs: number;
+  /** The last search found the feed empty, so the walk waits for its first slot before searching again. */
+  waitingForFirstSlot: boolean;
+  misses: number;
+  /** Set while the walk is waiting out a pause, so stopping does not have to wait for it. */
+  wake?: () => void;
+  /** A newest index already found for this rung, taken instead of asking the finder again. */
+  seed: NewestIndex | null;
+  /** A rung tried as somewhere to fail over to: it is not refused and not read back. */
+  isCandidate: boolean;
+  /** Whether the walk has taken an index after the one it started at. */
+  progressed: boolean;
+  /** Told once, when the walk first progresses or ends, by whoever is waiting on it. */
+  onSettled?: (progressed: boolean) => void;
+  /** Told once, when the walk has found its newest index, by whoever is timing it from there. */
+  onFound?: () => void;
+  /** When this rung's current stall last had a sibling tried, or null when it has not. */
+  stallTriedAtMs: number | null;
+}
+
+interface RungEntry {
+  readonly topic: Topic;
+  readonly hexTopic: string;
+  readonly owner: string;
+  readonly bandwidth: number;
+  readonly ladder: LadderEntry;
+  /** Null while the rung is registered but not followed. */
+  walk: Walk | null;
+  /** Taken out of this session: refused at a switch, or failed over from. Never activated again. */
+  retired: boolean;
+  /** Refused at a switch, which a level request for it reads as an error. */
+  refused: boolean;
+}
+
+interface LadderEntry {
+  readonly key: string;
+  /** The topic the overlay watches, or null for a ladder registered without one. */
+  readonly group: string | null;
+  /** Lowest bandwidth first. */
+  rungs: RungEntry[];
+  playing: RungEntry | null;
+  /** A sibling is being walked as a candidate, so a second try waits for the first. */
+  isTrying: boolean;
+  /**
+   * The rung the player was failed over to, until hls.js reports it playing. Its ENDLIST runs the end
+   * check as the playing rung's would, since it can finish before the switch to it lands.
+   */
+  failoverTarget: RungEntry | null;
+  /** The watch on the rung that was playing when the broadcast ended. */
+  returnWatch: FeedReturnWatch | null;
+  returnWatchedRung: RungEntry | null;
+}
+
+/**
+ * Follows only the rungs of a ladder the player is playing.
+ *
+ * A Swarm feed is read one SOC at a time: to reach index N you ask for N-1 first. The rung hls.js is
+ * playing is followed by the polling study's predicted follower (`following/followPredicted.ts`), which
+ * asks for the next slot when the next playlist is due rather than as often as it can, and looks one
+ * slot past a slot that is late. The loader serves hls.js's level reloads out of what it has read.
+ *
+ * ⭐ **One rung at a time** (the owner, 2026-10-07: "only one quality request at the time. Not 4! We only
+ * request what we watch."). Every rung of the ladder is registered, and only the playing rung is
+ * walked, plus the one being switched to while a switch is under way. Walking all four used to make a
+ * switch free, at up to about 320 requests a minute, half of them for an index not written yet. A
+ * switch now pays the {@link NewestIndexFinder}'s reads for the new rung while hls.js plays the old one
+ * from its buffer.
+ */
 export class LadderFeedPoller {
-  private polled = new Map<string, PolledTopic>();
+  private readonly rungs = new Map<string, RungEntry>();
+  private readonly ladders = new Map<string, LadderEntry>();
+  private unnamedLadders = 0;
+  private readonly finder: NewestIndexFinder;
+  private readonly headMarkers: (rung: FeedRung, clock: FollowClock) => HeadMarkers | null;
+  private readonly followClock: FollowClock;
+  private readonly now: () => number;
+  private readonly fixedProgressBoundMs: number | null;
+  /** See {@link CANDIDATE_FIND_DEADLINE_MS}. Public because a level request's wait is sized from it. */
+  public readonly candidateFindDeadlineMs: number;
+  private readonly playheadMs: (group: string | null) => number | null;
 
   constructor(
     private readonly stateManager: ManifestStateManager,
-    private readonly fetchResource: (path: string) => Promise<TimedResponse>,
-    /**
-     * This poller's own cadence, and the clock anything waiting on a rung has to be sized against.
-     * Public because {@link ManifestFetcher} bounds its wait for a rung's first playlist in polls
-     * rather than in milliseconds, so a deployment that slows this slows that wait with it.
-     */
-    public readonly pollIntervalMs: number = DEFAULT_POLL_INTERVAL_MS,
+    private readonly reader: PlayerReader,
+    /** How long a walk waits after a read the gateway did not answer, and the slice a backoff is waited out in. */
+    private readonly pollIntervalMs: number = DEFAULT_POLL_INTERVAL_MS,
     /**
      * Shared with the single-rendition path, so a rung read reaching or losing the gateway records
-     * against the same tracker the overlay reads. Defaults to a private tracker so a directly built
-     * poller still runs, but only a poller wired to the shared one reaches a viewer.
+     * against the same tracker the overlay reads.
      */
     private readonly feedHealth: FeedHealthTracker = new FeedHealthTracker(),
     /**
-     * The jittered backoff this rung's gateway has earned, honoured before each pass. Zero by
-     * default, so a directly built poller keeps polling at {@link pollIntervalMs}; the fetcher wires
-     * this to the same feed health and jitter the single-rendition path backs off through.
+     * The jittered backoff this rung's gateway has earned, honoured before each pass. Zero by default.
      */
     private readonly backoffMs: (hexTopic: string) => number = () => 0,
-    /**
-     * The wait before each ask a finished rung makes for its broadcaster, called once per ask so every
-     * wait is drawn afresh. The fetcher wires it to its own jitter, the way it wires {@link backoffMs}.
-     * Left out, each rung's watch draws through its own default, which spreads the same way.
-     */
+    /** The wait before each ask a finished rung makes for its broadcaster, drawn afresh per ask. */
     private readonly returnWatchWaitMs?: () => number,
-  ) {}
+    options: LadderFeedPollerOptions = {},
+  ) {
+    this.followClock = options.followClock ?? WALL_CLOCK;
+    this.finder = options.finder ?? new IndexSearchFinder(reader, this.followClock);
+    this.headMarkers = options.headMarkers ?? (() => null);
+    this.now = options.now ?? (() => performance.now());
+    this.fixedProgressBoundMs = options.progressBoundMs ?? null;
+    this.candidateFindDeadlineMs = options.candidateFindDeadlineMs ?? CANDIDATE_FIND_DEADLINE_MS;
+    this.playheadMs = options.playheadMs ?? (() => null);
+  }
 
-  public start(owner: string, topics: Topic[], groupHexTopic: string | null = null): void {
-    // Before the walks, so a rung that fails on its very first pass already has a group to report
-    // it against. The overlay subscribes to the group and to nothing else.
-    if (groupHexTopic !== null) {
-      this.feedHealth.trackGroup(
-        groupHexTopic,
-        topics.map((topic) => topic.toString()),
-      );
-    }
-
-    for (const topic of topics) {
+  /**
+   * Registers a ladder's rungs. Nothing is read until hls.js asks for one of them. A rung already
+   * registered is left as it is.
+   */
+  public register(owner: string, rungs: readonly LadderRung[], groupHexTopic: string | null = null): void {
+    const ladder = this.ladderFor(groupHexTopic);
+    for (const { topic, bandwidth } of rungs) {
       const hexTopic = topic.toString();
-      if (this.polled.has(hexTopic)) {
+      if (this.rungs.has(hexTopic)) {
         continue;
       }
-
-      let markReady = () => {};
-      const ready = new Promise<void>((resolve) => {
-        markReady = resolve;
-      });
-
-      const entry: PolledTopic = {
+      const entry: RungEntry = {
         topic,
         hexTopic,
-        group: groupHexTopic,
-        stopped: false,
-        finalized: false,
-        returnWatch: null,
-        ready,
-        markReady,
-        misses: 0,
+        owner,
+        bandwidth: bandwidth ?? 0,
+        ladder,
+        walk: null,
+        retired: false,
+        refused: false,
       };
-      this.polled.set(hexTopic, entry);
-
-      void this.walk(owner, entry);
+      this.rungs.set(hexTopic, entry);
+      ladder.rungs.push(entry);
     }
+    ladder.rungs.sort((a, b) => a.bandwidth - b.bandwidth);
   }
 
-  public stop(topics: Topic[]): void {
-    const groups = new Set<string>();
-
+  /** Stops and forgets these rungs. Their playlists are the caller's to clear. */
+  public unregister(topics: readonly Topic[]): void {
+    const touched = new Set<LadderEntry>();
     for (const topic of topics) {
-      const hexTopic = topic.toString();
-      const entry = this.polled.get(hexTopic);
-      if (entry) {
-        if (entry.group !== null) {
-          groups.add(entry.group);
-        }
-        entry.stopped = true;
-        // Cut the wait short rather than letting a torn-down player hold a timer, and unblock
-        // anything still awaiting a rung that will now never bootstrap. A finished rung's watch is
-        // the one timer left once its walk has ended, so it goes the same way.
-        entry.wake?.();
-        entry.returnWatch?.stop();
-        entry.returnWatch = null;
-        entry.markReady();
-        this.polled.delete(hexTopic);
+      const entry = this.rungs.get(topic.toString());
+      if (!entry) {
+        continue;
+      }
+      const { ladder } = entry;
+      touched.add(ladder);
+      this.endWalk(entry);
+      this.rungs.delete(entry.hexTopic);
+      ladder.rungs = ladder.rungs.filter((rung) => rung !== entry);
+      if (ladder.playing === entry) {
+        ladder.playing = null;
+      }
+      if (ladder.failoverTarget === entry) {
+        ladder.failoverTarget = null;
+      }
+      if (ladder.returnWatchedRung === entry) {
+        this.stopReturnWatch(ladder);
       }
     }
 
-    // Recomputed from what is still walking rather than untracked wholesale. A rung that has
-    // stopped records nothing, so leaving it in the membership would read as a healthy rung and
-    // hold the overlay down over an outage the remaining rungs are reporting. Untracking the whole
-    // group instead is just as wrong: a source torn down and rebuilt starts its new rungs before it
-    // stops the old ones, and the group has to keep reporting across that.
-    for (const group of groups) {
-      const stillWalking = [...this.polled.values()]
-        .filter((entry) => entry.group === group)
-        .map((entry) => entry.hexTopic);
-      if (stillWalking.length === 0) {
-        this.feedHealth.untrackGroup(group);
-      } else {
-        this.feedHealth.trackGroup(group, stillWalking);
+    for (const ladder of touched) {
+      if (ladder.rungs.length === 0) {
+        this.stopReturnWatch(ladder);
+        this.ladders.delete(ladder.key);
+      }
+      this.retrack(ladder);
+    }
+  }
+
+  public isRegistered(hexTopic: string): boolean {
+    return this.rungs.has(hexTopic);
+  }
+
+  /** Whether this rung is being followed, or holds what its finished walk read. */
+  public isActive(hexTopic: string): boolean {
+    return this.rungs.get(hexTopic)?.walk != null;
+  }
+
+  /**
+   * Starts following a registered rung at its newest index, which is what a level request does. The
+   * first rung of a ladder to be activated becomes the playing one.
+   */
+  public activate(hexTopic: string): void {
+    const entry = this.rungs.get(hexTopic);
+    if (!entry || entry.walk || entry.retired) {
+      return;
+    }
+    this.startWalk(entry, null, false);
+    entry.ladder.playing ??= entry;
+  }
+
+  /**
+   * The player is now playing this rung, so every other rung of its ladder stops being followed. What
+   * hls.js reports on `LEVEL_SWITCHED`.
+   *
+   * @param loadingHexTopic The rung hls.js is loading as its next level, when that is another one. It
+   *   keeps being followed, since a switch to it is under way.
+   */
+  public followOnly(hexTopic: string, loadingHexTopic: string | null = null): void {
+    const entry = this.rungs.get(hexTopic);
+    if (!entry) {
+      return;
+    }
+    const { ladder } = entry;
+    ladder.playing = entry;
+    ladder.failoverTarget = null;
+    if (entry.walk) {
+      entry.walk.isCandidate = false;
+    }
+    for (const other of ladder.rungs) {
+      if (other !== entry && other.hexTopic !== loadingHexTopic && other.walk) {
+        this.deactivate(other);
       }
     }
   }
 
-  public isPolling(hexTopic: string): boolean {
-    return this.polled.has(hexTopic);
-  }
-
-  /** Resolves once this rung has been read at least once, so its playlist is not empty. */
+  /** Resolves once this rung holds a playlist, or once it stopped being followed, so nothing waits for ever. */
   public ready(hexTopic: string): Promise<void> {
-    return this.polled.get(hexTopic)?.ready ?? Promise.resolve();
+    return this.rungs.get(hexTopic)?.walk?.ready ?? Promise.resolve();
   }
 
-  private async walk(owner: string, entry: PolledTopic): Promise<void> {
-    while (!entry.stopped) {
-      // Before the pass, not after it. A gateway recorded as failing has earned a backoff, so a dead
-      // gateway is polled at 2s then 4s then 8s up to the cap rather than flat at the poll interval
-      // times every rung, which was around 160 requests per 30s against a gateway already down.
-      // Nothing here relaxes that: a rung whose siblings are also failing has nothing to release it.
-      await this.honourBackoff(entry);
-      if (entry.stopped) {
+  public readiness(hexTopic: string): RungReadiness {
+    const entry = this.rungs.get(hexTopic);
+    if (!entry) {
+      return 'unregistered';
+    }
+    if (entry.refused) {
+      return 'refused';
+    }
+    return entry.walk ? 'ready' : 'inactive';
+  }
+
+  private ladderFor(group: string | null): LadderEntry {
+    const key = group ?? `unnamed-${++this.unnamedLadders}`;
+    const known = this.ladders.get(key);
+    if (known) {
+      return known;
+    }
+    const ladder: LadderEntry = {
+      key,
+      group,
+      rungs: [],
+      playing: null,
+      isTrying: false,
+      failoverTarget: null,
+      returnWatch: null,
+      returnWatchedRung: null,
+    };
+    this.ladders.set(key, ladder);
+    return ladder;
+  }
+
+  private startWalk(entry: RungEntry, seed: NewestIndex | null, isCandidate: boolean): Walk {
+    let markReady = () => {};
+    const ready = new Promise<void>((resolve) => {
+      markReady = resolve;
+    });
+    let markEnded = () => {};
+    const ended = new Promise<void>((resolve) => {
+      markEnded = resolve;
+    });
+    const walk: Walk = {
+      stopped: false,
+      ended,
+      markEnded,
+      ready,
+      markReady,
+      current: null,
+      currentSeenAtMs: 0,
+      waitingForFirstSlot: false,
+      misses: 0,
+      seed,
+      isCandidate,
+      progressed: false,
+      stallTriedAtMs: null,
+    };
+    entry.walk = walk;
+    this.retrack(entry.ladder);
+    void this.walkLoop(entry, walk);
+    return walk;
+  }
+
+  /** Ends a walk without forgetting what it read, which is what a teardown needs. */
+  private endWalk(entry: RungEntry): void {
+    const walk = entry.walk;
+    if (!walk) {
+      return;
+    }
+    walk.stopped = true;
+    walk.wake?.();
+    walk.markEnded();
+    walk.markReady();
+    this.settle(walk, false);
+    entry.walk = null;
+  }
+
+  /**
+   * Stops following a rung and forgets everything it read.
+   *
+   * ⛔ Forgotten rather than kept, so coming back to it starts at its newest index. A kept index would
+   * be resumed from, and two minutes away is about eighty indexes walked one at a time before the
+   * viewer sees anything new. Its feed health goes too, or an unserved run from before would call it
+   * stalled the moment it was played again.
+   */
+  private deactivate(entry: RungEntry): void {
+    this.endWalk(entry);
+    this.stateManager.clear(entry.hexTopic);
+    this.feedHealth.clear(entry.hexTopic);
+    this.retrack(entry.ladder);
+  }
+
+  /**
+   * Tells the feed health which rungs the group's state is folded from: the followed ones only. A rung
+   * nobody reads records nothing, and counting it would read as a healthy rung outvoting the one the
+   * viewer is on.
+   */
+  private retrack(ladder: LadderEntry): void {
+    if (ladder.group === null) {
+      return;
+    }
+    const followed = ladder.rungs.filter((rung) => rung.walk).map((rung) => rung.hexTopic);
+    if (followed.length === 0) {
+      this.feedHealth.untrackGroup(ladder.group);
+    } else {
+      this.feedHealth.trackGroup(ladder.group, followed);
+    }
+  }
+
+  private async walkLoop(entry: RungEntry, walk: Walk): Promise<void> {
+    while (!walk.stopped) {
+      // Before every start, not after it. A gateway recorded as failing has earned a backoff, so a dead
+      // gateway is asked at 2s then 4s then 8s up to the cap rather than flat.
+      await this.honourBackoff(entry, walk);
+      if (walk.stopped) {
         return;
       }
 
-      let advanced = 0;
-
-      // Nothing thrown in here may end the walk. A rung whose loop dies is not merely stale, it is
-      // unrecoverable for the session: it stays in `polled`, so nothing re-starts it, and anything
-      // awaiting its `ready()` waits for a promise that will never settle — which for the loader
-      // means an hls.js level request that never succeeds and never fails. Reading a truncated
-      // body, or a gateway that drops the Swarm-Feed-Index header, is enough to get there.
+      // Nothing thrown in here may end the walk. A walk that dies leaves anything awaiting its
+      // `ready()` waiting for a promise that never settles, which for the loader means an hls.js level
+      // request that never succeeds and never fails.
       try {
-        advanced = await this.advance(owner, entry);
+        if (walk.current === null && !(await this.bootstrap(entry, walk))) {
+          if (!walk.stopped) {
+            await this.pauseFor(walk, EMPTY_FEED_RETRY_MS);
+          }
+          continue;
+        }
+        await this.follow(entry, walk);
       } catch (error) {
-        this.recordFailure(entry, error);
-      }
-
-      if (entry.stopped) {
-        return;
-      }
-
-      // Anything consumed this pass means more may already be waiting, so try again straight
-      // away; only an empty pass is worth sleeping on.
-      if (advanced === 0) {
-        await this.pauseFor(entry, this.pollIntervalMs);
+        this.recordFailure(entry, walk, error);
+        if (walk.stopped) {
+          return;
+        }
+        this.tryFailoverIfStalled(entry, walk);
+        await this.pauseFor(walk, this.pollIntervalMs);
       }
     }
+  }
+
+  /**
+   * Follows the rung from the slot the walk holds until the walk stops. A read the gateway did not
+   * answer ends it by throwing, and the walk starts it again from the same slot once any backoff is
+   * over.
+   */
+  private async follow(entry: RungEntry, walk: Walk): Promise<void> {
+    const from = walk.current;
+    if (from === null || walk.stopped) {
+      return;
+    }
+    const reader = new RungFeedReader(this.reader, entry.owner, entry.topic, this.followClock.now);
+    const counted: FeedReader = {
+      read: async (index) => {
+        const read = await reader.read(index);
+        if (walk.stopped) {
+          return read;
+        }
+        if (read.found) {
+          this.feedHealth.recordGatewayReachable(entry.hexTopic);
+          walk.misses = 0;
+        } else {
+          this.recordMiss(entry, walk, null);
+          this.feedHealth.recordUnservedSlot(entry.hexTopic);
+          this.tryFailoverIfStalled(entry, walk);
+        }
+        return read;
+      },
+    };
+
+    const clock: FollowClock = {
+      now: this.followClock.now,
+      sleep: (ms) => Promise.race([this.followClock.sleep(ms), walk.ended]),
+    };
+    await followPredicted({
+      reader: counted,
+      clock,
+      from,
+      isStopped: () => walk.stopped,
+      onEntry: (found) => this.take(entry, walk, found, reader.playlistOf(found)),
+      markers: this.countedMarkers(entry, walk, clock),
+    });
+  }
+
+  /**
+   * The rung's markers, where a marker that shows the rung no further on counts as a slot unserved, so
+   * the feed health and the stall rule see a quiet rung the follower no longer asks as they saw one
+   * it did. A turn with no marker asks the slot itself, which counts through the reader.
+   */
+  private countedMarkers(entry: RungEntry, walk: Walk, clock: FollowClock): HeadMarkers | undefined {
+    const markers = this.headMarkers(feedRungOf(entry), clock);
+    if (markers === null) {
+      return undefined;
+    }
+    return {
+      nextDueMs: () => markers.nextDueMs(),
+      readNext: async () => {
+        const head = await markers.readNext();
+        const current = walk.current;
+        if (!walk.stopped && head !== null && current !== null && head <= current.index) {
+          this.recordMiss(entry, walk, null);
+          this.feedHealth.recordUnservedSlot(entry.hexTopic);
+          this.tryFailoverIfStalled(entry, walk);
+        }
+        return head;
+      },
+    };
+  }
+
+  /** Folds in a slot the follower found. The follower never hands over a slot out of order. */
+  private take(entry: RungEntry, walk: Walk, found: FeedEntry, playlist: string | undefined): void {
+    // Re-checked here, after the follower's await. A response that lands after the walk was stopped
+    // would otherwise recreate state a teardown or a switch has just cleared.
+    if (walk.stopped || playlist === undefined) {
+      return;
+    }
+    const index = FeedIndex.fromBigInt(BigInt(found.index));
+    if (!this.ingest(entry, walk, playlist, index)) {
+      return;
+    }
+    walk.current = found;
+    walk.currentSeenAtMs = this.followClock.now();
+    this.stateManager.setIndex(entry.hexTopic, index);
+    // A slot actually arrived, which is the only thing that ends an unserved run.
+    this.feedHealth.recordGatewayResponse(entry.hexTopic);
+    this.noteProgress(walk);
   }
 
   /**
    * The backoff the shared tracker has set for this rung's gateway, waited out interruptibly.
    *
-   * ⛔ **Waited out in slices rather than in one committed timer, and that is the fix rather than a
-   * detail.** A rung that has reached the cap used to schedule a single timer for the whole of it,
-   * and nothing but a teardown cancels a scheduled timer. So the rung could not find out the fault
-   * was over: not from its own reads, because it was making none, and not from the tracker either,
-   * however loudly the rungs beside it were being served. Every release path in
-   * {@link FeedHealthTracker} was already writing an answer this loop had stopped reading.
-   *
-   * Measured 2026-08-29, live, on the four rung ladder: three unrelated faults each froze the
-   * picture for 58.5 to 59.0 seconds, an **eight second** writer-bee pause included, which is fifty
-   * seconds of a client holding off a gateway that had come back.
-   *
-   * A slice is the poll interval, so no new number is introduced and none is needed: the rung
-   * already runs at that cadence when it is healthy, and re-reading a local map that often costs a
-   * timer and no request at all. It is also the tightest useful slice, since a hold released between
-   * two of a healthy rung's own polls is released sooner than anything could act on it.
-   *
-   * ⛔ **The wait is drawn once and counted down here, and the tracker is asked something else.**
-   * What `backoffMs` returns is not a deadline but a fresh draw: it is wired to `RequestJitter`,
-   * which randomises a quarter off the top on every call so that viewers who lost one gateway in the
-   * same instant do not all return in the next one. Re-reading it per slice re-rolls that, taking
-   * the separation between two viewers from a quarter of the whole backoff down to a quarter of one
-   * slice. So each slice asks the unjittered question instead, which is the one that matters here:
-   * not how long, but whether the hold still stands.
+   * ⛔ **Waited out in slices rather than in one committed timer.** A rung at the cap used to schedule
+   * one timer for the whole of it, so it could not find out the fault was over. Measured 2026-08-29:
+   * three unrelated faults each froze the picture for 58.5 to 59.0 seconds, an eight second
+   * writer-bee pause included. A slice is the poll interval, and each slice asks the unjittered
+   * question of whether the hold still stands, because what `backoffMs` returns is a fresh jittered
+   * draw rather than a deadline.
    */
-  private async honourBackoff(entry: PolledTopic): Promise<void> {
+  private async honourBackoff(entry: RungEntry, walk: Walk): Promise<void> {
     let remainingMs = this.backoffMs(entry.hexTopic);
-    while (remainingMs > 0 && !entry.stopped) {
-      // Never zero, or a poll interval of zero would stop the countdown converging and hold the
-      // rung here for good, where before it merely span.
+    while (remainingMs > 0 && !walk.stopped) {
+      // Never zero, or a poll interval of zero would stop the countdown converging.
       const sliceMs = Math.max(1, Math.min(remainingMs, this.pollIntervalMs));
-      await this.pauseFor(entry, sliceMs);
+      await this.pauseFor(walk, sliceMs);
       remainingMs -= sliceMs;
 
       if (this.feedHealth.backoffRemainingMs(entry.hexTopic) === 0) {
@@ -259,157 +574,234 @@ export class LadderFeedPoller {
     }
   }
 
-  /** Sleeps `ms`, or until `stop` wakes the rung, so a torn-down player never holds the timer. */
-  private pauseFor(entry: PolledTopic, ms: number): Promise<void> {
+  /** Sleeps `ms`, or until the walk is stopped, so a torn-down player never holds the timer. */
+  private pauseFor(walk: Walk, ms: number): Promise<void> {
     return new Promise((resolve) => {
       const timer = setTimeout(() => {
-        entry.wake = undefined;
+        walk.wake = undefined;
         resolve();
       }, ms);
 
-      entry.wake = () => {
+      walk.wake = () => {
         clearTimeout(timer);
-        entry.wake = undefined;
+        walk.wake = undefined;
         resolve();
       };
     });
   }
 
-  private async advance(owner: string, entry: PolledTopic): Promise<number> {
-    if (!this.stateManager.getIndex(entry.hexTopic)) {
-      return (await this.bootstrap(owner, entry)) ? 1 : 0;
-    }
+  private noteProgress(walk: Walk): void {
+    walk.stallTriedAtMs = null;
+    walk.progressed = true;
+    this.settle(walk, true);
+  }
 
-    let steps = 0;
-    while (steps < MAX_CATCH_UP_PER_PASS && !entry.stopped) {
-      const current = this.stateManager.getIndex(entry.hexTopic)!;
-      // Which request follows is `nextFeedRequest`'s to decide, on the same input, for everything in
-      // this repository that reads a feed. See `packages/shared/src/feedFollow.ts`.
-      const { path, index: next } = nextFeedRequest(owner, entry.topic, current);
-
-      let response: TimedResponse;
-      try {
-        response = await this.fetchResource(path);
-      } catch (error) {
-        const unservedPolls = this.recordFailure(entry, error);
-        if (unservedPolls === null || !shouldProbePastRefusal(unservedPolls)) {
-          break;
-        }
-        if (!(await this.stepPastRefusal(owner, entry, next))) {
-          break;
-        }
-        steps++;
-        continue;
-      }
-
-      // The gateway answered, whatever it carried, so a run of failures against it is over. Narrower
-      // than "a slot was served" on purpose, exactly as the single-rendition path's reachable record
-      // is: it clears the backoff without erasing an unserved-slot run the walk is still riding.
-      this.feedHealth.recordGatewayReachable(entry.hexTopic);
-      entry.misses = 0;
-      const text = response.text;
-
-      // Re-checked after every await, not just at the top of the loop. Teardown clears this
-      // topic's state synchronously right after stopping the walk, so a response still in flight
-      // would otherwise land afterwards and recreate what was cleared — leaving a stale index
-      // behind that the next session would resume from instead of bootstrapping to the live edge.
-      if (entry.stopped) {
-        return steps;
-      }
-
-      if (!this.ingest(owner, entry, text, next)) {
-        return steps;
-      }
-
-      this.stateManager.setIndex(entry.hexTopic, next);
-      // A slot actually arrived, which is the only thing that ends an unserved run. Narrower than
-      // the reachable record above and deliberately so: reaching the gateway says nothing about
-      // whether any publisher is still writing.
-      this.feedHealth.recordGatewayResponse(entry.hexTopic);
-      steps++;
-    }
-
-    return steps;
+  private settle(walk: Walk, progressed: boolean): void {
+    const onSettled = walk.onSettled;
+    walk.onSettled = undefined;
+    onSettled?.(progressed);
   }
 
   /**
-   * Take whatever {@link probePastRefusal} found behind the slot this rung is waiting on.
-   *
-   * ⛔⛔⛔ **A rung pays for a refusal it believes with the rung, and the single-rendition walk pays
-   * for one with a slower poll.** A 404 leaves the rung unserved, and once the ladder has delivered
-   * `RUNG_DEATH_LAG_SEGMENTS` segments this rung did not,
-   * {@link FeedHealthTracker.rungStoppedWhileOthersAdvance} calls it dead and `attachRungFailover`
-   * hands it to `hls.removeLevel`, which has no undo inside the session. So the walk where a refusal
-   * costs one poll had been asking what was behind it since 2026-08-06, and the walk where the same
-   * refusal costs a rung for the rest of the broadcast took it at face value. An outside reviewer
-   * watched 720p leave a ladder that way with all of its media on Swarm.
-   *
-   * @returns Whether the rung stepped forward, which is also whether this pass may ask for another
-   *   slot.
+   * Starts a rung at its newest index, which is the only place a walk may skip indexes. The walk that
+   * follows must be contiguous, because a gap in an EVENT playlist is a gap in the timeline hls.js
+   * buffers.
    */
-  private async stepPastRefusal(owner: string, entry: PolledTopic, missing: FeedIndex): Promise<boolean> {
-    const found = await probePastRefusal(this.fetchResource, owner, entry.topic, missing);
-    if (found.kind === 'gatewayFailed') {
-      this.recordFailure(entry, found.error);
+  private async bootstrap(entry: RungEntry, walk: Walk): Promise<boolean> {
+    const playing = this.playingBeside(entry);
+    const rung = feedRungOf(entry);
+
+    // A feed found empty gains slot 0 first, so one read says when to search again, where a search
+    // from nothing would cost a round of eight each time.
+    if (walk.waitingForFirstSlot && walk.seed === null) {
+      const first = await new RungFeedReader(this.reader, rung.owner, rung.topic, this.followClock.now).read(0);
+      if (walk.stopped) {
+        return false;
+      }
+      if (!first.found) {
+        this.recordMiss(entry, walk, null);
+        this.feedHealth.recordUnservedSlot(entry.hexTopic);
+        return false;
+      }
+    }
+
+    const found =
+      walk.seed ?? (await this.finder.findNewest(rung, playing ? this.hintFrom(playing) : null, () => walk.stopped));
+    walk.seed = null;
+    if (walk.stopped) {
       return false;
     }
-    if (found.kind === 'nothing') {
+    walk.waitingForFirstSlot = found === null;
+    if (found === null) {
+      // The feed holds nothing yet, the search's own form of a slot not written yet.
+      this.recordMiss(entry, walk, null);
+      this.feedHealth.recordUnservedSlot(entry.hexTopic);
       return false;
     }
 
-    // The same three records a served slot earns on the ordinary path above, in the same order and
-    // for the same reasons. `recordGatewayResponse` is the one that matters most here: it is what
-    // ends the unserved run and resets this rung's reading of how far the ladder has got, so a rung
-    // that was one request away from its media is not condemned for the gap it just stepped over.
     this.feedHealth.recordGatewayReachable(entry.hexTopic);
-    entry.misses = 0;
+    walk.misses = 0;
+    const parsed = parseManifest(found.playlist);
 
-    if (entry.stopped || !this.ingest(owner, entry, found.response.text, found.index)) {
+    if (playing && !walk.isCandidate) {
+      const snapshot = this.stateManager.snapshot(playing.hexTopic);
+      const refusal = snapshot ? switchRefusal(parsed, snapshot) : null;
+      if (refusal !== null) {
+        this.refuse(entry, playing, refusal);
+        return false;
+      }
+    }
+
+    const older = playing && !walk.isCandidate ? await this.readBackToPlayhead(entry, walk, found) : [];
+    if (walk.stopped) {
+      return false;
+    }
+
+    const current = feedEntryOf(Number(found.index.toBigInt()), found.playlist, this.followClock.now());
+    if (current === null) {
+      // A playlist naming no segment length cannot be followed, so it counts as a slot not served.
+      this.recordMiss(entry, walk, null);
+      return false;
+    }
+    for (const playlist of older) {
+      this.ingest(entry, walk, playlist, found.index);
+    }
+    if (!this.ingest(entry, walk, found.playlist, found.index)) {
       return false;
     }
 
     this.stateManager.setIndex(entry.hexTopic, found.index);
-    this.feedHealth.recordGatewayResponse(entry.hexTopic);
+    walk.current = current;
+    walk.currentSeenAtMs = this.followClock.now();
+    const onFound = walk.onFound;
+    walk.onFound = undefined;
+    onFound?.();
+    // This session's first read found the rung open, so an end still recorded against it or its group
+    // was left by an earlier session and is over. See `FeedHealthTracker.forgetStaleEnd`.
+    this.feedHealth.forgetStaleEnd(entry.hexTopic);
+    if (entry.ladder.group !== null) {
+      this.feedHealth.forgetStaleEnd(entry.ladder.group);
+    }
     return true;
   }
 
+  /** Where the playing rung stands, for a search of another rung to start from, or null before it has a slot. */
+  private hintFrom(playing: RungEntry): SwitchHint | null {
+    const current = playing.walk?.current;
+    if (!playing.walk || !current) {
+      return null;
+    }
+    return {
+      index: current.index,
+      newestSegmentEndMs: current.newestSegmentEndMs,
+      segmentMs: current.segmentMs,
+      seenAtMs: playing.walk.currentSeenAtMs,
+    };
+  }
+
+  /** The rung the viewer is playing beside this one, when it holds a playlist. */
+  private playingBeside(entry: RungEntry): RungEntry | null {
+    const playing = entry.ladder.playing;
+    if (!playing || playing === entry || !this.stateManager.hasSegments(playing.hexTopic)) {
+      return null;
+    }
+    return playing;
+  }
+
   /**
-   * Jumps straight to the feed's newest index rather than walking up to it.
+   * Reads a switch target's older indexes back to where the viewer is playing, so a viewer behind the
+   * live edge keeps their place.
    *
-   * This is the only place a rung is allowed to skip indices: the walk that follows must be
-   * contiguous, because a gap in an EVENT playlist is a gap in the timeline hls.js buffers.
+   * Each read steps back by about one window, the newest playlist's length less one segment so two
+   * windows share a segment. A step that lands past a hole, which a coalesced publish leaves, is halved
+   * and tried again. Every read names an index between zero and the newest, so each one exists.
+   *
+   * @returns The older playlists, oldest first, or none when the viewer is at the live edge, the
+   *   position is more than {@link MAX_READ_BACK_READS} reads back, or a read back fails.
    */
-  private async bootstrap(owner: string, entry: PolledTopic): Promise<boolean> {
-    let response: TimedResponse;
-    try {
-      response = await this.fetchResource(nextFeedRequest(owner, entry.topic, null).path);
-    } catch (error) {
-      this.recordFailure(entry, error);
-      return false;
+  private async readBackToPlayhead(entry: RungEntry, walk: Walk, found: NewestIndex): Promise<string[]> {
+    const playheadMs = this.playheadMs(entry.ladder.group);
+    let newer = parseManifest(found.playlist).segments;
+    const newestStartMs = firstSegmentStartMs(newer);
+    if (playheadMs === null || newestStartMs === null || playheadMs >= newestStartMs) {
+      return [];
     }
 
-    this.feedHealth.recordGatewayReachable(entry.hexTopic);
-    entry.misses = 0;
-    const text = response.text;
-    const index = extractFeedIndex(response.headers);
+    const older: string[] = [];
+    let at = found.index.toBigInt();
+    let step = BigInt(Math.max(1, newer.length - 1));
+    for (let reads = 0; reads < MAX_READ_BACK_READS && at > 0n; reads++) {
+      const target = at > step ? at - step : 0n;
+      let text: string;
+      try {
+        text = (
+          await servedText(
+            this.reader.readFeedEntry(entry.owner, entry.topic, Number(target)),
+            feedSlotPath(entry.owner, entry.topic, FeedIndex.fromBigInt(target)),
+          )
+        ).text;
+      } catch (error) {
+        this.reportReadBackFailure(entry, target, error);
+        return [];
+      }
+      if (walk.stopped) {
+        return [];
+      }
 
-    if (entry.stopped) {
-      return false;
+      const segments = parseManifest(text).segments;
+      if (!joinsOnto(segments, newer)) {
+        if (step === 1n) {
+          break;
+        }
+        step /= 2n;
+        continue;
+      }
+
+      older.unshift(text);
+      newer = segments;
+      at = target;
+      const startMs = firstSegmentStartMs(segments);
+      if (startMs !== null && playheadMs >= startMs) {
+        return older;
+      }
     }
 
-    if (!this.ingest(owner, entry, text, index)) {
-      return false;
-    }
+    console.debug(
+      `[SwarmHls] the viewer is further behind than ${MAX_READ_BACK_READS} reads of rung ${entry.hexTopic} ` +
+        'reach, so the switch goes to the live edge',
+    );
+    return [];
+  }
 
-    this.stateManager.setIndex(entry.hexTopic, index);
-    // This session's first read found the rung open, so an end still recorded against it or its group
-    // was left by an earlier session and is over. Forgotten without announcing a return. See
-    // `FeedHealthTracker.forgetStaleEnd`.
-    this.feedHealth.forgetStaleEnd(entry.hexTopic);
-    if (entry.group !== null) {
-      this.feedHealth.forgetStaleEnd(entry.group);
+  /**
+   * A read back to the viewer's position that failed, said as what it was. The switch then goes to the
+   * live edge, as it does for a viewer too far behind, but a gateway fault is recorded as one, so the
+   * walk that follows backs off and the overlay hears it.
+   */
+  private reportReadBackFailure(entry: RungEntry, index: bigint, error: unknown): void {
+    if (isSlotNotWrittenYet(error)) {
+      console.debug(
+        `[SwarmHls] index ${index} of rung ${entry.hexTopic} was not served, so the switch goes to the live edge`,
+      );
+      return;
     }
-    return true;
+    this.feedHealth.recordGatewayFailure(entry.hexTopic);
+    console.warn(
+      `[SwarmHls] could not read index ${index} of rung ${entry.hexTopic} back to the viewer's position, so ` +
+        'the switch goes to the live edge',
+      error,
+    );
+  }
+
+  /**
+   * Refuses a switch to a rung that has clearly stopped, and leaves the viewer on the rung they play.
+   * The rung is announced once, for the player to take its level out.
+   */
+  private refuse(entry: RungEntry, playing: RungEntry, reason: string): void {
+    entry.refused = true;
+    entry.retired = true;
+    this.deactivate(entry);
+    this.feedHealth.recordRungStopped(entry.hexTopic, { reason, failoverTo: playing.hexTopic });
   }
 
   /**
@@ -417,7 +809,7 @@ export class LadderFeedPoller {
    *
    * @param index The slot `text` was read from, which is where a finished rung's watch starts.
    */
-  private ingest(owner: string, entry: PolledTopic, text: string, index: FeedIndex): boolean {
+  private ingest(entry: RungEntry, walk: Walk, text: string, index: FeedIndex): boolean {
     const parsed = parseManifest(text);
     const shouldContinue = this.stateManager.updateManifest(
       entry.hexTopic,
@@ -427,83 +819,261 @@ export class LadderFeedPoller {
     );
 
     if (this.stateManager.hasSegments(entry.hexTopic)) {
-      entry.markReady();
-    }
-
-    if (parsed.isFinalized) {
-      entry.finalized = true;
-      this.recordGroupEndedIfComplete(entry.group);
-      this.watchForReturn(owner, entry, index);
+      walk.markReady();
     }
 
     if (!shouldContinue) {
-      entry.stopped = true;
+      walk.stopped = true;
+      this.settle(walk, false);
+    }
+
+    const { ladder } = entry;
+    const watched = ladder.playing === entry || ladder.failoverTarget === entry;
+    if (parsed.isFinalized && watched && !walk.isCandidate) {
+      const finished = feedEntryOf(Number(index.toBigInt()), text, this.followClock.now());
+      if (finished !== null) {
+        void this.confirmEnd(entry, index, { ...finished, seenAtMs: this.followClock.now() });
+      }
     }
 
     return shouldContinue;
   }
 
+  /** Whether the stall rule may try a sibling for the playing rung now. */
+  private tryFailoverIfStalled(entry: RungEntry, walk: Walk): void {
+    const { ladder } = entry;
+    if (ladder.playing !== entry || ladder.isTrying || walk.isCandidate) {
+      return;
+    }
+    const unservedMs = this.feedHealth.unservedRunMs(entry.hexTopic);
+    if (unservedMs === null || unservedMs < UNSERVED_SLOT_STALL_MS) {
+      return;
+    }
+    const now = this.now();
+    if (walk.stallTriedAtMs !== null && now - walk.stallTriedAtMs < STALL_REPROBE_MS) {
+      return;
+    }
+    walk.stallTriedAtMs = now;
+    const sibling = this.siblingOf(entry);
+    if (sibling) {
+      void this.failOverIfSiblingProgresses(entry, walk, sibling);
+    }
+  }
+
   /**
-   * Keep asking whether the broadcaster has come back to a rung whose playlist just finished.
+   * The playing rung has been unserved for the stall threshold. Walks the next lower rung for
+   * {@link rungProgressBoundMs} from when its newest index is found: a new index there means the
+   * playing rung alone stopped, and the player fails over to it. None means the broadcast paused, and
+   * the stall shows as it always did.
+   */
+  private async failOverIfSiblingProgresses(entry: RungEntry, walk: Walk, sibling: RungEntry): Promise<void> {
+    const { ladder } = entry;
+    ladder.isTrying = true;
+    try {
+      const wasFollowed = sibling.walk !== null;
+      const progressed = await this.walkForProgress(sibling, null);
+      if (!this.isCurrent(entry) || entry.walk !== walk) {
+        return;
+      }
+      if (progressed && this.feedHealth.unservedRunMs(entry.hexTopic) !== null) {
+        this.failOver(entry, sibling, 'it has stopped while the next lower quality carries on');
+        return;
+      }
+      if (!wasFollowed && sibling.walk && ladder.playing !== sibling) {
+        this.deactivate(sibling);
+      }
+      console.debug(
+        `[SwarmHls] rung ${entry.hexTopic} stalled and its sibling did not move either, so the broadcast paused`,
+      );
+    } finally {
+      ladder.isTrying = false;
+    }
+  }
+
+  /**
+   * The playing rung published ENDLIST. One sibling confirms it: a sibling that finished too means the
+   * broadcast ended, one that carries on through the bound means this rung alone stopped and the
+   * player fails over to it.
+   *
+   * ⛔ **The sibling is watched for the whole bound, not to its first new index.** The qualities of one
+   * broadcast finish moments apart, each as its own upload drains, so a sibling still publishing its
+   * last playlists is finishing too. Taking its first new index as proof it carries on failed the viewer
+   * over to a quality about to end, and the ended overlay came late or not at all.
+   */
+  private async confirmEnd(entry: RungEntry, finishedAt: FeedIndex, hint: SwitchHint): Promise<void> {
+    const sibling = this.siblingOf(entry);
+    if (!sibling) {
+      this.recordEnded(entry, finishedAt);
+      return;
+    }
+
+    let found: NewestIndex | null;
+    try {
+      found = await this.finder.findNewest(feedRungOf(sibling), hint, () => !this.isCurrent(entry));
+    } catch {
+      // Nothing to confirm with. The playing rung's own ENDLIST is the stronger evidence.
+      found = null;
+    }
+    if (!this.isCurrent(entry)) {
+      return;
+    }
+    if (found === null || parseManifest(found.playlist).isFinalized) {
+      this.recordEnded(entry, finishedAt);
+      return;
+    }
+
+    const progressed = await this.walkForProgress(sibling, found, 'wholeBound');
+    if (!this.isCurrent(entry)) {
+      return;
+    }
+    if (progressed) {
+      this.failOver(entry, sibling, 'it finished while the next quality carries on');
+      return;
+    }
+    if (sibling.walk && entry.ladder.playing !== sibling) {
+      this.deactivate(sibling);
+    }
+    this.recordEnded(entry, finishedAt);
+  }
+
+  /**
+   * Follows a rung as a candidate until it shows a new index or the bound passes. The bound counts from
+   * when its newest index is known, and the search for it has {@link CANDIDATE_FIND_DEADLINE_MS} of its
+   * own. A rung that shows ENDLIST has not progressed, however many indexes came before it.
+   *
+   * @param seed Its newest index when already found, so the walk does not ask the finder again.
+   * @param rule `firstIndex` answers at the first new index. `wholeBound` keeps watching until the bound
+   *   passes, so a rung that publishes and then finishes inside it counts as finished.
+   */
+  private walkForProgress(
+    entry: RungEntry,
+    seed: NewestIndex | null,
+    rule: 'firstIndex' | 'wholeBound' = 'firstIndex',
+  ): Promise<boolean> {
+    if (entry.retired) {
+      return Promise.resolve(false);
+    }
+    const walk = entry.walk ?? this.startWalk(entry, seed, true);
+    if (walk.stopped || this.stateManager.snapshot(entry.hexTopic)?.isFinalized) {
+      return Promise.resolve(false);
+    }
+    if (walk.progressed && rule === 'firstIndex') {
+      return Promise.resolve(true);
+    }
+    return new Promise((resolve) => {
+      let timer: ReturnType<typeof setTimeout>;
+      let progressedInBound = false;
+      const finish = (progressed: boolean) => {
+        clearTimeout(timer);
+        walk.onSettled = undefined;
+        walk.onFound = undefined;
+        resolve(progressed);
+      };
+      const atBound = () => finish(rule === 'wholeBound' && progressedInBound && !walk.stopped);
+      const onSettled = (progressed: boolean) => {
+        if (progressed && rule === 'wholeBound') {
+          progressedInBound = true;
+          walk.onSettled = onSettled;
+          return;
+        }
+        finish(progressed);
+      };
+      timer = setTimeout(atBound, walk.current === null ? this.candidateFindDeadlineMs : this.progressBoundOf(walk));
+      if (walk.current === null) {
+        walk.onFound = () => {
+          clearTimeout(timer);
+          timer = setTimeout(atBound, this.progressBoundOf(walk));
+        };
+      }
+      walk.onSettled = onSettled;
+    });
+  }
+
+  /** How long `walk` has to show a new index, from the segment length its newest slot names. */
+  private progressBoundOf(walk: Walk): number {
+    return this.fixedProgressBoundMs ?? rungProgressBoundMs(walk.current?.segmentMs);
+  }
+
+  /**
+   * Takes the playing rung out and points the player at `to`, which is already followed. The rung is
+   * deactivated once hls.js reports the switch, through {@link followOnly}.
+   */
+  private failOver(from: RungEntry, to: RungEntry, reason: string): void {
+    from.retired = true;
+    from.ladder.failoverTarget = to;
+    if (to.walk) {
+      to.walk.isCandidate = false;
+    }
+    this.feedHealth.recordRungStopped(from.hexTopic, { reason, failoverTo: to.hexTopic });
+  }
+
+  private recordEnded(entry: RungEntry, finishedAt: FeedIndex): void {
+    const { group } = entry.ladder;
+    if (group !== null) {
+      this.feedHealth.recordFeedEnded(group);
+    }
+    this.watchForReturn(entry, finishedAt);
+  }
+
+  /**
+   * The next lower registered rung still in the ladder, or the next higher when this is the lowest.
+   * It is what tells a rung that stopped from a broadcast that did.
+   */
+  private siblingOf(entry: RungEntry): RungEntry | null {
+    const rungs = entry.ladder.rungs;
+    const at = rungs.indexOf(entry);
+    for (let index = at - 1; index >= 0; index--) {
+      if (!rungs[index].retired) {
+        return rungs[index];
+      }
+    }
+    for (let index = at + 1; index < rungs.length; index++) {
+      if (!rungs[index].retired) {
+        return rungs[index];
+      }
+    }
+    return null;
+  }
+
+  private isCurrent(entry: RungEntry): boolean {
+    return this.rungs.get(entry.hexTopic) === entry;
+  }
+
+  /**
+   * Keep asking whether the broadcaster has come back to the rung that was playing when it ended.
    *
    * ⛔ **A finished playlist is the end of a session, not of the feed.** A declared stream's rungs keep
    * their topics for the life of the declaration, so a broadcaster who stops and comes back continues
-   * every rung at the next index. This walk used to stop on ENDLIST for good, which left a viewer who
-   * had watched the end on "This broadcast has ended" until they reloaded. Measured live 2026-09-24,
-   * for fifteen minutes past the return.
-   *
-   * The walk itself still ends here: this viewer's copy of the playlist is finished and nothing can
-   * be appended to it. What comes back is joined by the player's restart, which bootstraps every rung
-   * at the live edge again. See {@link FeedReturnWatch} for what the watch asks and what it costs.
+   * every rung at the next index. Measured live 2026-09-24: a viewer who had watched the end was told it
+   * had ended for fifteen minutes past the return. One watch, on the rung that was playing, and the
+   * player's restart joins whatever comes back. See {@link FeedReturnWatch}.
    */
-  private watchForReturn(owner: string, entry: PolledTopic, finishedAt: FeedIndex): void {
-    entry.returnWatch?.stop();
-    entry.returnWatch = new FeedReturnWatch({
-      fetchResource: this.fetchResource,
-      owner,
+  private watchForReturn(entry: RungEntry, finishedAt: FeedIndex): void {
+    const { ladder } = entry;
+    this.stopReturnWatch(ladder);
+    ladder.returnWatchedRung = entry;
+    ladder.returnWatch = new FeedReturnWatch({
+      reader: this.reader,
+      owner: entry.owner,
       topic: entry.topic,
       finishedAt,
-      onReturned: () => this.recordReturn(entry),
+      onReturned: () => {
+        ladder.returnWatch = null;
+        ladder.returnWatchedRung = null;
+        this.feedHealth.recordFeedResumed(entry.hexTopic);
+        if (ladder.group !== null) {
+          this.feedHealth.recordFeedResumed(ladder.group);
+        }
+      },
       nextWaitMs: this.returnWatchWaitMs,
     });
-    entry.returnWatch.start();
+    ladder.returnWatch.start();
   }
 
-  /**
-   * The broadcaster is back on this rung, so the rung and the ladder it belongs to have not ended.
-   *
-   * Both are told. A ladder's end is recorded once against its group, which is what the overlay and
-   * the player listen on, and the group's return is also what ends the wait every rung sat through
-   * before the end, whichever rung was found back first. See
-   * {@link FeedHealthTracker.recordFeedResumed}.
-   */
-  private recordReturn(entry: PolledTopic): void {
-    entry.returnWatch = null;
-    entry.finalized = false;
-    this.feedHealth.recordFeedResumed(entry.hexTopic);
-    if (entry.group !== null) {
-      this.feedHealth.recordFeedResumed(entry.group);
-    }
-  }
-
-  /**
-   * The ended overlay listens on the group topic and finalization arrives one rung at a time, so the
-   * last rung to finalize is what ends the group. The single-rendition walk records both against the
-   * same topic and needs none of this.
-   *
-   * All rungs rather than any: one finalized rung beside live ones is a rung retired, not a broadcast
-   * over. This was the uploader's own rule too until 2026-09-24, when it learned to finish a ladder
-   * without a rung whose stop failed. That mark lives in the catalog, which this poller never reads,
-   * so on such a ladder the dead rung never finalizes here and a live viewer is not shown the end.
-   */
-  private recordGroupEndedIfComplete(group: string | null): void {
-    if (group === null) {
-      return;
-    }
-    const rungs = [...this.polled.values()].filter((entry) => entry.group === group);
-    if (rungs.length > 0 && rungs.every((entry) => entry.finalized)) {
-      this.feedHealth.recordFeedEnded(group);
-    }
+  private stopReturnWatch(ladder: LadderEntry): void {
+    ladder.returnWatch?.stop();
+    ladder.returnWatch = null;
+    ladder.returnWatchedRung = null;
   }
 
   /**
@@ -511,35 +1081,35 @@ export class LadderFeedPoller {
    * fault, the shared feed health.
    *
    * A 404 is only the next slot not being published yet, the ordinary case for a viewer at the live
-   * edge, so it earns no backoff, exactly as the single-rendition walk treats it. Anything else, a
-   * transport error or a 5xx, is the gateway not answering: it earns the backoff {@link honourBackoff}
-   * waits out and turns the overlay to reconnecting. Recording every 404 as a fault would back off
-   * every caught-up viewer on nearly every poll.
+   * edge, so it earns no backoff. Anything else, a transport error or a 5xx, is the gateway not
+   * answering: it earns the backoff {@link honourBackoff} waits out and turns the overlay to
+   * reconnecting.
    *
-   * @returns How long a run of refusals this poll extends, which is what decides whether it is worth
-   *   asking what is behind the slot, or null when the read failed for a reason that is not a
-   *   refusal and there is therefore nothing to ask about.
+   * @returns How long a run of refusals this poll extends, or null when the read failed for a reason
+   *   that is not a refusal.
    */
-  private recordFailure(entry: PolledTopic, error: unknown): number | null {
-    this.recordMiss(entry, error);
+  private recordFailure(entry: RungEntry, walk: Walk, error: unknown): number | null {
+    this.recordMiss(entry, walk, error);
     if (isSlotNotWrittenYet(error)) {
-      // ⛔ Without this the `stalled` state is dead code on a ladder. The single-rendition walk has
-      // always recorded it; this one never did, so a publisher that stopped left the viewer's own
-      // gateway healthy, nothing counted, and the overlay stayed down over a frozen picture.
       return this.feedHealth.recordUnservedSlot(entry.hexTopic);
     }
-    this.feedHealth.recordGatewayFailure(entry.hexTopic);
+    this.feedHealth.recordGatewayFailure(entry.hexTopic, retryAfterMsOf(error));
     return null;
   }
 
-  private recordMiss(entry: PolledTopic, error: unknown): void {
-    entry.misses++;
-    if (entry.misses === MISSES_BEFORE_WARNING) {
+  private recordMiss(entry: RungEntry, walk: Walk, error: unknown): void {
+    walk.misses++;
+    if (walk.misses === MISSES_BEFORE_WARNING) {
       console.warn(
-        `Feed ${entry.hexTopic} has not advanced in ${entry.misses} attempts. The stream may have ` +
+        `Feed ${entry.hexTopic} has not advanced in ${walk.misses} attempts. The stream may have ` +
           `ended, or the gateway may be unreachable.`,
         error,
       );
     }
   }
+}
+
+/** A rung as the finder is asked about it, with the ladder whose time markers name it. */
+function feedRungOf(entry: RungEntry): FeedRung {
+  return { owner: entry.owner, topic: entry.topic, group: entry.ladder.group };
 }

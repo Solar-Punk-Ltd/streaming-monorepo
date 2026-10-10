@@ -86,7 +86,7 @@ describe('stream-uploader healthcheck', () => {
     const check = spawnSync('docker', ['compose', '--profile', 'stream-uploader', 'config'], {
       cwd: path.join(here, '..'),
       encoding: 'utf-8',
-      env: { ...process.env, STAMP: 'x', STREAM_KEY: 'x', API_AUTH_TOKEN: 'x' },
+      env: { ...process.env, STAMP: 'x', STREAM_KEY: 'x', API_AUTH_TOKEN: 'x', HLS_FRAGMENT: '2' },
       // `docker compose config` parses a file and does not talk to the daemon, verified by running
       // it with DOCKER_HOST pointed at a socket that does not exist. So there is no legitimate slow
       // path here, and without this bound one unresponsive docker holds the whole suite: on

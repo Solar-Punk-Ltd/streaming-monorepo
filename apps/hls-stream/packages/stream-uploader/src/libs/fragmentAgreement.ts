@@ -38,7 +38,7 @@
  * Wide enough for a median to survive one odd reading, because SRS force-closes a segment at
  * `HLS_FRAGMENT x HLS_AOF_RATIO` whether a keyframe arrived or not, and short enough that a
  * mis-deployed stage is named inside the first playlist window rather than after the broadcast.
- * Eight segments is four seconds of media at the shipping 0.5s profile.
+ * Eight segments is sixteen seconds of media at the 2 s segment the sample config sets.
  */
 export const FRAGMENT_SAMPLE_COUNT = 8;
 

@@ -80,6 +80,7 @@ import { deploymentEngineReadings } from './engineConfig/deploymentEngineReading
 import { engineTemplateTextIn } from './engineConfig/engineConfigTemplates.js';
 import { localPublisherHost, type LocalPublisherHostReader } from './localHost.js';
 import { ProfileRepository } from './ProfileRepository.js';
+import { config } from '../utils/config.js';
 import { engineDefaultsAt } from './settings/engineHostDefaults.js';
 import {
   initialStackSettingsFor,
@@ -97,6 +98,7 @@ import { deployOwnerOf } from './versions/buildLedger.js';
 import { portPlacementProblem } from './versions/stackContract.js';
 import type { InitialStackSettings, NewProfilePlacement, StoredStackSettings } from './ProfileRepository.js';
 import type { DeployTargets } from './ports/DeployTargets.js';
+import { type KnownHostNetworkPorts, knownHostNetworkNameProblem } from './ports/knownHostNetworkPorts.js';
 import type { PortReservationRepository } from './ports/PortReservationRepository.js';
 import type { StackVersionRecord, StackVersionRepository } from './versions/StackVersionRepository.js';
 
@@ -246,7 +248,16 @@ export class ProfileService {
     private readonly managerRpcEndpoint: string | null = null,
     /** The web2 admin link every new uploader deployment starts with, where a create leaves the link to it. */
     private readonly managerAdminLink?: Pick<ManagerAdminLinkStore, 'read'>,
+    private readonly knownHostNetworkPorts: KnownHostNetworkPorts = config.knownHostNetworkPorts,
   ) {}
+
+  /** Refuses a deployment name KNOWN_HOST_NETWORK_PORTS declares, as a rejected body. */
+  private assertNotKnownHostNetworkProject(names: readonly string[]): void {
+    for (const name of names) {
+      const problem = knownHostNetworkNameProblem(name, this.knownHostNetworkPorts);
+      if (problem) throw new ProfileConfigError(name, problem);
+    }
+  }
 
   /** Sets what a create or an update asks of a pool string, a setter because the catalogue service reads profiles. */
   setPoolStringGuard(guard: PoolStringGuard | null): void {
@@ -400,6 +411,7 @@ export class ProfileService {
     if (existing) {
       throw new ProfileExistsError(input.name);
     }
+    this.assertNotKnownHostNetworkProject([input.name]);
 
     const version = await this.versionForNewDeployment(input.stack_version_id);
 
@@ -1094,6 +1106,7 @@ export class ProfileService {
     } else {
       members.push(...nextFreeMemberNames(input.group_name, input.size, usedNames));
     }
+    this.assertNotKnownHostNetworkProject(members.map((member) => member.name));
 
     const placement = await this.placementFor(version, input.host ?? null, memberComponents);
     const shared: SharedProfileParams = {
@@ -1477,6 +1490,7 @@ export class ProfileService {
 
     const usedNames = new Set((await this.repo.list()).map((p) => p.name));
     const seeds = nextFreeMemberNames(group.name, count, usedNames);
+    this.assertNotKnownHostNetworkProject(seeds.map((seed) => seed.name));
 
     const created = await this.groupRepo.addMembers(groupId, seeds, shared);
 

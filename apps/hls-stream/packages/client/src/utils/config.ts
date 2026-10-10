@@ -1,4 +1,5 @@
 import { playerRelease } from './playerRelease';
+import { parseProvidersSetting, type ProvidersSetting } from '@/swarm/settings';
 
 function getEnv(name: string): string {
   const value = import.meta.env[name as keyof ImportMetaEnv];
@@ -15,11 +16,19 @@ function isLocalUrl(url: string): boolean {
   }
 }
 
+/** The gateways a build offers, or null when it names only `VITE_READER_BEE_URL`. */
+function readProviders(): ProvidersSetting | null {
+  const raw: unknown = import.meta.env.VITE_SWARM_PROVIDERS;
+  return typeof raw === 'string' && raw.trim() !== '' ? parseProvidersSetting(raw) : null;
+}
+
 const rawBeeUrl = getEnv('VITE_READER_BEE_URL');
 const useProxy = import.meta.env.DEV && isLocalUrl(rawBeeUrl);
 
 export const config = {
   beeUrl: useProxy ? '/bee' : rawBeeUrl,
+  /** When set, the gateways every read goes to, and `beeUrl` is left to the dev server's proxy. */
+  providers: readProviders(),
   appOwner: getEnv('VITE_APP_OWNER'),
   rawAppTopic: getEnv('VITE_APP_RAW_TOPIC'),
   /**

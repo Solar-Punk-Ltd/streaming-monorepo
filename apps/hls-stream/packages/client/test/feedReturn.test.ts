@@ -3,9 +3,10 @@ import assert from 'node:assert/strict';
 import { describe, it } from 'vitest';
 
 import { FeedReturnWatch, feedReturnWatchWaitMs } from '../src/components/SwarmHlsPlayer/feedReturn';
-import { TimedResponse } from '../src/utils/fetchWithTimeout';
+import type { PathResponse } from './helpers/playerReader';
 import { RequestJitter } from '../src/utils/requestJitter';
 
+import { readerOverPaths } from './helpers/playerReader';
 import { waitFor } from './helpers/waiting';
 
 const OWNER = 'aabbcc';
@@ -51,12 +52,12 @@ describe('the wait before each ask for a broadcaster coming back', () => {
   it('is drawn again before every ask', async () => {
     const asked: string[] = [];
     let draws = 0;
-    const neverWritten = async (path: string): Promise<TimedResponse> => {
+    const neverWritten = async (path: string): Promise<PathResponse> => {
       asked.push(path);
       throw new Error(`Failed to fetch: ${path}`);
     };
     const watch = new FeedReturnWatch({
-      fetchResource: neverWritten,
+      reader: readerOverPaths(neverWritten),
       owner: OWNER,
       topic: TOPIC,
       finishedAt: FeedIndex.fromBigInt(1n),

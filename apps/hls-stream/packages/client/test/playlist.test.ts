@@ -8,10 +8,10 @@ import assert from 'node:assert/strict';
 import { describe, it } from 'vitest';
 
 import {
-  absoluteBytesBase,
   buildMasterPlaylist,
   buildSwarmUri,
   isMasterPlaylist,
+  masterRungs,
   masterVariants,
   parseManifest,
   parseSwarmUri,
@@ -50,41 +50,6 @@ describe('swarm URIs, as this loader meets them', () => {
   });
 });
 
-describe('absoluteBytesBase', () => {
-  const origin = 'http://localhost:5173';
-
-  it('absolutises the dev proxy path, which is otherwise resolved against swarm://', () => {
-    // The bug this exists to prevent: a root-relative "/bee/bytes/<ref>" in a media playlist whose
-    // own URL is swarm://<owner>/<topic> resolves to swarm://<owner>/bee/bytes/<ref>, and the
-    // fragment loader then requests <origin>//<owner>/bee/bytes/<ref> — which a dev server answers
-    // with index.html rather than a segment.
-    assert.equal(absoluteBytesBase('/bee', origin), 'http://localhost:5173/bee/bytes');
-  });
-
-  it('leaves an already absolute gateway alone', () => {
-    assert.equal(absoluteBytesBase('http://localhost:1653', origin), 'http://localhost:1653/bytes');
-    assert.equal(absoluteBytesBase('https://gateway.example', origin), 'https://gateway.example/bytes');
-  });
-
-  it('does not double the slash on a trailing-slash gateway URL', () => {
-    assert.equal(absoluteBytesBase('http://localhost:1653/', origin), 'http://localhost:1653/bytes');
-  });
-
-  it('collapses several trailing slashes and not only the last one', () => {
-    // `/+$` rather than `/$`. A gateway URL assembled from a base and a path arrives with more than
-    // one often enough, and stopping at one leaves `//bytes`, which a URL parser reads as a
-    // protocol-relative reference to a host called "bytes" rather than as a path.
-    assert.equal(absoluteBytesBase('http://localhost:1653//', origin), 'http://localhost:1653/bytes');
-    assert.equal(absoluteBytesBase('/bee///', origin), 'http://localhost:5173/bee/bytes');
-  });
-
-  it('always returns something with a scheme, whatever it was given', () => {
-    for (const beeUrl of ['/bee', 'http://localhost:1653', 'https://gateway.example/']) {
-      assert.match(absoluteBytesBase(beeUrl, origin), /^https?:\/\//, `"${beeUrl}" must absolutise`);
-    }
-  });
-});
-
 describe('isMasterPlaylist', () => {
   // What a feed answered with is the only thing that says whether a stream is a ladder. Get this
   // wrong in either direction and the loader takes the wrong branch: a master fed through the
@@ -103,6 +68,22 @@ describe('isMasterPlaylist', () => {
   it('does not call an empty or headers-only playlist a master', () => {
     assert.equal(isMasterPlaylist(''), false);
     assert.equal(isMasterPlaylist(buildMasterPlaylist('aabbcc', [])), false);
+  });
+});
+
+describe('masterRungs', () => {
+  it('reads each variant with the BANDWIDTH it declares, never the AVERAGE-BANDWIDTH beside it', () => {
+    const master = buildMasterPlaylist('aabbcc', [rendition('720p', 1280, 720, 2_800_000)]);
+
+    assert.deepEqual(masterRungs(master), [{ owner: 'aabbcc', topic: 'group-1-720p', bandwidth: 2_800_000 }]);
+  });
+
+  it('reads no bandwidth from a variant that declares none', () => {
+    const master = ['#EXTM3U', '#EXT-X-STREAM-INF:AVERAGE-BANDWIDTH=900,RESOLUTION=640x360', 'swarm://aabbcc/low'].join(
+      '\n',
+    );
+
+    assert.deepEqual(masterRungs(master), [{ owner: 'aabbcc', topic: 'low', bandwidth: null }]);
   });
 });
 

@@ -68,7 +68,10 @@ PUBLISHER_LEAD_S="${PUBLISHER_LEAD_S:-60}"
 
 SIZE="${SIZE:-1280x720}"
 BITRATE_KBPS="${BITRATE_KBPS:-2500}"
-GOP_SECONDS="${GOP_SECONDS:-0.5}"
+# The publisher's keyframe interval, which has to be the stage's HLS_FRAGMENT so the stage cuts every
+# segment at the length it declares. Required rather than defaulted, because a driver cannot read the
+# stage's env and a default would be a second source for the segment length.
+GOP_SECONDS="${GOP_SECONDS:?set GOP_SECONDS to HLS_FRAGMENT of the stage, the segment length it cuts}"
 
 UPLOADER_API_PORT="${UPLOADER_API_PORT:-$((PORT_SLOT == 0 ? 3000 : 10000 + PORT_SLOT * 10))}"
 UPLOADER_BEE_PORT="${UPLOADER_BEE_PORT:-$((PORT_SLOT == 0 ? 1633 : 10005 + PORT_SLOT * 10))}"

@@ -226,23 +226,27 @@ playlist at the head simply stops advancing. What decides a broadcast is over is
 decided it for an engine that died without saying anything — `ORPHAN_REAP_MS` (60 s) with no media
 in it.
 
-| What the encoder does        | What a viewer gets                                                                                                                                                                                                                                                                                          |
-| ---------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Comes back inside the window | The same session, the same recording and the same feed, with one `#EXT-X-DISCONTINUITY` at the seam and the dating re-anchored on the clock it returned at. No `#EXT-X-ENDLIST` was written in between, so a player following the feed head is handed the next update of the playlist it is already playing |
-| Does not come back           | The reaper finalizes the broadcast one window after its last segment: closing playlist, recording, and `vod` to the admin. An encoder returning after that starts a **new** session, which inherits the recording at the feed head, so the recording a viewer opens still carries every session             |
+| What the encoder does        | What a viewer gets                                                                                                                                                                                                                                                                                                                                           |
+| ---------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| Comes back inside the window | The same session, the same recording and the same feed, with one `#EXT-X-DISCONTINUITY` at the seam and the dating re-anchored on the clock it returned at. No `#EXT-X-ENDLIST` was written in between, so a player following the feed head is handed the next update of the playlist it is already playing                                                  |
+| Does not come back           | The reaper finalizes the broadcast one window after its last segment, or after its return when it came back and then sent nothing: closing playlist, recording, and `vod` to the admin. An encoder returning after that starts a **new** session, which inherits the recording at the feed head, so the recording a viewer opens still carries every session |
 
 So **the admin shows `live` for up to one window after the encoder leaves**, and a clean stop reaches
 its recording about a window later than it used to. That is the cost of the row above it, and it is
 the owner's decision of 2026-09-22.
 
-⛔ **A reconnect buys the first segment time to arrive, and nothing more.** The window runs from the
-last segment rather than from the webhook, so an announce does not move the deadline. What it does
-buy is a grace of `SEGMENT_STALL_MS` for the segment it is about to deliver, capped at one grace past
-the deadline the broadcast already had — without it an announce accepted three seconds before the
-window was up was followed three seconds later by a reap, and the encoder went on publishing into an
-id nothing held any more, because it does not announce again for a publish session it already has. An
-encoder that reconnects every few seconds and never sends a frame therefore still ends, one grace
-later than it would have, rather than being held open for as long as it keeps trying.
+⛔ **A reconnect buys one window from the return, once.** The window runs from the last segment,
+or from the encoder's first return after that segment, whichever is later. So an encoder back 26
+seconds into an outage still has the whole 60 seconds to deliver its first segment rather than the
+34 left of the old window: on the test stage on 2026-10-08 a rung on a lossy RTMP link was
+finalized one second before that segment arrived, and the viewer showed the broadcast ended. Only the
+first return after the last media starts a window. A later announce with no media in between buys a
+grace of `SEGMENT_STALL_MS` for the segment it is about to deliver, capped at one grace past that
+window's deadline, so an announce accepted just before the window is up is not reaped seconds later,
+and an encoder that reconnects every few seconds and never sends a frame still ends, at most one
+window and one grace after it first came back, rather than being held open for as long as it keeps
+trying. A reap after a return that delivered nothing says so in its warning, and the warning that no
+disconnect was ever reported is kept for an engine that went quiet without a word.
 
 ⛔ **SRS's own publish timeout is deliberately not lengthened to match.** A clean stop sends an
 explicit goodbye, so no timeout applies to it at all, and a publish SRS still believes in refuses the
@@ -469,6 +473,50 @@ outlives the others by roughly 7×, and those two feeds are the only addresses a
 a stage. Riding them on the 1080p node would take discovery down first, while three rungs were still
 publishing fine.
 
+### Ladder time markers
+
+Every rung's playlist feed is a numbered sequence, one entry per published playlist, and a viewer that
+starts or switches quality has to find the newest number. Bee's own feed lookup walks at most 255
+indexes a round from 0, so on a long broadcast that costs many round trips before the first frame.
+
+So each live ladder also writes a **time marker** every ten seconds: one small single-owner chunk that
+says where every rung's feed stood at that moment. A viewer computes the address of a recent marker
+from the clock, reads it once, and is then at most one round of parallel reads from the newest entry.
+Feeds, the master, the catalog and recordings are unchanged, and a viewer that finds no marker
+searches the feeds exactly as before. The convention lives in `@swarm-hls-stream/shared`
+(`ladderMarker.ts`), so the writer and every reader compute the same address.
+
+- **Period.** `p = floor(unix seconds / 10)`, global time rather than time since the stream started,
+  so a reader needs nothing but the clock.
+- **Address.** A single-owner chunk owned by the ladder's signer, the owner of the master feed, with
+  identifier `keccak256("ladder-marker" ‖ group topic ‖ p as 8 bytes big-endian)`. The group topic is
+  the master feed's topic, `Topic.fromString(group)`.
+- **Payload.** Small JSON naming only rungs that have published, keyed by each rung's feed topic in
+  hex, and `segmentMs`, the stage's `HLS_FRAGMENT` in milliseconds, which is what every rung of a
+  ladder cuts. A viewer joining from a marker has read no playlist yet, and moves the head on by the
+  time since the write in segments of that length. `parseLadderMarker` rejects anything else, so a
+  reader never jumps on a malformed marker.
+- **Version.** 2 since markers named the segment length. Readers treat any other version as absent and
+  search instead. Version 1, which had no `segmentMs`, was written only by test builds, and readers stopped
+  taking it once nothing wrote it (2026-10-09). A reader from before version 2 treats a version 2 marker
+  as absent, so the viewer has to be deployed before the uploader for joins to stay one round.
+
+```json
+{ "v": 2, "period": 175983840, "writtenAt": 1759838400250, "rungs": { "<rung feed topic hex>": 41 }, "segmentMs": 2000 }
+```
+
+`LadderMarkerWriter` starts a ladder's markers with its first published playlist and writes each
+period's marker shortly after the period begins. It stops when the ladder's last rung is released,
+and a ladder with nothing published gets none. Writes go direct, not deferred, through the node the
+master is written through, on a queue of their own, so a marker never delays a playlist. A write that
+cannot finish inside its own period is abandoned with its request cancelled, logged once per run of
+failures and counted in `swarm_hls_ladder_markers_failed_total`, and the next period goes on. A
+marker is never rewritten, including when the wall clock steps back. `swarm_hls_ladder_markers_written_total`
+counts the ones that landed.
+
+The cost is one chunk per ladder every ten seconds, 360 an hour, on the lowest rung's batch, which is
+the one the catalog and the master already ride. `LADDER_MARKERS=false` turns markers off.
+
 ## Prerequisites
 
 - Node.js 24+
@@ -507,6 +555,7 @@ The API server starts on port 3000 (default).
 | `STREAM_KEY`        | Private key (hex) for signing feeds                                                                                                                                           |
 | `STREAM_LIST_TOPIC` | Feed topic for the stream catalog                                                                                                                                             |
 | `API_AUTH_TOKEN`    | Bearer token for `/stream/*` and `GET /metrics`, minimum 32 characters. `openssl rand -hex 32`                                                                                |
+| `HLS_FRAGMENT`      | The stage's segment length in seconds, the same variable the engine reads and the grid a segment's date snaps to within one percent. No default, `2` in `.env.sample`         |
 
 **Optional:**
 
@@ -528,20 +577,20 @@ The API server starts on port 3000 (default).
 | `STAMP_MIN_TTL_HOURS`    | `12`                 | Hours a postage batch must have left for the postage gate to call it usable                                                                                                                                                                        |
 | `STAMP_MAX_UTILIZATION`  | `0.9`                | How full an immutable batch may be, as a ratio, for the postage gate to call it usable. A mutable batch overwrites its oldest chunks when full rather than refusing, so it is never held to this                                                   |
 | `BEE_REQUEST_TIMEOUT_MS` | `4000`               | Per-request deadline on every upload-loop call to a Bee node, derived from the retry windows                                                                                                                                                       |
-| `HLS_FRAGMENT`           | `0.5`                | Nominal seconds per fragment, the grid a segment's date snaps to within one percent. Same variable the engine reads                                                                                                                                |
 | `SEGMENT_DEDUP_WINDOW`   | `10000`              | Segment indexes remembered per stream, twice this many held at most                                                                                                                                                                                |
 | `SEGMENT_REDUNDANCY`     | `1`                  | Erasure-coding parity on segment uploads, `0` turns it off                                                                                                                                                                                         |
 | `ENGINE`                 | _(empty)_            | Engine plugin to load (`srs`, `ome` or empty)                                                                                                                                                                                                      |
 | `ABR_ENABLED`            | `false`              | Whether the engine publishes a ladder, read here to group the rungs                                                                                                                                                                                |
 | `ABR_LADDER`             | the engine's default | The rungs, `name:width:height:kbps`, see `engines/srs/.env.sample`                                                                                                                                                                                 |
 | `ABR_VHOST`              | `abr`                | The vhost rungs arrive on                                                                                                                                                                                                                          |
+| `LADDER_MARKERS`         | `true`               | With the ladder on, write a time marker per ladder every 10 s so a viewer finds every rung's newest playlist with one read. `false` turns them off. See [Ladder time markers](#ladder-time-markers)                                                |
 | `ADMIN_API_URL`          | _(empty)_            | Admin service base URL. Setting it turns on admin mode. See below                                                                                                                                                                                  |
 | `ADMIN_API_TOKEN`        | _(empty)_            | Bearer token for the admin's internal routes, minimum 32 characters. Required when `ADMIN_API_URL` is set                                                                                                                                          |
 | `LOG_LEVEL`              | `debug`              | `debug`, `log`, `info`, `warn`, `error` or `silent`. `log` is per segment, `info` is per lifecycle event                                                                                                                                           |
 | `LOG_FORMAT`             | _(empty)_            | `json` for one `{ts, level, msg}` object per line. Anything else keeps the readable format                                                                                                                                                         |
 
 Admin mode changes who owns the stream catalog. It does not change the uploader's Bee startup
-requirements. `BEE_URL`, `STREAM_KEY`, `STREAM_LIST_TOPIC` and `API_AUTH_TOKEN` remain required.
+requirements. `BEE_URL`, `STREAM_KEY`, `STREAM_LIST_TOPIC`, `API_AUTH_TOKEN` and `HLS_FRAGMENT` remain required.
 `STAMP` remains conditional on `BEE_PUBLISHERS`. Once `ADMIN_API_URL` is set,
 `ADMIN_API_TOKEN` is required as well.
 
@@ -594,6 +643,8 @@ killed it answers `ok` with `activeStreams: 0`.
 | `swarm_hls_auth_rejections_total`           | counter | Requests refused by a credential gate                       |
 | `swarm_hls_takeovers_refused_total`         | counter | Announces refused because a live session still holds the id |
 | `swarm_hls_manifest_publish_failures_total` | counter | Live manifest publishes that failed                         |
+| `swarm_hls_ladder_markers_written_total`    | counter | Ladder time markers written, see Ladder time markers        |
+| `swarm_hls_ladder_markers_failed_total`     | counter | Markers given up on inside their period. Playback unharmed  |
 | `swarm_hls_streams_finalized_total`         | counter | Stops that published a VOD                                  |
 | `swarm_hls_streams_failed_total`            | counter | Stops that did not. Those broadcasts have no recording      |
 | `swarm_hls_streams_reaped_total`            | counter | Broadcasts finalized because their engine went silent       |

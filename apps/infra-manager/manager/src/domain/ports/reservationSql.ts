@@ -1,9 +1,4 @@
-import {
-  MANAGER_SLOT_CAP,
-  PORT_SLOT_STRIDE,
-  portExposureProblem,
-  type StackPortVar,
-} from '@streaming-infra-manager/common';
+import { MANAGER_SLOT_CAP, PORT_SLOT_STRIDE, type StackPortVar } from '@streaming-infra-manager/common';
 import type { PoolClient } from 'pg';
 import { PortReservedError } from '../errors/index.js';
 import { PROFILE_SLOT_LOCK_KEY } from '../profileSql.js';
@@ -14,6 +9,7 @@ import {
   type ReservationState,
   portKeyOf,
   portPlanFor,
+  slotTakesNewDeployment,
 } from './portReservations.js';
 
 export const RESERVATION_COLUMNS = `
@@ -123,7 +119,7 @@ export async function freeSlotFor(client: PoolClient, placement: SlotPlacement):
   const candidates = Array.from(
     { length: Math.min(placement.slotCap, MANAGER_SLOT_CAP) },
     (_, index) => index + 1,
-  ).filter((slot) => portPlanFor(placement.table, slot).every((entry) => portExposureProblem(entry) === null));
+  ).filter((slot) => slotTakesNewDeployment(placement.table, slot));
   const result = await client.query<{ n: number }>(
     `SELECT s.n
        FROM unnest($1::int[]) AS s(n)

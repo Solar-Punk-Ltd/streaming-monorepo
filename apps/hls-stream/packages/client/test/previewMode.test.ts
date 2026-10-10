@@ -9,7 +9,7 @@
 import assert from 'node:assert/strict';
 import { describe, it } from 'vitest';
 
-import { previewMode, thumbnailFailed, thumbnailImageUrl } from '../src/components/StreamPreview/previewMode';
+import { previewMode, thumbnailFailed } from '../src/components/StreamPreview/previewMode';
 
 const REF = '6ce8aab7f729e4614ceab32b108336e0d25d53a673bc7c028d01ff386a9aaa70';
 
@@ -103,22 +103,5 @@ describe('whether a recorded image failure still applies', () => {
 
   it('treats an entry that lost its thumbnail as carrying no failure', () => {
     assert.equal(thumbnailFailed(REF, undefined), false);
-  });
-});
-
-describe('where the gateway serves a thumbnail', () => {
-  it('addresses the reference as a bzz collection, trailing slash included', () => {
-    assert.equal(thumbnailImageUrl('http://localhost:1633', REF), `http://localhost:1633/bzz/${REF}/`);
-  });
-
-  /**
-   * The catalog is JSON off a feed and parsed unchecked, so this field is external input however
-   * trusted its author. A value carrying a path separator would otherwise name somewhere on the
-   * gateway this URL never meant to address.
-   */
-  it('encodes the reference rather than pasting it into the path', () => {
-    const url = thumbnailImageUrl('http://gw', '../../bytes/deadbeef');
-
-    assert.ok(!url.includes('../'), `a traversal reached the path: ${url}`);
   });
 });

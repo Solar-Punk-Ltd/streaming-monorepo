@@ -2,8 +2,9 @@ import type { Segment } from '@swarm-hls-stream/shared';
 
 import { isMasterPlaylist, masterVariants, parseManifest } from '@/components/SwarmHlsPlayer/playlist';
 import { Rendition, STREAM_STATUS_VOD, StreamState } from '@/types/stream';
-import { fetchWithTimeout, TimedResponse } from '@/utils/fetchWithTimeout';
-import { thumbnailManifestUrl } from '@/utils/thumbnailManifest';
+import { FetchTimeoutError } from '@/utils/fetchTimeoutError';
+import { contentText, type SwarmAnswer } from '@/swarm/answers';
+import { type PreviewReads, readPreviewPlaylist } from '@/utils/thumbnailManifest';
 
 /** The catalog entry fields a stream card reads its preview manifest by. */
 export interface PreviewEntry {
@@ -14,6 +15,42 @@ export interface PreviewEntry {
   state?: StreamState;
   /** A ladder's rungs. On a finished entry each rung that recorded names its final slot in `index`. */
   renditions?: readonly Rendition[];
+}
+
+/** How a gateway answered a card's read, the part of it the card decides on. */
+interface PreviewAnswer {
+  readonly ok: boolean;
+  readonly status: number;
+}
+
+const SERVED: PreviewAnswer = { ok: true, status: 200 };
+const NOT_THERE: PreviewAnswer = { ok: false, status: 404 };
+const TOO_MANY_REQUESTS: PreviewAnswer = { ok: false, status: 429 };
+
+/**
+ * A read's answer as the card has always been handed a response: served with its text, or refused
+ * with a status, which the card shows as unavailable. A read that got no answer at all rejects as it
+ * always did, and one the card's own signal stopped rejects as an `AbortError`, which the card drops.
+ */
+async function previewRead(answer: Promise<SwarmAnswer>, what: string): Promise<{ res: PreviewAnswer; text: string }> {
+  const read = await answer;
+  switch (read.kind) {
+    case 'content':
+      return { res: SERVED, text: contentText(read) };
+    case 'not-found':
+      return { res: NOT_THERE, text: '' };
+    case 'rate-limited':
+      return { res: TOO_MANY_REQUESTS, text: '' };
+    case 'unavailable':
+      if (read.cause.kind === 'status') {
+        return { res: { ok: false, status: read.cause.status }, text: '' };
+      }
+      throw read.cause.kind === 'timeout' ? new FetchTimeoutError(what, read.cause.timeoutMs) : read.cause.error;
+    case 'aborted':
+      throw new DOMException(`The preview read of ${what} was cancelled`, 'AbortError');
+    case 'unsupported':
+      throw new Error(`No provider can read the preview of ${what}`);
+  }
 }
 
 /**
@@ -28,37 +65,33 @@ export interface PreviewEntry {
  * apart. It is the response the segments were read from, which on a ladder is the rung's rather than
  * the master's.
  *
- * @param fetcher injected only by tests, production always uses the global.
+ * @param reads The client's previews reader, whose reads each have the ten second window.
  */
 export async function fetchPreviewManifest(
-  gatewayUrl: string,
+  reads: PreviewReads,
   entry: PreviewEntry,
   signal: AbortSignal,
-  fetcher?: typeof fetch,
-): Promise<{ res: TimedResponse; segments: Segment[] }> {
-  const res = await fetchWithTimeout(thumbnailManifestUrl(gatewayUrl, entry.owner, entry.topic, entry.index), {
-    signal,
-    fetcher,
-  });
-  if (!isMasterPlaylist(res.text)) {
-    return { res, segments: parseManifest(res.text).segments };
+): Promise<{ res: PreviewAnswer; segments: Segment[] }> {
+  const { res, text } = await previewRead(
+    readPreviewPlaylist(reads, entry.owner, entry.topic, entry.index, { signal }),
+    entry.topic,
+  );
+  if (!isMasterPlaylist(text)) {
+    return { res, segments: parseManifest(text).segments };
   }
 
-  const [variant] = masterVariants(res.text);
+  const [variant] = masterVariants(text);
   if (!variant) {
     return { res, segments: [] };
   }
 
-  const rung = await fetchWithTimeout(
-    thumbnailManifestUrl(
-      gatewayUrl,
-      variant.owner || entry.owner,
-      variant.topic,
-      finishedRungIndex(entry, variant.topic),
-    ),
-    { signal, fetcher },
+  const rung = await previewRead(
+    readPreviewPlaylist(reads, variant.owner || entry.owner, variant.topic, finishedRungIndex(entry, variant.topic), {
+      signal,
+    }),
+    variant.topic,
   );
-  return { res: rung, segments: parseManifest(rung.text).segments };
+  return { res: rung.res, segments: parseManifest(rung.text).segments };
 }
 
 /**

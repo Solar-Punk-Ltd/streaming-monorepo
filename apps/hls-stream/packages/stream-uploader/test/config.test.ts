@@ -21,6 +21,8 @@ interface EnvVar {
   field: keyof Config;
   /** Distinct from the default on purpose, so a variable read under the wrong name cannot pass. */
   sample: string;
+  /** The field holds a number, which the sample is compared with as a number. Every other field must stay text. */
+  numeric?: true;
 }
 
 interface OptionalEnvVar extends EnvVar {
@@ -35,6 +37,9 @@ const REQUIRED_ENV: EnvVar[] = [
   { name: 'STREAM_KEY', field: 'streamKey', sample: 'stream-key' },
   { name: 'STREAM_LIST_TOPIC', field: 'streamListTopic', sample: 'stream-list-topic' },
   { name: 'API_AUTH_TOKEN', field: 'apiAuthToken', sample: 'api-auth-token' },
+  // The stage's segment length, which has no default anywhere, so the uploader never dates a
+  // recording against a length nobody chose.
+  { name: 'HLS_FRAGMENT', field: 'fragmentSeconds', sample: '1.5', numeric: true },
 ];
 
 const OPTIONAL_ENV: OptionalEnvVar[] = [
@@ -126,7 +131,11 @@ describe('the environment contract', () => {
     });
 
     for (const variable of REQUIRED_ENV) {
-      assert.equal(config[variable.field], variable.sample, `${variable.name} did not reach config.${variable.field}`);
+      assert.equal(
+        config[variable.field],
+        variable.numeric ? Number(variable.sample) : variable.sample,
+        `${variable.name} did not reach config.${variable.field}`,
+      );
     }
     for (const variable of OPTIONAL_ENV) {
       assert.equal(
@@ -157,6 +166,12 @@ describe('the environment contract', () => {
       delete env[variable.name];
 
       await assert.rejects(() => loadConfig(env), new RegExp(variable.name));
+    });
+  }
+
+  for (const value of ['0', '-1', 'two', '3601']) {
+    it(`refuses to start on HLS_FRAGMENT=${value}, which is no segment length`, async () => {
+      await assert.rejects(() => loadConfig({ ...requiredEnv(), HLS_FRAGMENT: value }), /HLS_FRAGMENT/);
     });
   }
 
@@ -252,6 +267,24 @@ describe('the environment contract', () => {
    * rule in both its halves: the uploader starts whatever the chequebook says, and a
    * postage batch that cannot carry a broadcast still stops it.
    */
+  describe('the ladder time markers', () => {
+    const markersFor = async (written?: string) =>
+      (await loadConfig(written === undefined ? requiredEnv() : { ...requiredEnv(), LADDER_MARKERS: written }))
+        .ladderMarkers;
+
+    it('are on unless a deployment turns them off', async () => {
+      assert.equal(await markersFor(), true);
+    });
+
+    it('turn off on LADDER_MARKERS=false', async () => {
+      assert.equal(await markersFor('false'), false);
+    });
+
+    it('stay on on LADDER_MARKERS=true', async () => {
+      assert.equal(await markersFor('true'), true);
+    });
+  });
+
   describe('the start gates', () => {
     const gatesFor = async (mode?: string) =>
       (await loadConfig(mode === undefined ? requiredEnv() : { ...requiredEnv(), UPLOADER_START_GATES: mode }))

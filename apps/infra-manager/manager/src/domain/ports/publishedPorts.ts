@@ -1,5 +1,7 @@
 import type { PublishedPortBinding, PublishedPortsSnapshot } from './PublishedPortsProbe.js';
-import { portKeyOf } from './portReservations.js';
+import { config } from '../../utils/config.js';
+import type { KnownHostNetworkPorts } from './knownHostNetworkPorts.js';
+import { type PortKey, portKeyOf } from './portReservations.js';
 
 function record(value: unknown): Record<string, unknown> {
   if (!value || typeof value !== 'object' || Array.isArray(value))
@@ -44,13 +46,41 @@ export function publishedBindings(value: unknown): PublishedPortBinding[] {
   return [...bindings.values()];
 }
 
-export function collectPublishedPorts(rows: readonly unknown[]): Omit<PublishedPortsSnapshot, 'daemonId'> {
+/**
+ * A declared project's ports, owned by the project rather than by any one of its containers: the declaration is per
+ * project, and a project with several host-network containers would otherwise claim each port once per container
+ * under a different owner, which the inventory refuses as a port reserved twice.
+ */
+function declaredBindings(project: string, declared: readonly PortKey[]): PublishedPortBinding[] {
+  return declared.map(({ port, protocol }) => ({ project, service: null, port, protocol }));
+}
+
+/**
+ * Every binding the running containers hold, and the projects whose bindings cannot be known.
+ *
+ * A host-network container has no port map, so it is unverified unless its
+ * compose project is one the operator declared in KNOWN_HOST_NETWORK_PORTS,
+ * whose declared ports then count once as that project's bindings.
+ */
+export function collectPublishedPorts(
+  rows: readonly unknown[],
+  known: KnownHostNetworkPorts = config.knownHostNetworkPorts,
+): Omit<PublishedPortsSnapshot, 'daemonId'> {
   const bindings: PublishedPortBinding[] = [];
   const unverifiedProjects = new Set<string>();
+  const declaredProjects = new Set<string>();
   for (const value of rows) {
     const row = record(value);
     if (row.networkMode === 'host') {
-      unverifiedProjects.add(nullableLabel(row.project) ?? `external:${row.id}`);
+      if (typeof row.id !== 'string' || !row.id) throw new Error('Missing container identity');
+      const project = nullableLabel(row.project);
+      const declared = project === null ? undefined : known.get(project);
+      if (project !== null && declared) {
+        if (!declaredProjects.has(project)) bindings.push(...declaredBindings(project, declared));
+        declaredProjects.add(project);
+      } else {
+        unverifiedProjects.add(project ?? `external:${row.id}`);
+      }
     }
     bindings.push(...publishedBindings(row));
   }

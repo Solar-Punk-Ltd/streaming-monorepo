@@ -260,6 +260,7 @@ async function runSitting(stubs, env = {}) {
         ...process.env,
         PROFILE: 'bench-stage',
         PORT_SLOT: '7',
+        GOP_SECONDS: '0.5',
         PATH: `${stubs.bin}:${process.env.PATH}`,
         OUT_DIR: stubs.out,
         BENCH_REPO: stubs.benchRepo,

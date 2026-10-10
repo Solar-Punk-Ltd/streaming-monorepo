@@ -3,6 +3,7 @@ import { beforeEach, describe, it } from 'vitest';
 
 import type { Segment } from '../src/components/SwarmHlsPlayer/ManifestManagement';
 import { ManifestStateManager } from '../src/components/SwarmHlsPlayer/ManifestManagement';
+import { segmentsUnder } from './helpers/playerReader';
 
 const HEADERS = ['#EXTM3U', '#EXT-X-VERSION:3', '#EXT-X-TARGETDURATION:1'];
 const BYTES_URL = 'http://localhost:1633/bzz/';
@@ -52,15 +53,15 @@ describe('a live viewer accumulates the whole broadcast', () => {
       manager.updateManifest(TOPIC, HEADERS, segmentsFrom(poll * perPoll, perPoll, 0.5), false);
     }
 
-    assert.equal(segmentUris(manager.serialize(TOPIC, BYTES_URL)).length, polls * perPoll);
+    assert.equal(segmentUris(manager.serialize(TOPIC, segmentsUnder(BYTES_URL))).length, polls * perPoll);
   });
 
   it('grows the bytes it serves in proportion to the segments it holds', () => {
     manager.updateManifest(TOPIC, HEADERS, segmentsFrom(0, 2_000, 0.5), false);
-    const atTwoThousand = manager.serialize(TOPIC, BYTES_URL).length;
+    const atTwoThousand = manager.serialize(TOPIC, segmentsUnder(BYTES_URL)).length;
 
     manager.updateManifest(TOPIC, HEADERS, segmentsFrom(2_000, 2_000, 0.5), false);
-    const atFourThousand = manager.serialize(TOPIC, BYTES_URL).length;
+    const atFourThousand = manager.serialize(TOPIC, segmentsUnder(BYTES_URL)).length;
 
     const ratio = atFourThousand / atTwoThousand;
     assert.ok(
@@ -72,11 +73,11 @@ describe('a live viewer accumulates the whole broadcast', () => {
 
   it('costs the same at every segment length, because the count is what it charges for', () => {
     manager.updateManifest(TOPIC, HEADERS, segmentsFrom(0, 1_000, 0.5), false);
-    const atHalfSecond = manager.serialize(TOPIC, BYTES_URL).length;
+    const atHalfSecond = manager.serialize(TOPIC, segmentsUnder(BYTES_URL)).length;
 
     manager.clear(TOPIC);
     manager.updateManifest(TOPIC, HEADERS, segmentsFrom(0, 1_000, 1), false);
-    const atOneSecond = manager.serialize(TOPIC, BYTES_URL).length;
+    const atOneSecond = manager.serialize(TOPIC, segmentsUnder(BYTES_URL)).length;
 
     assert.equal(
       atHalfSecond,
@@ -94,10 +95,10 @@ describe('a live viewer accumulates the whole broadcast', () => {
   it('serves the cached string to a poll that found nothing new', () => {
     const segments = segmentsFrom(0, 1_000, 0.5);
     manager.updateManifest(TOPIC, HEADERS, segments, false);
-    const built = manager.serialize(TOPIC, BYTES_URL);
+    const built = manager.serialize(TOPIC, segmentsUnder(BYTES_URL));
 
     manager.updateManifest(TOPIC, HEADERS, segments, false);
 
-    assert.equal(manager.serialize(TOPIC, BYTES_URL), built);
+    assert.equal(manager.serialize(TOPIC, segmentsUnder(BYTES_URL)), built);
   });
 });

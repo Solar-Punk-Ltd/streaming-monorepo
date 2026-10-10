@@ -105,7 +105,11 @@ NATIVE_BOOT_S="${NATIVE_BOOT_S:-180}"
 
 SIZE="${SIZE:-1280x720}"
 BITRATE_KBPS="${BITRATE_KBPS:-2500}"
-GOP_SECONDS="${GOP_SECONDS:-0.5}"
+# The publisher's keyframe interval. It defaults to HLS_FRAGMENT, read from the same environment as
+# ABR_ENABLED and ABR_LADDER below, so the sitting publishes at the length the stage cuts and the
+# fingerprint gate checks that it does. GOP_SECONDS publishes at another length on purpose.
+GOP_SECONDS="${GOP_SECONDS:-${HLS_FRAGMENT:-}}"
+: "${GOP_SECONDS:?set HLS_FRAGMENT to the segment length of the stage, or GOP_SECONDS to publish at another}"
 
 UPLOADER_API_PORT="${UPLOADER_API_PORT:-$((PORT_SLOT == 0 ? 3000 : 10000 + PORT_SLOT * 10))}"
 UPLOADER_BEE_PORT="${UPLOADER_BEE_PORT:-$((PORT_SLOT == 0 ? 1633 : 10005 + PORT_SLOT * 10))}"

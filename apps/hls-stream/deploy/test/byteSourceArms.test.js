@@ -252,6 +252,7 @@ async function runSitting(stubs, env = {}) {
         STAMP: BATCH,
         PROFILE: 'bench-stage',
         PORT_SLOT: '7',
+        HLS_FRAGMENT: '0.5',
         SPEND_LEDGER: stubs.ledger,
         ROUNDS: '2',
         ARM_MINUTES: '2',
@@ -808,6 +809,16 @@ describe('the stage has to be publishing the GOP the sitting asked for', () => {
 
     assert.notEqual(result.code, 0);
     assert.equal(watches(result).length, 0);
+  });
+
+  it('publishes at the HLS_FRAGMENT of the stage when no GOP is named', async () => {
+    const result = await runSitting(setup(), {
+      HLS_FRAGMENT: '2.0',
+      STUB_SEGMENT_SECONDS: '2.002',
+    });
+
+    assert.equal(result.code, 0, result.log);
+    assert.match(result.log, /at a 2\.0s GOP/);
   });
 
   it('accepts a deliberate 2.0s sitting on a stage that can serve it', async () => {

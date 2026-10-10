@@ -1,6 +1,5 @@
 import { FeedIndex, Topic } from '@ethersphere/bee-js';
 import {
-  extractFeedIndex,
   HLS_DISCONTINUITY,
   HLS_ENDLIST,
   HLS_GAP,
@@ -13,15 +12,22 @@ import {
 import Pqueue from 'p-queue';
 
 import { Rendition } from '@/types/stream';
-import { config } from '@/utils/config';
-import { fetchWithTimeout, TimedResponse } from '@/utils/fetchWithTimeout';
+import { UNSUPPORTED } from '@/swarm/answers';
+import type { SwarmReader } from '@/swarm/client';
+import { gatewayClock } from '@/utils/gatewayClock';
 import { RequestJitter } from '@/utils/requestJitter';
 
 import { FEED_RETURN_WATCH_INTERVAL_MS, FeedReturnWatch, feedReturnWatchWaitMs } from './feedReturn';
 import { FeedHealthTracker, UNSERVED_POLLS_PROBE_CEILING } from './feedState';
-import { LadderFeedPoller } from './LadderFeedPoller';
-import { absoluteBytesBase, buildMasterPlaylist, isMasterPlaylist, masterVariants, parseSwarmUri } from './playlist';
+import { LadderFeedPoller, type LadderRung, WALL_CLOCK } from './LadderFeedPoller';
+import { watchLadderCompletion } from './ladderCompletionWatch';
+import { LadderMarkerReads } from './ladderMarkerReads';
+import { MarkerFinder } from './markerFinder';
+import { headIndexOf, type PlayerReader, retryAfterMsOf, servedText, type ServedText } from './playerReads';
+import { buildMasterPlaylist, isMasterPlaylist, masterRungs, parseSwarmUri } from './playlist';
 import { isSlotNotWrittenYet, ManifestFetchError, probePastRefusal, shouldProbePastRefusal } from './refusedSlot';
+import { rungHeadMarkers } from './rungHeadMarkers';
+import { waitMs } from './waitMs';
 
 // The parser and the segment shape now live beside the tags the uploader builds with, so the two
 // halves of the manifest contract cannot drift apart. Re-exported because the player's own modules
@@ -37,14 +43,24 @@ interface TopicState {
   dirty: boolean;
   cachedManifest: string;
   /**
-   * The gateway {@link ManifestStateManager.serialize} built {@link cachedManifest} against.
+   * The segment URLs {@link ManifestStateManager.serialize} built {@link cachedManifest} with.
    *
-   * ⛔ Every segment line in a serialized playlist is prefixed with this, so a cached manifest is
-   * only valid for the gateway that produced it. Without it, `serialize` takes the gateway as an
-   * argument and then ignores it on every cache hit.
+   * ⛔ Every segment line in a serialized playlist comes from this, so a cached manifest is only
+   * valid for the gateway that produced it. Without it, `serialize` takes the gateway as an argument
+   * and then ignores it on every cache hit.
    */
-  cachedBytesUrl: string;
+  cachedSegmentUrl: SegmentUrl | null;
 }
+
+/**
+ * Where hls.js loads a segment from, given the reference a playlist names, or null to leave the line
+ * as the publisher wrote it. One function per provider serving segments, so a playlist cached for one
+ * is never served for another.
+ */
+export type SegmentUrl = (reference: string) => string | null;
+
+/** Leaves every line as the publisher wrote it. */
+export const SEGMENTS_AS_WRITTEN: SegmentUrl = () => null;
 
 const manifestQueue = new Pqueue({ concurrency: 1 });
 
@@ -63,17 +79,6 @@ const manifestQueue = new Pqueue({ concurrency: 1 });
  * close any backlog within a few polls.
  */
 export const MAX_SLOTS_PER_POLL = 16;
-
-/**
- * The wait the fetcher ships with, named so that something can run it.
- *
- * As an inline default parameter it was the one code path every backoff test injected over, so a
- * default that returned immediately left the whole suite green while a page of players hammered a
- * gateway that was already down.
- */
-export function waitMs(ms: number): Promise<void> {
-  return new Promise((resolve) => setTimeout(resolve, ms));
-}
 
 export class ManifestStateManager {
   private static instance: ManifestStateManager;
@@ -109,6 +114,12 @@ export class ManifestStateManager {
    */
   hasSegments(topicId: string): boolean {
     return (this.topics.get(topicId)?.segments.length ?? 0) > 0;
+  }
+
+  /** What this topic holds, for comparing two rungs at a switch, or null when it holds nothing. */
+  snapshot(topicId: string): { readonly segments: readonly Segment[]; readonly isFinalized: boolean } | null {
+    const state = this.topics.get(topicId);
+    return state ? { segments: state.segments, isFinalized: state.isFinalized } : null;
   }
 
   updateManifest(topicId: string, headers: string[], segments: Segment[], isFinalized: boolean): boolean {
@@ -189,18 +200,18 @@ export class ManifestStateManager {
     }
   }
 
-  serialize(topicId: string, bytesUrl: string): string {
+  serialize(topicId: string, segmentUrl: SegmentUrl): string {
     const state = this.topics.get(topicId);
     if (!state || state.segments.length === 0) {
       return '';
     }
 
     // ⛔⛔⛔ The gateway is part of the cache key, not just an argument. A viewer who changes gateway
-    // through `setGatewayUrl` is covered by `markAllDirty`, but anything that changes it another way
+    // through the provider's source switch is covered by `markAllDirty`, but anything that changes it another way
     // was silently served the previous gateway's playlist. On 2026-08-13 that put every segment of
     // both arms of a funded-versus-unfunded sitting on the SAME node while the client truthfully
     // reported two different gateways, which would have reported that funding does not matter.
-    if (!state.dirty && state.cachedBytesUrl === bytesUrl) {
+    if (!state.dirty && state.cachedSegmentUrl === segmentUrl) {
       return state.cachedManifest;
     }
 
@@ -232,7 +243,7 @@ export class ManifestStateManager {
         lines.push(seg.programDateTime);
       }
       lines.push(seg.extinf);
-      lines.push(seg.gap ? seg.uri : this.buildUri(seg.uri, bytesUrl));
+      lines.push(seg.gap ? seg.uri : this.buildUri(seg.uri, segmentUrl));
     }
 
     if (state.isFinalized) {
@@ -240,7 +251,7 @@ export class ManifestStateManager {
     }
 
     state.cachedManifest = lines.join('\n');
-    state.cachedBytesUrl = bytesUrl;
+    state.cachedSegmentUrl = segmentUrl;
     state.dirty = false;
     return state.cachedManifest;
   }
@@ -256,7 +267,7 @@ export class ManifestStateManager {
    *
    * The one thing about a topic that has to outlive the topic, so that a fetch issued before a
    * teardown can tell that it was. The follow-up path can compare feed indices instead, because it
-   * pins one before it starts; the initial path has no index yet by definition, and after a teardown
+   * pins one before it starts. The initial path has no index yet by definition, and after a teardown
    * a resurrected topic and a genuinely new one are otherwise identical.
    */
   generation(topicId: string): number {
@@ -334,7 +345,7 @@ export class ManifestStateManager {
         isFinalized: false,
         dirty: true,
         cachedManifest: '',
-        cachedBytesUrl: '',
+        cachedSegmentUrl: null,
       });
     }
     return this.topics.get(topicId)!;
@@ -355,11 +366,11 @@ export class ManifestStateManager {
    * real host in front of a token that stands for missing media, and every later reader would have to
    * strip the host back off to see what it was. {@link serialize} passes it through instead.
    */
-  private buildUri(uri: string, bytesUrl: string): string {
-    if (!bytesUrl || uri.startsWith('http://') || uri.startsWith('https://') || uri.startsWith('/bytes/')) {
+  private buildUri(uri: string, segmentUrl: SegmentUrl): string {
+    if (uri.startsWith('http://') || uri.startsWith('https://') || uri.startsWith('/bytes/')) {
       return uri;
     }
-    return `${bytesUrl}/${uri}`;
+    return segmentUrl(uri) ?? uri;
   }
 }
 
@@ -373,22 +384,25 @@ interface LadderSource {
  * Resolved when the master is actually asked for, not when the ladder is registered.
  *
  * The uploader keeps correcting each rung's measured bandwidth, and those corrections are worth
- * having — but only up to the moment hls.js reads the master, which for a live stream is once. A
- * supplier picks up whatever has landed by then; a snapshot taken at registration could not.
+ * having, but only up to the moment hls.js reads the master, which for a live stream is once. A
+ * supplier picks up whatever has landed by then. A snapshot taken at registration could not.
  */
 type LadderResolver = () => LadderSource;
 
 /**
  * A source known to be a ladder, and the topics actually handed to the poller.
  *
- * `resolve` is present only on the fallback path, where the ladder came from the stream catalog
- * rather than from a published master. `topics` is recorded rather than re-derived, because it is
- * what has to be stopped again — see {@link ManifestFetcher.registerLadder}.
+ * `resolve` is present only where the ladder came from the stream list rather than from a published
+ * master. `topics` is recorded rather than re-derived, because it is
+ * what has to be stopped again. See {@link ManifestFetcher.registerLadder}.
  */
 interface RegisteredLadder {
   resolve?: LadderResolver;
   topics: Topic[];
 }
+
+/** The status a head read is refused with when it was served and yielded no playlist, a captive portal's page say. */
+const SERVED_WITHOUT_PLAYLIST = 200;
 
 /** A finished single-rendition feed's watch, and the teardown registration that would end it. */
 interface HeldReturnWatch {
@@ -399,7 +413,7 @@ interface HeldReturnWatch {
 
 /** One slot read off a single-rendition feed, carried with the state it was read against. */
 interface SlotRead {
-  response: TimedResponse;
+  response: ServedText;
   /** The index the topic's state held when the read was issued, which the read only applies to. */
   readIndex: FeedIndex;
   /** The slot the response came from. */
@@ -407,7 +421,8 @@ interface SlotRead {
 }
 
 /**
- * How many of the poller's own polls a level request waits for a rung's first playlist.
+ * How much longer than a search for a rung's newest index may take a level request waits for that
+ * rung's first playlist.
  *
  * ⛔ **The wait it bounds had no bound at all, and a bound is the whole fix.** A rung is served out
  * of what {@link LadderFeedPoller} has already read, so a level request for a rung that has read
@@ -417,27 +432,23 @@ interface SlotRead {
  * its own, so hls.js was given no timeout, no retry and no error for that level. The viewer got a
  * black player, no spinner and no message, with three healthy rungs one level switch away.
  *
- * ## Why twenty polls
+ * ## Why the search's deadline and five seconds
  *
- * Counted in polls rather than milliseconds because the poller's cadence is what decides how often
- * a rung gets a chance to become ready. A deployment that slows the poll interval slows this in
- * step, which a wall time written here would not.
- *
- * It has to clear one whole read of the feed, since a first read that is merely slow still succeeds
- * and must not be cut off: `fetchWithTimeout` gives a single read 10s, which is 13.3 polls at the
- * shipped 750ms interval. Twenty polls is 15s there, so it clears that ceiling with five seconds
- * over, and stays under the 20s hls.js itself allows a playlist load before its own loader would
- * have errored, so the level error arrives no later than the stock loader's would have.
+ * A rung's first playlist arrives with its search, so the wait has to outlast the longest search
+ * the poller allows, its `candidateFindDeadlineMs`. A fixed 15 s used to equal it, so a slow
+ * search that would have succeeded had its level failed at the same moment. The margin is the time a
+ * search that ends at its deadline still needs for its playlist to be folded in and handed on, a few
+ * polls, and with the shipped 15 s it makes 20 s, the time hls.js itself allows a playlist load
+ * before its own loader would have errored.
  *
  * Expiry costs a level rather than the session: hls.js retries a playlist error twice before it
  * switches level, each retry re-enters this wait with a fresh deadline, and the poller's walk keeps
  * running throughout, so a rung that becomes readable later is picked up by the next retry.
  */
-export const RUNG_READY_DEADLINE_POLLS = 20;
+export const RUNG_READY_MARGIN_MS = 5_000;
 
 /**
- * A rung that had produced no playlist by the time {@link RUNG_READY_DEADLINE_POLLS} polls had
- * passed.
+ * A rung that had produced no playlist inside its search's deadline and {@link RUNG_READY_MARGIN_MS}.
  *
  * Its own type rather than a {@link ManifestFetchError}, because no response was refused and no
  * status was read. Nothing arrived at all.
@@ -452,9 +463,75 @@ export class RungNotReadyError extends Error {
   }
 }
 
+/**
+ * A level request for a rung the poller refused at the switch, because it had clearly stopped. The
+ * player has already been told to take the level out, so this only ends the request.
+ */
+class RungRefusedError extends Error {
+  constructor(readonly hexTopic: string) {
+    super(`Rung ${hexTopic} has stopped, so the switch to it was refused`);
+    this.name = 'RungRefusedError';
+  }
+}
+
+/**
+ * A level request for a rung the player switched away from while the request waited. An empty
+ * playlist would reach hls.js as a fatal parse error and restart the player, so the level errors
+ * instead and hls.js asks again if it still wants it.
+ */
+class RungNotFollowedError extends Error {
+  constructor(readonly hexTopic: string) {
+    super(`Rung ${hexTopic} stopped being followed while its playlist was asked for`);
+    this.name = 'RungNotFollowedError';
+  }
+}
+
+/** When the frame a player shows was presented, by PROGRAM-DATE-TIME, or null when it cannot say. */
+type PlayheadClock = () => number | null;
+
+/** What the fetcher reads through until the app hands it the Swarm client: nothing, so nothing is read. */
+const NO_SWARM: SwarmReader = {
+  readFeedHead: async () => UNSUPPORTED,
+  readFeedEntry: async () => UNSUPPORTED,
+  readSoc: async () => UNSUPPORTED,
+  readChunk: async () => UNSUPPORTED,
+  readBytes: async () => UNSUPPORTED,
+  urlFor: () => null,
+  urlSource: () => null,
+};
+
 export class ManifestFetcher {
-  private _beeUrl: string = config.beeUrl;
+  /** Set by the app provider to the Swarm client's player reader before any player mounts. */
+  private swarm: SwarmReader = NO_SWARM;
+  /**
+   * Made again whenever the reader or the provider it takes segment URLs from changes, so a playlist
+   * serialized against one provider is never served for another. A pause sends segments to the
+   * fallback and its end sends them back, with no switch of reader, so the provider is part of the key.
+   */
+  private segmentUrlCache: {
+    readonly reader: SwarmReader;
+    readonly source: string | null;
+    readonly segmentUrl: SegmentUrl;
+  } = { reader: NO_SWARM, source: null, segmentUrl: SEGMENTS_AS_WRITTEN };
+  /**
+   * Every read this fetcher and its poller make, passed on to whichever reader is current, so a node
+   * switched to mid-session moves the walks with it.
+   */
+  private readonly reads: PlayerReader = {
+    readFeedHead: (owner, topic, options) => this.swarm.readFeedHead(owner, topic, options),
+    readFeedEntry: (owner, topic, index, options) => this.swarm.readFeedEntry(owner, topic, index, options),
+    readSoc: (owner, identifier, options) => this.swarm.readSoc(owner, identifier, options),
+  };
   private ladders = new Map<string, RegisteredLadder>();
+  /** Every marker read this fetcher's player makes, so an address is asked once between them. */
+  private readonly markerReads = new LadderMarkerReads(this.reads);
+  private readonly markers = new MarkerFinder(
+    this.reads,
+    WALL_CLOCK,
+    () => gatewayClock.offsetMs(),
+    undefined,
+    this.markerReads,
+  );
   private poller: LadderFeedPoller;
   private lastLoggedMaster = '';
 
@@ -475,6 +552,9 @@ export class ManifestFetcher {
    */
   private readonly returnWatches = new Map<string, HeldReturnWatch>();
 
+  /** Each ladder's player clock, by the group topic its overlay watches. See {@link attachPlayhead}. */
+  private readonly playheads = new Map<string, PlayheadClock>();
+
   constructor(
     private readonly stateManager: ManifestStateManager = ManifestStateManager.getInstance(),
     /** Shared with whatever renders the state, so both halves see one reading. */
@@ -488,7 +568,7 @@ export class ManifestFetcher {
     private readonly jitter: RequestJitter = new RequestJitter(),
     /**
      * Injected only by tests, so a rung's catch-up is driven rather than waited out. Production takes
-     * the poller's own default, which is tuned against a segment interval.
+     * the poller's own flat 750 ms retry, which is not tuned to the segment length.
      */
     pollIntervalMs?: number,
     /**
@@ -498,39 +578,53 @@ export class ManifestFetcher {
      */
     private readonly returnWatchIntervalMs: number = FEED_RETURN_WATCH_INTERVAL_MS,
   ) {
-    // The poller fetches through this instance rather than holding a URL of its own, so switching
+    // The poller reads through this instance rather than holding a reader of its own, so switching
     // gateway mid-session moves the walk with it. It also shares this instance's feed health and
     // computes its backoff through the same jitter, so a ladder outage records and paces exactly as
     // the single-rendition path does rather than polling a dead gateway flat. A finished rung's watch
-    // draws its waits through that jitter too, as the single rendition's does.
+    // draws its waits through that jitter too, as the single rendition's does. A rung's newest index is
+    // found from the ladder's time marker, on the clock the stream list's answers corrected, and a rung
+    // gone quiet waits on the same markers rather than asking for its next slot.
     this.poller = new LadderFeedPoller(
       stateManager,
-      (path) => this.fetchResource(path),
+      this.reads,
       pollIntervalMs,
       this.feedHealth,
       (hexTopic) => this.jitter.spread(this.feedHealth.backoffRemainingMs(hexTopic)),
       () => this.drawReturnWatchWaitMs(),
+      {
+        playheadMs: (group) => (group === null ? null : (this.playheads.get(group)?.() ?? null)),
+        finder: this.markers,
+        headMarkers: (rung, clock) =>
+          rungHeadMarkers(this.reads, rung, clock, () => gatewayClock.offsetMs(), this.markerReads),
+      },
     );
   }
 
-  get beeUrl(): string {
-    return this._beeUrl;
+  /**
+   * Reads every feed through `reader` from now on, and names every segment by its URLs. The app hands
+   * in the Swarm client's player reader at start and again whenever the viewer picks another node.
+   */
+  useSwarm(reader: SwarmReader): void {
+    this.swarm = reader;
   }
 
-  set beeUrl(url: string) {
-    this._beeUrl = url;
+  /** How segments are named now: by the provider the current reader takes segment URLs from. */
+  private segmentUrl(): SegmentUrl {
+    const reader = this.swarm;
+    const source = reader.urlSource('segment');
+    if (this.segmentUrlCache.reader !== reader || this.segmentUrlCache.source !== source) {
+      this.segmentUrlCache = { reader, source, segmentUrl: (reference) => reader.urlFor(reference, 'segment') };
+    }
+    return this.segmentUrlCache.segmentUrl;
   }
 
   /**
-   * Declares that the stream loaded from `sourceUrl` has a ladder in the stream catalog.
+   * Declares that the stream loaded from `sourceUrl` has a ladder in the stream list.
    *
-   * This is the fallback path, for an entry whose `topic` points at the lowest rung because it was
-   * written before the uploader published masters. It pre-starts the rung walks from the catalog's
-   * rendition list so such a stream is still a ladder; {@link fetchSource} then answers the
-   * top-level request with a locally built master when the feed turns out to hold a media playlist.
-   *
-   * Registering costs nothing when the source *does* have a published master: the topics are the
-   * same ones, and starting a walk that is already running is a no-op.
+   * Its rungs are registered from the list's renditions, and {@link fetchSource} answers the
+   * top-level request with the master built from them without reading the master feed. Nothing is
+   * read here: the first read is the rung hls.js asks for.
    */
   registerLadder(sourceUrl: string, resolve: LadderResolver): void {
     const ladder = resolve();
@@ -538,17 +632,24 @@ export class ManifestFetcher {
 
     // The topics are recorded, not re-derived on the way out. React assigns refs during render,
     // which happens before the previous effect's cleanup runs, so a resolver read at unregister
-    // time already sees the *next* stream's ladder — which would stop the rungs just started and
+    // time already sees the *next* stream's ladder, which would stop the rungs just started and
     // leave the previous stream's walk loops running forever.
-    this.trackLadder(sourceUrl, topics, resolve);
-    this.poller.start(ladder.owner, topics, groupHexOf(sourceUrl));
+    this.ladders.set(sourceUrl, { resolve, topics });
+    this.poller.register(
+      ladder.owner,
+      ladder.renditions.map((rendition) => ({
+        topic: Topic.fromString(rendition.topic),
+        bandwidth: rendition.bandwidth,
+      })),
+      groupHexOf(sourceUrl),
+    );
   }
 
   /**
    * Stops every rung this source was walking and discards what they accumulated.
    *
    * The clearing belongs here rather than in the player, because with a published master the rung
-   * topics are discovered from the playlist and the player never sees them — it would have nothing
+   * topics are discovered from the playlist and the player never sees them. It would have nothing
    * to clear, and the next session would resume the previous one's playlists. Done synchronously
    * with the stop, so a response still in flight cannot recreate the state it lands after.
    */
@@ -560,30 +661,39 @@ export class ManifestFetcher {
       return;
     }
 
-    this.poller.stop(registered.topics);
+    this.poller.unregister(registered.topics);
     for (const topic of registered.topics) {
       this.stateManager.clear(topic.toString());
     }
   }
 
   /**
-   * Answers the top-level playlist request for `url` — the one hls.js makes once, from
+   * Answers the top-level playlist request for `url`, the one hls.js makes once, from
    * `loadSource`.
    *
-   * The source feed is read first and its content decides what this is. A multivariant playlist
-   * means the uploader published a master for a ladder, and it is returned as it stands; the rungs
-   * it names start being walked here, before hls.js has parsed it and asked for any of them. A
-   * media playlist means either a single-rendition stream, or a catalog entry from before masters
-   * existed — the fallback in {@link registerLadder} covers the second.
+   * A stream whose entry in the stream list names its renditions is answered with the master built
+   * from them, and nothing is read (decision 33, the owner, 2026-10-07). The master feed's head lookup
+   * was the slowest read at start, 4.2 to 4.7 s in phase 0, and the list already carries every
+   * rendition with its topic, size and bandwidth.
+   *
+   * Any other stream reads its source feed, and the content decides what it is. A multivariant
+   * playlist means the uploader published a master for a ladder, and it is returned as it stands,
+   * with the rungs it names registered. A media playlist means a single-rendition stream.
    */
   async fetchSource(url: string): Promise<string> {
     const source = parseSwarmUri(url);
     const topic = Topic.fromString(source.topic);
     const hexTopic = topic.toString();
 
+    const fromList = this.masterFor(url);
+    if (fromList) {
+      this.logMaster(url, fromList, 'built from the stream list');
+      return fromList;
+    }
+
     // Guarded exactly as {@link handleInitialFetch} is, and for the same reasons. Once a stream can
     // be a ladder this is the head read every mount makes, and the restart a fatal player error
-    // triggers comes back through here rather than through there — so an unguarded read here would
+    // triggers comes back through here rather than through there, so an unguarded read here would
     // be an unbounded restart loop against a dead gateway, with nothing recorded for the overlay to
     // report and no backoff accumulating to slow it down.
     const generation = this.stateManager.generation(hexTopic);
@@ -591,7 +701,7 @@ export class ManifestFetcher {
 
     const { path } = nextFeedRequest(source.owner, topic, null);
     try {
-      const res = await this.fetchResource(path);
+      const res = await servedText(this.swarm.readFeedHead(source.owner, topic), path);
       const text = res.text;
 
       if (isMasterPlaylist(text)) {
@@ -600,18 +710,10 @@ export class ManifestFetcher {
         // walks here would leave four orphans that nothing can stop, `unregisterLadder` being their
         // only stopper and already spent. The single-rendition branch below guards the same way.
         this.assertTopicSurvived(hexTopic, generation);
-        const variants = masterVariants(text);
-        this.startVariants(url, source.owner, variants);
+        this.registerVariants(url, source.owner, masterRungs(text));
         this.logMaster(url, text, 'published');
         this.feedHealth.recordGatewayReachable(hexTopic);
         return text;
-      }
-
-      const synthesized = this.masterFor(url);
-      if (synthesized) {
-        this.logMaster(url, synthesized, 'synthesised from the catalog');
-        this.feedHealth.recordGatewayReachable(hexTopic);
-        return synthesized;
       }
 
       // Single rendition: the source feed *is* the media playlist, so the read above was the initial
@@ -621,9 +723,48 @@ export class ManifestFetcher {
       this.feedHealth.recordGatewayReachable(hexTopic);
       return manifest;
     } catch (error) {
-      this.feedHealth.recordGatewayFailure(hexTopic);
+      this.feedHealth.recordGatewayFailure(hexTopic, retryAfterMsOf(error));
       throw error;
     }
+  }
+
+  /**
+   * Watches this source's ladder markers for rungs the stream list does not name, and calls `onShort`
+   * whenever one does, so the page reads the list's next slot once and the fuller entry rebuilds the
+   * player. At the start with the marker the start rung's search reads, so that check asks no address
+   * of its own, then with one marker per period for a bounded time, see `ladderCompletionWatch.ts`.
+   *
+   * An entry naming no rendition is watched too, since a page may start the player on the stream's
+   * first marker before the list names any. A stream with no ladder has no markers, so the watch only
+   * finds each address missing once.
+   *
+   * @param listedTopics The rungs the list names now, by hex topic, read again at every check.
+   * @returns Stops the watch.
+   */
+  watchLadderCompletion(
+    sourceUrl: string,
+    owner: string,
+    listedTopics: () => readonly string[],
+    onShort: () => void,
+  ): () => void {
+    const group = groupHexOf(sourceUrl);
+    if (group === null) {
+      return () => {};
+    }
+
+    return watchLadderCompletion({
+      reads: this.markerReads,
+      clock: WALL_CLOCK,
+      clockOffsetMs: () => gatewayClock.offsetMs(),
+      owner,
+      group: new Topic(group),
+      listedTopics,
+      onShort,
+      startNames: async () => {
+        const marker = await this.markers.markerFor(owner, group);
+        return marker === null ? null : Object.keys(marker.rungs);
+      },
+    });
   }
 
   /** The master playlist for a registered ladder, or null when this source is single-rendition. */
@@ -641,13 +782,20 @@ export class ManifestFetcher {
     const topic = Topic.fromString(topicPart);
     const hexTopic = topic.toString();
 
-    // A rung the poller owns is already being kept current, so a playlist request is a read of
-    // what is there. The only wait is for the very first response to arrive, and it is bounded,
-    // because a rung whose feed this gateway cannot resolve never has one. See
-    // {@link RUNG_READY_DEADLINE_POLLS}.
-    if (this.poller.isPolling(hexTopic)) {
+    // A rung of a registered ladder. Asking for its playlist is what starts following it, at its
+    // newest index, and the wait for that first read is bounded, because a rung whose feed this
+    // gateway cannot resolve never has one. See {@link RUNG_READY_MARGIN_MS}.
+    if (this.poller.isRegistered(hexTopic)) {
+      this.poller.activate(hexTopic);
       await this.awaitRungReady(hexTopic);
-      return this.stateManager.serialize(hexTopic, this.bytesBaseUrl());
+      const readiness = this.poller.readiness(hexTopic);
+      if (readiness === 'refused') {
+        throw new RungRefusedError(hexTopic);
+      }
+      if (readiness === 'inactive') {
+        throw new RungNotFollowedError(hexTopic);
+      }
+      return this.stateManager.serialize(hexTopic, this.segmentUrl());
     }
 
     // Which request follows is `nextFeedRequest`'s to decide, on the same input, for everything in
@@ -681,7 +829,7 @@ export class ManifestFetcher {
    * subscribed to.
    */
   private async awaitRungReady(hexTopic: string): Promise<void> {
-    const deadlineMs = RUNG_READY_DEADLINE_POLLS * this.poller.pollIntervalMs;
+    const deadlineMs = this.poller.candidateFindDeadlineMs + RUNG_READY_MARGIN_MS;
     const expired = this.delay(deadlineMs).then(() => {
       throw new RungNotReadyError(hexTopic, deadlineMs);
     });
@@ -731,14 +879,14 @@ export class ManifestFetcher {
     const hexTopic = topic.toString();
 
     // Read before the wait rather than after it. Everything from here to the write is one window,
-    // and the backoff can hold it open for seconds — so a teardown landing during the wait has to be
+    // and the backoff can hold it open for seconds, so a teardown landing during the wait has to be
     // caught by the same guard that catches one landing during the fetch. See
     // {@link assertTopicSurvived}.
     const generation = this.stateManager.generation(hexTopic);
     await this.awaitFeedBackoff(hexTopic);
 
     // Every status counts as a failure here, 404 included. On the follow-up path a 404 means the
-    // publisher has not written the next slot yet, which is ordinary; this request asks for the
+    // publisher has not written the next slot yet, which is ordinary. This request asks for the
     // feed's head, so nothing being there is the gateway having no answer at all.
     //
     // So does anything else that stops this call producing a playlist. The alternative is worse than
@@ -747,7 +895,7 @@ export class ManifestFetcher {
     // loop and says nothing to the viewer. A 200 carrying a captive portal's HTML does exactly that.
     const { path } = nextFeedRequest(owner, topic, null);
     try {
-      const res = await this.fetchResource(path);
+      const res = await servedText(this.swarm.readFeedHead(owner, topic), path);
       this.assertTopicSurvived(hexTopic, generation);
 
       const manifest = this.ingestManifest(owner, topic, res, path);
@@ -758,7 +906,7 @@ export class ManifestFetcher {
       this.feedHealth.recordGatewayReachable(hexTopic);
       return manifest;
     } catch (error) {
-      this.feedHealth.recordGatewayFailure(hexTopic);
+      this.feedHealth.recordGatewayFailure(hexTopic, retryAfterMsOf(error));
       throw error;
     }
   }
@@ -806,7 +954,7 @@ export class ManifestFetcher {
    * A head that is already finished is a recording being opened, and it is watched for its
    * broadcaster coming back exactly as a finish read live is. See {@link watchForReturn}.
    */
-  private ingestManifest(owner: string, topic: Topic, response: TimedResponse, path: string): string {
+  private ingestManifest(owner: string, topic: Topic, response: ServedText, path: string): string {
     const hexTopic = topic.toString();
     const parsed = parseManifest(response.text);
 
@@ -820,12 +968,12 @@ export class ManifestFetcher {
     // Checked before the index is committed, not after. An index is what routes the next poll to the
     // follow-up path, so committing one for a response that yielded no playlist strands the topic
     // there, answering every poll with the same empty string and never asking the head again.
-    const manifest = this.stateManager.serialize(hexTopic, this.bytesBaseUrl());
+    const manifest = this.stateManager.serialize(hexTopic, this.segmentUrl());
     if (!manifest) {
-      throw new ManifestFetchError(path, response.status);
+      throw new ManifestFetchError(path, SERVED_WITHOUT_PLAYLIST);
     }
     if (shouldContinue) {
-      this.stateManager.setIndex(hexTopic, extractFeedIndex(response.headers));
+      this.stateManager.setIndex(hexTopic, headIndexOf(response));
       // A mount's first read found the feed open, so an end still recorded against it was left by an
       // earlier mount and is over. Forgotten without announcing a return, and only once the read has
       // proved usable. See `FeedHealthTracker.forgetStaleEnd`.
@@ -834,9 +982,8 @@ export class ManifestFetcher {
       // Read only here, and forgivingly. A finished head was never asked for its index before, and a
       // gateway that leaves the header off still has a recording worth playing, so a missing index
       // costs the watch and not the playlist.
-      const finishedAt = feedIndexOrNull(response.headers);
-      if (finishedAt !== null) {
-        this.watchForReturn(owner, topic, finishedAt);
+      if (response.feedIndex !== null) {
+        this.watchForReturn(owner, topic, FeedIndex.fromBigInt(BigInt(response.feedIndex)));
       }
     }
 
@@ -894,7 +1041,7 @@ export class ManifestFetcher {
       this.inFlight.set(hexTopic, walk);
     }
 
-    return this.stateManager.serialize(hexTopic, this.bytesBaseUrl());
+    return this.stateManager.serialize(hexTopic, this.segmentUrl());
   }
 
   /**
@@ -927,9 +1074,9 @@ export class ManifestFetcher {
     for (let consumed = 0; consumed < MAX_SLOTS_PER_POLL; consumed++) {
       const { path, index: targetIndex } = nextFeedRequest(owner, topic, readIndex);
 
-      let response: TimedResponse;
+      let response: ServedText;
       try {
-        response = await this.fetchResource(path);
+        response = await servedText(this.swarm.readFeedEntry(owner, topic, Number(targetIndex.toBigInt())), path);
       } catch (error) {
         if (isSlotNotWrittenYet(error)) {
           // Where every healthy poll ends: the walk has caught the publisher up. Counted as an
@@ -948,7 +1095,7 @@ export class ManifestFetcher {
         // about the gateway rather than about the topic generation, and it is the fact worth keeping
         // across a teardown, because the restart that discards the topic is itself what a fatal
         // network error triggers.
-        this.feedHealth.recordGatewayFailure(hexTopic);
+        this.feedHealth.recordGatewayFailure(hexTopic, retryAfterMsOf(error));
         console.error('Error fetching follow-up manifest:', error);
         return;
       }
@@ -1033,7 +1180,7 @@ export class ManifestFetcher {
     }
 
     const watch = new FeedReturnWatch({
-      fetchResource: (path) => this.fetchResource(path),
+      reader: this.reads,
       owner,
       topic,
       finishedAt,
@@ -1070,34 +1217,53 @@ export class ManifestFetcher {
     held.letGoOfTeardown();
   }
 
-  /**
-   * Records a ladder against its source, merging topics rather than replacing them.
-   *
-   * Both paths can fire for one source — the catalog registers the ladder as the player mounts, and
-   * the published master names the same rungs a moment later. Replacing would leave whichever set
-   * lost the race running with nothing to stop it at teardown.
-   */
-  private trackLadder(sourceUrl: string, topics: Topic[], resolve?: LadderResolver): void {
-    const existing = this.ladders.get(sourceUrl);
-    const known = new Set(existing?.topics.map((t) => t.toString()));
-    const merged = [...(existing?.topics ?? []), ...topics.filter((t) => !known.has(t.toString()))];
-
-    this.ladders.set(sourceUrl, { resolve: resolve ?? existing?.resolve, topics: merged });
-  }
-
-  private startVariants(sourceUrl: string, sourceOwner: string, variants: { owner: string; topic: string }[]): void {
+  private registerVariants(
+    sourceUrl: string,
+    sourceOwner: string,
+    variants: { owner: string; topic: string; bandwidth: number | null }[],
+  ): void {
     if (variants.length === 0) {
       return;
     }
 
-    const topics = variants.map((variant) => Topic.fromString(variant.topic));
-    this.trackLadder(sourceUrl, topics);
-    this.poller.start(variants[0].owner || sourceOwner, topics, groupHexOf(sourceUrl));
+    const rungs: LadderRung[] = variants.map((variant) => ({
+      topic: Topic.fromString(variant.topic),
+      bandwidth: variant.bandwidth ?? undefined,
+    }));
+    // A source the stream list names renditions for is answered from the list and never reads its
+    // master, so this is the only registration the source has.
+    this.ladders.set(sourceUrl, { topics: rungs.map((rung) => rung.topic) });
+    this.poller.register(variants[0].owner || sourceOwner, rungs, groupHexOf(sourceUrl));
+  }
+
+  /**
+   * The player is now playing this rung, which is what hls.js says on `LEVEL_SWITCHED`, so every other
+   * rung of its ladder stops being followed and forgets what it read, except the one hls.js is loading.
+   */
+  followOnlyRung(rungHexTopic: string, loadingRungHexTopic: string | null = null): void {
+    this.poller.followOnly(rungHexTopic, loadingRungHexTopic);
+  }
+
+  /**
+   * Lets a switch read when the viewer is watching, so a viewer behind the live edge keeps their
+   * place. One clock per ladder, and the returned function lets go of it.
+   */
+  attachPlayhead(sourceUrl: string, clock: PlayheadClock): () => void {
+    const group = groupHexOf(sourceUrl);
+    if (group === null) {
+      return () => {};
+    }
+    this.playheads.set(group, clock);
+    return () => {
+      if (this.playheads.get(group) === clock) {
+        this.playheads.delete(group);
+      }
+    };
   }
 
   /**
    * Logged because a master is otherwise hard to see. The published one arrives as a feed read that
-   * looks like every other feed read, and the synthesised one never becomes a request at all — so
+   * looks like every other feed read, and the synthesised one never becomes a request at all, so
    * devtools' network panel, the first place anyone looks for a playlist, shows nothing useful
    * either way. Once per distinct master, which for a live session is once.
    */
@@ -1119,10 +1285,10 @@ export class ManifestFetcher {
    */
   private async stepPastRefusal(owner: string, topic: Topic, readIndex: FeedIndex, missing: FeedIndex): Promise<void> {
     const hexTopic = topic.toString();
-    const found = await probePastRefusal((path) => this.fetchResource(path), owner, topic, missing);
+    const found = await probePastRefusal(this.reads, owner, topic, missing);
 
     if (found.kind === 'gatewayFailed') {
-      this.feedHealth.recordGatewayFailure(hexTopic);
+      this.feedHealth.recordGatewayFailure(hexTopic, retryAfterMsOf(found.error));
       console.error('Error probing past a refused manifest slot:', found.error);
       return;
     }
@@ -1161,19 +1327,6 @@ export class ManifestFetcher {
     }
     return polls;
   }
-
-  /** Absolute, because it is written into a playlist. See {@link absoluteBytesBase}. */
-  private bytesBaseUrl(): string {
-    return absoluteBytesBase(this._beeUrl, pageOrigin());
-  }
-
-  private async fetchResource(path: string): Promise<TimedResponse> {
-    const response = await fetchWithTimeout(`${this._beeUrl}/${path}`);
-    if (!response.ok) {
-      throw new ManifestFetchError(path, response.status);
-    }
-    return response;
-  }
 }
 
 function ladderTopics(ladder: LadderSource): Topic[] {
@@ -1191,25 +1344,4 @@ function groupHexOf(sourceUrl: string): string | null {
   } catch {
     return null;
   }
-}
-
-/** The slot a head read resolved to, or null where the response does not say. */
-function feedIndexOrNull(headers: Headers): FeedIndex | null {
-  try {
-    return extractFeedIndex(headers);
-  } catch {
-    return null;
-  }
-}
-
-/**
- * The origin a playlist's URIs are made absolute against.
- *
- * Read here rather than taken from `window.location` at the call site because this class is
- * exercised outside a browser, where touching `window` is a `ReferenceError` rather than a
- * `undefined`. The fallback is only ever the base of an already absolute gateway URL, which `URL`
- * discards, so it cannot reach a playlist a viewer reads.
- */
-function pageOrigin(): string {
-  return typeof window === 'undefined' ? 'http://localhost' : window.location.origin;
 }

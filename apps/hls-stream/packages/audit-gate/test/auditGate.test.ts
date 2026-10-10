@@ -62,6 +62,7 @@ function allow(ghsa: string, packageName: string, overrides: Partial<AllowedAdvi
     packageName,
     reviewedSeverity: 'high',
     reviewedPatchedVersions: '>=1.3.0',
+    reviewedFixReleases: [],
     reason: 'Pinned by a test.',
     ...overrides,
   };

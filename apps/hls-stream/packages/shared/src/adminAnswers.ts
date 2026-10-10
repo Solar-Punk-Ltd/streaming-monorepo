@@ -1,4 +1,5 @@
 export {
+  ADMIN_ERROR_STREAM_NOT_FOUND,
   feedOwnerOf,
   ingestLookupAnswerSchema,
   ingestLookupPath,

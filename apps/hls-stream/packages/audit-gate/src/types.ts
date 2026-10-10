@@ -30,6 +30,13 @@ export interface AllowedAdvisory {
    */
   reviewedSeverity: AdvisorySeverity;
   reviewedPatchedVersions: string;
+  /**
+   * The published releases that already satisfied the patched range when the exception was written, and so were
+   * already weighed in its reason. Empty says none did, which is what "no release fixes it" means. pnpm 11 reports
+   * an advisory with no fix as its vulnerable range turned inside out, a patched range that reads the same before
+   * and after a fix ships, so the gate asks the registry instead and fails on any fixing release this does not name.
+   */
+  reviewedFixReleases: readonly string[];
   reason: string;
 }
 
@@ -39,6 +46,7 @@ type GateFailureKind =
   | 'package-mismatch'
   | 'duplicate-exception'
   | 'advisory-changed'
+  | 'fix-available'
   | 'malformed-exception';
 
 export interface GateFailure {
