@@ -71,7 +71,7 @@ describe('the users table', () => {
     renderAccess();
 
     const table = (await screen.findByText('kim')).closest('table');
-    // MUI's TableContainer scrolls a wide table on its own; without one the whole page does.
+    // MUI's TableContainer scrolls a wide table on its own. Without one the whole page does.
     expect(table?.parentElement).toHaveClass('MuiTableContainer-root');
   });
 
