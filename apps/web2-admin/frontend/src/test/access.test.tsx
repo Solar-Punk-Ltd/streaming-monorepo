@@ -63,6 +63,14 @@ function rowOf(username: string) {
 }
 
 describe('the users table', () => {
+  it('scrolls inside its card, so a phone-wide page does not scroll sideways', async () => {
+    renderAccess();
+
+    const table = (await screen.findByText('kim')).closest('table');
+    // MUI's TableContainer scrolls a wide table on its own; without one the whole page does.
+    expect(table?.parentElement).toHaveClass('MuiTableContainer-root');
+  });
+
   it('shows each user with their admin badge, dates and open sessions', async () => {
     renderAccess();
 
