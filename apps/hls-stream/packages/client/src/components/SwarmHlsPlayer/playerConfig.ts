@@ -154,6 +154,25 @@ export function liveLatencyFor(segmentMs: number | null | undefined): LiveLatenc
 export const MAX_LIVE_SYNC_PLAYBACK_RATE = 1.1;
 
 /**
+ * How many of a live playlist's newest segments, gaps not counted, a failed load may turn into a gap.
+ *
+ * At the live edge a segment the gateway cannot hand over yet is a hole the viewer is about to meet,
+ * and skipping it costs one segment of picture. Further back the segment is history the viewer has
+ * already played past or chose to rewind to, and is left to hls.js as it always was.
+ */
+export const LIVE_GAP_NEWEST_SEGMENTS = 3;
+
+/**
+ * At most this many segments are turned into gaps inside {@link LIVE_GAP_WINDOW_MS}. A stream losing
+ * more than that is not missing a segment, it is not being served, and the player's ordinary recovery,
+ * which ends in a restart, is the better answer to that.
+ */
+export const LIVE_GAP_LIMIT = 4;
+
+/** The sliding window {@link LIVE_GAP_LIMIT} is counted over. */
+export const LIVE_GAP_WINDOW_MS = 5 * 60_000;
+
+/**
  * Everything the player tells hls.js that is not a loader.
  *
  * Separate from the component because a wrong number here is invisible in every way except how the

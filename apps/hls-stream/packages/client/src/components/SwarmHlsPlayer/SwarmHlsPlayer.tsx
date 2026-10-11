@@ -11,6 +11,7 @@ import { attachQoeTracking, initialMetrics, QoeMetrics } from './overlays/qoe/us
 import { CustomFragmentLoader, CustomManifestLoader, manifestFetcher } from './CustomManifestLoader';
 import { FEED_STATE_LIVE, FeedState } from './feedState';
 import { attachLivePlaybackRateGuard } from './livePlaybackRate';
+import { LiveGapBudgetPerStream, skipFailedLiveSegment } from './liveSegmentGaps';
 import { attachLiveSyncToSegmentLength } from './liveSyncLength';
 import { ManifestStateManager } from './ManifestManagement';
 import { nextMediaErrorAction, NO_MEDIA_ERRORS_YET, recoverFromMediaError } from './mediaErrorRecovery';
@@ -323,6 +324,8 @@ export const SwarmHlsPlayer: React.FC<HlsPlayerProps> = ({
   renditionsRef.current = renditions;
   const onLadderShortRef = useRef(onLadderShort);
   onLadderShortRef.current = onLadderShort;
+  // Held by the component rather than the effect below, so a restart finds the budget its stream spent.
+  const [liveGapBudgets] = useState(() => new LiveGapBudgetPerStream());
 
   // Deliberately not part of the effect below, which reruns on every restart. A fatal network error
   // is what causes a restart, so a subscription torn down and rebuilt with the player would be
@@ -343,6 +346,7 @@ export const SwarmHlsPlayer: React.FC<HlsPlayerProps> = ({
     }
 
     const sourceUrl = buildSwarmUri(owner, topicString);
+    const liveGapBudget = liveGapBudgets.forStream(sourceUrl);
     const ladder = renditionsRef.current;
 
     // A ladder the stream list names. Its master is built from the list and the master feed is never
@@ -394,6 +398,20 @@ export const SwarmHlsPlayer: React.FC<HlsPlayerProps> = ({
       video.addEventListener('play', onHlsPlay);
 
       hls.on(Events.ERROR, (_event, data) => {
+        if (
+          hls &&
+          skipFailedLiveSegment(
+            hls,
+            data,
+            (levelUri, fragmentUrl) => manifestFetcher.markLiveSegmentGap(levelUri, fragmentUrl),
+            liveGapBudget,
+            performance.now(),
+            video.currentTime,
+          )
+        ) {
+          return;
+        }
+
         if (data.fatal) {
           console.error('HLS.js fatal error:', data.type, data.details);
         } else {

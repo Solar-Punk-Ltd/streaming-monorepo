@@ -121,6 +121,7 @@ export function qoeContent(m: QoeMetrics, release: PlayerRelease | null): QoeCon
         rows: [
           { label: 'Fatal Errors', value: String(m.fatalErrorCount), bad: m.fatalErrorCount > 0 },
           { label: 'Fatal Error Rate', value: m.fatalErrorCount > 0 ? 'yes' : 'none', bad: m.fatalErrorCount > 0 },
+          { label: 'Segments Skipped', value: String(m.segmentsSkipped), bad: m.segmentsSkipped > 0 },
           { label: 'Session Complete', value: m.sessionCompleted ? 'yes' : 'in progress' },
           { label: 'Startup Failure Rate', value: m.startupFailed ? 'failed' : 'ok', bad: m.startupFailed },
           { label: 'Reconnect Attempts', value: String(m.reconnectAttempts) },
