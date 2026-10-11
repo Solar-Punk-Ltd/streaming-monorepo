@@ -269,6 +269,12 @@ The rule is in `LadderFeedPoller.ts`, `rungPosition.ts` and `rungHealth.ts`. `MI
 
 ⛔ It is not reversible. hls.js's `removeLevel` deletes the rung for the session, so a viewer who lives through an outage stays capped until they reload. One attempt to use `autoLevelCapping` instead froze the viewer for 83 seconds and never recovered, and was reverted. The cause is not understood, so reproduce that freeze before trying again.
 
+### A segment that will not load
+
+When hls.js gives up on one of the three newest segments of a live playlist (segments already marked as gaps not counted), the player marks that segment `#EXT-X-GAP` in the playlist it serves hls.js and starts loading again from the playhead. hls.js gives up after its own retries with no other rung left to try, or at once on a segment it finds no media in. The video skips the segment, a moment of picture, instead of freezing or restarting the player, and every later reload of that playlist says the same. At most four segments are skipped this way in any five minutes. Past that, or for an older segment, a finished broadcast or a recording, the player recovers as it always did, which for a failure at the live edge means a restart. While another rung is left, a segment that failed to load is tried there instead and nothing is marked.
+
+hls.js skips a gap entry without building a loader for it, so a gap never reaches `CustomFragmentLoader`: it is fetched from neither the gateway nor weeb-3, and it has no request or settle line in the console log the shared package's `clientLog.ts` words. The failed load that led to it keeps its own lines, settled as the error it was, and the player adds one warning naming the segment it plays past. The rule is in `liveSegmentGaps.ts`, the limits in `playerConfig.ts`.
+
 Fragment loading is started by hand from `MANIFEST_PARSED` (`autoStartLoad: false`) so that seeding happens before the first level is chosen, rather than depending on which of two hls.js controllers registered for `MANIFEST_LOADED` first.
 
 Combine with `?qoe=1` to watch what those settings do: the overlay's ABR section shows the selected rung, hls.js's live bandwidth estimate, and **switch latency**, the time from hls.js committing to a rung until the first fragment of it is buffered. That last number is the one this POC exists to produce.
