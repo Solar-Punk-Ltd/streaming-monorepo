@@ -3,10 +3,10 @@ import { XBZZ_DECIMALS, type FundingStampItem } from '@streaming-monorepo/web2-a
 
 import * as api from '../../api';
 import { shortHex } from '../../format';
+import { monoFont } from '../../theme/createAdminTheme';
 import { formatUnits } from './amounts';
 import { BulkProgress, type BulkWords } from './BulkProgress';
 import { dayCount, stepCount } from './stamps';
-import { monoFont } from '../../theme/createAdminTheme';
 
 /**
  * Said under a stamp operation the manager answers `unknown` that is not settled yet: the node's answer was lost, and

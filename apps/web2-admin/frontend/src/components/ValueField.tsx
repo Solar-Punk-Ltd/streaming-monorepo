@@ -3,8 +3,8 @@ import { IconButton, Stack, TextField, Tooltip } from '@mui/material';
 import VisibilityIcon from '@mui/icons-material/Visibility';
 import VisibilityOffIcon from '@mui/icons-material/VisibilityOff';
 
-import { CopyButton } from './CopyButton';
 import { monoFont } from '../theme/createAdminTheme';
+import { CopyButton } from './CopyButton';
 
 /** Fixed width, so the mask does not advertise the secret's length. */
 const MASK = '•'.repeat(24);
