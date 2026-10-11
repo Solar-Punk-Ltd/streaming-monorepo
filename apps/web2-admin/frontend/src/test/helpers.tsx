@@ -1,4 +1,3 @@
-import { ThemeProvider, createTheme } from '@mui/material';
 import { LocalizationProvider } from '@mui/x-date-pickers/LocalizationProvider';
 import { AdapterDayjs } from '@mui/x-date-pickers/AdapterDayjs';
 import { render, type RenderResult } from '@testing-library/react';
@@ -9,8 +8,7 @@ import type { IngestDetails, StageSummary, Stream, User, UserSummary } from '@st
 
 import { AuthProvider } from '../auth';
 import { SnackbarProvider } from '../components/Snackbar';
-
-const theme = createTheme({ palette: { mode: 'dark' } });
+import { ThemeChoiceProvider } from '../theme/ThemeChoiceProvider';
 
 /**
  * Minimal Response stand-ins. jsdom has no fetch, and the console only ever
@@ -88,19 +86,19 @@ export function pendingFetch() {
 
 export function renderWithProviders(ui: ReactNode, { route = '/' }: { route?: string } = {}): RenderResult {
   return render(
-    <ThemeProvider theme={theme}>
+    <ThemeChoiceProvider>
       <LocalizationProvider dateAdapter={AdapterDayjs}>
         <SnackbarProvider>
           <MemoryRouter initialEntries={[route]}>{ui}</MemoryRouter>
         </SnackbarProvider>
       </LocalizationProvider>
-    </ThemeProvider>,
+    </ThemeChoiceProvider>,
   );
 }
 
 export function renderWithAuth(ui: ReactNode, { route = '/' }: { route?: string } = {}): RenderResult {
   return render(
-    <ThemeProvider theme={theme}>
+    <ThemeChoiceProvider>
       <LocalizationProvider dateAdapter={AdapterDayjs}>
         <SnackbarProvider>
           <MemoryRouter initialEntries={[route]}>
@@ -108,7 +106,7 @@ export function renderWithAuth(ui: ReactNode, { route = '/' }: { route?: string 
           </MemoryRouter>
         </SnackbarProvider>
       </LocalizationProvider>
-    </ThemeProvider>,
+    </ThemeChoiceProvider>,
   );
 }
 

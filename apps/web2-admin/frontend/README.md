@@ -58,6 +58,24 @@ cannot say shows no line, and neither does a screen narrower than a tablet,
 where it would push the console's name onto a second line. `versionText` in
 `src/format.ts` is the rule, the same in every console.
 
+## Themes
+
+The console has three looks: Default, the MUI dark look it always had, Swarm, the Swarm brand as the
+event viewer wears it, and Web3Privacy, web3privacy.info's black, neon green, Archivo and Domine. A
+signed-in admin picks one under Theme in the user menu. Each option shows a swatch of that look's page
+colour, accent and heading typeface, and picking keeps the menu open so the looks can be compared. The
+pick is kept in this browser under `web2-admin-theme`, through reloads and sign-outs, so the login page
+wears it too. It is per browser, not per host: there is no host setting for a default look yet.
+
+A look is one record in `src/theme/tokens.ts`: its colours, three typefaces, the heading weight, the
+corner radius, the button lettering and whether surfaces stay flat. `src/theme/createAdminTheme.ts` is
+the one place a record becomes a MUI theme. Components read only the MUI theme, `text.secondary` or
+`primary.main`, and set a monospace value with `sx={{ fontFamily: monoFont }}`. `src/test/theme.test.tsx`
+fails on a colour or a typeface a component writes out, on a look whose words read below 4.5:1 against
+their ground, and on a Default that has drifted from MUI's own dark look. A new look is a new record
+and a name in `src/theme/themeNames.ts`. The fonts are bundled from `@fontsource`, only the weights used,
+in `src/theme/fonts.ts`, and a browser downloads one only when text on the page is set in it.
+
 ## Running it
 
 ```bash
@@ -129,13 +147,14 @@ node ../../tools/app-workspace/in-copy.mjs --app apps/web2-admin -- docker build
 
 ```
 src/
-  main.tsx      dark MUI theme + CssBaseline
+  main.tsx      the providers: the theme switcher's, the date pickers', the app
   App.tsx       routes
   auth.tsx      session context; re-checks on focus, drops the user on any 401
   api.ts        one function per endpoint
   http.ts       getJson / sendJson / sendBytes / extractApiError
   errors.ts     snake_case API codes → sentences
   format.ts     dates, datetime-local conversion, hex elision
+  theme/        the looks as tokens, the MUI theme built from them, the switcher and its saved pick
   components/   app shell, build line, route guard, snackbar, chips, copy button, form fields, OBS panel
   pages/        one file per screen
   test/         vitest suites and their helpers
