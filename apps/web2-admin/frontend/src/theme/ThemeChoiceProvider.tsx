@@ -1,4 +1,4 @@
-import { createContext, useCallback, useContext, useEffect, useMemo, useState, type ReactNode } from 'react';
+import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { CssBaseline, ThemeProvider } from '@mui/material';
 
 import { fetchPublicConfig } from '../api';
@@ -35,16 +35,28 @@ export function ThemeChoiceProvider({ children }: { children: ReactNode }) {
   const look = ownPick ?? hostLook;
   const theme = useMemo(() => createAdminTheme(look), [look]);
 
-  const hostLookChanged = useCallback((name: AdminThemeName) => {
+  // Set once an admin saves a host default here, so the first `/api/config` answer, if it arrives later, cannot
+  // put back the look it read before that save.
+  const savedHere = useRef(false);
+
+  const wearHostLook = useCallback((name: AdminThemeName) => {
     saveHostLook(name);
     setHostLook(name);
   }, []);
+
+  const hostLookChanged = useCallback(
+    (name: AdminThemeName) => {
+      savedHere.current = true;
+      wearHostLook(name);
+    },
+    [wearHostLook],
+  );
 
   useEffect(() => {
     let current = true;
     fetchPublicConfig().then(
       (config) => {
-        if (current && isAdminThemeName(config.defaultTheme)) hostLookChanged(config.defaultTheme);
+        if (current && !savedHere.current && isAdminThemeName(config.defaultTheme)) wearHostLook(config.defaultTheme);
       },
       () => {
         // The console stays on the look it already wears. The pages that need the config say so themselves.
@@ -53,7 +65,7 @@ export function ThemeChoiceProvider({ children }: { children: ReactNode }) {
     return () => {
       current = false;
     };
-  }, [hostLookChanged]);
+  }, [wearHostLook]);
 
   const chooseLook = useCallback((name: AdminThemeName | null) => {
     saveThemeChoice(name);

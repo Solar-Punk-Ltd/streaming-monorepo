@@ -1,11 +1,12 @@
 import { readdirSync, readFileSync } from 'node:fs';
 import { join, relative } from 'node:path';
 import { createTheme, useTheme } from '@mui/material';
-import { fireEvent, screen, waitFor, within } from '@testing-library/react';
+import { act, fireEvent, screen, waitFor, within } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { AppShell } from '../components/AppShell';
 import { createAdminTheme } from '../theme/createAdminTheme';
+import { useThemeChoice } from '../theme/ThemeChoiceProvider';
 import {
   HOST_THEME_STORAGE_KEY,
   loadHostLook,
@@ -348,6 +349,40 @@ describe('the look the console wears', () => {
     await waitFor(() => expect(fetchMock).toHaveBeenCalled());
     await waitFor(() => expect(loadHostLook()).toBe('swarm'));
     expect(screen.getByTestId('accent')).toHaveTextContent(THEME_TOKENS.web3privacy.colors.primary);
+  });
+
+  it('keeps a pick made while the host was still answering', async () => {
+    let answer: (response: Response) => void = () => undefined;
+    hostAnswers(() => new Promise<Response>((resolve) => (answer = resolve)));
+    renderShell();
+    fireEvent.click(screen.getByRole('button', { name: 'ada' }));
+    fireEvent.click(within(screen.getByRole('menu')).getByRole('menuitemradio', { name: 'Swarm' }));
+
+    await act(async () => answer(jsonOk(hostConfig('web3privacy'))));
+
+    await waitFor(() => expect(loadHostLook()).toBe('web3privacy'));
+    expect(screen.getByTestId('accent')).toHaveTextContent(THEME_TOKENS.swarm.colors.primary);
+  });
+
+  it("keeps a host default saved here over the host's first answer arriving after it", async () => {
+    let answer: (response: Response) => void = () => undefined;
+    hostAnswers(() => new Promise<Response>((resolve) => (answer = resolve)));
+    function SaveSwarm() {
+      const { hostLookChanged } = useThemeChoice();
+      return <button onClick={() => hostLookChanged('swarm')}>save swarm</button>;
+    }
+    renderWithProviders(
+      <AppShell>
+        <WornAccent />
+        <SaveSwarm />
+      </AppShell>,
+    );
+    fireEvent.click(screen.getByRole('button', { name: 'save swarm' }));
+
+    await act(async () => answer(jsonOk(hostConfig('web3privacy'))));
+
+    expect(screen.getByTestId('accent')).toHaveTextContent(THEME_TOKENS.swarm.colors.primary);
+    expect(loadHostLook()).toBe('swarm');
   });
 
   it("is the host default this browser last saw while the host's answer is on its way", () => {
