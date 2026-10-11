@@ -1,15 +1,23 @@
 import { readdirSync, readFileSync } from 'node:fs';
 import { join, relative } from 'node:path';
 import { createTheme, useTheme } from '@mui/material';
-import { fireEvent, screen, within } from '@testing-library/react';
+import { fireEvent, screen, waitFor, within } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { AppShell } from '../components/AppShell';
 import { createAdminTheme } from '../theme/createAdminTheme';
-import { loadThemeChoice, saveThemeChoice, THEME_CHOICE_STORAGE_KEY, type ThemeStorage } from '../theme/themeChoice';
+import {
+  HOST_THEME_STORAGE_KEY,
+  loadHostLook,
+  loadThemeChoice,
+  saveHostLook,
+  saveThemeChoice,
+  THEME_CHOICE_STORAGE_KEY,
+  type ThemeStorage,
+} from '../theme/themeChoice';
 import { ADMIN_THEME_NAMES, DEFAULT_ADMIN_THEME, type AdminThemeName } from '../theme/themeNames';
 import { THEME_TOKENS } from '../theme/tokens';
-import { makeUser, renderWithProviders } from './helpers';
+import { jsonError, jsonOk, makeUser, mockFetch, renderWithProviders } from './helpers';
 
 vi.mock('../auth', () => ({ useAuth: () => ({ user: makeUser({ username: 'ada' }), logOut: vi.fn() }) }));
 vi.mock('../components/BuildVersion', () => ({ BuildVersion: () => null }));
@@ -23,10 +31,35 @@ const REFUSING: ThemeStorage = {
   setItem: () => {
     throw new Error('refused');
   },
+  removeItem: () => {
+    throw new Error('refused');
+  },
 };
+
+const CONFIG = '/api/config';
+
+/** The public config as a host answers it, wearing `defaultTheme` unless the browser picked its own. */
+function hostConfig(defaultTheme: string) {
+  return {
+    feed: { owner: 'a'.repeat(40), topic: 'catalogue', topicHex: 'b'.repeat(64) },
+    viewerBaseUrl: null,
+    defaultTheme,
+  };
+}
+
+/** A host whose default is `defaultTheme`, and the fetch mock answering for it. */
+function hostSays(defaultTheme: string) {
+  return mockFetch([{ path: CONFIG, respond: () => jsonOk(hostConfig(defaultTheme)) }]);
+}
+
+/** The host's config route, answered with `respond`. */
+function hostAnswers(respond: () => Response | Promise<Response>) {
+  return mockFetch([{ path: CONFIG, respond }]);
+}
 
 beforeEach(() => {
   localStorage.clear();
+  hostSays(DEFAULT_ADMIN_THEME);
 });
 
 afterEach(() => {
@@ -156,20 +189,40 @@ describe('the components', () => {
 });
 
 describe('the pick', () => {
-  it('is the default until one is made, and read back once it is', () => {
-    expect(loadThemeChoice()).toBe(DEFAULT_ADMIN_THEME);
+  it('is none until one is made, read back once it is, and none again once forgotten', () => {
+    expect(loadThemeChoice()).toBeNull();
     saveThemeChoice('swarm');
     expect(loadThemeChoice()).toBe('swarm');
+    saveThemeChoice(null);
+    expect(loadThemeChoice()).toBeNull();
+    expect(localStorage.getItem(THEME_CHOICE_STORAGE_KEY)).toBeNull();
   });
 
-  it('falls back to the default for a look the console no longer carries', () => {
+  it('is none for a look the console no longer carries', () => {
     localStorage.setItem(THEME_CHOICE_STORAGE_KEY, 'retired');
-    expect(loadThemeChoice()).toBe(DEFAULT_ADMIN_THEME);
+    expect(loadThemeChoice()).toBeNull();
   });
 
   it('holds for the visit when the browser refuses its storage', () => {
     expect(() => saveThemeChoice('swarm', REFUSING)).not.toThrow();
-    expect(loadThemeChoice(REFUSING)).toBe(DEFAULT_ADMIN_THEME);
+    expect(() => saveThemeChoice(null, REFUSING)).not.toThrow();
+    expect(loadThemeChoice(REFUSING)).toBeNull();
+  });
+});
+
+describe("the host's look as this browser last saw it", () => {
+  it('is Default until a host named one, and read back once one did', () => {
+    expect(loadHostLook()).toBe(DEFAULT_ADMIN_THEME);
+    saveHostLook('web3privacy');
+    expect(loadHostLook()).toBe('web3privacy');
+    expect(localStorage.getItem(HOST_THEME_STORAGE_KEY)).toBe('web3privacy');
+  });
+
+  it('is Default for a look the console no longer carries, and when the browser refuses its storage', () => {
+    localStorage.setItem(HOST_THEME_STORAGE_KEY, 'retired');
+    expect(loadHostLook()).toBe(DEFAULT_ADMIN_THEME);
+    expect(() => saveHostLook('swarm', REFUSING)).not.toThrow();
+    expect(loadHostLook(REFUSING)).toBe(DEFAULT_ADMIN_THEME);
   });
 });
 
@@ -184,19 +237,49 @@ function openUserMenu() {
 }
 
 describe('the switcher in the user menu', () => {
-  it('offers every look, the worn one checked', () => {
+  it("offers the host's look first, checked while this browser has no pick of its own, then every look", async () => {
+    hostSays('swarm');
+    renderWithProviders(
+      <AppShell>
+        <WornAccent />
+      </AppShell>,
+    );
+    await waitFor(() => expect(screen.getByTestId('accent')).toHaveTextContent(THEME_TOKENS.swarm.colors.primary));
+    const menu = openUserMenu();
+
+    expect(within(menu).getByText('Theme')).toBeInTheDocument();
+    const radios = within(menu).getAllByRole('menuitemradio');
+    expect(radios[0]).toHaveAccessibleName("This host's look (Swarm)");
+    expect(radios[0]).toHaveAttribute('aria-checked', 'true');
+    for (const name of ADMIN_THEME_NAMES) {
+      const item = within(menu).getByRole('menuitemradio', { name: THEME_TOKENS[name].label });
+      expect(item).toHaveAttribute('aria-checked', 'false');
+    }
+  });
+
+  it("follows the host again from its first item, which forgets this browser's own pick", async () => {
+    hostSays('swarm');
+    saveThemeChoice('web3privacy');
     renderWithProviders(
       <AppShell>
         <WornAccent />
       </AppShell>,
     );
     const menu = openUserMenu();
+    const follow = await within(menu).findByRole('menuitemradio', { name: "This host's look (Swarm)" });
+    expect(follow).toHaveAttribute('aria-checked', 'false');
+    expect(within(menu).getByRole('menuitemradio', { name: 'Web3Privacy' })).toHaveAttribute('aria-checked', 'true');
 
-    expect(within(menu).getByText('Theme')).toBeInTheDocument();
-    for (const name of ADMIN_THEME_NAMES) {
-      const item = within(menu).getByRole('menuitemradio', { name: THEME_TOKENS[name].label });
-      expect(item).toHaveAttribute('aria-checked', String(name === DEFAULT_ADMIN_THEME));
-    }
+    fireEvent.click(follow);
+
+    expect(screen.getByTestId('accent')).toHaveTextContent(THEME_TOKENS.swarm.colors.primary);
+    expect(loadThemeChoice()).toBeNull();
+    const open = screen.getByRole('menu');
+    expect(within(open).getByRole('menuitemradio', { name: "This host's look (Swarm)" })).toHaveAttribute(
+      'aria-checked',
+      'true',
+    );
+    expect(within(open).getByRole('menuitemradio', { name: 'Web3Privacy' })).toHaveAttribute('aria-checked', 'false');
   });
 
   it('dresses the console in the picked look, keeps the menu open, and keeps the pick', () => {
@@ -235,6 +318,70 @@ describe('the switcher in the user menu', () => {
       </AppShell>,
     );
 
+    expect(screen.getByTestId('accent')).toHaveTextContent(THEME_TOKENS.swarm.colors.primary);
+  });
+});
+
+describe('the look the console wears', () => {
+  const renderShell = () =>
+    renderWithProviders(
+      <AppShell>
+        <WornAccent />
+      </AppShell>,
+    );
+
+  it("is the host's default when this browser picked none, and the browser remembers it", async () => {
+    hostSays('web3privacy');
+    renderShell();
+
+    await waitFor(() =>
+      expect(screen.getByTestId('accent')).toHaveTextContent(THEME_TOKENS.web3privacy.colors.primary),
+    );
+    expect(loadHostLook()).toBe('web3privacy');
+  });
+
+  it("is this browser's own pick, whatever the host's default", async () => {
+    const fetchMock = hostSays('swarm');
+    saveThemeChoice('web3privacy');
+    renderShell();
+
+    await waitFor(() => expect(fetchMock).toHaveBeenCalled());
+    await waitFor(() => expect(loadHostLook()).toBe('swarm'));
+    expect(screen.getByTestId('accent')).toHaveTextContent(THEME_TOKENS.web3privacy.colors.primary);
+  });
+
+  it("is the host default this browser last saw while the host's answer is on its way", () => {
+    saveHostLook('swarm');
+    hostAnswers(() => new Promise<Response>(() => undefined));
+    renderShell();
+
+    expect(screen.getByTestId('accent')).toHaveTextContent(THEME_TOKENS.swarm.colors.primary);
+  });
+
+  it('keeps the host default this browser last saw when the config cannot be read', async () => {
+    saveHostLook('swarm');
+    const fetchMock = hostAnswers(() => jsonError(500, { error: 'internal_error' }));
+    renderShell();
+
+    await waitFor(() => expect(fetchMock).toHaveBeenCalled());
+    expect(screen.getByTestId('accent')).toHaveTextContent(THEME_TOKENS.swarm.colors.primary);
+    expect(loadHostLook()).toBe('swarm');
+  });
+
+  it('is Default when the config cannot be reached and this browser never saw a host default', async () => {
+    const fetchMock = hostAnswers(() => Promise.reject(new TypeError('Failed to fetch')));
+    renderShell();
+
+    await waitFor(() => expect(fetchMock).toHaveBeenCalled());
+    expect(screen.getByTestId('accent')).toHaveTextContent(THEME_TOKENS.default.colors.primary);
+  });
+
+  it('keeps the remembered host default when the host names a look this console does not carry', async () => {
+    saveHostLook('swarm');
+    const fetchMock = hostSays('retired');
+    renderShell();
+
+    await waitFor(() => expect(fetchMock).toHaveBeenCalled());
     expect(screen.getByTestId('accent')).toHaveTextContent(THEME_TOKENS.swarm.colors.primary);
   });
 });
