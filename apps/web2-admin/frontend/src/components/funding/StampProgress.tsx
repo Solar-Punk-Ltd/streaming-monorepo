@@ -3,6 +3,7 @@ import { XBZZ_DECIMALS, type FundingStampItem } from '@streaming-monorepo/web2-a
 
 import * as api from '../../api';
 import { shortHex } from '../../format';
+import { monoFont } from '../../theme/createAdminTheme';
 import { formatUnits } from './amounts';
 import { BulkProgress, type BulkWords } from './BulkProgress';
 import { dayCount, stepCount } from './stamps';
@@ -78,11 +79,7 @@ export function StampProgress({
           <TableCell>
             <Stack spacing={0.25}>
               <Typography variant="body2">{item.nodeLabel}</Typography>
-              <Typography
-                variant="caption"
-                title={item.batchId}
-                sx={{ fontFamily: 'monospace', color: 'text.secondary' }}
-              >
+              <Typography variant="caption" title={item.batchId} sx={{ fontFamily: monoFont, color: 'text.secondary' }}>
                 {shortHex(item.batchId)}
               </Typography>
             </Stack>

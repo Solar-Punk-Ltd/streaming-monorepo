@@ -3,6 +3,7 @@ import { Stack, Typography } from '@mui/material';
 import { useAuth } from '../auth';
 import { AddUserCard } from '../components/access/AddUserCard';
 import { ChangePasswordCard } from '../components/access/ChangePasswordCard';
+import { ConsoleLookCard } from '../components/access/ConsoleLookCard';
 import { UsersCard } from '../components/access/UsersCard';
 import { useUsers } from '../components/access/useUsers';
 
@@ -12,7 +13,8 @@ import { useUsers } from '../components/access/useUsers';
  * themselves out everywhere.
  *
  * This is also where the account's own password lives, so there is one page
- * about logging in rather than two.
+ * about logging in rather than two, and where an admin sets the look this
+ * host's console starts in, which the login page wears.
  */
 export function AccessPage() {
   const { user } = useAuth();
@@ -34,6 +36,7 @@ export function AccessPage() {
 
       <UsersCard users={users} error={error} currentUsername={currentUsername} canManage={canManage} reload={reload} />
       {canManage ? <AddUserCard onAdded={reload} /> : null}
+      {canManage ? <ConsoleLookCard /> : null}
       <ChangePasswordCard />
     </Stack>
   );

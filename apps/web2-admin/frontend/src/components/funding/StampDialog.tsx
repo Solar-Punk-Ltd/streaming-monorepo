@@ -25,6 +25,7 @@ import { errorMessage } from '../../errors';
 import { formatTimeLeft, shortHex } from '../../format';
 import { formatUnits } from './amounts';
 import { batchCount, dayCount, type StampCheck } from './stamps';
+import { monoFont } from '../../theme/createAdminTheme';
 
 /** Said under the top-ups to confirm: who pays for what, and that the time they buy is at today's price. */
 export const TOP_UP_NOTE =
@@ -118,7 +119,7 @@ export function StampDialog({
                         <Typography
                           variant="caption"
                           title={line.batch.batchId}
-                          sx={{ fontFamily: 'monospace', color: 'text.secondary' }}
+                          sx={{ fontFamily: monoFont, color: 'text.secondary' }}
                         >
                           {shortHex(line.batch.batchId)}
                         </Typography>

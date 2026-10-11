@@ -31,6 +31,7 @@ import {
   type NodeGroup,
 } from './balance';
 import { CHECKBOX_WIDTH } from './Ticks';
+import { monoFont } from '../../theme/createAdminTheme';
 
 const KINDS: readonly FundingTransferKind[] = ['xdai', 'xbzz'];
 
@@ -86,7 +87,7 @@ export function NodeCard({ node, group }: { node: AdminFundingNode; group: NodeG
       <Stack direction="row" spacing={0.5} sx={{ alignItems: 'center' }}>
         {node.walletAddress ? (
           <>
-            <Typography variant="caption" sx={{ fontFamily: 'monospace' }}>
+            <Typography variant="caption" sx={{ fontFamily: monoFont }}>
               {shortHex(node.walletAddress)}
             </Typography>
             <CopyButton value={node.walletAddress} label="Wallet address" />

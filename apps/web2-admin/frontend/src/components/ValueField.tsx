@@ -3,6 +3,7 @@ import { IconButton, Stack, TextField, Tooltip } from '@mui/material';
 import VisibilityIcon from '@mui/icons-material/Visibility';
 import VisibilityOffIcon from '@mui/icons-material/VisibilityOff';
 
+import { monoFont } from '../theme/createAdminTheme';
 import { CopyButton } from './CopyButton';
 
 /** Fixed width, so the mask does not advertise the secret's length. */
@@ -63,7 +64,7 @@ export function ValueField({
         slotProps={{
           input: {
             readOnly: true,
-            sx: { fontFamily: 'monospace', fontSize: 13 },
+            sx: { fontFamily: monoFont, fontSize: 13 },
           },
           // Read-only display, not an editable field: keep it out of the tab
           // order so copy buttons are the next stop after the previous control.

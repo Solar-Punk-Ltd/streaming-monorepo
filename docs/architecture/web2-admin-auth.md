@@ -175,6 +175,7 @@ session.
 | POST   | `/api/auth/users`            | admin              | 201 `UserSummary`; 409 `user_exists`, 400 `validation_error`, 403 `admin_required`                                                                                     |
 | DELETE | `/api/auth/users/:id`        | admin              | 204, and the user's streams stay, with `user_id` set to null (migration 008); 409 `cannot_remove_user` (yourself, the last user, the last admin), 404 `user_not_found` |
 | POST   | `/api/auth/users/:id/revoke` | admin, or yourself | 204; 403 `admin_required`, 404 `user_not_found`                                                                                                                        |
+| PUT    | `/api/config/default-theme`  | admin              | `SetDefaultThemeResponse`, the look the console starts in on this host; 400 `validation_error` for a look the console does not carry, 403 `admin_required`             |
 
 New error codes: `cross_site_request` 403, `admin_required` 403, `no_users` 401,
 `user_exists` 409, `user_not_found` 404, `cannot_remove_user` 409, and

@@ -10,6 +10,8 @@ import { BeeFeedGateway } from './domain/BeeFeedGateway.js';
 import { CatalogueBatchService } from './domain/CatalogueBatch.js';
 import { CatalogueMoveService } from './domain/CatalogueMove.js';
 import { CatalogueMoveRepository } from './domain/CatalogueMoveRepository.js';
+import { ConsoleSettingsRepository } from './domain/ConsoleSettingsRepository.js';
+import { ConsoleSettingsService } from './domain/ConsoleSettingsService.js';
 import { Database } from './domain/Database.js';
 import { FakeFeedGateway } from './domain/FakeFeedGateway.js';
 import { FeedBootCheckRunner } from './domain/feedBootCheck.js';
@@ -266,6 +268,8 @@ async function main(): Promise<void> {
     audit: auditLog,
   });
 
+  const consoleSettings = new ConsoleSettingsService(new ConsoleSettingsRepository(database.pool), auditLog);
+
   apiServer = startApiServer(
     {
       database,
@@ -279,6 +283,7 @@ async function main(): Promise<void> {
       catalogueBatch,
       catalogueMove,
       fundingService,
+      consoleSettings,
       internalApiToken: config.internalApiToken,
       uploaderTokens: stageRepository,
       feed,

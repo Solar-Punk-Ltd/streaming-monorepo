@@ -33,6 +33,10 @@
  * tab shows, and a deposit or a withdrawal is mined two seconds after it is
  * sent and confirmed six seconds after that, once its block is final, the
  * chequebook bulk named in the view until then.
+ * The host's default look starts as MOCK_DEFAULT_THEME, Default when unset, and
+ * an admin changes it on the Access page as on a real host, for as long as the
+ * mock runs.
+ *
  * MOCK_FUNDING=off answers the page as not set up, and MOCK_FUNDING=refuse has
  * the chain's node refuse every transfer at the relay, which is then mined
  * anyway, and the nodes refuse every stamp and chequebook operation.
@@ -55,6 +59,9 @@ let seedPassword = process.env.SEED_ADMIN_PASSWORD ?? 'admin1234';
 const RTMP_PUBLIC = process.env.MOCK_RTMP_PUBLIC !== 'false';
 
 const MOCK_STAGE_ID = '5f0c2a8e-1b2c-4d3e-8f40-0a1b2c3d4e5f';
+
+/** The look this host's console starts in, as `GET /api/config` answers it. Held in memory, never checked. */
+let defaultTheme = process.env.MOCK_DEFAULT_THEME ?? 'default';
 
 /** The stages a manager would have pushed, as `GET /api/stages` lists them. */
 const stages =
@@ -1017,6 +1024,7 @@ async function handle(req, res) {
     return send(res, 200, {
       feed: { owner: OWNER, topic: FEED_TOPIC, topicHex: FEED_TOPIC_HEX },
       viewerBaseUrl: process.env.VIEWER_BASE_URL ?? 'http://localhost:10074',
+      defaultTheme,
     });
   }
 
@@ -1084,6 +1092,16 @@ async function handle(req, res) {
 
   // Nothing deployed this, so it is what the API answers outside a deploy: a development build.
   if (path === '/api/version' && method === 'GET') return send(res, 200, { label: null, commit: null });
+
+  if (path === '/api/config/default-theme' && method === 'PUT') {
+    if (!user.isAdmin) return send(res, 403, { error: 'admin_required' });
+    const body = await readJson(req);
+    if (typeof body.defaultTheme !== 'string' || body.defaultTheme === '') {
+      return send(res, 400, { error: 'validation_error', errors: ['defaultTheme is required'] });
+    }
+    defaultTheme = body.defaultTheme;
+    return send(res, 200, { defaultTheme });
+  }
 
   if (path === '/api/auth/users' && method === 'GET') {
     return send(res, 200, { users: [...users.values()].map(summarise) });

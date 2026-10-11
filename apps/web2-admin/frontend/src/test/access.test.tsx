@@ -2,6 +2,8 @@ import { fireEvent, screen, waitFor, within } from '@testing-library/react';
 import { Route, Routes } from 'react-router';
 import { describe, expect, it } from 'vitest';
 
+import { loadHostLook, loadThemeChoice } from '../theme/themeChoice';
+
 import { RequireAuth } from '../components/RequireAuth';
 import { AccessPage } from '../pages/AccessPage';
 import { LoginPage } from '../pages/LoginPage';
@@ -9,6 +11,8 @@ import { jsonError, jsonOk, makeUser, makeUserSummary, mockFetch, noContent, ren
 
 const SESSION = '/api/auth/session';
 const USERS = '/api/auth/users';
+const CONFIG = '/api/config';
+const DEFAULT_THEME = '/api/config/default-theme';
 
 // Not named "admin": the admin chip carries that word, and a username that
 // collides with it makes every row lookup ambiguous. Created at noon built from
@@ -67,7 +71,7 @@ describe('the users table', () => {
     renderAccess();
 
     const table = (await screen.findByText('kim')).closest('table');
-    // MUI's TableContainer scrolls a wide table on its own; without one the whole page does.
+    // MUI's TableContainer scrolls a wide table on its own. Without one the whole page does.
     expect(table?.parentElement).toHaveClass('MuiTableContainer-root');
   });
 
@@ -371,5 +375,67 @@ describe('changing my own password', () => {
     expect(await screen.findByText('That is not your current password.')).toBeInTheDocument();
     expect(screen.getByLabelText('Current password')).toBeInTheDocument();
     expect(screen.queryByText('Your session ended. Log in again.')).not.toBeInTheDocument();
+  });
+});
+
+describe("this host's console look", () => {
+  /** The host's config, its default look `defaultTheme`. */
+  const hostConfig = (defaultTheme: string) => ({
+    path: CONFIG,
+    respond: () =>
+      jsonOk({
+        feed: { owner: 'a'.repeat(40), topic: 't', topicHex: 'b'.repeat(64) },
+        viewerBaseUrl: null,
+        defaultTheme,
+      }),
+  });
+
+  const card = () => screen.getByRole('heading', { name: 'Console look' }).closest('form') as HTMLElement;
+
+  it("shows an admin the host's look, and saves the one they choose", async () => {
+    const fetchMock = renderAccess(undefined, undefined, [
+      hostConfig('swarm'),
+      { method: 'PUT', path: DEFAULT_THEME, respond: () => jsonOk({ defaultTheme: 'web3privacy' }) },
+    ]);
+
+    await screen.findByRole('heading', { name: 'Console look' });
+    await waitFor(() => expect(within(card()).getByRole('radio', { name: 'Swarm' })).toBeChecked());
+    const save = within(card()).getByRole('button', { name: 'Save' });
+    expect(save).toBeDisabled();
+
+    fireEvent.click(within(card()).getByRole('radio', { name: 'Web3Privacy' }));
+    expect(save).toBeEnabled();
+    fireEvent.click(save);
+
+    expect(await screen.findByText("This host's console now starts in Web3Privacy.")).toBeInTheDocument();
+    const put = fetchMock.mock.calls.find(([url, init]) => String(url) === DEFAULT_THEME && init?.method === 'PUT');
+    expect(JSON.parse(String(put?.[1]?.body))).toEqual({ defaultTheme: 'web3privacy' });
+    expect(within(card()).getByRole('radio', { name: 'Web3Privacy' })).toBeChecked();
+    expect(within(card()).getByRole('button', { name: 'Save' })).toBeDisabled();
+    // The console follows the new default, as this admin has no pick of their own.
+    expect(loadHostLook()).toBe('web3privacy');
+    expect(loadThemeChoice()).toBeNull();
+  });
+
+  it('says in the card why a save was refused, and keeps the choice', async () => {
+    renderAccess(undefined, undefined, [
+      hostConfig('default'),
+      { method: 'PUT', path: DEFAULT_THEME, respond: () => jsonError(403, { error: 'admin_required' }) },
+    ]);
+
+    await screen.findByRole('heading', { name: 'Console look' });
+    fireEvent.click(within(card()).getByRole('radio', { name: 'Swarm' }));
+    fireEvent.click(within(card()).getByRole('button', { name: 'Save' }));
+
+    expect(await within(card()).findByRole('alert')).toHaveTextContent('Only an admin can do that.');
+    expect(within(card()).getByRole('radio', { name: 'Swarm' })).toBeChecked();
+    expect(loadHostLook()).toBe('default');
+  });
+
+  it('is not shown to a user who is not an admin', async () => {
+    renderAccess(undefined, { isAdmin: false, username: 'kim' }, [hostConfig('swarm')]);
+
+    await screen.findByText('root');
+    expect(screen.queryByRole('heading', { name: 'Console look' })).not.toBeInTheDocument();
   });
 });

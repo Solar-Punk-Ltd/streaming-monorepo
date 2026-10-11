@@ -6,6 +6,7 @@ import * as api from '../../api';
 import { errorMessage } from '../../errors';
 import { ApiError } from '../../http';
 import { PasswordDialog } from './PasswordDialog';
+import { monoFont } from '../../theme/createAdminTheme';
 
 /**
  * Confirming the wallet addresses the manager reports for new nodes and for nodes whose address changed. The brand
@@ -59,11 +60,11 @@ export function PinDialog({
               {node.label} ({node.role}){node.pin === 'changed' ? ', changed' : ', new'}
             </Typography>
             {node.pin === 'changed' && node.pinnedAddress ? (
-              <Typography variant="caption" component="div" sx={{ fontFamily: 'monospace', wordBreak: 'break-all' }}>
+              <Typography variant="caption" component="div" sx={{ fontFamily: monoFont, wordBreak: 'break-all' }}>
                 was {node.pinnedAddress}
               </Typography>
             ) : null}
-            <Typography variant="caption" component="div" sx={{ fontFamily: 'monospace', wordBreak: 'break-all' }}>
+            <Typography variant="caption" component="div" sx={{ fontFamily: monoFont, wordBreak: 'break-all' }}>
               {node.pin === 'changed' ? 'now ' : ''}
               {node.walletAddress}
             </Typography>

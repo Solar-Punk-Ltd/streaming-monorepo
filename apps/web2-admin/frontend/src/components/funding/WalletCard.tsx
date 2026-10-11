@@ -4,6 +4,7 @@ import { QRCodeSVG } from 'qrcode.react';
 
 import { CopyButton } from '../CopyButton';
 import { formatUnits } from './amounts';
+import { monoFont } from '../../theme/createAdminTheme';
 
 /** Said under the brand wallet: where its funds come from. Text alone: the page links to no wallet app. */
 export const FUND_IT_TEXT =
@@ -43,7 +44,7 @@ export function WalletCard({ wallet }: { wallet: FundingView['wallet'] }) {
             <AddressQr address={wallet.address} />
             <Stack spacing={1} sx={{ minWidth: 0 }}>
               <Stack direction="row" spacing={0.5} sx={{ alignItems: 'center' }}>
-                <Typography variant="body2" sx={{ fontFamily: 'monospace', wordBreak: 'break-all' }}>
+                <Typography variant="body2" sx={{ fontFamily: monoFont, wordBreak: 'break-all' }}>
                   {wallet.address}
                 </Typography>
                 <CopyButton value={wallet.address} label="Wallet address" />

@@ -5,5 +5,6 @@ export * from './funding.js';
 export * from './ingest.js';
 export * from './stages.js';
 export * from './stampQuote.js';
+export * from './theme.js';
 export * from './thumbnail.js';
 export * from './version.js';

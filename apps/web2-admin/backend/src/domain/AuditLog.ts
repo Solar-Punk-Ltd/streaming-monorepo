@@ -51,7 +51,8 @@ export type AuditAction =
   | 'funding.stamp.failed'
   | 'funding.chequebook.request'
   | 'funding.chequebook.confirmed'
-  | 'funding.chequebook.failed';
+  | 'funding.chequebook.failed'
+  | 'console.theme.set';
 
 /**
  * One row of `audit_log`: who did what to which stream, and what it moved.
