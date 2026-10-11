@@ -9,6 +9,8 @@
 
 import type { CatalogState, MediaType } from '@streaming-monorepo/contracts';
 
+import type { AdminThemeName } from './theme.js';
+
 export { MEDIA_TYPES, type MediaType } from '@streaming-monorepo/contracts';
 
 /**
@@ -277,6 +279,11 @@ export interface PublicConfig {
   };
   /** Base URL of the branded viewer, if configured, for "open in player" links. */
   viewerBaseUrl: string | null;
+  /**
+   * The look this host's console starts in for a browser whose admin picked none of their own. Default until an
+   * admin sets another, and Default again when the stored one is a look the console no longer carries.
+   */
+  defaultTheme: AdminThemeName;
 }
 
 export interface ApiError {

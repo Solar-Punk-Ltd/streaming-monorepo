@@ -6,6 +6,7 @@ import express from 'express';
 import { AuthService } from '../domain/auth/AuthService.js';
 import type { CatalogueBatchService } from '../domain/CatalogueBatch.js';
 import type { CatalogueMoveService } from '../domain/CatalogueMove.js';
+import type { ConsoleSettingsService } from '../domain/ConsoleSettingsService.js';
 import { Database } from '../domain/Database.js';
 import type { FeedIdentity } from '../domain/feedIdentity.js';
 import type { FundingService } from '../domain/funding/FundingService.js';
@@ -55,6 +56,8 @@ export interface ApiDeps {
    * relayed through the manager.
    */
   fundingService: FundingService;
+  /** The console's settings for this host: the look it starts in, on `/api/config`. */
+  consoleSettings: ConsoleSettingsService;
   /**
    * The registrar token: the only one the manager's routes under /api/internal take. An uploader's routes refuse it.
    * Never accepted anywhere else.
@@ -116,7 +119,15 @@ export function startApiServer(deps: ApiDeps, port: number, host: string): ApiSe
   const requireAuth = createRequireAuth(deps.authService);
 
   app.use('/api/health', createHealthRouter(deps.database));
-  app.use('/api/config', createConfigRouter(deps.feed, deps.viewerBaseUrl));
+  app.use(
+    '/api/config',
+    createConfigRouter({
+      feed: deps.feed,
+      viewerBaseUrl: deps.viewerBaseUrl,
+      consoleSettings: deps.consoleSettings,
+      requireAuth,
+    }),
+  );
   app.use('/api/auth', createAuthRouter(deps.authService, requireAuth));
   app.use(VERSION_PATH, createVersionRouter({ version: deps.version, requireAuth }));
   app.use(

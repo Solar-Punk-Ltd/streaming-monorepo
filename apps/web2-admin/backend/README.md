@@ -182,6 +182,24 @@ an image built by hand or `pnpm dev` answers `{ "label": null, "commit": null }`
 which the console calls a development build. The boot log names the build on
 its `[Boot]   version:` line.
 
+## The console's look
+
+`GET /api/config` answers `defaultTheme` beside the feed and the viewer link:
+the look this host's console starts in for a browser whose admin picked none
+of their own. It is one of the names in `ADMIN_THEME_NAMES` of
+web2-admin-common, `default`, `swarm` or `web3privacy`, and `default` until an
+admin sets another. The route needs no session, so the login page wears it too.
+
+`PUT /api/config/default-theme` with `{ "defaultTheme": "swarm" }` sets it, for
+admins only (403 `admin_required` for anyone else, 401 without a session), and
+answers `{ "defaultTheme": "swarm" }`. A name the console does not carry is 400
+`validation_error`. It is stored in the one row of `console_settings`
+(migration 021) with who set it and when, and audited as `console.theme.set`.
+The table does not check the name: a stored look that a later console no longer
+carries is answered as `default`, so retiring a look needs no migration. The
+console's side, where an admin sets it and how it meets a browser's own pick,
+is in [the frontend's README](../frontend/README.md#themes).
+
 ## Publishing
 
 One writer, one feed, payload is the whole JSON array rewritten each time
@@ -1505,6 +1523,8 @@ withdrawals from the nodes' chequebooks, `funding_chequebook_operations`
 ([Chequebook operations](#chequebook-operations)).
 `020_funding_chequebook_mined.sql` adds that journal's `mined`, whether a
 submitted item's move is mined and waits for its block to be final.
+`021_console_settings.sql` is the single-row `console_settings`, the look this
+host's console starts in ([The console's look](#the-consoles-look)).
 
 ## Audit log
 
@@ -1618,6 +1638,12 @@ and the available balance the move was worked out from), and
 `funding.chequebook.confirmed` and `funding.chequebook.failed`, each with the
 item's bulk, request id, node, label, direction, amount, target, that
 available balance, hash, state and error.
+
+The console's look ([The console's look](#the-consoles-look)):
+`console.theme.set`, one row per change an admin saves, with
+`details: { from, to }`, the look the console wore before and the one it wears
+now. A stored look the console no longer carries is recorded as the `default`
+it was worn as. The row has no `stream_id`.
 
 **A failed audit write never fails the operation.** The row is written after
 the mutation it describes, which has already happened by then; the failure is
