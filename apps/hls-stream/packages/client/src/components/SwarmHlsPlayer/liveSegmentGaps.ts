@@ -44,6 +44,18 @@ export class LiveGapBudget {
   }
 }
 
+/**
+ * The errors {@link skipFailedLiveSegment} played past, held by the error object hls.js hands every
+ * listener, so a listener that runs before the player's can still learn the outcome once the dispatch
+ * is over, and nothing decides twice or takes from the budget twice.
+ */
+const playedPastAsGap = new WeakSet<object>();
+
+/** Whether the player turned this hls.js error into a gap and played on. */
+export function wasPlayedPastAsGap(data: object): boolean {
+  return playedPastAsGap.has(data);
+}
+
 /** Marks a failed segment as a gap in the playlist served for its level. Answers whether one was marked. */
 type MarkLiveGap = (levelUri: string, fragmentUrl: string) => boolean;
 
@@ -89,6 +101,7 @@ export function skipFailedLiveSegment(
     return false;
   }
   budget.take(nowMs);
+  playedPastAsGap.add(data);
 
   if (data.fatal) {
     // The fragment is the one in the playlist hls.js already holds, so it is told directly. The reload

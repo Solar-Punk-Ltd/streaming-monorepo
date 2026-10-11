@@ -1,5 +1,7 @@
 import Hls, { ErrorDetails, ErrorTypes, Events } from 'hls.js';
 
+import { wasPlayedPastAsGap } from '../../liveSegmentGaps';
+
 export interface QoeMetrics {
   // Startup
   startupTimeMs: number | null;
@@ -47,7 +49,10 @@ export interface QoeMetrics {
   switchLatencySamples: number;
 
   // Reliability
+  /** Fatal errors the player recovered from by restarting or by hls.js's own recovery, never one it played past as a gap. */
   fatalErrorCount: number;
+  /** Live segments the player played past as a gap, a moment of picture lost while playback carried on. */
+  segmentsSkipped: number;
   sessionCompleted: boolean;
   reconnectAttempts: number;
   reconnectSuccesses: number;
@@ -105,6 +110,7 @@ export const initialMetrics = (): QoeMetrics => ({
   maxSwitchLatencyMs: null,
   switchLatencySamples: 0,
   fatalErrorCount: 0,
+  segmentsSkipped: 0,
   sessionCompleted: false,
   reconnectAttempts: 0,
   reconnectSuccesses: 0,
@@ -271,12 +277,11 @@ export const attachQoeTracking = (
     }
   };
 
-  const onHlsError = (_event: unknown, data: { fatal: boolean; type: string; details?: string }) => {
-    // Counted above the fatal guard, not below it. A stall is never fatal, so everything this
-    // function used to do skipped the one error that permanently costs the viewer latency.
-    if (data.details === ErrorDetails.BUFFER_STALLED_ERROR) {
-      metrics.bufferStallCount += 1;
+  const countSettledError = (data: { fatal: boolean; type: string }) => {
+    if (wasPlayedPastAsGap(data)) {
+      metrics.segmentsSkipped += 1;
       flush();
+      return;
     }
     if (!data.fatal) return;
     metrics.fatalErrorCount += 1;
@@ -288,6 +293,19 @@ export const attachQoeTracking = (
       recoveryStart = performance.now();
     }
     flush();
+  };
+
+  const onHlsError = (_event: unknown, data: { fatal: boolean; type: string; details?: string }) => {
+    // Counted above the fatal guard, not below it. A stall is never fatal, so everything this
+    // function used to do skipped the one error that permanently costs the viewer latency.
+    if (data.details === ErrorDetails.BUFFER_STALLED_ERROR) {
+      metrics.bufferStallCount += 1;
+      flush();
+    }
+    // Whether the player plays past this error as a gap is decided in its own error listener, which
+    // hls.js may call after this one. hls.js calls every listener in one synchronous dispatch, so by
+    // the next microtask the decision has been made whichever order they subscribed in.
+    queueMicrotask(() => countSettledError(data));
   };
 
   if (hls) {
