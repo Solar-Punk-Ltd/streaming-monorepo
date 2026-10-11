@@ -10,7 +10,12 @@ import { Topic } from '@ethersphere/bee-js';
 import { ErrorDetails, ErrorTypes, type ErrorData, PlaylistLevelType } from 'hls.js';
 import { afterEach, beforeEach, describe, it, vi } from 'vitest';
 
-import { LiveGapBudget, skipFailedLiveSegment, type GapPlayer } from '../src/components/SwarmHlsPlayer/liveSegmentGaps';
+import {
+  LiveGapBudget,
+  LiveGapBudgetPerStream,
+  skipFailedLiveSegment,
+  type GapPlayer,
+} from '../src/components/SwarmHlsPlayer/liveSegmentGaps';
 import {
   ManifestFetcher,
   ManifestStateManager,
@@ -309,5 +314,23 @@ describe(`at most ${LIVE_GAP_LIMIT} gaps in any ${LIVE_GAP_WINDOW_MS / 60_000} m
 
     vi.advanceTimersByTime(1);
     assert.equal(failNext(budget, 105), true);
+  });
+
+  // The watch page keeps one player while the viewer moves between streams, so the player asks for
+  // its budget by stream on every start, a restart included.
+  it('gives another stream a full budget, and the same stream after a restart the one it spent', () => {
+    const budgets = new LiveGapBudgetPerStream();
+    const streamA = buildSwarmUri(OWNER, 'stream-a');
+    const streamB = buildSwarmUri(OWNER, 'stream-b');
+    for (const sequence of [100, 101, 102, 103]) {
+      failNext(budgets.forStream(streamA), sequence);
+    }
+    assert.equal(failNext(budgets.forStream(streamA), 104), false, 'a restart on stream A keeps its spent budget');
+
+    const onStreamB = [105, 106, 107, 108].map((sequence) => failNext(budgets.forStream(streamB), sequence));
+    assert.deepEqual(onStreamB, [true, true, true, true], 'stream B starts with all of its own');
+    assert.equal(failNext(budgets.forStream(streamB), 109), false);
+
+    assert.equal(failNext(budgets.forStream(streamA), 110), true, 'coming back to stream A starts it afresh');
   });
 });

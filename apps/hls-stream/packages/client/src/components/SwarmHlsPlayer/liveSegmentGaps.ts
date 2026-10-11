@@ -45,6 +45,24 @@ export class LiveGapBudget {
 }
 
 /**
+ * The budget of the stream being played. A player restarted on the same stream keeps the budget it
+ * spent, since a stream that keeps losing segments past the limit is restarted and a fresh budget each
+ * time would let it skip that many more after every restart. A player moved to another stream starts
+ * it with a full one.
+ */
+export class LiveGapBudgetPerStream {
+  private current: { readonly stream: string; readonly budget: LiveGapBudget } | null = null;
+
+  /** @param stream What identifies the stream's source, the same string for every start of it. */
+  forStream(stream: string): LiveGapBudget {
+    if (this.current?.stream !== stream) {
+      this.current = { stream, budget: new LiveGapBudget() };
+    }
+    return this.current.budget;
+  }
+}
+
+/**
  * The errors {@link skipFailedLiveSegment} played past, held by the error object hls.js hands every
  * listener, so a listener that runs before the player's can still learn the outcome once the dispatch
  * is over. It only reports the decision, the budget is taken inside {@link skipFailedLiveSegment}.
