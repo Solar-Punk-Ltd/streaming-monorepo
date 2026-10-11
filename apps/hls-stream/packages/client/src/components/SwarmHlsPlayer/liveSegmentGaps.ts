@@ -47,7 +47,7 @@ export class LiveGapBudget {
 /**
  * The errors {@link skipFailedLiveSegment} played past, held by the error object hls.js hands every
  * listener, so a listener that runs before the player's can still learn the outcome once the dispatch
- * is over, and nothing decides twice or takes from the budget twice.
+ * is over. It only reports the decision, the budget is taken inside {@link skipFailedLiveSegment}.
  */
 const playedPastAsGap = new WeakSet<object>();
 

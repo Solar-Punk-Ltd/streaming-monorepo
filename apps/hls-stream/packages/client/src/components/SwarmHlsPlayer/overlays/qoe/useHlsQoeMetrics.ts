@@ -49,7 +49,7 @@ export interface QoeMetrics {
   switchLatencySamples: number;
 
   // Reliability
-  /** Fatal errors the player recovered from by restarting or by hls.js's own recovery, never one it played past as a gap. */
+  /** Fatal errors the player did not play past as a gap. A skipped segment is counted in `segmentsSkipped` instead. */
   fatalErrorCount: number;
   /** Live segments the player played past as a gap, a moment of picture lost while playback carried on. */
   segmentsSkipped: number;
