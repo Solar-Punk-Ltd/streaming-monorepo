@@ -1,13 +1,13 @@
 /**
  * ConsoleSettingsRepository against the real database (migration 021), and `/api/config` over the instance's HTTP.
- * Needs Postgres, like the rest of this suite; `DATABASE_URL` overrides the connection.
+ * Needs Postgres, like the rest of this suite. `DATABASE_URL` overrides the connection.
  *
- * What a fake cannot stand in for is the SQL: that migration 021 applied; that `console_settings` holds one row and
- * no other; that a write answers the value it replaced, null on the first; that a name the console does not carry is
- * not refused by the table, because the API checks names and reads an unknown one as Default; and that the public
+ * What a fake cannot stand in for is the SQL: that migration 021 applied, that `console_settings` holds one row and
+ * no other, that a write answers the value it replaced, null on the first, that a name the console does not carry is
+ * not refused by the table, because the API checks names and reads an unknown one as Default, and that the public
  * config answers what is stored.
  *
- * Every row it writes is in the suite's throwaway database; it empties the table before each test.
+ * Every row it writes is in the suite's throwaway database, and it empties the table before each test.
  */
 import assert from 'node:assert/strict';
 import { after, before, beforeEach, describe, it } from 'node:test';

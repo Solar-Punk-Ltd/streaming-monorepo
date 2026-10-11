@@ -4,7 +4,7 @@
  * and the sessions in memory. `pnpm test`.
  *
  * Pinned here: the public config names the host's default look, Default with no row and for a stored look the console
- * no longer carries; the change is refused without a session, for a user who is not an admin, from another site and
+ * no longer carries. The change is refused without a session, for a user who is not an admin, from another site and
  * for a name the console does not carry, and an admin's change is stored, answered and audited with the look it
  * replaced.
  */

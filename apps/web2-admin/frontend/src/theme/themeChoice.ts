@@ -17,7 +17,10 @@ function browserStorage(): ThemeStorage | null {
   }
 }
 
-/** The look kept under `key`, or null when none is kept, when it is one the console no longer carries, or when the browser refuses the page its storage. */
+/**
+ * The look kept under `key`, or null when none is kept, when it is one the console no longer carries, or when the
+ * browser refuses the page its storage.
+ */
 function loadLook(key: string, storage: ThemeStorage | null): AdminThemeName | null {
   try {
     const saved = storage?.getItem(key);
