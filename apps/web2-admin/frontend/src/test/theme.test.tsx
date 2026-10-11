@@ -216,6 +216,17 @@ describe('the switcher in the user menu', () => {
     expect(loadThemeChoice()).toBe('web3privacy');
   });
 
+  it('opens on its first item, not on the checked look', () => {
+    renderWithProviders(
+      <AppShell>
+        <WornAccent />
+      </AppShell>,
+    );
+    openUserMenu();
+
+    expect(document.activeElement).toHaveTextContent('Streams');
+  });
+
   it('wears the kept pick when the console opens again', () => {
     saveThemeChoice('swarm');
     renderWithProviders(

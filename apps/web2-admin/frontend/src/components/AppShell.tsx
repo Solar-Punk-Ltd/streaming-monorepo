@@ -54,7 +54,7 @@ export function AppShell({ children }: { children: ReactNode }) {
               <Button color="inherit" startIcon={<AccountCircleIcon />} onClick={open} aria-haspopup="menu">
                 {user.username}
               </Button>
-              <Menu anchorEl={anchor} open={anchor !== null} onClose={close}>
+              <Menu anchorEl={anchor} open={anchor !== null} onClose={close} variant="menu">
                 <MenuItem onClick={() => go('/')}>Streams</MenuItem>
                 <MenuItem onClick={() => go('/stages')}>Stages</MenuItem>
                 <MenuItem onClick={() => go('/funding')}>Funding</MenuItem>
