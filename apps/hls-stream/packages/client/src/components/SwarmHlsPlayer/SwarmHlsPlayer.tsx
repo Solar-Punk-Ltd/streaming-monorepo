@@ -11,6 +11,7 @@ import { attachQoeTracking, initialMetrics, QoeMetrics } from './overlays/qoe/us
 import { CustomFragmentLoader, CustomManifestLoader, manifestFetcher } from './CustomManifestLoader';
 import { FEED_STATE_LIVE, FeedState } from './feedState';
 import { attachLivePlaybackRateGuard } from './livePlaybackRate';
+import { LiveGapBudget, skipFailedLiveSegment } from './liveSegmentGaps';
 import { attachLiveSyncToSegmentLength } from './liveSyncLength';
 import { ManifestStateManager } from './ManifestManagement';
 import { nextMediaErrorAction, NO_MEDIA_ERRORS_YET, recoverFromMediaError } from './mediaErrorRecovery';
@@ -323,6 +324,9 @@ export const SwarmHlsPlayer: React.FC<HlsPlayerProps> = ({
   renditionsRef.current = renditions;
   const onLadderShortRef = useRef(onLadderShort);
   onLadderShortRef.current = onLadderShort;
+  // Held across restarts like the feed state below, because a stream that keeps losing segments past
+  // the limit is restarted, and a fresh budget each time would let it skip four more after every one.
+  const [liveGapBudget] = useState(() => new LiveGapBudget());
 
   // Deliberately not part of the effect below, which reruns on every restart. A fatal network error
   // is what causes a restart, so a subscription torn down and rebuilt with the player would be
@@ -394,6 +398,20 @@ export const SwarmHlsPlayer: React.FC<HlsPlayerProps> = ({
       video.addEventListener('play', onHlsPlay);
 
       hls.on(Events.ERROR, (_event, data) => {
+        if (
+          hls &&
+          skipFailedLiveSegment(
+            hls,
+            data,
+            (levelUri, fragmentUrl) => manifestFetcher.markLiveSegmentGap(levelUri, fragmentUrl),
+            liveGapBudget,
+            performance.now(),
+            video.currentTime,
+          )
+        ) {
+          return;
+        }
+
         if (data.fatal) {
           console.error('HLS.js fatal error:', data.type, data.details);
         } else {
