@@ -89,6 +89,22 @@ describe('ConsoleSettingsRepository', () => {
     );
     assert.deepEqual(row.rows[0], { updated_by: 'bob', count: 1 });
   });
+
+  it('answers each of two saves made at once the look that save replaced, so the audit names it', async () => {
+    // Two first writes at once: one must replace nothing and the other the first one's look. Repeated, because
+    // which interleaving a run gets is up to the database.
+    for (let round = 0; round < 20; round += 1) {
+      await database.pool.query('DELETE FROM console_settings');
+      const [first, second] = await Promise.all([
+        settings.setDefaultTheme('swarm', 'alice'),
+        settings.setDefaultTheme('web3privacy', 'bob'),
+      ]);
+      const replaced = [first, second].sort((a, b) => String(a).localeCompare(String(b)));
+      const stored = await settings.defaultTheme();
+      assert.deepEqual(replaced.filter((value) => value !== null).length, 1, `round ${round}: ${first}, ${second}`);
+      assert.equal(stored === 'swarm' ? second : first, null, `round ${round}: the last write replaced the first`);
+    }
+  });
 });
 
 describe('GET /api/config', () => {

@@ -9,6 +9,9 @@ export interface ConsoleSettingsStore {
   setDefaultTheme(name: AdminThemeName, updatedBy: string): Promise<string | null>;
 }
 
+/** The key of the advisory lock a save takes, by its name, as the funding locks are named. */
+const CONSOLE_SETTINGS_LOCK_NAME = 'web2-admin:console-settings';
+
 /** The console's one settings row, migration 021. */
 export class ConsoleSettingsRepository implements ConsoleSettingsStore {
   constructor(private readonly pool: Pool) {}
@@ -19,19 +22,30 @@ export class ConsoleSettingsRepository implements ConsoleSettingsStore {
   }
 
   async setDefaultTheme(name: AdminThemeName, updatedBy: string): Promise<string | null> {
-    // The CTE reads the row as it stood when the statement began, so one statement both writes the new value and
-    // answers the old one for the audit row.
-    const result = await this.pool.query<{ previous: string | null }>(
-      `WITH previous AS (SELECT default_theme FROM console_settings)
-       INSERT INTO console_settings (id, default_theme, updated_by)
-       VALUES (TRUE, $1, $2)
-       ON CONFLICT (id) DO UPDATE
-         SET default_theme = EXCLUDED.default_theme,
-             updated_at = NOW(),
-             updated_by = EXCLUDED.updated_by
-       RETURNING (SELECT default_theme FROM previous) AS previous`,
-      [name, updatedBy],
-    );
-    return result.rows[0]?.previous ?? null;
+    const client = await this.pool.connect();
+    try {
+      await client.query('BEGIN');
+      // Held until the transaction ends. Without it two saves at once can both read the row before either writes,
+      // and the second's audit row then names a look it did not replace. A row lock cannot do this on the first
+      // write, when there is no row yet to lock.
+      await client.query('SELECT pg_advisory_xact_lock(hashtext($1))', [CONSOLE_SETTINGS_LOCK_NAME]);
+      const previous = await client.query<{ default_theme: string }>('SELECT default_theme FROM console_settings');
+      await client.query(
+        `INSERT INTO console_settings (id, default_theme, updated_by)
+         VALUES (TRUE, $1, $2)
+         ON CONFLICT (id) DO UPDATE
+           SET default_theme = EXCLUDED.default_theme,
+               updated_at = NOW(),
+               updated_by = EXCLUDED.updated_by`,
+        [name, updatedBy],
+      );
+      await client.query('COMMIT');
+      return previous.rows[0]?.default_theme ?? null;
+    } catch (err) {
+      await client.query('ROLLBACK').catch(() => undefined);
+      throw err;
+    } finally {
+      client.release();
+    }
   }
 }
