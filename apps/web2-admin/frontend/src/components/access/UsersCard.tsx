@@ -10,6 +10,7 @@ import {
   Table,
   TableBody,
   TableCell,
+  TableContainer,
   TableHead,
   TableRow,
   Tooltip,
@@ -156,82 +157,84 @@ export function UsersCard({
         ) : null}
 
         {users ? (
-          <Table size="small">
-            <TableHead>
-              <TableRow>
-                <TableCell>User</TableCell>
-                <TableCell>Created</TableCell>
-                <TableCell>Last login</TableCell>
-                <TableCell align="right">Open sessions</TableCell>
-                <TableCell align="right">Actions</TableCell>
-              </TableRow>
-            </TableHead>
-            <TableBody>
-              {users.map((user) => {
-                const blocked = removalBlockedBecause(user, currentUsername, users, canManage);
-                const busy = busyId === user.id;
-                const isSelf = user.username === currentUsername;
-                const revokeBlocked =
-                  user.sessions === 0 ? NO_SESSIONS : !canManage && !isSelf ? CANNOT_REVOKE_OTHERS : '';
+          <TableContainer>
+            <Table size="small">
+              <TableHead>
+                <TableRow>
+                  <TableCell>User</TableCell>
+                  <TableCell>Created</TableCell>
+                  <TableCell>Last login</TableCell>
+                  <TableCell align="right">Open sessions</TableCell>
+                  <TableCell align="right">Actions</TableCell>
+                </TableRow>
+              </TableHead>
+              <TableBody>
+                {users.map((user) => {
+                  const blocked = removalBlockedBecause(user, currentUsername, users, canManage);
+                  const busy = busyId === user.id;
+                  const isSelf = user.username === currentUsername;
+                  const revokeBlocked =
+                    user.sessions === 0 ? NO_SESSIONS : !canManage && !isSelf ? CANNOT_REVOKE_OTHERS : '';
 
-                return (
-                  <TableRow key={user.id} hover>
-                    <TableCell>
-                      <Stack direction="row" spacing={0.75} sx={{ alignItems: 'center', flexWrap: 'wrap' }}>
-                        <Typography variant="body2" sx={{ fontWeight: 500 }}>
-                          {user.username}
-                        </Typography>
-                        {user.isAdmin ? <Chip label="admin" size="small" color="primary" /> : null}
-                        {isSelf ? (
-                          <Typography variant="caption" sx={{ color: 'text.secondary' }}>
-                            you
+                  return (
+                    <TableRow key={user.id} hover>
+                      <TableCell>
+                        <Stack direction="row" spacing={0.75} sx={{ alignItems: 'center', flexWrap: 'wrap' }}>
+                          <Typography variant="body2" sx={{ fontWeight: 500 }}>
+                            {user.username}
                           </Typography>
-                        ) : null}
-                      </Stack>
-                    </TableCell>
-                    <TableCell>
-                      <Typography variant="body2" sx={{ color: 'text.secondary' }}>
-                        {formatDateTime(user.createdAt)}
-                      </Typography>
-                    </TableCell>
-                    <TableCell>
-                      <Typography variant="body2" sx={{ color: 'text.secondary' }}>
-                        {user.lastLoginAt ? formatDateTime(user.lastLoginAt) : NEVER_SIGNED_IN}
-                      </Typography>
-                    </TableCell>
-                    <TableCell align="right">{user.sessions}</TableCell>
-                    <TableCell align="right">
-                      <Stack direction="row" spacing={0.5} sx={{ justifyContent: 'flex-end' }}>
-                        <Tooltip title={revokeBlocked}>
-                          <Box component="span">
-                            <Button
-                              size="small"
-                              disabled={busy || revokeBlocked !== ''}
-                              onClick={() => askRevoke(user)}
-                            >
-                              Sign out everywhere
-                            </Button>
-                          </Box>
-                        </Tooltip>
-                        <Tooltip title={CANNOT_REMOVE[blocked]}>
-                          <Box component="span">
-                            <Button
-                              size="small"
-                              color="error"
-                              disabled={busy || blocked !== 'none'}
-                              onClick={() => askRemove(user)}
-                            >
-                              Remove
-                            </Button>
-                          </Box>
-                        </Tooltip>
-                      </Stack>
-                    </TableCell>
-                  </TableRow>
-                );
-              })}
-            </TableBody>
-          </Table>
+                          {user.isAdmin ? <Chip label="admin" size="small" color="primary" /> : null}
+                          {isSelf ? (
+                            <Typography variant="caption" sx={{ color: 'text.secondary' }}>
+                              you
+                            </Typography>
+                          ) : null}
+                        </Stack>
+                      </TableCell>
+                      <TableCell>
+                        <Typography variant="body2" sx={{ color: 'text.secondary' }}>
+                          {formatDateTime(user.createdAt)}
+                        </Typography>
+                      </TableCell>
+                      <TableCell>
+                        <Typography variant="body2" sx={{ color: 'text.secondary' }}>
+                          {user.lastLoginAt ? formatDateTime(user.lastLoginAt) : NEVER_SIGNED_IN}
+                        </Typography>
+                      </TableCell>
+                      <TableCell align="right">{user.sessions}</TableCell>
+                      <TableCell align="right">
+                        <Stack direction="row" spacing={0.5} sx={{ justifyContent: 'flex-end' }}>
+                          <Tooltip title={revokeBlocked}>
+                            <Box component="span">
+                              <Button
+                                size="small"
+                                disabled={busy || revokeBlocked !== ''}
+                                onClick={() => askRevoke(user)}
+                              >
+                                Sign out everywhere
+                              </Button>
+                            </Box>
+                          </Tooltip>
+                          <Tooltip title={CANNOT_REMOVE[blocked]}>
+                            <Box component="span">
+                              <Button
+                                size="small"
+                                color="error"
+                                disabled={busy || blocked !== 'none'}
+                                onClick={() => askRemove(user)}
+                              >
+                                Remove
+                              </Button>
+                            </Box>
+                          </Tooltip>
+                        </Stack>
+                      </TableCell>
+                    </TableRow>
+                  );
+                })}
+              </TableBody>
+            </Table>
+          </TableContainer>
         ) : null}
       </Stack>
 
