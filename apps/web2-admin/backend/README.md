@@ -196,7 +196,9 @@ answers `{ "defaultTheme": "swarm" }`. A name the console does not carry is 400
 `validation_error`. It is stored in the one row of `console_settings`
 (migration 021) with who set it and when, and audited as `console.theme.set`.
 The table does not check the name: a stored look that a later console no longer
-carries is answered as `default`, so retiring a look needs no migration. The
+carries is answered as `default`, so retiring a look needs no migration. A
+read of it that fails is answered as `default` too, with a warning in the log,
+so the feed and the viewer link stay up while the database is away. The
 console's side, where an admin sets it and how it meets a browser's own pick,
 is in [the frontend's README](../frontend/README.md#themes).
 

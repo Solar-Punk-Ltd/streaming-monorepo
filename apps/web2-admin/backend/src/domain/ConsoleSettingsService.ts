@@ -19,8 +19,17 @@ export class ConsoleSettingsService {
     private readonly audit: AuditLog,
   ) {}
 
+  /**
+   * A read that fails answers Default rather than failing `/api/config`, which also carries the feed and the
+   * viewer link the login page and the stream pages need, and which never touched the database before.
+   */
   async defaultTheme(): Promise<AdminThemeName> {
-    return wornLook(await this.store.defaultTheme());
+    try {
+      return wornLook(await this.store.defaultTheme());
+    } catch (err) {
+      logger.warn(`[Console] could not read this host's default look, answering ${DEFAULT_ADMIN_THEME}:`, err);
+      return DEFAULT_ADMIN_THEME;
+    }
   }
 
   /** The route admits admins alone, so this trusts its caller to be one. */

@@ -100,6 +100,7 @@ after(() => app.close());
 beforeEach(() => {
   app.store.stored = null;
   app.store.updatedBy = null;
+  app.store.failReads = false;
   app.audit.entries.length = 0;
 });
 
@@ -128,6 +129,16 @@ describe('GET /api/config', () => {
     app.store.stored = 'retired-look';
 
     assert.equal((await config()).defaultTheme, 'default');
+  });
+
+  it('still answers the feed and the viewer, in the Default look, when the look cannot be read', async () => {
+    app.store.failReads = true;
+
+    assert.deepEqual(await config(), {
+      feed: { owner: FEED.owner, topic: FEED.topic, topicHex: FEED.topicHex },
+      viewerBaseUrl: VIEWER,
+      defaultTheme: 'default',
+    });
   });
 });
 
