@@ -37,6 +37,7 @@ import { IngestPanel } from '../components/IngestPanel';
 import { MEDIA_TYPE_LABEL, StatusChip } from '../components/StatusChip';
 import { useSnackbar } from '../components/Snackbar';
 import { CopyButton } from '../components/CopyButton';
+import { monoFont } from '../theme/createAdminTheme';
 
 function Field({ label, children }: { label: string; children: ReactNode }) {
   return (
@@ -52,7 +53,7 @@ function Field({ label, children }: { label: string; children: ReactNode }) {
 function Mono({ value, label }: { value: string; label: string }) {
   return (
     <Stack direction="row" spacing={0.5} sx={{ alignItems: 'center' }}>
-      <Typography variant="body2" sx={{ fontFamily: 'monospace' }}>
+      <Typography variant="body2" sx={{ fontFamily: monoFont }}>
         {shortHex(value, 10, 8)}
       </Typography>
       <CopyButton value={value} label={label} />
@@ -506,7 +507,7 @@ export function StreamDetailsPage() {
           <Typography variant="caption" sx={{ color: 'text.secondary' }}>
             Direct stream route, once the stream has gone live:
           </Typography>
-          <Typography variant="caption" sx={{ fontFamily: 'monospace', wordBreak: 'break-all' }}>
+          <Typography variant="caption" sx={{ fontFamily: monoFont, wordBreak: 'break-all' }}>
             {watchPath(stream)}
           </Typography>
           <CopyButton value={watchPath(stream)} label="stream route" />

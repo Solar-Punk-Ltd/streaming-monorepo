@@ -26,6 +26,7 @@ import { errorMessage } from '../errors';
 import { CatalogueMoveCard } from '../components/stages/CatalogueMoveCard';
 import { CatalogueStampCard } from '../components/stages/CatalogueStampCard';
 import { ChequebookChip, ReadinessChip, StampNumbers, StampStateChip } from '../components/stages/stamps';
+import { monoFont } from '../theme/createAdminTheme';
 
 /** How often "last confirmed" is worked out again. The manager confirms every stage every 30 seconds. */
 const CLOCK_TICK_MS = 30_000;
@@ -60,7 +61,7 @@ function Ingest({ stage }: { stage: StageSummary }) {
   const { ingest } = stage;
   return (
     <Stack spacing={0.25}>
-      <Typography variant="body2" sx={{ fontFamily: 'monospace' }}>
+      <Typography variant="body2" sx={{ fontFamily: monoFont }}>
         {ingest.host}:{ingest.srtPort}
       </Typography>
       <Typography variant="caption" sx={{ color: 'text.secondary' }}>

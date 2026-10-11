@@ -33,6 +33,7 @@ import {
   type StampLine,
 } from './stamps';
 import { CHECKBOX_WIDTH, GroupTitle } from './Ticks';
+import { monoFont } from '../../theme/createAdminTheme';
 
 /** A column after the batch: its header, and its fixed width, wide enough for the header on one line. */
 interface Column {
@@ -122,7 +123,7 @@ function TimeLeft({ seconds }: { seconds: number | null }) {
 function BatchLine({ batch }: { batch: FundingBatch }) {
   return (
     <Stack direction="row" spacing={0.5} sx={{ alignItems: 'center', minWidth: 0 }}>
-      <Typography variant="body2" noWrap title={batch.batchId} sx={{ fontFamily: 'monospace' }}>
+      <Typography variant="body2" noWrap title={batch.batchId} sx={{ fontFamily: monoFont }}>
         {shortHex(batch.batchId)}
       </Typography>
       <CopyButton value={batch.batchId} label="Batch id" />

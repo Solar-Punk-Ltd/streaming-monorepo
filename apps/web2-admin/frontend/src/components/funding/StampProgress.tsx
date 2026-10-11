@@ -6,6 +6,7 @@ import { shortHex } from '../../format';
 import { formatUnits } from './amounts';
 import { BulkProgress, type BulkWords } from './BulkProgress';
 import { dayCount, stepCount } from './stamps';
+import { monoFont } from '../../theme/createAdminTheme';
 
 /**
  * Said under a stamp operation the manager answers `unknown` that is not settled yet: the node's answer was lost, and
@@ -78,11 +79,7 @@ export function StampProgress({
           <TableCell>
             <Stack spacing={0.25}>
               <Typography variant="body2">{item.nodeLabel}</Typography>
-              <Typography
-                variant="caption"
-                title={item.batchId}
-                sx={{ fontFamily: 'monospace', color: 'text.secondary' }}
-              >
+              <Typography variant="caption" title={item.batchId} sx={{ fontFamily: monoFont, color: 'text.secondary' }}>
                 {shortHex(item.batchId)}
               </Typography>
             </Stack>
