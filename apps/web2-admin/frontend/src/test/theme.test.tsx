@@ -54,10 +54,8 @@ describe('the looks', () => {
     expect(ours.palette.background).toEqual(stock.palette.background);
     expect(ours.palette.text).toEqual(stock.palette.text);
     expect(ours.palette.divider).toBe(stock.palette.divider);
-    expect(ours.palette.primary.main).toBe(stock.palette.primary.main);
-    expect(ours.palette.primary.contrastText).toBe(stock.palette.primary.contrastText);
-    for (const key of ['error', 'warning', 'success', 'info'] as const) {
-      expect(ours.palette[key].main).toBe(stock.palette[key].main);
+    for (const key of ['primary', 'error', 'warning', 'success', 'info'] as const) {
+      expect(ours.palette[key]).toEqual(stock.palette[key]);
     }
     expect(ours.typography.fontFamily).toBe(stock.typography.fontFamily);
     expect(ours.typography.h1.fontWeight).toBe(stock.typography.h1.fontWeight);

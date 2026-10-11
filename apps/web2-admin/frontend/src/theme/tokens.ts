@@ -1,5 +1,11 @@
 import type { AdminThemeName } from './themeNames';
 
+/** A lighter and a darker step of one colour, as MUI uses them for tints and pressed states. */
+export interface Shade {
+  light: string;
+  dark: string;
+}
+
 /**
  * Everything a look decides, and nothing else. Every theme fills in every field, so a switch leaves
  * nothing at MUI's default by accident, and `createAdminTheme` is the one place these become a MUI
@@ -44,14 +50,20 @@ export interface ThemeTokens {
   buttonCase: 'none' | 'uppercase';
   /** Surfaces keep their own colour when raised, rather than MUI's dark-mode lightening overlay. */
   flatSurfaces: boolean;
+  /**
+   * The lighter steps of the accent and the steps of each status colour, or null to let MUI work them
+   * out from each colour. MUI's own come from its palette tables rather than from the colour, so a look
+   * that has to match MUI exactly writes them out.
+   */
+  shades: { primaryLight: string; error: Shade; warning: Shade; success: Shade; info: Shade } | null;
 }
 
 const SYSTEM_SANS = 'system-ui, -apple-system, "Segoe UI", Roboto, Arial, sans-serif';
 const SYSTEM_MONO = 'ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace';
 
 export const THEME_TOKENS: Record<AdminThemeName, ThemeTokens> = {
-  // MUI's own dark palette, the console's look before there were themes. Written out rather than
-  // left to MUI, so the contrast test reads it like the others and a MUI upgrade cannot move it.
+  // MUI's own dark palette, the console's look before there were themes, every step of it written out
+  // so the contrast test reads it like the others and a MUI upgrade cannot move it.
   default: {
     label: 'Default',
     colors: {
@@ -79,6 +91,13 @@ export const THEME_TOKENS: Record<AdminThemeName, ThemeTokens> = {
     radius: 4,
     buttonCase: 'uppercase',
     flatSurfaces: false,
+    shades: {
+      primaryLight: '#e3f2fd',
+      error: { light: '#e57373', dark: '#d32f2f' },
+      warning: { light: '#ffb74d', dark: '#f57c00' },
+      success: { light: '#81c784', dark: '#388e3c' },
+      info: { light: '#4fc3f7', dark: '#0288d1' },
+    },
   },
   // Swarm Brand v3.0 as the event viewer wears it: near-black surfaces, the orange as a sparing
   // accent with the darkest neutral written on it (white on it measures 2.6:1), Geist throughout.
@@ -109,6 +128,7 @@ export const THEME_TOKENS: Record<AdminThemeName, ThemeTokens> = {
     radius: 8,
     buttonCase: 'none',
     flatSurfaces: true,
+    shades: null,
   },
   // web3privacy.info's own: a black page, white text, the neon green with its dark green written on
   // it, Archivo for text and Domine headings in the regular weight, calls to action in capitals.
@@ -139,5 +159,6 @@ export const THEME_TOKENS: Record<AdminThemeName, ThemeTokens> = {
     radius: 8,
     buttonCase: 'uppercase',
     flatSurfaces: true,
+    shades: null,
   },
 };

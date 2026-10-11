@@ -23,7 +23,7 @@ function headingTypography(tokens: ThemeTokens) {
 /** Turns one theme's tokens into the MUI theme the whole console reads. */
 export function createAdminTheme(name: AdminThemeName): Theme {
   const tokens = THEME_TOKENS[name];
-  const { colors } = tokens;
+  const { colors, shades } = tokens;
 
   return createTheme({
     palette: {
@@ -31,11 +31,16 @@ export function createAdminTheme(name: AdminThemeName): Theme {
       background: { default: colors.background, paper: colors.surface },
       divider: colors.divider,
       text: { primary: colors.text, secondary: colors.textSecondary, disabled: colors.textDisabled },
-      primary: { main: colors.primary, dark: colors.primaryHover, contrastText: colors.onPrimary },
-      error: { main: colors.error },
-      warning: { main: colors.warning },
-      success: { main: colors.success },
-      info: { main: colors.info },
+      primary: {
+        main: colors.primary,
+        dark: colors.primaryHover,
+        contrastText: colors.onPrimary,
+        ...(shades ? { light: shades.primaryLight } : {}),
+      },
+      error: { main: colors.error, ...shades?.error },
+      warning: { main: colors.warning, ...shades?.warning },
+      success: { main: colors.success, ...shades?.success },
+      info: { main: colors.info, ...shades?.info },
     },
     typography: {
       fontFamily: tokens.fonts.base,
@@ -47,7 +52,11 @@ export function createAdminTheme(name: AdminThemeName): Theme {
     components: {
       MuiAppBar: {
         styleOverrides: {
-          root: { '--AppBar-background': colors.bar, ...(tokens.flatSurfaces ? { backgroundImage: 'none' } : {}) },
+          root: {
+            '--AppBar-background': colors.bar,
+            '--AppBar-color': colors.text,
+            ...(tokens.flatSurfaces ? { backgroundImage: 'none' } : {}),
+          },
         },
       },
       ...(tokens.flatSurfaces ? { MuiPaper: { styleOverrides: { root: { backgroundImage: 'none' } } } } : {}),
