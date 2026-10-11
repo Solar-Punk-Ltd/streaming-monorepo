@@ -10,6 +10,8 @@ import type {
   MeResponse,
   PublicConfig,
   PublishResult,
+  SetDefaultThemeRequest,
+  SetDefaultThemeResponse,
   StageListResponse,
   StageSummary,
   Stream,
@@ -20,7 +22,7 @@ import type {
   UserSummary,
   VersionInfo,
 } from '@streaming-monorepo/web2-admin-common';
-import { VERSION_PATH } from '@streaming-monorepo/web2-admin-common';
+import { CONSOLE_DEFAULT_THEME_PATH, VERSION_PATH, type AdminThemeName } from '@streaming-monorepo/web2-admin-common';
 
 import {
   FUNDING_CHEQUEBOOK_OPERATIONS_ADMIN_PATH,
@@ -441,6 +443,15 @@ export async function fetchFundingChequebookOperations(bulkId: string): Promise<
 
 export function fetchPublicConfig(): Promise<PublicConfig> {
   return getJson<PublicConfig>(`${API}/config`);
+}
+
+/** Sets the look this host's console starts in, for admins only, and answers the look the API stored. */
+export async function setDefaultTheme(defaultTheme: AdminThemeName): Promise<AdminThemeName> {
+  const body: SetDefaultThemeRequest = { defaultTheme };
+  const answer = await sendJson<SetDefaultThemeResponse>('PUT', CONSOLE_DEFAULT_THEME_PATH, body, {
+    fallback: "This host's console look could not be saved.",
+  });
+  return answer.defaultTheme;
 }
 
 // --- version ----------------------------------------------------------------
