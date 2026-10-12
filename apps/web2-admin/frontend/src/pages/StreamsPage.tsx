@@ -253,8 +253,15 @@ export function StreamsPage() {
                   <TableCell sx={{ width: 112 }}>
                     <Thumbnail stream={stream} />
                   </TableCell>
-                  <TableCell>
-                    <Typography variant="body2">{stream.title}</Typography>
+                  {/*
+                    A title up to 100 characters with no space in it used to
+                    widen this column past the screen. It wraps inside a
+                    bounded width instead, so a long title makes the row taller.
+                  */}
+                  <TableCell sx={{ minWidth: 180, maxWidth: 360 }}>
+                    <Typography variant="body2" sx={{ overflowWrap: 'anywhere' }}>
+                      {stream.title}
+                    </Typography>
                     {/*
                       Two lines at most: a description may run to 500
                       characters, and printed whole it made the row about
@@ -276,17 +283,17 @@ export function StreamsPage() {
                       {stream.description}
                     </Typography>
                   </TableCell>
-                  <TableCell>
+                  <TableCell sx={{ whiteSpace: 'nowrap' }}>
                     <StageName stageId={stream.stageId} stages={stages} />
                   </TableCell>
-                  <TableCell>
+                  <TableCell sx={{ whiteSpace: 'nowrap' }}>
                     <MediaTypeChip mediaType={stream.mediaType} />
                   </TableCell>
-                  <TableCell>
+                  <TableCell sx={{ whiteSpace: 'nowrap' }}>
                     <StatusChip status={stream.status} publishError={stream.publishError} />
                   </TableCell>
                   <TableCell>{formatDateTime(stream.scheduledStartTime)}</TableCell>
-                  <TableCell align="right">
+                  <TableCell align="right" sx={{ whiteSpace: 'nowrap' }}>
                     <Stack direction="row" spacing={1} sx={{ justifyContent: 'flex-end' }}>
                       <Button size="small" startIcon={<EditIcon />} onClick={() => navigate(`/edit/${stream.id}`)}>
                         Edit

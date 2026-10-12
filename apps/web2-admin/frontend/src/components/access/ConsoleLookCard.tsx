@@ -4,7 +4,6 @@ import { Alert, Button, FormControlLabel, Paper, Radio, RadioGroup, Stack, Typog
 import * as api from '../../api';
 import { errorMessage } from '../../errors';
 import { useThemeChoice } from '../../theme/ThemeChoiceProvider';
-import { ThemeSwatch } from '../../theme/ThemeSwatch';
 import { ADMIN_THEME_NAMES, isAdminThemeName, type AdminThemeName } from '../../theme/themeNames';
 import { THEME_TOKENS } from '../../theme/tokens';
 import { useSnackbar } from '../Snackbar';
@@ -67,12 +66,7 @@ export function ConsoleLookCard() {
               value={name}
               disabled={saving}
               control={<Radio />}
-              label={
-                <Stack direction="row" spacing={1.5} sx={{ alignItems: 'center' }}>
-                  <ThemeSwatch name={name} />
-                  <span>{THEME_TOKENS[name].label}</span>
-                </Stack>
-              }
+              label={THEME_TOKENS[name].label}
             />
           ))}
         </RadioGroup>
