@@ -217,6 +217,13 @@ describe('too many attempts', () => {
     assert.equal(sessionCookieFrom(res.setCookie), null);
   });
 
+  it('refuses the right password from another address too, because the lock is on the account', async () => {
+    const res = await login(ELSEWHERE, USERNAME, PASSWORD);
+
+    assert.equal(res.status, 429);
+    assert.equal(sessionCookieFrom(res.setCookie), null);
+  });
+
   it('locks the address as well, so a second account cannot be tried from it', async () => {
     assert.equal((await login(OURS, 'mate', OTHER_PASSWORD)).status, 429);
   });
