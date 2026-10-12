@@ -4,7 +4,7 @@ import { type VersionInfo, versionDisplay } from '@streaming-infra-manager/commo
 
 /**
  * The sidebar's line under "Streaming Infra": the name of this manager instance when it has one, then the build it
- * runs, as every console writes one, with the full commit as its title, and "development build" when no version is
+ * runs as `versionDisplay` writes it, with the full commit as its title, and "development build" when no version is
  * set. The build is left out while the manager has not said, or could not, because no answer is not a development
  * build, and the line is empty when there is no name either.
  */
