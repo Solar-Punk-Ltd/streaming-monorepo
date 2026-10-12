@@ -309,6 +309,16 @@ describe('too many wrong current passwords', () => {
     });
   });
 
+  it('refuses the right password at sign-in while that lock holds, from any address', async () => {
+    const res = await call(app, 'POST', '/api/auth/login', {
+      body: { username: USERNAME, password: PASSWORD },
+      headers: { 'x-forwarded-for': '203.0.113.20' },
+    });
+
+    assert.equal(res.status, 429);
+    assert.equal(sessionCookieFrom(res.setCookie), null);
+  });
+
   it('lets the right current password through once the wait is over', async () => {
     clock.now += 60_000;
 
