@@ -6,7 +6,7 @@ import { MONO_STACK } from '../app/theme';
 import { CopyBox } from '../components/CopyBox';
 import { SectionCard } from '../components/SectionCard';
 import type { Profile } from '../types';
-import type { RtmpPublishSettings } from '../urls';
+import { hostFor, type RtmpPublishSettings } from '../urls';
 import { engineOf } from './shape';
 import { deploymentProgressText } from './deploymentPhase';
 import {
@@ -40,7 +40,7 @@ function passphraseNote(profile: Profile, hostPassphrase: string | null, inTheUr
 export function PublishCard({
   profile,
   url,
-  ingestHost,
+  serverHost,
   hostPassphrase,
   ready,
   passphrasePending,
@@ -49,8 +49,8 @@ export function PublishCard({
 }: {
   profile: Profile;
   url: string;
-  /** The host a broadcaster sends to, which the URL carries. */
-  ingestHost: string;
+  /** The host deployments on the manager's own host publish on, shown as Ingest for a local deployment. */
+  serverHost: string;
   hostPassphrase: string | null;
   /** Whether all currently observed prerequisites pass the checklist. */
   ready: boolean;
@@ -70,7 +70,7 @@ export function PublishCard({
             Ingest
           </Typography>
           <Typography variant="body2" sx={{ fontFamily: MONO_STACK, overflowWrap: 'anywhere' }}>
-            {ingestHost}
+            {hostFor(profile, serverHost)}
           </Typography>
         </Stack>
         {rtmp && <Typography variant="subtitle2">SRT</Typography>}
