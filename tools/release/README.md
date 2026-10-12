@@ -112,8 +112,9 @@ node tools/release/publish.mjs --tag <tag> [--dry-run] [--registry <registry>] [
 Every image is built and uploaded for every release, from its app folder as a deploy cuts it, through
 `tools/app-workspace/in-copy.mjs`. The manager api also carries the last commit that changed `apps/hls-stream` in the
 label `streaming.stack-commit`, for the deploy to write where the manager reads its stack pin. No image is reused from
-an earlier release, even when its app did not change, because the release name and commit are built into the image:
-an image reused under a new tag would show the older release in its console.
+an earlier release, even when its app did not change. The release name and commit are built into the manager api and
+both admin images, so an image reused under a new tag would show the older release in its console. The manager web
+image carries no version. The version an image shows, where it shows one, is always the tag it was pulled by.
 
 A tag an image cannot carry is refused: letters, digits, `_`, `.` and `-` only, such as `v2.4.0` or
 `2026-10-10-build-1`. The checkout must be at the tag. `--dry-run` names each image it would build and changes
