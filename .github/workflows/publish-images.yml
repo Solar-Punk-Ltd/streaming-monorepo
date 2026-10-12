@@ -1,8 +1,8 @@
 name: publish-images
 
 # Publishes the images a server runs, the manager's and the admin's, to GitHub's container registry for every release
-# tag, so a deploy pulls a tag instead of building on the host. tools/release/publish.mjs builds and uploads the images
-# whose app folder changed since an earlier release and only adds the tag to the others, which uploads nothing.
+# tag, so a deploy pulls a tag instead of building on the host. tools/release/publish.mjs builds and uploads every image
+# for every release, so the version an image shows is always the tag it was pulled by.
 # docs/releasing.md says how a release is tagged. A tag an image cannot carry, such as one with a slash, is refused.
 on:
   push:
