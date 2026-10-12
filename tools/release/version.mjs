@@ -1,7 +1,8 @@
 #!/usr/bin/env node
 // Names the build a deploy is about to send: the tag on the checked-out commit, or the nearest tag before it and how
-// far past it, or the short commit, ended by -dirty when the app's own files hold uncommitted changes. README.md
-// says what each printed value means.
+// far past it, or the short commit, ended by -dirty when the app's folder or the files its build shares (packages/,
+// the root package.json, pnpm-lock.yaml and pnpm-workspace.yaml) hold uncommitted changes. README.md says what each
+// printed value means.
 import { existsSync, realpathSync } from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
