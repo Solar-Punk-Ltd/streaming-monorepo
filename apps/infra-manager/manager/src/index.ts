@@ -599,6 +599,7 @@ async function main(): Promise<void> {
         ],
       },
       managerVersion: config.managerVersion,
+      instanceName: config.instanceName,
     },
     config.port,
     config.host,

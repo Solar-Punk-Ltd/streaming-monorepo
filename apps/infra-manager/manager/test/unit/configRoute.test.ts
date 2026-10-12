@@ -15,7 +15,7 @@ let passphrase: string | null = 'pass-one';
 
 before(async () => {
   app = await startRouterTestApp(
-    createConfigRouter('0.5', async () => passphrase, 'https://user:key@rpc.example.org:8545/v1/secret'),
+    createConfigRouter('0.5', async () => passphrase, 'https://user:key@rpc.example.org:8545/v1/secret', 'swarm-dev'),
   );
 });
 
@@ -50,12 +50,19 @@ describe('GET /config', () => {
     assert.doesNotMatch(JSON.stringify(res.body), /secret|key/);
   });
 
+  it('answers the name this manager instance goes by, which the sidebar shows', async () => {
+    const res = await call(app, 'GET', '/');
+
+    assert.equal((res.body as { instanceName: unknown }).instanceName, 'swarm-dev');
+  });
+
   it('says the manager has none when it was given none', async () => {
-    const bare = await startRouterTestApp(createConfigRouter('0.5', async () => null, null));
+    const bare = await startRouterTestApp(createConfigRouter('0.5', async () => null, null, null));
     try {
       const res = await call(bare, 'GET', '/');
 
       assert.deepEqual((res.body as { beeRpcEndpoint: unknown }).beeRpcEndpoint, { configured: false, host: null });
+      assert.equal((res.body as { instanceName: unknown }).instanceName, null);
     } finally {
       await bare.close();
     }

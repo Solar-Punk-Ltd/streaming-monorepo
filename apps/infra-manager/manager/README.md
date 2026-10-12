@@ -1387,11 +1387,19 @@ the staging tree and never the root, because the root holds every deployment's
 
 ### Misc
 
-| Method | Path        | Notes                                                                    |
-| ------ | ----------- | ------------------------------------------------------------------------ |
-| GET    | `/health`   | DB ping. Returns `{status:"ok"}`.                                        |
-| GET    | `/services` | List of valid service names.                                             |
-| GET    | `/version`  | The build this manager runs, `{ label, commit }`, `no-store`. See below. |
+| Method | Path        | Notes                                                                                   |
+| ------ | ----------- | --------------------------------------------------------------------------------------- |
+| GET    | `/health`   | DB ping. Returns `{status:"ok"}`.                                                       |
+| GET    | `/services` | List of valid service names.                                                            |
+| GET    | `/config`   | `{ host, srtPassphrase, chequebookFloorBzz, beeRpcEndpoint, instanceName }`. See below. |
+| GET    | `/version`  | The build this manager runs, `{ label, commit }`, `no-store`. See below.                |
+
+`GET /config` answers what a page needs before it renders anything: `host`, the
+host deployments publish on, which every deployment URL is built from and which
+a deployment's Publish card shows as Ingest, `srtPassphrase`, the host-wide SRT
+passphrase or null, `chequebookFloorBzz`, `beeRpcEndpoint`, whether the manager
+has a chain endpoint and its host alone, and `instanceName`, the name this
+manager instance goes by from `MANAGER_INSTANCE_NAME`, or null when none is set.
 
 `GET /version` answers the build `deploy/deploy.sh` built into the api image:
 `label`, the name `tools/release/version.mjs` gave the deployed commit, which
@@ -1401,7 +1409,8 @@ full commit. Each is null when the image carries none, or one of another shape
 than the deploy builds in, and the console shows a null label as a development
 build. It needs a session like every route but two, because which build a host
 runs is for its signed-in users. The console shows it in its sidebar, under
-"manager · <host>", as `<label> (<first 9 of the commit>)`, or the label alone
+"Streaming Infra" and after the instance name when there is one, as
+`swarm-dev · <label> (<first 9 of the commit>)`, or the label alone
 when it already starts with those nine characters, as an untagged build's does,
 with the full commit as its title. "The build it names" in
 [deploy/README.md](../deploy/README.md#the-build-it-names) says how a deploy
@@ -1620,6 +1629,7 @@ numbers and how much it logs:
 | `ADMIN_LINK_ALLOW_PLAIN_HTTP` | `false`                                           | Whether the web2 admin link may be plain http to another host than the manager's own. Off, the manager takes plain http only to a loopback address, `host.docker.internal` or the bridge address it resolves to, or a name that resolves into a Docker network of the api container, and refuses to save anything else or to send to it: a link saved before this rule says `refused-plain-http` until it is given https or this is `true`. Set it only for a test setup: every push carries the registrar token and each stage's SRT passphrase. Any value but `true` or `false` stops the manager at startup.                                                                                                                                                                                                                                                                                                                        |
 | `FUNDING_API_TOKEN`           | none, which turns the API off                     | The bearer token of the web2 admin's funding API under `/api/admin-funding`, the same value as the admin's `MANAGER_FUNDING_TOKEN`. Unset, every path under that API answers 404 `funding_off`. 32 characters or more with no space inside, or the manager stops at startup naming the variable and not the value. Never logged; the boot lines say only whether the API is on. See [Funding API](#funding-api-the-web2-admins-on-a-bearer-token).                                                                                                                                                                                                                                                                                                                                                                                                                                                                                     |
 | `FUNDING_RPC_URL`             | `BEE_RPC_ENDPOINT`                                | The chain endpoint the funding API reads balances, nonces, fees, receipts and the postage contract's batches through and broadcasts the admin's transfers to. Unset, it is `BEE_RPC_ENDPOINT`, and with neither the chain routes answer 502 `chain_unreachable`. Held to `BEE_RPC_ENDPOINT`'s shape rules, and a secret like it: it can carry a provider key, so it is never logged or answered, and the boot lines name only which variable is used. A malformed value stops the manager at startup, naming the variable and not the value.                                                                                                                                                                                                                                                                                                                                                                                           |
+| `MANAGER_INSTANCE_NAME`       | none                                              | The name this manager instance goes by, such as `swarm-dev`, which the sidebar shows under "Streaming Infra" beside the build it runs and `GET /config` answers as `instanceName`. Without it the sidebar shows the build alone. At most 40 letters, digits, dots, dashes or underscores, and any other value stops the manager at startup.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                            |
 | `KNOWN_HOST_NETWORK_PORTS`    | none                                              | Containers on the host's network that count as known, by compose project, with the ports each holds, as in `edge=80/tcp,443/tcp,443/udp`, projects separated by `;`. Docker reports no port map for such a container, so without an entry one running blocks every removal, port handover and firewall export on its host. Name the host's edge reverse proxy here, and nothing whose ports you cannot vouch for. The trust is per compose project: every host-network container in a named project counts as holding only the ports listed for it, so list every port those containers hold, because a port left out counts as free and can be handed to a deployment. A deployment's compose project is its name, so creating a deployment called after a named project is refused, and an existing one stops the manager at startup. Any other host-network container still blocks. A malformed value stops the manager at startup. |
 
 The first two are bind-mounted into the api container at the same absolute path
