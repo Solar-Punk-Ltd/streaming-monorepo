@@ -238,7 +238,7 @@ function openUserMenu() {
 }
 
 describe('the switcher in the user menu', () => {
-  it("offers the host's look first, checked while this browser has no pick of its own, then every look", async () => {
+  it('offers Swarm and Web3Privacy only, with the host look checked while this browser has no pick', async () => {
     hostSays('swarm');
     renderWithProviders(
       <AppShell>
@@ -250,15 +250,12 @@ describe('the switcher in the user menu', () => {
 
     expect(within(menu).getByText('Theme')).toBeInTheDocument();
     const radios = within(menu).getAllByRole('menuitemradio');
-    expect(radios[0]).toHaveAccessibleName("This host's look (Swarm)");
+    expect(radios.map((radio) => radio.textContent)).toEqual(['Swarm', 'Web3Privacy']);
     expect(radios[0]).toHaveAttribute('aria-checked', 'true');
-    for (const name of ADMIN_THEME_NAMES) {
-      const item = within(menu).getByRole('menuitemradio', { name: THEME_TOKENS[name].label });
-      expect(item).toHaveAttribute('aria-checked', 'false');
-    }
+    expect(radios[1]).toHaveAttribute('aria-checked', 'false');
   });
 
-  it("follows the host again from its first item, which forgets this browser's own pick", async () => {
+  it("checks this browser's own pick over the host's look", async () => {
     hostSays('swarm');
     saveThemeChoice('web3privacy');
     renderWithProviders(
@@ -267,20 +264,12 @@ describe('the switcher in the user menu', () => {
       </AppShell>,
     );
     const menu = openUserMenu();
-    const follow = await within(menu).findByRole('menuitemradio', { name: "This host's look (Swarm)" });
-    expect(follow).toHaveAttribute('aria-checked', 'false');
-    expect(within(menu).getByRole('menuitemradio', { name: 'Web3Privacy' })).toHaveAttribute('aria-checked', 'true');
 
-    fireEvent.click(follow);
-
-    expect(screen.getByTestId('accent')).toHaveTextContent(THEME_TOKENS.swarm.colors.primary);
-    expect(loadThemeChoice()).toBeNull();
-    const open = screen.getByRole('menu');
-    expect(within(open).getByRole('menuitemradio', { name: "This host's look (Swarm)" })).toHaveAttribute(
+    expect(await within(menu).findByRole('menuitemradio', { name: 'Web3Privacy' })).toHaveAttribute(
       'aria-checked',
       'true',
     );
-    expect(within(open).getByRole('menuitemradio', { name: 'Web3Privacy' })).toHaveAttribute('aria-checked', 'false');
+    expect(within(menu).getByRole('menuitemradio', { name: 'Swarm' })).toHaveAttribute('aria-checked', 'false');
   });
 
   it('dresses the console in the picked look, keeps the menu open, and keeps the pick', () => {
