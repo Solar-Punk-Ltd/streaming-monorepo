@@ -122,8 +122,9 @@ it prints is the build:
 ```
 
 An untagged build's name starts with its short commit already, and is printed
-alone. A signed-in console shows the same name under "manager · <host>" in its
-sidebar, with the full commit as its title, read from `GET /version`, and
+alone. A signed-in console shows the same name under "Streaming Infra" in its
+sidebar, after the instance name `MANAGER_INSTANCE_NAME` sets when there is one,
+with the full commit as its title, read from `GET /version`, and
 nothing that answers without a session carries it.
 
 ### Which env file a deploy sends

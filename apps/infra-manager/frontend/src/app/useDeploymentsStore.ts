@@ -29,8 +29,10 @@ export interface ActivityEntry {
 export interface DeploymentsStore {
   profiles: Profile[] | null;
   groups: DeploymentGroup[];
-  /** The host the manager publishes its deployments on. */
+  /** The host the manager publishes its deployments on, which every deployment URL is built from. */
   serverHost: string;
+  /** The name this manager instance goes by, null when it has none or has not said. */
+  instanceName: string | null;
   /** The host-wide SRT passphrase, or null when the host has none. */
   hostPassphrase: string | null;
   /** The chequebook floor the manager's uploader gate warns below. */
@@ -120,6 +122,7 @@ export function useDeploymentsStore(): DeploymentsStore {
   const [profiles, setProfiles] = useState<Profile[] | null>(null);
   const [groups, setGroups] = useState<DeploymentGroup[]>([]);
   const [serverHost, setServerHost] = useState(window.location.hostname);
+  const [instanceName, setInstanceName] = useState<string | null>(null);
   const [hostPassphrase, setHostPassphrase] = useState<string | null>(null);
   const [chequebookFloorBzz, setChequebookFloorBzz] = useState(DEFAULT_CHEQUEBOOK_FLOOR_BZZ);
   const [beeRpcEndpoint, setBeeRpcEndpoint] = useState<ConfiguredBeeRpcEndpoint>(() => ({
@@ -198,6 +201,7 @@ export function useDeploymentsStore(): DeploymentsStore {
     fetchServerConfig()
       .then((config) => {
         setServerHost(config.host);
+        setInstanceName(config.instanceName);
         setHostPassphrase(config.srtPassphrase);
         setChequebookFloorBzz(config.chequebookFloorBzz);
         setBeeRpcEndpoint(config.beeRpcEndpoint);
@@ -290,6 +294,7 @@ export function useDeploymentsStore(): DeploymentsStore {
       profiles,
       groups,
       serverHost,
+      instanceName,
       hostPassphrase,
       chequebookFloorBzz,
       beeRpcEndpoint,
@@ -310,6 +315,7 @@ export function useDeploymentsStore(): DeploymentsStore {
       profiles,
       groups,
       serverHost,
+      instanceName,
       hostPassphrase,
       chequebookFloorBzz,
       beeRpcEndpoint,

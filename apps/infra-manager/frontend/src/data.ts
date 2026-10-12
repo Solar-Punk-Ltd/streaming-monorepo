@@ -6,6 +6,7 @@ import {
   type ConsoleStagesAnswer,
   DEFAULT_CHEQUEBOOK_FLOOR_BZZ,
   type EngineSettings,
+  instanceName,
   type NewDeploymentSetting,
   type NodeMode,
   type RpcEndpointSource,
@@ -19,7 +20,10 @@ import { readScriptOutcome, ScriptStreamEndedError } from './scriptStream';
 import type { CreateProfileBody, DeploymentGroup, Profile, ProfileKind } from './types';
 
 export interface ServerConfig {
+  /** The host deployments publish on, the ingest host every deployment URL is built from. */
   host: string;
+  /** The name this manager instance goes by, MANAGER_INSTANCE_NAME, or null when it has none. */
+  instanceName: string | null;
   srtPassphrase: string | null;
   /**
    * The chequebook floor the manager warns below when it starts an uploader.
@@ -51,9 +55,11 @@ export async function fetchServerConfig(): Promise<ServerConfig> {
       srtPassphrase?: string | null;
       chequebookFloorBzz?: string;
       beeRpcEndpoint?: ConfiguredBeeRpcEndpoint;
+      instanceName?: unknown;
     }>('/config');
     return {
       host: body.host,
+      instanceName: instanceName(body.instanceName),
       srtPassphrase: body.srtPassphrase ?? null,
       chequebookFloorBzz: body.chequebookFloorBzz ?? DEFAULT_CHEQUEBOOK_FLOOR_BZZ,
       beeRpcEndpoint: body.beeRpcEndpoint ?? NO_BEE_RPC_ENDPOINT,
@@ -61,6 +67,7 @@ export async function fetchServerConfig(): Promise<ServerConfig> {
   } catch {
     return {
       host: window.location.hostname,
+      instanceName: null,
       srtPassphrase: null,
       chequebookFloorBzz: DEFAULT_CHEQUEBOOK_FLOOR_BZZ,
       beeRpcEndpoint: NO_BEE_RPC_ENDPOINT,
