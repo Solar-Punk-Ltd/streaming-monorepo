@@ -1,6 +1,6 @@
 # release
 
-The scripts a release runs before its deploys. [docs/releasing.md](../../docs/releasing.md) is the procedure; this
+The scripts a release runs before its deploys. [docs/releasing.md](../../docs/releasing.md) is the procedure. This
 page says what each script does.
 
 Plain Node scripts with no dependencies. They need Node 24 or later and git.
@@ -33,10 +33,10 @@ It takes any name a deploy can carry, and suggests and enforces no scheme: `QA-b
    where the remote lacks it. A new name adds another tag. A lightweight tag on the commit is named but not offered,
    since a mistyped `git tag list` leaves one.
 6. Asks for the name, with no default. It says why it refuses a name, and asks again:
-   - a name `lib/tagName.mjs` refuses, which a deploy could not carry;
-   - one `git check-ref-format` refuses, and `HEAD`, which `git tag` refuses;
-   - the name of a tag, here or on the remote, that names another commit, and it says which commit;
-   - a name that differs from a tag's only in case, which git on a Mac or on Windows mixes up;
+   - a name `lib/tagName.mjs` refuses, which a deploy could not carry,
+   - one `git check-ref-format` refuses, and `HEAD`, which `git tag` refuses,
+   - the name of a tag, here or on the remote, that names another commit, and it says which commit,
+   - a name that differs from a tag's only in case, which git on a Mac or on Windows mixes up,
    - `release` when there is a `release/2026`, or the other way round, which git cannot hold together.
 
    The name of a tag already on this commit keeps that tag. An empty answer cancels when there is nothing to keep.
@@ -112,8 +112,9 @@ node tools/release/publish.mjs --tag <tag> [--dry-run] [--registry <registry>] [
 Every image is built and uploaded for every release, from its app folder as a deploy cuts it, through
 `tools/app-workspace/in-copy.mjs`. The manager api also carries the last commit that changed `apps/hls-stream` in the
 label `streaming.stack-commit`, for the deploy to write where the manager reads its stack pin. No image is reused from
-an earlier release, even when its app did not change, because the release name and commit are built into the image:
-an image reused under a new tag would show the older release in its console.
+an earlier release, even when its app did not change. The release name and commit are built into the manager api and
+both admin images, so an image reused under a new tag would show the older release in its console. The manager web
+image carries no version. The version an image shows, where it shows one, is always the tag it was pulled by.
 
 A tag an image cannot carry is refused: letters, digits, `_`, `.` and `-` only, such as `v2.4.0` or
 `2026-10-10-build-1`. The checkout must be at the tag. `--dry-run` names each image it would build and changes
