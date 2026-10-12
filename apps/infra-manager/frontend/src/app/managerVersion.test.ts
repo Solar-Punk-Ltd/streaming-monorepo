@@ -1,6 +1,6 @@
 /**
  * The sidebar's line for the build the manager runs: what it reads from the manager, and what it shows under
- * "manager · <host>", with the full commit as its title.
+ * "Streaming Infra", after the name of the instance when it has one, with the full commit as its title.
  *
  * Unit test, no DOM: the line is rendered to markup. `pnpm test` in frontend/.
  */
@@ -20,7 +20,7 @@ const COMMIT = '635b4e1753cd35d06191fdd54a1f426f7478d438';
 const SHORT = '635b4e175';
 
 /** The whole sidebar as markup, as a signed-in page renders it, for a manager that answered `managerVersion`. */
-function sidebarMarkup(managerVersion: VersionInfo | null): string {
+function sidebarMarkup(managerVersion: VersionInfo | null, instanceName: string | null = 'swarm-dev'): string {
   const session: SessionStore = {
     state: { status: 'signedIn', id: 1, username: 'operator', isAdmin: true, expiresAt: '2026-10-08T00:00:00.000Z' },
     signIn: async () => {
@@ -35,7 +35,7 @@ function sidebarMarkup(managerVersion: VersionInfo | null): string {
       createElement(Sidebar, {
         route: { page: 'overview' },
         deploymentCount: null,
-        serverHost: 'manager.example.org',
+        instanceName,
         managerVersion,
       }),
     ),
@@ -43,8 +43,11 @@ function sidebarMarkup(managerVersion: VersionInfo | null): string {
 }
 
 /** The one element the line renders, by its text and its title, or null when it renders nothing at all. */
-function sidebarLine(version: VersionInfo | null): { text: string; title: string | null } | null {
-  const markup = renderToStaticMarkup(createElement(ManagerVersionLine, { version }));
+function sidebarLine(
+  version: VersionInfo | null,
+  instanceName: string | null = null,
+): { text: string; title: string | null } | null {
+  const markup = renderToStaticMarkup(createElement(ManagerVersionLine, { version, instanceName }));
   if (markup === '') return null;
   const element = /<span([^>]*)>([^<]*)<\/span>/.exec(markup);
   assert.ok(element, `the line is one element of text: ${markup}`);
@@ -52,7 +55,7 @@ function sidebarLine(version: VersionInfo | null): { text: string; title: string
   return { text: element[2] ?? '', title: title?.[1] ?? null };
 }
 
-describe('the line under "manager · <host>"', () => {
+describe('the line under "Streaming Infra"', () => {
   it('names a tagged build by its tag and its short commit, with the full commit as its title', () => {
     assert.deepEqual(sidebarLine({ label: 'QA-build-2026-10-07', commit: COMMIT }), {
       text: `QA-build-2026-10-07 (${SHORT})`,
@@ -90,15 +93,39 @@ describe('the line under "manager · <host>"', () => {
     assert.equal(sidebarLine(null), null);
   });
 
-  it('sits in the sidebar under "manager · <host>", above the pages', () => {
-    const markup = sidebarMarkup({ label: 'QA-build-2026-10-07', commit: COMMIT });
+  it('starts with the name of the instance when the manager has one', () => {
+    assert.deepEqual(sidebarLine({ label: 'v1.1.1', commit: COMMIT }, 'swarm-dev'), {
+      text: `swarm-dev · v1.1.1 (${SHORT})`,
+      title: COMMIT,
+    });
+    assert.deepEqual(sidebarLine({ label: null, commit: null }, 'swarm-dev'), {
+      text: 'swarm-dev · development build',
+      title: null,
+    });
+    assert.deepEqual(sidebarLine(null, 'swarm-dev'), { text: 'swarm-dev', title: null });
+  });
 
-    const host = markup.indexOf('manager · manager.example.org');
-    const build = markup.indexOf(`title="${COMMIT}">QA-build-2026-10-07 (${SHORT})</span>`);
-    assert.notEqual(host, -1, markup);
-    assert.ok(build > host, 'the build is named under the host line');
-    assert.ok(build < markup.indexOf('Overview'), 'and above the first page');
-    assert.equal(sidebarMarkup(null).includes('development build'), false, 'no answer is not a development build');
+  it('sits in the sidebar under "Streaming Infra", above the pages, and names no host', () => {
+    const markup = sidebarMarkup({ label: 'v1.1.1', commit: COMMIT });
+
+    const product = markup.indexOf('Streaming Infra');
+    const line = markup.indexOf(`title="${COMMIT}">swarm-dev · v1.1.1 (${SHORT})</span>`);
+    assert.notEqual(product, -1, markup);
+    assert.ok(line > product, 'the instance and its build are named under the product');
+    assert.ok(line < markup.indexOf('Overview'), 'and above the first page');
+    assert.doesNotMatch(markup, /manager · /, 'the ingest host is shown where a deployment publishes, not here');
+    assert.equal(
+      sidebarMarkup(null, null).includes('development build'),
+      false,
+      'no answer is not a development build',
+    );
+  });
+
+  it('shows the build alone under "Streaming Infra" when the manager has no instance name', () => {
+    const markup = sidebarMarkup({ label: 'v1.1.1', commit: COMMIT }, null);
+
+    assert.match(markup, new RegExp(`title="${COMMIT}">v1\\.1\\.1 \\(${SHORT}\\)</span>`));
+    assert.doesNotMatch(markup, / · /);
   });
 });
 

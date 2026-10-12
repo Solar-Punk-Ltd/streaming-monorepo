@@ -29,6 +29,7 @@ import {
   defaultServicesFor,
   effectiveNodeMode,
   impliedRpcEndpointSource,
+  instanceName,
   keptRpcEndpointSource,
   nodeModeProblem,
   plurToBzz,
@@ -605,10 +606,13 @@ const ROUTES = [
         // The host and never the URL: this one carries a path after it, which
         // is where a real endpoint's API key would sit.
         beeRpcEndpoint: configuredBeeRpcEndpoint(managerEndpoint()),
+        // The name the sidebar shows beside the build: swarm-dev unless the mock is started with
+        // MANAGER_INSTANCE_NAME set, and none when that is set to something blank or of another shape.
+        instanceName: instanceName(process.env.MANAGER_INSTANCE_NAME ?? 'swarm-dev'),
       });
     },
   ],
-  // The build the manager runs, which the sidebar shows under its host: a
+  // The build the manager runs, which the sidebar shows beside the instance name: a
   // development build, unless the mock is started with MANAGER_VERSION and
   // MANAGER_COMMIT set, as a deployed manager's image sets them.
   [

@@ -28,6 +28,7 @@ export * from './errorUtils.js';
 export * from './feedTopic.js';
 export * from './ingestHealth.js';
 export * from './ingestHost.js';
+export * from './instanceName.js';
 export * from './managerAdminLink.js';
 export * from './metrics.js';
 export * from './nodeMode.js';

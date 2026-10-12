@@ -18,11 +18,15 @@ const logger = Logger.getInstance();
  * wizard offers it first to every Bee node it creates, so a page has to know
  * whether there is one and which it is. Only its host travels: the URL itself
  * can carry an API key, and this answer goes to every signed-in browser.
+ *
+ * `instanceName` is the name this manager instance goes by, MANAGER_INSTANCE_NAME, or null when none is set. The
+ * sidebar shows it beside the build the manager runs.
  */
 export function createConfigRouter(
   chequebookFloorBzz: string,
   hostPassphrase: () => Promise<string | null>,
   beeRpcEndpoint: string | null,
+  instanceName: string | null,
 ): Router {
   const router = Router();
 
@@ -36,6 +40,7 @@ export function createConfigRouter(
         srtPassphrase,
         chequebookFloorBzz,
         beeRpcEndpoint: configuredBeeRpcEndpoint(beeRpcEndpoint),
+        instanceName,
       });
     } catch (err) {
       next(err);

@@ -112,6 +112,8 @@ export interface ApiDeps {
   funding: { token: string | null; routes: readonly Router[] };
   /** The build this manager runs, as the deploy built it into the image. */
   managerVersion: VersionInfo;
+  /** The name this manager instance goes by, MANAGER_INSTANCE_NAME, or null for none. */
+  instanceName: string | null;
 }
 
 export interface ApiServerHandle {
@@ -150,6 +152,7 @@ export function startApiServer(deps: ApiDeps, port: number, host: string): ApiSe
       deps.chequebookService.floorBzz,
       () => deps.stackVersionService.hostPassphrase(),
       deps.beeRpcEndpoint,
+      deps.instanceName,
     ),
   );
   app.use('/version', createManagerVersionRouter(deps.managerVersion));

@@ -270,6 +270,7 @@ function DeploymentBody({ profile, focus, bee }: { profile: Profile; focus: Depl
             <PublishCard
               profile={profile}
               url={publishUrl}
+              serverHost={serverHost}
               hostPassphrase={hostPassphrase}
               ready={readiness.tone === 'ok'}
               passphrasePending={publish.pending}

@@ -2,10 +2,11 @@ import { Alert, Stack, Typography } from '@mui/material';
 
 import { OBS_SRT_PASSPHRASE_FIELD_HELP, OME_SERVICE } from '@streaming-infra-manager/common';
 
+import { MONO_STACK } from '../app/theme';
 import { CopyBox } from '../components/CopyBox';
 import { SectionCard } from '../components/SectionCard';
 import type { Profile } from '../types';
-import type { RtmpPublishSettings } from '../urls';
+import { hostFor, type RtmpPublishSettings } from '../urls';
 import { engineOf } from './shape';
 import { deploymentProgressText } from './deploymentPhase';
 import {
@@ -39,6 +40,7 @@ function passphraseNote(profile: Profile, hostPassphrase: string | null, inTheUr
 export function PublishCard({
   profile,
   url,
+  serverHost,
   hostPassphrase,
   ready,
   passphrasePending,
@@ -47,6 +49,8 @@ export function PublishCard({
 }: {
   profile: Profile;
   url: string;
+  /** The host deployments on the manager's own host publish on, shown as Ingest for a local deployment. */
+  serverHost: string;
   hostPassphrase: string | null;
   /** Whether all currently observed prerequisites pass the checklist. */
   ready: boolean;
@@ -61,6 +65,14 @@ export function PublishCard({
     <SectionCard title="Publish" sub={rtmp ? 'OBS, FFmpeg or any SRT or RTMP sender' : 'OBS, FFmpeg or any SRT sender'}>
       <Stack spacing={1.25}>
         <Alert severity={ready ? 'info' : 'warning'}>{deploymentProgressText(profile)}</Alert>
+        <Stack direction="row" spacing={1} sx={{ alignItems: 'baseline', minWidth: 0 }}>
+          <Typography variant="caption" sx={{ color: 'text.secondary' }}>
+            Ingest
+          </Typography>
+          <Typography variant="body2" sx={{ fontFamily: MONO_STACK, overflowWrap: 'anywhere' }}>
+            {hostFor(profile, serverHost)}
+          </Typography>
+        </Stack>
         {rtmp && <Typography variant="subtitle2">SRT</Typography>}
         <CopyBox value={url} disabled={passphrasePending} />
         {passphrasePending && (
