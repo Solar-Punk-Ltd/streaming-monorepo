@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react';
+import { Fragment, useCallback, useEffect, useState } from 'react';
 import {
   Alert,
   Box,
@@ -39,7 +39,9 @@ const ENGINE_LABEL: Record<StageSummary['engine'], string> = { srs: 'SRS', ome: 
 function StageName({ stage }: { stage: StageSummary }) {
   return (
     <Stack spacing={0.5} sx={{ alignItems: 'flex-start' }}>
-      <Typography variant="body2">{stage.name}</Typography>
+      <Typography variant="body2" sx={{ whiteSpace: 'nowrap' }}>
+        {stage.name}
+      </Typography>
       <Typography variant="caption" sx={{ color: 'text.secondary' }}>
         {stage.kind} on {ENGINE_LABEL[stage.engine]}
         {stage.stackVersion ? `, stack ${stage.stackVersion}` : ''}
@@ -60,8 +62,8 @@ function StageName({ stage }: { stage: StageSummary }) {
 function Ingest({ stage }: { stage: StageSummary }) {
   const { ingest } = stage;
   return (
-    <Stack spacing={0.25}>
-      <Typography variant="body2" sx={{ fontFamily: monoFont }}>
+    <Stack spacing={0.25} sx={{ maxWidth: 240 }}>
+      <Typography variant="body2" sx={{ fontFamily: monoFont, overflowWrap: 'anywhere' }}>
         {ingest.host}:{ingest.srtPort}
       </Typography>
       <Typography variant="caption" sx={{ color: 'text.secondary' }}>
@@ -112,30 +114,48 @@ function Rungs({ stage }: { stage: StageSummary }) {
       </Typography>
     );
   }
+  // One grid for every rung, so the names, the two chips and the stamp numbers line up down the column: a rung's
+  // name and chips on one line, its numbers under the chips.
   return (
-    <Stack spacing={1}>
-      {stage.rungs.map((rung) => (
-        <Stack key={rung.name} spacing={0.5} sx={{ alignItems: 'flex-start' }}>
-          <Stack direction="row" spacing={1} sx={{ alignItems: 'center', flexWrap: 'wrap' }}>
-            <Typography variant="body2">{rung.name}</Typography>
+    <Box
+      sx={{
+        display: 'grid',
+        gridTemplateColumns: 'auto auto auto',
+        justifyContent: 'start',
+        alignItems: 'center',
+        columnGap: 1,
+        rowGap: 0.25,
+        whiteSpace: 'nowrap',
+      }}
+    >
+      {stage.rungs.map((rung, index) => (
+        <Fragment key={rung.name}>
+          <Typography variant="body2" sx={{ mt: index === 0 ? 0 : 1 }}>
+            {rung.name}
+          </Typography>
+          <Box sx={{ mt: index === 0 ? 0 : 1 }}>
             {rung.stamp ? <StampStateChip state={rung.stamp.state} expiredByClock={rung.stamp.expiredByClock} /> : null}
+          </Box>
+          <Box sx={{ mt: index === 0 ? 0 : 1 }}>
             {rung.chequebook ? <ChequebookChip health={rung.chequebook.health} /> : null}
-          </Stack>
-          {rung.stamp ? (
-            <StampNumbers
-              state={rung.stamp.state}
-              remainingSeconds={rung.stamp.remainingSeconds}
-              expiredByClock={rung.stamp.expiredByClock}
-              fillRatio={rung.stamp.fillRatio}
-            />
-          ) : (
-            <Typography variant="caption" sx={{ color: 'text.secondary' }}>
-              No stamp reading
-            </Typography>
-          )}
-        </Stack>
+          </Box>
+          <Box sx={{ gridColumn: '2 / span 2' }}>
+            {rung.stamp ? (
+              <StampNumbers
+                state={rung.stamp.state}
+                remainingSeconds={rung.stamp.remainingSeconds}
+                expiredByClock={rung.stamp.expiredByClock}
+                fillRatio={rung.stamp.fillRatio}
+              />
+            ) : (
+              <Typography variant="caption" sx={{ color: 'text.secondary' }}>
+                No stamp reading
+              </Typography>
+            )}
+          </Box>
+        </Fragment>
       ))}
-    </Stack>
+    </Box>
   );
 }
 
@@ -247,19 +267,22 @@ export function StagesPage() {
                 <TableCell>Status</TableCell>
                 <TableCell>Ingest</TableCell>
                 <TableCell>Rungs</TableCell>
-                <TableCell>Last confirmed</TableCell>
+                <TableCell sx={{ width: 110 }}>Last confirmed</TableCell>
               </TableRow>
             </TableHead>
             <TableBody>
               {stages.map((stage) => (
-                <TableRow key={stage.stageId} sx={stage.retiredAt ? { opacity: 0.6 } : undefined}>
+                <TableRow
+                  key={stage.stageId}
+                  sx={{ '& > td': { verticalAlign: 'top' }, ...(stage.retiredAt ? { opacity: 0.6 } : {}) }}
+                >
                   <TableCell>
                     <StageName stage={stage} />
                   </TableCell>
-                  <TableCell>
+                  <TableCell sx={{ width: 150 }}>
                     <ReadinessChip tone={stage.readiness.tone} reasons={stage.readiness.reasons} />
                   </TableCell>
-                  <TableCell>
+                  <TableCell sx={{ width: 150 }}>
                     <Stack spacing={0.25}>
                       <Typography variant="body2">{stage.status}</Typography>
                       <Typography variant="caption" sx={{ color: 'text.secondary' }}>

@@ -2,11 +2,8 @@ import { ListItemIcon, ListItemText, ListSubheader, MenuItem } from '@mui/materi
 import CheckIcon from '@mui/icons-material/Check';
 
 import { useThemeChoice } from './ThemeChoiceProvider';
-import type { AdminThemeName } from './themeNames';
+import { ADMIN_THEME_NAMES, type AdminThemeName } from './themeNames';
 import { THEME_TOKENS } from './tokens';
-
-/** The looks a person can pick in the user menu. The host's own default look is set on the Access page. */
-const MENU_THEME_NAMES: readonly AdminThemeName[] = ['swarm', 'web3privacy'];
 
 /** A plain function rather than a component, so the menu sees a MenuItem as its direct child. */
 function themeItem(name: AdminThemeName, checked: boolean, onPick: () => void) {
@@ -30,7 +27,7 @@ function themeItem(name: AdminThemeName, checked: boolean, onPick: () => void) {
 }
 
 /**
- * The switcher as items of a MUI menu: a heading, then one checkable item per pickable look, checked on the look the
+ * The switcher as items of a MUI menu: a heading, then one checkable item per look, checked on the look the
  * console wears. Returned as a list rather than a fragment, because a MUI menu reads its direct children to move focus
  * between them. Picking keeps the menu open, so the looks can be compared in place.
  */
@@ -41,6 +38,6 @@ export function useThemeMenuItems() {
     <ListSubheader key="theme-heading" sx={{ lineHeight: '32px', bgcolor: 'transparent' }}>
       Theme
     </ListSubheader>,
-    ...MENU_THEME_NAMES.map((name) => themeItem(name, look === name, () => chooseLook(name))),
+    ...ADMIN_THEME_NAMES.map((name) => themeItem(name, look === name, () => chooseLook(name))),
   ];
 }

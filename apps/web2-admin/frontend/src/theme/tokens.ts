@@ -62,45 +62,6 @@ const SYSTEM_SANS = 'system-ui, -apple-system, "Segoe UI", Roboto, Arial, sans-s
 const SYSTEM_MONO = 'ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace';
 
 export const THEME_TOKENS: Record<AdminThemeName, ThemeTokens> = {
-  // MUI's own dark palette, the console's look before there were themes, every step of it written out
-  // so the contrast test reads it like the others and a MUI upgrade cannot move it.
-  default: {
-    label: 'Default',
-    colors: {
-      background: '#121212',
-      surface: '#121212',
-      bar: '#212121',
-      divider: 'rgba(255, 255, 255, 0.12)',
-      text: '#fff',
-      textSecondary: 'rgba(255, 255, 255, 0.7)',
-      textDisabled: 'rgba(255, 255, 255, 0.5)',
-      primary: '#90caf9',
-      primaryHover: '#42a5f5',
-      onPrimary: 'rgba(0, 0, 0, 0.87)',
-      error: '#f44336',
-      warning: '#ffa726',
-      success: '#66bb6a',
-      info: '#29b6f6',
-    },
-    fonts: {
-      base: '"Roboto", "Helvetica", "Arial", sans-serif',
-      heading: '"Roboto", "Helvetica", "Arial", sans-serif',
-      mono: 'monospace',
-    },
-    headingWeight: null,
-    radius: 4,
-    buttonCase: 'uppercase',
-    flatSurfaces: false,
-    shades: {
-      primaryLight: '#e3f2fd',
-      error: { light: '#e57373', dark: '#d32f2f' },
-      warning: { light: '#ffb74d', dark: '#f57c00' },
-      success: { light: '#81c784', dark: '#388e3c' },
-      info: { light: '#4fc3f7', dark: '#0288d1' },
-    },
-  },
-  // Swarm Brand v3.0 as the event viewer wears it: near-black surfaces, the orange as a sparing
-  // accent with the darkest neutral written on it (white on it measures 2.6:1), Geist throughout.
   swarm: {
     label: 'Swarm',
     colors: {
