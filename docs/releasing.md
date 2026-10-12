@@ -27,8 +27,8 @@ a `+` is tagged but not published. `vX.Y.Z`, such as `v2.4.0`, is the shape a de
 It worked when it ends with "Pushed <tag> to origin." or, for a tag it kept, "origin already has <tag>."
 
 Pushing the tag starts the `publish-images` workflow, which publishes the manager's and the admin's images under the
-tag to `ghcr.io/solar-punk-ltd`, building every image again for every release. The stream deploy in
-`Solar-Punk-Ltd/swarm-stream-terraform` pulls them by that tag: `streaming-manager-api`, `streaming-manager-web`,
+tag to `ghcr.io/solar-punk-ltd`, building every image again for every release. The stream deploy, kept in
+its own repository outside this one, pulls them by that tag: `streaming-manager-api`, `streaming-manager-web`,
 `streaming-admin-api` and `streaming-admin-web`. The two deploy scripts below build on the host instead.
 [tools/release/README.md](../tools/release/README.md) says how the images are published.
 
