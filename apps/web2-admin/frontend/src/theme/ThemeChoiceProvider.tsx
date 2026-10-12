@@ -1,4 +1,4 @@
-import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
+import { createContext, useCallback, useContext, useEffect, useMemo, useState, type ReactNode } from 'react';
 import { CssBaseline, ThemeProvider } from '@mui/material';
 
 import { fetchPublicConfig } from '../api';
@@ -18,7 +18,6 @@ interface ThemeChoice {
   /** Keeps a pick of the admin's own, or forgets it with null so the console follows the host. */
   chooseLook: (name: AdminThemeName | null) => void;
   /** Tells the console the host's default changed, after an admin saved a new one. */
-  hostLookChanged: (name: AdminThemeName) => void;
 }
 
 const ThemeChoiceContext = createContext<ThemeChoice | null>(null);
@@ -35,28 +34,16 @@ export function ThemeChoiceProvider({ children }: { children: ReactNode }) {
   const look = ownPick ?? hostLook;
   const theme = useMemo(() => createAdminTheme(look), [look]);
 
-  // Set once an admin saves a host default here, so the first `/api/config` answer, if it arrives later, cannot
-  // put back the look it read before that save.
-  const savedHere = useRef(false);
-
   const wearHostLook = useCallback((name: AdminThemeName) => {
     saveHostLook(name);
     setHostLook(name);
   }, []);
 
-  const hostLookChanged = useCallback(
-    (name: AdminThemeName) => {
-      savedHere.current = true;
-      wearHostLook(name);
-    },
-    [wearHostLook],
-  );
-
   useEffect(() => {
     let current = true;
     fetchPublicConfig().then(
       (config) => {
-        if (current && !savedHere.current && isAdminThemeName(config.defaultTheme)) wearHostLook(config.defaultTheme);
+        if (current && isAdminThemeName(config.defaultTheme)) wearHostLook(config.defaultTheme);
       },
       () => {
         // The console stays on the look it already wears. The pages that need the config say so themselves.
@@ -72,10 +59,7 @@ export function ThemeChoiceProvider({ children }: { children: ReactNode }) {
     setOwnPick(name);
   }, []);
 
-  const value = useMemo(
-    () => ({ look, ownPick, hostLook, chooseLook, hostLookChanged }),
-    [look, ownPick, hostLook, chooseLook, hostLookChanged],
-  );
+  const value = useMemo(() => ({ look, ownPick, hostLook, chooseLook }), [look, ownPick, hostLook, chooseLook]);
 
   return (
     <ThemeChoiceContext.Provider value={value}>

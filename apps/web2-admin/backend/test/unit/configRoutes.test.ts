@@ -115,29 +115,31 @@ describe('GET /api/config', () => {
     assert.deepEqual(await config(), {
       feed: { owner: FEED.owner, topic: FEED.topic, topicHex: FEED.topicHex },
       viewerBaseUrl: VIEWER,
-      defaultTheme: 'default',
+      defaultTheme: 'swarm',
     });
   });
 
   it('names the look an admin stored', async () => {
-    app.store.stored = 'swarm';
+    app.store.stored = 'web3privacy';
 
-    assert.equal((await config()).defaultTheme, 'swarm');
+    assert.equal((await config()).defaultTheme, 'web3privacy');
   });
 
-  it('answers Default for a stored look the console no longer carries', async () => {
-    app.store.stored = 'retired-look';
+  it('answers Swarm for a stored look the console no longer carries, the retired Default included', async () => {
+    for (const retired of ['retired-look', 'default']) {
+      app.store.stored = retired;
 
-    assert.equal((await config()).defaultTheme, 'default');
+      assert.equal((await config()).defaultTheme, 'swarm', retired);
+    }
   });
 
-  it('still answers the feed and the viewer, in the Default look, when the look cannot be read', async () => {
+  it('still answers the feed and the viewer, in the Swarm look, when the look cannot be read', async () => {
     app.store.failReads = true;
 
     assert.deepEqual(await config(), {
       feed: { owner: FEED.owner, topic: FEED.topic, topicHex: FEED.topicHex },
       viewerBaseUrl: VIEWER,
-      defaultTheme: 'default',
+      defaultTheme: 'swarm',
     });
   });
 });
@@ -176,7 +178,13 @@ describe('PUT /api/config/default-theme', () => {
   });
 
   it('refuses a look the console does not carry, and a body without one', async () => {
-    for (const body of [{ defaultTheme: 'neon' }, { defaultTheme: 'Swarm' }, { defaultTheme: 3 }, {}]) {
+    for (const body of [
+      { defaultTheme: 'neon' },
+      { defaultTheme: 'default' },
+      { defaultTheme: 'Swarm' },
+      { defaultTheme: 3 },
+      {},
+    ]) {
       const res = await call(app, 'PUT', CONSOLE_DEFAULT_THEME_PATH, { cookie: adminCookie, body });
 
       assert.equal(res.status, 400, JSON.stringify(body));
@@ -200,22 +208,22 @@ describe('PUT /api/config/default-theme', () => {
   });
 
   it('audits the change with the look the console wore before and the one it wears now', async () => {
+    await call(app, 'PUT', CONSOLE_DEFAULT_THEME_PATH, { cookie: adminCookie, body: { defaultTheme: 'web3privacy' } });
     await call(app, 'PUT', CONSOLE_DEFAULT_THEME_PATH, { cookie: adminCookie, body: { defaultTheme: 'swarm' } });
-    await call(app, 'PUT', CONSOLE_DEFAULT_THEME_PATH, { cookie: adminCookie, body: { defaultTheme: 'default' } });
 
     const rows = app.audit.withAction('console.theme.set');
     assert.equal(rows.length, 2);
-    assert.deepEqual(rows[0]?.details, { from: 'default', to: 'swarm' });
-    assert.deepEqual(rows[1]?.details, { from: 'swarm', to: 'default' });
+    assert.deepEqual(rows[0]?.details, { from: 'swarm', to: 'web3privacy' });
+    assert.deepEqual(rows[1]?.details, { from: 'web3privacy', to: 'swarm' });
     assert.equal(rows[0]?.actor.kind, 'operator');
     assert.equal(rows[0]?.actor.kind === 'operator' ? rows[0].actor.username : null, ADMIN);
   });
 
-  it('records a stored look the console no longer carries as the Default it was worn as', async () => {
+  it('records a stored look the console no longer carries as the Swarm it was worn as', async () => {
     app.store.stored = 'retired-look';
 
-    await call(app, 'PUT', CONSOLE_DEFAULT_THEME_PATH, { cookie: adminCookie, body: { defaultTheme: 'swarm' } });
+    await call(app, 'PUT', CONSOLE_DEFAULT_THEME_PATH, { cookie: adminCookie, body: { defaultTheme: 'web3privacy' } });
 
-    assert.deepEqual(app.audit.withAction('console.theme.set')[0]?.details, { from: 'default', to: 'swarm' });
+    assert.deepEqual(app.audit.withAction('console.theme.set')[0]?.details, { from: 'swarm', to: 'web3privacy' });
   });
 });
