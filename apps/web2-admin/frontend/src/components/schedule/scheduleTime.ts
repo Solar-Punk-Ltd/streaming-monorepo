@@ -157,6 +157,20 @@ export function slotOptions(current: string): string[] {
   return [...slots, current].sort();
 }
 
+const MINUTE_MS = 60_000;
+
+/**
+ * Whether saving would set a start that has already gone by: a new stream's, or an edit that moved the start.
+ * A Draft whose stored start has passed keeps it when the edit leaves the time alone (STMB-496), so the stored
+ * value, compared to the minute the form holds it at, is not refused. Both times are ISO strings.
+ */
+export function startMovedIntoPast(next: string, stored: string | null, now: Date): boolean {
+  const nextMs = Date.parse(next);
+  if (Number.isNaN(nextMs) || nextMs >= now.getTime()) return false;
+  if (stored === null) return true;
+  return Math.floor(nextMs / MINUTE_MS) !== Math.floor(Date.parse(stored) / MINUTE_MS);
+}
+
 /** Whether a slot on `dateValue` (`YYYY-MM-DD`) has already gone by. */
 export function isSlotPast(dateValue: string, slot: string, now: Date): boolean {
   const date = parseDateTimeLocalValue(`${dateValue}T${slot}`);
