@@ -12,7 +12,6 @@ import {
   idleSince,
   LoginLimiter,
   needsTouch,
-  passwordChangeKey,
   usernameKey,
   verifyPassword,
 } from '@streaming-monorepo/web-auth';
@@ -334,10 +333,13 @@ export class AuthService {
     return this.checkOwnPassword(session, password, purpose);
   }
 
-  /** The current password of the session's user, throttled like a sign-in under the password change's key. */
+  /**
+   * The current password of the session's user, counted under the account's sign-in key: a wrong one is a failed
+   * sign-in, so five of them lock sign-in too, and a locked account is refused here as well (SPDV-1580, SPDV-1664).
+   */
   private async checkOwnPassword(session: SessionInfo, password: string, purpose: string): Promise<UserRow> {
     const attempt = this.limiter.begin({
-      account: passwordChangeKey(session.user.id),
+      account: usernameKey(session.user.username),
     });
     if (attempt.lockedForSeconds > 0) {
       logger.warn(
