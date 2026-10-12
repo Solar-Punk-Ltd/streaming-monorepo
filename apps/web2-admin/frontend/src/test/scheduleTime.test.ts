@@ -16,6 +16,7 @@ import {
   quickPicks,
   relativeLabel,
   slotOptions,
+  pastStartRefused,
   startMovedIntoPast,
   splitDateTimeLocal,
   timeSlots,
@@ -237,5 +238,23 @@ describe('startMovedIntoPast', () => {
 
   it('refuses an edit that moves the start to another time that has gone by', () => {
     expect(startMovedIntoPast('2026-10-12T09:30:00.000Z', '2026-10-11T08:00:00.000Z', now)).toBe(true);
+  });
+});
+
+describe('pastStartRefused', () => {
+  const now = new Date('2026-10-12T10:00:00.000Z');
+  const past = '2026-10-01T09:00:00.000Z';
+
+  it('lets a stream that has gone live or become a recording record when it really started', () => {
+    expect(pastStartRefused(past, { status: 'live', scheduledStartTime: null }, now)).toBe(false);
+    expect(pastStartRefused(past, { status: 'vod', scheduledStartTime: null }, now)).toBe(false);
+  });
+
+  it('still refuses a past start on a new stream and on a stream that has not gone live', () => {
+    expect(pastStartRefused(past, null, now)).toBe(true);
+    expect(pastStartRefused(past, { status: 'draft', scheduledStartTime: null }, now)).toBe(true);
+    expect(pastStartRefused(past, { status: 'published', scheduledStartTime: '2026-10-13T08:00:00.000Z' }, now)).toBe(
+      true,
+    );
   });
 });
