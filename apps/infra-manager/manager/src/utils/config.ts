@@ -5,6 +5,8 @@ import { isIP } from 'node:net';
 import {
   bzzToPlur,
   DEFAULT_CHEQUEBOOK_FLOOR_BZZ,
+  INSTANCE_NAME_MAX_LENGTH,
+  instanceName,
   rpcEndpointProblem,
   type VersionInfo,
   versionInfo,
@@ -206,6 +208,25 @@ export function managerVersion(label: string | undefined, commit: string | undef
   return versionInfo(label, commit);
 }
 
+/**
+ * The name this manager instance goes by, such as `swarm-dev`, read once at startup from MANAGER_INSTANCE_NAME, which
+ * the deploy sets. The sidebar shows it beside the build the manager runs, and shows "Streaming Infra" alone when it
+ * is unset. A value of another shape stops the manager, as a malformed BEE_LOCAL_HOST does, because a sidebar quietly
+ * showing no name would hide the typo that caused it.
+ *
+ * Exported so the refusal can be tested without the process exiting.
+ */
+export function managerInstanceName(raw: string | undefined): string | null {
+  if (!raw?.trim()) return null;
+  const name = instanceName(raw);
+  if (name === null) {
+    throw new Error(
+      `MANAGER_INSTANCE_NAME must be at most ${INSTANCE_NAME_MAX_LENGTH} letters, digits, dots, dashes or underscores, got: ${raw}`,
+    );
+  }
+  return name;
+}
+
 export interface AppConfig {
   port: number;
   host: string;
@@ -234,6 +255,8 @@ export interface AppConfig {
   fundingRpcUrl: string | null;
   /** See `managerVersion`. */
   managerVersion: VersionInfo;
+  /** See `managerInstanceName`. Null when the operator configured none. */
+  instanceName: string | null;
   /** See `knownHostNetworkPorts`. Empty when the operator configured none. */
   knownHostNetworkPorts: KnownHostNetworkPorts;
 }
@@ -253,5 +276,6 @@ export const config: AppConfig = {
   fundingApiToken: fundingApiToken(process.env.FUNDING_API_TOKEN),
   fundingRpcUrl: fundingRpcUrl(process.env.FUNDING_RPC_URL),
   managerVersion: managerVersion(process.env.MANAGER_VERSION, process.env.MANAGER_COMMIT),
+  instanceName: managerInstanceName(process.env.MANAGER_INSTANCE_NAME),
   knownHostNetworkPorts: knownHostNetworkPorts(process.env.KNOWN_HOST_NETWORK_PORTS),
 };

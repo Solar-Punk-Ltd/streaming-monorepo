@@ -17,7 +17,6 @@ import { getErrorMessage, type VersionInfo } from '@streaming-infra-manager/comm
 
 import { ManagerVersionLine } from './ManagerVersionLine';
 import { useToast } from './ToastProvider';
-import { MONO_STACK } from './theme';
 import { navigate, routes, type Route } from './router';
 import { useSession } from './useSession';
 
@@ -47,13 +46,14 @@ const MODE_LABELS: Record<ThemeMode, string> = {
 export function Sidebar({
   route,
   deploymentCount,
-  serverHost,
+  instanceName,
   managerVersion,
   onNavigate,
 }: {
   route: Route;
   deploymentCount: number | null;
-  serverHost: string;
+  /** The name this manager instance goes by, null when it has none or has not said. */
+  instanceName: string | null;
   /** The build this manager runs, null until it has said which. */
   managerVersion: VersionInfo | null;
   onNavigate?: () => void;
@@ -87,15 +87,7 @@ export function Sidebar({
         </Box>
         <Box sx={{ minWidth: 0 }}>
           <Typography sx={{ fontWeight: 600, lineHeight: 1.2 }}>Streaming Infra</Typography>
-          <Typography
-            variant="caption"
-            sx={{
-              color: 'text.secondary',
-            }}
-          >
-            manager · {serverHost}
-          </Typography>
-          <ManagerVersionLine version={managerVersion} />
+          <ManagerVersionLine version={managerVersion} instanceName={instanceName} />
         </Box>
       </Stack>
 
@@ -128,15 +120,6 @@ export function Sidebar({
       <Box sx={{ flexGrow: 1 }} />
       <Divider />
       <Stack spacing={1} sx={{ p: 1.5 }}>
-        <Typography
-          variant="caption"
-          sx={{
-            color: 'text.secondary',
-            fontFamily: MONO_STACK,
-          }}
-        >
-          {serverHost}
-        </Typography>
         <ThemeSwitch />
         <SignedInAs />
       </Stack>

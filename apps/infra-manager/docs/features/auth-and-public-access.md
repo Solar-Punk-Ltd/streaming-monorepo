@@ -57,6 +57,10 @@ mean two-factor or single sign-on. Both can be added later without changing the 
   Sign in button. A wrong pair says `Wrong username or password.` and nothing more specific. After
   repeated failures it says `Too many attempts. Try again in 4 minutes.` The page is the same
   light or dark theme as the app.
+- Signed in, the sidebar header shows the instance name and the build the manager runs, such as
+  `swarm-dev · v1.1.1 (7af4ec443)`, read from `GET /config` and `GET /version`, and the build
+  alone when `MANAGER_INSTANCE_NAME` is unset. The host deployments publish on is shown as Ingest on
+  each deployment's Publish card, not in the sidebar.
 - Signed in, the sidebar footer shows the username and a **Sign out** item. Sessions last twelve
   hours of inactivity and fourteen days at most, then the sign-in page comes back with
   `Your session ended. Sign in again.`
