@@ -15,7 +15,7 @@ import { dateTimeLocalValueToIso, isoToDateTimeLocalValue } from '../dateUtil';
 import { DescriptionField, MediaTypeField, NameField, TagsField, ThumbnailField } from '../components/StreamFormFields';
 import { ScheduleField } from '../components/schedule/ScheduleField';
 import { assignableStages, StageField, StageReadinessWarning } from '../components/stages/StageField';
-import { nextFullHourValue, startMovedIntoPast } from '../components/schedule/scheduleTime';
+import { nextFullHourValue, pastStartRefused } from '../components/schedule/scheduleTime';
 import { ConfirmDialog } from '../components/ConfirmDialog';
 import { useSnackbar } from '../components/Snackbar';
 
@@ -300,7 +300,7 @@ export function StreamFormPage() {
       setError(ERROR_MESSAGES.SCHEDULED_TIME_REQUIRED);
       return;
     }
-    if (startMovedIntoPast(input.scheduledStartTime, loaded?.scheduledStartTime ?? null, new Date())) {
+    if (pastStartRefused(input.scheduledStartTime, loaded, new Date())) {
       setError(ERROR_MESSAGES.SCHEDULED_TIME_PAST);
       return;
     }
