@@ -210,9 +210,10 @@ export function managerVersion(label: string | undefined, commit: string | undef
 
 /**
  * The name this manager instance goes by, such as `swarm-dev`, read once at startup from MANAGER_INSTANCE_NAME, which
- * the stream deploy (Solar-Punk-Ltd/swarm-stream-terraform) sets from the instance name. The sidebar shows it under
- * "Streaming Infra" beside the build the manager runs, and shows the build line alone there when it is unset. A value of another shape stops the manager, as a malformed BEE_LOCAL_HOST does, because a sidebar quietly
- * showing no name would hide the typo that caused it.
+ * the stream deploy, kept in its own repository, sets from the instance name. The sidebar shows it under
+ * "Streaming Infra" beside the build the manager runs, and shows the build line alone there when it is unset. A
+ * value of another shape stops the manager, as a malformed BEE_LOCAL_HOST does, because a sidebar quietly showing no
+ * name would hide the typo that caused it.
  *
  * Exported so the refusal can be tested without the process exiting.
  */
