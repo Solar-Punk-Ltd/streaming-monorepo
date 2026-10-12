@@ -5,8 +5,8 @@ import * as common from './index.js';
 import { ADMIN_THEME_NAMES, DEFAULT_ADMIN_THEME, isAdminThemeName } from './theme.js';
 
 test('the console carries three looks, Default first', () => {
-  assert.deepEqual([...ADMIN_THEME_NAMES], ['default', 'swarm', 'web3privacy']);
-  assert.equal(DEFAULT_ADMIN_THEME, 'default');
+  assert.deepEqual([...ADMIN_THEME_NAMES], ['swarm', 'web3privacy']);
+  assert.equal(DEFAULT_ADMIN_THEME, 'swarm');
 });
 
 test('a look the console carries is a look name', () => {

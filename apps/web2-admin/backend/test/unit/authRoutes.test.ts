@@ -217,6 +217,13 @@ describe('too many attempts', () => {
     assert.equal(sessionCookieFrom(res.setCookie), null);
   });
 
+  it('refuses the right password from another address too, because the lock is on the account', async () => {
+    const res = await login(ELSEWHERE, USERNAME, PASSWORD);
+
+    assert.equal(res.status, 429);
+    assert.equal(sessionCookieFrom(res.setCookie), null);
+  });
+
   it('locks the address as well, so a second account cannot be tried from it', async () => {
     assert.equal((await login(OURS, 'mate', OTHER_PASSWORD)).status, 429);
   });
@@ -307,6 +314,16 @@ describe('too many wrong current passwords', () => {
       error: 'too_many_attempts',
       retryAfterSeconds: 60,
     });
+  });
+
+  it('refuses the right password at sign-in while that lock holds, from any address', async () => {
+    const res = await call(app, 'POST', '/api/auth/login', {
+      body: { username: USERNAME, password: PASSWORD },
+      headers: { 'x-forwarded-for': '203.0.113.20' },
+    });
+
+    assert.equal(res.status, 429);
+    assert.equal(sessionCookieFrom(res.setCookie), null);
   });
 
   it('lets the right current password through once the wait is over', async () => {

@@ -108,11 +108,11 @@ describe('ConsoleSettingsRepository', () => {
 });
 
 describe('GET /api/config', () => {
-  it('answers Default with no row, and the stored look once there is one', async () => {
-    assert.equal((await api<PublicConfig>('GET', '/api/config', { anonymous: true })).defaultTheme, 'default');
-
-    await settings.setDefaultTheme('swarm', 'alice');
-
+  it('answers Swarm with no row, and the stored look once there is one', async () => {
     assert.equal((await api<PublicConfig>('GET', '/api/config', { anonymous: true })).defaultTheme, 'swarm');
+
+    await settings.setDefaultTheme('web3privacy', 'alice');
+
+    assert.equal((await api<PublicConfig>('GET', '/api/config', { anonymous: true })).defaultTheme, 'web3privacy');
   });
 });

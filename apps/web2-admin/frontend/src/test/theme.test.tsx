@@ -1,12 +1,11 @@
 import { readdirSync, readFileSync } from 'node:fs';
 import { join, relative } from 'node:path';
-import { createTheme, useTheme } from '@mui/material';
+import { useTheme } from '@mui/material';
 import { act, fireEvent, screen, waitFor, within } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { AppShell } from '../components/AppShell';
 import { createAdminTheme } from '../theme/createAdminTheme';
-import { useThemeChoice } from '../theme/ThemeChoiceProvider';
 import {
   HOST_THEME_STORAGE_KEY,
   loadHostLook,
@@ -80,21 +79,6 @@ describe('the looks', () => {
     expect(theme.typography.h1.fontFamily).toBe(tokens.fonts.heading);
     expect(theme.shape.borderRadius).toBe(tokens.radius);
   });
-
-  it("keeps the console's look from before the switcher as Default", () => {
-    const stock = createTheme({ palette: { mode: 'dark' } });
-    const ours = createAdminTheme(DEFAULT_ADMIN_THEME);
-
-    expect(ours.palette.background).toEqual(stock.palette.background);
-    expect(ours.palette.text).toEqual(stock.palette.text);
-    expect(ours.palette.divider).toBe(stock.palette.divider);
-    for (const key of ['primary', 'error', 'warning', 'success', 'info'] as const) {
-      expect(ours.palette[key]).toEqual(stock.palette[key]);
-    }
-    expect(ours.typography.fontFamily).toBe(stock.typography.fontFamily);
-    expect(ours.typography.h1.fontWeight).toBe(stock.typography.h1.fontWeight);
-    expect(ours.shape.borderRadius).toBe(stock.shape.borderRadius);
-  });
 });
 
 type Rgba = [number, number, number, number];
@@ -131,7 +115,7 @@ function luminance([r, g, b]: Rgba): number {
   return 0.2126 * channel(r) + 0.7152 * channel(g) + 0.0722 * channel(b);
 }
 
-type ColorName = keyof (typeof THEME_TOKENS)['default']['colors'];
+type ColorName = keyof (typeof THEME_TOKENS)['swarm']['colors'];
 
 /** Contrast of a text colour on a surface in one theme, both composited over the page background. */
 function contrast(name: AdminThemeName, text: ColorName, surface: ColorName): number {
@@ -238,7 +222,7 @@ function openUserMenu() {
 }
 
 describe('the switcher in the user menu', () => {
-  it("offers the host's look first, checked while this browser has no pick of its own, then every look", async () => {
+  it('offers Swarm and Web3Privacy only, with the host look checked while this browser has no pick', async () => {
     hostSays('swarm');
     renderWithProviders(
       <AppShell>
@@ -250,15 +234,12 @@ describe('the switcher in the user menu', () => {
 
     expect(within(menu).getByText('Theme')).toBeInTheDocument();
     const radios = within(menu).getAllByRole('menuitemradio');
-    expect(radios[0]).toHaveAccessibleName("This host's look (Swarm)");
+    expect(radios.map((radio) => radio.textContent)).toEqual(['Swarm', 'Web3Privacy']);
     expect(radios[0]).toHaveAttribute('aria-checked', 'true');
-    for (const name of ADMIN_THEME_NAMES) {
-      const item = within(menu).getByRole('menuitemradio', { name: THEME_TOKENS[name].label });
-      expect(item).toHaveAttribute('aria-checked', 'false');
-    }
+    expect(radios[1]).toHaveAttribute('aria-checked', 'false');
   });
 
-  it("follows the host again from its first item, which forgets this browser's own pick", async () => {
+  it("checks this browser's own pick over the host's look", async () => {
     hostSays('swarm');
     saveThemeChoice('web3privacy');
     renderWithProviders(
@@ -267,20 +248,12 @@ describe('the switcher in the user menu', () => {
       </AppShell>,
     );
     const menu = openUserMenu();
-    const follow = await within(menu).findByRole('menuitemradio', { name: "This host's look (Swarm)" });
-    expect(follow).toHaveAttribute('aria-checked', 'false');
-    expect(within(menu).getByRole('menuitemradio', { name: 'Web3Privacy' })).toHaveAttribute('aria-checked', 'true');
 
-    fireEvent.click(follow);
-
-    expect(screen.getByTestId('accent')).toHaveTextContent(THEME_TOKENS.swarm.colors.primary);
-    expect(loadThemeChoice()).toBeNull();
-    const open = screen.getByRole('menu');
-    expect(within(open).getByRole('menuitemradio', { name: "This host's look (Swarm)" })).toHaveAttribute(
+    expect(await within(menu).findByRole('menuitemradio', { name: 'Web3Privacy' })).toHaveAttribute(
       'aria-checked',
       'true',
     );
-    expect(within(open).getByRole('menuitemradio', { name: 'Web3Privacy' })).toHaveAttribute('aria-checked', 'false');
+    expect(within(menu).getByRole('menuitemradio', { name: 'Swarm' })).toHaveAttribute('aria-checked', 'false');
   });
 
   it('dresses the console in the picked look, keeps the menu open, and keeps the pick', () => {
@@ -364,27 +337,6 @@ describe('the look the console wears', () => {
     expect(screen.getByTestId('accent')).toHaveTextContent(THEME_TOKENS.swarm.colors.primary);
   });
 
-  it("keeps a host default saved here over the host's first answer arriving after it", async () => {
-    let answer: (response: Response) => void = () => undefined;
-    hostAnswers(() => new Promise<Response>((resolve) => (answer = resolve)));
-    function SaveSwarm() {
-      const { hostLookChanged } = useThemeChoice();
-      return <button onClick={() => hostLookChanged('swarm')}>save swarm</button>;
-    }
-    renderWithProviders(
-      <AppShell>
-        <WornAccent />
-        <SaveSwarm />
-      </AppShell>,
-    );
-    fireEvent.click(screen.getByRole('button', { name: 'save swarm' }));
-
-    await act(async () => answer(jsonOk(hostConfig('web3privacy'))));
-
-    expect(screen.getByTestId('accent')).toHaveTextContent(THEME_TOKENS.swarm.colors.primary);
-    expect(loadHostLook()).toBe('swarm');
-  });
-
   it("is the host default this browser last saw while the host's answer is on its way", () => {
     saveHostLook('swarm');
     hostAnswers(() => new Promise<Response>(() => undefined));
@@ -403,12 +355,12 @@ describe('the look the console wears', () => {
     expect(loadHostLook()).toBe('swarm');
   });
 
-  it('is Default when the config cannot be reached and this browser never saw a host default', async () => {
+  it('is Swarm when the config cannot be reached and this browser never saw a host default', async () => {
     const fetchMock = hostAnswers(() => Promise.reject(new TypeError('Failed to fetch')));
     renderShell();
 
     await waitFor(() => expect(fetchMock).toHaveBeenCalled());
-    expect(screen.getByTestId('accent')).toHaveTextContent(THEME_TOKENS.default.colors.primary);
+    expect(screen.getByTestId('accent')).toHaveTextContent(THEME_TOKENS.swarm.colors.primary);
   });
 
   it('keeps the remembered host default when the host names a look this console does not carry', async () => {

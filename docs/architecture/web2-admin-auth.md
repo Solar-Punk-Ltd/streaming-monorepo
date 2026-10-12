@@ -54,8 +54,10 @@ and being wrong about a different half of it.
   localhost then dropped the cookie it had just been given, so signing in came
   straight back to the sign-in page with nothing to show for it. `COOKIE_SECURE`
   is gone.
-- **The limiter** (`packages/web-auth/src/LoginLimiter.ts`). Keys are `username:<lowercased>`,
-  `ip:<last X-Forwarded-For hop>` and `password-change:<userId>`. Four free
+- **The limiter** (`packages/web-auth/src/LoginLimiter.ts`). Keys are `username:<lowercased>` and
+  `ip:<last X-Forwarded-For hop>`. A wrong current password on a password change, or on a write that asks the
+  password again, counts under the account's `username:` key like a failed sign-in, so either one locks both
+  (SPDV-1664). The manager still keeps the password change under its own `password-change:<userId>`. Four free
   attempts, the fifth locks for a minute, every failure after that doubles up to
   an hour, and a key with no failure for two hours is forgotten. The important
   part is **reserve-then-settle**: `begin()` increments a pending counter
