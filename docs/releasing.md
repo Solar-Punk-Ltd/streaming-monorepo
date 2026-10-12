@@ -54,7 +54,7 @@ Add `--remote-path=<dir>` where that host keeps its checkout elsewhere than `/op
 
 Every image is built for every release, so each console shows the release that was deployed.
 
-Sign in to each console. The manager's sidebar shows the build's name beside its instance name, and the admin console's toolbar
+Sign in to each console. The manager's sidebar shows the build's name beside its instance name when one is set, and the admin console's toolbar
 shows it beside the account button on a screen wider than a phone's. In the manager, the **Versions** page shows the
 release of each stack build, and each deployment's **At a glance** card shows the release its containers run: under
 **Player** on a Watch a stream deployment, whose release is the viewer client its viewers load, and under **Release** on

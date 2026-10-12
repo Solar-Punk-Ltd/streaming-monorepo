@@ -30,7 +30,7 @@ import { useMetrics } from '../useMetrics';
 import { beeReadinessView } from '../uploaders/beeReadiness';
 import { useBeeUtils, type BeeUtils } from '../uploaders/useBeeUtils';
 import type { Profile } from '../types';
-import { clientUrl, hostFor, rtmpPublishSettings } from '../urls';
+import { clientUrl, rtmpPublishSettings } from '../urls';
 import { attemptHolding } from '../versions/attemptHold';
 import { ReleaseAttemptDialog } from '../versions/ReleaseAttemptDialog';
 import { useAttemptRelease } from '../versions/useAttemptRelease';
@@ -270,7 +270,7 @@ function DeploymentBody({ profile, focus, bee }: { profile: Profile; focus: Depl
             <PublishCard
               profile={profile}
               url={publishUrl}
-              ingestHost={hostFor(profile, serverHost)}
+              serverHost={serverHost}
               hostPassphrase={hostPassphrase}
               ready={readiness.tone === 'ok'}
               passphrasePending={publish.pending}
