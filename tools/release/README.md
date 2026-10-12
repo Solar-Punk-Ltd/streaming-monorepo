@@ -1,6 +1,6 @@
 # release
 
-The scripts a release runs before its deploys. [docs/releasing.md](../../docs/releasing.md) is the procedure; this
+The scripts a release runs before its deploys. [docs/releasing.md](../../docs/releasing.md) is the procedure. This
 page says what each script does.
 
 Plain Node scripts with no dependencies. They need Node 24 or later and git.
@@ -33,10 +33,10 @@ It takes any name a deploy can carry, and suggests and enforces no scheme: `QA-b
    where the remote lacks it. A new name adds another tag. A lightweight tag on the commit is named but not offered,
    since a mistyped `git tag list` leaves one.
 6. Asks for the name, with no default. It says why it refuses a name, and asks again:
-   - a name `lib/tagName.mjs` refuses, which a deploy could not carry;
-   - one `git check-ref-format` refuses, and `HEAD`, which `git tag` refuses;
-   - the name of a tag, here or on the remote, that names another commit, and it says which commit;
-   - a name that differs from a tag's only in case, which git on a Mac or on Windows mixes up;
+   - a name `lib/tagName.mjs` refuses, which a deploy could not carry,
+   - one `git check-ref-format` refuses, and `HEAD`, which `git tag` refuses,
+   - the name of a tag, here or on the remote, that names another commit, and it says which commit,
+   - a name that differs from a tag's only in case, which git on a Mac or on Windows mixes up,
    - `release` when there is a `release/2026`, or the other way round, which git cannot hold together.
 
    The name of a tag already on this commit keeps that tag. An empty answer cancels when there is nothing to keep.
