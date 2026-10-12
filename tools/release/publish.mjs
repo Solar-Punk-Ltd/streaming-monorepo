@@ -1,10 +1,8 @@
 #!/usr/bin/env node
-// Publishes the images of the apps a server runs from a release tag: each image whose build inputs changed since an
-// earlier tag is built and uploaded, and each one whose inputs did not is only given the new tag, which uploads nothing.
+// Publishes the images of the apps a server runs from a release tag: every image is built and uploaded for every
+// release, so the version baked into an image always equals the tag it is pulled by.
 // tools/release/README.md says how a release reaches the registry.
 import { spawnSync } from 'node:child_process';
-import { createHash } from 'node:crypto';
-import { readdirSync, readFileSync } from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
@@ -23,27 +21,49 @@ const STACK_APP = 'apps/hls-stream';
 /** The label that carries the stack commit, for the deploy to write where the manager reads it. */
 export const STACK_COMMIT_LABEL = 'streaming.stack-commit';
 
-/** The tag every image also carries for its build inputs, which is how a later release finds it unchanged. */
-const INPUTS_TAG_PREFIX = 'inputs-';
-
 /**
  * @typedef {object} PublishedImage
  * @property {string} name The image's name in the registry.
  * @property {string} app The app folder its build context is cut from.
  * @property {string} dockerfile The Dockerfile, from the app folder.
  * @property {string | null} buildArgPrefix The prefix of its `<prefix>_VERSION` and `<prefix>_COMMIT` build arguments.
- * @property {boolean} pinsStack Whether the image carries the stack commit, which then counts among its inputs.
+ * @property {boolean} pinsStack Whether the image carries the stack commit in a label.
  */
 
 /** @type {readonly PublishedImage[]} */
 export const IMAGES = Object.freeze([
-  { name: 'streaming-manager-api', app: 'apps/infra-manager', dockerfile: 'manager/Dockerfile', buildArgPrefix: 'MANAGER', pinsStack: true },
-  { name: 'streaming-manager-web', app: 'apps/infra-manager', dockerfile: 'frontend/Dockerfile', buildArgPrefix: null, pinsStack: false },
-  { name: 'streaming-admin-api', app: 'apps/web2-admin', dockerfile: 'backend/Dockerfile', buildArgPrefix: 'WEB2_ADMIN', pinsStack: false },
-  { name: 'streaming-admin-web', app: 'apps/web2-admin', dockerfile: 'frontend/Dockerfile', buildArgPrefix: 'WEB2_ADMIN', pinsStack: false },
+  {
+    name: 'streaming-manager-api',
+    app: 'apps/infra-manager',
+    dockerfile: 'manager/Dockerfile',
+    buildArgPrefix: 'MANAGER',
+    pinsStack: true,
+  },
+  {
+    name: 'streaming-manager-web',
+    app: 'apps/infra-manager',
+    dockerfile: 'frontend/Dockerfile',
+    buildArgPrefix: null,
+    pinsStack: false,
+  },
+  {
+    name: 'streaming-admin-api',
+    app: 'apps/web2-admin',
+    dockerfile: 'backend/Dockerfile',
+    buildArgPrefix: 'WEB2_ADMIN',
+    pinsStack: false,
+  },
+  {
+    name: 'streaming-admin-web',
+    app: 'apps/web2-admin',
+    dockerfile: 'frontend/Dockerfile',
+    buildArgPrefix: 'WEB2_ADMIN',
+    pinsStack: false,
+  },
 ]);
 
-const USAGE = 'Usage: node tools/release/publish.mjs --tag <tag> [--registry <registry>] [--root <checkout>] [--dry-run]';
+const USAGE =
+  'Usage: node tools/release/publish.mjs --tag <tag> [--registry <registry>] [--root <checkout>] [--dry-run]';
 
 class Refusal extends Error {}
 
@@ -59,74 +79,38 @@ function mustRun(command, args, options) {
   if (status !== 0) throw new Refusal(`${command} ${args.slice(0, 3).join(' ')} failed with status ${status}`);
 }
 
-/** Every file below a folder, as paths from it, in one order whatever the file system lists first. */
-function filesUnder(folder, prefix = '') {
-  return readdirSync(path.join(folder, prefix), { withFileTypes: true }).flatMap((entry) => {
-    const relative = path.posix.join(prefix, entry.name);
-    return entry.isDirectory() ? filesUnder(folder, relative) : [relative];
-  }).sort();
-}
-
-/** One hash over every path and file in a folder, which is an image's whole build context. */
-export function hashFolder(folder) {
-  const hash = createHash('sha256');
-  for (const file of filesUnder(folder)) {
-    hash.update(`${file}\0`);
-    hash.update(readFileSync(path.join(folder, file)));
-    hash.update('\0');
-  }
-  return hash.digest('hex');
-}
-
-/** The hash of an app's build context as a deploy cuts it, through in-copy.mjs, so it holds what the build reads. */
-function hashBuildContext(root, app) {
-  const result = spawnSync(
-    process.execPath,
-    [IN_COPY, '--root', root, '--app', app, '--', process.execPath, fileURLToPath(import.meta.url), '--hash-folder', '.'],
-    { encoding: 'utf8', stdio: ['ignore', 'pipe', 'inherit'] },
-  );
-  const hash = result.stdout.trim();
-  if (result.status !== 0 || !/^[0-9a-f]{64}$/.test(hash)) throw new Refusal(`could not hash the build context of ${app}`);
-  return hash;
-}
-
-/** What an image is built from: its context, its Dockerfile's name, and for a manager the stack it deploys first. */
-export function inputsOf(image, contextHash, stackCommit) {
-  const hash = createHash('sha256');
-  hash.update(`${image.dockerfile}\0${contextHash}\0`);
-  if (image.pinsStack) hash.update(stackCommit);
-  return hash.digest('hex').slice(0, 32);
-}
-
-function imageExists(reference) {
-  return spawnSync('docker', ['buildx', 'imagetools', 'inspect', reference], { stdio: 'ignore' }).status === 0;
-}
-
-/**
- * Publishes one image under the tag: a new tag on the image already built from the same inputs, or a build and an
- * upload when no image has those inputs yet. Answers what it did.
- */
+/** Builds one image under the tag and uploads it, or with a dry run says it would. Answers what it did. */
 function publishImage({ root, registry, tag, commit, stackCommit, image, dryRun }) {
-  const inputs = inputsOf(image, hashBuildContext(root, image.app), stackCommit);
-  const repository = `${registry}/${image.name}`;
-  const byInputs = `${repository}:${INPUTS_TAG_PREFIX}${inputs}`;
-  const byTag = `${repository}:${tag}`;
-  if (imageExists(byInputs)) {
-    if (!dryRun) mustRun('docker', ['buildx', 'imagetools', 'create', '--tag', byTag, byInputs]);
-    return `${image.name}: unchanged, ${tag} added to the image of ${INPUTS_TAG_PREFIX}${inputs}`;
-  }
-  if (dryRun) return `${image.name}: changed, would be built and uploaded as ${tag}`;
+  const byTag = `${registry}/${image.name}:${tag}`;
+  if (dryRun) return `${image.name}: would be built and uploaded as ${tag}`;
   const buildArgs = image.buildArgPrefix
-    ? ['--build-arg', `${image.buildArgPrefix}_VERSION=${tag}`, '--build-arg', `${image.buildArgPrefix}_COMMIT=${commit}`]
+    ? [
+        '--build-arg',
+        `${image.buildArgPrefix}_VERSION=${tag}`,
+        '--build-arg',
+        `${image.buildArgPrefix}_COMMIT=${commit}`,
+      ]
     : [];
   const labels = image.pinsStack ? ['--label', `${STACK_COMMIT_LABEL}=${stackCommit}`] : [];
   mustRun(process.execPath, [
-    IN_COPY, '--root', root, '--app', image.app, '--',
-    'docker', 'build', '--file', image.dockerfile, '--tag', byTag, '--tag', byInputs, ...buildArgs, ...labels, '.',
+    IN_COPY,
+    '--root',
+    root,
+    '--app',
+    image.app,
+    '--',
+    'docker',
+    'build',
+    '--file',
+    image.dockerfile,
+    '--tag',
+    byTag,
+    ...buildArgs,
+    ...labels,
+    '.',
   ]);
   mustRun('docker', ['push', byTag]);
-  mustRun('docker', ['push', byInputs]);
-  return `${image.name}: changed, built and uploaded as ${tag}`;
+  return `${image.name}: built and uploaded as ${tag}`;
 }
 
 function parse(argv) {
@@ -147,20 +131,14 @@ function parse(argv) {
   if (!IMAGE_TAG.test(options.tag)) {
     throw new Refusal(`${options.tag} cannot be an image tag, which takes letters, digits, _ . and - only`);
   }
-  // The inputs tags are how a later release finds an unchanged image, so a release must never be able to repoint one.
-  if (options.tag.startsWith(INPUTS_TAG_PREFIX)) {
-    throw new Refusal(`${options.tag} starts with ${INPUTS_TAG_PREFIX}, which names an image by its build inputs, not a release`);
-  }
   return options;
 }
 
 export function main(argv) {
-  if (argv[0] === '--hash-folder') {
-    process.stdout.write(`${hashFolder(path.resolve(argv[1] ?? '.'))}\n`);
-    return 0;
-  }
   const options = parse(argv);
-  const commit = git(options.root, ['rev-parse', '--verify', '--quiet', `refs/tags/${options.tag}^{commit}`], { allowFailure: true });
+  const commit = git(options.root, ['rev-parse', '--verify', '--quiet', `refs/tags/${options.tag}^{commit}`], {
+    allowFailure: true,
+  });
   if (!commit) throw new Refusal(`there is no tag ${options.tag} in ${options.root}`);
   const head = git(options.root, ['rev-parse', 'HEAD']);
   if (head !== commit) throw new Refusal(`the checkout is at ${head}, not at ${options.tag}, which is ${commit}`);

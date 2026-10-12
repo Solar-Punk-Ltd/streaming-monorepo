@@ -109,14 +109,13 @@ Publishes the images a server runs from a release tag to GitHub's container regi
 node tools/release/publish.mjs --tag <tag> [--dry-run] [--registry <registry>] [--root <checkout>]
 ```
 
-Each image is built from its app folder as a deploy cuts it, through `tools/app-workspace/in-copy.mjs`, and also
-tagged `inputs-<hash>` after what it was built from: that folder, its Dockerfile's name, and for the manager api the
-last commit that changed `apps/hls-stream`, which it carries in the label `streaming.stack-commit` for the deploy
-to write where the manager reads its stack pin. An image whose inputs an earlier release built already is only given
-the new tag, which uploads nothing. An app's images share its folder, so a change anywhere in it builds both again.
+Every image is built and uploaded for every release, from its app folder as a deploy cuts it, through
+`tools/app-workspace/in-copy.mjs`. The manager api also carries the last commit that changed `apps/hls-stream` in the
+label `streaming.stack-commit`, for the deploy to write where the manager reads its stack pin. No image is reused from
+an earlier release, even when its app did not change, because the release name and commit are built into the image:
+an image reused under a new tag would show the older release in its console.
 
-An unchanged image keeps the version it was built as, so a console shows the release that last changed it. A tag an
-image cannot carry is refused: letters, digits, `_`, `.` and `-` only, such as `v2.4.0` or `2026-10-10-build-1`. The
-checkout must be at the tag, and a tag starting `inputs-` is refused, since those name images by their inputs.
-`--dry-run` says what would be built and what only tagged, and changes nothing. `--registry` publishes elsewhere than
+A tag an image cannot carry is refused: letters, digits, `_`, `.` and `-` only, such as `v2.4.0` or
+`2026-10-10-build-1`. The checkout must be at the tag. `--dry-run` names each image it would build and changes
+nothing. `--registry` publishes elsewhere than
 `ghcr.io/solar-punk-ltd`, and `--root` names another checkout, both for tests.

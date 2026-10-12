@@ -27,7 +27,7 @@ a `+` is tagged but not published. `vX.Y.Z`, such as `v2.4.0`, is the shape a de
 It worked when it ends with "Pushed <tag> to origin." or, for a tag it kept, "origin already has <tag>."
 
 Pushing the tag starts the `publish-images` workflow, which publishes the manager's and the admin's images under the
-tag to `ghcr.io/solar-punk-ltd`, building only the apps that changed since an earlier release. A deploy that runs from
+tag to `ghcr.io/solar-punk-ltd`, building every image again for every release. A deploy that runs from
 the published images pulls them by that tag. The two deploy scripts below build on the host instead.
 [tools/release/README.md](../tools/release/README.md) says how the images are published.
 
@@ -51,8 +51,7 @@ Add `--remote-path=<dir>` where that host keeps its checkout elsewhere than `/op
 
 ## 4. Check
 
-An image the release did not change keeps the build name it was made with, so its console shows the release that last
-changed it.
+Every image is built for every release, so each console shows the release that was deployed.
 
 Sign in to each console. The manager's sidebar shows the build's name under its host, and the admin console's toolbar
 shows it beside the account button on a screen wider than a phone's. In the manager, the **Versions** page shows the
