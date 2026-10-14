@@ -14,6 +14,7 @@ import {
 import { isStampExpired, sameBatchId } from '@streaming-infra-manager/common';
 
 import { CopyButton } from '../CopyButton';
+import { type BatchUploader, type BatchUse, batchChipOf, batchUseOf } from '../deployments/batchUploaders';
 import { formatTtl, shortHex } from '../format';
 import { bucketFill, type BucketFillWarning } from './bucketFill';
 import type { BeeStamp } from './stampApi';
@@ -42,6 +43,7 @@ export function StampTable({
   stamps,
   loading,
   currentStampId,
+  uploaders = [],
   pinnedBatchId = null,
   busy,
   ...handlers
@@ -49,7 +51,10 @@ export function StampTable({
   /** The node's batches, or null for "not asked yet / no answer". */
   stamps: BeeStamp[] | null;
   loading: boolean;
+  /** The batch the deployment stores, which its next deploy pays with. */
   currentStampId: string | null | undefined;
+  /** The uploaders that pay with this node's batches, which say which batch each one runs. */
+  uploaders?: readonly BatchUploader[];
   /** The batch pinned for the brand's catalogue, when this node is the catalogue node. */
   pinnedBatchId?: string | null;
   busy: boolean;
@@ -89,7 +94,7 @@ export function StampTable({
                 <BatchRows
                   key={stamp.batchID}
                   stamp={stamp}
-                  isCurrent={currentStampId != null && sameBatchId(currentStampId, stamp.batchID)}
+                  use={batchUseOf(stamp.batchID, currentStampId, uploaders)}
                   isPinned={pinnedBatchId != null && sameBatchId(pinnedBatchId, stamp.batchID.toLowerCase())}
                   busy={busy}
                   {...handlers}
@@ -112,7 +117,7 @@ function usabilityChip(stamp: BeeStamp, expired: boolean): { color: 'error' | 's
 
 function BatchRows({
   stamp,
-  isCurrent,
+  use,
   isPinned,
   busy,
   onUse,
@@ -120,7 +125,7 @@ function BatchRows({
   onDilute,
 }: {
   stamp: BeeStamp;
-  isCurrent: boolean;
+  use: BatchUse | null;
   isPinned: boolean;
   busy: boolean;
 } & BatchHandlers) {
@@ -128,6 +133,8 @@ function BatchRows({
   const usability = usabilityChip(stamp, expired);
   const fill = bucketFill(stamp);
   const actions = stampRowActions(stamp, busy);
+  const chip = use ? batchChipOf(use, expired) : null;
+  const saved = use === 'in-use' || use === 'saved-waiting';
 
   return (
     <>
@@ -191,9 +198,8 @@ function BatchRows({
               alignItems: 'center',
             }}
           >
-            {isCurrent ? (
-              <Chip size="small" label={expired ? 'in use, expired' : 'in use'} color={expired ? 'error' : 'default'} />
-            ) : (
+            {chip && <Chip size="small" label={chip.label} color={chip.color} data-batch-use={use} />}
+            {!saved && (
               <>
                 <Button size="small" disabled={!actions.use.enabled} onClick={() => onUse(stamp.batchID)}>
                   Use

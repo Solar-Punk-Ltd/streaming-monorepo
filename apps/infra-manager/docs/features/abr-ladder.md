@@ -228,8 +228,13 @@ pool, so nothing invalidates it when it goes wrong:
   copy, and stores it when it differs. A batch set on a rung, bought or with
   **Use**, also brings the stored copy of each such uploader up to date, so its
   page and the rung report in its stage record name the new batch. Setting a
-  batch redeploys nothing: a running uploader pays with the old batch until its
-  next deploy. A rung of the pool with no batch refuses the deploy with
+  batch redeploys nothing by itself: a running uploader pays with the old batch
+  until it restarts. Since 2026-10-14 (SPDV-1437) the rung's Storage card reads
+  each such stage's settings list again right after a Use, names every stage
+  whose running uploader still pays with the old batch for this rung, and gives
+  each an **Apply now**, the stage's own settings Apply, which always asks first
+  and says whether that stage's broadcast is live
+  ([postage-stamps.md](postage-stamps.md)). A rung of the pool with no batch refuses the deploy with
   `<rung>: no postage batch set on this rung yet`, and a string the catalogue
   guard refuses is refused with the guard's own sentence. A string that names
   any other node, one pasted from another manager among them, is deployed as it

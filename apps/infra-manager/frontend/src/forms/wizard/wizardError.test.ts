@@ -289,6 +289,7 @@ describe('what is wrong with the web2 admin link', () => {
         field: null,
         services: ['stream-uploader'],
         running: 'not-running' as const,
+        runningValue: null,
         engineSetting: null,
       })),
     },

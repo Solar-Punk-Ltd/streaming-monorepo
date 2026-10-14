@@ -148,6 +148,14 @@ export interface DeploymentSettingEntry {
   services: string[] | null;
   running: SettingRunningState;
   /**
+   * What the running containers that read the key were started with, as their
+   * records keep it in clear, or null. Null for a secret and a chain endpoint,
+   * which a record keeps as a digest alone, for a key that was unset or that no
+   * record covers, for containers started with different values, and for a
+   * deployment that is not running.
+   */
+  runningValue: string | null;
+  /**
    * For an engine setting the deployment reads, what the page shows beside its
    * field, and null for every other key. The field itself, its label, unit,
    * help, kind, bounds and choices, is common's, found by the key.
