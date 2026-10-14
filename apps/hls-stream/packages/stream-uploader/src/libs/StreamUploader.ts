@@ -1,4 +1,4 @@
-import { Bee, BeeResponseError, PrivateKey, Topic } from '@ethersphere/bee-js';
+import { Bee, BeeResponseError, FeedIndex, PrivateKey, Topic } from '@ethersphere/bee-js';
 import {
   addingStreamToList,
   engineSkippedSegments,
@@ -75,6 +75,14 @@ const UPLOAD_RETRY_CAP_MS = 2_000;
  * and this read is the thing standing between a crash and a second paid recording.
  */
 const FEED_HEAD_READ_WINDOW_MS = 15_000;
+
+/**
+ * How far above bee's answer for a feed head {@link StreamUploader.findTrueFeedHead} looks before it
+ * stops and refuses the publish. 2^20 slots is about 24 days of one playlist every two seconds, past
+ * any feed this service writes, and the doubling reaches it in 21 reads. The bound exists so a feed
+ * that answers every read never holds the manifest queue for good.
+ */
+const FEED_HEAD_SEARCH_MAX_DISTANCE = 2 ** 20;
 
 /**
  * Whether a playlist read back out of the feed is this stream's finished recording.
@@ -1049,6 +1057,11 @@ export class StreamUploader {
    *
    * A 404 is an answer, not a failure: nothing has ever been written on this topic, so 0 is right.
    *
+   * ⛔⛔ **bee's answer is a floor, not the head, so the slots above it are read before it is used.**
+   * bee's feed finder counts a lookahead probe slower than one second as absent, so a slow node can
+   * answer an index below the real head, and continuing from there writes over the newer slots. See
+   * {@link findTrueFeedHead}. "The head" below means the slot that search ends on.
+   *
    * ⛔ **Two numbers come off that one read, not one.** Where the feed has got to says where this
    * session's SOC writes go. What the playlist at the head is numbered to says where this session's
    * `#EXT-X-MEDIA-SEQUENCE` carries on from — a viewer following the feed head is handed this
@@ -1070,7 +1083,8 @@ export class StreamUploader {
 
     let head: { index: number; manifest: string } | null;
     try {
-      head = await this.readManifestFeedHead(FEED_HEAD_ON_START);
+      const answered = await this.readManifestFeedHead(FEED_HEAD_ON_START);
+      head = answered === null ? null : await this.findTrueFeedHead(answered);
     } catch (error) {
       this.logger.error(getErrorMessage(error));
       return false;
@@ -1165,17 +1179,10 @@ export class StreamUploader {
    * `init` takes the index this way and `fetchCurrentState` takes the payload this way.
    */
   private async readManifestFeedHead(question: FeedHeadQuestion): Promise<{ index: number; manifest: string } | null> {
-    const owner = this.streamSigner.publicKey().address();
-    const topic = Topic.fromString(this.streamRawTopic);
-    // ⛔⛔ A reader per attempt, see DeadlineBee in BeePublisherPool.ts, each with a lookup's own
-    // deadline, see FEED_LOOKUP_TIMEOUT_MS. With one reader made before the window and the pool's 4 s,
-    // a restarted broadcast's rungs never published on 2026-10-14. See `FeedRequestDeadline.test.ts`.
-    const feedReader = () => this.bee.feed.makeReader(topic, owner, { timeout: FEED_LOOKUP_TIMEOUT_MS });
-
     try {
       const head = await this.readWithinWindow(async () => {
         try {
-          return await feedReader().downloadPayload();
+          return await this.manifestFeedReader().downloadPayload();
         } catch (error) {
           if (!isFeedHeadNotFound(error)) {
             throw error;
@@ -1200,7 +1207,9 @@ export class StreamUploader {
       // No absent-feed branch here, for either caller. The index above says something is at this
       // index, so a 404 now is a chunk that will not retrieve rather than a feed with nothing in it,
       // and answering "nothing was published" to that is the mistake this method exists to refuse.
-      const update = await this.readWithinWindow(() => feedReader().downloadPayload({ index: head.feedIndex }));
+      const update = await this.readWithinWindow(() =>
+        this.manifestFeedReader().downloadPayload({ index: head.feedIndex }),
+      );
 
       return { index: Number(head.feedIndex.toBigInt()), manifest: update.payload.toUtf8() };
     } catch (error) {
@@ -1211,6 +1220,109 @@ export class StreamUploader {
         { cause: error },
       );
     }
+  }
+
+  /**
+   * The real head of this stream's manifest feed, given the index bee's feed lookup answered.
+   *
+   * ⛔⛔ **bee's answer can be lower than the head, and continuing from it writes over the newer
+   * slots.** bee's sequence finder (`pkg/feeds/sequence/sequence.go`, `asyncFinder.at`) gives every
+   * lookahead probe after index 0 a hard one second and counts a probe that ran out of it as "not
+   * found". On a slow node it can therefore answer any index from 0 up, and a session that continued
+   * from there would write over the previous broadcast's later playlists and its recording. A read at
+   * an explicit index is a direct chunk read in bee-js that never asks the finder, so the slots above
+   * the answer are read that way.
+   *
+   * The common case is one read: the slot above the answer is absent and the answer stands. Past that
+   * the distance doubles until a slot is absent and then halves back to the last slot present, so a
+   * gap the size of the whole feed costs about twice the log of its length rather than one read per
+   * slot. That relies on the feed having no holes, which bee's own finder relies on too, and which a
+   * session here keeps because a failed write is retried at the same index.
+   *
+   * ⛔ **Only a 404 counts as absent.** Any other failure throws, which refuses the publish and asks
+   * again at the next segment, because taking an unread slot for an empty one is the overwrite this
+   * exists to prevent. So does running past {@link FEED_HEAD_SEARCH_MAX_DISTANCE}. A slot that exists
+   * but that no peer will serve also answers 404, and nothing a reader can ask tells the two apart.
+   */
+  private async findTrueFeedHead(answered: {
+    index: number;
+    manifest: string;
+  }): Promise<{ index: number; manifest: string }> {
+    let present = answered;
+    let absentAt: number;
+    for (let distance = 1; ; distance *= 2) {
+      if (distance > FEED_HEAD_SEARCH_MAX_DISTANCE) {
+        throw new Error(
+          `Cannot tell ${FEED_HEAD_ON_START.asked} for stream ${this.streamId}: every slot read up to ` +
+            `${FEED_HEAD_SEARCH_MAX_DISTANCE} above the index bee answered (${answered.index}) holds a playlist. ` +
+            FEED_HEAD_ON_START.consequence,
+        );
+      }
+      const index = answered.index + distance;
+      const manifest = await this.readFeedSlot(index);
+      if (manifest === null) {
+        absentAt = index;
+        break;
+      }
+      present = { index, manifest };
+    }
+    while (absentAt - present.index > 1) {
+      const index: number = present.index + Math.floor((absentAt - present.index) / 2);
+      const manifest = await this.readFeedSlot(index);
+      if (manifest === null) {
+        absentAt = index;
+      } else {
+        present = { index, manifest };
+      }
+    }
+
+    if (present.index !== answered.index) {
+      this.logger.warn(
+        `[StreamUploader] bee answered SOC index ${answered.index} as the head of ${this.streamId}'s feed, ` +
+          `but the feed holds playlists up to ${present.index}. Continuing from ${present.index}, so the ` +
+          'slots above bee’s answer are not written over',
+      );
+    }
+    return present;
+  }
+
+  /**
+   * The playlist at one slot of this stream's manifest feed, or null when bee answers 404 for it.
+   * Anything else throws, per {@link findTrueFeedHead}.
+   */
+  private async readFeedSlot(index: number): Promise<string | null> {
+    try {
+      return await this.readWithinWindow(async () => {
+        try {
+          const update = await this.manifestFeedReader().downloadPayload({
+            index: FeedIndex.fromBigInt(BigInt(index)),
+          });
+          return update.payload.toUtf8();
+        } catch (error) {
+          if (isFeedHeadNotFound(error)) {
+            return null;
+          }
+          throw error;
+        }
+      });
+    } catch (error) {
+      throw new Error(
+        `Cannot tell ${FEED_HEAD_ON_START.asked} for stream ${this.streamId}, because SOC index ${index} ` +
+          `of its manifest feed did not read within ${FEED_HEAD_READ_WINDOW_MS}ms: ${getErrorMessage(error)}. ` +
+          FEED_HEAD_ON_START.consequence,
+        { cause: error },
+      );
+    }
+  }
+
+  /**
+   * ⛔⛔ A reader per attempt, see DeadlineBee in BeePublisherPool.ts, each with a lookup's own
+   * deadline, see FEED_LOOKUP_TIMEOUT_MS. With one reader made before the window and the pool's 4 s,
+   * a restarted broadcast's rungs never published on 2026-10-14. See `FeedRequestDeadline.test.ts`.
+   */
+  private manifestFeedReader() {
+    const owner = this.streamSigner.publicKey().address();
+    return this.bee.feed.makeReader(Topic.fromString(this.streamRawTopic), owner, { timeout: FEED_LOOKUP_TIMEOUT_MS });
   }
 
   private readWithinWindow<T>(read: () => Promise<T>): Promise<T> {

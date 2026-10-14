@@ -85,14 +85,16 @@ const PREVIOUS_ON_THIS_FEED = [
 const headReadRefused = () => Object.assign(new Error('bee refused the read'), { status: 400 });
 
 /**
- * How many `downloadPayload` calls one head read makes, which is two and not one.
+ * How many `downloadPayload` calls one head read makes on a feed whose head read told the truth,
+ * which is three and not one.
  *
  * `readManifestFeedHead` asks without an index for the head's position and then again **at** that
  * index for the payload, because bee-js only rejoins a payload larger than one chunk on the indexed
- * path. The fake answers both out of the same fixture, so a counter on it counts downloads rather
- * than head reads, and the ratio has to be stated rather than assumed.
+ * path. Then `findTrueFeedHead` reads the slot above, because bee's answer can be below the real
+ * head, and that slot is absent. The fake answers all three out of the same fixture, so a counter on
+ * it counts downloads rather than head reads, and the ratio has to be stated rather than assumed.
  */
-const DOWNLOADS_PER_HEAD_READ = 2;
+const DOWNLOADS_PER_HEAD_READ = 3;
 
 /** One SOC write the uploader made to its manifest feed. */
 interface ManifestWrite {

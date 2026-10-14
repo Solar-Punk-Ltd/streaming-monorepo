@@ -458,11 +458,13 @@ describe('a broadcast the stall reaper ended, and the one that follows it on the
     );
     // The first broadcast′s own read is the other one, and it is what a declared topic nothing has
     // published on answers: 404, which `FEED_HEAD_ON_START` treats as the answer rather than a
-    // failure. It is one entry rather than two because the payload is never asked for.
+    // failure. It is one entry rather than two because the payload is never asked for. The second
+    // broadcast's read is three entries: the head's index, its payload, and the slot above it, which
+    // `StreamUploader.findTrueFeedHead` reads because bee's answer can be below the real head.
     assert.equal(harness.headsRead[0], null, 'the first broadcast opened on an empty feed');
     assert.equal(
       harness.headsRead.length,
-      3,
+      4,
       'one 404 for the first broadcast and one answered read for the second, which latches it: a ' +
         'session that asked the feed again would be paying a retrieval per segment for an answer it holds',
     );
