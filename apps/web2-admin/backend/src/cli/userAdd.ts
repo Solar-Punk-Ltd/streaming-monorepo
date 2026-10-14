@@ -14,7 +14,7 @@ import { config } from '../utils/config.js';
  * exists yet. There is no sign-up route and no seeded account.
  *
  *   node dist/cli.js user:add <username> [--admin]
- *   op read "op://<vault>/<item>/password" | \
+ *   <command that prints the password> | \
  *     node dist/cli.js user:add <username> --password-stdin --admin
  *
  * Only the hash reaches Postgres. There is deliberately no way to pass the

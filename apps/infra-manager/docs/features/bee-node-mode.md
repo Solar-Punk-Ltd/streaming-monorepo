@@ -75,7 +75,8 @@ manager starts. `GET /config` reports whether it is configured and its host, the
 host and nothing after it, because an endpoint that carries a key in its
 userinfo or its path is a secret. The URL itself reaches a node only through the
 deployment's env file, mode 600, and is never logged. A keyed endpoint belongs
-in the host's env as a 1Password reference.
+in the host's environment, set there by whoever runs the host, never in a file
+in this repository.
 
 When a deployment starts, the manager resolves the source: `manager` writes its
 configured URL as `RPC_ENDPOINT`, `custom` writes the deployment's own URL, and

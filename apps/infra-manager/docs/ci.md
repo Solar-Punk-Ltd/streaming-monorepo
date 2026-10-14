@@ -675,7 +675,7 @@ bash manager/test/docker/shared-image-race.sh
 ```
 
 The deployment integration suite needs a running manager, a user and the
-environment `op run --env-file` fills. See
+sign-in pair in its environment. See
 [manager/test/integration/README.md](../manager/test/integration/README.md).
 
 ### A failure only the runner sees
