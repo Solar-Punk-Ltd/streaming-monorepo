@@ -7,7 +7,7 @@
  * write.
  *
  * Where the suite points and whether it may run at all is decided in
- * target.ts, from the environment `op run --env-file` fills. See README.md.
+ * target.ts, from the environment the suite runs in. See README.md.
  */
 import assert from 'node:assert/strict';
 

@@ -15,7 +15,7 @@ import { config } from '../utils/config.js';
  * none exists yet.
  *
  *   docker compose exec -it api node dist/cli.js user:add <username>
- *   op read "op://<vault>/<item>/password" | \
+ *   <command that prints the password> | \
  *     docker compose exec -T api node dist/cli.js user:add <username> --password-stdin
  *
  * Only the hash reaches Postgres. There is deliberately no way to pass the
