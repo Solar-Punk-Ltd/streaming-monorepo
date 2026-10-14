@@ -39,8 +39,10 @@ export type { LadderIdentity } from './LadderRegistry.js';
  * are treated as gone. A 404 is not retried, so each counted answer ends its read at once,
  * and the next read comes only with the next write: the three are three separate writes, not one instant.
  *
- * ⛔ Only a 404 counts, because only a serving node answers it. A read that ran out of time, was
- * abandoned or never reached the node says nothing about the state, and counting those let a node
+ * ⛔ Only a 404 counts, because only a node that tried the network answers it. Even a 404 is not proof:
+ * bee gives it after its retrieval runs out of peers, which a chunk that will not retrieve right now
+ * also produces, and that is why three are needed. A read that ran out of time, was abandoned or
+ * never reached the node says nothing about the state, and counting those let a node
  * slower than the read's deadline erase every other stream from the list.
  */
 export const TREAT_STATE_AS_LOST_AFTER = 3;
