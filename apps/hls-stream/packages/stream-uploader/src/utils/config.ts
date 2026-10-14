@@ -32,12 +32,12 @@ const DEFAULT_CHEQUEBOOK_MIN_BZZ = 0.5;
 const MAX_CHEQUEBOOK_MIN_BZZ = 1000;
 
 /**
- * How long the uploader waits between reads of a chequebook it warned about at boot.
+ * How long the uploader waits between reads of every node's chequebook, which it makes for the life of
+ * the process.
  *
- * A minute. The warning it clears is a 503 on `/health`, and the container's healthcheck asks every
- * 30 seconds, so a funded chequebook reaches the healthcheck within about a minute and a half of the
- * deposit settling. One read is one call per node, and nothing reads at all once the warning is gone.
- * See `libs/ChequebookRecheck.ts`.
+ * A minute. What a read changes is a 503 on `/health`, and the container's healthcheck asks every 30
+ * seconds, so a funded or a drained chequebook reaches the healthcheck within about a minute and a half.
+ * One read is one call per distinct node. See `libs/ChequebookRecheck.ts`.
  */
 const DEFAULT_CHEQUEBOOK_RECHECK_MS = 60_000;
 
@@ -256,7 +256,7 @@ export const config = {
     min: 0,
     max: MAX_CHEQUEBOOK_MIN_BZZ,
   }),
-  /** How long after one read of a chequebook the boot warned about the next one starts. */
+  /** How long after one read of every node's chequebook the next one starts. */
   chequebookRecheckMs: optionalInt('CHEQUEBOOK_RECHECK_MS', DEFAULT_CHEQUEBOOK_RECHECK_MS, {
     min: MIN_CHEQUEBOOK_RECHECK_MS,
     max: MAX_CHEQUEBOOK_RECHECK_MS,

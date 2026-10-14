@@ -35,6 +35,8 @@ export const UPLOADER_REASON_NODE_UNAVAILABLE = 'node_unavailable' as const;
 export const UPLOADER_REASON_START_GATE_WARNED = 'start_gate_warned' as const;
 /** A ladder source was accepted and none of its rungs published within the deadline. */
 export const UPLOADER_REASON_LADDER_NOT_STARTED = 'ladder_not_started' as const;
+/** A publisher node's chequebook fell under the floor after the boot. A report only: the broadcast goes on. */
+export const UPLOADER_REASON_CHEQUEBOOK_LOW = 'chequebook_low' as const;
 
 export const UPLOADER_HEALTH_REASONS = [
   UPLOADER_REASON_STALE_MANIFEST,
@@ -52,6 +54,7 @@ export const UPLOADER_HEALTH_REASONS = [
   UPLOADER_REASON_NODE_UNAVAILABLE,
   UPLOADER_REASON_START_GATE_WARNED,
   UPLOADER_REASON_LADDER_NOT_STARTED,
+  UPLOADER_REASON_CHEQUEBOOK_LOW,
 ] as const;
 
 export type UploaderHealthReason = (typeof UPLOADER_HEALTH_REASONS)[number];

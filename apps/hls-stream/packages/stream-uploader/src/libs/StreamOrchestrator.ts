@@ -13,6 +13,7 @@ import {
   BroadcastEpoch,
   HealthSignals,
   LadderMembership,
+  LowChequebook,
   MEDIA_TYPE_VIDEO,
   MediaType,
   PRESSURE_HIGH,
@@ -2768,6 +2769,7 @@ export class StreamOrchestrator {
       // must never under-report, and a payload that cannot place one is the lesser failure.
       postageRefusedPublishers: this.metrics.getPostageRefusals().length,
       startGateWarnings: [...this.metrics.getStartGateWarnings()],
+      lowChequebooks: [...this.metrics.getLowChequebooks()],
     };
   }
 
@@ -2786,6 +2788,11 @@ export class StreamOrchestrator {
   /** What `/health` reports as `startGateWarnings` right now, without building the whole report. */
   public getStartGateWarnings(): readonly StartGateWarning[] {
     return this.metrics.getStartGateWarnings();
+  }
+
+  /** The nodes `ChequebookRecheck`'s latest read found under the floor, which `/health` names as `chequebook_low`. */
+  public recordLowChequebooks(nodes: readonly LowChequebook[]): void {
+    this.metrics.setLowChequebooks(nodes);
   }
 
   public async cleanup(): Promise<void> {

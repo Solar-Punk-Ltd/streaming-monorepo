@@ -94,8 +94,8 @@ function buildAdminApi(): AdminApiClient | undefined {
 /**
  * The chequebook gate over the given nodes, one definition for the boot's pass and for the reads
  * `ChequebookRecheck` makes after it, so the two cannot drift apart. The reads after the boot hand it a
- * logger that files a funded node at debug, because while one rung waits for its deposit a line per
- * funded rung every minute would bury the line that matters.
+ * logger that files a funded node at debug, because a line per funded rung every minute for the life of
+ * the process would bury the line that matters.
  */
 function chequebookGate(nodes: readonly ChequebookNode[], fundingLogger: FundingLogger): StartGate {
   return {
@@ -291,8 +291,9 @@ async function start() {
     nodeWait = null;
 
     // Only once the boot is over, because until then the node wait reads the gates again on every
-    // attempt of its own. A chequebook warning that pass left is read again until the chequebook is
-    // funded, so the warning leaves /health without a restart. See `libs/ChequebookRecheck.ts`.
+    // attempt of its own. From here every node's chequebook is read for the life of the process
+    // through the gate pool, so a warning that pass left leaves /health once the node is funded and a
+    // node that drains mid-broadcast is reported as chequebook_low. See `libs/ChequebookRecheck.ts`.
     new ChequebookRecheck({
       gate: chequebookGate(gateNodes, { info: (message) => logger.debug(message) }),
       intervalMs: config.chequebookRecheckMs,
