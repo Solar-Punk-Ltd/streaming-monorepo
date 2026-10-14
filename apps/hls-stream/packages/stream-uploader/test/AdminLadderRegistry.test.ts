@@ -826,9 +826,6 @@ describe('rung liveness across the broadcasts of one declared stream', () => {
     // that one rung. A recording's master does not depend on liveness, so nothing is rewritten.
     const afterTheRecording = harness.masters.length;
     harness.registry.recordRungUploadFailed(DECLARED_TOPIC, '1080p');
-    await waitAndConfirmNothingHappened(
-      () => harness.masters.length === afterTheRecording,
-      NOTHING_HAPPENS_WINDOW_MS,
-    );
+    await waitAndConfirmNothingHappened(() => harness.masters.length === afterTheRecording, NOTHING_HAPPENS_WINDOW_MS);
   });
 });

@@ -344,6 +344,12 @@ export class AdminLadderRegistry implements LadderRegistry {
       // one from. The first announce publishes the right shape anyway.
       return;
     }
+    if (this.isRecording(group)) {
+      // A recording's master names every rung with a recording and no liveness, so no delivery outcome
+      // can change it. A straggler reaching the tracker forgotten at the end would otherwise rewrite
+      // the same master, a paid write, until the next broadcast announces.
+      return;
+    }
 
     const shape = ladderShape(liveRungs);
     if (!this.rewrites.beginRewrite(group, shape)) {
