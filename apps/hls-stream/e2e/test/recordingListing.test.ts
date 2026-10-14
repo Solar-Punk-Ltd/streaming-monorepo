@@ -66,6 +66,19 @@ describe('recordingRefusal', () => {
     assert.match(refusal ?? '', /360p holds 10 segment\(s\) where at least 1200 were published/);
   });
 
+  it('leaves a rung the scenario silenced on purpose out of the equal-length rule, and nothing else', () => {
+    const silenced = { ...expectation, sessions: new Map([['1080p', 2]]), shortOnPurpose: ['1080p'] };
+    assert.equal(recordingRefusal(LADDER, [finished('360p', [20]), finished('1080p', [5, 5])], silenced), null);
+    const three = ['360p', '720p', '1080p'];
+    assert.match(
+      recordingRefusal(three, [finished('360p', [20]), finished('720p', [5]), finished('1080p', [5, 5])], {
+        ...silenced,
+        rungs: three,
+      }) ?? '',
+      /720p 10\.0s fall more than one/,
+    );
+  });
+
   it('refuses an empty expectation', () => {
     assert.notEqual(recordingRefusal([], [], { ...expectation, rungs: [] }), null);
   });

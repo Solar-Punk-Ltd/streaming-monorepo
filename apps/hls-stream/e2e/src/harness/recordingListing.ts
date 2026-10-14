@@ -74,6 +74,11 @@ export interface RecordingExpectation {
   fragmentSeconds: number;
   /** Media entries the shortest rung must reach, or null to leave the count unjudged. */
   minSegments?: number | null;
+  /**
+   * Rungs left out of the equal-length rule, because the scenario took media from them on purpose: a rung whose
+   * transcode was stopped for minutes is right to be minutes short of its siblings.
+   */
+  shortOnPurpose?: readonly string[];
 }
 
 function sessionsFor(expectation: RecordingExpectation, rung: string): number {
@@ -128,7 +133,9 @@ export function recordingRefusal(
     }
   }
 
-  const finished = rungs.filter((rung) => rung.recording && expectation.rungs.includes(rung.rung));
+  const finished = rungs.filter(
+    (rung) => rung.recording && expectation.rungs.includes(rung.rung) && !(expectation.shortOnPurpose ?? []).includes(rung.rung),
+  );
   const longest = Math.max(0, ...finished.map((rung) => rung.durationSeconds));
   const short = finished.filter((rung) => longest - rung.durationSeconds > expectation.fragmentSeconds);
   if (short.length > 0) {

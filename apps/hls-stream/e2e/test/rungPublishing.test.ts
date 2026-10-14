@@ -9,6 +9,7 @@ import { rungPlaylistParse } from '../src/harness/manifestContractLive.js';
 import {
   crashRecoveredStreams,
   everyRungPublishedAtLeast,
+  feedIndexFromHeaders,
   headAdvanced,
   headAdvanceRefusal,
   manifestPublishesByRung,
@@ -297,5 +298,15 @@ describe('socIndexRefusal', () => {
 
   it('refuses a rung that published nothing before, whose feed position is unknown', () => {
     assert.match(socIndexRefusal(announces().join('\n'), '', ['360p']) ?? '', /published no live playlist before/);
+  });
+});
+
+describe('feedIndexFromHeaders', () => {
+  it('reads the index bee resolved a feed at, in hex', () => {
+    assert.equal(feedIndexFromHeaders('HTTP/1.1 200 OK\r\nSwarm-Feed-Index: 000000000000002a\r\n\r\n'), 42);
+  });
+
+  it('answers null for a feed with nothing on it', () => {
+    assert.equal(feedIndexFromHeaders('HTTP/1.1 404 Not Found\r\n\r\n'), null);
   });
 });

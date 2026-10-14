@@ -30,6 +30,7 @@
  * only wiring.
  */
 
+import { feedTopicHexOf } from '../browser/rungManifest.js';
 import type { E2EConfig } from '../config.js';
 
 import type { Host } from './host.js';
@@ -299,6 +300,25 @@ export function describeHeadAdvance(first: readonly RungPlaylistParse[], second:
       return `  ${headLabel(parse)}: ${parse.lastSequence ?? '?'} -> ${after?.lastSequence ?? '?'}`;
     })
     .join('\n');
+}
+
+/** The header bee answers a feed read with, naming the index it resolved, as 16 hex digits. */
+const FEED_INDEX_HEADER = /^swarm-feed-index:\s*([0-9a-f]+)\s*$/im;
+
+/** The feed index out of a header dump, or null where the read answered none, which is a feed with nothing on it. */
+export function feedIndexFromHeaders(headers: string): number | null {
+  const hex = FEED_INDEX_HEADER.exec(headers)?.[1];
+  return hex === undefined ? null : Number.parseInt(hex, 16);
+}
+
+/**
+ * The SOC index one feed's head stands at, as the gateway resolves it, which is the index a session reopening that
+ * topic must say it resumes at.
+ */
+export async function readFeedIndex(host: Host, cfg: E2EConfig, owner: string, topic: string): Promise<number | null> {
+  return feedIndexFromHeaders(
+    await host.localHeaders(cfg.ports.beeGatewayApi, `/feeds/${owner}/${feedTopicHexOf(topic)}`, 15),
+  );
 }
 
 /** Every listed feed's playlist off the gateway, one at a time over the one ssh connection. */
