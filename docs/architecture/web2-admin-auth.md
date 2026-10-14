@@ -225,8 +225,8 @@ A fresh database has no users. The API boots, logs a warning, answers
 pnpm user:add alice                 # prompts twice, echoes nothing
 # or, in the image:
 docker compose exec -it api node dist/cli.js user:add alice
-# or from a vault, with the password never in a file or an argv:
-op read "op://<vault>/<item>/password" \
+# or piped from a password manager's command line, never in a file or an argv:
+<command that prints the password> \
   | docker compose exec -T api node dist/cli.js user:add alice --password-stdin
 ```
 

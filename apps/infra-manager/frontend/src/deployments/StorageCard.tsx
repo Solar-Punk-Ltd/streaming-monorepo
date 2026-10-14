@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Alert, Button, CircularProgress, Divider, Stack } from '@mui/material';
+import { Alert, Button, CircularProgress, Divider, Link, Stack, Typography } from '@mui/material';
 import RefreshIcon from '@mui/icons-material/Refresh';
 
 import {
@@ -13,10 +13,13 @@ import {
   type StampHealth,
 } from '@streaming-infra-manager/common';
 
+import { routes } from '../app/router';
 import { useDeployments } from '../app/useDeploymentsStore';
 import { pinnedBatchNote } from '../catalogueNode/catalogueNodeView';
+import { ConfirmDialog, type ConfirmRequest } from '../components/ConfirmDialog';
 import { SectionCard } from '../components/SectionCard';
 import { formatTtl, shortHex } from '../format';
+import { ApiError } from '../http';
 import type { Profile } from '../types';
 import { BuyStampForm } from '../uploaders/BuyStampForm';
 import { MoveBzzDialog, type MoveDirection } from '../uploaders/MoveBzzDialog';
@@ -28,7 +31,12 @@ import { type BeeStamp, buyStamp, diluteStamp, setStamp, topUpStamp, type BuySta
 import { TopUpStampDialog } from '../uploaders/TopUpStampDialog';
 import { topUpSentNotice } from '../uploaders/topUpView';
 import type { BeeUtils } from '../uploaders/useBeeUtils';
+import { type BatchUploader, applyNow, batchNotice, setBatchAndReread } from './batchUploaders';
+import { fetchIngestHealth } from './ingestHealthApi';
 import { newBatchReach } from './newBatchReach';
+import { applyDeploymentSettings } from './settings/deploymentSettingsApi';
+import { appliedText, applyRefusalText } from './settings/settingsText';
+import type { BatchUploadersLoad } from './useBatchUploaders';
 
 /** A change to a batch the node holds, while its dialog is open. */
 interface StampChange {
@@ -53,6 +61,7 @@ export function StorageCard({
   defaultDepth,
   rung,
   catalogueBatchId = null,
+  uploaders,
   onChanged,
 }: {
   profile: Profile;
@@ -65,6 +74,8 @@ export function StorageCard({
   rung?: string | null;
   /** The batch pinned for the brand's catalogue, when this node is the catalogue node. */
   catalogueBatchId?: string | null;
+  /** The stream uploaders that pay with this node's batches: the deployment's own, or the stages a rung feeds. */
+  uploaders: BatchUploadersLoad;
   onChanged: () => void;
 }) {
   const { chequebookFloorBzz } = useDeployments();
@@ -74,6 +85,7 @@ export function StorageCard({
   const [change, setChange] = useState<StampChange | null>(null);
   /** What bee answered the last change with, until the operator closes it. */
   const [sentNotice, setSentNotice] = useState<string | null>(null);
+  const [confirm, setConfirm] = useState<ConfirmRequest | null>(null);
 
   // Every action goes through here and lands its failure in actionError, so a caller need not await it.
   const run = async (action: () => Promise<void>) => {
@@ -96,10 +108,27 @@ export function StorageCard({
     });
 
   const handleUse = (batchID: string) =>
-    run(async () => {
-      await setStamp(profile.name, batchID);
-      onChanged();
-    });
+    run(() =>
+      setBatchAndReread(batchID, {
+        setStamp: (id) => setStamp(profile.name, id),
+        reloadDeployments: onChanged,
+        rereadUploaders: uploaders.reread,
+      }),
+    );
+
+  const handleApplyNow = (uploader: BatchUploader) =>
+    run(() =>
+      applyNow(uploader, {
+        readIngest: fetchIngestHealth,
+        confirm: (request) => setConfirm({ ...request, onConfirm: () => void run(request.onConfirm) }),
+        apply: applyRefusedInWords,
+        done: async (applied) => {
+          const text = appliedText(applied);
+          setSentNotice(uploader.own ? text : `${uploader.name}: ${text}`);
+          await uploaders.reread();
+        },
+      }),
+    );
 
   const openChange = (kind: StampChange['kind'], stamp: BeeStamp) => {
     setActionError(null);
@@ -123,6 +152,8 @@ export function StorageCard({
     });
 
   const reach = newBatchReach(profile, rung);
+  const notice = batchNotice(profile.stamp_id, uploaders.uploaders);
+  const behind = uploaders.uploaders.filter((uploader) => uploader.behind);
 
   const nearlyFullAt =
     stampHealth.state === 'active' &&
@@ -160,6 +191,43 @@ export function StorageCard({
         {sentNotice && (
           <Alert severity="info" onClose={() => setSentNotice(null)}>
             {sentNotice}
+          </Alert>
+        )}
+        {notice && (
+          <Alert severity="warning" data-batch-notice sx={{ '& .MuiAlert-message': { minWidth: 0 } }}>
+            <Typography variant="body2" sx={{ overflowWrap: 'anywhere' }}>
+              {notice.lead}
+            </Typography>
+            <Stack spacing={1} sx={{ mt: 1 }}>
+              {notice.rows.map((row) => (
+                <Stack
+                  key={row.name}
+                  direction="row"
+                  spacing={1}
+                  useFlexGap
+                  sx={{ alignItems: 'center', flexWrap: 'wrap' }}
+                >
+                  {!row.own && (
+                    <Link href={routes.deployment(row.name)} variant="body2" sx={{ fontFamily: 'monospace' }}>
+                      {row.name}
+                    </Link>
+                  )}
+                  <Typography variant="body2">{row.what}</Typography>
+                  <Button
+                    variant="contained"
+                    color="warning"
+                    size="small"
+                    disabled={busy}
+                    onClick={() => {
+                      const uploader = behind.find((candidate) => candidate.name === row.name);
+                      if (uploader) void handleApplyNow(uploader);
+                    }}
+                  >
+                    Apply now
+                  </Button>
+                </Stack>
+              ))}
+            </Stack>
           </Alert>
         )}
         {stampHealth.dead && (
@@ -218,6 +286,7 @@ export function StorageCard({
           stamps={bee.stamps}
           loading={bee.loading}
           currentStampId={profile.stamp_id}
+          uploaders={uploaders.uploaders}
           pinnedBatchId={catalogueBatchId}
           busy={busy}
           onUse={(batchID) => void handleUse(batchID)}
@@ -246,6 +315,8 @@ export function StorageCard({
         onClose={() => setMoving(null)}
       />
 
+      <ConfirmDialog request={confirm} onClose={() => setConfirm(null)} />
+
       {change?.kind === 'top-up' && (
         <TopUpStampDialog
           key={change.stamp.batchID}
@@ -270,4 +341,14 @@ export function StorageCard({
       )}
     </SectionCard>
   );
+}
+
+/** The settings list's Apply, with a refusal put the way the Stack settings card puts it. */
+async function applyRefusedInWords(name: string, instanceId: string) {
+  try {
+    return await applyDeploymentSettings(name, instanceId);
+  } catch (caught) {
+    if (caught instanceof ApiError) throw new Error(applyRefusalText(caught.code, caught.message), { cause: caught });
+    throw caught;
+  }
 }
