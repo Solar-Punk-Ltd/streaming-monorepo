@@ -1165,12 +1165,18 @@ export class StreamUploader {
    */
   private async readManifestFeedHead(question: FeedHeadQuestion): Promise<{ index: number; manifest: string } | null> {
     const owner = this.streamSigner.publicKey().address();
-    const feedReader = this.bee.feed.makeReader(Topic.fromString(this.streamRawTopic), owner);
+    const topic = Topic.fromString(this.streamRawTopic);
+    // ⛔⛔ A reader per attempt, each with the whole window as its deadline. bee-js counts a reader's
+    // deadline from when the reader is made, so one reader kept across the attempts left every attempt
+    // after the first already out of time, and the pool's 4 s deadline is shorter than this read: a
+    // rung node took 4.0 s at the median and up to 7.4 s on 2026-10-14. Together they kept a restarted
+    // broadcast's rungs from ever publishing. See `FeedRequestDeadline.test.ts`.
+    const feedReader = () => this.bee.feed.makeReader(topic, owner, { timeout: FEED_HEAD_READ_WINDOW_MS });
 
     try {
       const head = await this.readWithinWindow(async () => {
         try {
-          return await feedReader.downloadPayload();
+          return await feedReader().downloadPayload();
         } catch (error) {
           if (!isFeedHeadNotFound(error)) {
             throw error;
@@ -1195,7 +1201,7 @@ export class StreamUploader {
       // No absent-feed branch here, for either caller. The index above says something is at this
       // index, so a 404 now is a chunk that will not retrieve rather than a feed with nothing in it,
       // and answering "nothing was published" to that is the mistake this method exists to refuse.
-      const update = await this.readWithinWindow(() => feedReader.downloadPayload({ index: head.feedIndex }));
+      const update = await this.readWithinWindow(() => feedReader().downloadPayload({ index: head.feedIndex }));
 
       return { index: Number(head.feedIndex.toBigInt()), manifest: update.payload.toUtf8() };
     } catch (error) {
@@ -1782,7 +1788,7 @@ export class StreamUploader {
 
   private async uploadDataAsSoc(index: number, data: Uint8Array) {
     try {
-      const { uploadPayload } = this.bee.feed.makeWriter(Topic.fromString(this.streamRawTopic), this.streamSigner);
+      const topic = Topic.fromString(this.streamRawTopic);
       // NOT deferred, unlike the segment write below, and the asymmetry is deliberate.
       //
       // Deferred means bee acks the SOC from its own local store and push-syncs it in the
@@ -1797,8 +1803,15 @@ export class StreamUploader {
       // about 300ms and logs no retries at all.
       //
       // Safe to block: retryUntilDeadlineAsync bounds retries, not one slow call.
+      //
+      // ⛔ A writer per attempt, because bee-js counts a writer's deadline from when it is made: one
+      // writer kept across the attempts would hand every retry after a slow first one a deadline that
+      // has already run out. See `beePublisherPool.test.ts`.
       return await retryUntilDeadlineAsync(
-        () => uploadPayload(this.stamp, data, { index, deferred: false }),
+        () =>
+          this.bee.feed
+            .makeWriter(topic, this.streamSigner)
+            .uploadPayload(this.stamp, data, { index, deferred: false }),
         MANIFEST_UPLOAD_RETRY_WINDOW_MS,
         UPLOAD_RETRY_BASE_MS,
         UPLOAD_RETRY_CAP_MS,

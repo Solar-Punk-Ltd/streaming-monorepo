@@ -202,6 +202,15 @@ export interface PublisherRoute {
  * honour is a per-call `signal`, and every call it makes asks this method for its options, so the
  * deadline goes on here and reaches every group, `data`, `feed`, `stamp` and the rest.
  *
+ * ⛔⛔⛔ **A feed or SOC reader or writer asks once, when it is made, not per request.** `makeReader`
+ * and `makeWriter` take their options at construction and every request through them reuses those, so
+ * the deadline counts from when the reader or writer was made. One kept across the attempts of a
+ * retry window gives every attempt after its deadline a signal already spent, and that attempt fails
+ * the moment it starts. Make one per attempt, and pass a `timeout` of its own for a read that
+ * genuinely takes longer than this pool's: on 2026-10-14 a restarted broadcast published one rung of
+ * four because the uploader's feed head read did neither. `beePublisherPool.test.ts` pins both
+ * against a real socket.
+ *
  * ⚠️ **The deadline is now total, where axios's was idle.** axios put `timeout` on the socket, so a node
  * still sending bytes never tripped it: a 500ms timeout let a 1.8s answer trickle in. `AbortSignal`
  * counts from the start of the request whatever arrives. The two differ only by the time the bytes

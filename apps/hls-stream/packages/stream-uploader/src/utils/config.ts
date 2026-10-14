@@ -124,6 +124,12 @@ const MAX_HLS_FRAGMENT_SECONDS = 3600;
  * they were the calls this derivation was never about, and the probe reads through the same pool so
  * that a node the gates would wait twenty seconds for is not failed in four. All three run on
  * START_GATE_TIMEOUT_MS below, since 2026-09-17.
+ *
+ * ⛔ **Nor does it bound the feed head read a restarted stream makes before its first publish.** A
+ * rung node's feed lookup waits out its own probe of the slot after the head, so it took 4.0 s at the
+ * median and 5.1 s at most over 119 reads on 2026-10-14, longer than this deadline nearly every time.
+ * `StreamUploader.readManifestFeedHead` therefore carries `FEED_HEAD_READ_WINDOW_MS` as its own
+ * deadline, on a reader made per attempt.
  */
 const DEFAULT_BEE_REQUEST_TIMEOUT_MS = 4000;
 

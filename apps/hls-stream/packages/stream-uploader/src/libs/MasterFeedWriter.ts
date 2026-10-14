@@ -66,9 +66,13 @@ export class MasterFeedWriter {
       const playlist = buildMasterPlaylist(this.owner, renditions);
       const publisher = this.publishers.coordinator();
 
-      const writer = publisher.bee.feed.makeWriter(topic, this.signer);
+      // A writer per attempt, because bee-js counts a writer's deadline from when it is made, so one
+      // kept across the attempts would retry with a deadline already spent. See `beePublisherPool.test.ts`.
       await retryUntilDeadlineAsync(
-        () => writer.uploadPayload(publisher.stamp, playlist, { index, deferred: true }),
+        () =>
+          publisher.bee.feed
+            .makeWriter(topic, this.signer)
+            .uploadPayload(publisher.stamp, playlist, { index, deferred: true }),
         MASTER_RETRY_WINDOW_MS,
       );
 

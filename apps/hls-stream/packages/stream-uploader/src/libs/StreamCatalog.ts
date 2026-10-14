@@ -585,12 +585,16 @@ export class StreamCatalog implements LadderRegistry {
 
     const nextIndex = this.feedIndex ? this.feedIndex.next() : FeedIndex.fromBigInt(BigInt(0));
     const publisher = this.publisher;
-    const feedWriter = publisher.bee.feed.makeWriter(this.feedTopic, this.signer);
 
     const payload = JSON.stringify(state);
     const result = await retryUntilDeadlineAsync(
       // deferred for the same reason as the manifest feed: a direct SOC write blocks on push-sync.
-      () => feedWriter.uploadPayload(publisher.stamp, payload, { index: nextIndex, deferred: true }),
+      // A writer per attempt, because bee-js counts a writer's deadline from when it is made, so one
+      // kept across the attempts would retry with a deadline already spent. See `beePublisherPool.test.ts`.
+      () =>
+        publisher.bee.feed
+          .makeWriter(this.feedTopic, this.signer)
+          .uploadPayload(publisher.stamp, payload, { index: nextIndex, deferred: true }),
       CATALOG_RETRY_WINDOW_MS,
     );
 
@@ -647,9 +651,9 @@ export class StreamCatalog implements LadderRegistry {
 
   private async fetchCurrentState(): Promise<StreamEntry[]> {
     const owner = this.signer.publicKey().address();
-    const feedReader = this.publisher.bee.feed.makeReader(this.feedTopic, owner);
+    // A reader per attempt, for the reason the write above makes a writer per attempt.
     const data = await retryUntilDeadlineAsync(
-      () => feedReader.downloadPayload({ index: this.feedIndex! }),
+      () => this.publisher.bee.feed.makeReader(this.feedTopic, owner).downloadPayload({ index: this.feedIndex! }),
       CATALOG_RETRY_WINDOW_MS,
     );
     return data.payload.toJSON() as StreamEntry[];
