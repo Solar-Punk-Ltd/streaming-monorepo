@@ -54,28 +54,35 @@ encoder's target, and is re-announced when it drifts more than 15% (at most ever
 catalog is one feed shared by every stream). What tells a player that two rungs share a timeline is
 the pair of numbers on every segment line, and they are the subject of the next section.
 
-The master also stops advertising a rung that has stopped being produced. A rung the ladder has
-delivered four segments past is dropped from the next master write, and it is put back the moment it
-delivers again, unless its uploads were being refused, which the next paragraph covers. So a viewer
-joining during an outage is not offered a quality with nothing behind it. Measured live on
-2026-09-01: dropped 6.9s after the rung went down, restored 11.3s after it came back. The rule is
-`LadderLiveness`, and how it drops a rung is deliberately a copy of the player's own rule in
-`packages/client/src/components/SwarmHlsPlayer/feedState.ts` rather than a second independent one.
-That file took eight attempts to get right and all three of its properties are load bearing: count
-delivered segments rather than read a clock, compare against a middle rung rather than the leader,
-and measure each rung's lag from where the ladder stood at its own last delivery. A master naming no
-renditions at all is never written, because that is an unplayable stream rather than a degraded one.
+The master also stops advertising a rung that has stopped being produced. A rung is delivering when
+its live playlist publishes land, not when its segments upload, because a segment no playlist names
+reaches no viewer: on 2026-10-14 rungs whose segments all landed published no playlist for a whole
+broadcast and stayed in the master throughout. A rung the ladder's middle rung has published four
+playlists past is dropped from the next master write, and it is put back the moment it publishes
+again, unless its deliveries were failing, which the next paragraph covers. So a viewer joining during
+an outage is not offered a quality with nothing behind it. Measured live on 2026-09-01, when the rule
+still counted segments: dropped 6.9s after the rung went down, restored 11.3s after it came back. The
+rule is `LadderLiveness`. It was ported from the rung-drop rule the player carried in
+`packages/client/src/components/SwarmHlsPlayer/feedState.ts` from 2026-09-01, which took eight
+attempts to get right. Since 2026-10-07 the player follows only the rung it plays and fails over to a
+sibling it watched make progress (`rungHealth.ts`), so this rule now stands on its own three
+properties, each load bearing: count deliveries rather than read a clock, compare against a middle
+rung rather than the leader, and measure each rung's lag from where the ladder stood at its own last
+delivery. One publish can name several segments when publishing falls behind, and every rung
+coalesces the same way, so the comparison stays fair. A master naming no renditions at all is never
+written, because that is an unplayable stream rather than a degraded one.
 
-The one place the two rules differ is taking a rung back, which the player never does. A rung that
-fell behind while its uploads were being refused, a full postage batch being the measured cause,
-comes back into the master only after landing eight segments in a row (`RUNG_READMIT_AFTER_SEGMENTS`).
-On 2026-09-23 each stray segment such a rung landed put it back, and the master was rewritten 793
-times in four hours, flipping between three rungs and four.
+Taking a rung back is this rule's own, and the player never does it. A failed delivery is a segment
+upload that was refused, which leaves a gap in the playlist, or a live playlist publish that did not
+land. A rung that fell behind while its deliveries were failing, a full postage batch being the
+measured cause, comes back into the master only after eight deliveries in a row
+(`RUNG_READMIT_AFTER_SEGMENTS`). On 2026-09-23 each stray segment such a rung landed put it back, and
+the master was rewritten 793 times in four hours, flipping between three rungs and four.
 
 ⛔ A rung dying is not a rendition announcement, so nothing on the announce path asks this question.
-The segment path asks it on every delivery and rewrites the master only when the set of live rungs
-actually changes. A version of this filter shipped correct, tested and deployed, and never ran once,
-because only `upsertRendition` wrote a master.
+The uploader asks it on every delivery and every failed one and rewrites the master only when the
+set of live rungs actually changes. A version of this filter shipped correct, tested and deployed,
+and never ran once, because only `upsertRendition` wrote a master.
 
 With `ADMIN_API_URL` set as well, everything above still happens, but the merge moves out of the
 catalog feed and into the admin and the master's topic is the declared one — see

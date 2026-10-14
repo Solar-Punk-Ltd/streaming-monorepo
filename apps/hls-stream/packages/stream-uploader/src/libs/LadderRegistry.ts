@@ -95,21 +95,23 @@ export interface LadderRegistry {
   recordingNotReported(group: string): void;
 
   /**
-   * One segment of this rung reached Swarm.
+   * One live playlist publish of this rung landed, so a viewer can be served the segments it names.
    *
-   * Called from the uploader's segment path beside the per-rung metric, because that is the one place
-   * a delivery is known to have actually landed rather than been attempted. It is also the only path
+   * Called from the uploader's live publish path, because a published playlist is what a viewer is
+   * served, and a segment no playlist names reaches nobody (2026-10-14). It is also the only path
    * that can notice a rung *stopping*, which no announce ever reports. See `LadderLiveness`.
    */
   recordRungDelivered(group: string, rung: string): void;
 
   /**
-   * One segment of this rung spent its whole retry window and never reached Swarm.
+   * One segment of this rung spent its whole retry window and never reached Swarm, or one live
+   * playlist publish of it did not land.
    *
-   * Called from the uploader's segment path at the moment the segment is dropped, which is the moment
-   * the per-rung drop counter moves, whatever bee answered. A full postage batch is the cause measured
-   * on 2026-09-23, a node that is down drops segments the same way, and a viewer offered the rung is
-   * failed the same way by both. See `LadderLiveness.recordUploadFailed`.
+   * Called from the uploader's segment path at the moment a segment is dropped, which is the moment
+   * the per-rung drop counter moves, whatever bee answered, and from its live publish path at the
+   * moment the manifest failure counter moves. A full postage batch is the cause measured on
+   * 2026-09-23, a node that is down fails both the same way, and a viewer offered the rung is failed
+   * the same way by all of them. See `LadderLiveness.recordUploadFailed`.
    */
   recordRungUploadFailed(group: string, rung: string): void;
 }

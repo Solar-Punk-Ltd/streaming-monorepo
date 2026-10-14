@@ -118,17 +118,12 @@ export class StreamCatalog implements LadderRegistry {
   /** The identity each ladder last announced under, so a rung dying can be written as that owner. */
   private readonly lastIdentity = new Map<string, LadderIdentity>();
 
-  /**
-   * One segment of this rung reached Swarm.
-   *
-   * Called from the uploader's segment path beside the per-rung metric, because that is the one
-   * place a delivery is known to have actually landed rather than been attempted.
-   */
+  /** One live playlist publish of this rung landed. See {@link LadderRegistry.recordRungDelivered}. */
   public recordRungDelivered(group: string, rung: string): void {
     this.republishIfLadderShapeChanged(group, this.liveness.recordDelivered(group, rung));
   }
 
-  /** One segment of this rung was dropped. See {@link LadderRegistry.recordRungUploadFailed}. */
+  /** One segment or live playlist publish of this rung failed. See {@link LadderRegistry.recordRungUploadFailed}. */
   public recordRungUploadFailed(group: string, rung: string): void {
     this.republishIfLadderShapeChanged(group, this.liveness.recordUploadFailed(group, rung));
   }
@@ -145,10 +140,10 @@ export class StreamCatalog implements LadderRegistry {
    * `activeStreams 3` throughout, the master was not rewritten once, so a viewer joining was offered
    * the dead rung for the whole outage even with the filter deployed and correct.
    *
-   * Fire and forget, deliberately: the caller is the segment path and a master write is a feed write
-   * behind a queue. A burst of deliveries across one transition still queues a single rewrite,
-   * because {@link MasterRewriteSchedule.beginRewrite} marks the shape being written as in flight
-   * until that write settles.
+   * Fire and forget, deliberately: the caller is the uploader's segment or live publish path, and a
+   * master write is a feed write behind a queue. A burst of deliveries across one transition still
+   * queues a single rewrite, because {@link MasterRewriteSchedule.beginRewrite} marks the shape being
+   * written as in flight until that write settles.
    *
    * ⛔ **A rewrite that did not reach the feed is not a shape anyone is being offered, and this used
    * to record it as one.** `advertised` was stamped before the write ran, so a master the writer

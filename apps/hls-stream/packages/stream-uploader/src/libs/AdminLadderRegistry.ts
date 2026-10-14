@@ -314,7 +314,7 @@ export class AdminLadderRegistry implements LadderRegistry {
     this.republishIfLadderShapeChanged(group, this.liveness.recordDelivered(group, rung));
   }
 
-  /** One segment of this rung was dropped. See {@link LadderRegistry.recordRungUploadFailed}. */
+  /** One segment or live playlist publish of this rung failed. See {@link LadderRegistry.recordRungUploadFailed}. */
   public recordRungUploadFailed(group: string, rung: string): void {
     this.republishIfLadderShapeChanged(group, this.liveness.recordUploadFailed(group, rung));
   }
@@ -322,9 +322,10 @@ export class AdminLadderRegistry implements LadderRegistry {
   /**
    * Rewrite the master when the set of producing rungs changes, and only then.
    *
-   * Fire and forget, deliberately: the caller is the segment path and a master write is a feed write
-   * behind a queue. The whole of the ⛔⛔⛔ account of why this exists at all — a rung dying is not an
-   * announce, so the announce path never asks — is on `StreamCatalog.republishIfLadderShapeChanged`.
+   * Fire and forget, deliberately: the caller is the uploader's segment or live publish path, and a
+   * master write is a feed write behind a queue. The whole of the ⛔⛔⛔ account of why this exists at
+   * all — a rung dying is not an announce, so the announce path never asks — is on
+   * `StreamCatalog.republishIfLadderShapeChanged`.
    */
   private republishIfLadderShapeChanged(group: string, liveRungs: readonly string[]): void {
     if (!this.merged.has(group)) {
