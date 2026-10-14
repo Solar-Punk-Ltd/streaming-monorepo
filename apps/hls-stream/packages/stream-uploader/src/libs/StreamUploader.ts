@@ -49,7 +49,7 @@ import {
   readinessFromPersisted,
   readinessToPersisted,
 } from './AnnounceReadiness.js';
-import { BeePublisher } from './BeePublisherPool.js';
+import { BeePublisher, FEED_LOOKUP_TIMEOUT_MS } from './BeePublisherPool.js';
 import { averageBandwidth, emptyBitrateSample, peakBandwidth, recordSegment } from './BitrateMeter.js';
 import { BroadcastDating } from './broadcastDating.js';
 import { ErrorHandler } from './ErrorHandler.js';
@@ -67,8 +67,9 @@ const UPLOAD_RETRY_BASE_MS = 350;
 const UPLOAD_RETRY_CAP_MS = 2_000;
 
 /**
- * How long a recovered finalize keeps asking its own manifest feed whether the recording is already
- * there, before it gives up and defers rather than guesses.
+ * How long a read of this stream's manifest feed head keeps asking before it gives up and defers
+ * rather than guesses. Two questions ask it: a recovered finalize, whether the recording is already
+ * there, and a session on a topic that outlived the one before it, where that feed has got to.
  *
  * The same window as a manifest publish, because it is the same node answering about the same feed,
  * and this read is the thing standing between a crash and a second paid recording.
@@ -1143,10 +1144,10 @@ export class StreamUploader {
    * The playlist currently at the head of this stream's manifest feed, or null when the feed holds
    * nothing at all.
    *
-   * ⛔ Throws rather than answering "there is nothing there" when the read fails, and it has no
-   * "nothing there" to answer: the caller reaches it only for a stream holding an index it wrote
-   * itself, so the feed is non-empty by construction and a read that did not complete says only
-   * that it did not complete. Taking one for an empty feed reinstates the double publish this exists
+   * ⛔ Throws rather than answering "there is nothing there" when the read fails. A 404 counts as an
+   * empty feed only when the question allows it (`emptyFeedIsAnAnswer`), and the recording question
+   * never does, because its feed holds an index this stream wrote itself, so a read that did not
+   * complete says only that it did not complete. Taking one for an empty feed reinstates the double publish this exists
    * to prevent, on exactly the node that was already having trouble. Failing instead defers the
    * finalize: the drain records it as failed and retires the uploader, which leaves the recovery
    * entry on disk, so the next boot recovers the stream and asks again. That costs a broadcast an
@@ -1166,12 +1167,10 @@ export class StreamUploader {
   private async readManifestFeedHead(question: FeedHeadQuestion): Promise<{ index: number; manifest: string } | null> {
     const owner = this.streamSigner.publicKey().address();
     const topic = Topic.fromString(this.streamRawTopic);
-    // ⛔⛔ A reader per attempt, each with the whole window as its deadline. bee-js counts a reader's
-    // deadline from when the reader is made, so one reader kept across the attempts left every attempt
-    // after the first already out of time, and the pool's 4 s deadline is shorter than this read: a
-    // rung node took 4.0 s at the median and up to 7.4 s on 2026-10-14. Together they kept a restarted
-    // broadcast's rungs from ever publishing. See `FeedRequestDeadline.test.ts`.
-    const feedReader = () => this.bee.feed.makeReader(topic, owner, { timeout: FEED_HEAD_READ_WINDOW_MS });
+    // ⛔⛔ A reader per attempt, see DeadlineBee in BeePublisherPool.ts, each with a lookup's own
+    // deadline, see FEED_LOOKUP_TIMEOUT_MS. With one reader made before the window and the pool's 4 s,
+    // a restarted broadcast's rungs never published on 2026-10-14. See `FeedRequestDeadline.test.ts`.
+    const feedReader = () => this.bee.feed.makeReader(topic, owner, { timeout: FEED_LOOKUP_TIMEOUT_MS });
 
     try {
       const head = await this.readWithinWindow(async () => {
@@ -1802,11 +1801,8 @@ export class StreamUploader {
       // backlog. That was a post-restart condition. In steady state the synchronous push costs
       // about 300ms and logs no retries at all.
       //
-      // Safe to block: retryUntilDeadlineAsync bounds retries, not one slow call.
-      //
-      // ⛔ A writer per attempt, because bee-js counts a writer's deadline from when it is made: one
-      // writer kept across the attempts would hand every retry after a slow first one a deadline that
-      // has already run out. See `beePublisherPool.test.ts`.
+      // Safe to block: retryUntilDeadlineAsync bounds the whole call, and the pool's request deadline
+      // bounds each request inside it. One writer per attempt, see DeadlineBee in BeePublisherPool.ts.
       return await retryUntilDeadlineAsync(
         () =>
           this.bee.feed

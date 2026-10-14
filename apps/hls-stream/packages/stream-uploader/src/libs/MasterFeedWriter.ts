@@ -4,7 +4,7 @@ import PQueue from 'p-queue';
 import { Rendition } from '../types.js';
 import { retryUntilDeadlineAsync } from '../utils/common.js';
 
-import { BeePublisherPool } from './BeePublisherPool.js';
+import { BeePublisherPool, FEED_LOOKUP_TIMEOUT_MS } from './BeePublisherPool.js';
 import { Logger } from './Logger.js';
 import { buildMasterPlaylist } from './MasterPlaylist.js';
 
@@ -66,8 +66,7 @@ export class MasterFeedWriter {
       const playlist = buildMasterPlaylist(this.owner, renditions);
       const publisher = this.publishers.coordinator();
 
-      // A writer per attempt, because bee-js counts a writer's deadline from when it is made, so one
-      // kept across the attempts would retry with a deadline already spent. See `beePublisherPool.test.ts`.
+      // One writer per attempt, see DeadlineBee in BeePublisherPool.ts.
       await retryUntilDeadlineAsync(
         () =>
           publisher.bee.feed
@@ -108,7 +107,10 @@ export class MasterFeedWriter {
 
   private async readIndex(topic: Topic): Promise<FeedIndex | null> {
     try {
-      const reader = this.publishers.coordinator().bee.feed.makeReader(topic, this.signer.publicKey().address());
+      // A lookup's own deadline, since the pool's 4 s is shorter than a feed lookup. See FEED_LOOKUP_TIMEOUT_MS.
+      const reader = this.publishers
+        .coordinator()
+        .bee.feed.makeReader(topic, this.signer.publicKey().address(), { timeout: FEED_LOOKUP_TIMEOUT_MS });
       const data = await reader.downloadPayload();
       return data.feedIndex;
     } catch (error) {

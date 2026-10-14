@@ -2,7 +2,7 @@ import { BeeResponseError, FeedIndex, PrivateKey } from '@ethersphere/bee-js';
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 
-import { BeePublisherPool } from '../src/libs/BeePublisherPool.js';
+import { BeePublisherPool, FEED_LOOKUP_TIMEOUT_MS } from '../src/libs/BeePublisherPool.js';
 import { MasterFeedWriter } from '../src/libs/MasterFeedWriter.js';
 import { Rendition } from '../src/types.js';
 
@@ -22,19 +22,24 @@ interface WriterOptions {
   headIndex?: bigint;
   /** The feed reader answers 404, the shape of a group whose master was never written. */
   headMissing?: boolean;
+  /** The timeout each reader was made with, in order, when a test wants to see it. */
+  readerTimeouts?: (number | undefined)[];
 }
 
 function makeWriter(writes: bigint[], opts: WriterOptions = {}): MasterFeedWriter {
   const bee = {
     feed: {
-      makeReader: () => ({
-        downloadPayload: async () => {
-          if (opts.headMissing) {
-            throw new BeeResponseError('GET', '/feeds', 'Not Found.', undefined, 404, 'Not Found');
-          }
-          return { feedIndex: FeedIndex.fromBigInt(opts.headIndex ?? 0n) };
-        },
-      }),
+      makeReader: (_topic: unknown, _owner: unknown, requestOptions?: { timeout?: number }) => {
+        opts.readerTimeouts?.push(requestOptions?.timeout);
+        return {
+          downloadPayload: async () => {
+            if (opts.headMissing) {
+              throw new BeeResponseError('GET', '/feeds', 'Not Found.', undefined, 404, 'Not Found');
+            }
+            return { feedIndex: FeedIndex.fromBigInt(opts.headIndex ?? 0n) };
+          },
+        };
+      },
       makeWriter: () => ({
         uploadPayload: async (_stamp: string, _payload: unknown, writeOpts: { index: FeedIndex }) => {
           writes.push(writeOpts.index.toBigInt());
@@ -49,6 +54,16 @@ function makeWriter(writes: bigint[], opts: WriterOptions = {}): MasterFeedWrite
 }
 
 describe('MasterFeedWriter next index', () => {
+  /** The first write's probe is a feed lookup, longer than the pool's 4 s. See FEED_LOOKUP_TIMEOUT_MS. */
+  it('probes the feed with a feed lookup’s deadline rather than the pool’s', async () => {
+    const readerTimeouts: (number | undefined)[] = [];
+    const writer = makeWriter([], { headIndex: 5n, readerTimeouts });
+
+    await writer.publish('group-1', [rung('360p')]);
+
+    assert.deepEqual(readerTimeouts, [FEED_LOOKUP_TIMEOUT_MS]);
+  });
+
   it('probes the feed on the first write, so a recovering ladder does not rewind its master', async () => {
     // The group id is the feed topic and it survives a restart. An uploader that recovers a ladder
     // mid-stream must continue past the master a viewer is already reading, not overwrite it at 0.

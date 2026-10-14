@@ -247,6 +247,17 @@ function boundedBee(url: string, requestTimeoutMs: number): Bee {
 }
 
 /**
+ * The deadline a feed lookup carries in place of `BEE_REQUEST_TIMEOUT_MS`, passed when its reader is
+ * made.
+ *
+ * A node is slow to answer "where has this feed got to": 4.0 s at the median and 5.1 s at most over
+ * 119 reads on the stage's rung nodes on 2026-10-14, clustering at 4.0 s and 5.0 s whatever the feed
+ * held, and 3.7 to 4.4 s for the stream list. The pool's 4 s, derived from upload retries, ended 117 of
+ * those 119. 15 s is three times the slowest read measured.
+ */
+export const FEED_LOOKUP_TIMEOUT_MS = 15_000;
+
+/**
  * Parses BEE_PUBLISHERS: space-separated `rung@url<batch>`, empty when unset.
  *
  * Deliberately the same shape as ABR_LADDER — one variable, one entry per rung, parsed and

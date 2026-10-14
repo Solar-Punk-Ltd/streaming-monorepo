@@ -2,7 +2,7 @@ import { Bee, BeeResponseError, FeedIndex, PrivateKey, Topic } from '@etherspher
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 
-import { BeePublisherPool, SINGLE_PUBLISHER } from '../src/libs/BeePublisherPool.js';
+import { BeePublisherPool, FEED_LOOKUP_TIMEOUT_MS, SINGLE_PUBLISHER } from '../src/libs/BeePublisherPool.js';
 import { CatalogIndexStore } from '../src/libs/CatalogIndexStore.js';
 import { Logger } from '../src/libs/Logger.js';
 import { MasterFeedWriter } from '../src/libs/MasterFeedWriter.js';
@@ -75,38 +75,50 @@ interface CatalogBeeOptions {
   stateReadFails?: boolean;
   /** Entries a successful read of the current state returns. */
   stateEntries?: unknown[];
+  /** The timeout each reader was made with, in order, when a test wants to see it. */
+  readerTimeouts?: (number | undefined)[];
 }
 
 function makeCatalogBee(writes: CapturedWrite[], opts: CatalogBeeOptions = {}): Bee {
   return {
     feed: {
-      makeReader: () => ({
-        downloadPayload: async (dlOpts?: { index?: FeedIndex }) => {
-          // With an index this is fetchCurrentState; without, it is the init head lookup.
-          if (dlOpts?.index) {
-            if (opts.stateReadFails) {
-              throw chunkNotFound();
+      makeReader: (_topic: unknown, _owner: unknown, requestOptions?: { timeout?: number }) => {
+        opts.readerTimeouts?.push(requestOptions?.timeout);
+        return {
+          downloadPayload: async (dlOpts?: { index?: FeedIndex }) => {
+            // With an index this is fetchCurrentState; without, it is the init head lookup.
+            if (dlOpts?.index) {
+              if (opts.stateReadFails) {
+                throw chunkNotFound();
+              }
+              return { payload: { toJSON: () => opts.published ?? opts.stateEntries ?? [] } };
             }
-            return { payload: { toJSON: () => opts.published ?? opts.stateEntries ?? [] } };
-          }
-          if (opts.lookupThrows) {
-            throw opts.lookupThrows;
-          }
-          if (opts.lookupFails404) {
-            throw new BeeResponseError('GET', '/feeds', 'Not Found.', undefined, 404, 'Not Found');
-          }
-          if (opts.lookupFails503) {
-            throw new BeeResponseError('GET', '/feeds', 'Service Unavailable.', undefined, 503, 'Service Unavailable');
-          }
-          if (opts.lookupDropsBody) {
-            throw droppedBody();
-          }
-          if (opts.lookupRefused) {
-            throw connectionRefused();
-          }
-          return { feedIndex: FeedIndex.fromBigInt(opts.lookupIndex ?? 0n), payload: { toJSON: () => [] } };
-        },
-      }),
+            if (opts.lookupThrows) {
+              throw opts.lookupThrows;
+            }
+            if (opts.lookupFails404) {
+              throw new BeeResponseError('GET', '/feeds', 'Not Found.', undefined, 404, 'Not Found');
+            }
+            if (opts.lookupFails503) {
+              throw new BeeResponseError(
+                'GET',
+                '/feeds',
+                'Service Unavailable.',
+                undefined,
+                503,
+                'Service Unavailable',
+              );
+            }
+            if (opts.lookupDropsBody) {
+              throw droppedBody();
+            }
+            if (opts.lookupRefused) {
+              throw connectionRefused();
+            }
+            return { feedIndex: FeedIndex.fromBigInt(opts.lookupIndex ?? 0n), payload: { toJSON: () => [] } };
+          },
+        };
+      },
       makeWriter: () => ({
         uploadPayload: async (_stamp: string, payload: unknown, writeOpts: Omit<CapturedWrite, 'payload'>) => {
           const err = opts.writeFails?.();
@@ -284,6 +296,25 @@ describe('StreamCatalog survives a transient Bee failure (TEST-1)', () => {
 });
 
 describe('StreamCatalog boot-index hardening', () => {
+  /**
+   * The boot lookup asks a node where the stream list has got to, which waits out the node's probe of
+   * the slot after the head: 3.7 to 4.4 s on the stage on 2026-10-14, against the pool's 4 s. On the
+   * stage's boot of 2026-10-12 six lookups in a row ended on that deadline before one got through.
+   * `beePublisherPool.test.ts` pins that a timeout passed here replaces the pool's.
+   */
+  it('makes its boot lookup with a feed lookup’s deadline rather than the pool’s', async () => {
+    const readerTimeouts: (number | undefined)[] = [];
+    const catalog = new StreamCatalog(
+      makePublishers(makeCatalogBee([], { readerTimeouts })),
+      TEST_STREAM_KEY,
+      TEST_TOPIC,
+    );
+
+    await catalog.init();
+
+    assert.deepEqual(readerTimeouts, [FEED_LOOKUP_TIMEOUT_MS]);
+  });
+
   it('resumes from the persisted index when the boot lookup returns a stale head', async () => {
     const writes: CapturedWrite[] = [];
     const { store } = fakeIndexStore(125n);
