@@ -26,7 +26,7 @@ export function clientCatchUpLimitS(fragmentSeconds: number): number {
 }
 
 /** What the join is judged on: where the player started, and the window it was handed. */
-export interface LateJoinReading {
+interface LateJoinReading {
   /** Seconds behind live the player sat as it joined, or null where the arm read none. */
   joinS: number | null;
   /** Seconds of media the rung's live window named at the join: its entries times the segment length. */

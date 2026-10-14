@@ -18,7 +18,7 @@ import { ladderFinalizedPattern, manifestUploadedPattern } from '@swarm-hls-stre
 
 import { timestampedMessages } from './logwatch.js';
 
-export const LONG_BROADCAST_MINUTES_VAR = 'E2E_LONG_BROADCAST_MINUTES';
+const LONG_BROADCAST_MINUTES_VAR = 'E2E_LONG_BROADCAST_MINUTES';
 export const DEFAULT_LONG_BROADCAST_MINUTES = 20;
 
 /**

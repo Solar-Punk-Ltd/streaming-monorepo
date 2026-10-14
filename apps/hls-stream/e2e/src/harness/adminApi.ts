@@ -37,12 +37,12 @@ export const ADMIN_SESSION_COOKIE = 'web2_admin_session';
 export const ADMIN_WRITE_HEADER = 'x-requested-with';
 export const ADMIN_WRITE_VALUE = 'web2-admin';
 
-export const ADMIN_API_URL_VAR = 'E2E_ADMIN_API_URL';
-export const ADMIN_STREAM_ID_VAR = 'E2E_ADMIN_STREAM_ID';
-export const ADMIN_STAGE_ID_VAR = 'E2E_ADMIN_STAGE_ID';
-export const ADMIN_EXPIRED_STREAM_ID_VAR = 'E2E_ADMIN_EXPIRED_STREAM_ID';
-export const ADMIN_TOKEN_VAR = 'E2E_ADMIN_TOKEN';
-export const ADMIN_CONTAINER_VAR = 'E2E_ADMIN_CONTAINER';
+const ADMIN_API_URL_VAR = 'E2E_ADMIN_API_URL';
+const ADMIN_STREAM_ID_VAR = 'E2E_ADMIN_STREAM_ID';
+const ADMIN_STAGE_ID_VAR = 'E2E_ADMIN_STAGE_ID';
+const ADMIN_EXPIRED_STREAM_ID_VAR = 'E2E_ADMIN_EXPIRED_STREAM_ID';
+const ADMIN_TOKEN_VAR = 'E2E_ADMIN_TOKEN';
+const ADMIN_CONTAINER_VAR = 'E2E_ADMIN_CONTAINER';
 
 /** What an admin-mode run was given. Every id is a stream or stage UUID as the admin names it. */
 export interface AdminMode {
@@ -59,7 +59,7 @@ export interface AdminMode {
 }
 
 /** What a suite needs out of the config beyond the url and the token. */
-export type AdminNeed = 'stream' | 'stage' | 'expired' | 'container';
+type AdminNeed = 'stream' | 'stage' | 'expired' | 'container';
 
 const NEEDS: Record<AdminNeed, { field: 'streamId' | 'stageId' | 'expiredStreamId' | 'container'; variable: string }> =
   {
@@ -137,7 +137,7 @@ export interface AdminStream {
 }
 
 /** OBS connection details. See `IngestDetails` in `apps/web2-admin/common/src/ingest.ts`. */
-export interface AdminIngest {
+interface AdminIngest {
   streamId: string;
   app: 'video' | 'audio';
   stream: string;
@@ -146,7 +146,7 @@ export interface AdminIngest {
 }
 
 /** `POST /api/streams/:id/publish` and `/unpublish` answer this. See `PublishResult`. */
-export interface AdminPublishResult {
+interface AdminPublishResult {
   stream: AdminStream;
   feed: { owner: string; topic: string; topicHex: string; index: number; entryCount: number };
   written: boolean;
@@ -165,7 +165,7 @@ export class AdminRefusal extends Error {
 }
 
 /** What a broadcaster dials for a declared stream, and over which protocol. */
-export interface AdminIngestTarget {
+interface AdminIngestTarget {
   url: string;
   protocol: IngestProtocol;
 }
@@ -195,14 +195,14 @@ export function adminIngestTarget(
 }
 
 /** The error code out of an admin error body, which is `{ error: <code>, ... }`, or null. */
-export function adminErrorCode(body: unknown): string | null {
+function adminErrorCode(body: unknown): string | null {
   return typeof body === 'object' && body !== null && typeof (body as { error?: unknown }).error === 'string'
     ? (body as { error: string }).error
     : null;
 }
 
 /** The headers one request carries. The token goes on the cookie and nowhere else. */
-export function adminHeaders(token: string, write: boolean): Record<string, string> {
+function adminHeaders(token: string, write: boolean): Record<string, string> {
   return {
     accept: 'application/json',
     cookie: `${ADMIN_SESSION_COOKIE}=${token}`,

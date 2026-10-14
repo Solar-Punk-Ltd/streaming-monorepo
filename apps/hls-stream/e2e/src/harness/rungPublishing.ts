@@ -41,7 +41,7 @@ import { discoverCatalogFeed } from './viewer.js';
 import { sleep, waitFor } from './wait.js';
 
 /** `live/stream_1080p` and its rung name, out of the rung announces. Absent on a single rendition. */
-export function rungByStreamId(logText: string): ReadonlyMap<string, string> {
+function rungByStreamId(logText: string): ReadonlyMap<string, string> {
   return new Map(announcedRungs(logText).map((announce) => [announce.streamId, announce.rung]));
 }
 
@@ -103,7 +103,7 @@ export function everyRungPublishedAtLeast(logText: string, expected: readonly st
 }
 
 /** One stale warning: which stream's live playlist failed to publish, and how many times in a row by then. */
-export interface StaleManifestWarning {
+interface StaleManifestWarning {
   streamId: string;
   consecutive: number;
 }
@@ -187,7 +187,7 @@ export function crashRecoveredStreams(logText: string): string[] {
 }
 
 /** One head-probe correction: bee answered one index as a feed's head and the uploader found playlists above it. */
-export interface HeadProbeCorrection {
+interface HeadProbeCorrection {
   streamId: string;
   answered: number;
   present: number;
@@ -345,7 +345,7 @@ export function headAdvanceRefusal(
 }
 
 /** One line per rung: where its head stood at each reading. */
-export function describeHeadAdvance(first: readonly RungPlaylistParse[], second: readonly RungPlaylistParse[]): string {
+function describeHeadAdvance(first: readonly RungPlaylistParse[], second: readonly RungPlaylistParse[]): string {
   const later = new Map(second.map((parse) => [parse.topic, parse]));
   return first
     .map((parse) => {
@@ -551,20 +551,20 @@ export async function checkRungPlaylistsLive(
 }
 
 /** The per-rung upload counter and the unlabelled publish-failure counter, as the uploader renders them. */
-export const RUNG_SEGMENTS_UPLOADED_METRIC = 'swarm_hls_rung_segments_uploaded_total';
-export const MANIFEST_PUBLISH_FAILURES_METRIC = 'swarm_hls_manifest_publish_failures_total';
+const RUNG_SEGMENTS_UPLOADED_METRIC = 'swarm_hls_rung_segments_uploaded_total';
+const MANIFEST_PUBLISH_FAILURES_METRIC = 'swarm_hls_manifest_publish_failures_total';
 /**
  * The per-rung live playlist counters, which an uploader built from the per-rung publish metrics change renders and an
  * older one does not. Read when present, and the log stands in when absent.
  */
-export const RUNG_MANIFEST_PUBLISHES_METRIC = 'swarm_hls_rung_manifest_publishes_total';
-export const RUNG_MANIFEST_PUBLISH_FAILURES_METRIC = 'swarm_hls_rung_manifest_publish_failures_total';
+const RUNG_MANIFEST_PUBLISHES_METRIC = 'swarm_hls_rung_manifest_publishes_total';
+const RUNG_MANIFEST_PUBLISH_FAILURES_METRIC = 'swarm_hls_rung_manifest_publish_failures_total';
 
 /** Where a row's playlist count came from: the uploader's own per-rung counter, or the log standing in for it. */
-export type PublishCountSource = 'metric' | 'log';
+type PublishCountSource = 'metric' | 'log';
 
 /** One rung's segment uploads by the uploader's own counter, beside the playlists it published. */
-export interface RungMetricRow {
+interface RungMetricRow {
   rung: string;
   segmentsUploaded: number;
   playlistsPublished: number;
@@ -573,7 +573,7 @@ export interface RungMetricRow {
 }
 
 /** H4: what moved between two scrapes, paired per rung. */
-export interface RungMetricPairing {
+interface RungMetricPairing {
   rows: readonly RungMetricRow[];
   publishesFrom: PublishCountSource;
   /** How far the unlabelled failure counter moved, or null where either scrape lacked it. */
