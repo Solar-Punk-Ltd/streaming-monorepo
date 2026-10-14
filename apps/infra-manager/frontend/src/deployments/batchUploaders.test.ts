@@ -38,6 +38,7 @@ import {
 import { shortHex } from '../format';
 import type { Profile } from '../types';
 import { settingsReadKey } from './settings/useDeploymentSettings';
+import { stageReadKey } from './useBatchUploaders';
 
 const OLD = 'a'.repeat(64);
 const NEW = 'b'.repeat(64);
@@ -103,6 +104,7 @@ function uploader(over: Partial<BatchUploader> = {}): BatchUploader {
     recreates: ['stream-uploader'],
     batchKey: 'STAMP',
     changedKeys: ['STAMP'],
+    savedPaysWithNode: true,
     ...over,
   };
 }
@@ -166,6 +168,54 @@ describe("a single-node streamer's own uploader", () => {
 
   it('is absent where the list has no STAMP, so nothing is claimed about an uploader', () => {
     assert.equal(ownUploaderOf('main-stage', catalog([entry({ key: 'LOG_LEVEL' })])), null);
+  });
+
+  it('offers nothing for a Use when it publishes through a pool, which STAMP does not reach', () => {
+    const own = ownUploaderOf(
+      'main-stage',
+      catalog([
+        entry({ key: 'STAMP', value: NEW, running: 'differs', runningValue: OLD }),
+        entry({ key: 'BEE_PUBLISHERS', value: publishers(OTHER), runningValue: publishers(OTHER) }),
+      ]),
+    );
+
+    assert.ok(own);
+    assert.equal(own.behind, false);
+    assert.equal(own.savedPaysWithNode, false);
+    assert.equal(own.runningBatchId, null);
+    assert.equal(batchUseOf(NEW, NEW, [own]), null);
+    assert.equal(batchUseOf(OLD, NEW, [own]), null);
+    assert.equal(batchNotice(NEW, [own]), null);
+  });
+
+  it('marks the local batch it still runs, and offers no Apply, while it waits to switch to a pool', () => {
+    const own = ownUploaderOf(
+      'main-stage',
+      catalog([
+        entry({ key: 'STAMP', value: NEW, running: 'differs', runningValue: OLD }),
+        entry({ key: 'BEE_PUBLISHERS', value: publishers(OTHER), running: 'differs', runningValue: null }),
+      ]),
+    );
+
+    assert.equal(own?.behind, false);
+    assert.equal(own?.runningBatchId, OLD);
+    assert.equal(batchUseOf(OLD, NEW, own ? [own] : []), 'running-not-saved');
+    assert.equal(batchUseOf(NEW, NEW, own ? [own] : []), null);
+  });
+
+  it('is behind on the saved batch while it waits to switch from a pool to its own node', () => {
+    const own = ownUploaderOf(
+      'main-stage',
+      catalog([
+        entry({ key: 'STAMP', value: NEW, running: 'differs', runningValue: OLD }),
+        entry({ key: 'BEE_PUBLISHERS', value: null, running: 'differs', runningValue: publishers(OTHER) }),
+      ]),
+    );
+
+    assert.equal(own?.behind, true);
+    assert.equal(own?.savedPaysWithNode, true);
+    assert.equal(own?.runningBatchId, null);
+    assert.equal(batchUseOf(NEW, NEW, own ? [own] : []), 'saved-waiting');
   });
 });
 
@@ -344,6 +394,11 @@ describe('whether a broadcast is live', () => {
     );
   });
 
+  it('cannot tell from an RTMP report SRS did not attribute to a vhost, which may be a ladder rung', () => {
+    assert.equal(broadcastStateOf({ ...IDLE, rtmp: { state: 'unattributed' } }), 'unknown');
+    assert.equal(broadcastStateOf({ ...LIVE, rtmp: { state: 'unattributed' } } as IngestHealthReading), 'live');
+  });
+
   it('is quiet, never idle, when SRS reported nobody publishing, since a publisher that connected moments ago has no report yet', () => {
     assert.equal(broadcastStateOf(IDLE), 'quiet');
   });
@@ -513,6 +568,19 @@ describe('the settings are read again the moment a Use lands', () => {
       /refused/,
     );
     assert.deepEqual(calls, []);
+  });
+
+  it("re-reads a stage's list when it is removed and created again under the same name", () => {
+    const stage = {
+      name: 'stage-a',
+      instance_id: 'one',
+      status: 'RUNNING',
+      stamp_id: null,
+      bee_publishers: publishers(NEW),
+    };
+
+    assert.notEqual(stageReadKey([stage]), stageReadKey([{ ...stage, instance_id: 'two' }]));
+    assert.equal(stageReadKey([stage]), stageReadKey([{ ...stage }]));
   });
 
   it("re-reads a deployment's own list when its batch or its pool string moves, not only its status", () => {
