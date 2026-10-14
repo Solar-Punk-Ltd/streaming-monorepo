@@ -723,3 +723,70 @@ describe('a rung that will not finish, in admin mode', () => {
     );
   });
 });
+
+/**
+ * A declared stream is one ladder for many broadcasts, and how far each rung got is about one of them.
+ * Carried into the next, a rung that ended the last broadcast a little behind starts the next one
+ * already part of the way to being dropped, without the grace a rung starting afresh is given.
+ */
+describe('rung liveness across the broadcasts of one declared stream', () => {
+  const ALL = ['360p', '480p', '720p', '1080p'];
+  const THE_OTHER_THREE = ['360p', '480p', '720p'];
+  const live = (name: string): Rendition => rung(name, Number.parseInt(name, 10));
+  const finalOf = (name: string, index: number): Rendition => ({ ...live(name), index, duration: 12 });
+
+  /** An admin that keeps each rung's newest report and calls the ladder finished once all four have an index. */
+  function fourRungAdmin(): { answer: (rendition: Rendition) => Response; goLiveAgain: () => void } {
+    const held = new Map<string, Rendition>();
+    let feedIndex = 0;
+    return {
+      answer: (rendition) => {
+        held.set(rendition.name, rendition);
+        const ladder = [...held.values()].sort((a, b) => a.height - b.height);
+        const finished = ladder.length === ALL.length && ladder.every((r) => r.index !== undefined);
+        feedIndex += 1;
+        return new Response(merged(ladder, { finished, duration: finished ? 12 : null }, 'live', feedIndex), {
+          status: 200,
+        });
+      },
+      goLiveAgain: () => {
+        for (const name of ALL) {
+          held.set(name, live(name));
+        }
+      },
+    };
+  }
+
+  it('starts the next broadcast with a fresh tracker, so a rung that ended one behind is not dropped early', async () => {
+    const admin = fourRungAdmin();
+    const harness = makeRegistry({ answer: (rendition) => admin.answer(rendition) });
+    const deliver = (names: readonly string[], rounds = 1): void => {
+      for (let round = 0; round < rounds; round++) {
+        for (const name of names) {
+          harness.registry.recordRungDelivered(DECLARED_TOPIC, name);
+        }
+      }
+    };
+
+    deliver(ALL, WARMUP_ROUNDS);
+    for (const name of ALL) {
+      await harness.registry.upsertRendition(IDENTITY, live(name));
+    }
+    deliver(THE_OTHER_THREE, 2);
+    for (const [at, name] of ALL.entries()) {
+      await harness.registry.upsertRendition(IDENTITY, finalOf(name, 7 + at));
+    }
+
+    admin.goLiveAgain();
+    for (const name of ALL) {
+      await harness.registry.upsertRendition(IDENTITY, live(name));
+    }
+    const landed = harness.masters.length;
+    // 1080p is slow to publish its first playlist of the new broadcast, as a rung waiting on its feed
+    // head is. Two behind from the last broadcast and four more now would be six on a carried tracker.
+    deliver(THE_OTHER_THREE, RUNG_DEATH_LAG_SEGMENTS);
+
+    await waitAndConfirmNothingHappened(() => harness.masters.length === landed, NOTHING_HAPPENS_WINDOW_MS);
+    assert.match(harness.masters.at(-1)!.playlist, /topic-1080p/, 'a rung starting a new broadcast was dropped');
+  });
+});
