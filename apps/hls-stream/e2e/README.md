@@ -482,18 +482,17 @@ upload-side reading comes from.
 | `E2E_ADMIN_CONTAINER`         | admin-unreachable                          | the admin backend's container, which must run on the deployment host's own docker: the suite stops and starts it through the same `E2E_SSH_TARGET` as every other container, so an admin on another machine cannot be reached |
 
 ⛔ **The token never goes in a file.** Not an env file, not a profile, not a script. It is read from the process
-environment only, sent on the cookie header only, and no log line or failure message carries it. Store it in
-1Password and hand it to the run through `op run`, with an env file that holds only the reference:
+environment only, sent on the cookie header only, and no log line or failure message carries it. Put it in the
+environment of the shell that runs the suite, from wherever you keep it, for instance with your password manager's
+command line:
 
 ```bash
-# admin.env, safe to keep anywhere because it holds a reference and no secret
-E2E_ADMIN_TOKEN=op://<vault>/<item>/<field>
-
-op run --env-file=admin.env -- env E2E_ADMIN_API_URL=https://<admin host> E2E_ADMIN_STREAM_ID=<stream id> pnpm e2e:admin
+export E2E_ADMIN_TOKEN="$(<command that prints the token>)"
+E2E_ADMIN_API_URL=https://<admin host> E2E_ADMIN_STREAM_ID=<stream id> pnpm e2e:admin
 ```
 
-The token is a session, so it expires with the session. Sign in to the console, copy the cookie's value into the
-1Password item, and the next `op run` picks it up. `admin/rebroadcast-vod` reads the recording
+The token is a session, so it expires with the session. Sign in to the console, store the cookie's new value where you
+keep the old one, and the next run picks it up. `admin/rebroadcast-vod` reads the recording
 `admin/rebroadcast-three-times` leaves, which `pnpm e2e:admin` runs first because the files sort that way.
 
 ## In-browser node first
