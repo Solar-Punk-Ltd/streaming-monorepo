@@ -25,7 +25,7 @@ import { SERVICE_ENV_KEYS } from '../containerKeysSpec.js';
 import { sampleCatalogOf, type SampleCatalogEntry } from '../versions/envSettingsText.js';
 import { portTableOf } from '../versions/portTable.js';
 
-import { isChainEndpointKey, recordedStateOf } from './runningRecord.js';
+import { isChainEndpointKey, isRecordedInClear, recordedStateOf } from './runningRecord.js';
 import { type EngineSettingsReader, type SettingOwnerContext, settingOwnerOf } from './settingOwners.js';
 import { versionValuesOf } from './versionSettingsFiles.js';
 
@@ -104,7 +104,7 @@ interface ListedSetting {
 /** What every entry says of a key, whoever sets it. */
 type EntryBase = Pick<
   DeploymentSettingEntry,
-  'key' | 'section' | 'description' | 'sampleValue' | 'services' | 'running'
+  'key' | 'section' | 'description' | 'sampleValue' | 'services' | 'running' | 'runningValue'
 >;
 
 /** What the deployment stores for a key: in its engine settings for an engine setting, in the stack columns for any other. */
@@ -175,6 +175,7 @@ function listedSettingsOf(input: ListInput, running: boolean): ListedSetting[] {
       sampleValue: declared.value ?? declared.example,
       services,
       running: runningStateOf(running, differing),
+      runningValue: running ? recordedValueOf(key, services, input) : null,
     };
     const stored = storedKeyOf(key, input);
     const field = engineFields.get(key);
@@ -350,15 +351,33 @@ function shown(key: string, value: string): string {
  * covers it, because it decided how each container of that deploy started.
  */
 function differingServices(key: string, services: readonly string[] | null, input: ListInput): string[] | 'unknown' {
-  const records =
-    services === null ? input.records : input.records.filter((record) => services.includes(record.service));
-  const states = records.map((record) => ({
+  const states = recordsReading(services, input).map((record) => ({
     service: record.service,
     state: recordedStateOf(record, key, input.nextEnv[key]),
   }));
   const known = states.filter(({ state }) => state !== 'unknown');
   if (known.length === 0) return 'unknown';
   return known.filter(({ state }) => state === 'differs').map(({ service }) => service);
+}
+
+/**
+ * What the containers that read a key were started with, when every record
+ * that covers it keeps the same value in clear. A record keeps a key it
+ * covers in clear only when it was set, so a covered key missing from its
+ * values was started unset.
+ */
+function recordedValueOf(key: string, services: readonly string[] | null, input: ListInput): string | null {
+  if (!isRecordedInClear(key)) return null;
+  const covering = recordsReading(services, input).filter(
+    (record) => record.env_salt !== null && record.env_digests[key] !== undefined,
+  );
+  const values = new Set(covering.map((record) => record.env[key] ?? null));
+  if (values.size !== 1) return null;
+  return [...values][0] ?? null;
+}
+
+function recordsReading(services: readonly string[] | null, input: ListInput): readonly ContainerRow[] {
+  return services === null ? input.records : input.records.filter((record) => services.includes(record.service));
 }
 
 function runningStateOf(running: boolean, differing: string[] | 'unknown'): SettingRunningState {

@@ -129,20 +129,75 @@ operator buys. It costs `amount × 2^depth` PLUR from the node's wallet and the
 transaction fee in xDAI. The new batch is unusable for a few minutes, and the
 manager polls it every three seconds for up to fifteen minutes and sets it on
 the deployment once it is usable, unless another batch was set with **Use**
-meanwhile. Setting a batch redeploys nothing: a running uploader goes on paying
-with the batch its env file named until the deployment is deployed again, and
-a pool rung's new batch reaches an ABR uploader on this manager that publishes
-to its pool at that uploader's next deploy, which writes the pool's current
-string (since 2026-10-04, [abr-ladder.md](abr-ladder.md)). An uploader handed
-the string from another manager still needs it pasted again.
+meanwhile. Setting a batch redeploys nothing by itself: a running uploader goes
+on paying with the batch its env file named until its uploader restarts, which
+the card offers at once (see Use below), and a pool rung's new batch reaches an
+ABR uploader on this manager that publishes to its pool at that uploader's next
+deploy, which writes the pool's current string (since 2026-10-04,
+[abr-ladder.md](abr-ladder.md)). An uploader handed the string from another
+manager still needs it pasted again.
 
 ### Use
 
 Records a batch the node already holds as the deployment's batch. It costs
-nothing, sends nothing to the chain and redeploys nothing. It is unavailable on
-a **full immutable batch**, and the row says why, "full, dilute it first":
-setting it would record a batch whose node refuses every upload in its full
-bucket.
+nothing and sends nothing to the chain. It is unavailable on a **full immutable
+batch**, and the row says why, "full, dilute it first": setting it would record
+a batch whose node refuses every upload in its full bucket.
+
+A stream uploader reads its batch once, when it starts, so a Use changes nothing
+that runs until the uploader restarts (SPDV-1437, since 2026-10-14). The card
+says so where the operator clicked:
+
+- Right after the Use lands, the page reads again both the deployments and the
+  settings list of every uploader that pays with this node's batches, and the
+  card shows a warning that the batch is saved but the running uploader still
+  pays with the one it started with, naming that batch when the manager's
+  container record has it.
+- Beside it, **Apply now** runs the deployment's own settings Apply, the one the
+  Stack settings card offers. That Apply carries every saved setting the running
+  containers are behind on, not only the batch, so the row names each key it
+  applies, says which of them were saved earlier, and says what it recreates
+  (normally the stream uploader alone).
+- Apply now always asks first, because the console is never sure nobody is
+  publishing. SRS reports a publisher only about every ten seconds, so a
+  reading with no publisher in its last window can miss one that connected
+  moments ago, and the question says so. It says a broadcast is live when SRS
+  reported a publisher over SRT, or over RTMP on the ingest vhost, and that it
+  cannot tell for another engine than SRS, a log it could not read, an RTMP
+  report an older SRS printed without its vhost (which may be a ladder rung
+  rather than a broadcaster), or an ingest read that failed or took more than
+  ten seconds. It names any saved key Apply carries besides the batch. It is
+  worded from what gets recreated: with the uploader alone a live broadcast
+  drops for a few seconds while it restarts, and with SRS, OvenMediaEngine or
+  every service the encoder is disconnected and the broadcast stops until it
+  reconnects.
+- The chip on each batch follows the running uploader, read from the
+  `runningValue` the settings list carries for `STAMP` (see
+  [deployment-settings.md](deployment-settings.md)): **in use** on the batch
+  it pays with and that is saved, **saved, not in use until Apply** on a saved
+  batch it does not run yet, and **in use until Apply** on the batch it still
+  runs that is no longer saved, which keeps its Use button to go back to it.
+  Where nothing records what an uploader runs (a stopped deployment, one
+  deployed before the manager kept records), the saved batch reads **in use**
+  as before, because the next start pays with it, unless an uploader is known
+  to be behind on it, when it reads **saved, not in use until Apply**.
+
+A deployment that runs its own Bee node and also has a pool string in
+`BEE_PUBLISHERS` publishes through the pool, and its uploader reads `STAMP` only
+while that string is empty. The card reads both sides from the settings list:
+while the saved string is set, a Use here changes nothing the next deploy pays
+with, so the card offers no Apply now and marks no saved batch in use, and while
+the running uploader was started with a pool string it pays with none of this
+node's batches. A local batch it still runs while it waits to switch to the pool
+reads **in use until Apply**.
+
+On a pool rung's page the uploaders are the ABR stages that publish through the
+rung: those whose stored pool string names, for this rung, a batch the node
+holds. Each stage's settings list is read under a fifteen second deadline, so
+a stage that does not answer is left out and the others still show. The
+warning names each stage that is behind, with a link to its page and an Apply
+now of its own, and a stage's chip reads its rung's entry of
+`BEE_PUBLISHERS` in the same way. See [abr-ladder.md](abr-ladder.md).
 
 ### Top up
 
