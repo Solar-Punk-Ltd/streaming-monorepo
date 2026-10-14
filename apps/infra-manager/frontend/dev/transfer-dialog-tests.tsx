@@ -5,10 +5,13 @@ import { theme } from '../src/app/theme';
 import { DeploymentsProvider, type DeploymentsStore } from '../src/app/useDeploymentsStore';
 import { SessionProvider, type SessionStore } from '../src/app/useSession';
 import { StorageCard } from '../src/deployments/StorageCard';
+import type { BatchUploadersLoad } from '../src/deployments/useBatchUploaders';
 import type { Profile } from '../src/types';
 import type { BeeUtils } from '../src/uploaders/useBeeUtils';
 import { setSessionEndedHandler } from '../src/http';
 import { stampHealthFrom } from '@streaming-infra-manager/common';
+
+const NO_UPLOADERS: BatchUploadersLoad = { uploaders: [], reread: async () => undefined };
 
 declare global {
   interface Window {
@@ -55,6 +58,9 @@ function Fixture() {
   };
   const deployments = { chequebookFloorBzz: '0.5' } as DeploymentsStore;
   const bee = {
+    nodeObservation: null,
+    observationNow: 0,
+    observationReceivedAt: null,
     address: null,
     wallet: balances ? { bzzBalance: '20000000000000000', nativeTokenBalance: '1000000000000000' } : null,
     chequebook: balances
@@ -68,6 +74,7 @@ function Fixture() {
       : null,
     chainState: null,
     stamps: [],
+    stampsFailure: undefined,
     loading: false,
     loadError: balances ? null : 'The synthetic balance read failed.',
     waitingBatch: null,
@@ -87,6 +94,7 @@ function Fixture() {
               bee={bee}
               stampHealth={stampHealthFrom(null, null)}
               chequebookHealth={null}
+              uploaders={NO_UPLOADERS}
               onChanged={() => {}}
             />
           )}

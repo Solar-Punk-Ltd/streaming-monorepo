@@ -53,7 +53,7 @@ export function promptSecret(prompt: string, streams: SecretInputStreams = {}): 
 
 /**
  * The whole of stdin as the secret, minus one trailing newline, which is what
- * `op read ... | ...` and `echo ... |` both add.
+ * `echo ... |` and most password managers' command lines add.
  */
 export async function readSecretFromStdin(input: NodeJS.ReadableStream = process.stdin): Promise<string> {
   const chunks: Buffer[] = [];
