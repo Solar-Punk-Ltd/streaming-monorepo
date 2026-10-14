@@ -5,7 +5,6 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { STREAM_LIMITS } from '@streaming-monorepo/web2-admin-common';
 
 import {
-  MEDIA_TYPE_LOCKED,
   SCHEDULE_LOCKED,
   THUMBNAIL_NOT_AN_IMAGE,
   thumbnailTooLargeMessage,
@@ -140,7 +139,7 @@ describe('StreamFormPage validation', () => {
           const body = JSON.parse(String(init?.body)) as Record<string, unknown>;
           expect(body.title).toBe('Opening keynote');
           expect(body.description).toBe('The opening talk');
-          expect(body.mediaType).toBe('audio');
+          expect(body.mediaType).toBe('video');
           expect(body.tags).toEqual(['eth']);
           expect(typeof body.scheduledStartTime).toBe('string');
           return jsonOk(created, 201);
@@ -163,7 +162,6 @@ describe('StreamFormPage validation', () => {
     typeIn('Description *', 'The opening talk');
     typeIn('Tags', 'eth');
     fireEvent.click(screen.getByRole('button', { name: 'Add' }));
-    fireEvent.click(screen.getByRole('radio', { name: 'Audio Only' }));
     pickThumbnail(fakeImage('cover.png', 1024));
     await screen.findByText('cover.png');
 
@@ -205,30 +203,61 @@ describe('StreamFormPage validation', () => {
     expect(screen.getByText(/Stream saved, but the thumbnail did not/)).toBeInTheDocument();
   });
 
-  it('locks the media type once the stream is published', async () => {
+  it('offers no media type choice: every new stream is a video stream (SPDV-1674)', () => {
+    mockFetch([]);
+    renderCreateForm();
+
+    expect(screen.queryByText('Media Type')).not.toBeInTheDocument();
+    expect(screen.queryByRole('radio', { name: 'Audio Only' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('radio', { name: 'Video Stream' })).not.toBeInTheDocument();
+  });
+
+  it('saves an Audio Only draft as a video stream (SPDV-1674)', async () => {
+    let sent: unknown;
     mockFetch([
       {
-        path: '/api/streams/pub-id',
-        respond: () =>
-          jsonOk(
-            makeStream({
-              id: 'pub-id',
-              status: 'published',
-              mediaType: 'video',
-            }),
-          ),
+        path: '/api/streams/audio-draft',
+        respond: () => jsonOk(makeStream({ id: 'audio-draft', status: 'draft', mediaType: 'audio' })),
+      },
+      {
+        method: 'PUT',
+        path: '/api/streams/audio-draft',
+        respond: (init) => {
+          sent = (JSON.parse(String(init?.body)) as Record<string, unknown>).mediaType;
+          return jsonOk(makeStream({ id: 'audio-draft', status: 'draft', mediaType: 'video' }));
+        },
       },
     ]);
 
-    renderEditForm('pub-id');
-
+    renderEditForm('audio-draft');
     expect(await screen.findByLabelText('Stream Name *')).toBeInTheDocument();
-    expect(screen.getByRole('radio', { name: 'Video Stream' })).toBeDisabled();
-    expect(screen.getByRole('radio', { name: 'Audio Only' })).toBeDisabled();
-    expect(screen.getByText(MEDIA_TYPE_LOCKED)).toBeInTheDocument();
-    // Everything else stays editable: only the ingest stream id is at stake.
-    expect(screen.getByLabelText('Stream Name *')).toBeEnabled();
-    expect(screen.getByLabelText('Tags')).toBeEnabled();
+    fireEvent.click(screen.getByRole('button', { name: 'Update Stream' }));
+
+    await waitFor(() => expect(sent).toBe('video'));
+  });
+
+  it('keeps the media type of a published Audio Only stream, which the API locks', async () => {
+    let sent: unknown;
+    mockFetch([
+      {
+        path: '/api/streams/audio-pub',
+        respond: () => jsonOk(makeStream({ id: 'audio-pub', status: 'published', mediaType: 'audio' })),
+      },
+      {
+        method: 'PUT',
+        path: '/api/streams/audio-pub',
+        respond: (init) => {
+          sent = (JSON.parse(String(init?.body)) as Record<string, unknown>).mediaType;
+          return jsonOk(makeStream({ id: 'audio-pub', status: 'published', mediaType: 'audio' }));
+        },
+      },
+    ]);
+
+    renderEditForm('audio-pub');
+    expect(await screen.findByLabelText('Stream Name *')).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: 'Update Stream' }));
+
+    await waitFor(() => expect(sent).toBe('audio'));
   });
 
   it('locks the schedule, but nothing else, once the stream has gone live', async () => {
@@ -254,7 +283,6 @@ describe('StreamFormPage validation', () => {
     expect(await screen.findByLabelText('Scheduled Date *', FORM_CONTROL)).toBeDisabled();
     expect(screen.getByLabelText('Scheduled Time *')).toBeDisabled();
     expect(screen.getByText(SCHEDULE_LOCKED)).toBeInTheDocument();
-    expect(screen.getByRole('radio', { name: 'Audio Only' })).toBeDisabled();
     // A typo in a title is worth fixing mid-broadcast.
     expect(screen.getByLabelText('Stream Name *')).toBeEnabled();
     expect(screen.getByLabelText('Description *')).toBeEnabled();
@@ -285,7 +313,6 @@ describe('StreamFormPage validation', () => {
     expect(await screen.findByLabelText('Scheduled Date *', FORM_CONTROL)).toBeEnabled();
     expect(screen.getByLabelText('Scheduled Time *')).toBeEnabled();
     expect(screen.queryByText(SCHEDULE_LOCKED)).not.toBeInTheDocument();
-    expect(screen.getByRole('radio', { name: 'Audio Only' })).toBeDisabled();
   });
 
   it('leaves the schedule editable while the stream is only published', async () => {
@@ -301,20 +328,6 @@ describe('StreamFormPage validation', () => {
     expect(await screen.findByLabelText('Scheduled Date *', FORM_CONTROL)).toBeEnabled();
     expect(screen.getByLabelText('Scheduled Time *')).toBeEnabled();
     expect(screen.queryByText(SCHEDULE_LOCKED)).not.toBeInTheDocument();
-  });
-
-  it('leaves the media type editable while the stream is a draft', async () => {
-    mockFetch([
-      {
-        path: '/api/streams/draft-id',
-        respond: () => jsonOk(makeStream({ id: 'draft-id', status: 'draft' })),
-      },
-    ]);
-
-    renderEditForm('draft-id');
-
-    expect(await screen.findByRole('radio', { name: 'Audio Only' })).toBeEnabled();
-    expect(screen.queryByText(MEDIA_TYPE_LOCKED)).not.toBeInTheDocument();
   });
 
   it('prefills the form and the stored thumbnail when editing', async () => {
@@ -334,7 +347,6 @@ describe('StreamFormPage validation', () => {
     expect(screen.getByDisplayValue('Existing description')).toBeInTheDocument();
     expect(screen.getByText('a')).toBeInTheDocument();
     expect(screen.getByText('b')).toBeInTheDocument();
-    expect(screen.getByRole('radio', { name: 'Audio Only' })).toBeChecked();
     expect(screen.getByRole('button', { name: 'Update Stream' })).toBeInTheDocument();
     // The stored image is served by the API, cache-busted with updatedAt.
     expect(screen.getByAltText('Thumbnail preview').getAttribute('src')).toContain('/api/streams/edit-id/thumbnail?v=');
