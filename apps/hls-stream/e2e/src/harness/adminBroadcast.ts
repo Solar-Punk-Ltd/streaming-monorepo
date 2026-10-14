@@ -13,7 +13,7 @@
 import { containerName, type E2EConfig } from '../config.js';
 
 import { AdminApi, type AdminStream, adminIngestTarget, declaredStreamPath } from './adminApi.js';
-import type { Host } from './host.js';
+import { type Host, waitForIdle } from './host.js';
 import { announcedRungs, segmentIndicesByStream, vodFinalizeCountFor } from './logwatch.js';
 import { fragmentSecondsFor, type RungFeed, rungFeedsOf } from './manifestContractLive.js';
 import { type RecordingListing, waitForRecordingListing } from './recordingListing.js';
@@ -106,6 +106,9 @@ export async function broadcastSession(
 ): Promise<SessionRecord> {
   const uploader = containerName(cfg, 'stream-uploader');
   const streamPath = declaredStreamPath(declared.stream);
+  // ⛔ First, so the previous session on this declared topic has finished draining before this one opens. A session
+  // started over a drain refuses its first playlist writes until the drain lands, and would read as a stale rung.
+  await waitForIdle(host, cfg);
   const startedAt = await host.nowIso();
   const log = async (): Promise<string> => host.logsSince(uploader, startedAt);
   const publisher = startPublisherAt(declared.url, declared.protocol);
