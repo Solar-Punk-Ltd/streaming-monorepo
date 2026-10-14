@@ -821,5 +821,14 @@ describe('rung liveness across the broadcasts of one declared stream', () => {
     for (const name of ALL) {
       assert.match(recording, new RegExp(`topic-${name}`), `the recording′s master left out ${name}`);
     }
+
+    // A straggling outcome after the ladder became a recording reaches a fresh tracker, whose shape is
+    // that one rung. A recording's master does not depend on liveness, so nothing is rewritten.
+    const afterTheRecording = harness.masters.length;
+    harness.registry.recordRungUploadFailed(DECLARED_TOPIC, '1080p');
+    await waitAndConfirmNothingHappened(
+      () => harness.masters.length === afterTheRecording,
+      NOTHING_HAPPENS_WINDOW_MS,
+    );
   });
 });
