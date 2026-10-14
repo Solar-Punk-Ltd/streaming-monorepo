@@ -735,21 +735,45 @@ describe('rung liveness across the broadcasts of one declared stream', () => {
   const live = (name: string): Rendition => rung(name, Number.parseInt(name, 10));
   const finalOf = (name: string, index: number): Rendition => ({ ...live(name), index, duration: 12 });
 
-  /** An admin that keeps each rung's newest report and calls the ladder finished once all four have an index. */
-  function fourRungAdmin(): { answer: (rendition: Rendition) => Response; goLiveAgain: () => void } {
+  interface FourRungAdmin {
+    answer: (rendition: Rendition) => Response;
+    /** The `vod` state report a finished ladder's flip sends. */
+    holdRecording: () => void;
+    /** The `live` state report of the next broadcast, which clears every index the admin holds. */
+    goLiveAgain: () => void;
+  }
+
+  /**
+   * An admin that merges by its own rule: a report without an index keeps the index held for that rung,
+   * and the ladder is finished once all four have one. Only a state report moves its status, so the
+   * first rendition report of a re-broadcast, which the uploader sends before its `live` state report,
+   * is answered with the recording still held.
+   */
+  function fourRungAdmin(): FourRungAdmin {
     const held = new Map<string, Rendition>();
+    let status = 'live';
     let feedIndex = 0;
     return {
       answer: (rendition) => {
-        held.set(rendition.name, rendition);
+        const stored = held.get(rendition.name);
+        held.set(
+          rendition.name,
+          rendition.index === undefined && stored?.index !== undefined
+            ? { ...rendition, index: stored.index, duration: stored.duration }
+            : rendition,
+        );
         const ladder = [...held.values()].sort((a, b) => a.height - b.height);
         const finished = ladder.length === ALL.length && ladder.every((r) => r.index !== undefined);
         feedIndex += 1;
-        return new Response(merged(ladder, { finished, duration: finished ? 12 : null }, 'live', feedIndex), {
+        return new Response(merged(ladder, { finished, duration: finished ? 12 : null }, status, feedIndex), {
           status: 200,
         });
       },
+      holdRecording: () => {
+        status = 'vod';
+      },
       goLiveAgain: () => {
+        status = 'live';
         for (const name of ALL) {
           held.set(name, live(name));
         }
@@ -777,8 +801,15 @@ describe('rung liveness across the broadcasts of one declared stream', () => {
       await harness.registry.upsertRendition(IDENTITY, finalOf(name, 7 + at));
     }
 
+    admin.holdRecording();
+
+    // The next broadcast, in the order the uploader sends it: the first rung's rendition report lands
+    // while the admin still holds the recording, then its `live` state report clears the indices, then
+    // the other rungs report.
+    const [first, ...rest] = ALL;
+    await harness.registry.upsertRendition(IDENTITY, live(first));
     admin.goLiveAgain();
-    for (const name of ALL) {
+    for (const name of rest) {
       await harness.registry.upsertRendition(IDENTITY, live(name));
     }
     const landed = harness.masters.length;
