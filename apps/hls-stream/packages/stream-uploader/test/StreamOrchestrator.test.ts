@@ -32,7 +32,6 @@ import {
   makeRecordingCatalog,
   makeRecoveredState,
   makeTestOrchestrator,
-  neverSettles,
   rejectImmediately,
   TEST_ANCHOR,
   toRecoveryFileId,
@@ -1734,12 +1733,13 @@ describe('StreamOrchestrator origin discontinuity', () => {
   it('persists the pending marker before the segment that consumes it, so a crash keeps it', async () => {
     const saved: StreamState[] = [];
     let uploads = 0;
+    const bee = makeHeldBee();
     const orch = makeTestOrchestrator(
       {},
       {
         // The first lands so the queue is free for the marker; the second never answers, so the only
         // state write that can follow the marker is the marker's own.
-        uploadData: async () => (uploads++ === 0 ? { reference: { toHex: () => 'ref0' } } : neverSettles()),
+        uploadData: async () => (uploads++ === 0 ? { reference: { toHex: () => 'ref0' } } : bee.uploadData()),
       },
       makeFakeRecoveryStore({ save: (_id: string, state: StreamState) => saved.push(state) }),
     );
@@ -1753,6 +1753,7 @@ describe('StreamOrchestrator origin discontinuity', () => {
     // Without the marker's own persist a crash here restores a stream that has forgotten the break
     // the origin declared, and the segment after the gap is published as a seamless join.
     await waitFor(() => saved.some((state) => state.pendingDiscontinuity === true), SETTLE_CEILING_MS);
+    bee.refuseAll();
   });
 
   it('drops the marker with the segment when the segment is a duplicate', async () => {
@@ -1781,7 +1782,8 @@ describe('StreamOrchestrator origin discontinuity', () => {
   });
 
   it('drops the marker when the queue is full, rather than queueing one per poll behind the limit', async () => {
-    const orch = makeTestOrchestrator({ maxQueueSize: 1 }, { uploadData: () => neverSettles() });
+    const bee = makeHeldBee();
+    const orch = makeTestOrchestrator({ maxQueueSize: 1 }, { uploadData: bee.uploadData });
 
     orch.startStream('live/one', MEDIA_TYPE_VIDEO);
     // The first is running rather than waiting, and p-queue's `size` counts only what waits, so it
@@ -1802,6 +1804,7 @@ describe('StreamOrchestrator origin discontinuity', () => {
       PRESSURE_HIGH,
       'nothing beyond the one held segment reached the queue, so the ceiling still means what it says',
     );
+    bee.refuseAll();
   });
 
   it('refuses a segment and its marker for a stream it does not have or is finalizing', async () => {
@@ -1886,9 +1889,10 @@ describe('StreamOrchestrator stall signal during a drain', () => {
   it('still watches a replacement registered while its predecessor drains', async () => {
     const id = 'live/stream';
     const clock = new FakeClock();
+    const bee = makeHeldBee();
     const orch = makeTestOrchestrator(
       { clock, recoveryTimeout: RECOVERY_TIMEOUT_MS },
-      { uploadPayload: () => neverSettles() },
+      { uploadPayload: bee.uploadData },
     );
 
     orch.startStream(id, MEDIA_TYPE_VIDEO);
@@ -1910,6 +1914,7 @@ describe('StreamOrchestrator stall signal during a drain', () => {
 
     await clock.advance(5 * 60 * 1000 + 1);
     await stopped;
+    bee.refuseAll();
   });
 });
 
@@ -2345,6 +2350,25 @@ describe('StreamOrchestrator status during a handover (gate on PR 52)', () => {
   });
 });
 
+/**
+ * A Bee that holds every write open until the test refuses them all. A write that never settles
+ * keeps each queued segment inside its 15 s retry window, so a test that leaves a backlog behind
+ * would keep the process alive for 15 s per segment. Refusing them, the ones still queued included,
+ * ends the backlog at once.
+ */
+function makeHeldBee(): { uploadData: () => Promise<never>; refuseAll: () => void } {
+  const refusals: ((reason: unknown) => void)[] = [];
+  let refusing = false;
+  const refusal = { status: 400, message: 'held write refused by the test' };
+  return {
+    uploadData: () => (refusing ? Promise.reject(refusal) : new Promise<never>((_, reject) => refusals.push(reject))),
+    refuseAll: () => {
+      refusing = true;
+      refusals.forEach((refuse) => refuse(refusal));
+    },
+  };
+}
+
 describe('StreamOrchestrator unusable segment durations (gate on PR 52)', () => {
   /**
    * The backlog total adds a duration on enqueue and subtracts it when the job ends, so
@@ -2365,7 +2389,8 @@ describe('StreamOrchestrator unusable segment durations (gate on PR 52)', () => 
 
   for (const [name, duration] of UNUSABLE) {
     it(`refuses a ${name} duration instead of letting it poison the backlog signal`, async () => {
-      const orch = makeTestOrchestrator({}, { uploadData: neverSettles });
+      const bee = makeHeldBee();
+      const orch = makeTestOrchestrator({}, { uploadData: bee.uploadData });
 
       await withSilencedLogs(async () => {
         orch.startStream('live/victim', MEDIA_TYPE_VIDEO);
@@ -2386,12 +2411,14 @@ describe('StreamOrchestrator unusable segment durations (gate on PR 52)', () => 
           80,
           `a ${name} duration destroyed the backlog reading for every stream in the process`,
         );
+        bee.refuseAll();
       });
     });
   }
 
   it('still accepts an ordinary duration, and zero', async () => {
-    const orch = makeTestOrchestrator({}, { uploadData: neverSettles });
+    const bee = makeHeldBee();
+    const orch = makeTestOrchestrator({}, { uploadData: bee.uploadData });
 
     await withSilencedLogs(async () => {
       orch.startStream('live/normal', MEDIA_TYPE_VIDEO);
@@ -2400,6 +2427,7 @@ describe('StreamOrchestrator unusable segment durations (gate on PR 52)', () => 
       assert.equal(orch.handleSegment('live/normal', 0, 2, Buffer.from('a')).accepted, true);
       assert.equal(orch.handleSegment('live/normal', 1, 0, Buffer.from('b')).accepted, true, 'zero publishes cleanly');
       assert.equal(orch.getMetricsSnapshot().queueBacklogSeconds, 2);
+      bee.refuseAll();
     });
   });
 });
