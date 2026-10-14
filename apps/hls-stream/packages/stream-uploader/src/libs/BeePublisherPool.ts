@@ -283,7 +283,9 @@ export const MANIFEST_WRITE_TIMEOUT_CEILING_MS = 240_000;
  * about 0.5 MB, 128 chunks, so 15 s + 128 x 0.3 s = 53.4 s. The ceiling of 240 s is reached at 750
  * chunks, about 3 MB, six hours of one second segments. It stays under the orchestrator's 5 minute
  * drain with room for the 15 s windows of the feed head read, the closing live playlist and the
- * retries that follow this write.
+ * retries that follow this write, about 285 s in all. What actually kills the container is compose's
+ * `stop_grace_period` in `deploy/docker-compose.yml`, raised from 120 s to 330 s so it outlasts that
+ * drain, and `deploy/test/stop.test.js` keeps it there.
  */
 export function manifestWriteTimeoutMs(payloadBytes: number): number | undefined {
   if (payloadBytes <= FEED_PAYLOAD_CHUNK_BYTES) {
