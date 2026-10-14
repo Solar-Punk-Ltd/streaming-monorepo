@@ -118,6 +118,18 @@ export class StreamCatalog implements LadderRegistry {
   /** The identity each ladder last announced under, so a rung dying can be written as that owner. */
   private readonly lastIdentity = new Map<string, LadderIdentity>();
 
+  /**
+   * The rungs this ladder's master names: every rung that is still producing while the ladder is live,
+   * and every rung with a recording once it is one. Liveness says nothing about a finished recording:
+   * a rung held out while its uploads were refused that then finished has a recording to offer.
+   */
+  private masterRungs(entry: StreamEntry, group: string): Rendition[] {
+    const renditions = entry.renditions ?? [];
+    return entry.state === STREAM_STATUS_VOD
+      ? recordedRungs(renditions)
+      : advertisableRenditions(renditions, this.liveness.of(group));
+  }
+
   /** One live playlist publish of this rung landed. See {@link LadderRegistry.recordRungDelivered}. */
   public recordRungDelivered(group: string, rung: string): void {
     this.republishIfLadderShapeChanged(group, this.liveness.recordDelivered(group, rung));
@@ -487,7 +499,7 @@ export class StreamCatalog implements LadderRegistry {
         // ⛔ A master naming a rung nothing is producing offers a viewer a quality with nothing
         // behind it. The player moves them off within about seven seconds, so this is the last few
         // seconds of that harm rather than all of it, and it is harm a stream need not cause.
-        const advertised = advertisableRenditions(entry.renditions ?? [], this.liveness.of(identity.group));
+        const advertised = this.masterRungs(entry, identity.group);
         // Remembered here because this is the path that always runs: a ladder that never announces
         // has no master for a rung death to correct, and no owner to write it as.
         this.lastIdentity.set(identity.group, identity);
@@ -556,7 +568,7 @@ export class StreamCatalog implements LadderRegistry {
           return previous;
         }
 
-        const advertised = advertisableRenditions(entry.renditions ?? [], this.liveness.of(identity.group));
+        const advertised = this.masterRungs(entry, identity.group);
         const published = await this.masterWriter?.publish(identity.group, advertised);
         if (!published) {
           return previous;

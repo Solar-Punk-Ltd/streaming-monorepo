@@ -192,7 +192,7 @@ export class AdminLadderRegistry implements LadderRegistry {
       this.unfinished.delete(group);
     }
 
-    const advertised = advertisableRenditions(this.offeredRungs(group), this.liveness.of(group));
+    const advertised = this.masterRungs(group);
     if (this.isRecording(group)) {
       this.liveness.forget(group);
     }
@@ -253,13 +253,15 @@ export class AdminLadderRegistry implements LadderRegistry {
   }
 
   /**
-   * The rungs a master for this ladder may name before the liveness filter: every rung while the ladder
-   * is live, and only those with a recording once it is one. A viewer of a recording must never be
-   * offered a rung whose feed holds nothing but a live playlist that will not end.
+   * The rungs this ladder's master names: every rung that is still producing while the ladder is live,
+   * and every rung with a recording once it is one. A viewer of a recording must never be offered a
+   * rung whose feed holds nothing but a live playlist that will not end, and liveness says nothing
+   * about a finished recording: a rung held out while its uploads were refused that then finished has
+   * a recording to offer.
    */
-  private offeredRungs(group: string): Rendition[] {
+  private masterRungs(group: string): Rendition[] {
     const ladder = this.merged.get(group) ?? [];
-    return this.isRecording(group) ? recordedRungs(ladder) : ladder;
+    return this.isRecording(group) ? recordedRungs(ladder) : advertisableRenditions(ladder, this.liveness.of(group));
   }
 
   /** Whether this ladder's broadcast has ended: the admin holds its recording, or every rung finished. */
@@ -359,7 +361,7 @@ export class AdminLadderRegistry implements LadderRegistry {
       // announce can land a newer merge in between — and writing the older one over the master that
       // announce just published would take a rung back off the ladder until something else moved.
       // `StreamCatalog` gets the same freshness by reading its catalog entry inside its own write.
-      const advertised = advertisableRenditions(this.offeredRungs(group), this.liveness.of(group));
+      const advertised = this.masterRungs(group);
       const published = await this.masterWriter.publish(group, advertised);
       if (published) {
         this.logger.log(
