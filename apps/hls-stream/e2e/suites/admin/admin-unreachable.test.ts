@@ -130,6 +130,7 @@ describe('admin: a broadcast while the admin backend is away', { skip }, () => {
         minPublishes: PUBLISHES_PER_RUNG,
         publishWaitMs: PUBLISH_WAIT_MS,
         headWaitMs: HEAD_ADVANCE_WAIT_MS,
+        owner: declared.stream.owner,
       });
       assert.equal(
         warm.refusal,
@@ -149,6 +150,7 @@ describe('admin: a broadcast while the admin backend is away', { skip }, () => {
         minPublishes: PUBLISHES_PER_RUNG,
         publishWaitMs: PUBLISH_WAIT_MS,
         headWaitMs: HEAD_ADVANCE_WAIT_MS,
+        owner: declared.stream.owner,
       });
       console.log(through.summary);
       assert.equal(through.refusal, null, through.refusal ?? '');

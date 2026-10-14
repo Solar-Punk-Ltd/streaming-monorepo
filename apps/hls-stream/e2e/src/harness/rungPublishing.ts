@@ -414,6 +414,14 @@ interface RungPlaylistsLiveCheck {
    * post-fault window instead, where any stale warning is again a refusal.
    */
   refuseStale?: boolean;
+  /**
+   * The signer whose feeds the heads are read under. Discovered from the catalog's own log line when absent, which is
+   * right on a standalone stage. An admin-mode stage names it on the declared stream, and its catalog writes that line
+   * once at boot and never again, so after an hour or two of uptime no log tail reaches it.
+   */
+  owner?: string;
+  /** Injected so a test drives the waits instead of spending them, as `waitFor` takes one. */
+  clock?: { now: () => number; wait: (ms: number) => Promise<void> };
 }
 
 /**
@@ -428,7 +436,17 @@ interface RungPlaylistsLiveCheck {
 export async function checkRungPlaylistsLive(
   host: Host,
   cfg: E2EConfig,
-  { log, rungs, minPublishes, publishWaitMs, headWaitMs, namesFrom, refuseStale = true }: RungPlaylistsLiveCheck,
+  {
+    log,
+    rungs,
+    minPublishes,
+    publishWaitMs,
+    headWaitMs,
+    namesFrom,
+    refuseStale = true,
+    owner,
+    clock,
+  }: RungPlaylistsLiveCheck,
 ): Promise<RungPublishingVerdict> {
   const named = async (): Promise<string> => {
     const text = await log();
@@ -443,7 +461,12 @@ export async function checkRungPlaylistsLive(
       const text = await named();
       return everyRungPublishedAtLeast(text, expectedOf(text), minPublishes);
     },
-    { timeoutMs: publishWaitMs, intervalMs: 3_000, label: `every rung publishes ${minPublishes} live playlists` },
+    {
+      timeoutMs: publishWaitMs,
+      intervalMs: 3_000,
+      clock,
+      label: `every rung publishes ${minPublishes} live playlists`,
+    },
   ).catch(() => undefined);
 
   const text = await named();
@@ -468,8 +491,8 @@ export async function checkRungPlaylistsLive(
     refusals.push(`${unannounced.join(', ')} never announced a feed, so its playlist head could not be read`);
   }
 
-  const { owner } = await discoverCatalogFeed(host, cfg);
-  const heads = await waitForRungHeadsAdvance(host, cfg, { owner, feeds, timeoutMs: headWaitMs });
+  const signer = owner ?? (await discoverCatalogFeed(host, cfg)).owner;
+  const heads = await waitForRungHeadsAdvance(host, cfg, { owner: signer, feeds, timeoutMs: headWaitMs, clock });
   if (heads.refusal !== null) {
     refusals.push(heads.refusal);
   }

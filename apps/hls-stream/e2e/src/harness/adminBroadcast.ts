@@ -126,6 +126,7 @@ export async function broadcastSession(
       minPublishes,
       publishWaitMs: publishWithinMs,
       headWaitMs,
+      owner: declared.stream.owner,
     });
 
     await whileLive?.();

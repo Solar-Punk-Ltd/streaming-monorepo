@@ -4,9 +4,11 @@ import { join } from 'node:path';
 import { describe, it } from 'node:test';
 import { pathToFileURL } from 'node:url';
 
-import { ROOT_DIR } from '../src/config.js';
+import { type E2EConfig, ROOT_DIR } from '../src/config.js';
+import type { Host } from '../src/harness/host.js';
 import { rungPlaylistParse } from '../src/harness/manifestContractLive.js';
 import {
+  checkRungPlaylistsLive,
   crashRecoveredStreams,
   everyRungPublishedAtLeast,
   feedIndexFromHeaders,
@@ -322,5 +324,59 @@ describe('reapedAfterDisconnect', () => {
     );
     assert.deepEqual(reapedAfterDisconnect(log), [streamOf('1080p')]);
     assert.deepEqual(reapedAfterDisconnect(announces().join('\n')), []);
+  });
+});
+
+describe('checkRungPlaylistsLive with the owner named', () => {
+  const OWNER = 'ab'.repeat(20);
+
+  /** A host whose log holds no catalog line, and whose gateway answers a playlist that grows by one per read. */
+  function fakeHost() {
+    const routes: string[] = [];
+    let reads = 0;
+    const host = {
+      logs: async () => {
+        throw new Error('the catalog log line was looked for although the owner was named');
+      },
+      localText: async (_port: unknown, route: string) => {
+        routes.push(route);
+        reads += 1;
+        return rungPlaylist(Array.from({ length: 3 + reads }, (_, i) => i));
+      },
+    } as unknown as Host;
+    return { host, routes };
+  }
+
+  it('reads every head under the named owner without discovering it from the log', async () => {
+    const { host, routes } = fakeHost();
+    const log = [...announces(['360p']), textLine(manifestUploaded(streamOf('360p'), 0))].join('\n');
+    let now = 0;
+    const verdict = await checkRungPlaylistsLive(host, { ports: { beeGatewayApi: 1633 } } as unknown as E2EConfig, {
+      log: async () => log,
+      rungs: ['360p'],
+      minPublishes: 1,
+      publishWaitMs: 0,
+      headWaitMs: 10_000,
+      owner: OWNER,
+      clock: { now: () => now, wait: async (ms) => void (now += ms) },
+    });
+
+    assert.equal(verdict.refusal, null, verdict.refusal ?? '');
+    assert.ok(routes.length >= 2 && routes.every((route) => route.startsWith(`/feeds/${OWNER}/`)));
+  });
+
+  it('would look for the catalog line without one, which is what an admin stage cannot answer', async () => {
+    const { host } = fakeHost();
+    const log = [...announces(['360p']), textLine(manifestUploaded(streamOf('360p'), 0))].join('\n');
+    await assert.rejects(
+      checkRungPlaylistsLive(host, { ports: { beeGatewayApi: 1633 } } as unknown as E2EConfig, {
+        log: async () => log,
+        rungs: ['360p'],
+        minPublishes: 1,
+        publishWaitMs: 0,
+        headWaitMs: 0,
+      }),
+      /catalog log line was looked for/,
+    );
   });
 });
