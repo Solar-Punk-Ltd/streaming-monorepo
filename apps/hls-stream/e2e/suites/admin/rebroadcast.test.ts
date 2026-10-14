@@ -8,6 +8,7 @@ import {
   broadcastSession,
   type DeclaredStream,
   prepareDeclaredStream,
+  sessionObservations,
   recordingAfter,
   type SessionRecord,
 } from '../../src/harness/adminBroadcast.js';
@@ -99,6 +100,7 @@ describe(
       }
       sessions.push(await broadcastSession(host, cfg, api, plan()));
       console.log(sessions[0].playlists.summary);
+      console.log(sessionObservations(sessions[0]));
       assert.equal(sessions[0].playlists.refusal, null, sessions[0].playlists.refusal ?? '');
       const baseline = await recordingAfter(host, cfg, declared, sessions[0]);
       console.log(describeRecording(baseline.offered, baseline.rungs));
@@ -110,6 +112,7 @@ describe(
       const second = await broadcastSession(host, cfg, api, plan());
       sessions.push(second);
       console.log(second.playlists.summary);
+      console.log(sessionObservations(second));
       assert.equal(second.playlists.refusal, null, second.playlists.refusal ?? '');
 
       const rungOf = new Map(announcedRungs(second.log).map((announce) => [announce.streamId, announce.rung]));

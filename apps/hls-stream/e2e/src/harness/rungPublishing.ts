@@ -169,6 +169,32 @@ export function crashRecoveredStreams(logText: string): string[] {
   return [...new Set([...messageText(logText).matchAll(RECOVERED_LINE)].map((match) => match[1]))];
 }
 
+/** One head-probe correction: bee answered one index as a feed's head and the uploader found playlists above it. */
+export interface HeadProbeCorrection {
+  streamId: string;
+  answered: number;
+  present: number;
+}
+
+const HEAD_PROBE_LINE =
+  /bee answered SOC index (\d+) as the head of (\S+)'s feed, but the feed holds playlists up to (\d+)/g;
+
+/**
+ * Every time the uploader found bee's answer for a feed's head below the playlists actually on it, and continued from
+ * the highest one instead. Read as an observation: the correction is the uploader working, and how often bee needs it
+ * is a fact about the node rather than a fault here.
+ *
+ * ⚠️ The line arrives with the head-probe fix on its own branch, so on a stage without it this always reads none, and
+ * `src/logLevel.ts` cannot pin it against this checkout's uploader yet.
+ */
+export function headProbeCorrections(logText: string): HeadProbeCorrection[] {
+  return [...messageText(logText).matchAll(HEAD_PROBE_LINE)].map((match) => ({
+    streamId: match[2],
+    answered: Number(match[1]),
+    present: Number(match[3]),
+  }));
+}
+
 const REAPED_AFTER_DISCONNECT_LINE = /The encoder feeding (\S+) left and did not come back within the/g;
 
 /**

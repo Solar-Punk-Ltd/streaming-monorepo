@@ -8,6 +8,7 @@ import {
   type DeclaredStream,
   declaredRungFeeds,
   prepareDeclaredStream,
+  sessionObservations,
 } from '../../src/harness/adminBroadcast.js';
 import { makeHost, waitForIdle } from '../../src/harness/host.js';
 import { fragmentSecondsFor, rungFeedsOf } from '../../src/harness/manifestContractLive.js';
@@ -92,6 +93,7 @@ describe('admin G3: a declared stream broadcast again after its first batch expi
       headWaitMs: HEAD_ADVANCE_WAIT_MS,
     });
     console.log(session.playlists.summary);
+    console.log(sessionObservations(session));
     assert.equal(session.playlists.refusal, null, session.playlists.refusal ?? '');
 
     const listing = await waitForRecordingListing(

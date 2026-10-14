@@ -7,6 +7,7 @@ import {
   broadcastSession,
   type DeclaredStream,
   prepareDeclaredStream,
+  sessionObservations,
   recordingAfter,
   type SessionRecord,
 } from '../../src/harness/adminBroadcast.js';
@@ -84,6 +85,7 @@ describe('admin G2: three broadcasts in a row on one declared stream each contin
       });
       sessions.push(session);
       console.log(session.playlists.summary);
+      console.log(sessionObservations(session));
       assert.equal(session.playlists.refusal, null, session.playlists.refusal ?? '');
       if (n === 1) {
         afterFirst = sessionsByRung((await recordingAfter(host, cfg, declared, session)).rungs);

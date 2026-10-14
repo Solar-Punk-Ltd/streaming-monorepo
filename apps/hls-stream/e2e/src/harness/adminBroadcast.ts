@@ -21,6 +21,7 @@ import { startPublisherAt } from './publisher.js';
 import { vodFinalizeWaitMs } from './recording.js';
 import {
   checkRungPlaylistsLive,
+  headProbeCorrections,
   type RungPublishingVerdict,
   topicResumes,
   type TopicResume,
@@ -163,6 +164,14 @@ export async function broadcastSession(
     ladder: announcedRungs(text)[0]?.ladder ?? null,
     recoveryEntryBytes,
   };
+}
+
+/** One observation line per session, never asserted: what the uploader had to correct or hold while it ran. */
+export function sessionObservations(session: SessionRecord): string {
+  return (
+    `  observations, none of them asserted. the uploader corrected bee's feed head answer ` +
+    `${headProbeCorrections(session.log).length} time(s) in this session`
+  );
 }
 
 /** How long a finished session's recording is given to land on every rung. */

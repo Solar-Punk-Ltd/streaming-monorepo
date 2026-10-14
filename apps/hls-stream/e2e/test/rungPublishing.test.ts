@@ -14,6 +14,7 @@ import {
   feedIndexFromHeaders,
   headAdvanced,
   headAdvanceRefusal,
+  headProbeCorrections,
   manifestPublishesByRung,
   missingTopicResumes,
   publishShortfall,
@@ -378,5 +379,16 @@ describe('checkRungPlaylistsLive with the owner named', () => {
       }),
       /catalog log line was looked for/,
     );
+  });
+});
+
+describe('headProbeCorrections', () => {
+  it('reads the index bee answered and the one the uploader continued from', () => {
+    const log = textLine(
+      `[StreamUploader] bee answered SOC index 12 as the head of ${streamOf('1080p')}'s feed, but the feed holds ` +
+        'playlists up to 15. Continuing from 15, so the slots above that answer are not written over',
+    );
+    assert.deepEqual(headProbeCorrections(log), [{ streamId: streamOf('1080p'), answered: 12, present: 15 }]);
+    assert.deepEqual(headProbeCorrections(announces().join('\n')), []);
   });
 });
