@@ -571,7 +571,7 @@ describe('the settings are read again the moment a Use lands', () => {
   });
 
   it("re-reads a stage's list when it is removed and created again under the same name", () => {
-    const stage = {
+    const stage: Parameters<typeof stageReadKey>[0][number] = {
       name: 'stage-a',
       instance_id: 'one',
       status: 'RUNNING',

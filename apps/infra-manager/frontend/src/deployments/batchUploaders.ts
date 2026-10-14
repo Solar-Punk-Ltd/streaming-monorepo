@@ -5,7 +5,8 @@ import {
   INGEST_READ,
   type IngestHealthReading,
   parseBeePublishers,
-  RTMP_INGEST_NO_REPORTS,
+  RTMP_INGEST_MEASURED,
+  RTMP_INGEST_UNATTRIBUTED,
   sameBatchId,
   SRT_INGEST_MEASURED,
 } from '@streaming-infra-manager/common';
@@ -50,6 +51,12 @@ export interface BatchUploader {
   batchKey: string;
   /** Every saved key the running containers are behind on, which Apply applies all together. */
   changedKeys: readonly string[];
+  /**
+   * Whether its next deploy pays with this node's batch at all. A deployment
+   * that owns a Bee node and also has a pool string publishes through the pool,
+   * and `STAMP` then reaches nothing.
+   */
+  savedPaysWithNode: boolean;
 }
 
 /** How a batch the node holds stands against the uploaders that pay with the node's batches. */
@@ -63,20 +70,31 @@ function recreatesOf(catalog: DeploymentSettingsCatalog): BatchUploader['recreat
   return catalog.drift.fullRedeploy ? 'all' : catalog.drift.services;
 }
 
-/** A single-node deployment's own uploader, from its settings list, or null when the list has no `STAMP`. */
+/**
+ * A deployment's own uploader, from its settings list, or null when the list
+ * has no `STAMP`. The uploader pays with `STAMP` only while `BEE_PUBLISHERS` is
+ * empty, so the saved side and the running side are each read from it: a
+ * running container started with a pool string pays with no batch of this
+ * node, and a saved pool string means a Use here changes nothing the next
+ * deploy pays with, so no Apply is offered for it.
+ */
 export function ownUploaderOf(name: string, catalog: DeploymentSettingsCatalog): BatchUploader | null {
   const entry = catalog.entries.find((candidate) => candidate.key === STAMP_KEY);
   if (!entry) return null;
+  const pool = catalog.entries.find((candidate) => candidate.key === BEE_PUBLISHERS_KEY);
+  const savedPaysWithNode = !pool?.value;
+  const runningPaysWithNode = !pool?.runningValue;
   return {
     name,
     instanceId: catalog.instanceId,
     own: true,
-    savedBatchId: entry.value || null,
-    runningBatchId: entry.runningValue,
-    behind: catalog.running && entry.running === 'differs',
+    savedBatchId: savedPaysWithNode ? entry.value || null : null,
+    runningBatchId: runningPaysWithNode ? entry.runningValue : null,
+    behind: catalog.running && savedPaysWithNode && entry.running === 'differs',
     recreates: recreatesOf(catalog),
     batchKey: STAMP_KEY,
     changedKeys: catalog.drift.keys,
+    savedPaysWithNode,
   };
 }
 
@@ -107,6 +125,7 @@ export function stageUploaderOf(name: string, catalog: DeploymentSettingsCatalog
     recreates: recreatesOf(catalog),
     batchKey: BEE_PUBLISHERS_KEY,
     changedKeys: catalog.drift.keys,
+    savedPaysWithNode: true,
   };
 }
 
@@ -132,14 +151,16 @@ export function stagesUsingNode(
  * Where nothing records what any uploader runs (a stopped deployment, one
  * deployed before the manager kept records, a rung no stage publishes for),
  * the saved batch is what the next start pays with, so it reads as in use,
- * unless an uploader is known to be behind on it.
+ * unless an uploader is known to be behind on it. A saved batch no uploader's
+ * next deploy pays with reads as nothing.
  */
 export function batchUseOf(
   batchId: string,
   savedBatchId: string | null | undefined,
   uploaders: readonly BatchUploader[],
 ): BatchUse | null {
-  const saved = savedBatchId != null && sameBatch(savedBatchId, batchId);
+  const nodePaid = uploaders.length === 0 || uploaders.some((uploader) => uploader.savedPaysWithNode);
+  const saved = nodePaid && savedBatchId != null && sameBatch(savedBatchId, batchId);
   const runningIds = uploaders.flatMap((uploader) => (uploader.runningBatchId ? [uploader.runningBatchId] : []));
   const running = runningIds.some((id) => sameBatch(id, batchId));
   const waitedOn = uploaders.some(
@@ -227,14 +248,16 @@ export type BroadcastState = 'live' | 'quiet' | 'unknown';
 
 /**
  * Whether a broadcast is coming in, by the ingest reading the Ingest card
- * shows: SRS reported a publisher over SRT or RTMP in its window. Only SRS
- * reports one, so another engine, a log that could not be read and a manager
- * that did not answer cannot tell.
+ * shows: SRS reported a publisher over SRT, or over RTMP on the ingest vhost,
+ * in its window. Only SRS reports one, so another engine, a log that could not
+ * be read and a manager that did not answer cannot tell. Neither can an RTMP
+ * report an older SRS printed without its vhost, which may be a ladder rung
+ * republishing rather than a broadcaster.
  */
 export function broadcastStateOf(reading: IngestHealthReading | null): BroadcastState {
   if (!reading || reading.state !== INGEST_READ) return 'unknown';
-  const publishing = reading.srt.state === SRT_INGEST_MEASURED || reading.rtmp.state !== RTMP_INGEST_NO_REPORTS;
-  return publishing ? 'live' : 'quiet';
+  if (reading.srt.state === SRT_INGEST_MEASURED || reading.rtmp.state === RTMP_INGEST_MEASURED) return 'live';
+  return reading.rtmp.state === RTMP_INGEST_UNATTRIBUTED ? 'unknown' : 'quiet';
 }
 
 /** What Apply now asks before it runs, which the card hands to the console's confirm dialog. */

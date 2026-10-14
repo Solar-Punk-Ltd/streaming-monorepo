@@ -65,12 +65,23 @@ export function useBatchUploaders({
 }
 
 /**
+ * What moves a stage's settings list. The instance is in it, because a stage
+ * removed and created again under its name answers Apply only for its new
+ * instance, whatever its status, batch and pool string.
+ */
+export function stageReadKey(
+  stages: readonly Pick<Profile, 'name' | 'instance_id' | 'status' | 'stamp_id' | 'bee_publishers'>[],
+): string {
+  return JSON.stringify(stages.map((stage) => [stage.name, stage.instance_id, settingsReadKey(stage)]));
+}
+
+/**
  * The settings lists of these stages, read again whenever one of them deploys
  * or has its pool string moved. A stage whose list could not be read in time
  * is left out rather than guessed at. Only the newest round's answers are kept.
  */
 function useStageCatalogs(stages: readonly Profile[]): { catalogs: StageCatalog[]; reread: () => Promise<void> } {
-  const readKey = JSON.stringify(stages.map((stage) => [stage.name, settingsReadKey(stage)]));
+  const readKey = stageReadKey(stages);
   const [catalogs, setCatalogs] = useState<StageCatalog[]>([]);
   const latest = useRef(0);
   const names = useRef<string[]>([]);

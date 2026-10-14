@@ -162,9 +162,11 @@ says so where the operator clicked:
   publishing. SRS reports a publisher only about every ten seconds, so a
   reading with no publisher in its last window can miss one that connected
   moments ago, and the question says so. It says a broadcast is live when SRS
-  reported a publisher, and that it cannot tell for another engine than SRS, a
-  log it could not read, or an ingest read that failed or took more than ten
-  seconds. It names any saved key Apply carries besides the batch. It is
+  reported a publisher over SRT, or over RTMP on the ingest vhost, and that it
+  cannot tell for another engine than SRS, a log it could not read, an RTMP
+  report an older SRS printed without its vhost (which may be a ladder rung
+  rather than a broadcaster), or an ingest read that failed or took more than
+  ten seconds. It names any saved key Apply carries besides the batch. It is
   worded from what gets recreated: with the uploader alone a live broadcast
   drops for a few seconds while it restarts, and with SRS, OvenMediaEngine or
   every service the encoder is disconnected and the broadcast stops until it
@@ -179,6 +181,15 @@ says so where the operator clicked:
   deployed before the manager kept records), the saved batch reads **in use**
   as before, because the next start pays with it, unless an uploader is known
   to be behind on it, when it reads **saved, not in use until Apply**.
+
+A deployment that runs its own Bee node and also has a pool string in
+`BEE_PUBLISHERS` publishes through the pool, and its uploader reads `STAMP` only
+while that string is empty. The card reads both sides from the settings list:
+while the saved string is set, a Use here changes nothing the next deploy pays
+with, so the card offers no Apply now and marks no saved batch in use, and while
+the running uploader was started with a pool string it pays with none of this
+node's batches. A local batch it still runs while it waits to switch to the pool
+reads **in use until Apply**.
 
 On a pool rung's page the uploaders are the ABR stages that publish through the
 rung: those whose stored pool string names, for this rung, a batch the node
