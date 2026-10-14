@@ -757,7 +757,9 @@ and goes out as one request under `BEE_REQUEST_TIMEOUT_MS`. The VOD manifest nam
 about 9 KB a minute at one second segments, so bee-js uploads every chunk of it synchronously before
 the feed update, all under one deadline. That write gets 15 s plus 300 ms per chunk, 240 s at most,
 and its retry window starts with that whole attempt. Under the pool's 4 s a long recording could run
-out of time on every attempt, and the finalize then failed again on every boot that retried it.
+out of time on every attempt, and the finalize then failed again on every boot that retried it. A
+finalize can now take about 285 s, so the compose `stop_grace_period` that kills a stopping container
+was raised from 120 s to 330 s, the 5 minute drain deadline plus 30 s for the rest of shutdown.
 
 **Health status:** `GET /health` answers `200` with `status: "ok"`, or `503` with `status: "degraded"` or
 `status: "waiting_for_node"` and a `reasons` array:
