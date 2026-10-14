@@ -12,9 +12,9 @@
  *
  * The admin's operator routes are behind a session cookie, `web2_admin_session`, which `POST /api/auth/login` sets.
  * This harness never logs in and never sees a password. `E2E_ADMIN_TOKEN` is the session token, read from the process
- * environment and from nowhere else: no env file, no profile, no argument. It is meant to arrive through `op run` with
- * an `op://` reference, so it exists only in this process for the length of the run. It is put on the Cookie header and
- * nowhere else, and no error, log line or summary built here carries it or any header.
+ * environment and from nowhere else: no env file, no profile, no argument. The shell that runs the suite puts it there
+ * from wherever the operator keeps it, so it exists only in this process for the length of the run. It is put on the
+ * Cookie header and nowhere else, and no error, log line or summary built here carries it or any header.
  *
  * Writes also carry `x-requested-with: web2-admin`, the header the admin's cross-site gate requires of every write.
  * Both names are copied from `apps/web2-admin/common/src/auth.ts`, because this package depends on nothing of the
@@ -103,7 +103,8 @@ export function adminSkipReason(mode: Partial<AdminMode>, needs: readonly AdminN
   }
   return (
     `SKIPPED, NOT PASSED: this suite needs a stage in admin mode and ${missing.join(', ')} ${missing.length === 1 ? 'is' : 'are'} ` +
-    `not set. Run it on the stage with ${ADMIN_TOKEN_VAR} supplied by op run, see the e2e README`
+    `not set. Run it on the stage with ${ADMIN_TOKEN_VAR} in the environment of the shell that runs it, never in a ` +
+    'file, see the e2e README'
   );
 }
 

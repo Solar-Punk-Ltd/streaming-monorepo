@@ -105,6 +105,7 @@ describe('sessionGrowthRefusal', () => {
           ['1080p', 9],
         ]),
         2,
+        ['360p', '1080p'],
       ),
       null,
     );
@@ -121,14 +122,31 @@ describe('sessionGrowthRefusal', () => {
         ['1080p', 1],
       ]),
       2,
+      ['360p', '1080p'],
     );
     assert.match(refusal ?? '', /1080p went from 3 to 1 session\(s\) where 2 were added/);
     assert.match(refusal ?? '', /the rungs disagree/);
   });
 
   it('refuses a rung whose head stopped being a recording, and an empty baseline', () => {
-    assert.match(sessionGrowthRefusal(counts([['360p', 1]]), counts([]), 1) ?? '', /360p holds no finished recording/);
-    assert.notEqual(sessionGrowthRefusal(counts([]), counts([['360p', 2]]), 1), null);
+    assert.match(
+      sessionGrowthRefusal(counts([['360p', 1]]), counts([]), 1, ['360p']) ?? '',
+      /360p holds no finished recording/,
+    );
+    assert.notEqual(sessionGrowthRefusal(counts([]), counts([['360p', 2]]), 1, ['360p']), null);
+  });
+
+  it('refuses a baseline that missed a rung whose recording landed late, naming it', () => {
+    const refusal = sessionGrowthRefusal(
+      counts([['360p', 3]]),
+      counts([
+        ['360p', 4],
+        ['1080p', 4],
+      ]),
+      1,
+      ['360p', '1080p'],
+    );
+    assert.match(refusal ?? '', /baseline is incomplete: rung 1080p's recording had not landed/);
   });
 
   it('counts only finished recordings into a baseline', () => {

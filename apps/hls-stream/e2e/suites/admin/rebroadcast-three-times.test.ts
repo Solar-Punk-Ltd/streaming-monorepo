@@ -125,7 +125,7 @@ describe('admin G2: three broadcasts in a row on one declared stream each contin
     assert.ok(last !== undefined, 'no session ran');
     const listing = await recordingAfter(host, cfg, declared, last);
     console.log(describeRecording(listing.offered, listing.rungs));
-    const grew = sessionGrowthRefusal(afterFirst, sessionsByRung(listing.rungs), SESSIONS - 1);
+    const grew = sessionGrowthRefusal(afterFirst, sessionsByRung(listing.rungs), SESSIONS - 1, cfg.abrRungs);
     assert.equal(grew, null, grew ?? '');
     const refusal = recordingRefusal(listing.offered, listing.rungs, {
       rungs: cfg.abrRungs,

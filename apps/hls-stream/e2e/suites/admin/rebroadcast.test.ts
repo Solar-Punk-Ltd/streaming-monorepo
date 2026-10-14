@@ -45,7 +45,7 @@ import { viewerGate } from '../../src/viewerCoverage.js';
  * it must be taken back into the second without a fatal error and with a picture that moves.
  *
  * ⛔ Runs on a stage in admin mode only, with `E2E_ADMIN_API_URL`, `E2E_ADMIN_STREAM_ID` and `E2E_ADMIN_TOKEN` set.
- * Without them it skips, printed as skipped. See the e2e README for the `op run` line.
+ * Without them it skips, printed as skipped. See the e2e README for how the token reaches the shell that runs it.
  */
 
 const SESSION_SECONDS = 90;
@@ -146,7 +146,7 @@ describe(
 
       const listing = await recordingAfter(host, cfg, declared, second);
       console.log(describeRecording(listing.offered, listing.rungs));
-      const grew = sessionGrowthRefusal(afterFirst, sessionsByRung(listing.rungs), 1);
+      const grew = sessionGrowthRefusal(afterFirst, sessionsByRung(listing.rungs), 1, cfg.abrRungs);
       assert.equal(grew, null, grew ?? '');
       const refusal = recordingRefusal(listing.offered, listing.rungs, {
         rungs: cfg.abrRungs,
