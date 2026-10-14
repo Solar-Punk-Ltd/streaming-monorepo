@@ -204,6 +204,52 @@ export const PARSED_LINES: readonly ParsedLine[] = [
       'a recording that plays as sound over a blank picture for its whole length, and this line is ' +
       'the only place the uploader says one was published',
   },
+  /*
+   * The three below are raw text in the uploader rather than shared composers, so this table is the only thing holding
+   * `harness/rungPublishing.ts` to what the uploader actually writes. Each fragment is the literal half its pattern
+   * matches on.
+   */
+  {
+    what: 'a live playlist that failed to publish ("Live manifest for stream <stream> is stale")',
+    level: 'warn',
+    emittedBy: {
+      file: 'libs/StreamUploader.ts',
+      fragment: 'is stale: ${this.consecutiveManifestFailures} consecutive publish failure(s)',
+    },
+    neededBy:
+      'staleManifestWarnings, which every healthy ladder suite asserts is empty. Dropped, a rung whose playlist ' +
+      'stopped publishing reads exactly like one that never failed',
+  },
+  {
+    what: 'a session continuing a topic\'s feed head ("Stream <stream> resumes its topic at SOC index N")',
+    level: 'info',
+    emittedBy: {
+      file: 'libs/StreamUploader.ts',
+      fragment: 'resumes its topic at SOC index ${head.index}, numbering ',
+    },
+    neededBy:
+      'missingTopicResumes, so the rung-restart and re-broadcast suites would refuse every session that reused a ' +
+      'topic as one that numbered itself from nothing',
+  },
+  {
+    what: 'a session rebuilt from a recovery entry ("Recovered stream <stream> with N segments")',
+    level: 'info',
+    emittedBy: {
+      file: 'libs/StreamOrchestrator.ts',
+      fragment: 'Recovered stream ${streamId} with ${state.segments.length} segments',
+    },
+    neededBy:
+      'crashRecoveredStreams, so missingTopicResumes would ask a crash-recovered session for a head read it is ' +
+      'right never to make',
+  },
+  {
+    what: 'a publish refused because the admin did not answer ("refused <stream>: the admin API did not resolve it")',
+    level: 'error',
+    emittedBy: { file: 'engines/adminGate.ts', fragment: 'refused ${streamId}: the admin API did not resolve it (' },
+    neededBy:
+      'adminUnreachableRefusals, so the admin-unreachable suite would read a stage that refused the broadcast as one ' +
+      'that never saw it',
+  },
 ];
 
 /** The quietest level that still emits every line above, and so the loudest the suite can require. */

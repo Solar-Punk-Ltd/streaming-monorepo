@@ -1,0 +1,72 @@
+import assert from 'node:assert/strict';
+import { describe, it } from 'node:test';
+
+import { rungPlaylistParse } from '../src/harness/manifestContractLive.js';
+import { recordingRefusal, recordingRungOf } from '../src/harness/recordingListing.js';
+
+import { FIXTURE_FRAGMENT_SECONDS, gluedRecording, rungPlaylist } from './helpers/rungPlaylistFixtures.js';
+
+const feed = (rung: string) => ({ rung, streamId: `live/stream_${rung}`, topic: `group-a-${rung}` });
+const finished = (rung: string, sessions: number[], inherited = {}) =>
+  recordingRungOf(rungPlaylistParse(feed(rung), gluedRecording(sessions, inherited)));
+
+const LADDER = ['360p', '1080p'];
+
+describe('recordingRungOf', () => {
+  it('counts segments, seconds, breaks and sessions off a recording glued from two sessions', () => {
+    const rung = finished('360p', [10, 5]);
+    assert.equal(rung.recording, true);
+    assert.equal(rung.segments, 15);
+    assert.equal(rung.durationSeconds, 15 * FIXTURE_FRAGMENT_SECONDS);
+    assert.equal(rung.discontinuities, 1);
+    assert.equal(rung.sessions, 2);
+  });
+
+  it('counts a seam that ran in front of the first entry, which only the discontinuity sequence declares', () => {
+    assert.equal(finished('360p', [10, 5], { mediaSequence: 40, discontinuitySequence: 1 }).sessions, 3);
+  });
+
+  it('reads a live window as no recording', () => {
+    const live = recordingRungOf(rungPlaylistParse(feed('360p'), rungPlaylist([0, 1, 2])));
+    assert.equal(live.recording, false);
+  });
+});
+
+describe('recordingRefusal', () => {
+  const expectation = { rungs: LADDER, sessions: 2, fragmentSeconds: FIXTURE_FRAGMENT_SECONDS };
+
+  it('passes a recording that holds every rung, the same length, every session', () => {
+    assert.equal(recordingRefusal(LADDER, [finished('360p', [10, 5]), finished('1080p', [10, 5])], expectation), null);
+  });
+
+  it('refuses a rung that kept only the last session, the 2026-10-14 shape', () => {
+    const refusal = recordingRefusal(LADDER, [finished('360p', [10, 5]), finished('1080p', [5])], expectation);
+    assert.match(refusal ?? '', /1080p glued 1 session\(s\) where the broadcast made 2/);
+    assert.match(refusal ?? '', /1080p 10\.0s fall more than one/);
+  });
+
+  it('refuses a rung the master no longer offers and a rung whose head is still live', () => {
+    const live = recordingRungOf(rungPlaylistParse(feed('1080p'), rungPlaylist([0, 1, 2])));
+    const refusal = recordingRefusal(['360p'], [finished('360p', [10, 5]), live], expectation);
+    assert.match(refusal ?? '', /does not offer 1080p/);
+    assert.match(refusal ?? '', /1080p holds no finished recording \(its head is a live window\)/);
+  });
+
+  it('takes a session count per rung, as after one rung restarted', () => {
+    const perRung = { ...expectation, sessions: new Map([['1080p', 2]]) };
+    assert.equal(recordingRefusal(LADDER, [finished('360p', [15]), finished('1080p', [10, 5])], perRung), null);
+  });
+
+  it('refuses a recording shorter than the segments the broadcast published', () => {
+    const refusal = recordingRefusal(LADDER, [finished('360p', [10]), finished('1080p', [10])], {
+      ...expectation,
+      sessions: 1,
+      minSegments: 1200,
+    });
+    assert.match(refusal ?? '', /360p holds 10 segment\(s\) where at least 1200 were published/);
+  });
+
+  it('refuses an empty expectation', () => {
+    assert.notEqual(recordingRefusal([], [], { ...expectation, rungs: [] }), null);
+  });
+});
