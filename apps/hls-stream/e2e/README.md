@@ -413,6 +413,14 @@ are in the suites' own constants, and the rules they judge by are covered by the
 full viewer run is seven paid broadcasts rather than two. Each crash arm is sized at four minutes by
 `crashArmMinutes`, which derives it from the fault rather than letting a suite guess.
 
+Admin mode, on a stage whose uploader takes its streams from the web2 admin. Every other suite publishes standalone and
+mints a fresh topic per broadcast, so only these reuse a declared stream's topic across broadcasts. They skip, printed as
+skipped, unless the admin settings are given, and `pnpm e2e:admin` runs the gates and these alone:
+
+| file                | proves                                                                                                                                                                                                                                                                                                                                                                            |
+| ------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `admin/rebroadcast` | (G1) one declared stream broadcast twice: every rung publishes 20 live playlists within 60s of its first segment both times, every head moves, nothing goes stale, every rung resumes the declared topic above index 0, the master offers all four, and the recording keeps both sessions on every rung. A viewer left on the ended overlay is taken back into the second session |
+
 ## In-browser node first
 
 **The default subject of a viewer measurement is our client reading segment bytes from a Swarm node
