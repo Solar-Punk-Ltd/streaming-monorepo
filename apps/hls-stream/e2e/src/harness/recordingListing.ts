@@ -134,7 +134,10 @@ export function recordingRefusal(
   }
 
   const finished = rungs.filter(
-    (rung) => rung.recording && expectation.rungs.includes(rung.rung) && !(expectation.shortOnPurpose ?? []).includes(rung.rung),
+    (rung) =>
+      rung.recording &&
+      expectation.rungs.includes(rung.rung) &&
+      !(expectation.shortOnPurpose ?? []).includes(rung.rung),
   );
   const longest = Math.max(0, ...finished.map((rung) => rung.durationSeconds));
   const short = finished.filter((rung) => longest - rung.durationSeconds > expectation.fragmentSeconds);
