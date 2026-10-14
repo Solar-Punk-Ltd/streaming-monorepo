@@ -30,6 +30,7 @@ function entry(key: string, over: Partial<DeploymentSettingEntry> = {}): Deploym
     field: null,
     services: ['stream-uploader'],
     running: 'same',
+    runningValue: null,
     engineSetting: null,
     ...over,
   };
