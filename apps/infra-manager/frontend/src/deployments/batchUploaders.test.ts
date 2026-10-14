@@ -30,6 +30,7 @@ import {
   batchUseOf,
   broadcastStateOf,
   ownUploaderOf,
+  readStageCatalogs,
   setBatchAndReread,
   stageUploaderOf,
   stagesUsingNode,
@@ -261,6 +262,13 @@ describe('the chip on each batch', () => {
     assert.equal(batchUseOf(NEW, NEW, uploaders), 'in-use');
     assert.equal(batchUseOf(OLD, NEW, uploaders), 'running-not-saved');
   });
+
+  it('marks the saved batch as waiting for Apply when an uploader is behind on it and nothing records what it runs', () => {
+    const uploaders = [uploader({ runningBatchId: null })];
+
+    assert.equal(batchUseOf(NEW, NEW, uploaders), 'saved-waiting');
+    assert.equal(batchUseOf(OLD, NEW, uploaders), null);
+  });
 });
 
 describe('the notice on the stamp card', () => {
@@ -336,8 +344,8 @@ describe('whether a broadcast is live', () => {
     );
   });
 
-  it('is idle when SRS reported nobody publishing', () => {
-    assert.equal(broadcastStateOf(IDLE), 'idle');
+  it('is quiet, never idle, when SRS reported nobody publishing, since a publisher that connected moments ago has no report yet', () => {
+    assert.equal(broadcastStateOf(IDLE), 'quiet');
   });
 
   it('is not known when the log could not be read, the engine is not SRS, or the manager did not answer', () => {
@@ -348,15 +356,17 @@ describe('whether a broadcast is live', () => {
 });
 
 describe('Apply now', () => {
-  function harness(reading: IngestHealthReading | Error) {
+  function harness(reading: IngestHealthReading | Error | 'stalls') {
     const calls: string[] = [];
     let asked: ApplyConfirm | null = null;
     const deps = {
       readIngest: async (name: string) => {
         calls.push(`read ${name}`);
+        if (reading === 'stalls') return new Promise<IngestHealthReading>(() => undefined);
         if (reading instanceof Error) throw reading;
         return reading;
       },
+      readDeadlineMs: 20,
       confirm: (request: ApplyConfirm) => {
         calls.push('confirm');
         asked = request;
@@ -393,16 +403,25 @@ describe('Apply now', () => {
     ]);
   });
 
-  it('applies at once when nobody is publishing', async () => {
+  it('still asks first when SRS reported nobody, saying a publisher that connected moments ago would not show yet', async () => {
     const run = harness(IDLE);
 
     await applyNow(uploader(), run.deps);
 
-    assert.deepEqual(run.calls, [
-      'read main-stage',
-      'apply main-stage 00000000-0000-4000-8000-000000000001',
-      'done ["stream-uploader"]',
-    ]);
+    assert.deepEqual(run.calls, ['read main-stage', 'confirm']);
+    assert.match(
+      run.asked()?.body ?? '',
+      /SRS reported no publisher on main-stage in its last window, but it reports one only about every ten seconds, so a publisher that connected moments ago would not show yet\. If one is live, it drops for a few seconds while the uploader restarts\./,
+    );
+  });
+
+  it('gives up on an ingest read that does not answer in time, and asks as when it cannot tell', async () => {
+    const run = harness('stalls');
+
+    await applyNow(uploader(), run.deps);
+
+    assert.deepEqual(run.calls, ['read main-stage', 'confirm']);
+    assert.match(run.asked()?.body ?? '', /cannot tell whether a broadcast is live on main-stage/);
   });
 
   it('asks first when it cannot tell, and says so', async () => {
@@ -424,7 +443,6 @@ describe('Apply now', () => {
     assert.ok(request);
     assert.equal(request.title, 'Apply every saved setting on main-stage?');
     assert.match(request.body, /It also applies LOG_LEVEL, saved earlier and not applied yet, not only the batch\./);
-    assert.doesNotMatch(request.body, /live/);
   });
 
   it('says a live broadcast stops until the encoder reconnects when SRS is recreated too', async () => {
@@ -508,5 +526,35 @@ describe('the settings are read again the moment a Use lands', () => {
     assert.notEqual(settingsReadKey(base), settingsReadKey({ ...base, bee_publishers: publishers(NEW) }));
     assert.notEqual(settingsReadKey(base), settingsReadKey({ ...base, status: 'DEPLOYING' }));
     assert.equal(settingsReadKey(base), settingsReadKey({ ...base }));
+  });
+});
+
+describe("the stages' settings lists after a Use", () => {
+  it('shows the stages that answered when another does not answer in time', async () => {
+    const read = async (name: string) => {
+      if (name === 'stage-stalled') return new Promise<DeploymentSettingsCatalog>(() => undefined);
+      return catalog([entry({ key: 'BEE_PUBLISHERS', value: publishers(NEW) })]);
+    };
+
+    const answered = await readStageCatalogs(['stage-a', 'stage-stalled', 'stage-b'], read, 20);
+
+    assert.deepEqual(
+      answered.map(({ name }) => name),
+      ['stage-a', 'stage-b'],
+    );
+  });
+
+  it('hands each read a signal that aborts at its deadline', async () => {
+    let aborted = false;
+    const read = async (_name: string, signal: AbortSignal) =>
+      new Promise<DeploymentSettingsCatalog>((_resolve, reject) => {
+        signal.addEventListener('abort', () => {
+          aborted = true;
+          reject(new Error('aborted'));
+        });
+      });
+
+    assert.deepEqual(await readStageCatalogs(['stage-a'], read, 20), []);
+    assert.equal(aborted, true);
   });
 });
