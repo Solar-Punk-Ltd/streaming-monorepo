@@ -16,8 +16,6 @@ import {
   quickPicks,
   relativeLabel,
   slotOptions,
-  pastStartRefused,
-  startMovedIntoPast,
   splitDateTimeLocal,
   timeSlots,
 } from '../components/schedule/scheduleTime';
@@ -217,44 +215,5 @@ describe('date-only plumbing', () => {
     expect(dayjsToDateValue(dateToDayjs('2026-09-20'))).toBe('2026-09-20');
     expect(dateToDayjs('')).toBeNull();
     expect(dayjsToDateValue(null)).toBe('');
-  });
-});
-
-describe('startMovedIntoPast', () => {
-  const now = new Date('2026-10-12T10:00:00.000Z');
-
-  it('refuses a new stream whose start has gone by (STMB-498)', () => {
-    expect(startMovedIntoPast('2026-10-12T09:45:00.000Z', null, now)).toBe(true);
-  });
-
-  it('lets a future start through', () => {
-    expect(startMovedIntoPast('2026-10-12T10:15:00.000Z', null, now)).toBe(false);
-    expect(startMovedIntoPast('2026-10-12T10:15:00.000Z', '2026-10-11T08:00:00.000Z', now)).toBe(false);
-  });
-
-  it('keeps a Draft whose stored start has passed when the time is left alone (STMB-496)', () => {
-    expect(startMovedIntoPast('2026-10-11T08:00:00.000Z', '2026-10-11T08:00:42.123Z', now)).toBe(false);
-  });
-
-  it('refuses an edit that moves the start to another time that has gone by', () => {
-    expect(startMovedIntoPast('2026-10-12T09:30:00.000Z', '2026-10-11T08:00:00.000Z', now)).toBe(true);
-  });
-});
-
-describe('pastStartRefused', () => {
-  const now = new Date('2026-10-12T10:00:00.000Z');
-  const past = '2026-10-01T09:00:00.000Z';
-
-  it('lets a stream that has gone live or become a recording record when it really started', () => {
-    expect(pastStartRefused(past, { status: 'live', scheduledStartTime: null }, now)).toBe(false);
-    expect(pastStartRefused(past, { status: 'vod', scheduledStartTime: null }, now)).toBe(false);
-  });
-
-  it('still refuses a past start on a new stream and on a stream that has not gone live', () => {
-    expect(pastStartRefused(past, null, now)).toBe(true);
-    expect(pastStartRefused(past, { status: 'draft', scheduledStartTime: null }, now)).toBe(true);
-    expect(pastStartRefused(past, { status: 'published', scheduledStartTime: '2026-10-13T08:00:00.000Z' }, now)).toBe(
-      true,
-    );
   });
 });

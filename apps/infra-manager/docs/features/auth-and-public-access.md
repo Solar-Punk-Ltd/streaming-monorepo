@@ -202,10 +202,11 @@ docker compose exec -it api node dist/cli.js user:add operator
 
 It prompts for the password twice with echo off and writes only the hash to Postgres. When
 stdin is not a terminal it refuses, unless `--password-stdin` is given, which reads the password
-from a pipe and lets 1Password supply it without the value ever landing in a file or an argv:
+from a pipe, so a password manager's command line can supply it without the value ever landing in
+a file or an argv:
 
 ```bash
-op read "op://<vault>/<item>/password" | docker compose exec -T api node dist/cli.js user:add operator --password-stdin
+<command that prints the password> | docker compose exec -T api node dist/cli.js user:add operator --password-stdin
 ```
 
 No `ADMIN_PASSWORD` environment variable and no seed file exist, deliberately. The manager
