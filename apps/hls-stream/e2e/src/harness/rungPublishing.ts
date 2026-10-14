@@ -604,6 +604,8 @@ export function rungMetricPairing(
   const uploaded = rungDeltas(before, after, RUNG_SEGMENTS_UPLOADED_METRIC);
   const published = rungDeltas(before, after, RUNG_MANIFEST_PUBLISHES_METRIC);
   const failed = rungDeltas(before, after, RUNG_MANIFEST_PUBLISH_FAILURES_METRIC);
+  // ⚠️ A labelled family renders no sample until a rung publishes, so 'log' also covers a new uploader on which no rung
+  // has published yet: the log's count then stands in, and both readings agree that it is zero.
   const publishesFrom: PublishCountSource = published.size > 0 ? 'metric' : 'log';
   const rows = [...uploaded].map(([rung, segmentsUploaded]) => ({
     rung,
