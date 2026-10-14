@@ -421,6 +421,7 @@ skipped, unless the admin settings are given, and `pnpm e2e:admin` runs the gate
 | ------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `admin/rebroadcast` | (G1) one declared stream broadcast twice: every rung publishes 20 live playlists within 60s of its first segment both times, every head moves, nothing goes stale, every rung resumes the declared topic above index 0, the master offers all four, and the recording keeps both sessions on every rung. A viewer left on the ended overlay is taken back into the second session |
 | `admin/rebroadcast-three-times` | (G2) three broadcasts in a row on one declared stream: every session publishes a moving live playlist on every rung, each rung resumes the topic at a strictly higher SOC index each time, the recording keeps three more sessions, and the live recovery entry does not grow with every session glued |
+| `admin/rebroadcast-vod` | (G17) the recording a declared stream glued from several sessions plays in the shipped client as one broadcast: the whole ladder, finished, and as long as its longest rung recorded. Needs a browser, and reads the recording `admin/rebroadcast-three-times` leaves |
 
 ## In-browser node first
 
