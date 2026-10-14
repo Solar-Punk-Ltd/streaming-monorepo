@@ -9,10 +9,10 @@ import {
 } from '@streaming-monorepo/web2-admin-common';
 
 import * as api from '../api';
-import { errorMessage, MEDIA_TYPE_LOCKED, SCHEDULE_LOCKED, STAGE_LOCKED } from '../errors';
+import { errorMessage, SCHEDULE_LOCKED, STAGE_LOCKED } from '../errors';
 import { thumbnailRefusal } from '../thumbnailCheck';
 import { dateTimeLocalValueToIso, isoToDateTimeLocalValue } from '../dateUtil';
-import { DescriptionField, MediaTypeField, NameField, TagsField, ThumbnailField } from '../components/StreamFormFields';
+import { DescriptionField, NameField, TagsField, ThumbnailField } from '../components/StreamFormFields';
 import { ScheduleField } from '../components/schedule/ScheduleField';
 import { assignableStages, StageField, StageReadinessWarning } from '../components/stages/StageField';
 import { nextFullHourValue } from '../components/schedule/scheduleTime';
@@ -76,6 +76,15 @@ const EMPTY: FormState = {
  */
 function freshForm(): FormState {
   return { ...EMPTY, scheduledStartTime: nextFullHourValue(new Date()) };
+}
+
+/**
+ * Audio Only is no longer offered (SPDV-1674), so the form saves a stream as video. A stream the API has locked the
+ * media type of, once it is published or has gone live, keeps the one it has, because the API refuses to change it.
+ */
+function mediaTypeToSave(stream: Stream): MediaType {
+  const locked = stream.status === 'published' || stream.status === 'live' || stream.status === 'vod';
+  return locked ? stream.mediaType : 'video';
 }
 
 /**
@@ -185,7 +194,7 @@ export function StreamFormPage() {
           title: stream.title,
           description: stream.description,
           tags: stream.tags,
-          mediaType: stream.mediaType,
+          mediaType: mediaTypeToSave(stream),
           scheduledStartTime: isoToDateTimeLocalValue(stream.scheduledStartTime),
           stageId: stream.stageId ?? '',
         });
@@ -242,18 +251,16 @@ export function StreamFormPage() {
     return () => URL.revokeObjectURL(url);
   }, [picked]);
 
-  // Once an encoder has connected, two fields stop being editable. The media
-  // type is half of the ingest address the streamer already has; the schedule
-  // is a promise about a stream that has already started, and viewers have
-  // read it off the catalogue entry. Everything else stays editable, live
-  // included — a typo in a title is worth fixing mid-broadcast.
+  // Once an encoder has connected, the schedule stops being editable: it is a
+  // promise about a stream that has already started, and viewers have read it
+  // off the catalogue entry. Everything else stays editable, live included,
+  // because a typo in a title is worth fixing mid-broadcast.
   //
   // A stream that went live without a stored schedule (a row the API created
   // before one was required) has no promise to protect, and the API will not
   // accept a save without a time, so the field stays open until it has one.
   // The backend applies the same exception.
   const hasGoneLive = loaded?.status === 'live' || loaded?.status === 'vod';
-  const mediaTypeLocked = loaded?.status === 'published' || hasGoneLive;
   const scheduleLocked = hasGoneLive && loaded?.scheduledStartTime !== null;
 
   const stageLock = stageLockOf(loaded);
@@ -394,18 +401,6 @@ export function StreamFormPage() {
                 />
               </Grid>
             </Grid>
-            {/*
-              The media type is the `app` half of the ingest stream id, so
-              changing it on a published stream would silently invalidate the
-              OBS settings the streamer already has. The backend refuses it
-              with 409 media_type_locked; the radio says so up front.
-            */}
-            <MediaTypeField
-              value={form.mediaType}
-              onChange={(v) => set('mediaType', v)}
-              disabled={saving || mediaTypeLocked}
-              helperText={mediaTypeLocked ? MEDIA_TYPE_LOCKED : undefined}
-            />
             {/*
               Where the encoder sends the stream, and which stage's details the
               OBS panel shows. The API refuses a move once the stream is
