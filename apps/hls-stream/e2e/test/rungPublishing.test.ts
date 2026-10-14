@@ -221,6 +221,8 @@ function exposition(render: RenderMetrics, byRung: Record<string, number>, failu
     segmentsUploadedByRung: byRung,
     segmentsDroppedTotal: 0,
     segmentsDroppedByRung: {},
+    manifestPublishesByRung: {},
+    manifestPublishFailuresByRung: {},
     segmentsLostTotal: 0,
     segmentsSkippedTotal: 0,
     openingSegmentsWithheldTotal: 0,
