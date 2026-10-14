@@ -109,9 +109,10 @@ export interface LadderRegistry {
    *
    * Called from the uploader's segment path at the moment a segment is dropped, which is the moment
    * the per-rung drop counter moves, whatever bee answered, and from its live publish path at the
-   * moment the manifest failure counter moves. A full postage batch is the cause measured on
-   * 2026-09-23, a node that is down fails both the same way, and a viewer offered the rung is failed
-   * the same way by all of them. See `LadderLiveness.recordUploadFailed`.
+   * moment a publish it attempted fails. A publish held back because the rung does not yet know where
+   * its feed stands attempts nothing and is not a failure here. A full postage batch is the cause
+   * measured on 2026-09-23, a node that is down fails both the same way, and a viewer offered the rung
+   * is failed the same way by all of them. See `LadderLiveness.recordUploadFailed`.
    */
   recordRungUploadFailed(group: string, rung: string): void;
 }

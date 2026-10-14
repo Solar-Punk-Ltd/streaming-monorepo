@@ -1042,7 +1042,7 @@ export class StreamUploader {
    * have seen it, the recovery entry was cleared when that session finalized, and the admin holds a
    * feed index for the recording rather than for the head. So the head is read, once, before anything
    * is written, and a read that does not complete **refuses the publish** rather than guessing: the
-   * caller treats that as a failed manifest publish and tries again at the next segment, which costs
+   * caller treats that as a stale manifest and tries again at the next segment, which costs
    * a stale live playlist for a few seconds where the other way round costs the previous recording.
    *
    * A 404 is an answer, not a failure: nothing has ever been written on this topic, so 0 is right.
@@ -1557,7 +1557,7 @@ export class StreamUploader {
       // that answer is wrong in the one number a viewer following the feed head cannot survive being
       // wrong. Answers immediately once settled, which is after the first segment of the session.
       if (!(await this.settleFeedPosition())) {
-        this.recordManifestPublishFailure();
+        this.recordManifestPublishHeld();
         return;
       }
       // Unreachable from the only caller, which queues this straight after adding a segment, so the
@@ -1601,11 +1601,26 @@ export class StreamUploader {
    * are refused.
    */
   private recordManifestPublishFailure(): void {
-    this.consecutiveManifestFailures += 1;
-    this.metrics?.recordManifestPublishFailure();
+    this.recordManifestStale();
     if (this.ladder) {
       this.ladderRegistry.recordRungUploadFailed(this.ladder.group, this.ladder.rung.name);
     }
+  }
+
+  /**
+   * One live manifest held back because where this session's feed stands is not settled yet, so no
+   * write was attempted. The playlist is as stale as after a failed publish, but nothing refused this
+   * rung, so the ladder is not told of a failed delivery: on the stage a re-broadcast's head read took
+   * 1 to 5 s (2026-10-14), and counting each wait as a failure held a rung that was only starting
+   * slowly out of the master for `RUNG_READMIT_AFTER_SEGMENTS` publishes after its first one landed.
+   */
+  private recordManifestPublishHeld(): void {
+    this.recordManifestStale();
+  }
+
+  private recordManifestStale(): void {
+    this.consecutiveManifestFailures += 1;
+    this.metrics?.recordManifestPublishFailure();
     this.logger.warn(
       `Live manifest for stream ${this.streamId} is stale: ${this.consecutiveManifestFailures} consecutive publish failure(s)`,
     );
