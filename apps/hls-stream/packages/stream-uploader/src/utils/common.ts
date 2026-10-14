@@ -185,7 +185,7 @@ export class RetryDeadlineError extends Error {
  * ⛔⛔⛔ **The deadline bounds each attempt, not only the gaps between them.** It used to be read in
  * the catch alone, so an attempt that rejected late was bounded and an attempt that never settled was
  * not bounded at all. That is the shape a Bee node with an open connection and nothing to say
- * produces, and every bee call this service makes is wrapped in here: a rung's uploads run at
+ * produces, and every bee call of the upload loop is wrapped in here: a rung's uploads run at
  * concurrency 1, so one such call stopped the rung, and the same call on the coordinator stopped the
  * catalog for the whole stage. Bee clients now carry a request timeout of their own as well, and this
  * is the backstop for everything that is not an HTTP request.

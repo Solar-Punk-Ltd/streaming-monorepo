@@ -1,6 +1,6 @@
 # Stream Uploader
 
-Node.js service that receives HLS segments and uploads them to the Swarm decentralized network. Part of the [swarm-hls-stream](../../) monorepo.
+Node.js service that receives HLS segments and uploads them to the Swarm decentralized network. Part of the [hls-stream](../../) stack, `apps/hls-stream` of the streaming monorepo.
 
 ## How It Works
 
@@ -549,7 +549,7 @@ pnpm uploader:start
 
 The API server starts on port 3000 (default).
 
-> **Note:** Both packages share a single `.env` file in the **monorepo root**. See [.env.sample](../../.env.sample) for all available variables.
+> **Note:** Both packages share a single `.env` file in the **stack folder, `apps/hls-stream`**, not the monorepo root, which nothing reads. See [.env.sample](../../.env.sample) for all available variables.
 
 ## Environment Variables (in root `.env`)
 
@@ -578,7 +578,7 @@ The API server starts on port 3000 (default).
 | `FIRST_RUNG_DEADLINE_MS` | `45000`              | How long a ladder source SRS accepted may go without any rung publishing before `/health` reports `ladder_not_started` and an error names the stream                                                                                               |
 | `ORPHAN_REAP_MS`         | `60000`              | Silence after which a live stream is finalized, and so the reconnect window                                                                                                                                                                        |
 | `UPLOADER_START_GATES`   | `chequebook-warn`    | Which startup gate stops the boot, and on which reading. `chequebook-warn` warns on the chequebook and refuses on a postage batch the node answered about, warning on one it could not read at all. `warn` warns on both, `refuse` refuses on both |
-| `START_GATE_TIMEOUT_MS`  | `20000`              | How long one startup gate's read of one node may take, 600000 at most. Separate from `BEE_REQUEST_TIMEOUT_MS`, which the upload loop derives                                                                                                       |
+| `START_GATE_TIMEOUT_MS`  | `20000`              | How long one startup gate read of one node, or the liveness probe before the gates, may take, 600000 at most. Separate from `BEE_REQUEST_TIMEOUT_MS`, which the upload loop derives                                                                                                       |
 | `CHEQUEBOOK_MIN_BZZ`     | `0.5`                | Available chequebook balance every node must hold for the chequebook gate to call it funded, 1000 at most                                                                                                                                          |
 | `CHEQUEBOOK_RECHECK_MS`  | `60000`              | How long to wait between reads of a chequebook the boot warned about, 1000 to 3600000. The warning leaves `/health` on the first read that finds every node funded, and nothing is read while no chequebook warning stands                         |
 | `STAMP_MIN_TTL_HOURS`    | `12`                 | Hours a postage batch must have left for the postage gate to call it usable                                                                                                                                                                        |
@@ -1115,14 +1115,14 @@ SRS_HTTP_API_PORT=1985
 # host.docker.internal. `srs:host` puts the container on the host network instead, and the base file
 # alone leaves the webhooks pointing at a `stream-uploader` container that is not running.
 docker compose -f docker-compose.yml -f docker-compose.local.yml up -d
-# or, from the monorepo root:  pnpm srs:local
+# or, from apps/hls-stream:  pnpm srs:local
 docker compose logs -f
 ```
 
 Published ports: `1935` RTMP, `10080/udp` SRT, `8080` HLS, `1985` SRS HTTP API. Each is published on
 the same number it binds inside the container, so changing one in `.env` moves both sides together.
 
-**2. The uploader**, from the monorepo root, with the root `.env` carrying:
+**2. The uploader**, from `apps/hls-stream`, with its `.env` carrying:
 
 ```ini
 BEE_URL=http://localhost:1633
