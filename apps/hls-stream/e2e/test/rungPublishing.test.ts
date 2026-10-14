@@ -15,6 +15,7 @@ import {
   headAdvanced,
   headAdvanceRefusal,
   headProbeCorrections,
+  heldManifestNotices,
   manifestPublishesByRung,
   missingTopicResumes,
   publishShortfall,
@@ -441,5 +442,16 @@ describe('rungMetricPairing on an uploader with per-rung publish counters', () =
   it('passes when every rung published and no rung failed, whatever the log says', () => {
     const after = before.replaceAll(' 100', ' 120').replaceAll('} 90', '} 110');
     assert.equal(rungMetricRefusal(rungMetricPairing(before, after, new Map())), null);
+  });
+});
+
+describe('heldManifestNotices', () => {
+  const held = (streamId: string, run: number) =>
+    `Live manifest for stream ${streamId} is held: its feed position is not settled yet (${run} consecutive)`;
+
+  it('reads a held publish, and the stale reader does not count it', () => {
+    const log = [textLine(held(streamOf('1080p'), 2)), jsonLine(stale(streamOf('360p'), 1))].join('\n');
+    assert.deepEqual(heldManifestNotices(log), [{ streamId: streamOf('1080p'), consecutive: 2 }]);
+    assert.deepEqual(staleManifestWarnings(log), [{ streamId: streamOf('360p'), consecutive: 1 }]);
   });
 });

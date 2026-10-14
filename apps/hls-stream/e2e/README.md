@@ -313,11 +313,11 @@ So every suite that claims a healthy ladder (`abr-ladder`, `master-offers-every-
 `rtmp-ladder-hold`, both engine restarts, both crash recoveries, K) now asks three things of every rung, through
 `checkRungPlaylistsLive` in `src/harness/rungPublishing.ts`:
 
-| reading                      | what it is                                                                                       |
-| ---------------------------- | ------------------------------------------------------------------------------------------------ |
-| live playlist publishes (H1) | `Manifest of <stream> uploaded at SOC index N`, counted per rung, at least n in the window       |
-| no stale warning (H1)        | `Live manifest for stream X is stale`, which a broadcast with no fault in it never writes        |
-| the head moves (H2)          | each rung's feed read off the gateway twice, and its last sequence must have moved on every rung |
+| reading                      | what it is                                                                                                                                                   |
+| ---------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| live playlist publishes (H1) | `Manifest of <stream> uploaded at SOC index N`, counted per rung, at least n in the window                                                                   |
+| no stale warning (H1)        | `Live manifest for stream X is stale`, which a broadcast with no fault in it never writes. A held publish, `is held:`, is printed and never counted as stale |
+| the head moves (H2)          | each rung's feed read off the gateway twice, and its last sequence must have moved on every rung                                                             |
 
 A suite whose session reopens a topic also asks for the uploader's `resumes its topic at SOC index N` line on each
 rung that did, because a session that did not read the head numbered itself from nothing. After a stop, H3 in

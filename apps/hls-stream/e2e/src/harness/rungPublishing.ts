@@ -118,6 +118,23 @@ export function staleManifestWarnings(logText: string): StaleManifestWarning[] {
   }));
 }
 
+const HELD_LINE = /Live manifest for stream (\S+) is held: its feed position is not settled yet \((\d+) consecutive\)/g;
+
+/**
+ * Every held-publish notice in the window: a live playlist the uploader would not write yet because where its feed
+ * stands is not settled, which is a session waiting for the one it replaced to finish draining onto the same topic.
+ *
+ * ⛔ Counted as an observation only, never as a stale warning. A hold is the uploader refusing on purpose and saying so
+ * in its own words, and {@link staleManifestWarnings} does not match it. The line arrives with the uploader change that
+ * stops counting a hold as a publish failure, so on an older uploader a hold still reads as stale and this reads none.
+ */
+export function heldManifestNotices(logText: string): StaleManifestWarning[] {
+  return [...messageText(logText).matchAll(HELD_LINE)].map((match) => ({
+    streamId: match[1],
+    consecutive: Number(match[2]),
+  }));
+}
+
 /**
  * Why the stale warnings in a window mean a healthy broadcast was not, or null when there were none.
  *
@@ -528,7 +545,8 @@ export async function checkRungPlaylistsLive(
     refusal: refusals.length === 0 ? null : refusals.join('\n'),
     summary:
       `  live playlist publishes per rung: ${publishLine || 'none'}\n` +
-      `  stale playlist warnings: ${stale.length}\n${heads.summary}`,
+      `  stale playlist warnings: ${stale.length}, held publishes (not refused): ${heldManifestNotices(text).length}\n` +
+      heads.summary,
   };
 }
 
