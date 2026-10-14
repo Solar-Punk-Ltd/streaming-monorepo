@@ -22,6 +22,7 @@ import { vodFinalizeWaitMs } from './recording.js';
 import {
   checkRungPlaylistsLive,
   headProbeCorrections,
+  manifestPublishesByRung,
   type RungPublishingVerdict,
   topicResumes,
   type TopicResume,
@@ -168,9 +169,10 @@ export async function broadcastSession(
 
 /** One observation line per session, never asserted: what the uploader had to correct or hold while it ran. */
 export function sessionObservations(session: SessionRecord): string {
+  const reached = [...manifestPublishesByRung(session.log)].map(([rung, count]) => `${rung} ${count}`).join(', ');
   return (
-    `  observations, none of them asserted. the uploader corrected bee's feed head answer ` +
-    `${headProbeCorrections(session.log).length} time(s) in this session`
+    `  observations, none of them asserted. live playlists published over the whole session: ${reached || 'none'}. ` +
+    `the uploader corrected bee's feed head answer ${headProbeCorrections(session.log).length} time(s)`
   );
 }
 

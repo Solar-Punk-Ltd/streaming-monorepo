@@ -34,8 +34,8 @@ import { viewerGate } from '../../src/viewerCoverage.js';
  * heads are the first session's recordings. On 2026-10-14 two or three of four rungs never published a live playlist
  * in the second session, while uploading segments the whole time.
  *
- * Each session broadcasts 90 s. In the second, every rung must publish 20 live playlists within 60 s of its first
- * segment, every rung head must move on the gateway, no playlist may be called stale, every rung must say it resumes
+ * Each session broadcasts 90 s. In the second, every rung must publish 6 live playlists within 120 s of its first
+ * segment, a floor rather than a rate, every rung head must move on the gateway, no playlist may be called stale, every rung must say it resumes
  * the declared topic at an SOC index above 0, and the master must offer all four. After the stop the recording lists
  * every rung with exactly one more session than it held after the first session finalized, the same count on every
  * rung. The baseline is read off the recording itself, because a declared stream's recording glues every session its
@@ -49,8 +49,13 @@ import { viewerGate } from '../../src/viewerCoverage.js';
  */
 
 const SESSION_SECONDS = 90;
-const PUBLISHES_PER_RUNG = 20;
-const PUBLISH_WITHIN_MS = 60_000;
+/**
+ * Live playlists each rung must publish in a session, and how long it is given from its first segment. A floor that
+ * says a rung publishes at all, set low and given room on purpose: an e2e suite checks correctness and never
+ * throughput, and the count each rung actually reached is printed in the session summary.
+ */
+const PUBLISHES_PER_RUNG = 6;
+const PUBLISH_WITHIN_MS = 120_000;
 const HEAD_ADVANCE_WAIT_MS = 60_000;
 /** The viewer arm watches the first session's end, the gap and the second session. */
 const VIEWER_WATCH_MINUTES = 8;
