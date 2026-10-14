@@ -27,7 +27,7 @@ pnpm client:start
 
 Opens at `http://localhost:5173`.
 
-> **Note:** Both packages share a single `.env` file in the **monorepo root**. See [.env.sample](../../.env.sample) for all available variables.
+> **Note:** Both packages share a single `.env` file in the **stack folder, `apps/hls-stream`**, not the monorepo root, which nothing reads. See [.env.sample](../../.env.sample) for all available variables.
 
 ## Vite Dev Proxy
 
@@ -35,7 +35,7 @@ When `VITE_READER_BEE_URL` points to `localhost` or `127.0.0.1`, the dev server 
 
 In production builds or when pointing to a remote gateway, requests go directly to the configured URL. Where each part reads from can also be changed at runtime via the UI (the Sources button in the header, `DomainSelector`), which also checks and tests every source and copies a report, see [The node picker](#the-node-picker).
 
-## Environment Variables (in root `.env`)
+## Environment Variables (in the stack's `.env`)
 
 | Variable               | Required | Description                                                                                                                                                                  |
 | ---------------------- | -------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
