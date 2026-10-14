@@ -160,6 +160,40 @@ describe('the manager reading an uploader health route', () => {
     assert.deepEqual(reading, { state: 'unhealthy', reasons: ['postage_refused'] });
   });
 
+  it('carries the streams a stale playlist and failing uploads are on, so the page can name them', async () => {
+    const { service } = serviceAnswering({
+      status: 503,
+      body: {
+        status: 'degraded',
+        reasons: ['segment_upload_failure', 'stale_manifest'],
+        staleManifestStreams: 1,
+        staleManifestStreamIds: ['live/stream_1080p'],
+        maxConsecutiveSegmentFailures: 2,
+        segmentFailingStreamIds: ['live/stream_720p', 'live/stream_360p'],
+      },
+    });
+
+    const reading = await service.read('stage');
+
+    assert.deepEqual(reading, {
+      state: 'unhealthy',
+      reasons: ['segment_upload_failure', 'stale_manifest'],
+      staleManifestStreamIds: ['live/stream_1080p'],
+      segmentFailingStreamIds: ['live/stream_720p', 'live/stream_360p'],
+    });
+  });
+
+  it('leaves the stream names off when the uploader names none, which is every uploader before them', async () => {
+    const { service } = serviceAnswering({
+      status: 503,
+      body: { status: 'degraded', reasons: ['stale_manifest'], staleManifestStreams: 1, staleManifestStreamIds: [] },
+    });
+
+    const reading = await service.read('stage');
+
+    assert.deepEqual(reading, { state: 'unhealthy', reasons: ['stale_manifest'] });
+  });
+
   it("reads an older stack's answer, which carries no waiting state, as ok on its HTTP code alone", async () => {
     const older = {
       status: 200,

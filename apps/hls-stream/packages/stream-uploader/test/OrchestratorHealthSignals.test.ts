@@ -192,6 +192,56 @@ describe('StreamOrchestrator stale manifest count', () => {
       'and the same number has to reach `/health`, which is the only place an operator sees it',
     );
   });
+
+  /**
+   * On 2026-10-14 an operator learned only that some playlist was stale. On a ladder every rung is its
+   * own stream, `live/stream_1080p` beside `live/stream_360p`, so the id alone says which rung.
+   */
+  it('names the streams it counts, so an operator knows which playlist is not moving', () => {
+    const orch = makeTestOrchestrator();
+
+    registerReadings(orch, [
+      ['live/stream_1080p', { hasStaleLiveManifest: true, consecutiveManifestFailures: 4 }],
+      ['live/stream_720p', {}],
+      ['live/other_360p', { hasStaleLiveManifest: true, consecutiveManifestFailures: 1 }],
+    ]);
+
+    const signals = orch.getHealthSignals();
+    assert.deepEqual(signals.staleManifestStreamIds, ['live/stream_1080p', 'live/other_360p']);
+    assert.equal(signals.staleManifestStreams, 2, 'the count beside the names is unchanged');
+  });
+
+  it('names no stream when every playlist is moving', () => {
+    const orch = makeTestOrchestrator();
+
+    registerReadings(orch, [['live/fine', {}]]);
+
+    assert.deepEqual(orch.getHealthSignals().staleManifestStreamIds, []);
+  });
+});
+
+describe('StreamOrchestrator failing segment uploads', () => {
+  it('names every stream whose last segment upload failed, and only those', () => {
+    const orch = makeTestOrchestrator();
+
+    registerReadings(orch, [
+      ['live/stream_1080p', {}],
+      ['live/stream_720p', { consecutiveSegmentFailures: 3 }],
+      ['live/stream_360p', { consecutiveSegmentFailures: 1 }],
+    ]);
+
+    const signals = orch.getHealthSignals();
+    assert.deepEqual(signals.segmentFailingStreamIds, ['live/stream_720p', 'live/stream_360p']);
+    assert.equal(signals.maxConsecutiveSegmentFailures, 3, 'the worst count beside the names is unchanged');
+  });
+
+  it('names no stream when every upload is landing', () => {
+    const orch = makeTestOrchestrator();
+
+    registerReadings(orch, [['live/fine', {}]]);
+
+    assert.deepEqual(orch.getHealthSignals().segmentFailingStreamIds, []);
+  });
 });
 
 describe('StreamOrchestrator state persist age', () => {

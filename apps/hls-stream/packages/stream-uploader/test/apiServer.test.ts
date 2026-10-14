@@ -60,6 +60,8 @@ interface HealthBody {
   activeStreams?: number;
   maxConsecutiveManifestFailures?: number;
   maxConsecutiveSegmentFailures?: number;
+  staleManifestStreamIds?: string[];
+  segmentFailingStreamIds?: string[];
 }
 
 function hasActiveStreams(count: number): (body: unknown) => boolean {
@@ -144,6 +146,10 @@ describe('api server over http (S0.7 test layer)', () => {
         'queuePressure',
         'reasons',
         'staleManifestStreams',
+        // Which streams the stale playlist and failing upload counts are about. See
+        // `OrchestratorHealthSignals.test.ts`.
+        'staleManifestStreamIds',
+        'segmentFailingStreamIds',
         'status',
       ].sort(),
       // health.sh reads only the status code (curl -o /dev/null), so the body's consumers are
@@ -702,6 +708,11 @@ describe('GET /health status (S2.1)', () => {
     assert.equal(status, 503);
     assert.equal((body as HealthBody).status, HEALTH_DEGRADED);
     assert.deepEqual((body as HealthBody).reasons, [HEALTH_REASON_STALE_MANIFEST]);
+    assert.deepEqual(
+      (body as HealthBody).staleManifestStreamIds,
+      [STREAM_ID],
+      'the body names the stream whose playlist is not moving, not only how many there are',
+    );
   });
 
   /**
@@ -791,6 +802,11 @@ describe('GET /health status (S2.1)', () => {
       [HEALTH_REASON_SEGMENT_UPLOAD_FAILURE, HEALTH_REASON_POSTAGE_REFUSED],
       'the symptom and its diagnosis: bee refused this write with a status nothing retries, which is ' +
         'the postage side rather than a node that went away',
+    );
+    assert.deepEqual(
+      (body as HealthBody).segmentFailingStreamIds,
+      [STREAM_ID],
+      'the body names the stream whose uploads are failing',
     );
   });
 
