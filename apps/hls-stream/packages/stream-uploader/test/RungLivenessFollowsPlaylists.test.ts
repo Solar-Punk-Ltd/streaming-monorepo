@@ -24,6 +24,7 @@ import {
   RUNG_DEATH_LAG_SEGMENTS,
   RUNG_READMIT_AFTER_SEGMENTS,
 } from '../src/libs/LadderLiveness.js';
+import { ServiceMetrics } from '../src/libs/ServiceMetrics.js';
 import { StreamUploader } from '../src/libs/StreamUploader.js';
 import { MEDIA_TYPE_VIDEO } from '../src/types.js';
 
@@ -67,6 +68,7 @@ function rungUploader(
   bee: Bee,
   broadcast: number,
   predecessorDrained?: Promise<void>,
+  metrics?: ServiceMetrics,
 ): StreamUploader {
   const registry = makeFakeCatalog({
     recordRungDelivered: (group: string, name: string) => book.recordDelivered(group, name),
@@ -84,6 +86,7 @@ function rungUploader(
     mediatype: MEDIA_TYPE_VIDEO,
     ladder: { group: GROUP, rung },
     predecessorDrained,
+    metrics,
   });
 }
 
@@ -175,8 +178,9 @@ describe('rung liveness follows what a viewer is served', () => {
     const predecessor = new Promise<void>((resolve) => {
       drained = resolve;
     });
+    const metrics = new ServiceMetrics();
     const uploaders = RUNGS.map((rung) =>
-      rungUploader(book, rung, healthyBee(), 1, rung.name === BROKEN_RUNG ? predecessor : undefined),
+      rungUploader(book, rung, healthyBee(), 1, rung.name === BROKEN_RUNG ? predecessor : undefined, metrics),
     );
     const slow = uploaders[RUNGS.findIndex((rung) => rung.name === BROKEN_RUNG)];
     const names = RUNGS.map((rung) => rung.name);
@@ -189,6 +193,11 @@ describe('rung liveness follows what a viewer is served', () => {
       }
     }
     assert.equal(slow.getConsecutiveManifestFailures(), waitingRounds, 'a playlist that waited is still a stale one');
+    assert.equal(
+      metrics.getCounters().manifestPublishFailuresTotal,
+      0,
+      'a publish held back for the feed position attempted no write, so no publish failed',
+    );
 
     drained();
     await predecessor;
