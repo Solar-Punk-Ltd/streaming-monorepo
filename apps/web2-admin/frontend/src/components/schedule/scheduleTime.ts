@@ -164,7 +164,7 @@ export function isSlotPast(dateValue: string, slot: string, now: Date): boolean 
   return date.getTime() < now.getTime();
 }
 
-/** The earliest slot still selectable on a date, or null when none is. */
+/** The earliest slot on a date that has not gone by yet, or null when every one has. */
 export function firstFreeSlot(dateValue: string, now: Date): string | null {
   return timeSlots().find((slot) => !isSlotPast(dateValue, slot, now)) ?? null;
 }

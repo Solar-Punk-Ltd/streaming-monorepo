@@ -41,6 +41,9 @@ const digitsOf = (text: string) => text.replace(/\D/g, '');
  *
  * dayjs lives at this boundary only: the form state is the same
  * `datetime-local` string the API helpers have always converted.
+ *
+ * The scheduled start is only shown to viewers and starts nothing, so a day
+ * or a time that has already gone by can be picked like any other (SPDV-1675).
  */
 export function ScheduleField({ value, onChange, error = false, disabled = false, helperText }: ScheduleFieldProps) {
   const now = new Date();
@@ -60,9 +63,6 @@ export function ScheduleField({ value, onChange, error = false, disabled = false
   // text the form never took.
   const [timeText, setTimeText] = useState(chosenTime);
 
-  // The scheduled start is only shown to viewers and starts nothing, so a day
-  // or a time that has already gone by is as valid as any other (SPDV-1675).
-
   const handleDate = (next: Dayjs | null) => {
     const nextDate = dayjsToDateValue(next);
     // An empty or half-typed date is no date, and the form's required check
@@ -73,7 +73,8 @@ export function ScheduleField({ value, onChange, error = false, disabled = false
       return;
     }
     // A day on its own is a complete answer to the operator, so it has to be
-    // one to the form too: the earliest slot that day still has left.
+    // one to the form too: the earliest slot that day still has ahead of it,
+    // or midnight on a day that has gone by.
     const nextTime = chosenTime || firstFreeSlot(nextDate, now) || '00:00';
     onChange(joinDateTimeLocal(nextDate, nextTime));
   };
