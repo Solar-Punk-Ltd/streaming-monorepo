@@ -574,7 +574,7 @@ The API server starts on port 3000 (default).
 
 > **Note:** Both packages share a single `.env` file in the **stack folder, `apps/hls-stream`**, not the monorepo root, which nothing reads. See [.env.sample](../../.env.sample) for all available variables.
 
-## Environment Variables (in root `.env`)
+## Environment Variables (in the stack's `.env`)
 
 **Required:**
 
@@ -624,7 +624,7 @@ requirements. `BEE_URL`, `STREAM_KEY`, `STREAM_LIST_TOPIC`, `API_AUTH_TOKEN` and
 `STAMP` remains conditional on `BEE_PUBLISHERS`. Once `ADMIN_API_URL` is set,
 `ADMIN_API_TOKEN` is required as well.
 
-Engine-specific variables (e.g. `SRS_MEDIA_PATH` for SRS, `OME_*` for OME) live in `engines/<name>/.env` and are loaded only when that engine is selected via `ENGINE`. Copy the sample next to each engine to get started: [engines/srs/.env.sample](../../engines/srs/.env.sample), [engines/ome/.env.sample](../../engines/ome/.env.sample). Values in the root `.env` (or injected container env) take precedence over the engine file.
+Engine-specific variables (e.g. `SRS_MEDIA_PATH` for SRS, `OME_*` for OME) live in `engines/<name>/.env` and are loaded only when that engine is selected via `ENGINE`. Copy the sample next to each engine to get started: [engines/srs/.env.sample](../../engines/srs/.env.sample), [engines/ome/.env.sample](../../engines/ome/.env.sample). Values in the stack's `.env` (or injected container env) take precedence over the engine file.
 
 ## API
 
