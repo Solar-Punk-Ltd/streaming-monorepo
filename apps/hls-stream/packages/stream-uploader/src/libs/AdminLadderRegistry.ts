@@ -335,7 +335,7 @@ export class AdminLadderRegistry implements LadderRegistry {
    *
    * Fire and forget, deliberately: the caller is the uploader's segment or live publish path, and a
    * master write is a feed write behind a queue. The whole of the ⛔⛔⛔ account of why this exists at
-   * all — a rung dying is not an announce, so the announce path never asks — is on
+   * all, that a rung dying is not an announce so the announce path never asks, is on
    * `StreamCatalog.republishIfLadderShapeChanged`.
    */
   private republishIfLadderShapeChanged(group: string, liveRungs: readonly string[]): void {

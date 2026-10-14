@@ -41,11 +41,15 @@ rather than the healthiest one its node holds.
   **360p node's batch**, the coordinator. If that one batch dies, the master cannot be rewritten for
   anyone and the recording cannot be announced at the end. Coordinator failover is not implemented and
   the code says so.
-- The master drops a rung by the shipped rule: once the ladder has delivered four segments past the
-  rung's last delivery, at most one rung at a time. Nothing about the drop is a clock. It is triggered
-  by the next segment another rung lands, so a drained rung disappears from the master within a few
-  segments of the surviving rungs. The rung comes back on its next delivered segment, or, since
-  2026-09-24, after eight in a row when its uploads were being refused (`RUNG_READMIT_AFTER_SEGMENTS`). A viewer already
+- The master drops a rung by the shipped rule: once the ladder's middle rung has made four live
+  playlist publishes past the rung's last one, at most one rung at a time. A rung that has not
+  published in this broadcast yet is given eight (`RUNG_FIRST_DELIVERY_GRACE_SEGMENTS`), counted from
+  when the ladder first knew it, so a slow first publish is not a drop. Nothing about the drop is a
+  clock. It is triggered by the next playlist another rung publishes, so a drained rung disappears from
+  the master within a few segments of the surviving rungs. The rung comes back on its next publish,
+  or, since 2026-09-24, after eight in a row when its deliveries were failing
+  (`RUNG_READMIT_AFTER_SEGMENTS`). A recording's master names every rung with a recording whatever
+  happened live. A viewer already
   watching never gets a removed level back, that is an hls.js limit the repo documents.
 - The batch id per rung is read once at process start from `BEE_PUBLISHERS`. Changing it means
   rewriting the profile's env file and redeploying the uploader container. The harness can only stop,

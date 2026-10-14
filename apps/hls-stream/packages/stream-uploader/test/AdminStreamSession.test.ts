@@ -777,7 +777,10 @@ describe('a rung of a declared ladder', () => {
      * nothing.
      */
     announce?: (upsert: Upsert, attempt: number) => RenditionAnnouncement;
-    /** What the registry answers when the rung is recorded as one that will not finish. Defaults to no master and no flip. */
+    /**
+     * What the registry answers when the rung is recorded as one that will not finish. Defaults to no
+     * master and no flip.
+     */
     unfinished?: (upsert: Upsert) => RenditionAnnouncement;
     /** Answer for each state report in turn, so a failure can be driven. Defaults to accepting every one. */
     reportOutcome?: (report: AdminStateReport) => StateReportOutcome;
@@ -1161,7 +1164,10 @@ describe('a rung of a declared ladder', () => {
       assert.equal(lines.filter((line) => line.includes(ladderFinalized(DECLARED_TOPIC))).length, 0);
     });
 
-    /** Reported only after the report landed, as a finalize's flip is: a line claiming it first is a flip nobody took. */
+    /**
+     * Reported only after the report landed, as a finalize's flip is: a line claiming it first is a flip
+     * nobody took.
+     */
     it('does not say the ladder finalized when the vod report could not be delivered', async () => {
       const session = newLadderSession({
         unfinished: () => ({ masterIndex: 6, flippedToFinished: true, duration: 12 }),

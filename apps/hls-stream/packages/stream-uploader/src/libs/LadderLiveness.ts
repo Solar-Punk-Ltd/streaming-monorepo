@@ -98,7 +98,8 @@ export const RUNG_DEATH_LAG_SEGMENTS = 4;
  * little longer only means one quality is not offered for a few more seconds. So readmission asks for
  * twice the evidence a drop does, and it bounds the flapping as well: a rung that still has one upload
  * in every eight refused never comes back. In time it is at least eight segments of whatever length the
- * deployment cuts, which on the 2 s segments that ladder ran is sixteen seconds of clean uploads.
+ * deployment cuts, which on the 2 s segments that ladder ran is at least sixteen seconds of clean
+ * deliveries.
  */
 export const RUNG_READMIT_AFTER_SEGMENTS = 2 * RUNG_DEATH_LAG_SEGMENTS;
 
@@ -169,8 +170,8 @@ export class LadderLiveness {
   private readonly referenceWhenFirstKnown = new Map<string, number>();
 
   /**
-   * Segments landed in a row since this rung last had an upload refused, for every rung that has had
-   * one refused and has not yet landed {@link RUNG_READMIT_AFTER_SEGMENTS} since.
+   * Deliveries made in a row since this rung last had a delivery fail, for every rung that has had
+   * one fail and has not yet made {@link RUNG_READMIT_AFTER_SEGMENTS} since.
    */
   private readonly landedSinceRefusal = new Map<string, number>();
 
@@ -323,7 +324,7 @@ export class LadderLiveness {
  *
  * One definition for both ladder registries. They differ in where a ladder's merge lives and how a
  * master is rewritten, never in how a rung is judged, and the per-delivery bookkeeping was two
- * identical copies until 2026-09-24, when a second kind of segment outcome would have made it four.
+ * identical copies until 2026-09-24, when a second kind of delivery outcome would have made it four.
  */
 export class LadderLivenessBook {
   private readonly byGroup = new Map<string, LadderLiveness>();
@@ -350,15 +351,15 @@ export class LadderLivenessBook {
 
   /** One live playlist publish of this rung landed. Answers the rungs the ladder now treats as live. */
   public recordDelivered(group: string, rung: string): string[] {
-    return this.afterSegment(group, (liveness) => liveness.recordDelivered(rung));
+    return this.afterDelivery(group, (liveness) => liveness.recordDelivered(rung));
   }
 
   /** One segment upload or live playlist publish of this rung failed. Answers the live rungs. */
   public recordUploadFailed(group: string, rung: string): string[] {
-    return this.afterSegment(group, (liveness) => liveness.recordUploadFailed(rung));
+    return this.afterDelivery(group, (liveness) => liveness.recordUploadFailed(rung));
   }
 
-  private afterSegment(group: string, record: (liveness: LadderLiveness) => void): string[] {
+  private afterDelivery(group: string, record: (liveness: LadderLiveness) => void): string[] {
     const liveness = this.of(group);
     record(liveness);
     return liveness.liveRungs();
