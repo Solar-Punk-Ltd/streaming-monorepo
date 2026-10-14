@@ -1,10 +1,6 @@
 import { STREAM_LIMITS } from '@streaming-monorepo/web2-admin-common';
 
-/**
- * Shown both as the edit form's helper text, so the radio explains why it is
- * locked, and as the answer to the backend's `media_type_locked` — one
- * sentence for one rule.
- */
+/** The answer to the backend's `media_type_locked`. */
 export const MEDIA_TYPE_LOCKED = 'Unpublish the stream to change the media type; it is part of the OBS ' + 'stream id.';
 
 /**
