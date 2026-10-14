@@ -288,16 +288,22 @@ function restartSentence(uploader: BatchUploader): string {
 }
 
 /**
- * What a live broadcast goes through when only the uploader is recreated. The
- * old uploader writes its live recordings before it exits, and the uploader's
- * compose service waits up to 330 s for that, so a long broadcast pauses for
- * minutes rather than seconds and keeps its recording.
+ * How long a restart waits on the old uploader. Whatever Apply recreates, the
+ * uploader writes its live recordings before it exits, and its compose service
+ * waits up to 330 s for that, so a long broadcast waits minutes rather than
+ * seconds and keeps its recording.
  */
-const UPLOADER_RESTART_EFFECT =
-  'pauses until the uploader has written its recording and restarted, which takes seconds for a short broadcast and up to about five minutes for a long one, and keeps the recording';
+const RECORDING_WRITE_WAIT =
+  'which takes seconds for a short broadcast and up to about five minutes for a long one, and keeps the recording';
+
+/** What a live broadcast goes through when only the uploader is recreated. */
+const UPLOADER_RESTART_EFFECT = `pauses until the uploader has written its recording and restarted, ${RECORDING_WRITE_WAIT}`;
+
+/** What a live broadcast goes through when the media server, or every service, is recreated too. */
+const ENCODER_RESTART_EFFECT = `stops until the encoder reconnects, and the restart waits until the uploader has written its recording, ${RECORDING_WRITE_WAIT}`;
 
 function broadcastSentence(uploader: BatchUploader, broadcast: BroadcastState): string {
-  const effect = dropsEncoder(uploader) ? 'stops until the encoder reconnects' : UPLOADER_RESTART_EFFECT;
+  const effect = dropsEncoder(uploader) ? ENCODER_RESTART_EFFECT : UPLOADER_RESTART_EFFECT;
   if (broadcast === 'live') return `The live broadcast on ${uploader.name} ${effect}.`;
   const ifLive = `it ${effect}`;
   if (broadcast === 'unknown') {

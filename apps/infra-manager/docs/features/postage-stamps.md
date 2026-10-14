@@ -173,7 +173,8 @@ says so where the operator clicked:
   because the uploader's compose service waits up to 330 s for it to finish,
   and the recording is kept. With SRS, OvenMediaEngine or
   every service the encoder is disconnected and the broadcast stops until it
-  reconnects.
+  reconnects, and the restart still waits for the old uploader to write its
+  recording first, for the same seconds to about five minutes.
 - The chip on each batch follows the running uploader, read from the
   `runningValue` the settings list carries for `STAMP` (see
   [deployment-settings.md](deployment-settings.md)): **in use** on the batch
