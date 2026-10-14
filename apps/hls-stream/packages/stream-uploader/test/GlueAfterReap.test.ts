@@ -285,16 +285,16 @@ function recordedMediaOf(recording: string): string {
  * Wait until a live manifest publish has been refused, which is how the hold is visible from outside.
  *
  * `settleFeedPosition` answers a held session by refusing and `commitManifest` refuses the playlist
- * that was built before it, and the caller counts either as a failed manifest publish — the same
- * counter a Bee outage moves, because from the stream's point of view both are a playlist that did
- * not reach the feed. Nothing else in these cases fails a publish, so the first one is the hold.
+ * that was built before it. Either leaves the live playlist stale, which is the run of stale manifests
+ * `stale_manifest` reads. A hold attempts no write, so it no longer moves the publish failure metric,
+ * and the stale run is the signal both refusals share. Nothing else in these cases leaves a playlist
+ * stale, so the first one is the hold.
  *
- * Counted from zero rather than from a reading taken here, because a refusal that had already
- * happened would otherwise leave this waiting for a second one, and a held publish is re-attempted
- * at the next segment rather than on a timer.
+ * Read while the hold lasts rather than against a reading taken here, because a held publish is
+ * re-attempted at the next segment rather than on a timer, and the run only ends when one lands.
  */
 async function refusedAPublish(harness: GlueHarness): Promise<void> {
-  await waitFor(() => harness.orchestrator.getMetricsSnapshot().manifestPublishFailuresTotal > 0, SETTLE_CEILING_MS);
+  await waitFor(() => harness.orchestrator.getMaxConsecutiveManifestFailures() > 0, SETTLE_CEILING_MS);
 }
 
 interface GluedScenario {
