@@ -437,7 +437,7 @@ describe('Apply now', () => {
     return { calls, deps, asked: () => asked };
   }
 
-  it('asks first while the stream is live, saying the broadcast drops while the uploader restarts', async () => {
+  it('asks first while the stream is live, saying the broadcast pauses while the uploader writes its recording, for up to minutes', async () => {
     const run = harness(LIVE);
 
     await applyNow(uploader(), run.deps);
@@ -447,7 +447,7 @@ describe('Apply now', () => {
     assert.ok(request);
     assert.match(
       String(request.body),
-      /live broadcast on main-stage drops for a few seconds while the uploader restarts/,
+      /live broadcast on main-stage pauses until the uploader has written its recording and restarted, which takes seconds for a short broadcast and up to about five minutes for a long one, and keeps the recording\./,
     );
     assert.equal(request.confirmLabel, 'Apply now');
 
@@ -466,7 +466,7 @@ describe('Apply now', () => {
     assert.deepEqual(run.calls, ['read main-stage', 'confirm']);
     assert.match(
       run.asked()?.body ?? '',
-      /SRS reported no publisher on main-stage in its last window, but it reports one only about every ten seconds, so a publisher that connected moments ago would not show yet\. If one is live, it drops for a few seconds while the uploader restarts\./,
+      /SRS reported no publisher on main-stage in its last window, but it reports one only about every ten seconds, so a publisher that connected moments ago would not show yet\. If one is live, it pauses until the uploader has written its recording and restarted, which takes seconds for a short broadcast and up to about five minutes for a long one, and keeps the recording\./,
     );
   });
 
@@ -476,7 +476,10 @@ describe('Apply now', () => {
     await applyNow(uploader(), run.deps);
 
     assert.deepEqual(run.calls, ['read main-stage', 'confirm']);
-    assert.match(run.asked()?.body ?? '', /cannot tell whether a broadcast is live on main-stage/);
+    assert.match(
+      run.asked()?.body ?? '',
+      /cannot tell whether a broadcast is live on main-stage\. If one is, it pauses until the uploader has written its recording and restarted, which takes seconds for a short broadcast and up to about five minutes for a long one/,
+    );
   });
 
   it('asks first when it cannot tell, and says so', async () => {
