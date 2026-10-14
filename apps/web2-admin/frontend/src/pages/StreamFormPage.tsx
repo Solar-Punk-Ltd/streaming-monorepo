@@ -15,7 +15,7 @@ import { dateTimeLocalValueToIso, isoToDateTimeLocalValue } from '../dateUtil';
 import { DescriptionField, NameField, TagsField, ThumbnailField } from '../components/StreamFormFields';
 import { ScheduleField } from '../components/schedule/ScheduleField';
 import { assignableStages, StageField, StageReadinessWarning } from '../components/stages/StageField';
-import { nextFullHourValue, pastStartRefused } from '../components/schedule/scheduleTime';
+import { nextFullHourValue } from '../components/schedule/scheduleTime';
 import { ConfirmDialog } from '../components/ConfirmDialog';
 import { useSnackbar } from '../components/Snackbar';
 
@@ -24,7 +24,6 @@ export const ERROR_MESSAGES = {
   NAME_REQUIRED: 'Stream name is required',
   DESCRIPTION_REQUIRED: 'Description is required',
   SCHEDULED_TIME_REQUIRED: 'Scheduled start time is required',
-  SCHEDULED_TIME_PAST: 'The scheduled start must be in the future.',
 };
 
 /**
@@ -307,10 +306,6 @@ export function StreamFormPage() {
       setError(ERROR_MESSAGES.SCHEDULED_TIME_REQUIRED);
       return;
     }
-    if (pastStartRefused(input.scheduledStartTime, loaded, new Date())) {
-      setError(ERROR_MESSAGES.SCHEDULED_TIME_PAST);
-      return;
-    }
     setError(null);
     // The first stage of a recording from before stages cannot be taken back,
     // so it is asked for once more before it is sent.
@@ -400,9 +395,7 @@ export function StreamFormPage() {
                 <ScheduleField
                   value={form.scheduledStartTime}
                   onChange={(v) => set('scheduledStartTime', v)}
-                  error={
-                    error === ERROR_MESSAGES.SCHEDULED_TIME_REQUIRED || error === ERROR_MESSAGES.SCHEDULED_TIME_PAST
-                  }
+                  error={error === ERROR_MESSAGES.SCHEDULED_TIME_REQUIRED}
                   disabled={saving || scheduleLocked}
                   helperText={scheduleLocked ? SCHEDULE_LOCKED : undefined}
                 />
