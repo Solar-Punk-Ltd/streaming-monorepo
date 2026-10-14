@@ -138,6 +138,8 @@ describe('api server over http (S0.7 test layer)', () => {
         'refusedPublishers',
         // Latched from the startup gate pass, and on the body from boot on. See startGateHealth.test.ts.
         'startGateWarnings',
+        // Every node whose chequebook fell under the floor after the boot. See ChequebookRecheck.test.ts.
+        'lowChequebooks',
         'queueBacklogSeconds',
         'msSinceSegmentLoss',
         'msSinceStreamActivity',

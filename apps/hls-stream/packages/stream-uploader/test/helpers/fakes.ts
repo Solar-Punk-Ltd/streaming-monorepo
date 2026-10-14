@@ -336,6 +336,7 @@ function makeHealthSignals(overrides: Partial<HealthSignals> = {}): HealthSignal
     publisherGopStreams: [],
     postageRefusedPublishers: 0,
     startGateWarnings: [],
+    lowChequebooks: [],
     ...overrides,
   };
 }

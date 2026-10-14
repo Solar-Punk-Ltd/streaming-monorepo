@@ -3,9 +3,16 @@ import { after, describe, it } from 'node:test';
 
 import { SINGLE_PUBLISHER } from '../src/libs/BeePublisherPool.js';
 import { bzzToPlur, ChequebookGate, ChequebookNode, PLUR_PER_BZZ } from '../src/libs/ChequebookGate.js';
-import { ChequebookRecheck, StartGateWarningStore } from '../src/libs/ChequebookRecheck.js';
+import { ChequebookHealthStore, ChequebookRecheck } from '../src/libs/ChequebookRecheck.js';
 import { StartGate } from '../src/libs/StartGates.js';
-import { HEALTH_OK, HEALTH_REASON_START_GATE_WARNED, StartGateWarning } from '../src/types.js';
+import {
+  HEALTH_DEGRADED,
+  HEALTH_OK,
+  HEALTH_REASON_CHEQUEBOOK_LOW,
+  HEALTH_REASON_START_GATE_WARNED,
+  LowChequebook,
+  StartGateWarning,
+} from '../src/types.js';
 
 import { ApiTestServer, startTestApi } from './helpers/apiTestServer.js';
 import { FakeClock } from './helpers/fakeClock.js';
@@ -25,11 +32,13 @@ after(async () => {
 /** A chequebook whose available balance a test sets, with every read of it counted. */
 interface FakeChequebook {
   availablePlur: bigint;
+  /** Set to make the next reads fail the way a read that never reached a node does. */
+  failure: Error | null;
   reads: number;
 }
 
 function chequebook(availableBzz: number): FakeChequebook {
-  return { availablePlur: bzzToPlur(availableBzz), reads: 0 };
+  return { availablePlur: bzzToPlur(availableBzz), failure: null, reads: 0 };
 }
 
 /** The body bee-js hands back, with a total well above the available balance as a live node has. */
@@ -49,6 +58,9 @@ function node(url: string, rung: string, book: FakeChequebook): ChequebookNode {
       chequebook: {
         getBalance: async () => {
           book.reads += 1;
+          if (book.failure !== null) {
+            throw book.failure;
+          }
           return balanceBody(book.availablePlur);
         },
       },
@@ -65,15 +77,20 @@ function chequebookGate(nodes: readonly ChequebookNode[]): StartGate {
   };
 }
 
-/** What `/health` holds, kept the way the orchestrator keeps it: replaced whole on every record. */
-function warningStore(initial: readonly StartGateWarning[]): StartGateWarningStore {
+/** What `/health` holds, kept the way the orchestrator keeps it: each list replaced whole on every record. */
+function healthStore(initial: readonly StartGateWarning[]) {
   let held: readonly StartGateWarning[] = initial;
-  return {
+  let low: readonly LowChequebook[] = [];
+  const store: ChequebookHealthStore = {
     getStartGateWarnings: () => held,
     recordStartGateWarnings: (warnings) => {
       held = [...warnings];
     },
+    recordLowChequebooks: (nodes) => {
+      low = [...nodes];
+    },
   };
+  return { store, low: () => low };
 }
 
 interface LogLine {
@@ -91,6 +108,10 @@ function recordingLogger() {
   };
 }
 
+function linesAt(logger: ReturnType<typeof recordingLogger>, level: LogLine['level']): string[] {
+  return logger.lines.filter((line) => line.level === level).map((line) => line.message);
+}
+
 /**
  * Lets a read that was just answered finish what it does next. Its continuation is queued behind the
  * answer, so a clock advanced straight away would look for the next timer before it had been set.
@@ -101,73 +122,62 @@ function settled(): Promise<void> {
   });
 }
 
+/** What bee-js throws for a request that timed out before any node answered: no status at all. */
+function timeout(): Error {
+  return new Error('timeout of 20000ms exceeded');
+}
+
 interface Setup {
   nodes: readonly ChequebookNode[];
-  latched: readonly StartGateWarning[];
+  latched?: readonly StartGateWarning[];
   gate?: StartGate;
 }
 
-function recheckOver({ nodes, latched, gate = chequebookGate(nodes) }: Setup) {
+function recheckOver({ nodes, latched = [], gate = chequebookGate(nodes) }: Setup) {
   const clock = new FakeClock();
-  const store = warningStore(latched);
+  const { store, low } = healthStore(latched);
   const logger = recordingLogger();
   const recheck = new ChequebookRecheck({ gate, intervalMs: RECHECK_MS, store, logger, clock });
-  return { clock, store, logger, recheck };
+  return { clock, store, low, logger, recheck };
 }
 
 /**
- * ⛔⛔ **An uploader whose chequebook was empty at boot answered 503 until somebody restarted it.**
+ * ⛔⛔ **A rung's node ran its chequebook dry during a broadcast and nothing said so.**
  *
- * The chequebook gate warns rather than refusing under the shipped `chequebook-warn`, and what it found
- * is latched onto `/health` as `start_gate_warned`. Nothing read the chequebook again after the boot, so
- * funding the node changed nothing an operator could see: the container stayed unhealthy for the life
- * of the process, and only a restart cleared it. An outside tester met exactly that on 2026-09-25 and
- * reported the uploader as stuck. So while that warning stands the chequebook is read again, on the
- * same gate the boot ran, and the warning goes the moment every node holds its floor.
+ * On 2026-10-01 the 1080p node spent about 5 BZZ in two hours, its chequebook fell under the floor, and
+ * the recording lost that rung. The chequebook had been read at boot, where it was funded, and the
+ * re-read only ever ran while a boot warning stood. So a node that drained afterwards changed nothing
+ * on `/health` and nothing in the log. The chequebook is now read for the life of the process, and a
+ * node under the floor is named on `/health` as `chequebook_low` until it holds the floor again. It is
+ * a report and nothing more: the broadcast goes on, and nothing here moves money.
  */
-describe('the chequebook is read again while its warning stands', () => {
-  it('clears the warning on the first read after the node is funded, and stops reading', async () => {
-    const book = chequebook(0.1);
-    const { clock, store, recheck } = recheckOver({
-      nodes: [node('http://bee-360:1633', '360p', book)],
-      latched: [{ gate: CHEQUEBOOK_GATE, rung: '360p' }],
+describe('every chequebook is read for the life of the process', () => {
+  it('starts healthy, names the rung once its chequebook falls under the floor, and clears it once funded', async () => {
+    const r360 = chequebook(3);
+    const r1080 = chequebook(3);
+    const { clock, low, store, recheck } = recheckOver({
+      nodes: [node('http://bee-360:1633', '360p', r360), node('http://bee-1080:1633', '1080p', r1080)],
     });
 
     recheck.start();
     await clock.advance(RECHECK_MS);
-    assert.deepEqual(store.getStartGateWarnings(), [{ gate: CHEQUEBOOK_GATE, rung: '360p' }]);
+    assert.deepEqual(low(), [], 'a funded stage was reported low');
 
-    book.availablePlur = bzzToPlur(2);
+    r1080.availablePlur = bzzToPlur(0.2);
     await clock.advance(RECHECK_MS);
+    assert.deepEqual(low(), [{ rung: '1080p' }], 'a drained rung was not named');
+    assert.deepEqual(store.getStartGateWarnings(), [], 'a drain after the boot is not a start gate warning');
 
-    assert.deepEqual(store.getStartGateWarnings(), [], 'a funded chequebook is still reported unfunded');
-    assert.equal(book.reads, 2);
-    assert.equal(clock.pendingCount(), 0, 'it went on reading a chequebook that had already cleared');
-  });
-
-  // The postage gate's findings are about a batch, and a batch it warned about at boot is not
-  // something a later read of the chequebook can speak for.
-  it('keeps every postage warning while it clears the chequebook ones', async () => {
-    const book = chequebook(0.1);
-    const { clock, store, recheck } = recheckOver({
-      nodes: [node('http://bee-360:1633', '360p', book)],
-      latched: [
-        { gate: CHEQUEBOOK_GATE, rung: '360p' },
-        { gate: POSTAGE_GATE, rung: '720p' },
-      ],
-    });
-
-    recheck.start();
-    book.availablePlur = bzzToPlur(2);
+    r1080.availablePlur = bzzToPlur(2);
     await clock.advance(RECHECK_MS);
-
-    assert.deepEqual(store.getStartGateWarnings(), [{ gate: POSTAGE_GATE, rung: '720p' }]);
+    assert.deepEqual(low(), [], 'a funded rung is still reported low');
+    assert.equal(clock.pendingCount(), 1, 'it stopped reading, so the next drain would go unseen');
   });
 
   // Which is also every deployment under `UPLOADER_START_GATES=refuse`, where a chequebook the gate
   // will not accept ends the boot and nothing is ever latched.
-  it('reads nothing when the boot left no chequebook warning', async () => {
-    const book = chequebook(0.1);
+  it('reads when the boot left no chequebook warning, one read per node per interval', async () => {
+    const book = chequebook(3);
     const { clock, recheck } = recheckOver({
       nodes: [node('http://bee-360:1633', '360p', book)],
       latched: [{ gate: POSTAGE_GATE, rung: '720p' }],
@@ -176,16 +186,77 @@ describe('the chequebook is read again while its warning stands', () => {
     recheck.start();
     await clock.advance(RECHECK_MS * 3);
 
-    assert.equal(book.reads, 0);
-    assert.equal(clock.pendingCount(), 0);
+    assert.equal(book.reads, 3);
+  });
+
+  // A failed read establishes nothing about the balance. Calling it low would repeat the false alarm a
+  // timed out chequebook read raised on 2026-09-16, and calling it funded would hide a real drain.
+  // A node that stops answering is already reported by the upload path.
+  it('does not report a rung low because its read failed', async () => {
+    const book = chequebook(3);
+    const { clock, low, logger, recheck } = recheckOver({ nodes: [node('http://bee-1080:1633', '1080p', book)] });
+
+    recheck.start();
+    book.failure = timeout();
+    await clock.advance(RECHECK_MS);
+
+    assert.deepEqual(low(), [], 'a read that never reached the node was reported as a low chequebook');
+    assert.ok(
+      linesAt(logger, 'warn').some((line) => /bee-1080/.test(line)),
+      'the failed read left no line naming the node',
+    );
+  });
+
+  it('keeps a rung it last read as low named while its reads fail', async () => {
+    const book = chequebook(0.2);
+    const { clock, low, recheck } = recheckOver({ nodes: [node('http://bee-1080:1633', '1080p', book)] });
+
+    recheck.start();
+    await clock.advance(RECHECK_MS);
+    assert.deepEqual(low(), [{ rung: '1080p' }]);
+
+    book.failure = timeout();
+    await clock.advance(RECHECK_MS);
+
+    assert.deepEqual(low(), [{ rung: '1080p' }], 'a failed read cleared a chequebook last seen under the floor');
+  });
+
+  it('warns once when a rung falls under the floor, keeps it at debug after, and says when it recovers', async () => {
+    const book = chequebook(3);
+    const { clock, logger, recheck } = recheckOver({ nodes: [node('http://bee-1080:1633', '1080p', book)] });
+
+    recheck.start();
+    book.availablePlur = bzzToPlur(0.2);
+    await clock.advance(RECHECK_MS * 3);
+
+    const warned = linesAt(logger, 'warn');
+    assert.equal(warned.length, 1, `expected one warning for the drain: ${JSON.stringify(warned)}`);
+    assert.match(warned[0], /bee-1080/, 'the warning does not name the node');
+
+    book.availablePlur = bzzToPlur(2);
+    await clock.advance(RECHECK_MS);
+
+    assert.ok(
+      linesAt(logger, 'info').some((line) => line.includes('1080p') && line.includes('/health')),
+      `no line said the rung left /health: ${JSON.stringify(logger.lines)}`,
+    );
+  });
+
+  // A single-node deployment routes everything through one publisher whose rung is a placeholder. A
+  // report that named the placeholder would put a rung nobody configured on /health.
+  it('reports a single-node chequebook with no rung', async () => {
+    const book = chequebook(0.2);
+    const { clock, low, recheck } = recheckOver({ nodes: [node('http://bee:1633', SINGLE_PUBLISHER, book)] });
+
+    recheck.start();
+    await clock.advance(RECHECK_MS);
+
+    assert.deepEqual(low(), [{}]);
   });
 
   it('waits the whole interval before each read', async () => {
-    const book = chequebook(0.1);
-    const { clock, recheck } = recheckOver({
-      nodes: [node('http://bee-360:1633', '360p', book)],
-      latched: [{ gate: CHEQUEBOOK_GATE, rung: '360p' }],
-    });
+    const book = chequebook(3);
+    const { clock, recheck } = recheckOver({ nodes: [node('http://bee-360:1633', '360p', book)] });
 
     recheck.start();
     await clock.advance(RECHECK_MS - 1);
@@ -200,7 +271,7 @@ describe('the chequebook is read again while its warning stands', () => {
   });
 
   // A chequebook read is answered off the chain and may take the whole gate timeout. Reads that
-  // overlapped could land out of order, and an older answer landing last would put back a warning a
+  // overlapped could land out of order, and an older answer landing last would put back a report a
   // newer read had just cleared.
   it('starts the next wait only once the read before it has answered', async () => {
     let reads = 0;
@@ -222,7 +293,7 @@ describe('the chequebook is read again while its warning stands', () => {
         },
       },
     };
-    const { clock, recheck } = recheckOver({ nodes: [slow], latched: [{ gate: CHEQUEBOOK_GATE, rung: '360p' }] });
+    const { clock, recheck } = recheckOver({ nodes: [slow] });
 
     recheck.start();
     await clock.advance(RECHECK_MS * 3);
@@ -235,13 +306,87 @@ describe('the chequebook is read again while its warning stands', () => {
     assert.equal(reads, 2);
   });
 
-  // While it reads anyway, it reads every node the boot did, so a rung that was funded at boot and
-  // drained since is named rather than hidden behind the one that was already warned about.
-  it('names a rung whose chequebook drained while the warning stood, and says so in the log', async () => {
-    const low = chequebook(0.1);
+  it('stops when it is told to', async () => {
+    const book = chequebook(3);
+    const { clock, recheck } = recheckOver({ nodes: [node('http://bee-360:1633', '360p', book)] });
+
+    recheck.start();
+    recheck.stop();
+    await clock.advance(RECHECK_MS * 2);
+
+    assert.equal(book.reads, 0);
+    assert.equal(clock.pendingCount(), 0);
+  });
+});
+
+/**
+ * ⛔⛔ **An uploader whose chequebook was empty at boot answered 503 until somebody restarted it.**
+ *
+ * The chequebook gate warns rather than refusing under the shipped `chequebook-warn`, and what it found
+ * is latched onto `/health` as `start_gate_warned`. Nothing read the chequebook again after the boot, so
+ * funding the node changed nothing an operator could see. An outside tester met exactly that on
+ * 2026-09-25 and reported the uploader as stuck. So the boot's warning on a rung goes the moment a read
+ * finds that rung holding its floor.
+ */
+describe("the boot's chequebook warning", () => {
+  it('clears on the first read after the node is funded', async () => {
+    const book = chequebook(0.1);
+    const { clock, store, recheck } = recheckOver({
+      nodes: [node('http://bee-360:1633', '360p', book)],
+      latched: [{ gate: CHEQUEBOOK_GATE, rung: '360p' }],
+    });
+
+    recheck.start();
+    await clock.advance(RECHECK_MS);
+    assert.deepEqual(store.getStartGateWarnings(), [{ gate: CHEQUEBOOK_GATE, rung: '360p' }]);
+
+    book.availablePlur = bzzToPlur(2);
+    await clock.advance(RECHECK_MS);
+
+    assert.deepEqual(store.getStartGateWarnings(), [], 'a funded chequebook is still reported unfunded');
+  });
+
+  // The boot's warning already says this rung is short, and a second reason for the same fact would
+  // read as two faults.
+  it('is the one report for a rung the boot warned about, not chequebook_low as well', async () => {
+    const book = chequebook(0.1);
+    const { clock, low, recheck } = recheckOver({
+      nodes: [node('http://bee-360:1633', '360p', book)],
+      latched: [{ gate: CHEQUEBOOK_GATE, rung: '360p' }],
+    });
+
+    recheck.start();
+    await clock.advance(RECHECK_MS * 2);
+
+    assert.deepEqual(low(), []);
+  });
+
+  // The postage gate's findings are about a batch, and a batch it warned about at boot is not
+  // something a later read of the chequebook can speak for.
+  it('keeps every postage warning while it clears the chequebook ones', async () => {
+    const book = chequebook(0.1);
+    const { clock, store, recheck } = recheckOver({
+      nodes: [node('http://bee-360:1633', '360p', book)],
+      latched: [
+        { gate: CHEQUEBOOK_GATE, rung: '360p' },
+        { gate: POSTAGE_GATE, rung: '720p' },
+      ],
+    });
+
+    recheck.start();
+    book.availablePlur = bzzToPlur(2);
+    await clock.advance(RECHECK_MS);
+
+    assert.deepEqual(store.getStartGateWarnings(), [{ gate: POSTAGE_GATE, rung: '720p' }]);
+  });
+
+  // A rung funded at boot that drains while another rung's boot warning stands is a drain, reported
+  // the way every drain after the boot is.
+  it('leaves a rung that drained after the boot to chequebook_low', async () => {
+    const low360 = chequebook(0.1);
     const drained = chequebook(3);
-    const { clock, store, logger, recheck } = recheckOver({
-      nodes: [node('http://bee-360:1633', '360p', low), node('http://bee-720:1633', '720p', drained)],
+    const { clock, store, low, logger, recheck } = recheckOver({
+      nodes: [node('http://bee-360:1633', '360p', low360), node('http://bee-720:1633', '720p', drained)],
       latched: [{ gate: CHEQUEBOOK_GATE, rung: '360p' }],
     });
 
@@ -249,11 +394,9 @@ describe('the chequebook is read again while its warning stands', () => {
     drained.availablePlur = bzzToPlur(0.01);
     await clock.advance(RECHECK_MS);
 
-    assert.deepEqual(store.getStartGateWarnings(), [
-      { gate: CHEQUEBOOK_GATE, rung: '360p' },
-      { gate: CHEQUEBOOK_GATE, rung: '720p' },
-    ]);
-    const warned = logger.lines.filter((line) => line.level === 'warn').map((line) => line.message);
+    assert.deepEqual(store.getStartGateWarnings(), [{ gate: CHEQUEBOOK_GATE, rung: '360p' }]);
+    assert.deepEqual(low(), [{ rung: '720p' }]);
+    const warned = linesAt(logger, 'warn');
     assert.equal(warned.length, 1, `expected one warning, for the newly drained rung: ${JSON.stringify(warned)}`);
     assert.match(warned[0], /bee-720/);
   });
@@ -269,18 +412,11 @@ describe('the chequebook is read again while its warning stands', () => {
     recheck.start();
     await clock.advance(RECHECK_MS * 3);
 
-    assert.deepEqual(
-      logger.lines.filter((line) => line.level === 'warn'),
-      [],
-      'an unchanged finding was warned about again',
-    );
-    assert.ok(
-      logger.lines.some((line) => line.level === 'debug'),
-      'three reads left no trace at all',
-    );
+    assert.deepEqual(linesAt(logger, 'warn'), [], 'an unchanged finding was warned about again');
+    assert.ok(linesAt(logger, 'debug').length > 0, 'three reads left no trace at all');
   });
 
-  it('says in the log when the warning clears', async () => {
+  it('says in the log when it clears', async () => {
     const book = chequebook(0.1);
     const { clock, logger, recheck } = recheckOver({
       nodes: [node('http://bee-360:1633', '360p', book)],
@@ -291,14 +427,11 @@ describe('the chequebook is read again while its warning stands', () => {
     book.availablePlur = bzzToPlur(2);
     await clock.advance(RECHECK_MS);
 
-    const cleared = logger.lines.filter((line) => line.level === 'info' && line.message.includes('/health'));
+    const cleared = linesAt(logger, 'info').filter((line) => line.includes(CHEQUEBOOK_GATE) && line.includes('/health'));
     assert.equal(cleared.length, 1, `no line said the warning left /health: ${JSON.stringify(logger.lines)}`);
   });
 
-  // A single-node deployment routes everything through one publisher whose rung is a placeholder, and
-  // the boot latches its warning with no rung. A read that filed it under the placeholder would leave
-  // /health naming a rung nobody configured.
-  it('files a single-node warning the way the boot did, with no rung', async () => {
+  it('keeps a single-node warning the way the boot filed it, with no rung', async () => {
     const book = chequebook(0.1);
     const { clock, store, recheck } = recheckOver({
       nodes: [node('http://bee:1633', SINGLE_PUBLISHER, book)],
@@ -329,38 +462,28 @@ describe('the chequebook is read again while its warning stands', () => {
       'the failure left no trace',
     );
   });
-
-  it('stops when it is told to', async () => {
-    const book = chequebook(0.1);
-    const { clock, recheck } = recheckOver({
-      nodes: [node('http://bee-360:1633', '360p', book)],
-      latched: [{ gate: CHEQUEBOOK_GATE, rung: '360p' }],
-    });
-
-    recheck.start();
-    recheck.stop();
-    await clock.advance(RECHECK_MS * 2);
-
-    assert.equal(book.reads, 0);
-    assert.equal(clock.pendingCount(), 0);
-  });
 });
 
-describe('/health after the chequebook is funded', () => {
-  it('goes back to 200 without a restart', async () => {
+describe('/health as the chequebook changes', () => {
+  async function servedRecheck(book: FakeChequebook, rung: string) {
     const orchestrator = makeTestOrchestrator();
-    orchestrator.recordStartGateWarnings([{ gate: CHEQUEBOOK_GATE, rung: '360p' }]);
     const api = await startTestApi(orchestrator);
     servers.push(api);
-    const book = chequebook(0.1);
     const clock = new FakeClock();
     const recheck = new ChequebookRecheck({
-      gate: chequebookGate([node('http://bee-360:1633', '360p', book)]),
+      gate: chequebookGate([node(`http://bee-${rung}:1633`, rung, book)]),
       intervalMs: RECHECK_MS,
       store: orchestrator,
       logger: recordingLogger(),
       clock,
     });
+    return { orchestrator, api, clock, recheck };
+  }
+
+  it('goes back to 200 without a restart once the chequebook the boot warned about is funded', async () => {
+    const book = chequebook(0.1);
+    const { orchestrator, api, clock, recheck } = await servedRecheck(book, '360p');
+    orchestrator.recordStartGateWarnings([{ gate: CHEQUEBOOK_GATE, rung: '360p' }]);
 
     recheck.start();
     const before = await api.request('/health');
@@ -373,5 +496,31 @@ describe('/health after the chequebook is funded', () => {
 
     assert.equal(status, 200, `a funded uploader still answers ${status}: ${JSON.stringify(body)}`);
     assert.equal((body as Record<string, unknown>).status, HEALTH_OK);
+  });
+
+  it('turns degraded with chequebook_low naming the rung when a node drains mid-broadcast, and recovers', async () => {
+    const book = chequebook(3);
+    const { api, clock, recheck } = await servedRecheck(book, '1080p');
+
+    recheck.start();
+    await clock.advance(RECHECK_MS);
+    assert.equal((await api.request('/health')).status, 200);
+
+    book.availablePlur = bzzToPlur(0.2);
+    await clock.advance(RECHECK_MS);
+    const drained = await api.request('/health');
+    const drainedBody = drained.body as Record<string, unknown>;
+
+    assert.equal(drainedBody.status, HEALTH_DEGRADED);
+    assert.deepEqual(drainedBody.reasons, [HEALTH_REASON_CHEQUEBOOK_LOW]);
+    assert.deepEqual(drainedBody.lowChequebooks, [{ rung: '1080p' }]);
+    assert.doesNotMatch(JSON.stringify(drainedBody.lowChequebooks), /bee-1080/, 'the unauthenticated page names a node url');
+
+    book.availablePlur = bzzToPlur(2);
+    await clock.advance(RECHECK_MS);
+    const recovered = await api.request('/health');
+
+    assert.equal(recovered.status, 200, `a funded node still answers ${recovered.status}: ${JSON.stringify(recovered.body)}`);
+    assert.deepEqual((recovered.body as Record<string, unknown>).lowChequebooks, []);
   });
 });
