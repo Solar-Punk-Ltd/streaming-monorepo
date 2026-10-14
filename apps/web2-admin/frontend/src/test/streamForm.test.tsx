@@ -680,14 +680,24 @@ describe('ScheduleField', () => {
     expect(openTimeMenu().map((o) => o.textContent)).toContain('18:07');
   });
 
-  it('disables the slots today has already spent, and none on a later day', () => {
+  it('leaves the slots today has already spent open, since the start is only shown (SPDV-1675)', () => {
     renderField();
 
     const options = openTimeMenu();
     const byLabel = new Map(options.map((o) => [o.textContent, o]));
-    // It is 14:23, so 09:00 has gone and 18:00 has not.
-    expect(byLabel.get('09:00')).toHaveAttribute('aria-disabled', 'true');
+    // It is 14:23, so 09:00 has gone. It can still be chosen.
+    expect(byLabel.get('09:00')).not.toHaveAttribute('aria-disabled', 'true');
     expect(byLabel.get('18:00')).not.toHaveAttribute('aria-disabled', 'true');
+  });
+
+  it('picks a day that has already gone by out of the popover calendar (SPDV-1675)', async () => {
+    const onChange = renderField();
+
+    fireEvent.click(screen.getByRole('button', { name: /choose date/i }));
+    const calendar = await screen.findByRole('dialog');
+    fireEvent.click(within(calendar).getByRole('gridcell', { name: '10' }));
+
+    expect(onChange).toHaveBeenLastCalledWith('2026-09-10T15:00');
   });
 
   it('leaves every slot open on a future day', () => {
@@ -768,6 +778,42 @@ describe('ScheduleField', () => {
     expect(screen.getByText(SCHEDULE_LOCKED)).toBeInTheDocument();
     // No shortcuts on a field nobody can change.
     expect(screen.queryByRole('button', { name: 'Tomorrow same time' })).not.toBeInTheDocument();
+  });
+});
+
+describe('StreamFormPage start in the past (SPDV-1675)', () => {
+  /** Monday 14 September 2026, 14:23. */
+  const NOW = new Date(2026, 8, 14, 14, 23, 0);
+
+  beforeEach(() => {
+    vi.useFakeTimers({ toFake: ['Date'] });
+    vi.setSystemTime(NOW);
+  });
+
+  afterEach(() => vi.useRealTimers());
+
+  it('saves a new stream whose scheduled start has already gone by', async () => {
+    let sentStart: unknown;
+    mockFetch([
+      {
+        method: 'POST',
+        path: '/api/streams',
+        respond: (init) => {
+          sentStart = (JSON.parse(String(init?.body)) as Record<string, unknown>).scheduledStartTime;
+          return jsonOk(makeStream({ id: 'past-id' }), 201);
+        },
+      },
+    ]);
+    renderCreateForm();
+
+    typeIn('Stream Name *', 'Late start');
+    typeIn('Description *', 'Starts whenever the streamer is ready');
+    fireEvent.change(screen.getByLabelText('Scheduled Time *', FORM_CONTROL), { target: { value: '0900' } });
+    fireEvent.blur(screen.getByLabelText('Scheduled Time *', FORM_CONTROL));
+    submit();
+
+    expect(await screen.findByText('details page')).toBeInTheDocument();
+    expect(sentStart).toBe(new Date(2026, 8, 14, 9, 0, 0).toISOString());
   });
 });
 
