@@ -56,7 +56,7 @@ import { ErrorHandler } from './ErrorHandler.js';
 import { LadderMarkerSink } from './LadderMarkerWriter.js';
 import { LadderIdentity, LadderRegistry, RenditionAnnouncement } from './LadderRegistry.js';
 import { Logger } from './Logger.js';
-import { continuesFrom, inheritedTimeline, ManifestManager } from './ManifestManager.js';
+import { continuesFrom, inheritedTimeline, ManifestManager, mediaRefsNamedBy } from './ManifestManager.js';
 import { RecoveryStore } from './RecoveryStore.js';
 import { ServiceMetrics } from './ServiceMetrics.js';
 import { StreamCatalog } from './StreamCatalog.js';
@@ -991,7 +991,9 @@ export class StreamUploader {
    * feed is at the saved index or one above it, never further. Both are read directly, the one above
    * first. bee's lookup is not asked because its finder counts a probe slower than one second as
    * absent, so a slow node can answer an older live playlist below the recording, and finalize then
-   * buys a closing playlist and a second recording. See {@link findTrueFeedHead}.
+   * buys a closing playlist and a second recording. See {@link findTrueFeedHead}. A playlist above
+   * the saved index that is not a recording is a live one written after the last save, and that slot
+   * becomes this session's last, see {@link adoptUnsavedSlot}.
    *
    * A 404 means a different thing at each slot. Above the saved index it is the ordinary answer,
    * nothing was written after the entry was saved, and the saved slot is read next. At the saved
@@ -1023,10 +1025,42 @@ export class StreamUploader {
     const saved = this.socIndex;
     const above = await this.readFeedSlot(saved + 1, RECORDING_ALREADY_PUBLISHED, SLOT_MAY_BE_EMPTY);
     if (above !== null) {
-      return isFinishedRecording(above) ? saved + 1 : null;
+      if (isFinishedRecording(above)) {
+        return saved + 1;
+      }
+      this.adoptUnsavedSlot(saved + 1, above);
+      return null;
     }
     const atSaved = await this.readFeedSlot(saved, RECORDING_ALREADY_PUBLISHED, SLOT_THIS_STREAM_WROTE);
     return atSaved !== null && isFinishedRecording(atSaved) ? saved : null;
+  }
+
+  /**
+   * Take the slot above the saved index as this session's last, because the dead process wrote a live
+   * playlist there and crashed before `persistState` recorded it. The closing playlist and the
+   * recording then go above it, rather than onto a slot the feed already holds.
+   *
+   * ⚠️ The recording is still built from the recovery entry. A segment is saved right after it is
+   * added and before the playlist naming it is written, so that playlist names nothing the entry
+   * lacks unless the crash fell inside that same step. A segment it does name beyond the entry cannot
+   * be put back, because a playlist does not carry the engine's own segment index, so it is counted
+   * and logged instead of dropped silently.
+   */
+  private adoptUnsavedSlot(index: number, playlist: string): void {
+    this.socIndex = index;
+    const held = new Set(this.manifestManager.getState().segments.map((segment) => segment.ref));
+    const unheld = mediaRefsNamedBy(playlist).filter((ref) => !held.has(ref)).length;
+    this.logger.warn(
+      `[StreamUploader] Stream ${this.streamId} finds a live playlist at SOC index ${index}, one above ` +
+        'its recovery entry, so it finalizes above that slot rather than writing over it',
+    );
+    if (unheld > 0) {
+      this.logger.warn(
+        `[StreamUploader] The playlist at SOC index ${index} of ${this.streamId} names ${unheld} ` +
+          'segment(s) its recovery entry does not hold, and the recording cannot carry them',
+      );
+    }
+    this.persistState();
   }
 
   /**
