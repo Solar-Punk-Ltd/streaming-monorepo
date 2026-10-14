@@ -234,12 +234,17 @@ services:
     # starts successfully and picks them up a minute later. `docker compose up -d` recreating this
     # service is the everyday way into that, so a deploy was routinely cutting its own drain.
     #
-    # 120s rather than the five minutes of DRAIN_TIMEOUT_MS in StreamOrchestrator.ts. That five
-    # minutes is the deadline for a drain that has gone wrong, and waiting it out on every deploy
-    # would make one stuck stream hold a deploy for five minutes. A healthy four-rung finalize is well
-    # inside two, and a drain that has not finished by then is one the uploader's own deadline is
-    # about to give up on anyway.
-    stop_grace_period: 120s
+    # 330s, the five minutes of DRAIN_TIMEOUT_MS in StreamOrchestrator.ts plus 30s for what shutdown
+    # does after the drains, stopping the ladder markers and closing the API. The rungs drain in
+    # parallel, so one drain deadline covers them all. This was 120s on the reading that a healthy
+    # four-rung finalize is well inside two minutes, and a short one still is: compose waits only as
+    # long as the process runs. A long broadcast's recording is not short, because its write gets a
+    # deadline sized to its length, up to 240s, see manifestWriteTimeoutMs in BeePublisherPool.ts,
+    # and a finalize can then take about 285s. Killed before that, the recording is not published
+    # and the next boot pays to write it again. The cost is that a drain that has gone wrong holds a
+    # deploy for up to 330s rather than 120s. `deploy/test/stop.test.js` reads the drain deadline
+    # from the uploader's source and refuses a grace that does not outlast it.
+    stop_grace_period: 330s
     logging: *default-logging
     ports:
       - '${API_BIND:-0.0.0.0}:${API_PORT:-3000}:${API_PORT:-3000}'
