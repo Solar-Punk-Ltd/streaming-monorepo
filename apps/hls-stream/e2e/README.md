@@ -303,6 +303,40 @@ viewer suite skips on and is right to. On a stage where a rung has already been 
 declaration leaves V11 with no question left, so it refuses during import rather than skipping. The
 run to make instead is `pnpm e2e:batch-drain`, the uploader-side half, which needs no browser.
 
+### Every rung keeps a live playlist: what a healthy ladder suite asks
+
+On 2026-10-14 a second broadcast on one declared stream left two or three of its four rungs with no live playlist,
+and every suite here passed. Those rungs kept uploading segments, and every per-rung check counted segments or
+announced rungs. A segment no playlist names is media no viewer can reach.
+
+So every suite that claims a healthy ladder (`abr-ladder`, `master-offers-every-rung`, `happy-path`,
+`rtmp-ladder-hold`, both engine restarts, both crash recoveries, K) now asks three things of every rung, through
+`checkRungPlaylistsLive` in `src/harness/rungPublishing.ts`:
+
+| reading                      | what it is                                                                                       |
+| ---------------------------- | ------------------------------------------------------------------------------------------------ |
+| live playlist publishes (H1) | `Manifest of <stream> uploaded at SOC index N`, counted per rung, at least n in the window       |
+| no stale warning (H1)        | `Live manifest for stream X is stale`, which a broadcast with no fault in it never writes        |
+| the head moves (H2)          | each rung's feed read off the gateway twice, and its last sequence must have moved on every rung |
+
+A suite whose session reopens a topic also asks for the uploader's `resumes its topic at SOC index N` line on each
+rung that did, because a session that did not read the head numbered itself from nothing. After a stop, H3 in
+`src/harness/recordingListing.ts` reads the finished master and every rung's recording: every rung present, the rungs
+within one segment of each other in length, and as many sessions glued as broadcasts were made. A restart suite that
+expects stale warnings while a replaced session drains prints them instead of refusing on them, and says so.
+
+⚠️ The uploader has no per-rung manifest publish or publish-failure counter today, and
+`swarm_hls_manifest_publish_failures_total` carries no rung label. So the metrics pairing in `abr-ladder` (H4) puts
+each rung's `swarm_hls_rung_segments_uploaded_total` beside the playlists the log says it published, and the failure
+counter is one number for the whole uploader.
+
+The settings the new scenarios read, beside the ones above:
+
+| var                          | default | what it is                                                                                   |
+| ---------------------------- | ------- | -------------------------------------------------------------------------------------------- |
+| `E2E_LONG_BROADCAST_MINUTES` | `20`    | how long `scenarios/long-broadcast` broadcasts. A typo refuses at import rather than running |
+| `E2E_NEVER_STARTS_RUNG`      | unset   | declares a stage armed for `scenarios/rung-never-starts`, naming the rung routed nowhere     |
+
 ## What it covers
 
 Read-only smoke, the run an operator makes first. No faults, no broadcast, no postage:
@@ -430,6 +464,36 @@ skipped, unless the admin settings are given, and `pnpm e2e:admin` runs the gate
 | `admin/rebroadcast-expired-batch` | (G3) a declared stream broadcast again after its earlier batch expired still publishes a moving live playlist on every rung, writes no stale warning, and finishes with a recording on every rung. Needs a stage fixture, `E2E_ADMIN_EXPIRED_STREAM_ID`, and checks it before broadcasting                                                                                        |
 | `admin/catalog-lifecycle`         | a throwaway declared stream broadcast, unpublished as a draft with its recording kept on its feeds, published again as the same recording with the same manifest index and duration, then unpublished and deleted. The admin refuses an unpublish or a delete while live and a delete while on the catalogue. Needs `E2E_ADMIN_STAGE_ID`                                          |
 | `admin/admin-unreachable`         | with the admin backend stopped, a broadcast to a declared key is refused with the admin-mode line and uploads nothing. Stopped for 30s mid-broadcast, no rung loses its live playlist, the master still offers every rung, and the broadcast finalizes into a row the admin calls vod. Needs `E2E_ADMIN_CONTAINER`                                                                |
+
+#### Running the admin suites
+
+They need a stage in admin mode, which is the sp-dev stage, and the harness pointed at it as for any other suite
+(`E2E_SSH_TARGET`, `E2E_PROFILE` and the rest above), because the uploader's own log is still where every
+upload-side reading comes from.
+
+| var                           | needed by                                  | what it is                                                                                      |
+| ----------------------------- | ------------------------------------------ | ----------------------------------------------------------------------------------------------- |
+| `E2E_ADMIN_API_URL`           | every admin suite                          | the admin backend's base url, as the console reaches it                                         |
+| `E2E_ADMIN_TOKEN`             | every admin suite                          | an operator's session token, the value of the `web2_admin_session` cookie. **Environment only** |
+| `E2E_ADMIN_STREAM_ID`         | rebroadcast, three-times, vod, unreachable | a declared stream on the stage, broadcast to again and again                                    |
+| `E2E_ADMIN_STAGE_ID`          | catalog-lifecycle                          | the stage a throwaway stream is declared on and deleted from                                    |
+| `E2E_ADMIN_EXPIRED_STREAM_ID` | rebroadcast-expired-batch                  | the G3 fixture: a declared stream whose earlier batch has expired                               |
+| `E2E_ADMIN_CONTAINER`         | admin-unreachable                          | the admin backend's container on the deployment host                                            |
+
+⛔ **The token never goes in a file.** Not an env file, not a profile, not a script. It is read from the process
+environment only, sent on the cookie header only, and no log line or failure message carries it. Store it in
+1Password and hand it to the run through `op run`, with an env file that holds only the reference:
+
+```bash
+# admin.env, safe to keep anywhere because it holds a reference and no secret
+E2E_ADMIN_TOKEN=op://<vault>/<item>/<field>
+
+op run --env-file=admin.env -- env E2E_ADMIN_API_URL=https://<admin host> E2E_ADMIN_STREAM_ID=<stream id> pnpm e2e:admin
+```
+
+The token is a session, so it expires with the session. Sign in to the console, copy the cookie's value into the
+1Password item, and the next `op run` picks it up. `admin/rebroadcast-vod` reads the recording
+`admin/rebroadcast-three-times` leaves, which `pnpm e2e:admin` runs first because the files sort that way.
 
 ## In-browser node first
 
@@ -787,8 +851,9 @@ that money on numbers nobody should trust.
 
 ## Not covered
 
-Seeking, viewer scale, mid-stream join, soak, and audio quality beyond "a tone is present". If it is
-not a row above, this suite does not verify it.
+Seeking, viewer scale, soak, a quality lock (the client has only `?level=<rung>`, which turns ABR off, and no
+product rule says what a locked viewer should get), and audio quality beyond "a tone is present". Mid-stream join is
+covered by `viewer/late-join` at three minutes. If it is not a row above, this suite does not verify it.
 
 ## Why the unit tests exist
 
