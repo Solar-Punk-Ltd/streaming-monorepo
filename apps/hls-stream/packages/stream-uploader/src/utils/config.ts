@@ -126,7 +126,8 @@ const MAX_HLS_FRAGMENT_SECONDS = 3600;
  * START_GATE_TIMEOUT_MS below, since 2026-09-17.
  *
  * ⛔ **Nor does it bound a feed lookup**, which asks a node where a feed has got to: a restarted
- * stream's feed head read, the stream list's boot lookup and the master feed's first probe. A rung node
+ * stream's feed head read, the stream list's boot lookup and its read of the entries a write appends to,
+ * and the master feed's first probe. A rung node
  * took 4.0 s at the median and 5.1 s at most over 119 such reads on 2026-10-14, past this deadline in
  * 117 of them, so each carries `FEED_LOOKUP_TIMEOUT_MS` from `BeePublisherPool.ts` instead.
  */

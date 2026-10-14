@@ -19,6 +19,15 @@ import { NodeUnreachableError } from './NodeUnreachableError.js';
 
 const CATALOG_RETRY_WINDOW_MS = 10_000;
 
+/**
+ * The retry window of the read of the state a write appends to, and no shorter than
+ * `FEED_LOOKUP_TIMEOUT_MS`, the deadline that read's reader carries. `retryUntilDeadlineAsync` abandons
+ * an attempt when its window runs out, so a window under the reader's deadline would end the one
+ * attempt a slow node needs before the node did. A node took 3.7 to 4.4 s to answer for the stream
+ * list on 2026-10-14, and a list over 4096 bytes is two requests under that one deadline.
+ */
+const CATALOG_STATE_READ_WINDOW_MS = 15_000;
+
 // Re-exported from where they are now declared, so nothing that named them here has to move. The
 // rewrite schedule moved out because the admin-mode ladder registry runs the same one; the identity
 // moved out because it describes a ladder rather than a catalog, and both registries are handed one.
@@ -26,9 +35,13 @@ export { MASTER_REWRITE_RETRY_MS } from './MasterRewriteSchedule.js';
 export type { LadderIdentity } from './LadderRegistry.js';
 
 /**
- * How many consecutive failures to read the resumed state it takes before the entries there are
- * treated as gone. Each attempt spends its own retry window and belongs to a different segment, so
+ * How many times a node has to answer that the resumed state is not there before the entries there
+ * are treated as gone. Each attempt spends its own retry window and belongs to a different segment, so
  * this is tens of seconds of trying rather than an instant.
+ *
+ * ⛔ Only a 404 counts, because only a serving node answers it. A read that ran out of time, was
+ * abandoned or never reached the node says nothing about the state, and counting those let a node
+ * slower than the read's deadline erase every other stream from the list.
  */
 export const TREAT_STATE_AS_LOST_AFTER = 3;
 
@@ -88,7 +101,7 @@ export class StreamCatalog implements LadderRegistry {
    */
   private resumedToUnreadState = false;
 
-  /** Consecutive failures to read that unread state. See {@link TREAT_STATE_AS_LOST_AFTER}. */
+  /** Times a node answered 404 for that unread state. See {@link TREAT_STATE_AS_LOST_AFTER}. */
   private unreadableStateReads = 0;
 
   /**
@@ -611,8 +624,9 @@ export class StreamCatalog implements LadderRegistry {
   /**
    * The entries the next update is appended to.
    *
-   * Tolerant only inside the window {@link resumedToUnreadState} opens, and even there only once
-   * the state has failed to read {@link TREAT_STATE_AS_LOST_AFTER} times over. Retrievability on
+   * Tolerant only inside the window {@link resumedToUnreadState} opens, and even there only once a
+   * node has answered {@link TREAT_STATE_AS_LOST_AFTER} times that the state is not there. Any other
+   * failure fails the write without counting. Retrievability on
    * Swarm flaps — the same index has been watched going unreadable, readable and unreadable again
    * within an hour — so giving up on the first failure would throw away a catalog that a later
    * attempt would have loaded, and that loss cannot be undone. Failing the write instead costs one
@@ -628,6 +642,14 @@ export class StreamCatalog implements LadderRegistry {
       return state;
     } catch (error) {
       if (!this.resumedToUnreadState) {
+        throw error;
+      }
+
+      if (extractHttpStatus(error) !== 404) {
+        this.logger.warn(
+          `[StreamCatalog] State at index ${index} did not read (${getErrorMessage(error)}); ` +
+            'not counted towards giving it up, since no node answered that it is gone',
+        );
         throw error;
       }
 
@@ -647,10 +669,14 @@ export class StreamCatalog implements LadderRegistry {
 
   private async fetchCurrentState(): Promise<StreamEntry[]> {
     const owner = this.signer.publicKey().address();
-    // One reader per attempt, see DeadlineBee in BeePublisherPool.ts.
+    // One reader per attempt, see DeadlineBee in BeePublisherPool.ts, each with a feed lookup's deadline
+    // rather than the pool's, which the stage's node outlasted. See CATALOG_STATE_READ_WINDOW_MS.
     const data = await retryUntilDeadlineAsync(
-      () => this.publisher.bee.feed.makeReader(this.feedTopic, owner).downloadPayload({ index: this.feedIndex! }),
-      CATALOG_RETRY_WINDOW_MS,
+      () =>
+        this.publisher.bee.feed
+          .makeReader(this.feedTopic, owner, { timeout: FEED_LOOKUP_TIMEOUT_MS })
+          .downloadPayload({ index: this.feedIndex! }),
+      CATALOG_STATE_READ_WINDOW_MS,
     );
     return data.payload.toJSON() as StreamEntry[];
   }

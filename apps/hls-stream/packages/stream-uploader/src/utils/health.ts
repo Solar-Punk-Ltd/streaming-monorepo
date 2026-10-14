@@ -110,8 +110,9 @@ export function deriveHealthStatus(
   }
 
   // No threshold, unlike the manifest counter, because a failure that reaches this signal has already
-  // survived `StreamCatalog`'s own 10 second retry window: there is no hiccup left to ride out, and
-  // the state it reports is a broadcast that is running and that no viewer can find.
+  // been through `StreamCatalog`'s own retries: 10 s for the write, 15 s for the read of the list it
+  // appends to, and none for a node answering 404, which no retry changes. There is no hiccup left to
+  // ride out, and the state it reports is a broadcast that is running and that no viewer can find.
   if (signals.msSinceCatalogAnnounceFailed !== null) {
     reasons.push(HEALTH_REASON_UNLISTED_STREAM);
   }
