@@ -16,7 +16,7 @@ import { requestTimeoutMs } from '../integration/requestTimeout.js';
 import { requestHeaders, sessionCookieFrom } from '../integration/session.js';
 import { belongsToRun, runIdFrom, runName, targetProblem } from '../integration/target.js';
 
-/** What `op run --env-file` puts in the environment, with dummies for the pair. */
+/** The environment the suite runs in, with dummies for the pair. */
 const DECLARED = {
   MANAGER_URL: 'http://localhost:9876',
   MANAGER_TEST_TARGET: 'http://localhost:9876',
@@ -67,7 +67,7 @@ describe('whether the suite may start', () => {
     const problem = targetProblem(env) ?? '';
 
     assert.match(problem, /MANAGER_TEST_USERNAME and MANAGER_TEST_PASSWORD/);
-    assert.match(problem, /op run --env-file/);
+    assert.match(problem, /test\/integration\/README\.md/);
     assert.equal(problem.includes('itest'), false, 'no value in the message');
   });
 });
