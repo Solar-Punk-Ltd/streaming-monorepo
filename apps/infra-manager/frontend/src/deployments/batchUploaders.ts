@@ -287,20 +287,22 @@ function restartSentence(uploader: BatchUploader): string {
     : `This recreates ${wordList(uploader.recreates)}.`;
 }
 
+/**
+ * What a live broadcast goes through when only the uploader is recreated. The
+ * old uploader writes its live recordings before it exits, and the uploader's
+ * compose service waits up to 330 s for that, so a long broadcast pauses for
+ * minutes rather than seconds and keeps its recording.
+ */
+const UPLOADER_RESTART_EFFECT =
+  'pauses until the uploader has written its recording and restarted, which takes seconds for a short broadcast and up to about five minutes for a long one, and keeps the recording';
+
 function broadcastSentence(uploader: BatchUploader, broadcast: BroadcastState): string {
-  const effect = dropsEncoder(uploader)
-    ? 'stops until the encoder reconnects'
-    : 'drops for a few seconds while the uploader restarts';
+  const effect = dropsEncoder(uploader) ? 'stops until the encoder reconnects' : UPLOADER_RESTART_EFFECT;
   if (broadcast === 'live') return `The live broadcast on ${uploader.name} ${effect}.`;
+  const ifLive = `it ${effect}`;
   if (broadcast === 'unknown') {
-    const ifLive = dropsEncoder(uploader)
-      ? 'it stops until the encoder reconnects'
-      : 'it drops for a few seconds while the uploader restarts';
     return `The console cannot tell whether a broadcast is live on ${uploader.name}. If one is, ${ifLive}.`;
   }
-  const ifLive = dropsEncoder(uploader)
-    ? 'it stops until the encoder reconnects'
-    : 'it drops for a few seconds while the uploader restarts';
   return `SRS reported no publisher on ${uploader.name} in its last window, but it reports one only about every ten seconds, so a publisher that connected moments ago would not show yet. If one is live, ${ifLive}.`;
 }
 
