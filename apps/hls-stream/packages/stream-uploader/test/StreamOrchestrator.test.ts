@@ -2345,6 +2345,25 @@ describe('StreamOrchestrator status during a handover (gate on PR 52)', () => {
   });
 });
 
+/**
+ * A Bee that holds every write open until the test refuses them all. A write that never settles
+ * keeps each queued segment inside its 15 s retry window, so a test that leaves a backlog behind
+ * would keep the process alive for 15 s per segment. Refusing them, the ones still queued included,
+ * ends the backlog at once.
+ */
+function makeHeldBee(): { uploadData: () => Promise<never>; refuseAll: () => void } {
+  const refusals: ((reason: unknown) => void)[] = [];
+  let refusing = false;
+  const refusal = { status: 400, message: 'held write refused by the test' };
+  return {
+    uploadData: () => (refusing ? Promise.reject(refusal) : new Promise<never>((_, reject) => refusals.push(reject))),
+    refuseAll: () => {
+      refusing = true;
+      refusals.forEach((refuse) => refuse(refusal));
+    },
+  };
+}
+
 describe('StreamOrchestrator unusable segment durations (gate on PR 52)', () => {
   /**
    * The backlog total adds a duration on enqueue and subtracts it when the job ends, so
@@ -2365,7 +2384,8 @@ describe('StreamOrchestrator unusable segment durations (gate on PR 52)', () => 
 
   for (const [name, duration] of UNUSABLE) {
     it(`refuses a ${name} duration instead of letting it poison the backlog signal`, async () => {
-      const orch = makeTestOrchestrator({}, { uploadData: neverSettles });
+      const bee = makeHeldBee();
+      const orch = makeTestOrchestrator({}, { uploadData: bee.uploadData });
 
       await withSilencedLogs(async () => {
         orch.startStream('live/victim', MEDIA_TYPE_VIDEO);
@@ -2386,12 +2406,14 @@ describe('StreamOrchestrator unusable segment durations (gate on PR 52)', () => 
           80,
           `a ${name} duration destroyed the backlog reading for every stream in the process`,
         );
+        bee.refuseAll();
       });
     });
   }
 
   it('still accepts an ordinary duration, and zero', async () => {
-    const orch = makeTestOrchestrator({}, { uploadData: neverSettles });
+    const bee = makeHeldBee();
+    const orch = makeTestOrchestrator({}, { uploadData: bee.uploadData });
 
     await withSilencedLogs(async () => {
       orch.startStream('live/normal', MEDIA_TYPE_VIDEO);
@@ -2400,6 +2422,7 @@ describe('StreamOrchestrator unusable segment durations (gate on PR 52)', () => 
       assert.equal(orch.handleSegment('live/normal', 0, 2, Buffer.from('a')).accepted, true);
       assert.equal(orch.handleSegment('live/normal', 1, 0, Buffer.from('b')).accepted, true, 'zero publishes cleanly');
       assert.equal(orch.getMetricsSnapshot().queueBacklogSeconds, 2);
+      bee.refuseAll();
     });
   });
 });
