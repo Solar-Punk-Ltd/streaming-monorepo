@@ -8,6 +8,8 @@ import {
   broadcastSession,
   type DeclaredStream,
   prepareDeclaredStream,
+  type PriorRecording,
+  priorRecording,
   type SessionRecord,
 } from '../../src/harness/adminBroadcast.js';
 import { type BrowserArmResult, runBrowserArm } from '../../src/harness/browser.js';
@@ -30,7 +32,8 @@ import { viewerGate } from '../../src/viewerCoverage.js';
  * Each session broadcasts 90 s. In the second, every rung must publish 20 live playlists within 60 s of its first
  * segment, every rung head must move on the gateway, no playlist may be called stale, every rung must say it resumes
  * the declared topic at an SOC index above 0, and the master must offer all four. After the stop the recording lists
- * every rung with two sessions.
+ * every rung with two more sessions than it held before the suite began, because a declared stream's recording glues
+ * every session its feed has ever carried.
  *
  * A viewer arm, when the run has a browser, watches across the gap: left on the ended overlay after the first session,
  * it must be taken back into the second without a fatal error and with a picture that moves.
@@ -61,6 +64,7 @@ describe(
     const host = makeHost(cfg);
     let api: AdminApi;
     let declared: DeclaredStream;
+    let prior: PriorRecording;
     const sessions: SessionRecord[] = [];
     let viewer: Promise<BrowserArmResult> | null = null;
 
@@ -70,6 +74,7 @@ describe(
       const mode = requireAdminMode(admin);
       api = new AdminApi(mode);
       declared = await prepareDeclaredStream(api, mode.streamId as string);
+      prior = await priorRecording(host, cfg, declared);
     });
 
     after(async () => {
@@ -133,7 +138,7 @@ describe(
       console.log(describeRecording(listing.offered, listing.rungs));
       const refusal = recordingRefusal(listing.offered, listing.rungs, {
         rungs: cfg.abrRungs,
-        sessions: 2,
+        sessions: new Map(cfg.abrRungs.map((rung) => [rung, (prior.sessionsByRung.get(rung) ?? 0) + 2])),
         fragmentSeconds: fragmentSecondsFor(cfg.segmentExpectation) ?? 2,
       });
       assert.equal(refusal, null, refusal ?? '');

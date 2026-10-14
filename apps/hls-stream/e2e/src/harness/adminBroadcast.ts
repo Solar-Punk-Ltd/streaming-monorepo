@@ -15,7 +15,8 @@ import { containerName, type E2EConfig } from '../config.js';
 import { AdminApi, type AdminStream, adminIngestTarget, declaredStreamPath } from './adminApi.js';
 import type { Host } from './host.js';
 import { announcedRungs, segmentIndicesByStream, vodFinalizeCountFor } from './logwatch.js';
-import { fragmentSecondsFor } from './manifestContractLive.js';
+import { fragmentSecondsFor, type RungFeed } from './manifestContractLive.js';
+import { readRecordingListing } from './recordingListing.js';
 import { startPublisherAt } from './publisher.js';
 import { vodFinalizeWaitMs } from './recording.js';
 import {
@@ -65,6 +66,8 @@ interface SessionPlan {
   minPublishes: number;
   publishWithinMs: number;
   headWaitMs: number;
+  /** Anything a suite does to the admin while the broadcast is live, after the playlists were judged. */
+  whileLive?: () => Promise<void>;
 }
 
 /** What one session did, for its own verdicts and for the next session's. */
@@ -96,7 +99,7 @@ export async function broadcastSession(
   host: Host,
   cfg: E2EConfig,
   api: AdminApi,
-  { declared, seconds, minPublishes, publishWithinMs, headWaitMs }: SessionPlan,
+  { declared, seconds, minPublishes, publishWithinMs, headWaitMs, whileLive }: SessionPlan,
 ): Promise<SessionRecord> {
   const uploader = containerName(cfg, 'stream-uploader');
   const streamPath = declaredStreamPath(declared.stream);
@@ -125,6 +128,7 @@ export async function broadcastSession(
       headWaitMs,
     });
 
+    await whileLive?.();
     for (const id of await recoveryEntryIds(host, cfg)) {
       recoveryEntryBytes.set(id, Buffer.byteLength(await readRecoveryEntry(host, cfg, id), 'utf8'));
     }
@@ -157,4 +161,45 @@ export async function broadcastSession(
     ladder: announcedRungs(text)[0]?.ladder ?? null,
     recoveryEntryBytes,
   };
+}
+
+/** How far back into the uploader's log to look for a declared stream's earlier rung announces. */
+const PRIOR_ANNOUNCE_TAIL_LINES = 50_000;
+
+/** What a declared stream's feeds already hold before a suite broadcasts on it. */
+export interface PriorRecording {
+  /** Sessions each rung's recording already glues, 0 for a rung with no recording yet. */
+  sessionsByRung: ReadonlyMap<string, number>;
+}
+
+/**
+ * The sessions a declared stream's recordings already hold, so a suite counts its own sessions on top of them.
+ *
+ * A declared stream is reused across runs, and every recording on it glues every session its feed ever carried, so a
+ * session count asserted without this baseline is only right on the first run ever made on that stream.
+ */
+export async function priorRecording(host: Host, cfg: E2EConfig, declared: DeclaredStream): Promise<PriorRecording> {
+  const feeds = await declaredRungFeeds(host, cfg, declared);
+  if (feeds.length === 0) {
+    return { sessionsByRung: new Map() };
+  }
+  const listing = await readRecordingListing(host, cfg, { owner: declared.stream.owner, ladder: null, feeds });
+  return {
+    sessionsByRung: new Map(listing.rungs.map((rung) => [rung.rung, rung.recording ? rung.sessions : 0])),
+  };
+}
+
+/**
+ * Every rung feed a declared stream has announced, newest per rung, out of the uploader's log rather than a suite's
+ * own window: a suite reading a recording made by an earlier suite or an earlier run has no window of its own.
+ * Empty where the log no longer reaches back to any broadcast on it.
+ */
+export async function declaredRungFeeds(host: Host, cfg: E2EConfig, declared: DeclaredStream): Promise<RungFeed[]> {
+  const streamPath = declaredStreamPath(declared.stream);
+  const tail = await host.logs(containerName(cfg, 'stream-uploader'), PRIOR_ANNOUNCE_TAIL_LINES);
+  const newestPerRung = new Map<string, RungFeed>();
+  for (const announce of announcedRungs(tail).filter((line) => line.streamId.startsWith(streamPath))) {
+    newestPerRung.set(announce.rung, { rung: announce.rung, streamId: announce.streamId, topic: announce.topic });
+  }
+  return [...newestPerRung.values()];
 }

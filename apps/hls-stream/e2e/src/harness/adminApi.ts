@@ -42,6 +42,7 @@ export const ADMIN_STREAM_ID_VAR = 'E2E_ADMIN_STREAM_ID';
 export const ADMIN_STAGE_ID_VAR = 'E2E_ADMIN_STAGE_ID';
 export const ADMIN_EXPIRED_STREAM_ID_VAR = 'E2E_ADMIN_EXPIRED_STREAM_ID';
 export const ADMIN_TOKEN_VAR = 'E2E_ADMIN_TOKEN';
+export const ADMIN_CONTAINER_VAR = 'E2E_ADMIN_CONTAINER';
 
 /** What an admin-mode run was given. Every id is a stream or stage UUID as the admin names it. */
 export interface AdminMode {
@@ -53,16 +54,20 @@ export interface AdminMode {
   stageId: string | null;
   /** A declared stream whose first session's postage batch has already expired. See scenario G3. */
   expiredStreamId: string | null;
+  /** The admin backend's container on the deployment host, which the unreachable suite stops and starts. */
+  container: string | null;
 }
 
 /** What a suite needs out of the config beyond the url and the token. */
-export type AdminNeed = 'stream' | 'stage' | 'expired';
+export type AdminNeed = 'stream' | 'stage' | 'expired' | 'container';
 
-const NEEDS: Record<AdminNeed, { field: 'streamId' | 'stageId' | 'expiredStreamId'; variable: string }> = {
-  stream: { field: 'streamId', variable: ADMIN_STREAM_ID_VAR },
-  stage: { field: 'stageId', variable: ADMIN_STAGE_ID_VAR },
-  expired: { field: 'expiredStreamId', variable: ADMIN_EXPIRED_STREAM_ID_VAR },
-};
+const NEEDS: Record<AdminNeed, { field: 'streamId' | 'stageId' | 'expiredStreamId' | 'container'; variable: string }> =
+  {
+    stream: { field: 'streamId', variable: ADMIN_STREAM_ID_VAR },
+    stage: { field: 'stageId', variable: ADMIN_STAGE_ID_VAR },
+    expired: { field: 'expiredStreamId', variable: ADMIN_EXPIRED_STREAM_ID_VAR },
+    container: { field: 'container', variable: ADMIN_CONTAINER_VAR },
+  };
 
 function present(value: string | undefined): string | null {
   const trimmed = value?.trim() ?? '';
@@ -77,6 +82,7 @@ export function adminModeFrom(env: NodeJS.ProcessEnv): Partial<AdminMode> {
     streamId: present(env[ADMIN_STREAM_ID_VAR]),
     stageId: present(env[ADMIN_STAGE_ID_VAR]),
     expiredStreamId: present(env[ADMIN_EXPIRED_STREAM_ID_VAR]),
+    container: present(env[ADMIN_CONTAINER_VAR]),
   };
 }
 
@@ -112,6 +118,7 @@ export function requireAdminMode(mode: Partial<AdminMode>): AdminMode {
     streamId: mode.streamId ?? null,
     stageId: mode.stageId ?? null,
     expiredStreamId: mode.expiredStreamId ?? null,
+    container: mode.container ?? null,
   };
 }
 
