@@ -86,6 +86,19 @@ export interface FakeDeadlines {
    * Unset, every write is accepted at once.
    */
   firstWriteFailsAfterMs?: number;
+  /**
+   * How long each 4096-byte chunk of a manifest write takes this node, so a payload larger than one
+   * chunk takes longer, as bee-js's byte upload of it does. 0 when unset.
+   */
+  writeMsPerChunk?: number;
+}
+
+/** The payload size above which bee-js writes a feed update as a byte upload rather than one SOC. */
+const CHUNK_PAYLOAD_BYTES = 4096;
+
+function writeMsFor(deadlines: FakeDeadlines, data: unknown): number {
+  const bytes = data instanceof Uint8Array ? data.byteLength : String(data).length;
+  return Math.max(1, Math.ceil(bytes / CHUNK_PAYLOAD_BYTES)) * (deadlines.writeMsPerChunk ?? 0);
 }
 
 /** What a request whose deadline ran out rejects with: no status, so it is worth retrying. */
@@ -208,7 +221,7 @@ export function makeFakeBee(uploads: FakeUploads = {}): Bee {
               throw new BeeResponseError('POST', '/soc', 'Service Unavailable', undefined, 503, 'Service Unavailable');
             }
             if (deadlines !== undefined) {
-              await answerWithin(deadlineAt, 0);
+              await answerWithin(deadlineAt, writeMsFor(deadlines, data));
             }
             return uploads.uploadPayload
               ? uploads.uploadPayload(opts.index, data, topicKey(topic))
