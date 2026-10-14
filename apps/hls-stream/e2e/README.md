@@ -401,6 +401,7 @@ browser image on the host and the settings under **Saying whether a real browser
 | `viewer/crash-writer-bee-outage` | (V9) a 20s writer outage costs a segment, its sequence is published as a gap entry, and the viewer plays through the hole **in silence**, which is the silent overlay gap again                                                                |
 | `viewer/crash-engine-restart`    | (V10) the engine restart ends the broadcast, and the reap's terminal message reaches the screen                                                                                                                                                |
 | `viewer/batch-drain-viewer`      | (V11) a viewer watches through one rung's prepaid postage running out: the picture keeps moving, they are never told the broadcast ended, and the master this broadcast published loses exactly that rung. **Needs an armed stage**, see below |
+| `viewer/late-join`               | a viewer joining three minutes into a broadcast starts at the live edge rather than at the first segment of a window it should have skipped. Where in the broadcast it started is asserted, how far behind live it sat is printed |
 
 ⛔ None of them asserts how far behind live the player sat. That figure is printed and filed, and
 turning it into a threshold is a product decision about what latency this deployment promises.
