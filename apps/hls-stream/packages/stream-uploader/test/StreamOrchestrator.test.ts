@@ -32,7 +32,6 @@ import {
   makeRecordingCatalog,
   makeRecoveredState,
   makeTestOrchestrator,
-  neverSettles,
   rejectImmediately,
   TEST_ANCHOR,
   toRecoveryFileId,
