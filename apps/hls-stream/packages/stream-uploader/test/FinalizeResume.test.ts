@@ -64,6 +64,13 @@ function manifests(segments: SegmentEntry[]): { vod: string; closingLive: string
 
 const PLAYLISTS = manifests(SEGMENTS);
 
+/** The live playlist the real producer writes for `segments`. */
+function liveManifestOf(segments: SegmentEntry[]): string {
+  const manager = new ManifestManager(TEST_ANCHOR);
+  manager.restoreState(segments, ['#EXTM3U', '#EXT-X-VERSION:3']);
+  return manager.buildLiveManifest();
+}
+
 /** One SOC write the uploader made to its own manifest feed. */
 interface ManifestWrite {
   index: number;
@@ -358,6 +365,55 @@ describe('a single-rendition finalize that comes back after a crash', () => {
     assert.deepEqual(published, [], 'a stale lookup answer must not become a second recording');
     assert.equal(linesHolding(lines, finalizeResumed(STREAM_ID, 9)), 1, 'the resume names the saved index');
     assert.deepEqual(removed, [STREAM_ID]);
+  });
+
+  /**
+   * ⛔⛔ A live playlist one slot above the saved index is a write that landed before the crash
+   * stopped `persistState` recording it. That slot is this session's real last index, so the closing
+   * playlist and the recording go above it. Writing the closing playlist at the same index would
+   * overwrite a slot that is already in the feed.
+   */
+  it('writes above a live playlist that landed one slot past the saved index', async () => {
+    const live = liveManifestOf(SEGMENTS);
+    const { uploader, published, removed } = makeRecovered({
+      socIndex: 9,
+      feedHead: () => ({ index: 9, manifest: live }),
+      feedSlot: (index) => (index === 10 ? live : null),
+    });
+
+    await uploader.notifyStop();
+
+    assert.deepEqual(
+      published.map((write) => write.index),
+      [11, 12],
+      'the closing playlist and the recording go above the slot the dead process wrote, never onto it',
+    );
+    assert.deepEqual(removed, [STREAM_ID]);
+  });
+
+  /**
+   * The recording is built from the recovery entry, and a live playlist does not carry the engine's
+   * own segment index, so a segment that playlist names and the entry does not cannot be put back.
+   * It can only be said, so the loss is visible rather than silent.
+   */
+  it('says how many segments the unsaved playlist named that the recording cannot carry', async () => {
+    const unsaved = 'b'.repeat(64);
+    const { uploader } = makeRecovered({
+      socIndex: 9,
+      feedHead: () => ({ index: 9, manifest: liveManifestOf(SEGMENTS) }),
+      feedSlot: (index) =>
+        index === 10
+          ? liveManifestOf([...SEGMENTS, { index: 42, duration: 1, ref: unsaved, discontinuity: false }])
+          : null,
+    });
+
+    const lines = await logLinesDuring(() => uploader.notifyStop());
+
+    assert.equal(
+      lines.filter((line) => line.includes('names 1 segment(s) its recovery entry does not hold')).length,
+      1,
+      'a segment the recording drops has to be named',
+    );
   });
 
   /**
