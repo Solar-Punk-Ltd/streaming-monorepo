@@ -8,6 +8,8 @@ import { after, describe, it } from 'node:test';
 import {
   BeePublisher,
   BeePublisherPool,
+  MANIFEST_WRITE_TIMEOUT_CEILING_MS,
+  manifestWriteTimeoutMs,
   parsePublisherSpecs,
   safeUrl,
   SINGLE_PUBLISHER,
@@ -547,5 +549,23 @@ describe('safeUrl on something that is not a url', () => {
 
   it('leaves a real url exactly as the operator wrote it', () => {
     assert.equal(safeUrl('http://bee-a:1633'), 'http://bee-a:1633');
+  });
+});
+
+describe('manifestWriteTimeoutMs', () => {
+  it('leaves a payload of one chunk on the pool deadline, which is every live playlist', () => {
+    assert.equal(manifestWriteTimeoutMs(1), undefined);
+    assert.equal(manifestWriteTimeoutMs(4096), undefined);
+  });
+
+  it('gives a larger payload 15 s and 300 ms for each chunk it carries', () => {
+    assert.equal(manifestWriteTimeoutMs(4097), 15_000 + 2 * 300);
+    // A one hour recording at one second segments, about 0.5 MB.
+    assert.equal(manifestWriteTimeoutMs(128 * 4096), 15_000 + 128 * 300);
+  });
+
+  it('never goes past its ceiling, however long the broadcast', () => {
+    assert.equal(manifestWriteTimeoutMs(750 * 4096), MANIFEST_WRITE_TIMEOUT_CEILING_MS);
+    assert.equal(manifestWriteTimeoutMs(24 * 3600 * 150), MANIFEST_WRITE_TIMEOUT_CEILING_MS);
   });
 });

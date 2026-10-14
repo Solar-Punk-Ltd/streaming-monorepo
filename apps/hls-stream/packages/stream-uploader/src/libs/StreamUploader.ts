@@ -49,7 +49,7 @@ import {
   readinessFromPersisted,
   readinessToPersisted,
 } from './AnnounceReadiness.js';
-import { BeePublisher, FEED_LOOKUP_TIMEOUT_MS } from './BeePublisherPool.js';
+import { BeePublisher, FEED_LOOKUP_TIMEOUT_MS, manifestWriteTimeoutMs } from './BeePublisherPool.js';
 import { averageBandwidth, emptyBitrateSample, peakBandwidth, recordSegment } from './BitrateMeter.js';
 import { BroadcastDating } from './broadcastDating.js';
 import { ErrorHandler } from './ErrorHandler.js';
@@ -1798,17 +1798,26 @@ export class StreamUploader {
       // player needs 12.08s against 7.08s.
       //
       // The comment this replaces justified deferring as avoiding an ~80s block behind the segment
-      // backlog. That was a post-restart condition. In steady state the synchronous push costs
-      // about 300ms and logs no retries at all.
+      // backlog. That was a post-restart condition. In steady state the synchronous push of a live
+      // playlist, one chunk, costs about 300ms and logs no retries at all.
       //
-      // Safe to block: retryUntilDeadlineAsync bounds the whole call, and the pool's request deadline
-      // bounds each request inside it. One writer per attempt, see DeadlineBee in BeePublisherPool.ts.
+      // A recording is many chunks, and bee-js pushes every one of them under the writer's single
+      // deadline, so its writer is made with a deadline sized to it, see manifestWriteTimeoutMs. The
+      // retry window then starts with that whole attempt and keeps the usual 15 s after it, because
+      // an attempt is cut at what is left of the window. A live playlist keeps the pool's deadline.
+      //
+      // Safe to block: retryUntilDeadlineAsync bounds the whole call, and the writer's deadline bounds
+      // each request inside it. One writer per attempt, see DeadlineBee in BeePublisherPool.ts.
+      const timeout = manifestWriteTimeoutMs(data.byteLength);
+      const writerOptions = timeout === undefined ? undefined : { timeout };
+      const windowMs =
+        timeout === undefined ? MANIFEST_UPLOAD_RETRY_WINDOW_MS : timeout + MANIFEST_UPLOAD_RETRY_WINDOW_MS;
       return await retryUntilDeadlineAsync(
         () =>
           this.bee.feed
-            .makeWriter(topic, this.streamSigner)
+            .makeWriter(topic, this.streamSigner, writerOptions)
             .uploadPayload(this.stamp, data, { index, deferred: false }),
-        MANIFEST_UPLOAD_RETRY_WINDOW_MS,
+        windowMs,
         UPLOAD_RETRY_BASE_MS,
         UPLOAD_RETRY_CAP_MS,
       );

@@ -583,7 +583,7 @@ The API server starts on port 3000 (default).
 | `CHEQUEBOOK_RECHECK_MS`  | `60000`              | How long to wait between reads of a chequebook the boot warned about, 1000 to 3600000. The warning leaves `/health` on the first read that finds every node funded, and nothing is read while no chequebook warning stands                         |
 | `STAMP_MIN_TTL_HOURS`    | `12`                 | Hours a postage batch must have left for the postage gate to call it usable                                                                                                                                                                        |
 | `STAMP_MAX_UTILIZATION`  | `0.9`                | How full an immutable batch may be, as a ratio, for the postage gate to call it usable. A mutable batch overwrites its oldest chunks when full rather than refusing, so it is never held to this                                                   |
-| `BEE_REQUEST_TIMEOUT_MS` | `4000`               | Per-request deadline on every upload-loop call to a Bee node, derived from the retry windows. A feed lookup, such as a restarted stream's first read of its feed head, carries a 15 s deadline of its own                                          |
+| `BEE_REQUEST_TIMEOUT_MS` | `4000`               | Per-request deadline on every upload-loop call to a Bee node, derived from the retry windows. A feed lookup, such as a restarted stream's first read of its feed head, carries a 15 s deadline of its own, a recording's write one sized to it     |
 | `SEGMENT_DEDUP_WINDOW`   | `10000`              | Segment indexes remembered per stream, twice this many held at most                                                                                                                                                                                |
 | `SEGMENT_REDUNDANCY`     | `1`                  | Erasure-coding parity on segment uploads, `0` turns it off                                                                                                                                                                                         |
 | `ENGINE`                 | _(empty)_            | Engine plugin to load (`srs`, `ome` or empty)                                                                                                                                                                                                      |
@@ -751,6 +751,13 @@ own manifest feed first, which is a retrieval and costs no postage: finding its 
 there it logs `Resuming the finalize of <stream> at the catalog write`, publishes nothing, and
 completes only the catalog write and the entry delete. A head that did not read is not taken for an
 empty feed, so the finalize is deferred to the next boot rather than risking a second recording.
+
+**The recording's write carries a deadline sized to it.** A live playlist fits one 4096-byte chunk
+and goes out as one request under `BEE_REQUEST_TIMEOUT_MS`. The VOD manifest names every segment,
+about 9 KB a minute at one second segments, so bee-js uploads every chunk of it synchronously before
+the feed update, all under one deadline. That write gets 15 s plus 300 ms per chunk, 240 s at most,
+and its retry window starts with that whole attempt. Under the pool's 4 s a long recording could run
+out of time on every attempt, and the finalize then failed again on every boot that retried it.
 
 **Health status:** `GET /health` answers `200` with `status: "ok"`, or `503` with `status: "degraded"` or
 `status: "waiting_for_node"` and a `reasons` array:

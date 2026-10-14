@@ -206,9 +206,10 @@ export interface PublisherRoute {
  * and `makeWriter` take their options at construction and every request through them reuses those, so
  * the deadline counts from when the reader or writer was made. One kept across the attempts of a
  * retry window gives every attempt after its deadline a signal already spent, and that attempt fails
- * the moment it starts. Make one per attempt, and pass a `timeout` of its own for a read that
- * genuinely takes longer than this pool's: on 2026-10-14 a restarted broadcast published one rung of
- * four because the uploader's feed head read did neither. `beePublisherPool.test.ts` pins both
+ * the moment it starts. Make one per attempt, and pass a `timeout` of its own for a read or a write
+ * that genuinely takes longer than this pool's, as a feed lookup and a recording's write do: on
+ * 2026-10-14 a restarted broadcast published one rung of four because the uploader's feed head read
+ * did neither. `beePublisherPool.test.ts` pins both
  * against a real socket.
  *
  * ⚠️ **The deadline is now total, where axios's was idle.** axios put `timeout` on the socket, so a node
@@ -256,6 +257,41 @@ function boundedBee(url: string, requestTimeoutMs: number): Bee {
  * those 119. 15 s is three times the slowest read measured.
  */
 export const FEED_LOOKUP_TIMEOUT_MS = 15_000;
+
+/** The largest payload bee-js writes to a feed as one SOC. Above it, the payload goes up as bytes first. */
+const FEED_PAYLOAD_CHUNK_BYTES = 4096;
+
+/** What a manifest write is allowed per chunk it carries, past {@link FEED_LOOKUP_TIMEOUT_MS}. */
+const MANIFEST_WRITE_MS_PER_CHUNK = 300;
+
+/** The longest deadline a manifest write is given, however large the recording. */
+export const MANIFEST_WRITE_TIMEOUT_CEILING_MS = 240_000;
+
+/**
+ * The deadline a manifest write's writer is made with, sized to the payload it carries, or `undefined`
+ * for the pool's own when the payload fits one chunk.
+ *
+ * A payload of one chunk is a single `/soc` request. That is every live playlist, since
+ * `LIVE_WINDOW_MAX_BYTES` caps those at one chunk, and the pool's deadline suits it as it always has.
+ * A larger one is a recording, which names every segment of the broadcast, about 9 KB a minute at one
+ * second segments. bee-js 13 then uploads it as bytes with every chunk pushed synchronously, reads the
+ * root chunk back and writes the SOC, all under the one deadline the writer was made with.
+ *
+ * The base is a feed lookup's 15 s, the measured anchor for this node answering anything about a feed.
+ * The allowance per chunk is the ~300 ms one synchronous SOC push was measured at in steady state,
+ * counted as if every chunk went serially, which is the pessimistic reading. A one hour recording is
+ * about 0.5 MB, 128 chunks, so 15 s + 128 x 0.3 s = 53.4 s. The ceiling of 240 s is reached at 750
+ * chunks, about 3 MB, six hours of one second segments. It stays under the orchestrator's 5 minute
+ * drain with room for the 15 s windows of the feed head read, the closing live playlist and the
+ * retries that follow this write.
+ */
+export function manifestWriteTimeoutMs(payloadBytes: number): number | undefined {
+  if (payloadBytes <= FEED_PAYLOAD_CHUNK_BYTES) {
+    return undefined;
+  }
+  const chunks = Math.ceil(payloadBytes / FEED_PAYLOAD_CHUNK_BYTES);
+  return Math.min(FEED_LOOKUP_TIMEOUT_MS + chunks * MANIFEST_WRITE_MS_PER_CHUNK, MANIFEST_WRITE_TIMEOUT_CEILING_MS);
+}
 
 /**
  * Parses BEE_PUBLISHERS: space-separated `rung@url<batch>`, empty when unset.
