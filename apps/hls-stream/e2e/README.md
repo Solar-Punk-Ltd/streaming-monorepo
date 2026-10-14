@@ -472,14 +472,14 @@ They need a stage in admin mode, which is the sp-dev stage, and the harness poin
 (`E2E_SSH_TARGET`, `E2E_PROFILE` and the rest above), because the uploader's own log is still where every
 upload-side reading comes from.
 
-| var                           | needed by                                  | what it is                                                                                      |
-| ----------------------------- | ------------------------------------------ | ----------------------------------------------------------------------------------------------- |
-| `E2E_ADMIN_API_URL`           | every admin suite                          | the admin backend's base url, as the console reaches it                                         |
-| `E2E_ADMIN_TOKEN`             | every admin suite                          | an operator's session token, the value of the `web2_admin_session` cookie. **Environment only** |
-| `E2E_ADMIN_STREAM_ID`         | rebroadcast, three-times, vod, unreachable | a declared stream on the stage, broadcast to again and again                                    |
-| `E2E_ADMIN_STAGE_ID`          | catalog-lifecycle                          | the stage a throwaway stream is declared on and deleted from                                    |
-| `E2E_ADMIN_EXPIRED_STREAM_ID` | rebroadcast-expired-batch                  | the G3 fixture: a declared stream whose earlier batch has expired                               |
-| `E2E_ADMIN_CONTAINER`         | admin-unreachable                          | the admin backend's container on the deployment host                                            |
+| var                           | needed by                                  | what it is                                                                                                                                                                                                                    |
+| ----------------------------- | ------------------------------------------ | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `E2E_ADMIN_API_URL`           | every admin suite                          | the admin backend's base url, as the console reaches it                                                                                                                                                                       |
+| `E2E_ADMIN_TOKEN`             | every admin suite                          | an operator's session token, the value of the `web2_admin_session` cookie. **Environment only**                                                                                                                               |
+| `E2E_ADMIN_STREAM_ID`         | rebroadcast, three-times, vod, unreachable | a declared stream on the stage, broadcast to again and again                                                                                                                                                                  |
+| `E2E_ADMIN_STAGE_ID`          | catalog-lifecycle                          | the stage a throwaway stream is declared on and deleted from                                                                                                                                                                  |
+| `E2E_ADMIN_EXPIRED_STREAM_ID` | rebroadcast-expired-batch                  | the G3 fixture: a declared stream whose earlier batch has expired                                                                                                                                                             |
+| `E2E_ADMIN_CONTAINER`         | admin-unreachable                          | the admin backend's container, which must run on the deployment host's own docker: the suite stops and starts it through the same `E2E_SSH_TARGET` as every other container, so an admin on another machine cannot be reached |
 
 ⛔ **The token never goes in a file.** Not an env file, not a profile, not a script. It is read from the process
 environment only, sent on the cookie header only, and no log line or failure message carries it. Store it in
