@@ -361,6 +361,8 @@ export function makeMetricsSnapshot(overrides: Partial<MetricsSnapshot> = {}): M
     postageRefusedPublishers: 0,
     segmentsUploadedByRung: {},
     segmentsDroppedByRung: {},
+    manifestPublishesByRung: {},
+    manifestPublishFailuresByRung: {},
     lastSegmentAt: null,
     activeStreams: 0,
     queueDepth: 0,

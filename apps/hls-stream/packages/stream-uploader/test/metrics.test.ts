@@ -94,14 +94,20 @@ describe('metrics exposition format', () => {
     // One rung dropping while the other three do not is the drained-batch shape, and it is why the
     // two per-rung families are given different label sets here rather than the same four.
     segmentsDroppedByRung: { '1080p': 2 },
+    // Three rungs publishing their playlist and one never landing one, which is the shape of a rung
+    // whose segments upload while no viewer is ever told about them.
+    manifestPublishesByRung: { '360p': 9, '480p': 9, '720p': 8 },
+    manifestPublishFailuresByRung: { '1080p': 7 },
   };
 
-  /** 20 unlabelled metrics, plus the two per-rung families, whose series are one sample line each. */
+  /** 20 unlabelled metrics, plus the four per-rung families, whose series are one sample line each. */
   const UNLABELLED = 20;
-  const LABELLED_FAMILIES = 2;
+  const LABELLED_FAMILIES = 4;
   const FAMILIES = UNLABELLED + LABELLED_FAMILIES;
   const RUNGS_IN_SNAPSHOT = 4;
   const DROPPING_RUNGS_IN_SNAPSHOT = 1;
+  const PUBLISHING_RUNGS_IN_SNAPSHOT = 3;
+  const REFUSED_PUBLISH_RUNGS_IN_SNAPSHOT = 1;
 
   it('renders every metric with a help line, a type line and a value', () => {
     const body = renderPrometheusMetrics(SNAPSHOT);
@@ -109,7 +115,11 @@ describe('metrics exposition format', () => {
     const samples = parseExposition(body);
     assert.equal(
       samples.size,
-      UNLABELLED + RUNGS_IN_SNAPSHOT + DROPPING_RUNGS_IN_SNAPSHOT,
+      UNLABELLED +
+        RUNGS_IN_SNAPSHOT +
+        DROPPING_RUNGS_IN_SNAPSHOT +
+        PUBLISHING_RUNGS_IN_SNAPSHOT +
+        REFUSED_PUBLISH_RUNGS_IN_SNAPSHOT,
       `every metric must be exposed once, got ${[...samples.keys()].join(', ')}`,
     );
     for (const name of samples.keys()) {
@@ -220,14 +230,56 @@ describe('metrics exposition format', () => {
   });
 
   /**
+   * ⛔ The reading that was missing on 2026-10-14, when three rungs of four published no live playlist
+   * for a whole broadcast. `manifest_publish_failures_total` climbed and named no rung, and nothing
+   * counted a playlist that landed, so no scrape could say which qualities a viewer was being offered.
+   */
+  it('renders the live playlist publishes of each rung, landed and refused, as separate families', () => {
+    const body = renderPrometheusMetrics(SNAPSHOT);
+
+    for (const family of ['swarm_hls_rung_manifest_publishes_total', 'swarm_hls_rung_manifest_publish_failures_total']) {
+      assert.equal(
+        (body.match(new RegExp(`^# TYPE ${family} counter$`, 'gm')) ?? []).length,
+        1,
+        `${family} carries one TYPE line, not one per series`,
+      );
+    }
+    const samples = parseExposition(body);
+    assert.equal(samples.get('swarm_hls_rung_manifest_publishes_total{rung="720p"}'), 8);
+    assert.equal(samples.get('swarm_hls_rung_manifest_publishes_total{rung="360p"}'), 9);
+    assert.equal(samples.get('swarm_hls_rung_manifest_publish_failures_total{rung="1080p"}'), 7);
+    assert.equal(
+      samples.has('swarm_hls_rung_manifest_publishes_total{rung="1080p"}'),
+      false,
+      'a rung that never landed a playlist must not be invented at zero',
+    );
+    assert.equal(
+      samples.get('swarm_hls_manifest_publish_failures_total'),
+      2,
+      'the unlabelled total is its own series and is not derived from the breakdown',
+    );
+  });
+
+  /**
    * ⛔ Present with no samples rather than absent. An operator whose dashboard panel disappears reads
    * a broken exporter, and one whose panel is empty reads a deployment with no ladder, which is what
    * this is. The HELP text carries the same warning.
    */
   it('keeps the family present with no samples on a single-rendition deployment', () => {
-    const body = renderPrometheusMetrics({ ...SNAPSHOT, segmentsUploadedByRung: {}, segmentsDroppedByRung: {} });
+    const body = renderPrometheusMetrics({
+      ...SNAPSHOT,
+      segmentsUploadedByRung: {},
+      segmentsDroppedByRung: {},
+      manifestPublishesByRung: {},
+      manifestPublishFailuresByRung: {},
+    });
 
-    for (const family of ['swarm_hls_rung_segments_uploaded_total', 'swarm_hls_rung_segments_dropped_total']) {
+    for (const family of [
+      'swarm_hls_rung_segments_uploaded_total',
+      'swarm_hls_rung_segments_dropped_total',
+      'swarm_hls_rung_manifest_publishes_total',
+      'swarm_hls_rung_manifest_publish_failures_total',
+    ]) {
       assert.match(body, new RegExp(`^# TYPE ${family} counter$`, 'm'));
       assert.equal(body.split('\n').filter((line) => line.startsWith(`${family}{`)).length, 0, family);
     }
