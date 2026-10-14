@@ -166,15 +166,29 @@ export function sessionsByRung(rungs: readonly RecordingRung[]): ReadonlyMap<str
  * tail forgets all of it at the first redeploy. So the rule is a difference: every rung the first reading held must
  * hold exactly `added` more sessions at the last, and every rung must agree, because one ladder is one broadcast.
  *
+ * ⛔ A baseline missing an expected rung refuses by name. The reading after the first session waits a bounded time for
+ * every recording to land, and a rung whose recording was late is simply absent from it: judged without it, the rung
+ * would escape the growth rule here and then read as holding too many sessions in `recordingRefusal`, a red that
+ * names the wrong fault.
+ *
  * @param added sessions broadcast after the first reading was taken
+ * @param expectedRungs every rung the ladder declares, each of which the baseline must hold
  */
 export function sessionGrowthRefusal(
   afterFirst: ReadonlyMap<string, number>,
   afterLast: ReadonlyMap<string, number>,
   added: number,
+  expectedRungs: readonly string[],
 ): string | null {
   if (afterFirst.size === 0) {
     return 'no rung held a finished recording after the first session, so there is no baseline to grow from';
+  }
+  const late = expectedRungs.filter((rung) => !afterFirst.has(rung));
+  if (late.length > 0) {
+    return (
+      `the baseline is incomplete: ${late.map((rung) => `rung ${rung}'s`).join(', ')} recording had not landed when ` +
+      'the baseline was read after the first session, so how many sessions it gained cannot be judged'
+    );
   }
   const problems = [...afterFirst].flatMap(([rung, first]) => {
     const last = afterLast.get(rung);

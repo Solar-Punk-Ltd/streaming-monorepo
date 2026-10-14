@@ -146,7 +146,7 @@ describe(
 
       const listing = await recordingAfter(host, cfg, declared, second);
       console.log(describeRecording(listing.offered, listing.rungs));
-      const grew = sessionGrowthRefusal(afterFirst, sessionsByRung(listing.rungs), 1);
+      const grew = sessionGrowthRefusal(afterFirst, sessionsByRung(listing.rungs), 1, cfg.abrRungs);
       assert.equal(grew, null, grew ?? '');
       const refusal = recordingRefusal(listing.offered, listing.rungs, {
         rungs: cfg.abrRungs,
