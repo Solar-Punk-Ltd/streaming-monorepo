@@ -4,6 +4,7 @@ import { describe, it } from 'node:test';
 
 import { BeePublisherPool, FEED_LOOKUP_TIMEOUT_MS, SINGLE_PUBLISHER } from '../src/libs/BeePublisherPool.js';
 import { CatalogIndexStore } from '../src/libs/CatalogIndexStore.js';
+import { RUNG_DEATH_LAG_SEGMENTS } from '../src/libs/LadderLiveness.js';
 import { Logger } from '../src/libs/Logger.js';
 import { MasterFeedWriter } from '../src/libs/MasterFeedWriter.js';
 import { NodeUnreachableError } from '../src/libs/NodeUnreachableError.js';
@@ -1596,5 +1597,68 @@ describe('a catalog head lookup that answers 503', () => {
     await catalog.addStream(liveEntry());
 
     assert.equal(writes[0].index.toBigInt(), 0n);
+  });
+});
+
+/**
+ * Liveness is about a broadcast in progress. A rung held out while its uploads were refused that then
+ * finished with a recording has a recording to offer, and the recording's master must name it.
+ */
+describe('StreamCatalog and the master of a finished recording', () => {
+  const identity = { title: 'title', owner: 'owner', group: 'group-1', mediatype: MEDIA_TYPE_VIDEO };
+  const ALL = ['360p', '480p', '720p', '1080p'];
+  const THE_OTHER_THREE = ['360p', '480p', '720p'];
+  const live = (name: string): Rendition => {
+    const height = Number.parseInt(name, 10);
+    return {
+      name,
+      width: Math.round((height * 16) / 9),
+      height,
+      topic: `rung-${name}`,
+      bandwidth: height * 5000,
+      avgBandwidth: height * 4000,
+    };
+  };
+
+  it('names every rung with a recording, whatever liveness said while it was live', async () => {
+    const writes: CapturedWrite[] = [];
+    const masters: string[][] = [];
+    const masterWriter = {
+      publish: async (group: string, renditions: Rendition[]) => {
+        masters.push(renditions.map((rendition) => rendition.name));
+        return { topic: group, index: masters.length - 1 };
+      },
+    } as unknown as MasterFeedWriter;
+    const catalog = new StreamCatalog(
+      makePublishers(feedbackBee(writes)),
+      TEST_STREAM_KEY,
+      TEST_TOPIC,
+      undefined,
+      masterWriter,
+    );
+    await catalog.init();
+
+    for (let round = 0; round < 2; round++) {
+      for (const name of ALL) {
+        catalog.recordRungDelivered(identity.group, name);
+      }
+    }
+    for (const name of ALL) {
+      await catalog.upsertRendition(identity, live(name));
+    }
+    for (let round = 0; round < RUNG_DEATH_LAG_SEGMENTS; round++) {
+      for (const name of THE_OTHER_THREE) {
+        catalog.recordRungDelivered(identity.group, name);
+      }
+      catalog.recordRungUploadFailed(identity.group, '1080p');
+    }
+    await waitFor(() => !masters.at(-1)!.includes('1080p'), 4_000);
+
+    for (const [at, name] of ALL.entries()) {
+      await catalog.upsertRendition(identity, { ...live(name), index: 7 + at, duration: 12 });
+    }
+
+    assert.equal((JSON.parse(writes.at(-1)!.payload) as Array<{ state: string }>)[0].state, 'vod');
+    assert.deepEqual(masters.at(-1), ALL, 'the recording′s master left out a rung that has a recording');
   });
 });

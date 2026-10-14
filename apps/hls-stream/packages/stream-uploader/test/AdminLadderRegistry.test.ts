@@ -789,4 +789,37 @@ describe('rung liveness across the broadcasts of one declared stream', () => {
     await waitAndConfirmNothingHappened(() => harness.masters.length === landed, NOTHING_HAPPENS_WINDOW_MS);
     assert.match(harness.masters.at(-1)!.playlist, /topic-1080p/, 'a rung starting a new broadcast was dropped');
   });
+
+  /**
+   * Liveness is about a broadcast in progress. A rung held out while its uploads were refused that then
+   * finished with a recording has a recording to offer, and the recording's master must name it.
+   */
+  it('names every rung with a recording in the recording′s master, whatever liveness said while it was live', async () => {
+    const admin = fourRungAdmin();
+    const harness = makeRegistry({ answer: (rendition) => admin.answer(rendition) });
+    for (let round = 0; round < WARMUP_ROUNDS; round++) {
+      for (const name of ALL) {
+        harness.registry.recordRungDelivered(DECLARED_TOPIC, name);
+      }
+    }
+    for (const name of ALL) {
+      await harness.registry.upsertRendition(IDENTITY, live(name));
+    }
+    for (let round = 0; round < RUNG_DEATH_LAG_SEGMENTS; round++) {
+      for (const name of THE_OTHER_THREE) {
+        harness.registry.recordRungDelivered(DECLARED_TOPIC, name);
+      }
+      harness.registry.recordRungUploadFailed(DECLARED_TOPIC, '1080p');
+    }
+    await waitFor(() => !/topic-1080p/.test(harness.masters.at(-1)!.playlist), SETTLE_CEILING_MS);
+
+    for (const [at, name] of ALL.entries()) {
+      await harness.registry.upsertRendition(IDENTITY, finalOf(name, 7 + at));
+    }
+
+    const recording = harness.masters.at(-1)!.playlist;
+    for (const name of ALL) {
+      assert.match(recording, new RegExp(`topic-${name}`), `the recording′s master left out ${name}`);
+    }
+  });
 });
