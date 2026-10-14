@@ -65,7 +65,7 @@ export function recordingRungOf(parse: RungPlaylistParse): RecordingRung {
 }
 
 /** What a recording must look like. */
-export interface RecordingExpectation {
+interface RecordingExpectation {
   /** Every rung the broadcast announced. Each must be offered by the master and hold a recording. */
   rungs: readonly string[];
   /** Sessions every rung must hold, or per rung where they differ, as after one rung restarted. */

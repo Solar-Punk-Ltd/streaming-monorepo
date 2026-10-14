@@ -116,7 +116,7 @@ export const LOCAL_TARGET = 'local';
 export const DEFAULT_LOCAL_HOST_ADDRESS = 'localhost';
 
 /** The ports the stack binds to the deployment host's Docker bridge address unless told otherwise. */
-export interface ServiceBinds {
+interface ServiceBinds {
   /** The bridge address the stage's env files name, or empty to ask the deployment host. */
   readonly bridgeAddress: string;
   readonly boundPorts: readonly BoundPort[];
