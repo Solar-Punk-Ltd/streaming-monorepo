@@ -38,6 +38,8 @@ function signals(overrides: Partial<HealthSignals> = {}): HealthSignals {
     staleManifestStreams: 0,
     maxConsecutiveManifestFailures: 0,
     maxConsecutiveSegmentFailures: 0,
+    staleManifestStreamIds: [],
+    segmentFailingStreamIds: [],
     queuePressure: PRESSURE_LOW,
     msSinceStreamActivity: 1_000,
     msSinceSegmentLoss: null,

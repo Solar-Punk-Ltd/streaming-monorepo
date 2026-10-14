@@ -71,4 +71,12 @@ export interface UploaderHealthReading {
   waitingSince?: string;
   node?: UploaderNodeWait;
   startGateWarnings?: UploaderStartGateWarning[];
+  /**
+   * The streams whose live playlist is not moving. A ladder rung is a stream
+   * of its own, so its id names the rung. Absent when the uploader named none,
+   * which every uploader built before the field did.
+   */
+  staleManifestStreamIds?: string[];
+  /** The streams whose segment uploads are failing, absent on the same terms. */
+  segmentFailingStreamIds?: string[];
 }
