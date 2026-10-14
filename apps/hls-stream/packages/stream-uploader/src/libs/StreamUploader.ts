@@ -554,9 +554,9 @@ export class StreamUploader {
       this.logger.error(segmentUploadFailed(this.streamId, segmentIndex));
       this.metrics?.recordSegmentDropped(this.ladder?.rung.name);
       if (this.ladder) {
-        // The other half of `recordRungDelivered` below. Without it the master takes a rung whose
-        // uploads are being refused back on every segment that happens to land. See
-        // `RUNG_READMIT_AFTER_SEGMENTS`.
+        // Counted as a failure although no playlist publish was attempted: the playlist a viewer is
+        // served now has a gap here, and without this the master takes a rung whose uploads are being
+        // refused back on every segment that happens to land. See `RUNG_READMIT_AFTER_SEGMENTS`.
         this.ladderRegistry.recordRungUploadFailed(this.ladder.group, this.ladder.rung.name);
       }
       this.persistState();
@@ -572,11 +572,9 @@ export class StreamUploader {
     this.logger.log(segmentUploaded(this.streamId, segmentIndex, ref));
 
     this.metrics?.recordSegmentUploaded(Date.now(), this.ladder?.rung.name);
-    if (this.ladder) {
-      // Beside the metric and not instead of it: the metric is an observation, this decides what the
-      // master is allowed to advertise. Both want the same moment, which is a segment that landed.
-      this.ladderRegistry.recordRungDelivered(this.ladder.group, this.ladder.rung.name);
-    }
+    // ⛔ A landed segment does not tell the ladder this rung is alive. Only the live playlist publish
+    // below does, because a segment no playlist names reaches no viewer. On 2026-10-14 rungs whose
+    // segments all landed published no playlist for a whole broadcast and stayed in the master.
     this.uploadLiveManifest();
     await this.refreshBandwidthIfDrifted();
     this.persistState();
@@ -1586,13 +1584,28 @@ export class StreamUploader {
       this.consecutiveManifestFailures = 0;
       this.reportSegmentsNeverNamed(neverNamed);
       this.announcedThrough = newestNamed;
+      if (this.ladder) {
+        // What keeps a rung in the ladder's master: a playlist a viewer can now be served. One publish
+        // can cover several segments, which every rung of a ladder coalesces the same way, and
+        // `LadderLiveness` measures a rung's lag in the publishes of the ladder's middle rung.
+        this.ladderRegistry.recordRungDelivered(this.ladder.group, this.ladder.rung.name);
+      }
     });
   }
 
-  /** One live manifest that did not reach the feed, however far down the publish it got. */
+  /**
+   * One live manifest that did not reach the feed, however far down the publish it got.
+   *
+   * A failure of the rung's delivery as well, the other half of `recordRungDelivered` above, so a rung
+   * whose segments land while its playlist does not is held out of the master like one whose uploads
+   * are refused.
+   */
   private recordManifestPublishFailure(): void {
     this.consecutiveManifestFailures += 1;
     this.metrics?.recordManifestPublishFailure();
+    if (this.ladder) {
+      this.ladderRegistry.recordRungUploadFailed(this.ladder.group, this.ladder.rung.name);
+    }
     this.logger.warn(
       `Live manifest for stream ${this.streamId} is stale: ${this.consecutiveManifestFailures} consecutive publish failure(s)`,
     );
