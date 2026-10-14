@@ -291,6 +291,61 @@ describe('what the running containers are behind on', () => {
   });
 });
 
+/**
+ * The value a running container was started with, as its record keeps it in
+ * clear. The stamp card reads it to mark the batch a running uploader pays
+ * with, which after a Use is not the batch the deployment stores (SPDV-1437).
+ */
+describe('what the running containers were started with', () => {
+  it('answers the recorded value beside the next one, so a saved change shows what it replaces', () => {
+    const entry = entryOf(
+      deploymentSettingsCatalogOf(input({ nextEnv: { ...RUNNING_ENV, UPLOADER_START_GATES: 'warn' } })),
+      'UPLOADER_START_GATES',
+    );
+
+    assert.equal(entry.value, 'warn');
+    assert.equal(entry.runningValue, 'chequebook-warn');
+  });
+
+  it('answers the same value as the next one when nothing is behind', () => {
+    assert.equal(entryOf(deploymentSettingsCatalogOf(input()), 'LOG_LEVEL').runningValue, 'debug');
+  });
+
+  it('never answers a secret or a chain endpoint, whose records keep a digest alone', () => {
+    const catalog = deploymentSettingsCatalogOf(input());
+
+    assert.equal(entryOf(catalog, 'ADMIN_API_TOKEN').runningValue, null);
+    assert.equal(entryOf(catalog, 'RPC_ENDPOINT').runningValue, null);
+  });
+
+  it('answers nothing for a key no record covers, a record from before digests, and a stopped deployment', () => {
+    const legacy = { ...record('stream-uploader', RUNNING_ENV), env_salt: null, env_digests: {} };
+
+    assert.equal(entryOf(deploymentSettingsCatalogOf(input()), 'CHEQUEBOOK_RECHECK_MS').runningValue, null);
+    assert.equal(entryOf(deploymentSettingsCatalogOf(input({ records: [legacy] })), 'LOG_LEVEL').runningValue, null);
+    assert.equal(
+      entryOf(
+        deploymentSettingsCatalogOf(input({ profile: makeProfile({ name: 'stage', status: 'STOPPED' }) })),
+        'LOG_LEVEL',
+      ).runningValue,
+      null,
+    );
+  });
+
+  it('answers nothing when the containers that read a key were started with different values', () => {
+    const catalog = deploymentSettingsCatalogOf(
+      input({
+        records: [
+          record('stream-uploader', { ...RUNNING_ENV, COMPOSE_NETWORK: 'bridge' }),
+          record('bee-uploader', { ...RUNNING_ENV, COMPOSE_NETWORK: 'host' }),
+        ],
+      }),
+    );
+
+    assert.equal(entryOf(catalog, 'COMPOSE_NETWORK').runningValue, null);
+  });
+});
+
 describe("the deployment's own engine settings", () => {
   it('answers the engine the deployment runs and whether it encodes the ABR ladder', () => {
     const plain = deploymentSettingsCatalogOf(input());
