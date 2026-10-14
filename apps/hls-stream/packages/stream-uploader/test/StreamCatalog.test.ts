@@ -1,6 +1,7 @@
 import { Bee, BeeResponseError, FeedIndex, PrivateKey, Topic } from '@ethersphere/bee-js';
+import { catalogStateLostPattern } from '@swarm-hls-stream/shared';
 import assert from 'node:assert/strict';
-import { describe, it } from 'node:test';
+import { describe, it, TestContext } from 'node:test';
 
 import { BeePublisherPool, FEED_LOOKUP_TIMEOUT_MS, SINGLE_PUBLISHER } from '../src/libs/BeePublisherPool.js';
 import { CatalogIndexStore } from '../src/libs/CatalogIndexStore.js';
@@ -79,6 +80,30 @@ interface CatalogBeeOptions {
   readerTimeouts?: (number | undefined)[];
   /** How many writers were made, when a test wants to see it. */
   writersMade?: { count: number };
+  /** How long the node takes to read the state at an explicit index, under the deadline its reader carries. */
+  slowStateRead?: SlowStateRead;
+}
+
+/**
+ * A node that takes its time over the state read, with the deadline a reader carries modelled as
+ * `beePublisherPool.test.ts` pins it: counted from when the reader is made, and a timeout passed when
+ * it is made replaces the pool's. Read under mocked timers, so the stage's own numbers cost no wall time.
+ */
+interface SlowStateRead {
+  poolTimeoutMs: number;
+  /** Infinity for a read that never answers before its deadline. Changeable mid-test. */
+  answersAfterMs: number;
+}
+
+/** What a request whose deadline ran out rejects with: no status, so it is worth retrying. */
+const timedOut = () => new DOMException('The operation was aborted due to timeout', 'TimeoutError');
+
+async function answerSlowly(read: SlowStateRead, deadlineAt: number): Promise<void> {
+  const remaining = deadlineAt - Date.now();
+  await new Promise((resolve) => setTimeout(resolve, Math.max(0, Math.min(read.answersAfterMs, remaining))));
+  if (remaining < read.answersAfterMs) {
+    throw timedOut();
+  }
 }
 
 function makeCatalogBee(writes: CapturedWrite[], opts: CatalogBeeOptions = {}): Bee {
@@ -86,10 +111,15 @@ function makeCatalogBee(writes: CapturedWrite[], opts: CatalogBeeOptions = {}): 
     feed: {
       makeReader: (_topic: unknown, _owner: unknown, requestOptions?: { timeout?: number }) => {
         opts.readerTimeouts?.push(requestOptions?.timeout);
+        const slow = opts.slowStateRead;
+        const deadlineAt = slow ? Date.now() + (requestOptions?.timeout ?? slow.poolTimeoutMs) : Infinity;
         return {
           downloadPayload: async (dlOpts?: { index?: FeedIndex }) => {
             // With an index this is fetchCurrentState; without, it is the init head lookup.
             if (dlOpts?.index) {
+              if (slow) {
+                await answerSlowly(slow, deadlineAt);
+              }
               if (opts.stateReadFails) {
                 throw chunkNotFound();
               }
@@ -792,6 +822,109 @@ describe('StreamCatalog unreadable-head hardening', () => {
 
     reads.fails = true;
     await assert.rejects(() => catalog.addStream(liveEntry()), /Not Found/);
+  });
+});
+
+/**
+ * Settles `run` on mocked `setTimeout` and `Date`, moving the clock in small steps and letting the
+ * promise work each step started run before the next.
+ */
+async function settleOnMockedTime<T>(t: TestContext, run: Promise<T>): Promise<T> {
+  let settled = false;
+  run.then(
+    () => (settled = true),
+    () => (settled = true),
+  );
+  for (let step = 0; !settled && step < MOCKED_TIME_STEP_LIMIT; step++) {
+    await new Promise((resolve) => setImmediate(resolve));
+    t.mock.timers.tick(MOCKED_TIME_STEP_MS);
+  }
+  return run;
+}
+
+const MOCKED_TIME_STEP_MS = 100;
+/** Ten minutes of mocked time, a ceiling on a hung settle rather than a measurement. */
+const MOCKED_TIME_STEP_LIMIT = 6_000;
+
+/**
+ * A slow read of the resumed state is not the state being gone.
+ *
+ * Boot can resume the stream list above an index whose entries it never read, and three failed reads
+ * of that state then let the next write carry the new entry alone, which takes every other stream off
+ * the list for good. Until 2026-10-14 the read carried the pool's 4 s deadline while a node took 3.7 to
+ * 4.4 s to answer for the stream list, and every way of failing counted towards the three.
+ */
+describe('StreamCatalog resumed state read on a slow node', () => {
+  const POOL_TIMEOUT_MS = 4_000;
+  /** Slower than the pool's deadline and well inside a feed lookup's, as the stage's node was. */
+  const STAGE_READ_MS = 4_500;
+  const otherStream = { ...liveEntry(), owner: 'other-owner', topic: 'other-stream' };
+
+  it('reads the state a node answers after the pool’s deadline, and keeps every previous entry', async (t) => {
+    const writes: CapturedWrite[] = [];
+    const { store } = fakeIndexStore(125n);
+    const slowStateRead = { poolTimeoutMs: POOL_TIMEOUT_MS, answersAfterMs: STAGE_READ_MS };
+    const catalog = new StreamCatalog(
+      makePublishers(makeCatalogBee(writes, { lookupDropsBody: true, stateEntries: [otherStream], slowStateRead })),
+      TEST_STREAM_KEY,
+      TEST_TOPIC,
+      store,
+    );
+    await catalog.init();
+    t.mock.timers.enable({ apis: ['setTimeout', 'Date'] });
+
+    for (let announce = 0; announce < TREAT_STATE_AS_LOST_AFTER; announce++) {
+      await settleOnMockedTime(t, catalog.addStream({ ...liveEntry(), topic: `stream-${announce}` })).catch(
+        () => undefined,
+      );
+    }
+
+    assert.ok(writes.length > 0, 'no announce reached the feed');
+    for (const write of writes) {
+      assert.ok(
+        publishedBy(write).some((entry) => entry.topic === otherStream.topic),
+        `the write at index ${write.index.toBigInt()} dropped the stream the resumed state held`,
+      );
+    }
+  });
+
+  it('never gives the state up over reads that ran out of time', async (t) => {
+    const writes: CapturedWrite[] = [];
+    const { store } = fakeIndexStore(125n);
+    const slowStateRead = { poolTimeoutMs: POOL_TIMEOUT_MS, answersAfterMs: Infinity };
+    const catalog = new StreamCatalog(
+      makePublishers(makeCatalogBee(writes, { lookupDropsBody: true, stateEntries: [otherStream], slowStateRead })),
+      TEST_STREAM_KEY,
+      TEST_TOPIC,
+      store,
+    );
+    await catalog.init();
+    t.mock.timers.enable({ apis: ['setTimeout', 'Date'] });
+
+    const lines = await logLinesDuring(async () => {
+      for (let announce = 0; announce < TREAT_STATE_AS_LOST_AFTER + 1; announce++) {
+        await assert.rejects(
+          settleOnMockedTime(t, catalog.addStream(liveEntry())),
+          'a write must fail while the state it appends to cannot be read',
+        );
+      }
+    });
+
+    assert.equal(writes.length, 0, 'a write went out over a state nobody read');
+    assert.ok(
+      !lines.some((line) => catalogStateLostPattern().test(line)),
+      'a read that ran out of time is no evidence the state is gone',
+    );
+
+    slowStateRead.answersAfterMs = STAGE_READ_MS;
+    await settleOnMockedTime(t, catalog.addStream(liveEntry()));
+
+    assert.equal(writes.length, 1);
+    assert.deepEqual(
+      publishedBy(writes[0]).map((entry) => entry.topic),
+      [otherStream.topic, liveEntry().topic],
+      'once the state reads, the write carries what it held',
+    );
   });
 });
 
