@@ -1,3 +1,4 @@
+import { Topic } from '@ethersphere/bee-js';
 import assert from 'node:assert/strict';
 import { once } from 'node:events';
 import http from 'node:http';
@@ -360,6 +361,75 @@ describe('the request timeout every pooled node is built with', () => {
 
     const second = await upload(publisher);
     assert.equal(second.reference.toHex(), 'a'.repeat(64));
+  });
+
+  /** A bee that answers every feed head read with index 7 after `delayMs`, and nothing else. */
+  async function feedBee(delayMs: number): Promise<string> {
+    const server = http.createServer((request, response) => {
+      request.resume();
+      setTimeout(() => {
+        response.writeHead(200, {
+          'content-type': 'application/octet-stream',
+          'swarm-feed-index': '0000000000000007',
+          'swarm-feed-index-next': '0000000000000008',
+        });
+        response.end('#EXTM3U\n');
+      }, delayMs);
+    });
+    servers.push(server);
+    server.listen(0, LOOPBACK_HOST);
+    await once(server, 'listening');
+    return `http://${LOOPBACK_HOST}:${(server.address() as AddressInfo).port}`;
+  }
+
+  const FEED_TOPIC = Topic.fromString('feed-deadline-test');
+  const FEED_OWNER = '1'.repeat(40);
+
+  /**
+   * ⛔⛔⛔ **A feed reader or writer asks for its options once, when it is made.** bee-js hands
+   * `makeReader` and `makeWriter` the client's options at construction and every request the reader
+   * makes reuses them, so the deadline the pool puts on is counted from the moment the reader was
+   * made, not from each request. A reader kept across the attempts of a retry window has one deadline
+   * for all of them: once it has run out, every later attempt fails the moment it starts. On
+   * 2026-10-14 that left three rungs of a restarted broadcast without a live playlist for its whole
+   * length, because the uploader's feed head read made its reader once and retried it.
+   *
+   * Pinned against a real socket because the trap is bee-js's, and a fake would carry whatever deadline
+   * the fake was written with.
+   */
+  it('counts a feed reader’s deadline from when the reader was made, so a reader kept past it fails at once', async () => {
+    const url = await feedBee(0);
+    const bee = BeePublisherPool.single(url, BATCH['360p'], BOUND_MS).coordinator().bee;
+
+    const kept = bee.feed.makeReader(FEED_TOPIC, FEED_OWNER);
+    await new Promise((resolve) => setTimeout(resolve, BOUND_MS + 100));
+    const fresh = await bee.feed.makeReader(FEED_TOPIC, FEED_OWNER).downloadPayload();
+    assert.equal(fresh.feedIndex.toBigInt(), 7n, 'the control: a reader made now reads the same feed');
+
+    const outcome = watchSettlement(kept.downloadPayload());
+    await waitFor(() => outcome() !== PENDING, SETTLE_BUDGET_MS);
+    assert.match(getErrorMessage(outcome()), /abort|timeout/i, 'a reader made before its deadline ran out still read');
+  });
+
+  /**
+   * The way out, for a read that genuinely takes longer than the pool's deadline: a timeout passed
+   * when the reader is made replaces the pool's for that reader alone. A feed head read on a rung node
+   * took 4.0 s at the median on 2026-10-14, against the pool's 4 s.
+   */
+  it('gives a reader made with a timeout of its own that deadline instead of the pool’s', async () => {
+    const url = await feedBee(BOUND_MS * 2);
+    const bee = BeePublisherPool.single(url, BATCH['360p'], BOUND_MS).coordinator().bee;
+
+    const pooled = watchSettlement(bee.feed.makeReader(FEED_TOPIC, FEED_OWNER).downloadPayload());
+    await waitFor(() => pooled() !== PENDING, SETTLE_BUDGET_MS);
+    assert.match(
+      getErrorMessage(pooled()),
+      /abort|timeout/i,
+      'the control: the pool’s deadline did not end the slow read',
+    );
+
+    const own = await bee.feed.makeReader(FEED_TOPIC, FEED_OWNER, { timeout: BOUND_MS * 6 }).downloadPayload();
+    assert.equal(own.feedIndex.toBigInt(), 7n);
   });
 });
 

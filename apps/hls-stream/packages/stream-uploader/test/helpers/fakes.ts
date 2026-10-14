@@ -64,6 +64,45 @@ export interface FakeUploads {
    * Returning `null` is bee answering 404. The default is {@link CRASHED_MID_BROADCAST}.
    */
   feedHead?: (topic: string) => FakeFeedHead | null;
+  /**
+   * Request deadlines as the real pool and bee-js give them, for a test about how long a node takes.
+   * Unset, nothing here ever runs out of time.
+   */
+  deadlines?: FakeDeadlines;
+}
+
+/**
+ * The deadline a feed reader or writer carries, modelled on what `beePublisherPool.test.ts` pins
+ * against a real socket: it is counted from when the reader or writer is made, not from each request,
+ * and a timeout passed when it is made replaces the pool's.
+ */
+export interface FakeDeadlines {
+  /** The pool's deadline, for a reader or writer made without a timeout of its own. */
+  poolTimeoutMs: number;
+  /** How long a feed head read takes this node to answer. 0 when unset. */
+  headReadMs?: number;
+  /**
+   * How long the first manifest write takes before this node refuses it with a status worth retrying.
+   * Unset, every write is accepted at once.
+   */
+  firstWriteFailsAfterMs?: number;
+}
+
+/** What a request whose deadline ran out rejects with: no status, so it is worth retrying. */
+const timedOut = () => new DOMException('The operation was aborted due to timeout', 'TimeoutError');
+
+/** When a reader or writer made now runs out of time, or never, when the test models no deadlines. */
+function deadlineFor(deadlines: FakeDeadlines | undefined, requestOptions?: { timeout?: number }): number {
+  return deadlines === undefined ? Infinity : Date.now() + (requestOptions?.timeout ?? deadlines.poolTimeoutMs);
+}
+
+/** Takes `ms` to answer, unless the deadline runs out first, which rejects as bee-js does. */
+async function answerWithin(deadlineAt: number, ms: number): Promise<void> {
+  const remaining = deadlineAt - Date.now();
+  await new Promise((resolve) => setTimeout(resolve, Math.max(0, Math.min(ms, remaining))));
+  if (remaining < ms) {
+    throw timedOut();
+  }
 }
 
 /**
@@ -126,31 +165,47 @@ export function neverSettles(): Promise<never> {
 
 export function makeFakeBee(uploads: FakeUploads = {}): Bee {
   let refCounter = 0;
+  let writesSeen = 0;
+  const { deadlines } = uploads;
   return {
     data: {
       upload: uploads.uploadData ?? (async () => ({ reference: { toHex: () => `ref${refCounter++}` } })),
     },
     feed: {
-      makeReader: (topic: Topic) => ({
-        // Both shapes bee-js offers, answered the way bee-js answers them. The index comes from the
-        // no-index call and the playlist only from the indexed one, per
-        // {@link OVERSIZED_PAYLOAD_WRAPPER}. A read at an index this feed is not at is a defect rather
-        // than an empty feed, so it is refused rather than answered.
-        downloadPayload: async (opts?: { index?: FeedIndex }) => {
-          const head = uploads.feedHead ? uploads.feedHead(topicKey(topic)) : CRASHED_MID_BROADCAST;
-          if (head === null || (opts?.index !== undefined && Number(opts.index.toBigInt()) !== head.index)) {
-            throw feedNotFound();
-          }
-          const payload = opts?.index === undefined ? OVERSIZED_PAYLOAD_WRAPPER : head.manifest;
-          return { feedIndex: FeedIndex.fromBigInt(BigInt(head.index)), payload: { toUtf8: () => payload } };
-        },
-      }),
-      makeWriter: (topic: Topic) => ({
-        uploadPayload: async (_stamp: string, data: unknown, opts: { index: number }) =>
-          uploads.uploadPayload
-            ? uploads.uploadPayload(opts.index, data, topicKey(topic))
-            : { reference: { toHex: () => `soc${opts.index}` } },
-      }),
+      makeReader: (topic: Topic, _owner: unknown, requestOptions?: { timeout?: number }) => {
+        const deadlineAt = deadlineFor(deadlines, requestOptions);
+        return {
+          // Both shapes bee-js offers, answered the way bee-js answers them. The index comes from the
+          // no-index call and the playlist only from the indexed one, per
+          // {@link OVERSIZED_PAYLOAD_WRAPPER}. A read at an index this feed is not at is a defect rather
+          // than an empty feed, so it is refused rather than answered.
+          downloadPayload: async (opts?: { index?: FeedIndex }) => {
+            await answerWithin(deadlineAt, deadlines?.headReadMs ?? 0);
+            const head = uploads.feedHead ? uploads.feedHead(topicKey(topic)) : CRASHED_MID_BROADCAST;
+            if (head === null || (opts?.index !== undefined && Number(opts.index.toBigInt()) !== head.index)) {
+              throw feedNotFound();
+            }
+            const payload = opts?.index === undefined ? OVERSIZED_PAYLOAD_WRAPPER : head.manifest;
+            return { feedIndex: FeedIndex.fromBigInt(BigInt(head.index)), payload: { toUtf8: () => payload } };
+          },
+        };
+      },
+      makeWriter: (topic: Topic, _signer: unknown, requestOptions?: { timeout?: number }) => {
+        const deadlineAt = deadlineFor(deadlines, requestOptions);
+        return {
+          uploadPayload: async (_stamp: string, data: unknown, opts: { index: number }) => {
+            writesSeen += 1;
+            if (writesSeen === 1 && deadlines?.firstWriteFailsAfterMs !== undefined) {
+              await answerWithin(deadlineAt, deadlines.firstWriteFailsAfterMs);
+              throw new BeeResponseError('POST', '/soc', 'Service Unavailable', undefined, 503, 'Service Unavailable');
+            }
+            await answerWithin(deadlineAt, 0);
+            return uploads.uploadPayload
+              ? uploads.uploadPayload(opts.index, data, topicKey(topic))
+              : { reference: { toHex: () => `soc${opts.index}` } };
+          },
+        };
+      },
     },
   } as unknown as Bee;
 }
