@@ -59,7 +59,7 @@ describe('admin G3: a declared stream broadcast again after its first batch expi
     const mode = requireAdminMode(admin);
     api = new AdminApi(mode);
     declared = await prepareDeclaredStream(api, mode.expiredStreamId as string);
-    const feeds = await declaredRungFeeds(host, cfg, declared);
+    const feeds = await declaredRungFeeds(host, cfg, api, declared);
     earlier = await readRecordingListing(host, cfg, { owner: declared.stream.owner, ladder: null, feeds });
   });
 
@@ -67,7 +67,7 @@ describe('admin G3: a declared stream broadcast again after its first batch expi
     console.log(describeRecording(earlier.offered, earlier.rungs));
     assert.ok(
       earlier.rungs.length > 0,
-      'the uploader log names no earlier broadcast on this stream, so it is no fixture',
+      'the catalogue entry names no rung of an earlier broadcast, so it is no fixture',
     );
     const readable = earlier.rungs.filter((rung) => rung.recording);
     fixtureHolds = readable.length === 0;

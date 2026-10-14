@@ -26,7 +26,8 @@ import { viewerGate } from '../../src/viewerCoverage.js';
  * A player has to cross each seam without stopping, offer the whole ladder, and play as long as the longest rung's
  * recording is. Played through the shipped client by `browser:vod`, which seeks around inside the recording.
  *
- * ⛔ Reads the recording an earlier broadcast left. Run after `admin/rebroadcast-three-times`, which `pnpm e2e:admin`
+ * ⛔ Reads the recording an earlier broadcast left, finding its rung feeds through the declared stream's catalogue entry,
+ * which names the last session's rung topics, rather than through any log a redeploy would have emptied. Run after `admin/rebroadcast-three-times`, which `pnpm e2e:admin`
  * does because the files sort that way. A recording with fewer than two sessions on any rung refuses, because there
  * is no seam to cross and this would pass without asking its question.
  *
@@ -49,8 +50,9 @@ describe('admin G17: a recording glued from several sessions plays across every 
 
   before(async () => {
     const mode = requireAdminMode(admin);
-    declared = await prepareDeclaredStream(new AdminApi(mode), mode.streamId as string);
-    const feeds = await declaredRungFeeds(host, cfg, declared);
+    const api = new AdminApi(mode);
+    declared = await prepareDeclaredStream(api, mode.streamId as string);
+    const feeds = await declaredRungFeeds(host, cfg, api, declared);
     listing = await readRecordingListing(host, cfg, { owner: declared.stream.owner, ladder: null, feeds });
   });
 
