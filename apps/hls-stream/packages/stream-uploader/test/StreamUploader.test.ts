@@ -1559,6 +1559,60 @@ describe('segments the live window outran before anything published them', () =>
     assert.deepEqual(counters.segmentsDroppedByRung, {});
   });
 
+  /**
+   * ⛔ The reading that was missing on 2026-10-14, when three rungs of four published no live playlist
+   * for a whole broadcast and no tool could say which three. Asserted end to end from a refused
+   * playlist write, because a per-rung counter the publish path never reaches names nothing.
+   */
+  it('counts a refused live playlist write against its rung as well as against the total', async () => {
+    const metrics = new ServiceMetrics();
+    const uploader = uploaderWith(makeBee({}, { fail: permanentError }), {
+      metrics,
+      ladder: { group: 'group-1', rung: { name: '1080p', width: 1920, height: 1080, configuredKbps: 6000 } },
+    });
+
+    uploader.handleSegment(0, 2, Buffer.from('a'));
+    await drain(uploader);
+
+    const counters = metrics.getCounters();
+    assert.ok(counters.manifestPublishFailuresTotal >= 1, 'the refused write must count as a failed publish');
+    assert.deepEqual(counters.manifestPublishFailuresByRung, { '1080p': counters.manifestPublishFailuresTotal });
+    assert.deepEqual(counters.manifestPublishesByRung, {}, 'a refused playlist must not also count as one that landed');
+  });
+
+  it('counts a landed live playlist against its rung', async () => {
+    const metrics = new ServiceMetrics();
+    const uploader = uploaderWith(makeBee({}), {
+      metrics,
+      ladder: { group: 'group-1', rung: { name: '720p', width: 1280, height: 720, configuredKbps: 2800 } },
+    });
+
+    uploader.handleSegment(0, 2, Buffer.from('a'));
+    await drain(uploader);
+
+    const counters = metrics.getCounters();
+    assert.deepEqual(counters.manifestPublishesByRung, { '720p': 1 });
+    assert.deepEqual(counters.manifestPublishFailuresByRung, {});
+    assert.equal(counters.manifestPublishFailuresTotal, 0);
+  });
+
+  /** Under no rung, for the reason the segment breakdowns leave a rung-less stream out of their own. */
+  it('counts a single-rendition playlist publish under no rung, landed or refused', async () => {
+    const landedMetrics = new ServiceMetrics();
+    const landed = uploaderWith(makeBee({}), { metrics: landedMetrics });
+    const refusedMetrics = new ServiceMetrics();
+    const refused = uploaderWith(makeBee({}, { fail: permanentError }), { metrics: refusedMetrics });
+
+    landed.handleSegment(0, 2, Buffer.from('a'));
+    refused.handleSegment(0, 2, Buffer.from('a'));
+    await drain(landed);
+    await drain(refused);
+
+    assert.deepEqual(landedMetrics.getCounters().manifestPublishesByRung, {});
+    assert.ok(refusedMetrics.getCounters().manifestPublishFailuresTotal >= 1, 'the total still counts it');
+    assert.deepEqual(refusedMetrics.getCounters().manifestPublishFailuresByRung, {});
+  });
+
   it('counts nothing while every segment still reaches a manifest', async () => {
     const metrics = new ServiceMetrics();
     const reported: number[] = [];

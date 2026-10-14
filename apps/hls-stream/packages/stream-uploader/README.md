@@ -608,7 +608,7 @@ The API server starts on port 3000 (default).
 | `FIRST_RUNG_DEADLINE_MS` | `45000`              | How long a ladder source SRS accepted may go without any rung publishing before `/health` reports `ladder_not_started` and an error names the stream                                                                                               |
 | `ORPHAN_REAP_MS`         | `60000`              | Silence after which a live stream is finalized, and so the reconnect window                                                                                                                                                                        |
 | `UPLOADER_START_GATES`   | `chequebook-warn`    | Which startup gate stops the boot, and on which reading. `chequebook-warn` warns on the chequebook and refuses on a postage batch the node answered about, warning on one it could not read at all. `warn` warns on both, `refuse` refuses on both |
-| `START_GATE_TIMEOUT_MS`  | `20000`              | How long one startup gate read of one node, or the liveness probe before the gates, may take, 600000 at most. Separate from `BEE_REQUEST_TIMEOUT_MS`, which the upload loop derives                                                                                                       |
+| `START_GATE_TIMEOUT_MS`  | `20000`              | How long one startup gate read of one node, or the liveness probe before the gates, may take, 600000 at most. Separate from `BEE_REQUEST_TIMEOUT_MS`, which the upload loop derives                                                                |
 | `CHEQUEBOOK_MIN_BZZ`     | `0.5`                | Available chequebook balance every node must hold for the chequebook gate to call it funded, 1000 at most                                                                                                                                          |
 | `CHEQUEBOOK_RECHECK_MS`  | `60000`              | How long to wait between reads of a chequebook the boot warned about, 1000 to 3600000. The warning leaves `/health` on the first read that finds every node funded, and nothing is read while no chequebook warning stands                         |
 | `STAMP_MIN_TTL_HOURS`    | `12`                 | Hours a postage batch must have left for the postage gate to call it usable                                                                                                                                                                        |
@@ -667,30 +667,32 @@ they deliberately outlive the streams they count, which is the one thing `/healt
 do: `/health` describes the streams registered right now, so at the moment a live session is wrongly
 killed it answers `ok` with `activeStreams: 0`.
 
-| Metric                                      | Type    | Meaning                                                     |
-| ------------------------------------------- | ------- | ----------------------------------------------------------- |
-| `swarm_hls_segments_uploaded_total`         | counter | Segments whose payload reached Swarm                        |
-| `swarm_hls_rung_segments_uploaded_total`    | counter | The same, by ABR rung. Empty with no ladder, see below      |
-| `swarm_hls_segments_dropped_total`          | counter | Segments never stored: window spent, or bee refused it      |
-| `swarm_hls_rung_segments_dropped_total`     | counter | The same, by ABR rung. Empty with no ladder, see below      |
-| `swarm_hls_segments_lost_total`             | counter | Segments the engine never obtained, or never posted at all  |
-| `swarm_hls_segments_skipped_total`          | counter | Segments discarded on purpose at a puller handover          |
-| `swarm_hls_opening_segments_withheld_total` | counter | Opening segments held back until the broadcast showed video |
-| `swarm_hls_segments_never_named_total`      | counter | Segments in Swarm that no published manifest named          |
-| `swarm_hls_auth_rejections_total`           | counter | Requests refused by a credential gate                       |
-| `swarm_hls_takeovers_refused_total`         | counter | Announces refused because a live session still holds the id |
-| `swarm_hls_manifest_publish_failures_total` | counter | Live manifest publishes that failed                         |
-| `swarm_hls_ladder_markers_written_total`    | counter | Ladder time markers written, see Ladder time markers        |
-| `swarm_hls_ladder_markers_failed_total`     | counter | Markers given up on inside their period. Playback unharmed  |
-| `swarm_hls_streams_finalized_total`         | counter | Stops that published a VOD                                  |
-| `swarm_hls_streams_failed_total`            | counter | Stops that did not. Those broadcasts have no recording      |
-| `swarm_hls_streams_reaped_total`            | counter | Broadcasts finalized because their engine went silent       |
-| `swarm_hls_segment_durations_unread_total`  | counter | Segments published on the engine's word, unreadable here    |
-| `swarm_hls_postage_refused_publishers`      | gauge   | Rungs whose postage batch bee has refused. Never clears     |
-| `swarm_hls_last_segment_timestamp_seconds`  | gauge   | Unix time of the newest segment that landed, 0 while none   |
-| `swarm_hls_active_streams`                  | gauge   | Streams registered and expected to be producing             |
-| `swarm_hls_queue_depth`                     | gauge   | Segments waiting to upload across every stream              |
-| `swarm_hls_queue_backlog_seconds`           | gauge   | Playing time still queued for the worst stream              |
+| Metric                                           | Type    | Meaning                                                                |
+| ------------------------------------------------ | ------- | ---------------------------------------------------------------------- |
+| `swarm_hls_segments_uploaded_total`              | counter | Segments whose payload reached Swarm                                   |
+| `swarm_hls_rung_segments_uploaded_total`         | counter | The same, by ABR rung. Empty with no ladder, see below                 |
+| `swarm_hls_segments_dropped_total`               | counter | Segments never stored: window spent, or bee refused it                 |
+| `swarm_hls_rung_segments_dropped_total`          | counter | The same, by ABR rung. Empty with no ladder, see below                 |
+| `swarm_hls_segments_lost_total`                  | counter | Segments the engine never obtained, or never posted at all             |
+| `swarm_hls_segments_skipped_total`               | counter | Segments discarded on purpose at a puller handover                     |
+| `swarm_hls_opening_segments_withheld_total`      | counter | Opening segments held back until the broadcast showed video            |
+| `swarm_hls_segments_never_named_total`           | counter | Segments in Swarm that no published manifest named                     |
+| `swarm_hls_auth_rejections_total`                | counter | Requests refused by a credential gate                                  |
+| `swarm_hls_takeovers_refused_total`              | counter | Announces refused because a live session still holds the id            |
+| `swarm_hls_manifest_publish_failures_total`      | counter | Live manifest publishes that failed                                    |
+| `swarm_hls_rung_manifest_publishes_total`        | counter | Live manifest publishes that landed, by ABR rung. Empty with no ladder |
+| `swarm_hls_rung_manifest_publish_failures_total` | counter | The failures above, by ABR rung. Empty with no ladder                  |
+| `swarm_hls_ladder_markers_written_total`         | counter | Ladder time markers written, see Ladder time markers                   |
+| `swarm_hls_ladder_markers_failed_total`          | counter | Markers given up on inside their period. Playback unharmed             |
+| `swarm_hls_streams_finalized_total`              | counter | Stops that published a VOD                                             |
+| `swarm_hls_streams_failed_total`                 | counter | Stops that did not. Those broadcasts have no recording                 |
+| `swarm_hls_streams_reaped_total`                 | counter | Broadcasts finalized because their engine went silent                  |
+| `swarm_hls_segment_durations_unread_total`       | counter | Segments published on the engine's word, unreadable here               |
+| `swarm_hls_postage_refused_publishers`           | gauge   | Rungs whose postage batch bee has refused. Never clears                |
+| `swarm_hls_last_segment_timestamp_seconds`       | gauge   | Unix time of the newest segment that landed, 0 while none              |
+| `swarm_hls_active_streams`                       | gauge   | Streams registered and expected to be producing                        |
+| `swarm_hls_queue_depth`                          | gauge   | Segments waiting to upload across every stream                         |
+| `swarm_hls_queue_backlog_seconds`                | gauge   | Playing time still queued for the worst stream                         |
 
 **The per-rung breakdowns are empty on a single-rendition deployment, and that is not zero uploads.** A
 stream with no ABR ladder has no rung to attribute a segment to, so it is counted in
@@ -713,6 +715,14 @@ segments rather than all of them: measured live on 2026-09-04, four refusals in 
 with segments landing in between. Which batch a rung spends is read once at start, so only a redeploy replaces it
 and a redeploy is a new process. `swarm_hls_segments_dropped_total` climbs the same whether one rung
 of four lost everything or all four lost a little, which is what the breakdown separates.
+
+**`swarm_hls_rung_manifest_publishes_total` and `swarm_hls_rung_manifest_publish_failures_total` say
+which rungs a viewer is being told about.** A rung's segments can upload while its live playlist never
+lands, and then that quality exists in Swarm and no player can find it. On 2026-10-14 three rungs of
+four did exactly that for a whole broadcast, and `swarm_hls_manifest_publish_failures_total` climbed
+without naming one. Read the two on the same label: a rung whose publishes stand still while its
+uploads climb is that failure. The failures are the same events the unlabelled total counts, which a
+single-rendition stream adds to alone, so the breakdown does not have to sum to it.
 
 ⭐⭐⭐ **One rung reading zero while the others hold is the signature to watch for**, and it is
 invisible in `swarm_hls_segments_uploaded_total`. It means SRS is deleting that rung's segments

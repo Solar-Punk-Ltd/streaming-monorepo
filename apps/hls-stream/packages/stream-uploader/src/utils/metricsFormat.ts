@@ -204,6 +204,20 @@ function describeByRung(snapshot: MetricsSnapshot): LabelledMetric[] {
       labelName: 'rung',
       byLabel: snapshot.segmentsDroppedByRung,
     },
+    {
+      name: 'rung_manifest_publishes_total',
+      type: 'counter',
+      help: 'Live playlists that landed on their feed, by ABR rung. A rung whose segments upload while this stands still is a quality no viewer is told about. Empty on a single-rendition deployment.',
+      labelName: 'rung',
+      byLabel: snapshot.manifestPublishesByRung,
+    },
+    {
+      name: 'rung_manifest_publish_failures_total',
+      type: 'counter',
+      help: 'Live playlist publishes that failed, by ABR rung. The same events as manifest_publish_failures_total, which a single-rendition stream adds to alone, so the two do not have to sum. Read next to rung_manifest_publishes_total on the same label.',
+      labelName: 'rung',
+      byLabel: snapshot.manifestPublishFailuresByRung,
+    },
   ];
 }
 

@@ -1735,6 +1735,7 @@ export class StreamUploader {
       }
 
       this.consecutiveManifestFailures = 0;
+      this.metrics?.recordManifestPublished(this.ladder?.rung.name);
       this.reportSegmentsNeverNamed(neverNamed);
       this.announcedThrough = newestNamed;
       if (this.ladder) {
@@ -1773,7 +1774,7 @@ export class StreamUploader {
 
   private recordManifestStale(): void {
     this.consecutiveManifestFailures += 1;
-    this.metrics?.recordManifestPublishFailure();
+    this.metrics?.recordManifestPublishFailure(this.ladder?.rung.name);
     this.logger.warn(
       `Live manifest for stream ${this.streamId} is stale: ${this.consecutiveManifestFailures} consecutive publish failure(s)`,
     );
