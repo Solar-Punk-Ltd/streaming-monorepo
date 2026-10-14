@@ -1,14 +1,5 @@
 import { useState, type ChangeEvent, type KeyboardEvent } from 'react';
-import {
-  Alert,
-  Box,
-  Button,
-  Chip,
-  FormLabel,
-  Stack,
-  TextField,
-  Typography,
-} from '@mui/material';
+import { Alert, Box, Button, Chip, FormLabel, Stack, TextField, Typography } from '@mui/material';
 import CancelIcon from '@mui/icons-material/Cancel';
 import { STREAM_LIMITS, THUMBNAIL_MIME_TYPES } from '@streaming-monorepo/web2-admin-common';
 

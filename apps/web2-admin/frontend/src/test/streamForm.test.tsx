@@ -4,12 +4,7 @@ import { Route, Routes } from 'react-router';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { STREAM_LIMITS } from '@streaming-monorepo/web2-admin-common';
 
-import {
-  SCHEDULE_LOCKED,
-  THUMBNAIL_NOT_AN_IMAGE,
-  thumbnailTooLargeMessage,
-  UNSUPPORTED_IMAGE_TYPE,
-} from '../errors';
+import { SCHEDULE_LOCKED, THUMBNAIL_NOT_AN_IMAGE, thumbnailTooLargeMessage, UNSUPPORTED_IMAGE_TYPE } from '../errors';
 import { ScheduleField } from '../components/schedule/ScheduleField';
 import { formatHumanDateTime } from '../dateUtil';
 import { nextFullHour } from '../components/schedule/scheduleTime';
