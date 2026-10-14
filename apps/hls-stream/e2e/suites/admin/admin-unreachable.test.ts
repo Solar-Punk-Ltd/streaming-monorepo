@@ -37,7 +37,8 @@ import { sleep, waitFor } from '../../src/harness/wait.js';
  * ⚠️ The admin's own merged ladder is not compared with the master. The console's stream routes do not carry it yet,
  * only the uploader's internal rendition route does, and this harness holds no uploader token.
  *
- * ⛔ Stops and starts the admin backend's container, named in `E2E_ADMIN_CONTAINER`, on the deployment host. Skips,
+ * ⛔ Stops and starts the admin backend's container, named in `E2E_ADMIN_CONTAINER`, which must run on the deployment
+ * host's own docker, the one `E2E_SSH_TARGET` reaches. An admin on another machine cannot be stopped from here. Skips,
  * printed as skipped, without it and the other admin settings.
  */
 
@@ -130,6 +131,7 @@ describe('admin: a broadcast while the admin backend is away', { skip }, () => {
         minPublishes: PUBLISHES_PER_RUNG,
         publishWaitMs: PUBLISH_WAIT_MS,
         headWaitMs: HEAD_ADVANCE_WAIT_MS,
+        owner: declared.stream.owner,
       });
       assert.equal(
         warm.refusal,
@@ -149,6 +151,7 @@ describe('admin: a broadcast while the admin backend is away', { skip }, () => {
         minPublishes: PUBLISHES_PER_RUNG,
         publishWaitMs: PUBLISH_WAIT_MS,
         headWaitMs: HEAD_ADVANCE_WAIT_MS,
+        owner: declared.stream.owner,
       });
       console.log(through.summary);
       assert.equal(through.refusal, null, through.refusal ?? '');

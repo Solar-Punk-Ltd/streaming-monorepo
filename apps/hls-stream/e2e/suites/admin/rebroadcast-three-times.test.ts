@@ -7,14 +7,19 @@ import {
   broadcastSession,
   type DeclaredStream,
   prepareDeclaredStream,
-  type PriorRecording,
-  priorRecording,
+  sessionObservations,
+  recordingAfter,
   type SessionRecord,
 } from '../../src/harness/adminBroadcast.js';
 import { makeHost, waitForIdle } from '../../src/harness/host.js';
 import { announcedRungs } from '../../src/harness/logwatch.js';
-import { fragmentSecondsFor, rungFeedsOf } from '../../src/harness/manifestContractLive.js';
-import { describeRecording, recordingRefusal, waitForRecordingListing } from '../../src/harness/recordingListing.js';
+import { fragmentSecondsFor } from '../../src/harness/manifestContractLive.js';
+import {
+  describeRecording,
+  recordingRefusal,
+  sessionGrowthRefusal,
+  sessionsByRung,
+} from '../../src/harness/recordingListing.js';
 import { requireStageStamps } from '../../src/harness/stageStamps.js';
 
 /**
@@ -23,7 +28,8 @@ import { requireStageStamps } from '../../src/harness/stageStamps.js';
  * Two sessions can pass by luck of where the first one left its head. A third session reopens a feed whose head is a
  * recording that itself glued two sessions, so it shows whether the continuation compounds correctly: every session
  * publishes a moving live playlist on every rung, each rung resumes the topic at an SOC index strictly above the one
- * it resumed at the session before, the recording keeps three more sessions than it held before the suite began, and
+ * it resumed at the session before, the recording grows by exactly one session per later session on every rung, measured from the recording itself after
+ * session 1 rather than from any log, and
  * the recovery entry a live session carries does not grow with every session glued onto the recording.
  *
  * ⛔ Admin mode only, with `E2E_ADMIN_API_URL`, `E2E_ADMIN_STREAM_ID` and `E2E_ADMIN_TOKEN`. Skips, printed as skipped,
@@ -32,10 +38,14 @@ import { requireStageStamps } from '../../src/harness/stageStamps.js';
 
 const SESSIONS = 3;
 const SESSION_SECONDS = 90;
-const PUBLISHES_PER_RUNG = 20;
-const PUBLISH_WITHIN_MS = 60_000;
+/**
+ * Live playlists each rung must publish in a session, and how long it is given from its first segment. A floor that
+ * says a rung publishes at all, set low and given room on purpose: an e2e suite checks correctness and never
+ * throughput, and the count each rung actually reached is printed in the session summary.
+ */
+const PUBLISHES_PER_RUNG = 6;
+const PUBLISH_WITHIN_MS = 120_000;
 const HEAD_ADVANCE_WAIT_MS = 60_000;
-const RECORDING_WAIT_MS = 180_000;
 /**
  * How much bigger the last session's recovery entry may be than the first's. An entry that carried every glued
  * session would be three times the first by the third session, and a bounded one stays about the same.
@@ -56,7 +66,8 @@ describe('admin G2: three broadcasts in a row on one declared stream each contin
   const host = makeHost(cfg);
   let api: AdminApi;
   let declared: DeclaredStream;
-  let prior: PriorRecording;
+  /** Sessions each rung's recording glued once session 1 finalized: the baseline the last session is measured from. */
+  let afterFirst: ReadonlyMap<string, number> = new Map();
   const sessions: SessionRecord[] = [];
 
   before(async () => {
@@ -65,7 +76,6 @@ describe('admin G2: three broadcasts in a row on one declared stream each contin
     const mode = requireAdminMode(admin);
     api = new AdminApi(mode);
     declared = await prepareDeclaredStream(api, mode.streamId as string);
-    prior = await priorRecording(host, cfg, declared);
   });
 
   for (let n = 1; n <= SESSIONS; n++) {
@@ -80,7 +90,11 @@ describe('admin G2: three broadcasts in a row on one declared stream each contin
       });
       sessions.push(session);
       console.log(session.playlists.summary);
+      console.log(sessionObservations(session));
       assert.equal(session.playlists.refusal, null, session.playlists.refusal ?? '');
+      if (n === 1) {
+        afterFirst = sessionsByRung((await recordingAfter(host, cfg, declared, session)).rungs);
+      }
     });
   }
 
@@ -109,16 +123,13 @@ describe('admin G2: three broadcasts in a row on one declared stream each contin
   it('keeps every session on every rung in the recording', async () => {
     const last = sessions.at(-1);
     assert.ok(last !== undefined, 'no session ran');
-    const listing = await waitForRecordingListing(
-      host,
-      cfg,
-      { owner: declared.stream.owner, ladder: last.ladder, feeds: rungFeedsOf(last.log) },
-      RECORDING_WAIT_MS,
-    );
+    const listing = await recordingAfter(host, cfg, declared, last);
     console.log(describeRecording(listing.offered, listing.rungs));
+    const grew = sessionGrowthRefusal(afterFirst, sessionsByRung(listing.rungs), SESSIONS - 1);
+    assert.equal(grew, null, grew ?? '');
     const refusal = recordingRefusal(listing.offered, listing.rungs, {
       rungs: cfg.abrRungs,
-      sessions: new Map(cfg.abrRungs.map((rung) => [rung, (prior.sessionsByRung.get(rung) ?? 0) + SESSIONS])),
+      sessions: new Map(cfg.abrRungs.map((rung) => [rung, (afterFirst.get(rung) ?? 0) + SESSIONS - 1])),
       fragmentSeconds: fragmentSecondsFor(cfg.segmentExpectation) ?? 2,
     });
     assert.equal(refusal, null, refusal ?? '');

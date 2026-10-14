@@ -6,9 +6,13 @@ import { containerName, loadConfig } from '../../src/config.js';
 import { runBrowserArm } from '../../src/harness/browser.js';
 import { byteSourceArmRefusal, viewerPlaybackRefusal } from '../../src/harness/browserVerdict.js';
 import { makeHost, waitForIdle } from '../../src/harness/host.js';
+import { segmentSecondsOf } from '../../src/browser/rungManifest.js';
+import { lateJoinRefusal } from '../../src/harness/lateJoin.js';
 import { segmentIndicesByStream } from '../../src/harness/logwatch.js';
+import { fragmentSecondsFor, readOneRungPlaylist, rungFeedsOf } from '../../src/harness/manifestContractLive.js';
 import { type Publisher, startPublisher } from '../../src/harness/publisher.js';
 import { requireStageStamps } from '../../src/harness/stageStamps.js';
+import { discoverCatalogFeed } from '../../src/harness/viewer.js';
 import { sleep, waitFor } from '../../src/harness/wait.js';
 import { requireByteSource, viewerGate } from '../../src/viewerCoverage.js';
 
@@ -21,10 +25,11 @@ import { requireByteSource, viewerGate } from '../../src/viewerCoverage.js';
  * everyone else, and on a topic that inherited a prefix from an earlier session it means starting inside that earlier
  * session.
  *
- * ⛔ The reading is where in the broadcast the player started, which is correctness, not latency. The bound is half the
- * broadcast's age at the join, far wider than any live offset the client targets and far narrower than the start of
- * the broadcast, so it separates the two answers without promising a number. How far behind live the viewer sat is
- * printed and never asserted.
+ * ⛔ The reading is where in the broadcast the player started, which is correctness, not latency. A live playlist is a
+ * window of about 4096 bytes, 30 to 50 entries, read off the gateway at the join, and a start at its first entry sits
+ * that window behind live. The bound is the client's own catch-up limit, out of its player configuration, far inside
+ * that window and well outside where the client aims. See `src/harness/lateJoin.ts`. How far behind live the viewer
+ * sat is printed and never asserted beyond that bound.
  */
 
 const JOIN_AFTER_MS = 180_000;
@@ -66,21 +71,25 @@ describe('a viewer joining three minutes in starts at the live edge', { skip }, 
     });
     await sleep(Math.max(0, JOIN_AFTER_MS - (Date.now() - Date.parse(startedAt))));
     const ageAtJoinS = (Date.now() - Date.parse(startedAt)) / 1000;
+    const { owner } = await discoverCatalogFeed(host, cfg);
+    const [feed] = rungFeedsOf(await host.logsSince(uploader, startedAt));
+    assert.ok(feed !== undefined, 'the broadcast announced no feed, so the window a joiner is handed cannot be read');
+    const window = await readOneRungPlaylist(host, cfg, owner, feed);
+    const seconds = window.playlist === null ? [] : segmentSecondsOf(window.playlist);
+    const windowSeconds = seconds.reduce((total, s) => total + s, 0);
+    const fragmentSeconds = fragmentSecondsFor(cfg.segmentExpectation) ?? Math.max(1, ...seconds);
 
     const result = await runBrowserArm(host, cfg, { backend: requireByteSource(backend), watchMinutes: WATCH_MINUTES });
     console.log(
-      `  observations, none of them asserted. the broadcast was ${ageAtJoinS.toFixed(0)}s old at the join, and the ` +
+      `  the broadcast was ${ageAtJoinS.toFixed(0)}s old at the join, and the ` +
         `viewer sat ${result.behindLive.joinS?.toFixed(1) ?? '?'}s behind live at its join and ` +
-        `${result.behindLive.medianS?.toFixed(1) ?? '?'}s at the median`,
+        `${result.behindLive.medianS?.toFixed(1) ?? '?'}s at the median, with a live window of ` +
+        `${windowSeconds.toFixed(1)}s on ${feed.rung ?? 'its one rendition'}`,
     );
     assert.equal(viewerPlaybackRefusal(result), null, viewerPlaybackRefusal(result) ?? '');
     const notItsCondition = byteSourceArmRefusal(result, { maxSegmentRequests: MAX_WEEB3_SEGMENT_REQUESTS });
     assert.equal(notItsCondition, null, `this arm is not the byte source it is filed as: ${notItsCondition}`);
-    assert.ok(result.behindLive.joinS !== null, 'the arm read no position at the join, so where it started is unknown');
-    assert.ok(
-      result.behindLive.joinS < ageAtJoinS / 2,
-      `the viewer started ${result.behindLive.joinS.toFixed(1)}s behind live in a broadcast ${ageAtJoinS.toFixed(0)}s ` +
-        'old, so it began at the start of the window rather than at the live edge',
-    );
+    const refusal = lateJoinRefusal({ joinS: result.behindLive.joinS, windowSeconds, fragmentSeconds });
+    assert.equal(refusal, null, refusal ?? '');
   });
 });

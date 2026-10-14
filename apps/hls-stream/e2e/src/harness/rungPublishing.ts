@@ -118,6 +118,23 @@ export function staleManifestWarnings(logText: string): StaleManifestWarning[] {
   }));
 }
 
+const HELD_LINE = /Live manifest for stream (\S+) is held: its feed position is not settled yet \((\d+) consecutive\)/g;
+
+/**
+ * Every held-publish notice in the window: a live playlist the uploader would not write yet because where its feed
+ * stands is not settled, which is a session waiting for the one it replaced to finish draining onto the same topic.
+ *
+ * ⛔ Counted as an observation only, never as a stale warning. A hold is the uploader refusing on purpose and saying so
+ * in its own words, and {@link staleManifestWarnings} does not match it. The line arrives with the uploader change that
+ * stops counting a hold as a publish failure, so on an older uploader a hold still reads as stale and this reads none.
+ */
+export function heldManifestNotices(logText: string): StaleManifestWarning[] {
+  return [...messageText(logText).matchAll(HELD_LINE)].map((match) => ({
+    streamId: match[1],
+    consecutive: Number(match[2]),
+  }));
+}
+
 /**
  * Why the stale warnings in a window mean a healthy broadcast was not, or null when there were none.
  *
@@ -167,6 +184,32 @@ const RECOVERED_LINE = /Recovered stream (\S+) with \d+ segments/g;
  */
 export function crashRecoveredStreams(logText: string): string[] {
   return [...new Set([...messageText(logText).matchAll(RECOVERED_LINE)].map((match) => match[1]))];
+}
+
+/** One head-probe correction: bee answered one index as a feed's head and the uploader found playlists above it. */
+export interface HeadProbeCorrection {
+  streamId: string;
+  answered: number;
+  present: number;
+}
+
+const HEAD_PROBE_LINE =
+  /bee answered SOC index (\d+) as the head of (\S+)'s feed, but the feed holds playlists up to (\d+)/g;
+
+/**
+ * Every time the uploader found bee's answer for a feed's head below the playlists actually on it, and continued from
+ * the highest one instead. Read as an observation: the correction is the uploader working, and how often bee needs it
+ * is a fact about the node rather than a fault here.
+ *
+ * ⚠️ The line arrives with the head-probe fix on its own branch, so on a stage without it this always reads none, and
+ * `src/logLevel.ts` cannot pin it against this checkout's uploader yet.
+ */
+export function headProbeCorrections(logText: string): HeadProbeCorrection[] {
+  return [...messageText(logText).matchAll(HEAD_PROBE_LINE)].map((match) => ({
+    streamId: match[2],
+    answered: Number(match[1]),
+    present: Number(match[3]),
+  }));
 }
 
 const REAPED_AFTER_DISCONNECT_LINE = /The encoder feeding (\S+) left and did not come back within the/g;
@@ -414,6 +457,14 @@ interface RungPlaylistsLiveCheck {
    * post-fault window instead, where any stale warning is again a refusal.
    */
   refuseStale?: boolean;
+  /**
+   * The signer whose feeds the heads are read under. Discovered from the catalog's own log line when absent, which is
+   * right on a standalone stage. An admin-mode stage names it on the declared stream, and its catalog writes that line
+   * once at boot and never again, so after an hour or two of uptime no log tail reaches it.
+   */
+  owner?: string;
+  /** Injected so a test drives the waits instead of spending them, as `waitFor` takes one. */
+  clock?: { now: () => number; wait: (ms: number) => Promise<void> };
 }
 
 /**
@@ -428,7 +479,17 @@ interface RungPlaylistsLiveCheck {
 export async function checkRungPlaylistsLive(
   host: Host,
   cfg: E2EConfig,
-  { log, rungs, minPublishes, publishWaitMs, headWaitMs, namesFrom, refuseStale = true }: RungPlaylistsLiveCheck,
+  {
+    log,
+    rungs,
+    minPublishes,
+    publishWaitMs,
+    headWaitMs,
+    namesFrom,
+    refuseStale = true,
+    owner,
+    clock,
+  }: RungPlaylistsLiveCheck,
 ): Promise<RungPublishingVerdict> {
   const named = async (): Promise<string> => {
     const text = await log();
@@ -443,7 +504,12 @@ export async function checkRungPlaylistsLive(
       const text = await named();
       return everyRungPublishedAtLeast(text, expectedOf(text), minPublishes);
     },
-    { timeoutMs: publishWaitMs, intervalMs: 3_000, label: `every rung publishes ${minPublishes} live playlists` },
+    {
+      timeoutMs: publishWaitMs,
+      intervalMs: 3_000,
+      clock,
+      label: `every rung publishes ${minPublishes} live playlists`,
+    },
   ).catch(() => undefined);
 
   const text = await named();
@@ -468,8 +534,8 @@ export async function checkRungPlaylistsLive(
     refusals.push(`${unannounced.join(', ')} never announced a feed, so its playlist head could not be read`);
   }
 
-  const { owner } = await discoverCatalogFeed(host, cfg);
-  const heads = await waitForRungHeadsAdvance(host, cfg, { owner, feeds, timeoutMs: headWaitMs });
+  const signer = owner ?? (await discoverCatalogFeed(host, cfg)).owner;
+  const heads = await waitForRungHeadsAdvance(host, cfg, { owner: signer, feeds, timeoutMs: headWaitMs, clock });
   if (heads.refusal !== null) {
     refusals.push(heads.refusal);
   }
@@ -479,62 +545,87 @@ export async function checkRungPlaylistsLive(
     refusal: refusals.length === 0 ? null : refusals.join('\n'),
     summary:
       `  live playlist publishes per rung: ${publishLine || 'none'}\n` +
-      `  stale playlist warnings: ${stale.length}\n${heads.summary}`,
+      `  stale playlist warnings: ${stale.length}, held publishes (not refused): ${heldManifestNotices(text).length}\n` +
+      heads.summary,
   };
 }
 
 /** The per-rung upload counter and the unlabelled publish-failure counter, as the uploader renders them. */
 export const RUNG_SEGMENTS_UPLOADED_METRIC = 'swarm_hls_rung_segments_uploaded_total';
 export const MANIFEST_PUBLISH_FAILURES_METRIC = 'swarm_hls_manifest_publish_failures_total';
+/**
+ * The per-rung live playlist counters, which an uploader built from the per-rung publish metrics change renders and an
+ * older one does not. Read when present, and the log stands in when absent.
+ */
+export const RUNG_MANIFEST_PUBLISHES_METRIC = 'swarm_hls_rung_manifest_publishes_total';
+export const RUNG_MANIFEST_PUBLISH_FAILURES_METRIC = 'swarm_hls_rung_manifest_publish_failures_total';
 
-/** One rung's segment uploads by the uploader's own counter, beside the playlists the log says it published. */
+/** Where a row's playlist count came from: the uploader's own per-rung counter, or the log standing in for it. */
+export type PublishCountSource = 'metric' | 'log';
+
+/** One rung's segment uploads by the uploader's own counter, beside the playlists it published. */
 export interface RungMetricRow {
   rung: string;
   segmentsUploaded: number;
   playlistsPublished: number;
+  /** How far this rung's own publish-failure counter moved, or null on an uploader that renders none. */
+  publishFailures: number | null;
 }
 
-/** H4: what moved between two scrapes, paired per rung with the log's publish count over the same window. */
+/** H4: what moved between two scrapes, paired per rung. */
 export interface RungMetricPairing {
   rows: readonly RungMetricRow[];
+  publishesFrom: PublishCountSource;
   /** How far the unlabelled failure counter moved, or null where either scrape lacked it. */
   manifestFailures: number | null;
 }
 
+/** How far each labelled sample of a family moved between two scrapes. Empty where the later scrape carries none. */
+function rungDeltas(before: string, after: string, family: string): ReadonlyMap<string, number> {
+  const earlier = rungCountersOf(before, family, 'rung');
+  return new Map(
+    [...rungCountersOf(after, family, 'rung')].map(([rung, total]) => [rung, total - (earlier.get(rung) ?? 0)]),
+  );
+}
+
 /**
- * Pair the rung upload counter's movement with the log's playlist publishes, rung by rung.
+ * Pair the rung upload counter's movement with the playlists each rung published, rung by rung.
  *
- * ⛔ The uploader has no per-rung manifest publish counter and no per-rung failure counter today:
- * `manifest_publish_failures_total` carries no rung label. So the playlist half of each row is the log's count, H1,
- * and the failure half is one number for the whole uploader. Adding the labels is a change to the uploader and is not
- * made here. Lifetime counters, so both scrapes are needed and only the difference is read.
+ * The playlist count is the uploader's own per-rung publish counter where the scrape carries it, and the log's count,
+ * H1, where it does not, which is every uploader built before the per-rung publish metrics. The same for failures:
+ * each rung's own failure counter where present, else the one unlabelled counter for the whole uploader. Lifetime
+ * counters, so both scrapes are needed and only the difference is read.
  */
 export function rungMetricPairing(
   before: string,
   after: string,
   publishes: ReadonlyMap<string, number>,
 ): RungMetricPairing {
-  const uploadedBefore = rungCountersOf(before, RUNG_SEGMENTS_UPLOADED_METRIC, 'rung');
-  const uploadedAfter = rungCountersOf(after, RUNG_SEGMENTS_UPLOADED_METRIC, 'rung');
-  const rows = [...uploadedAfter].map(([rung, total]) => ({
+  const uploaded = rungDeltas(before, after, RUNG_SEGMENTS_UPLOADED_METRIC);
+  const published = rungDeltas(before, after, RUNG_MANIFEST_PUBLISHES_METRIC);
+  const failed = rungDeltas(before, after, RUNG_MANIFEST_PUBLISH_FAILURES_METRIC);
+  const publishesFrom: PublishCountSource = published.size > 0 ? 'metric' : 'log';
+  const rows = [...uploaded].map(([rung, segmentsUploaded]) => ({
     rung,
-    segmentsUploaded: total - (uploadedBefore.get(rung) ?? 0),
-    playlistsPublished: publishes.get(rung) ?? 0,
+    segmentsUploaded,
+    playlistsPublished: (publishesFrom === 'metric' ? published : publishes).get(rung) ?? 0,
+    publishFailures: failed.size > 0 ? (failed.get(rung) ?? 0) : null,
   }));
   const failuresBefore = counterOf(before, MANIFEST_PUBLISH_FAILURES_METRIC);
   const failuresAfter = counterOf(after, MANIFEST_PUBLISH_FAILURES_METRIC);
   return {
     rows,
+    publishesFrom,
     manifestFailures: failuresBefore === null || failuresAfter === null ? null : failuresAfter - failuresBefore,
   };
 }
 
 /**
- * Why the pairing says a healthy broadcast left a rung uploading with no playlist, or null.
+ * Why the pairing says a healthy broadcast left a rung uploading with no playlist, or a publish failing, or null.
  *
  * ⛔ An empty pairing refuses: a scrape with no per-rung samples is a single rendition or a scrape that answered
- * nothing, and either way it said nothing about any rung. A failure counter that could not be read refuses too, since
- * zero is what this is here to establish.
+ * nothing, and either way it said nothing about any rung. Where no rung carries its own failure counter, an unlabelled
+ * counter that could not be read refuses too, since zero is what this is here to establish.
  */
 export function rungMetricRefusal(pairing: RungMetricPairing): string | null {
   if (pairing.rows.length === 0) {
@@ -545,10 +636,19 @@ export function rungMetricRefusal(pairing: RungMetricPairing): string | null {
   if (silent.length > 0) {
     problems.push(
       `${silent.map((row) => `${row.rung} uploaded ${row.segmentsUploaded} segment(s)`).join(', ')} and published ` +
-        'no playlist naming any of them',
+        `no playlist naming any of them, by the ${pairing.publishesFrom === 'metric' ? "uploader's per-rung counter" : 'log'}`,
     );
   }
-  if (pairing.manifestFailures === null) {
+  const perRung = pairing.rows.every((row) => row.publishFailures !== null);
+  if (perRung) {
+    const failing = pairing.rows.filter((row) => (row.publishFailures ?? 0) > 0);
+    if (failing.length > 0) {
+      problems.push(
+        `${failing.map((row) => `${row.rung} ${row.publishFailures}`).join(', ')} failed live playlist publish(es) by ` +
+          `${RUNG_MANIFEST_PUBLISH_FAILURES_METRIC} on a broadcast with no fault`,
+      );
+    }
+  } else if (pairing.manifestFailures === null) {
     problems.push(`${MANIFEST_PUBLISH_FAILURES_METRIC} could not be read from both scrapes`);
   } else if (pairing.manifestFailures > 0) {
     problems.push(
@@ -562,7 +662,8 @@ export function rungMetricRefusal(pairing: RungMetricPairing): string | null {
 export function describeRungMetricPairing(pairing: RungMetricPairing): string {
   const rows = pairing.rows.map(
     (row) =>
-      `  ${row.rung}: ${row.segmentsUploaded} segment(s) uploaded, ${row.playlistsPublished} playlist(s) published`,
+      `  ${row.rung}: ${row.segmentsUploaded} segment(s) uploaded, ${row.playlistsPublished} playlist(s) published ` +
+      `by the ${pairing.publishesFrom}, ${row.publishFailures ?? 'no per-rung'} publish failure(s)`,
   );
   return [...rows, `  manifest publish failures, whole uploader: ${pairing.manifestFailures ?? 'unread'}`].join('\n');
 }

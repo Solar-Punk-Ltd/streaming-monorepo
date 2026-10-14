@@ -7,16 +7,17 @@ import { runBrowserArm } from '../../src/harness/browser.js';
 import { makeHost, waitForIdle } from '../../src/harness/host.js';
 import { announcedRungs, announcedSessionTopics, vodFinalizeCountFor } from '../../src/harness/logwatch.js';
 import { finalizeSecondsAfterLastPublish, longBroadcastMinutes } from '../../src/harness/longBroadcast.js';
-import { fragmentSecondsFor, rungFeedsOf } from '../../src/harness/manifestContractLive.js';
+import { fragmentSecondsFor, publishedCountsOf, rungFeedsOf } from '../../src/harness/manifestContractLive.js';
 import { type Publisher, startPublisher } from '../../src/harness/publisher.js';
 import { vodFinalizeWaitMs } from '../../src/harness/recording.js';
 import {
   describeRecording,
   type RecordingListing,
   recordingRefusal,
+  uploadsPerRecordingRung,
   waitForRecordingListing,
 } from '../../src/harness/recordingListing.js';
-import { checkRungPlaylistsLive, segmentUploadsByRung } from '../../src/harness/rungPublishing.js';
+import { checkRungPlaylistsLive } from '../../src/harness/rungPublishing.js';
 import { requireStageStamps } from '../../src/harness/stageStamps.js';
 import { type CatalogFeed, discoverCatalogFeed, entryCarriesTopic, fetchCatalog } from '../../src/harness/viewer.js';
 import {
@@ -151,9 +152,13 @@ describe(`G10: a ${MINUTES} minute broadcast finalizes into a whole recording on
     });
     assert.equal(refusal, null, refusal ?? '');
 
-    const uploads = segmentUploadsByRung(finished);
+    const uploads = uploadsPerRecordingRung(rungFeedsOf(finished), publishedCountsOf(finished));
     for (const rung of listing.rungs) {
-      const uploaded = uploads.get(rung.rung) ?? 0;
+      const uploaded = uploads.get(rung.rung);
+      assert.ok(
+        uploaded !== undefined && uploaded !== null,
+        `${rung.rung}'s uploads could not be attributed to its recording, so whether it kept them was not judged`,
+      );
       assert.ok(
         rung.segments >= uploaded,
         `${rung.rung}'s recording names ${rung.segments} segment(s) of the ${uploaded} it uploaded, so the recording ` +

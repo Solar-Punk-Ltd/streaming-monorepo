@@ -4,14 +4,18 @@ import { join } from 'node:path';
 import { describe, it } from 'node:test';
 import { pathToFileURL } from 'node:url';
 
-import { ROOT_DIR } from '../src/config.js';
+import { type E2EConfig, ROOT_DIR } from '../src/config.js';
+import type { Host } from '../src/harness/host.js';
 import { rungPlaylistParse } from '../src/harness/manifestContractLive.js';
 import {
+  checkRungPlaylistsLive,
   crashRecoveredStreams,
   everyRungPublishedAtLeast,
   feedIndexFromHeaders,
   headAdvanced,
   headAdvanceRefusal,
+  headProbeCorrections,
+  heldManifestNotices,
   manifestPublishesByRung,
   missingTopicResumes,
   publishShortfall,
@@ -221,6 +225,8 @@ function exposition(render: RenderMetrics, byRung: Record<string, number>, failu
     segmentsUploadedByRung: byRung,
     segmentsDroppedTotal: 0,
     segmentsDroppedByRung: {},
+    manifestPublishesByRung: {},
+    manifestPublishFailuresByRung: {},
     segmentsLostTotal: 0,
     segmentsSkippedTotal: 0,
     openingSegmentsWithheldTotal: 0,
@@ -320,5 +326,132 @@ describe('reapedAfterDisconnect', () => {
     );
     assert.deepEqual(reapedAfterDisconnect(log), [streamOf('1080p')]);
     assert.deepEqual(reapedAfterDisconnect(announces().join('\n')), []);
+  });
+});
+
+describe('checkRungPlaylistsLive with the owner named', () => {
+  const OWNER = 'ab'.repeat(20);
+
+  /** A host whose log holds no catalog line, and whose gateway answers a playlist that grows by one per read. */
+  function fakeHost() {
+    const routes: string[] = [];
+    let reads = 0;
+    const host = {
+      logs: async () => {
+        throw new Error('the catalog log line was looked for although the owner was named');
+      },
+      localText: async (_port: unknown, route: string) => {
+        routes.push(route);
+        reads += 1;
+        return rungPlaylist(Array.from({ length: 3 + reads }, (_, i) => i));
+      },
+    } as unknown as Host;
+    return { host, routes };
+  }
+
+  it('reads every head under the named owner without discovering it from the log', async () => {
+    const { host, routes } = fakeHost();
+    const log = [...announces(['360p']), textLine(manifestUploaded(streamOf('360p'), 0))].join('\n');
+    let now = 0;
+    const verdict = await checkRungPlaylistsLive(host, { ports: { beeGatewayApi: 1633 } } as unknown as E2EConfig, {
+      log: async () => log,
+      rungs: ['360p'],
+      minPublishes: 1,
+      publishWaitMs: 0,
+      headWaitMs: 10_000,
+      owner: OWNER,
+      clock: { now: () => now, wait: async (ms) => void (now += ms) },
+    });
+
+    assert.equal(verdict.refusal, null, verdict.refusal ?? '');
+    assert.ok(routes.length >= 2 && routes.every((route) => route.startsWith(`/feeds/${OWNER}/`)));
+  });
+
+  it('would look for the catalog line without one, which is what an admin stage cannot answer', async () => {
+    const { host } = fakeHost();
+    const log = [...announces(['360p']), textLine(manifestUploaded(streamOf('360p'), 0))].join('\n');
+    await assert.rejects(
+      checkRungPlaylistsLive(host, { ports: { beeGatewayApi: 1633 } } as unknown as E2EConfig, {
+        log: async () => log,
+        rungs: ['360p'],
+        minPublishes: 1,
+        publishWaitMs: 0,
+        headWaitMs: 0,
+      }),
+      /catalog log line was looked for/,
+    );
+  });
+});
+
+describe('headProbeCorrections', () => {
+  it('reads the index bee answered and the one the uploader continued from', () => {
+    const log = textLine(
+      `[StreamUploader] bee answered SOC index 12 as the head of ${streamOf('1080p')}'s feed, but the feed holds ` +
+        'playlists up to 15. Continuing from 15, so the slots above that answer are not written over',
+    );
+    assert.deepEqual(headProbeCorrections(log), [{ streamId: streamOf('1080p'), answered: 12, present: 15 }]);
+    assert.deepEqual(headProbeCorrections(announces().join('\n')), []);
+  });
+});
+
+describe('rungMetricPairing on an uploader with per-rung publish counters', () => {
+  const scrape = (lines: string[]) => lines.join('\n');
+  const before = scrape([
+    'swarm_hls_rung_segments_uploaded_total{rung="360p"} 100',
+    'swarm_hls_rung_segments_uploaded_total{rung="1080p"} 100',
+    'swarm_hls_rung_manifest_publishes_total{rung="360p"} 90',
+    'swarm_hls_rung_manifest_publishes_total{rung="1080p"} 90',
+    'swarm_hls_rung_manifest_publish_failures_total{rung="360p"} 1',
+    'swarm_hls_rung_manifest_publish_failures_total{rung="1080p"} 0',
+    'swarm_hls_manifest_publish_failures_total 1',
+  ]);
+
+  it('pairs uploads with the per-rung publish counter rather than the log', () => {
+    const after = before.replaceAll(' 100', ' 120').replace('{rung="360p"} 90', '{rung="360p"} 110');
+    const pairing = rungMetricPairing(
+      before,
+      after,
+      new Map([
+        ['360p', 3],
+        ['1080p', 3],
+      ]),
+    );
+    assert.equal(pairing.publishesFrom, 'metric');
+    assert.deepEqual(
+      new Map(pairing.rows.map((row) => [row.rung, row.playlistsPublished])),
+      new Map([
+        ['360p', 20],
+        ['1080p', 0],
+      ]),
+    );
+    assert.match(
+      rungMetricRefusal(pairing) ?? '',
+      /1080p uploaded 20 segment\(s\) and published no playlist .* per-rung counter/,
+    );
+  });
+
+  it('refuses a per-rung failure counter that moved, naming the rung', () => {
+    const after = before
+      .replaceAll(' 100', ' 120')
+      .replaceAll('} 90', '} 110')
+      .replace('publish_failures_total{rung="1080p"} 0', 'publish_failures_total{rung="1080p"} 2');
+    const refusal = rungMetricRefusal(rungMetricPairing(before, after, new Map()));
+    assert.match(refusal ?? '', /1080p 2 failed live playlist publish/);
+  });
+
+  it('passes when every rung published and no rung failed, whatever the log says', () => {
+    const after = before.replaceAll(' 100', ' 120').replaceAll('} 90', '} 110');
+    assert.equal(rungMetricRefusal(rungMetricPairing(before, after, new Map())), null);
+  });
+});
+
+describe('heldManifestNotices', () => {
+  const held = (streamId: string, run: number) =>
+    `Live manifest for stream ${streamId} is held: its feed position is not settled yet (${run} consecutive)`;
+
+  it('reads a held publish, and the stale reader does not count it', () => {
+    const log = [textLine(held(streamOf('1080p'), 2)), jsonLine(stale(streamOf('360p'), 1))].join('\n');
+    assert.deepEqual(heldManifestNotices(log), [{ streamId: streamOf('1080p'), consecutive: 2 }]);
+    assert.deepEqual(staleManifestWarnings(log), [{ streamId: streamOf('360p'), consecutive: 1 }]);
   });
 });

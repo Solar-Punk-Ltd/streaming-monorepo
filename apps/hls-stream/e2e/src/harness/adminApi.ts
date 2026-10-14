@@ -235,6 +235,11 @@ export class AdminApi {
     return parsed as T;
   }
 
+  /** Where the admin publishes its catalogue. Public on the admin, sent with the session all the same. */
+  config(): Promise<{ feed: { owner: string; topic: string; topicHex: string } }> {
+    return this.call('GET', '/api/config');
+  }
+
   getStream(id: string): Promise<AdminStream> {
     return this.call('GET', `/api/streams/${encodeURIComponent(id)}`);
   }

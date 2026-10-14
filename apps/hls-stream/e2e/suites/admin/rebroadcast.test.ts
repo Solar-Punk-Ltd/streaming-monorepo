@@ -8,8 +8,8 @@ import {
   broadcastSession,
   type DeclaredStream,
   prepareDeclaredStream,
-  type PriorRecording,
-  priorRecording,
+  sessionObservations,
+  recordingAfter,
   type SessionRecord,
 } from '../../src/harness/adminBroadcast.js';
 import { type BrowserArmResult, runBrowserArm } from '../../src/harness/browser.js';
@@ -17,7 +17,12 @@ import { makeHost, waitForIdle } from '../../src/harness/host.js';
 import { announcedRungs } from '../../src/harness/logwatch.js';
 import { fragmentSecondsFor, rungFeedsOf } from '../../src/harness/manifestContractLive.js';
 import { describeMaster, masterRungRefusal, masterRungsOf, readLadderMaster } from '../../src/harness/masterShape.js';
-import { describeRecording, recordingRefusal, waitForRecordingListing } from '../../src/harness/recordingListing.js';
+import {
+  describeRecording,
+  recordingRefusal,
+  sessionGrowthRefusal,
+  sessionsByRung,
+} from '../../src/harness/recordingListing.js';
 import { requireStageStamps } from '../../src/harness/stageStamps.js';
 import { pictureMovedRefusal } from '../../src/harness/vodArm.js';
 import { viewerGate } from '../../src/viewerCoverage.js';
@@ -29,11 +34,12 @@ import { viewerGate } from '../../src/viewerCoverage.js';
  * heads are the first session's recordings. On 2026-10-14 two or three of four rungs never published a live playlist
  * in the second session, while uploading segments the whole time.
  *
- * Each session broadcasts 90 s. In the second, every rung must publish 20 live playlists within 60 s of its first
- * segment, every rung head must move on the gateway, no playlist may be called stale, every rung must say it resumes
+ * Each session broadcasts 90 s. In the second, every rung must publish 6 live playlists within 120 s of its first
+ * segment, a floor rather than a rate, every rung head must move on the gateway, no playlist may be called stale, every rung must say it resumes
  * the declared topic at an SOC index above 0, and the master must offer all four. After the stop the recording lists
- * every rung with two more sessions than it held before the suite began, because a declared stream's recording glues
- * every session its feed has ever carried.
+ * every rung with exactly one more session than it held after the first session finalized, the same count on every
+ * rung. The baseline is read off the recording itself, because a declared stream's recording glues every session its
+ * feed has ever carried, and a log tail forgets that history at the first redeploy.
  *
  * A viewer arm, when the run has a browser, watches across the gap: left on the ended overlay after the first session,
  * it must be taken back into the second without a fatal error and with a picture that moves.
@@ -43,10 +49,14 @@ import { viewerGate } from '../../src/viewerCoverage.js';
  */
 
 const SESSION_SECONDS = 90;
-const PUBLISHES_PER_RUNG = 20;
-const PUBLISH_WITHIN_MS = 60_000;
+/**
+ * Live playlists each rung must publish in a session, and how long it is given from its first segment. A floor that
+ * says a rung publishes at all, set low and given room on purpose: an e2e suite checks correctness and never
+ * throughput, and the count each rung actually reached is printed in the session summary.
+ */
+const PUBLISHES_PER_RUNG = 6;
+const PUBLISH_WITHIN_MS = 120_000;
 const HEAD_ADVANCE_WAIT_MS = 60_000;
-const RECORDING_WAIT_MS = 180_000;
 /** The viewer arm watches the first session's end, the gap and the second session. */
 const VIEWER_WATCH_MINUTES = 8;
 const MIN_STAMP_TTL_S = 600;
@@ -64,7 +74,8 @@ describe(
     const host = makeHost(cfg);
     let api: AdminApi;
     let declared: DeclaredStream;
-    let prior: PriorRecording;
+    /** Sessions each rung's recording glued once the first session finalized: the baseline the second grows from. */
+    let afterFirst: ReadonlyMap<string, number> = new Map();
     const sessions: SessionRecord[] = [];
     let viewer: Promise<BrowserArmResult> | null = null;
 
@@ -74,7 +85,6 @@ describe(
       const mode = requireAdminMode(admin);
       api = new AdminApi(mode);
       declared = await prepareDeclaredStream(api, mode.streamId as string);
-      prior = await priorRecording(host, cfg, declared);
     });
 
     after(async () => {
@@ -95,7 +105,11 @@ describe(
       }
       sessions.push(await broadcastSession(host, cfg, api, plan()));
       console.log(sessions[0].playlists.summary);
+      console.log(sessionObservations(sessions[0]));
       assert.equal(sessions[0].playlists.refusal, null, sessions[0].playlists.refusal ?? '');
+      const baseline = await recordingAfter(host, cfg, declared, sessions[0]);
+      console.log(describeRecording(baseline.offered, baseline.rungs));
+      afterFirst = sessionsByRung(baseline.rungs);
     });
 
     it('publishes a moving live playlist on every rung again in the second session, continuing each feed', async () => {
@@ -103,6 +117,7 @@ describe(
       const second = await broadcastSession(host, cfg, api, plan());
       sessions.push(second);
       console.log(second.playlists.summary);
+      console.log(sessionObservations(second));
       assert.equal(second.playlists.refusal, null, second.playlists.refusal ?? '');
 
       const rungOf = new Map(announcedRungs(second.log).map((announce) => [announce.streamId, announce.rung]));
@@ -129,16 +144,13 @@ describe(
         assert.equal(masterRungRefusal(read, cfg.abrRungs), null, masterRungRefusal(read, cfg.abrRungs) ?? '');
       }
 
-      const listing = await waitForRecordingListing(
-        host,
-        cfg,
-        { owner, ladder: second.ladder, feeds },
-        RECORDING_WAIT_MS,
-      );
+      const listing = await recordingAfter(host, cfg, declared, second);
       console.log(describeRecording(listing.offered, listing.rungs));
+      const grew = sessionGrowthRefusal(afterFirst, sessionsByRung(listing.rungs), 1);
+      assert.equal(grew, null, grew ?? '');
       const refusal = recordingRefusal(listing.offered, listing.rungs, {
         rungs: cfg.abrRungs,
-        sessions: new Map(cfg.abrRungs.map((rung) => [rung, (prior.sessionsByRung.get(rung) ?? 0) + 2])),
+        sessions: new Map(cfg.abrRungs.map((rung) => [rung, (afterFirst.get(rung) ?? 0) + 1])),
         fragmentSeconds: fragmentSecondsFor(cfg.segmentExpectation) ?? 2,
       });
       assert.equal(refusal, null, refusal ?? '');

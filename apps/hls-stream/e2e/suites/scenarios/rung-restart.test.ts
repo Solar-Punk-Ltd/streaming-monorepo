@@ -25,6 +25,7 @@ import { describeRecording, recordingRefusal, waitForRecordingListing } from '..
 import { vodFinalizeWaitMs } from '../../src/harness/recording.js';
 import {
   checkRungPlaylistsLive,
+  headProbeCorrections,
   manifestIndicesByRung,
   readFeedIndex,
   staleManifestWarnings,
@@ -49,15 +50,15 @@ import { sleep, waitFor } from '../../src/harness/wait.js';
  * The transcode of one rung is frozen with SIGSTOP. Its rung stops posting segments, the orphan reaper finalizes that
  * rung's session after `ORPHAN_REAP_MS` (60 s) of no media, and its recording lands on the rung's feed. The siblings keep
  * the ladder group alive, so when the transcode is resumed the rung announces again on the very same topic, over a feed
- * whose head is that recording. It must then say it resumes its topic at exactly the index the gateway resolves that
- * head at, and publish above it.
+ * whose head is that recording. It must then say it resumes its topic at no lower an index than the gateway resolves
+ * that head at, and publish above it.
  *
  * ## What it asserts
  *
  * 1. While the rung is silent the master stops offering it, and after it returns and publishes 8 playlists the master
  *    offers it again.
- * 2. The returning rung writes `resumes its topic at SOC index N` with N the recording's index read off the gateway
- *    before the resume, and every live playlist it publishes afterwards is above N, numbered from a media sequence that
+ * 2. The returning rung writes `resumes its topic at SOC index N` with N at or above the recording's index read off
+ *    the gateway before the resume, and every live playlist it publishes afterwards is above N, numbered from a media sequence that
  *    continues rather than restarting at 0.
  * 3. No live playlist is called stale across the whole broadcast, and the three siblings keep publishing moving
  *    playlists throughout.
@@ -216,18 +217,30 @@ describe(
         `${rung} reopened its topic and wrote ${resumes.length} resume line(s), where one says it read the head it ` +
           'continues. None is a session numbering itself from nothing over its own recording, the 2026-10-14 defect',
       );
-      assert.equal(
-        resumes[0].socIndex,
-        recordingIndex,
-        `${rung} resumed at SOC index ${resumes[0].socIndex} while the gateway resolves its feed head at ${recordingIndex}`,
+      // ⛔ A floor, not an equality. Bee's feed lookup can answer an index below the feed's real head, and the uploader
+      // probes above the answer and continues from the highest playlist it finds, saying so in its head-probe warning.
+      // So the resume may sit above the index the gateway resolved, never below it.
+      assert.ok(
+        resumes[0].socIndex >= recordingIndex,
+        `${rung} resumed at SOC index ${resumes[0].socIndex}, below the ${recordingIndex} the gateway resolves its feed ` +
+          'head at, so it writes over its own recording',
+      );
+      console.log(
+        `  observations, none of them asserted. ${rung} resumed at SOC index ${resumes[0].socIndex} over a head the ` +
+          `gateway resolved at ${recordingIndex}, and the uploader corrected bee's head answer ` +
+          `${headProbeCorrections(afterResume).length} time(s)`,
       );
       assert.ok(
         resumes[0].mediaSequence > 0,
         `${rung} numbered its playlist from media sequence 0 over a feed that has one`,
       );
       const writtenAfter = manifestIndicesByRung(afterResume).get(rung) ?? [];
-      const behind = writtenAfter.filter((index) => index <= recordingIndex);
-      assert.deepEqual(behind, [], `${rung} wrote live playlists at or below its recording's index ${recordingIndex}`);
+      const behind = writtenAfter.filter((index) => index <= resumes[0].socIndex);
+      assert.deepEqual(
+        behind,
+        [],
+        `${rung} wrote live playlists at or below the SOC index ${resumes[0].socIndex} it said it resumes at`,
+      );
 
       const head = await readOneRungPlaylist(host, cfg, owner, announce);
       assert.ok(

@@ -153,6 +153,69 @@ export function recordingRefusal(
     : `the recording is not the whole broadcast on every rung: ${problems.join('; ')}`;
 }
 
+/** Sessions each rung's recording glues, for the rungs whose head is a finished recording. */
+export function sessionsByRung(rungs: readonly RecordingRung[]): ReadonlyMap<string, number> {
+  return new Map(rungs.filter((rung) => rung.recording).map((rung) => [rung.rung, rung.sessions]));
+}
+
+/**
+ * Why a declared stream's recording did not grow by exactly the sessions broadcast onto it, or null.
+ *
+ * ⛔ The baseline is the recording itself, read once after a suite's first session finalized, never the uploader's
+ * log: a declared stream's recording glues every session its feed ever carried, across runs and redeploys, and a log
+ * tail forgets all of it at the first redeploy. So the rule is a difference: every rung the first reading held must
+ * hold exactly `added` more sessions at the last, and every rung must agree, because one ladder is one broadcast.
+ *
+ * @param added sessions broadcast after the first reading was taken
+ */
+export function sessionGrowthRefusal(
+  afterFirst: ReadonlyMap<string, number>,
+  afterLast: ReadonlyMap<string, number>,
+  added: number,
+): string | null {
+  if (afterFirst.size === 0) {
+    return 'no rung held a finished recording after the first session, so there is no baseline to grow from';
+  }
+  const problems = [...afterFirst].flatMap(([rung, first]) => {
+    const last = afterLast.get(rung);
+    if (last === undefined) {
+      return [`${rung} holds no finished recording after the last session`];
+    }
+    return last === first + added ? [] : [`${rung} went from ${first} to ${last} session(s) where ${added} were added`];
+  });
+  const finals = new Set(afterLast.values());
+  if (finals.size > 1) {
+    const each = [...afterLast].map(([rung, count]) => `${rung} ${count}`).join(', ');
+    problems.push(`the rungs disagree about how many sessions the broadcast holds (${each})`);
+  }
+  return problems.length === 0
+    ? null
+    : `the recording did not grow by one session per broadcast: ${problems.join('; ')}`;
+}
+
+/**
+ * Segment uploads per recording rung, keyed the way {@link recordingRungOf} keys the listing: by rung name, or by topic
+ * on a single rendition, whose feed carries no stream id.
+ *
+ * ⛔ Resolved the way `publishedFor` resolves a playlist's count: a feed with a stream id takes that stream's uploads,
+ * and a feed without one takes the one stream the window holds. Null where neither can be attributed, so a caller
+ * refuses rather than comparing against nothing, which is what made the comparison pass by construction before.
+ */
+export function uploadsPerRecordingRung(
+  feeds: readonly RungFeed[],
+  byStream: ReadonlyMap<string, number>,
+): ReadonlyMap<string, number | null> {
+  return new Map(
+    feeds.map((feed) => {
+      const key = feed.rung ?? feed.streamId ?? feed.topic;
+      if (feed.streamId !== null) {
+        return [key, byStream.get(feed.streamId) ?? null];
+      }
+      return [key, byStream.size === 1 ? [...byStream.values()][0] : null];
+    }),
+  );
+}
+
 /** One line per rung, for the run's log. */
 export function describeRecording(offered: readonly string[], rungs: readonly RecordingRung[]): string {
   const lines = rungs.map(

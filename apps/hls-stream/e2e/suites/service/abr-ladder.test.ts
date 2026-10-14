@@ -167,9 +167,9 @@ describe('service — ABR ladder: every rung publishes and stays gapless', { ski
   });
 
   /**
-   * The uploader's own per-rung upload counter beside the playlists the log says each rung published. ⚠️ The uploader
-   * has no per-rung publish or publish-failure counter today, so the playlist half is the log and the failure half is
-   * one counter for the whole uploader. See `rungMetricPairing`.
+   * The uploader's own per-rung upload counter beside the playlists each rung published, by its per-rung publish and
+   * failure counters where the deployed uploader renders them, and by the log and the one unlabelled failure counter
+   * where it is older. See `rungMetricPairing`.
    */
   it('pairs every rung that uploaded with playlists published, and counts no failed publish', async () => {
     const metricsAfter = (await host.run(uploaderMetricsCommand(uploader))).stdout;

@@ -13,19 +13,22 @@
 import { containerName, type E2EConfig } from '../config.js';
 
 import { AdminApi, type AdminStream, adminIngestTarget, declaredStreamPath } from './adminApi.js';
-import type { Host } from './host.js';
+import { type Host, waitForIdle } from './host.js';
 import { announcedRungs, segmentIndicesByStream, vodFinalizeCountFor } from './logwatch.js';
-import { fragmentSecondsFor, type RungFeed } from './manifestContractLive.js';
-import { readRecordingListing } from './recordingListing.js';
+import { fragmentSecondsFor, type RungFeed, rungFeedsOf } from './manifestContractLive.js';
+import { type RecordingListing, waitForRecordingListing } from './recordingListing.js';
 import { startPublisherAt } from './publisher.js';
 import { vodFinalizeWaitMs } from './recording.js';
 import {
   checkRungPlaylistsLive,
+  headProbeCorrections,
+  manifestPublishesByRung,
   type RungPublishingVerdict,
   topicResumes,
   type TopicResume,
 } from './rungPublishing.js';
 import { recoveryEntryIds, readRecoveryEntry } from './uploaderState.js';
+import { fetchCatalog } from './viewer.js';
 import { sleep, waitFor } from './wait.js';
 
 /** The declared stream as a broadcaster sees it: its row, and where its ingest is. */
@@ -103,6 +106,9 @@ export async function broadcastSession(
 ): Promise<SessionRecord> {
   const uploader = containerName(cfg, 'stream-uploader');
   const streamPath = declaredStreamPath(declared.stream);
+  // ⛔ First, so the previous session on this declared topic has finished draining before this one opens. A session
+  // started over a drain refuses its first playlist writes until the drain lands, and would read as a stale rung.
+  await waitForIdle(host, cfg);
   const startedAt = await host.nowIso();
   const log = async (): Promise<string> => host.logsSince(uploader, startedAt);
   const publisher = startPublisherAt(declared.url, declared.protocol);
@@ -126,6 +132,7 @@ export async function broadcastSession(
       minPublishes,
       publishWaitMs: publishWithinMs,
       headWaitMs,
+      owner: declared.stream.owner,
     });
 
     await whileLive?.();
@@ -163,43 +170,58 @@ export async function broadcastSession(
   };
 }
 
-/** How far back into the uploader's log to look for a declared stream's earlier rung announces. */
-const PRIOR_ANNOUNCE_TAIL_LINES = 50_000;
-
-/** What a declared stream's feeds already hold before a suite broadcasts on it. */
-export interface PriorRecording {
-  /** Sessions each rung's recording already glues, 0 for a rung with no recording yet. */
-  sessionsByRung: ReadonlyMap<string, number>;
+/** One observation line per session, never asserted: what the uploader had to correct or hold while it ran. */
+export function sessionObservations(session: SessionRecord): string {
+  const reached = [...manifestPublishesByRung(session.log)].map(([rung, count]) => `${rung} ${count}`).join(', ');
+  return (
+    `  observations, none of them asserted. live playlists published over the whole session: ${reached || 'none'}. ` +
+    `the uploader corrected bee's feed head answer ${headProbeCorrections(session.log).length} time(s)`
+  );
 }
 
+/** How long a finished session's recording is given to land on every rung. */
+const RECORDING_AFTER_SESSION_WAIT_MS = 180_000;
+
 /**
- * The sessions a declared stream's recordings already hold, so a suite counts its own sessions on top of them.
+ * The recording on every rung once a session finalized, read from that session's own feeds.
  *
- * A declared stream is reused across runs, and every recording on it glues every session its feed ever carried, so a
- * session count asserted without this baseline is only right on the first run ever made on that stream.
+ * ⛔ Its own log window and nothing older, so it holds after a redeploy that emptied every earlier log. A suite takes
+ * one after its first session as the baseline and one after its last, and `sessionGrowthRefusal` judges the
+ * difference, because the recording on a declared stream glues every session its feed ever carried.
  */
-export async function priorRecording(host: Host, cfg: E2EConfig, declared: DeclaredStream): Promise<PriorRecording> {
-  const feeds = await declaredRungFeeds(host, cfg, declared);
-  if (feeds.length === 0) {
-    return { sessionsByRung: new Map() };
-  }
-  const listing = await readRecordingListing(host, cfg, { owner: declared.stream.owner, ladder: null, feeds });
-  return {
-    sessionsByRung: new Map(listing.rungs.map((rung) => [rung.rung, rung.recording ? rung.sessions : 0])),
-  };
+export async function recordingAfter(
+  host: Host,
+  cfg: E2EConfig,
+  declared: DeclaredStream,
+  session: SessionRecord,
+): Promise<RecordingListing> {
+  return waitForRecordingListing(
+    host,
+    cfg,
+    { owner: declared.stream.owner, ladder: session.ladder, feeds: rungFeedsOf(session.log) },
+    RECORDING_AFTER_SESSION_WAIT_MS,
+  );
 }
 
 /**
- * Every rung feed a declared stream has announced, newest per rung, out of the uploader's log rather than a suite's
- * own window: a suite reading a recording made by an earlier suite or an earlier run has no window of its own.
- * Empty where the log no longer reaches back to any broadcast on it.
+ * Every rung feed of a declared stream, out of its catalogue entry rather than any log: a suite reading a recording an
+ * earlier suite or an earlier run made has no window of its own, and a redeploy empties the log anyway. The catalogue
+ * is where the admin says it is, `GET /api/config`, read through the gateway the way a viewer reads it. Empty where the
+ * entry names no renditions, which is a stream with no finished ladder on the catalogue.
  */
-export async function declaredRungFeeds(host: Host, cfg: E2EConfig, declared: DeclaredStream): Promise<RungFeed[]> {
-  const streamPath = declaredStreamPath(declared.stream);
-  const tail = await host.logs(containerName(cfg, 'stream-uploader'), PRIOR_ANNOUNCE_TAIL_LINES);
-  const newestPerRung = new Map<string, RungFeed>();
-  for (const announce of announcedRungs(tail).filter((line) => line.streamId.startsWith(streamPath))) {
-    newestPerRung.set(announce.rung, { rung: announce.rung, streamId: announce.streamId, topic: announce.topic });
-  }
-  return [...newestPerRung.values()];
+export async function declaredRungFeeds(
+  host: Host,
+  cfg: E2EConfig,
+  api: AdminApi,
+  declared: DeclaredStream,
+): Promise<RungFeed[]> {
+  const { feed } = await api.config();
+  const entry = (await fetchCatalog(host, cfg, { owner: feed.owner, topicHex: feed.topicHex })).find(
+    (candidate) => candidate.topic === declared.stream.topic,
+  );
+  return (entry?.renditions ?? []).map((rendition) => ({
+    rung: rendition.name,
+    streamId: null,
+    topic: rendition.topic,
+  }));
 }

@@ -280,6 +280,11 @@ describe('F — uploader hard crash: same stream recovers and keeps running', ()
    * After the restart every rung publishes live playlists again, each one continuing its feed above where it stood
    * before the kill and never at 0, its head moves on the gateway, and the uploader calls none of them stale.
    *
+   * ⚠️ One window of a few milliseconds can fail the "above where it stood" check on a correct uploader: a SIGKILL that
+   * lands after a rung's SOC write and its log line but before `persistState` leaves a recovery entry one index
+   * behind, so the recovered session rewrites the index the log already named. A red naming exactly the last logged
+   * index, once, is that window rather than a feed written backwards.
+   *
    * ⚠️ This is NOT the regression test for the 2026-10-14 re-broadcast fix. A session rebuilt from a recovery entry
    * continues from the index on disk and never reads the feed head (`topicOutlivesThisSession` in the uploader), so the
    * lookup that fix changed is not run here. That is `scenarios/rung-restart`. What this holds is that a crash costs
