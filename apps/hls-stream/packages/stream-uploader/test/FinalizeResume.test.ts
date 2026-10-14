@@ -282,20 +282,16 @@ describe('a single-rendition finalize that comes back after a crash', () => {
    * then runs off the head that came back, never off the answer that was refused.
    */
   it('finalizes against the head that came back when a 404 clears inside the window', async () => {
-    let refused = false;
+    let calls = 0;
     const { uploader, published, removed, headReads } = makeRecovered({
-      feedHead: () => {
-        if (refused) {
-          return { index: 9, manifest: PLAYLISTS.vod };
-        }
-        refused = true;
-        return null;
-      },
+      // The first read is the slot above the saved index, absent. The second is the saved index
+      // itself, refused once. The third is its retry.
+      feedHead: () => (++calls === 2 ? null : { index: 9, manifest: PLAYLISTS.vod }),
     });
 
     const lines = await logLinesDuring(() => uploader.notifyStop());
 
-    assert.equal(headReads(), 3, 'the refused read, the retry that answered, and the playlist at its index');
+    assert.equal(headReads(), 3, 'the slot above, the refused read at the saved index, and the retry that answered');
     assert.deepEqual(published, [], 'the recording was already in the feed, so nothing may be bought again');
     assert.equal(linesHolding(lines, finalizeResumed(STREAM_ID, 9)), 1, 'the resume names the head that came back');
     assert.deepEqual(removed, [STREAM_ID], 'a finished broadcast must leave no recovery entry');
@@ -316,7 +312,8 @@ describe('a single-rendition finalize that comes back after a crash', () => {
    * persists it AFTER the SOC write it describes, so a crash in that gap leaves the entry naming the
    * index one below the recording. Reading only there returns the closing playlist from before the
    * recording, the guard concludes nothing was published, and the double publish is back for exactly
-   * the crash it is supposed to answer. Writes go through one queue, so the gap is never more than one.
+   * the crash it is supposed to answer. Writes go through one queue, so the gap is never more than
+   * one.
    */
   it('finds the recording at the index the feed is really at, not the one the entry saved', async () => {
     const entries: Array<{ index?: number }> = [];
@@ -419,8 +416,8 @@ describe('a single-rendition finalize that comes back after a crash', () => {
    * it. Read without an index, a real recording comes back as its wrapping chunk, `isFinishedRecording`
    * says no, and the second recording is published exactly as before, silently.
    *
-   * `makeFakeBee` answers the two calls the way bee-js answers them, so a reader that stopped asking
-   * at an index fails here rather than on a paid broadcast.
+   * `makeFakeBee` answers both kinds of read the way bee-js answers them, so a reader that stopped
+   * asking at an index fails here rather than on a paid broadcast.
    */
   it('reads the playlist at its index, which is the only shape a real recording comes back on', async () => {
     const { uploader, published, headReads } = makeRecovered({
@@ -430,7 +427,7 @@ describe('a single-rendition finalize that comes back after a crash', () => {
     await uploader.notifyStop();
 
     assert.deepEqual(published, [], 'the recording at the head was not recognised, so it was bought again');
-    assert.equal(headReads(), 2, 'the index and the playlist are two reads, and both are retrievals');
+    assert.equal(headReads(), 2, 'the slot above the saved index and the saved index, both read by index');
   });
 
   it('never asks the feed at all when the session was not recovered from a crash', async () => {
