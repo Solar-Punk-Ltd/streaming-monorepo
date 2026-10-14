@@ -48,9 +48,9 @@
  *    master offered it, or its first delivery or failure, whichever came first. It used to read a lag
  *    of zero for ever, so a rung failing from its first second in a process, a re-broadcast whose head
  *    read never settles or a transcoder that never starts, stayed in the master for the whole
- *    broadcast. A rung that merely starts late is safe: rungs start within a second or two of each
- *    other, and it is dropped only once the middle rung has published
- *    {@link RUNG_DEATH_LAG_SEGMENTS} playlists without it, four segment lengths.
+ *    broadcast. A rung that merely starts late is safe: such a rung is given
+ *    {@link RUNG_FIRST_DELIVERY_GRACE_SEGMENTS} publishes of the middle rung rather than
+ *    {@link RUNG_DEATH_LAG_SEGMENTS}, at least eight segment lengths.
  *
  * ⚠️ Two limits, and they now point the same way. Inherited: if THREE die at once the middle sits
  * among the dead and none of them reads as dead. Past
@@ -101,6 +101,20 @@ export const RUNG_DEATH_LAG_SEGMENTS = 4;
  * deployment cuts, which on the 2 s segments that ladder ran is sixteen seconds of clean uploads.
  */
 export const RUNG_READMIT_AFTER_SEGMENTS = 2 * RUNG_DEATH_LAG_SEGMENTS;
+
+/**
+ * How many deliveries the ladder may make past a rung that has never delivered before the master stops
+ * advertising it.
+ *
+ * ⛔ Measured on the stage 2026-10-14: at the start of a re-broadcast a rung's first publish waits on
+ * a feed head read of 1 to 5 s and a slot probe above it of 0.2 to 4.5 s, so the rungs of one ladder
+ * can publish their first playlists more than 3 s apart. At 1 s segments {@link RUNG_DEATH_LAG_SEGMENTS}
+ * is four seconds, and a rung starting that late was dropped and taken back at its first publish, two
+ * master rewrites for a rung that was only starting. The same number as
+ * {@link RUNG_READMIT_AFTER_SEGMENTS}: at least eight segment lengths, so eight seconds at 1 s segments
+ * and sixteen at 2 s. A rung that has delivered once is judged by {@link RUNG_DEATH_LAG_SEGMENTS} again.
+ */
+export const RUNG_FIRST_DELIVERY_GRACE_SEGMENTS = RUNG_READMIT_AFTER_SEGMENTS;
 
 /**
  * How many rungs may be dropped at once before the right conclusion is that the broadcast ended.
@@ -226,8 +240,8 @@ export class LadderLiveness {
   }
 
   /**
-   * Hold out every rung whose deliveries are failing and that the ladder has now left
-   * {@link RUNG_DEATH_LAG_SEGMENTS} behind, which is the moment the ordinary rule drops it.
+   * Hold out every rung whose deliveries are failing and that the ladder has now left as far behind
+   * as {@link dropLagOf} allows, which is the moment the ordinary rule drops it.
    *
    * ⛔ Only once it is that far behind, never on a refusal alone. A rung that has one delivery fail
    * and keeps pace with the ladder never falls behind, and dropping it for that one failure would take
@@ -236,10 +250,15 @@ export class LadderLiveness {
   private holdOutRefusedRungsLeftBehind(): void {
     const known = this.knownRungs();
     for (const rung of this.landedSinceRefusal.keys()) {
-      if (this.lagOf(rung, known) >= RUNG_DEATH_LAG_SEGMENTS) {
+      if (this.lagOf(rung, known) >= this.dropLagOf(rung)) {
         this.heldOut.add(rung);
       }
     }
+  }
+
+  /** How far behind this rung may fall before it is dropped: further while it has never delivered. */
+  private dropLagOf(rung: string): number {
+    return this.referenceAtLastDelivery.has(rung) ? RUNG_DEATH_LAG_SEGMENTS : RUNG_FIRST_DELIVERY_GRACE_SEGMENTS;
   }
 
   /**
@@ -262,11 +281,12 @@ export class LadderLiveness {
   }
 
   /**
-   * Whether the ladder has delivered {@link RUNG_DEATH_LAG_SEGMENTS} times while this rung has not, or it
-   * is held out because its deliveries were failing when that happened and it has not recovered.
+   * Whether the ladder has delivered {@link RUNG_DEATH_LAG_SEGMENTS} times while this rung has not
+   * ({@link RUNG_FIRST_DELIVERY_GRACE_SEGMENTS} for a rung that never has), or it is held out because
+   * its deliveries were failing when that happened and it has not recovered.
    */
   public hasStopped(rung: string, rungs: readonly string[]): boolean {
-    return this.lagOf(rung, rungs) >= RUNG_DEATH_LAG_SEGMENTS || this.heldOut.has(rung);
+    return this.lagOf(rung, rungs) >= this.dropLagOf(rung) || this.heldOut.has(rung);
   }
 
   /**

@@ -7,6 +7,7 @@ import {
   LadderLivenessBook,
   MAX_RUNGS_DROPPED_AT_ONCE,
   RUNG_DEATH_LAG_SEGMENTS,
+  RUNG_FIRST_DELIVERY_GRACE_SEGMENTS,
   RUNG_READMIT_AFTER_SEGMENTS,
 } from '../src/libs/LadderLiveness.js';
 
@@ -24,8 +25,7 @@ const LADDER = ['360p', '480p', '720p', '1080p'];
 
 const rendition = (name: string) => ({ name, height: Number(name.replace('p', '')) });
 
-/** How far the ladder may run past a rung that has never delivered before it leaves the master. */
-const FIRST_DELIVERY_GRACE = RUNG_READMIT_AFTER_SEGMENTS;
+const FIRST_DELIVERY_GRACE = RUNG_FIRST_DELIVERY_GRACE_SEGMENTS;
 
 /** Every rung delivers one segment, which is what a healthy ladder does. */
 function everyRungDelivers(liveness: LadderLiveness, rungs: readonly string[] = LADDER): void {

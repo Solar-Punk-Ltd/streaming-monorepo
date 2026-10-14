@@ -74,8 +74,10 @@ is measured from where the ladder stood when the rung first came to notice: the 
 offered it, or its first delivery or failure. Until 2026-10-14 such a rung read as never behind, so a
 rung failing from its first second, after an uploader restart whose feed head read never settles or
 with a transcoder that never starts, stayed in the master for the whole broadcast. A rung that only
-starts late is not dropped: rungs start within a second or two of each other, and it has until the
-middle rung's fourth playlist to publish its first. A master naming no renditions at all is never
+starts late is not dropped: at the start of a re-broadcast a rung's first publish waits on a feed head
+read and a slot probe (measured on the stage at 1 to 5 s and 0.2 to 4.5 s), so a rung that has never
+delivered has until the middle rung's eighth playlist to publish its first
+(`RUNG_FIRST_DELIVERY_GRACE_SEGMENTS`), at least eight segment lengths. A master naming no renditions at all is never
 written, because that is an unplayable stream rather than a degraded one.
 
 Taking a rung back is this rule's own, and the player never does it. A failed delivery is a segment
