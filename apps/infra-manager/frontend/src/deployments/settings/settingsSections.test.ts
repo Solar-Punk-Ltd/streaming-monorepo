@@ -41,6 +41,7 @@ function entry(key: string, section: string, overrides: Partial<DeploymentSettin
     field: null,
     services: null,
     running: 'same',
+    runningValue: null,
     engineSetting: null,
     ...overrides,
   };

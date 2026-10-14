@@ -53,6 +53,7 @@ import {
 
 import { SERVICE_ENV_KEYS } from '../../manager/src/domain/containerKeysSpec.ts';
 import { adminLinkBeforeOf } from '../../manager/src/domain/settings/adminLinkBefore.ts';
+import { isRecordedInClear } from '../../manager/src/domain/settings/runningRecord.ts';
 import { settingEditProblems } from '../../manager/src/domain/settings/settingEditProblems.ts';
 import { settingOwnerOf } from '../../manager/src/domain/settings/settingOwners.ts';
 import {
@@ -457,6 +458,13 @@ function sourceOf(sample, owner, profile, store) {
   return sample.version === undefined ? 'unset' : 'version';
 }
 
+/** What the containers that read the key were started with, as the manager's records keep it in clear, or null. */
+function runningValueOf(sample, store, running, differing) {
+  if (!running || differing === 'unknown' || !isRecordedInClear(sample.key)) return null;
+  const value = store.record.values[sample.key];
+  return value === undefined || value === '' ? null : value;
+}
+
 function runningStateOf(running, differing) {
   if (!running) return 'not-running';
   if (differing === 'unknown') return 'unknown';
@@ -491,6 +499,7 @@ function engineEntryOf(sample, profile, store, running, facts) {
       field: null,
       services: sample.services,
       running: runningStateOf(running, differing),
+      runningValue: runningValueOf(sample, store, running, differing),
       engineSetting: { defaultSource, notInConfig: facts.notInConfig.includes(key) },
     },
     differing: differing === 'unknown' ? [] : differing,
@@ -523,6 +532,7 @@ function entryOf(sample, profile, store, running, facts) {
       field: stackSettingFieldOf(key),
       services: sample.services,
       running: runningStateOf(running, differing),
+      runningValue: runningValueOf(sample, store, running, differing),
       engineSetting: null,
     },
     differing: differing === 'unknown' ? [] : differing,
@@ -561,6 +571,7 @@ function newDeploymentCatalogOf(version, shape) {
       field: stackSettingFieldOf(key),
       services: sample.services,
       running: 'not-running',
+      runningValue: null,
       engineSetting: null,
     };
   });

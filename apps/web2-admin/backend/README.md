@@ -38,8 +38,8 @@ made with the CLI. In the image that is
 
 ```bash
 docker compose exec -it api node dist/cli.js user:add alice
-# or, with the password never landing in a file or an argv:
-op read "op://<vault>/<item>/password" \
+# or piped from a password manager's command line, never landing in a file or an argv:
+<command that prints the password> \
   | docker compose exec -T api node dist/cli.js user:add alice --password-stdin
 ```
 

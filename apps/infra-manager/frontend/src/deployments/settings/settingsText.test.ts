@@ -76,6 +76,7 @@ function entry(overrides: Partial<DeploymentSettingEntry> & { key: string }): De
     field: null,
     services: null,
     running: 'same',
+    runningValue: null,
     engineSetting: null,
     ...overrides,
   };
