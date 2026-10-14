@@ -100,8 +100,20 @@ function uploader(over: Partial<BatchUploader> = {}): BatchUploader {
     runningBatchId: OLD,
     behind: true,
     recreates: ['stream-uploader'],
+    batchKey: 'STAMP',
+    changedKeys: ['STAMP'],
     ...over,
   };
+}
+
+function stage(over: Partial<BatchUploader> = {}): BatchUploader {
+  return uploader({
+    name: 'stage-a',
+    own: false,
+    batchKey: 'BEE_PUBLISHERS',
+    changedKeys: ['BEE_PUBLISHERS'],
+    ...over,
+  });
 }
 
 const LIVE: IngestHealthReading = {
@@ -178,7 +190,7 @@ describe('the stages a rung publishes for', () => {
   });
 
   it('read the rung out of the saved and the running pool strings', () => {
-    const stage = stageUploaderOf(
+    const read = stageUploaderOf(
       'stage-a',
       catalog([
         entry({ key: 'BEE_PUBLISHERS', value: publishers(NEW), running: 'differs', runningValue: publishers(OLD) }),
@@ -186,7 +198,7 @@ describe('the stages a rung publishes for', () => {
       '720p',
     );
 
-    assert.deepEqual(stage, uploader({ name: 'stage-a', own: false }));
+    assert.deepEqual(read, stage());
   });
 
   it('are not behind on this rung when only another rung changed', () => {
@@ -263,7 +275,9 @@ describe('the notice on the stamp card', () => {
       notice?.lead,
       `Batch ${shortHex(NEW)} is saved, but the running uploader still pays with batch ${shortHex(OLD)} until it restarts.`,
     );
-    assert.deepEqual(notice?.rows, [{ name: 'main-stage', own: true, what: 'Apply now recreates stream-uploader.' }]);
+    assert.deepEqual(notice?.rows, [
+      { name: 'main-stage', own: true, what: 'Apply now applies STAMP and recreates stream-uploader.' },
+    ]);
   });
 
   it('names the batch it still pays with as the one it started with when nothing records it', () => {
@@ -272,9 +286,9 @@ describe('the notice on the stamp card', () => {
 
   it('names every stage that is behind on a rung page, each with what its Apply recreates', () => {
     const notice = batchNotice(NEW, [
-      uploader({ name: 'stage-a', own: false, recreates: 'all' }),
-      uploader({ name: 'stage-b', own: false, runningBatchId: NEW, behind: false }),
-      uploader({ name: 'stage-c', own: false, recreates: ['srs', 'stream-uploader'] }),
+      stage({ recreates: 'all' }),
+      stage({ name: 'stage-b', runningBatchId: NEW, behind: false }),
+      stage({ name: 'stage-c', recreates: ['srs', 'stream-uploader'], changedKeys: ['BEE_PUBLISHERS', 'SRT_LATENCY'] }),
     ]);
 
     assert.match(notice?.lead ?? '', /is saved for the stages this rung publishes for/);
@@ -283,13 +297,30 @@ describe('the notice on the stamp card', () => {
       /Each stage's uploader still pays with the batch it started with until it restarts/,
     );
     assert.deepEqual(notice?.rows, [
-      { name: 'stage-a', own: false, what: 'Apply now redeploys every service of stage-a.' },
-      { name: 'stage-c', own: false, what: 'Apply now recreates srs and stream-uploader.' },
+      { name: 'stage-a', own: false, what: 'Apply now applies BEE_PUBLISHERS and redeploys every service of stage-a.' },
+      {
+        name: 'stage-c',
+        own: false,
+        what: 'Apply now applies BEE_PUBLISHERS and SRT_LATENCY and recreates srs and stream-uploader. SRT_LATENCY was saved earlier and not applied yet.',
+      },
     ]);
   });
 
+  it('names every setting Apply now applies, read from what the deployment is behind on', () => {
+    const own = ownUploaderOf(
+      'main-stage',
+      catalog([
+        entry({ key: 'STAMP', value: NEW, running: 'differs', runningValue: OLD }),
+        entry({ key: 'LOG_LEVEL', value: 'debug', running: 'differs', runningValue: 'info' }),
+      ]),
+    );
+
+    assert.deepEqual(own?.changedKeys, ['STAMP', 'LOG_LEVEL']);
+    assert.equal(own?.batchKey, 'STAMP');
+  });
+
   it('carries no em-dash and no semicolon', () => {
-    const notice = batchNotice(NEW, [uploader(), uploader({ name: 'stage-a', own: false })]);
+    const notice = batchNotice(NEW, [uploader({ changedKeys: ['STAMP', 'LOG_LEVEL'] }), stage({ recreates: 'all' })]);
     const text = JSON.stringify(notice);
 
     assert.doesNotMatch(text, /[—;]/);
@@ -377,10 +408,53 @@ describe('Apply now', () => {
   it('asks first when it cannot tell, and says so', async () => {
     const run = harness(new Error('the manager did not answer'));
 
-    await applyNow(uploader({ name: 'stage-a', own: false }), run.deps);
+    await applyNow(stage(), run.deps);
 
     assert.deepEqual(run.calls, ['read stage-a', 'confirm']);
     assert.match(String(run.asked()?.body), /cannot tell whether a broadcast is live on stage-a/);
+  });
+
+  it('asks first when it applies more than the batch, even with nobody publishing, naming what else', async () => {
+    const run = harness(IDLE);
+
+    await applyNow(uploader({ changedKeys: ['STAMP', 'LOG_LEVEL'] }), run.deps);
+
+    assert.deepEqual(run.calls, ['read main-stage', 'confirm']);
+    const request = run.asked();
+    assert.ok(request);
+    assert.equal(request.title, 'Apply every saved setting on main-stage?');
+    assert.match(request.body, /It also applies LOG_LEVEL, saved earlier and not applied yet, not only the batch\./);
+    assert.doesNotMatch(request.body, /live/);
+  });
+
+  it('says a live broadcast stops until the encoder reconnects when SRS is recreated too', async () => {
+    const run = harness(LIVE);
+
+    await applyNow(
+      uploader({ recreates: ['srs', 'stream-uploader'], changedKeys: ['STAMP', 'SRT_LATENCY'] }),
+      run.deps,
+    );
+
+    const body = run.asked()?.body ?? '';
+    assert.match(body, /This recreates srs and stream-uploader, so the encoder is disconnected and has to reconnect\./);
+    assert.match(body, /The live broadcast on main-stage stops until the encoder reconnects/);
+    assert.doesNotMatch(body, /a few seconds/);
+  });
+
+  it('says every service is redeployed when a changed key reaches the deploy scripts alone', async () => {
+    const run = harness(new Error('no answer'));
+
+    await applyNow(uploader({ recreates: 'all', changedKeys: ['STAMP', 'COMPOSE_NETWORK'] }), run.deps);
+
+    const body = run.asked()?.body ?? '';
+    assert.match(
+      body,
+      /This redeploys every service of main-stage, so the encoder is disconnected and has to reconnect\./,
+    );
+    assert.match(
+      body,
+      /cannot tell whether a broadcast is live on main-stage\. If one is, it stops until the encoder reconnects\./,
+    );
   });
 });
 
