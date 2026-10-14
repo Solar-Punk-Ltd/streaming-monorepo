@@ -77,10 +77,11 @@ const UPLOAD_RETRY_CAP_MS = 2_000;
 const FEED_HEAD_READ_WINDOW_MS = 15_000;
 
 /**
- * How far above bee's answer for a feed head {@link StreamUploader.findTrueFeedHead} looks before it
- * stops and refuses the publish. 2^20 slots is about 24 days of one playlist every two seconds, past
- * any feed this service writes, and the doubling reaches it in 21 reads. The bound exists so a feed
- * that answers every read never holds the manifest queue for good.
+ * How far above bee's answer for a feed head {@link StreamUploader.findTrueFeedHead} looks before
+ * it stops and refuses the publish. 2^20 slots is about 12 days of the ladder's one playlist a
+ * second, and 24 days at two seconds, past any feed this service writes, and the doubling reaches it
+ * in 21 reads. The bound exists so a feed that answers every read never holds the manifest queue for
+ * good.
  */
 const FEED_HEAD_SEARCH_MAX_DISTANCE = 2 ** 20;
 
@@ -1235,13 +1236,15 @@ export class StreamUploader {
    * The common case is one read: the slot above the answer is absent and the answer stands. Past that
    * the distance doubles until a slot is absent and then halves back to the last slot present, so a
    * gap the size of the whole feed costs about twice the log of its length rather than one read per
-   * slot. That relies on the feed having no holes, which bee's own finder relies on too, and which a
-   * session here keeps because a failed write is retried at the same index.
+   * slot. That relies on the feed having no holes, which bee's own finder relies on too. Holes of
+   * writing do not occur, because a failed write is retried at the same index. A hole of retrieval
+   * does: a slot that exists and that no peer serves reads as absent (2026-08-02, index 23,077 of a
+   * feed standing at 76,452 would not retrieve). The search then stands below that slot, which is no
+   * worse than taking bee's answer as it came.
    *
    * ⛔ **Only a 404 counts as absent.** Any other failure throws, which refuses the publish and asks
    * again at the next segment, because taking an unread slot for an empty one is the overwrite this
-   * exists to prevent. So does running past {@link FEED_HEAD_SEARCH_MAX_DISTANCE}. A slot that exists
-   * but that no peer will serve also answers 404, and nothing a reader can ask tells the two apart.
+   * exists to prevent. So does running past {@link FEED_HEAD_SEARCH_MAX_DISTANCE}.
    */
   private async findTrueFeedHead(answered: {
     index: number;
@@ -1279,7 +1282,7 @@ export class StreamUploader {
       this.logger.warn(
         `[StreamUploader] bee answered SOC index ${answered.index} as the head of ${this.streamId}'s feed, ` +
           `but the feed holds playlists up to ${present.index}. Continuing from ${present.index}, so the ` +
-          'slots above bee’s answer are not written over',
+          'slots above that answer are not written over',
       );
     }
     return present;
