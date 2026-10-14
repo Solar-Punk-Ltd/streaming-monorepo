@@ -111,7 +111,7 @@ const MAX_HLS_FRAGMENT_SECONDS = 3600;
  * one such call stopped that rung, and the same call on the coordinator stopped the catalog for every
  * stream on the stage.
  *
- * **The default is derived, not chosen.** Every bee call the service makes sits inside
+ * **The default is derived, not chosen.** Every bee call of the upload loop sits inside
  * `retryUntilDeadlineAsync`, and the shortest window any of them gets is 10s: `CATALOG_RETRY_WINDOW_MS`
  * in `StreamCatalog.ts` and `MASTER_RETRY_WINDOW_MS` in `MasterFeedWriter.ts`, against 15s for the
  * three in `StreamUploader.ts`. The first backoff is 350ms before jitter halves it, so two whole
@@ -125,11 +125,10 @@ const MAX_HLS_FRAGMENT_SECONDS = 3600;
  * that a node the gates would wait twenty seconds for is not failed in four. All three run on
  * START_GATE_TIMEOUT_MS below, since 2026-09-17.
  *
- * ⛔ **Nor does it bound the feed head read a restarted stream makes before its first publish.** A
- * rung node's feed lookup waits out its own probe of the slot after the head, so it took 4.0 s at the
- * median and 5.1 s at most over 119 reads on 2026-10-14, longer than this deadline nearly every time.
- * `StreamUploader.readManifestFeedHead` therefore carries `FEED_HEAD_READ_WINDOW_MS` as its own
- * deadline, on a reader made per attempt.
+ * ⛔ **Nor does it bound a feed lookup**, which asks a node where a feed has got to: a restarted
+ * stream's feed head read, the stream list's boot lookup and the master feed's first probe. A rung node
+ * took 4.0 s at the median and 5.1 s at most over 119 such reads on 2026-10-14, past this deadline in
+ * 117 of them, so each carries `FEED_LOOKUP_TIMEOUT_MS` from `BeePublisherPool.ts` instead.
  */
 const DEFAULT_BEE_REQUEST_TIMEOUT_MS = 4000;
 

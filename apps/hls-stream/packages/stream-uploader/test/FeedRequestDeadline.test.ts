@@ -8,7 +8,7 @@
  * On 2026-10-14 a broadcast on a stream that had broadcast before published a live playlist for one
  * rung of four, for its whole length. Each rung has to read its feed's head before its first publish,
  * so it continues the feed rather than writing over it, and that read took the rung's node 4.0 s at the
- * median and up to 7.4 s. Two things then kept it from ever answering:
+ * median and 5.1 s at most over 119 reads. Two things then kept it from ever answering:
  *
  * 1. Every request carried the pool's 4 s deadline, which was derived from the upload retry windows
  *    and says nothing about a feed lookup.
@@ -24,7 +24,7 @@
  * ## What these deliberately do not cover
  *
  * - **Timings.** The node's answer times are a fraction of a second so the cases stay cheap. Nothing
- *   asserts how long a read took; see the e2e rule in `AGENTS.md`.
+ *   asserts how long a read took. See the e2e rule in `apps/hls-stream/AGENTS.md`.
  * - **The catalog and the master feed.** They make their writers and readers per attempt for the same
  *   reason, and `beePublisherPool.test.ts` pins why. Their own suites hold what they write.
  */
@@ -121,7 +121,7 @@ describe('a node slower than one request’s deadline', () => {
     assert.equal(first.index, PREVIOUS_HEAD_INDEX + 1, 'the live playlist did not continue the feed');
   });
 
-  it('retries a manifest write that ran out of time with a deadline of its own', async () => {
+  it('publishes a manifest whose first write ran out of time, on a writer made for the retry', async () => {
     const stream = restartedStream(
       { poolTimeoutMs: POOL_TIMEOUT_MS, firstWriteFailsAfterMs: POOL_TIMEOUT_MS * 2 },
       null,
