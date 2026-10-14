@@ -39,7 +39,7 @@ function makeRefusingCatalog() {
 /**
  * ⛔⛔⛔ A finalize that fails keeps its recovery entry on purpose, because that file is the only
  * record the broadcast was ever live and the next boot publishes the recording from it. Every other
- * place in the package treats it as irreplaceable: `StreamUploader.readManifestFeedHead` throws
+ * place in the package treats it as irreplaceable: `StreamUploader.publishedRecordingIndex` throws
  * rather than guess, `StreamOrchestrator.drainUploader` catches that and retires the uploader so the
  * file stops being touched, and `FinalizeResume.test.ts` asserts the entry survives a deferral.
  *

@@ -116,10 +116,10 @@ interface GlueHarness {
    * Every head the fake feed was asked for, in order, so a case can say WHICH playlist a session read
    * rather than only that it read one.
    *
-   * ⚠️ One answered head read is **two** entries here. `StreamUploader.readManifestFeedHead` asks
+   * ⚠️ One answered head read is **three** entries here. `StreamUploader.readManifestFeedHead` asks
    * without an index for the position and then again at that index for the payload, because bee-js
-   * only rejoins an over-sized payload on the indexed path. A read that 404s is one entry, since the
-   * empty-feed answer returns before the second call.
+   * only rejoins an over-sized payload on the indexed path, and `findTrueFeedHead` then reads the slot
+   * above. A read that 404s is one entry, since the empty-feed answer returns before the second call.
    */
   headsRead: (FakeFeedHead | null)[];
   /** Every length the admin was told a finished recording plays for, in order. */

@@ -52,8 +52,8 @@ export function getErrorMessage(error: unknown): string {
  * first attempt.
  *
  * ⛔⛔ **Not for a reader that already knows the feed is non-empty.** This answers "could the feed be
- * empty" for a caller with nothing else to go on. `StreamUploader.readManifestFeedHead` has something
- * else: it runs only for a stream holding a SOC index it wrote itself, so an empty feed is already
+ * empty" for a caller with nothing else to go on. `StreamUploader.publishedRecordingIndex` has
+ * something else: it reads the SOC index a recovered stream wrote itself, so an empty slot is already
  * ruled out and neither status is an answer there. That path takes 404 and 503 alike as a node it
  * could not read and retries both. Answering "empty" to either republished a paid-for recording.
  */

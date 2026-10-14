@@ -157,9 +157,10 @@ const feedNotFound = () => new BeeResponseError('GET', '/feeds', 'Not Found.', u
  * there whenever it landed before the recording went out.
  *
  * ⛔ **A 404 was the default until 2026-09-15, and it now costs 15 seconds a test.** A recovered
- * stream holds a SOC index it wrote itself, so `StreamUploader.readManifestFeedHead` reads a 404
+ * stream holds a SOC index it wrote itself, so `StreamUploader.publishedRecordingIndex` reads a 404
  * there as a chunk that will not retrieve, retries it for the whole of `FEED_HEAD_READ_WINDOW_MS`
- * and then defers the finalize. Every recovery test would spend that window to reach a finalize none
+ * and then defers the finalize. It reads that slot by index, so the index here is the one
+ * `makeRecoveredState` saves. Every recovery test would spend that window to reach a finalize none
  * of them is about. A live playlist reaches the same full publish at once, because the discriminator
  * is `#EXT-X-PLAYLIST-TYPE:VOD` and this carries neither that nor an index anything asserts on. A
  * test about the 404, or about a recording already in the feed, says so with `feedHead` of its own.
