@@ -175,9 +175,11 @@ describe('the mock deployment settings routes', { concurrency: false, timeout: 6
       field: { kind: 'choice', choices: ['debug', 'log', 'info', 'warn', 'error', 'silent'] },
       services: ['stream-uploader'],
       running: 'same',
+      runningValue: 'info',
       engineSetting: null,
     });
     assert.equal(entryOf(catalog, 'API_AUTH_TOKEN').source, 'generated');
+    assert.equal(entryOf(catalog, 'API_AUTH_TOKEN').runningValue, null, 'a secret is never answered in clear');
     assert.equal(entryOf(catalog, 'HLS_FRAGMENT').owner, null);
     assert.equal(entryOf(catalog, 'STAMP').owner, 'stamp');
     assert.equal(entryOf(catalog, 'CLIENT_PORT').owner, 'port-slot');
@@ -195,6 +197,7 @@ describe('the mock deployment settings routes', { concurrency: false, timeout: 6
     assert.equal(entryOf(catalog, 'LOG_LEVEL').storedValue, 'debug');
     assert.equal(entryOf(catalog, 'LOG_LEVEL').source, 'deployment');
     assert.equal(entryOf(catalog, 'LOG_LEVEL').running, 'differs');
+    assert.equal(entryOf(catalog, 'LOG_LEVEL').runningValue, 'info', 'the running uploader still has the old value');
     assert.deepEqual(catalog.drift, { keys: ['LOG_LEVEL'], services: ['stream-uploader'], fullRedeploy: false });
   });
 

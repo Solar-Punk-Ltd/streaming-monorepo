@@ -1,4 +1,3 @@
-import type { StreamStatus } from '@streaming-monorepo/web2-admin-common';
 import dayjs, { type Dayjs } from 'dayjs';
 
 import { formatHumanDateTime, toDateTimeLocalValue } from '../../dateUtil';
@@ -158,36 +157,6 @@ export function slotOptions(current: string): string[] {
   return [...slots, current].sort();
 }
 
-const MINUTE_MS = 60_000;
-
-/**
- * Whether saving would set a start that has already gone by: a new stream's, or an edit that moved the start.
- * A Draft whose stored start has passed keeps it when the edit leaves the time alone (STMB-496), so the stored
- * value, compared to the minute the form holds it at, is not refused. Both times are ISO strings.
- */
-export function startMovedIntoPast(next: string, stored: string | null, now: Date): boolean {
-  const nextMs = Date.parse(next);
-  if (Number.isNaN(nextMs) || nextMs >= now.getTime()) return false;
-  if (stored === null) return true;
-  return Math.floor(nextMs / MINUTE_MS) !== Math.floor(Date.parse(stored) / MINUTE_MS);
-}
-
-/** What {@link pastStartRefused} reads of the stream being edited. */
-export interface StoredStart {
-  status: StreamStatus;
-  scheduledStartTime: string | null;
-}
-
-/**
- * Whether the form refuses `next` as a start that has already gone by. A stream that has gone live or become a
- * recording really did start in the past, so whatever start it records is let through. That covers rows from before a
- * start was required, which go live with no stored start and are given their real one afterwards.
- */
-export function pastStartRefused(next: string, stream: StoredStart | null, now: Date): boolean {
-  if (stream?.status === 'live' || stream?.status === 'vod') return false;
-  return startMovedIntoPast(next, stream?.scheduledStartTime ?? null, now);
-}
-
 /** Whether a slot on `dateValue` (`YYYY-MM-DD`) has already gone by. */
 export function isSlotPast(dateValue: string, slot: string, now: Date): boolean {
   const date = parseDateTimeLocalValue(`${dateValue}T${slot}`);
@@ -195,7 +164,7 @@ export function isSlotPast(dateValue: string, slot: string, now: Date): boolean 
   return date.getTime() < now.getTime();
 }
 
-/** The earliest slot still selectable on a date, or null when none is. */
+/** The earliest slot on a date that has not gone by yet, or null when every one has. */
 export function firstFreeSlot(dateValue: string, now: Date): string | null {
   return timeSlots().find((slot) => !isSlotPast(dateValue, slot, now)) ?? null;
 }

@@ -60,6 +60,7 @@ import { StageCard } from './StageCard';
 import { isStage } from './stageText';
 import { offersLatencySetting, SRT_LATENCY_SETTING_KEY } from './srtIngestText';
 import { StorageCard } from './StorageCard';
+import { useBatchUploaders } from './useBatchUploaders';
 import { engineOf, isRunning, readsIngestHealth, shapeOf, streamersOf } from './shape';
 import { WatchCard } from './WatchCard';
 
@@ -167,6 +168,13 @@ function DeploymentBody({ profile, focus, bee }: { profile: Profile; focus: Depl
     : null;
   const stampId = profile.stamp_id;
   const currentStamp = (stampId && bee?.stamps?.find((stamp) => sameBatchId(stamp.batchID, stampId))) || null;
+  const batchUploaders = useBatchUploaders({
+    profile,
+    rung,
+    profiles: profiles ?? [],
+    nodeBatchIds: [...(bee?.stamps?.map((stamp) => stamp.batchID) ?? []), ...(stampId ? [stampId] : [])],
+    own: settings,
+  });
 
   const heldBy = attemptHolding(profile.name, attempts, profiles);
   const publishUrl = publish.url;
@@ -315,6 +323,7 @@ function DeploymentBody({ profile, focus, bee }: { profile: Profile; focus: Depl
                   ? catalogue.answer.designation.batchId
                   : null
               }
+              uploaders={batchUploaders}
               onChanged={reload}
             />
           )}

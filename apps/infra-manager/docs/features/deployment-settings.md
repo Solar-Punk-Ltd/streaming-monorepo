@@ -135,6 +135,13 @@ write, so it can say which settings the running containers are behind on:
 - **not-running:** the deployment is stopped, or is deploying, stopping or being removed, so no
   container is compared.
 
+Beside that state each key carries `runningValue`, what the running containers that read it were
+started with, as their records keep it in clear (since 2026-10-14, SPDV-1437). It is null for a
+secret and a chain endpoint, which a record keeps as a digest alone, for a key started unset or that
+no record covers, for containers started with different values, and for a deployment that is not
+running. The Storage card reads it for `STAMP` and `BEE_PUBLISHERS` to mark the batch a running
+uploader pays with, which after a Use is not yet the batch the deployment stores.
+
 Apply redeploys only the containers that are behind. When a changed key reaches the deploy scripts
 alone, it redeploys everything. A stopped deployment's Start uses the stored values anyway, so Apply
 refuses it. Apply is also refused, with the engine's own sentence, while the deploy would refuse the
@@ -183,6 +190,9 @@ save and Apply they name a value the engine does not run yet. The page reads the
 card and both of those, and they mark every value whose key the running containers are behind on as
 **saved, not applied**. A save that lands also reads the deployment's row again, because the manager
 announces no change for a save, so both show the value it stored rather than the one before it.
+The list is read again whenever the deployment's status, its batch or its pool string moves, so a
+batch set with **Use** on the Storage card shows in the banner at once (since 2026-10-14,
+SPDV-1437).
 
 - **Folded by the sample's sections**, in the order they first appear, with the deployment's own
   engine settings in an **Engine settings** section first and the keys the version no longer

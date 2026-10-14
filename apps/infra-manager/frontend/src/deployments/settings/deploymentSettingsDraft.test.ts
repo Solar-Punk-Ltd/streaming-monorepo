@@ -49,6 +49,7 @@ function entry(overrides: Partial<DeploymentSettingEntry> & { key: string }): De
     field: null,
     services: ['stream-uploader'],
     running: 'same',
+    runningValue: null,
     engineSetting: null,
     ...overrides,
   };
