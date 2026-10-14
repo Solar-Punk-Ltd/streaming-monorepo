@@ -18,6 +18,12 @@ import {
   publishingRungFeedsOf,
 } from '../../src/harness/manifestContractLive.js';
 import { type Publisher, startPublisher } from '../../src/harness/publisher.js';
+import {
+  checkRungPlaylistsLive,
+  manifestIndicesByRung,
+  missingTopicResumes,
+  socIndexRefusal,
+} from '../../src/harness/rungPublishing.js';
 import { requireStageStamps } from '../../src/harness/stageStamps.js';
 import { recoveryEntryIds } from '../../src/harness/uploaderState.js';
 import { type CatalogFeed, discoverCatalogFeed, entryCarriesTopic, fetchCatalog } from '../../src/harness/viewer.js';
@@ -178,6 +184,10 @@ function describeRange(indices: readonly number[] | undefined): string {
   return `${Math.min(...indices)}..${Math.max(...indices)}`;
 }
 
+/** Live playlist publishes every rung must make after the restart. */
+const PUBLISHES_AFTER_RESTART = 10;
+const HEAD_ADVANCE_WAIT_MS = 60_000;
+
 const cfg = loadConfig();
 
 describe('M — the uploader dies while its engine restarts, then the broadcaster reconnects: the recovered stream continues', () => {
@@ -190,6 +200,9 @@ describe('M — the uploader dies while its engine restarts, then the broadcaste
   let publisher: Publisher;
   let feed: CatalogFeed;
   let startedAt: string;
+  /** The instant the kill began, and the log up to it, which is where every rung's feed stood. */
+  let restartedAt: string | undefined;
+  let beforeRestart = '';
 
   before(async () => {
     await requireStageStamps(host, cfg, MIN_STAMP_TTL_S);
@@ -249,6 +262,8 @@ describe('M — the uploader dies while its engine restarts, then the broadcaste
     // graceful stop of the uploader would leave nothing to recover.
     console.log(`  M: killing ${uploader} and restarting ${mediaContainer} together`);
     const restartedAtMs = Date.now();
+    restartedAt = await host.nowIso();
+    beforeRestart = await host.logsBetween(uploader, startedAt, restartedAt);
     await Promise.all([host.kill(uploader), host.restart(mediaContainer)]);
     await waitFor(async () => !(await host.isRunning(uploader)), {
       timeoutMs: RESTART_WAIT_MS,
@@ -492,6 +507,43 @@ describe('M — the uploader dies while its engine restarts, then the broadcaste
         `${STAYS_LIVE_MS / 1000}s watch the uploader reported ${[...statusesSeen].join(', ') || 'nothing'}, ` +
         `${healthReadsThatThrew} of its reads threw, and ${catalogReadsThatFoundUs} catalog reads found this ` +
         `broadcast holding ${[...catalogStatesSeen].join(', ') || 'nothing'}`,
+    );
+  });
+
+  /**
+   * Every rung keeps a live playlist after the kill and the reconnect: it publishes again, each publish continues its
+   * feed above where it stood and never at 0, its head moves on the gateway, and no playlist is called stale.
+   *
+   * ⚠️ NOT the regression test for the 2026-10-14 re-broadcast fix. The reconnect rejoins a session rebuilt from its
+   * recovery entry, which continues from disk and never reads the feed head, so the lookup that fix changed is not run
+   * here. `scenarios/rung-restart` is that test.
+   */
+  it('keeps every rung publishing a live playlist after the reconnect, continuing its feed', async () => {
+    assert.ok(restartedAt !== undefined, 'the case above never reached its kill, so there is no restart to read');
+    const sinceRestart = async (): Promise<string> => host.logsSince(uploader, restartedAt as string);
+    const rungs = cfg.abrEnabled ? cfg.abrRungs : null;
+
+    const playlists = await checkRungPlaylistsLive(host, cfg, {
+      log: sinceRestart,
+      rungs,
+      namesFrom: beforeRestart,
+      minPublishes: PUBLISHES_AFTER_RESTART,
+      publishWaitMs: RESUMED_UPLOAD_WAIT_MS,
+      headWaitMs: HEAD_ADVANCE_WAIT_MS,
+    });
+    console.log(playlists.summary);
+    assert.equal(playlists.refusal, null, playlists.refusal ?? '');
+
+    const after = await sinceRestart();
+    const continued = socIndexRefusal(beforeRestart, after, rungs ?? [...manifestIndicesByRung(beforeRestart).keys()]);
+    assert.equal(continued, null, continued ?? '');
+
+    const unresumed = missingTopicResumes(beforeRestart, after);
+    assert.deepEqual(
+      unresumed,
+      [],
+      `${unresumed.join(', ')} reopened its topic as a fresh session rather than from its recovery entry, and never ` +
+        'read the feed head it continues',
     );
   });
 });

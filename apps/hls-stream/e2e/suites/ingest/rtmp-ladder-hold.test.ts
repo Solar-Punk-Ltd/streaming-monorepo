@@ -15,6 +15,7 @@ import {
 } from '../../src/harness/ingest.js';
 import { announcedSessionTopics } from '../../src/harness/logwatch.js';
 import { type Publisher, startPublisher } from '../../src/harness/publisher.js';
+import { checkRungPlaylistsLive } from '../../src/harness/rungPublishing.js';
 import { requireStageStamps } from '../../src/harness/stageStamps.js';
 import { sleep, waitFor } from '../../src/harness/wait.js';
 import { INGEST_RTMP, unsupportedIngestReason } from '../../src/ingestProtocol.js';
@@ -44,6 +45,9 @@ const WARMUP_SEGMENTS = 3;
  * are shown carrying the broadcast rather than landing a single segment.
  */
 const RESUMED_SEGMENTS = 3;
+/** Live playlist publishes each rung must make after the drop, so a held encoder is shown feeding a playlist. */
+const RESUMED_PUBLISHES = 6;
+const HEAD_ADVANCE_WAIT_MS = 60_000;
 const SEGMENT_WAIT_MS = 180_000;
 const DISCONNECT_WAIT_MS = 60_000;
 /** When the broadcaster comes back: well inside the 12 second default hold. A scenario input and not a reading. */
@@ -148,6 +152,18 @@ describe('ingest: a ladder keeps its encoders through a short drop of its RTMP s
     );
     const refusal = continuationRefusal(await log(), sinceDrop, topicsBefore, rungs);
     assert.equal(refusal, null, refusal ?? '');
+
+    // ⛔ A seam and segments after it are not a playlist a viewer is handed. Every rung keeps publishing live playlists
+    // across the drop, the uploader calls none of them stale, and every head moves on the gateway.
+    const playlists = await checkRungPlaylistsLive(host, cfg, {
+      log: async () => host.logsSince(uploader, droppedAt),
+      rungs: cfg.abrRungs,
+      minPublishes: RESUMED_PUBLISHES,
+      publishWaitMs: SEGMENT_WAIT_MS,
+      headWaitMs: HEAD_ADVANCE_WAIT_MS,
+    });
+    console.log(playlists.summary);
+    assert.equal(playlists.refusal, null, playlists.refusal ?? '');
 
     const backAfterS = secondsToFirstSeam(await host.logsSince(uploader, returnedAt), returnedAt);
     printObservations('rtmp-ladder-hold', [

@@ -7,6 +7,11 @@ import { makeHost, reportFailedRestore, waitForIdle } from '../../src/harness/ho
 import { type AnnouncedRung, announcedRungs, ladderRungs, segmentUploads } from '../../src/harness/logwatch.js';
 import { checkPublishedTimeline, publishingRungFeedsOf } from '../../src/harness/manifestContractLive.js';
 import { type Publisher, startPublisher } from '../../src/harness/publisher.js';
+import {
+  checkRungPlaylistsLive,
+  missingTopicResumes,
+  staleManifestWarnings,
+} from '../../src/harness/rungPublishing.js';
 import { requireStageStamps } from '../../src/harness/stageStamps.js';
 import { discoverCatalogFeed } from '../../src/harness/viewer.js';
 import { sleep, waitFor } from '../../src/harness/wait.js';
@@ -78,6 +83,9 @@ import { sleep, waitFor } from '../../src/harness/wait.js';
 
 const WARMUP_WAIT_MS = 180_000;
 const RECOVERY_WAIT_MS = 180_000;
+/** Live playlist publishes every recovered rung must make after the restart. */
+const RECOVERED_PUBLISHES_PER_RUNG = 10;
+const HEAD_ADVANCE_WAIT_MS = 60_000;
 const MIN_STAMP_TTL_S = 600;
 
 const cfg = loadConfig();
@@ -215,6 +223,51 @@ describe('ABR — engine restart: the ladder comes back whole', { skip: abrOff(c
         intervalMs: 3_000,
         label: 'every recovered rung uploads at least two segments, so none is merely announced and stuck',
       },
+    );
+  });
+
+  /**
+   * Segments after a restart are not a ladder a viewer can watch: every recovered rung has to publish live playlists
+   * again and move its head on the gateway, and a rung that reopened the topic its retired session held has to read
+   * that head first, which is the `resumes its topic` line. Without it the session numbers itself from nothing on a
+   * feed that already holds playlists, and every publish is either refused or writes over the last one.
+   *
+   * ⚠️ Stale warnings are printed here and not refused. A recovered session refuses its first publishes while the
+   * session it replaced is still draining onto the same topic, and the uploader counts each refusal as a stale
+   * playlist on purpose (`commitManifest`). The publish count and the head are what must hold.
+   */
+  it('keeps every recovered rung publishing a live playlist whose head moves, continuing the feed it reopened', async () => {
+    const beforeRestart = await host.logsSince(uploader, startedAt);
+    const { restartedAt } = await restartAndReconnect();
+    const recoveredLog = async (): Promise<string> => host.logsSince(uploader, restartedAt);
+
+    await waitFor(async () => (await recoveredRungCount(restartedAt)) >= rungsBefore.length, {
+      timeoutMs: RECOVERY_WAIT_MS,
+      intervalMs: 3_000,
+      label: 'every rung re-announces after the restart',
+    });
+
+    const verdict = await checkRungPlaylistsLive(host, cfg, {
+      log: recoveredLog,
+      rungs: rungsBefore,
+      minPublishes: RECOVERED_PUBLISHES_PER_RUNG,
+      publishWaitMs: RECOVERY_WAIT_MS,
+      headWaitMs: HEAD_ADVANCE_WAIT_MS,
+      refuseStale: false,
+    });
+    console.log(verdict.summary);
+    assert.equal(verdict.refusal, null, verdict.refusal ?? '');
+
+    const after = await recoveredLog();
+    console.log(
+      `  observations, none of them asserted. stale playlist warnings after the restart: ${staleManifestWarnings(after).length}`,
+    );
+    const unresumed = missingTopicResumes(beforeRestart, after);
+    assert.deepEqual(
+      unresumed,
+      [],
+      `${unresumed.join(', ')} reopened the topic its retired session held and never read that feed's head, so it ` +
+        'numbered its playlist from nothing on a feed that already holds one',
     );
   });
 
