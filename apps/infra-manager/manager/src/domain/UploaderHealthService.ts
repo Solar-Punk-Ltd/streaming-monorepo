@@ -41,6 +41,8 @@ const READ_BUDGET_MS = 3_000;
 /** No reason reaches the page beyond what the uploader would plausibly report. */
 const MAX_REASONS = 20;
 const MAX_WARNINGS = 12;
+/** A stage runs a handful of streams, a ladder's rungs included. */
+const MAX_STREAM_IDS = 20;
 const MAX_TEXT = 500;
 
 /** Takes the request, so a test can answer without a listening socket. */
@@ -130,7 +132,9 @@ export class UploaderHealthService {
  * running and has something to say. A stack older than the pin answers neither
  * the waiting status nor the warnings and falls through to ok or unhealthy on
  * its HTTP code alone, which is what "no waiting state reported" has to mean.
- * The pinned stack answers both.
+ * The pinned stack answers both. A stack older than the stream names answers
+ * no `staleManifestStreamIds` or `segmentFailingStreamIds`, and its reading
+ * carries neither.
  */
 function readingFrom(ok: boolean, body: unknown): UploaderHealthReading {
   const payload = (body ?? {}) as Record<string, unknown>;
@@ -151,10 +155,14 @@ function readingFrom(ok: boolean, body: unknown): UploaderHealthReading {
   if (ok) return { state: UPLOADER_HEALTH_OK, reasons };
 
   const warnedOnly = reasons.length > 0 && reasons.every((reason) => reason === UPLOADER_REASON_START_GATE_WARNED);
+  const staleManifestStreamIds = textsOf(payload.staleManifestStreamIds, MAX_STREAM_IDS);
+  const segmentFailingStreamIds = textsOf(payload.segmentFailingStreamIds, MAX_STREAM_IDS);
   return {
     state: warnedOnly ? UPLOADER_HEALTH_WARNED : UPLOADER_HEALTH_UNHEALTHY,
     reasons,
     ...(warnings.length === 0 ? {} : { startGateWarnings: warnings }),
+    ...(staleManifestStreamIds.length === 0 ? {} : { staleManifestStreamIds }),
+    ...(segmentFailingStreamIds.length === 0 ? {} : { segmentFailingStreamIds }),
   };
 }
 

@@ -2385,13 +2385,25 @@ export class StreamOrchestrator {
   }
 
   public getStaleManifestStreamCount(): number {
-    let count = 0;
-    for (const uploader of this.activeStreams.values()) {
-      if (uploader.hasStaleLiveManifest()) {
-        count += 1;
+    return this.getStaleManifestStreamIds().length;
+  }
+
+  private getStaleManifestStreamIds(): string[] {
+    return this.streamIdsWhere((uploader) => uploader.hasStaleLiveManifest());
+  }
+
+  private getSegmentFailingStreamIds(): string[] {
+    return this.streamIdsWhere((uploader) => uploader.getConsecutiveSegmentFailures() > 0);
+  }
+
+  private streamIdsWhere(matches: (uploader: StreamUploader) => boolean): string[] {
+    const streamIds: string[] = [];
+    for (const [streamId, uploader] of this.activeStreams) {
+      if (matches(uploader)) {
+        streamIds.push(streamId);
       }
     }
-    return count;
+    return streamIds;
   }
 
   public getMaxConsecutiveManifestFailures(): number {
@@ -2733,6 +2745,8 @@ export class StreamOrchestrator {
       staleManifestStreams: this.getStaleManifestStreamCount(),
       maxConsecutiveManifestFailures: this.getMaxConsecutiveManifestFailures(),
       maxConsecutiveSegmentFailures: this.getMaxConsecutiveSegmentFailures(),
+      staleManifestStreamIds: this.getStaleManifestStreamIds(),
+      segmentFailingStreamIds: this.getSegmentFailingStreamIds(),
       queuePressure: this.getOverallQueuePressure(),
       msSinceStreamActivity: this.getMsSinceStreamActivity(),
       msSinceSegmentLoss: this.getMsSinceSegmentLoss(),

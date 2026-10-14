@@ -350,6 +350,8 @@ function makeHealthSignals(overrides: Partial<HealthSignals> = {}): HealthSignal
     staleManifestStreams: 0,
     maxConsecutiveManifestFailures: 0,
     maxConsecutiveSegmentFailures: 0,
+    staleManifestStreamIds: [],
+    segmentFailingStreamIds: [],
     queuePressure: PRESSURE_LOW,
     msSinceStreamActivity: null,
     msSinceSegmentLoss: null,

@@ -1,7 +1,9 @@
 /**
  * The uploader's `/health` page, which the manager reads. It answers 200 only with `ok`, and its body carries the
- * status, the reasons, and while it waits for its node `waitingSince` and `node`, beside counters the manager does not
- * read. The page takes no credential, so nothing in it names a node's secret or a batch.
+ * status, the reasons, and while it waits for its node `waitingSince` and `node`. The manager also reads
+ * `startGateWarnings`, and `staleManifestStreamIds` and `segmentFailingStreamIds`, which name the streams behind a stale
+ * playlist and failing uploads. The rest are counters the manager does not read. The page takes no credential, so
+ * nothing in it names a node's secret or a batch.
  */
 
 export const UPLOADER_STATUS_OK = 'ok' as const;

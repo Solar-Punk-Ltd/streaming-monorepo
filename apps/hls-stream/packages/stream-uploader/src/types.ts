@@ -445,6 +445,16 @@ export interface HealthSignals {
   staleManifestStreams: number;
   maxConsecutiveManifestFailures: number;
   maxConsecutiveSegmentFailures: number;
+  /**
+   * Every live stream whose last live playlist publish failed, which is the set `staleManifestStreams`
+   * counts. A ladder rung is a stream of its own, `live/stream_1080p`, so its id already names the rung.
+   *
+   * Beside the count rather than in place of it, so a reader of the count keeps working. The count
+   * alone told an operator on 2026-10-14 that some playlist was stale and nothing about which.
+   */
+  staleManifestStreamIds: string[];
+  /** Every live stream whose last segment upload failed, the streams behind `maxConsecutiveSegmentFailures`. */
+  segmentFailingStreamIds: string[];
   queuePressure: QueuePressure;
   /**
    * Age of the least recently active stream that is expected to be producing segments, so the worst
