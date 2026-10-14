@@ -1601,28 +1601,29 @@ export class StreamUploader {
    * are refused.
    */
   private recordManifestPublishFailure(): void {
-    this.recordManifestStale();
+    this.consecutiveManifestFailures += 1;
+    this.metrics?.recordManifestPublishFailure();
     if (this.ladder) {
       this.ladderRegistry.recordRungUploadFailed(this.ladder.group, this.ladder.rung.name);
     }
+    this.logger.warn(
+      `Live manifest for stream ${this.streamId} is stale: ${this.consecutiveManifestFailures} consecutive publish failure(s)`,
+    );
   }
 
   /**
    * One live manifest held back because where this session's feed stands is not settled yet, so no
-   * write was attempted. The playlist is as stale as after a failed publish, but nothing refused this
-   * rung, so the ladder is not told of a failed delivery: on the stage a re-broadcast's head read took
-   * 1 to 5 s (2026-10-14), and counting each wait as a failure held a rung that was only starting
-   * slowly out of the master for `RUNG_READMIT_AFTER_SEGMENTS` publishes after its first one landed.
+   * write was attempted. The playlist is as stale as after a failed publish, so the run that drives
+   * `stale_manifest` moves, but nothing failed: the publish failure metric stays where it is and the
+   * ladder is not told of a failed delivery. On the stage a re-broadcast's head read took 1 to 5 s
+   * (2026-10-14), and counting each wait as a failure held a rung that was only starting slowly out of
+   * the master for `RUNG_READMIT_AFTER_SEGMENTS` publishes after its first one landed.
    */
   private recordManifestPublishHeld(): void {
-    this.recordManifestStale();
-  }
-
-  private recordManifestStale(): void {
     this.consecutiveManifestFailures += 1;
-    this.metrics?.recordManifestPublishFailure();
     this.logger.warn(
-      `Live manifest for stream ${this.streamId} is stale: ${this.consecutiveManifestFailures} consecutive publish failure(s)`,
+      `Live manifest for stream ${this.streamId} is held: its feed position is not settled yet ` +
+        `(${this.consecutiveManifestFailures} consecutive)`,
     );
   }
 
