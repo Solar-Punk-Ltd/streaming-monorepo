@@ -57,8 +57,8 @@ the pair of numbers on every segment line, and they are the subject of the next 
 The master also stops advertising a rung that has stopped being produced. A rung is delivering when
 its live playlist publishes land, not when its segments upload, because a segment no playlist names
 reaches no viewer: on 2026-10-14 rungs whose segments all landed published no playlist for a whole
-broadcast and stayed in the master throughout. A rung the ladder's middle rung has published four
-playlists past is dropped from the next master write, and it is put back the moment it publishes
+broadcast and stayed in the master throughout. A rung that has published, and that the ladder's middle
+rung has since published four playlists past, is dropped from the next master write, and it is put back the moment it publishes
 again, unless its deliveries were failing, which the next paragraph covers. So a viewer joining during
 an outage is not offered a quality with nothing behind it. Measured live on 2026-09-01, when the rule
 still counted segments: dropped 6.9s after the rung went down, restored 11.3s after it came back. The
@@ -74,9 +74,16 @@ is measured from where the ladder stood when the rung first came to notice: the 
 offered it, or its first delivery or failure. Until 2026-10-14 such a rung read as never behind, so a
 rung failing from its first second, after an uploader restart whose feed head read never settles or
 with a transcoder that never starts, stayed in the master for the whole broadcast. A rung that only
-starts late is not dropped: rungs start within a second or two of each other, and it has until the
-middle rung's fourth playlist to publish its first. A master naming no renditions at all is never
-written, because that is an unplayable stream rather than a degraded one.
+starts late is not dropped: at the start of a re-broadcast a rung's first publish waits on a feed head
+read and a slot probe (measured on the stage at 1 to 5 s and 0.2 to 4.5 s), so a rung that has never
+delivered has until the middle rung's eighth playlist to publish its first
+(`RUNG_FIRST_DELIVERY_GRACE_SEGMENTS`), at least eight segment lengths. A publish held back while that
+read is unfinished writes nothing, so it leaves the playlist stale without counting as a failed
+delivery. Every broadcast starts on a fresh count, because a ladder's count is dropped when it becomes a
+recording, which matters for a declared stream in admin mode, where every broadcast reuses one ladder.
+A recording's master names every rung that has a recording, whatever liveness said while the broadcast
+was live. A master naming no renditions at all is never written, because that is an unplayable stream
+rather than a degraded one.
 
 Taking a rung back is this rule's own, and the player never does it. A failed delivery is a segment
 upload that was refused, which leaves a gap in the playlist, or a live playlist publish that did not

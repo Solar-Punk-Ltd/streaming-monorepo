@@ -18,7 +18,12 @@ import { Bee } from '@ethersphere/bee-js';
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 
-import { advertisableRenditions, LadderLivenessBook, RUNG_DEATH_LAG_SEGMENTS } from '../src/libs/LadderLiveness.js';
+import {
+  advertisableRenditions,
+  LadderLivenessBook,
+  RUNG_DEATH_LAG_SEGMENTS,
+  RUNG_READMIT_AFTER_SEGMENTS,
+} from '../src/libs/LadderLiveness.js';
 import { StreamUploader } from '../src/libs/StreamUploader.js';
 import { MEDIA_TYPE_VIDEO } from '../src/types.js';
 
@@ -61,6 +66,7 @@ function rungUploader(
   rung: (typeof RUNGS)[number],
   bee: Bee,
   broadcast: number,
+  predecessorDrained?: Promise<void>,
 ): StreamUploader {
   const registry = makeFakeCatalog({
     recordRungDelivered: (group: string, name: string) => book.recordDelivered(group, name),
@@ -77,6 +83,7 @@ function rungUploader(
     streamTopic: `topic-${rung.name}`,
     mediatype: MEDIA_TYPE_VIDEO,
     ladder: { group: GROUP, rung },
+    predecessorDrained,
   });
 }
 
@@ -153,5 +160,47 @@ describe('rung liveness follows what a viewer is served', () => {
       names.filter((name) => name !== BROKEN_RUNG),
       'the master offers the three rungs that publish, and not the one that never has',
     );
+  });
+
+  /**
+   * ⛔ A publish refused because the rung does not yet know where its feed stands writes nothing, so
+   * nothing was refused by a node either. On the stage a re-broadcast's head read took 1 to 5 s, and
+   * counting each refusal as a failed delivery held a rung that was only starting slowly out of the
+   * master for eight publishes after its first playlist landed (2026-10-14). The playlist is still
+   * stale while it waits, and health still says so.
+   */
+  it('takes a rung back on its first publish when its earlier ones waited for the feed position', async () => {
+    const book = new LadderLivenessBook();
+    let drained!: () => void;
+    const predecessor = new Promise<void>((resolve) => {
+      drained = resolve;
+    });
+    const uploaders = RUNGS.map((rung) =>
+      rungUploader(book, rung, healthyBee(), 1, rung.name === BROKEN_RUNG ? predecessor : undefined),
+    );
+    const slow = uploaders[RUNGS.findIndex((rung) => rung.name === BROKEN_RUNG)];
+    const names = RUNGS.map((rung) => rung.name);
+
+    const waitingRounds = 2 * RUNG_READMIT_AFTER_SEGMENTS;
+    for (let segment = 0; segment < waitingRounds; segment++) {
+      for (const uploader of uploaders) {
+        uploader.handleSegment(segment, 2, Buffer.from(`segment-${segment}`));
+        await drain(uploader);
+      }
+    }
+    assert.equal(slow.getConsecutiveManifestFailures(), waitingRounds, 'a playlist that waited is still a stale one');
+
+    drained();
+    await predecessor;
+    slow.handleSegment(waitingRounds, 2, Buffer.from('first-landed'));
+    await drain(slow);
+
+    assert.equal(slow.getConsecutiveManifestFailures(), 0, 'the rung published once its feed position settled');
+    assert.equal(
+      book.of(GROUP).hasStopped(BROKEN_RUNG, names),
+      false,
+      'a rung whose only trouble was waiting for its feed position was held out after it published',
+    );
+    assert.deepEqual(advertised(book), names);
   });
 });
