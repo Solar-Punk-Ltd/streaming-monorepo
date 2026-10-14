@@ -69,7 +69,13 @@ sibling it watched make progress (`rungHealth.ts`), so this rule now stands on i
 properties, each load bearing: count deliveries rather than read a clock, compare against a middle
 rung rather than the leader, and measure each rung's lag from where the ladder stood at its own last
 delivery. One publish can name several segments when publishing falls behind, and every rung
-coalesces the same way, so the comparison stays fair. A master naming no renditions at all is never
+coalesces the same way, so the comparison stays fair. A rung that has never delivered in this process
+is measured from where the ladder stood when the rung first came to notice: the first master that
+offered it, or its first delivery or failure. Until 2026-10-14 such a rung read as never behind, so a
+rung failing from its first second, after an uploader restart whose feed head read never settles or
+with a transcoder that never starts, stayed in the master for the whole broadcast. A rung that only
+starts late is not dropped: rungs start within a second or two of each other, and it has until the
+middle rung's fourth playlist to publish its first. A master naming no renditions at all is never
 written, because that is an unplayable stream rather than a degraded one.
 
 Taking a rung back is this rule's own, and the player never does it. A failed delivery is a segment

@@ -43,6 +43,15 @@
  *    cumulative totals. Rungs are separate transcodes writing separate feeds at slightly different
  *    speeds, so cumulative counts drift apart without bound for reasons that are nobody's fault.
  *
+ *    ⛔ A rung that has never delivered in this process is measured the same way, from where the
+ *    ladder stood when the rung first came to this tracker's notice (2026-10-14): the first time a
+ *    master offered it, or its first delivery or failure, whichever came first. It used to read a lag
+ *    of zero for ever, so a rung failing from its first second in a process, a re-broadcast whose head
+ *    read never settles or a transcoder that never starts, stayed in the master for the whole
+ *    broadcast. A rung that merely starts late is safe: rungs start within a second or two of each
+ *    other, and it is dropped only once the middle rung has published
+ *    {@link RUNG_DEATH_LAG_SEGMENTS} playlists without it, four segment lengths.
+ *
  * ⚠️ Two limits, and they now point the same way. Inherited: if THREE die at once the middle sits
  * among the dead and none of them reads as dead. Past
  * {@link MAX_RUNGS_DROPPED_AT_ONCE} nothing is dropped anyway. Both say a ladder losing most of
@@ -139,6 +148,13 @@ export class LadderLiveness {
   private readonly referenceAtLastDelivery = new Map<string, number>();
 
   /**
+   * Where the ladder's reference stood when this rung first came to this tracker's notice, for every
+   * rung it has heard of, in the order it heard of them. What a rung that has never delivered is
+   * measured from.
+   */
+  private readonly referenceWhenFirstKnown = new Map<string, number>();
+
+  /**
    * Segments landed in a row since this rung last had an upload refused, for every rung that has had
    * one refused and has not yet landed {@link RUNG_READMIT_AFTER_SEGMENTS} since.
    */
@@ -154,8 +170,9 @@ export class LadderLiveness {
    * delivered reads as level with the ladder rather than one behind it.
    */
   public recordDelivered(rung: string): void {
+    this.recordKnown(rung);
     this.delivered.set(rung, (this.delivered.get(rung) ?? 0) + 1);
-    this.referenceAtLastDelivery.set(rung, this.reference([...this.delivered.keys()]));
+    this.referenceAtLastDelivery.set(rung, this.reference(this.knownRungs()));
     this.countLandedAfterRefusal(rung);
     this.holdOutRefusedRungsLeftBehind();
   }
@@ -168,8 +185,31 @@ export class LadderLiveness {
    * {@link recordDelivered}, and together they say whether a viewer is being served this rung.
    */
   public recordUploadFailed(rung: string): void {
+    this.recordKnown(rung);
     this.landedSinceRefusal.set(rung, 0);
     this.holdOutRefusedRungsLeftBehind();
+  }
+
+  /**
+   * A master is about to offer these rungs. One the ladder had not heard of is measured from here
+   * until it delivers, which covers a rung nothing in this process ever reports on, such as one whose
+   * transcoder never starts while an earlier broadcast left it in the ladder.
+   */
+  public recordOffered(rungs: readonly string[]): void {
+    for (const rung of rungs) {
+      this.recordKnown(rung);
+    }
+  }
+
+  private recordKnown(rung: string): void {
+    if (this.referenceWhenFirstKnown.has(rung)) {
+      return;
+    }
+    this.referenceWhenFirstKnown.set(rung, this.reference([...this.knownRungs(), rung]));
+  }
+
+  private knownRungs(): string[] {
+    return [...this.referenceWhenFirstKnown.keys()];
   }
 
   private countLandedAfterRefusal(rung: string): void {
@@ -194,7 +234,7 @@ export class LadderLiveness {
    * a working quality away from every viewer.
    */
   private holdOutRefusedRungsLeftBehind(): void {
-    const known = [...this.delivered.keys()];
+    const known = this.knownRungs();
     for (const rung of this.landedSinceRefusal.keys()) {
       if (this.lagOf(rung, known) >= RUNG_DEATH_LAG_SEGMENTS) {
         this.heldOut.add(rung);
@@ -203,21 +243,22 @@ export class LadderLiveness {
   }
 
   /**
-   * How far the ladder has moved on since this rung last delivered.
+   * How far the ladder has moved on since this rung last delivered, or, for a rung that never has,
+   * since this tracker first heard of it.
    *
-   * Zero for a ladder too small to have a middle, and zero for a rung that has never delivered:
-   * a rung that has not started yet is not a rung that has stopped, and the master should keep
-   * offering it until it has had a chance.
+   * Zero for a ladder too small to have a middle, and zero for a rung this tracker has never heard of,
+   * because there is no moment to measure it from. {@link advertisableRenditions} makes every rung it
+   * judges known first, so that is only ever a caller asking about a stranger.
    */
   public lagOf(rung: string, rungs: readonly string[]): number {
     if (rungs.length < MIN_RUNGS_TO_COMPARE) {
       return 0;
     }
-    const sinceOwnLast = this.referenceAtLastDelivery.get(rung);
-    if (sinceOwnLast === undefined) {
+    const measuredFrom = this.referenceAtLastDelivery.get(rung) ?? this.referenceWhenFirstKnown.get(rung);
+    if (measuredFrom === undefined) {
       return 0;
     }
-    return Math.max(0, this.reference(rungs) - sinceOwnLast);
+    return Math.max(0, this.reference(rungs) - measuredFrom);
   }
 
   /**
@@ -229,14 +270,16 @@ export class LadderLiveness {
   }
 
   /**
-   * The rungs this ladder has seen deliver that have not since stopped, in delivery order.
+   * The rungs this ladder knows of that have not stopped, in the order it first heard of them.
    *
    * ⛔ Judged against the rungs this tracker knows about rather than against a caller's list, so it
    * can answer before anyone has handed it a rendition set. That is what lets the publish path ask
-   * "has the shape of this ladder changed" on every delivery without reading the catalog feed.
+   * "has the shape of this ladder changed" on every delivery without reading the catalog feed. A rung
+   * a master offered and that has never delivered is among them, so its falling behind changes the
+   * shape and the master is rewritten without it.
    */
   public liveRungs(): string[] {
-    const known = [...this.delivered.keys()];
+    const known = this.knownRungs();
     const dropped = actionable(known.filter((rung) => this.hasStopped(rung, known)));
 
     return known.filter((rung) => !dropped.includes(rung));
@@ -304,12 +347,16 @@ interface NamedRendition {
  * ⛔ Never returns empty while it was given something. A master naming no renditions is not a
  * degraded ladder, it is an unplayable stream, and the last rung standing is still the only thing a
  * viewer can be offered. The same floor the client draws with `MIN_LEVELS_TO_DROP_ONE`.
+ *
+ * Every rung offered here becomes known to `liveness`, which is what lets a rung that never delivers
+ * be measured at all. See {@link LadderLiveness.recordOffered}.
  */
 export function advertisableRenditions<T extends NamedRendition>(
   renditions: readonly T[],
   liveness: LadderLiveness,
 ): T[] {
   const names = renditions.map((rendition) => rendition.name);
+  liveness.recordOffered(names);
   const dropped = actionable(renditions.filter((rendition) => liveness.hasStopped(rendition.name, names)));
   const live = renditions.filter((rendition) => !dropped.includes(rendition));
 

@@ -139,8 +139,8 @@ describe('a rung that never delivers', () => {
   it(`is known from its first failure, and comes back only after ${RUNG_READMIT_AFTER_SEGMENTS} deliveries in a row`, () => {
     const liveness = new LadderLiveness();
     for (let round = 0; round < RUNG_DEATH_LAG_SEGMENTS; round++) {
-      everyRungDelivers(liveness, ['360p', '480p', '720p']);
       liveness.recordUploadFailed('1080p');
+      everyRungDelivers(liveness, ['360p', '480p', '720p']);
     }
     assert.equal(liveness.hasStopped('1080p', LADDER), true, 'a rung failing from its first second stayed offered');
 
