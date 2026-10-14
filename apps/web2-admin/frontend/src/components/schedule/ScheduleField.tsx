@@ -2,7 +2,7 @@ import { useState } from 'react';
 import { Autocomplete, Chip, Stack, TextField, Typography } from '@mui/material';
 import { DesktopDatePicker } from '@mui/x-date-pickers/DesktopDatePicker';
 import { pickersInputBaseClasses } from '@mui/x-date-pickers/PickersTextField';
-import dayjs, { type Dayjs } from 'dayjs';
+import { type Dayjs } from 'dayjs';
 
 import { DATE_FORMAT } from '../../dateUtil';
 import {
@@ -10,9 +10,7 @@ import {
   dayjsToDateValue,
   describeSchedule,
   firstFreeSlot,
-  isSlotPast,
   joinDateTimeLocal,
-  parseDateTimeLocalValue,
   parseTypedTime,
   quickPicks,
   slotOptions,
@@ -62,14 +60,8 @@ export function ScheduleField({ value, onChange, error = false, disabled = false
   // text the form never took.
   const [timeText, setTimeText] = useState(chosenTime);
 
-  // A stream that already went live is scheduled in the past by definition,
-  // and so is any older draft. Flagging that as invalid would paint the field
-  // red for a value the operator cannot change anyway, so the floor is only
-  // applied while the field is actually accepting a new time.
-  const current = parseDateTimeLocalValue(value);
-  const alreadyPast = current !== null && current.getTime() < now.getTime();
-  const floored = !disabled && !alreadyPast;
-  const floor = floored ? dayjs(now) : undefined;
+  // The scheduled start is only shown to viewers and starts nothing, so a day
+  // or a time that has already gone by is as valid as any other (SPDV-1675).
 
   const handleDate = (next: Dayjs | null) => {
     const nextDate = dayjsToDateValue(next);
@@ -103,8 +95,6 @@ export function ScheduleField({ value, onChange, error = false, disabled = false
           value={dateToDayjs(date)}
           onChange={handleDate}
           disabled={disabled}
-          disablePast={floored}
-          minDate={floor}
           format={DATE_FORMAT}
           sx={{
             flex: '1 1 14rem',
@@ -159,7 +149,6 @@ export function ScheduleField({ value, onChange, error = false, disabled = false
             if (!typed) return options;
             return options.filter((option) => digitsOf(option).startsWith(typed));
           }}
-          getOptionDisabled={(option) => floored && isSlotPast(date || todayValue(now), option, now)}
           sx={{ flex: '1 1 10rem' }}
           renderInput={(params) => <TextField {...params} label="Scheduled Time *" fullWidth error={error} />}
         />
