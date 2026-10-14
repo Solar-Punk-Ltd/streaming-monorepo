@@ -1,4 +1,4 @@
-import { StartGateWarning } from '../types.js';
+import { LowChequebook, StartGateWarning } from '../types.js';
 
 /**
  * Counters that outlive every stream they describe.
@@ -75,6 +75,7 @@ export class ServiceMetrics {
    */
   private readonly postageRefusals = new Map<string, PostageRefusal>();
   private startGateWarnings: StartGateWarning[] = [];
+  private lowChequebooks: LowChequebook[] = [];
   private lastSegmentAt: number | null = null;
   private lastAuthRejectionAt: number | null = null;
 
@@ -300,8 +301,8 @@ export class ServiceMetrics {
    * Replaced rather than accumulated, unlike the refusals above, because the gates are read again on
    * every attempt of a node wait: a rung that was unreachable on attempt one and fine on attempt two
    * is not something to report about the service that is now running. The pass that clears is the
-   * pass that empties this. After the boot the chequebook's share is replaced the same way by each of
-   * `ChequebookRecheck`'s reads, which keep the rest.
+   * pass that empties this. After the boot `ChequebookRecheck`'s reads take each chequebook warning out
+   * once its rung is funded, and keep the rest.
    */
   public setStartGateWarnings(warnings: readonly StartGateWarning[]): void {
     this.startGateWarnings = [...warnings];
@@ -309,6 +310,15 @@ export class ServiceMetrics {
 
   public getStartGateWarnings(): readonly StartGateWarning[] {
     return this.startGateWarnings;
+  }
+
+  /** The nodes `ChequebookRecheck`'s latest read left under the floor, replacing what the read before it left. */
+  public setLowChequebooks(nodes: readonly LowChequebook[]): void {
+    this.lowChequebooks = [...nodes];
+  }
+
+  public getLowChequebooks(): readonly LowChequebook[] {
+    return this.lowChequebooks;
   }
 
   public getCounters(): MetricsCounters {

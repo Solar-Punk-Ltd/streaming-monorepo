@@ -50,11 +50,10 @@ import { GateCollector, GateFinding } from './StartGates.js';
  *
  * ## Scope
  *
- * The boot's read, and the reads `ChequebookRecheck` makes after it while a warning from that read
- * stands. What a pass found is latched onto `/health` as `start_gate_warned`, so a chequebook read at
- * boot is still visible hours later. Since 2026-09-26 it is not there for good: the chequebook is read
- * again every `CHEQUEBOOK_RECHECK_MS` until every node holds the floor, and the warning then goes
- * without a restart. A node that drains after that is a different question and is not answered here.
+ * The boot's read, and the reads `ChequebookRecheck` makes after it every `CHEQUEBOOK_RECHECK_MS` for
+ * the life of the process. What the boot's pass found is latched onto `/health` as
+ * `start_gate_warned`, and each rung leaves it on the first later read that finds its node holding the
+ * floor, without a restart. A node that falls under the floor after the boot is `chequebook_low`.
  */
 export class ChequebookGate {
   constructor(

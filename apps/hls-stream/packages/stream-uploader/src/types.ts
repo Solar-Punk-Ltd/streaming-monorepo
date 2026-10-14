@@ -354,6 +354,7 @@ export {
   UPLOADER_STATUS_DEGRADED as HEALTH_DEGRADED,
   UPLOADER_STATUS_OK as HEALTH_OK,
   UPLOADER_STATUS_WAITING_FOR_NODE as HEALTH_WAITING_FOR_NODE,
+  UPLOADER_REASON_CHEQUEBOOK_LOW as HEALTH_REASON_CHEQUEBOOK_LOW,
   UPLOADER_REASON_FRAGMENT_MISMATCH as HEALTH_REASON_FRAGMENT_MISMATCH,
   UPLOADER_REASON_FRAGMENT_PUBLISHER_GOP as HEALTH_REASON_FRAGMENT_PUBLISHER_GOP,
   UPLOADER_REASON_INGEST_REFUSED as HEALTH_REASON_INGEST_REFUSED,
@@ -384,6 +385,16 @@ export interface StartGateWarning {
   /** The gate's class name, `ChequebookGate` or `PostageGate`. */
   readonly gate: string;
   /** The ABR rung, absent on a single-node deployment and on a gate that threw before reading one. */
+  readonly rung?: string;
+}
+
+/**
+ * A publisher node whose chequebook was last read under `CHEQUEBOOK_MIN_BZZ` after the boot, as `/health`
+ * reports it. The rung and nothing else, for the reason {@link StartGateWarning} gives: the node's URL is
+ * in the log line that reported it.
+ */
+export interface LowChequebook {
+  /** The ABR rung, absent on a single-node deployment. */
   readonly rung?: string;
 }
 
@@ -642,9 +653,19 @@ export interface HealthSignals {
    * attempt while the boot waits for its node, and only the last pass describes the service that is
    * now running. Once the boot has finished, the postage gate's warnings are fixed for the life of the
    * process, like `postageRefusedPublishers`. The chequebook gate's are read again every
-   * `CHEQUEBOOK_RECHECK_MS` by `ChequebookRecheck` and leave this list once every node holds its floor.
+   * `CHEQUEBOOK_RECHECK_MS` by `ChequebookRecheck`, and each rung leaves this list once a read finds it
+   * holding its floor. A rung that drains after the boot is never added here, see `lowChequebooks`.
    */
   startGateWarnings: StartGateWarning[];
+  /**
+   * The publisher nodes whose chequebook `ChequebookRecheck`'s latest read found under
+   * `CHEQUEBOOK_MIN_BZZ`, read every `CHEQUEBOOK_RECHECK_MS` for the life of the process.
+   *
+   * A rung the boot's chequebook warning still covers is not repeated here. A read that never reached
+   * the node changes nothing: a rung stays as the last read that did reach it left it. Replaced by each
+   * read, so a funded rung leaves it on the next one. Reported only, the broadcast goes on.
+   */
+  lowChequebooks: LowChequebook[];
 }
 
 export interface HealthReport {

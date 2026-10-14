@@ -1,6 +1,7 @@
 import {
   HEALTH_DEGRADED,
   HEALTH_OK,
+  HEALTH_REASON_CHEQUEBOOK_LOW,
   HEALTH_REASON_FRAGMENT_MISMATCH,
   HEALTH_REASON_FRAGMENT_PUBLISHER_GOP,
   HEALTH_REASON_INGEST_REFUSED,
@@ -72,6 +73,14 @@ export function deriveHealthStatus(
   // and a reason per rung would read as several faults.
   if (signals.startGateWarnings.length > 0) {
     reasons.push(HEALTH_REASON_START_GATE_WARNED);
+  }
+
+  // The same fact as a chequebook warning above, for a node that ran low after the boot rather than at
+  // it. A dry node answers in a millisecond while every paid push behind it stalls, so the uploads on
+  // its rung fail before anything else here can name why. Reported, never acted on: the broadcast
+  // goes on. One reason however many rungs, as above.
+  if (signals.lowChequebooks.length > 0) {
+    reasons.push(HEALTH_REASON_CHEQUEBOOK_LOW);
   }
 
   if (signals.maxConsecutiveManifestFailures >= MANIFEST_FAILURE_THRESHOLD) {

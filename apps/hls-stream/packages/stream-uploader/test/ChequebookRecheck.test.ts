@@ -427,7 +427,9 @@ describe("the boot's chequebook warning", () => {
     book.availablePlur = bzzToPlur(2);
     await clock.advance(RECHECK_MS);
 
-    const cleared = linesAt(logger, 'info').filter((line) => line.includes(CHEQUEBOOK_GATE) && line.includes('/health'));
+    const cleared = linesAt(logger, 'info').filter(
+      (line) => line.includes(CHEQUEBOOK_GATE) && line.includes('/health'),
+    );
     assert.equal(cleared.length, 1, `no line said the warning left /health: ${JSON.stringify(logger.lines)}`);
   });
 
@@ -514,13 +516,21 @@ describe('/health as the chequebook changes', () => {
     assert.equal(drainedBody.status, HEALTH_DEGRADED);
     assert.deepEqual(drainedBody.reasons, [HEALTH_REASON_CHEQUEBOOK_LOW]);
     assert.deepEqual(drainedBody.lowChequebooks, [{ rung: '1080p' }]);
-    assert.doesNotMatch(JSON.stringify(drainedBody.lowChequebooks), /bee-1080/, 'the unauthenticated page names a node url');
+    assert.doesNotMatch(
+      JSON.stringify(drainedBody.lowChequebooks),
+      /bee-1080/,
+      'the unauthenticated page names a node url',
+    );
 
     book.availablePlur = bzzToPlur(2);
     await clock.advance(RECHECK_MS);
     const recovered = await api.request('/health');
 
-    assert.equal(recovered.status, 200, `a funded node still answers ${recovered.status}: ${JSON.stringify(recovered.body)}`);
+    assert.equal(
+      recovered.status,
+      200,
+      `a funded node still answers ${recovered.status}: ${JSON.stringify(recovered.body)}`,
+    );
     assert.deepEqual((recovered.body as Record<string, unknown>).lowChequebooks, []);
   });
 });
