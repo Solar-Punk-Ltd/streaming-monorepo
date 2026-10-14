@@ -1,6 +1,7 @@
 import {
   type DeploymentSettingsApplied,
   type DeploymentSettingsCatalog,
+  engineOfServices,
   INGEST_READ,
   type IngestHealthReading,
   parseBeePublishers,
@@ -45,6 +46,10 @@ export interface BatchUploader {
   behind: boolean;
   /** What its Apply recreates, every service when a changed key reaches the deploy scripts alone. */
   recreates: readonly string[] | 'all';
+  /** The key that carries this node's batch to the uploader, `STAMP` or `BEE_PUBLISHERS`. */
+  batchKey: string;
+  /** Every saved key the running containers are behind on, which Apply applies all together. */
+  changedKeys: readonly string[];
 }
 
 /** How a batch the node holds stands against the uploaders that pay with the node's batches. */
@@ -70,6 +75,8 @@ export function ownUploaderOf(name: string, catalog: DeploymentSettingsCatalog):
     runningBatchId: entry.runningValue,
     behind: catalog.running && entry.running === 'differs',
     recreates: recreatesOf(catalog),
+    batchKey: STAMP_KEY,
+    changedKeys: catalog.drift.keys,
   };
 }
 
@@ -98,6 +105,8 @@ export function stageUploaderOf(name: string, catalog: DeploymentSettingsCatalog
     runningBatchId,
     behind: catalog.running && entry.running === 'differs' && rungDiffers,
     recreates: recreatesOf(catalog),
+    batchKey: BEE_PUBLISHERS_KEY,
+    changedKeys: catalog.drift.keys,
   };
 }
 
@@ -166,10 +175,23 @@ export interface BatchNotice {
   rows: BatchNoticeRow[];
 }
 
+/** The saved keys Apply would carry besides the batch, which the operator did not just choose. */
+function otherKeysOf(uploader: BatchUploader): readonly string[] {
+  return uploader.changedKeys.filter((key) => key !== uploader.batchKey);
+}
+
 function applyWhat(uploader: BatchUploader): string {
-  return uploader.recreates === 'all'
-    ? `Apply now redeploys every service of ${uploader.name}.`
-    : `Apply now recreates ${wordList(uploader.recreates)}.`;
+  const keys = uploader.changedKeys.length > 0 ? uploader.changedKeys : [uploader.batchKey];
+  const restarts =
+    uploader.recreates === 'all'
+      ? `redeploys every service of ${uploader.name}`
+      : `recreates ${wordList(uploader.recreates)}`;
+  const others = otherKeysOf(uploader);
+  const earlier =
+    others.length === 0
+      ? ''
+      : ` ${wordList(others)} ${others.length === 1 ? 'was' : 'were'} saved earlier and not applied yet.`;
+  return `Apply now applies ${wordList(keys)} and ${restarts}.${earlier}`;
 }
 
 /** What the stamp card says while an uploader still pays with another batch than the saved one, or null. */
@@ -212,18 +234,65 @@ export interface ApplyConfirm extends Omit<ConfirmRequest, 'body' | 'onConfirm'>
   onConfirm: () => Promise<void>;
 }
 
-/** What Apply now asks first, or null when nobody is publishing. */
+/**
+ * Whether Apply recreates the media server, or every service, which
+ * disconnects the encoder rather than restarting the uploader alone.
+ */
+function dropsEncoder(uploader: BatchUploader): boolean {
+  return uploader.recreates === 'all' || engineOfServices(uploader.recreates) !== null;
+}
+
+function restartSentence(uploader: BatchUploader): string {
+  if (uploader.recreates === 'all') {
+    return `This redeploys every service of ${uploader.name}, so the encoder is disconnected and has to reconnect.`;
+  }
+  if (dropsEncoder(uploader)) {
+    return `This recreates ${wordList(uploader.recreates)}, so the encoder is disconnected and has to reconnect.`;
+  }
+  const others = uploader.recreates.filter((service) => service !== 'stream-uploader');
+  return others.length === 0
+    ? 'The stream uploader restarts on the saved batch.'
+    : `This recreates ${wordList(uploader.recreates)}.`;
+}
+
+function broadcastSentence(uploader: BatchUploader, broadcast: BroadcastState): string | null {
+  const effect = dropsEncoder(uploader)
+    ? 'stops until the encoder reconnects'
+    : 'drops for a few seconds while the uploader restarts';
+  if (broadcast === 'live') return `The live broadcast on ${uploader.name} ${effect}.`;
+  if (broadcast === 'unknown') {
+    const ifLive = dropsEncoder(uploader)
+      ? 'it stops until the encoder reconnects'
+      : 'it drops for a few seconds while the uploader restarts';
+    return `The console cannot tell whether a broadcast is live on ${uploader.name}. If one is, ${ifLive}.`;
+  }
+  return null;
+}
+
+/**
+ * What Apply now asks first, or null when it would apply the batch alone and
+ * nobody is publishing. Apply carries every saved key the deployment is behind
+ * on, so one the operator did not just choose is always asked about.
+ */
 export function applyConfirmFor(
-  name: string,
+  uploader: BatchUploader,
   broadcast: BroadcastState,
   onConfirm: () => Promise<void> = async () => undefined,
 ): ApplyConfirm | null {
-  if (broadcast === 'idle') return null;
-  const body =
-    broadcast === 'live'
-      ? `The live broadcast on ${name} drops for a few seconds while the uploader restarts on the saved batch.`
-      : `The console cannot tell whether a broadcast is live on ${name}. If one is, it drops for a few seconds while the uploader restarts on the saved batch.`;
-  return { title: `Apply the saved batch on ${name}?`, body, confirmLabel: 'Apply now', onConfirm };
+  const others = otherKeysOf(uploader);
+  if (broadcast === 'idle' && others.length === 0) return null;
+  const body = [
+    restartSentence(uploader),
+    broadcastSentence(uploader, broadcast),
+    others.length > 0
+      ? `It also applies ${wordList(others)}, saved earlier and not applied yet, not only the batch.`
+      : null,
+  ]
+    .filter((sentence) => sentence !== null)
+    .join(' ');
+  const title =
+    others.length > 0 ? `Apply every saved setting on ${uploader.name}?` : `Apply the saved batch on ${uploader.name}?`;
+  return { title, body, confirmLabel: 'Apply now', onConfirm };
 }
 
 export interface ApplyNowDeps {
@@ -236,7 +305,8 @@ export interface ApplyNowDeps {
 
 /**
  * The settings list's own Apply for one uploader, asked first while its
- * broadcast is live or cannot be told. A failed apply rejects from here, or
+ * broadcast is live or cannot be told, or while it would apply more than the
+ * batch. A failed apply rejects from here, or
  * from the confirmation's onConfirm, for the caller to show.
  */
 export async function applyNow(uploader: BatchUploader, deps: ApplyNowDeps): Promise<void> {
@@ -244,7 +314,7 @@ export async function applyNow(uploader: BatchUploader, deps: ApplyNowDeps): Pro
   const run = async () => {
     await deps.done(await deps.apply(uploader.name, uploader.instanceId));
   };
-  const request = applyConfirmFor(uploader.name, broadcastStateOf(reading), run);
+  const request = applyConfirmFor(uploader, broadcastStateOf(reading), run);
   if (request) {
     deps.confirm(request);
     return;

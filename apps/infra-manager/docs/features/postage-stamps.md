@@ -154,12 +154,17 @@ says so where the operator clicked:
   pays with the one it started with, naming that batch when the manager's
   container record has it.
 - Beside it, **Apply now** runs the deployment's own settings Apply, the one the
-  Stack settings card offers, which recreates only the containers behind on a
-  saved setting (normally the stream uploader alone) and says which.
-- When SRS reports a publisher in its last window, Apply now first asks, saying
-  the live broadcast drops for a few seconds while the uploader restarts. When
-  the console cannot tell (another engine than SRS, a log it could not read, or
-  no answer) it asks too, and says it cannot tell.
+  Stack settings card offers. That Apply carries every saved setting the running
+  containers are behind on, not only the batch, so the row names each key it
+  applies, says which of them were saved earlier, and says what it recreates
+  (normally the stream uploader alone).
+- Apply now asks first whenever it would apply more than the batch, even with
+  nobody publishing, naming the other keys. It also asks when SRS reports a
+  publisher in its last window, and when the console cannot tell (another engine
+  than SRS, a log it could not read, or no answer). The question is worded from
+  what gets recreated: with the uploader alone the live broadcast drops for a
+  few seconds while it restarts, and with SRS, OvenMediaEngine or every service
+  the encoder is disconnected and the broadcast stops until it reconnects.
 - The chip on each batch follows the running uploader, read from the
   `runningValue` the settings list carries for `STAMP` (see
   [deployment-settings.md](deployment-settings.md)): **in use** on the batch
