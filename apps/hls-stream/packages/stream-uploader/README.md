@@ -179,6 +179,15 @@ the playlist. Dating, ordering and restart detection still use the session-local
 shared anchor, so rungs that resume different feed heads still date the same media alike. A recovered
 session restores its saved offset instead of reading its own latest playlist as a predecessor.
 
+That read of the feed head is slow on the stage's rung nodes: the node waits out its own probe of
+the slot after the head, so it took 4.0 s at the median and 5.1 s at most over 119 reads on
+2026-10-14. It therefore carries its own deadline, the 15 s read window, on a reader made for each
+attempt, rather than `BEE_REQUEST_TIMEOUT_MS`. Until it answers, the rung publishes no manifest and
+asks again at its next segment, because a guess would write over the previous broadcast. Before
+this, the pool's 4 s deadline ended almost every such read, and a reader kept across the attempts
+left every retry already out of time, so a broadcast on a stream that had broadcast before could
+publish a live playlist for one rung of four for its whole length.
+
 The example above is therefore a fresh topic. A later session on the same declared or rung feed has
 the same shape but may open at a value above 0, with `#EXT-X-DISCONTINUITY` on its first segment to
 mark the seam from the earlier session.
@@ -576,7 +585,7 @@ The API server starts on port 3000 (default).
 | `CHEQUEBOOK_RECHECK_MS`  | `60000`              | How long to wait between reads of a chequebook the boot warned about, 1000 to 3600000. The warning leaves `/health` on the first read that finds every node funded, and nothing is read while no chequebook warning stands                         |
 | `STAMP_MIN_TTL_HOURS`    | `12`                 | Hours a postage batch must have left for the postage gate to call it usable                                                                                                                                                                        |
 | `STAMP_MAX_UTILIZATION`  | `0.9`                | How full an immutable batch may be, as a ratio, for the postage gate to call it usable. A mutable batch overwrites its oldest chunks when full rather than refusing, so it is never held to this                                                   |
-| `BEE_REQUEST_TIMEOUT_MS` | `4000`               | Per-request deadline on every upload-loop call to a Bee node, derived from the retry windows                                                                                                                                                       |
+| `BEE_REQUEST_TIMEOUT_MS` | `4000`               | Per-request deadline on every upload-loop call to a Bee node, derived from the retry windows. The feed head read before a restarted stream's first publish carries the 15 s read window instead                                                    |
 | `SEGMENT_DEDUP_WINDOW`   | `10000`              | Segment indexes remembered per stream, twice this many held at most                                                                                                                                                                                |
 | `SEGMENT_REDUNDANCY`     | `1`                  | Erasure-coding parity on segment uploads, `0` turns it off                                                                                                                                                                                         |
 | `ENGINE`                 | _(empty)_            | Engine plugin to load (`srs`, `ome` or empty)                                                                                                                                                                                                      |
