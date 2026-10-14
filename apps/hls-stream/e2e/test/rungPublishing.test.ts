@@ -17,6 +17,7 @@ import {
   rungMetricPairing,
   rungMetricRefusal,
   segmentUploadsByRung,
+  socIndexRefusal,
   staleManifestWarnings,
   staleWarningRefusal,
   topicResumes,
@@ -272,5 +273,29 @@ describe('rungMetricPairing, read off what the uploader actually renders', () =>
       rungMetricRefusal(rungMetricPairing('', '', new Map())) ?? '',
       /no swarm_hls_rung_segments_uploaded_total/,
     );
+  });
+});
+
+describe('socIndexRefusal', () => {
+  const before = [
+    ...announces(),
+    textLine(manifestUploaded(streamOf('360p'), 40)),
+    textLine(manifestUploaded(streamOf('1080p'), 40)),
+  ].join('\n');
+
+  it('passes a restart whose every publish continues above where the feed stood, without announcing again', () => {
+    const after = [textLine(manifestUploaded(streamOf('360p'), 41)), textLine(manifestUploaded(streamOf('1080p'), 41))];
+    assert.equal(socIndexRefusal(before, after.join('\n'), RUNGS), null);
+  });
+
+  it('refuses a rung that started again at 0 or wrote over its own head', () => {
+    const after = [textLine(manifestUploaded(streamOf('360p'), 0)), textLine(manifestUploaded(streamOf('1080p'), 40))];
+    const refusal = socIndexRefusal(before, after.join('\n'), RUNGS);
+    assert.match(refusal ?? '', /360p wrote SOC index 0 at or below the 40/);
+    assert.match(refusal ?? '', /1080p wrote SOC index 40 at or below the 40/);
+  });
+
+  it('refuses a rung that published nothing before, whose feed position is unknown', () => {
+    assert.match(socIndexRefusal(announces().join('\n'), '', ['360p']) ?? '', /published no live playlist before/);
   });
 });

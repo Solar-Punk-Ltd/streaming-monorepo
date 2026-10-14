@@ -191,6 +191,57 @@ export function missingTopicResumes(before: string, after: string): string[] {
   return [...missing];
 }
 
+/** Every rung's live manifest SOC indices in publish order, keyed the way {@link manifestPublishesByRung} keys counts. */
+export function manifestIndicesByRung(logText: string): ReadonlyMap<string, readonly number[]> {
+  const rungOf = rungByStreamId(logText);
+  const byRung = new Map<string, number[]>();
+  for (const [streamId, indices] of manifestIndicesByStream(logText)) {
+    const key = rungOf.get(streamId) ?? streamId;
+    byRung.set(key, [...(byRung.get(key) ?? []), ...indices]);
+  }
+  return byRung;
+}
+
+/**
+ * Which rungs published a live manifest after a restart at an SOC index that does not continue the feed, or null.
+ *
+ * ⛔ Every index after has to be above the highest index before, and none may be 0. A feed lookup resolves the
+ * highest index it finds, so a session that writes at or below its predecessor's head has written a playlist no viewer
+ * will ever be handed, and index 0 is the previous recording's opening.
+ *
+ * @param before the log up to the restart, which holds where each rung's feed stood
+ * @param after the log from the restart on. Rung names are joined through both windows' announces, because a
+ *   recovered session may not announce again.
+ */
+export function socIndexRefusal(before: string, after: string, rungs: readonly string[]): string | null {
+  const wereAt = manifestIndicesByRung(before);
+  const nowAt = manifestIndicesByRung(joinedForRungNames(before, after));
+  const problems = rungs.flatMap((rung) => {
+    const earlier = wereAt.get(rung) ?? [];
+    const later = nowAt.get(rung) ?? [];
+    if (earlier.length === 0) {
+      return [`${rung} published no live playlist before the restart, so where its feed stood is unknown`];
+    }
+    const top = Math.max(...earlier);
+    const behind = later.filter((index) => index <= top || index === 0);
+    return behind.length === 0
+      ? []
+      : [`${rung} wrote SOC index ${behind.join(', ')} at or below the ${top} it had reached`];
+  });
+  return problems.length === 0
+    ? null
+    : `a rung's live playlist did not continue its feed after the restart: ${problems.join('; ')}`;
+}
+
+/**
+ * The later window's manifest lines with the earlier window's announces in front, so a stream that does not announce
+ * again after a restart is still named by its rung. Only announces are carried over, never a manifest line.
+ */
+function joinedForRungNames(before: string, after: string): string {
+  const announces = before.split('\n').filter((line) => announcedRungs(line).length > 0);
+  return [...announces, after].join('\n');
+}
+
 /** Whether one feed's head moved between two readings: both readable, and the later one ends further on. */
 export function headAdvanced(first: RungPlaylistParse, second: RungPlaylistParse): boolean {
   return first.lastSequence !== null && second.lastSequence !== null && second.lastSequence > first.lastSequence;
@@ -324,6 +375,11 @@ interface RungPlaylistsLiveCheck {
   /** How long every head is given to move. */
   headWaitMs: number;
   /**
+   * An earlier log window whose rung announces name this one's streams. A session rebuilt from a recovery entry does
+   * not announce again, so without it a recovered rung's lines carry a stream id and no rung name.
+   */
+  namesFrom?: string;
+  /**
    * Whether a stale warning refuses. True on every healthy suite. A fault suite passes false and reads its own
    * post-fault window instead, where any stale warning is again a refusal.
    */
@@ -342,21 +398,25 @@ interface RungPlaylistsLiveCheck {
 export async function checkRungPlaylistsLive(
   host: Host,
   cfg: E2EConfig,
-  { log, rungs, minPublishes, publishWaitMs, headWaitMs, refuseStale = true }: RungPlaylistsLiveCheck,
+  { log, rungs, minPublishes, publishWaitMs, headWaitMs, namesFrom, refuseStale = true }: RungPlaylistsLiveCheck,
 ): Promise<RungPublishingVerdict> {
+  const named = async (): Promise<string> => {
+    const text = await log();
+    return namesFrom === undefined ? text : joinedForRungNames(namesFrom, text);
+  };
   const expectedOf = (text: string): string[] =>
     rungs === null ? [...segmentIndicesByStream(text).keys()] : [...rungs];
   const refusals: string[] = [];
 
   await waitFor(
     async () => {
-      const text = await log();
+      const text = await named();
       return everyRungPublishedAtLeast(text, expectedOf(text), minPublishes);
     },
     { timeoutMs: publishWaitMs, intervalMs: 3_000, label: `every rung publishes ${minPublishes} live playlists` },
   ).catch(() => undefined);
 
-  const text = await log();
+  const text = await named();
   const expected = expectedOf(text);
   const publishes = manifestPublishesByRung(text);
   const shortfall = publishShortfall(publishes, expected, minPublishes);
