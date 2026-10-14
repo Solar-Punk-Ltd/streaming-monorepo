@@ -388,9 +388,7 @@ export function StreamFormPage() {
                 <ScheduleField
                   value={form.scheduledStartTime}
                   onChange={(v) => set('scheduledStartTime', v)}
-                  error={
-                    error === ERROR_MESSAGES.SCHEDULED_TIME_REQUIRED
-                  }
+                  error={error === ERROR_MESSAGES.SCHEDULED_TIME_REQUIRED}
                   disabled={saving || scheduleLocked}
                   helperText={scheduleLocked ? SCHEDULE_LOCKED : undefined}
                 />
