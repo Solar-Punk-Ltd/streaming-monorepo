@@ -516,7 +516,9 @@ full, while only warning about a batch it could not read at all.
 warning, and `chequebook-warn` is the shipped middle. `START_GATE_TIMEOUT_MS` is how long each of
 those reads may take, twenty seconds by default and ten minutes at most. A chequebook warning does
 not need a restart to clear: the uploader reads every chequebook again each `CHEQUEBOOK_RECHECK_MS`,
-a minute by default, and takes the warning off `/health` once every node holds `CHEQUEBOOK_MIN_BZZ`.
+a minute by default and for as long as it runs, and takes each rung's warning off `/health` once its
+node holds `CHEQUEBOOK_MIN_BZZ`. A node that falls under the floor later, during a broadcast, is
+reported on `/health` as `chequebook_low` until it is funded, and the broadcast goes on.
 A postage warning stays until the uploader is restarted. What a deployment cannot ask
 for is an exit on a node that never answered, which is the state the ruling removed. `bee-uploader` is the 360p rung as well as the shared default, so the
 catalog and every ladder master go through it. Their ports, data directories and what each one has to

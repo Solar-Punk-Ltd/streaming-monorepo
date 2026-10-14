@@ -170,7 +170,8 @@ const ROOT_SAMPLE = [
   {
     key: 'CHEQUEBOOK_RECHECK_MS',
     section: 'Stream Uploader',
-    description: 'How often a chequebook the uploader warned about is read again, so /health clears once it is funded.',
+    description:
+      'How often the uploader reads every chequebook, so /health clears once one is funded and names one that runs low.',
     version: '60000',
     services: UPLOADER,
   },
