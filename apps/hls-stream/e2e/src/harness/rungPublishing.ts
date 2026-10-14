@@ -169,6 +169,16 @@ export function crashRecoveredStreams(logText: string): string[] {
   return [...new Set([...messageText(logText).matchAll(RECOVERED_LINE)].map((match) => match[1]))];
 }
 
+const REAPED_AFTER_DISCONNECT_LINE = /The encoder feeding (\S+) left and did not come back within the/g;
+
+/**
+ * Streams whose reconnect window ran out after their encoder left, which is the moment their session starts to drain
+ * into a recording. On SRS this is how every ordinary broadcast ends, see `logReap` in the uploader.
+ */
+export function reapedAfterDisconnect(logText: string): string[] {
+  return [...new Set([...messageText(logText).matchAll(REAPED_AFTER_DISCONNECT_LINE)].map((match) => match[1]))];
+}
+
 /**
  * The rungs that opened a session on a topic an earlier session had announced and wrote no resume line for it.
  *

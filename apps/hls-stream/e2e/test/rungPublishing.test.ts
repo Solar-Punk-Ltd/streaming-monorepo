@@ -15,6 +15,7 @@ import {
   manifestPublishesByRung,
   missingTopicResumes,
   publishShortfall,
+  reapedAfterDisconnect,
   rungMetricPairing,
   rungMetricRefusal,
   segmentUploadsByRung,
@@ -308,5 +309,16 @@ describe('feedIndexFromHeaders', () => {
 
   it('answers null for a feed with nothing on it', () => {
     assert.equal(feedIndexFromHeaders('HTTP/1.1 404 Not Found\r\n\r\n'), null);
+  });
+});
+
+describe('reapedAfterDisconnect', () => {
+  it('reads the stream whose reconnect window ran out', () => {
+    const log = textLine(
+      `[StreamOrchestrator] The encoder feeding ${streamOf('1080p')} left and did not come back within the 60s ` +
+        'reconnect window, so its broadcast ends here and is finalized as a VOD',
+    );
+    assert.deepEqual(reapedAfterDisconnect(log), [streamOf('1080p')]);
+    assert.deepEqual(reapedAfterDisconnect(announces().join('\n')), []);
   });
 });

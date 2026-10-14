@@ -243,6 +243,17 @@ export const PARSED_LINES: readonly ParsedLine[] = [
       'right never to make',
   },
   {
+    what: 'a reconnect window running out ("The encoder feeding <stream> left and did not come back within the")',
+    level: 'info',
+    emittedBy: {
+      file: 'libs/StreamOrchestrator.ts',
+      fragment: 'The encoder feeding ${streamId} left and did not come back within the ',
+    },
+    neededBy:
+      'reapedAfterDisconnect, which scenario K reconnects on. Dropped, K waits out its window and blames the ' +
+      'uploader for a drain it never saw start',
+  },
+  {
     what: 'a publish refused because the admin did not answer ("refused <stream>: the admin API did not resolve it")',
     level: 'error',
     emittedBy: { file: 'engines/adminGate.ts', fragment: 'refused ${streamId}: the admin API did not resolve it (' },
