@@ -423,6 +423,7 @@ skipped, unless the admin settings are given, and `pnpm e2e:admin` runs the gate
 | `admin/rebroadcast-three-times` | (G2) three broadcasts in a row on one declared stream: every session publishes a moving live playlist on every rung, each rung resumes the topic at a strictly higher SOC index each time, the recording keeps three more sessions, and the live recovery entry does not grow with every session glued |
 | `admin/rebroadcast-vod` | (G17) the recording a declared stream glued from several sessions plays in the shipped client as one broadcast: the whole ladder, finished, and as long as its longest rung recorded. Needs a browser, and reads the recording `admin/rebroadcast-three-times` leaves |
 | `admin/rebroadcast-expired-batch` | (G3) a declared stream broadcast again after its earlier batch expired still publishes a moving live playlist on every rung, writes no stale warning, and finishes with a recording on every rung. Needs a stage fixture, `E2E_ADMIN_EXPIRED_STREAM_ID`, and checks it before broadcasting |
+| `admin/catalog-lifecycle` | a throwaway declared stream broadcast, unpublished as a draft with its recording kept on its feeds, published again as the same recording with the same manifest index and duration, then unpublished and deleted. The admin refuses an unpublish or a delete while live and a delete while on the catalogue. Needs `E2E_ADMIN_STAGE_ID` |
 
 ## In-browser node first
 
