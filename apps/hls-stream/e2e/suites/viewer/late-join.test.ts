@@ -4,7 +4,7 @@ import { after, before, describe, it } from 'node:test';
 import { byteSourceFromEnv } from '../../src/browser/fetchBackendSweep.js';
 import { containerName, loadConfig } from '../../src/config.js';
 import { runBrowserArm } from '../../src/harness/browser.js';
-import { viewerPlaybackRefusal } from '../../src/harness/browserVerdict.js';
+import { byteSourceArmRefusal, viewerPlaybackRefusal } from '../../src/harness/browserVerdict.js';
 import { makeHost, waitForIdle } from '../../src/harness/host.js';
 import { segmentIndicesByStream } from '../../src/harness/logwatch.js';
 import { type Publisher, startPublisher } from '../../src/harness/publisher.js';
@@ -31,6 +31,11 @@ const JOIN_AFTER_MS = 180_000;
 const WATCH_MINUTES = 2;
 const FIRST_SEGMENT_WAIT_MS = 120_000;
 const MIN_STAMP_TTL_S = 600;
+/**
+ * The most `/bytes/` requests an in-tab arm may make across the whole run, the same ceiling V1 sets and for its
+ * reason: an in-tab arm reads through the gateway only while its own node boots. Joining late adds no gateway read.
+ */
+const MAX_WEEB3_SEGMENT_REQUESTS = 9;
 
 const cfg = loadConfig();
 const backend = byteSourceFromEnv(process.env.BROWSER_FETCH_BACKEND);
@@ -69,6 +74,8 @@ describe('a viewer joining three minutes in starts at the live edge', { skip }, 
         `${result.behindLive.medianS?.toFixed(1) ?? '?'}s at the median`,
     );
     assert.equal(viewerPlaybackRefusal(result), null, viewerPlaybackRefusal(result) ?? '');
+    const notItsCondition = byteSourceArmRefusal(result, { maxSegmentRequests: MAX_WEEB3_SEGMENT_REQUESTS });
+    assert.equal(notItsCondition, null, `this arm is not the byte source it is filed as: ${notItsCondition}`);
     assert.ok(result.behindLive.joinS !== null, 'the arm read no position at the join, so where it started is unknown');
     assert.ok(
       result.behindLive.joinS < ageAtJoinS / 2,
