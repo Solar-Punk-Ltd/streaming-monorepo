@@ -21,14 +21,23 @@ export interface DeploymentSettingsLoad {
 }
 
 /**
+ * What moves a deployment's list without a save on its page. Apply and Start
+ * both go through a deploy, which moves the status. A batch set with Use, or
+ * bought and set on its own, moves `STAMP`, and a batch set on a rung moves
+ * the pool string of every stage its pool feeds, while nothing that runs has
+ * changed. A list read before any of these is out of date the moment it lands.
+ */
+export function settingsReadKey(profile: Pick<Profile, 'status' | 'stamp_id' | 'bee_publishers'>): string {
+  return JSON.stringify([profile.status, profile.stamp_id ?? null, profile.bee_publishers ?? null]);
+}
+
+/**
  * A deployment's settings list, read when the page opens and again whenever
- * the deployment's status moves. Apply and Start both go through a deploy, and
- * the list is what says which settings the containers it started are behind
- * on, so a list read before the deploy landed is out of date the moment it
- * lands. Only the newest read's answer is kept.
+ * its `settingsReadKey` moves. Only the newest read's answer is kept.
  */
 export function useDeploymentSettings(profile: Profile): DeploymentSettingsLoad {
-  const { name, status } = profile;
+  const { name } = profile;
+  const readKey = settingsReadKey(profile);
   const [catalog, setCatalog] = useState<DeploymentSettingsCatalog | null>(null);
   const [failure, setFailure] = useState<LoadFailure | null>(null);
   const latest = useRef(0);
@@ -68,7 +77,7 @@ export function useDeploymentSettings(profile: Profile): DeploymentSettingsLoad 
       latest.current += 1;
       inFlight.current?.abort();
     };
-  }, [reload, status]);
+  }, [reload, readKey]);
 
   return { catalog, failure, reload };
 }

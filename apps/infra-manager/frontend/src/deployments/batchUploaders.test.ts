@@ -22,7 +22,7 @@ import {
 } from '@streaming-infra-manager/common';
 
 import {
-  applyConfirmFor,
+  type ApplyConfirm,
   applyNow,
   type BatchUploader,
   batchChipOf,
@@ -35,6 +35,7 @@ import {
   stagesUsingNode,
 } from './batchUploaders';
 import { shortHex } from '../format';
+import type { Profile } from '../types';
 import { settingsReadKey } from './settings/useDeploymentSettings';
 
 const OLD = 'a'.repeat(64);
@@ -64,7 +65,10 @@ function entry(overrides: Partial<DeploymentSettingEntry> & { key: string }): De
   };
 }
 
-function catalog(entries: DeploymentSettingEntry[], over: Partial<DeploymentSettingsCatalog> = {}): DeploymentSettingsCatalog {
+function catalog(
+  entries: DeploymentSettingEntry[],
+  over: Partial<DeploymentSettingsCatalog> = {},
+): DeploymentSettingsCatalog {
   const behind = entries.filter((candidate) => candidate.running === 'differs');
   return {
     instanceId: '00000000-0000-4000-8000-000000000001',
@@ -274,7 +278,10 @@ describe('the notice on the stamp card', () => {
     ]);
 
     assert.match(notice?.lead ?? '', /is saved for the stages this rung publishes for/);
-    assert.match(notice?.lead ?? '', /Each stage's uploader still pays with the batch it started with until it restarts/);
+    assert.match(
+      notice?.lead ?? '',
+      /Each stage's uploader still pays with the batch it started with until it restarts/,
+    );
     assert.deepEqual(notice?.rows, [
       { name: 'stage-a', own: false, what: 'Apply now redeploys every service of stage-a.' },
       { name: 'stage-c', own: false, what: 'Apply now recreates srs and stream-uploader.' },
@@ -312,14 +319,14 @@ describe('whether a broadcast is live', () => {
 describe('Apply now', () => {
   function harness(reading: IngestHealthReading | Error) {
     const calls: string[] = [];
-    let asked: ReturnType<typeof applyConfirmFor> = null;
+    let asked: ApplyConfirm | null = null;
     const deps = {
       readIngest: async (name: string) => {
         calls.push(`read ${name}`);
         if (reading instanceof Error) throw reading;
         return reading;
       },
-      confirm: (request: NonNullable<ReturnType<typeof applyConfirmFor>>) => {
+      confirm: (request: ApplyConfirm) => {
         calls.push('confirm');
         asked = request;
       },
@@ -342,7 +349,10 @@ describe('Apply now', () => {
     assert.deepEqual(run.calls, ['read main-stage', 'confirm']);
     const request = run.asked();
     assert.ok(request);
-    assert.match(String(request.body), /live broadcast on main-stage drops for a few seconds while the uploader restarts/);
+    assert.match(
+      String(request.body),
+      /live broadcast on main-stage drops for a few seconds while the uploader restarts/,
+    );
     assert.equal(request.confirmLabel, 'Apply now');
 
     await request.onConfirm();
@@ -414,7 +424,11 @@ describe('the settings are read again the moment a Use lands', () => {
   });
 
   it("re-reads a deployment's own list when its batch or its pool string moves, not only its status", () => {
-    const base = { status: 'RUNNING', stamp_id: OLD, bee_publishers: null };
+    const base: Pick<Profile, 'status' | 'stamp_id' | 'bee_publishers'> = {
+      status: 'RUNNING',
+      stamp_id: OLD,
+      bee_publishers: null,
+    };
 
     assert.notEqual(settingsReadKey(base), settingsReadKey({ ...base, stamp_id: NEW }));
     assert.notEqual(settingsReadKey(base), settingsReadKey({ ...base, bee_publishers: publishers(NEW) }));

@@ -190,6 +190,9 @@ save and Apply they name a value the engine does not run yet. The page reads the
 card and both of those, and they mark every value whose key the running containers are behind on as
 **saved, not applied**. A save that lands also reads the deployment's row again, because the manager
 announces no change for a save, so both show the value it stored rather than the one before it.
+The list is read again whenever the deployment's status, its batch or its pool string moves, so a
+batch set with **Use** on the Storage card shows in the banner at once (since 2026-10-14,
+SPDV-1437).
 
 - **Folded by the sample's sections**, in the order they first appear, with the deployment's own
   engine settings in an **Engine settings** section first and the keys the version no longer

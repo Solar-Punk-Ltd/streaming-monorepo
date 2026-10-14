@@ -368,7 +368,11 @@ recorded batch is usually why: it is full or running out. The one exception is
 a batch set with `POST /profiles/:name/stamp/set` while the bought one settled,
 which is kept, and the log says so. Setting a stamp redeploys nothing, so an
 uploader already running goes on paying with the batch its env file named when
-it was deployed, until the deployment is deployed again.
+it was deployed, until it restarts. The settings list then shows `STAMP`, or on
+an ABR stage `BEE_PUBLISHERS`, as behind, with the batch the container was
+started with in its `runningValue`, and the console's Storage card offers that
+deployment's `POST /profiles/:name/settings/apply` as Apply now (since
+2026-10-14, SPDV-1437, `docs/features/postage-stamps.md`).
 
 The test is the component set, never the kind: a `custom` deployment that
 includes `stream-uploader` behaves exactly like a `streamer`. A pool-backed
