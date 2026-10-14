@@ -318,6 +318,26 @@ describe('what the running containers were started with', () => {
     assert.equal(entryOf(catalog, 'RPC_ENDPOINT').runningValue, null);
   });
 
+  it('never answers a secret or a chain endpoint even from a record that kept one in clear', () => {
+    const leaky = (service: string): ContainerRow => {
+      const built = record(service, RUNNING_ENV);
+      return {
+        ...built,
+        env: {
+          ...built.env,
+          ADMIN_API_TOKEN: RUNNING_ENV.ADMIN_API_TOKEN,
+          RPC_ENDPOINT: RUNNING_ENV.RPC_ENDPOINT,
+        },
+      };
+    };
+    const catalog = deploymentSettingsCatalogOf(input({ records: [leaky('stream-uploader'), leaky('bee-uploader')] }));
+
+    assert.ok(leaky('stream-uploader').env_salt, 'the record is one the list reads, with a salt and digests');
+    assert.equal(entryOf(catalog, 'ADMIN_API_TOKEN').runningValue, null);
+    assert.equal(entryOf(catalog, 'RPC_ENDPOINT').runningValue, null);
+    assert.doesNotMatch(JSON.stringify(catalog), /synthetic-admin-token|synthetic-provider-key/);
+  });
+
   it('answers nothing for a key no record covers, a record from before digests, and a stopped deployment', () => {
     const legacy = { ...record('stream-uploader', RUNNING_ENV), env_salt: null, env_digests: {} };
 
