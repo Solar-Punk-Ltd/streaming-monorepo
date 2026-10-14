@@ -77,6 +77,8 @@ interface CatalogBeeOptions {
   stateEntries?: unknown[];
   /** The timeout each reader was made with, in order, when a test wants to see it. */
   readerTimeouts?: (number | undefined)[];
+  /** How many writers were made, when a test wants to see it. */
+  writersMade?: { count: number };
 }
 
 function makeCatalogBee(writes: CapturedWrite[], opts: CatalogBeeOptions = {}): Bee {
@@ -119,17 +121,22 @@ function makeCatalogBee(writes: CapturedWrite[], opts: CatalogBeeOptions = {}): 
           },
         };
       },
-      makeWriter: () => ({
-        uploadPayload: async (_stamp: string, payload: unknown, writeOpts: Omit<CapturedWrite, 'payload'>) => {
-          const err = opts.writeFails?.();
-          if (err) {
-            throw err;
-          }
-          await opts.holdWrite?.();
-          writes.push({ ...writeOpts, payload: String(payload) });
-          return { reference: { toHex: () => 'ref' } };
-        },
-      }),
+      makeWriter: () => {
+        if (opts.writersMade) {
+          opts.writersMade.count += 1;
+        }
+        return {
+          uploadPayload: async (_stamp: string, payload: unknown, writeOpts: Omit<CapturedWrite, 'payload'>) => {
+            const err = opts.writeFails?.();
+            if (err) {
+              throw err;
+            }
+            await opts.holdWrite?.();
+            writes.push({ ...writeOpts, payload: String(payload) });
+            return { reference: { toHex: () => 'ref' } };
+          },
+        };
+      },
     },
     connectivity: {
       isConnected: async () => opts.nodeLive ?? true,
@@ -270,6 +277,30 @@ describe('StreamCatalog survives a transient Bee failure (TEST-1)', () => {
 
     assert.equal(attempts, 2, 'a 503 from a busy node has to be attempted again');
     assert.equal(writes.length, 1, 'and the entry reaches the feed, so the stream is discoverable');
+  });
+
+  /**
+   * A writer carries one deadline counted from when it is made, so the retry above is only worth
+   * anything on a writer of its own. See DeadlineBee in BeePublisherPool.ts.
+   */
+  it('makes a writer for each attempt, so a retry is not handed a deadline already spent', async () => {
+    const writersMade = { count: 0 };
+    let attempts = 0;
+    const catalog = new StreamCatalog(
+      makePublishers(
+        makeCatalogBee([], {
+          lookupThrows: FEED_NOT_FOUND,
+          writersMade,
+          writeFails: () => (attempts++ === 0 ? Object.assign(new Error('503 unavailable'), { status: 503 }) : null),
+        }),
+      ),
+      TEST_STREAM_KEY,
+      TEST_TOPIC,
+    );
+
+    await catalog.addStream(liveEntry());
+
+    assert.equal(writersMade.count, 2);
   });
 
   it('gives up on a feed write that fails with a permanent status, rather than burning the window', async () => {

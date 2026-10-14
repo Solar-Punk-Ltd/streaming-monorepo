@@ -96,7 +96,13 @@ function deadlineFor(deadlines: FakeDeadlines | undefined, requestOptions?: { ti
   return deadlines === undefined ? Infinity : Date.now() + (requestOptions?.timeout ?? deadlines.poolTimeoutMs);
 }
 
-/** Takes `ms` to answer, unless the deadline runs out first, which rejects as bee-js does. */
+/**
+ * Takes `ms` to answer, unless the deadline runs out first, which rejects as bee-js does.
+ *
+ * ⛔ Called only when a test models deadlines. It yields to the timers even for 0 ms, and a fake that
+ * did that on every read and write moved the ordering timing-sensitive suites rely on: a
+ * `ReconnectWindow` case lost its race in CI on 2026-10-14.
+ */
 async function answerWithin(deadlineAt: number, ms: number): Promise<void> {
   const remaining = deadlineAt - Date.now();
   await new Promise((resolve) => setTimeout(resolve, Math.max(0, Math.min(ms, remaining))));
@@ -180,7 +186,9 @@ export function makeFakeBee(uploads: FakeUploads = {}): Bee {
           // {@link OVERSIZED_PAYLOAD_WRAPPER}. A read at an index this feed is not at is a defect rather
           // than an empty feed, so it is refused rather than answered.
           downloadPayload: async (opts?: { index?: FeedIndex }) => {
-            await answerWithin(deadlineAt, deadlines?.headReadMs ?? 0);
+            if (deadlines !== undefined) {
+              await answerWithin(deadlineAt, deadlines.headReadMs ?? 0);
+            }
             const head = uploads.feedHead ? uploads.feedHead(topicKey(topic)) : CRASHED_MID_BROADCAST;
             if (head === null || (opts?.index !== undefined && Number(opts.index.toBigInt()) !== head.index)) {
               throw feedNotFound();
@@ -199,7 +207,9 @@ export function makeFakeBee(uploads: FakeUploads = {}): Bee {
               await answerWithin(deadlineAt, deadlines.firstWriteFailsAfterMs);
               throw new BeeResponseError('POST', '/soc', 'Service Unavailable', undefined, 503, 'Service Unavailable');
             }
-            await answerWithin(deadlineAt, 0);
+            if (deadlines !== undefined) {
+              await answerWithin(deadlineAt, 0);
+            }
             return uploads.uploadPayload
               ? uploads.uploadPayload(opts.index, data, topicKey(topic))
               : { reference: { toHex: () => `soc${opts.index}` } };

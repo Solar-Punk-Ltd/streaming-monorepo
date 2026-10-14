@@ -24,9 +24,14 @@ interface WriterOptions {
   headMissing?: boolean;
   /** The timeout each reader was made with, in order, when a test wants to see it. */
   readerTimeouts?: (number | undefined)[];
+  /** The first write is refused with a status worth retrying. */
+  firstWriteFails?: boolean;
+  /** How many writers were made, when a test wants to see it. */
+  writersMade?: { count: number };
 }
 
 function makeWriter(writes: bigint[], opts: WriterOptions = {}): MasterFeedWriter {
+  let failedOnce = false;
   const bee = {
     feed: {
       makeReader: (_topic: unknown, _owner: unknown, requestOptions?: { timeout?: number }) => {
@@ -40,12 +45,21 @@ function makeWriter(writes: bigint[], opts: WriterOptions = {}): MasterFeedWrite
           },
         };
       },
-      makeWriter: () => ({
-        uploadPayload: async (_stamp: string, _payload: unknown, writeOpts: { index: FeedIndex }) => {
-          writes.push(writeOpts.index.toBigInt());
-          return { reference: { toHex: () => 'ref' } };
-        },
-      }),
+      makeWriter: () => {
+        if (opts.writersMade) {
+          opts.writersMade.count += 1;
+        }
+        return {
+          uploadPayload: async (_stamp: string, _payload: unknown, writeOpts: { index: FeedIndex }) => {
+            if (opts.firstWriteFails && writes.length === 0 && !failedOnce) {
+              failedOnce = true;
+              throw new BeeResponseError('POST', '/soc', 'Service Unavailable', undefined, 503, 'Service Unavailable');
+            }
+            writes.push(writeOpts.index.toBigInt());
+            return { reference: { toHex: () => 'ref' } };
+          },
+        };
+      },
     },
   };
   const publisher = { rung: 'coordinator', url: '', stamp: 'stamp', bee };
@@ -54,6 +68,18 @@ function makeWriter(writes: bigint[], opts: WriterOptions = {}): MasterFeedWrite
 }
 
 describe('MasterFeedWriter next index', () => {
+  /** A writer carries one deadline counted from when it is made. See DeadlineBee in BeePublisherPool.ts. */
+  it('makes a writer for each attempt, so a retry is not handed a deadline already spent', async () => {
+    const writersMade = { count: 0 };
+    const writes: bigint[] = [];
+    const writer = makeWriter(writes, { headIndex: 5n, firstWriteFails: true, writersMade });
+
+    await writer.publish('group-1', [rung('360p')]);
+
+    assert.deepEqual(writes, [6n]);
+    assert.equal(writersMade.count, 2);
+  });
+
   /** The first write's probe is a feed lookup, longer than the pool's 4 s. See FEED_LOOKUP_TIMEOUT_MS. */
   it('probes the feed with a feed lookup’s deadline rather than the pool’s', async () => {
     const readerTimeouts: (number | undefined)[] = [];
