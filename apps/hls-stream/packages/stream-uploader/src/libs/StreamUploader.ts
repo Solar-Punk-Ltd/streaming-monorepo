@@ -1584,6 +1584,7 @@ export class StreamUploader {
       }
 
       this.consecutiveManifestFailures = 0;
+      this.metrics?.recordManifestPublished(this.ladder?.rung.name);
       this.reportSegmentsNeverNamed(neverNamed);
       this.announcedThrough = newestNamed;
     });
@@ -1592,7 +1593,7 @@ export class StreamUploader {
   /** One live manifest that did not reach the feed, however far down the publish it got. */
   private recordManifestPublishFailure(): void {
     this.consecutiveManifestFailures += 1;
-    this.metrics?.recordManifestPublishFailure();
+    this.metrics?.recordManifestPublishFailure(this.ladder?.rung.name);
     this.logger.warn(
       `Live manifest for stream ${this.streamId} is stale: ${this.consecutiveManifestFailures} consecutive publish failure(s)`,
     );

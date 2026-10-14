@@ -237,7 +237,10 @@ describe('metrics exposition format', () => {
   it('renders the live playlist publishes of each rung, landed and refused, as separate families', () => {
     const body = renderPrometheusMetrics(SNAPSHOT);
 
-    for (const family of ['swarm_hls_rung_manifest_publishes_total', 'swarm_hls_rung_manifest_publish_failures_total']) {
+    for (const family of [
+      'swarm_hls_rung_manifest_publishes_total',
+      'swarm_hls_rung_manifest_publish_failures_total',
+    ]) {
       assert.equal(
         (body.match(new RegExp(`^# TYPE ${family} counter$`, 'gm')) ?? []).length,
         1,
