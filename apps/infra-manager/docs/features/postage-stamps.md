@@ -168,9 +168,13 @@ says so where the operator clicked:
   rather than a broadcaster), or an ingest read that failed or took more than
   ten seconds. It names any saved key Apply carries besides the batch. It is
   worded from what gets recreated: with the uploader alone a live broadcast
-  drops for a few seconds while it restarts, and with SRS, OvenMediaEngine or
+  pauses until the old uploader has written its recording and restarted,
+  seconds for a short broadcast and up to about five minutes for a long one,
+  because the uploader's compose service waits up to 330 s for it to finish,
+  and the recording is kept. With SRS, OvenMediaEngine or
   every service the encoder is disconnected and the broadcast stops until it
-  reconnects.
+  reconnects, and the restart still waits for the old uploader to write its
+  recording first, for the same seconds to about five minutes.
 - The chip on each batch follows the running uploader, read from the
   `runningValue` the settings list carries for `STAMP` (see
   [deployment-settings.md](deployment-settings.md)): **in use** on the batch
