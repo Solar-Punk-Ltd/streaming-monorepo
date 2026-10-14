@@ -83,6 +83,8 @@ interface RecoveredUploader {
 interface RecoveredOptions {
   /** What the manifest feed answers. `undefined` throws a 404, which is a head that will not retrieve. */
   feedHead?: () => FakeFeedHead | null;
+  /** What a read at an explicit index other than the head's answers. Absent answers 404. */
+  feedSlot?: (index: number) => string | null;
   catalog?: StreamCatalog;
   ladder?: LadderMembership;
   socIndex?: number | null;
@@ -108,6 +110,7 @@ function makeRecovered(options: RecoveredOptions = {}): RecoveredUploader {
       reads++;
       return options.feedHead ? options.feedHead() : null;
     },
+    feedSlot: options.feedSlot ? (_topic, index) => options.feedSlot!(index) : undefined,
   });
 
   const recoveryStore = makeFakeRecoveryStore({
@@ -309,11 +312,11 @@ describe('a single-rendition finalize that comes back after a crash', () => {
   });
 
   /**
-   * ⛔⛔⛔ The index has to come from the feed, never from the recovery entry. `commitManifest` sets
-   * `socIndex` and persists it AFTER the SOC write it describes, so a crash in that gap leaves the
-   * entry naming an index the feed has already moved past. Reading there returns the live playlist
-   * from before the finalize, the guard concludes nothing was published, and the double publish is
-   * back for exactly the crash it is supposed to answer.
+   * ⛔⛔⛔ The slot above the saved index has to be read as well. `commitManifest` sets `socIndex` and
+   * persists it AFTER the SOC write it describes, so a crash in that gap leaves the entry naming the
+   * index one below the recording. Reading only there returns the closing playlist from before the
+   * recording, the guard concludes nothing was published, and the double publish is back for exactly
+   * the crash it is supposed to answer. Writes go through one queue, so the gap is never more than one.
    */
   it('finds the recording at the index the feed is really at, not the one the entry saved', async () => {
     const entries: Array<{ index?: number }> = [];
@@ -324,7 +327,7 @@ describe('a single-rendition finalize that comes back after a crash', () => {
     });
     const { uploader, published } = makeRecovered({
       catalog,
-      socIndex: 7,
+      socIndex: 8,
       feedHead: () => ({ index: 9, manifest: PLAYLISTS.vod }),
     });
 
@@ -336,6 +339,28 @@ describe('a single-rendition finalize that comes back after a crash', () => {
       entries.map((e) => e.index),
       [9],
     );
+  });
+
+  /**
+   * ⛔⛔⛔ bee's feed lookup can answer an index BELOW the head: its finder gives every lookahead probe
+   * after index 0 one second and counts a probe that ran out of it as absent. Asked after a crash, a
+   * slow node can therefore answer an older live playlist while the recording sits at the saved index.
+   * Trusting that answer buys a closing playlist and a second recording, and reports the broadcast
+   * finished twice. The recovery entry already says where the recording can be, so the slots it names
+   * are read directly and the lookup is not asked at all.
+   */
+  it('finds the recording at the saved index when the feed lookup answers below it', async () => {
+    const { uploader, published, removed } = makeRecovered({
+      socIndex: 9,
+      feedHead: () => ({ index: 5, manifest: PLAYLISTS.closingLive }),
+      feedSlot: (index) => (index === 9 ? PLAYLISTS.vod : null),
+    });
+
+    const lines = await logLinesDuring(() => uploader.notifyStop());
+
+    assert.deepEqual(published, [], 'a stale lookup answer must not become a second recording');
+    assert.equal(linesHolding(lines, finalizeResumed(STREAM_ID, 9)), 1, 'the resume names the saved index');
+    assert.deepEqual(removed, [STREAM_ID]);
   });
 
   /**
