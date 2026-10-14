@@ -193,6 +193,29 @@ export function sessionGrowthRefusal(
     : `the recording did not grow by one session per broadcast: ${problems.join('; ')}`;
 }
 
+/**
+ * Segment uploads per recording rung, keyed the way {@link recordingRungOf} keys the listing: by rung name, or by topic
+ * on a single rendition, whose feed carries no stream id.
+ *
+ * ⛔ Resolved the way `publishedFor` resolves a playlist's count: a feed with a stream id takes that stream's uploads,
+ * and a feed without one takes the one stream the window holds. Null where neither can be attributed, so a caller
+ * refuses rather than comparing against nothing, which is what made the comparison pass by construction before.
+ */
+export function uploadsPerRecordingRung(
+  feeds: readonly RungFeed[],
+  byStream: ReadonlyMap<string, number>,
+): ReadonlyMap<string, number | null> {
+  return new Map(
+    feeds.map((feed) => {
+      const key = feed.rung ?? feed.streamId ?? feed.topic;
+      if (feed.streamId !== null) {
+        return [key, byStream.get(feed.streamId) ?? null];
+      }
+      return [key, byStream.size === 1 ? [...byStream.values()][0] : null];
+    }),
+  );
+}
+
 /** One line per rung, for the run's log. */
 export function describeRecording(offered: readonly string[], rungs: readonly RecordingRung[]): string {
   const lines = rungs.map(

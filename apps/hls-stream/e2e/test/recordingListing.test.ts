@@ -7,6 +7,7 @@ import {
   recordingRungOf,
   sessionGrowthRefusal,
   sessionsByRung,
+  uploadsPerRecordingRung,
 } from '../src/harness/recordingListing.js';
 
 import { FIXTURE_FRAGMENT_SECONDS, gluedRecording, rungPlaylist } from './helpers/rungPlaylistFixtures.js';
@@ -133,5 +134,35 @@ describe('sessionGrowthRefusal', () => {
   it('counts only finished recordings into a baseline', () => {
     const live = recordingRungOf(rungPlaylistParse(feed('1080p'), rungPlaylist([0, 1, 2])));
     assert.deepEqual([...sessionsByRung([finished('360p', [4, 4]), live])], [['360p', 2]]);
+  });
+});
+
+describe('uploadsPerRecordingRung', () => {
+  it('keys a ladder by rung through each feed stream id', () => {
+    const counts = uploadsPerRecordingRung([feed('360p'), feed('1080p')], new Map([['live/stream_360p', 1200]]));
+    assert.deepEqual(
+      [...counts],
+      [
+        ['360p', 1200],
+        ['1080p', null],
+      ],
+    );
+  });
+
+  it('keys a single rendition by topic, taking the one stream the window holds, as the listing does', () => {
+    const single = { rung: null, streamId: null, topic: 'topic-a' };
+    const listed = recordingRungOf(rungPlaylistParse(single, gluedRecording([10])));
+    const counts = uploadsPerRecordingRung([single], new Map([['live/stream', 10]]));
+    assert.equal(counts.get(listed.rung), 10);
+    assert.equal(
+      uploadsPerRecordingRung(
+        [single],
+        new Map([
+          ['a', 1],
+          ['b', 2],
+        ]),
+      ).get('topic-a'),
+      null,
+    );
   });
 });
