@@ -10,7 +10,8 @@
  * Driven through real uploaders, one per rung, sharing one ladder's liveness the way the registry
  * holds it. The first broadcast is healthy on every rung, as it was on the stage, which is what puts
  * every rung on record as having delivered. The second broadcast reuses the ladder, and one rung's
- * playlist writes are refused every time while its segment uploads all land.
+ * playlist writes are refused every time while its segment uploads all land. The last case runs that
+ * broken rung in a fresh process instead, where it has never delivered anything.
  */
 
 import { Bee } from '@ethersphere/bee-js';
@@ -124,6 +125,33 @@ describe('rung liveness follows what a viewer is served', () => {
       advertised(book),
       names.filter((name) => name !== BROKEN_RUNG),
       'the master offers the three rungs that publish, and not the one that does not',
+    );
+  });
+
+  /**
+   * ⛔ The same rung in a fresh process, with no earlier broadcast to put it on record. A rung that never
+   * delivered read a lag of zero whatever its siblings did, so this one stayed in the master for the
+   * whole broadcast (2026-10-14). It is measured from where the ladder stood at its first failure.
+   */
+  it('drops a rung whose playlist never publishes from the first second of a fresh process', async () => {
+    const book = new LadderLivenessBook();
+
+    await broadcast(
+      RUNGS.map((rung) =>
+        rungUploader(book, rung, rung.name === BROKEN_RUNG ? playlistRefusingBee() : healthyBee(), 1),
+      ),
+    );
+
+    const names = RUNGS.map((rung) => rung.name);
+    assert.equal(
+      book.of(GROUP).hasStopped(BROKEN_RUNG, names),
+      true,
+      'a rung that has published no playlist all broadcast, while its siblings publish, has stopped',
+    );
+    assert.deepEqual(
+      advertised(book),
+      names.filter((name) => name !== BROKEN_RUNG),
+      'the master offers the three rungs that publish, and not the one that never has',
     );
   });
 });
