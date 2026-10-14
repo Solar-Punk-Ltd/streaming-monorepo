@@ -131,7 +131,8 @@ export function stagesUsingNode(
 /**
  * Where nothing records what any uploader runs (a stopped deployment, one
  * deployed before the manager kept records, a rung no stage publishes for),
- * the saved batch is what the next start pays with, so it reads as in use.
+ * the saved batch is what the next start pays with, so it reads as in use,
+ * unless an uploader is known to be behind on it.
  */
 export function batchUseOf(
   batchId: string,
@@ -140,10 +141,13 @@ export function batchUseOf(
 ): BatchUse | null {
   const saved = savedBatchId != null && sameBatch(savedBatchId, batchId);
   const runningIds = uploaders.flatMap((uploader) => (uploader.runningBatchId ? [uploader.runningBatchId] : []));
-  if (runningIds.length === 0) return saved ? 'in-use' : null;
   const running = runningIds.some((id) => sameBatch(id, batchId));
+  const waitedOn = uploaders.some(
+    (uploader) => uploader.behind && uploader.savedBatchId !== null && sameBatch(uploader.savedBatchId, batchId),
+  );
   if (saved && running) return 'in-use';
-  if (saved) return 'saved-waiting';
+  if (saved && (waitedOn || runningIds.length > 0)) return 'saved-waiting';
+  if (saved) return 'in-use';
   return running ? 'running-not-saved' : null;
 }
 
@@ -214,7 +218,12 @@ export function batchNotice(
   };
 }
 
-export type BroadcastState = 'live' | 'idle' | 'unknown';
+/**
+ * `quiet` is SRS reporting no publisher in its window. It is never taken as
+ * nobody publishing, because SRS reports a publisher only about every ten
+ * seconds, so one that connected moments ago has no report yet.
+ */
+export type BroadcastState = 'live' | 'quiet' | 'unknown';
 
 /**
  * Whether a broadcast is coming in, by the ingest reading the Ingest card
@@ -225,7 +234,7 @@ export type BroadcastState = 'live' | 'idle' | 'unknown';
 export function broadcastStateOf(reading: IngestHealthReading | null): BroadcastState {
   if (!reading || reading.state !== INGEST_READ) return 'unknown';
   const publishing = reading.srt.state === SRT_INGEST_MEASURED || reading.rtmp.state !== RTMP_INGEST_NO_REPORTS;
-  return publishing ? 'live' : 'idle';
+  return publishing ? 'live' : 'quiet';
 }
 
 /** What Apply now asks before it runs, which the card hands to the console's confirm dialog. */
@@ -255,7 +264,7 @@ function restartSentence(uploader: BatchUploader): string {
     : `This recreates ${wordList(uploader.recreates)}.`;
 }
 
-function broadcastSentence(uploader: BatchUploader, broadcast: BroadcastState): string | null {
+function broadcastSentence(uploader: BatchUploader, broadcast: BroadcastState): string {
   const effect = dropsEncoder(uploader)
     ? 'stops until the encoder reconnects'
     : 'drops for a few seconds while the uploader restarts';
@@ -266,21 +275,23 @@ function broadcastSentence(uploader: BatchUploader, broadcast: BroadcastState): 
       : 'it drops for a few seconds while the uploader restarts';
     return `The console cannot tell whether a broadcast is live on ${uploader.name}. If one is, ${ifLive}.`;
   }
-  return null;
+  const ifLive = dropsEncoder(uploader)
+    ? 'it stops until the encoder reconnects'
+    : 'it drops for a few seconds while the uploader restarts';
+  return `SRS reported no publisher on ${uploader.name} in its last window, but it reports one only about every ten seconds, so a publisher that connected moments ago would not show yet. If one is live, ${ifLive}.`;
 }
 
 /**
- * What Apply now asks first, or null when it would apply the batch alone and
- * nobody is publishing. Apply carries every saved key the deployment is behind
- * on, so one the operator did not just choose is always asked about.
+ * What Apply now asks before it runs. It always asks, because the console is
+ * never sure nobody is publishing, and it names any saved key besides the
+ * batch, which Apply carries too and the operator did not just choose.
  */
 export function applyConfirmFor(
   uploader: BatchUploader,
   broadcast: BroadcastState,
   onConfirm: () => Promise<void> = async () => undefined,
-): ApplyConfirm | null {
+): ApplyConfirm {
   const others = otherKeysOf(uploader);
-  if (broadcast === 'idle' && others.length === 0) return null;
   const body = [
     restartSentence(uploader),
     broadcastSentence(uploader, broadcast),
@@ -295,8 +306,33 @@ export function applyConfirmFor(
   return { title, body, confirmLabel: 'Apply now', onConfirm };
 }
 
+/** How long Apply now waits for the ingest reading before it asks as when it cannot tell. */
+const INGEST_READ_DEADLINE_MS = 10_000;
+
+/** How long the card waits for one stage's settings list before it shows the stages that answered. */
+const STAGE_READ_DEADLINE_MS = 15_000;
+
+/** Runs a read with a signal that aborts at the deadline, and rejects then whether or not the read heeds it. */
+export async function withDeadline<T>(ms: number, read: (signal: AbortSignal) => Promise<T>): Promise<T> {
+  const controller = new AbortController();
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  const expired = new Promise<never>((_resolve, reject) => {
+    timer = setTimeout(() => {
+      controller.abort();
+      reject(new Error(`No answer within ${ms} ms.`));
+    }, ms);
+  });
+  try {
+    return await Promise.race([read(controller.signal), expired]);
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
 export interface ApplyNowDeps {
-  readIngest: (name: string) => Promise<IngestHealthReading>;
+  readIngest: (name: string, signal: AbortSignal) => Promise<IngestHealthReading>;
+  /** Defaults to ten seconds. */
+  readDeadlineMs?: number;
   confirm: (request: ApplyConfirm) => void;
   apply: (name: string, instanceId: string) => Promise<DeploymentSettingsApplied>;
   /** Told once the apply has landed. */
@@ -304,22 +340,36 @@ export interface ApplyNowDeps {
 }
 
 /**
- * The settings list's own Apply for one uploader, asked first while its
- * broadcast is live or cannot be told, or while it would apply more than the
- * batch. A failed apply rejects from here, or
- * from the confirmation's onConfirm, for the caller to show.
+ * The settings list's own Apply for one uploader, always asked first, in words
+ * from the ingest reading. A reading that fails or does not come in time is
+ * one that cannot tell. A failed apply rejects from the confirmation's
+ * onConfirm, for the caller to show.
  */
 export async function applyNow(uploader: BatchUploader, deps: ApplyNowDeps): Promise<void> {
-  const reading = await deps.readIngest(uploader.name).catch(() => null);
+  const reading = await withDeadline(deps.readDeadlineMs ?? INGEST_READ_DEADLINE_MS, (signal) =>
+    deps.readIngest(uploader.name, signal),
+  ).catch(() => null);
   const run = async () => {
     await deps.done(await deps.apply(uploader.name, uploader.instanceId));
   };
-  const request = applyConfirmFor(uploader, broadcastStateOf(reading), run);
-  if (request) {
-    deps.confirm(request);
-    return;
-  }
-  await run();
+  deps.confirm(applyConfirmFor(uploader, broadcastStateOf(reading), run));
+}
+
+/**
+ * Every stage's settings list, each read under its own deadline, so a stage
+ * that does not answer leaves out itself alone and the rest still show.
+ */
+export async function readStageCatalogs(
+  names: readonly string[],
+  read: (name: string, signal: AbortSignal) => Promise<DeploymentSettingsCatalog>,
+  deadlineMs: number = STAGE_READ_DEADLINE_MS,
+): Promise<{ name: string; catalog: DeploymentSettingsCatalog }[]> {
+  const answers = await Promise.allSettled(
+    names.map((name) => withDeadline(deadlineMs, (signal) => read(name, signal))),
+  );
+  return answers.flatMap((answer, index) =>
+    answer.status === 'fulfilled' ? [{ name: names[index]!, catalog: answer.value }] : [],
+  );
 }
 
 export interface SetBatchDeps {

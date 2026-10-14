@@ -3,7 +3,13 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import type { DeploymentSettingsCatalog } from '@streaming-infra-manager/common';
 
 import type { Profile } from '../types';
-import { type BatchUploader, ownUploaderOf, stageUploaderOf, stagesUsingNode } from './batchUploaders';
+import {
+  type BatchUploader,
+  ownUploaderOf,
+  readStageCatalogs,
+  stageUploaderOf,
+  stagesUsingNode,
+} from './batchUploaders';
 import { fetchDeploymentSettings } from './settings/deploymentSettingsApi';
 import { settingsReadKey, type DeploymentSettingsLoad } from './settings/useDeploymentSettings';
 
@@ -60,8 +66,8 @@ export function useBatchUploaders({
 
 /**
  * The settings lists of these stages, read again whenever one of them deploys
- * or has its pool string moved. A stage whose list could not be read is left
- * out rather than guessed at. Only the newest round's answers are kept.
+ * or has its pool string moved. A stage whose list could not be read in time
+ * is left out rather than guessed at. Only the newest round's answers are kept.
  */
 function useStageCatalogs(stages: readonly Profile[]): { catalogs: StageCatalog[]; reread: () => Promise<void> } {
   const readKey = JSON.stringify(stages.map((stage) => [stage.name, settingsReadKey(stage)]));
@@ -73,14 +79,9 @@ function useStageCatalogs(stages: readonly Profile[]): { catalogs: StageCatalog[
   const reread = useCallback(async () => {
     latest.current += 1;
     const round = latest.current;
-    const asked = names.current;
-    const answers = await Promise.allSettled(asked.map((name) => fetchDeploymentSettings(name)));
+    const answered = await readStageCatalogs(names.current, fetchDeploymentSettings);
     if (round !== latest.current) return;
-    setCatalogs(
-      answers.flatMap((answer, index) =>
-        answer.status === 'fulfilled' ? [{ name: asked[index]!, catalog: answer.value }] : [],
-      ),
-    );
+    setCatalogs(answered);
   }, []);
 
   useEffect(() => {

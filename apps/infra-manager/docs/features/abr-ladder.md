@@ -232,8 +232,8 @@ pool, so nothing invalidates it when it goes wrong:
   until it restarts. Since 2026-10-14 (SPDV-1437) the rung's Storage card reads
   each such stage's settings list again right after a Use, names every stage
   whose running uploader still pays with the old batch for this rung, and gives
-  each an **Apply now**, the stage's own settings Apply, which asks first while
-  that stage's broadcast is live or cannot be told
+  each an **Apply now**, the stage's own settings Apply, which always asks first
+  and says whether that stage's broadcast is live
   ([postage-stamps.md](postage-stamps.md)). A rung of the pool with no batch refuses the deploy with
   `<rung>: no postage batch set on this rung yet`, and a string the catalogue
   guard refuses is refused with the guard's own sentence. A string that names

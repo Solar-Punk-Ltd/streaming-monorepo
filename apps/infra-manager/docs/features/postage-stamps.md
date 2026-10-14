@@ -158,13 +158,17 @@ says so where the operator clicked:
   containers are behind on, not only the batch, so the row names each key it
   applies, says which of them were saved earlier, and says what it recreates
   (normally the stream uploader alone).
-- Apply now asks first whenever it would apply more than the batch, even with
-  nobody publishing, naming the other keys. It also asks when SRS reports a
-  publisher in its last window, and when the console cannot tell (another engine
-  than SRS, a log it could not read, or no answer). The question is worded from
-  what gets recreated: with the uploader alone the live broadcast drops for a
-  few seconds while it restarts, and with SRS, OvenMediaEngine or every service
-  the encoder is disconnected and the broadcast stops until it reconnects.
+- Apply now always asks first, because the console is never sure nobody is
+  publishing. SRS reports a publisher only about every ten seconds, so a
+  reading with no publisher in its last window can miss one that connected
+  moments ago, and the question says so. It says a broadcast is live when SRS
+  reported a publisher, and that it cannot tell for another engine than SRS, a
+  log it could not read, or an ingest read that failed or took more than ten
+  seconds. It names any saved key Apply carries besides the batch. It is
+  worded from what gets recreated: with the uploader alone a live broadcast
+  drops for a few seconds while it restarts, and with SRS, OvenMediaEngine or
+  every service the encoder is disconnected and the broadcast stops until it
+  reconnects.
 - The chip on each batch follows the running uploader, read from the
   `runningValue` the settings list carries for `STAMP` (see
   [deployment-settings.md](deployment-settings.md)): **in use** on the batch
@@ -173,12 +177,15 @@ says so where the operator clicked:
   runs that is no longer saved, which keeps its Use button to go back to it.
   Where nothing records what an uploader runs (a stopped deployment, one
   deployed before the manager kept records), the saved batch reads **in use**
-  as before, because the next start pays with it.
+  as before, because the next start pays with it, unless an uploader is known
+  to be behind on it, when it reads **saved, not in use until Apply**.
 
 On a pool rung's page the uploaders are the ABR stages that publish through the
 rung: those whose stored pool string names, for this rung, a batch the node
-holds. The warning names each stage that is behind, with a link to its page and
-an Apply now of its own, and a stage's chip reads its rung's entry of
+holds. Each stage's settings list is read under a fifteen second deadline, so
+a stage that does not answer is left out and the others still show. The
+warning names each stage that is behind, with a link to its page and an Apply
+now of its own, and a stage's chip reads its rung's entry of
 `BEE_PUBLISHERS` in the same way. See [abr-ladder.md](abr-ladder.md).
 
 ### Top up

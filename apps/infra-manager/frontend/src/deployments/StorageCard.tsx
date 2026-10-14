@@ -119,7 +119,7 @@ export function StorageCard({
   const handleApplyNow = (uploader: BatchUploader) =>
     run(() =>
       applyNow(uploader, {
-        readIngest: (name) => fetchIngestHealth(name),
+        readIngest: fetchIngestHealth,
         confirm: (request) => setConfirm({ ...request, onConfirm: () => void run(request.onConfirm) }),
         apply: applyRefusedInWords,
         done: async (applied) => {
