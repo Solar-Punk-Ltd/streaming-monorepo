@@ -4,18 +4,13 @@ import {
   Box,
   Button,
   Chip,
-  FormControl,
-  FormControlLabel,
-  FormHelperText,
   FormLabel,
-  Radio,
-  RadioGroup,
   Stack,
   TextField,
   Typography,
 } from '@mui/material';
 import CancelIcon from '@mui/icons-material/Cancel';
-import { STREAM_LIMITS, THUMBNAIL_MIME_TYPES, type MediaType } from '@streaming-monorepo/web2-admin-common';
+import { STREAM_LIMITS, THUMBNAIL_MIME_TYPES } from '@streaming-monorepo/web2-admin-common';
 
 /**
  * The fields, labels and limits are msrs-client's, reproduced in MUI so the
@@ -150,34 +145,6 @@ export function TagsField({
         </Stack>
       ) : null}
     </Stack>
-  );
-}
-
-export function MediaTypeField({
-  value,
-  onChange,
-  disabled = false,
-  helperText,
-}: {
-  value: MediaType;
-  onChange: (value: MediaType) => void;
-  disabled?: boolean;
-  helperText?: string;
-}) {
-  return (
-    <FormControl disabled={disabled}>
-      <FormLabel id="media-type-label">Media Type</FormLabel>
-      <RadioGroup
-        row
-        aria-labelledby="media-type-label"
-        value={value}
-        onChange={(e) => onChange(e.target.value as MediaType)}
-      >
-        <FormControlLabel value="video" control={<Radio size="small" />} label="Video Stream" />
-        <FormControlLabel value="audio" control={<Radio size="small" />} label="Audio Only" />
-      </RadioGroup>
-      {helperText ? <FormHelperText>{helperText}</FormHelperText> : null}
-    </FormControl>
   );
 }
 
