@@ -74,6 +74,8 @@ function renderExposition(render: RenderMetrics): string {
     segmentsUploadedByRung: { '360p': 103, '1080p': 21 },
     segmentsDroppedTotal: 82,
     segmentsDroppedByRung: { '1080p': 82, '360p': 0 },
+    manifestPublishesByRung: {},
+    manifestPublishFailuresByRung: {},
     segmentsLostTotal: 0,
     segmentsSkippedTotal: 0,
     openingSegmentsWithheldTotal: 0,
