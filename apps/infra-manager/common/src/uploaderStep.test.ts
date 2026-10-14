@@ -195,7 +195,7 @@ describe('the uploader step once the uploader has been asked', () => {
     assert.match(step?.detail ?? '', /The uploader reports chequebook low\./);
     assert.match(
       step?.detail ?? '',
-      /Chequebook low means a publisher node’s chequebook fell under the floor during the run\. The broadcast goes on, but that rung’s paid pushes will stall/,
+      /Chequebook low means a publisher node’s chequebook fell under the floor during the run\. The broadcast goes on, but that node’s paid pushes will stall/,
     );
     assert.match(
       step?.detail ?? '',

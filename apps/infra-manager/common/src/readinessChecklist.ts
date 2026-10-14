@@ -741,7 +741,7 @@ const CHEQUEBOOK_LOW_REASON = 'chequebook_low';
  */
 function reasonMeaning(reason: string, publishesToPool: boolean): string | null {
   if (reason === CHEQUEBOOK_LOW_REASON) {
-    return 'Chequebook low means a publisher node’s chequebook fell under the floor during the run. The broadcast goes on, but that rung’s paid pushes will stall. Fund the node, the funding step reads the balances, and the reason clears on the uploader’s next read.';
+    return 'Chequebook low means a publisher node’s chequebook fell under the floor during the run. The broadcast goes on, but that node’s paid pushes will stall. Fund the node, the funding step reads the balances, and the reason clears on the uploader’s next read.';
   }
   if (reason !== POSTAGE_REFUSED_REASON) return null;
   return publishesToPool
