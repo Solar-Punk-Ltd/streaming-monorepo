@@ -214,6 +214,21 @@ describe('the uploader step once the uploader has been asked', () => {
     assert.doesNotMatch(step?.detail ?? '', /[—;]/);
   });
 
+  it('says what chequebook low means, and that funding the node clears it', () => {
+    const step = uploaderStep({ state: 'unhealthy', reasons: ['chequebook_low'] });
+
+    assert.match(step?.detail ?? '', /The uploader reports chequebook low\./);
+    assert.match(
+      step?.detail ?? '',
+      /Chequebook low means a publisher node’s chequebook fell under the floor during the run\. The broadcast goes on, but that rung’s paid pushes will stall/,
+    );
+    assert.match(
+      step?.detail ?? '',
+      /Fund the node, the funding step reads the balances, and the reason clears on the uploader’s next read\./,
+    );
+    assert.doesNotMatch(step?.detail ?? '', /[—;]/);
+  });
+
   it('falls back to the not-started step when no uploader is deployed', () => {
     const stopped: Profile = {
       ...profile,
