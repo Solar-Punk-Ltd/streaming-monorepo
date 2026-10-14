@@ -6,8 +6,8 @@
  * at. So the target is named twice, once as the URL and once as the statement
  * that this URL is a test target, and the two have to agree: a MANAGER_URL
  * left in a shell is then not enough to aim the suite at a host that carries
- * funded deployments. The sign-in comes from the environment, put there by
- * `op run --env-file`, and nothing here ever prints a value.
+ * funded deployments. The sign-in comes from the environment of the shell that
+ * runs the suite, and nothing here ever prints a value.
  */
 
 export const DEFAULT_MANAGER_URL = 'http://localhost:9876';
@@ -39,7 +39,7 @@ export function targetProblem(env: TargetEnv): string | null {
     return `${TEST_TARGET_VAR} names a different manager than ${MANAGER_URL_VAR}. The suite runs only against the manager it was told is a test target.`;
   }
   if (!env[USERNAME_VAR] || !env[PASSWORD_VAR]) {
-    return `${USERNAME_VAR} and ${PASSWORD_VAR} must both be set. Route them from the vault with op run --env-file, see test/integration/README.md.`;
+    return `${USERNAME_VAR} and ${PASSWORD_VAR} must both be set in the environment that runs the suite, see test/integration/README.md.`;
   }
   return null;
 }
