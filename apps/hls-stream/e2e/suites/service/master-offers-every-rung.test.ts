@@ -7,6 +7,7 @@ import { makeHost, waitForIdle } from '../../src/harness/host.js';
 import { announcedRungs } from '../../src/harness/logwatch.js';
 import { describeMaster, masterRungRefusal, masterRungsOf, waitForMasterRungs } from '../../src/harness/masterShape.js';
 import { type Publisher, startPublisher } from '../../src/harness/publisher.js';
+import { checkRungPlaylistsLive } from '../../src/harness/rungPublishing.js';
 import { requireStageStamps } from '../../src/harness/stageStamps.js';
 import { discoverCatalogFeed } from '../../src/harness/viewer.js';
 import { waitFor } from '../../src/harness/wait.js';
@@ -67,6 +68,9 @@ import { waitFor } from '../../src/harness/wait.js';
  * gateway. A ceiling on the harness, never a threshold on the product.
  */
 const LADDER_WAIT_MS = 180_000;
+/** Live playlist publishes each rung the master offers must make, so an offered rung is one a viewer can follow. */
+const PUBLISHES_PER_OFFERED_RUNG = 6;
+const HEAD_ADVANCE_WAIT_MS = 60_000;
 const MIN_STAMP_TTL_S = 600;
 
 const cfg = loadConfig();
@@ -145,6 +149,24 @@ describe(
           'that rule, that a viewer who was watching keeps the rungs they had, is the drain viewer ' +
           "suite's reading and is not taken here",
       );
+    });
+
+    /**
+     * A master that offers a rung whose playlist never moves hands a joining viewer a frozen quality, and on
+     * 2026-10-14 that is what a re-broadcast's master did for two or three of four rungs. So every rung offered is
+     * also held to publishing live playlists whose head moves, with no stale warning.
+     */
+    it('offers only rungs whose live playlist publishes and moves', async () => {
+      const verdict = await checkRungPlaylistsLive(host, cfg, {
+        log,
+        rungs: [...announcedRungsOf(await log()).values()],
+        minPublishes: PUBLISHES_PER_OFFERED_RUNG,
+        publishWaitMs: LADDER_WAIT_MS,
+        headWaitMs: HEAD_ADVANCE_WAIT_MS,
+      });
+
+      console.log(verdict.summary);
+      assert.equal(verdict.refusal, null, verdict.refusal ?? '');
     });
   },
 );

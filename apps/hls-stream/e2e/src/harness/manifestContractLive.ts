@@ -91,7 +91,7 @@ interface BroadcastPlaylists {
 }
 
 /** What one rung's feed answered, before any rule is applied to it. */
-interface RungPlaylistParse {
+export interface RungPlaylistParse {
   rung: string | null;
   streamId: string | null;
   topic: string;
@@ -512,7 +512,11 @@ async function readRungPlaylists(
   return parses;
 }
 
-async function readOneRungPlaylist(
+/**
+ * One rung's playlist off the gateway, retried for the window a restarting gateway needs, never judged. Exported for
+ * the readers that compare two readings of one feed rather than applying the contract to one.
+ */
+export async function readOneRungPlaylist(
   host: Host,
   cfg: E2EConfig,
   owner: string,

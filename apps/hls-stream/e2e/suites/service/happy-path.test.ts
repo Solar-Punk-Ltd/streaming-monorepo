@@ -11,6 +11,7 @@ import {
 } from '../../src/harness/logwatch.js';
 import { checkPublishedTimeline, publishingRungFeedsOf } from '../../src/harness/manifestContractLive.js';
 import { type Publisher, startPublisher } from '../../src/harness/publisher.js';
+import { checkRungPlaylistsLive } from '../../src/harness/rungPublishing.js';
 import { requireStageStamps } from '../../src/harness/stageStamps.js';
 import { discoverCatalogFeed } from '../../src/harness/viewer.js';
 import { waitFor } from '../../src/harness/wait.js';
@@ -42,6 +43,9 @@ const SEGMENT_WAIT_MS = 120_000;
  * A test must wait for the thing it is about to assert on.
  */
 const MANIFEST_WAIT_MS = 120_000;
+/** Live playlist publishes every configured rung must make in the playlist-head case. */
+const TARGET_PUBLISHES_PER_RUNG = 6;
+const HEAD_ADVANCE_WAIT_MS = 60_000;
 const MIN_STAMP_TTL_S = 600;
 
 const cfg = loadConfig();
@@ -143,6 +147,24 @@ describe('service — happy-path publish: gapless segments + advancing manifest'
           `each publish); SOC indices: ${indices.join(',')}`,
       );
     }
+  });
+
+  /**
+   * The case above judges only the rungs that uploaded a segment, so a configured rung that never came up, or one that
+   * uploads with no playlist moving on the gateway, is outside it. This one holds every configured rung, or the one
+   * stream of a single rendition, to live playlists whose head moves and to no stale warning.
+   */
+  it('keeps every configured rung publishing a live playlist whose head moves on the gateway', async () => {
+    const verdict = await checkRungPlaylistsLive(host, cfg, {
+      log: async () => host.logsSince(uploader, startedAt),
+      rungs: cfg.abrEnabled ? cfg.abrRungs : null,
+      minPublishes: TARGET_PUBLISHES_PER_RUNG,
+      publishWaitMs: MANIFEST_WAIT_MS,
+      headWaitMs: HEAD_ADVANCE_WAIT_MS,
+    });
+
+    console.log(verdict.summary);
+    assert.equal(verdict.refusal, null, verdict.refusal ?? '');
   });
 
   /**

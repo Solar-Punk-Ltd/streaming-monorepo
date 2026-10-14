@@ -6,6 +6,11 @@ import { getEngine } from '../../src/harness/engine.js';
 import { makeHost, reportFailedRestore, waitForIdle } from '../../src/harness/host.js';
 import { checkPublishedTimeline, publishingRungFeedsOf } from '../../src/harness/manifestContractLive.js';
 import { type Publisher, startPublisher } from '../../src/harness/publisher.js';
+import {
+  checkRungPlaylistsLive,
+  missingTopicResumes,
+  staleManifestWarnings,
+} from '../../src/harness/rungPublishing.js';
 import { requireStageStamps } from '../../src/harness/stageStamps.js';
 import { type CatalogEntry, type CatalogFeed, discoverCatalogFeed, fetchCatalog } from '../../src/harness/viewer.js';
 import { sleep, waitFor } from '../../src/harness/wait.js';
@@ -52,6 +57,9 @@ import { sleep, waitFor } from '../../src/harness/wait.js';
 
 const WARMUP_WAIT_MS = 90_000;
 const RESUME_WAIT_MS = 180_000;
+/** Live playlist publishes every resumed rung must make after the restart. */
+const RESUMED_PUBLISHES_PER_RUNG = 10;
+const HEAD_ADVANCE_WAIT_MS = 60_000;
 const MIN_STAMP_TTL_S = 600;
 
 const cfg = loadConfig();
@@ -65,6 +73,7 @@ describe('E — media-engine restart: broadcaster resumes', () => {
   let second: Publisher;
   let feed: CatalogFeed;
   let baselineTopics: Set<string>;
+  let startedAt: string;
 
   const safeFetch = async () => {
     try {
@@ -102,6 +111,7 @@ describe('E — media-engine restart: broadcaster resumes', () => {
     // ordinary case rather than an exotic one. On the polls `safeFetch` stays, because there "not
     // ready yet" is a real answer.
     baselineTopics = new Set((await fetchCatalog(host, cfg, feed)).flatMap(topicsOf));
+    startedAt = await host.nowIso();
     first = startPublisher(cfg);
   });
 
@@ -195,5 +205,31 @@ describe('E — media-engine restart: broadcaster resumes', () => {
 
     console.log(verdict.summary);
     assert.equal(verdict.refusal, null, verdict.refusal ?? '');
+
+    // ⛔ A fresh entry in the catalog and a sound timeline do not say the resumed broadcast keeps a playlist a viewer
+    // can follow. Every rung publishes live playlists again and moves its head, and a rung that reopened the topic
+    // its retired session held reads that head first. Stale warnings are printed rather than refused, because the
+    // resumed session refuses its first publishes while the retired one drains onto the same topic and counts each.
+    const playlists = await checkRungPlaylistsLive(host, cfg, {
+      log: resumedLog,
+      rungs: cfg.abrEnabled ? cfg.abrRungs : null,
+      minPublishes: RESUMED_PUBLISHES_PER_RUNG,
+      publishWaitMs: RESUME_WAIT_MS,
+      headWaitMs: HEAD_ADVANCE_WAIT_MS,
+      refuseStale: false,
+    });
+    console.log(playlists.summary);
+    assert.equal(playlists.refusal, null, playlists.refusal ?? '');
+
+    const resumed = await resumedLog();
+    console.log(
+      `  observations, none of them asserted. stale playlist warnings after the restart: ${staleManifestWarnings(resumed).length}`,
+    );
+    const unresumed = missingTopicResumes(await host.logsBetween(uploader, startedAt, restartedAt), resumed);
+    assert.deepEqual(
+      unresumed,
+      [],
+      `${unresumed.join(', ')} reopened a topic its retired session held and never read that feed's head`,
+    );
   });
 });

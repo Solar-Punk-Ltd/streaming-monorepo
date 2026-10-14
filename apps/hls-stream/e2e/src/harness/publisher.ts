@@ -86,3 +86,11 @@ export function startPublisher(cfg: E2EConfig, opts: PublisherOptions = {}): Pub
 
   return { url, protocol, ...startFfmpeg(publisherArgs(url, protocol, opts.fps ?? DEFAULT_FPS)) };
 }
+
+/**
+ * The same publish to a URL somebody else built, which is what an admin-mode stage hands a broadcaster: the admin, not
+ * this deployment's env files, says where a declared stream is sent and with which key.
+ */
+export function startPublisherAt(url: string, protocol: IngestProtocol, fps: number = DEFAULT_FPS): Publisher {
+  return { url, protocol, ...startFfmpeg(publisherArgs(url, protocol, fps)) };
+}

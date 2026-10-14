@@ -10,6 +10,13 @@ import {
   publishingRungFeedsOf,
 } from '../../src/harness/manifestContractLive.js';
 import { type Publisher, startPublisher } from '../../src/harness/publisher.js';
+import {
+  checkRungPlaylistsLive,
+  everyRungPublishedAtLeast,
+  manifestIndicesByRung,
+  missingTopicResumes,
+  socIndexRefusal,
+} from '../../src/harness/rungPublishing.js';
 import { requireStageStamps } from '../../src/harness/stageStamps.js';
 import { type CatalogFeed, discoverCatalogFeed, entryCarriesTopic, fetchCatalog } from '../../src/harness/viewer.js';
 import { sleep, waitFor } from '../../src/harness/wait.js';
@@ -62,6 +69,11 @@ const POST_TIMEOUT_MARGIN_MS = 20_000;
 // gateway-served catalog on the deferred single-node push path — allow minutes for it to surface.
 const LIVE_VISIBLE_WAIT_MS = 300_000;
 const MIN_STAMP_TTL_S = 600;
+/** Live playlist publishes every rung makes before the kill, so where each feed stood is on record. */
+const PUBLISHES_BEFORE_KILL = 2;
+/** Live playlist publishes every rung must make after the restart, enough that one stray publish cannot pass. */
+const PUBLISHES_AFTER_RESUME = 10;
+const HEAD_ADVANCE_WAIT_MS = 60_000;
 
 const cfg = loadConfig();
 
@@ -71,6 +83,9 @@ describe('F — uploader hard crash: same stream recovers and keeps running', ()
   let publisher: Publisher;
   let feed: CatalogFeed;
   let startedAt: string;
+  /** The instant before the kill, and the log up to it, which is where every rung's feed stood. */
+  let killedAt: string | undefined;
+  let beforeKill = '';
 
   const safeFetch = async () => {
     try {
@@ -146,6 +161,18 @@ describe('F — uploader hard crash: same stream recovers and keeps running', ()
     const ourTopics = new Set(announcedSessionTopics(await host.logsSince(uploader, startedAt)));
     assert.ok(ourTopics.size > 0, 'the uploader must have announced a live topic before the crash');
     const preKill = Math.max(...(await uploaded()));
+    const expectedRungs = (text: string): string[] =>
+      cfg.abrEnabled ? [...cfg.abrRungs] : [...manifestIndicesByRung(text).keys()];
+    await waitFor(
+      async () => everyRungPublishedAtLeast(await log(), expectedRungs(await log()), PUBLISHES_BEFORE_KILL),
+      {
+        timeoutMs: WARMUP_WAIT_MS,
+        intervalMs: 3_000,
+        label: `every rung publishes ${PUBLISHES_BEFORE_KILL} live playlists before the crash, so its feed position is on record`,
+      },
+    );
+    killedAt = await host.nowIso();
+    beforeKill = await host.logsBetween(uploader, startedAt, killedAt);
 
     // Hard crash: SIGKILL leaves the RecoveryStore state on disk. `docker kill` does not trip the
     // restart policy here, so bring the container back explicitly (standing in for the restart
@@ -247,5 +274,43 @@ describe('F — uploader hard crash: same stream recovers and keeps running', ()
 
     console.log(verdict.summary);
     assert.equal(verdict.refusal, null, verdict.refusal ?? '');
+  });
+
+  /**
+   * After the restart every rung publishes live playlists again, each one continuing its feed above where it stood
+   * before the kill and never at 0, its head moves on the gateway, and the uploader calls none of them stale.
+   *
+   * ⚠️ This is NOT the regression test for the 2026-10-14 re-broadcast fix. A session rebuilt from a recovery entry
+   * continues from the index on disk and never reads the feed head (`topicOutlivesThisSession` in the uploader), so the
+   * lookup that fix changed is not run here. That is `scenarios/rung-restart`. What this holds is that a crash costs
+   * no rung its playlist, which no case above asked.
+   */
+  it('keeps every rung publishing a live playlist after the restart, continuing its feed', async () => {
+    assert.ok(killedAt !== undefined, 'the crash case above never reached its kill, so there is no restart to read');
+    const sinceKill = async (): Promise<string> => host.logsSince(uploader, killedAt as string);
+    const rungs = cfg.abrEnabled ? cfg.abrRungs : null;
+
+    const playlists = await checkRungPlaylistsLive(host, cfg, {
+      log: sinceKill,
+      rungs,
+      namesFrom: beforeKill,
+      minPublishes: PUBLISHES_AFTER_RESUME,
+      publishWaitMs: RESUME_WAIT_MS,
+      headWaitMs: HEAD_ADVANCE_WAIT_MS,
+    });
+    console.log(playlists.summary);
+    assert.equal(playlists.refusal, null, playlists.refusal ?? '');
+
+    const after = await sinceKill();
+    const continued = socIndexRefusal(beforeKill, after, rungs ?? [...manifestIndicesByRung(beforeKill).keys()]);
+    assert.equal(continued, null, continued ?? '');
+
+    const unresumed = missingTopicResumes(beforeKill, after);
+    assert.deepEqual(
+      unresumed,
+      [],
+      `${unresumed.join(', ')} reopened its topic after the crash as a fresh session rather than from its recovery ` +
+        'entry, and never read the feed head it continues',
+    );
   });
 });

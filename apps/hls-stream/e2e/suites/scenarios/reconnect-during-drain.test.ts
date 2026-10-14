@@ -5,84 +5,80 @@ import { containerName, loadConfig } from '../../src/config.js';
 import { getEngine } from '../../src/harness/engine.js';
 import { makeHost, uploaderHealth, waitForIdle } from '../../src/harness/host.js';
 import {
+  announcedRungs,
   announcedSessionTopics,
   announcedVodFinalizeCount,
   parseUploaderLog,
   sessionEnds,
 } from '../../src/harness/logwatch.js';
+import { fragmentSecondsFor, rungFeedsOf } from '../../src/harness/manifestContractLive.js';
 import { type Publisher, startPublisher } from '../../src/harness/publisher.js';
+import { describeRecording, recordingRefusal, waitForRecordingListing } from '../../src/harness/recordingListing.js';
+import {
+  checkRungPlaylistsLive,
+  missingTopicResumes,
+  reapedAfterDisconnect,
+  staleManifestWarnings,
+} from '../../src/harness/rungPublishing.js';
 import { requireStageStamps } from '../../src/harness/stageStamps.js';
 import { recoveryEntryIds } from '../../src/harness/uploaderState.js';
+import { discoverCatalogFeed } from '../../src/harness/viewer.js';
 import { waitFor } from '../../src/harness/wait.js';
 
 /**
- * Scenario K — a broadcaster reconnects while the previous session is still draining.
+ * Scenario K: a broadcaster reconnects while the previous session is still draining into its recording.
  *
- * ⛔⛔ **THIS SCENARIO DOES NOT HOLD AS WRITTEN SINCE THE RECONNECT WINDOW OF 2026-09-22, AND IT IS
- * LEFT UNCHANGED ON PURPOSE.** Its trigger is the engine's unpublish marker, which used to open a
- * drain window and now opens the reconnect window instead: `noteDisconnect` ends nothing, so the
- * second publisher resumes the SAME session on the SAME topic, and the waits below for a second
- * announced topic and for the outgoing session to end cannot come true. Rewriting it needs a live
- * stack to say what the right shape is — a stop through `POST /stream/stop` is one way to open a real
- * drain window, and pushing the reconnect past `ORPHAN_REAP_MS` is another, and they prove different
- * things — so it is a step of its own rather than a guess made here. Until then it is SKIPPED on
- * SRS, by name and with this reason, rather than left in the scenarios glob to buy a warmup broadcast,
- * sit out its waits and fail on a correct deployment. OME is unaffected and still runs it: its closing
- * webhook calls `stopStream` directly, so a stop there still opens a real drain window.
+ * ## Where the drain window is now
  *
- * ## Why a unit test models this badly
- *
- * Two `StreamUploader`s exist under one stream id, and which one owns what is decided by wall-clock
- * overlap: `notifyStop` holds the outgoing session in `activeStreams` for the whole of its drain, and
- * a reconnect registers the replacement under the same id inside that window. The orchestrator sorts
- * them with `isDraining`, which matches on the **uploader** rather than the id, and with `retire()`,
- * which takes the recovery entry away from the outgoing one.
- *
- * A unit test picks the interleaving it wants to prove. The interleaving that matters here is the one
- * the deployment produces, and it depends on how long a real drain takes against how fast a real
- * broadcaster comes back.
+ * Since the reconnect window of 2026-09-22 an SRS disconnect ends nothing: the session is held for `ORPHAN_REAP_MS`
+ * (60 s) and an encoder back inside it resumes the same broadcast. A drain starts only when that window runs out, and
+ * the uploader says so with `The encoder feeding X left and did not come back within the reconnect window`. So on SRS
+ * the reconnect is made the moment that line appears, which lands it inside the drain. On OME the closing webhook still
+ * stops the session directly, so its unpublish marker still opens the drain, as this scenario was first written.
  *
  * ## What must be true
  *
- * Each uploader owns its own feed topic, so a reconnect is two recordings and not one. The outgoing
- * session must finalize into its own VOD, the incoming one must stay live rather than being finalized
- * with it, and **the recovery entry must belong to the session that is still running**. The failure
- * this guards is the outgoing drain clearing or overwriting the live session's entry on its way out:
- * that leaves a running broadcast with no recovery entry, so a crash after it loses the whole thing.
+ * The outgoing session finalizes, the incoming one stays live and is not finalized with it, and the recovery entry
+ * belongs to the session still running: an outgoing drain that cleared or overwrote it would leave a live broadcast
+ * nothing on disk can recover.
  *
- * ## Why the trigger is the unpublish marker
+ * On a ladder the replacement reopens the same rung topics, because the group survives while any sibling is still
+ * draining. Then each rung must read the head the drained session left, which is the `resumes its topic` line, publish
+ * live playlists that move, and finish with a recording that glues both sessions. Whether the drain finished first and
+ * released the group is the race this scenario cannot choose, so each rung is held to the case it actually took: a
+ * reopened topic owes a resume line and two sessions in its recording, a fresh one owes neither.
  *
- * The reconnect has to land *during* the drain. Starting the second publisher as soon as `stop()`
- * returns is too early: the engine has not necessarily fired its unpublish webhook yet, so the second
- * session would arrive while the first is still live, which is a different race and one the engine
- * itself may refuse. Waiting for the engine's own marker puts the reconnect after the drain starts.
+ * ⚠️ Stale warnings are printed and not refused. A replacement refuses its first playlist writes while the session it
+ * replaced drains onto the same topic, and the uploader counts each refusal as a stale playlist on purpose.
  */
 
 const WARMUP_SEGMENTS = 4;
 const WARMUP_WAIT_MS = 120_000;
-const UNPUBLISH_WAIT_MS = 60_000;
+/** The disconnect, then the 60 s reconnect window, then the reap line. */
+const DRAIN_START_WAIT_MS = 150_000;
 const RECONNECT_WAIT_MS = 120_000;
-const VOD_WAIT_MS = 150_000;
+const VOD_WAIT_MS = 300_000;
+const PUBLISHES_PER_RUNG = 10;
+const HEAD_ADVANCE_WAIT_MS = 60_000;
+const RECORDING_WAIT_MS = 180_000;
 const MIN_STAMP_TTL_S = 600;
 
 const cfg = loadConfig();
-/**
- * ⛔ A reason, not `true`, so the run summary says why K did not run instead of reporting a silent
- * skip. Lift it with the rewrite the header describes, never on its own.
- */
-const skip =
-  cfg.engine === 'srs'
-    ? "K's trigger opens SRS's reconnect window, not a drain, since 2026-09-22: the reconnect resumes " +
-      'the same session, so it cannot hold until it is rewritten (see the header)'
-    : false;
 
-describe('K — reconnect during drain: two recordings, and the live one keeps its recovery entry', { skip }, () => {
+describe('K — reconnect during drain: the live session keeps its playlists and its recovery entry', () => {
   const engine = getEngine(cfg);
   const host = makeHost(cfg);
   const uploader = containerName(cfg, 'stream-uploader');
-  let first: Publisher;
+  let first: Publisher | undefined;
   let second: Publisher | undefined;
   let startedAt: string;
+  let reconnectedAt: string | undefined;
+  let beforeReconnect = '';
+
+  const log = async (): Promise<string> => host.logsSince(uploader, startedAt);
+  /** The line that says the outgoing session has started to drain, by engine. */
+  const drainStarted = (text: string): boolean =>
+    cfg.engine === 'srs' ? reapedAfterDisconnect(text).length > 0 : engine.unpublishedMarker.test(text);
 
   before(async () => {
     await requireStageStamps(host, cfg, MIN_STAMP_TTL_S);
@@ -96,117 +92,109 @@ describe('K — reconnect during drain: two recordings, and the live one keeps i
     await second?.stop();
   });
 
-  it('gives the reconnecting session its own recording and leaves its recovery entry alone', async () => {
-    const log = async (): Promise<string> => host.logsSince(uploader, startedAt);
-    // Scoped to broadcasts announced in our own window, so a neighbour's trailing flip is not read
-    // as one of this scenario's two recordings.
-    const vodCommits = async (): Promise<number> => announcedVodFinalizeCount(await log());
-
+  it('keeps the reconnected session live, publishing, and owning its recovery entry', async () => {
     await waitFor(async () => parseUploaderLog(await log()).uploadedSegments.length >= WARMUP_SEGMENTS, {
       timeoutMs: WARMUP_WAIT_MS,
       intervalMs: 2_000,
       label: `warmup: ${WARMUP_SEGMENTS} segments before the disconnect`,
     });
-    // A set, because a ladder announces one topic per rung; any topic outside it is a new session.
-    const firstTopics = new Set(announcedSessionTopics(await log()));
-    assert.ok(firstTopics.size > 0, 'the first session must have announced a topic before it disconnects');
+    assert.ok(announcedSessionTopics(await log()).length > 0, 'the first session never announced a topic');
 
-    await first.stop();
-
-    // Polled tight, because everything after this marker is the drain window the reconnect has to
-    // land inside.
-    await waitFor(async () => engine.unpublishedMarker.test(await log()), {
-      timeoutMs: UNPUBLISH_WAIT_MS,
+    const stoppedAt = await host.nowIso();
+    await first?.stop();
+    first = undefined;
+    // Polled tight, because everything after this line is the drain window the reconnect has to land inside.
+    await waitFor(async () => drainStarted(await host.logsSince(uploader, stoppedAt)), {
+      timeoutMs: DRAIN_START_WAIT_MS,
       intervalMs: 250,
-      label: 'the engine reports the first session ended, which opens the drain window',
+      label: 'the outgoing session starts to drain into its recording',
     });
+    reconnectedAt = await host.nowIso();
+    beforeReconnect = await host.logsBetween(uploader, startedAt, reconnectedAt);
     second = startPublisher(cfg);
+    const sinceReconnect = async (): Promise<string> => host.logsSince(uploader, reconnectedAt as string);
 
-    // A second topic is the proof the replacement was registered as its own session rather than
-    // folded into the one that is draining.
-    await waitFor(async () => announcedSessionTopics(await log()).some((topic) => !firstTopics.has(topic)), {
+    await waitFor(async () => announcedSessionTopics(await sinceReconnect()).length > 0, {
       timeoutMs: RECONNECT_WAIT_MS,
       intervalMs: 2_000,
-      label: 'the reconnecting broadcaster is registered as a new session with its own topic',
+      label: 'the reconnecting broadcaster is registered as a session of its own',
     });
-    const secondTopic = announcedSessionTopics(await log()).find((topic) => !firstTopics.has(topic));
-    assert.ok(secondTopic, 'the reconnecting session must announce a topic of its own');
 
-    // The outgoing session finalizes into its own recording, and the incoming one must not go with
-    // it. The evidence differs by mode: a single rendition flips its own catalog entry to VOD, while
-    // a ladder's entry is shared with the live replacement and deliberately never flips mid-group,
-    // so the outgoing rungs are seen ending session by session, whichever way each one's
-    // drain-versus-reconnect race went.
-    //
-    // ⛔ What the ladder branch CANNOT tell apart, and nothing at these lines can fix. `sessionEnds`
-    // returns stream ids, and a reconnect republishes to the same stream path, so the second
-    // session's rungs carry the same ids as the first session's. The set therefore counts rung
-    // names, not sessions: four distinct ids is equally consistent with all four of the outgoing
-    // rungs draining and with two of them draining while two of the INCOMING rungs died early. The
-    // topic is the only thing that separates the sessions and this line family does not carry it.
-    // The `activeStreams >= 1` assertion just below is the backstop: a second session that died
-    // during the drain leaves nothing live, so it fails there.
-    const outgoingFinalized = async (): Promise<boolean> => {
-      if (!cfg.abrEnabled) {
-        return (await vodCommits()) >= 1;
-      }
-      return new Set(sessionEnds(await log())).size >= cfg.abrRungs.length;
-    };
-    await waitFor(outgoingFinalized, {
+    const outgoingRungs = cfg.abrEnabled ? cfg.abrRungs.length : 1;
+    await waitFor(async () => new Set(sessionEnds(await log())).size >= outgoingRungs, {
       timeoutMs: VOD_WAIT_MS,
       intervalMs: 2_000,
-      label: 'the drained session finalizes into its own recording',
+      label: 'every rung of the drained session finalizes',
     });
-    // The host's own clock, taken the instant the outgoing session finished rather than at the
-    // reconnect. Read the reason at the wait that uses it.
-    const outgoingFinalizedAt = await host.nowIso();
+
+    const playlists = await checkRungPlaylistsLive(host, cfg, {
+      log: sinceReconnect,
+      rungs: cfg.abrEnabled ? cfg.abrRungs : null,
+      namesFrom: beforeReconnect,
+      minPublishes: PUBLISHES_PER_RUNG,
+      publishWaitMs: VOD_WAIT_MS,
+      headWaitMs: HEAD_ADVANCE_WAIT_MS,
+      refuseStale: false,
+    });
+    console.log(playlists.summary);
+    assert.equal(playlists.refusal, null, playlists.refusal ?? '');
+
+    const reconnected = await sinceReconnect();
+    const unresumed = missingTopicResumes(beforeReconnect, reconnected);
+    assert.deepEqual(
+      unresumed,
+      [],
+      `${unresumed.join(', ')} reopened the topic its drained session held and never read the head it left`,
+    );
+    const earlierTopics = new Set(announcedRungs(beforeReconnect).map((line) => line.topic));
+    const reopened = announcedRungs(reconnected).filter((line) => earlierTopics.has(line.topic));
+    console.log(
+      `  observations, none of them asserted. ${reopened.length} rung(s) reopened their drained topic, and the ` +
+        `reconnected session wrote ${staleManifestWarnings(reconnected).length} stale warning(s) while the drain finished`,
+    );
 
     const health = await uploaderHealth(host, cfg);
     assert.ok(
       health.activeStreams >= 1,
-      `the reconnected broadcast must still be live after the previous session drained; activeStreams=${health.activeStreams}`,
+      `the reconnected broadcast is not live; activeStreams=${health.activeStreams}`,
     );
-
-    // The guard that matters. `retire()` exists so the outgoing drain stops owning this file; without
-    // it the live broadcast is running with nothing on disk to recover it from.
     const entries = await recoveryEntryIds(host, cfg);
     assert.ok(
       entries.length > 0,
-      'the live session must keep a recovery entry after the previous session drained, ' +
-        'or a crash from here loses a broadcast that is still running',
+      'the live session holds no recovery entry after the previous session drained, so a crash from here loses it',
     );
+  });
 
-    // And it has to be the live session's own state, not the drained session's left in place.
-    //
-    // ⛔ Counted from the instant the outgoing session finalized, which is what this window is
-    // supposed to mean. Opened at the reconnect instead, it holds the whole of the outgoing drain:
-    // the first session keeps uploading whatever it had buffered for as long as that takes, and those
-    // segments are logged inside the window while belonging to the session that is leaving. A
-    // reconnected session that never uploaded a byte could clear the bar on the drain alone. A
-    // session that has finalized publishes nothing more, so every segment logged after this instant
-    // is the reconnected session's.
-    //
-    // ⛔ Scoped at all because the older version counted every segment since the suite began against
-    // `WARMUP_SEGMENTS * 2`, and on a four rung ladder the FIRST session clears that on its own
-    // before the disconnect: four rungs times four warmup segments is sixteen against a target of
-    // eight.
-    const sinceOutgoingFinalized = async (): Promise<number> =>
-      parseUploaderLog(await host.logsSince(uploader, outgoingFinalizedAt)).uploadedSegments.length;
-    await waitFor(async () => (await sinceOutgoingFinalized()) >= WARMUP_SEGMENTS, {
-      timeoutMs: WARMUP_WAIT_MS,
-      intervalMs: 2_000,
-      label: 'the reconnected session itself keeps uploading once the previous one has finalized',
-    });
-
-    await second.stop();
+  it('finalizes the reconnected session into a recording that glues every session its topics carried', async () => {
+    assert.ok(reconnectedAt !== undefined, 'the reconnect case never reconnected, so there is nothing to finalize');
+    const reconnected = await host.logsSince(uploader, reconnectedAt);
+    const feeds = rungFeedsOf(reconnected);
+    const ladder = announcedRungs(reconnected)[0]?.ladder ?? null;
+    const flipsBefore = announcedVodFinalizeCount(await log());
+    await second?.stop();
     second = undefined;
-    // Single rendition: a second catalog flip. Ladder: the shared entry flips exactly once, when the
-    // reconnected session's last rung drains with nothing replacing it, so one flip is the proof.
-    const expectedFlips = cfg.abrEnabled ? 1 : 2;
-    await waitFor(async () => (await vodCommits()) >= expectedFlips, {
+
+    await waitFor(async () => announcedVodFinalizeCount(await log()) > flipsBefore, {
       timeoutMs: VOD_WAIT_MS,
       intervalMs: 2_000,
-      label: 'the reconnected session finalizes into a second recording of its own',
+      label: 'the reconnected session finalizes into a recording of its own',
     });
+
+    const earlierTopics = new Set(announcedRungs(beforeReconnect).map((line) => line.topic));
+    const sessions = new Map(feeds.map((feed) => [feed.rung ?? feed.topic, earlierTopics.has(feed.topic) ? 2 : 1]));
+    const { owner } = await discoverCatalogFeed(host, cfg);
+    const listing = await waitForRecordingListing(host, cfg, { owner, ladder, feeds }, RECORDING_WAIT_MS);
+    console.log(describeRecording(listing.offered, listing.rungs));
+    const refusal = recordingRefusal(listing.offered, listing.rungs, {
+      rungs: [...sessions.keys()],
+      sessions,
+      fragmentSeconds: fragmentSecondsFor(cfg.segmentExpectation) ?? 2,
+      // A rung that took the fresh-topic path recorded only the reconnected session, so it is right to be shorter than
+      // a sibling whose recording glued the drained session in front.
+      shortOnPurpose: [...sessions]
+        .filter(([, count]) => count === 1 && [...sessions.values()].includes(2))
+        .map(([rung]) => rung),
+    });
+    assert.equal(refusal, null, refusal ?? '');
   });
 });

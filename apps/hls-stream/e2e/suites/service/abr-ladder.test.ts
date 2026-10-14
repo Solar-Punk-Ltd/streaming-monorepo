@@ -13,7 +13,15 @@ import {
 } from '../../src/harness/logwatch.js';
 import { checkPublishedTimeline, publishingRungFeedsOf } from '../../src/harness/manifestContractLive.js';
 import { type Publisher, startPublisher } from '../../src/harness/publisher.js';
+import {
+  checkRungPlaylistsLive,
+  describeRungMetricPairing,
+  manifestPublishesByRung,
+  rungMetricPairing,
+  rungMetricRefusal,
+} from '../../src/harness/rungPublishing.js';
 import { requireStageStamps } from '../../src/harness/stageStamps.js';
+import { uploaderMetricsCommand } from '../../src/harness/uploaderMetrics.js';
 import { discoverCatalogFeed } from '../../src/harness/viewer.js';
 import { waitFor } from '../../src/harness/wait.js';
 
@@ -50,6 +58,10 @@ import { waitFor } from '../../src/harness/wait.js';
  */
 
 const TARGET_SEGMENTS_PER_RUNG = 4;
+/** Live playlist publishes each rung must make. Enough that a rung which published once and froze cannot reach it. */
+const TARGET_PUBLISHES_PER_RUNG = 6;
+/** How long every rung's playlist head is given to move on the gateway, a few segments on a healthy stage. */
+const HEAD_ADVANCE_WAIT_MS = 60_000;
 const SEGMENT_WAIT_MS = 180_000;
 const MIN_STAMP_TTL_S = 600;
 
@@ -60,10 +72,12 @@ describe('service — ABR ladder: every rung publishes and stays gapless', { ski
   const uploader = containerName(cfg, 'stream-uploader');
   let publisher: Publisher;
   let startedAt: string;
+  let metricsBefore: string;
 
   before(async () => {
     await requireStageStamps(host, cfg, MIN_STAMP_TTL_S);
     await waitForIdle(host, cfg);
+    metricsBefore = (await host.run(uploaderMetricsCommand(uploader))).stdout;
     startedAt = await host.nowIso();
     publisher = startPublisher(cfg);
   });
@@ -107,7 +121,11 @@ describe('service — ABR ladder: every rung publishes and stays gapless', { ski
   /**
    * Counted in segments rather than in catalog announces, because the announce cadence is the
    * catalog's refresh interval: waiting for four announces per rung is minutes of broadcast, while
-   * four segments per rung is seconds, and segments are the thing a stalled rung stops producing.
+   * four segments per rung is seconds.
+   *
+   * ⛔ Segments are NOT all a stalled rung stops producing, and this case alone cannot see the stall that matters most.
+   * On 2026-10-14 rungs kept uploading segments and published no playlist naming them, so this case passed on a
+   * ladder no viewer could watch. The case below asks the playlist question.
    */
   it('keeps each rung publishing, rather than one rung carrying the broadcast', async () => {
     await waitFor(
@@ -129,6 +147,36 @@ describe('service — ABR ladder: every rung publishes and stays gapless', { ski
         `rung ${rung} uploaded ${counts.get(rung) ?? 0} segments, the others reached ${TARGET_SEGMENTS_PER_RUNG}`,
       );
     }
+  });
+
+  /**
+   * Every rung keeps a live playlist a viewer can follow: it publishes playlists, the uploader calls none of them stale,
+   * and its head moves on the gateway. See `src/harness/rungPublishing.ts` for why segments could not answer this.
+   */
+  it('keeps every rung publishing a live playlist whose head moves, so segments with no playlist cannot pass', async () => {
+    const verdict = await checkRungPlaylistsLive(host, cfg, {
+      log,
+      rungs: cfg.abrRungs,
+      minPublishes: TARGET_PUBLISHES_PER_RUNG,
+      publishWaitMs: SEGMENT_WAIT_MS,
+      headWaitMs: HEAD_ADVANCE_WAIT_MS,
+    });
+
+    console.log(verdict.summary);
+    assert.equal(verdict.refusal, null, verdict.refusal ?? '');
+  });
+
+  /**
+   * The uploader's own per-rung upload counter beside the playlists the log says each rung published. ⚠️ The uploader
+   * has no per-rung publish or publish-failure counter today, so the playlist half is the log and the failure half is
+   * one counter for the whole uploader. See `rungMetricPairing`.
+   */
+  it('pairs every rung that uploaded with playlists published, and counts no failed publish', async () => {
+    const metricsAfter = (await host.run(uploaderMetricsCommand(uploader))).stdout;
+    const pairing = rungMetricPairing(metricsBefore, metricsAfter, manifestPublishesByRung(await log()));
+
+    console.log(describeRungMetricPairing(pairing));
+    assert.equal(rungMetricRefusal(pairing), null, rungMetricRefusal(pairing) ?? '');
   });
 
   /**
