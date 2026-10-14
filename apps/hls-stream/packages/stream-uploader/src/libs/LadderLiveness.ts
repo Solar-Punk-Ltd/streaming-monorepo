@@ -339,6 +339,15 @@ export class LadderLivenessBook {
     return created;
   }
 
+  /**
+   * This ladder's broadcast has ended, so how far its rungs got is history. The next broadcast on the
+   * same group, which a declared stream in admin mode is, starts on a fresh tracker and every rung of it
+   * gets the grace a rung that has never delivered is given.
+   */
+  public forget(group: string): void {
+    this.byGroup.delete(group);
+  }
+
   /** One live playlist publish of this rung landed. Answers the rungs the ladder now treats as live. */
   public recordDelivered(group: string, rung: string): string[] {
     return this.afterSegment(group, (liveness) => liveness.recordDelivered(rung));

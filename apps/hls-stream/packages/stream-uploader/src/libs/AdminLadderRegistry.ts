@@ -193,6 +193,9 @@ export class AdminLadderRegistry implements LadderRegistry {
     }
 
     const advertised = advertisableRenditions(this.offeredRungs(group), this.liveness.of(group));
+    if (this.isRecording(group)) {
+      this.liveness.forget(group);
+    }
     const published = await this.masterWriter.publish(group, advertised);
     if (published) {
       // Only what the feed took, for the reason {@link MasterRewriteSchedule} states: a shape recorded
@@ -256,9 +259,15 @@ export class AdminLadderRegistry implements LadderRegistry {
    */
   private offeredRungs(group: string): Rendition[] {
     const ladder = this.merged.get(group) ?? [];
-    const isRecording =
-      this.heldStatus.get(group) === ADMIN_STATE_VOD || isFinishedLadder(ladder, this.markedUnfinished(group));
-    return isRecording ? recordedRungs(ladder) : ladder;
+    return this.isRecording(group) ? recordedRungs(ladder) : ladder;
+  }
+
+  /** Whether this ladder's broadcast has ended: the admin holds its recording, or every rung finished. */
+  private isRecording(group: string): boolean {
+    return (
+      this.heldStatus.get(group) === ADMIN_STATE_VOD ||
+      isFinishedLadder(this.merged.get(group) ?? [], this.markedUnfinished(group))
+    );
   }
 
   /**

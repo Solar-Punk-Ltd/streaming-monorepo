@@ -454,6 +454,7 @@ export class StreamCatalog implements LadderRegistry {
     merge: RungMerge,
   ): Promise<RenditionAnnouncement> {
     let flippedToVod = false;
+    let endedAsRecording = false;
     let shapeThatLanded: string | null = null;
     let masterIndex: number | null = null;
     let duration: number | null = null;
@@ -481,6 +482,7 @@ export class StreamCatalog implements LadderRegistry {
             `, so the entry becomes ${entry.state}`,
         );
         flippedToVod = entry.state === STREAM_STATUS_VOD && !wasVod;
+        endedAsRecording = entry.state === STREAM_STATUS_VOD;
         duration = entry.duration ?? null;
         // ⛔ A master naming a rung nothing is producing offers a viewer a quality with nothing
         // behind it. The player moves them off within about seven seconds, so this is the last few
@@ -508,6 +510,12 @@ export class StreamCatalog implements LadderRegistry {
       // viewer resolving the new shape.
       if (shapeThatLanded !== null) {
         this.rewrites.recordAdvertised(identity.group, shapeThatLanded);
+      }
+
+      // The broadcast this ladder carried has ended, so how far its rungs got is history. See
+      // `LadderLivenessBook.forget`.
+      if (endedAsRecording) {
+        this.liveness.forget(identity.group);
       }
 
       // ⛔⛔⛔ After the write, never inside the update. The one externally visible moment a ladder
