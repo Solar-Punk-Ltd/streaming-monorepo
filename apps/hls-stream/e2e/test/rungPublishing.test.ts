@@ -392,3 +392,54 @@ describe('headProbeCorrections', () => {
     assert.deepEqual(headProbeCorrections(announces().join('\n')), []);
   });
 });
+
+describe('rungMetricPairing on an uploader with per-rung publish counters', () => {
+  const scrape = (lines: string[]) => lines.join('\n');
+  const before = scrape([
+    'swarm_hls_rung_segments_uploaded_total{rung="360p"} 100',
+    'swarm_hls_rung_segments_uploaded_total{rung="1080p"} 100',
+    'swarm_hls_rung_manifest_publishes_total{rung="360p"} 90',
+    'swarm_hls_rung_manifest_publishes_total{rung="1080p"} 90',
+    'swarm_hls_rung_manifest_publish_failures_total{rung="360p"} 1',
+    'swarm_hls_rung_manifest_publish_failures_total{rung="1080p"} 0',
+    'swarm_hls_manifest_publish_failures_total 1',
+  ]);
+
+  it('pairs uploads with the per-rung publish counter rather than the log', () => {
+    const after = before.replaceAll(' 100', ' 120').replace('{rung="360p"} 90', '{rung="360p"} 110');
+    const pairing = rungMetricPairing(
+      before,
+      after,
+      new Map([
+        ['360p', 3],
+        ['1080p', 3],
+      ]),
+    );
+    assert.equal(pairing.publishesFrom, 'metric');
+    assert.deepEqual(
+      new Map(pairing.rows.map((row) => [row.rung, row.playlistsPublished])),
+      new Map([
+        ['360p', 20],
+        ['1080p', 0],
+      ]),
+    );
+    assert.match(
+      rungMetricRefusal(pairing) ?? '',
+      /1080p uploaded 20 segment\(s\) and published no playlist .* per-rung counter/,
+    );
+  });
+
+  it('refuses a per-rung failure counter that moved, naming the rung', () => {
+    const after = before
+      .replaceAll(' 100', ' 120')
+      .replaceAll('} 90', '} 110')
+      .replace('publish_failures_total{rung="1080p"} 0', 'publish_failures_total{rung="1080p"} 2');
+    const refusal = rungMetricRefusal(rungMetricPairing(before, after, new Map()));
+    assert.match(refusal ?? '', /1080p 2 failed live playlist publish/);
+  });
+
+  it('passes when every rung published and no rung failed, whatever the log says', () => {
+    const after = before.replaceAll(' 100', ' 120').replaceAll('} 90', '} 110');
+    assert.equal(rungMetricRefusal(rungMetricPairing(before, after, new Map())), null);
+  });
+});

@@ -325,10 +325,11 @@ rung that did, because a session that did not read the head numbered itself from
 within one segment of each other in length, and as many sessions glued as broadcasts were made. A restart suite that
 expects stale warnings while a replaced session drains prints them instead of refusing on them, and says so.
 
-⚠️ The uploader has no per-rung manifest publish or publish-failure counter today, and
-`swarm_hls_manifest_publish_failures_total` carries no rung label. So the metrics pairing in `abr-ladder` (H4) puts
-each rung's `swarm_hls_rung_segments_uploaded_total` beside the playlists the log says it published, and the failure
-counter is one number for the whole uploader.
+The metrics pairing in `abr-ladder` (H4) puts each rung's `swarm_hls_rung_segments_uploaded_total` beside the
+playlists it published. An uploader with the per-rung publish metrics renders
+`swarm_hls_rung_manifest_publishes_total{rung}` and `swarm_hls_rung_manifest_publish_failures_total{rung}`, and H4
+reads those and refuses any rung whose failure counter moved. An older uploader renders neither, and H4 falls back to
+the log's publish count and the one unlabelled `swarm_hls_manifest_publish_failures_total`.
 
 The settings the new scenarios read, beside the ones above:
 
