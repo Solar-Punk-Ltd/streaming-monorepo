@@ -199,6 +199,16 @@ manifest and asks again at its next segment, because a guess would write over th
 Before this, the pool's 4 s deadline cut off 117 of those 119 reads, and a retry reused a reader whose
 time had already run out, so a restarted broadcast published its live playlist on one rung of four.
 
+bee's answer to that read is a floor, not the head. Its feed finder gives every lookahead probe after
+index 0 one second and counts a probe that ran out as absent, so a slow node can answer an index below
+the real head, and continuing from there would write over the previous broadcast's later playlists
+and its recording. So the session then reads the slot above the answer by its index, which is a
+direct chunk read that does not ask the finder. Usually that slot is absent and the answer stands,
+for one extra read. When it holds a playlist, the distance doubles until a slot is absent and then
+halves back to the last slot present, and the session continues from that slot and numbers its
+playlist from the playlist there. Only a 404 counts as absent. Any other failure refuses the publish
+and asks again at the next segment, as a failed head read does.
+
 The example above is therefore a fresh topic. A later session on the same declared or rung feed has
 the same shape but may open at a value above 0, with `#EXT-X-DISCONTINUITY` on its first segment to
 mark the seam from the earlier session.

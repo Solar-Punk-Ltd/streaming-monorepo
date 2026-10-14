@@ -65,6 +65,16 @@ export interface FakeUploads {
    */
   feedHead?: (topic: string) => FakeFeedHead | null;
   /**
+   * What a read at an explicit index answers for a slot other than the head's own, which is a direct
+   * chunk read in bee-js and asks bee's feed finder nothing. Returning `null` is bee answering 404,
+   * and throwing is a read that failed.
+   *
+   * Unset, every slot but the head's answers 404, which is a feed whose head read told the truth. A
+   * test sets it to hold slots above the index `feedHead` reports, which is what bee's finder answers
+   * when a lookahead probe ran out of its one second. See `StreamUploader.findTrueFeedHead`.
+   */
+  feedSlot?: (topic: string, index: number) => string | null;
+  /**
    * Request deadlines as the real pool and bee-js give them, for a test about how long a node takes.
    * Unset, nothing here ever runs out of time.
    */
@@ -196,15 +206,23 @@ export function makeFakeBee(uploads: FakeUploads = {}): Bee {
         return {
           // Both shapes bee-js offers, answered the way bee-js answers them. The index comes from the
           // no-index call and the playlist only from the indexed one, per
-          // {@link OVERSIZED_PAYLOAD_WRAPPER}. A read at an index this feed is not at is a defect rather
-          // than an empty feed, so it is refused rather than answered.
+          // {@link OVERSIZED_PAYLOAD_WRAPPER}. A read at any other index answers from `feedSlot`, and
+          // without one it is a slot nothing was written to.
           downloadPayload: async (opts?: { index?: FeedIndex }) => {
             if (deadlines !== undefined) {
               await answerWithin(deadlineAt, deadlines.headReadMs ?? 0);
             }
             const head = uploads.feedHead ? uploads.feedHead(topicKey(topic)) : CRASHED_MID_BROADCAST;
-            if (head === null || (opts?.index !== undefined && Number(opts.index.toBigInt()) !== head.index)) {
+            if (head === null) {
               throw feedNotFound();
+            }
+            const at = opts?.index === undefined ? undefined : Number(opts.index.toBigInt());
+            if (at !== undefined && at !== head.index) {
+              const slot = uploads.feedSlot ? uploads.feedSlot(topicKey(topic), at) : null;
+              if (slot === null) {
+                throw feedNotFound();
+              }
+              return { feedIndex: FeedIndex.fromBigInt(BigInt(at)), payload: { toUtf8: () => slot } };
             }
             const payload = opts?.index === undefined ? OVERSIZED_PAYLOAD_WRAPPER : head.manifest;
             return { feedIndex: FeedIndex.fromBigInt(BigInt(head.index)), payload: { toUtf8: () => payload } };
