@@ -503,7 +503,7 @@ describe('Apply now', () => {
     assert.match(request.body, /It also applies LOG_LEVEL, saved earlier and not applied yet, not only the batch\./);
   });
 
-  it('says a live broadcast stops until the encoder reconnects when SRS is recreated too', async () => {
+  it('says a live broadcast stops until the encoder reconnects when SRS is recreated too, and the restart waits for the recording', async () => {
     const run = harness(LIVE);
 
     await applyNow(
@@ -513,7 +513,10 @@ describe('Apply now', () => {
 
     const body = run.asked()?.body ?? '';
     assert.match(body, /This recreates srs and stream-uploader, so the encoder is disconnected and has to reconnect\./);
-    assert.match(body, /The live broadcast on main-stage stops until the encoder reconnects/);
+    assert.match(
+      body,
+      /The live broadcast on main-stage stops until the encoder reconnects, and the restart waits until the uploader has written its recording, which takes seconds for a short broadcast and up to about five minutes for a long one, and keeps the recording\./,
+    );
     assert.doesNotMatch(body, /a few seconds/);
   });
 
@@ -529,7 +532,7 @@ describe('Apply now', () => {
     );
     assert.match(
       body,
-      /cannot tell whether a broadcast is live on main-stage\. If one is, it stops until the encoder reconnects\./,
+      /cannot tell whether a broadcast is live on main-stage\. If one is, it stops until the encoder reconnects, and the restart waits until the uploader has written its recording, which takes seconds for a short broadcast and up to about five minutes for a long one, and keeps the recording\./,
     );
   });
 });
