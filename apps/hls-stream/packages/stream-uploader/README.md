@@ -820,7 +820,8 @@ one. A draining stream, a stream awaiting a post-crash reconnect and a stream wh
 and not yet come back are all excluded, because none of them is expected to be sending. The route spreads
 the whole signal set rather than picking from it, so every
 reading a reason above is derived from is on the same body: `activeStreams`, `staleManifestStreams`,
-`maxConsecutiveManifestFailures`, `maxConsecutiveSegmentFailures`, `queuePressure`, `msSinceStreamActivity`,
+`maxConsecutiveManifestFailures`, `maxConsecutiveSegmentFailures`, `staleManifestStreamIds`,
+`segmentFailingStreamIds`, `queuePressure`, `msSinceStreamActivity`,
 `msSinceSegmentLoss`, `msSinceCatalogAnnounceFailed`, `msSinceStatePersistFailed`, `queueBacklogSeconds`,
 `msSinceAuthRejection`, `disconnectedStreams`, `hasIngestedMedia`, `segmentsSkipped`, `openingSegmentsWithheld`,
 `segmentsNeverNamed`, `quarantinedRecoveryEntries`, `fragmentMismatchStreams`, `publisherGopStreams`,
@@ -831,6 +832,12 @@ so flagging it, or counting it toward `segment_stall`, would turn every ten seco
 finished broadcast into `degraded`. One that never returns is finalized as a recording when its window is
 up. It is a list rather than a count because on a ladder all four rungs appear together for a
 whole-encoder outage and one rung alone is a dead transcoder, which is a different fault.
+`staleManifestStreamIds` names every live stream whose last live playlist publish failed, the streams
+`staleManifestStreams` counts, and `segmentFailingStreamIds` every live stream whose last segment upload
+failed, the streams behind `maxConsecutiveSegmentFailures`. A ladder rung is a stream of its own,
+`live/stream_1080p`, so the id says which rung. Both are empty on a healthy service, and the counts beside
+them are unchanged, so a reader of the counts keeps working. They name a stream from its first failure,
+before `stale_manifest` needs three, so a name can appear while the service still answers `ok`.
 `queueBacklogSeconds` is the
 only field that says which of `queue_pressure`'s two triggers fired. `msSinceAuthRejection` beside
 `hasIngestedMedia` is the pair `ingest_refused` is read off, which is what tells a deployment that has
