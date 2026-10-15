@@ -496,15 +496,21 @@ things moved the rungs apart, and each now keeps them together:
 - **A rung back as a new session joins the ladder's sequence and line.** A rung reaped after a minute
   without media while its siblings kept publishing comes back on its own topic, so its feed head is
   where it stopped, a minute or more of sequences behind, and it used to date its media from the
-  ladder's opening line in its own numbering. A session spawned while siblings of it are publishing
-  now takes the sequence they are publishing and the date their line gives it, before anything it
-  placed goes out (`ManifestManager.joinLiveLadder`). Its own feed is still never numbered
-  backwards. A sibling counts as publishing only once it has read its own feed head, because until
-  then its numbers are its own count from 0, and a sibling read before that dated a rung announcing a
-  fragment after its siblings' first cut the previous recording's length away, at the opening of a
-  later broadcast on the same declaration. A ladder opening is therefore left alone while its rungs
-  have not settled on their feeds. A rung announcing after a sibling has settled is taken as
-  rejoining, which numbers and dates it from that sibling's settled line.
+  ladder's opening line in its own numbering. A rung that already had a session in this broadcast,
+  starting again while a sibling is publishing, now takes the sequence its siblings are publishing and
+  the date their line gives it as its first segment is placed (`ManifestManager.joinLiveLadder`). Not
+  later, when its feed head read answers: that read can take seconds, and a rung bounced again, or
+  caught in a whole-ladder drop, inside it had no shared numbering to come back on. Its own feed is
+  still never numbered backwards: where its head is already past the ladder's sequence, the head wins
+  and the dates stay on the ladder's line.
+- **A ladder opening is left alone.** A rung announcing after a sibling's first cut, as the slowest
+  transcoder does, is still segment 0 of the broadcast, so only a rung that had a session in this
+  broadcast before is taken as rejoining, and a broadcast's rungs are forgotten when its ladder is
+  released. A sibling also counts as publishing only once it has read its own feed head, because
+  until then its numbers are its own count from 0: read before that, at the opening of a later
+  broadcast on the same declaration, it dated a rung the previous recording's length away. A restart
+  of this process forgets which rungs had a session, so a rung reaped before a restart and back after
+  it opens as at a ladder opening.
 
 **Which of two adjacent sequences a rejoining rung's segment is, is read off when the rungs delivered
 it.** SRS posts each rung's copy of one cut as that rung's transcoder closes it, a fraction of a

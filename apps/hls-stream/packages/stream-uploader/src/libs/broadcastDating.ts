@@ -273,20 +273,14 @@ export interface BroadcastDating {
    * they publish next and the date the ladder's line gives it. Null where no sibling is publishing,
    * which is a ladder opening or a lone rendition.
    *
-   * ⛔ Asked by a session that opens over a feed an earlier session of its rung left, which is a rung
-   * reaped or replaced in the middle of a broadcast. See `ManifestManager.continueFrom`.
+   * ⛔ Asked as a session places its first segment, and answered only for a rung spawned while its
+   * siblings were publishing, which is a rung reaped or replaced in the middle of a broadcast. See
+   * `ManifestManager.joinLiveLadder`.
    *
    * @param firstIndex the engine index of the segment this session placed first, which is not always
    * the first it was handed: an upload refused leaves the next one to land first.
    */
   liveLadderPosition(firstIndex: number): LadderPosition | null;
-
-  /**
-   * Say that the asking rung has placed its first segment of this return without taking the return's
-   * shared resume point, which a rung still waiting to learn where it joins its ladder does. The return
-   * then treats it as back, as {@link resumePointFor} would have. See `ManifestManager.joinPending`.
-   */
-  markReturnPlaced(returnToken: string): void;
 }
 
 /**
@@ -526,6 +520,5 @@ export function soleRungDating(anchorOf: () => BroadcastAnchor, wallClock: () =>
     // A rung with no siblings has nobody to agree a sequence with.
     resumePointFor: (_returnToken, ownResumeAt) => ownResumeAt,
     liveLadderPosition: () => null,
-    markReturnPlaced: () => {},
   };
 }

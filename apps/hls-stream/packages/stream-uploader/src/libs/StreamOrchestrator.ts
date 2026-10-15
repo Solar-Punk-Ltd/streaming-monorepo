@@ -423,6 +423,11 @@ export class StreamOrchestrator {
    */
   private rejoinPoints = new Map<string, { index: number; sequence: number } | null>();
   /**
+   * Per ladder source, the rungs that have had a session in its current broadcast, kept until the
+   * ladder is released. See {@link rejoinsItsLadder}.
+   */
+  private rungsOfTheBroadcast = new Map<string, Set<string>>();
+  /**
    * Per stream, the monotonic reading at which its encoder disconnected and did not come back.
    *
    * An entry means a live session whose publisher has gone but whose broadcast is deliberately still
@@ -1477,10 +1482,13 @@ export class StreamOrchestrator {
 
     const datingKey = this.datingKeyOf(streamId, match?.baseStreamId ?? null);
     this.broadcastAnchors.set(datingKey, anchor);
-    if (match !== null && this.publishingSiblingsOf(streamId, match.baseStreamId).length > 0) {
+    if (match !== null && this.rejoinsItsLadder(streamId, match.baseStreamId)) {
       this.rejoinPoints.set(streamId, null);
     } else {
       this.rejoinPoints.delete(streamId);
+    }
+    if (match !== null) {
+      this.noteRungInLadder(streamId, match.baseStreamId);
     }
 
     const sharedFeedTopic = admin !== undefined || ladder !== undefined ? streamTopic : undefined;
@@ -2160,6 +2168,7 @@ export class StreamOrchestrator {
           : { group: state.ladder.group, startedAtMs: anchor.startedAtMs, epochs: anchor.epochs };
       this.rememberLadder(base, ladder);
       this.streamBases.set(streamId, base);
+      this.noteRungInLadder(streamId, base);
       sharedAnchor = this.anchorOf(ladder);
     }
 
@@ -2982,7 +2991,6 @@ export class StreamOrchestrator {
       resumePointFor: (returnToken, ownResumeAt, ownResumeDatedAtMs, index) =>
         this.resumePointOf(streamId, datingKey, base, returnToken, ownResumeAt, ownResumeDatedAtMs, index),
       liveLadderPosition: (firstIndex) => this.liveLadderPositionOf(streamId, base, firstIndex),
-      markReturnPlaced: (returnToken) => this.markReturnPlaced(streamId, datingKey, base, returnToken),
     };
   }
 
@@ -3064,6 +3072,31 @@ export class StreamOrchestrator {
       return count;
     }
     return count - 1 - Math.max(0, Math.round((siblingTakenAt - handedAt) / fragmentMs));
+  }
+
+  /**
+   * Whether a session of this rung starting now is rejoining a broadcast in progress: the rung has had
+   * a session in this broadcast before, and a sibling is publishing settled numbers.
+   *
+   * ⛔ **Both, because a ladder opening has rungs starting while their siblings publish too.** A rung
+   * that announces after a sibling's first segment, as the slowest transcoder does, is still segment 0
+   * of the broadcast, and taken for a rejoin it was numbered and dated from its sibling's count. Only a
+   * rung that was already part of this broadcast and came back, reaped or replaced, has a place on the
+   * ladder to rejoin. A restart of this process forgets which rungs those were, so a rung reaped before
+   * it and back after it opens as at a ladder opening.
+   */
+  private rejoinsItsLadder(streamId: string, base: string): boolean {
+    return (
+      (this.rungsOfTheBroadcast.get(base)?.has(streamId) ?? false) &&
+      this.publishingSiblingsOf(streamId, base).length > 0
+    );
+  }
+
+  /** Note that this rung has a session in its ladder's current broadcast. See {@link rejoinsItsLadder}. */
+  private noteRungInLadder(streamId: string, base: string): void {
+    const rungs = this.rungsOfTheBroadcast.get(base) ?? new Set<string>();
+    rungs.add(streamId);
+    this.rungsOfTheBroadcast.set(base, rungs);
   }
 
   /** Record when this segment was handed to its uploader. See {@link segmentHandedAt}. */
@@ -3403,6 +3436,7 @@ export class StreamOrchestrator {
       this.ladderGroups.delete(base);
       this.broadcastAnchors.delete(base);
       this.returnsInProgress.delete(base);
+      this.rungsOfTheBroadcast.delete(base);
       this.config.ladderGroupStore?.forget(base);
     }
   }
