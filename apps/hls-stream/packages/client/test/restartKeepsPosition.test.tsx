@@ -169,6 +169,19 @@ describe('a player restarted by a fatal error', () => {
     assert.deepEqual(fakes.instances[2].startLoads, [2100]);
   });
 
+  // The rebuilt player has parsed and been told where to start, but has not played from there. A level
+  // load error on the same bad gateway, or a playhead back at 0 after attachMedia, reads as no position.
+  it('keeps the recording position through a fatal error after the rebuilt player parsed but before it played', () => {
+    failFatallyAt(2100, false);
+    assert.deepEqual(fakes.instances[1].startLoads, [2100]);
+
+    emit(1, Events.ERROR, FATAL_LEVEL_LOAD);
+    assert.equal(fakes.instances.length, 3, 'the second fatal error did not restart the player');
+    emit(2, Events.MANIFEST_PARSED);
+
+    assert.deepEqual(fakes.instances[2].startLoads, [2100]);
+  });
+
   it('names the error that caused the restart in the line that announces it', () => {
     failFatallyAt(2100, false);
 

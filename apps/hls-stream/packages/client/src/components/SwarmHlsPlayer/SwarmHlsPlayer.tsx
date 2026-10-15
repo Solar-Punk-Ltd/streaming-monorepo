@@ -402,6 +402,12 @@ export const SwarmHlsPlayer: React.FC<HlsPlayerProps> = ({
     const onHlsPlay = () => {
       hls?.startLoad();
     };
+    const onPlayedPastResume = () => {
+      const resume = resumeAfterRestartRef.current;
+      if (resume && video.currentTime > resume.positionS) {
+        resumeAfterRestartRef.current = null;
+      }
+    };
 
     if (Hls.isSupported()) {
       const tuning: HlsTuning = { ...DEFAULT_HLS_TUNING, ...callerTuning };
@@ -409,8 +415,8 @@ export const SwarmHlsPlayer: React.FC<HlsPlayerProps> = ({
 
       const restartStream = (cause: ErrorData) => {
         console.warn(`Restarting stream after a fatal ${cause.type} (${cause.details}).`);
-        // A player that fails again before it has started holds no level to read a position from, so the
-        // place an earlier restart kept stays until a player starts loading from it.
+        // A player that fails again before it has played holds no level, or a playhead back at 0, so the
+        // place an earlier restart kept stays until playback has moved past it.
         resumeAfterRestartRef.current =
           (hls ? restartResumeOf(hls, video, sourceUrl) : null) ?? resumeAfterRestartRef.current;
         hls?.destroy();
@@ -423,6 +429,7 @@ export const SwarmHlsPlayer: React.FC<HlsPlayerProps> = ({
 
       video.addEventListener('pause', onHlsPause);
       video.addEventListener('play', onHlsPlay);
+      video.addEventListener('timeupdate', onPlayedPastResume);
 
       hls.on(Events.ERROR, (_event, data) => {
         if (
@@ -497,7 +504,9 @@ export const SwarmHlsPlayer: React.FC<HlsPlayerProps> = ({
         }
 
         const resume = resumeAfterRestartRef.current;
-        resumeAfterRestartRef.current = null;
+        if (resume && resume.sourceUrl !== sourceUrl) {
+          resumeAfterRestartRef.current = null;
+        }
         hls!.startLoad(resume?.sourceUrl === sourceUrl ? resume.positionS : undefined);
 
         if (autoPlay) {
@@ -573,6 +582,7 @@ export const SwarmHlsPlayer: React.FC<HlsPlayerProps> = ({
       stopLadderWatch();
       video.removeEventListener('pause', onHlsPause);
       video.removeEventListener('play', onHlsPlay);
+      video.removeEventListener('timeupdate', onPlayedPastResume);
       detachQoe?.();
       detachRateGuard?.();
       detachLiveSync?.();
