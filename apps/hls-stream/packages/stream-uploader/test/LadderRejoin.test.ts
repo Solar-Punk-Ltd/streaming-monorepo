@@ -356,3 +356,46 @@ describe('a rung rejoining a live ladder', () => {
     await assertOneTimeline(harness, cuts.map(everyRung), everyRung('x5'));
   });
 });
+
+describe('a ladder opening on a declaration that already has a recording', () => {
+  /**
+   * ⛔ A rung announcing more than a fragment after its siblings' first cut found them with media, and
+   * was taken for a rung rejoining a broadcast in progress, while their own numbering had not yet moved
+   * past the recording already on their feeds. It took a sequence and a date in two different numberings
+   * and dated the whole broadcast the previous recording's length away from its siblings.
+   */
+  it('dates a rung announcing after its siblings’ first cut on their line', async () => {
+    const harness = rejoinHarness();
+    for (const streamId of rungIds) harness.start(streamId);
+    for (let round = 0; round < 3; round++) {
+      for (const streamId of rungIds) await harness.deliver(streamId, `a${round}`);
+      await harness.passTime(SEGMENT_SECONDS * 1_000);
+    }
+    // Every rung goes silent, and the reaper ends the first broadcast as four recordings.
+    await harness.passTime(REAP_MS + 5_000);
+    await waitFor(
+      () =>
+        rungIds.every((streamId) =>
+          harness.writes.some(
+            (write) => write.playlist.includes(VOD_TAG) && write.playlist.includes(`segment-${streamId}-a2`),
+          ),
+        ),
+      SETTLE_CEILING_MS,
+    );
+    await harness.passTime(30_000);
+
+    // The second broadcast: three rungs announce and deliver one cut, 1080p announces 1.2 s later.
+    for (const streamId of rungIds) harness.restartCounter(streamId);
+    for (const streamId of fastRungs) harness.start(streamId);
+    for (const streamId of fastRungs) await harness.deliver(streamId, 'x0');
+    await harness.passTime(1_200);
+    harness.start(rung1080);
+    await harness.deliver(rung1080, 'x0');
+    await harness.passTime(800);
+    for (const cut of ['x1', 'x2']) {
+      for (const streamId of rungIds) await harness.deliver(streamId, cut);
+      await harness.passTime(SEGMENT_SECONDS * 1_000);
+    }
+    await assertOneTimeline(harness, ['x0', 'x1', 'x2'].map(everyRung), everyRung('x2'));
+  });
+});
