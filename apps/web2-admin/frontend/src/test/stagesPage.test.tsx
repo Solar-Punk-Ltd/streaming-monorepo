@@ -123,7 +123,7 @@ describe('StagesPage', () => {
     expect(screen.queryByText('Retired')).not.toBeInTheDocument();
   });
 
-  it('names the RTMP port as unencrypted where a stage offers RTMP, and no RTMP where it does not', async () => {
+  it('names SRT alone for every stage, and no RTMP even where a stage takes it', async () => {
     serve(
       [
         makeStage(),
@@ -145,8 +145,10 @@ describe('StagesPage', () => {
     );
     renderWithProviders(<StagesPage />);
 
-    expect(await screen.findByText('SRT, with a passphrase · RTMP on 10062, unencrypted')).toBeInTheDocument();
+    expect(await screen.findByText('SRT, with a passphrase')).toBeInTheDocument();
     expect(screen.getByText('SRT, no passphrase')).toBeInTheDocument();
+    expect(screen.queryByText(/RTMP/)).not.toBeInTheDocument();
+    expect(screen.queryByText(/10062/)).not.toBeInTheDocument();
     expect(screen.queryByText(/10072/)).not.toBeInTheDocument();
   });
 
