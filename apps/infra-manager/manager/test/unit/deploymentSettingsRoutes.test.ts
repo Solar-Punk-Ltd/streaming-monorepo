@@ -366,7 +366,7 @@ describe('GET /versions/:id/settings-catalog', () => {
     writeFileSync(join(root, '.env.sample'), 'BEE_UPLOADER_DATA_DIR=\n', 'utf8');
     try {
       const here = await newDeploymentList(app, '?kind=streamer');
-      const elsewhere = await newDeploymentList(app, '?kind=streamer&host=deploy@edge-1');
+      const elsewhere = await newDeploymentList(app, '?kind=streamer&host=edge-1');
 
       assert.equal(here.entries[0]?.owner, 'data-dir');
       assert.equal(elsewhere.entries[0]?.owner, null);
