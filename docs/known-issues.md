@@ -105,7 +105,9 @@ minute, with three encoders none at all, and the admin showed Live throughout. W
 back to normal within about 10 seconds. A wrong or missing passphrase or key, another stream's key and malformed
 stream ids are refused without touching the live stream. Kept as it is for now: a stream's details belong in one
 encoder, and the way out is Rotate key on the stream's page, then the new details in the one encoder that should
-broadcast. Options for later are in the [roadmap](ROADMAP.md#one-encoder-per-stream-later). To see it: start two
+broadcast. Measured the same day: right after the rotation the encoder connected at that moment stays on air and every
+reconnect with the old key is refused, which ends the fight, and the encoder given the new details then takes the
+stream over and keeps it at full rate. Options for later are in the [roadmap](ROADMAP.md#one-encoder-per-stream-later). To see it: start two
 encoders with the same SRT details, each reconnecting after 2 seconds, and count segments per rung.
 
 **A takeover by a second live encoder splits one segment across rungs (P3).** When a second encoder
