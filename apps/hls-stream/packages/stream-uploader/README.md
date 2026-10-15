@@ -390,7 +390,8 @@ and nothing bounded that. A broadcast's dating is a list of epochs now, in `Broa
 - The media published before the restart keeps the dates it went out with. Those segments are in a
   window a viewer is holding, and re-dating them would move media that has already been served.
 - The first segment after the restart is dated at the wall clock it arrived at, and the segments
-  after it carry on from the media each one holds.
+  after it carry on from the media each one holds. On a ladder where a rung kept publishing through
+  the restart, that rung's line takes the place of the wall clock (see below).
 - The first segment placed at or above an epoch's `fromSequence` takes that epoch's instant, under
   the newest epoch that reaches it. The broadcast's start is the implicit first epoch.
 
@@ -469,6 +470,48 @@ it, or never left it, goes away again, and a rung that drops before its first re
 the return it announced. A test deployment came back in two returns, the first without 360p, and 360p was
 handed the first return's name at the second: it resumed a sequence apart from its siblings and dated
 its media 24 seconds in the past.
+
+### Every rung of a live ladder dates from the ladder's one current line
+
+⛔ **Segment N of every rung carries one `#EXT-X-PROGRAM-DATE-TIME`, whatever happened to the rungs one
+at a time.** Measured on the dev stage on 2026-10-15, a four-rung admin-mode ladder went through a day
+of re-broadcasts, encoder drops of 6 s, 25 s and over 60 s, an SRS restart and a long uplink squeeze.
+The finished recording had 1076 sequences on every rung, but 622 of them carried different dates
+across rungs, and 720p and 1080p dated their last segment 496 seconds before 360p and 480p. Three
+things moved the rungs apart, and each now keeps them together:
+
+- **A return's line is minted over every rung's floor, not only the first rung's.** A rung joining a
+  line takes the larger of the line and the date its own media says its next segment falls at, so a
+  line minted under a sibling's floor was one that sibling stepped off. One rung minted at
+  03:03:12.365 from a short partial segment, and three landed at 03:03:14.365. The rung minting the
+  line now reads the date every rung of the return, and every rung that kept publishing through it,
+  gives the resume point, and mints at the latest of those and the wall clock
+  (`ReanchorRequest.ladderFloorMs`).
+- **A return some rung never left resumes on that rung's line, not on the wall clock.** That rung's
+  media is continuous, so its dates are the ladder's timeline. Three rungs bounced by SRS used to
+  re-anchor at the wall clock while 1080p, never part of their return, went on dating its continuous
+  media from the line it had, about three seconds apart for the rest of the broadcast
+  (`ReanchorRequest.keptPublishingAtMs`). A rung counts as having kept publishing when it delivered
+  media at least half a fragment after the newest media of the rungs that went away.
+- **A rung back as a new session joins the ladder's sequence and line.** A rung reaped after a minute
+  without media while its siblings kept publishing comes back on its own topic, so its feed head is
+  where it stopped, a minute or more of sequences behind, and it used to date its media from the
+  ladder's opening line in its own numbering. A session spawned while siblings of it are publishing
+  now takes the sequence they are publishing and the date their line gives it, before anything it
+  placed goes out (`ManifestManager.joinLiveLadder`). Its own feed is still never numbered
+  backwards. A ladder opening is left alone: its rungs announce before any of them has media, and
+  each of their first segments is segment 0 of the broadcast.
+
+**Which of two adjacent sequences a rejoining rung's segment is, is read off when the rungs delivered
+it.** SRS posts each rung's copy of one cut as that rung's transcoder closes it, a fraction of a
+fragment apart, and the next cut a whole fragment later. So a sibling that kept publishing and was
+handed its newest segment within half a fragment of the rejoining rung's counts that segment as the
+same cut, for a new session and for a rung resuming in a partial return alike. Taking the next
+sequence every time numbered the slowest rung, which usually delivers last, one sequence late.
+
+⚠️ **Not covered: a rung reaped while every sibling is away.** With no sibling publishing there is no
+live line to join, so such a session dates from the ladder's record as before, and its siblings'
+return mints its own line. Nothing measured has had this shape yet.
 
 Two sequence-shaped rules were tried before this one and both were wrong, which is worth knowing
 before anyone simplifies it. Recognising a return by the clock alone read a second outage on the same
