@@ -513,9 +513,18 @@ handed its newest segment within half a fragment of the rejoining rung's counts 
 same cut, for a new session and for a rung resuming in a partial return alike. Taking the next
 sequence every time numbered the slowest rung, which usually delivers last, one sequence late.
 
-⚠️ **Not covered: a rung reaped while every sibling is away.** With no sibling publishing there is no
-live line to join, so such a session dates from the ladder's record as before, and its siblings'
-return mints its own line. Nothing measured has had this shape yet.
+⚠️ **Not covered, found by review on 2026-10-15 and left open on purpose:**
+
+- **A rung reaped while every sibling is away.** With no sibling publishing there is no live line to
+  join, so the new session numbers from its own feed head and dates from the ladder's opening line,
+  while its siblings' return mints a line at the wall clock. It stays a minute or more of sequences
+  and dates apart until the next return in which the whole ladder comes back together, which puts it
+  back on one line. Nothing measured has had this shape yet.
+- **A replaced rung wipes the ladder's shared epochs.** `reanchorReplacedBroadcast` writes an epoch at
+  sequence 0 for a session announced while its predecessor is still finalizing, and an epoch at 0
+  replaces the whole list in the ladder's record. A sibling still to come back from a return then finds
+  no line under its return's name and mints a second one. Priority P3: it needs a replacement and a
+  return in progress at the same moment, and it has not been reproduced.
 
 Two sequence-shaped rules were tried before this one and both were wrong, which is worth knowing
 before anyone simplifies it. Recognising a return by the clock alone read a second outage on the same
