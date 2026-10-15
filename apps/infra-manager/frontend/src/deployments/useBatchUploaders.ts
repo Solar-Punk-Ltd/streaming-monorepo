@@ -15,8 +15,12 @@ import { settingsReadKey, type DeploymentSettingsLoad } from './settings/useDepl
 
 export interface BatchUploadersLoad {
   uploaders: BatchUploader[];
-  /** Reads every uploader's settings list again, and resolves once the answers are in place. */
-  reread: () => Promise<void>;
+  /**
+   * Reads every uploader's settings list again, and resolves once the answers
+   * are in place, with the uploaders they show, or null when the read failed
+   * or a newer one overtook it.
+   */
+  reread: () => Promise<BatchUploader[] | null>;
 }
 
 interface StageCatalog {
@@ -55,12 +59,26 @@ export function useBatchUploaders({
   const stageCatalogs = useStageCatalogs(stages);
 
   if (!rung) {
-    const uploader = own.catalog ? ownUploaderOf(profile.name, own.catalog) : null;
-    return { uploaders: uploader ? [uploader] : [], reread: own.reload };
+    const ownUploaders = (catalog: DeploymentSettingsCatalog | null) => {
+      const uploader = catalog ? ownUploaderOf(profile.name, catalog) : null;
+      return uploader ? [uploader] : [];
+    };
+    return {
+      uploaders: ownUploaders(own.catalog),
+      reread: async () => {
+        const catalog = await own.reload();
+        return catalog ? ownUploaders(catalog) : null;
+      },
+    };
   }
+  const stageUploaders = (catalogs: readonly StageCatalog[]) =>
+    catalogs.flatMap(({ name, catalog }) => stageUploaderOf(name, catalog, rung) ?? []);
   return {
-    uploaders: stageCatalogs.catalogs.flatMap(({ name, catalog }) => stageUploaderOf(name, catalog, rung) ?? []),
-    reread: stageCatalogs.reread,
+    uploaders: stageUploaders(stageCatalogs.catalogs),
+    reread: async () => {
+      const catalogs = await stageCatalogs.reread();
+      return catalogs ? stageUploaders(catalogs) : null;
+    },
   };
 }
 
@@ -80,7 +98,10 @@ export function stageReadKey(
  * or has its pool string moved. A stage whose list could not be read in time
  * is left out rather than guessed at. Only the newest round's answers are kept.
  */
-function useStageCatalogs(stages: readonly Profile[]): { catalogs: StageCatalog[]; reread: () => Promise<void> } {
+function useStageCatalogs(stages: readonly Profile[]): {
+  catalogs: StageCatalog[];
+  reread: () => Promise<StageCatalog[] | null>;
+} {
   const readKey = stageReadKey(stages);
   const [catalogs, setCatalogs] = useState<StageCatalog[]>([]);
   const latest = useRef(0);
@@ -91,8 +112,9 @@ function useStageCatalogs(stages: readonly Profile[]): { catalogs: StageCatalog[
     latest.current += 1;
     const round = latest.current;
     const answered = await readStageCatalogs(names.current, fetchDeploymentSettings);
-    if (round !== latest.current) return;
+    if (round !== latest.current) return null;
     setCatalogs(answered);
+    return answered;
   }, []);
 
   useEffect(() => {

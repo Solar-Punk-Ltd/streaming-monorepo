@@ -11,7 +11,7 @@ import type { BeeUtils } from '../src/uploaders/useBeeUtils';
 import { setSessionEndedHandler } from '../src/http';
 import { stampHealthFrom } from '@streaming-infra-manager/common';
 
-const NO_UPLOADERS: BatchUploadersLoad = { uploaders: [], reread: async () => undefined };
+const NO_UPLOADERS: BatchUploadersLoad = { uploaders: [], reread: async () => [] };
 
 declare global {
   interface Window {

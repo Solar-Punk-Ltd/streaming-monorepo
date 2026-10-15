@@ -45,6 +45,8 @@ export interface BatchUploader {
   runningBatchId: string | null;
   /** Its containers run and were started with another batch for this node than the saved one. */
   behind: boolean;
+  /** Its deployment's containers run, rather than being stopped or in the middle of a deploy. */
+  running: boolean;
   /** What its Apply recreates, every service when a changed key reaches the deploy scripts alone. */
   recreates: readonly string[] | 'all';
   /** The key that carries this node's batch to the uploader, `STAMP` or `BEE_PUBLISHERS`. */
@@ -91,6 +93,7 @@ export function ownUploaderOf(name: string, catalog: DeploymentSettingsCatalog):
     savedBatchId: savedPaysWithNode ? entry.value || null : null,
     runningBatchId: runningPaysWithNode ? entry.runningValue : null,
     behind: catalog.running && savedPaysWithNode && entry.running === 'differs',
+    running: catalog.running,
     recreates: recreatesOf(catalog),
     batchKey: STAMP_KEY,
     changedKeys: catalog.drift.keys,
@@ -122,6 +125,7 @@ export function stageUploaderOf(name: string, catalog: DeploymentSettingsCatalog
     savedBatchId,
     runningBatchId,
     behind: catalog.running && entry.running === 'differs' && rungDiffers,
+    running: catalog.running,
     recreates: recreatesOf(catalog),
     batchKey: BEE_PUBLISHERS_KEY,
     changedKeys: catalog.drift.keys,
@@ -405,10 +409,119 @@ export async function readStageCatalogs(
   );
 }
 
+/**
+ * How long the card follows Apply now's recreate. The old uploader writes its
+ * live recordings before it exits and its compose service waits up to 330 s
+ * for that, so a long broadcast keeps the recreate going for minutes.
+ */
+const APPLY_FOLLOW_BUDGET_MS = 7 * 60_000;
+
+/** The waits between the card's reads while a recreate runs, the last one repeated. */
+const APPLY_FOLLOW_DELAYS_MS = [2_000, 4_000, 8_000, 15_000] as const;
+
+/** How Apply now's recreate ended, as far as the card could follow it. */
+export type ApplyFollowOutcome = 'caught-up' | 'still-behind' | 'not-running' | 'unread' | 'stopped';
+
+export interface FollowApplyDeps {
+  /** Reads every uploader's settings list again, and answers null when the read failed or a newer one overtook it. */
+  reread: () => Promise<readonly BatchUploader[] | null>;
+  /** Aborted when the card goes away. */
+  signal?: AbortSignal;
+  now?: () => number;
+  sleep?: (ms: number, signal?: AbortSignal) => Promise<void>;
+  budgetMs?: number;
+  delaysMs?: readonly number[];
+}
+
+function sleepUnlessAborted(ms: number, signal?: AbortSignal): Promise<void> {
+  return new Promise((resolve) => {
+    const timer = setTimeout(done, ms);
+    function done() {
+      clearTimeout(timer);
+      signal?.removeEventListener('abort', done);
+      resolve();
+    }
+    signal?.addEventListener('abort', done, { once: true });
+  });
+}
+
+function outcomeOf(uploader: BatchUploader | undefined): Exclude<ApplyFollowOutcome, 'stopped'> {
+  if (!uploader) return 'unread';
+  if (!uploader.running) return 'not-running';
+  return uploader.behind ? 'still-behind' : 'caught-up';
+}
+
+/**
+ * Reads the uploaders again after Apply now until the one it applied runs
+ * the saved settings. The manager answers Apply as soon as the recreate has
+ * started, so a single read lands while the deployment is still recreating.
+ * Reads on a growing wait, stops at the first read that shows the uploader
+ * running and caught up, and gives up after the budget with what it last saw.
+ * An Apply that recreated nothing is read once.
+ */
+export async function followApply(
+  applied: DeploymentSettingsApplied,
+  name: string,
+  deps: FollowApplyDeps,
+): Promise<ApplyFollowOutcome> {
+  const now = deps.now ?? Date.now;
+  const sleep = deps.sleep ?? sleepUnlessAborted;
+  const delays = deps.delaysMs ?? APPLY_FOLLOW_DELAYS_MS;
+  const deadline = now() + (applied.recreated.length === 0 ? 0 : (deps.budgetMs ?? APPLY_FOLLOW_BUDGET_MS));
+  for (let attempt = 0; ; attempt += 1) {
+    const read = await deps.reread().catch(() => null);
+    if (deps.signal?.aborted) return 'stopped';
+    const outcome = outcomeOf(read?.find((uploader) => uploader.name === name));
+    const wait = delays[Math.min(attempt, delays.length - 1)] ?? 0;
+    if (outcome === 'caught-up' || now() + wait > deadline) return outcome;
+    await sleep(wait, deps.signal);
+    if (deps.signal?.aborted) return 'stopped';
+  }
+}
+
+const APPLY_FOLLOW_MINUTES = `${APPLY_FOLLOW_BUDGET_MS / 60_000} minutes`;
+
+/** What the card says while it follows a recreate. */
+export function applyFollowingText(name: string): string {
+  return `Waiting for ${name} to restart on the saved settings. The old uploader writes a long broadcast's recording first, so this can take minutes. The card checks again until it is done, for up to ${APPLY_FOLLOW_MINUTES}.`;
+}
+
+export interface ApplyFollowText {
+  severity: 'success' | 'warning';
+  text: string;
+}
+
+/** What the card says once it stopped following a recreate. */
+export function applyFollowText(name: string, outcome: Exclude<ApplyFollowOutcome, 'stopped'>): ApplyFollowText {
+  const deployPage = 'Its page shows how the deploy went.';
+  switch (outcome) {
+    case 'caught-up':
+      return {
+        severity: 'success',
+        text: `${name} now runs the saved settings, so its uploader pays with the saved batch.`,
+      };
+    case 'still-behind':
+      return {
+        severity: 'warning',
+        text: `${name} still ran the batch it started with when the card stopped checking, up to ${APPLY_FOLLOW_MINUTES} after Apply. ${deployPage}`,
+      };
+    case 'not-running':
+      return {
+        severity: 'warning',
+        text: `${name} was not running again when the card stopped checking, up to ${APPLY_FOLLOW_MINUTES} after Apply, so its uploader pays with no batch yet. ${deployPage}`,
+      };
+    case 'unread':
+      return {
+        severity: 'warning',
+        text: `The console could not read the settings of ${name} after Apply, so it cannot tell which batch its uploader pays with. ${deployPage}`,
+      };
+  }
+}
+
 export interface SetBatchDeps {
   setStamp: (batchId: string) => Promise<unknown>;
   reloadDeployments: () => void;
-  rereadUploaders: () => Promise<void>;
+  rereadUploaders: () => Promise<unknown>;
 }
 
 /** Use: store the batch, then read the deployments and every uploader's settings again at once. */

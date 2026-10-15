@@ -175,6 +175,14 @@ says so where the operator clicked:
   every service the encoder is disconnected and the broadcast stops until it
   reconnects, and the restart still waits for the old uploader to write its
   recording first, for the same seconds to about five minutes.
+- The manager answers Apply as soon as the recreate has started, so after it
+  the card reads the uploaders' settings again on a growing wait (2, 4, 8, then
+  every 15 seconds) until the uploader it applied runs again on the saved
+  settings, for up to seven minutes, while an info line says it is waiting. It
+  then says the uploader runs the saved batch, or, if it never caught up, that
+  the uploader still ran its old batch, was not running again, or could not be
+  read, and points at the deployment's page (since 2026-10-15). The card's
+  buttons stay usable meanwhile.
 - The chip on each batch follows the running uploader, read from the
   `runningValue` the settings list carries for `STAMP` (see
   [deployment-settings.md](deployment-settings.md)): **in use** on the batch
