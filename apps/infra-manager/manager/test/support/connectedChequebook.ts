@@ -1,32 +1,33 @@
 /**
  * The production money composition with only its outsides replaced.
  *
- * A disposable PostgreSQL schema, a temporary Unix socket serving the
- * synthetic Docker and Bee fixture, and a scripted chain. Everything between
- * them is what the manager runs: the real repository, the real preparation and
- * transport, the real receipt poller and the real router behind the real
- * session gate. Two callers share it, the connected SQL suite and the forked
- * server the connected browser suite drives.
+ * A disposable PostgreSQL schema, a synthetic Bee node reached through the
+ * direct route's session seam, and a scripted chain. Everything between them is
+ * what the manager runs: the real repository, the real deployments and
+ * containers the direct route works a node's Bee API address out of, the real
+ * preparation, the real receipt poller and recovery, and the real router behind
+ * the real session gate. Nothing here opens a Docker connection or a socket to
+ * Bee. Two callers share it, the connected SQL suite and the forked server the
+ * connected browser suite drives.
  */
 import { randomBytes, randomUUID } from 'node:crypto';
-import { once } from 'node:events';
-import { mkdtemp, readFile, readdir, rm, stat } from 'node:fs/promises';
-import net from 'node:net';
-import { tmpdir } from 'node:os';
-import { join } from 'node:path';
-import type { TestContext } from 'node:test';
+import { readFile, readdir } from 'node:fs/promises';
 import express, { type Express, type RequestHandler } from 'express';
 import pg, { type Pool } from 'pg';
+import type { BeeTransaction, ChequebookBalance } from '@streaming-infra-manager/common';
+import type { BeeAddresses, BeeChequebookAddress, BeeWallet } from '../../src/domain/BeeClient.js';
 import type { ChequebookChainReader } from '../../src/domain/chequebook/ChequebookChainRegistry.js';
 import {
   createChequebookOperationsService,
   type ChequebookRuntime,
+  type ChequebookServiceDependencies,
 } from '../../src/domain/chequebook/createChequebookOperationsService.js';
-import {
-  openUnixDockerConnection,
-  type ConnectUnixDocker,
-} from '../../src/domain/chequebook/acquireLocalDockerBeeStream.js';
 import type { ChequebookOperationsService } from '../../src/domain/chequebook/ChequebookOperationsService.js';
+import type { BeeTransferSession } from '../../src/domain/chequebook/PinnedBeeSession.js';
+import { ContainerRepository } from '../../src/domain/ContainerRepository.js';
+import { buildContainerSnapshot } from '../../src/domain/containerKeysSpec.js';
+import { BeeConnectionError } from '../../src/domain/errors/BeeConnectionError.js';
+import { ProfileRepository } from '../../src/domain/ProfileRepository.js';
 import { createAuthRouter } from '../../src/api/routes/auth.js';
 import { createChequebookRouter } from '../../src/api/routes/chequebook.js';
 import { createRequireSession } from '../../src/api/middleware/requireSession.js';
@@ -38,13 +39,11 @@ import type { ChequebookService } from '../../src/domain/ChequebookService.js';
 import { InMemoryCredentialRepository } from './InMemoryCredentialRepository.js';
 import { InMemorySessionRepository } from './InMemorySessionRepository.js';
 import { InMemoryUserRepository } from './InMemoryUserRepository.js';
-import { instanceForProfile, transferContext } from './chequebookOperations.js';
-import { qualifiedBridge } from './qualifiedBeeBridge.js';
+import { instanceForProfile, transactionHash, transferContext } from './chequebookOperations.js';
 import { seedSyntheticChequebookTarget, SyntheticTargetChequebookRepository } from './syntheticChequebookTargets.js';
-import { syntheticDockerBee } from './syntheticDockerBee.js';
 
 export const CONNECTED_PROFILE = 'test-deployment';
-/** The port the synthetic container publishes, which the SQL reservation has to agree with. */
+/** The port the synthetic Bee container records, which the SQL reservation has to agree with. */
 const PUBLISHED_BEE_PORT = 11633;
 export const CONNECTED_OPERATOR = 'connected-operator';
 /** A synthetic password for a synthetic in-memory user. It opens nothing outside this process. */
@@ -62,12 +61,15 @@ export interface SyntheticChain {
   receiptReads(): number;
   answers(next: ReceiptAnswer): void;
   outage(on: boolean): void;
+  /** Whether the receipt's block is final yet. It is unless a case says otherwise. */
+  final(on: boolean): void;
 }
 
 /** One chain, scripted, so a case can say what changed rather than what the chain happened to do. */
 export function syntheticChain(): SyntheticChain {
   let answer: ReceiptAnswer = 'pending';
   let available = true;
+  let final = true;
   let receiptReads = 0;
   const unavailable = (): never => {
     throw new Error('synthetic-rpc-outage');
@@ -84,8 +86,8 @@ export function syntheticChain(): SyntheticChain {
     },
     async blockHeader(block) {
       if (!available) unavailable();
-      const number =
-        block === 'finalized' || block === 'latest' ? (answer === 'pending' ? START_BLOCK : RECEIPT_BLOCK) : block;
+      const head = answer === 'pending' ? START_BLOCK : RECEIPT_BLOCK;
+      const number = block === 'latest' ? head : block === 'finalized' ? (final ? head : START_BLOCK) : block;
       return { number: String(number), hash: hashAt(number), parentHash: hashAt(number - 1n) };
     },
     async transaction(hash) {
@@ -126,8 +128,108 @@ export function syntheticChain(): SyntheticChain {
     outage(on) {
       available = !on;
     },
+    final(on) {
+      final = on;
+    },
   };
 }
+
+/** One request the synthetic Bee answered or refused, in the order it came. */
+export interface SyntheticBeeRequest {
+  readonly method: 'GET' | 'POST';
+  readonly url: string;
+}
+
+/** What the direct route's session seam takes: the transfer session and the pending-transactions read recovery makes. */
+export type SyntheticBeeSession = BeeTransferSession & { getPendingTransactions(): Promise<unknown> };
+
+export interface SyntheticBeeNode {
+  /** The factory's `createSession` seam, which a real manager fills with a plain HTTP session to the node's Bee API. */
+  readonly createSession: (url: string) => SyntheticBeeSession;
+  /** Every Bee API address a session was opened for. */
+  sessionUrls(): readonly string[];
+  requests(): readonly SyntheticBeeRequest[];
+  posts(): number;
+  /** The next transfer reaches Bee, which sends it, and its answer is lost on the way back. */
+  dropNextResponse(): void;
+}
+
+/**
+ * A Bee node as the direct route reaches it, answering what a funded node answers. Each session takes one transfer and
+ * no read after it, and is unusable once disposed, as a real one is. A transfer whose answer was lost was still sent:
+ * from then on the node lists its hash as pending, which is what recovery finds it by.
+ */
+export function syntheticBeeNode(options: { dropNextResponse?: boolean } = {}): SyntheticBeeNode {
+  const sessionUrls: string[] = [];
+  const requests: SyntheticBeeRequest[] = [];
+  const pending: string[] = [];
+  let dropResponse = options.dropNextResponse === true;
+  const createSession = (url: string): SyntheticBeeSession => {
+    sessionUrls.push(url);
+    let disposed = false;
+    let posted = false;
+    const read = async <T>(path: string, answer: T): Promise<T> => {
+      requests.push({ method: 'GET', url: path });
+      if (disposed || posted) throw new BeeConnectionError();
+      return structuredClone(answer);
+    };
+    const send = async (direction: 'deposit' | 'withdraw', amount: bigint): Promise<BeeTransaction> => {
+      requests.push({ method: 'POST', url: `/chequebook/${direction}?amount=${amount}` });
+      if (disposed || posted) throw new BeeConnectionError();
+      posted = true;
+      if (dropResponse) {
+        dropResponse = false;
+        pending.push(transactionHash);
+        disposed = true;
+        throw new BeeConnectionError();
+      }
+      return { transactionHash };
+    };
+    return {
+      getAddresses: () => read<BeeAddresses>('/addresses', { ethereum: transferContext.nodeAddress } as BeeAddresses),
+      getWallet: () =>
+        read<BeeWallet>('/wallet', {
+          chainID: 100,
+          walletAddress: transferContext.nodeAddress,
+          chequebookContractAddress: transferContext.chequebookAddress,
+          bzzBalance: '10000000000000000',
+          nativeTokenBalance: '1',
+        } as BeeWallet),
+      getChequebookAddress: () =>
+        read<BeeChequebookAddress>('/chequebook/address', {
+          chequebookAddress: transferContext.chequebookAddress,
+        } as BeeChequebookAddress),
+      getChequebookBalance: () =>
+        read<ChequebookBalance>('/chequebook/balance', {
+          totalBalance: '10000000000000000',
+          availableBalance: '10000000000000000',
+        } as ChequebookBalance),
+      getPendingTransactions: () =>
+        read('/transactions', { pendingTransactions: pending.map((hash) => ({ transactionHash: hash })) }),
+      depositChequebook: (amount) => send('deposit', amount),
+      withdrawChequebook: (amount) => send('withdraw', amount),
+      assertUsable() {
+        if (disposed) throw new BeeConnectionError();
+      },
+      dispose() {
+        disposed = true;
+      },
+    };
+  };
+  return {
+    createSession,
+    sessionUrls: () => sessionUrls,
+    requests: () => requests,
+    posts: () => requests.filter((request) => request.method === 'POST').length,
+    dropNextResponse() {
+      dropResponse = true;
+    },
+  };
+}
+
+/** Where the manager's own settings send a transfer's chain reads. */
+export const CONNECTED_CHAIN_ENDPOINT = 'https://rpc.example.invalid';
+export const CONNECTED_DEFAULT_CHAIN_ENDPOINT = 'https://funding.example.invalid';
 
 export interface ConnectedChequebookOptions {
   readonly pgPort: number;
@@ -135,10 +237,11 @@ export interface ConnectedChequebookOptions {
   readonly dropNextResponse?: boolean;
   readonly receiptPollBudgetMs?: number;
   readonly pollIntervalMs?: number;
-  /** Sets neither CHEQUEBOOK_RPC_ENDPOINTS nor CHEQUEBOOK_DOCKER_TRANSPORTS and seeds no catalog record for the synthetic image. */
-  readonly unconfigured?: boolean;
-  /** What the synthetic Docker answers the bridge check with. */
-  readonly checkAnswer?: string;
+  /**
+   * The manager's chain settings: CHEQUEBOOK_RPC_ENDPOINTS naming the chain (the default), only the manager's default
+   * endpoint, FUNDING_RPC_URL or BEE_RPC_ENDPOINT, or neither.
+   */
+  readonly chainSettings?: 'configured' | 'default' | 'none';
 }
 
 export interface ConnectedChequebookBackend {
@@ -146,25 +249,19 @@ export interface ConnectedChequebookBackend {
   readonly repository: SyntheticTargetChequebookRepository;
   readonly service: ChequebookOperationsService;
   readonly chain: SyntheticChain;
-  readonly directory: string;
+  readonly bee: SyntheticBeeNode;
   readonly schema: string;
   /** The runtime this backend's service was built with, for a second manager on the same fixture. */
   readonly runtime: ChequebookRuntime;
-  /** Refuses every Docker socket but this fixture's own, so no composition here can reach a real daemon. */
-  readonly connectUnix: ConnectUnixDocker;
+  /** The direct route's seams this backend's service was built with, for a second manager on the same fixture. */
+  readonly directRoute: Required<Pick<ChequebookServiceDependencies, 'profiles' | 'containers' | 'createSession'>>;
   /** Every endpoint a chain reader was created for. */
   chainEndpoints(): readonly string[];
   pollerLines(): readonly string[];
   beePosts(): number;
-  beeRequests(): readonly { method: string; url: string }[];
-  dockerRequests(): readonly { method: string; url: string; exec?: 'check' | 'bridge' }[];
+  beeRequests(): readonly SyntheticBeeRequest[];
   dropNextResponse(): void;
   close(): Promise<void>;
-}
-
-/** syntheticDockerBee only needs somewhere to register cleanup once its network guard is off. */
-function cleanupContext(collect: (task: () => void | Promise<void>) => void): TestContext {
-  return { after: collect, mock: { restoreAll() {} } } as unknown as TestContext;
 }
 
 export async function startConnectedChequebook(
@@ -213,80 +310,42 @@ export async function startConnectedChequebook(
       CONNECTED_PROFILE,
       PUBLISHED_BEE_PORT,
     ]);
-
-    const directory = await mkdtemp(join(tmpdir(), 'connected-'));
-    teardown.push(() => rm(directory, { recursive: true, force: true }));
-    const socketPath = join(directory, 'docker.sock');
-    const fixtureCleanups: (() => void | Promise<void>)[] = [];
-    const beeFixtures: ReturnType<typeof syntheticDockerBee>[] = [];
-    const connections = new Set<net.Socket>();
-    let dropResponse = options.dropNextResponse === true;
-    const sockets = net.createServer((socket) => {
-      const bee = syntheticDockerBee(
-        cleanupContext((task) => fixtureCleanups.push(task)),
-        (request) => {
-          if (request.method !== 'POST' || !dropResponse) return false;
-          dropResponse = false;
-          request.socket.destroy();
-          return true;
-        },
-        false,
-        undefined,
-        { checkAnswer: options.checkAnswer },
-      );
-      beeFixtures.push(bee);
-      connections.add(socket);
-      socket.on('error', () => {});
-      socket.pipe(bee.transport).pipe(socket);
-      socket.on('close', () => connections.delete(socket));
-      bee.transport.once('close', () => socket.destroy());
-    });
-    teardown.push(async () => {
-      for (const socket of connections) socket.destroy();
-      if (sockets.listening) await new Promise<void>((resolve) => sockets.close(() => resolve()));
-      for (const task of [...fixtureCleanups].reverse()) await task();
-    });
-    sockets.listen(socketPath);
-    await once(sockets, 'listening');
-    // The synthetic Bee answers unauthenticated Docker requests, so its only reachable address is this path.
-    if (sockets.address() !== socketPath)
-      throw new Error(`The connected fixture must serve its synthetic Docker on ${socketPath}`);
-    const directoryMode = (await stat(directory)).mode & 0o777;
-    if (directoryMode !== 0o700)
-      throw new Error(`The connected fixture socket directory must stay at 0700 and is ${directoryMode.toString(8)}`);
+    // The node's Bee container as the deploy recorded it: the port the direct route reaches its Bee API on, the one
+    // the reservation owns.
+    const containers = new ContainerRepository(pool);
+    await containers.upsert(
+      CONNECTED_PROFILE,
+      buildContainerSnapshot('bee-uploader', { BEE_UPLOADER_API_PORT: String(PUBLISHED_BEE_PORT) }),
+    );
 
     const chain = syntheticChain();
+    const bee = syntheticBeeNode({ dropNextResponse: options.dropNextResponse });
     const pollerLines: string[] = [];
     const chainEndpoints: string[] = [];
     const repository = new SyntheticTargetChequebookRepository(pool, {
       receiptPollBudgetMs: options.receiptPollBudgetMs,
     });
-    const dockerHost = `unix://${socketPath}`;
-    const runtime: ChequebookRuntime = options.unconfigured
-      ? { rpcEndpoints: undefined, dockerTransports: undefined, dockerHost }
-      : {
-          rpcEndpoints: '{"100":"https://rpc.example.invalid"}',
-          dockerHost,
-          dockerTransports: JSON.stringify({
-            localhost: {
-              locator: { kind: 'unix', alias: 'localhost', socketPath },
-              qualificationIds: ['synthetic-only'],
-            },
-          }),
-        };
-    const connectUnix: ConnectUnixDocker = (path) => {
-      if (path !== socketPath) throw new Error('The connected fixture reaches only its own synthetic Docker socket.');
-      return openUnixDockerConnection(path);
+    const settings = options.chainSettings ?? 'configured';
+    // Built as a value and not a literal, so the runtime's retired Docker fields can go without touching this file.
+    const runtimeFields = {
+      rpcEndpoints: settings === 'configured' ? `{"100":"${CONNECTED_CHAIN_ENDPOINT}"}` : undefined,
+      chainEndpoint: settings === 'none' ? undefined : CONNECTED_DEFAULT_CHAIN_ENDPOINT,
+      dockerTransports: undefined,
+    };
+    const runtime: ChequebookRuntime = runtimeFields;
+    const directRoute = {
+      profiles: new ProfileRepository(pool),
+      containers,
+      createSession: bee.createSession,
     };
     const service = createChequebookOperationsService(pool, runtime, {
+      ...directRoute,
       repository,
-      qualificationCatalog: options.unconfigured ? undefined : [qualifiedBridge()],
-      connectUnix,
       createChainReader: (endpoint) => {
         chainEndpoints.push(endpoint);
         return chain.reader;
       },
-      preparation: { cleanupGraceMs: 20, timeoutMs: 3000 },
+      preparation: { timeoutMs: 3000 },
       receiptPolling: {
         intervalMs: options.pollIntervalMs ?? 50,
         log: { info: (line) => pollerLines.push(line), warn: (line) => pollerLines.push(line) },
@@ -299,18 +358,15 @@ export async function startConnectedChequebook(
       repository,
       service,
       chain,
-      directory,
+      bee,
       schema,
       runtime,
-      connectUnix,
+      directRoute,
       chainEndpoints: () => chainEndpoints,
       pollerLines: () => pollerLines,
-      beePosts: () => beeFixtures.reduce((total, fixture) => total + fixture.counts().posts, 0),
-      beeRequests: () => beeFixtures.flatMap((fixture) => fixture.beeRequests),
-      dockerRequests: () => beeFixtures.flatMap((fixture) => fixture.dockerRequests),
-      dropNextResponse() {
-        dropResponse = true;
-      },
+      beePosts: () => bee.posts(),
+      beeRequests: () => bee.requests(),
+      dropNextResponse: () => bee.dropNextResponse(),
       async close() {
         if (closed) return;
         closed = true;
