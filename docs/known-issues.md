@@ -68,10 +68,12 @@ seconds its recording takes to write, then compare the new playlist's first date
 media for longer than the 60 second reconnect window while its siblings keep publishing, it is finalized, and when
 it comes back in the same broadcast it rejoins the ladder live at the siblings' sequence and dating line. The
 recording written at the end numbers that rung's returning segments on from its own last segment instead, so after
-the gap its sequences sit below its siblings' by the gap's length in segments. Every segment is kept and every date
-agrees, but a player that places a recording's segments by summed durations can land the gap's length off at a
-quality switch after it. Measured on 2026-10-15 on a release candidate of v1.2.1: 1080p paused 70 s rejoined live at
-sequence 1057, and its recording numbered the same segments from 1011, 46 below its siblings. To see it: during a
+the gap its sequences sit below its siblings' by the gap in segments, counted from the rung's last segment before it to
+its first after the return. Every segment is kept and every date agrees, but a player that places a recording's
+segments by summed durations can land the gap's length off at a quality switch after it. Measured on 2026-10-15 on a
+release candidate of v1.2.1, with 2 s segments: 1080p's encoder was paused for 70 s, and about 92 s passed from its
+last segment before the pause to its first after the return. It rejoined live at sequence 1057, and its recording
+numbered the same segments from 1011, 46 below its siblings. To see it: during a
 broadcast pause one rung's encoder for more than 60 s, let it go, and after the recording is written compare that
 rung's sequence and date pairs with a sibling's.
 
@@ -83,10 +85,11 @@ reconnect, which puts every rung on one sequence again. To see it: stop a broadc
 stream, and compare the rungs' sequences at the same date.
 
 **A rung rejoining a live ladder can land one segment off (P3).** Which sequence a rejoining rung's first segment
-takes is decided by rounding the time since its siblings placed to whole segments, so half a segment is the tipping
-point. On the dev stage on 2026-10-15 the time between the first and last rung closing the same segment was 0.79 s
-typically, 0.96 s at the 90th percentile and 1.40 s at worst against a one second half segment, with 1080p last on
-nearly every segment. A viewer switching quality exactly there sees about one segment skipped or repeated. To see
+takes is decided from the gap between a sibling being handed its newest segment and this rung handing over its first,
+divided by the segment length and rounded. A gap of half a segment or more makes it the next segment, a shorter one the
+same. The dev stage ran 2 s segments, so the tipping point there is 1 s. On that stage on 2026-10-15 the time between
+the first and last rung closing the same segment was 0.79 s typically, 0.96 s at the 90th percentile and 1.40 s at
+worst, with 1080p last on nearly every segment. A viewer switching quality exactly there sees about one segment skipped or repeated. To see
 it: read the close times from SRS's per-segment log lines for all rungs of one broadcast.
 
 **The admin shows "published" while nothing goes out (P3).** A broadcaster can be connected while
