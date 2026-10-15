@@ -433,7 +433,9 @@ export interface FollowApplyDeps {
   delaysMs?: readonly number[];
 }
 
-function sleepUnlessAborted(ms: number, signal?: AbortSignal): Promise<void> {
+/** Waits `ms`, or less when the signal aborts. */
+export function sleepUnlessAborted(ms: number, signal?: AbortSignal): Promise<void> {
+  if (signal?.aborted) return Promise.resolve();
   return new Promise((resolve) => {
     const timer = setTimeout(done, ms);
     function done() {

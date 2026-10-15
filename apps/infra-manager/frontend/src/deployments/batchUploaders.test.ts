@@ -34,6 +34,7 @@ import {
   ownUploaderOf,
   readStageCatalogs,
   setBatchAndReread,
+  sleepUnlessAborted,
   stageUploaderOf,
   stagesUsingNode,
 } from './batchUploaders';
@@ -749,6 +750,37 @@ describe('after Apply now, the card follows the recreate', () => {
 
     assert.equal(await follow, 'stopped');
     assert.equal(reads(), 1);
+  });
+
+  it('stops waiting at once when the card went away before the wait began', async () => {
+    const controller = new AbortController();
+    controller.abort();
+    const marker = Symbol('still waiting');
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    const stillWaiting = new Promise<typeof marker>((resolve) => {
+      timer = setTimeout(() => resolve(marker), 200);
+    });
+
+    const first = await Promise.race([sleepUnlessAborted(15_000, controller.signal), stillWaiting]);
+    clearTimeout(timer);
+
+    assert.notEqual(first, marker);
+  });
+
+  it('stops waiting when the card goes away during the wait', async () => {
+    const controller = new AbortController();
+    const marker = Symbol('still waiting');
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    const stillWaiting = new Promise<typeof marker>((resolve) => {
+      timer = setTimeout(() => resolve(marker), 200);
+    });
+    const wait = sleepUnlessAborted(15_000, controller.signal);
+    controller.abort();
+
+    const first = await Promise.race([wait, stillWaiting]);
+    clearTimeout(timer);
+
+    assert.notEqual(first, marker);
   });
 
   it('says how the follow ended, naming the deployment, with no em-dash and no semicolon', () => {
