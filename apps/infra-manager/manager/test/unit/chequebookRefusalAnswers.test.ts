@@ -33,8 +33,15 @@ import {
   createChequebookOperationsService,
   type ChequebookServiceDependencies,
 } from '../../src/domain/chequebook/createChequebookOperationsService.js';
+import { ChequebookProfileChangedError } from '../../src/domain/errors/ChequebookProfileChangedError.js';
 import { ChequebookTargetChangedError } from '../../src/domain/errors/ChequebookTargetChangedError.js';
-import { InMemoryChequebookOperations, transferContext, transferIntent } from '../support/chequebookOperations.js';
+import type { Profile } from '../../src/types/index.js';
+import {
+  InMemoryChequebookOperations,
+  profileInstanceId,
+  transferContext,
+  transferIntent,
+} from '../support/chequebookOperations.js';
 import { qualifiedBridge } from '../support/qualifiedBeeBridge.js';
 import { fakeForwardHarness, remoteLocator } from '../support/sshForwardLifecycle.js';
 import {
@@ -111,6 +118,11 @@ async function refusedDeposit(t: TestContext, breakage: Breakage) {
     },
   );
   t.after(() => service.shutdown());
+  return { ...(await answerDeposit(t, service)), repository, fixture };
+}
+
+/** Posts one deposit through the real router and error handler, as the page does, and reads the answer back. */
+async function answerDeposit(t: TestContext, service: ReturnType<typeof createChequebookOperationsService>) {
   const app = express();
   app.use(express.json());
   app.use(
@@ -151,7 +163,7 @@ async function refusedDeposit(t: TestContext, breakage: Breakage) {
     signal: AbortSignal.timeout(10_000),
   });
   const text = await response.text();
-  return { status: response.status, body: JSON.parse(text) as Record<string, unknown>, text, repository, fixture };
+  return { status: response.status, body: JSON.parse(text) as Record<string, unknown>, text };
 }
 
 function assertRefused(
@@ -419,5 +431,104 @@ describe('a refused transfer names its cause in the answer', { timeout: 20_000 }
       }),
       'unavailable',
     );
+  });
+});
+
+/**
+ * The direct route, as the running manager is built: the node is reached through its Bee API at the deployment's
+ * address and the port its Bee container recorded, which must be the one the deployment's reservation owns. Each case
+ * breaks one thing the resolver checks and reads the cause back, and no session to the node is ever opened.
+ */
+interface DirectBreakage {
+  readonly status?: Profile['status'];
+  readonly containers?: { service: string; ports: Record<string, number> }[];
+  readonly capture?: () => Promise<typeof syntheticTarget>;
+}
+
+async function directDeposit(t: TestContext, breakage: DirectBreakage) {
+  const pool = new pg.Pool({ connectionString: 'postgres://unused' });
+  t.after(() => pool.end());
+  const repository = new InMemoryChequebookOperations();
+  let sessions = 0;
+  const deployment = {
+    instance_id: profileInstanceId,
+    name: syntheticTarget.profile.name,
+    port_slot: 1,
+    host: 'bee-host',
+    kind: 'streamer',
+    components: null,
+    status: breakage.status ?? 'RUNNING',
+    created_at: new Date(0),
+    updated_at: new Date(0),
+    stack_version_id: 1,
+  } as Profile;
+  const service = createChequebookOperationsService(
+    pool,
+    { rpcEndpoints: configuredChain },
+    {
+      repository,
+      profiles: { findByName: async () => deployment },
+      containers: {
+        listApiContainers: async () =>
+          (
+            breakage.containers ?? [
+              { service: 'bee-uploader', ports: { BEE_UPLOADER_API_PORT: syntheticTarget.reservation.port } },
+            ]
+          ).map((container) => ({ ...container, buildId: null, buildCommit: null, buildLabel: null })),
+      },
+      captureTarget: breakage.capture ?? (async () => structuredClone(syntheticTarget)),
+      createChainReader: () => chainReader(),
+      createSession: () => {
+        sessions++;
+        return assert.fail('no session is opened to a node the resolver refused');
+      },
+      preparation: { timeoutMs: 3000 },
+    },
+  );
+  t.after(() => service.shutdown());
+  return { ...(await answerDeposit(t, service)), repository, sessions: () => sessions };
+}
+
+function assertRefusedDirect(answer: Awaited<ReturnType<typeof directDeposit>>, cause: ChequebookRefusalCause) {
+  assert.equal(answer.status, 503, answer.text);
+  assert.equal(answer.body.error, 'chequebook_preparation_unavailable');
+  assert.equal(answer.body.cause, cause);
+  assert.equal(answer.body.check, null);
+  assert.equal(answer.repository.rows.size, 0, 'nothing was admitted');
+  assert.equal(answer.sessions(), 0, 'no session to the node was opened');
+}
+
+describe('a refused transfer on the direct route names its cause in the answer', { timeout: 20_000 }, () => {
+  it('Bee container not found: no bee-uploader container is recorded for the deployment', async (t) => {
+    assertRefusedDirect(await directDeposit(t, { containers: [] }), 'bee_container_not_found');
+  });
+
+  it("Bee container unsupported: its recorded port is not the one the deployment's reservation owns", async (t) => {
+    assertRefusedDirect(
+      await directDeposit(t, {
+        containers: [
+          { service: 'bee-uploader', ports: { BEE_UPLOADER_API_PORT: syntheticTarget.reservation.port + 10 } },
+        ],
+      }),
+      'bee_container_unsupported',
+    );
+  });
+
+  it('target changed: the deployment is deploying, stopping or removing', async (t) => {
+    for (const status of ['DEPLOYING', 'STOPPING', 'REMOVING'] as const) {
+      assertRefusedDirect(await directDeposit(t, { status }), 'target_changed');
+    }
+  });
+
+  it('a deployment removed or replaced since the page read it is answered with 409, not a refusal', async (t) => {
+    const answer = await directDeposit(t, {
+      capture: async () => {
+        throw new ChequebookProfileChangedError();
+      },
+    });
+    assert.equal(answer.status, 409, answer.text);
+    assert.equal(answer.body.error, 'chequebook_profile_changed');
+    assert.equal(answer.repository.rows.size, 0, 'nothing was admitted');
+    assert.equal(answer.sessions(), 0, 'no session to the node was opened');
   });
 });

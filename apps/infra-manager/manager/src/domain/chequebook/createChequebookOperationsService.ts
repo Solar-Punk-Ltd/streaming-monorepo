@@ -37,8 +37,8 @@ export interface ChequebookServiceDependencies extends ChequebookTransportDepend
   readonly receiptPolling?: ReceiptPollerOptions;
   /**
    * The deployments and their recorded containers, which the direct route works a node's Bee API address out of.
-   * With both given the service reaches every node through its Bee API and opens no Docker connection; without them
-   * it takes the Docker route, which Dev-1 removes once the direct route is the only one built.
+   * With both given the service reaches every node through its Bee API and opens no Docker connection, which is how
+   * the running manager is built. Without them it takes the Docker route, kept unused until a cleanup PR removes it.
    */
   readonly profiles?: Pick<ProfileRepository, 'findByName'>;
   readonly containers?: Pick<ContainerRepository, 'listApiContainers'>;
@@ -64,8 +64,12 @@ export interface ChequebookRuntime {
    * before use.
    */
   readonly chainEndpoint?: string | undefined;
-  readonly dockerTransports: string | undefined;
-  /** The manager's DOCKER_HOST, which decides the local socket a transfer on localhost uses. */
+  /**
+   * CHEQUEBOOK_DOCKER_TRANSPORTS, read by the Docker route alone. The running manager takes the direct route and
+   * passes neither Docker setting; both stay for the Docker route's code, unused until a cleanup PR removes it.
+   */
+  readonly dockerTransports?: string | undefined;
+  /** The manager's DOCKER_HOST, which decides the local socket a transfer on localhost uses on the Docker route. */
   readonly dockerHost?: string | undefined;
 }
 
@@ -101,10 +105,11 @@ export function createChequebookOperationsService(
   const budgets = ownedAcquisitionBudgets(structuredClone(dependencies.preparation ?? {}));
   /**
    * Opens the node's owned connection only to read the endpoint its container runs with. The bridge it opens is
-   * closed unused. The direct route reads no node for an endpoint: the manager's own settings name it.
+   * closed unused. The direct route reads no node for an endpoint: it answers null, and the manager's own settings
+   * name the chain endpoint.
    */
   const readNodeEndpoint = (node: SavedChainNode) => async (signal?: AbortSignal) => {
-    if (!acquire || !node.profileName || !node.profileInstanceId) return null;
+    if (direct || !acquire || !node.profileName || !node.profileInstanceId) return null;
     const acquired = await acquire(
       await captureTarget(node.profileName, node.profileInstanceId),
       budgets,

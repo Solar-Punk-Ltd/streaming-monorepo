@@ -316,8 +316,6 @@ async function main(): Promise<void> {
     {
       rpcEndpoints: process.env.CHEQUEBOOK_RPC_ENDPOINTS,
       chainEndpoint: config.fundingRpcUrl ?? config.beeRpcEndpoint ?? undefined,
-      dockerTransports: process.env.CHEQUEBOOK_DOCKER_TRANSPORTS,
-      dockerHost: process.env.DOCKER_HOST,
     },
     { profiles: profileRepository, containers: containerRepository },
   );
