@@ -45,6 +45,17 @@ the broadcast bitrate, SRT drops packets, segments arrive at 50 to 85 percent of
 stream recovers when the link does. The behaviour is right, but the broadcaster sees nothing in the
 admin. To see it: broadcast 6 Mbit/s through a 3 Mbit/s link.
 
+**After a long stretch on a too-narrow uplink, the ladder limps until the broadcaster reconnects
+(P2).** Measured on 2026-10-15 with an ffmpeg SRT broadcaster held at 3 Mbit/s for about two
+minutes: 720p and 1080p went 60 s without usable media and were finalized, while 360p and 480p
+carried on. Once the link was restored, 720p and 1080p came back by themselves as new sessions on
+their topics, but every rung then ran at about a third of real time, with the encoders reconnecting
+every few seconds, until the broadcaster itself reconnected, after which everything was at full rate
+at once. Nothing is lost. Whether the slow state comes from the test broadcaster's SRT library after
+starvation or from the stage is not settled: a real OBS on the same squeeze would tell. To see it:
+broadcast 6 Mbit/s through a 3 Mbit/s link for two minutes, lift the limit, and count segments per
+rung for the next minute.
+
 **The admin shows "published" while nothing goes out (P3).** A broadcaster can be connected while
 the ladder encoders produce nothing. The admin keeps showing the stream as published, with no
 warning. The uploader now reports such a ladder on `/health` as `ladder_not_started` after 45 s,
