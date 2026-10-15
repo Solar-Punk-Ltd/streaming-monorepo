@@ -237,10 +237,22 @@ export class ServiceMetrics {
     this.segmentsNeverNamed += count;
   }
 
-  /** A request a credential gate refused. Never reset, so a scraper can take a rate over it. */
+  /**
+   * A request a credential gate refused on the ingest path, the routes a broadcaster's publish or its
+   * segments arrive on. Counted and stamped, since the stamp is what `ingest_refused` reads. Never
+   * reset, so a scraper can take a rate over it.
+   */
   public recordAuthRejection(at: number): void {
     this.authRejections += 1;
     this.lastAuthRejectionAt = at;
+  }
+
+  /**
+   * A request a credential gate refused on an operator route, such as a tokenless `/metrics` scrape.
+   * Counted with the rest, never stamped: it says nothing about whether a broadcaster can get in.
+   */
+  public recordOperatorAuthRejection(): void {
+    this.authRejections += 1;
   }
 
   /**

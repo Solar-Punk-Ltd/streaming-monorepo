@@ -153,11 +153,9 @@ describe('api auth (S1.1)', () => {
     const health = await api.request('/health', { headers: NO_AUTH_HEADER });
 
     assert.equal(metrics.status, 401);
-    // Reachable, not necessarily 200. The refusal on the line above is itself a signal on a service
-    // that has ingested nothing, so this probe now reads 503 with `ingest_refused`, which is the refused-ingest signal
-    // working rather than the gate covering `/health`. What this test is about is the mount, and a
-    // health body coming back at all is what proves it: behind the gate there would be no body but
-    // `Unauthorized`.
+    // What this test is about is the mount, and a health body coming back at all is what proves it:
+    // behind the gate there would be no body but `Unauthorized`. That the refusal above leaves the
+    // health status itself alone is pinned in 'refused ingest reaches the health surface'.
     assert.notEqual(health.status, 401, 'the liveness endpoint must stay reachable by an unauthenticated probe');
     assert.ok(
       (health.body as { status?: string }).status,
