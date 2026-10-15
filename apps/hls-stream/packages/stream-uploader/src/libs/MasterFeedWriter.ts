@@ -16,7 +16,7 @@ export interface PublishedMaster {
   index: number;
 }
 
-export interface MasterPublishOptions {
+interface MasterPublishOptions {
   /**
    * Write nothing when the feed's newest master already says exactly this, and answer that master's
    * slot instead. For a ladder that is a recording, whose master every later report of a finished rung
