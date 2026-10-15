@@ -275,8 +275,11 @@ export interface BroadcastDating {
    *
    * ⛔ Asked by a session that opens over a feed an earlier session of its rung left, which is a rung
    * reaped or replaced in the middle of a broadcast. See `ManifestManager.continueFrom`.
+   *
+   * @param firstIndex the engine index of the segment this session placed first, which is not always
+   * the first it was handed: an upload refused leaves the next one to land first.
    */
-  liveLadderPosition(): LadderPosition | null;
+  liveLadderPosition(firstIndex: number): LadderPosition | null;
 
   /**
    * Say that the asking rung has placed its first segment of this return without taking the return's

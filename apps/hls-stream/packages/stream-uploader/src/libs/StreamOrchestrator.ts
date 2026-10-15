@@ -413,14 +413,15 @@ export class StreamOrchestrator {
    */
   private segmentHandedAt = new Map<string, Map<number, number>>();
   /**
-   * Per rung session spawned while siblings of it were publishing, the published sequence its first
-   * segment is the same media as, or null until that segment is handed over. See {@link rejoinSequenceOf}.
+   * Per rung session spawned while siblings of it were publishing, the engine index of its first
+   * segment and the published sequence that segment is the same media as, or null until that segment is
+   * handed over. See {@link rejoinSequenceOf}.
    *
    * ⛔ Decided at the spawn whether a session is rejoining at all, because a ladder opening has its rungs
    * announcing a moment apart and none of them has media yet, while a rung back in the middle of a
    * broadcast finds siblings that have been publishing for as long as it was away.
    */
-  private rejoinPoints = new Map<string, number | null>();
+  private rejoinPoints = new Map<string, { index: number; sequence: number } | null>();
   /**
    * Per stream, the monotonic reading at which its encoder disconnected and did not come back.
    *
@@ -1663,7 +1664,7 @@ export class StreamOrchestrator {
     if (discontinuity) {
       uploader.markDiscontinuity();
     }
-    this.noteRejoinSequence(streamId);
+    this.noteRejoinSequence(streamId, segmentIndex);
     this.noteHandedOver(streamId, segmentIndex);
     uploader.handleSegment(segmentIndex, this.mediaDuration(streamId, segmentIndex, duration, reading), data);
     return { accepted: true };
@@ -2980,7 +2981,7 @@ export class StreamOrchestrator {
         this.reanchorBroadcast(datingKey, base, resumeAt, notBeforeMs, returnToken, publishedResumeAt, streamId),
       resumePointFor: (returnToken, ownResumeAt, ownResumeDatedAtMs, index) =>
         this.resumePointOf(streamId, datingKey, base, returnToken, ownResumeAt, ownResumeDatedAtMs, index),
-      liveLadderPosition: () => this.liveLadderPositionOf(streamId, base),
+      liveLadderPosition: (firstIndex) => this.liveLadderPositionOf(streamId, base, firstIndex),
       markReturnPlaced: (returnToken) => this.markReturnPlaced(streamId, datingKey, base, returnToken),
     };
   }
@@ -3081,7 +3082,7 @@ export class StreamOrchestrator {
   }
 
   /** Read where a rejoining rung's first segment sits on its ladder, as that segment is handed over. */
-  private noteRejoinSequence(streamId: string): void {
+  private noteRejoinSequence(streamId: string, segmentIndex: number): void {
     const base = this.streamBases.get(streamId);
     if (this.rejoinPoints.get(streamId) !== null || base === undefined) {
       return;
@@ -3090,7 +3091,7 @@ export class StreamOrchestrator {
     if (sequence === undefined) {
       this.rejoinPoints.delete(streamId);
     } else {
-      this.rejoinPoints.set(streamId, sequence);
+      this.rejoinPoints.set(streamId, { index: segmentIndex, sequence });
     }
   }
 
@@ -3098,12 +3099,17 @@ export class StreamOrchestrator {
    * Where a new session of this rung joins its ladder: the sequence {@link rejoinSequenceOf} read when
    * its first segment was handed over, dated at the latest date a publishing sibling gives it. Null for
    * a session that was not spawned into a live ladder. See `BroadcastDating.liveLadderPosition`.
+   *
+   * ⛔ **Stepped by engine index to the segment that landed first.** The point was read for the first
+   * segment handed over, and when that upload is refused the next one lands first. Taking the point as
+   * read put that segment a cut early on its siblings' line, found by review on 2026-10-15.
    */
-  private liveLadderPositionOf(streamId: string, base: string | null): LadderPosition | null {
-    const publishedSequence = this.rejoinPoints.get(streamId);
-    if (base === null || publishedSequence === undefined || publishedSequence === null) {
+  private liveLadderPositionOf(streamId: string, base: string | null, firstIndex: number): LadderPosition | null {
+    const point = this.rejoinPoints.get(streamId);
+    if (base === null || point === undefined || point === null) {
       return null;
     }
+    const publishedSequence = point.sequence + (firstIndex - point.index);
     const dates = this.publishingSiblingsOf(streamId, base)
       .map(({ uploader }) => uploader.dateOfPublishedSequence(publishedSequence))
       .filter((atMs) => atMs !== null);

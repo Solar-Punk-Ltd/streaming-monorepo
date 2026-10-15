@@ -890,7 +890,7 @@ export class ManifestManager {
   /** This session's first segment, at sequence 0, noting where its ladder stood. See {@link ladderAtOpening}. */
   private placeFirst(index: number): PlacedSegment {
     this.sequenceAnchor = { index, sequence: 0 };
-    const position = this.dating.liveLadderPosition();
+    const position = this.dating.liveLadderPosition(index);
     this.ladderAtOpening = position === null ? null : { position, index };
     return { sequence: 0, reanchored: false };
   }
