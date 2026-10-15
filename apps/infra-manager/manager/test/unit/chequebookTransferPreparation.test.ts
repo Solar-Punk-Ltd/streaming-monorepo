@@ -138,7 +138,9 @@ describe('fresh pinned transfer preparation', () => {
       return prepared;
     });
     const result = await submission.submit(transferIntent());
+    // Admitted before the preflight, so the change ends the saved row rather than refusing the request.
     assert.equal(result.operation.state, 'rejected');
+    assert.equal(result.operation.failureReason, 'preflight_failed');
     assert.equal(result.operation.dispatchStartedAt, null);
     assert.deepEqual(h.counts(), { disposed: 1, posts: 0, sessions: 1 });
   });
@@ -225,6 +227,7 @@ describe('fresh pinned transfer preparation', () => {
       });
       const result = await submission.submit(transferIntent());
       assert.equal(result.operation.state, 'rejected');
+      assert.equal(result.operation.failureReason, 'preflight_failed');
       assert.equal(result.operation.dispatchStartedAt, null);
       assert.deepEqual(h.counts(), { disposed: 1, posts: 0, sessions: 1 });
     }
@@ -323,20 +326,32 @@ describe("the direct route's target in front of the preparation", () => {
   function direct(options: { host?: string; recorded: number; reserved: number }) {
     const h = harness();
     const urls: string[] = [];
+    // What the resolver reads each time it is asked, so a test can change the deployment between two asks.
+    const state = { ...options, status: deployment.status, instanceId: deployment.instance_id };
     const resolver = new ConfiguredBeeTargetResolver(
-      { findByName: async () => ({ ...deployment, host: options.host ?? deployment.host }) },
+      {
+        findByName: async () => ({
+          ...deployment,
+          host: state.host ?? deployment.host,
+          status: state.status,
+          instance_id: state.instanceId,
+        }),
+      },
       {
         listApiContainers: async () => [
           {
             service: 'bee-uploader',
-            ports: { BEE_UPLOADER_API_PORT: options.recorded },
+            ports: { BEE_UPLOADER_API_PORT: state.recorded },
             buildId: null,
             buildCommit: null,
             buildLabel: null,
           },
         ],
       },
-      async () => owning(options.reserved),
+      async () => {
+        const owned = owning(state.reserved);
+        return { ...owned, profile: { ...owned.profile, instanceId: state.instanceId } };
+      },
     );
     const preparation = new ChequebookTransferPreparation(
       resolver.resolve.bind(resolver),
@@ -346,7 +361,7 @@ describe("the direct route's target in front of the preparation", () => {
         return h.session;
       },
     );
-    return { preparation, urls, counts: h.counts };
+    return { preparation, urls, counts: h.counts, state };
   }
 
   it('refuses a recorded port that is not the reserved one before any session opens, as bee_container_unsupported', async () => {
@@ -370,5 +385,26 @@ describe("the direct route's target in front of the preparation", () => {
     const d = direct({ host: 'operator@bee.example.invalid', recorded: 12005, reserved: 12005 });
     await d.preparation.prepare(transferIntent());
     assert.deepEqual(d.urls, ['http://bee.example.invalid:12005/']);
+  });
+
+  it('ends a saved move rejected, preflight_failed, with nothing sent, when the deployment changes after preparation', async () => {
+    // A change caught by the recheck comes after admission: the saved row is rejected and nothing reaches the node.
+    // Its failure reason stays preflight_failed; a reason of its own would need a new one in the shared list.
+    for (const change of ['redeployed to a new port', 'deploying', 'host moved', 'replaced'] as const) {
+      const d = direct({ recorded: 12005, reserved: 12005 });
+      const submission = new ChequebookSubmission(new InMemoryChequebookOperations(), async (intent) => {
+        const prepared = await d.preparation.prepare(intent);
+        if (change === 'redeployed to a new port') Object.assign(d.state, { recorded: 12015, reserved: 12015 });
+        if (change === 'deploying') d.state.status = 'DEPLOYING';
+        if (change === 'host moved') d.state.host = 'other.example.invalid';
+        if (change === 'replaced') d.state.instanceId = '22222222-2222-4222-8222-222222222222';
+        return prepared;
+      });
+      const result = await submission.submit(transferIntent());
+      assert.equal(result.operation.state, 'rejected', change);
+      assert.equal(result.operation.failureReason, 'preflight_failed', change);
+      assert.equal(result.operation.dispatchStartedAt, null, change);
+      assert.equal(d.counts().posts, 0, change);
+    }
   });
 });
