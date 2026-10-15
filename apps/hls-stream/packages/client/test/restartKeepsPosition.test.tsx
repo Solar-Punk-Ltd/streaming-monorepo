@@ -17,11 +17,17 @@ import { MEDIA_TYPE_VIDEO } from '../src/types/stream';
 
 type Handler = (event: string, data: unknown) => void;
 
+interface FakeLevelDetails {
+  live: boolean;
+  targetduration?: number;
+  fragments?: Array<{ start: number; duration: number }>;
+}
+
 const fakes = vi.hoisted(() => {
   const instances: Array<{
     handlers: Map<string, Handler[]>;
     startLoads: Array<number | undefined>;
-    levels: Array<{ details?: { live: boolean } }>;
+    levels: Array<{ details?: FakeLevelDetails }>;
     currentLevel: number;
     destroyed: boolean;
   }> = [];
@@ -37,7 +43,7 @@ vi.mock('hls.js', async (importOriginal) => {
     static DefaultConfig = actual.default.DefaultConfig;
     handlers = new Map<string, Handler[]>();
     startLoads: Array<number | undefined> = [];
-    levels: Array<{ details?: { live: boolean } }> = [];
+    levels: Array<{ details?: FakeLevelDetails }> = [];
     currentLevel = -1;
     destroyed = false;
     config = { abrBandWidthUpFactor: 0.7 };
@@ -118,13 +124,31 @@ function emit(index: number, event: string, data: unknown = {}): void {
 }
 
 const FATAL_LEVEL_LOAD = { fatal: true, type: ErrorTypes.NETWORK_ERROR, details: ErrorDetails.LEVEL_LOAD_ERROR };
+const FATAL_FRAG_LOAD = { fatal: true, type: ErrorTypes.NETWORK_ERROR, details: ErrorDetails.FRAG_LOAD_ERROR };
+
+const RECORDING_SEGMENT_S = 2;
+/** A 2142 s recording cut into 2 s segments, the shape of the one seen live on 2026-10-15. */
+const RECORDING: FakeLevelDetails = {
+  live: false,
+  targetduration: RECORDING_SEGMENT_S,
+  fragments: Array.from({ length: 1071 }, (_, index) => ({
+    start: index * RECORDING_SEGMENT_S,
+    duration: RECORDING_SEGMENT_S,
+  })),
+};
 
 /**
  * Mounts the player, plays to `positionS` on a level that is or is not live, and fails it fatally.
  *
  * @param parseRebuilt Whether the rebuilt player then parses its manifest, which is when it starts loading.
  */
-function failFatallyAt(positionS: number, live: boolean, parseRebuilt = true): void {
+function failFatallyAt(
+  positionS: number,
+  live: boolean,
+  parseRebuilt = true,
+  error: object = FATAL_LEVEL_LOAD,
+  details: FakeLevelDetails = { live },
+): void {
   act(() => {
     root.render(
       createElement(SwarmHlsPlayer, {
@@ -138,11 +162,11 @@ function failFatallyAt(positionS: number, live: boolean, parseRebuilt = true): v
   const video = container.querySelector('video');
   assert.ok(video);
   emit(0, Events.MANIFEST_PARSED);
-  fakes.instances[0].levels = [{ details: { live } }];
+  fakes.instances[0].levels = [{ details }];
   fakes.instances[0].currentLevel = 0;
   Object.defineProperty(video, 'currentTime', { configurable: true, value: positionS });
 
-  emit(0, Events.ERROR, FATAL_LEVEL_LOAD);
+  emit(0, Events.ERROR, error);
   assert.equal(fakes.instances[0].destroyed, true, 'the fatal error did not restart the player');
   assert.equal(fakes.instances.length, 2, 'no second player was built');
   if (parseRebuilt) {
@@ -202,5 +226,47 @@ describe('a player restarted by a fatal error', () => {
     failFatallyAt(0, false);
 
     assert.deepEqual(fakes.instances[1].startLoads, [undefined]);
+  });
+});
+
+/** Fails player `index` fatally on a segment, then has the player that restart built parse its manifest. */
+function failOnSegment(index: number): void {
+  emit(index, Events.ERROR, FATAL_FRAG_LOAD);
+  assert.equal(fakes.instances.length, index + 2, `failure ${index + 1} did not restart the player`);
+  emit(index + 1, Events.MANIFEST_PARSED);
+}
+
+function playTo(positionS: number): void {
+  const video = container.querySelector('video');
+  assert.ok(video);
+  Object.defineProperty(video, 'currentTime', { configurable: true, value: positionS });
+  act(() => {
+    video.dispatchEvent(new Event('timeupdate'));
+  });
+}
+
+describe('a recording whose segment at the resume position never loads', () => {
+  it('resumes one segment further on each failure at the same spot instead of restarting there forever', () => {
+    failFatallyAt(2100, false, true, FATAL_FRAG_LOAD, RECORDING);
+    assert.deepEqual(fakes.instances[1].startLoads, [2100]);
+
+    failOnSegment(1);
+    assert.deepEqual(fakes.instances[2].startLoads, [2102]);
+
+    failOnSegment(2);
+    assert.deepEqual(fakes.instances[3].startLoads, [2104]);
+  });
+
+  it('resumes where playback got to once it moved past the skipped segment', () => {
+    failFatallyAt(2100, false, true, FATAL_FRAG_LOAD, RECORDING);
+    failOnSegment(1);
+    assert.deepEqual(fakes.instances[2].startLoads, [2102]);
+
+    playTo(2110);
+    fakes.instances[2].levels = [{ details: RECORDING }];
+    fakes.instances[2].currentLevel = 0;
+    failOnSegment(2);
+
+    assert.deepEqual(fakes.instances[3].startLoads, [2110]);
   });
 });
