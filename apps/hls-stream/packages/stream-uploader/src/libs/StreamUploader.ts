@@ -1158,8 +1158,8 @@ export class StreamUploader {
       }
       this.logger.info(
         `[StreamUploader] Stream ${this.streamId} resumes its topic at SOC index ${head.index}, numbering ` +
-          `its playlist from media sequence ${continueAt ?? 0}, so this session continues the feed rather ` +
-          'than writing over the last one',
+          `its playlist from media sequence ${this.manifestManager.publishedSequenceOffset()}, so this session ` +
+          'continues the feed rather than writing over the last one',
       );
       if (prefix !== null) {
         this.logger.info(
@@ -1529,6 +1529,11 @@ export class StreamUploader {
           ? this.unplacedIndexes
           : [];
     return this.manifestManager.publishedNextSequenceAfter(beforeReturn);
+  }
+
+  /** See `ManifestManager.dateOfPublishedSequence`. */
+  public dateOfPublishedSequence(publishedSequence: number): number | null {
+    return this.manifestManager.dateOfPublishedSequence(publishedSequence);
   }
 
   /** The handed segment at the head of the queue has landed or been given up on. */

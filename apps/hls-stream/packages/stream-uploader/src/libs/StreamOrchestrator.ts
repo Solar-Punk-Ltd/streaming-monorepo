@@ -52,6 +52,7 @@ import { BeePublisherPool, PublisherRoute } from './BeePublisherPool.js';
 import {
   agreedResumePoint,
   BroadcastDating,
+  LadderPosition,
   maxResumeRaise,
   RAISE_REFUSED,
   reanchorDecision,
@@ -210,6 +211,12 @@ interface ActiveReturn {
   startedAt?: number;
   /** The monotonic reading the first rung of the return placed a segment at, held in memory only. */
   firstPlacedAt?: number;
+  /**
+   * The monotonic reading of the newest media any rung of the return delivered before it went away,
+   * held in memory only. A rung outside the return that delivered after it kept publishing through it.
+   * See {@link StreamOrchestrator.keptPublishingThrough}.
+   */
+  awayFrom?: number;
   /** The rungs that came back through `resumeHeldRungs`, which resume at their own count. */
   heldRungs: Set<string>;
   /**
@@ -393,6 +400,21 @@ export class StreamOrchestrator {
   private streamIngestAt = new Map<string, number>();
   /** Per stream, the monotonic reading of the most recent segment the engine could not deliver. */
   private segmentLossAt = new Map<string, number>();
+  /**
+   * Per stream, the monotonic reading of the most recent segment handed to its uploader. Unlike
+   * {@link streamIngestAt}, only media that is going to be published moves it, which is what a sibling
+   * asks when it needs to know whether this rung went on publishing. See {@link keptPublishingThrough}.
+   */
+  private segmentTakenAt = new Map<string, number>();
+  /**
+   * Per rung session spawned while siblings of it were publishing, the published sequence its first
+   * segment is the same media as, or null until that segment is handed over. See {@link rejoinSequenceOf}.
+   *
+   * ⛔ Decided at the spawn whether a session is rejoining at all, because a ladder opening has its rungs
+   * announcing a moment apart and none of them has media yet, while a rung back in the middle of a
+   * broadcast finds siblings that have been publishing for as long as it was away.
+   */
+  private rejoinPoints = new Map<string, number | null>();
   /**
    * Per stream, the monotonic reading at which its encoder disconnected and did not come back.
    *
@@ -869,18 +891,23 @@ export class StreamOrchestrator {
       if (held) {
         inProgress.heldRungs.add(streamId);
       }
+      this.noteAwayFrom(inProgress, streamId);
       this.rememberReturn(key, base, inProgress);
       return inProgress.token;
     }
 
+    const awaitedRungs = new Set([streamId, ...(awaited ?? this.rungsAwayFrom(base))]);
     const started: ActiveReturn = {
       token: crypto.randomUUID(),
       resumedRungs: new Set([streamId]),
       placedRungs: new Set(),
       startedAt: this.clock.now(),
       heldRungs: new Set(held ? [streamId] : []),
-      awaitedRungs: new Set([streamId, ...(awaited ?? this.rungsAwayFrom(base))]),
+      awaitedRungs,
     };
+    for (const awaitedRung of awaitedRungs) {
+      this.noteAwayFrom(started, awaitedRung);
+    }
     this.rememberReturn(key, base, started);
     return started.token;
   }
@@ -948,10 +975,19 @@ export class StreamOrchestrator {
     }
     if (!placedInIt && this.wentQuietBefore(streamId, inProgress.startedAt)) {
       inProgress.awaitedRungs?.add(streamId);
+      this.noteAwayFrom(inProgress, streamId);
     } else {
       inProgress.closed = true;
     }
     this.rememberReturn(key, base, inProgress);
+  }
+
+  /** Move the return's {@link ActiveReturn.awayFrom} up to this rung's newest media, which it delivered before it went away. */
+  private noteAwayFrom(inProgress: ActiveReturn, streamId: string): void {
+    const takenAt = this.segmentTakenAt.get(streamId);
+    if (takenAt !== undefined) {
+      inProgress.awayFrom = Math.max(inProgress.awayFrom ?? takenAt, takenAt);
+    }
   }
 
   /** Whether this rung's last media arrived before `instant`, a monotonic reading. */
@@ -1291,6 +1327,8 @@ export class StreamOrchestrator {
     this.lastAccountedIndex.delete(streamId);
     this.streamActivityAt.delete(streamId);
     this.streamIngestAt.delete(streamId);
+    this.segmentTakenAt.delete(streamId);
+    this.rejoinPoints.delete(streamId);
     this.streamClaimants.delete(streamId);
     // The segment-loss timestamp. Written on a loss and deleted nowhere, so it survived its own session. Invisible while
     // the id was gone, because `getMsSinceSegmentLoss` only reads ids in `activeStreams`, and back
@@ -1431,6 +1469,11 @@ export class StreamOrchestrator {
 
     const datingKey = this.datingKeyOf(streamId, match?.baseStreamId ?? null);
     this.broadcastAnchors.set(datingKey, anchor);
+    if (match !== null && this.publishingSiblingsOf(streamId, match.baseStreamId).length > 0) {
+      this.rejoinPoints.set(streamId, null);
+    } else {
+      this.rejoinPoints.delete(streamId);
+    }
 
     const sharedFeedTopic = admin !== undefined || ladder !== undefined ? streamTopic : undefined;
     const predecessorDrained = sharedFeedTopic ? this.sharedFeedWrites.get(sharedFeedTopic) : undefined;
@@ -1613,6 +1656,8 @@ export class StreamOrchestrator {
     if (discontinuity) {
       uploader.markDiscontinuity();
     }
+    this.noteRejoinSequence(streamId);
+    this.segmentTakenAt.set(streamId, this.clock.now());
     uploader.handleSegment(segmentIndex, this.mediaDuration(streamId, segmentIndex, duration, reading), data);
     return { accepted: true };
   }
@@ -2925,9 +2970,152 @@ export class StreamOrchestrator {
   private datingFor(datingKey: string, base: string | null, streamId: string): BroadcastDating {
     return {
       epochFrom: (resumeAt, notBeforeMs, returnToken, publishedResumeAt) =>
-        this.reanchorBroadcast(datingKey, base, resumeAt, notBeforeMs, returnToken, publishedResumeAt),
+        this.reanchorBroadcast(datingKey, base, resumeAt, notBeforeMs, returnToken, publishedResumeAt, streamId),
       resumePointFor: (returnToken, ownResumeAt, ownResumeDatedAtMs) =>
         this.resumePointOf(streamId, datingKey, base, returnToken, ownResumeAt, ownResumeDatedAtMs),
+      liveLadderPosition: () => this.liveLadderPositionOf(streamId, base),
+    };
+  }
+
+  /**
+   * The siblings of this rung that are publishing now, with their uploaders: live, not draining, not
+   * away, not coming back from a return they have yet to place a segment of, and with media placed.
+   */
+  private publishingSiblingsOf(streamId: string, base: string): { sibling: string; uploader: StreamUploader }[] {
+    const inProgress = this.returnsInProgress.get(base) ?? this.persistedReturnOf(base);
+    const comingBack = (sibling: string) =>
+      inProgress !== undefined &&
+      inProgress.closed !== true &&
+      inProgress.resumedRungs.has(sibling) &&
+      !inProgress.placedRungs.has(sibling);
+    return [...this.streamBases]
+      .filter(([sibling, rungBase]) => rungBase === base && sibling !== streamId)
+      .filter(
+        ([sibling]) =>
+          !this.streamDisconnectedAt.has(sibling) && !this.recoveryTimers.has(sibling) && !comingBack(sibling),
+      )
+      .map(([sibling]) => ({ sibling, uploader: this.activeStreams.get(sibling) }))
+      .filter(
+        (entry): entry is { sibling: string; uploader: StreamUploader } =>
+          entry.uploader !== undefined && !this.isDraining(entry.sibling, entry.uploader),
+      )
+      .filter((entry) => entry.uploader.publishedCountBeforeReturn() !== null);
+  }
+
+  /**
+   * The published sequence the first segment of a rung rejoining its ladder is the same media as: the
+   * next one its publishing siblings count to, or the one a sibling was handed within half a fragment
+   * of it, which is that sibling's copy of the same cut. Undefined where no sibling is publishing.
+   *
+   * ⛔⛔ **Which of two adjacent sequences one cut is cannot be read off the segment, so it is read off
+   * when the rungs delivered it.** SRS posts each rung's copy of one cut as that rung's transcoder
+   * closes it, a fraction of a fragment apart, and the next cut a whole fragment later. Taking the next
+   * sequence always numbered a rung that delivers after its siblings, the usual order for the slowest
+   * rung, one sequence late for the rest of the broadcast. Its own feed head is no help either: it is
+   * where the rung stopped, which says nothing about how long it was away.
+   */
+  private rejoinSequenceOf(streamId: string, base: string): number | undefined {
+    const now = this.clock.now();
+    const sameCutWithinMs = (this.config.fragmentSeconds * 1_000) / 2;
+    const candidates = this.publishingSiblingsOf(streamId, base).map(({ sibling, uploader }) => {
+      const count = uploader.publishedCountBeforeReturn()!;
+      const takenAt = this.segmentTakenAt.get(sibling);
+      return takenAt !== undefined && now - takenAt < sameCutWithinMs ? count - 1 : count;
+    });
+    return candidates.length === 0 ? undefined : Math.max(...candidates);
+  }
+
+  /** Read where a rejoining rung's first segment sits on its ladder, as that segment is handed over. */
+  private noteRejoinSequence(streamId: string): void {
+    const base = this.streamBases.get(streamId);
+    if (this.rejoinPoints.get(streamId) !== null || base === undefined) {
+      return;
+    }
+    const sequence = this.rejoinSequenceOf(streamId, base);
+    if (sequence === undefined) {
+      this.rejoinPoints.delete(streamId);
+    } else {
+      this.rejoinPoints.set(streamId, sequence);
+    }
+  }
+
+  /**
+   * Where a new session of this rung joins its ladder: the sequence {@link rejoinSequenceOf} read when
+   * its first segment was handed over, dated at the latest date a publishing sibling gives it. Null for
+   * a session that was not spawned into a live ladder. See `BroadcastDating.liveLadderPosition`.
+   */
+  private liveLadderPositionOf(streamId: string, base: string | null): LadderPosition | null {
+    const publishedSequence = this.rejoinPoints.get(streamId);
+    if (base === null || publishedSequence === undefined || publishedSequence === null) {
+      return null;
+    }
+    const dates = this.publishingSiblingsOf(streamId, base)
+      .map(({ uploader }) => uploader.dateOfPublishedSequence(publishedSequence))
+      .filter((atMs) => atMs !== null);
+    return dates.length === 0 ? null : { publishedSequence, atMs: Math.max(...dates) };
+  }
+
+  /**
+   * Whether this rung, which is no part of the return, went on delivering media after the rungs of the
+   * return went away: at least half a fragment past the newest media any of them had delivered.
+   *
+   * ⛔ **Media, not the absence of a webhook.** A rung that sent nothing while its siblings were away
+   * says nothing about where the ladder's timeline is now, and its line extrapolated across its own
+   * silence is a line nothing published. A return read back after a restart of this process carries no
+   * such instant, and nothing counts as having kept publishing through it.
+   */
+  private keptPublishingThrough(sibling: string, inProgress: ActiveReturn | undefined): boolean {
+    const takenAt = this.segmentTakenAt.get(sibling);
+    return (
+      inProgress?.awayFrom !== undefined &&
+      takenAt !== undefined &&
+      takenAt - inProgress.awayFrom >= (this.config.fragmentSeconds * 1_000) / 2 &&
+      !this.streamDisconnectedAt.has(sibling) &&
+      !this.recoveryTimers.has(sibling)
+    );
+  }
+
+  /**
+   * What the rest of a ladder says about the date of `publishedResumeAt`, for the rung minting a
+   * return's line. See `ReanchorRequest.ladderFloorMs` and `ReanchorRequest.keptPublishingAtMs`.
+   *
+   * ⛔ Asked of the rungs of the return and of the rungs publishing through it, never of a rung away for
+   * some other reason, whose own count has nothing to say about this return.
+   */
+  private ladderDatingEvidence(
+    base: string,
+    datingKey: string,
+    askingStreamId: string,
+    returnToken: string,
+    publishedResumeAt: number,
+  ): { ladderFloorMs?: number; keptPublishingAtMs?: number } {
+    const inProgress = this.returnsInProgress.get(datingKey) ?? this.persistedReturnOf(base);
+    const ofThisReturn = inProgress?.token === returnToken ? inProgress : undefined;
+    const inTheReturn = (sibling: string) =>
+      ofThisReturn !== undefined &&
+      (ofThisReturn.resumedRungs.has(sibling) || (ofThisReturn.awaitedRungs?.has(sibling) ?? true));
+
+    const floors: number[] = [];
+    const keptPublishing: number[] = [];
+    for (const [sibling, rungBase] of this.streamBases) {
+      const uploader = this.activeStreams.get(sibling);
+      if (rungBase !== base || sibling === askingStreamId || uploader === undefined) continue;
+      if (this.isDraining(sibling, uploader)) continue;
+      const datedAtMs = uploader.dateOfPublishedSequence(publishedResumeAt);
+      if (datedAtMs === null) continue;
+      if (inTheReturn(sibling)) {
+        floors.push(datedAtMs);
+      } else if (
+        this.keptPublishingThrough(sibling, ofThisReturn) &&
+        (uploader.publishedCountBeforeReturn() ?? Number.NEGATIVE_INFINITY) >= publishedResumeAt
+      ) {
+        floors.push(datedAtMs);
+        keptPublishing.push(datedAtMs);
+      }
+    }
+    return {
+      ...(floors.length === 0 ? {} : { ladderFloorMs: Math.max(...floors) }),
+      ...(keptPublishing.length === 0 ? {} : { keptPublishingAtMs: Math.max(...keptPublishing) }),
     };
   }
 
@@ -2980,7 +3168,7 @@ export class StreamOrchestrator {
       return ownResumeAt;
     }
     if (inProgress.resumeAt === undefined) {
-      inProgress.resumeAt = agreedResumePoint(ownResumeAt, this.siblingCountsOf(base, streamId));
+      inProgress.resumeAt = agreedResumePoint(ownResumeAt, this.siblingCountsOf(base, streamId, inProgress));
       this.rememberReturn(datingKey, base, inProgress);
     }
     if (inProgress.heldRungs.has(streamId)) {
@@ -3010,15 +3198,29 @@ export class StreamOrchestrator {
   /**
    * The published sequence each other live rung of this ladder would resume at on its own, counting
    * what it was handed before its return. See `StreamUploader.publishedCountBeforeReturn`.
+   *
+   * ⛔ **A rung that kept publishing through the return and was handed its newest segment within half a
+   * fragment of the asking rung's counts that segment as the asking rung's own cut**, so the return
+   * resumes on it rather than on the cut after it. It is the reading a rung rejoining as a new session
+   * takes, for the same reason. See {@link rejoinSequenceOf}.
    */
-  private siblingCountsOf(base: string, askingStreamId: string): number[] {
+  private siblingCountsOf(base: string, askingStreamId: string, inProgress: ActiveReturn): number[] {
+    const askingTakenAt = this.segmentTakenAt.get(askingStreamId);
+    const sameCutWithinMs = (this.config.fragmentSeconds * 1_000) / 2;
     return [...this.streamBases]
       .filter(([streamId, rungBase]) => rungBase === base && streamId !== askingStreamId)
       .map(([streamId]) => {
         const uploader = this.activeStreams.get(streamId);
-        return uploader === undefined || this.isDraining(streamId, uploader)
-          ? null
-          : uploader.publishedCountBeforeReturn();
+        const count =
+          uploader === undefined || this.isDraining(streamId, uploader) ? null : uploader.publishedCountBeforeReturn();
+        const takenAt = this.segmentTakenAt.get(streamId);
+        const sameCut =
+          count !== null &&
+          askingTakenAt !== undefined &&
+          takenAt !== undefined &&
+          Math.abs(askingTakenAt - takenAt) < sameCutWithinMs &&
+          this.keptPublishingThrough(streamId, inProgress);
+        return sameCut ? count - 1 : count;
       })
       .filter((count) => count !== null);
   }
@@ -3045,16 +3247,22 @@ export class StreamOrchestrator {
     notBeforeMs: number,
     returnToken?: string,
     publishedResumeAt?: number,
+    askingStreamId?: string,
   ): BroadcastEpoch {
     const anchor =
       this.broadcastAnchors.get(datingKey) ??
       ({ startedAtMs: this.wallClock(), fragmentSeconds: this.config.fragmentSeconds } as BroadcastAnchor);
+    const evidence =
+      base !== null && askingStreamId !== undefined && returnToken !== undefined && publishedResumeAt !== undefined
+        ? this.ladderDatingEvidence(base, datingKey, askingStreamId, returnToken, publishedResumeAt)
+        : {};
     const { epoch, joined } = reanchorDecision(anchor, {
       resumeAt,
       nowMs: this.wallClock(),
       notBeforeMs,
       returnToken,
       publishedResumeAt,
+      ...evidence,
     });
     const reanchored = withEpoch(anchor, epoch);
     this.broadcastAnchors.set(datingKey, reanchored);

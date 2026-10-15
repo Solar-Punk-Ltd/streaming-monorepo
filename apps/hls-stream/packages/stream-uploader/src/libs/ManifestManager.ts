@@ -17,6 +17,7 @@ import {
 
 import {
   BroadcastDating,
+  LadderPosition,
   PlacedMedia,
   presentationMsOf,
   programDateTimeMsOf,
@@ -32,6 +33,12 @@ const ENCODER_RETURNED = 'encoder-returned' as const;
 
 /** Why a broadcast's numbering and dating moved forward without the media doing so. */
 type ReanchorCause = typeof COUNTER_RESTARTED | typeof ENCODER_RETURNED;
+
+/** Where a ladder stood as a session placed its first segment, and that segment's engine index. */
+interface LadderOpening {
+  position: LadderPosition;
+  index: number;
+}
 
 /**
  * The most bytes a live manifest may occupy, which is one single-owner chunk.
@@ -328,9 +335,11 @@ function mediaSecondsOf(timeline: readonly string[]): number {
  * every segment, permanently. See `broadcastDating.ts`.
  *
  * An engine restart re-anchors the date-time as well as the numbering, on to the wall clock the
- * engine came back at, so the media after the gap carries the time it really happened. That
- * re-anchoring is minted once for the whole ladder, which is what keeps the rungs agreeing across
- * it. See {@link BroadcastEpoch} and `broadcastDating.ts`.
+ * engine came back at, so the media after the gap carries the time it really happened, or on to the
+ * line of a rung that kept publishing through it. That re-anchoring is minted once for the whole
+ * ladder, which is what keeps the rungs agreeing across it, and a rung back as a new session in the
+ * middle of a broadcast joins the line its siblings are on. See {@link BroadcastEpoch},
+ * {@link joinLiveLadder} and `broadcastDating.ts`.
  *
  * ## The head recording carries every session this feed has held
  *
@@ -465,6 +474,18 @@ export class ManifestManager {
    */
   private resumingAfterReconnect: string | null = null;
 
+  /**
+   * Where the ladder stood as this session placed its first segment, kept until the feed head says
+   * whether this session continues an earlier one of its rung. Null for a session the dating gave no
+   * position, and once read. See {@link joinLiveLadder}.
+   *
+   * ⛔ Applied only over a feed that already holds a session, and the dating answers only for a rung
+   * spawned while its siblings were publishing. A ladder opening has rungs placing their first segments
+   * a moment apart, and each of those is segment 0 of the same broadcast however far a sibling got
+   * first, on a fresh topic or over the declared topic's last recording alike.
+   */
+  private ladderAtOpening: LadderOpening | null = null;
+
   constructor(anchor: BroadcastAnchor, dating?: BroadcastDating) {
     this.anchor = anchor;
     this.dating = dating ?? soleRungDating(() => this.anchor);
@@ -491,16 +512,71 @@ export class ManifestManager {
    * recovery entry carries. That is how the offset survives a crash rather than being re-derived from
    * a head which by then is this session's own last playlist.
    *
-   * ⛔ This moves the **numbering** and nothing else. The previous session's media is carried by
-   * {@link inherit}, which reads the same head, and it reaches the recording alone. What the seam
-   * buys in the live playlists is the viewer who was following the feed head: they are handed this
-   * playlist as the next update of the one they are playing, and a media sequence that moved
-   * backwards would restart them at the beginning of a recording instead.
+   * ⛔ This moves the **numbering**, and the previous session's media is carried by {@link inherit},
+   * which reads the same head and reaches the recording alone. What the seam buys in the live
+   * playlists is the viewer who was following the feed head: they are handed this playlist as the
+   * next update of the one they are playing, and a media sequence that moved backwards would restart
+   * them at the beginning of a recording instead.
    *
-   * @see sequenceOffset for why nothing but the published numbering moves.
+   * ⛔ **A rung whose siblings are publishing moves further, on to their sequence and their line.** An
+   * earlier session on this feed means this rung was reaped or replaced mid-broadcast, so it is
+   * rejoining a live ladder. See {@link joinLiveLadder}. Only before anything is published, and never
+   * for a session rebuilt off disk, whose numbering and dates are already in a feed.
+   *
+   * @see sequenceOffset for why the published numbering is all the offset moves.
    */
   public continueFrom(mediaSequence: number): void {
     this.sequenceOffset = mediaSequence;
+    const opening = this.ladderAtOpening;
+    this.ladderAtOpening = null;
+    if (opening !== null && !this.sequenceHasBeenPublished) {
+      this.joinLiveLadder(opening);
+    }
+  }
+
+  /**
+   * Put a new session of a rung whose siblings are publishing on their sequence and their line, before
+   * anything it placed has gone out.
+   *
+   * ⛔⛔ **A rung back as a new session in the middle of a broadcast is rejoining a live ladder, and
+   * takes the ladder's position rather than its own feed's.** Its feed head is where it stopped, a
+   * minute or more of sequences behind siblings that kept publishing, and the anchor it was built with
+   * is the ladder's opening line plus epochs written down in other rungs' numbering, which its own count
+   * from 0 crosses again one after another. Measured on the dev stage on 2026-10-15: 720p and 1080p,
+   * reaped during an uplink squeeze and back as new sessions, ended the broadcast at the same sequence as
+   * 360p and 480p dated 496 seconds earlier.
+   *
+   * The position is the one read as this session placed its first segment, which is taken as the media
+   * its siblings publish next: the same reading a return's shared resume point takes. Read then and not
+   * here, because the feed head is read asynchronously and siblings go on counting in between. Its own
+   * feed is never numbered backwards, so where its feed head is already past that sequence it keeps its
+   * own numbering and dates from the ladder's line at the sequence it publishes. The segments placed
+   * around the first one are dated from it by the media they hold.
+   */
+  private joinLiveLadder(opening: LadderOpening): void {
+    const first = this.segments.find((seg) => seg.index === opening.index);
+    if (first === undefined) {
+      return;
+    }
+    const { position } = opening;
+    const { fragmentSeconds } = this.anchor;
+    this.sequenceOffset = Math.max(this.sequenceOffset, position.publishedSequence - sequenceOf(first));
+    const firstDatedAtMs =
+      position.atMs +
+      Math.round((this.published(sequenceOf(first)) - position.publishedSequence) * fragmentSeconds * 1_000);
+
+    // Dated once from an opening at 0 to measure the media in front of the first segment, then moved so
+    // the first lands on the ladder's line.
+    this.anchor = { startedAtMs: 0, fragmentSeconds };
+    this.datePlacements();
+    const inFrontMs = this.presentedAtMsOf(this.segments.find((seg) => seg.index === opening.index)!);
+    this.anchor = { startedAtMs: firstDatedAtMs - inFrontMs, fragmentSeconds };
+    this.datePlacements();
+    this.logger.info(
+      `[ManifestManager] This session rejoins a live ladder, so its first segment publishes at sequence ` +
+        `${this.published(sequenceOf(first))} on its siblings' line, ${new Date(firstDatedAtMs).toISOString()}, ` +
+        "rather than where its own feed's numbering and dating left off",
+    );
   }
 
   /**
@@ -600,6 +676,25 @@ export class ManifestManager {
     return highest === null ? null : this.published(highest + 1);
   }
 
+  /**
+   * The date this rung gives the segment published at `publishedSequence`: the date it placed it at,
+   * or the date it would place it at, stepping on from the newest segment below it. Null while it has
+   * placed nothing. What a return's line is minted against, see `ReanchorRequest.ladderFloorMs`.
+   */
+  public dateOfPublishedSequence(publishedSequence: number): number | null {
+    const sequence = publishedSequence - this.sequenceOffset;
+    for (let i = this.segments.length - 1; i >= 0; i--) {
+      const seg = this.segments[i];
+      if (sequenceOf(seg) === sequence) {
+        return this.presentedAtMsOf(seg);
+      }
+      if (sequenceOf(seg) < sequence) {
+        return presentationMsOf(this.anchor, sequence, this.placedMedia(seg));
+      }
+    }
+    return null;
+  }
+
   /** The number `sequence` is written into a playlist as. See {@link sequenceOffset}. */
   private published(sequence: number): number {
     return sequence + this.sequenceOffset;
@@ -693,8 +788,7 @@ export class ManifestManager {
 
     const anchor = this.sequenceAnchor;
     if (anchor === null) {
-      this.sequenceAnchor = { index, sequence: 0 };
-      return { sequence: 0, reanchored: false };
+      return this.placeFirst(index);
     }
 
     const candidate = anchor.sequence + (index - anchor.index);
@@ -761,8 +855,7 @@ export class ManifestManager {
    */
   private placeResumed(index: number, returnToken: string): PlacedSegment {
     if (this.sequenceAnchor === null) {
-      this.sequenceAnchor = { index, sequence: 0 };
-      return { sequence: 0, reanchored: false };
+      return this.placeFirst(index);
     }
 
     const ownResumeAt = this.highestSequence() + 1;
@@ -778,6 +871,14 @@ export class ManifestManager {
     this.sequenceAnchor = { index, sequence: resumeAt };
     this.reanchorDating(resumeAt, ENCODER_RETURNED, returnToken);
     return { sequence: resumeAt, reanchored: true };
+  }
+
+  /** This session's first segment, at sequence 0, noting where its ladder stood. See {@link ladderAtOpening}. */
+  private placeFirst(index: number): PlacedSegment {
+    this.sequenceAnchor = { index, sequence: 0 };
+    const position = this.dating.liveLadderPosition();
+    this.ladderAtOpening = position === null ? null : { position, index };
+    return { sequence: 0, reanchored: false };
   }
 
   /** The date `sequence` would carry had nothing stopped, stepping on from the newest segment placed. */
