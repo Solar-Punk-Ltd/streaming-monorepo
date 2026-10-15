@@ -1197,8 +1197,12 @@ export class StreamUploader {
     return this.resumeFeedIndex();
   }
 
-  /** Whether {@link settleFeedPosition} has already answered, which it has to before any publish. */
-  private feedPositionSettled(): boolean {
+  /**
+   * Whether {@link settleFeedPosition} has already answered, which it has to before any publish. Until
+   * it has, this session's published numbers are its own count from 0 rather than its feed's, so a
+   * sibling reading them would read another numbering. See `StreamOrchestrator.publishingSiblingsOf`.
+   */
+  public feedPositionSettled(): boolean {
     return this.predecessorHasDrained && (this.feedIndexResumed || !this.topicOutlivesThisSession());
   }
 

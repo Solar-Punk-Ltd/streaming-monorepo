@@ -2990,7 +2990,14 @@ export class StreamOrchestrator {
 
   /**
    * The siblings of this rung that are publishing now, with their uploaders: live, not draining, not
-   * away, not coming back from a return they have yet to place a segment of, and with media placed.
+   * away, not coming back from a return they have yet to place a segment of, with media placed, and
+   * settled on their feed.
+   *
+   * ⛔ **Settled, because until a session has read its feed head its numbers are its own.** At the
+   * opening of a later broadcast on one declaration, every rung's feed already holds a recording, and a
+   * rung that has delivered its first cut but not yet read its head counts and dates in its own count
+   * from 0. A rung announcing a fragment later took such a sibling for a broadcast in progress and dated
+   * the whole broadcast the previous recording's length away from it, found by review on 2026-10-15.
    */
   private publishingSiblingsOf(streamId: string, base: string): { sibling: string; uploader: StreamUploader }[] {
     const inProgress = this.returnsInProgress.get(base) ?? this.persistedReturnOf(base);
@@ -3010,7 +3017,7 @@ export class StreamOrchestrator {
         (entry): entry is { sibling: string; uploader: StreamUploader } =>
           entry.uploader !== undefined && !this.isDraining(entry.sibling, entry.uploader),
       )
-      .filter((entry) => entry.uploader.publishedCountBeforeReturn() !== null);
+      .filter((entry) => entry.uploader.publishedCountBeforeReturn() !== null && entry.uploader.feedPositionSettled());
   }
 
   /**

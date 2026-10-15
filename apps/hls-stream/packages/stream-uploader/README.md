@@ -499,8 +499,12 @@ things moved the rungs apart, and each now keeps them together:
   ladder's opening line in its own numbering. A session spawned while siblings of it are publishing
   now takes the sequence they are publishing and the date their line gives it, before anything it
   placed goes out (`ManifestManager.joinLiveLadder`). Its own feed is still never numbered
-  backwards. A ladder opening is left alone: its rungs announce before any of them has media, and
-  each of their first segments is segment 0 of the broadcast.
+  backwards. A sibling counts as publishing only once it has read its own feed head, because until
+  then its numbers are its own count from 0, and a sibling read before that dated a rung announcing a
+  fragment after its siblings' first cut the previous recording's length away, at the opening of a
+  later broadcast on the same declaration. A ladder opening is therefore left alone while its rungs
+  have not settled on their feeds. A rung announcing after a sibling has settled is taken as
+  rejoining, which numbers and dates it from that sibling's settled line.
 
 **Which of two adjacent sequences a rejoining rung's segment is, is read off when the rungs delivered
 it.** SRS posts each rung's copy of one cut as that rung's transcoder closes it, a fraction of a
