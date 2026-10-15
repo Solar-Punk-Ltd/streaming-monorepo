@@ -707,6 +707,27 @@ describe('after Apply now, the card follows the recreate', () => {
     assert.equal(await followApply(RECREATED, 'stage-a', deps), 'unread');
   });
 
+  it('keeps what an earlier read showed when the last read fails or is overtaken', async () => {
+    const { deps, reads } = harness([[uploader()], null]);
+
+    assert.equal(await followApply(RECREATED, 'main-stage', { ...deps, budgetMs: 5_000 }), 'still-behind');
+    assert.equal(reads(), 2);
+  });
+
+  it('keeps reading through a failed read in the middle, and stops once the uploader runs the saved batch', async () => {
+    const { deps, reads } = harness([[deploying], null, [caughtUp]]);
+
+    assert.equal(await followApply(RECREATED, 'main-stage', deps), 'caught-up');
+    assert.equal(reads(), 3);
+  });
+
+  it('says it could not read the settings only when no read succeeded', async () => {
+    const { deps, reads } = harness([null]);
+
+    assert.equal(await followApply(RECREATED, 'main-stage', { ...deps, budgetMs: 5_000 }), 'unread');
+    assert.equal(reads(), 2);
+  });
+
   it('reads once and follows nothing when Apply recreated nothing', async () => {
     const { deps, waits, reads } = harness([[uploader()]]);
 

@@ -445,8 +445,11 @@ function sleepUnlessAborted(ms: number, signal?: AbortSignal): Promise<void> {
   });
 }
 
-function outcomeOf(uploader: BatchUploader | undefined): Exclude<ApplyFollowOutcome, 'stopped'> {
-  if (!uploader) return 'unread';
+type ReadOutcome = Exclude<ApplyFollowOutcome, 'stopped' | 'unread'>;
+
+/** What one read says about the uploader, or null when the read failed, was overtaken or left it out. */
+function outcomeOf(uploader: BatchUploader | undefined): ReadOutcome | null {
+  if (!uploader) return null;
   if (!uploader.running) return 'not-running';
   return uploader.behind ? 'still-behind' : 'caught-up';
 }
@@ -456,8 +459,11 @@ function outcomeOf(uploader: BatchUploader | undefined): Exclude<ApplyFollowOutc
  * the saved settings. The manager answers Apply as soon as the recreate has
  * started, so a single read lands while the deployment is still recreating.
  * Reads on a growing wait, stops at the first read that shows the uploader
- * running and caught up, and gives up after the budget with what it last saw.
- * An Apply that recreated nothing is read once.
+ * running and caught up, and gives up after the budget with the last thing a
+ * read showed. A read that failed or was overtaken shows nothing, so it never
+ * hides what an earlier read showed, and the follow ends as unread only when
+ * no read showed the uploader at all. An Apply that recreated nothing is read
+ * once.
  */
 export async function followApply(
   applied: DeploymentSettingsApplied,
@@ -468,12 +474,13 @@ export async function followApply(
   const sleep = deps.sleep ?? sleepUnlessAborted;
   const delays = deps.delaysMs ?? APPLY_FOLLOW_DELAYS_MS;
   const deadline = now() + (applied.recreated.length === 0 ? 0 : (deps.budgetMs ?? APPLY_FOLLOW_BUDGET_MS));
+  let lastSeen: ReadOutcome | null = null;
   for (let attempt = 0; ; attempt += 1) {
     const read = await deps.reread().catch(() => null);
     if (deps.signal?.aborted) return 'stopped';
-    const outcome = outcomeOf(read?.find((uploader) => uploader.name === name));
+    lastSeen = outcomeOf(read?.find((uploader) => uploader.name === name)) ?? lastSeen;
     const wait = delays[Math.min(attempt, delays.length - 1)] ?? 0;
-    if (outcome === 'caught-up' || now() + wait > deadline) return outcome;
+    if (lastSeen === 'caught-up' || now() + wait > deadline) return lastSeen ?? 'unread';
     await sleep(wait, deps.signal);
     if (deps.signal?.aborted) return 'stopped';
   }
