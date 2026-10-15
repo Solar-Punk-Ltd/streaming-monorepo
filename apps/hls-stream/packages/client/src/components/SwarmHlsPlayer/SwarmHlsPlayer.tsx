@@ -254,6 +254,27 @@ function levelIndexByName(hls: Hls, level: string): number {
   return hls.levels.findIndex((candidate) => candidate.height === height);
 }
 
+/** Where the player a restart builds starts loading, and the source that position belongs to. */
+interface RestartResume {
+  readonly sourceUrl: string;
+  readonly positionS: number;
+}
+
+/**
+ * Where a restarted player picks up, or null for hls.js's own start.
+ *
+ * Only a finished playlist keeps the viewer's place. A recording has one timeline, so a viewer 2100 s
+ * in who hit a fatal error was otherwise sent back to 0 (2026-10-15). A live rung's playlist is rebuilt
+ * from its newest window on a restart, so a live viewer rejoins at the live edge as before.
+ */
+function restartResumeOf(hls: Hls, media: HTMLMediaElement, sourceUrl: string): RestartResume | null {
+  const details = hls.levels[hls.currentLevel]?.details;
+  if (!details || details.live || !(media.currentTime > 0)) {
+    return null;
+  }
+  return { sourceUrl, positionS: media.currentTime };
+}
+
 interface HlsPlayerProps extends React.VideoHTMLAttributes<HTMLVideoElement> {
   owner: string;
   topicString: string;
@@ -326,6 +347,8 @@ export const SwarmHlsPlayer: React.FC<HlsPlayerProps> = ({
   onLadderShortRef.current = onLadderShort;
   // Held by the component rather than the effect below, so a restart finds the budget its stream spent.
   const [liveGapBudgets] = useState(() => new LiveGapBudgetPerStream());
+  // Held by the component for the same reason: the player a restart builds reads where the old one was.
+  const resumeAfterRestartRef = useRef<RestartResume | null>(null);
 
   // Deliberately not part of the effect below, which reruns on every restart. A fatal network error
   // is what causes a restart, so a subscription torn down and rebuilt with the player would be
@@ -386,6 +409,7 @@ export const SwarmHlsPlayer: React.FC<HlsPlayerProps> = ({
 
       const restartStream = () => {
         console.warn('Restarting stream due to manifest parsing error.');
+        resumeAfterRestartRef.current = hls ? restartResumeOf(hls, video, sourceUrl) : null;
         hls?.destroy();
         setRestartTrigger((prev) => prev + 1);
       };
@@ -469,7 +493,9 @@ export const SwarmHlsPlayer: React.FC<HlsPlayerProps> = ({
           startAtTopRung(hls!);
         }
 
-        hls!.startLoad();
+        const resume = resumeAfterRestartRef.current;
+        resumeAfterRestartRef.current = null;
+        hls!.startLoad(resume?.sourceUrl === sourceUrl ? resume.positionS : undefined);
 
         if (autoPlay) {
           video.play().catch((err) => {
