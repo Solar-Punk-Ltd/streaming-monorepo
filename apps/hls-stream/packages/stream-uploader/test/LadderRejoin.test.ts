@@ -260,9 +260,12 @@ async function reaped1080(harness: RejoinHarness): Promise<number> {
 /**
  * The rejoined 1080p delivers its first cut, and SRS bounces it again while the node is still answering
  * its feed head read, so its second cut arrives as a resumed run before the session knows where on its
- * feed or its ladder it stands.
+ * feed it stands.
+ *
+ * @param untilPublished wait for 1080p's first playlist, which is after the head read has answered.
+ * Without it the case carries on while the read is still answering.
  */
-async function bouncedBeforeTheHeadRead(harness: RejoinHarness): Promise<void> {
+async function bouncedBeforeTheHeadRead(harness: RejoinHarness, untilPublished = true): Promise<void> {
   await reaped1080(harness);
   harness.start(rung1080);
   harness.restartCounter(rung1080);
@@ -276,7 +279,7 @@ async function bouncedBeforeTheHeadRead(harness: RejoinHarness): Promise<void> {
   await harness.passTime(SEGMENT_SECONDS * 1_000 - 400);
   for (const streamId of fastRungs) await harness.deliver(streamId, 'x1');
   await harness.deliver(rung1080, 'x1');
-  await harness.published(rung1080, 'x1');
+  if (untilPublished) await harness.published(rung1080, 'x1');
 }
 
 describe('a rung rejoining a live ladder', () => {
@@ -310,6 +313,30 @@ describe('a rung rejoining a live ladder', () => {
       await harness.passTime(SEGMENT_SECONDS * 1_000);
     }
     await assertOneTimeline(harness, ['x3', 'y0', 'y1', 'y2'].map(everyRung), everyRung('y2'));
+  });
+
+  /**
+   * ⛔ A feed head read can take seconds, several slow reads in a row when bee's answer has to be probed
+   * above, and a whole-ladder drop can land inside it. A rung that held back from the ladder until the
+   * read answered placed its return at its own count with no line, and the read then re-dated it from
+   * its first segment by media alone, which leaves the outage out: 1080p dated the return 8 seconds
+   * before its siblings, found by review on 2026-10-15.
+   */
+  it('comes back on one line with its siblings from a whole-ladder drop that lands while its feed head read is answering', async () => {
+    const harness = rejoinHarness({ headReadMs: SLOW_HEAD_READ_MS });
+    await bouncedBeforeTheHeadRead(harness, false);
+    for (let cut = 2; cut < 4; cut++) {
+      await harness.passTime(SEGMENT_SECONDS * 1_000);
+      for (const streamId of rungIds) await harness.deliver(streamId, `x${cut}`);
+    }
+    for (const streamId of rungIds) harness.orchestrator.noteDisconnect(streamId);
+    await harness.passTime(10_000);
+    for (const streamId of rungIds) harness.start(streamId);
+    for (let cut = 0; cut < 3; cut++) {
+      for (const streamId of rungIds) await harness.deliver(streamId, `y${cut}`);
+      await harness.passTime(SEGMENT_SECONDS * 1_000);
+    }
+    await assertOneTimeline(harness, ['x0', 'x1', 'x2', 'x3', 'y0', 'y1', 'y2'].map(everyRung), everyRung('y2'));
   });
 
   /**
