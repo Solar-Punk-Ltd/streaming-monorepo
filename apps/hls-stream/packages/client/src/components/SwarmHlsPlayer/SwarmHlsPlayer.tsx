@@ -1,7 +1,7 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { Topic } from '@ethersphere/bee-js';
 import { ABR_BANDWIDTH_FACTOR, ABR_BANDWIDTH_UP_FACTOR } from '@swarm-hls-stream/shared';
-import Hls, { ErrorDetails, ErrorTypes, Events } from 'hls.js';
+import Hls, { ErrorDetails, type ErrorData, ErrorTypes, Events } from 'hls.js';
 
 import { MEDIA_TYPE_VIDEO, MediaType, Rendition } from '@/types/stream';
 
@@ -19,6 +19,7 @@ import { attachPlaybackStallReporter } from './playbackHealth';
 import { buildPlayerConfig, HLS_TUNING } from './playerConfig';
 import { exposePlayerForInstrumentation } from './playerTestHandle';
 import { buildSwarmUri } from './playlist';
+import { nextRestartResume, restartResumeOf, type RestartResume } from './restartResume';
 import { attachReturningBroadcastRejoin } from './returningBroadcast';
 import { attachActiveRungFollower, attachRungFailover, attachWatchedRungReporter } from './rungHealth';
 
@@ -326,6 +327,8 @@ export const SwarmHlsPlayer: React.FC<HlsPlayerProps> = ({
   onLadderShortRef.current = onLadderShort;
   // Held by the component rather than the effect below, so a restart finds the budget its stream spent.
   const [liveGapBudgets] = useState(() => new LiveGapBudgetPerStream());
+  // Held by the component for the same reason: the player a restart builds reads where the old one was.
+  const resumeAfterRestartRef = useRef<RestartResume | null>(null);
 
   // Deliberately not part of the effect below, which reruns on every restart. A fatal network error
   // is what causes a restart, so a subscription torn down and rebuilt with the player would be
@@ -379,13 +382,24 @@ export const SwarmHlsPlayer: React.FC<HlsPlayerProps> = ({
     const onHlsPlay = () => {
       hls?.startLoad();
     };
+    const onPlayedPastResume = () => {
+      const resume = resumeAfterRestartRef.current;
+      if (resume && video.currentTime > resume.positionS) {
+        resumeAfterRestartRef.current = null;
+      }
+    };
 
     if (Hls.isSupported()) {
       const tuning: HlsTuning = { ...DEFAULT_HLS_TUNING, ...callerTuning };
       hls = new Hls(buildPlayerConfig({ pLoader: CustomManifestLoader, fLoader: CustomFragmentLoader }, tuning));
 
-      const restartStream = () => {
-        console.warn('Restarting stream due to manifest parsing error.');
+      const restartStream = (cause: ErrorData) => {
+        console.warn(`Restarting stream after a fatal ${cause.type} (${cause.details}).`);
+        // A player that fails again before it has played holds no level, or a playhead back at 0, so the
+        // place an earlier restart kept stays until playback has moved past it.
+        const kept = resumeAfterRestartRef.current;
+        const read = hls ? restartResumeOf(hls.levels[hls.currentLevel]?.details, video.currentTime, sourceUrl) : null;
+        resumeAfterRestartRef.current = nextRestartResume(read, kept?.sourceUrl === sourceUrl ? kept : null, cause);
         hls?.destroy();
         setRestartTrigger((prev) => prev + 1);
       };
@@ -396,6 +410,7 @@ export const SwarmHlsPlayer: React.FC<HlsPlayerProps> = ({
 
       video.addEventListener('pause', onHlsPause);
       video.addEventListener('play', onHlsPlay);
+      video.addEventListener('timeupdate', onPlayedPastResume);
 
       hls.on(Events.ERROR, (_event, data) => {
         if (
@@ -421,14 +436,14 @@ export const SwarmHlsPlayer: React.FC<HlsPlayerProps> = ({
 
         if (data.details === ErrorDetails.LEVEL_PARSING_ERROR) {
           console.error('Media sequence mismatch detected, reloading stream.');
-          restartStream();
+          restartStream(data);
           return;
         }
 
         switch (data.type) {
           case ErrorTypes.NETWORK_ERROR:
             console.warn('Fatal network error');
-            restartStream();
+            restartStream(data);
             break;
           case ErrorTypes.MEDIA_ERROR: {
             // ⛔ Recovery re-appends the media that just failed, so calling it on every fatal media
@@ -439,7 +454,7 @@ export const SwarmHlsPlayer: React.FC<HlsPlayerProps> = ({
             mediaErrors = decision.state;
             console.warn(`Fatal media error, ${decision.action}`);
             if (decision.action === 'restart') {
-              restartStream();
+              restartStream(data);
               break;
             }
             // Playhead read before recovery detaches the media. recoverFromMediaError starts loading
@@ -451,7 +466,7 @@ export const SwarmHlsPlayer: React.FC<HlsPlayerProps> = ({
           }
           default:
             console.error('Unrecoverable fatal error. Destroying and restarting.');
-            restartStream();
+            restartStream(data);
             break;
         }
       });
@@ -469,7 +484,11 @@ export const SwarmHlsPlayer: React.FC<HlsPlayerProps> = ({
           startAtTopRung(hls!);
         }
 
-        hls!.startLoad();
+        const resume = resumeAfterRestartRef.current;
+        if (resume && resume.sourceUrl !== sourceUrl) {
+          resumeAfterRestartRef.current = null;
+        }
+        hls!.startLoad(resume?.sourceUrl === sourceUrl ? resume.positionS : undefined);
 
         if (autoPlay) {
           video.play().catch((err) => {
@@ -544,6 +563,7 @@ export const SwarmHlsPlayer: React.FC<HlsPlayerProps> = ({
       stopLadderWatch();
       video.removeEventListener('pause', onHlsPause);
       video.removeEventListener('play', onHlsPlay);
+      video.removeEventListener('timeupdate', onPlayedPastResume);
       detachQoe?.();
       detachRateGuard?.();
       detachLiveSync?.();

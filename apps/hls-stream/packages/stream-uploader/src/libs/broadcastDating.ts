@@ -208,6 +208,35 @@ interface ReanchorRequest {
    * its return's line is placed on the line by. See {@link BroadcastEpoch.publishedFrom}.
    */
   publishedResumeAt?: number;
+  /**
+   * The latest date any other rung of the return, or of the ladder that kept publishing through it,
+   * gives `publishedResumeAt`. Read only when this request mints the return's line.
+   *
+   * ⛔ **The floor of every rung of the return, not of the one that happens to place first.** A rung
+   * joining a line takes the larger of the line and its own floor, so a line minted under a sibling's
+   * floor was one that sibling stepped off, and the ladder dated one sequence two ways. Measured on the
+   * dev stage on 2026-10-15: one rung minted at 03:03:12.365 from a short partial segment, and three
+   * landed at 03:03:14.365.
+   */
+  ladderFloorMs?: number;
+  /**
+   * The date a rung that kept publishing through this return gives `publishedResumeAt`, which takes
+   * the place of the wall clock when this request mints the return's line.
+   *
+   * ⛔⛔ **A return some rung never left resumes on that rung's line, never on the wall clock.** That
+   * rung's media is continuous, so its dates are the ladder's timeline, and a rung coming back to the
+   * sequence it is publishing comes back to the instant it is publishing. Minted at the wall clock,
+   * the returning rungs dated one sequence seconds away from the rung that stayed, for the rest of the
+   * broadcast. Measured on the dev stage on 2026-10-15: three rungs re-anchored at sequence 60 while
+   * 1080p went on, about three seconds apart.
+   */
+  keptPublishingAtMs?: number;
+}
+
+/** Where a rung joining a live ladder starts: the sequence its siblings publish next, and its date. */
+export interface LadderPosition {
+  publishedSequence: number;
+  atMs: number;
 }
 
 /**
@@ -234,8 +263,24 @@ export interface BroadcastDating {
    *
    * @param ownResumeDatedAtMs the date `ownResumeAt` would have carried had the rung never stopped,
    * which says how long it was away. See {@link maxResumeRaise}.
+   * @param index the engine index of the segment being placed, whose hand-over is what a sibling that
+   * kept publishing is matched against.
    */
-  resumePointFor(returnToken: string, ownResumeAt: number, ownResumeDatedAtMs: number): number;
+  resumePointFor(returnToken: string, ownResumeAt: number, ownResumeDatedAtMs: number, index: number): number;
+
+  /**
+   * Where a new session of a rung joins its ladder, when siblings of it are publishing: the sequence
+   * they publish next and the date the ladder's line gives it. Null where no sibling is publishing,
+   * which is a ladder opening or a lone rendition.
+   *
+   * ⛔ Asked as a session places its first segment, and answered only for a rung spawned while its
+   * siblings were publishing, which is a rung reaped or replaced in the middle of a broadcast. See
+   * `ManifestManager.joinLiveLadder`.
+   *
+   * @param firstIndex the engine index of the segment this session placed first, which is not always
+   * the first it was handed: an upload refused leaves the next one to land first.
+   */
+  liveLadderPosition(firstIndex: number): LadderPosition | null;
 }
 
 /**
@@ -388,7 +433,9 @@ interface ReanchorDecision {
  * shape exists to remove.
  *
  * ⛔ **The floor applies to both branches, because a line is grid arithmetic and the media is not.**
- * A minted epoch takes the wall clock, and a reused one is {@link dateOnLine}, which steps by the
+ * A minted epoch takes the wall clock, or the line of a rung that kept publishing through the return,
+ * and never less than the floor of any rung of the return (see {@link ReanchorRequest.ladderFloorMs}).
+ * A reused one is {@link dateOnLine}, which steps by the
  * configured fragment length from where the line was written down. Neither knows what the asking
  * rung's media actually did. Since the dating started following the media, a rung whose segments run
  * longer than `HLS_FRAGMENT` has stamped its playlist past that arithmetic, by the overrun times the
@@ -402,7 +449,7 @@ interface ReanchorDecision {
  * it as a parsing error rather than as a restart, and a recording is sealed with it for ever.
  */
 export function reanchorDecision(anchor: BroadcastAnchor, request: ReanchorRequest): ReanchorDecision {
-  const { resumeAt, nowMs, notBeforeMs, returnToken, publishedResumeAt } = request;
+  const { resumeAt, nowMs, notBeforeMs, returnToken, publishedResumeAt, ladderFloorMs, keptPublishingAtMs } = request;
   const held = anchor.epochs ?? [];
   const minted =
     returnToken === undefined
@@ -436,7 +483,7 @@ export function reanchorDecision(anchor: BroadcastAnchor, request: ReanchorReque
   return {
     epoch: {
       fromSequence: resumeAt,
-      atMs: Math.max(nowMs, notBeforeMs),
+      atMs: Math.max(keptPublishingAtMs ?? nowMs, notBeforeMs, ladderFloorMs ?? notBeforeMs),
       ...tokenOf(returnToken, publishedResumeAt),
     },
     joined: false,
@@ -472,5 +519,6 @@ export function soleRungDating(anchorOf: () => BroadcastAnchor, wallClock: () =>
       reanchorEpoch(anchorOf(), { resumeAt, nowMs: wallClock(), notBeforeMs, returnToken, publishedResumeAt }),
     // A rung with no siblings has nobody to agree a sequence with.
     resumePointFor: (_returnToken, ownResumeAt) => ownResumeAt,
+    liveLadderPosition: () => null,
   };
 }

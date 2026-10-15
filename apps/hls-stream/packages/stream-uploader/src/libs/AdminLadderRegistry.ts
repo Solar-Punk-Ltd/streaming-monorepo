@@ -193,10 +193,16 @@ export class AdminLadderRegistry implements LadderRegistry {
     }
 
     const advertised = this.masterRungs(group);
-    if (this.isRecording(group)) {
+    const recording = this.isRecording(group);
+    if (recording) {
       this.liveness.forget(group);
     }
-    const published = await this.masterWriter.publish(group, advertised);
+    // ⛔⛔ A recording's master is written once, and every later report of a finished rung is answered
+    // with that master's slot. Measured live 2026-10-15: each of four rungs' finalize reports wrote the
+    // same master, and the flip went to the second of them, so the admin named a slot with two copies
+    // above it. Skipping on the writer's queue, rather than deciding here, is what holds when the four
+    // answers arrive together. See `MasterFeedWriter.publish`.
+    const published = await this.masterWriter.publish(group, advertised, { skipIfUnchanged: recording });
     if (published) {
       // Only what the feed took, for the reason {@link MasterRewriteSchedule} states: a shape recorded
       // here that never landed is a correction a later rung death will never attempt.

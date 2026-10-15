@@ -84,7 +84,7 @@ function describe(snapshot: MetricsSnapshot): RenderedMetric[] {
     {
       name: 'auth_rejections_total',
       type: 'counter',
-      help: 'Requests refused by a credential gate. Rising with no ingest means a secret this deployment holds is wrong.',
+      help: 'Requests refused by a credential gate, on any route. A refused ingest with no segment ever landed is ingest_refused on /health.',
       value: snapshot.authRejectionsTotal,
     },
     {

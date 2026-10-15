@@ -355,6 +355,37 @@ describe('Q2: a quality that stopped while not playing is found at switch time',
     assert.equal(rig.poller.readiness(hex(MID)), 'ready');
     assert.deepEqual(rig.stopped, []);
   });
+
+  // Seen live on 2026-10-15: a finished 35 minute recording whose 1080p dates trailed its siblings' by
+  // 496 s was refused at a switch, the level drop that followed went fatal, and the viewer was sent back
+  // to the start. Every rung of a recording is complete, so a newest segment behind means nothing.
+  it('never refuses a rung of a finished recording, however far its dates trail the playing one', async () => {
+    const rig = makeRig();
+    rig.gateway.publishLive(TOP, 'top', 40);
+    rig.gateway.finishHead(TOP);
+    rig.gateway.publishLive(MID, 'mid', 40, { stampShiftMs: -496_000 });
+    rig.gateway.finishHead(MID);
+
+    await playTopThenSwitchTo(rig, MID);
+    await polls();
+
+    assert.equal(rig.poller.readiness(hex(MID)), 'ready');
+    assert.deepEqual(rig.stopped, []);
+  });
+
+  // A live sibling that died without writing an end marker is still open, so the playing rung being
+  // finished must not wave it through.
+  it(`refuses an open rung more than ${STALE_RUNG_LAG_MS / 1000}s behind a playing rung that is finished`, async () => {
+    const rig = makeRig();
+    rig.gateway.publishLive(TOP, 'top', 60);
+    rig.gateway.finishHead(TOP);
+    rig.gateway.publishLive(MID, 'mid', 40);
+
+    await playTopThenSwitchTo(rig, MID);
+
+    assert.equal(rig.poller.readiness(hex(MID)), 'refused');
+    assert.equal(rig.stopped.length, 1);
+  });
 });
 
 describe('Q3: the playing quality stops', () => {

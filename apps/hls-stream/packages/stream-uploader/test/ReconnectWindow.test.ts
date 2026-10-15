@@ -2366,6 +2366,190 @@ describe('a ladder whose rungs SRS held through a short drop of its source', () 
 });
 
 /**
+ * A day of events on one declared ladder, measured on the dev stage on 2026-10-15, after which the
+ * finished recording dated 622 of its 1076 sequences differently across rungs and put the last segment
+ * of 720p and 1080p 496 seconds before the last segment of 360p and 480p.
+ *
+ * ⛔ What both cases hold is the design rule itself: segment N of every rung of a live ladder carries one
+ * `#EXT-X-PROGRAM-DATE-TIME`, taken from the ladder's one current line, whatever happened to the rungs
+ * one at a time. Each case stages one of the two ways the rungs ended up on different lines.
+ */
+describe('a ladder whose rungs SRS bounces at different moments', () => {
+  const rungIds = RUNG_NAMES.map((rung) => `${LADDER_BASE}_${rung}`);
+  const [rung360, , , rung1080] = rungIds;
+  const fastRungs = rungIds.slice(0, 3);
+
+  /** The rungs' last live playlists, each named by the label it must carry. */
+  async function lastPlaylists(harness: ReconnectHarness, label: string): Promise<Map<string, PlaylistEntry[]>> {
+    const playlists = new Map<string, PlaylistEntry[]>();
+    for (const streamId of rungIds) {
+      await harness.published(`${streamId}-${label}`);
+      const write = writesNaming(harness.writes, `${streamId}-${label}`).at(-1);
+      assert.ok(write, `${streamId} must have published ${label}`);
+      playlists.set(streamId, entriesOf(write.playlist));
+    }
+    return playlists;
+  }
+
+  /**
+   * Every sequence at or above `from` that carries media on every rung, with each rung's date for it.
+   * Fails when no sequence is shared, so a case cannot pass by comparing nothing.
+   */
+  function datesBySequence(playlists: Map<string, PlaylistEntry[]>, from: number): Map<number, number[]> {
+    const media = rungIds.map((streamId) =>
+      playlists.get(streamId)!.filter((entry) => entry.uri.startsWith('segment-') && entry.sequence >= from),
+    );
+    const shared = new Map<number, number[]>();
+    for (const entry of media[0]) {
+      const twins = media.map((entries) => entries.find((candidate) => candidate.sequence === entry.sequence));
+      if (twins.every((twin) => twin !== undefined)) {
+        shared.set(
+          entry.sequence,
+          twins.map((twin) => twin!.programDateTimeMs),
+        );
+      }
+    }
+    assert.ok(shared.size > 0, `no sequence at or above ${from} carries media on every rung`);
+    return shared;
+  }
+
+  /**
+   * Two returns a few seconds apart. In the first SRS bounces all four rungs, and 1080p, which closed a
+   * short partial segment at the drop, places first. In the second SRS bounces the three fast rungs
+   * again while 1080p keeps publishing, after an uplink squeeze has left the media behind the wall clock.
+   *
+   * ⛔ Each return used to move the rungs apart in its own way. In the first, each rung took the larger
+   * of the minted line and its own reading of where its next segment fell, so the rung that minted the
+   * line from its short segment dated sequence N a whole fragment before its siblings. In the second,
+   * the three returning rungs minted a line at the wall clock while 1080p, never part of that return,
+   * went on dating its continuous media from the line it had, which is the live log's 1080p kept its
+   * anchor while three rungs re-anchored at sequence 60.
+   */
+  it('dates segment N alike on every rung after two returns that bounced three rungs twice and 1080p once', async () => {
+    const harness = reconnectHarness({ ladder: true });
+    const next = new Map(rungIds.map((streamId) => [streamId, 0]));
+    const deliver = async (streamId: string, label: string, seconds = SEGMENT_SECONDS) => {
+      const index = next.get(streamId)!;
+      await harness.segment(`${streamId}-${label}`, index, streamId, seconds);
+      next.set(streamId, index + 1);
+    };
+
+    // The media runs ahead of the wall clock, as it does after a burst, and 1080p's last segment before
+    // the drop is the short partial SRS closes when a publish ends.
+    for (const streamId of rungIds) harness.start(streamId);
+    for (let round = 0; round < 3; round++) {
+      for (const streamId of rungIds) {
+        await deliver(streamId, `a${round}`, streamId === rung1080 && round === 2 ? 0.28 : SEGMENT_SECONDS);
+      }
+      await harness.passTime(1_000);
+    }
+
+    // The first return: SRS bounces all four, and 1080p places first.
+    for (const streamId of rungIds) harness.orchestrator.noteDisconnect(streamId);
+    await harness.passTime(2_000);
+    for (const streamId of rungIds) harness.start(streamId);
+    await deliver(rung1080, 'b0');
+    for (const streamId of fastRungs) await deliver(streamId, 'b0');
+
+    // An uplink squeeze: every rung keeps publishing, slower than real time.
+    for (let round = 1; round < 4; round++) {
+      for (const streamId of rungIds) await deliver(streamId, `b${round}`);
+      await harness.passTime(3_000);
+    }
+
+    // The second return: SRS bounces the three fast rungs again, and 1080p carries on.
+    for (const streamId of fastRungs) harness.orchestrator.noteDisconnect(streamId);
+    await deliver(rung1080, 'b4');
+    await harness.passTime(3_000);
+    for (const streamId of fastRungs) harness.start(streamId);
+    for (const streamId of fastRungs) await deliver(streamId, 'c0');
+    await deliver(rung1080, 'b5');
+    await harness.passTime(2_000);
+    for (const streamId of rungIds) await deliver(streamId, 'e0');
+
+    const playlists = await lastPlaylists(harness, 'e0');
+    const firstReturn = playlists.get(rung360)!.find((entry) => entry.uri === `segment-${rung360}-b0`);
+    assert.ok(firstReturn, '360p must still list its first segment after the first return');
+    for (const [sequence, dates] of datesBySequence(playlists, firstReturn.sequence)) {
+      assert.deepEqual(
+        dates,
+        rungIds.map(() => dates[0]),
+        `sequence ${sequence} is dated ${dates.map((ms) => new Date(ms).toISOString()).join(', ')} on ` +
+          `${RUNG_NAMES.join(', ')}`,
+      );
+    }
+  });
+
+  /**
+   * One rung reaped after a minute without media while its siblings keep publishing, which is what the
+   * squeeze did to 720p and 1080p, and then back as a new session on its own topic.
+   *
+   * ⛔ The new session used to number its playlist on from its own feed head, a minute of sequences behind
+   * its siblings, and date its media from the ladder's opening line in its own numbering, so the same
+   * media carried another sequence and another date on that rung for the rest of the broadcast.
+   *
+   * Driven in both orders, because SRS posts each rung's copy of one cut a moment apart and the slowest
+   * rung, 1080p, is usually the last to deliver it.
+   */
+  for (const order of ['first', 'last'] as const) {
+    it(`numbers and dates a rung that rejoins after its own reap on its siblings’ live line, delivering ${order}`, async () => {
+      const harness = reconnectHarness({ ladder: true });
+      const next = new Map(rungIds.map((streamId) => [streamId, 0]));
+      const deliver = async (streamId: string, label: string) => {
+        const index = next.get(streamId)!;
+        await harness.segment(`${streamId}-${label}`, index, streamId);
+        next.set(streamId, index + 1);
+      };
+
+      for (const streamId of rungIds) harness.start(streamId);
+      for (let round = 0; round < 3; round++) {
+        for (const streamId of rungIds) await deliver(streamId, `a${round}`);
+        await harness.passTime(SEGMENT_SECONDS * 1_000);
+      }
+
+      // 1080p delivers nothing for longer than the window while its siblings carry on.
+      let round = 3;
+      while (round * SEGMENT_SECONDS * 1_000 < REAP_MS + 4 * SEGMENT_SECONDS * 1_000) {
+        for (const streamId of fastRungs) await deliver(streamId, `a${round}`);
+        await harness.passTime(SEGMENT_SECONDS * 1_000);
+        round++;
+      }
+      await waitFor(
+        () => recordings(harness.writes).some((write) => write.playlist.includes(`segment-${rung1080}-a0`)),
+        SETTLE_CEILING_MS,
+      );
+
+      // Back as a new session, its engine counting from 0 again.
+      harness.start(rung1080);
+      next.set(rung1080, 0);
+      for (let rejoined = 0; rejoined < 3; rejoined++) {
+        if (order === 'first') await deliver(rung1080, `x${rejoined}`);
+        for (const streamId of fastRungs) await deliver(streamId, `x${rejoined}`);
+        if (order === 'last') await deliver(rung1080, `x${rejoined}`);
+        await harness.passTime(SEGMENT_SECONDS * 1_000);
+      }
+
+      const playlists = await lastPlaylists(harness, 'x2');
+      for (let rejoined = 0; rejoined < 3; rejoined++) {
+        const placed = rungIds.map((streamId) =>
+          playlists.get(streamId)!.find((entry) => entry.uri === `segment-${streamId}-x${rejoined}`)!,
+        );
+        assert.deepEqual(
+          placed.map((entry) => entry.sequence),
+          rungIds.map(() => placed[0].sequence),
+          `x${rejoined} is at sequences ${placed.map((entry) => entry.sequence).join(', ')} on ${RUNG_NAMES.join(', ')}`,
+        );
+        assert.deepEqual(
+          placed.map((entry) => new Date(entry.programDateTimeMs).toISOString()),
+          rungIds.map(() => new Date(placed[0].programDateTimeMs).toISOString()),
+          `x${rejoined} is dated differently across ${RUNG_NAMES.join(', ')}`,
+        );
+      }
+    });
+  }
+});
+
+/**
  * The SRS webhook's own wiring, one layer above everything else here: which orchestrator call each
  * role's `on_unpublish` makes, which a ladder source's or a single stream's `on_publish` makes, and
  * when a publish that arrives while an older connection is still there has its resume held back.

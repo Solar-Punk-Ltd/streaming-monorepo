@@ -61,9 +61,19 @@ interface RungSnapshot {
  *
  * Only a rung that has clearly stopped is refused: one whose newest playlist is finished while the
  * playing rung is live, or whose newest segment is more than {@link STALE_RUNG_LAG_MS} behind.
+ *
+ * ⛔ **Two finished rungs refuse nothing.** On a recording every rung is complete, so whose newest
+ * segment is dated later says nothing about whether a rung stopped. An open target is still judged
+ * against a finished playing rung, because a live sibling that died without an end marker looks open.
+ * On 2026-10-15 a 35 minute recording whose 1080p dates trailed by 496 s, every rung holding the same
+ * segments, had 1080p refused and dropped under a viewer, and the drop restarted the recording from the
+ * start.
  */
 export function switchRefusal(target: RungSnapshot, playing: RungSnapshot): string | null {
-  if (target.isFinalized && !playing.isFinalized) {
+  if (target.isFinalized && playing.isFinalized) {
+    return null;
+  }
+  if (target.isFinalized) {
     return 'its newest playlist is finished while the playing quality is live';
   }
   const targetNewest = newestSegmentStartMs(target.segments);

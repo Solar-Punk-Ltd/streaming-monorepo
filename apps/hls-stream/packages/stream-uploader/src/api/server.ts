@@ -55,7 +55,13 @@ export function createApiApp(streamOrchestrator: StreamOrchestrator, options: Ap
   // Global middleware
   app.use(requestLogger);
   // Ahead of every gate, so the refusal is counted whichever one answers.
-  app.use(createAuthRejectionObserver(() => streamOrchestrator.recordAuthRejection()));
+  app.use(
+    createAuthRejectionObserver({
+      enginePrefixes: engines.map((engine) => engine.prefix),
+      onIngestRefused: () => streamOrchestrator.recordAuthRejection(),
+      onOperatorRefused: () => streamOrchestrator.recordOperatorAuthRejection(),
+    }),
+  );
 
   // Ahead of the body parsers on purpose. Behind them, an anonymous caller gets 50MB of process
   // memory allocated per connection before the gate can refuse: measured at 117MB to 583MB of RSS

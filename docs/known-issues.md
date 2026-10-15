@@ -45,6 +45,53 @@ the broadcast bitrate, SRT drops packets, segments arrive at 50 to 85 percent of
 stream recovers when the link does. The behaviour is right, but the broadcaster sees nothing in the
 admin. To see it: broadcast 6 Mbit/s through a 3 Mbit/s link.
 
+**After a long stretch on a too-narrow uplink, the ladder limps until the broadcaster reconnects
+(P2).** Measured on 2026-10-15 with an ffmpeg SRT broadcaster held at 3 Mbit/s for about two
+minutes: 720p and 1080p went 60 s without usable media and were finalized, while 360p and 480p
+carried on. Once the link was restored, 720p and 1080p came back by themselves as new sessions on
+their topics, but every rung then ran at about a third of real time, with the encoders reconnecting
+every few seconds, until the broadcaster itself reconnected, after which everything was at full rate
+at once. Nothing is lost. Whether the slow state comes from the test broadcaster's SRT library after
+starvation or from the stage is not settled: a real OBS on the same squeeze would tell. To see it:
+broadcast 6 Mbit/s through a 3 Mbit/s link for two minutes, lift the limit, and count segments per
+rung for the next minute.
+
+**A broadcast that starts while the last one still finalizes is dated from the last one's start
+(P3).** When the source comes back while one rung of the previous broadcast is still writing its
+recording, the uploader keeps that ladder, and the rungs that open the new broadcast take its anchor,
+so every `#EXT-X-PROGRAM-DATE-TIME` of the new broadcast runs the gap between the two behind the
+clock. The rungs agree with each other, so playback and quality switches work, but the recording's
+clock is wrong by that gap. To see it: stop a long broadcast and start it again within the few
+seconds its recording takes to write, then compare the new playlist's first date with the wall clock.
+
+**A rung that rejoins a live ladder is numbered differently in the recording (P2).** When one rung gets no
+media for longer than the 60 second reconnect window while its siblings keep publishing, it is finalized, and when
+it comes back in the same broadcast it rejoins the ladder live at the siblings' sequence and dating line. The
+recording written at the end numbers that rung's returning segments on from its own last segment instead, so after
+the gap its sequences sit below its siblings' by the gap in segments, counted from the rung's last segment before it to
+its first after the return. Every segment is kept and every date agrees, but a player that places a recording's
+segments by summed durations can land the gap's length off at a quality switch after it. Measured on 2026-10-15 on a
+release candidate of v1.2.1, with 2 s segments: 1080p's encoder was paused for 70 s, and about 92 s passed from its
+last segment before the pause to its first after the return. It rejoined live at sequence 1057, and its recording
+numbered the same segments from 1011, 46 below its siblings. To see it: during a
+broadcast pause one rung's encoder for more than 60 s, let it go, and after the recording is written compare that
+rung's sequence and date pairs with a sibling's.
+
+**A restarted broadcast keeps each rung's own numbering until its first reconnect (P3).** At the end of a
+broadcast the lower rungs often write one more short segment than the higher ones, so a recording's rungs end on
+different sequences, and a later broadcast on the same stream opens each rung at its own next sequence. Dates agree
+across rungs, the sequences are offset by one or two per earlier broadcast, and the offset goes away at the first
+reconnect, which puts every rung on one sequence again. To see it: stop a broadcast, start it again on the same
+stream, and compare the rungs' sequences at the same date.
+
+**A rung rejoining a live ladder can land one segment off (P3).** Which sequence a rejoining rung's first segment
+takes is decided from the gap between a sibling being handed its newest segment and this rung handing over its first,
+divided by the segment length and rounded. A gap of half a segment or more makes it the next segment, a shorter one the
+same. The dev stage ran 2 s segments, so the tipping point there is 1 s. On that stage on 2026-10-15 the time between
+the first and last rung closing the same segment was 0.79 s typically, 0.96 s at the 90th percentile and 1.40 s at
+worst, with 1080p last on nearly every segment. A viewer switching quality exactly there sees about one segment skipped or repeated. To see
+it: read the close times from SRS's per-segment log lines for all rungs of one broadcast.
+
 **The admin shows "published" while nothing goes out (P3).** A broadcaster can be connected while
 the ladder encoders produce nothing. The admin keeps showing the stream as published, with no
 warning. The uploader now reports such a ladder on `/health` as `ladder_not_started` after 45 s,
@@ -84,6 +131,29 @@ above are probably this, not damage. To see it: decode the segments of any recor
 segment per rung, about four seconds, with decode errors on every rung, so the source itself was
 damaged. It sat a few seconds after a frozen old broadcaster was released during a takeover test.
 SRS logged no drop. It did not happen again and was not chased.
+
+**A new broadcast reaches the stream list about a minute late (P3).** On 2026-10-15 a gateway's segment warmer,
+which follows only streams the stream list calls live, began following each new broadcast about 60 s after it
+started, because the list marked it live only then. So a viewer probably finds a new stream in the catalogue about a
+minute after the broadcaster starts. Not yet confirmed in a viewer. To see it: start a broadcast and time when the
+catalogue feed first lists it as live.
+
+## Manager
+
+**A pool's quality nodes show "Reading balances" with no figures (P3).** On the dev stage on 2026-10-15 every node of
+an ABR pool showed "Reading balances", with funding, chequebook and wallet as a dash, and the pool's card said "Not
+ready yet" while all four nodes ran with usable stamps. The manager reached each node's API, and its balance requests
+answered 304. Cause not found. To see it: open an ABR pool's page in the manager and compare with the nodes'
+`/chequebook/balance` and `/wallet`.
+
+**An uploader keeps "Last deployment failed" after it recovered (P3).** An uploader that refused to start because a
+stamp was below its time floor, and started by itself once the stamp was topped up, kept that label in the
+Deployments list for two hours while it ran healthy, until it was deployed again. To see it: start an uploader on a
+stamp below 12 hours, top the stamp up, and watch the list.
+
+**An open manager page keeps the old version after an upgrade (P3).** After the manager was upgraded, a page already
+open kept showing the previous version and behaved as it, until it was reloaded. To see it: keep a manager page open
+through an upgrade and read the version beside the instance name.
 
 ## Keys
 
