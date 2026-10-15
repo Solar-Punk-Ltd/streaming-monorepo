@@ -85,8 +85,29 @@ describe('chequebook refusal causes', () => {
       chequebookRefusalSentence(chequebookRefusal('docker_setting_invalid')),
       /CHEQUEBOOK_DOCKER_TRANSPORTS/,
     );
-    assert.match(chequebookRefusalSentence(chequebookRefusal('chain_setting_invalid')), /CHEQUEBOOK_RPC_ENDPOINTS/);
-    assert.match(chequebookRefusalSentence(chequebookRefusal('chain_endpoint_missing')), /CHEQUEBOOK_RPC_ENDPOINTS/);
+    for (const cause of ['chain_setting_invalid', 'chain_endpoint_missing'] as const) {
+      const sentence = chequebookRefusalSentence(chequebookRefusal(cause));
+      for (const setting of [/CHEQUEBOOK_RPC_ENDPOINTS/, /FUNDING_RPC_URL/, /BEE_RPC_ENDPOINT/]) {
+        assert.match(sentence, setting, cause);
+      }
+    }
+  });
+
+  it('never sends the operator to Docker or ssh for a cause the Bee API route can answer', () => {
+    const DOCKER_ROUTE_ONLY = [
+      'docker_unreachable',
+      'docker_route_missing',
+      'docker_setting_invalid',
+      'bridge_not_qualified',
+    ];
+    for (const cause of CHEQUEBOOK_REFUSAL_CAUSES.filter((cause) => !DOCKER_ROUTE_ONLY.includes(cause))) {
+      const sentence = chequebookRefusalSentence(chequebookRefusal(cause));
+      assert.doesNotMatch(sentence, /docker|ssh|endpoint the Bee node uses|started without/i, cause);
+    }
+  });
+
+  it("names the reserved port when the recorded Bee API port is not the deployment's", () => {
+    assert.match(chequebookRefusalSentence(chequebookRefusal('bee_container_unsupported')), /port .*reserved/);
   });
 
   it('carries a failed check only on a bridge that was not qualified', () => {
