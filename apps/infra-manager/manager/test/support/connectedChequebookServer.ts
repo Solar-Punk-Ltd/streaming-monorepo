@@ -8,8 +8,9 @@
  * a stub below, because the pages need a shell to load into and none of that
  * shell is what these cases are about.
  *
- * It cleans its schema and its socket directory when the parent disconnects, and
- * ends itself when the parent is gone without having disconnected.
+ * It drops its schema when the parent disconnects, and ends itself when the
+ * parent is gone without having disconnected. It opens no Docker socket: the
+ * synthetic Bee is reached through the direct route's session seam.
  */
 import http from 'node:http';
 import express, { Router } from 'express';

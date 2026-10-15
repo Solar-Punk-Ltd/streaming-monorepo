@@ -1,8 +1,9 @@
 /**
  * The operator's own path, connected end to end.
  *
- * A real sign-in, the real money router, a real PostgreSQL journal, the owned
- * Docker transport and a synthetic Bee. The browser is the only client, and
+ * A real sign-in, the real money router, a real PostgreSQL journal, the direct
+ * route to a synthetic Bee through its API session, and a chain read through the
+ * manager's own settings. The browser is the only client, and
  * nothing between it and the database is a mock. What is synthetic is the Bee,
  * the chain and the database.
  *
