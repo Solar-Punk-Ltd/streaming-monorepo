@@ -504,11 +504,21 @@ things moved the rungs apart, and each now keeps them together:
 - **A rung back as a new session joins the ladder's sequence and line.** A rung reaped after a minute
   without media while its siblings kept publishing comes back on its own topic, so its feed head is
   where it stopped, a minute or more of sequences behind, and it used to date its media from the
-  ladder's opening line in its own numbering. A session spawned while siblings of it are publishing
-  now takes the sequence they are publishing and the date their line gives it, before anything it
-  placed goes out (`ManifestManager.joinLiveLadder`). Its own feed is still never numbered
-  backwards. A ladder opening is left alone: its rungs announce before any of them has media, and
-  each of their first segments is segment 0 of the broadcast.
+  ladder's opening line in its own numbering. A rung that already had a session in this broadcast,
+  starting again while a sibling is publishing, now takes the sequence its siblings are publishing and
+  the date their line gives it as its first segment is placed (`ManifestManager.joinLiveLadder`). Not
+  later, when its feed head read answers: that read can take seconds, and a rung bounced again, or
+  caught in a whole-ladder drop, inside it had no shared numbering to come back on. Its own feed is
+  still never numbered backwards: where its head is already past the ladder's sequence, the head wins
+  and the dates stay on the ladder's line.
+- **A ladder opening is left alone.** A rung announcing after a sibling's first cut, as the slowest
+  transcoder does, is still segment 0 of the broadcast, so only a rung that had a session in this
+  broadcast before is taken as rejoining, and a broadcast's rungs are forgotten when its ladder is
+  released. A sibling also counts as publishing only once it has read its own feed head, because
+  until then its numbers are its own count from 0: read before that, at the opening of a later
+  broadcast on the same declaration, it dated a rung the previous recording's length away. A restart
+  of this process forgets which rungs had a session, so a rung reaped before a restart and back after
+  it opens as at a ladder opening.
 
 **Which of two adjacent sequences a rejoining rung's segment is, is read off when the rungs delivered
 it.** SRS posts each rung's copy of one cut as that rung's transcoder closes it, a fraction of a
@@ -517,9 +527,18 @@ handed its newest segment within half a fragment of the rejoining rung's counts 
 same cut, for a new session and for a rung resuming in a partial return alike. Taking the next
 sequence every time numbered the slowest rung, which usually delivers last, one sequence late.
 
-⚠️ **Not covered: a rung reaped while every sibling is away.** With no sibling publishing there is no
-live line to join, so such a session dates from the ladder's record as before, and its siblings'
-return mints its own line. Nothing measured has had this shape yet.
+⚠️ **Not covered, found by review on 2026-10-15 and left open on purpose:**
+
+- **A rung reaped while every sibling is away.** With no sibling publishing there is no live line to
+  join, so the new session numbers from its own feed head and dates from the ladder's opening line,
+  while its siblings' return mints a line at the wall clock. It stays a minute or more of sequences
+  and dates apart until the next return in which the whole ladder comes back together, which puts it
+  back on one line. Nothing measured has had this shape yet.
+- **A replaced rung wipes the ladder's shared epochs.** `reanchorReplacedBroadcast` writes an epoch at
+  sequence 0 for a session announced while its predecessor is still finalizing, and an epoch at 0
+  replaces the whole list in the ladder's record. A sibling still to come back from a return then finds
+  no line under its return's name and mints a second one. Priority P3: it needs a replacement and a
+  return in progress at the same moment, and it has not been reproduced.
 
 Two sequence-shaped rules were tried before this one and both were wrong, which is worth knowing
 before anyone simplifies it. Recognising a return by the clock alone read a second outage on the same

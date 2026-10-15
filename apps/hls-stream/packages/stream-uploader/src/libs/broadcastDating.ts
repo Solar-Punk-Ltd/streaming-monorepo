@@ -263,18 +263,24 @@ export interface BroadcastDating {
    *
    * @param ownResumeDatedAtMs the date `ownResumeAt` would have carried had the rung never stopped,
    * which says how long it was away. See {@link maxResumeRaise}.
+   * @param index the engine index of the segment being placed, whose hand-over is what a sibling that
+   * kept publishing is matched against.
    */
-  resumePointFor(returnToken: string, ownResumeAt: number, ownResumeDatedAtMs: number): number;
+  resumePointFor(returnToken: string, ownResumeAt: number, ownResumeDatedAtMs: number, index: number): number;
 
   /**
    * Where a new session of a rung joins its ladder, when siblings of it are publishing: the sequence
    * they publish next and the date the ladder's line gives it. Null where no sibling is publishing,
    * which is a ladder opening or a lone rendition.
    *
-   * ⛔ Asked by a session that opens over a feed an earlier session of its rung left, which is a rung
-   * reaped or replaced in the middle of a broadcast. See `ManifestManager.continueFrom`.
+   * ⛔ Asked as a session places its first segment, and answered only for a rung spawned while its
+   * siblings were publishing, which is a rung reaped or replaced in the middle of a broadcast. See
+   * `ManifestManager.joinLiveLadder`.
+   *
+   * @param firstIndex the engine index of the segment this session placed first, which is not always
+   * the first it was handed: an upload refused leaves the next one to land first.
    */
-  liveLadderPosition(): LadderPosition | null;
+  liveLadderPosition(firstIndex: number): LadderPosition | null;
 }
 
 /**
