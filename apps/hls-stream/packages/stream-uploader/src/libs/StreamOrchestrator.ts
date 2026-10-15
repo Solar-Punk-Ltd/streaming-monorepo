@@ -3072,7 +3072,7 @@ export class StreamOrchestrator {
    * The published sequence a sibling gave the cut a rung handed over at `handedAt`, from the sibling's
    * next count and when it was handed its newest segment.
    *
-   * Handed more than half a fragment before `handedAt`, the sibling's newest is an earlier cut, so the
+   * Handed half a fragment or more before `handedAt`, the sibling's newest is an earlier cut, so the
    * rung's is the next one it counts to. Otherwise the sibling's newest is the same cut or a later one,
    * one sequence back for every whole fragment it was handed after `handedAt`, which is what a rung
    * behind on its uploads meets: by the time its first resumed segment is placed its siblings have
