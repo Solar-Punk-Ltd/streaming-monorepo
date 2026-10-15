@@ -27,7 +27,7 @@ const REFUSED_MESSAGE = /never user@host/;
 describe('the host a new deployment may be created on', () => {
   for (const [label, schema, body] of BODIES) {
     it(`refuses user@host on ${label}, which the chequebook route cannot reach`, async () => {
-      await assert.rejects(() => schema.validate({ ...body, host: 'solarpunk@203.0.113.4' }), REFUSED_MESSAGE);
+      await assert.rejects(() => schema.validate({ ...body, host: 'deploy@203.0.113.4' }), REFUSED_MESSAGE);
     });
 
     it(`keeps localhost and an ssh alias on ${label}`, async () => {
@@ -40,6 +40,6 @@ describe('the host a new deployment may be created on', () => {
 
   it('is the one rule the UI checks the field against', () => {
     assert.equal(DEPLOY_HOST_RE.test('bee2'), true);
-    assert.equal(DEPLOY_HOST_RE.test('solarpunk@203.0.113.4'), false);
+    assert.equal(DEPLOY_HOST_RE.test('deploy@203.0.113.4'), false);
   });
 });
