@@ -97,9 +97,10 @@ export function storedPassRecord(pass: {
  * and nothing else.
  *
  * The entries were produced by `manager/scripts/qualify-bee-bridge.mjs`, the
- * 2.8.2 one on 2026-09-14 and the 2.8.3 one on 2026-10-15. Its `harnessRevision` is the git object id the script had then,
- * kept as history. A pass the manager stores carries BEE_BRIDGE_CHECK_REVISION
- * instead, a hash of the check's own definition. `evidenceDigest` is the hash
+ * 2.8.2 one on 2026-09-14 and the 2.8.3 one on 2026-10-15. The 2.8.2 entry's
+ * `harnessRevision` is the git object id the script had then, kept as history.
+ * The 2.8.3 entry, like a pass the manager stores, carries
+ * BEE_BRIDGE_CHECK_REVISION, a hash of the check's own definition. `evidenceDigest` is the hash
  * of what the check saw. An entry is about the image, never the container.
  *
  * An entry stops matching the moment anything it pins moves, the image, the
