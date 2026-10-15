@@ -2487,60 +2487,66 @@ describe('a ladder whose rungs SRS bounces at different moments', () => {
    * ⛔ The new session used to number its playlist on from its own feed head, a minute of sequences behind
    * its siblings, and date its media from the ladder's opening line in its own numbering, so the same
    * media carried another sequence and another date on that rung for the rest of the broadcast.
+   *
+   * Driven in both orders, because SRS posts each rung's copy of one cut a moment apart and the slowest
+   * rung, 1080p, is usually the last to deliver it.
    */
-  it('numbers and dates a rung that rejoins after its own reap on its siblings’ live line', async () => {
-    const harness = reconnectHarness({ ladder: true });
-    const next = new Map(rungIds.map((streamId) => [streamId, 0]));
-    const deliver = async (streamId: string, label: string) => {
-      const index = next.get(streamId)!;
-      await harness.segment(`${streamId}-${label}`, index, streamId);
-      next.set(streamId, index + 1);
-    };
+  for (const order of ['first', 'last'] as const) {
+    it(`numbers and dates a rung that rejoins after its own reap on its siblings’ live line, delivering ${order}`, async () => {
+      const harness = reconnectHarness({ ladder: true });
+      const next = new Map(rungIds.map((streamId) => [streamId, 0]));
+      const deliver = async (streamId: string, label: string) => {
+        const index = next.get(streamId)!;
+        await harness.segment(`${streamId}-${label}`, index, streamId);
+        next.set(streamId, index + 1);
+      };
 
-    for (const streamId of rungIds) harness.start(streamId);
-    for (let round = 0; round < 3; round++) {
-      for (const streamId of rungIds) await deliver(streamId, `a${round}`);
-      await harness.passTime(SEGMENT_SECONDS * 1_000);
-    }
+      for (const streamId of rungIds) harness.start(streamId);
+      for (let round = 0; round < 3; round++) {
+        for (const streamId of rungIds) await deliver(streamId, `a${round}`);
+        await harness.passTime(SEGMENT_SECONDS * 1_000);
+      }
 
-    // 1080p delivers nothing for longer than the window while its siblings carry on.
-    let round = 3;
-    while (round * SEGMENT_SECONDS * 1_000 < REAP_MS + 4 * SEGMENT_SECONDS * 1_000) {
-      for (const streamId of fastRungs) await deliver(streamId, `a${round}`);
-      await harness.passTime(SEGMENT_SECONDS * 1_000);
-      round++;
-    }
-    await waitFor(
-      () => recordings(harness.writes).some((write) => write.playlist.includes(`segment-${rung1080}-a0`)),
-      SETTLE_CEILING_MS,
-    );
-
-    // Back as a new session, its engine counting from 0 again, delivering each segment first.
-    harness.start(rung1080);
-    next.set(rung1080, 0);
-    for (let rejoined = 0; rejoined < 3; rejoined++) {
-      await deliver(rung1080, `x${rejoined}`);
-      for (const streamId of fastRungs) await deliver(streamId, `x${rejoined}`);
-      await harness.passTime(SEGMENT_SECONDS * 1_000);
-    }
-
-    const playlists = await lastPlaylists(harness, 'x2');
-    for (let rejoined = 0; rejoined < 3; rejoined++) {
-      const placed = rungIds.map(
-        (streamId) => playlists.get(streamId)!.find((entry) => entry.uri === `segment-${streamId}-x${rejoined}`)!,
+      // 1080p delivers nothing for longer than the window while its siblings carry on.
+      let round = 3;
+      while (round * SEGMENT_SECONDS * 1_000 < REAP_MS + 4 * SEGMENT_SECONDS * 1_000) {
+        for (const streamId of fastRungs) await deliver(streamId, `a${round}`);
+        await harness.passTime(SEGMENT_SECONDS * 1_000);
+        round++;
+      }
+      await waitFor(
+        () => recordings(harness.writes).some((write) => write.playlist.includes(`segment-${rung1080}-a0`)),
+        SETTLE_CEILING_MS,
       );
-      assert.deepEqual(
-        placed.map((entry) => entry.sequence),
-        rungIds.map(() => placed[0].sequence),
-        `x${rejoined} is at sequences ${placed.map((entry) => entry.sequence).join(', ')} on ${RUNG_NAMES.join(', ')}`,
-      );
-      assert.deepEqual(
-        placed.map((entry) => new Date(entry.programDateTimeMs).toISOString()),
-        rungIds.map(() => new Date(placed[0].programDateTimeMs).toISOString()),
-        `x${rejoined} is dated differently across ${RUNG_NAMES.join(', ')}`,
-      );
-    }
-  });
+
+      // Back as a new session, its engine counting from 0 again.
+      harness.start(rung1080);
+      next.set(rung1080, 0);
+      for (let rejoined = 0; rejoined < 3; rejoined++) {
+        if (order === 'first') await deliver(rung1080, `x${rejoined}`);
+        for (const streamId of fastRungs) await deliver(streamId, `x${rejoined}`);
+        if (order === 'last') await deliver(rung1080, `x${rejoined}`);
+        await harness.passTime(SEGMENT_SECONDS * 1_000);
+      }
+
+      const playlists = await lastPlaylists(harness, 'x2');
+      for (let rejoined = 0; rejoined < 3; rejoined++) {
+        const placed = rungIds.map((streamId) =>
+          playlists.get(streamId)!.find((entry) => entry.uri === `segment-${streamId}-x${rejoined}`)!,
+        );
+        assert.deepEqual(
+          placed.map((entry) => entry.sequence),
+          rungIds.map(() => placed[0].sequence),
+          `x${rejoined} is at sequences ${placed.map((entry) => entry.sequence).join(', ')} on ${RUNG_NAMES.join(', ')}`,
+        );
+        assert.deepEqual(
+          placed.map((entry) => new Date(entry.programDateTimeMs).toISOString()),
+          rungIds.map(() => new Date(placed[0].programDateTimeMs).toISOString()),
+          `x${rejoined} is dated differently across ${RUNG_NAMES.join(', ')}`,
+        );
+      }
+    });
+  }
 });
 
 /**
