@@ -327,7 +327,12 @@ describe("the direct route's target in front of the preparation", () => {
     const h = harness();
     const urls: string[] = [];
     // What the resolver reads each time it is asked, so a test can change the deployment between two asks.
-    const state = { ...options, status: deployment.status, instanceId: deployment.instance_id };
+    const state = {
+      ...options,
+      status: deployment.status,
+      instanceId: deployment.instance_id,
+      verifiedAt: '2026-01-01T00:00:00.000000Z',
+    };
     const resolver = new ConfiguredBeeTargetResolver(
       {
         findByName: async () => ({
@@ -350,7 +355,7 @@ describe("the direct route's target in front of the preparation", () => {
       },
       async () => {
         const owned = owning(state.reserved);
-        return { ...owned, profile: { ...owned.profile, instanceId: state.instanceId } };
+        return { ...owned, verifiedAt: state.verifiedAt, profile: { ...owned.profile, instanceId: state.instanceId } };
       },
     );
     const preparation = new ChequebookTransferPreparation(
@@ -406,5 +411,28 @@ describe("the direct route's target in front of the preparation", () => {
       assert.equal(result.operation.dispatchStartedAt, null, change);
       assert.equal(d.counts().posts, 0, change);
     }
+  });
+
+  it('ends a saved move rejected, preflight_failed, with nothing sent, when its deploy target is verified again', async () => {
+    // Nothing the resolver's revision covers changes: the host, the port and the deployment stay. Only the
+    // ownership the journal admitted the move under does, so the recheck must compare that too, or the move would
+    // pass the preflight and stop only when its dispatch is claimed, left submitting.
+    const d = direct({ recorded: 12005, reserved: 12005 });
+    const repository = new InMemoryChequebookOperations();
+    const submission = new ChequebookSubmission(repository, async (intent) => {
+      const prepared = await d.preparation.prepare(intent);
+      d.state.verifiedAt = '2026-01-01T00:00:01.000000Z';
+      return prepared;
+    });
+    const result = await submission.submit(transferIntent());
+    assert.equal(result.operation.state, 'rejected');
+    assert.equal(result.operation.failureReason, 'preflight_failed');
+    assert.equal(result.operation.dispatchStartedAt, null);
+    assert.equal(d.counts().posts, 0);
+    assert.deepEqual(
+      [...repository.rows.values()].filter((row) => row.state === 'submitting'),
+      [],
+      'no row is left submitting',
+    );
   });
 });

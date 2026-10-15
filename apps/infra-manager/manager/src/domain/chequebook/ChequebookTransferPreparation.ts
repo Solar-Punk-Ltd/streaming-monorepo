@@ -336,6 +336,14 @@ export class ChequebookTransferPreparation extends TransferPreparation {
               current.url !== target.url
             )
               throw new ChequebookPreparationError();
+            // The ownership the journal admitted the move under, as the Docker route checks it: a deploy target
+            // verified again, or a reservation row that changed, would otherwise pass here and fail only when the
+            // dispatch is claimed, leaving the saved move submitting with nothing sent. A target the resolver
+            // brought no ownership for either time is unchanged here; the journal refuses to admit one anyway.
+            const sameOwnership = current.submissionTarget
+              ? sameFrozenTarget(target.submissionTarget, current.submissionTarget)
+              : target.submissionTarget === undefined;
+            if (!sameOwnership) throw new ChequebookPreparationError('target_changed');
           },
         };
       },
