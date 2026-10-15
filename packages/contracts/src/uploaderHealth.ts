@@ -1,7 +1,9 @@
 /**
  * The uploader's `/health` page, which the manager reads. It answers 200 only with `ok`, and its body carries the
- * status, the reasons, and while it waits for its node `waitingSince` and `node`, beside counters the manager does not
- * read. The page takes no credential, so nothing in it names a node's secret or a batch.
+ * status, the reasons, and while it waits for its node `waitingSince` and `node`. The manager also reads
+ * `startGateWarnings`, and `staleManifestStreamIds` and `segmentFailingStreamIds`, which name the streams behind a stale
+ * playlist and failing uploads. The rest are counters the manager does not read. The page takes no credential, so
+ * nothing in it names a node's secret or a batch.
  */
 
 export const UPLOADER_STATUS_OK = 'ok' as const;
@@ -33,6 +35,8 @@ export const UPLOADER_REASON_NODE_UNAVAILABLE = 'node_unavailable' as const;
 export const UPLOADER_REASON_START_GATE_WARNED = 'start_gate_warned' as const;
 /** A ladder source was accepted and none of its rungs published within the deadline. */
 export const UPLOADER_REASON_LADDER_NOT_STARTED = 'ladder_not_started' as const;
+/** A publisher node's chequebook fell under the floor after the boot. A report only: the broadcast goes on. */
+export const UPLOADER_REASON_CHEQUEBOOK_LOW = 'chequebook_low' as const;
 
 export const UPLOADER_HEALTH_REASONS = [
   UPLOADER_REASON_STALE_MANIFEST,
@@ -50,6 +54,7 @@ export const UPLOADER_HEALTH_REASONS = [
   UPLOADER_REASON_NODE_UNAVAILABLE,
   UPLOADER_REASON_START_GATE_WARNED,
   UPLOADER_REASON_LADDER_NOT_STARTED,
+  UPLOADER_REASON_CHEQUEBOOK_LOW,
 ] as const;
 
 export type UploaderHealthReason = (typeof UPLOADER_HEALTH_REASONS)[number];

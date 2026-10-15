@@ -32,12 +32,12 @@ const DEFAULT_CHEQUEBOOK_MIN_BZZ = 0.5;
 const MAX_CHEQUEBOOK_MIN_BZZ = 1000;
 
 /**
- * How long the uploader waits between reads of a chequebook it warned about at boot.
+ * How long the uploader waits between reads of every node's chequebook, which it makes for the life of
+ * the process.
  *
- * A minute. The warning it clears is a 503 on `/health`, and the container's healthcheck asks every
- * 30 seconds, so a funded chequebook reaches the healthcheck within about a minute and a half of the
- * deposit settling. One read is one call per node, and nothing reads at all once the warning is gone.
- * See `libs/ChequebookRecheck.ts`.
+ * A minute. What a read changes is a 503 on `/health`, and the container's healthcheck asks every 30
+ * seconds, so a funded or a drained chequebook reaches the healthcheck within about a minute and a half.
+ * One read is one call per distinct node. See `libs/ChequebookRecheck.ts`.
  */
 const DEFAULT_CHEQUEBOOK_RECHECK_MS = 60_000;
 
@@ -111,7 +111,7 @@ const MAX_HLS_FRAGMENT_SECONDS = 3600;
  * one such call stopped that rung, and the same call on the coordinator stopped the catalog for every
  * stream on the stage.
  *
- * **The default is derived, not chosen.** Every bee call the service makes sits inside
+ * **The default is derived, not chosen.** Every bee call of the upload loop sits inside
  * `retryUntilDeadlineAsync`, and the shortest window any of them gets is 10s: `CATALOG_RETRY_WINDOW_MS`
  * in `StreamCatalog.ts` and `MASTER_RETRY_WINDOW_MS` in `MasterFeedWriter.ts`, against 15s for the
  * three in `StreamUploader.ts`. The first backoff is 350ms before jitter halves it, so two whole
@@ -124,6 +124,12 @@ const MAX_HLS_FRAGMENT_SECONDS = 3600;
  * they were the calls this derivation was never about, and the probe reads through the same pool so
  * that a node the gates would wait twenty seconds for is not failed in four. All three run on
  * START_GATE_TIMEOUT_MS below, since 2026-09-17.
+ *
+ * ⛔ **Nor does it bound a feed lookup**, which asks a node where a feed has got to: a restarted
+ * stream's feed head read, the stream list's boot lookup and its read of the entries a write appends to,
+ * and the master feed's first probe. A rung node
+ * took 4.0 s at the median and 5.1 s at most over 119 such reads on 2026-10-14, past this deadline in
+ * 117 of them, so each carries `FEED_LOOKUP_TIMEOUT_MS` from `BeePublisherPool.ts` instead.
  */
 const DEFAULT_BEE_REQUEST_TIMEOUT_MS = 4000;
 
@@ -250,7 +256,7 @@ export const config = {
     min: 0,
     max: MAX_CHEQUEBOOK_MIN_BZZ,
   }),
-  /** How long after one read of a chequebook the boot warned about the next one starts. */
+  /** How long after one read of every node's chequebook the next one starts. */
   chequebookRecheckMs: optionalInt('CHEQUEBOOK_RECHECK_MS', DEFAULT_CHEQUEBOOK_RECHECK_MS, {
     min: MIN_CHEQUEBOOK_RECHECK_MS,
     max: MAX_CHEQUEBOOK_RECHECK_MS,

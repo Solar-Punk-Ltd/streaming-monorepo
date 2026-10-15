@@ -2,7 +2,7 @@ import { BeeResponseError, FeedIndex, PrivateKey } from '@ethersphere/bee-js';
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 
-import { BeePublisherPool } from '../src/libs/BeePublisherPool.js';
+import { BeePublisherPool, FEED_LOOKUP_TIMEOUT_MS } from '../src/libs/BeePublisherPool.js';
 import { MasterFeedWriter } from '../src/libs/MasterFeedWriter.js';
 import { Rendition } from '../src/types.js';
 
@@ -22,25 +22,44 @@ interface WriterOptions {
   headIndex?: bigint;
   /** The feed reader answers 404, the shape of a group whose master was never written. */
   headMissing?: boolean;
+  /** The timeout each reader was made with, in order, when a test wants to see it. */
+  readerTimeouts?: (number | undefined)[];
+  /** The first write is refused with a status worth retrying. */
+  firstWriteFails?: boolean;
+  /** How many writers were made, when a test wants to see it. */
+  writersMade?: { count: number };
 }
 
 function makeWriter(writes: bigint[], opts: WriterOptions = {}): MasterFeedWriter {
+  let failedOnce = false;
   const bee = {
     feed: {
-      makeReader: () => ({
-        downloadPayload: async () => {
-          if (opts.headMissing) {
-            throw new BeeResponseError('GET', '/feeds', 'Not Found.', undefined, 404, 'Not Found');
-          }
-          return { feedIndex: FeedIndex.fromBigInt(opts.headIndex ?? 0n) };
-        },
-      }),
-      makeWriter: () => ({
-        uploadPayload: async (_stamp: string, _payload: unknown, writeOpts: { index: FeedIndex }) => {
-          writes.push(writeOpts.index.toBigInt());
-          return { reference: { toHex: () => 'ref' } };
-        },
-      }),
+      makeReader: (_topic: unknown, _owner: unknown, requestOptions?: { timeout?: number }) => {
+        opts.readerTimeouts?.push(requestOptions?.timeout);
+        return {
+          downloadPayload: async () => {
+            if (opts.headMissing) {
+              throw new BeeResponseError('GET', '/feeds', 'Not Found.', undefined, 404, 'Not Found');
+            }
+            return { feedIndex: FeedIndex.fromBigInt(opts.headIndex ?? 0n) };
+          },
+        };
+      },
+      makeWriter: () => {
+        if (opts.writersMade) {
+          opts.writersMade.count += 1;
+        }
+        return {
+          uploadPayload: async (_stamp: string, _payload: unknown, writeOpts: { index: FeedIndex }) => {
+            if (opts.firstWriteFails && writes.length === 0 && !failedOnce) {
+              failedOnce = true;
+              throw new BeeResponseError('POST', '/soc', 'Service Unavailable', undefined, 503, 'Service Unavailable');
+            }
+            writes.push(writeOpts.index.toBigInt());
+            return { reference: { toHex: () => 'ref' } };
+          },
+        };
+      },
     },
   };
   const publisher = { rung: 'coordinator', url: '', stamp: 'stamp', bee };
@@ -49,6 +68,28 @@ function makeWriter(writes: bigint[], opts: WriterOptions = {}): MasterFeedWrite
 }
 
 describe('MasterFeedWriter next index', () => {
+  /** A writer carries one deadline counted from when it is made. See DeadlineBee in BeePublisherPool.ts. */
+  it('makes a writer for each attempt, so a retry is not handed a deadline already spent', async () => {
+    const writersMade = { count: 0 };
+    const writes: bigint[] = [];
+    const writer = makeWriter(writes, { headIndex: 5n, firstWriteFails: true, writersMade });
+
+    await writer.publish('group-1', [rung('360p')]);
+
+    assert.deepEqual(writes, [6n]);
+    assert.equal(writersMade.count, 2);
+  });
+
+  /** The first write's probe is a feed lookup, longer than the pool's 4 s. See FEED_LOOKUP_TIMEOUT_MS. */
+  it('probes the feed with a feed lookup’s deadline rather than the pool’s', async () => {
+    const readerTimeouts: (number | undefined)[] = [];
+    const writer = makeWriter([], { headIndex: 5n, readerTimeouts });
+
+    await writer.publish('group-1', [rung('360p')]);
+
+    assert.deepEqual(readerTimeouts, [FEED_LOOKUP_TIMEOUT_MS]);
+  });
+
   it('probes the feed on the first write, so a recovering ladder does not rewind its master', async () => {
     // The group id is the feed topic and it survives a restart. An uploader that recovers a ladder
     // mid-stream must continue past the master a viewer is already reading, not overwrite it at 0.

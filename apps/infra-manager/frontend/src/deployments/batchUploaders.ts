@@ -287,20 +287,28 @@ function restartSentence(uploader: BatchUploader): string {
     : `This recreates ${wordList(uploader.recreates)}.`;
 }
 
+/**
+ * How long a restart waits on the old uploader. Whatever Apply recreates, the
+ * uploader writes its live recordings before it exits, and its compose service
+ * waits up to 330 s for that, so a long broadcast waits minutes rather than
+ * seconds and keeps its recording.
+ */
+const RECORDING_WRITE_WAIT =
+  'which takes seconds for a short broadcast and up to about five minutes for a long one, and keeps the recording';
+
+/** What a live broadcast goes through when only the uploader is recreated. */
+const UPLOADER_RESTART_EFFECT = `pauses until the uploader has written its recording and restarted, ${RECORDING_WRITE_WAIT}`;
+
+/** What a live broadcast goes through when the media server, or every service, is recreated too. */
+const ENCODER_RESTART_EFFECT = `stops until the encoder reconnects, and the restart waits until the uploader has written its recording, ${RECORDING_WRITE_WAIT}`;
+
 function broadcastSentence(uploader: BatchUploader, broadcast: BroadcastState): string {
-  const effect = dropsEncoder(uploader)
-    ? 'stops until the encoder reconnects'
-    : 'drops for a few seconds while the uploader restarts';
+  const effect = dropsEncoder(uploader) ? ENCODER_RESTART_EFFECT : UPLOADER_RESTART_EFFECT;
   if (broadcast === 'live') return `The live broadcast on ${uploader.name} ${effect}.`;
+  const ifLive = `it ${effect}`;
   if (broadcast === 'unknown') {
-    const ifLive = dropsEncoder(uploader)
-      ? 'it stops until the encoder reconnects'
-      : 'it drops for a few seconds while the uploader restarts';
     return `The console cannot tell whether a broadcast is live on ${uploader.name}. If one is, ${ifLive}.`;
   }
-  const ifLive = dropsEncoder(uploader)
-    ? 'it stops until the encoder reconnects'
-    : 'it drops for a few seconds while the uploader restarts';
   return `SRS reported no publisher on ${uploader.name} in its last window, but it reports one only about every ten seconds, so a publisher that connected moments ago would not show yet. If one is live, ${ifLive}.`;
 }
 

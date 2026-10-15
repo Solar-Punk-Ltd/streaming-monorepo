@@ -4,9 +4,12 @@ import { after, before, describe, it } from 'node:test';
 import { containerName, containerNameFor, loadConfig } from '../../src/config.js';
 import { makeHost, reportFailedRestore, uploaderHealth, waitForIdle } from '../../src/harness/host.js';
 import { isContiguous, parseUploaderLog, segmentIndicesByStream } from '../../src/harness/logwatch.js';
+import { rungFeedsOf } from '../../src/harness/manifestContractLive.js';
 import { type Publisher, startPublisher } from '../../src/harness/publisher.js';
 import { nodesBehind, publisherServices } from '../../src/harness/publishers.js';
+import { waitForRungHeadsAdvance } from '../../src/harness/rungPublishing.js';
 import { requireStageStamps } from '../../src/harness/stageStamps.js';
+import { type CatalogEntry, type CatalogFeed, discoverCatalogFeed, fetchCatalog } from '../../src/harness/viewer.js';
 import { sleep, waitFor } from '../../src/harness/wait.js';
 
 /**
@@ -53,8 +56,17 @@ const WARMUP_SEGMENTS = 3;
 const POST_OUTAGE_SEGMENTS = 3;
 const SEGMENT_WAIT_MS = 120_000;
 const MIN_STAMP_TTL_S = 600;
+/** How long every rung's playlist head is given to move again once the nodes are back. A ceiling, not a reading. */
+const HEADS_MOVE_AGAIN_WAIT_MS = 120_000;
+/** How long the gateway is given to serve the catalog again once the nodes are back. */
+const CATALOG_READ_WAIT_MS = 120_000;
 
 const cfg = loadConfig();
+
+/** One catalog entry's identity: the feed it names. */
+function entryKey(entry: CatalogEntry): string {
+  return `${entry.owner}/${entry.topic}`;
+}
 
 describe('B — bee crash > retry window: the segment is dropped, reported, and uploads resume', () => {
   const host = makeHost(cfg);
@@ -69,6 +81,10 @@ describe('B — bee crash > retry window: the segment is dropped, reported, and 
   const uploader = containerName(cfg, 'stream-uploader');
   let publisher: Publisher;
   let startedAt: string;
+  let feed: CatalogFeed;
+  /** Every catalog entry the gateway served before the outage, and when the nodes came back. */
+  let catalogBefore: CatalogEntry[] = [];
+  let nodesBackAt: string | undefined;
 
   before(async () => {
     bees = publisherServices(nodesBehind((await uploaderHealth(host, cfg)).publishers, cfg.ports.beeUploaderApi)).map(
@@ -76,6 +92,7 @@ describe('B — bee crash > retry window: the segment is dropped, reported, and 
     );
 
     await requireStageStamps(host, cfg, MIN_STAMP_TTL_S);
+    feed = await discoverCatalogFeed(host, cfg);
     await waitForIdle(host, cfg);
     startedAt = await host.nowIso();
     publisher = startPublisher(cfg);
@@ -109,9 +126,11 @@ describe('B — bee crash > retry window: the segment is dropped, reported, and 
 
     // Together rather than in sequence: staggering them would give the rungs different outage
     // windows, and the assertion below is that they all lost the same stretch.
+    catalogBefore = await fetchCatalog(host, cfg, feed);
     await Promise.all(bees.map((bee) => host.stop(bee)));
     await sleep(STOP_SLEEP_MS);
     await Promise.all(bees.map((bee) => host.start(bee)));
+    nodesBackAt = await host.nowIso();
 
     await waitFor(
       async () => {
@@ -161,5 +180,48 @@ describe('B — bee crash > retry window: the segment is dropped, reported, and 
         `the dropped segments must leave a gap in ${streamId}'s indices; got: ${indices.join(',')}`,
       );
     }
+  });
+
+  /**
+   * The coordinator node is one of the nodes this outage stops, and it is the one that writes the catalog and every
+   * master. Coming back, it must not cost a viewer anything it had: the catalog through the gateway still lists every
+   * entry it listed before, and every rung's playlist head moves again.
+   *
+   * ⛔ The catalog is held to never fewer entries than before, keyed by the feed each names. A list written from a
+   * read-back that had not caught up is how a restart shortens it, and a shorter list is broadcasts a viewer can no
+   * longer find. ⚠️ The pause length is printed and never asserted, by the owner rule that e2e checks correctness.
+   */
+  it('keeps every catalog entry and moves every rung head again once the nodes are back', async () => {
+    assert.ok(nodesBackAt !== undefined, 'the outage case above never brought the nodes back, so nothing is read');
+    const sinceStart = await host.logsSince(uploader, startedAt);
+
+    const heads = await waitForRungHeadsAdvance(host, cfg, {
+      owner: feed.owner,
+      feeds: rungFeedsOf(sinceStart),
+      timeoutMs: HEADS_MOVE_AGAIN_WAIT_MS,
+    });
+    console.log(heads.summary);
+    assert.equal(heads.refusal, null, heads.refusal ?? '');
+
+    const wanted = new Set(catalogBefore.map(entryKey));
+    let listed: CatalogEntry[] = [];
+    await waitFor(
+      async () => {
+        listed = await fetchCatalog(host, cfg, feed);
+        return true;
+      },
+      { timeoutMs: CATALOG_READ_WAIT_MS, intervalMs: 3_000, label: 'the gateway serves the catalog again' },
+    );
+    const missing = [...wanted].filter((key) => !listed.some((entry) => entryKey(entry) === key));
+    console.log(
+      `  observations, none of them asserted. the publisher nodes were down ${STOP_SLEEP_MS / 1000}s. the catalog ` +
+        `listed ${catalogBefore.length} entries before the outage and ${listed.length} after`,
+    );
+    assert.deepEqual(
+      missing,
+      [],
+      `the catalog lost ${missing.length} of the ${wanted.size} entries it listed before the coordinator node went ` +
+        'down, so those broadcasts can no longer be found by a viewer',
+    );
   });
 });

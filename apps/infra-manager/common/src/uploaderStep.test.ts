@@ -159,6 +159,31 @@ describe('the uploader step once the uploader has been asked', () => {
     assert.doesNotMatch(step?.detail ?? '', /_/);
   });
 
+  // On 2026-10-14 an operator learned only that some playlist was stale. A
+  // ladder rung is its own stream, so its id already says which rung.
+  it('names the streams whose playlist is stale and whose uploads are failing', () => {
+    const step = uploaderStep({
+      state: 'unhealthy',
+      reasons: ['segment_upload_failure', 'stale_manifest'],
+      staleManifestStreamIds: ['live/stream_1080p'],
+      segmentFailingStreamIds: ['live/stream_720p', 'live/stream_360p'],
+    });
+
+    assert.equal(
+      step?.detail,
+      'The uploader reports segment upload failure and stale manifest. ' +
+        'The playlist is not moving on live/stream_1080p. ' +
+        'Segment uploads are failing on live/stream_720p and live/stream_360p. ' +
+        'Its own logs have the rest.',
+    );
+  });
+
+  it('reads an older uploader that names no stream exactly as before', () => {
+    const step = uploaderStep({ state: 'unhealthy', reasons: ['stale_manifest'] });
+
+    assert.equal(step?.detail, 'The uploader reports stale manifest. Its own logs have the rest.');
+  });
+
   it('says so plainly when the uploader reports healthy', () => {
     const step = uploaderStep({ state: 'ok', reasons: [] });
 
@@ -186,6 +211,21 @@ describe('the uploader step once the uploader has been asked', () => {
       /its Bee node refused its postage batch, usually because it is full or has expired, so its uploads fail/,
     );
     assert.match(step?.detail ?? '', /until the uploader is deployed again with a batch that pays/);
+    assert.doesNotMatch(step?.detail ?? '', /[—;]/);
+  });
+
+  it('says what chequebook low means, and that funding the node clears it', () => {
+    const step = uploaderStep({ state: 'unhealthy', reasons: ['chequebook_low'] });
+
+    assert.match(step?.detail ?? '', /The uploader reports chequebook low\./);
+    assert.match(
+      step?.detail ?? '',
+      /Chequebook low means a publisher node’s chequebook fell under the floor during the run\. The broadcast goes on, but that node’s paid pushes will stall/,
+    );
+    assert.match(
+      step?.detail ?? '',
+      /Fund the node, the funding step reads the balances, and the reason clears on the uploader’s next read\./,
+    );
     assert.doesNotMatch(step?.detail ?? '', /[—;]/);
   });
 

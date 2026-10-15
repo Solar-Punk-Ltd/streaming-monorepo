@@ -116,7 +116,7 @@ export const LOCAL_TARGET = 'local';
 export const DEFAULT_LOCAL_HOST_ADDRESS = 'localhost';
 
 /** The ports the stack binds to the deployment host's Docker bridge address unless told otherwise. */
-export interface ServiceBinds {
+interface ServiceBinds {
   /** The bridge address the stage's env files name, or empty to ask the deployment host. */
   readonly bridgeAddress: string;
   readonly boundPorts: readonly BoundPort[];
@@ -413,6 +413,18 @@ export class Host {
     );
     const [status, bytes] = stdout.trim().split(/\s+/).map(Number);
     return { status, bytes };
+  }
+
+  /**
+   * The response headers a GET of a service port answers with, as curl dumps them, the body thrown away.
+   *
+   * For the one fact a feed read carries outside its body: the index bee resolved it at, in `swarm-feed-index`.
+   */
+  async localHeaders(target: ServiceTarget, path: string, timeoutS: number = 5): Promise<string> {
+    const runTimeoutMs = Math.max(DEFAULT_RUN_TIMEOUT_MS, (timeoutS + 5) * 1_000);
+    const url = shellQuoted(`http://${await this.dialAddress(target)}:${portOf(target)}${path}`);
+    const { stdout } = await this.run(`curl -s -D - -o /dev/null --max-time ${timeoutS} ${url}`, runTimeoutMs);
+    return stdout;
   }
 
   private async curlJson<T>(target: ServiceTarget, path: string, timeoutS: number): Promise<T> {

@@ -119,7 +119,17 @@ function sequenceOf(seg: SegmentEntry): number {
  * request that 404s.
  */
 function gapUri(sequence: number): string {
-  return `gap-${sequence}`;
+  return `${GAP_URI_PREFIX}${sequence}`;
+}
+
+const GAP_URI_PREFIX = 'gap-';
+
+/** The segment references a playlist names, leaving out its tags and its gap entries. */
+export function mediaRefsNamedBy(manifest: string): string[] {
+  return manifest
+    .split('\n')
+    .map((line) => line.trim())
+    .filter((line) => line !== '' && !line.startsWith('#') && !line.startsWith(GAP_URI_PREFIX));
 }
 
 /**

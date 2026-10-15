@@ -64,6 +64,13 @@ function manifests(segments: SegmentEntry[]): { vod: string; closingLive: string
 
 const PLAYLISTS = manifests(SEGMENTS);
 
+/** The live playlist the real producer writes for `segments`. */
+function liveManifestOf(segments: SegmentEntry[]): string {
+  const manager = new ManifestManager(TEST_ANCHOR);
+  manager.restoreState(segments, ['#EXTM3U', '#EXT-X-VERSION:3']);
+  return manager.buildLiveManifest();
+}
+
 /** One SOC write the uploader made to its own manifest feed. */
 interface ManifestWrite {
   index: number;
@@ -83,6 +90,8 @@ interface RecoveredUploader {
 interface RecoveredOptions {
   /** What the manifest feed answers. `undefined` throws a 404, which is a head that will not retrieve. */
   feedHead?: () => FakeFeedHead | null;
+  /** What a read at an explicit index other than the head's answers. Absent answers 404. */
+  feedSlot?: (index: number) => string | null;
   catalog?: StreamCatalog;
   ladder?: LadderMembership;
   socIndex?: number | null;
@@ -108,6 +117,7 @@ function makeRecovered(options: RecoveredOptions = {}): RecoveredUploader {
       reads++;
       return options.feedHead ? options.feedHead() : null;
     },
+    feedSlot: options.feedSlot ? (_topic, index) => options.feedSlot!(index) : undefined,
   });
 
   const recoveryStore = makeFakeRecoveryStore({
@@ -279,20 +289,16 @@ describe('a single-rendition finalize that comes back after a crash', () => {
    * then runs off the head that came back, never off the answer that was refused.
    */
   it('finalizes against the head that came back when a 404 clears inside the window', async () => {
-    let refused = false;
+    let calls = 0;
     const { uploader, published, removed, headReads } = makeRecovered({
-      feedHead: () => {
-        if (refused) {
-          return { index: 9, manifest: PLAYLISTS.vod };
-        }
-        refused = true;
-        return null;
-      },
+      // The first read is the slot above the saved index, absent. The second is the saved index
+      // itself, refused once. The third is its retry.
+      feedHead: () => (++calls === 2 ? null : { index: 9, manifest: PLAYLISTS.vod }),
     });
 
     const lines = await logLinesDuring(() => uploader.notifyStop());
 
-    assert.equal(headReads(), 3, 'the refused read, the retry that answered, and the playlist at its index');
+    assert.equal(headReads(), 3, 'the slot above, the refused read at the saved index, and the retry that answered');
     assert.deepEqual(published, [], 'the recording was already in the feed, so nothing may be bought again');
     assert.equal(linesHolding(lines, finalizeResumed(STREAM_ID, 9)), 1, 'the resume names the head that came back');
     assert.deepEqual(removed, [STREAM_ID], 'a finished broadcast must leave no recovery entry');
@@ -309,11 +315,12 @@ describe('a single-rendition finalize that comes back after a crash', () => {
   });
 
   /**
-   * ⛔⛔⛔ The index has to come from the feed, never from the recovery entry. `commitManifest` sets
-   * `socIndex` and persists it AFTER the SOC write it describes, so a crash in that gap leaves the
-   * entry naming an index the feed has already moved past. Reading there returns the live playlist
-   * from before the finalize, the guard concludes nothing was published, and the double publish is
-   * back for exactly the crash it is supposed to answer.
+   * ⛔⛔⛔ The slot above the saved index has to be read as well. `commitManifest` sets `socIndex` and
+   * persists it AFTER the SOC write it describes, so a crash in that gap leaves the entry naming the
+   * index one below the recording. Reading only there returns the closing playlist from before the
+   * recording, the guard concludes nothing was published, and the double publish is back for exactly
+   * the crash it is supposed to answer. Writes go through one queue, so the gap is never more than
+   * one.
    */
   it('finds the recording at the index the feed is really at, not the one the entry saved', async () => {
     const entries: Array<{ index?: number }> = [];
@@ -324,7 +331,7 @@ describe('a single-rendition finalize that comes back after a crash', () => {
     });
     const { uploader, published } = makeRecovered({
       catalog,
-      socIndex: 7,
+      socIndex: 8,
       feedHead: () => ({ index: 9, manifest: PLAYLISTS.vod }),
     });
 
@@ -335,6 +342,77 @@ describe('a single-rendition finalize that comes back after a crash', () => {
     assert.deepEqual(
       entries.map((e) => e.index),
       [9],
+    );
+  });
+
+  /**
+   * ⛔⛔⛔ bee's feed lookup can answer an index BELOW the head: its finder gives every lookahead probe
+   * after index 0 one second and counts a probe that ran out of it as absent. Asked after a crash, a
+   * slow node can therefore answer an older live playlist while the recording sits at the saved index.
+   * Trusting that answer buys a closing playlist and a second recording, and reports the broadcast
+   * finished twice. The recovery entry already says where the recording can be, so the slots it names
+   * are read directly and the lookup is not asked at all.
+   */
+  it('finds the recording at the saved index when the feed lookup answers below it', async () => {
+    const { uploader, published, removed } = makeRecovered({
+      socIndex: 9,
+      feedHead: () => ({ index: 5, manifest: PLAYLISTS.closingLive }),
+      feedSlot: (index) => (index === 9 ? PLAYLISTS.vod : null),
+    });
+
+    const lines = await logLinesDuring(() => uploader.notifyStop());
+
+    assert.deepEqual(published, [], 'a stale lookup answer must not become a second recording');
+    assert.equal(linesHolding(lines, finalizeResumed(STREAM_ID, 9)), 1, 'the resume names the saved index');
+    assert.deepEqual(removed, [STREAM_ID]);
+  });
+
+  /**
+   * ⛔⛔ A live playlist one slot above the saved index is a write that landed before the crash
+   * stopped `persistState` recording it. That slot is this session's real last index, so the closing
+   * playlist and the recording go above it. Writing the closing playlist at the same index would
+   * overwrite a slot that is already in the feed.
+   */
+  it('writes above a live playlist that landed one slot past the saved index', async () => {
+    const live = liveManifestOf(SEGMENTS);
+    const { uploader, published, removed } = makeRecovered({
+      socIndex: 9,
+      feedHead: () => ({ index: 9, manifest: live }),
+      feedSlot: (index) => (index === 10 ? live : null),
+    });
+
+    await uploader.notifyStop();
+
+    assert.deepEqual(
+      published.map((write) => write.index),
+      [11, 12],
+      'the closing playlist and the recording go above the slot the dead process wrote, never onto it',
+    );
+    assert.deepEqual(removed, [STREAM_ID]);
+  });
+
+  /**
+   * The recording is built from the recovery entry, and a live playlist does not carry the engine's
+   * own segment index, so a segment that playlist names and the entry does not cannot be put back.
+   * It can only be said, so the loss is visible rather than silent.
+   */
+  it('says how many segments the unsaved playlist named that the recording cannot carry', async () => {
+    const unsaved = 'b'.repeat(64);
+    const { uploader } = makeRecovered({
+      socIndex: 9,
+      feedHead: () => ({ index: 9, manifest: liveManifestOf(SEGMENTS) }),
+      feedSlot: (index) =>
+        index === 10
+          ? liveManifestOf([...SEGMENTS, { index: 42, duration: 1, ref: unsaved, discontinuity: false }])
+          : null,
+    });
+
+    const lines = await logLinesDuring(() => uploader.notifyStop());
+
+    assert.equal(
+      lines.filter((line) => line.includes('names 1 segment(s) its recovery entry does not hold')).length,
+      1,
+      'a segment the recording drops has to be named',
     );
   });
 
@@ -394,8 +472,8 @@ describe('a single-rendition finalize that comes back after a crash', () => {
    * it. Read without an index, a real recording comes back as its wrapping chunk, `isFinishedRecording`
    * says no, and the second recording is published exactly as before, silently.
    *
-   * `makeFakeBee` answers the two calls the way bee-js answers them, so a reader that stopped asking
-   * at an index fails here rather than on a paid broadcast.
+   * `makeFakeBee` answers both kinds of read the way bee-js answers them, so a reader that stopped
+   * asking at an index fails here rather than on a paid broadcast.
    */
   it('reads the playlist at its index, which is the only shape a real recording comes back on', async () => {
     const { uploader, published, headReads } = makeRecovered({
@@ -405,7 +483,7 @@ describe('a single-rendition finalize that comes back after a crash', () => {
     await uploader.notifyStop();
 
     assert.deepEqual(published, [], 'the recording at the head was not recognised, so it was bought again');
-    assert.equal(headReads(), 2, 'the index and the playlist are two reads, and both are retrievals');
+    assert.equal(headReads(), 2, 'the slot above the saved index and the saved index, both read by index');
   });
 
   it('never asks the feed at all when the session was not recovered from a crash', async () => {

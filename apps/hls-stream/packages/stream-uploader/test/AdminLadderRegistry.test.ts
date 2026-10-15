@@ -723,3 +723,140 @@ describe('a rung that will not finish, in admin mode', () => {
     );
   });
 });
+
+/**
+ * A declared stream is one ladder for many broadcasts, and how far each rung got is about one of them.
+ * Carried into the next, a rung that ended the last broadcast a little behind starts the next one
+ * already part of the way to being dropped, without the grace a rung starting afresh is given.
+ */
+describe('rung liveness across the broadcasts of one declared stream', () => {
+  const ALL = ['360p', '480p', '720p', '1080p'];
+  const THE_OTHER_THREE = ['360p', '480p', '720p'];
+  const live = (name: string): Rendition => rung(name, Number.parseInt(name, 10));
+  const finalOf = (name: string, index: number): Rendition => ({ ...live(name), index, duration: 12 });
+
+  interface FourRungAdmin {
+    answer: (rendition: Rendition) => Response;
+    /** The `vod` state report a finished ladder's flip sends. */
+    holdRecording: () => void;
+    /** The `live` state report of the next broadcast, which clears every index the admin holds. */
+    goLiveAgain: () => void;
+  }
+
+  /**
+   * An admin that merges by its own rule: a report without an index keeps the index held for that rung,
+   * and the ladder is finished once all four have one. Only a state report moves its status, so the
+   * first rendition report of a re-broadcast, which the uploader sends before its `live` state report,
+   * is answered with the recording still held.
+   */
+  function fourRungAdmin(): FourRungAdmin {
+    const held = new Map<string, Rendition>();
+    let status = 'live';
+    let feedIndex = 0;
+    return {
+      answer: (rendition) => {
+        const stored = held.get(rendition.name);
+        held.set(
+          rendition.name,
+          rendition.index === undefined && stored?.index !== undefined
+            ? { ...rendition, index: stored.index, duration: stored.duration }
+            : rendition,
+        );
+        const ladder = [...held.values()].sort((a, b) => a.height - b.height);
+        const finished = ladder.length === ALL.length && ladder.every((r) => r.index !== undefined);
+        feedIndex += 1;
+        return new Response(merged(ladder, { finished, duration: finished ? 12 : null }, status, feedIndex), {
+          status: 200,
+        });
+      },
+      holdRecording: () => {
+        status = 'vod';
+      },
+      goLiveAgain: () => {
+        status = 'live';
+        for (const name of ALL) {
+          held.set(name, live(name));
+        }
+      },
+    };
+  }
+
+  it('starts the next broadcast with a fresh tracker, so a rung that ended one behind is not dropped early', async () => {
+    const admin = fourRungAdmin();
+    const harness = makeRegistry({ answer: (rendition) => admin.answer(rendition) });
+    const deliver = (names: readonly string[], rounds = 1): void => {
+      for (let round = 0; round < rounds; round++) {
+        for (const name of names) {
+          harness.registry.recordRungDelivered(DECLARED_TOPIC, name);
+        }
+      }
+    };
+
+    deliver(ALL, WARMUP_ROUNDS);
+    for (const name of ALL) {
+      await harness.registry.upsertRendition(IDENTITY, live(name));
+    }
+    deliver(THE_OTHER_THREE, 2);
+    for (const [at, name] of ALL.entries()) {
+      await harness.registry.upsertRendition(IDENTITY, finalOf(name, 7 + at));
+    }
+
+    admin.holdRecording();
+
+    // The next broadcast, in the order the uploader sends it: the first rung's rendition report lands
+    // while the admin still holds the recording, then its `live` state report clears the indices, then
+    // the other rungs report.
+    const [first, ...rest] = ALL;
+    await harness.registry.upsertRendition(IDENTITY, live(first));
+    admin.goLiveAgain();
+    for (const name of rest) {
+      await harness.registry.upsertRendition(IDENTITY, live(name));
+    }
+    const landed = harness.masters.length;
+    // 1080p is slow to publish its first playlist of the new broadcast, as a rung waiting on its feed
+    // head is. Two behind from the last broadcast and four more now would be six on a carried tracker.
+    deliver(THE_OTHER_THREE, RUNG_DEATH_LAG_SEGMENTS);
+
+    await waitAndConfirmNothingHappened(() => harness.masters.length === landed, NOTHING_HAPPENS_WINDOW_MS);
+    assert.match(harness.masters.at(-1)!.playlist, /topic-1080p/, 'a rung starting a new broadcast was dropped');
+  });
+
+  /**
+   * Liveness is about a broadcast in progress. A rung held out while its uploads were refused that then
+   * finished with a recording has a recording to offer, and the recording's master must name it.
+   */
+  it('names every rung with a recording in the recording′s master, whatever liveness said while it was live', async () => {
+    const admin = fourRungAdmin();
+    const harness = makeRegistry({ answer: (rendition) => admin.answer(rendition) });
+    for (let round = 0; round < WARMUP_ROUNDS; round++) {
+      for (const name of ALL) {
+        harness.registry.recordRungDelivered(DECLARED_TOPIC, name);
+      }
+    }
+    for (const name of ALL) {
+      await harness.registry.upsertRendition(IDENTITY, live(name));
+    }
+    for (let round = 0; round < RUNG_DEATH_LAG_SEGMENTS; round++) {
+      for (const name of THE_OTHER_THREE) {
+        harness.registry.recordRungDelivered(DECLARED_TOPIC, name);
+      }
+      harness.registry.recordRungUploadFailed(DECLARED_TOPIC, '1080p');
+    }
+    await waitFor(() => !/topic-1080p/.test(harness.masters.at(-1)!.playlist), SETTLE_CEILING_MS);
+
+    for (const [at, name] of ALL.entries()) {
+      await harness.registry.upsertRendition(IDENTITY, finalOf(name, 7 + at));
+    }
+
+    const recording = harness.masters.at(-1)!.playlist;
+    for (const name of ALL) {
+      assert.match(recording, new RegExp(`topic-${name}`), `the recording′s master left out ${name}`);
+    }
+
+    // A straggling outcome after the ladder became a recording reaches a fresh tracker, whose shape is
+    // that one rung. A recording's master does not depend on liveness, so nothing is rewritten.
+    const afterTheRecording = harness.masters.length;
+    harness.registry.recordRungUploadFailed(DECLARED_TOPIC, '1080p');
+    await waitAndConfirmNothingHappened(() => harness.masters.length === afterTheRecording, NOTHING_HAPPENS_WINDOW_MS);
+  });
+});

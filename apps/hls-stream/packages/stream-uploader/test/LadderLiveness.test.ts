@@ -7,6 +7,7 @@ import {
   LadderLivenessBook,
   MAX_RUNGS_DROPPED_AT_ONCE,
   RUNG_DEATH_LAG_SEGMENTS,
+  RUNG_FIRST_DELIVERY_GRACE_SEGMENTS,
   RUNG_READMIT_AFTER_SEGMENTS,
 } from '../src/libs/LadderLiveness.js';
 
@@ -21,6 +22,10 @@ import {
  */
 
 const LADDER = ['360p', '480p', '720p', '1080p'];
+
+const rendition = (name: string) => ({ name, height: Number(name.replace('p', '')) });
+
+const FIRST_DELIVERY_GRACE = RUNG_FIRST_DELIVERY_GRACE_SEGMENTS;
 
 /** Every rung delivers one segment, which is what a healthy ladder does. */
 function everyRungDelivers(liveness: LadderLiveness, rungs: readonly string[] = LADDER): void {
@@ -61,15 +66,104 @@ describe('a healthy ladder', () => {
     assert.equal(liveness.hasStopped('1080p', LADDER), false, 'a slower rung is not a stopped one');
   });
 
-  /** A rung that has not started yet is not a rung that has stopped. */
-  it('keeps advertising a rung that has never delivered anything', () => {
+  /**
+   * Rungs start within a few seconds of each other, so at the start of a broadcast one of them is
+   * routinely several publishes behind its siblings before it has published anything at all. On the
+   * stage the feed head read took 1 to 5 s and the slot probe above it 0.2 to 4.5 s. That is a rung
+   * starting, not a rung that stopped, and dropping it would rewrite the master twice for nothing.
+   */
+  it('keeps a rung that starts several publishes later than its siblings', () => {
     const liveness = new LadderLiveness();
+    const shapes = new Set<string>();
+    advertisableRenditions(LADDER.map(rendition), liveness);
 
+    for (let round = 0; round < FIRST_DELIVERY_GRACE - 1; round++) {
+      everyRungDelivers(liveness, ['360p', '480p', '720p']);
+      assert.equal(liveness.hasStopped('1080p', LADDER), false, `a late starter was dropped after ${round + 1}`);
+      shapes.add(liveness.liveRungs().sort().join(','));
+    }
+    liveness.recordDelivered('1080p');
+    shapes.add(liveness.liveRungs().sort().join(','));
+
+    assert.equal(liveness.hasStopped('1080p', LADDER), false);
+    assert.equal(shapes.size, 1, `the ladder shape flickered while a rung started: ${[...shapes].join(' | ')}`);
+  });
+});
+
+/**
+ * ⛔ A rung that never delivers anything in this process, measured from where the ladder stood when the
+ * rung first came to its notice. A re-broadcast after an uploader restart whose head read never settles,
+ * an engine transcoder that never starts and a node refusing every write all look like this, and each
+ * left a rung in the master for a whole broadcast while its lag read zero (2026-10-14).
+ */
+describe('a rung that never delivers', () => {
+  it(`leaves the master once the ladder has delivered ${FIRST_DELIVERY_GRACE} times without it`, () => {
+    const liveness = new LadderLiveness();
+    // The master offering it is the moment the ladder first knows it.
+    advertisableRenditions(LADDER.map(rendition), liveness);
+
+    for (let round = 0; round < FIRST_DELIVERY_GRACE; round++) {
+      everyRungDelivers(liveness, ['360p', '480p', '720p']);
+    }
+
+    assert.equal(liveness.lagOf('1080p', LADDER), FIRST_DELIVERY_GRACE);
+    assert.equal(liveness.hasStopped('1080p', LADDER), true);
+    assert.deepEqual(
+      advertisableRenditions(LADDER.map(rendition), liveness).map((r) => r.name),
+      ['360p', '480p', '720p'],
+    );
+  });
+
+  it('leaves the shape of the ladder, which is what makes the master be rewritten without it', () => {
+    const liveness = new LadderLiveness();
+    advertisableRenditions(LADDER.map(rendition), liveness);
+    everyRungDelivers(liveness, ['360p', '480p', '720p']);
+    assert.deepEqual(liveness.liveRungs().sort(), [...LADDER].sort(), 'an offered rung is part of the ladder');
+
+    for (let round = 1; round < FIRST_DELIVERY_GRACE; round++) {
+      everyRungDelivers(liveness, ['360p', '480p', '720p']);
+    }
+
+    assert.deepEqual(liveness.liveRungs().sort(), ['360p', '480p', '720p']);
+  });
+
+  it('comes back on its first delivery when nothing of it was failing, as a transcoder starting late would', () => {
+    const liveness = new LadderLiveness();
+    advertisableRenditions(LADDER.map(rendition), liveness);
+    for (let round = 0; round < FIRST_DELIVERY_GRACE; round++) {
+      everyRungDelivers(liveness, ['360p', '480p', '720p']);
+    }
+    assert.equal(liveness.hasStopped('1080p', LADDER), true);
+
+    liveness.recordDelivered('1080p');
+
+    assert.equal(liveness.hasStopped('1080p', LADDER), false);
+  });
+
+  it(`is known from its first failure, and comes back only after ${RUNG_READMIT_AFTER_SEGMENTS} deliveries in a row`, () => {
+    const liveness = new LadderLiveness();
+    for (let round = 0; round < FIRST_DELIVERY_GRACE; round++) {
+      liveness.recordUploadFailed('1080p');
+      everyRungDelivers(liveness, ['360p', '480p', '720p']);
+    }
+    assert.equal(liveness.hasStopped('1080p', LADDER), true, 'a rung failing from its first second stayed offered');
+
+    for (let round = 0; round < RUNG_READMIT_AFTER_SEGMENTS - 1; round++) {
+      everyRungDelivers(liveness);
+      assert.equal(liveness.hasStopped('1080p', LADDER), true, `taken back after ${round + 1} deliveries`);
+    }
+    everyRungDelivers(liveness);
+
+    assert.equal(liveness.hasStopped('1080p', LADDER), false);
+  });
+
+  it('is not judged before the ladder knows it, so a caller asking about a stranger is told nothing', () => {
+    const liveness = new LadderLiveness();
     for (let round = 0; round < 20; round++) {
       everyRungDelivers(liveness, ['360p', '480p', '720p']);
     }
 
-    assert.equal(liveness.hasStopped('1080p', LADDER), false);
+    assert.equal(liveness.lagOf('1080p', LADDER), 0);
   });
 });
 
@@ -314,8 +408,6 @@ describe('the shape of the ladder, which is what decides whether to rewrite the 
 });
 
 describe('what the master is allowed to advertise', () => {
-  const rendition = (name: string) => ({ name, height: Number(name.replace('p', '')) });
-
   it('drops a rung the ladder has left behind', () => {
     const liveness = new LadderLiveness();
     everyRungDelivers(liveness);

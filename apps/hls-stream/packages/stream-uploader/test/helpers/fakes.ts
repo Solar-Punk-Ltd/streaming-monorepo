@@ -64,6 +64,74 @@ export interface FakeUploads {
    * Returning `null` is bee answering 404. The default is {@link CRASHED_MID_BROADCAST}.
    */
   feedHead?: (topic: string) => FakeFeedHead | null;
+  /**
+   * What a read at an explicit index answers for a slot other than the head's own, which is a direct
+   * chunk read in bee-js and asks bee's feed finder nothing. Returning `null` is bee answering 404,
+   * and throwing is a read that failed.
+   *
+   * Unset, every slot but the head's answers 404, which is a feed whose head read told the truth. A
+   * test sets it to hold slots above the index `feedHead` reports, which is what bee's finder answers
+   * when a lookahead probe ran out of its one second. See `StreamUploader.findTrueFeedHead`.
+   */
+  feedSlot?: (topic: string, index: number) => string | null;
+  /**
+   * Request deadlines as the real pool and bee-js give them, for a test about how long a node takes.
+   * Unset, nothing here ever runs out of time.
+   */
+  deadlines?: FakeDeadlines;
+}
+
+/**
+ * The deadline a feed reader or writer carries, modelled on what `beePublisherPool.test.ts` pins
+ * against a real socket: it is counted from when the reader or writer is made, not from each request,
+ * and a timeout passed when it is made replaces the pool's.
+ */
+export interface FakeDeadlines {
+  /** The pool's deadline, for a reader or writer made without a timeout of its own. */
+  poolTimeoutMs: number;
+  /** How long a feed head read takes this node to answer. 0 when unset. */
+  headReadMs?: number;
+  /**
+   * How long the first manifest write takes before this node refuses it with a status worth retrying.
+   * Unset, every write is accepted at once.
+   */
+  firstWriteFailsAfterMs?: number;
+  /**
+   * How long each 4096-byte chunk of a manifest write takes this node, so a payload larger than one
+   * chunk takes longer, as bee-js's byte upload of it does. 0 when unset.
+   */
+  writeMsPerChunk?: number;
+}
+
+/** The payload size above which bee-js writes a feed update as a byte upload rather than one SOC. */
+const CHUNK_PAYLOAD_BYTES = 4096;
+
+function writeMsFor(deadlines: FakeDeadlines, data: unknown): number {
+  const bytes = data instanceof Uint8Array ? data.byteLength : String(data).length;
+  return Math.max(1, Math.ceil(bytes / CHUNK_PAYLOAD_BYTES)) * (deadlines.writeMsPerChunk ?? 0);
+}
+
+/** What a request whose deadline ran out rejects with: no status, so it is worth retrying. */
+const timedOut = () => new DOMException('The operation was aborted due to timeout', 'TimeoutError');
+
+/** When a reader or writer made now runs out of time, or never, when the test models no deadlines. */
+function deadlineFor(deadlines: FakeDeadlines | undefined, requestOptions?: { timeout?: number }): number {
+  return deadlines === undefined ? Infinity : Date.now() + (requestOptions?.timeout ?? deadlines.poolTimeoutMs);
+}
+
+/**
+ * Takes `ms` to answer, unless the deadline runs out first, which rejects as bee-js does.
+ *
+ * ⛔ Called only when a test models deadlines. It yields to the timers even for 0 ms, and a fake that
+ * did that on every read and write moved the ordering timing-sensitive suites rely on: a
+ * `ReconnectWindow` case lost its race in CI on 2026-10-14.
+ */
+async function answerWithin(deadlineAt: number, ms: number): Promise<void> {
+  const remaining = deadlineAt - Date.now();
+  await new Promise((resolve) => setTimeout(resolve, Math.max(0, Math.min(ms, remaining))));
+  if (remaining < ms) {
+    throw timedOut();
+  }
 }
 
 /**
@@ -89,9 +157,10 @@ const feedNotFound = () => new BeeResponseError('GET', '/feeds', 'Not Found.', u
  * there whenever it landed before the recording went out.
  *
  * ⛔ **A 404 was the default until 2026-09-15, and it now costs 15 seconds a test.** A recovered
- * stream holds a SOC index it wrote itself, so `StreamUploader.readManifestFeedHead` reads a 404
+ * stream holds a SOC index it wrote itself, so `StreamUploader.publishedRecordingIndex` reads a 404
  * there as a chunk that will not retrieve, retries it for the whole of `FEED_HEAD_READ_WINDOW_MS`
- * and then defers the finalize. Every recovery test would spend that window to reach a finalize none
+ * and then defers the finalize. It reads that slot by index, so the index here is the one
+ * `makeRecoveredState` saves. Every recovery test would spend that window to reach a finalize none
  * of them is about. A live playlist reaches the same full publish at once, because the discriminator
  * is `#EXT-X-PLAYLIST-TYPE:VOD` and this carries neither that nor an index anything asserts on. A
  * test about the 404, or about a recording already in the feed, says so with `feedHead` of its own.
@@ -126,31 +195,59 @@ export function neverSettles(): Promise<never> {
 
 export function makeFakeBee(uploads: FakeUploads = {}): Bee {
   let refCounter = 0;
+  let writesSeen = 0;
+  const { deadlines } = uploads;
   return {
     data: {
       upload: uploads.uploadData ?? (async () => ({ reference: { toHex: () => `ref${refCounter++}` } })),
     },
     feed: {
-      makeReader: (topic: Topic) => ({
-        // Both shapes bee-js offers, answered the way bee-js answers them. The index comes from the
-        // no-index call and the playlist only from the indexed one, per
-        // {@link OVERSIZED_PAYLOAD_WRAPPER}. A read at an index this feed is not at is a defect rather
-        // than an empty feed, so it is refused rather than answered.
-        downloadPayload: async (opts?: { index?: FeedIndex }) => {
-          const head = uploads.feedHead ? uploads.feedHead(topicKey(topic)) : CRASHED_MID_BROADCAST;
-          if (head === null || (opts?.index !== undefined && Number(opts.index.toBigInt()) !== head.index)) {
-            throw feedNotFound();
-          }
-          const payload = opts?.index === undefined ? OVERSIZED_PAYLOAD_WRAPPER : head.manifest;
-          return { feedIndex: FeedIndex.fromBigInt(BigInt(head.index)), payload: { toUtf8: () => payload } };
-        },
-      }),
-      makeWriter: (topic: Topic) => ({
-        uploadPayload: async (_stamp: string, data: unknown, opts: { index: number }) =>
-          uploads.uploadPayload
-            ? uploads.uploadPayload(opts.index, data, topicKey(topic))
-            : { reference: { toHex: () => `soc${opts.index}` } },
-      }),
+      makeReader: (topic: Topic, _owner: unknown, requestOptions?: { timeout?: number }) => {
+        const deadlineAt = deadlineFor(deadlines, requestOptions);
+        return {
+          // Both shapes bee-js offers, answered the way bee-js answers them. The index comes from the
+          // no-index call and the playlist only from the indexed one, per
+          // {@link OVERSIZED_PAYLOAD_WRAPPER}. A read at any other index answers from `feedSlot`, and
+          // without one it is a slot nothing was written to.
+          downloadPayload: async (opts?: { index?: FeedIndex }) => {
+            if (deadlines !== undefined) {
+              await answerWithin(deadlineAt, deadlines.headReadMs ?? 0);
+            }
+            const head = uploads.feedHead ? uploads.feedHead(topicKey(topic)) : CRASHED_MID_BROADCAST;
+            if (head === null) {
+              throw feedNotFound();
+            }
+            const at = opts?.index === undefined ? undefined : Number(opts.index.toBigInt());
+            if (at !== undefined && at !== head.index) {
+              const slot = uploads.feedSlot ? uploads.feedSlot(topicKey(topic), at) : null;
+              if (slot === null) {
+                throw feedNotFound();
+              }
+              return { feedIndex: FeedIndex.fromBigInt(BigInt(at)), payload: { toUtf8: () => slot } };
+            }
+            const payload = opts?.index === undefined ? OVERSIZED_PAYLOAD_WRAPPER : head.manifest;
+            return { feedIndex: FeedIndex.fromBigInt(BigInt(head.index)), payload: { toUtf8: () => payload } };
+          },
+        };
+      },
+      makeWriter: (topic: Topic, _signer: unknown, requestOptions?: { timeout?: number }) => {
+        const deadlineAt = deadlineFor(deadlines, requestOptions);
+        return {
+          uploadPayload: async (_stamp: string, data: unknown, opts: { index: number }) => {
+            writesSeen += 1;
+            if (writesSeen === 1 && deadlines?.firstWriteFailsAfterMs !== undefined) {
+              await answerWithin(deadlineAt, deadlines.firstWriteFailsAfterMs);
+              throw new BeeResponseError('POST', '/soc', 'Service Unavailable', undefined, 503, 'Service Unavailable');
+            }
+            if (deadlines !== undefined) {
+              await answerWithin(deadlineAt, writeMsFor(deadlines, data));
+            }
+            return uploads.uploadPayload
+              ? uploads.uploadPayload(opts.index, data, topicKey(topic))
+              : { reference: { toHex: () => `soc${opts.index}` } };
+          },
+        };
+      },
     },
   } as unknown as Bee;
 }
@@ -253,6 +350,8 @@ function makeHealthSignals(overrides: Partial<HealthSignals> = {}): HealthSignal
     staleManifestStreams: 0,
     maxConsecutiveManifestFailures: 0,
     maxConsecutiveSegmentFailures: 0,
+    staleManifestStreamIds: [],
+    segmentFailingStreamIds: [],
     queuePressure: PRESSURE_LOW,
     msSinceStreamActivity: null,
     msSinceSegmentLoss: null,
@@ -271,6 +370,7 @@ function makeHealthSignals(overrides: Partial<HealthSignals> = {}): HealthSignal
     publisherGopStreams: [],
     postageRefusedPublishers: 0,
     startGateWarnings: [],
+    lowChequebooks: [],
     ...overrides,
   };
 }
@@ -296,6 +396,8 @@ export function makeMetricsSnapshot(overrides: Partial<MetricsSnapshot> = {}): M
     postageRefusedPublishers: 0,
     segmentsUploadedByRung: {},
     segmentsDroppedByRung: {},
+    manifestPublishesByRung: {},
+    manifestPublishFailuresByRung: {},
     lastSegmentAt: null,
     activeStreams: 0,
     queueDepth: 0,

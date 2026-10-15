@@ -1,4 +1,4 @@
-import { StartGateWarning } from '../types.js';
+import { LowChequebook, StartGateWarning } from '../types.js';
 
 /**
  * Counters that outlive every stream they describe.
@@ -56,6 +56,18 @@ export class ServiceMetrics {
    */
   private readonly segmentsDroppedByRung = new Map<string, number>();
   /**
+   * Live playlists that landed on their feed, and those that did not, per ABR rung.
+   *
+   * ⛔ On 2026-10-14 three rungs of four published no live playlist for a whole broadcast while their
+   * segments uploaded. `manifestPublishFailures` climbed and named no rung, and nothing counted a
+   * playlist that landed, so no scrape could say which qualities a viewer was being offered.
+   *
+   * Keyed and bounded exactly as the segment breakdowns above, and a rung only appears once it has
+   * published, or failed to publish, something.
+   */
+  private readonly manifestPublishesByRung = new Map<string, number>();
+  private readonly manifestPublishFailuresByRung = new Map<string, number>();
+  /**
    * Publishers bee has refused a paid write on, keyed by {@link publisherKey}.
    *
    * ⛔⛔⛔ **Keyed by publisher rather than by stream, and that is the whole of the fix.** Every other
@@ -75,6 +87,7 @@ export class ServiceMetrics {
    */
   private readonly postageRefusals = new Map<string, PostageRefusal>();
   private startGateWarnings: StartGateWarning[] = [];
+  private lowChequebooks: LowChequebook[] = [];
   private lastSegmentAt: number | null = null;
   private lastAuthRejectionAt: number | null = null;
 
@@ -121,8 +134,22 @@ export class ServiceMetrics {
     this.segmentsLost += count;
   }
 
-  public recordManifestPublishFailure(): void {
+  /**
+   * A live playlist that landed on its feed. `rung` is read exactly as {@link recordSegmentUploaded}
+   * reads it, and there is no unlabelled total of these.
+   */
+  public recordManifestPublished(rung?: string): void {
+    if (rung !== undefined) {
+      this.manifestPublishesByRung.set(rung, (this.manifestPublishesByRung.get(rung) ?? 0) + 1);
+    }
+  }
+
+  /** A live playlist that did not land. `rung` is read exactly as {@link recordSegmentUploaded} reads it. */
+  public recordManifestPublishFailure(rung?: string): void {
     this.manifestPublishFailures += 1;
+    if (rung !== undefined) {
+      this.manifestPublishFailuresByRung.set(rung, (this.manifestPublishFailuresByRung.get(rung) ?? 0) + 1);
+    }
   }
 
   public recordStreamFinalized(): void {
@@ -300,8 +327,8 @@ export class ServiceMetrics {
    * Replaced rather than accumulated, unlike the refusals above, because the gates are read again on
    * every attempt of a node wait: a rung that was unreachable on attempt one and fine on attempt two
    * is not something to report about the service that is now running. The pass that clears is the
-   * pass that empties this. After the boot the chequebook's share is replaced the same way by each of
-   * `ChequebookRecheck`'s reads, which keep the rest.
+   * pass that empties this. After the boot `ChequebookRecheck`'s reads take each chequebook warning out
+   * once its rung is funded, and keep the rest.
    */
   public setStartGateWarnings(warnings: readonly StartGateWarning[]): void {
     this.startGateWarnings = [...warnings];
@@ -309,6 +336,15 @@ export class ServiceMetrics {
 
   public getStartGateWarnings(): readonly StartGateWarning[] {
     return this.startGateWarnings;
+  }
+
+  /** The nodes `ChequebookRecheck`'s latest read left under the floor, replacing what the read before it left. */
+  public setLowChequebooks(nodes: readonly LowChequebook[]): void {
+    this.lowChequebooks = [...nodes];
+  }
+
+  public getLowChequebooks(): readonly LowChequebook[] {
+    return this.lowChequebooks;
   }
 
   public getCounters(): MetricsCounters {
@@ -322,6 +358,8 @@ export class ServiceMetrics {
       openingSegmentsWithheldTotal: this.openingSegmentsWithheld,
       segmentsNeverNamedTotal: this.segmentsNeverNamed,
       manifestPublishFailuresTotal: this.manifestPublishFailures,
+      manifestPublishesByRung: Object.fromEntries(this.manifestPublishesByRung),
+      manifestPublishFailuresByRung: Object.fromEntries(this.manifestPublishFailuresByRung),
       streamsFinalizedTotal: this.streamsFinalized,
       streamsFailedTotal: this.streamsFailed,
       streamsReapedTotal: this.streamsReaped,
@@ -392,6 +430,13 @@ interface MetricsCounters {
   openingSegmentsWithheldTotal: number;
   segmentsNeverNamedTotal: number;
   manifestPublishFailuresTotal: number;
+  /** Live playlists that landed, per ABR rung. Empty on a single-rendition deployment. */
+  manifestPublishesByRung: Readonly<Record<string, number>>;
+  /**
+   * Live playlists that did not land, per ABR rung. Empty on a single-rendition deployment, and does
+   * not have to sum to `manifestPublishFailuresTotal`, which a single-rendition stream adds to alone.
+   */
+  manifestPublishFailuresByRung: Readonly<Record<string, number>>;
   streamsFinalizedTotal: number;
   streamsFailedTotal: number;
   /** Broadcasts finalized because their engine went silent rather than because anything asked. */

@@ -6,7 +6,7 @@ import { MediaType, Rendition, STREAM_STATUS_LIVE, STREAM_STATUS_VOD, StreamStat
 import { extractHttpStatus, getErrorMessage, isFeedAbsent, retryUntilDeadlineAsync } from '../utils/common.js';
 import { isTransferLost } from '../utils/transportFailure.js';
 
-import { BeePublisher, BeePublisherPool, safeUrl } from './BeePublisherPool.js';
+import { BeePublisher, BeePublisherPool, FEED_LOOKUP_TIMEOUT_MS, safeUrl } from './BeePublisherPool.js';
 import { CatalogIndexStore } from './CatalogIndexStore.js';
 import { ErrorHandler } from './ErrorHandler.js';
 import { hasRecording, isFinishedLadder, recordedRungs, recordingDuration } from './LadderCompletion.js';
@@ -19,6 +19,15 @@ import { NodeUnreachableError } from './NodeUnreachableError.js';
 
 const CATALOG_RETRY_WINDOW_MS = 10_000;
 
+/**
+ * The retry window of the read of the state a write appends to, and no shorter than
+ * `FEED_LOOKUP_TIMEOUT_MS`, the deadline that read's reader carries. `retryUntilDeadlineAsync` abandons
+ * an attempt when its window runs out, so a window under the reader's deadline would end the one
+ * attempt a slow node needs before the node did. A node took 3.7 to 4.4 s to answer for the stream
+ * list on 2026-10-14, and a list over 4096 bytes is two requests under that one deadline.
+ */
+const CATALOG_STATE_READ_WINDOW_MS = 15_000;
+
 // Re-exported from where they are now declared, so nothing that named them here has to move. The
 // rewrite schedule moved out because the admin-mode ladder registry runs the same one; the identity
 // moved out because it describes a ladder rather than a catalog, and both registries are handed one.
@@ -26,9 +35,15 @@ export { MASTER_REWRITE_RETRY_MS } from './MasterRewriteSchedule.js';
 export type { LadderIdentity } from './LadderRegistry.js';
 
 /**
- * How many consecutive failures to read the resumed state it takes before the entries there are
- * treated as gone. Each attempt spends its own retry window and belongs to a different segment, so
- * this is tens of seconds of trying rather than an instant.
+ * How many times a node has to answer that the resumed state is not there before the entries there
+ * are treated as gone. A 404 is not retried, so each counted answer ends its read at once,
+ * and the next read comes only with the next write: the three are three separate writes, not one instant.
+ *
+ * ⛔ Only a 404 counts, because only a node that tried the network answers it. Even a 404 is not proof:
+ * bee gives it after its retrieval runs out of peers, which a chunk that will not retrieve right now
+ * also produces, and that is why three are needed. A read that ran out of time, was abandoned or
+ * never reached the node says nothing about the state, and counting those let a node
+ * slower than the read's deadline erase every other stream from the list.
  */
 export const TREAT_STATE_AS_LOST_AFTER = 3;
 
@@ -88,7 +103,7 @@ export class StreamCatalog implements LadderRegistry {
    */
   private resumedToUnreadState = false;
 
-  /** Consecutive failures to read that unread state. See {@link TREAT_STATE_AS_LOST_AFTER}. */
+  /** Times a node answered 404 for that unread state. See {@link TREAT_STATE_AS_LOST_AFTER}. */
   private unreadableStateReads = 0;
 
   /**
@@ -119,16 +134,23 @@ export class StreamCatalog implements LadderRegistry {
   private readonly lastIdentity = new Map<string, LadderIdentity>();
 
   /**
-   * One segment of this rung reached Swarm.
-   *
-   * Called from the uploader's segment path beside the per-rung metric, because that is the one
-   * place a delivery is known to have actually landed rather than been attempted.
+   * The rungs this ladder's master names: every rung that is still producing while the ladder is live,
+   * and every rung with a recording once it is one. Liveness says nothing about a finished recording:
+   * a rung held out while its uploads were refused that then finished has a recording to offer.
    */
+  private masterRungs(entry: StreamEntry, group: string): Rendition[] {
+    const renditions = entry.renditions ?? [];
+    return entry.state === STREAM_STATUS_VOD
+      ? recordedRungs(renditions)
+      : advertisableRenditions(renditions, this.liveness.of(group));
+  }
+
+  /** One live playlist publish of this rung landed. See {@link LadderRegistry.recordRungDelivered}. */
   public recordRungDelivered(group: string, rung: string): void {
     this.republishIfLadderShapeChanged(group, this.liveness.recordDelivered(group, rung));
   }
 
-  /** One segment of this rung was dropped. See {@link LadderRegistry.recordRungUploadFailed}. */
+  /** One segment or live playlist publish of this rung failed. See {@link LadderRegistry.recordRungUploadFailed}. */
   public recordRungUploadFailed(group: string, rung: string): void {
     this.republishIfLadderShapeChanged(group, this.liveness.recordUploadFailed(group, rung));
   }
@@ -145,10 +167,10 @@ export class StreamCatalog implements LadderRegistry {
    * `activeStreams 3` throughout, the master was not rewritten once, so a viewer joining was offered
    * the dead rung for the whole outage even with the filter deployed and correct.
    *
-   * Fire and forget, deliberately: the caller is the segment path and a master write is a feed write
-   * behind a queue. A burst of deliveries across one transition still queues a single rewrite,
-   * because {@link MasterRewriteSchedule.beginRewrite} marks the shape being written as in flight
-   * until that write settles.
+   * Fire and forget, deliberately: the caller is the uploader's segment or live publish path, and a
+   * master write is a feed write behind a queue. A burst of deliveries across one transition still
+   * queues a single rewrite, because {@link MasterRewriteSchedule.beginRewrite} marks the shape being
+   * written as in flight until that write settles.
    *
    * ⛔ **A rewrite that did not reach the feed is not a shape anyone is being offered, and this used
    * to record it as one.** `advertised` was stamped before the write ran, so a master the writer
@@ -255,7 +277,9 @@ export class StreamCatalog implements LadderRegistry {
     const persisted = this.indexStore?.load(owner.toString(), this.feedTopic.toString()) ?? null;
 
     try {
-      const feedReader = this.publisher.bee.feed.makeReader(this.feedTopic, owner);
+      // A lookup's own deadline, since the pool's 4 s ended most boot lookups of the stream list on the
+      // stage, and each one cost the boot another node wait. See FEED_LOOKUP_TIMEOUT_MS.
+      const feedReader = this.publisher.bee.feed.makeReader(this.feedTopic, owner, { timeout: FEED_LOOKUP_TIMEOUT_MS });
       const data = await feedReader.downloadPayload();
 
       if (persisted !== null && persisted.toBigInt() > data.feedIndex.toBigInt()) {
@@ -457,6 +481,7 @@ export class StreamCatalog implements LadderRegistry {
     merge: RungMerge,
   ): Promise<RenditionAnnouncement> {
     let flippedToVod = false;
+    let endedAsRecording = false;
     let shapeThatLanded: string | null = null;
     let masterIndex: number | null = null;
     let duration: number | null = null;
@@ -484,11 +509,12 @@ export class StreamCatalog implements LadderRegistry {
             `, so the entry becomes ${entry.state}`,
         );
         flippedToVod = entry.state === STREAM_STATUS_VOD && !wasVod;
+        endedAsRecording = entry.state === STREAM_STATUS_VOD;
         duration = entry.duration ?? null;
         // ⛔ A master naming a rung nothing is producing offers a viewer a quality with nothing
         // behind it. The player moves them off within about seven seconds, so this is the last few
         // seconds of that harm rather than all of it, and it is harm a stream need not cause.
-        const advertised = advertisableRenditions(entry.renditions ?? [], this.liveness.of(identity.group));
+        const advertised = this.masterRungs(entry, identity.group);
         // Remembered here because this is the path that always runs: a ladder that never announces
         // has no master for a rung death to correct, and no owner to write it as.
         this.lastIdentity.set(identity.group, identity);
@@ -511,6 +537,12 @@ export class StreamCatalog implements LadderRegistry {
       // viewer resolving the new shape.
       if (shapeThatLanded !== null) {
         this.rewrites.recordAdvertised(identity.group, shapeThatLanded);
+      }
+
+      // The broadcast this ladder carried has ended, so how far its rungs got is history. See
+      // `LadderLivenessBook.forget`.
+      if (endedAsRecording) {
+        this.liveness.forget(identity.group);
       }
 
       // ⛔⛔⛔ After the write, never inside the update. The one externally visible moment a ladder
@@ -551,7 +583,7 @@ export class StreamCatalog implements LadderRegistry {
           return previous;
         }
 
-        const advertised = advertisableRenditions(entry.renditions ?? [], this.liveness.of(identity.group));
+        const advertised = this.masterRungs(entry, identity.group);
         const published = await this.masterWriter?.publish(identity.group, advertised);
         if (!published) {
           return previous;
@@ -585,12 +617,15 @@ export class StreamCatalog implements LadderRegistry {
 
     const nextIndex = this.feedIndex ? this.feedIndex.next() : FeedIndex.fromBigInt(BigInt(0));
     const publisher = this.publisher;
-    const feedWriter = publisher.bee.feed.makeWriter(this.feedTopic, this.signer);
 
     const payload = JSON.stringify(state);
     const result = await retryUntilDeadlineAsync(
-      // deferred for the same reason as the manifest feed: a direct SOC write blocks on push-sync.
-      () => feedWriter.uploadPayload(publisher.stamp, payload, { index: nextIndex, deferred: true }),
+      // Deferred, unlike the manifest SOC write in uploadDataAsSoc, so this write does not wait on
+      // push-sync. One writer per attempt, see DeadlineBee in BeePublisherPool.ts.
+      () =>
+        publisher.bee.feed
+          .makeWriter(this.feedTopic, this.signer)
+          .uploadPayload(publisher.stamp, payload, { index: nextIndex, deferred: true }),
       CATALOG_RETRY_WINDOW_MS,
     );
 
@@ -611,8 +646,9 @@ export class StreamCatalog implements LadderRegistry {
   /**
    * The entries the next update is appended to.
    *
-   * Tolerant only inside the window {@link resumedToUnreadState} opens, and even there only once
-   * the state has failed to read {@link TREAT_STATE_AS_LOST_AFTER} times over. Retrievability on
+   * Tolerant only inside the window {@link resumedToUnreadState} opens, and even there only once a
+   * node has answered {@link TREAT_STATE_AS_LOST_AFTER} times that the state is not there. Any other
+   * failure fails the write without counting. Retrievability on
    * Swarm flaps — the same index has been watched going unreadable, readable and unreadable again
    * within an hour — so giving up on the first failure would throw away a catalog that a later
    * attempt would have loaded, and that loss cannot be undone. Failing the write instead costs one
@@ -628,6 +664,14 @@ export class StreamCatalog implements LadderRegistry {
       return state;
     } catch (error) {
       if (!this.resumedToUnreadState) {
+        throw error;
+      }
+
+      if (extractHttpStatus(error) !== 404) {
+        this.logger.warn(
+          `[StreamCatalog] State at index ${index} did not read (${getErrorMessage(error)}); ` +
+            'not counted towards giving it up, since no node answered that it is gone',
+        );
         throw error;
       }
 
@@ -647,10 +691,14 @@ export class StreamCatalog implements LadderRegistry {
 
   private async fetchCurrentState(): Promise<StreamEntry[]> {
     const owner = this.signer.publicKey().address();
-    const feedReader = this.publisher.bee.feed.makeReader(this.feedTopic, owner);
+    // One reader per attempt, see DeadlineBee in BeePublisherPool.ts, each with a feed lookup's deadline
+    // rather than the pool's, which the stage's node outlasted. See CATALOG_STATE_READ_WINDOW_MS.
     const data = await retryUntilDeadlineAsync(
-      () => feedReader.downloadPayload({ index: this.feedIndex! }),
-      CATALOG_RETRY_WINDOW_MS,
+      () =>
+        this.publisher.bee.feed
+          .makeReader(this.feedTopic, owner, { timeout: FEED_LOOKUP_TIMEOUT_MS })
+          .downloadPayload({ index: this.feedIndex! }),
+      CATALOG_STATE_READ_WINDOW_MS,
     );
     return data.payload.toJSON() as StreamEntry[];
   }

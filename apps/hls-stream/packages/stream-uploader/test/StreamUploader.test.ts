@@ -1414,7 +1414,8 @@ describe('segments the live window outran before anything published them', () =>
   /**
    * ⛔⛔⛔ **The one call the whole dead-rung mechanism hangs off, and a mutation run found nothing
    * watching it.** Turning `if (this.ladder)` to false left every test in this package green, and
-   * that call is how the catalog learns a rung is still delivering. Without it no rung ever looks
+   * that call is how the catalog learns a rung is still delivering. It is made when the live playlist
+   * publish lands, never when a segment does, because a segment no playlist names reaches no viewer. Without it no rung ever looks
    * alive, so the master is never rewritten: a rung that goes quiet is never dropped from it, and a
    * rung that comes back is never restored. Both drain suites and the viewer arm read the master for their
    * verdict, so a paid broadcast would report the product on a live line nobody made.
@@ -1437,7 +1438,35 @@ describe('segments the live window outran before anything published them', () =>
     uploader.handleSegment(0, 2, Buffer.from('a'));
     await drain(uploader);
 
-    assert.deepEqual(delivered, [['group-1', '720p']], 'a landed segment is what marks its rung alive');
+    assert.deepEqual(delivered, [['group-1', '720p']], 'a published playlist is what marks its rung alive');
+  });
+
+  /**
+   * ⛔⛔⛔ Seen on the dev stage 2026-10-14: rungs whose segments all landed published no live playlist
+   * for a whole broadcast, and the master kept offering them because a landed segment counted as a
+   * delivery. A refused playlist write is a failed delivery whatever happened to the segment.
+   */
+  it('tells the catalog its rung failed when the segment lands and the playlist write is refused', async () => {
+    const delivered: string[] = [];
+    const failed: string[] = [];
+    const watching = makeFakeCatalog({
+      recordRungDelivered: (_group: string, rung: string) => {
+        delivered.push(rung);
+      },
+      recordRungUploadFailed: (_group: string, rung: string) => {
+        failed.push(rung);
+      },
+    });
+    const uploader = uploaderWith(makeBee({}, { fail: permanentError }), {
+      streamCatalog: watching,
+      ladder: { group: 'group-1', rung: { name: '720p', width: 1280, height: 720, configuredKbps: 2800 } },
+    });
+
+    uploader.handleSegment(0, 2, Buffer.from('a'));
+    await drain(uploader);
+
+    assert.deepEqual(delivered, [], 'a segment no playlist names reaches no viewer, so it marks nothing alive');
+    assert.deepEqual(failed, ['720p']);
   });
 
   it('tells the catalog nothing about a rung on a stream that has no ladder', async () => {
@@ -1528,6 +1557,60 @@ describe('segments the live window outran before anything published them', () =>
     const counters = metrics.getCounters();
     assert.equal(counters.segmentsDroppedTotal, 1);
     assert.deepEqual(counters.segmentsDroppedByRung, {});
+  });
+
+  /**
+   * ⛔ The reading that was missing on 2026-10-14, when three rungs of four published no live playlist
+   * for a whole broadcast and no tool could say which three. Asserted end to end from a refused
+   * playlist write, because a per-rung counter the publish path never reaches names nothing.
+   */
+  it('counts a refused live playlist write against its rung as well as against the total', async () => {
+    const metrics = new ServiceMetrics();
+    const uploader = uploaderWith(makeBee({}, { fail: permanentError }), {
+      metrics,
+      ladder: { group: 'group-1', rung: { name: '1080p', width: 1920, height: 1080, configuredKbps: 6000 } },
+    });
+
+    uploader.handleSegment(0, 2, Buffer.from('a'));
+    await drain(uploader);
+
+    const counters = metrics.getCounters();
+    assert.ok(counters.manifestPublishFailuresTotal >= 1, 'the refused write must count as a failed publish');
+    assert.deepEqual(counters.manifestPublishFailuresByRung, { '1080p': counters.manifestPublishFailuresTotal });
+    assert.deepEqual(counters.manifestPublishesByRung, {}, 'a refused playlist must not also count as one that landed');
+  });
+
+  it('counts a landed live playlist against its rung', async () => {
+    const metrics = new ServiceMetrics();
+    const uploader = uploaderWith(makeBee({}), {
+      metrics,
+      ladder: { group: 'group-1', rung: { name: '720p', width: 1280, height: 720, configuredKbps: 2800 } },
+    });
+
+    uploader.handleSegment(0, 2, Buffer.from('a'));
+    await drain(uploader);
+
+    const counters = metrics.getCounters();
+    assert.deepEqual(counters.manifestPublishesByRung, { '720p': 1 });
+    assert.deepEqual(counters.manifestPublishFailuresByRung, {});
+    assert.equal(counters.manifestPublishFailuresTotal, 0);
+  });
+
+  /** Under no rung, for the reason the segment breakdowns leave a rung-less stream out of their own. */
+  it('counts a single-rendition playlist publish under no rung, landed or refused', async () => {
+    const landedMetrics = new ServiceMetrics();
+    const landed = uploaderWith(makeBee({}), { metrics: landedMetrics });
+    const refusedMetrics = new ServiceMetrics();
+    const refused = uploaderWith(makeBee({}, { fail: permanentError }), { metrics: refusedMetrics });
+
+    landed.handleSegment(0, 2, Buffer.from('a'));
+    refused.handleSegment(0, 2, Buffer.from('a'));
+    await drain(landed);
+    await drain(refused);
+
+    assert.deepEqual(landedMetrics.getCounters().manifestPublishesByRung, {});
+    assert.ok(refusedMetrics.getCounters().manifestPublishFailuresTotal >= 1, 'the total still counts it');
+    assert.deepEqual(refusedMetrics.getCounters().manifestPublishFailuresByRung, {});
   });
 
   it('counts nothing while every segment still reaches a manifest', async () => {

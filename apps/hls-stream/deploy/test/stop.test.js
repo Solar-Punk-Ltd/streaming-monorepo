@@ -147,6 +147,25 @@ describe('stop.sh service filter', () => {
   });
 });
 
+const ORCHESTRATOR = join(
+  dirname(dirname(dirname(fileURLToPath(import.meta.url)))),
+  'packages',
+  'stream-uploader',
+  'src',
+  'libs',
+  'StreamOrchestrator.ts',
+);
+
+/**
+ * `DRAIN_TIMEOUT_MS` as the uploader declares it, read from its source the way the e2e harness's
+ * `recording.test.ts` reads it, so the grace below follows the deadline rather than a copy of it.
+ */
+function drainTimeoutMs() {
+  const match = /const DRAIN_TIMEOUT_MS = (\d+) \* (\d+) \* (\d+);/.exec(readFileSync(ORCHESTRATOR, 'utf8'));
+  assert.ok(match, 'StreamOrchestrator.ts no longer declares DRAIN_TIMEOUT_MS as a product of three');
+  return Number(match[1]) * Number(match[2]) * Number(match[3]);
+}
+
 /** Docker's own default, and what every service on this stack gets unless the file says otherwise. */
 const DEFAULT_GRACE_SECONDS = 10;
 
@@ -176,7 +195,7 @@ function serviceBlock(compose, service) {
  * way in.
  */
 describe('the uploader is given time to finish its drain', () => {
-  it('declares a stop_grace_period long enough for a four-rung finalize', () => {
+  it('declares a stop_grace_period longer than the drain deadline the uploader gives itself', () => {
     const uploader = serviceBlock(readFileSync(COMPOSE, 'utf8'), 'stream-uploader');
     const grace = /^ {4}stop_grace_period: (\d+)s$/m.exec(uploader);
 
@@ -184,9 +203,11 @@ describe('the uploader is given time to finish its drain', () => {
       grace,
       `the uploader takes docker's ${DEFAULT_GRACE_SECONDS}s default, which SIGKILLs a drain in progress`,
     );
+    const drainSeconds = drainTimeoutMs() / 1000;
     assert.ok(
-      Number(grace[1]) > DEFAULT_GRACE_SECONDS,
-      `${grace[1]}s is no more than the default this line exists to raise`,
+      Number(grace[1]) > drainSeconds,
+      `${grace[1]}s is not more than the uploader's ${drainSeconds}s DRAIN_TIMEOUT_MS, so docker kills a ` +
+        'finalize the uploader itself still allows, a long recording write among them',
     );
   });
 });

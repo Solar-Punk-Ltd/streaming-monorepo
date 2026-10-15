@@ -1,9 +1,11 @@
 import { Bee, BeeResponseError, FeedIndex, PrivateKey, Topic } from '@ethersphere/bee-js';
+import { catalogStateLostPattern } from '@swarm-hls-stream/shared';
 import assert from 'node:assert/strict';
-import { describe, it } from 'node:test';
+import { describe, it, TestContext } from 'node:test';
 
-import { BeePublisherPool, SINGLE_PUBLISHER } from '../src/libs/BeePublisherPool.js';
+import { BeePublisherPool, FEED_LOOKUP_TIMEOUT_MS, SINGLE_PUBLISHER } from '../src/libs/BeePublisherPool.js';
 import { CatalogIndexStore } from '../src/libs/CatalogIndexStore.js';
+import { RUNG_DEATH_LAG_SEGMENTS } from '../src/libs/LadderLiveness.js';
 import { Logger } from '../src/libs/Logger.js';
 import { MasterFeedWriter } from '../src/libs/MasterFeedWriter.js';
 import { NodeUnreachableError } from '../src/libs/NodeUnreachableError.js';
@@ -75,49 +77,97 @@ interface CatalogBeeOptions {
   stateReadFails?: boolean;
   /** Entries a successful read of the current state returns. */
   stateEntries?: unknown[];
+  /** The timeout each reader was made with, in order, when a test wants to see it. */
+  readerTimeouts?: (number | undefined)[];
+  /** How many writers were made, when a test wants to see it. */
+  writersMade?: { count: number };
+  /** How long the node takes to read the state at an explicit index, under the deadline its reader carries. */
+  slowStateRead?: SlowStateRead;
+}
+
+/**
+ * A node that takes its time over the state read, with the deadline a reader carries modelled as
+ * `beePublisherPool.test.ts` pins it: counted from when the reader is made, and a timeout passed when
+ * it is made replaces the pool's. Read under mocked timers, so the stage's own numbers cost no wall time.
+ */
+interface SlowStateRead {
+  poolTimeoutMs: number;
+  /** Infinity for a read that never answers before its deadline. Changeable mid-test. */
+  answersAfterMs: number;
+}
+
+/** What a request whose deadline ran out rejects with: no status, so it is worth retrying. */
+const timedOut = () => new DOMException('The operation was aborted due to timeout', 'TimeoutError');
+
+async function answerSlowly(read: SlowStateRead, deadlineAt: number): Promise<void> {
+  const remaining = deadlineAt - Date.now();
+  await new Promise((resolve) => setTimeout(resolve, Math.max(0, Math.min(read.answersAfterMs, remaining))));
+  if (remaining < read.answersAfterMs) {
+    throw timedOut();
+  }
 }
 
 function makeCatalogBee(writes: CapturedWrite[], opts: CatalogBeeOptions = {}): Bee {
   return {
     feed: {
-      makeReader: () => ({
-        downloadPayload: async (dlOpts?: { index?: FeedIndex }) => {
-          // With an index this is fetchCurrentState; without, it is the init head lookup.
-          if (dlOpts?.index) {
-            if (opts.stateReadFails) {
-              throw chunkNotFound();
+      makeReader: (_topic: unknown, _owner: unknown, requestOptions?: { timeout?: number }) => {
+        opts.readerTimeouts?.push(requestOptions?.timeout);
+        const slow = opts.slowStateRead;
+        const deadlineAt = slow ? Date.now() + (requestOptions?.timeout ?? slow.poolTimeoutMs) : Infinity;
+        return {
+          downloadPayload: async (dlOpts?: { index?: FeedIndex }) => {
+            // With an index this is fetchCurrentState; without, it is the init head lookup.
+            if (dlOpts?.index) {
+              if (slow) {
+                await answerSlowly(slow, deadlineAt);
+              }
+              if (opts.stateReadFails) {
+                throw chunkNotFound();
+              }
+              return { payload: { toJSON: () => opts.published ?? opts.stateEntries ?? [] } };
             }
-            return { payload: { toJSON: () => opts.published ?? opts.stateEntries ?? [] } };
-          }
-          if (opts.lookupThrows) {
-            throw opts.lookupThrows;
-          }
-          if (opts.lookupFails404) {
-            throw new BeeResponseError('GET', '/feeds', 'Not Found.', undefined, 404, 'Not Found');
-          }
-          if (opts.lookupFails503) {
-            throw new BeeResponseError('GET', '/feeds', 'Service Unavailable.', undefined, 503, 'Service Unavailable');
-          }
-          if (opts.lookupDropsBody) {
-            throw droppedBody();
-          }
-          if (opts.lookupRefused) {
-            throw connectionRefused();
-          }
-          return { feedIndex: FeedIndex.fromBigInt(opts.lookupIndex ?? 0n), payload: { toJSON: () => [] } };
-        },
-      }),
-      makeWriter: () => ({
-        uploadPayload: async (_stamp: string, payload: unknown, writeOpts: Omit<CapturedWrite, 'payload'>) => {
-          const err = opts.writeFails?.();
-          if (err) {
-            throw err;
-          }
-          await opts.holdWrite?.();
-          writes.push({ ...writeOpts, payload: String(payload) });
-          return { reference: { toHex: () => 'ref' } };
-        },
-      }),
+            if (opts.lookupThrows) {
+              throw opts.lookupThrows;
+            }
+            if (opts.lookupFails404) {
+              throw new BeeResponseError('GET', '/feeds', 'Not Found.', undefined, 404, 'Not Found');
+            }
+            if (opts.lookupFails503) {
+              throw new BeeResponseError(
+                'GET',
+                '/feeds',
+                'Service Unavailable.',
+                undefined,
+                503,
+                'Service Unavailable',
+              );
+            }
+            if (opts.lookupDropsBody) {
+              throw droppedBody();
+            }
+            if (opts.lookupRefused) {
+              throw connectionRefused();
+            }
+            return { feedIndex: FeedIndex.fromBigInt(opts.lookupIndex ?? 0n), payload: { toJSON: () => [] } };
+          },
+        };
+      },
+      makeWriter: () => {
+        if (opts.writersMade) {
+          opts.writersMade.count += 1;
+        }
+        return {
+          uploadPayload: async (_stamp: string, payload: unknown, writeOpts: Omit<CapturedWrite, 'payload'>) => {
+            const err = opts.writeFails?.();
+            if (err) {
+              throw err;
+            }
+            await opts.holdWrite?.();
+            writes.push({ ...writeOpts, payload: String(payload) });
+            return { reference: { toHex: () => 'ref' } };
+          },
+        };
+      },
     },
     connectivity: {
       isConnected: async () => opts.nodeLive ?? true,
@@ -260,6 +310,30 @@ describe('StreamCatalog survives a transient Bee failure (TEST-1)', () => {
     assert.equal(writes.length, 1, 'and the entry reaches the feed, so the stream is discoverable');
   });
 
+  /**
+   * A writer carries one deadline counted from when it is made, so the retry above is only worth
+   * anything on a writer of its own. See DeadlineBee in BeePublisherPool.ts.
+   */
+  it('makes a writer for each attempt, so a retry is not handed a deadline already spent', async () => {
+    const writersMade = { count: 0 };
+    let attempts = 0;
+    const catalog = new StreamCatalog(
+      makePublishers(
+        makeCatalogBee([], {
+          lookupThrows: FEED_NOT_FOUND,
+          writersMade,
+          writeFails: () => (attempts++ === 0 ? Object.assign(new Error('503 unavailable'), { status: 503 }) : null),
+        }),
+      ),
+      TEST_STREAM_KEY,
+      TEST_TOPIC,
+    );
+
+    await catalog.addStream(liveEntry());
+
+    assert.equal(writersMade.count, 2);
+  });
+
   it('gives up on a feed write that fails with a permanent status, rather than burning the window', async () => {
     const writes: CapturedWrite[] = [];
     let attempts = 0;
@@ -284,6 +358,25 @@ describe('StreamCatalog survives a transient Bee failure (TEST-1)', () => {
 });
 
 describe('StreamCatalog boot-index hardening', () => {
+  /**
+   * The boot lookup asks a node where the stream list has got to, which waits out the node's probe of
+   * the slot after the head: 3.7 to 4.4 s on the stage on 2026-10-14, against the pool's 4 s. On the
+   * stage's boot of 2026-10-12 six lookups in a row ended on that deadline before one got through.
+   * `beePublisherPool.test.ts` pins that a timeout passed here replaces the pool's.
+   */
+  it('makes its boot lookup with a feed lookup’s deadline rather than the pool’s', async () => {
+    const readerTimeouts: (number | undefined)[] = [];
+    const catalog = new StreamCatalog(
+      makePublishers(makeCatalogBee([], { readerTimeouts })),
+      TEST_STREAM_KEY,
+      TEST_TOPIC,
+    );
+
+    await catalog.init();
+
+    assert.deepEqual(readerTimeouts, [FEED_LOOKUP_TIMEOUT_MS]);
+  });
+
   it('resumes from the persisted index when the boot lookup returns a stale head', async () => {
     const writes: CapturedWrite[] = [];
     const { store } = fakeIndexStore(125n);
@@ -730,6 +823,109 @@ describe('StreamCatalog unreadable-head hardening', () => {
 
     reads.fails = true;
     await assert.rejects(() => catalog.addStream(liveEntry()), /Not Found/);
+  });
+});
+
+/**
+ * Settles `run` on mocked `setTimeout` and `Date`, moving the clock in small steps and letting the
+ * promise work each step started run before the next.
+ */
+async function settleOnMockedTime<T>(t: TestContext, run: Promise<T>): Promise<T> {
+  let settled = false;
+  run.then(
+    () => (settled = true),
+    () => (settled = true),
+  );
+  for (let step = 0; !settled && step < MOCKED_TIME_STEP_LIMIT; step++) {
+    await new Promise((resolve) => setImmediate(resolve));
+    t.mock.timers.tick(MOCKED_TIME_STEP_MS);
+  }
+  return run;
+}
+
+const MOCKED_TIME_STEP_MS = 100;
+/** Ten minutes of mocked time, a ceiling on a hung settle rather than a measurement. */
+const MOCKED_TIME_STEP_LIMIT = 6_000;
+
+/**
+ * A slow read of the resumed state is not the state being gone.
+ *
+ * Boot can resume the stream list above an index whose entries it never read, and three failed reads
+ * of that state then let the next write carry the new entry alone, which takes every other stream off
+ * the list for good. Until 2026-10-14 the read carried the pool's 4 s deadline while a node took 3.7 to
+ * 4.4 s to answer for the stream list, and every way of failing counted towards the three.
+ */
+describe('StreamCatalog resumed state read on a slow node', () => {
+  const POOL_TIMEOUT_MS = 4_000;
+  /** Slower than the pool's deadline and well inside a feed lookup's, as the stage's node was. */
+  const STAGE_READ_MS = 4_500;
+  const otherStream = { ...liveEntry(), owner: 'other-owner', topic: 'other-stream' };
+
+  it('reads the state a node answers after the pool’s deadline, and keeps every previous entry', async (t) => {
+    const writes: CapturedWrite[] = [];
+    const { store } = fakeIndexStore(125n);
+    const slowStateRead = { poolTimeoutMs: POOL_TIMEOUT_MS, answersAfterMs: STAGE_READ_MS };
+    const catalog = new StreamCatalog(
+      makePublishers(makeCatalogBee(writes, { lookupDropsBody: true, stateEntries: [otherStream], slowStateRead })),
+      TEST_STREAM_KEY,
+      TEST_TOPIC,
+      store,
+    );
+    await catalog.init();
+    t.mock.timers.enable({ apis: ['setTimeout', 'Date'] });
+
+    for (let announce = 0; announce < TREAT_STATE_AS_LOST_AFTER; announce++) {
+      await settleOnMockedTime(t, catalog.addStream({ ...liveEntry(), topic: `stream-${announce}` })).catch(
+        () => undefined,
+      );
+    }
+
+    assert.ok(writes.length > 0, 'no announce reached the feed');
+    for (const write of writes) {
+      assert.ok(
+        publishedBy(write).some((entry) => entry.topic === otherStream.topic),
+        `the write at index ${write.index.toBigInt()} dropped the stream the resumed state held`,
+      );
+    }
+  });
+
+  it('never gives the state up over reads that ran out of time', async (t) => {
+    const writes: CapturedWrite[] = [];
+    const { store } = fakeIndexStore(125n);
+    const slowStateRead = { poolTimeoutMs: POOL_TIMEOUT_MS, answersAfterMs: Infinity };
+    const catalog = new StreamCatalog(
+      makePublishers(makeCatalogBee(writes, { lookupDropsBody: true, stateEntries: [otherStream], slowStateRead })),
+      TEST_STREAM_KEY,
+      TEST_TOPIC,
+      store,
+    );
+    await catalog.init();
+    t.mock.timers.enable({ apis: ['setTimeout', 'Date'] });
+
+    const lines = await logLinesDuring(async () => {
+      for (let announce = 0; announce < TREAT_STATE_AS_LOST_AFTER + 1; announce++) {
+        await assert.rejects(
+          settleOnMockedTime(t, catalog.addStream(liveEntry())),
+          'a write must fail while the state it appends to cannot be read',
+        );
+      }
+    });
+
+    assert.equal(writes.length, 0, 'a write went out over a state nobody read');
+    assert.ok(
+      !lines.some((line) => catalogStateLostPattern().test(line)),
+      'a read that ran out of time is no evidence the state is gone',
+    );
+
+    slowStateRead.answersAfterMs = STAGE_READ_MS;
+    await settleOnMockedTime(t, catalog.addStream(liveEntry()));
+
+    assert.equal(writes.length, 1);
+    assert.deepEqual(
+      publishedBy(writes[0]).map((entry) => entry.topic),
+      [otherStream.topic, liveEntry().topic],
+      'once the state reads, the write carries what it held',
+    );
   });
 });
 
@@ -1534,5 +1730,68 @@ describe('a catalog head lookup that answers 503', () => {
     await catalog.addStream(liveEntry());
 
     assert.equal(writes[0].index.toBigInt(), 0n);
+  });
+});
+
+/**
+ * Liveness is about a broadcast in progress. A rung held out while its uploads were refused that then
+ * finished with a recording has a recording to offer, and the recording's master must name it.
+ */
+describe('StreamCatalog and the master of a finished recording', () => {
+  const identity = { title: 'title', owner: 'owner', group: 'group-1', mediatype: MEDIA_TYPE_VIDEO };
+  const ALL = ['360p', '480p', '720p', '1080p'];
+  const THE_OTHER_THREE = ['360p', '480p', '720p'];
+  const live = (name: string): Rendition => {
+    const height = Number.parseInt(name, 10);
+    return {
+      name,
+      width: Math.round((height * 16) / 9),
+      height,
+      topic: `rung-${name}`,
+      bandwidth: height * 5000,
+      avgBandwidth: height * 4000,
+    };
+  };
+
+  it('names every rung with a recording, whatever liveness said while it was live', async () => {
+    const writes: CapturedWrite[] = [];
+    const masters: string[][] = [];
+    const masterWriter = {
+      publish: async (group: string, renditions: Rendition[]) => {
+        masters.push(renditions.map((rendition) => rendition.name));
+        return { topic: group, index: masters.length - 1 };
+      },
+    } as unknown as MasterFeedWriter;
+    const catalog = new StreamCatalog(
+      makePublishers(feedbackBee(writes)),
+      TEST_STREAM_KEY,
+      TEST_TOPIC,
+      undefined,
+      masterWriter,
+    );
+    await catalog.init();
+
+    for (let round = 0; round < 2; round++) {
+      for (const name of ALL) {
+        catalog.recordRungDelivered(identity.group, name);
+      }
+    }
+    for (const name of ALL) {
+      await catalog.upsertRendition(identity, live(name));
+    }
+    for (let round = 0; round < RUNG_DEATH_LAG_SEGMENTS; round++) {
+      for (const name of THE_OTHER_THREE) {
+        catalog.recordRungDelivered(identity.group, name);
+      }
+      catalog.recordRungUploadFailed(identity.group, '1080p');
+    }
+    await waitFor(() => !masters.at(-1)!.includes('1080p'), 4_000);
+
+    for (const [at, name] of ALL.entries()) {
+      await catalog.upsertRendition(identity, { ...live(name), index: 7 + at, duration: 12 });
+    }
+
+    assert.equal((JSON.parse(writes.at(-1)!.payload) as Array<{ state: string }>)[0].state, 'vod');
+    assert.deepEqual(masters.at(-1), ALL, 'the recording′s master left out a rung that has a recording');
   });
 });

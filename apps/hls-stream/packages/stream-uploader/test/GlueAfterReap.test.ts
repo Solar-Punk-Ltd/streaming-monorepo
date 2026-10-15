@@ -116,10 +116,10 @@ interface GlueHarness {
    * Every head the fake feed was asked for, in order, so a case can say WHICH playlist a session read
    * rather than only that it read one.
    *
-   * ⚠️ One answered head read is **two** entries here. `StreamUploader.readManifestFeedHead` asks
+   * ⚠️ One answered head read is **three** entries here. `StreamUploader.readManifestFeedHead` asks
    * without an index for the position and then again at that index for the payload, because bee-js
-   * only rejoins an over-sized payload on the indexed path. A read that 404s is one entry, since the
-   * empty-feed answer returns before the second call.
+   * only rejoins an over-sized payload on the indexed path, and `findTrueFeedHead` then reads the slot
+   * above. A read that 404s is one entry, since the empty-feed answer returns before the second call.
    */
   headsRead: (FakeFeedHead | null)[];
   /** Every length the admin was told a finished recording plays for, in order. */
@@ -285,16 +285,16 @@ function recordedMediaOf(recording: string): string {
  * Wait until a live manifest publish has been refused, which is how the hold is visible from outside.
  *
  * `settleFeedPosition` answers a held session by refusing and `commitManifest` refuses the playlist
- * that was built before it, and the caller counts either as a failed manifest publish — the same
- * counter a Bee outage moves, because from the stream's point of view both are a playlist that did
- * not reach the feed. Nothing else in these cases fails a publish, so the first one is the hold.
+ * that was built before it. Either leaves the live playlist stale, which is the run of stale manifests
+ * `stale_manifest` reads. A hold attempts no write, so it no longer moves the publish failure metric,
+ * and the stale run is the signal both refusals share. Nothing else in these cases leaves a playlist
+ * stale, so the first one is the hold.
  *
- * Counted from zero rather than from a reading taken here, because a refusal that had already
- * happened would otherwise leave this waiting for a second one, and a held publish is re-attempted
- * at the next segment rather than on a timer.
+ * Read while the hold lasts rather than against a reading taken here, because a held publish is
+ * re-attempted at the next segment rather than on a timer, and the run only ends when one lands.
  */
 async function refusedAPublish(harness: GlueHarness): Promise<void> {
-  await waitFor(() => harness.orchestrator.getMetricsSnapshot().manifestPublishFailuresTotal > 0, SETTLE_CEILING_MS);
+  await waitFor(() => harness.orchestrator.getMaxConsecutiveManifestFailures() > 0, SETTLE_CEILING_MS);
 }
 
 interface GluedScenario {
@@ -458,11 +458,13 @@ describe('a broadcast the stall reaper ended, and the one that follows it on the
     );
     // The first broadcast′s own read is the other one, and it is what a declared topic nothing has
     // published on answers: 404, which `FEED_HEAD_ON_START` treats as the answer rather than a
-    // failure. It is one entry rather than two because the payload is never asked for.
+    // failure. It is one entry rather than two because the payload is never asked for. The second
+    // broadcast's read is three entries: the head's index, its payload, and the slot above it, which
+    // `StreamUploader.findTrueFeedHead` reads because bee's answer can be below the real head.
     assert.equal(harness.headsRead[0], null, 'the first broadcast opened on an empty feed');
     assert.equal(
       harness.headsRead.length,
-      3,
+      4,
       'one 404 for the first broadcast and one answered read for the second, which latches it: a ' +
         'session that asked the feed again would be paying a retrieval per segment for an answer it holds',
     );

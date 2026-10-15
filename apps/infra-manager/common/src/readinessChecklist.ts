@@ -676,7 +676,11 @@ export function uploaderHealthDetail(health: UploaderHealthReading, profile: Rea
     case 'warned':
       return `${warningsText(health.startGateWarnings ?? [])} The uploader started anyway, and its own logs name the node.`;
     case 'unhealthy':
-      return `${reasonsText(health.reasons, usesNodePool(profile))} Its own logs have the rest.`;
+      return [
+        reasonsText(health.reasons, usesNodePool(profile)),
+        ...streamsText(health),
+        'Its own logs have the rest.',
+      ].join(' ');
     case 'ok':
       return 'The uploader reports healthy.';
     case 'unreachable':
@@ -728,15 +732,35 @@ function reasonsText(reasons: readonly string[], publishesToPool: boolean): stri
 const POSTAGE_REFUSED_REASON = 'postage_refused';
 
 /**
+ * The reason the uploader reports while a publisher node's chequebook, read
+ * every `CHEQUEBOOK_RECHECK_MS` after the boot, holds less than the floor.
+ */
+const CHEQUEBOOK_LOW_REASON = 'chequebook_low';
+
+/**
  * The uploader reads the batch each node spends once, when it starts, and keeps
- * this reason for the life of the process, so only a deploy carrying a batch
- * that pays clears either the failures or the reason.
+ * `postage_refused` for the life of the process, so only a deploy carrying a
+ * batch that pays clears either the failures or the reason. It reads every
+ * chequebook again for as long as it runs, so `chequebook_low` clears by itself.
  */
 function reasonMeaning(reason: string, publishesToPool: boolean): string | null {
+  if (reason === CHEQUEBOOK_LOW_REASON) {
+    return 'Chequebook low means a publisher node’s chequebook fell under the floor during the run. The broadcast goes on, but that node’s paid pushes will stall. Fund the node, the funding step reads the balances, and the reason clears on the uploader’s next read.';
+  }
   if (reason !== POSTAGE_REFUSED_REASON) return null;
   return publishesToPool
     ? 'Postage refused means a rung’s Bee node refused that rung’s postage batch, usually because it is full or has expired, so that rung’s uploads fail until the uploader is deployed again with a batch that pays.'
     : 'Postage refused means its Bee node refused its postage batch, usually because it is full or has expired, so its uploads fail until the uploader is deployed again with a batch that pays.';
+}
+
+/** Which streams the stale playlist and failing uploads are on, for an uploader that names them. */
+function streamsText(health: UploaderHealthReading): string[] {
+  const stale = health.staleManifestStreamIds ?? [];
+  const failing = health.segmentFailingStreamIds ?? [];
+  return [
+    ...(stale.length > 0 ? [`The playlist is not moving on ${andList(stale)}.`] : []),
+    ...(failing.length > 0 ? [`Segment uploads are failing on ${andList(failing)}.`] : []),
+  ];
 }
 
 function andList(parts: readonly string[]): string {

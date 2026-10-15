@@ -4,6 +4,7 @@ import { describe, it } from 'node:test';
 import {
   HEALTH_DEGRADED,
   HEALTH_OK,
+  HEALTH_REASON_CHEQUEBOOK_LOW,
   HEALTH_REASON_FRAGMENT_MISMATCH,
   HEALTH_REASON_FRAGMENT_PUBLISHER_GOP,
   HEALTH_REASON_INGEST_REFUSED,
@@ -38,6 +39,8 @@ function signals(overrides: Partial<HealthSignals> = {}): HealthSignals {
     staleManifestStreams: 0,
     maxConsecutiveManifestFailures: 0,
     maxConsecutiveSegmentFailures: 0,
+    staleManifestStreamIds: [],
+    segmentFailingStreamIds: [],
     queuePressure: PRESSURE_LOW,
     msSinceStreamActivity: 1_000,
     msSinceSegmentLoss: null,
@@ -58,6 +61,7 @@ function signals(overrides: Partial<HealthSignals> = {}): HealthSignals {
     publisherGopStreams: [],
     postageRefusedPublishers: 0,
     startGateWarnings: [],
+    lowChequebooks: [],
     ...overrides,
   };
 }
@@ -198,6 +202,7 @@ describe('health wire contract', () => {
         HEALTH_REASON_NODE_UNAVAILABLE,
         HEALTH_REASON_START_GATE_WARNED,
         HEALTH_REASON_LADDER_NOT_STARTED,
+        HEALTH_REASON_CHEQUEBOOK_LOW,
       ],
       [
         'segment_upload_failure',
@@ -215,6 +220,7 @@ describe('health wire contract', () => {
         'node_unavailable',
         'start_gate_warned',
         'ladder_not_started',
+        'chequebook_low',
       ],
     );
   });
@@ -297,8 +303,10 @@ describe('deriveHealthStatus segment loss', () => {
 describe('deriveHealthStatus unlisted stream', () => {
   /**
    * No threshold, unlike the manifest counter, because a failure that reaches this signal has already
-   * survived `StreamCatalog`'s own 10 second retry window. There is no hiccup left to ride out: the
-   * broadcast is running and no viewer can find it, and it stays that way until the next announce.
+   * been through `StreamCatalog`'s own retries: 10 s for the write, 15 s for the read of the list it
+   * appends to, and none for a node answering 404, which no retry changes. There is no hiccup left to
+   * ride out: the broadcast is running and no viewer can find it, and it stays that way until the next
+   * announce.
    */
   it('degrades as soon as a live stream is absent from the catalog', () => {
     const report = deriveHealthStatus(signals({ msSinceCatalogAnnounceFailed: 1 }), STALL_MS);
@@ -756,5 +764,25 @@ describe('deriveHealthStatus start gate warnings', () => {
     );
 
     assert.equal(report.reasons.length, 2);
+  });
+});
+
+/**
+ * A node whose chequebook fell under the floor after the boot, as `ChequebookRecheck` reads it for the
+ * life of the process. On 2026-10-01 the 1080p node drained during a broadcast and the recording lost
+ * that rung with nothing on `/health`.
+ */
+describe('deriveHealthStatus low chequebooks', () => {
+  it('is ok while every chequebook holds its floor', () => {
+    const report = deriveHealthStatus(signals({ lowChequebooks: [] }), STALL_MS);
+
+    assert.equal(report.status, HEALTH_OK);
+  });
+
+  it('is degraded with one reason however many rungs are low', () => {
+    const report = deriveHealthStatus(signals({ lowChequebooks: [{ rung: '720p' }, { rung: '1080p' }] }), STALL_MS);
+
+    assert.equal(report.status, HEALTH_DEGRADED);
+    assert.deepEqual(report.reasons, [HEALTH_REASON_CHEQUEBOOK_LOW]);
   });
 });

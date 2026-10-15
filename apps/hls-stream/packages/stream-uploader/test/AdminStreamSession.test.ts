@@ -85,14 +85,16 @@ const PREVIOUS_ON_THIS_FEED = [
 const headReadRefused = () => Object.assign(new Error('bee refused the read'), { status: 400 });
 
 /**
- * How many `downloadPayload` calls one head read makes, which is two and not one.
+ * How many `downloadPayload` calls one head read makes on a feed whose head read told the truth,
+ * which is three and not one.
  *
  * `readManifestFeedHead` asks without an index for the head's position and then again **at** that
  * index for the payload, because bee-js only rejoins a payload larger than one chunk on the indexed
- * path. The fake answers both out of the same fixture, so a counter on it counts downloads rather
- * than head reads, and the ratio has to be stated rather than assumed.
+ * path. Then `findTrueFeedHead` reads the slot above, because bee's answer can be below the real
+ * head, and that slot is absent. The fake answers all three out of the same fixture, so a counter on
+ * it counts downloads rather than head reads, and the ratio has to be stated rather than assumed.
  */
-const DOWNLOADS_PER_HEAD_READ = 2;
+const DOWNLOADS_PER_HEAD_READ = 3;
 
 /** One SOC write the uploader made to its manifest feed. */
 interface ManifestWrite {
@@ -115,6 +117,8 @@ interface Session {
 interface SessionOptions {
   /** What the manifest feed head answers. Absent throws a 404, which is a topic nothing ever wrote. */
   feedHead?: () => FakeFeedHead | null;
+  /** What a read at an explicit index above the head answers. Absent answers 404 for every one. */
+  feedSlot?: (index: number) => string | null;
   /** Answer for each report in turn, so a failure can be driven. Defaults to accepting every one. */
   reportOutcome?: (report: AdminStateReport) => StateReportOutcome;
   /** Built without `admin`, which is the standalone deployment this service has always been. */
@@ -142,6 +146,7 @@ function newSession(options: SessionOptions = {}): Session {
       return { reference: { toHex: () => `soc${index}` } };
     },
     feedHead: options.feedHead ?? (() => null),
+    feedSlot: options.feedSlot ? (_topic, index) => options.feedSlot!(index) : undefined,
   });
 
   const client = {
@@ -446,6 +451,113 @@ describe('the feed index a declared topic resumes from', () => {
 
     assert.equal(reads, 0);
     assert.equal(session.published[0]?.index, 0, 'a session that mints its own topic starts at zero');
+  });
+});
+
+/**
+ * A playlist of one segment numbered `sequence`, so the session reading it continues at `sequence + 1`
+ * and a case can tell which slot a session took its numbering from.
+ */
+function playlistNumbered(sequence: number, ref: string): string {
+  return [
+    '#EXTM3U',
+    '#EXT-X-VERSION:3',
+    '#EXT-X-TARGETDURATION:2',
+    `#EXT-X-MEDIA-SEQUENCE:${sequence}`,
+    '',
+    '#EXT-X-PROGRAM-DATE-TIME:2026-09-21T10:05:21.849Z',
+    '#EXTINF:2,',
+    ref,
+    '',
+  ].join('\n');
+}
+
+/**
+ * ⛔⛔ bee's feed finder gives every lookahead probe after index 0 one second and counts a probe that
+ * ran out of it as "not there" (`pkg/feeds/sequence/sequence.go` in bee, the `asyncFinder`). On a
+ * slow node the head read therefore answers an index BELOW the real head, and a session continuing
+ * from that answer writes over the newer slots: the previous broadcast's later playlists, and its
+ * recording with them. A read at an explicit index is a direct chunk read that never asks the finder,
+ * so the slots above the answer are read that way until one is absent.
+ */
+describe('a feed head read that answers below the real head', () => {
+  const STALE_HEAD = 7;
+
+  it('continues above the last slot the feed really holds, numbered from the playlist there', async () => {
+    const slots = new Map<number, string>([
+      [STALE_HEAD + 1, playlistNumbered(7, 'e'.repeat(64))],
+      [STALE_HEAD + 2, playlistNumbered(8, 'f'.repeat(64))],
+      [STALE_HEAD + 3, playlistNumbered(9, 'a'.repeat(64))],
+    ]);
+    const session = newSession({
+      feedHead: () => ({ index: STALE_HEAD, manifest: PREVIOUS_ON_THIS_FEED }),
+      feedSlot: (index) => slots.get(index) ?? null,
+    });
+
+    await feedOneSegment(session.uploader, 0);
+
+    assert.equal(
+      session.published[0]?.index,
+      STALE_HEAD + 4,
+      'the first write landed on a slot the previous broadcast had already written',
+    );
+    assert.match(
+      session.published[0]?.playlist ?? '',
+      /#EXT-X-MEDIA-SEQUENCE:10\n/,
+      'the numbering continues from the playlist at the true head, not from the one bee answered',
+    );
+    assert.equal(
+      session.saved.at(-1)?.inherited?.lines.at(-1),
+      'a'.repeat(64),
+      'and the recording opens with what the true head holds',
+    );
+  });
+
+  /**
+   * The finder's worst answer on a slow node is index 0 itself: that first read carries no one second
+   * limit, and every lookahead after it can run out. So the gap can be the whole feed, and the slots
+   * above the answer have to be found in a number of reads that grows with the log of the gap.
+   */
+  it('finds a head far above the answer without reading every slot in between', async () => {
+    const trueHead = 300;
+    let indexedReads = 0;
+    const session = newSession({
+      feedHead: () => ({ index: 0, manifest: playlistNumbered(0, 'b'.repeat(64)) }),
+      feedSlot: (index) => {
+        indexedReads++;
+        return index <= trueHead ? playlistNumbered(index, 'c'.repeat(64)) : null;
+      },
+    });
+
+    await feedOneSegment(session.uploader, 0);
+
+    assert.equal(session.published[0]?.index, trueHead + 1);
+    assert.match(session.published[0]?.playlist ?? '', new RegExp(`#EXT-X-MEDIA-SEQUENCE:${trueHead + 1}\\n`));
+    assert.ok(indexedReads <= 2 * Math.ceil(Math.log2(trueHead)) + 2, `${indexedReads} reads for a gap of 300`);
+  });
+
+  /**
+   * ⛔ Only a 404 says a slot is empty. A read that failed says nothing about it, and taking it for an
+   * empty slot writes over whatever is there, which is the damage this exists to prevent. So the
+   * publish is refused and the next segment asks again, as for a head read that failed.
+   */
+  it('refuses to publish when a slot above the answer fails to read, and retries at the next segment', async () => {
+    let attempts = 0;
+    const session = newSession({
+      feedHead: () => ({ index: STALE_HEAD, manifest: SOME_PLAYLIST }),
+      feedSlot: () => {
+        if (++attempts === 1) {
+          throw headReadRefused();
+        }
+        return null;
+      },
+    });
+
+    await feedOneSegment(session.uploader, 0);
+    assert.equal(session.published.length, 0, 'nothing may be written while a slot above the answer is unread');
+
+    await feedOneSegment(session.uploader, 1);
+    assert.equal(session.published[0]?.index, STALE_HEAD + 1, 'the retried read settles the index');
   });
 });
 
@@ -777,7 +889,10 @@ describe('a rung of a declared ladder', () => {
      * nothing.
      */
     announce?: (upsert: Upsert, attempt: number) => RenditionAnnouncement;
-    /** What the registry answers when the rung is recorded as one that will not finish. Defaults to no master and no flip. */
+    /**
+     * What the registry answers when the rung is recorded as one that will not finish. Defaults to no
+     * master and no flip.
+     */
     unfinished?: (upsert: Upsert) => RenditionAnnouncement;
     /** Answer for each state report in turn, so a failure can be driven. Defaults to accepting every one. */
     reportOutcome?: (report: AdminStateReport) => StateReportOutcome;
@@ -1161,7 +1276,10 @@ describe('a rung of a declared ladder', () => {
       assert.equal(lines.filter((line) => line.includes(ladderFinalized(DECLARED_TOPIC))).length, 0);
     });
 
-    /** Reported only after the report landed, as a finalize's flip is: a line claiming it first is a flip nobody took. */
+    /**
+     * Reported only after the report landed, as a finalize's flip is: a line claiming it first is a flip
+     * nobody took.
+     */
     it('does not say the ladder finalized when the vod report could not be delivered', async () => {
       const session = newLadderSession({
         unfinished: () => ({ masterIndex: 6, flippedToFinished: true, duration: 12 }),

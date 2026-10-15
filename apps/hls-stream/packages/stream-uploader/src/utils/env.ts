@@ -75,9 +75,9 @@ interface NumericRange {
  *
  * Throwing beats falling back for an integer, because every one of them here is a size or a duration
  * and a wrong one disables the thing it configures rather than tuning it. `optionalBool` below still
- * warns and falls back, which is a deliberate difference rather than an oversight: its one caller,
- * `OME_ADMISSION_FAIL_OPEN`, falls back to the safe direction, and a typo there costs rejected ingest
- * during an outage rather than a service that will not start.
+ * warns and falls back, which is a deliberate difference rather than an oversight: its callers,
+ * `OME_ADMISSION_FAIL_OPEN`, `LADDER_MARKERS` and `ABR_ENABLED`, each fall back to the shipped default,
+ * and a typo there costs a degraded feature rather than a service that will not start.
  */
 export function optionalInt(name: string, fallback: number, range: NumericRange = {}): number {
   const value = process.env[name];
