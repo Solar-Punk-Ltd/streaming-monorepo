@@ -1,11 +1,13 @@
 /**
- * Where a transfer reads the chain when CHEQUEBOOK_RPC_ENDPOINTS names none.
+ * The chain endpoint a Bee container was started with, and what the chain
+ * registry does with it: nothing.
  *
- * The default is the endpoint the node being funded was started with, read
- * from its container's command on the Docker connection the transfer owns.
- * It is held to the same shape checks as a configured endpoint, it must answer
- * the node's own chain before it is used, a configured endpoint always wins,
- * and no endpoint ever reaches an error.
+ * The Docker route can still read the endpoint off a container's command, and
+ * that parser stays with the Docker route until it is removed. The registry
+ * never uses it: a transfer, its receipts and its recovery read the chain
+ * through the manager's own settings alone, CHEQUEBOOK_RPC_ENDPOINTS and then
+ * FUNDING_RPC_URL or BEE_RPC_ENDPOINT, and with neither a transfer is refused
+ * as `chain_endpoint_missing`, whatever endpoint its node names.
  */
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
@@ -106,224 +108,83 @@ describe('the chain endpoint a Bee container was started with', () => {
   });
 });
 
-describe("the chain registry with a node's own endpoint", () => {
-  it("uses the node's endpoint when nothing is configured for its chain, once it answers that chain", async () => {
-    const created: string[] = [];
-    const registry = new ChequebookChainRegistry(undefined, (endpoint) => {
-      created.push(endpoint);
-      return reader();
-    });
-    await registry.forPreparedNode(100, node, 'https://node-rpc.example.invalid/node-key');
-    assert.deepEqual(created, ['https://node-rpc.example.invalid/node-key']);
-  });
+describe('the chain registry never reads a node', () => {
+  const nodeEndpoint = 'https://node-rpc.example.invalid/node-key';
 
-  it("lets a configured endpoint win over the node's own", async () => {
-    const created: string[] = [];
-    const registry = new ChequebookChainRegistry('{"100":"https://configured.example.invalid"}', (endpoint) => {
-      created.push(endpoint);
-      return reader();
-    });
-    await registry.forPreparedNode(100, node, 'https://node-rpc.example.invalid/node-key');
-    assert.deepEqual(created, ['https://configured.example.invalid']);
-  });
-
-  it("uses the node's endpoint for a chain the configuration does not name", async () => {
-    const created: string[] = [];
-    const registry = new ChequebookChainRegistry('{"1":"https://mainnet.example.invalid"}', (endpoint) => {
-      created.push(endpoint);
-      return reader();
-    });
-    await registry.forPreparedNode(100, node, 'https://node-rpc.example.invalid/node-key');
-    assert.deepEqual(created, ['https://node-rpc.example.invalid/node-key']);
-  });
-
-  it('refuses a node endpoint on the wrong chain, and one that does not answer', async () => {
-    await assert.rejects(
-      new ChequebookChainRegistry(undefined, () => reader(1)).forPreparedNode(
-        100,
-        node,
-        'https://node-rpc.example.invalid/node-key',
-      ),
-      refusedAs('wrong_chain'),
-    );
-    await assert.rejects(
-      new ChequebookChainRegistry(undefined, () => reader(100, true)).forPreparedNode(
-        100,
-        node,
-        'https://node-rpc.example.invalid/node-key',
-      ),
-      refusedAs('chain_unreachable'),
-    );
-  });
-
-  it("holds the node's endpoint to the same shape checks as a configured one, before any read", async () => {
+  it('refuses a transfer being prepared as chain_endpoint_missing with no setting, whatever endpoint its node names', async () => {
     let created = 0;
     const registry = new ChequebookChainRegistry(undefined, () => {
       created++;
       return reader();
     });
-    for (const endpoint of [
-      null,
-      'ws://node-rpc.example.invalid',
-      'https://user:secret@node-rpc.example.invalid',
-      'https://node-rpc.example.invalid/#fragment',
-      'node-rpc.example.invalid',
-      'file:///etc/passwd',
-      'https://',
-    ]) {
-      await assert.rejects(
-        registry.forPreparedNode(100, node, endpoint),
-        refusedAs('chain_endpoint_missing'),
-        String(endpoint),
-      );
-    }
-    assert.equal(created, 0);
+    await assert.rejects(registry.forPreparedNode(100, node, nodeEndpoint), refusedAs('chain_endpoint_missing'));
+    assert.equal(created, 0, "no reader was made for the node's endpoint");
   });
 
-  it('refuses a chain with no pinned token whatever the node says', async () => {
-    await assert.rejects(
-      new ChequebookChainRegistry(undefined, () => reader(31337)).forPreparedNode(
-        31337,
-        node,
-        'https://node-rpc.example.invalid',
-      ),
-      refusedAs('unsupported_chain'),
-    );
+  it('never calls the node reader for a saved transfer, and says the endpoint is missing with no setting', async () => {
+    const registry = new ChequebookChainRegistry(undefined, () => reader());
+    let reads = 0;
+    const readNode = async () => {
+      reads++;
+      return nodeEndpoint;
+    };
+    await assert.rejects(registry.forSavedNode(100, node, readNode), refusedAs('chain_endpoint_missing'));
+    assert.equal(reads, 0);
   });
 
-  it("remembers the node's endpoint for its saved transfers, and reads the container again only when it does not know it", async () => {
+  it("reads a prepared and a saved transfer through the manager's default endpoint, never the node's", async () => {
     const created: string[] = [];
     let reads = 0;
-    const registry = new ChequebookChainRegistry(undefined, (endpoint) => {
-      created.push(endpoint);
-      return reader();
-    });
-    const readAgain = async () => {
-      reads++;
-      return 'https://reread.example.invalid';
-    };
-    await registry.forSavedNode(100, node, readAgain);
-    assert.equal(reads, 1, 'a manager that never prepared this node reads its container');
-    await registry.forSavedNode(100, node, readAgain);
-    assert.equal(reads, 1, 'and then remembers it');
-    await registry.forPreparedNode(100, node, 'https://fresh.example.invalid');
-    await registry.forSavedNode(100, node, readAgain);
-    assert.equal(reads, 1);
-    assert.deepEqual(
-      created,
-      [
-        'https://reread.example.invalid',
-        'https://reread.example.invalid',
-        'https://fresh.example.invalid',
-        'https://fresh.example.invalid',
-      ],
-      'a new preparation replaces what the saved transfers read through',
-    );
-  });
-
-  it('never reads a container for a saved transfer when the chain is configured', async () => {
-    const registry = new ChequebookChainRegistry('{"100":"https://configured.example.invalid"}', () => reader());
-    await registry.forSavedNode(100, node, async () => assert.fail('the configured endpoint wins'));
-  });
-
-  describe('when the remembered endpoint fails', () => {
-    const remembered = 'https://remembered.example.invalid';
-    const fresh = 'https://fresh.example.invalid';
-    /** A registry that remembers `remembered` for the node, over endpoints whose answers each test sets. */
-    async function rememberedRegistry() {
-      const answers = new Map<string, number | 'down'>([
-        [remembered, 100],
-        [fresh, 100],
-      ]);
-      const created: string[] = [];
-      const registry = new ChequebookChainRegistry(undefined, (endpoint) => {
+    const registry = new ChequebookChainRegistry(
+      undefined,
+      (endpoint) => {
         created.push(endpoint);
-        const answer = answers.get(endpoint) ?? 100;
-        return reader(answer === 'down' ? 100 : answer, answer === 'down');
-      });
-      await registry.forPreparedNode(100, node, remembered);
-      created.length = 0;
-      let reads = 0;
-      const readAgain = (endpoint: string | null | Error) => async () => {
-        reads++;
-        if (endpoint instanceof Error) throw endpoint;
-        return endpoint;
-      };
-      return { registry, answers, created, readAgain, reads: () => reads };
-    }
-
-    it('reads the node once when the remembered endpoint does not answer, and uses the fresh one that verifies', async () => {
-      const h = await rememberedRegistry();
-      h.answers.set(remembered, 'down');
-      await h.registry.forSavedNode(100, node, h.readAgain(fresh));
-      assert.equal(h.reads(), 1, 'a remembered endpoint that stopped answering is not the last word');
-      assert.deepEqual(h.created, [remembered, fresh]);
-      await h.registry.forSavedNode(100, node, h.readAgain(remembered));
-      assert.equal(h.reads(), 1, 'the fresh endpoint that verified replaced the remembered one');
-      assert.deepEqual(h.created, [remembered, fresh, fresh]);
+        return reader();
+      },
+      { defaultEndpoint: 'https://funding.example.invalid' },
+    );
+    await registry.forPreparedNode(100, node, nodeEndpoint);
+    await registry.forSavedNode(100, node, async () => {
+      reads++;
+      return nodeEndpoint;
     });
-
-    it('reads the node once when the remembered endpoint answers another chain', async () => {
-      const h = await rememberedRegistry();
-      h.answers.set(remembered, 1);
-      await h.registry.forSavedNode(100, node, h.readAgain(fresh));
-      assert.equal(h.reads(), 1);
-      assert.deepEqual(h.created, [remembered, fresh]);
-    });
-
-    it('keeps the remembered endpoint when the fresh one does not verify either', async () => {
-      const h = await rememberedRegistry();
-      h.answers.set(remembered, 'down');
-      h.answers.set(fresh, 1);
-      await assert.rejects(h.registry.forSavedNode(100, node, h.readAgain(fresh)), refusedAs('wrong_chain'));
-      assert.equal(h.reads(), 1, 'read once, no more');
-      h.answers.set(remembered, 100);
-      await h.registry.forSavedNode(100, node, h.readAgain(fresh));
-      assert.equal(h.reads(), 1, 'the remembered endpoint answered again and was used without another read');
-      assert.deepEqual(h.created, [remembered, fresh, remembered]);
-    });
-
-    it("reports the remembered endpoint's failure when the node cannot be read or names no endpoint", async () => {
-      for (const readResult of [new Error('private container diagnostic'), null, 'ws://not-usable.example.invalid']) {
-        const h = await rememberedRegistry();
-        h.answers.set(remembered, 'down');
-        await assert.rejects(
-          h.registry.forSavedNode(100, node, h.readAgain(readResult)),
-          refusedAs('chain_unreachable'),
-          String(readResult),
-        );
-        assert.equal(h.reads(), 1);
-      }
-    });
-
-    for (const [failure, answer] of [
-      ['chain_unreachable', 'down'],
-      ['wrong_chain', 1],
-    ] as const) {
-      it(`reports a remembered endpoint's ${failure} as it stands when the node names the same one, without trying it twice`, async () => {
-        const h = await rememberedRegistry();
-        h.answers.set(remembered, answer);
-        await assert.rejects(h.registry.forSavedNode(100, node, h.readAgain(remembered)), refusedAs(failure));
-        assert.equal(h.reads(), 1, 'the node was read once rather than the remembered endpoint being trusted');
-        assert.deepEqual(h.created, [remembered], 'the endpoint that just failed was not tried a second time');
-        await assert.rejects(h.registry.forSavedNode(100, node, h.readAgain(remembered)), refusedAs(failure));
-        assert.equal(h.reads(), 2, 'and the node is read again on the next check');
-        assert.deepEqual(h.created, [remembered, remembered]);
-      });
-    }
+    assert.deepEqual(created, ['https://funding.example.invalid', 'https://funding.example.invalid']);
+    assert.equal(reads, 0);
   });
 
-  it("says the endpoint is missing when the saved transfer's node cannot be read", async () => {
-    const registry = new ChequebookChainRegistry(undefined, () => reader());
+  it('reads a configured chain through its configured endpoint, for a prepared and a saved transfer alike', async () => {
+    const created: string[] = [];
+    const registry = new ChequebookChainRegistry(
+      '{"100":"https://configured.example.invalid"}',
+      (endpoint) => {
+        created.push(endpoint);
+        return reader();
+      },
+      { defaultEndpoint: 'https://funding.example.invalid' },
+    );
+    await registry.forPreparedNode(100, node, nodeEndpoint);
+    await registry.forSavedNode(100, node, async () => assert.fail('the node is never read'));
+    assert.deepEqual(created, ['https://configured.example.invalid', 'https://configured.example.invalid']);
+  });
+
+  it('refuses the default endpoint on the wrong chain, and one that does not answer, for a saved transfer too', async () => {
+    const options = { defaultEndpoint: 'https://funding.example.invalid' };
     await assert.rejects(
-      registry.forSavedNode(100, node, async () => null),
-      refusedAs('chain_endpoint_missing'),
+      new ChequebookChainRegistry(undefined, () => reader(1), options).forSavedNode(100, node, async () => null),
+      refusedAs('wrong_chain'),
     );
     await assert.rejects(
-      registry.forSavedNode(100, node, async () => {
-        throw new Error('private container diagnostic');
-      }),
-      refusedAs('chain_endpoint_missing'),
+      new ChequebookChainRegistry(undefined, () => reader(100, true), options).forPreparedNode(100, node, null),
+      refusedAs('chain_unreachable'),
+    );
+  });
+
+  it('refuses a chain with no pinned token whatever the settings or the node say', async () => {
+    await assert.rejects(
+      new ChequebookChainRegistry(undefined, () => reader(31337), {
+        defaultEndpoint: 'https://funding.example.invalid',
+      }).forPreparedNode(31337, node, nodeEndpoint),
+      refusedAs('unsupported_chain'),
     );
   });
 });

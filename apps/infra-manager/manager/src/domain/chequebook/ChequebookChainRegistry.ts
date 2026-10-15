@@ -7,15 +7,11 @@ export type ChequebookChainReader = Pick<
   ChainRpc,
   'chainId' | 'transactionCount' | 'transaction' | 'receipt' | 'blockHeader' | 'blockTransactions'
 >;
-export type ChequebookEndpointMode = 'direct' | 'disabled';
-/** Reads, again, the endpoint a saved transfer's node was started with. Null when it names none. */
+/**
+ * Reads, again, the endpoint a saved transfer's node was started with. Null when it names none. Only the Docker route
+ * can answer one, and the registry no longer calls it; the parameter goes with that route's cleanup.
+ */
 export type ReadNodeChainEndpoint = (signal?: AbortSignal) => Promise<string | null>;
-
-export function chequebookEndpointMode(value: string | undefined): ChequebookEndpointMode {
-  if (value === undefined || value === '' || value === 'disabled') return 'disabled';
-  if (value === 'direct') return value;
-  throw new ChequebookConfigurationError();
-}
 
 /** An endpoint a transfer may read the chain through: http or https, a host, and no user information or fragment. */
 function usableChainEndpoint(value: unknown): value is string {
@@ -29,27 +25,23 @@ function usableChainEndpoint(value: unknown): value is string {
 }
 
 /**
- * Where a transfer reads the chain. CHEQUEBOOK_RPC_ENDPOINTS wins for every
- * chain it names. Then the manager's own default endpoint, `defaultEndpoint`
+ * Where a transfer reads the chain: its preparation, its receipts and their
+ * finality, and recovery. CHEQUEBOOK_RPC_ENDPOINTS wins for every chain it
+ * names. Then the manager's own default endpoint, `defaultEndpoint`
  * (FUNDING_RPC_URL, or else BEE_RPC_ENDPOINT), for whichever chain it answers
- * for: it is verified against the node's chain before use, and a node on another
- * chain is refused as `wrong_chain`. Only with neither is the endpoint the one
- * the node being funded was started with, read from its container's command on
- * the Docker connection the manager owns, and remembered for that node's saved
- * transfers. (Dev-2 takes that last read out: the manager reads the chain
- * through its own settings and never through a node's container.)
+ * for. With neither, a transfer is refused as `chain_endpoint_missing`. The
+ * manager reads the chain through its own settings alone, never through a node
+ * or its container, so a node it reaches only through its Bee API is read the
+ * same as any other.
  *
- * So a deployment's saved chain endpoint, which a signed-in user sets through
- * the API, does choose where the manager itself sends a transfer's chain
- * reads, from the manager's own network: the node is started with it and the
- * manager reads it back from the node. A money request, an operation record
- * and a Bee answer never choose one. Both kinds of endpoint are held to the
- * same shape rules and must answer the node's chain before use, and no
- * endpoint is ever logged, answered or put in an error.
+ * Every endpoint is held to the same shape rules and must answer the chain it
+ * is asked for before use: one that does not answer is `chain_unreachable`, and
+ * one on another chain is `wrong_chain`. No endpoint is ever logged, answered
+ * or put in an error, and a money request, an operation record or a Bee answer
+ * never chooses one.
  */
 export class ChequebookChainRegistry {
   #endpoints = new Map<number, string>();
-  #nodeEndpoints = new Map<string, string>();
   #createReader: (endpoint: string) => ChequebookChainReader;
   #defaultEndpoint: string | undefined;
 
@@ -95,71 +87,30 @@ export class ChequebookChainRegistry {
     }
   }
 
-  /** Whether the manager's own settings name an endpoint for this chain, so no node is asked for one. */
-  #configuredFor(chainId: number): boolean {
-    return this.#endpoints.has(chainId) || this.#defaultEndpoint !== undefined;
-  }
-
-  /** A transfer being prepared: the configured endpoint, or else the one its node's container runs with now. */
+  /**
+   * A transfer being prepared, read as `forChain`. The endpoint the node was started with, which only the Docker route
+   * can name, is taken and never used: the signature stays for that route until it is removed.
+   */
   async forPreparedNode(
     chainId: number,
-    nodeAddress: string,
-    nodeEndpoint: string | null,
+    _nodeAddress: string,
+    _nodeEndpoint: string | null,
     signal?: AbortSignal,
   ): Promise<ChequebookChainReader> {
-    if (this.#configuredFor(chainId) || !tokenAddressForChain(chainId)) return this.forChain(chainId, signal);
-    try {
-      if (!usableChainEndpoint(nodeEndpoint)) throw new ChainReadError('chain_endpoint_missing');
-      const reader = await this.verified(nodeEndpoint, chainId, signal);
-      this.#nodeEndpoints.set(nodeKey(chainId, nodeAddress), nodeEndpoint);
-      return reader;
-    } catch (error) {
-      throw ChainReadError.keeping(error);
-    }
+    return this.forChain(chainId, signal);
   }
 
   /**
-   * A saved transfer's later reads: the configured endpoint, or else its node's.
-   * A remembered endpoint that fails in any way sends the manager to read the
-   * node once more, and what it reads replaces the remembered endpoint only
-   * after it verified. Until then the remembered one is kept, and its failure is
-   * what is reported when the node cannot be read, names nothing usable, or
-   * names the same endpoint again, which is not tried a second time.
+   * A saved transfer's receipts, finality and recovery, read as `forChain`. The node is never read for an endpoint:
+   * the reader passed for it is never called, and the signature stays for the Docker route until it is removed.
    */
   async forSavedNode(
     chainId: number,
-    nodeAddress: string,
-    readNodeEndpoint: ReadNodeChainEndpoint,
+    _nodeAddress: string,
+    _readNodeEndpoint: ReadNodeChainEndpoint,
     signal?: AbortSignal,
   ): Promise<ChequebookChainReader> {
-    if (this.#configuredFor(chainId) || !tokenAddressForChain(chainId)) return this.forChain(chainId, signal);
-    const key = nodeKey(chainId, nodeAddress);
-    try {
-      const remembered = this.#nodeEndpoints.get(key);
-      let rememberedFailure: unknown = null;
-      if (remembered) {
-        try {
-          return await this.verified(remembered, chainId, signal);
-        } catch (error) {
-          rememberedFailure = error;
-        }
-      }
-      const unusable = (fallback: ChainReadError) =>
-        rememberedFailure ? ChainReadError.keeping(rememberedFailure) : fallback;
-      let endpoint: string | null;
-      try {
-        endpoint = await readNodeEndpoint(signal);
-      } catch (error) {
-        throw unusable(ChainReadError.keeping(error, 'chain_endpoint_missing'));
-      }
-      if (!usableChainEndpoint(endpoint)) throw unusable(new ChainReadError('chain_endpoint_missing'));
-      if (rememberedFailure && endpoint === remembered) throw ChainReadError.keeping(rememberedFailure);
-      const reader = await this.verified(endpoint, chainId, signal);
-      this.#nodeEndpoints.set(key, endpoint);
-      return reader;
-    } catch (error) {
-      throw ChainReadError.keeping(error);
-    }
+    return this.forChain(chainId, signal);
   }
 
   /** A reader for the endpoint, once it answered the chain it is meant to read. */
@@ -176,8 +127,4 @@ export class ChequebookChainRegistry {
     signal?.throwIfAborted();
     return reader;
   }
-}
-
-function nodeKey(chainId: number, nodeAddress: string): string {
-  return `${chainId}:${nodeAddress.toLowerCase()}`;
 }
