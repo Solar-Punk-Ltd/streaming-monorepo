@@ -56,6 +56,14 @@ starvation or from the stage is not settled: a real OBS on the same squeeze woul
 broadcast 6 Mbit/s through a 3 Mbit/s link for two minutes, lift the limit, and count segments per
 rung for the next minute.
 
+**A broadcast that starts while the last one still finalizes is dated from the last one's start
+(P3).** When the source comes back while one rung of the previous broadcast is still writing its
+recording, the uploader keeps that ladder, and the rungs that open the new broadcast take its anchor,
+so every `#EXT-X-PROGRAM-DATE-TIME` of the new broadcast runs the gap between the two behind the
+clock. The rungs agree with each other, so playback and quality switches work, but the recording's
+clock is wrong by that gap. To see it: stop a long broadcast and start it again within the few
+seconds its recording takes to write, then compare the new playlist's first date with the wall clock.
+
 **The admin shows "published" while nothing goes out (P3).** A broadcaster can be connected while
 the ladder encoders produce nothing. The admin keeps showing the stream as published, with no
 warning. The uploader now reports such a ladder on `/health` as `ladder_not_started` after 45 s,

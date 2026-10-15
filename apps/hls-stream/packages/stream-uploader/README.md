@@ -514,7 +514,9 @@ things moved the rungs apart, and each now keeps them together:
 - **A ladder opening is left alone.** A rung announcing after a sibling's first cut, as the slowest
   transcoder does, is still segment 0 of the broadcast, so only a rung that had a session in this
   broadcast before is taken as rejoining, and a broadcast's rungs are forgotten when its ladder is
-  released. A sibling also counts as publishing only once it has read its own feed head, because
+  released. A source that restarts while one rung of the last broadcast still finalizes keeps that
+  ladder, so a late rung of the next opening is then joined, which lands it on its siblings' cut and
+  line all the same. A sibling also counts as publishing only once it has read its own feed head, because
   until then its numbers are its own count from 0: read before that, at the opening of a later
   broadcast on the same declaration, it dated a rung the previous recording's length away. A restart
   of this process forgets which rungs had a session, so a rung reaped before a restart and back after
