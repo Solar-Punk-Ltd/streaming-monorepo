@@ -308,11 +308,19 @@ async function main(): Promise<void> {
     containerRepository,
     stackVersionRepository,
   );
-  chequebookOperations = createChequebookOperationsService(database.pool, {
-    rpcEndpoints: process.env.CHEQUEBOOK_RPC_ENDPOINTS,
-    dockerTransports: process.env.CHEQUEBOOK_DOCKER_TRANSPORTS,
-    dockerHost: process.env.DOCKER_HOST,
-  });
+  // Every node through its Bee API, the address stamps and the inventory use, and the chain through the manager's
+  // own endpoint: CHEQUEBOOK_RPC_ENDPOINTS for a chain it names, else FUNDING_RPC_URL, else BEE_RPC_ENDPOINT. No
+  // Docker connection and no ssh alias is needed for a chequebook move.
+  chequebookOperations = createChequebookOperationsService(
+    database.pool,
+    {
+      rpcEndpoints: process.env.CHEQUEBOOK_RPC_ENDPOINTS,
+      chainEndpoint: config.fundingRpcUrl ?? config.beeRpcEndpoint ?? undefined,
+      dockerTransports: process.env.CHEQUEBOOK_DOCKER_TRANSPORTS,
+      dockerHost: process.env.DOCKER_HOST,
+    },
+    { profiles: profileRepository, containers: containerRepository },
+  );
   chequebookOperations.start();
   // The project guard and the daemon lock: every deploy attempt holds its
   // project until its containers prove it over, and shared-tag builds wait

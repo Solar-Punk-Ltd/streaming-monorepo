@@ -22,12 +22,17 @@ import {
 import { requireBeeBindingTarget } from './DockerBeeBinding.js';
 import { performance } from 'node:perf_hooks';
 
-/** A saved locator, not proof of current Docker ownership. Topology is asserted by the operator. */
+/**
+ * A saved locator, not proof of current Docker ownership. Topology is asserted by the operator. `submissionTarget`
+ * is the SQL ownership the journal admits the transfer under, captured with the locator; a transfer without one is
+ * refused at admission.
+ */
 export interface ConfiguredBeeTarget {
   readonly topology: 'operator_asserted_direct';
   readonly profileInstanceId: string;
   readonly url: string;
   readonly revision: string;
+  readonly submissionTarget?: FrozenChequebookTarget;
 }
 export type ResolveConfiguredBeeTarget = (profileName: string) => Promise<ConfiguredBeeTarget>;
 
@@ -315,6 +320,7 @@ export class ChequebookTransferPreparation extends TransferPreparation {
         const session = createSession(target.url);
         return {
           session,
+          submissionTarget: target.submissionTarget,
           chainEndpoint: null,
           dispose: () => session.dispose(),
           recheck: async (currentStep) => {
