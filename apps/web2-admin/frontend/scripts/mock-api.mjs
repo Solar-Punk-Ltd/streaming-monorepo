@@ -53,11 +53,6 @@ const COOKIE = 'web2_admin_session';
 const SEED_USERNAME = process.env.SEED_ADMIN_USERNAME ?? 'admin';
 let seedPassword = process.env.SEED_ADMIN_PASSWORD ?? 'admin1234';
 
-// The mock stage runs SRS, so its record offers RTMP as every SRS stage the
-// manager pushes does. MOCK_RTMP_PUBLIC=false shows the panel of a stage that
-// takes SRT alone, as an OvenMediaEngine one does.
-const RTMP_PUBLIC = process.env.MOCK_RTMP_PUBLIC !== 'false';
-
 const MOCK_STAGE_ID = '5f0c2a8e-1b2c-4d3e-8f40-0a1b2c3d4e5f';
 
 /** The look this host's console starts in, as `GET /api/config` answers it. Held in memory, never checked. */
@@ -81,7 +76,7 @@ const stages =
             host: 'ingest.example.test',
             srtPort: 10061,
             rtmpPort: 10062,
-            rtmpPublic: RTMP_PUBLIC,
+            rtmpPublic: true,
             hasSrtPassphrase: true,
           },
           rungs: [],
@@ -1524,7 +1519,6 @@ async function handle(req, res) {
 server.listen(PORT, '127.0.0.1', () => {
   console.log(`[mock-api] listening on http://127.0.0.1:${PORT}`);
   console.log(`[mock-api] log in as ${SEED_USERNAME} / ${seedPassword}`);
-  console.log(`[mock-api] MOCK_RTMP_PUBLIC=${RTMP_PUBLIC}`);
   console.log(
     `[mock-api] stages: ${stages.length === 0 ? 'none (MOCK_NO_STAGES)' : stages.map((stage) => stage.name).join(', ')}`,
   );

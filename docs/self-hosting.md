@@ -310,9 +310,10 @@ images on the host itself.
    reaches this host on, its `HostName` in the manager's ssh config, because the manager dials the
    Bee API there.
 
-   The generated table drops the RTMP port, the one ending in 2, like any other private port. Both
-   consoles offer RTMP on every SRS stage all the same, because which ports are reachable is the
-   firewall's job: open that port in the table if broadcasters are to use RTMP. SRS allows play
+   The generated table drops the RTMP port, the one ending in 2, like any other private port. The
+   manager's console offers RTMP on every SRS stage all the same, because which ports are reachable
+   is the firewall's job: open that port in the table if broadcasters are to use RTMP. The web2
+   admin shows a brand's broadcasters SRT only, because streaming uses SRT. SRS allows play
    from its own container only, so an open RTMP port takes publishes and refuses playback.
 
    RTMP is not encrypted. A broadcaster's stream key crosses the network as readable text, and a
