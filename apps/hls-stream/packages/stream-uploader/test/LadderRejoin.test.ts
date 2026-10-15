@@ -357,6 +357,26 @@ describe('a rung rejoining a live ladder', () => {
   });
 });
 
+describe('a rung rejoining a live ladder whose first upload is lost', () => {
+  /**
+   * ⛔ The sequence a rejoining rung joins at was read when its first segment was handed over, and taken
+   * by whichever segment landed first. Its first upload was refused, so its second landed first and
+   * took the first one's sequence, a cut early on its siblings' line for the rest of the broadcast.
+   */
+  it('places the segment that lands first at the sequence of its own cut', async () => {
+    const harness = rejoinHarness({ refusedLabels: new Set([`${rung1080}-x0`]) });
+    await reaped1080(harness);
+    harness.start(rung1080);
+    harness.restartCounter(rung1080);
+    for (const cut of ['x0', 'x1', 'x2', 'x3']) {
+      for (const streamId of fastRungs) await harness.deliver(streamId, cut);
+      await harness.deliver(rung1080, cut);
+      await harness.passTime(SEGMENT_SECONDS * 1_000);
+    }
+    await assertOneTimeline(harness, ['x1', 'x2', 'x3'].map(everyRung), everyRung('x3'));
+  });
+});
+
 describe('a ladder opening on a declaration that already has a recording', () => {
   /**
    * ⛔ A rung announcing more than a fragment after its siblings' first cut found them with media, and
