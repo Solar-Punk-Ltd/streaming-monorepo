@@ -314,9 +314,11 @@ the remediation's handover record, which the repository's history keeps.
 against a synthetic Bee. They do not check a real Bee image, they do not open
 a real SSH connection, and they move no money.
 
-**The seed catalog has one entry, from a real host.**
+**The seed catalog has two entries, each from a real host.**
 `PRODUCTION_BEE_BRIDGE_QUALIFICATIONS` in
 `manager/src/domain/chequebook/beeBridgeQualification.ts` carries
+`bee-2.8.3-docker-29.1.3`, qualified on 2026-10-15 against a throwaway
+container of the digest-pinned 2.8.3 image, and
 `bee-2.8.2-docker-29.1.3`, qualified on 2026-09-14 by
 `manager/scripts/qualify-bee-bridge.mjs` against the Bee image the deployment
 host runs, with its image id, engine version, platform, harness revision and

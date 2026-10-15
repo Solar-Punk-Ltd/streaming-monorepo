@@ -96,10 +96,11 @@ export function storedPassRecord(pass: {
  * that first check. A route that pins ids is qualified by the entries it names
  * and nothing else.
  *
- * The one entry was produced by `manager/scripts/qualify-bee-bridge.mjs` on
- * 2026-09-14. Its `harnessRevision` is the git object id the script had then,
- * kept as history. A pass the manager stores carries BEE_BRIDGE_CHECK_REVISION
- * instead, a hash of the check's own definition. `evidenceDigest` is the hash
+ * The entries were produced by `manager/scripts/qualify-bee-bridge.mjs`, the
+ * 2.8.2 one on 2026-09-14 and the 2.8.3 one on 2026-10-15. The 2.8.2 entry's
+ * `harnessRevision` is the git object id the script had then, kept as history.
+ * The 2.8.3 entry, like a pass the manager stores, carries
+ * BEE_BRIDGE_CHECK_REVISION, a hash of the check's own definition. `evidenceDigest` is the hash
  * of what the check saw. An entry is about the image, never the container.
  *
  * An entry stops matching the moment anything it pins moves, the image, the
@@ -115,6 +116,20 @@ export const PRODUCTION_BEE_BRIDGE_QUALIFICATIONS: readonly BeeBridgeQualificati
     bridgeRevision: DOCKER_BEE_BRIDGE_REVISION,
     harnessRevision: 'ce9ef1a6b01273c4eb2759ba0ea32f01416356f0',
     evidenceDigest: 'sha256:ff368ea1c36ab4700c61cf32e46015d3de7fc40a4d5e3ba4cfc02c34fbfc0d43',
+    bridgeLifetimeSeconds: QUALIFIED_BRIDGE_LIFETIME_SECONDS,
+    cleanupGraceMs: QUALIFIED_CLEANUP_GRACE_MS,
+    streamBounds: DOCKER_BEE_STREAM_BOUNDS,
+  }),
+  Object.freeze({
+    // ethersphere/bee:2.8.3 on Docker 29.1.3, qualified 2026-10-15 on a throwaway container of
+    // ethersphere/bee:2.8.3 pinned by digest.
+    id: 'bee-2.8.3-docker-29.1.3',
+    imageId: 'sha256:1ac3764245af757e697a983700cff34e15e34305c74a418d26fd9e19b8619f58',
+    engineVersion: '29.1.3',
+    platform: Object.freeze({ os: 'linux', architecture: 'amd64', variant: '' }),
+    bridgeRevision: DOCKER_BEE_BRIDGE_REVISION,
+    harnessRevision: 'sha256:feed2615c07150344e0c33e04bf3d8351e7e1df48467afd2b3b5f60e40573169',
+    evidenceDigest: 'sha256:7838fb07717ae8261aeccd5b57ece87cb59c9e3e71b8738a1315ab2a5f5dc335',
     bridgeLifetimeSeconds: QUALIFIED_BRIDGE_LIFETIME_SECONDS,
     cleanupGraceMs: QUALIFIED_CLEANUP_GRACE_MS,
     streamBounds: DOCKER_BEE_STREAM_BOUNDS,

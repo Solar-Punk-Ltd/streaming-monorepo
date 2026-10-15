@@ -483,11 +483,11 @@ OBS/FFmpeg ──SRT or RTMP──> SRS (SRT on port 10080/udp, RTMP on port 193
 
 | Service              | Image                                             | Description                                            |
 | -------------------- | ------------------------------------------------- | ------------------------------------------------------ |
-| `bee-uploader`       | `ethersphere/bee:2.8.2`                           | Bee node for uploading to Swarm, and the 360p rung     |
-| `bee-uploader-480p`  | `ethersphere/bee:2.8.2`                           | The 480p rung's own Bee node. Disabled by default      |
-| `bee-uploader-720p`  | `ethersphere/bee:2.8.2`                           | The 720p rung's own Bee node. Disabled by default      |
-| `bee-uploader-1080p` | `ethersphere/bee:2.8.2`                           | The 1080p rung's own Bee node. Disabled by default     |
-| `bee-gateway`        | `ethersphere/bee:2.8.2`                           | Bee node for reading (paired with `client`)            |
+| `bee-uploader`       | `ethersphere/bee:2.8.3`                           | Bee node for uploading to Swarm, and the 360p rung     |
+| `bee-uploader-480p`  | `ethersphere/bee:2.8.3`                           | The 480p rung's own Bee node. Disabled by default      |
+| `bee-uploader-720p`  | `ethersphere/bee:2.8.3`                           | The 720p rung's own Bee node. Disabled by default      |
+| `bee-uploader-1080p` | `ethersphere/bee:2.8.3`                           | The 1080p rung's own Bee node. Disabled by default     |
+| `bee-gateway`        | `ethersphere/bee:2.8.3`                           | Bee node for reading (paired with `client`)            |
 | `stream-uploader`    | Built from `Dockerfile.uploader`                  | Receives segments, uploads to Swarm                    |
 | `srs`                | `ghcr.io/solar-punk-ltd/swarm-srs:6.0-r2-swarm.4` | SRT/RTMP to HLS, ABR transcode, see engines/README.md  |
 | `ome`                | `airensoft/ovenmediaengine:latest`                | SRT ingest, uploader pulls HLS over HTTP               |

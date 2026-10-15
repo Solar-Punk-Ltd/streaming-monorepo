@@ -16,8 +16,8 @@ postage contract do is read from their source, bee at `v2.7.0` (checkout of
 2026-01-29) and storage-incentives' `PostageStamp.sol` (checkout of
 2026-01-15), and each such statement below says so. The page was re-read at
 the merge of `fix/full-stamps-and-sick-uploaders`, which made a mutable batch
-past 90% warn too. The nodes the bundled stack v3.4 deploys run
-`ethersphere/bee:2.8.2`, which was not re-read.
+past 90% warn too. The nodes the bundled stack deploys run
+`ethersphere/bee:2.8.3` since 2026-10-15, which was not re-read.
 
 ## What a batch is
 

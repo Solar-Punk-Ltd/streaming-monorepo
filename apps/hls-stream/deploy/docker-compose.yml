@@ -8,7 +8,7 @@ services:
   # --- Bee Nodes ---
 
   bee-uploader:
-    image: ethersphere/bee:2.8.2@sha256:c0c951f0795e813be6b865213e2c277fd1449f862bb4b6357085391c4fb54810
+    image: ethersphere/bee:2.8.3@sha256:3a03e58a693e91d0cc631325423124cf59dc7c2461f5977e16848defde41cdc1
     profiles: ['bee-uploader']
     restart: unless-stopped
     logging: *default-logging
@@ -61,7 +61,7 @@ services:
   # batch. Four nodes is four things to fund and four batches to watch, which is the cost of the
   # measurement being honest rather than an accident of one node's ceiling.
   bee-uploader-480p:
-    image: ethersphere/bee:2.8.2@sha256:c0c951f0795e813be6b865213e2c277fd1449f862bb4b6357085391c4fb54810
+    image: ethersphere/bee:2.8.3@sha256:3a03e58a693e91d0cc631325423124cf59dc7c2461f5977e16848defde41cdc1
     profiles: ['bee-uploader-480p']
     restart: unless-stopped
     logging: *default-logging
@@ -86,7 +86,7 @@ services:
       - --password-file=/home/bee/.bee/password
 
   bee-uploader-720p:
-    image: ethersphere/bee:2.8.2@sha256:c0c951f0795e813be6b865213e2c277fd1449f862bb4b6357085391c4fb54810
+    image: ethersphere/bee:2.8.3@sha256:3a03e58a693e91d0cc631325423124cf59dc7c2461f5977e16848defde41cdc1
     profiles: ['bee-uploader-720p']
     restart: unless-stopped
     logging: *default-logging
@@ -111,7 +111,7 @@ services:
       - --password-file=/home/bee/.bee/password
 
   bee-uploader-1080p:
-    image: ethersphere/bee:2.8.2@sha256:c0c951f0795e813be6b865213e2c277fd1449f862bb4b6357085391c4fb54810
+    image: ethersphere/bee:2.8.3@sha256:3a03e58a693e91d0cc631325423124cf59dc7c2461f5977e16848defde41cdc1
     profiles: ['bee-uploader-1080p']
     restart: unless-stopped
     logging: *default-logging
@@ -136,7 +136,7 @@ services:
       - --password-file=/home/bee/.bee/password
 
   bee-gateway:
-    image: ethersphere/bee:2.8.2@sha256:c0c951f0795e813be6b865213e2c277fd1449f862bb4b6357085391c4fb54810
+    image: ethersphere/bee:2.8.3@sha256:3a03e58a693e91d0cc631325423124cf59dc7c2461f5977e16848defde41cdc1
     profiles: ['bee-gateway']
     restart: unless-stopped
     logging: *default-logging
