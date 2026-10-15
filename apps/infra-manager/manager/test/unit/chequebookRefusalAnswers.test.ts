@@ -91,6 +91,7 @@ function chainReader(overrides: Partial<ChequebookChainReader> = {}): Chequebook
 interface Breakage {
   readonly runtime?: {
     readonly rpcEndpoints?: string;
+    readonly chainEndpoint?: string;
     readonly dockerTransports?: string;
     readonly dockerHost?: string;
   };
@@ -371,10 +372,28 @@ describe('a refused transfer names its cause in the answer', { timeout: 20_000 }
     );
   });
 
-  it('wrong chain: the endpoint the node was started with answers for another chain', async (t) => {
+  it("chain endpoint missing: with no endpoint configured, the node's own is never read", async (t) => {
+    // The node was started with an endpoint that answers for another chain; the registry never asks it.
     assertRefused(
       await refusedDeposit(t, {
         runtime: { rpcEndpoints: undefined },
+        dependencies: () => ({
+          createChainReader: () =>
+            chainReader({
+              async chainId() {
+                return 1;
+              },
+            }),
+        }),
+      }),
+      'chain_endpoint_missing',
+    );
+  });
+
+  it("wrong chain: the manager's default endpoint answers for another chain than the node's", async (t) => {
+    assertRefused(
+      await refusedDeposit(t, {
+        runtime: { rpcEndpoints: undefined, chainEndpoint: 'https://rpc.example.invalid/private-default' },
         dependencies: () => ({
           createChainReader: () =>
             chainReader({
