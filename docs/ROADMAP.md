@@ -199,8 +199,8 @@ Decided after a broadcaster could not go live from OBS. Nothing was broken: ever
 because the panel sent OBS users to an "OBS Passphrase field" that OBS does
 not have.
 
-- The OBS panel says, for SRT and, where it is offered, for RTMP, what goes
-  in OBS's Server box and its Stream Key box. For SRT the passphrase rides on the Server
+- The OBS panel says, for SRT, what goes in OBS's Server box and its Stream
+  Key box (it named RTMP too until SPDV-1682). For SRT the passphrase rides on the Server
   line as `&passphrase=`, which OBS reads after its Use authentication Password
   and so wins, and the Stream Key stays empty, because OBS hands that box to
   SRT as the stream id and the URL's own `streamid=` replaces it. OBS ends a
@@ -443,8 +443,7 @@ RTMP because one firewall draft leaves its port closed.
 
 The shared warning beside RTMP, which the manager's Publish card shows, states
 what the protocol does with a key. SRS 6 has no TLS on its RTMP listener, so
-there is no RTMPS. An RTMP stream key
-crosses the network as readable text, and a key read off the network publishes
+there is no RTMPS. An RTMP stream key crosses the network as readable text, and a key read off the network publishes
 over RTMP whichever protocol it was read from, because SRT sends the key before
 encryption starts. With the takeover on, such a publisher can replace a live
 broadcast too. The SRT passphrase keeps the picture private but not the key. A
