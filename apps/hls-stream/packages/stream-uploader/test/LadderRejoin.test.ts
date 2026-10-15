@@ -35,7 +35,7 @@ const RUNG_NAMES = ['360p', '480p', '720p', '1080p'] as const;
 const LADDER_BASE = 'audio/ladder-stream';
 const VOD_TAG = '#EXT-X-PLAYLIST-TYPE:VOD';
 const rungIds = RUNG_NAMES.map((rung) => `${LADDER_BASE}_${rung}`);
-const [, , , rung1080] = rungIds;
+const [rung360, , , rung1080] = rungIds;
 const fastRungs = rungIds.slice(0, 3);
 
 interface ManifestWrite {
@@ -397,5 +397,48 @@ describe('a ladder opening on a declaration that already has a recording', () =>
       await harness.passTime(SEGMENT_SECONDS * 1_000);
     }
     await assertOneTimeline(harness, ['x0', 'x1', 'x2'].map(everyRung), everyRung('x2'));
+  });
+});
+
+describe('a rung resuming in a partial return while behind on its uploads', () => {
+  /**
+   * ⛔ 360p comes back from its own drop while its siblings publish, and its first resumed segment lands
+   * after it has already handed over its second. The return compared the siblings' newest hand-over
+   * with 360p's newest rather than with the segment being placed, took that segment for its siblings'
+   * newest cut, and resumed 360p a sequence high for the rest of the broadcast.
+   */
+  it('resumes it on the sequence of the cut it is placing, not of the cut it handed over last', async () => {
+    const harness = rejoinHarness();
+    const others = rungIds.slice(1);
+    for (const streamId of rungIds) harness.start(streamId);
+    for (let round = 0; round < 3; round++) {
+      for (const streamId of rungIds) await harness.deliver(streamId, `a${round}`);
+      await harness.passTime(SEGMENT_SECONDS * 1_000);
+    }
+    harness.orchestrator.noteDisconnect(rung360);
+    for (let round = 3; round < 6; round++) {
+      for (const streamId of others) await harness.deliver(streamId, `a${round}`);
+      await harness.passTime(SEGMENT_SECONDS * 1_000);
+    }
+
+    // 360p's c0 is the cut its siblings deliver as a6, and c1 is a7. Its uploads are held behind.
+    harness.start(rung360);
+    const release = harness.hold(rung360);
+    harness.handOver(rung360, 'c0');
+    for (const streamId of others) await harness.deliver(streamId, 'a6');
+    await harness.passTime(SEGMENT_SECONDS * 1_000);
+    harness.handOver(rung360, 'c1');
+    for (const streamId of others) await harness.deliver(streamId, 'a7');
+    release();
+    await harness.landed(rung360, 'c1');
+    await harness.passTime(SEGMENT_SECONDS * 1_000);
+    for (let cut = 2; cut < 4; cut++) {
+      await harness.deliver(rung360, `c${cut}`);
+      for (const streamId of others) await harness.deliver(streamId, `a${6 + cut}`);
+      await harness.passTime(SEGMENT_SECONDS * 1_000);
+    }
+
+    const rows = [0, 1, 2, 3].map((cut) => [`c${cut}`, ...others.map(() => `a${6 + cut}`)]);
+    await assertOneTimeline(harness, rows, ['c3', ...others.map(() => 'a9')]);
   });
 });
