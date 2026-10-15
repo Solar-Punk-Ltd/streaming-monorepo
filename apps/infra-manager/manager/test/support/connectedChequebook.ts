@@ -17,10 +17,9 @@ import pg, { type Pool } from 'pg';
 import type { BeeTransaction, ChequebookBalance } from '@streaming-infra-manager/common';
 import type { BeeAddresses, BeeChequebookAddress, BeeWallet } from '../../src/domain/BeeClient.js';
 import type { ChequebookChainReader } from '../../src/domain/chequebook/ChequebookChainRegistry.js';
-import {
-  createChequebookOperationsService,
-  type ChequebookRuntime,
-  type ChequebookServiceDependencies,
+import type {
+  ChequebookRuntime,
+  ChequebookServiceDependencies,
 } from '../../src/domain/chequebook/createChequebookOperationsService.js';
 import type { ChequebookOperationsService } from '../../src/domain/chequebook/ChequebookOperationsService.js';
 import type { BeeTransferSession } from '../../src/domain/chequebook/PinnedBeeSession.js';
@@ -41,6 +40,7 @@ import { InMemorySessionRepository } from './InMemorySessionRepository.js';
 import { InMemoryUserRepository } from './InMemoryUserRepository.js';
 import { instanceForProfile, transactionHash, transferContext } from './chequebookOperations.js';
 import { seedSyntheticChequebookTarget, SyntheticTargetChequebookRepository } from './syntheticChequebookTargets.js';
+import { PLACEHOLDER_DATABASE_URL } from '../unit/run.mjs';
 
 export const CONNECTED_PROFILE = 'test-deployment';
 /** The port the synthetic Bee container records, which the SQL reservation has to agree with. */
@@ -267,6 +267,14 @@ export interface ConnectedChequebookBackend {
 export async function startConnectedChequebook(
   options: ConnectedChequebookOptions,
 ): Promise<ConnectedChequebookBackend> {
+  // The service factory reaches src/utils/config.ts, through the direct route's resolver and localHost.ts, and
+  // config.ts refuses to load without DATABASE_URL. The connected suites set only CHEQUEBOOK_TEST_PG_PORT, so the
+  // factory is loaded here, after the same placeholder test/unit/run.mjs gives the unit suite for the same reason
+  // (PLACEHOLDER_DATABASE_URL). Nothing connects with it: the journal pool below is built from the test port alone,
+  // and a URL already set is kept.
+  process.env.DATABASE_URL ??= PLACEHOLDER_DATABASE_URL;
+  const { createChequebookOperationsService } =
+    await import('../../src/domain/chequebook/createChequebookOperationsService.js');
   const connection = {
     host: '127.0.0.1',
     port: options.pgPort,
