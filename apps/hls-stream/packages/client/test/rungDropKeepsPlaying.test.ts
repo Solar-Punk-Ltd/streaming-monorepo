@@ -111,12 +111,14 @@ describe('a rung refused at a switch is taken out without stopping the player', 
     assert.ok(levels.length > 0 && !levels.includes(TOP.height), `levels loaded: ${levels.join(', ')}`);
   });
 
-  it('raises no fatal error on a live broadcast either', async () => {
-    const { errors } = await playWhileTopIsRefused(false);
+  it('raises no fatal error on a live broadcast either, and carries on with a rung that is left', async () => {
+    const { errors, levels } = await playWhileTopIsRefused(false);
 
     assert.deepEqual(
       errors.filter((error) => error.fatal).map((error) => error.details),
       [],
     );
+    assert.equal(hls?.levels.length, RUNGS.length - 1, 'the refused rung was not taken out');
+    assert.ok(levels.length > 0 && !levels.includes(TOP.height), `levels loaded: ${levels.join(', ')}`);
   });
 });
