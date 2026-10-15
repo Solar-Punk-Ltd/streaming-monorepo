@@ -4,7 +4,11 @@ import type { ContainerRepository } from '../ContainerRepository.js';
 import type { ProfileRepository } from '../ProfileRepository.js';
 import { beeApiUrlFor } from '../StampService.js';
 import { ChequebookPreparationError } from '../errors/ChequebookPreparationError.js';
+import { ChequebookProfileChangedError } from '../errors/ChequebookProfileChangedError.js';
 import type { CaptureTransferTarget, ConfiguredBeeTarget } from './ChequebookTransferPreparation.js';
+
+/** The states a deployment is between two shapes in, whose node a transfer must not be prepared against. */
+const CHANGING = ['DEPLOYING', 'STOPPING', 'REMOVING'];
 
 /**
  * The bee API address a chequebook transfer is prepared against, worked out
@@ -13,11 +17,14 @@ import type { CaptureTransferTarget, ConfiguredBeeTarget } from './ChequebookTra
  * port the deployment's reservation owns, and the journal refuses a transfer
  * that brings no such target.
  *
- * TODO (Dev-1): the port it takes is the one the container reports. Before
- * anything is sent it must equal `submissionTarget.reservation.port`, the port
- * the reservation says this deployment owns, or the transfer is refused;
- * until then a transfer can be prepared against a port another deployment has
- * since been given.
+ * The port the `bee-uploader` container recorded must be the one the
+ * reservation says this deployment owns, or nothing is prepared: a port another
+ * deployment has since been given is never dialled. Every refusal names its
+ * cause, the way the Docker route's does: a deployment between two shapes, or
+ * more than one Bee container recorded for it, is `target_changed`; no Bee
+ * container is `bee_container_not_found`; a recorded port that is missing, out
+ * of range or not the reserved one is `bee_container_unsupported`. A deployment
+ * the capture finds removed or replaced keeps its own error, answered as 409.
  */
 export class ConfiguredBeeTargetResolver {
   constructor(
@@ -29,19 +36,22 @@ export class ConfiguredBeeTargetResolver {
   async resolve(profileName: string): Promise<ConfiguredBeeTarget> {
     try {
       const profile = await this.profiles.findByName(profileName);
-      if (!profile || !ownsBeeNode(profile) || ['DEPLOYING', 'STOPPING', 'REMOVING'].includes(profile.status))
-        throw new ChequebookPreparationError();
+      if (!profile || !ownsBeeNode(profile)) throw new ChequebookPreparationError();
+      if (CHANGING.includes(profile.status)) throw new ChequebookPreparationError('target_changed');
       const bees = (await this.containers.listApiContainers(profileName)).filter(
         (container) => container.service === BEE_UPLOADER_SERVICE,
       );
-      const port = bees[0]?.ports.BEE_UPLOADER_API_PORT;
-      if (bees.length !== 1 || !Number.isInteger(port) || port! < 1 || port! > 65535)
-        throw new ChequebookPreparationError();
+      if (bees.length === 0) throw new ChequebookPreparationError('bee_container_not_found');
+      if (bees.length !== 1) throw new ChequebookPreparationError('target_changed');
+      const port = bees[0]!.ports.BEE_UPLOADER_API_PORT;
+      if (!Number.isInteger(port) || port! < 1 || port! > 65535)
+        throw new ChequebookPreparationError('bee_container_unsupported');
       const url = new URL(beeApiUrlFor(profile));
       url.port = String(port);
       if (url.protocol !== 'http:' || url.username || url.password || url.pathname !== '/' || url.search || url.hash)
         throw new ChequebookPreparationError();
       const submissionTarget = await this.captureTarget(profile.name, profile.instance_id);
+      if (submissionTarget.reservation.port !== port) throw new ChequebookPreparationError('bee_container_unsupported');
       const revision = createHash('sha256')
         .update(
           JSON.stringify([
@@ -68,6 +78,7 @@ export class ConfiguredBeeTargetResolver {
         submissionTarget,
       });
     } catch (error) {
+      if (error instanceof ChequebookProfileChangedError) throw error;
       throw ChequebookPreparationError.keeping(error);
     }
   }

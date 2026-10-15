@@ -3,6 +3,9 @@ import { describe, it } from 'node:test';
 import { ChequebookTransferPreparation } from '../../src/domain/chequebook/ChequebookTransferPreparation.js';
 import { ChequebookSubmission } from '../../src/domain/chequebook/ChequebookSubmission.js';
 import { ChequebookChainRegistry } from '../../src/domain/chequebook/ChequebookChainRegistry.js';
+import { ConfiguredBeeTargetResolver } from '../../src/domain/chequebook/ConfiguredBeeTargetResolver.js';
+import { ChequebookPreparationError } from '../../src/domain/errors/ChequebookPreparationError.js';
+import type { Profile } from '../../src/types/index.js';
 import {
   InMemoryChequebookOperations,
   profileInstanceId,
@@ -268,5 +271,104 @@ describe('fresh pinned transfer preparation', () => {
     await assert.rejects(preparation.prepare(transferIntent()), /checked/i);
     assert.equal(h.counts().disposed, 1);
     assert.equal(h.counts().posts, 0);
+  });
+});
+
+/**
+ * The direct route as the service builds it: the resolver works the node's Bee API address out of the deployment and
+ * the port its Bee container recorded, checks that port against the one the deployment's reservation owns, and only
+ * then is a session opened to it.
+ */
+describe("the direct route's target in front of the preparation", () => {
+  const deployment = {
+    instance_id: profileInstanceId,
+    name: 'test-deployment',
+    port_slot: 1,
+    host: 'bee-host',
+    kind: 'streamer',
+    components: null,
+    status: 'RUNNING',
+    created_at: new Date(0),
+    updated_at: new Date(0),
+    stack_version_id: 1,
+  } as Profile;
+  /** The SQL ownership, its reservation owning `port`: only its shape matters here. */
+  const owning = (port: number) =>
+    Object.freeze({
+      version: 1 as const,
+      profile: {
+        name: deployment.name,
+        instanceId: deployment.instance_id,
+        intentRevision: 1,
+        engineConfigRevision: 1,
+        kind: deployment.kind,
+        components: null,
+        host: deployment.host,
+        portSlot: deployment.port_slot,
+        stackVersionId: 1,
+        status: deployment.status,
+      },
+      alias: 'bee-host',
+      daemonId: 'daemon',
+      verifiedAt: '2026-01-01T00:00:00.000000Z',
+      reservation: {
+        id: 1,
+        protocol: 'tcp' as const,
+        port,
+        service: 'bee-uploader' as const,
+        portVar: 'BEE_UPLOADER_API_PORT' as const,
+      },
+    });
+
+  function direct(options: { host?: string; recorded: number; reserved: number }) {
+    const h = harness();
+    const urls: string[] = [];
+    const resolver = new ConfiguredBeeTargetResolver(
+      { findByName: async () => ({ ...deployment, host: options.host ?? deployment.host }) },
+      {
+        listApiContainers: async () => [
+          {
+            service: 'bee-uploader',
+            ports: { BEE_UPLOADER_API_PORT: options.recorded },
+            buildId: null,
+            buildCommit: null,
+            buildLabel: null,
+          },
+        ],
+      },
+      async () => owning(options.reserved),
+    );
+    const preparation = new ChequebookTransferPreparation(
+      resolver.resolve.bind(resolver),
+      new ChequebookChainRegistry('{"100":"https://rpc.example.invalid"}', () => h.reader),
+      (url) => {
+        urls.push(url);
+        return h.session;
+      },
+    );
+    return { preparation, urls, counts: h.counts };
+  }
+
+  it('refuses a recorded port that is not the reserved one before any session opens, as bee_container_unsupported', async () => {
+    const d = direct({ recorded: 12005, reserved: 12015 });
+    await assert.rejects(d.preparation.prepare(transferIntent()), (error) => {
+      assert.ok(error instanceof ChequebookPreparationError);
+      assert.equal(error.refusal.cause, 'bee_container_unsupported');
+      return true;
+    });
+    assert.deepEqual(d.urls, []);
+    assert.deepEqual(d.counts(), { disposed: 0, posts: 0, sessions: 0 });
+  });
+
+  it("opens its session at the deployment's address and the port its Bee container recorded", async () => {
+    const d = direct({ recorded: 12005, reserved: 12005 });
+    await d.preparation.prepare(transferIntent());
+    assert.deepEqual(d.urls, ['http://bee-host:12005/']);
+  });
+
+  it('reaches a user@host deployment at the host alone', async () => {
+    const d = direct({ host: 'operator@bee.example.invalid', recorded: 12005, reserved: 12005 });
+    await d.preparation.prepare(transferIntent());
+    assert.deepEqual(d.urls, ['http://bee.example.invalid:12005/']);
   });
 });
