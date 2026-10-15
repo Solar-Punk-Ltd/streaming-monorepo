@@ -4,18 +4,19 @@
  * Every other money suite replaces one part: the SQL suite fakes the chain and
  * the Bee session, the factory test fakes the journal, the browser suites fake
  * the manager. This one signs in over HTTP, goes through the real router into
- * a real PostgreSQL journal, over the owned Docker transport to a synthetic
- * Bee, and reads the outcome back out. What is synthetic is the Bee, the chain
- * and the database. The composition is the production one.
+ * a real PostgreSQL journal, along the direct route the manager takes, the
+ * deployment's recorded Bee API address, to a synthetic Bee, and reads the
+ * outcome back out. The chain is read through the manager's own settings.
+ * What is synthetic is the Bee session, the chain and the database. The
+ * composition is the production one, and nothing in it opens a Docker
+ * connection.
  *
  * It needs a disposable PostgreSQL on CHEQUEBOOK_TEST_PG_PORT. Without it the file
  * skips rather than passing quietly.
  */
 import assert from 'node:assert/strict';
 import { randomUUID } from 'node:crypto';
-import fs, { stat } from 'node:fs/promises';
 import http from 'node:http';
-import { syncBuiltinESMExports } from 'node:module';
 import { describe, it, type TestContext } from 'node:test';
 import pg from 'pg';
 import {
@@ -25,11 +26,12 @@ import {
   SESSION_COOKIE_NAME,
   type ChequebookOperation,
 } from '@streaming-infra-manager/common';
-import { syntheticBeeBridgeCheckAnswer } from '../support/beeBridgeCheckAnswer.js';
-import { syntheticImageId, syntheticNodeChainEndpoint } from '../support/syntheticDockerBee.js';
 import { createChequebookOperationsService } from '../../src/domain/chequebook/createChequebookOperationsService.js';
+import { ContainerRepository } from '../../src/domain/ContainerRepository.js';
 import { instanceForProfile, transactionHash } from '../support/chequebookOperations.js';
 import {
+  CONNECTED_CHAIN_ENDPOINT,
+  CONNECTED_DEFAULT_CHAIN_ENDPOINT,
   CONNECTED_OPERATOR,
   CONNECTED_OPERATOR_PASSWORD,
   CONNECTED_PROFILE,
@@ -77,7 +79,7 @@ async function connected(t: TestContext, options: Omit<ConnectedChequebookOption
     await backend.close();
   };
   t.after(close);
-  t.diagnostic(`Owned synthetic Docker socket in ${backend.directory}, schema ${backend.schema}, API ${base}`);
+  t.diagnostic(`Schema ${backend.schema}, API ${base}`);
 
   const login = await fetch(`${base}/auth/login`, {
     method: 'POST',
@@ -138,7 +140,7 @@ async function connected(t: TestContext, options: Omit<ConnectedChequebookOption
 }
 
 describe(
-  'the connected chequebook path over a real journal and an owned synthetic Bee',
+  'the connected chequebook path over a real journal and a synthetic Bee on the direct route',
   { skip: !Number.isInteger(port) || port < 1 || port > 65535 },
   () => {
     it('accepts a deposit, polls its receipt to settlement and admits the next intent', async (t) => {
@@ -175,6 +177,32 @@ describe(
       assert.equal(h.beePosts(), 2);
     });
 
+    it('shows a move Submitted, then Mined while its block is not final, then Confirmed once it is', async (t) => {
+      const h = await connected(t);
+      h.chain.final(false);
+      h.service.start();
+      const admitted = await h.deposit();
+      const id = admitted.body.operation.id;
+      assert.equal(admitted.body.operation.state, 'submitted');
+      h.chain.answers('success');
+      const mined = await until(
+        () => h.row(id),
+        (operation) =>
+          operation.receiptObservation?.kind === 'pending' &&
+          operation.receiptObservation.reason === 'awaiting_finality',
+        'the mined receipt',
+      );
+      assert.equal(mined.state, 'submitted', 'mined is not yet confirmed');
+      h.chain.final(true);
+      const confirmed = await until(
+        () => h.row(id),
+        (operation) => operation.state === 'settled',
+        'the confirmed receipt',
+      );
+      assert.equal(confirmed.receiptObservation?.kind, 'settled');
+      assert.deepEqual(h.checkRequests(), [], 'the poller moved it on its own');
+    });
+
     it('records a reverted receipt without an operator action', async (t) => {
       const h = await connected(t);
       h.service.start();
@@ -191,7 +219,7 @@ describe(
       assert.equal(h.beePosts(), 1);
     });
 
-    it('leaves a lost response unknown, unpolled and blocking, until the operator recovers it', async (t) => {
+    it('leaves a lost response unknown, unpolled and blocking, until recovery finds the transfer, and then settles it', async (t) => {
       const h = await connected(t, { dropNextResponse: true });
       h.service.start();
       h.chain.answers('success');
@@ -210,13 +238,28 @@ describe(
       assert.equal(busy.body.operation.id, admitted.body.operation.id);
       const recovered = await h.check(admitted.body.operation.id);
       assert.equal(recovered.status, 200);
-      assert.equal(recovered.body.operation.state, 'unknown');
       assert.ok(recovered.body.operation.recoveryCheckedAt, 'the recovery pass was recorded');
+      assert.equal(
+        recovered.body.operation.transactionHash,
+        transactionHash,
+        "recovery found the node's pending transfer",
+      );
       assert.ok(
         h.beeRequests().some((request) => request.url === '/transactions'),
-        'recovery read the owned pending list',
+        "recovery read the node's pending list through its Bee API",
       );
       assert.equal(h.beePosts(), 1, 'recovery sent no second transfer');
+      const settled = await until(
+        () => h.row(admitted.body.operation.id),
+        (operation) => operation.state === 'settled',
+        'the recovered transfer settled',
+      );
+      assert.equal(settled.receiptObservation?.kind, 'settled');
+      assert.deepEqual(
+        [...new Set(h.chainEndpoints())],
+        [CONNECTED_CHAIN_ENDPOINT],
+        "recovery and its receipt read the chain through the manager's setting",
+      );
     });
 
     it('keeps polling across an RPC outage and records the receipt once the chain answers', async (t) => {
@@ -280,11 +323,10 @@ describe(
       const admitted = await h.deposit();
       const id = admitted.body.operation.id;
       assert.equal(admitted.body.operation.receiptCheckedAt, null, 'nothing polled before the manager started');
-      const unconfigured = { rpcEndpoints: undefined, dockerTransports: undefined, dockerHost: h.runtime.dockerHost };
-      const restarted = createChequebookOperationsService(h.pool, unconfigured, {
+      const restarted = createChequebookOperationsService(h.pool, h.runtime, {
+        ...h.directRoute,
         repository: h.repository,
         createChainReader: () => h.chain.reader,
-        connectUnix: h.connectUnix,
         receiptPolling: { intervalMs: 50 },
       });
       restarted.start();
@@ -299,10 +341,10 @@ describe(
         (length) => length === 0,
         'the spent budget',
       );
-      const afterBudget = createChequebookOperationsService(h.pool, unconfigured, {
+      const afterBudget = createChequebookOperationsService(h.pool, h.runtime, {
+        ...h.directRoute,
         repository: h.repository,
         createChainReader: () => h.chain.reader,
-        connectUnix: h.connectUnix,
         receiptPolling: { intervalMs: 50 },
       });
       afterBudget.start();
@@ -313,17 +355,13 @@ describe(
       assert.equal((await h.row(id)).state, 'submitted');
     });
 
-    it("with neither setting, checks the new image itself, transfers, and polls to settlement through the node's own endpoint", async (t) => {
-      const h = await connected(t, { unconfigured: true });
+    it("with only the manager's default endpoint, transfers and polls to settlement through it, and asks the node for none", async (t) => {
+      const h = await connected(t, { chainSettings: 'default' });
       h.service.start();
       const admitted = await h.deposit();
       assert.equal(admitted.status, 202);
       assert.equal(admitted.body.operation.state, 'submitted');
       assert.equal(h.beePosts(), 1);
-      const passes = await h.pool.query<{ outcome: string; host_alias: string; image_id: string }>(
-        'SELECT outcome, host_alias, image_id FROM bee_bridge_qualifications',
-      );
-      assert.deepEqual(passes.rows, [{ outcome: 'passed', host_alias: 'localhost', image_id: syntheticImageId }]);
       h.chain.answers('success');
       await until(
         () => h.row(admitted.body.operation.id),
@@ -332,25 +370,13 @@ describe(
       );
       assert.deepEqual(
         [...new Set(h.chainEndpoints())],
-        [syntheticNodeChainEndpoint],
-        "every chain read went through the node's own endpoint",
-      );
-      const next = await h.deposit();
-      assert.equal(next.status, 202);
-      assert.equal(next.body.kind, 'admitted');
-      assert.equal(h.beePosts(), 2);
-      assert.equal(
-        h.dockerRequests().filter((request) => request.exec === 'check').length,
-        1,
-        'the stored pass qualified the second transfer without another check',
+        [CONNECTED_DEFAULT_CHAIN_ENDPOINT],
+        "every chain read went through the manager's default endpoint",
       );
     });
 
-    it('with neither setting, refuses an image that fails the check with the check named, and sends nothing', async (t) => {
-      const h = await connected(t, {
-        unconfigured: true,
-        checkAnswer: syntheticBeeBridgeCheckAnswer({ missing: ['bash'] }),
-      });
+    it('with neither setting, refuses the transfer as chain_endpoint_missing with its sentence, and sends nothing', async (t) => {
+      const h = await connected(t, { chainSettings: 'none' });
       const response = await fetch(`${h.base}/profiles/${CONNECTED_PROFILE}/chequebook/deposit`, {
         method: 'POST',
         headers: h.headers,
@@ -365,17 +391,23 @@ describe(
       assert.equal(response.status, 503);
       assert.deepEqual(await response.json(), {
         error: 'chequebook_preparation_unavailable',
-        cause: 'bridge_not_qualified',
-        check: 'bash',
-        message: chequebookRefusalSentence({ cause: 'bridge_not_qualified', check: 'bash' }),
+        cause: 'chain_endpoint_missing',
+        check: null,
+        message: chequebookRefusalSentence({ cause: 'chain_endpoint_missing', check: null }),
       });
-      const stored = await h.pool.query<{ outcome: string; failed_check: string }>(
-        'SELECT outcome, failed_check FROM bee_bridge_qualifications',
-      );
-      assert.deepEqual(stored.rows, [{ outcome: 'failed', failed_check: 'bash' }]);
-      assert.deepEqual(h.beeRequests(), [], 'nothing reached Bee');
+      assert.deepEqual(h.chainEndpoints(), [], 'no chain reader was made');
       assert.equal(h.beePosts(), 0);
       assert.equal((await h.pool.query('SELECT 1 FROM chequebook_operations')).rowCount, 0, 'nothing was admitted');
+    });
+
+    it('reaches the node through its Bee API, at the port its container recorded, for the transfer and its recovery', async (t) => {
+      const h = await connected(t, { dropNextResponse: true });
+      const admitted = await h.deposit();
+      assert.equal(admitted.body.operation.state, 'unknown');
+      await h.check(admitted.body.operation.id);
+      const urls = h.bee.sessionUrls();
+      assert.ok(urls.length >= 2, 'one session for the transfer and one for the pending list');
+      for (const url of urls) assert.match(url, /^http:\/\/[^/@]+:11633\/$/, url);
     });
 
     it('replays the same request without a second transfer', async (t) => {
@@ -411,16 +443,14 @@ describe(
           )
         ).rowCount;
       const before = await schemas();
-      t.mock.method(fs, 'mkdtemp', async () => {
-        throw new Error('synthetic-directory-failure');
+      t.mock.method(ContainerRepository.prototype, 'upsert', async () => {
+        throw new Error('synthetic-container-failure');
       });
-      syncBuiltinESMExports();
       try {
-        await assert.rejects(startConnectedChequebook({ pgPort: port }), /synthetic-directory-failure/);
+        await assert.rejects(startConnectedChequebook({ pgPort: port }), /synthetic-container-failure/);
       } finally {
-        // A failure here would otherwise leave node:fs mocked for every later case in this file.
+        // A failure here would otherwise leave the repository mocked for every later case in this file.
         t.mock.restoreAll();
-        syncBuiltinESMExports();
       }
       assert.equal(await schemas(), before, 'the schema the failed start created was dropped again');
     });
@@ -433,7 +463,6 @@ describe(
         throw new Error('synthetic-shutdown-failure');
       };
       await assert.rejects(h.close(), /synthetic-shutdown-failure/);
-      await assert.rejects(stat(h.directory), { code: 'ENOENT' }, 'the socket directory is removed anyway');
       await assert.rejects(h.pool.query('SELECT 1'), /after calling end/i, 'the journal pool is closed anyway');
       assert.equal(
         (await admin.query('SELECT schema_name FROM information_schema.schemata WHERE schema_name = $1', [h.schema]))
@@ -441,15 +470,6 @@ describe(
         0,
         'the disposable schema is dropped anyway',
       );
-    });
-
-    it('leaves no temporary socket directory behind', async (t) => {
-      const h = await connected(t);
-      const admitted = await h.deposit();
-      assert.equal(admitted.body.operation.state, 'submitted');
-      await h.close();
-      await assert.rejects(stat(h.directory), { code: 'ENOENT' });
-      t.diagnostic(`Verified removed: ${h.directory}`);
     });
   },
 );
