@@ -383,7 +383,8 @@ describe('local owned Docker connection', { timeout: 5000 }, () => {
     // have run out, counted from the start. A deadline restarted after the locator would close it one pause
     // later. Every margin is hundreds of milliseconds, so a loaded machine cannot flip the result.
     const limits = { acquisitionTimeoutMs: 1500, preflightTimeoutMs: 300, postTimeoutMs: 300, cleanupGraceMs: 100 };
-    const keptCloseMs = 2200;
+    const keptCloseMs =
+      limits.acquisitionTimeoutMs + limits.preflightTimeoutMs + limits.postTimeoutMs + limits.cleanupGraceMs;
     const locatorPauseMs = 600;
     const h = harness(t);
     const started = performance.now();
