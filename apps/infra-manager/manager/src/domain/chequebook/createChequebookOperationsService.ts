@@ -21,7 +21,12 @@ import { PostgresBeeBridgeQualifications } from './PostgresBeeBridgeQualificatio
 import type { ChequebookOperationRepository } from './ChequebookOperationRepository.js';
 import type { BeeBridgeQualificationRecord } from './beeBridgeQualification.js';
 import { ChequebookDockerTransports, localDockerSocketPath } from './ChequebookDockerTransports.js';
-import { OwnedChequebookTransports, type ChequebookTransportDependencies } from './OwnedChequebookTransports.js';
+import {
+  OwnedChequebookTransports,
+  type ChequebookTransportCleanup,
+  type ChequebookTransportDependencies,
+} from './OwnedChequebookTransports.js';
+import { ChequebookPreparationError } from '../errors/ChequebookPreparationError.js';
 import { ConfiguredBeeTargetResolver } from './ConfiguredBeeTargetResolver.js';
 import { PinnedBeeSession, type BeeTransferSession } from './PinnedBeeSession.js';
 import type { ContainerRepository } from '../ContainerRepository.js';
@@ -124,8 +129,9 @@ export function createChequebookOperationsService(
     forSavedNode: (node: SavedChainNode, signal?: AbortSignal) =>
       registry().forSavedNode(node.chainId, node.nodeAddress, readNodeEndpoint(node), signal),
   };
-  const createSession = dependencies.createSession ?? ((url: string) => new PinnedBeeSession(url));
   // The real session serves both readers; the type above says a test's must too.
+  const sessions = ownedDirectSessions(dependencies.createSession ?? ((url: string) => new PinnedBeeSession(url)));
+  const createSession = sessions.create;
   const preparation = direct
     ? new ChequebookTransferPreparation(direct.resolve.bind(direct), chains, createSession, {
         timeoutMs: dependencies.preparation?.timeoutMs,
@@ -153,7 +159,48 @@ export function createChequebookOperationsService(
     new ChequebookSubmission(repository, preparation.prepare.bind(preparation)),
     receipts,
     new ChequebookRecovery(repository, recoveryInspector, receipts),
-    transports ? transports.shutdown.bind(transports) : async () => [],
+    transports ? transports.shutdown.bind(transports) : sessions.shutdown,
     poller,
   );
+}
+
+/** A session to a node's Bee API on the direct route: the transfer session plus the pending read recovery makes. */
+type DirectSession = BeeTransferSession & Pick<PinnedBeeSession, 'getPendingTransactions'>;
+
+/**
+ * The direct route's sessions to nodes, owned the way the Docker route's transports own their connections. Each is
+ * tracked while open. Shutdown disposes every one before it resolves, which aborts a POST in flight and leaves a
+ * prepared move unable to send, and from then on no session is opened, so a move still being prepared refuses before
+ * anything is saved or sent. The preparation's sessions and recovery's pending reads go through the same owner.
+ */
+function ownedDirectSessions(open: (url: string) => DirectSession) {
+  const live = new Set<DirectSession>();
+  let closing = false;
+  return {
+    create(url: string): DirectSession {
+      if (closing) throw new ChequebookPreparationError();
+      const session = open(url);
+      live.add(session);
+      return {
+        getAddresses: () => session.getAddresses(),
+        getWallet: () => session.getWallet(),
+        getChequebookAddress: () => session.getChequebookAddress(),
+        getChequebookBalance: () => session.getChequebookBalance(),
+        depositChequebook: (amount) => session.depositChequebook(amount),
+        withdrawChequebook: (amount) => session.withdrawChequebook(amount),
+        getPendingTransactions: () => session.getPendingTransactions(),
+        assertUsable: () => session.assertUsable(),
+        dispose: () => {
+          live.delete(session);
+          session.dispose();
+        },
+      };
+    },
+    async shutdown(): Promise<readonly ChequebookTransportCleanup[]> {
+      closing = true;
+      for (const session of live) session.dispose();
+      live.clear();
+      return [];
+    },
+  };
 }
