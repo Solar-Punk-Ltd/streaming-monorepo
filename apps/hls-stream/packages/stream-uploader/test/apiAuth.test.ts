@@ -4,6 +4,7 @@ import { after, describe, it } from 'node:test';
 import { MIN_AUTH_TOKEN_LENGTH } from '../src/api/middleware/requireAuth.js';
 import { createApiApp } from '../src/api/server.js';
 import { createOmeEngine } from '../src/engines/ome.js';
+import { createSrsEngine } from '../src/engines/srs.js';
 import { EnginePlugin } from '../src/engines/types.js';
 import { HEALTH_REASON_INGEST_REFUSED, MEDIA_TYPE_VIDEO } from '../src/types.js';
 
@@ -467,6 +468,57 @@ describe('refused ingest reaches the health surface', () => {
 
     assert.match(String(body), /^swarm_hls_auth_rejections_total 3$/m, `got: ${String(body)}`);
   });
+
+  /**
+   * Measured on the dev stage on 2026-10-15: one tokenless `GET /metrics`, which is what any
+   * monitoring scraper sends, turned `/health` to `ingest_refused` and the infra manager to "Not ready
+   * yet". A refused operator route says nothing about whether a broadcaster's publish can get in.
+   */
+  const OPERATOR_ROUTES: { path: string; init: () => RequestInit }[] = [
+    { path: '/metrics', init: () => ({ method: 'GET' }) },
+    { path: '/METRICS', init: () => ({ method: 'GET' }) },
+    { path: `/stream/status?streamId=${STREAM_ID}`, init: statusQuery },
+    { path: '/stream/stop', init: stopBody },
+  ];
+
+  for (const route of OPERATOR_ROUTES) {
+    it(`leaves /health ok after a refused ${route.path}, which is no broadcaster's publish`, async () => {
+      const api = await start();
+      const init = route.init();
+
+      const refused = await api.request(route.path, {
+        ...init,
+        headers: { ...(init.headers as Record<string, string> | undefined), ...NO_AUTH_HEADER },
+      });
+      assert.equal(refused.status, 401, 'the operator route has to stay gated');
+
+      const health = await api.request('/health');
+      assert.equal(health.status, 200, `a refused operator route degraded /health: ${JSON.stringify(health.body)}`);
+      assert.deepEqual(reasonsOf(health.body), []);
+
+      const { body } = await api.request('/metrics');
+      assert.match(String(body), /^swarm_hls_auth_rejections_total 1$/m, 'still counted as a refusal');
+    });
+  }
+
+  for (const path of ['/engines/srs/streams', '/Engines/SRS/streams']) {
+    it(`raises ingest_refused on a refused SRS on_publish at ${path}, before any segment`, async () => {
+      const api = await start([createSrsEngine('/tmp/media-unused', { webhookToken: 'w'.repeat(32) })]);
+
+      const refused = await api.request(path, {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ action: 'on_publish', app: 'live', stream: 'demo' }),
+      });
+      assert.equal(refused.status, 401, 'a tokenless webhook has to be refused for this test to mean anything');
+
+      const health = await api.request('/health');
+      assert.ok(
+        reasonsOf(health.body).includes(HEALTH_REASON_INGEST_REFUSED),
+        `a refused on_publish reached no signal: ${JSON.stringify(health.body)}`,
+      );
+    });
+  }
 
   /**
    * The discriminator that keeps this from firing on ordinary internet noise. A scanner collecting a
