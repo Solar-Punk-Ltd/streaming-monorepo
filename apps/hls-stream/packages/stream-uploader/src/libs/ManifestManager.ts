@@ -870,8 +870,12 @@ export class ManifestManager {
     }
     const resumeAt = this.joinPending()
       ? ownResumeAt
-      : this.dating.resumePointFor(returnToken, this.published(ownResumeAt), this.dateIfNothingStopped(ownResumeAt)) -
-        this.sequenceOffset;
+      : this.dating.resumePointFor(
+          returnToken,
+          this.published(ownResumeAt),
+          this.dateIfNothingStopped(ownResumeAt),
+          index,
+        ) - this.sequenceOffset;
     if (resumeAt > ownResumeAt) {
       this.logger.info(
         `[ManifestManager] Segment index ${index} resumes at sequence ${resumeAt} with the rest of its ladder ` +

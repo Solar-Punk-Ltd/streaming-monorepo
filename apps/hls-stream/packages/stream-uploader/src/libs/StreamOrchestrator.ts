@@ -407,6 +407,12 @@ export class StreamOrchestrator {
    */
   private segmentTakenAt = new Map<string, number>();
   /**
+   * Per stream, when each of its most recent engine indexes was handed to its uploader, so a segment
+   * placed after a backlog is matched against its siblings by its own hand-over rather than by the
+   * newest. Bounded by the uploader queue's own limit. See {@link siblingCountsOf}.
+   */
+  private segmentHandedAt = new Map<string, Map<number, number>>();
+  /**
    * Per rung session spawned while siblings of it were publishing, the published sequence its first
    * segment is the same media as, or null until that segment is handed over. See {@link rejoinSequenceOf}.
    *
@@ -1328,6 +1334,7 @@ export class StreamOrchestrator {
     this.streamActivityAt.delete(streamId);
     this.streamIngestAt.delete(streamId);
     this.segmentTakenAt.delete(streamId);
+    this.segmentHandedAt.delete(streamId);
     this.rejoinPoints.delete(streamId);
     this.streamClaimants.delete(streamId);
     // The segment-loss timestamp. Written on a loss and deleted nowhere, so it survived its own session. Invisible while
@@ -1657,7 +1664,7 @@ export class StreamOrchestrator {
       uploader.markDiscontinuity();
     }
     this.noteRejoinSequence(streamId);
-    this.segmentTakenAt.set(streamId, this.clock.now());
+    this.noteHandedOver(streamId, segmentIndex);
     uploader.handleSegment(segmentIndex, this.mediaDuration(streamId, segmentIndex, duration, reading), data);
     return { accepted: true };
   }
@@ -2971,8 +2978,8 @@ export class StreamOrchestrator {
     return {
       epochFrom: (resumeAt, notBeforeMs, returnToken, publishedResumeAt) =>
         this.reanchorBroadcast(datingKey, base, resumeAt, notBeforeMs, returnToken, publishedResumeAt, streamId),
-      resumePointFor: (returnToken, ownResumeAt, ownResumeDatedAtMs) =>
-        this.resumePointOf(streamId, datingKey, base, returnToken, ownResumeAt, ownResumeDatedAtMs),
+      resumePointFor: (returnToken, ownResumeAt, ownResumeDatedAtMs, index) =>
+        this.resumePointOf(streamId, datingKey, base, returnToken, ownResumeAt, ownResumeDatedAtMs, index),
       liveLadderPosition: () => this.liveLadderPositionOf(streamId, base),
       markReturnPlaced: (returnToken) => this.markReturnPlaced(streamId, datingKey, base, returnToken),
     };
@@ -3034,13 +3041,43 @@ export class StreamOrchestrator {
    */
   private rejoinSequenceOf(streamId: string, base: string): number | undefined {
     const now = this.clock.now();
-    const sameCutWithinMs = (this.config.fragmentSeconds * 1_000) / 2;
-    const candidates = this.publishingSiblingsOf(streamId, base).map(({ sibling, uploader }) => {
-      const count = uploader.publishedCountBeforeReturn()!;
-      const takenAt = this.segmentTakenAt.get(sibling);
-      return takenAt !== undefined && now - takenAt < sameCutWithinMs ? count - 1 : count;
-    });
+    const candidates = this.publishingSiblingsOf(streamId, base).map(({ sibling, uploader }) =>
+      this.sequenceOfTheSameCut(uploader.publishedCountBeforeReturn()!, this.segmentTakenAt.get(sibling), now),
+    );
     return candidates.length === 0 ? undefined : Math.max(...candidates);
+  }
+
+  /**
+   * The published sequence a sibling gave the cut a rung handed over at `handedAt`, from the sibling's
+   * next count and when it was handed its newest segment.
+   *
+   * Handed more than half a fragment before `handedAt`, the sibling's newest is an earlier cut, so the
+   * rung's is the next one it counts to. Otherwise the sibling's newest is the same cut or a later one,
+   * one sequence back for every whole fragment it was handed after `handedAt`, which is what a rung
+   * behind on its uploads meets: by the time its first resumed segment is placed its siblings have
+   * moved on. See {@link rejoinSequenceOf}.
+   */
+  private sequenceOfTheSameCut(count: number, siblingTakenAt: number | undefined, handedAt: number): number {
+    const fragmentMs = this.config.fragmentSeconds * 1_000;
+    if (siblingTakenAt === undefined || handedAt - siblingTakenAt >= fragmentMs / 2) {
+      return count;
+    }
+    return count - 1 - Math.max(0, Math.round((siblingTakenAt - handedAt) / fragmentMs));
+  }
+
+  /** Record when this segment was handed to its uploader. See {@link segmentHandedAt}. */
+  private noteHandedOver(streamId: string, segmentIndex: number): void {
+    const now = this.clock.now();
+    this.segmentTakenAt.set(streamId, now);
+    const handed = this.segmentHandedAt.get(streamId) ?? new Map<number, number>();
+    handed.delete(segmentIndex);
+    handed.set(segmentIndex, now);
+    // A segment waits behind at most `maxQueueSize` others, so that many and the one uploading are all
+    // a backlog can hold.
+    if (handed.size > this.config.maxQueueSize + 1) {
+      handed.delete(handed.keys().next().value!);
+    }
+    this.segmentHandedAt.set(streamId, handed);
   }
 
   /** Read where a rejoining rung's first segment sits on its ladder, as that segment is handed over. */
@@ -3168,6 +3205,7 @@ export class StreamOrchestrator {
     returnToken: string,
     ownResumeAt: number,
     ownResumeDatedAtMs: number,
+    index: number,
   ): number {
     this.markReturnPlaced(streamId, datingKey, base, returnToken);
     const inProgress = this.returnsInProgress.get(datingKey) ?? this.persistedReturnOf(base);
@@ -3182,7 +3220,8 @@ export class StreamOrchestrator {
       return ownResumeAt;
     }
     if (inProgress.resumeAt === undefined) {
-      inProgress.resumeAt = agreedResumePoint(ownResumeAt, this.siblingCountsOf(base, streamId, inProgress));
+      const handedAt = this.segmentHandedAt.get(streamId)?.get(index) ?? this.segmentTakenAt.get(streamId);
+      inProgress.resumeAt = agreedResumePoint(ownResumeAt, this.siblingCountsOf(base, streamId, inProgress, handedAt));
       this.rememberReturn(datingKey, base, inProgress);
     }
     if (inProgress.heldRungs.has(streamId)) {
@@ -3213,28 +3252,33 @@ export class StreamOrchestrator {
    * The published sequence each other live rung of this ladder would resume at on its own, counting
    * what it was handed before its return. See `StreamUploader.publishedCountBeforeReturn`.
    *
-   * ⛔ **A rung that kept publishing through the return and was handed its newest segment within half a
-   * fragment of the asking rung's counts that segment as the asking rung's own cut**, so the return
-   * resumes on it rather than on the cut after it. It is the reading a rung rejoining as a new session
-   * takes, for the same reason. See {@link rejoinSequenceOf}.
+   * ⛔ **A rung that kept publishing through the return is counted at the sequence it gave the asking
+   * rung's cut**, matched by when each was handed over, so the return resumes on that cut rather than on
+   * the one after it. It is the reading a rung rejoining as a new session takes, for the same reason.
+   * See {@link sequenceOfTheSameCut}.
+   *
+   * ⛔ **Matched against the segment being placed, not the asking rung's newest.** A rung behind on its
+   * uploads has handed over more segments by the time its first resumed one lands, and matched against
+   * the newest it resumed one sequence high for every segment it was behind, found by review on
+   * 2026-10-15.
+   *
+   * @param handedAt when the asking rung's segment being placed was handed over.
    */
-  private siblingCountsOf(base: string, askingStreamId: string, inProgress: ActiveReturn): number[] {
-    const askingTakenAt = this.segmentTakenAt.get(askingStreamId);
-    const sameCutWithinMs = (this.config.fragmentSeconds * 1_000) / 2;
+  private siblingCountsOf(
+    base: string,
+    askingStreamId: string,
+    inProgress: ActiveReturn,
+    handedAt: number | undefined,
+  ): number[] {
     return [...this.streamBases]
       .filter(([streamId, rungBase]) => rungBase === base && streamId !== askingStreamId)
       .map(([streamId]) => {
         const uploader = this.activeStreams.get(streamId);
         const count =
           uploader === undefined || this.isDraining(streamId, uploader) ? null : uploader.publishedCountBeforeReturn();
-        const takenAt = this.segmentTakenAt.get(streamId);
-        const sameCut =
-          count !== null &&
-          askingTakenAt !== undefined &&
-          takenAt !== undefined &&
-          Math.abs(askingTakenAt - takenAt) < sameCutWithinMs &&
-          this.keptPublishingThrough(streamId, inProgress);
-        return sameCut ? count - 1 : count;
+        return count === null || handedAt === undefined || !this.keptPublishingThrough(streamId, inProgress)
+          ? count
+          : this.sequenceOfTheSameCut(count, this.segmentTakenAt.get(streamId), handedAt);
       })
       .filter((count) => count !== null);
   }

@@ -263,8 +263,10 @@ export interface BroadcastDating {
    *
    * @param ownResumeDatedAtMs the date `ownResumeAt` would have carried had the rung never stopped,
    * which says how long it was away. See {@link maxResumeRaise}.
+   * @param index the engine index of the segment being placed, whose hand-over is what a sibling that
+   * kept publishing is matched against.
    */
-  resumePointFor(returnToken: string, ownResumeAt: number, ownResumeDatedAtMs: number): number;
+  resumePointFor(returnToken: string, ownResumeAt: number, ownResumeDatedAtMs: number, index: number): number;
 
   /**
    * Where a new session of a rung joins its ladder, when siblings of it are publishing: the sequence
