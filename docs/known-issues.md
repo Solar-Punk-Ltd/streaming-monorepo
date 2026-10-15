@@ -129,6 +129,29 @@ segment per rung, about four seconds, with decode errors on every rung, so the s
 damaged. It sat a few seconds after a frozen old broadcaster was released during a takeover test.
 SRS logged no drop. It did not happen again and was not chased.
 
+**A new broadcast reaches the stream list about a minute late (P3).** On 2026-10-15 a gateway's segment warmer,
+which follows only streams the stream list calls live, began following each new broadcast about 60 s after it
+started, because the list marked it live only then. So a viewer probably finds a new stream in the catalogue about a
+minute after the broadcaster starts. Not yet confirmed in a viewer. To see it: start a broadcast and time when the
+catalogue feed first lists it as live.
+
+## Manager
+
+**A pool's quality nodes show "Reading balances" with no figures (P3).** On the dev stage on 2026-10-15 every node of
+an ABR pool showed "Reading balances", with funding, chequebook and wallet as a dash, and the pool's card said "Not
+ready yet" while all four nodes ran with usable stamps. The manager reached each node's API, and its balance requests
+answered 304. Cause not found. To see it: open an ABR pool's page in the manager and compare with the nodes'
+`/chequebook/balance` and `/wallet`.
+
+**An uploader keeps "Last deployment failed" after it recovered (P3).** An uploader that refused to start because a
+stamp was below its time floor, and started by itself once the stamp was topped up, kept that label in the
+Deployments list for two hours while it ran healthy, until it was deployed again. To see it: start an uploader on a
+stamp below 12 hours, top the stamp up, and watch the list.
+
+**An open manager page keeps the old version after an upgrade (P3).** After the manager was upgraded, a page already
+open kept showing the previous version and behaved as it, until it was reloaded. To see it: keep a manager page open
+through an upgrade and read the version beside the instance name.
+
 ## Keys
 
 **Rotating a key does not disconnect a live broadcaster (P3, product question).** After a rotation
