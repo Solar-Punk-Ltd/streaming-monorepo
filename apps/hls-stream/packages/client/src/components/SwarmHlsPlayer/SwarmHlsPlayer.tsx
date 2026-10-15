@@ -409,7 +409,10 @@ export const SwarmHlsPlayer: React.FC<HlsPlayerProps> = ({
 
       const restartStream = () => {
         console.warn('Restarting stream due to manifest parsing error.');
-        resumeAfterRestartRef.current = hls ? restartResumeOf(hls, video, sourceUrl) : null;
+        // A player that fails again before it has started holds no level to read a position from, so the
+        // place an earlier restart kept stays until a player starts loading from it.
+        resumeAfterRestartRef.current =
+          (hls ? restartResumeOf(hls, video, sourceUrl) : null) ?? resumeAfterRestartRef.current;
         hls?.destroy();
         setRestartTrigger((prev) => prev + 1);
       };
