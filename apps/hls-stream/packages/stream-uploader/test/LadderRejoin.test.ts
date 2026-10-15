@@ -35,7 +35,7 @@ const RUNG_NAMES = ['360p', '480p', '720p', '1080p'] as const;
 const LADDER_BASE = 'audio/ladder-stream';
 const VOD_TAG = '#EXT-X-PLAYLIST-TYPE:VOD';
 const rungIds = RUNG_NAMES.map((rung) => `${LADDER_BASE}_${rung}`);
-const [rung360, , , rung1080] = rungIds;
+const [, , , rung1080] = rungIds;
 const fastRungs = rungIds.slice(0, 3);
 
 interface ManifestWrite {
@@ -310,5 +310,49 @@ describe('a rung rejoining a live ladder', () => {
       await harness.passTime(SEGMENT_SECONDS * 1_000);
     }
     await assertOneTimeline(harness, ['x3', 'y0', 'y1', 'y2'].map(everyRung), everyRung('y2'));
+  });
+
+  /**
+   * ⛔ The ladder's record carries the epochs of every earlier return, written down in the siblings'
+   * numbering. A rejoining session that kept them would count from 0 across them and land each time on
+   * a line long past, so its join drops them. This case puts a return at sequence 3 and has the
+   * rejoined rung count past it.
+   */
+  it('counts past an earlier return of its ladder without landing on that return’s line', async () => {
+    const harness = rejoinHarness();
+    for (const streamId of rungIds) harness.start(streamId);
+    for (let round = 0; round < 3; round++) {
+      for (const streamId of rungIds) await harness.deliver(streamId, `a${round}`);
+      await harness.passTime(SEGMENT_SECONDS * 1_000);
+    }
+    for (const streamId of rungIds) harness.orchestrator.noteDisconnect(streamId);
+    await harness.passTime(10_000);
+    for (const streamId of rungIds) harness.start(streamId);
+    for (const streamId of rungIds) await harness.deliver(streamId, 'b0');
+    await harness.passTime(SEGMENT_SECONDS * 1_000);
+
+    let round = 1;
+    while (round * SEGMENT_SECONDS * 1_000 < REAP_MS + 4 * SEGMENT_SECONDS * 1_000) {
+      for (const streamId of fastRungs) await harness.deliver(streamId, `b${round}`);
+      await harness.passTime(SEGMENT_SECONDS * 1_000);
+      round++;
+    }
+    await waitFor(
+      () =>
+        harness.writes.some(
+          (write) => write.playlist.includes(VOD_TAG) && write.playlist.includes(`segment-${rung1080}-b0`),
+        ),
+      SETTLE_CEILING_MS,
+    );
+
+    harness.start(rung1080);
+    harness.restartCounter(rung1080);
+    const cuts = ['x0', 'x1', 'x2', 'x3', 'x4', 'x5'];
+    for (const cut of cuts) {
+      await harness.deliver(rung1080, cut);
+      for (const streamId of fastRungs) await harness.deliver(streamId, cut);
+      await harness.passTime(SEGMENT_SECONDS * 1_000);
+    }
+    await assertOneTimeline(harness, cuts.map(everyRung), everyRung('x5'));
   });
 });

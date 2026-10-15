@@ -43,6 +43,7 @@ function pinnedDating(atMs: number): BroadcastDating & { asked: { resumeAt: numb
     },
     resumePointFor: (_returnToken, ownResumeAt) => ownResumeAt,
     liveLadderPosition: () => null,
+    markReturnPlaced: () => {},
   };
 }
 
@@ -60,6 +61,7 @@ function ladderDating(anchor: BroadcastAnchor, nowMs: () => number): BroadcastDa
     },
     resumePointFor: (_returnToken, ownResumeAt) => ownResumeAt,
     liveLadderPosition: () => null,
+    markReturnPlaced: () => {},
   };
 }
 
@@ -2114,6 +2116,7 @@ describe('a live window right after a return that lists many gap entries', () =>
       epochFrom: (resumeAt, notBeforeMs) => ({ fromSequence: resumeAt, atMs: notBeforeMs }),
       resumePointFor: (_returnToken, ownResumeAt) => ownResumeAt + 60,
       liveLadderPosition: () => null,
+      markReturnPlaced: () => {},
     };
     const manager = new ManifestManager(TEST_ANCHOR, raised);
     for (let index = 0; index < 10; index++) {

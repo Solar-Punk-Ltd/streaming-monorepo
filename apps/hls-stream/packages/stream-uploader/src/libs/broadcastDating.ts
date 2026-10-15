@@ -275,6 +275,13 @@ export interface BroadcastDating {
    * reaped or replaced in the middle of a broadcast. See `ManifestManager.continueFrom`.
    */
   liveLadderPosition(): LadderPosition | null;
+
+  /**
+   * Say that the asking rung has placed its first segment of this return without taking the return's
+   * shared resume point, which a rung still waiting to learn where it joins its ladder does. The return
+   * then treats it as back, as {@link resumePointFor} would have. See `ManifestManager.joinPending`.
+   */
+  markReturnPlaced(returnToken: string): void;
 }
 
 /**
@@ -514,5 +521,6 @@ export function soleRungDating(anchorOf: () => BroadcastAnchor, wallClock: () =>
     // A rung with no siblings has nobody to agree a sequence with.
     resumePointFor: (_returnToken, ownResumeAt) => ownResumeAt,
     liveLadderPosition: () => null,
+    markReturnPlaced: () => {},
   };
 }

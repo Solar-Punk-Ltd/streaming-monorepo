@@ -567,6 +567,11 @@ export class ManifestManager {
 
     // Dated once from an opening at 0 to measure the media in front of the first segment, then moved so
     // the first lands on the ladder's line.
+    //
+    // ⛔ The epochs go with the old anchor, and that is deliberate. This session minted none, because
+    // nothing is minted while a join is pending, so every epoch it holds was copied from the ladder's
+    // record, written down in its siblings' numbering. Its own count from 0 would cross them one by one
+    // and re-date itself on to lines long past, which is the 496 second split measured on 2026-10-15.
     this.anchor = { startedAtMs: 0, fragmentSeconds };
     this.datePlacements();
     const inFrontMs = this.presentedAtMsOf(this.segments.find((seg) => seg.index === opening.index)!);
@@ -859,9 +864,14 @@ export class ManifestManager {
     }
 
     const ownResumeAt = this.highestSequence() + 1;
-    const resumeAt =
-      this.dating.resumePointFor(returnToken, this.published(ownResumeAt), this.dateIfNothingStopped(ownResumeAt)) -
-      this.sequenceOffset;
+    if (this.joinPending()) {
+      // Its own numbering, while the join it is waiting for is still to move it. See `joinPending`.
+      this.dating.markReturnPlaced(returnToken);
+    }
+    const resumeAt = this.joinPending()
+      ? ownResumeAt
+      : this.dating.resumePointFor(returnToken, this.published(ownResumeAt), this.dateIfNothingStopped(ownResumeAt)) -
+        this.sequenceOffset;
     if (resumeAt > ownResumeAt) {
       this.logger.info(
         `[ManifestManager] Segment index ${index} resumes at sequence ${resumeAt} with the rest of its ladder ` +
@@ -907,15 +917,11 @@ export class ManifestManager {
    */
   private reanchorDating(resumeAt: number, cause: ReanchorCause, returnToken?: string): void {
     const wouldHaveBeen = this.dateIfNothingStopped(resumeAt);
-    const epoch = this.dating.epochFrom(
-      resumeAt,
-      wouldHaveBeen,
-      returnToken,
-      returnToken === undefined ? undefined : this.published(resumeAt),
-    );
-    this.anchor = withEpoch(this.anchor, epoch);
+    // While a join is pending nothing is minted: the join dates every segment placed so far from the
+    // ladder's line by the media each one holds. See `joinPending`.
+    const atMs = this.joinPending() ? wouldHaveBeen : this.mintedEpochAt(resumeAt, wouldHaveBeen, returnToken);
     const wasAt = new Date(wouldHaveBeen).toISOString();
-    const nowAt = new Date(epoch.atMs).toISOString();
+    const nowAt = new Date(atMs).toISOString();
     // ⛔ Both are composed in the shared log contract, because the e2e harness counts each of them as
     // one of the ways a discontinuity is armed and six suites assert that count is zero on a clean
     // broadcast. A line reworded here and not read there passes them for ever.
@@ -928,6 +934,34 @@ export class ManifestManager {
     this.logger.info(
       cause === COUNTER_RESTARTED ? datingReanchored(resumeAt, wasAt, nowAt) : encoderReturned(resumeAt, wasAt, nowAt),
     );
+  }
+
+  /** Ask the shared dating for the epoch `resumeAt` dates from, take it, and answer its instant. */
+  private mintedEpochAt(resumeAt: number, wouldHaveBeen: number, returnToken?: string): number {
+    const epoch = this.dating.epochFrom(
+      resumeAt,
+      wouldHaveBeen,
+      returnToken,
+      returnToken === undefined ? undefined : this.published(resumeAt),
+    );
+    this.anchor = withEpoch(this.anchor, epoch);
+    return epoch.atMs;
+  }
+
+  /**
+   * Whether this session is a rung rejoining a live ladder that has placed segments but not yet
+   * learned, from its feed head, where it joins. See {@link joinLiveLadder}.
+   *
+   * ⛔⛔ **Until then its numbers are in no numbering its siblings share, so it agrees nothing with
+   * them and mints nothing.** Its published offset is still 0, so asking a return's shared resume
+   * point raised it to its siblings' count in its own numbering, and the join then added its feed
+   * offset on top. Measured by review on 2026-10-15: a rejoined 1080p bounced once more while its
+   * feed head read was still answering published 34 sequences and 68 seconds ahead of its siblings for
+   * the rest of the broadcast, and the recording was sealed with it. A break placed in this window is
+   * still declared, at its own count, and the join renumbers and re-dates it with the rest.
+   */
+  private joinPending(): boolean {
+    return this.ladderAtOpening !== null;
   }
 
   /**
@@ -977,6 +1011,8 @@ export class ManifestManager {
     const mediaSequence = windowSegments.length > 0 ? this.published(sequenceOf(windowSegments[0])) : 0;
 
     this.sequenceHasBeenPublished = true;
+    // A feed with no head never answers `continueFrom`, and a join can no longer move what has gone out.
+    this.ladderAtOpening = null;
     return [
       ...this.liveHeaderLines(mediaSequence, this.discontinuitySequence(windowSegments)),
       ...this.timelineLines(windowSegments),

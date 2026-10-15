@@ -2974,7 +2974,18 @@ export class StreamOrchestrator {
       resumePointFor: (returnToken, ownResumeAt, ownResumeDatedAtMs) =>
         this.resumePointOf(streamId, datingKey, base, returnToken, ownResumeAt, ownResumeDatedAtMs),
       liveLadderPosition: () => this.liveLadderPositionOf(streamId, base),
+      markReturnPlaced: (returnToken) => this.markReturnPlaced(streamId, datingKey, base, returnToken),
     };
+  }
+
+  /** Record that this rung has placed a segment of the return in progress, which makes it back from it. */
+  private markReturnPlaced(streamId: string, datingKey: string, base: string | null, returnToken: string): void {
+    const inProgress = this.returnsInProgress.get(datingKey) ?? this.persistedReturnOf(base);
+    if (inProgress?.token === returnToken && !inProgress.placedRungs.has(streamId)) {
+      inProgress.placedRungs.add(streamId);
+      inProgress.firstPlacedAt ??= this.clock.now();
+      this.rememberReturn(datingKey, base, inProgress);
+    }
   }
 
   /**
@@ -3151,12 +3162,8 @@ export class StreamOrchestrator {
     ownResumeAt: number,
     ownResumeDatedAtMs: number,
   ): number {
+    this.markReturnPlaced(streamId, datingKey, base, returnToken);
     const inProgress = this.returnsInProgress.get(datingKey) ?? this.persistedReturnOf(base);
-    if (inProgress?.token === returnToken && !inProgress.placedRungs.has(streamId)) {
-      inProgress.placedRungs.add(streamId);
-      inProgress.firstPlacedAt ??= this.clock.now();
-      this.rememberReturn(datingKey, base, inProgress);
-    }
     if (base === null) {
       return ownResumeAt;
     }
