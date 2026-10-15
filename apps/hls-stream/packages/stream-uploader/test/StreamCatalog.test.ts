@@ -1243,6 +1243,61 @@ describe('StreamCatalog ladder write path', () => {
     assert.ok(writes.length > before, 'the re-announce still wrote, so this is not passing by doing nothing');
   });
 
+  /**
+   * The standalone half of what was measured live in admin mode on 2026-10-15, where one recording's
+   * master was written four times and the slots above the one the catalog named held copies of it. A
+   * rung that announces its recording again after the ladder flipped, as a resumed finalize does, is the
+   * shape that reaches it here.
+   */
+  it('names the recording at the last master written, and writes none after the flip', async () => {
+    const writes: CapturedWrite[] = [];
+    const masterIndices: bigint[] = [];
+    const masterBee = {
+      feed: {
+        makeReader: () => ({
+          downloadPayload: async () => {
+            throw new BeeResponseError('GET', '/feeds', 'Not Found.', undefined, 404, 'Not Found');
+          },
+        }),
+        makeWriter: () => ({
+          uploadPayload: async (_stamp: string, _payload: unknown, opts: { index: FeedIndex }) => {
+            masterIndices.push(opts.index.toBigInt());
+            return { reference: { toHex: () => 'ref' } };
+          },
+        }),
+      },
+    } as unknown as Bee;
+    const masterWriter = new MasterFeedWriter(makePublishers(masterBee), new PrivateKey(TEST_STREAM_KEY));
+    const catalog = new StreamCatalog(
+      makePublishers(feedbackBee(writes)),
+      TEST_STREAM_KEY,
+      TEST_TOPIC,
+      undefined,
+      masterWriter,
+    );
+    await catalog.init();
+    const names = ['360p', '480p', '720p', '1080p'];
+    const ladderRung = (name: string) => ({ ...rung, name, height: Number.parseInt(name, 10), topic: `rung-${name}` });
+
+    for (const name of names) {
+      await catalog.upsertRendition(identity, ladderRung(name));
+    }
+    let writtenAtFlip = 0;
+    for (const [at, name] of names.entries()) {
+      const announced = await catalog.upsertRendition(identity, { ...ladderRung(name), index: 7 + at, duration: 12 });
+      if (announced.flippedToFinished) {
+        writtenAtFlip = masterIndices.length;
+      }
+    }
+    await catalog.upsertRendition(identity, { ...ladderRung('360p'), index: 7, duration: 12 });
+
+    const entry = JSON.parse(writes[writes.length - 1].payload)[0] as { state: string; index: number };
+    assert.equal(entry.state, 'vod');
+    assert.ok(writtenAtFlip > 0, 'the ladder never flipped');
+    assert.equal(masterIndices.length, writtenAtFlip, 'a master was written after the ladder became a recording');
+    assert.equal(BigInt(entry.index), masterIndices.at(-1), 'the catalog names a master below the last one written');
+  });
+
   it('falls back to pointing the entry at the lowest rung when no master writer is configured', async () => {
     const writes: CapturedWrite[] = [];
     const bee = makeCatalogBee(writes, { lookupThrows: FEED_NOT_FOUND });

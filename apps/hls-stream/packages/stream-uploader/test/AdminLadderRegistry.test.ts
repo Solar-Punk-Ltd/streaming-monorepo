@@ -285,6 +285,47 @@ describe('what a rendition announce does in admin mode', () => {
       );
     });
 
+    /**
+     * ⛔⛔ Measured live 2026-10-15 on the dev stage: the master was written at 0x49, 0x4a, 0x4b and 0x4c
+     * within about 200 ms, one per rung's finalize, all naming the same four rungs, and the admin named the
+     * recording at 0x4a. Every slot above the one the admin names is a master nobody was told about.
+     */
+    it('names the recording at the last master it writes, and writes none after the report', async () => {
+      const harness = makeRegistry({ answer: (_rendition, attempt) => finishedWhileLive(attempt === 1) });
+
+      let reported: RenditionAnnouncement | undefined;
+      let writtenWhenReported = 0;
+      for (const final of finished) {
+        const announced = await harness.registry.upsertRendition(IDENTITY, final);
+        if (announced.flippedToFinished) {
+          reported = announced;
+          writtenWhenReported = harness.masters.length;
+        }
+      }
+
+      assert.ok(reported, 'the ladder never flipped');
+      assert.equal(
+        reported.masterIndex,
+        Number(harness.masters.at(-1)!.index),
+        'the admin names a master below the last one written, so the slot above it holds another copy',
+      );
+      assert.equal(
+        harness.masters.length,
+        writtenWhenReported,
+        'a master was written after the recording was reported',
+      );
+    });
+
+    it('names the recording at the last master written when the four answers land together', async () => {
+      const harness = makeRegistry({ answer: (_rendition, attempt) => finishedWhileLive(attempt === 2) });
+
+      const announces = await Promise.all(finished.map((final) => harness.registry.upsertRendition(IDENTITY, final)));
+
+      const reported = announces.find((announced) => announced.flippedToFinished);
+      assert.ok(reported, 'the ladder never flipped');
+      assert.equal(reported.masterIndex, Number(harness.masters.at(-1)!.index));
+    });
+
     it('hands the flip out again once the rung it went to says its vod report did not go through', async () => {
       const harness = makeRegistry({ answer: () => finishedWhileLive(false) });
       const first = await harness.registry.upsertRendition(IDENTITY, finished[0]);

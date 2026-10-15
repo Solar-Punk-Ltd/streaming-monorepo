@@ -4,6 +4,7 @@ import { describe, it } from 'node:test';
 
 import { BeePublisherPool, FEED_LOOKUP_TIMEOUT_MS } from '../src/libs/BeePublisherPool.js';
 import { MasterFeedWriter } from '../src/libs/MasterFeedWriter.js';
+import { buildMasterPlaylist } from '../src/libs/MasterPlaylist.js';
 import { Rendition } from '../src/types.js';
 
 const TEST_KEY = '0'.repeat(63) + '1';
@@ -20,6 +21,8 @@ const rung = (name: string): Rendition => ({
 interface WriterOptions {
   /** The group's master feed already holds a head at this index, as a restart mid-ladder leaves it. */
   headIndex?: bigint;
+  /** The playlist that head holds. */
+  headPlaylist?: string;
   /** The feed reader answers 404, the shape of a group whose master was never written. */
   headMissing?: boolean;
   /** The timeout each reader was made with, in order, when a test wants to see it. */
@@ -41,7 +44,10 @@ function makeWriter(writes: bigint[], opts: WriterOptions = {}): MasterFeedWrite
             if (opts.headMissing) {
               throw new BeeResponseError('GET', '/feeds', 'Not Found.', undefined, 404, 'Not Found');
             }
-            return { feedIndex: FeedIndex.fromBigInt(opts.headIndex ?? 0n) };
+            return {
+              feedIndex: FeedIndex.fromBigInt(opts.headIndex ?? 0n),
+              payload: { toUtf8: () => opts.headPlaylist ?? '#EXTM3U\n' },
+            };
           },
         };
       },
@@ -130,5 +136,55 @@ describe('MasterFeedWriter next index', () => {
 
     assert.equal(published, null);
     assert.deepEqual(writes, []);
+  });
+});
+
+describe('MasterFeedWriter and a master that would say nothing new', () => {
+  it('writes nothing when asked to keep an unchanged master, and names the slot already holding it', async () => {
+    const writes: bigint[] = [];
+    const writer = makeWriter(writes, { headMissing: true });
+
+    await writer.publish('group-1', [rung('360p'), rung('720p')]);
+    const kept = await writer.publish('group-1', [rung('360p'), rung('720p')], { skipIfUnchanged: true });
+
+    assert.deepEqual(writes, [0n], 'an identical master was written into the next slot');
+    assert.equal(kept?.index, 0);
+  });
+
+  it('compares against the head a fresh process reads, so a resumed finalize adds no slot', async () => {
+    const writes: bigint[] = [];
+    const headPlaylist = buildMasterPlaylist(new PrivateKey(TEST_KEY).publicKey().address().toHex(), [rung('360p')]);
+    const writer = makeWriter(writes, { headIndex: 5n, headPlaylist });
+
+    const kept = await writer.publish('group-1', [rung('360p')], { skipIfUnchanged: true });
+
+    assert.deepEqual(writes, []);
+    assert.equal(kept?.index, 5);
+  });
+
+  it('writes a master that differs from the head even when asked to keep an unchanged one', async () => {
+    const writes: bigint[] = [];
+    const writer = makeWriter(writes, { headMissing: true });
+
+    await writer.publish('group-1', [rung('360p')]);
+    const written = await writer.publish('group-1', [rung('360p'), rung('720p')], { skipIfUnchanged: true });
+
+    assert.deepEqual(writes, [0n, 1n]);
+    assert.equal(written?.index, 1);
+  });
+
+  /**
+   * A new broadcast of the same declared stream opens with a live master that can be byte for byte the
+   * recording's. It still has to land above the recording, because a slot above is what tells anyone the
+   * broadcaster came back.
+   */
+  it('still writes an identical master when not asked to keep it', async () => {
+    const writes: bigint[] = [];
+    const writer = makeWriter(writes, { headMissing: true });
+
+    await writer.publish('group-1', [rung('360p')]);
+    await writer.publish('group-1', [rung('360p')]);
+
+    assert.deepEqual(writes, [0n, 1n]);
   });
 });

@@ -518,7 +518,12 @@ export class StreamCatalog implements LadderRegistry {
         // Remembered here because this is the path that always runs: a ladder that never announces
         // has no master for a rung death to correct, and no owner to write it as.
         this.lastIdentity.set(identity.group, identity);
-        const published = await this.masterWriter?.publish(identity.group, advertised);
+        // ⛔ A recording's master is written once. Every rung of a finished ladder that reports again, a
+        // finalize resumed after a crash among them, would otherwise put another copy above the slot the
+        // entry names. See `MasterFeedWriter.publish`.
+        const published = await this.masterWriter?.publish(identity.group, advertised, {
+          skipIfUnchanged: entry.state === STREAM_STATUS_VOD,
+        });
         if (published) {
           shapeThatLanded = ladderShape(advertised.map((rendition) => rendition.name));
           masterIndex = published.index;
@@ -584,7 +589,9 @@ export class StreamCatalog implements LadderRegistry {
         }
 
         const advertised = this.masterRungs(entry, identity.group);
-        const published = await this.masterWriter?.publish(identity.group, advertised);
+        const published = await this.masterWriter?.publish(identity.group, advertised, {
+          skipIfUnchanged: entry.state === STREAM_STATUS_VOD,
+        });
         if (!published) {
           return previous;
         }
