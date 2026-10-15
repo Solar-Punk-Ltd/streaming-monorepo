@@ -18,25 +18,22 @@ The merged dependency baseline passed all 47 prior chequebook transaction SQL ca
 
 ## Runtime trust and target selection
 
-Updated 2026-09-26 at `9e4e8c8f` (the chequebook funding change). Three manager process settings are read at startup, all optional. None is accepted from an API request, a profile record or a Bee response.
+Updated 2026-10-15, when a transfer moved to the node's Bee API. The chain settings below are read at startup, and none is accepted from an API request, a profile record or a Bee response.
 
-- `CHEQUEBOOK_RPC_ENDPOINTS` is a JSON object keyed by supported chain ID, for example `{"100":"https://rpc.example.invalid"}`. Supported IDs are 1, 100 and 11155111, paired with the pinned token contracts in `transactionIdentity.ts`. Values must be HTTP or HTTPS URLs without user information or fragments. For a chain it names, every transfer reads the chain there. For any other chain the default is the `--blockchain-rpc-endpoint` the node's container was started with, read from `Config.Cmd` of the container inspect the acquisition fetches on the connection it owns (`nodeChainEndpoint` in `DockerBeeBinding.ts`), held to the same shape rules. Either kind must answer the chain ID of the node's wallet before it is used, and a wrong answer refuses with `wrong_chain`. The default is remembered per chain and node for that node's saved transfers. When the manager does not know it, after a restart, and whenever the remembered one fails in any way, it opens the node's owned connection to read it again and closes the bridge unused. The fresh endpoint replaces the remembered one only after it verified. An endpoint is never logged, answered or put in an error.
-- `CHEQUEBOOK_DOCKER_TRANSPORTS` is a JSON object keyed by deploy target alias, at most 256 of them. Each value has `locator` and may have `qualificationIds`, and anything else is refused. An entry wins for the alias it names, and every other alias gets the default route below.
-  - A `locator` of kind `unix` has exactly `kind`, `alias` and `socketPath`. The alias must equal the key, and the socket path must be absolute, normalised, free of control characters, not end in a slash and be at most 100 bytes.
-  - A `locator` of kind `ssh-config` has exactly `kind`, `alias` and `remoteSocketPath`. It forwards the remote socket through the alias's `Host` block in the manager's own ssh configuration. An alias with `@` is refused.
-  - A `locator` of kind `ssh-unix` has exactly `kind`, `alias`, `host`, `port`, `user`, `remoteSocketPath`, `identityPublicKeyPath`, `agentSocketPath`, `knownHostsPath` and `hostKeyAlias`, reads no config file, and names a public key path and an agent socket, never a private key.
-  - `qualificationIds`, when given, is a non-empty list of ids that must each match a catalog record. Those records alone qualify that alias. Without it the alias is qualified automatically.
-- `DOCKER_HOST` is read the way the manager's Docker client reads it. The default route for `localhost` is its Unix socket, `/var/run/docker.sock` when it is unset. A remote alias's default route is an `ssh-config` forward to `/var/run/docker.sock`.
+- `CHEQUEBOOK_RPC_ENDPOINTS` is optional: a JSON object keyed by supported chain ID, for example `{"100":"https://rpc.example.invalid"}`. Supported IDs are 1, 100 and 11155111, paired with the pinned token contracts in `transactionIdentity.ts`. Values must be HTTP or HTTPS URLs without user information or fragments. For a chain it names, every transfer reads the chain there.
+- The default endpoint, `FUNDING_RPC_URL`, else `BEE_RPC_ENDPOINT`, serves every other chain, under the same shape rules. A default that breaks them refuses every transfer with `chain_setting_invalid`, and a chain with no endpoint at all refuses with `chain_endpoint_missing`.
 
-A malformed value refuses the transfer with its cause, `chain_setting_invalid` or `docker_setting_invalid`, rather than falling back to a direct Bee URL, and there is no direct-URL fallback at all. An earlier `CHEQUEBOOK_BEE_ENDPOINT_MODE` was removed. After profile deletion, frozen operation identity selects the chain through `CHEQUEBOOK_RPC_ENDPOINTS`, or through the endpoint the manager remembered for that node before the deletion, while that endpoint answers and until the manager restarts, because no node is left to read it from again. Runtime endpoint rotation takes effect after process restart. This implementation does not write or rotate configuration.
+Either kind must answer `eth_chainId` with the chain of the node's wallet before it is used, and a wrong answer refuses with `wrong_chain`. Preparation, receipts, finality and recovery all read the chain this way, and the node is never asked for an endpoint. An endpoint is never logged, answered or put in an error. After profile deletion, frozen operation identity selects the chain through the same settings, so recovery keeps working while the endpoint answers. Runtime endpoint rotation takes effect after process restart. This implementation does not write or rotate configuration.
 
-The transport is selected by the deploy target alias, wrapped so the operation owns it for its lifetime, and qualified before a byte is sent to Bee: pinned records on the bridge's own connection, or, on an automatic route, the check described under "Where a transfer reaches the node and the chain" in `docs/features/chequebook.md`, which runs on a connection of its own before the bridge's and stores its result in `bee_bridge_qualifications` (migration 040). `ConfiguredBeeTargetResolver`, which this section once described, resolved a target from the saved `bee-uploader` service and its `BEE_UPLOADER_API_PORT`, and the production composition no longer builds it. The external publishing destination `bee_url` does not select the transaction target. Known deploy, stop and remove transitions refuse preparation. Missing or duplicate Bee services, malformed ports and profiles without an owned Bee component refuse it too.
+`CHEQUEBOOK_DOCKER_TRANSPORTS` is no longer read, and `DOCKER_HOST` no longer plays any part in a transfer, though the manager still hands it to its deploy scripts. Until 2026-10-15 they chose the Docker connection a transfer went over, to a bash bridge inside the node's container. That code stays in the tree, unused, until a cleanup removes it.
 
-The target revision includes the canonical `profiles.instance_id`, profile creation/update timestamps, host, port slot, kind, components, status, stack version and selected API port. It is compared again before dispatch. The instance UUID identifies one deployment lifetime independently of timestamp precision. A saved name that is removed and recreated receives a different instance UUID. No second SSH or Docker ownership implementation was added here: the default remote route is the same supervised forward with a second locator kind.
+`ConfiguredBeeTargetResolver` selects the target. It works out the node's Bee API address from the deployment's own row (`beeApiUrlFor`, the address stamp operations use, over plain HTTP) and the port its saved `bee-uploader` container recorded, `BEE_UPLOADER_API_PORT`. The SQL ownership capture above supplies the port the deployment's reservation owns, and the recorded port must equal it, or nothing is sent. The external publishing destination `bee_url` does not select the transaction target. Known deploy, stop and remove transitions refuse preparation with `target_changed`, and so do duplicate Bee services. A missing Bee service refuses with `bee_container_not_found`, a malformed or unreserved port with `bee_container_unsupported`, and a profile without an owned Bee component with `unavailable`.
+
+The target revision includes the canonical `profiles.instance_id`, profile creation/update timestamps, host, port slot, kind, components, status, stack version, the selected API port and the address. It is compared again before dispatch. The instance UUID identifies one deployment lifetime independently of timestamp precision. A saved name that is removed and recreated receives a different instance UUID. No ssh or Docker connection is involved, so a host written as `user@host` is reached like any other.
 
 ## Single-connection submission
 
-A fresh transfer opens one private HTTP session. Its Agent permits exactly one connection creation and refuses every replacement socket. It does not follow redirects or retry requests. Identity reads, final preflight and the one POST share that socket. This provides a connection boundary only for the owned transport described above. It cannot pin a signer behind a layer-7 request-routing proxy.
+A fresh transfer opens one private HTTP session. Its Agent permits exactly one connection creation and refuses every replacement socket. It does not follow redirects or retry requests. Identity reads, final preflight and the one POST share that socket. This provides a connection boundary to the node's Bee API address only. It cannot pin a signer behind a layer-7 request-routing proxy.
 
 Preparation requires agreement between `/addresses`, `/wallet` and `/chequebook/address`. The wallet must identify a supported chain, the same node and the same chequebook. The registry reads a latest start block, reads the transaction-count lower bound at that explicit block number, then checks the numbered block hash again. The lower bound does not reserve a nonce.
 
@@ -156,29 +153,32 @@ presses made while polling runs.
 `manager/test/database/chequebookConnected.test.ts` is the connected acceptance
 suite. It composes the production `createChequebookOperationsService` over a
 real PostgreSQL schema, the real router behind `requireSameSite` and the real
-session gate, and the owned Docker transport over a temporary Unix socket served
-by `manager/test/support/syntheticDockerBee.ts`. Only the Bee, the chain and the
-database are synthetic. Its twelve cases cover an accepted deposit polled to
-settlement with no Check request, a reverted receipt, a lost response that stays
-unknown and unpolled and blocks the next intent, an RPC outage that polling
-survives, a spent budget that leaves the chain to the operator, a restart that
-resumes a live budget and adopts nothing after it, exact replay, a start that
-fails partway and leaves no schema behind, a close that finishes every step
-before reporting the first failure, and the removal of the temporary socket
-directory. The other two, added 2026-09-26, set neither `CHEQUEBOOK_RPC_ENDPOINTS` nor
-`CHEQUEBOOK_DOCKER_TRANSPORTS` and seed no catalog record for the synthetic
-image: one checks the image automatically, stores the pass, transfers and polls
-to settlement through the node's own endpoint, and one refuses an image whose
-check says `/bin/bash` is missing with `bridge_not_qualified` and `check: bash`,
-stores the failure and sends nothing to Bee. The restarted manager in the
-restart case now has no transport configured either, so it reads the node's
-endpoint again over the default local route. Every composition in this suite
-reaches Docker through a connector that refuses any socket but the fixture's
-own, so none of them can reach a real daemon. The composition itself lives in
-`manager/test/support/connectedChequebook.ts` and is shared with
-`connectedChequebookServer.ts`, the process the connected browser suite forks.
-Both refuse to run unless the API is on loopback and the synthetic Docker is on
-its own socket inside a directory only this user can read.
+session gate, and the direct route the manager takes: the deployment's recorded
+Bee API address, at the port its SQL reservation owns, opened through the
+factory's `createSession` seam onto a synthetic Bee. The chain is a scripted
+reader that the factory's `createChainReader` seam hands out for the endpoint
+the manager's settings name, `CHEQUEBOOK_RPC_ENDPOINTS` for its chain and then
+the default endpoint, never one read from the node, and the suite records which
+endpoints were asked for. Only the Bee, the chain and the database are
+synthetic. There is no Docker socket and no bridge: nothing in the composition
+opens a Docker connection or a socket to Bee. Its thirteen cases cover an
+accepted deposit polled to settlement with no Check request, a move shown
+Submitted, then Mined while its block is not final, then Confirmed, a reverted
+receipt, a lost response that stays unknown, unpolled and blocking until
+recovery finds the transfer and settles it, an RPC outage that polling survives,
+a spent budget that leaves the chain to the operator, a restart that resumes a
+live budget and adopts nothing after it, a transfer with only the manager's
+default endpoint that asks the node for none, a transfer with neither setting
+refused as `chain_endpoint_missing` with nothing sent, the node reached through
+its Bee API at the port its container recorded for the transfer and its
+recovery, exact replay, a start that fails partway and leaves no schema behind,
+and a close that finishes every step before reporting the first failure. The
+composition itself lives in `manager/test/support/connectedChequebook.ts` and is
+shared with `connectedChequebookServer.ts`, the process the connected browser
+suite forks, which refuses to run unless its API listens on loopback. The
+support sets the unit runner's placeholder `DATABASE_URL` before it loads the
+service, because `config.ts` refuses to load without one. Nothing connects with
+it: the journal's pool is built from `CHEQUEBOOK_TEST_PG_PORT` alone.
 
 Run it with the disposable database:
 

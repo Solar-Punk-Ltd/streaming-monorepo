@@ -103,10 +103,12 @@ minutes.
 
 `frontend/test/transfer-connected-browser.test.mjs` runs the same UI against a
 real manager: `manager/test/support/connectedChequebookServer.ts` forked with
-`tsx`, a real PostgreSQL schema, the real router and session gate, the owned
-Docker transport and a synthetic Bee and chain. Vite comes from `launchViteFor`
-in `frontend/test/support/transfer-fixture.mjs`, the variant that puts Vite in
-front of a manager the caller already owns.
+`tsx`, a real PostgreSQL schema, the real router and session gate, the direct
+route to a synthetic Bee through the factory's `createSession` seam, at the port
+the deployment's reservation owns, and a synthetic chain read through the
+manager's chain settings. There is no Docker socket and no bridge. Vite comes
+from `launchViteFor` in `frontend/test/support/transfer-fixture.mjs`, the
+variant that puts Vite in front of a manager the caller already owns.
 
 The browser signs in through the real login route, moves 0.5 BZZ and watches it
 settle without a click. A dropped Bee response leaves the operation unresolved,
