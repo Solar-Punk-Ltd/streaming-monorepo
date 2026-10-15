@@ -466,10 +466,11 @@ gate uses.
 
 The deployment page's Fill chequebook and Withdraw move BZZ between a Bee
 node's wallet and its chequebook. They work on any host a deployment runs on,
-with nothing to set up first. The web2 admin's funding API moves chequebooks
-through the same path and the same journal, its moves recorded as requested by
-`web2-admin` ([Chequebook operations](#chequebook-operations)), so everything
-below holds for them too.
+once the manager has a chain endpoint for the node's chain. The web2 admin's
+funding API moves chequebooks through the same path and the same journal, its
+moves recorded as requested by `web2-admin`
+([Chequebook operations](#chequebook-operations)), so everything below holds for
+them too.
 
 **What a new host needs: nothing.** Since 2026-10-15 a transfer reaches the
 node through its Bee API, as stamp operations do, and reads the chain through
@@ -496,6 +497,13 @@ the manager's own chain endpoint. It needs no Docker connection and no ssh.
 
 Confirmation is unchanged: a move is Submitted, then Mined, then Confirmed at
 finality, about three minutes after it is mined.
+
+**Before upgrading a manager from before 2026-10-15**, set `FUNDING_RPC_URL` or
+`BEE_RPC_ENDPOINT`, or name the chain in `CHEQUEBOOK_RPC_ENDPOINTS`. Such a
+manager read the chain through the node's own endpoint when none of them was
+set. Without one, every chequebook move is refused with `chain_endpoint_missing`,
+and a move already submitted at the upgrade cannot be read to an outcome until
+one is set: Check on the operation then settles it.
 
 **The Docker route, retired.** Until 2026-10-15 a transfer reached the node over
 a Docker connection, the manager's own socket for `localhost` and an ssh forward
