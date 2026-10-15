@@ -513,8 +513,10 @@ export interface HealthSignals {
    */
   queueBacklogSeconds: number;
   /**
-   * Age of the most recent request a credential gate refused, across every gate in the process, or
-   * `null` while none has been refused.
+   * Age of the most recent request a credential gate refused on the ingest path, or `null` while none
+   * has been refused there. The ingest path is every engine's prefix plus the generic
+   * `POST /stream/start` and `POST /stream/segment`. A refused operator route, such as a tokenless
+   * `/metrics` scrape, is counted in `authRejectionsTotal` and never reaches this.
    *
    * Fed two ways, and it needs both. `createAuthRejectionObserver` watches for HTTP 401, which
    * covers every gate that answers one, including OME's signature check: that refuses inside its own
