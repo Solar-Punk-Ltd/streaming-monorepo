@@ -516,9 +516,9 @@ on and the time. A pass qualifies exactly that image, engine, platform and
 bridge script, so every later transfer through them skips the check, and the
 transfer's own connection must find the stored pass before it runs the bridge.
 A failure is stored with the check that failed, refuses the transfer with that
-check named, and is checked again on the next attempt. The image checked by
-hand on 2026-09-14, `ethersphere/bee:2.8.2` on Docker 29.1.3, stays in the code
-as the seed and needs no check.
+check named, and is checked again on the next attempt. The images checked by
+hand, `ethersphere/bee:2.8.2` on 2026-09-14 and `ethersphere/bee:2.8.3` on
+2026-10-15, both on Docker 29.1.3, stay in the code as the seed and need no check.
 `manager/scripts/qualify-bee-bridge.mjs` runs the same check by hand.
 To read the record:
 
