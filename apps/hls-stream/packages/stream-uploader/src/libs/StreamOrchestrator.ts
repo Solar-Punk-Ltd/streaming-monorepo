@@ -2741,9 +2741,17 @@ export class StreamOrchestrator {
     this.metrics.recordSegmentsSkipped(count);
   }
 
-  /** A request a credential gate refused. On the wall clock, since the gates have no clock seam. */
+  /**
+   * A request a credential gate refused on the ingest path, which feeds `ingest_refused`. On the wall
+   * clock, since the gates have no clock seam.
+   */
   public recordAuthRejection(): void {
     this.metrics.recordAuthRejection(Date.now());
+  }
+
+  /** A request a credential gate refused on an operator route. Counted, and kept off `/health`. */
+  public recordOperatorAuthRejection(): void {
+    this.metrics.recordOperatorAuthRejection();
   }
 
   /**

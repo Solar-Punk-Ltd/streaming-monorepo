@@ -335,6 +335,7 @@ export function makeFakeOrchestrator(overrides: Record<string, unknown> = {}): S
     keepAlive: () => false,
     recordSegmentsSkipped: () => {},
     recordAuthRejection: () => {},
+    recordOperatorAuthRejection: () => {},
     getStreamStatus: () => ({ streamId: '', state: STREAM_LIFECYCLE_UNKNOWN }),
     getSegmentStallMs: () => 30_000,
     getHealthSignals: () => makeHealthSignals(),
