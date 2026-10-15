@@ -64,6 +64,31 @@ clock. The rungs agree with each other, so playback and quality switches work, b
 clock is wrong by that gap. To see it: stop a long broadcast and start it again within the few
 seconds its recording takes to write, then compare the new playlist's first date with the wall clock.
 
+**A rung that rejoins a live ladder is numbered differently in the recording (P2).** When one rung gets no
+media for longer than the 60 second reconnect window while its siblings keep publishing, it is finalized, and when
+it comes back in the same broadcast it rejoins the ladder live at the siblings' sequence and dating line. The
+recording written at the end numbers that rung's returning segments on from its own last segment instead, so after
+the gap its sequences sit below its siblings' by the gap's length in segments. Every segment is kept and every date
+agrees, but a player that places a recording's segments by summed durations can land the gap's length off at a
+quality switch after it. Measured on 2026-10-15 on a release candidate of v1.2.1: 1080p paused 70 s rejoined live at
+sequence 1057, and its recording numbered the same segments from 1011, 46 below its siblings. To see it: during a
+broadcast pause one rung's encoder for more than 60 s, let it go, and after the recording is written compare that
+rung's sequence and date pairs with a sibling's.
+
+**A restarted broadcast keeps each rung's own numbering until its first reconnect (P3).** At the end of a
+broadcast the lower rungs often write one more short segment than the higher ones, so a recording's rungs end on
+different sequences, and a later broadcast on the same stream opens each rung at its own next sequence. Dates agree
+across rungs, the sequences are offset by one or two per earlier broadcast, and the offset goes away at the first
+reconnect, which puts every rung on one sequence again. To see it: stop a broadcast, start it again on the same
+stream, and compare the rungs' sequences at the same date.
+
+**A rung rejoining a live ladder can land one segment off (P3).** Which sequence a rejoining rung's first segment
+takes is decided by rounding the time since its siblings placed to whole segments, so half a segment is the tipping
+point. On the dev stage on 2026-10-15 the time between the first and last rung closing the same segment was 0.79 s
+typically, 0.96 s at the 90th percentile and 1.40 s at worst against a one second half segment, with 1080p last on
+nearly every segment. A viewer switching quality exactly there sees about one segment skipped or repeated. To see
+it: read the close times from SRS's per-segment log lines for all rungs of one broadcast.
+
 **The admin shows "published" while nothing goes out (P3).** A broadcaster can be connected while
 the ladder encoders produce nothing. The admin keeps showing the stream as published, with no
 warning. The uploader now reports such a ladder on `/health` as `ladder_not_started` after 45 s,
