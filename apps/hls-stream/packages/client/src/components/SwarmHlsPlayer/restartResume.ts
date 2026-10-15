@@ -1,7 +1,7 @@
 import { type ErrorData, ErrorDetails } from 'hls.js';
 
 /** One segment of a finished playlist on the media timeline, in seconds. */
-export interface RecordingSegment {
+interface RecordingSegment {
   readonly start: number;
   readonly duration: number;
 }
@@ -15,7 +15,7 @@ export interface RestartResume {
 }
 
 /** The parts of a playlist a restart reads, as hls.js's level details carry them. */
-export interface PlaylistTimeline {
+interface PlaylistTimeline {
   readonly live: boolean;
   readonly fragments: readonly RecordingSegment[];
   readonly targetduration: number;
