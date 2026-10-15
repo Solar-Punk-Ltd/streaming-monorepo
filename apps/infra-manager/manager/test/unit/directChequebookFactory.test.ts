@@ -57,16 +57,34 @@ function chainReader(): ChequebookChainReader {
   };
 }
 
-/** A node's Bee API as the direct route's session sees it, counting what is sent through it. */
-function beeSession() {
+/** What a test holds or breaks on the node, and what it can read back about the sessions opened to it. */
+interface NodeOptions {
+  /** The deposit POST waits until its session is disposed, then fails, as a real session's aborted request does. */
+  readonly holdPost?: boolean;
+  /** The deposit POST fails at once, so the move ends unknown and recovery has something to read. */
+  readonly failPost?: boolean;
+}
+
+/** A node's Bee API as the direct route's sessions see it: each session its own, counting what is sent through them. */
+function beeNode(options: NodeOptions = {}) {
   let posts = 0;
-  return {
-    posts: () => posts,
-    session: {
+  let sessions = 0;
+  let pendingReads = 0;
+  const open = new Set<object>();
+  const create = () => {
+    sessions++;
+    let disposed = false;
+    let onDispose: (() => void) | undefined;
+    const usable = () => {
+      if (disposed) throw new Error('the session was disposed');
+    };
+    const session = {
       async getAddresses() {
+        usable();
         return { ethereum: transferContext.nodeAddress };
       },
       async getWallet() {
+        usable();
         return {
           chainID: 100,
           walletAddress: transferContext.nodeAddress,
@@ -76,41 +94,77 @@ function beeSession() {
         };
       },
       async getChequebookAddress() {
+        usable();
         return { chequebookAddress: transferContext.chequebookAddress };
       },
       async getChequebookBalance() {
+        usable();
         return { totalBalance: '10000000000000000', availableBalance: '10000000000000000' };
       },
       async depositChequebook() {
+        usable();
         posts++;
+        if (options.failPost) throw new Error('the answer was lost');
+        if (options.holdPost) {
+          await new Promise<void>((resolve) => {
+            onDispose = resolve;
+          });
+          throw new Error('the request was aborted');
+        }
         return { transactionHash: `0x${'cd'.repeat(32)}` };
       },
       async withdrawChequebook() {
+        usable();
         posts++;
         return { transactionHash: `0x${'cd'.repeat(32)}` };
       },
       async getPendingTransactions() {
-        return [];
+        usable();
+        pendingReads++;
+        return { pendingTransactions: [] };
       },
-      assertUsable() {},
-      dispose() {},
-    },
+      assertUsable() {
+        usable();
+      },
+      dispose() {
+        disposed = true;
+        open.delete(session);
+        onDispose?.();
+      },
+    };
+    open.add(session);
+    return session;
   };
+  return { create, counts: () => ({ posts, sessions, pendingReads, open: open.size }) };
 }
 
-function directService(t: TestContext, host = deployment.host) {
+/** Lets the event loop turn, so a held step can be reached. */
+const pause = () => new Promise((resolve) => setImmediate(resolve));
+
+function directService(t: TestContext, host = deployment.host, options: NodeOptions & { holdResolve?: boolean } = {}) {
   const pool = new pg.Pool({ connectionString: 'postgres://unused' });
   t.after(() => pool.end());
-  const bee = beeSession();
+  const node = beeNode(options);
   const urls: string[] = [];
   const repository = new InMemoryChequebookOperations();
+  let resolving = false;
+  let release: (() => void) | undefined;
   // The runtime index.ts passes: no Docker setting at all.
   const service = createChequebookOperationsService(
     pool,
     { rpcEndpoints: '{"100":"https://rpc.example.invalid"}' },
     {
       repository,
-      profiles: { findByName: async () => ({ ...deployment, host }) },
+      profiles: {
+        findByName: async () => {
+          resolving = true;
+          if (options.holdResolve)
+            await new Promise<void>((resolve) => {
+              release = resolve;
+            });
+          return { ...deployment, host };
+        },
+      },
       containers: {
         listApiContainers: async () => [
           {
@@ -126,14 +180,22 @@ function directService(t: TestContext, host = deployment.host) {
       createChainReader: () => chainReader(),
       createSession: (url) => {
         urls.push(url);
-        return bee.session;
+        return node.create();
       },
       connectUnix: () => assert.fail('the direct route opens no Docker connection'),
       preparation: { timeoutMs: 3000 },
     },
   );
   t.after(() => service.shutdown());
-  return { service, urls, posts: bee.posts, repository };
+  return {
+    service,
+    urls,
+    posts: () => node.counts().posts,
+    counts: node.counts,
+    repository,
+    resolving: () => resolving,
+    releaseResolve: () => release?.(),
+  };
 }
 
 describe('the chequebook service built with the deployments and their containers', () => {
@@ -151,5 +213,73 @@ describe('the chequebook service built with the deployments and their containers
     assert.equal(result.operation.state, 'submitted');
     assert.equal(d.posts(), 1);
     assert.deepEqual(d.urls, [`http://bee.example.invalid:${reserved}/`]);
+  });
+});
+
+/**
+ * Shutdown on the direct route, as the Docker route's transports gave it: every session open to a node is disposed
+ * before shutdown resolves, which aborts a POST in flight, and no session is opened after it, so a move that was
+ * waiting to be prepared or to claim its dispatch sends nothing.
+ */
+describe('the direct route at shutdown', { timeout: 10_000 }, () => {
+  it('disposes a held POST, and refuses every later move without opening a session', async (t) => {
+    const d = directService(t, deployment.host, { holdPost: true });
+    const submitting = d.service.submit(transferIntent());
+    while (d.posts() === 0) await pause();
+    assert.deepEqual(await d.service.shutdown(), []);
+    const result = await submitting;
+    assert.equal(result.operation.state, 'unknown');
+    assert.equal(d.posts(), 1);
+    assert.equal(d.counts().open, 0, 'no session is left open');
+    await assert.rejects(d.service.submit(transferIntent()));
+    assert.equal(d.counts().sessions, 1, 'no session is opened after shutdown');
+  });
+
+  it('refuses the session a move waiting on its target would open, so nothing is saved or sent', async (t) => {
+    const d = directService(t, deployment.host, { holdResolve: true });
+    const submitting = d.service.submit(transferIntent());
+    const refused = assert.rejects(submitting);
+    while (!d.resolving()) await pause();
+    assert.deepEqual(await d.service.shutdown(), []);
+    d.releaseResolve();
+    await refused;
+    assert.equal(d.counts().sessions, 0);
+    assert.equal(d.repository.rows.size, 0);
+  });
+
+  it('cannot revive a disposed session for its POST when the dispatch claim was held across shutdown', async (t) => {
+    const d = directService(t);
+    let release!: () => void;
+    let claiming = false;
+    const claim = d.repository.claimDispatch.bind(d.repository);
+    d.repository.claimDispatch = async (id) => {
+      claiming = true;
+      await new Promise<void>((resolve) => {
+        release = resolve;
+      });
+      return claim(id);
+    };
+    const submitting = d.service.submit(transferIntent());
+    while (!claiming) await pause();
+    assert.deepEqual(await d.service.shutdown(), []);
+    release();
+    const result = await submitting;
+    assert.equal(result.operation.state, 'unknown');
+    assert.equal(d.posts(), 0);
+    assert.equal(d.counts().open, 0);
+  });
+
+  it("opens no session for recovery's pending read after shutdown", async (t) => {
+    const d = directService(t, deployment.host, { failPost: true });
+    const { operation } = await d.service.submit(transferIntent());
+    assert.equal(operation.state, 'unknown');
+    const before = d.counts();
+    await d.service.check(operation.id);
+    assert.ok(d.counts().pendingReads > before.pendingReads, 'recovery reads the pending list through a session');
+    assert.equal(d.counts().open, 0);
+    await d.service.shutdown();
+    const sessions = d.counts().sessions;
+    await d.service.check(operation.id).catch(() => undefined);
+    assert.equal(d.counts().sessions, sessions, 'no session is opened after shutdown');
   });
 });
