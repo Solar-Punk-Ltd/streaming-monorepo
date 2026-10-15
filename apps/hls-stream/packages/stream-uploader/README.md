@@ -493,8 +493,9 @@ things moved the rungs apart, and each now keeps them together:
   line minted under a sibling's floor was one that sibling stepped off. One rung minted at
   03:03:12.365 from a short partial segment, and three landed at 03:03:14.365. The rung minting the
   line now reads the date every rung of the return, and every rung that kept publishing through it,
-  gives the resume point, and mints at the latest of those and the wall clock
-  (`ReanchorRequest.ladderFloorMs`).
+  gives the resume point, and mints at the latest of those floors, its own included, and the wall
+  clock (`ReanchorRequest.ladderFloorMs`). When a rung kept publishing through the return, that rung's
+  line takes the wall clock's place, as the next point says.
 - **A return some rung never left resumes on that rung's line, not on the wall clock.** That rung's
   media is continuous, so its dates are the ladder's timeline. Three rungs bounced by SRS used to
   re-anchor at the wall clock while 1080p, never part of their return, went on dating its continuous
