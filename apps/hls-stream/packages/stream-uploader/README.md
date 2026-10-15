@@ -548,7 +548,7 @@ before anyone simplifies it. Recognising a return by the clock alone read a seco
 rung as a sibling crossing the first, because nothing advances while an encoder is away: four fifty
 second outages dated the second return 48 seconds behind and the third 96. Keying on "at or below the
 sequence the line was minted at" fixed that for a lone rendition and failed on a ladder, because the
-epoch list belongs to the whole broadcast and its newest line is usually a sibling's — a rung one
+epoch list belongs to the whole broadcast and its newest line is usually a sibling's. A rung one
 segment behind then joined the previous return's line about half the time. The engine's own counter
 restarting is a different cause with no witness outside the rung, and it is still judged by the
 clock.
