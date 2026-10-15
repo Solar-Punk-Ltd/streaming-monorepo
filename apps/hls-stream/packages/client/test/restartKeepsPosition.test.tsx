@@ -169,6 +169,16 @@ describe('a player restarted by a fatal error', () => {
     assert.deepEqual(fakes.instances[2].startLoads, [2100]);
   });
 
+  it('names the error that caused the restart in the line that announces it', () => {
+    failFatallyAt(2100, false);
+
+    const lines = vi.mocked(console.warn).mock.calls.map((call) => call.join(' '));
+    const restart = lines.filter((line) => line.startsWith('Restarting stream'));
+    assert.equal(restart.length, 1, `restart lines: ${restart.join(' | ')}`);
+    assert.match(restart[0], new RegExp(ErrorDetails.LEVEL_LOAD_ERROR));
+    assert.doesNotMatch(restart[0], /manifest parsing/);
+  });
+
   it('rejoins a live broadcast at the live edge, as it always has', () => {
     failFatallyAt(2100, true);
 
