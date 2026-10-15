@@ -117,8 +117,14 @@ function emit(index: number, event: string, data: unknown = {}): void {
   });
 }
 
-/** Mounts the player, plays to `positionS` on a level that is or is not live, and fails it fatally. */
-function failFatallyAt(positionS: number, live: boolean): void {
+const FATAL_LEVEL_LOAD = { fatal: true, type: ErrorTypes.NETWORK_ERROR, details: ErrorDetails.LEVEL_LOAD_ERROR };
+
+/**
+ * Mounts the player, plays to `positionS` on a level that is or is not live, and fails it fatally.
+ *
+ * @param parseRebuilt Whether the rebuilt player then parses its manifest, which is when it starts loading.
+ */
+function failFatallyAt(positionS: number, live: boolean, parseRebuilt = true): void {
   act(() => {
     root.render(
       createElement(SwarmHlsPlayer, {
@@ -136,10 +142,12 @@ function failFatallyAt(positionS: number, live: boolean): void {
   fakes.instances[0].currentLevel = 0;
   Object.defineProperty(video, 'currentTime', { configurable: true, value: positionS });
 
-  emit(0, Events.ERROR, { fatal: true, type: ErrorTypes.NETWORK_ERROR, details: ErrorDetails.LEVEL_LOAD_ERROR });
+  emit(0, Events.ERROR, FATAL_LEVEL_LOAD);
   assert.equal(fakes.instances[0].destroyed, true, 'the fatal error did not restart the player');
   assert.equal(fakes.instances.length, 2, 'no second player was built');
-  emit(1, Events.MANIFEST_PARSED);
+  if (parseRebuilt) {
+    emit(1, Events.MANIFEST_PARSED);
+  }
 }
 
 describe('a player restarted by a fatal error', () => {
@@ -147,6 +155,28 @@ describe('a player restarted by a fatal error', () => {
     failFatallyAt(2100, false);
 
     assert.deepEqual(fakes.instances[1].startLoads, [2100]);
+  });
+
+  // The rebuilt player holds no level yet, so what it reads as its own position is nothing, and that
+  // nothing must not replace the place the viewer had.
+  it('keeps the recording position through a second fatal error before the rebuilt player has started', () => {
+    failFatallyAt(2100, false, false);
+
+    emit(1, Events.ERROR, FATAL_LEVEL_LOAD);
+    assert.equal(fakes.instances.length, 3, 'the second fatal error did not restart the player');
+    emit(2, Events.MANIFEST_PARSED);
+
+    assert.deepEqual(fakes.instances[2].startLoads, [2100]);
+  });
+
+  it('names the error that caused the restart in the line that announces it', () => {
+    failFatallyAt(2100, false);
+
+    const lines = vi.mocked(console.warn).mock.calls.map((call) => call.join(' '));
+    const restart = lines.filter((line) => line.startsWith('Restarting stream'));
+    assert.equal(restart.length, 1, `restart lines: ${restart.join(' | ')}`);
+    assert.match(restart[0], new RegExp(ErrorDetails.LEVEL_LOAD_ERROR));
+    assert.doesNotMatch(restart[0], /manifest parsing/);
   });
 
   it('rejoins a live broadcast at the live edge, as it always has', () => {
