@@ -82,14 +82,14 @@ export function BasicsStep({ state, context, update }: WizardStepProps) {
             {
               value: 'custom',
               title: 'Another host over SSH',
-              detail: 'An ssh alias or user@host that this manager can reach.',
+              detail: "An ssh alias from this manager's ssh config, never user@host.",
               extra: (
                 <TextField
                   size="small"
                   fullWidth
                   value={state.hostCustom}
                   onChange={(event) => update({ hostCustom: event.target.value })}
-                  placeholder="deploy@10.0.0.7"
+                  placeholder="bee2"
                   slotProps={{
                     htmlInput: { style: { fontFamily: MONO_STACK } },
                   }}

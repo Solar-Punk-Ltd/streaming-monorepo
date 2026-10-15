@@ -156,7 +156,7 @@ export function DeployTargetsCard() {
             label="Deploy target"
             value={alias}
             onChange={(event) => setAlias(event.target.value)}
-            helperText="Use the same SSH alias or user@host as the deployment."
+            helperText="Use the same SSH alias as the deployment."
             size="small"
             fullWidth
           />

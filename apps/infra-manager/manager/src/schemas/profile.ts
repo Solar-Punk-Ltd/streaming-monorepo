@@ -6,6 +6,8 @@ import {
   beeUrlProblem,
   rpcEndpointProblem,
   defaultServicesFor,
+  DEPLOY_HOST_MESSAGE,
+  DEPLOY_HOST_RE,
   engineForComponents,
   FEED_TOPIC_MESSAGE,
   FEED_TOPIC_RE,
@@ -34,7 +36,6 @@ const ONE_ENGINE_MESSAGE = 'components may include at most one engine (srs or om
 
 const PROFILE_NAME_RE = /^[a-z0-9][a-z0-9-]{0,30}$/;
 
-const HOST_RE = /^[a-zA-Z0-9][a-zA-Z0-9._@-]{0,127}$/; // like localhost or "user@host"
 const ETH_ADDRESS_RE = /^0x[0-9a-fA-F]{40}$/;
 const PRIVATE_KEY_RE = /^0x[0-9a-fA-F]{64}$/;
 const STAMP_ID_RE = /^(0x)?[0-9a-fA-F]{64}$/;
@@ -266,7 +267,7 @@ export const createProfileSchema = object({
     .oneOf([...PROFILE_KINDS])
     .default('custom'),
   notes: string().nullable().notRequired().max(500),
-  host: string().notRequired().matches(HOST_RE, 'host must be "localhost", an ssh alias, or user@host'),
+  host: string().notRequired().matches(DEPLOY_HOST_RE, `host ${DEPLOY_HOST_MESSAGE}`),
   components: array()
     .of(
       string()
@@ -357,7 +358,7 @@ export const newDeploymentShapeQuerySchema = object({
       servicesOfList(value).every((service) => (ALL_SERVICES as readonly string[]).includes(service)),
     )
     .test('one-engine', ONE_ENGINE_MESSAGE, (value) => !hasConflictingEngines(servicesOfList(value))),
-  host: string().notRequired().matches(HOST_RE, 'host must be "localhost", an ssh alias, or user@host'),
+  host: string().notRequired().matches(DEPLOY_HOST_RE, `host ${DEPLOY_HOST_MESSAGE}`),
 }).noUnknown(true);
 
 export const updateProfileSchema = object({
@@ -449,7 +450,7 @@ export const createGroupSchema = object({
     .oneOf([...PROFILE_KINDS])
     .default('custom'),
   notes: string().nullable().notRequired().max(500),
-  host: string().notRequired().matches(HOST_RE, 'host must be "localhost", an ssh alias, or user@host'),
+  host: string().notRequired().matches(DEPLOY_HOST_RE, `host ${DEPLOY_HOST_MESSAGE}`),
   components: array()
     .of(
       string()

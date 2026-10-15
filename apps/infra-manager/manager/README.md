@@ -484,8 +484,9 @@ itself does.
   and every other restriction of the manager's other forwards, and takes the
   address, user, port, key and known hosts from that block. So the host needs
   what a deploy to it already needs, a `Host` block for its alias, a key that
-  authenticates without a prompt and its host key in `known_hosts`. A host
-  written as `user@host` names no `Host` block and needs one, or an entry in
+  authenticates without a prompt and its host key in `known_hosts`. A new
+  deployment cannot be created on a `user@host` host for this reason. One stored
+  before that rule names no `Host` block and needs one, or an entry in
   `CHEQUEBOOK_DOCKER_TRANSPORTS`. A `Host` block that relies on `ProxyJump` or
   `ProxyCommand` is not followed.
 - **The chain** is read through the endpoint the Bee node was started with, its
