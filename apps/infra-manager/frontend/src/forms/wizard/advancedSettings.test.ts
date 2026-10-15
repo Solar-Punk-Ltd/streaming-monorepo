@@ -152,14 +152,14 @@ describe('the settings list the wizard asks for', () => {
     const state = stateFor('custom', {
       components: ['srs', 'stream-uploader'],
       host: 'custom',
-      hostCustom: ' deploy@edge-1 ',
+      hostCustom: ' edge-1 ',
     });
 
     assert.deepEqual(queryOf(newDeploymentSettingsPathOf(state)), {
       path: '/versions/7/settings-catalog',
       kind: 'custom',
       components: 'srs,stream-uploader',
-      host: 'deploy@edge-1',
+      host: 'edge-1',
     });
   });
 });
