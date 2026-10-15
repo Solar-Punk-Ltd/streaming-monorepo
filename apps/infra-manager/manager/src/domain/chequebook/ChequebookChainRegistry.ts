@@ -30,9 +30,14 @@ function usableChainEndpoint(value: unknown): value is string {
 
 /**
  * Where a transfer reads the chain. CHEQUEBOOK_RPC_ENDPOINTS wins for every
- * chain it names. For any other chain the endpoint is the one the node being
- * funded was started with, read from its container's command on the Docker
- * connection the manager owns, and remembered for that node's saved transfers.
+ * chain it names. Then the manager's own default endpoint, `defaultEndpoint`
+ * (FUNDING_RPC_URL, or else BEE_RPC_ENDPOINT), for whichever chain it answers
+ * for: it is verified against the node's chain before use, and a node on another
+ * chain is refused as `wrong_chain`. Only with neither is the endpoint the one
+ * the node being funded was started with, read from its container's command on
+ * the Docker connection the manager owns, and remembered for that node's saved
+ * transfers. (Dev-2 takes that last read out: the manager reads the chain
+ * through its own settings and never through a node's container.)
  *
  * So a deployment's saved chain endpoint, which a signed-in user sets through
  * the API, does choose where the manager itself sends a transfer's chain
@@ -46,12 +51,17 @@ export class ChequebookChainRegistry {
   #endpoints = new Map<number, string>();
   #nodeEndpoints = new Map<string, string>();
   #createReader: (endpoint: string) => ChequebookChainReader;
+  #defaultEndpoint: string | undefined;
 
   constructor(
     configuration: string | undefined,
     createReader: (endpoint: string) => ChequebookChainReader = (endpoint) => new ChainRpc(endpoint),
+    options: { defaultEndpoint?: string | undefined } = {},
   ) {
     this.#createReader = createReader;
+    if (options.defaultEndpoint !== undefined && !usableChainEndpoint(options.defaultEndpoint))
+      throw new ChequebookConfigurationError('chain_setting_invalid');
+    this.#defaultEndpoint = options.defaultEndpoint;
     try {
       const configured: unknown = configuration ? JSON.parse(configuration) : {};
       if (!configured || typeof configured !== 'object' || Array.isArray(configured))
@@ -73,16 +83,21 @@ export class ChequebookChainRegistry {
     }
   }
 
-  /** The configured endpoint for a chain, and nothing else. */
+  /** The configured endpoint for a chain, or else the manager's default one, and nothing else. */
   async forChain(chainId: number, signal?: AbortSignal): Promise<ChequebookChainReader> {
     try {
       if (!tokenAddressForChain(chainId)) throw new ChainReadError('unsupported_chain');
-      const endpoint = this.#endpoints.get(chainId);
+      const endpoint = this.#endpoints.get(chainId) ?? this.#defaultEndpoint;
       if (!endpoint) throw new ChainReadError('chain_endpoint_missing');
       return await this.verified(endpoint, chainId, signal);
     } catch (error) {
       throw ChainReadError.keeping(error);
     }
+  }
+
+  /** Whether the manager's own settings name an endpoint for this chain, so no node is asked for one. */
+  #configuredFor(chainId: number): boolean {
+    return this.#endpoints.has(chainId) || this.#defaultEndpoint !== undefined;
   }
 
   /** A transfer being prepared: the configured endpoint, or else the one its node's container runs with now. */
@@ -92,7 +107,7 @@ export class ChequebookChainRegistry {
     nodeEndpoint: string | null,
     signal?: AbortSignal,
   ): Promise<ChequebookChainReader> {
-    if (this.#endpoints.has(chainId) || !tokenAddressForChain(chainId)) return this.forChain(chainId, signal);
+    if (this.#configuredFor(chainId) || !tokenAddressForChain(chainId)) return this.forChain(chainId, signal);
     try {
       if (!usableChainEndpoint(nodeEndpoint)) throw new ChainReadError('chain_endpoint_missing');
       const reader = await this.verified(nodeEndpoint, chainId, signal);
@@ -117,7 +132,7 @@ export class ChequebookChainRegistry {
     readNodeEndpoint: ReadNodeChainEndpoint,
     signal?: AbortSignal,
   ): Promise<ChequebookChainReader> {
-    if (this.#endpoints.has(chainId) || !tokenAddressForChain(chainId)) return this.forChain(chainId, signal);
+    if (this.#configuredFor(chainId) || !tokenAddressForChain(chainId)) return this.forChain(chainId, signal);
     const key = nodeKey(chainId, nodeAddress);
     try {
       const remembered = this.#nodeEndpoints.get(key);
