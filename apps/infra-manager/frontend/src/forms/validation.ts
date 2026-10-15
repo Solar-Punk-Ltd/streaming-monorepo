@@ -1,5 +1,7 @@
 import {
   addressOfStreamKey,
+  DEPLOY_HOST_MESSAGE,
+  DEPLOY_HOST_RE,
   FEED_TOPIC_MESSAGE,
   FEED_TOPIC_RE,
   SRT_PASSPHRASE_MESSAGE,
@@ -18,7 +20,6 @@ import {
 // Exported so anything that has to agree with these rules can test against the
 // same expressions rather than writing its own.
 export const NAME_RE = /^[a-z0-9][a-z0-9-]{0,30}$/;
-export const HOST_RE = /^[a-zA-Z0-9][a-zA-Z0-9._@-]{0,127}$/;
 export const ETH_ADDRESS_RE = /^0x[0-9a-fA-F]{40}$/;
 export const PRIVATE_KEY_RE = /^0x[0-9a-fA-F]{64}$/;
 export const STAMP_ID_RE = /^(0x)?[0-9a-fA-F]{64}$/;
@@ -26,7 +27,6 @@ export const STAMP_ID_RE = /^(0x)?[0-9a-fA-F]{64}$/;
 export const NOTES_MAX = 500;
 
 const NAME_RULE = 'lowercase letters, digits and dashes, max 31 characters';
-const HOST_RULE = 'an ssh alias or user@host, like deploy@10.0.0.7';
 const ADDRESS_RULE = '0x plus 40 hex characters';
 const PRIVATE_KEY_RULE = '0x plus 64 hex characters';
 const STAMP_ID_RULE = '64 hex characters, with or without 0x in front';
@@ -41,7 +41,7 @@ export function nameProblem(value: string): Problem {
 
 export function hostProblem(value: string): Problem {
   if (!value.trim()) return 'Enter the host';
-  return HOST_RE.test(value) ? null : `Host: ${HOST_RULE}`;
+  return DEPLOY_HOST_RE.test(value) ? null : `Host ${DEPLOY_HOST_MESSAGE}`;
 }
 
 export function addressProblem(value: string): Problem {

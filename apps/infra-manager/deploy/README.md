@@ -275,8 +275,11 @@ revision is current.
 
 ## Deploying Bee nodes to other hosts
 
-A deployment's **Host** field is a deploy target: `localhost`, an ssh alias, or
-`user@host`. Only the exact value `localhost` means the manager's own machine:
+A deployment's **Host** field is a deploy target: `localhost` or an ssh alias, the
+name of a `Host` block in the manager's `ssh_config` below. A new deployment
+written as `user@host` is refused: it would deploy, but the manager could then
+never move its chequebook's money, because that route opens the `Host` block by
+name. Only the exact value `localhost` means the manager's own machine:
 `deploy.sh` reaches anything that names another host over `ssh`, and so does the
 manager, from inside the api container, which has no ssh identity of its own.
 

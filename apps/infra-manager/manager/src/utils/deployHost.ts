@@ -30,7 +30,7 @@ const NOT_ALIASES = new Set(['', 'localhost', '127.0.0.1', '0.0.0.0', '::1', 'na
 
 /**
  * What may be handed to `ssh -G`. `profiles.host` is already validated by
- * HOST_RE, but this is an exec boundary and must not lean on that alone: the
+ * DEPLOY_HOST_RE at create, but this is an exec boundary and must not lean on that alone: the
  * leading-alphanumeric requirement is the part that matters, since ssh has no
  * `--` and a name like `-oProxyCommand=…` would otherwise arrive as an option.
  */
