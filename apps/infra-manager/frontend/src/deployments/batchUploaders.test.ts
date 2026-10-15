@@ -29,6 +29,8 @@ import {
   batchNotice,
   batchUseOf,
   broadcastStateOf,
+  applyFollowText,
+  followApply,
   ownUploaderOf,
   readStageCatalogs,
   setBatchAndReread,
@@ -101,6 +103,7 @@ function uploader(over: Partial<BatchUploader> = {}): BatchUploader {
     savedBatchId: NEW,
     runningBatchId: OLD,
     behind: true,
+    running: true,
     recreates: ['stream-uploader'],
     batchKey: 'STAMP',
     changedKeys: ['STAMP'],
@@ -303,13 +306,33 @@ describe('the chip on each batch', () => {
     assert.equal(batchUseOf(OLD, NEW, []), null);
   });
 
-  it('marks a batch in use while any stage still pays with it', () => {
+  it('keeps the saved batch waiting for Apply while one stage runs it and another is still behind on it', () => {
     const uploaders = [
       uploader({ name: 'stage-a', own: false, runningBatchId: NEW, behind: false }),
       uploader({ name: 'stage-b', own: false }),
     ];
 
-    assert.equal(batchUseOf(NEW, NEW, uploaders), 'in-use');
+    assert.equal(batchUseOf(NEW, NEW, uploaders), 'saved-waiting');
+    assert.equal(batchUseOf(OLD, NEW, uploaders), 'running-not-saved');
+  });
+
+  it('keeps the saved batch waiting on a rung page while one stage restarted on it and another still pays with the old one', () => {
+    const rungStage = (name: string, running: string) =>
+      stageUploaderOf(
+        name,
+        catalog([
+          entry({
+            key: 'BEE_PUBLISHERS',
+            value: publishers(NEW),
+            running: running === NEW ? 'same' : 'differs',
+            runningValue: publishers(running),
+          }),
+        ]),
+        '720p',
+      );
+    const uploaders = [rungStage('stage-a', NEW), rungStage('stage-b', OLD)].flatMap((read) => (read ? [read] : []));
+
+    assert.equal(batchUseOf(NEW, NEW, uploaders), 'saved-waiting');
     assert.equal(batchUseOf(OLD, NEW, uploaders), 'running-not-saved');
   });
 
@@ -630,5 +653,93 @@ describe("the stages' settings lists after a Use", () => {
 
     assert.deepEqual(await readStageCatalogs(['stage-a'], read, 20), []);
     assert.equal(aborted, true);
+  });
+});
+
+describe('after Apply now, the card follows the recreate', () => {
+  const RECREATED: DeploymentSettingsApplied = { recreated: ['stream-uploader'] };
+
+  function harness(reads: (readonly BatchUploader[] | null)[]) {
+    let time = 0;
+    const waits: number[] = [];
+    let index = 0;
+    const deps = {
+      reread: async () => reads[Math.min(index++, reads.length - 1)] ?? null,
+      now: () => time,
+      sleep: async (ms: number) => {
+        waits.push(ms);
+        time += ms;
+      },
+      budgetMs: 60_000,
+      delaysMs: [2_000, 4_000, 8_000, 15_000],
+    };
+    return { deps, waits, reads: () => index };
+  }
+
+  const deploying = uploader({ running: false, behind: false });
+  const caughtUp = uploader({ runningBatchId: NEW, behind: false });
+
+  it('keeps reading while the deployment recreates, and stops once its uploader runs the saved batch', async () => {
+    const { deps, waits, reads } = harness([[uploader()], [deploying], [deploying], [caughtUp]]);
+
+    assert.equal(await followApply(RECREATED, 'main-stage', deps), 'caught-up');
+    assert.equal(reads(), 4);
+    assert.deepEqual(waits, [2_000, 4_000, 8_000]);
+  });
+
+  it('does not take a deployment that is mid deploy as caught up, though nothing in it is behind', async () => {
+    const { deps } = harness([[deploying]]);
+
+    assert.equal(await followApply(RECREATED, 'main-stage', deps), 'not-running');
+  });
+
+  it('gives up within its time and says the uploader still runs the old batch', async () => {
+    const { deps, waits } = harness([[uploader()]]);
+
+    assert.equal(await followApply(RECREATED, 'main-stage', deps), 'still-behind');
+    assert.ok(waits.reduce((sum, wait) => sum + wait, 0) <= 60_000);
+    assert.deepEqual(waits.slice(0, 5), [2_000, 4_000, 8_000, 15_000, 15_000]);
+  });
+
+  it('does not take a stage left out of a read as caught up', async () => {
+    const { deps } = harness([[stage({ name: 'stage-b' })], null]);
+
+    assert.equal(await followApply(RECREATED, 'stage-a', deps), 'unread');
+  });
+
+  it('reads once and follows nothing when Apply recreated nothing', async () => {
+    const { deps, waits, reads } = harness([[uploader()]]);
+
+    assert.equal(await followApply({ recreated: [] }, 'main-stage', deps), 'still-behind');
+    assert.equal(reads(), 1);
+    assert.deepEqual(waits, []);
+  });
+
+  it('stops when the card goes away', async () => {
+    const controller = new AbortController();
+    const { deps, reads } = harness([[uploader()]]);
+    const follow = followApply(RECREATED, 'main-stage', {
+      ...deps,
+      signal: controller.signal,
+      sleep: async () => {
+        controller.abort();
+      },
+    });
+
+    assert.equal(await follow, 'stopped');
+    assert.equal(reads(), 1);
+  });
+
+  it('says how the follow ended, naming the deployment, with no em-dash and no semicolon', () => {
+    const texts = (['caught-up', 'still-behind', 'not-running', 'unread'] as const).map((outcome) =>
+      applyFollowText('stage-a', outcome),
+    );
+
+    assert.match(texts[0]!.text, /stage-a now runs the saved settings/);
+    assert.equal(texts[0]!.severity, 'success');
+    assert.match(texts[1]!.text, /stage-a still ran the batch it started with/);
+    assert.match(texts[2]!.text, /stage-a was not running again/);
+    assert.match(texts[3]!.text, /could not read/);
+    for (const { text } of texts) assert.doesNotMatch(text, /[—;]/);
   });
 });
