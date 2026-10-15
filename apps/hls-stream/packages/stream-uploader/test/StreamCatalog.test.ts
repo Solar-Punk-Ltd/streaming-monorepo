@@ -1268,10 +1268,16 @@ describe('StreamCatalog ladder write path', () => {
       },
     } as unknown as Bee;
     const masterWriter = new MasterFeedWriter(makePublishers(masterBee), new PrivateKey(TEST_STREAM_KEY));
-    const catalog = new StreamCatalog(makePublishers(feedbackBee(writes)), TEST_STREAM_KEY, TEST_TOPIC, undefined, masterWriter);
+    const catalog = new StreamCatalog(
+      makePublishers(feedbackBee(writes)),
+      TEST_STREAM_KEY,
+      TEST_TOPIC,
+      undefined,
+      masterWriter,
+    );
     await catalog.init();
     const names = ['360p', '480p', '720p', '1080p'];
-    const ladderRung = (name: string) => ({ ...rung, name, topic: `rung-${name}` });
+    const ladderRung = (name: string) => ({ ...rung, name, height: Number.parseInt(name, 10), topic: `rung-${name}` });
 
     for (const name of names) {
       await catalog.upsertRendition(identity, ladderRung(name));

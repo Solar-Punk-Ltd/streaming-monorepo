@@ -309,7 +309,11 @@ describe('what a rendition announce does in admin mode', () => {
         Number(harness.masters.at(-1)!.index),
         'the admin names a master below the last one written, so the slot above it holds another copy',
       );
-      assert.equal(harness.masters.length, writtenWhenReported, 'a master was written after the recording was reported');
+      assert.equal(
+        harness.masters.length,
+        writtenWhenReported,
+        'a master was written after the recording was reported',
+      );
     });
 
     it('names the recording at the last master written when the four answers land together', async () => {
