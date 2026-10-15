@@ -85,6 +85,14 @@ A recording's master names every rung that has a recording, whatever liveness sa
 was live. A master naming no renditions at all is never written, because that is an unplayable stream
 rather than a degraded one.
 
+A recording's master is written once. Every later report of a rung of a finished ladder, a finalize
+resumed after a restart included, writes nothing when the master feed's newest master already says
+the same, and names that master's slot instead. Measured live on 2026-10-15 in admin mode: each of
+four rungs' finalize reports wrote the same master, so the recording was named at one slot with two
+more copies above it, and anything reading the slot after the one it was told about found a master
+nobody had announced. A live master is always written, because a new broadcast of the same declared stream can open
+with one identical to the recording's and still has to land above it.
+
 Taking a rung back is this rule's own, and the player never does it. A failed delivery is a segment
 upload that was refused, which leaves a gap in the playlist, or a live playlist publish that did not
 land. A rung that fell behind while its deliveries were failing, a full postage batch being the
@@ -1132,8 +1140,9 @@ rung whose own report finished the ladder, or from the failed stop of a rung tha
 when that is what finishes it. The admin cannot hold that a rung will not finish, because its
 rendition route refuses fields it does not know, so this service judges such a ladder itself. Its
 `index` is **the final master's index in the
-declared topic's feed** — never a rung's own VOD index, which names a position in a feed no viewer
-opens. Its `duration` is the ladder's. It is said again by any later announce that finds the ladder
+declared topic's feed**, never a rung's own VOD index, which names a position in a feed no viewer
+opens. The finished ladder's later reports write no copy above it, as the recording's master is
+written once. Its `duration` is the ladder's. It is said again by any later announce that finds the ladder
 finished while the admin still holds the stream as anything but `vod`: the admin answers the flip
 once, and if the master write behind that one report failed, the next announce is the only chance
 left to list the recording. `vod -> vod` is accepted, so the repeat is harmless.
