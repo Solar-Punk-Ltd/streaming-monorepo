@@ -28,10 +28,16 @@ Updated 2026-09-26 at `9e4e8c8f` (the chequebook funding change), for the ruling
 longer needs `CHEQUEBOOK_RPC_ENDPOINTS` or `CHEQUEBOOK_DOCKER_TRANSPORTS`: it
 reads the chain through the node's own endpoint, reaches Docker the way the
 manager already does for that host, and checks a Bee image nothing has checked
-before the first transfer through it. Every refusal now names its cause. The
-sections "Where a transfer reaches the node and the chain" and "Evidence and
-remaining acceptance" below describe that code, and the operator's view is
-"Funding a chequebook on a new host" in `manager/README.md`.
+before the first transfer through it. Every refusal now names its cause.
+
+Updated 2026-10-15, for the owner's rule that the manager uses Bee's API. A
+transfer reaches the node through its Bee API, as stamp operations do, and no
+longer through a Docker connection, so a host written as `user@host` needs no
+`Host` block, and `CHEQUEBOOK_DOCKER_TRANSPORTS` and `DOCKER_HOST` are no longer
+read for it. The chain is read through the manager's own settings. The sections
+"Where a transfer reaches the node and the chain" and "Evidence and remaining
+acceptance" below describe that code, and the operator's view is "Funding a
+chequebook on a new host" in `manager/README.md`.
 
 ## Balances and new uploader starts
 
@@ -151,8 +157,8 @@ never polled either, whatever deadline its row still carries, and the page shows
 no automatic checking sentence for it.
 
 Check uses the recorded identity and reads the chain through the endpoint that
-"Where a transfer reaches the node and the chain" below describes, the
-configured one or the node's own. It first examines the known hash when
+"Where a transfer reaches the node and the chain" below describes, one of the
+manager's own settings. It first examines the known hash when
 available. Receipt verification checks identity, canonical block ancestry and
 finality. Missing receipts remain pending. Unavailable RPC, incomplete history,
 contradictory evidence and reorgs remain unresolved. Checks are bounded and
@@ -216,80 +222,85 @@ assert work on it as on any other.
 A submission the manager could not prepare answers `503` with
 `{ error: 'chequebook_preparation_unavailable', cause, check, message }`.
 `cause` is one of the closed list in `common/src/chequebookRefusals.ts`, set
-where the refusal is decided and kept through every rewrap, the ssh path's
-included, and `check` names the failed bridge check when the cause is
-`bridge_not_qualified`. `message` is the cause's own sentence. Nothing in the
+where the refusal is decided and kept through every rewrap, and `check` names
+the failed bridge check when the cause is `bridge_not_qualified`, which only the
+retired Docker route answered. `message` is the cause's own sentence. Nothing in the
 answer is upstream text, an endpoint or a socket path. The page shows the same
 sentence from the same list and ignores any cause it does not know. Nothing is
 recorded or sent for such a submission, and the saved request can be sent again
-from the dialog once the cause is fixed.
+from the dialog once the cause is fixed. A deployment removed or replaced while
+the transfer was being prepared answers `409 chequebook_profile_changed`
+instead, and nothing is sent either.
 
 ## Where a transfer reaches the node and the chain
 
-No route is taken from a money request, an operation record or a Bee answer,
-and the factory has no direct Bee URL fallback. The Docker route is a manager
-process setting or a default derived from one. The chain's default is the
-endpoint the node was started with, so a deployment's saved chain endpoint,
-which a signed-in user can set through the API, chooses where the manager
-itself sends that deployment's chain reads, from the manager's own network.
-`CHEQUEBOOK_BEE_ENDPOINT_MODE` is gone.
+No route is taken from a money request, an operation record or a Bee answer.
+The node's address comes from the deployment, and the chain endpoint from the
+manager's process settings.
 
-**Docker.** `ChequebookDockerTransports` takes an entry of
-`CHEQUEBOOK_DOCKER_TRANSPORTS` for the alias it names. Any other alias gets the
-connection the manager already uses: the manager's own socket for `localhost`,
-`/var/run/docker.sock` or the Unix socket `DOCKER_HOST` names, and for a remote
-alias an `ssh-config` forward of that host's `/var/run/docker.sock` through the
-alias's `Host` block, the block `TargetDocker` reaches with `ssh <alias>`. That
-forward is `sshDockerForwardCommand`'s explicit option list without `-F`, the
-identity, agent, known hosts, `HostKeyAlias`, `-l` and `-p`, which the block
-supplies, with batch mode and strict host key checking kept and the alias after
-`--`. An alias with `@` is refused, because ssh would read it as a destination.
+**The node.** `ConfiguredBeeTargetResolver` works out the node's Bee API from
+the deployment's own row: `beeApiUrlFor`, the address stamp operations and the
+inventory use, over plain `http`, with the port its `bee-uploader` container
+recorded, `BEE_UPLOADER_API_PORT`. It takes the transfer's target from the SQL
+ownership capture, `PostgresChequebookTargetOwnership.capture`, which the journal
+admits a transfer under and which never touches Docker. That target carries the
+port the deployment's reservation owns, and the recorded port must be that port,
+or the transfer is refused before any session opens. So a port another
+deployment has since been given is never dialled. `PinnedBeeSession` then reads
+the node's addresses, wallet and chequebook over that address, and sends the one
+`POST /chequebook/deposit` or `/chequebook/withdraw`. The last check before
+the POST works the target out again, and a deployment whose address, port or
+shape changed since makes it refuse the recorded transfer, `rejected` with
+`preflight_failed`. The refusals before anything is recorded are:
 
-**Qualification.** An entry that pins `qualificationIds` keeps the old rule:
-those catalog records and nothing else. Every other route is automatic. The seed
-catalog and the passes stored in `bee_bridge_qualifications` qualify a tuple of
-image id, engine version, platform and bridge revision. A tuple neither covers is
-checked first: on a short-lived connection of its own, to the same socket or
-through the same ssh forward, the manager reads the container and runs one
-read-only exec, `beeBridgeCheckCommand()`, whose framed answer it reads through
-the exec duplex. The check is whether the four absolute paths the bridge script
-runs are executable and whether bash has `/dev/tcp`, and the container prints
-fixed words so no upstream text is parsed. A pass is stored with the evidence,
-its digest, `BEE_BRIDGE_CHECK_REVISION`, the alias and the time, and qualifies
-the tuple with the catalog's own lifetime, grace and stream bounds. A failure is
-stored with its check and refuses with it named, and the next attempt checks
-again. The bridge's own connection then re-reads the tuple, which must be the
-checked container and tuple, and must find the seed record or the stored pass
-immediately before its exec. Two first transfers racing on a new tuple both
-check, and a partial unique index on passes lets one pass land.
+- no `bee-uploader` container recorded: `bee_container_not_found`;
+- a deployment that is deploying, stopping or removing, two `bee-uploader`
+  containers recorded, or a capture that refuses: `target_changed`;
+- a recorded port that is missing, out of range or not the reserved one:
+  `bee_container_unsupported`;
+- no such deployment, one without a Bee node of its own, or a Bee API address
+  that is not plain `http`: `unavailable`;
+- a deployment the capture finds removed or replaced keeps its own error,
+  answered as `409 chequebook_profile_changed`.
 
-**The chain.** `ChequebookChainRegistry` uses `CHEQUEBOOK_RPC_ENDPOINTS` for a
-chain it names. For any other chain a transfer being prepared reads the chain
-through the `--blockchain-rpc-endpoint` of the node's container, parsed from the
-inspect the acquisition fetches, held to the configured endpoints' shape rules,
-and used only after it answered the node's chain id. It is remembered for that
-node's saved transfers. When the registry does not know it, after a restart, and
-whenever the remembered one fails in any way, receipt polling and recovery open
-the node's owned connection only to read that endpoint again, and close the
-bridge unused. The fresh endpoint replaces the remembered one only after it
-verified.
+No ssh alias is involved, so a host written as `user@host` is reached like any
+other.
+
+**The chain.** `ChequebookChainRegistry` reads every chain through the manager's
+settings alone: `CHEQUEBOOK_RPC_ENDPOINTS` for a chain it names, else the
+default, `FUNDING_RPC_URL`, else `BEE_RPC_ENDPOINT`, the pair the funding API
+uses. Each endpoint is held to the same shape rules, `http` or `https` with no
+user information and no fragment, and is used only after it answered
+`eth_chainId` with the node's chain. A default endpoint that breaks those rules
+refuses every transfer with `chain_setting_invalid`, and a chain with no
+endpoint at all refuses with `chain_endpoint_missing`. Preparation, receipt
+polling, finality and recovery all read the chain there. The endpoint the node
+was started with is no longer read.
+
+**The Docker route, retired on 2026-10-15.** Until then a transfer reached the
+node over a Docker connection, the manager's own socket for `localhost` or an ssh
+forward of the host's socket through its `Host` block, refused an alias with
+`@`, and ran a bash bridge inside the node's container after checking the Bee
+image for it (`bee_bridge_qualifications`). Its code, `ChequebookDockerTransports`,
+the qualification catalog and the image check among it, stays in the tree,
+unused, until a cleanup removes it. The running manager never takes it, and the
+four refusal causes only it answered, `docker_unreachable`,
+`docker_route_missing`, `docker_setting_invalid` and `bridge_not_qualified`,
+stay in the shared list, unused.
 
 History and exact replay do not require current transport configuration.
 Pending Bee reads require the saved deployment instance and matching node
 identity. Missing pending observations remain unavailable, while receipt and
-manual chain recovery can still use the frozen operation after profile deletion
-when `CHEQUEBOOK_RPC_ENDPOINTS` names its chain, or through the endpoint the
-manager remembered for that node before the deletion, while that endpoint
-answers and until the manager restarts. Past that, a deleted deployment's
-transfer has no node to read the endpoint from.
+manual chain recovery can still use the frozen operation after profile deletion,
+through the manager's endpoint for its chain, while that endpoint answers.
 
 ## Evidence and remaining acceptance
 
 **The composition is exercised whole, and only the Bee, the chain and the
 database are synthetic.** `manager/test/database/chequebookConnected.test.ts`
 signs in over HTTP, goes through the real router behind the real session and
-same-site gates into a real PostgreSQL journal, out over the owned Docker
-transport to a synthetic Bee, and reads the outcome back.
+same-site gates into a real PostgreSQL journal, out through the node's Bee API
+to a synthetic Bee, and reads the outcome back.
 `frontend/test/transfer-connected-browser.test.mjs` does the same with the
 browser as the only client, against that manager run as a forked process. Both
 need a disposable PostgreSQL on `CHEQUEBOOK_TEST_PG_PORT` and skip out loud without it,
@@ -298,23 +309,24 @@ and the browser runner treats a silent skip as a failure.
 **The rest of the suites.** Four database files cover this feature:
 `chequebookConnected`, `chequebookOperations`, which holds the polling
 behaviour, `chequebookTargets`, and `beeBridgeQualifications`, which holds the
-stored checks and their race. Eight browser suites cover the durable
+retired Docker route's stored checks and their race. Eight browser suites cover the durable
 intent, the dialog, the history, the recovery actions, the two API surfaces and
 the polling itself. A ninth file, `transfer-fixture.test.mjs`, starts no
 browser: it checks what the browser fixtures leave on the machine. The unit
 suites cover the poller, the receipt check, the receipt inspector, the routes,
-the schemas, submission, recovery, the qualification catalog, the automatic
-image check, the default Docker routes, the node's own chain endpoint and the
-answer for every refusal cause. All of them pass on a laptop, and all of them
+the schemas, submission, recovery, the route through the Bee API and its port
+check, the chain endpoint order, the retired Docker route's code, and the answer
+for every refusal cause. All of them pass on a laptop, and all of them
 are in the jobs the checks workflow declares for a pull request. A full run
 taken at `e857994` is recorded in
 the remediation's handover record, which the repository's history keeps.
 
 **What the tests cannot establish.** They exercise protocol and ownership code
-against a synthetic Bee. They do not check a real Bee image, they do not open
-a real SSH connection, and they move no money.
+against a synthetic Bee and chain. They do not reach a real Bee node or a real
+chain, and they move no money.
 
-**The seed catalog has two entries, each from a real host.**
+**The seed catalog has two entries, each from a real host.** They belong to the
+retired Docker route and are kept with it.
 `PRODUCTION_BEE_BRIDGE_QUALIFICATIONS` in
 `manager/src/domain/chequebook/beeBridgeQualification.ts` carries
 `bee-2.8.3-docker-29.1.3`, qualified on 2026-10-15 against a throwaway
@@ -329,11 +341,8 @@ not list is checked automatically instead of refused, and the script is a thin
 wrapper over the same `beeBridgeCheck.ts` the manager runs. A synthetic pass
 qualifies nothing and must never be used to populate the catalog.
 
-**What completion still requires.** A real transfer to a remote host, which is
-the first time the default ssh forward runs anywhere: the connected suites use a
-synthetic transport, and the forward's arguments are pinned by a unit test
-rather than proven against a real `sshd`. The first automatic check of a real
-image will be the first transfer through an image the seed does not list.
+**What completion still requires.** A real transfer to a remote node through
+its Bee API: the connected suites use a synthetic Bee and chain.
 Real-money testing is a separately authorised part of the live acceptance run, which waits for
 its spending cap and duration to be set and keeps strict ownership of cleanup.
 

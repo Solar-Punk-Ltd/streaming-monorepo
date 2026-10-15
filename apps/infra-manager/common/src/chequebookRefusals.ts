@@ -78,21 +78,21 @@ const CAUSE_SENTENCES: Readonly<Record<Exclude<ChequebookRefusalCause, 'bridge_n
     docker_setting_invalid:
       "The manager's CHEQUEBOOK_DOCKER_TRANSPORTS setting is malformed or names a qualification id that does not exist. Correct it or remove it, then restart the manager.",
     bee_container_not_found:
-      "The deployment's Bee container is not running on its host. Start the deployment, then try again.",
+      'The manager has no Bee container recorded for this deployment. Deploy it from the manager, then try again.',
     bee_container_unsupported:
-      "The deployment's Bee container is not set up the way a transfer needs. It must publish its API on the port the manager reserved and must not use the host's network. Deploy it again from the manager, then try again.",
+      "The Bee API port the deployment's container recorded is missing, out of range, or not the port the manager reserved for this deployment. Deploy it again from the manager, then try again.",
     chain_endpoint_missing:
-      "The deployment's Bee node was started without a usable chain endpoint, and CHEQUEBOOK_RPC_ENDPOINTS names none for its chain. Give the deployment a chain endpoint and deploy it again, or set CHEQUEBOOK_RPC_ENDPOINTS.",
+      "The manager has no chain endpoint for the deployment's chain. Set FUNDING_RPC_URL or BEE_RPC_ENDPOINT, or name the chain in CHEQUEBOOK_RPC_ENDPOINTS, then restart the manager.",
     chain_setting_invalid:
-      "The manager's CHEQUEBOOK_RPC_ENDPOINTS setting is malformed. Correct it or remove it, then restart the manager.",
+      "The manager's CHEQUEBOOK_RPC_ENDPOINTS setting is malformed, or its default chain endpoint, FUNDING_RPC_URL or else BEE_RPC_ENDPOINT, is not a usable http or https address. Correct the setting, then restart the manager.",
     chain_unreachable:
-      'The chain endpoint did not answer the manager. Check that the endpoint the Bee node uses can be reached from the manager, or set CHEQUEBOOK_RPC_ENDPOINTS, then try again.',
+      'The chain endpoint did not answer the manager. Check that the endpoint the manager reads this chain through, from CHEQUEBOOK_RPC_ENDPOINTS or else FUNDING_RPC_URL or BEE_RPC_ENDPOINT, can be reached from the manager, then try again.',
     wrong_chain:
-      "The chain endpoint answered for a different chain than the Bee node runs on. Point the node, or CHEQUEBOOK_RPC_ENDPOINTS, at an endpoint of the node's own chain.",
+      "The chain endpoint answered for a different chain than the Bee node runs on. Name an endpoint of the node's own chain in CHEQUEBOOK_RPC_ENDPOINTS, or point FUNDING_RPC_URL at one.",
     unsupported_chain:
       "The deployment's Bee node runs on a chain whose BZZ token this manager does not know. Transfers work on Gnosis Chain, Ethereum and Sepolia.",
     target_changed:
-      "The deployment or its host's Docker changed while the transfer was being prepared, or the deployment is being deployed, stopped or removed. Wait until it is running and settled, or deploy it again, then try again.",
+      'The deployment changed while the transfer was being prepared, or it is being deployed, stopped or removed. Wait until it is running and settled, or deploy it again, then try again.',
     bee_unreadable:
       "The deployment's Bee node did not answer, or answered inconsistently. Check that the node is running and synced, then try again.",
     unavailable: 'The node and chain could not be checked. Refresh the saved transfers before continuing.',
