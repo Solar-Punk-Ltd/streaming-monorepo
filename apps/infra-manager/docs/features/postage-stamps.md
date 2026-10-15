@@ -201,7 +201,11 @@ holds. Each stage's settings list is read under a fifteen second deadline, so
 a stage that does not answer is left out and the others still show. The
 warning names each stage that is behind, with a link to its page and an Apply
 now of its own, and a stage's chip reads its rung's entry of
-`BEE_PUBLISHERS` in the same way. See [abr-ladder.md](abr-ladder.md).
+`BEE_PUBLISHERS` in the same way. The saved batch reads **in use** only once
+no stage is behind on it, so while one stage has restarted on it and another
+still pays with the old batch it keeps reading **saved, not in use until
+Apply** and the old batch **in use until Apply** (since 2026-10-15). See
+[abr-ladder.md](abr-ladder.md).
 
 ### Top up
 

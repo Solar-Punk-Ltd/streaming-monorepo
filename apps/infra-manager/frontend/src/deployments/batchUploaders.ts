@@ -151,8 +151,10 @@ export function stagesUsingNode(
  * Where nothing records what any uploader runs (a stopped deployment, one
  * deployed before the manager kept records, a rung no stage publishes for),
  * the saved batch is what the next start pays with, so it reads as in use,
- * unless an uploader is known to be behind on it. A saved batch no uploader's
- * next deploy pays with reads as nothing.
+ * unless an uploader is known to be behind on it. A saved batch reads as in
+ * use only once no uploader is behind on it, so one stage that restarted on it
+ * does not hide that another still pays with the old one. A saved batch no
+ * uploader's next deploy pays with reads as nothing.
  */
 export function batchUseOf(
   batchId: string,
@@ -166,7 +168,7 @@ export function batchUseOf(
   const waitedOn = uploaders.some(
     (uploader) => uploader.behind && uploader.savedBatchId !== null && sameBatch(uploader.savedBatchId, batchId),
   );
-  if (saved && running) return 'in-use';
+  if (saved && running && !waitedOn) return 'in-use';
   if (saved && (waitedOn || runningIds.length > 0)) return 'saved-waiting';
   if (saved) return 'in-use';
   return running ? 'running-not-saved' : null;

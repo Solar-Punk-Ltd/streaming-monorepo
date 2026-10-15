@@ -303,13 +303,33 @@ describe('the chip on each batch', () => {
     assert.equal(batchUseOf(OLD, NEW, []), null);
   });
 
-  it('marks a batch in use while any stage still pays with it', () => {
+  it('keeps the saved batch waiting for Apply while one stage runs it and another is still behind on it', () => {
     const uploaders = [
       uploader({ name: 'stage-a', own: false, runningBatchId: NEW, behind: false }),
       uploader({ name: 'stage-b', own: false }),
     ];
 
-    assert.equal(batchUseOf(NEW, NEW, uploaders), 'in-use');
+    assert.equal(batchUseOf(NEW, NEW, uploaders), 'saved-waiting');
+    assert.equal(batchUseOf(OLD, NEW, uploaders), 'running-not-saved');
+  });
+
+  it('keeps the saved batch waiting on a rung page while one stage restarted on it and another still pays with the old one', () => {
+    const rungStage = (name: string, running: string) =>
+      stageUploaderOf(
+        name,
+        catalog([
+          entry({
+            key: 'BEE_PUBLISHERS',
+            value: publishers(NEW),
+            running: running === NEW ? 'same' : 'differs',
+            runningValue: publishers(running),
+          }),
+        ]),
+        '720p',
+      );
+    const uploaders = [rungStage('stage-a', NEW), rungStage('stage-b', OLD)].flatMap((read) => (read ? [read] : []));
+
+    assert.equal(batchUseOf(NEW, NEW, uploaders), 'saved-waiting');
     assert.equal(batchUseOf(OLD, NEW, uploaders), 'running-not-saved');
   });
 
