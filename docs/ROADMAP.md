@@ -482,6 +482,26 @@ signed-in users.**
 - Branding writes the brand config the Viewer SPA bootstrap reads: theme,
   logo, stream list, gateway list, domain.
 
+## One encoder per stream, later
+
+SPDV-1681, parked on 2026-10-15 after a measured edge-case run. Two encoders with the same stream details take the
+stream from each other (see [known-issues.md](known-issues.md)). Kept as it is for now. To weigh in a later version:
+
+- Per-user publish keys. Each admin user copies their own key for a stream, and while one user's encoder is live a
+  key of any other user is refused. Their own key may still take over, so a crashed encoder comes straight back. This
+  covers two people on one stream, not one person running two encoders. The key format changes, so keys already in
+  encoders need a transition.
+- A warning in the admin when one stream sees several takeovers within a minute, naming the cause and Rotate key as
+  the way out, the way large platforms report a duplicate connection.
+- A takeover only of a silent encoder: a new connection wins only after the live one has sent nothing for a few
+  seconds. It ends the fight, but a crashed encoder's return then waits those seconds, and the takeover decision is
+  the code the crash return depends on, so it needs the crash, frozen-connection and fight cases measured before and
+  after.
+- One broadcast per stage at a time, as a stage setting rather than a rule. It limits what one stage's quality nodes
+  spend, but it conflicts with parallel broadcasts as a feature, and the 60 second reconnect window would hold a stage
+  for about a minute after each broadcast.
+- Whether a finished recording's key should still go live. Today a new broadcast on it is added to the old recording.
+
 ## Open decisions (blocking the second brand, not the first)
 
 - Authentication and ownership: OIDC, wallet signature, or magic link.

@@ -97,6 +97,17 @@ the ladder encoders produce nothing. The admin keeps showing the stream as publi
 warning. The uploader now reports such a ladder on `/health` as `ladder_not_started` after 45 s,
 but the admin does not show it.
 
+**Two encoders on one stream's details take it from each other (P2, SPDV-1681).** A stage lets an encoder
+with the right key take over a stream that is already live, so a broadcaster whose OBS crashed comes straight back.
+OBS reconnects by itself when it is pushed off, so two encoders with the same details push each other off every 2 to
+3 seconds for as long as both run. Measured on 2026-10-15 on v1.2.0: the stream carried about 9 of its 30 segments a
+minute, with three encoders none at all, and the admin showed Live throughout. When one encoder stops, the stream is
+back to normal within about 10 seconds. A wrong or missing passphrase or key, another stream's key and malformed
+stream ids are refused without touching the live stream. Kept as it is for now: a stream's details belong in one
+encoder, and the way out is Rotate key on the stream's page, then the new details in the one encoder that should
+broadcast. Options for later are in the [roadmap](ROADMAP.md#one-encoder-per-stream-later). To see it: start two
+encoders with the same SRT details, each reconnecting after 2 seconds, and count segments per rung.
+
 **A takeover by a second live encoder splits one segment across rungs (P3).** When a second encoder
 with the same key takes over while the first is still sending, SRS keeps the ladder's encoders
 running, so no rung disconnects. Rungs that had already delivered the old encoder's last segment
