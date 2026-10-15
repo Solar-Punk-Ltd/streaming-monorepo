@@ -379,21 +379,31 @@ describe('local owned Docker connection', { timeout: 5000 }, () => {
   }
 
   it('keeps the original total deadline after a slow locator instead of extending the transferred stream', async (t) => {
+    // The stream lives until the acquisition allowance plus the two protocol allowances and the cleanup grace
+    // have run out, counted from the start. A deadline restarted after the locator would close it one pause
+    // later. Every margin is hundreds of milliseconds, so a loaded machine cannot flip the result.
+    const limits = { acquisitionTimeoutMs: 1500, preflightTimeoutMs: 300, postTimeoutMs: 300, cleanupGraceMs: 100 };
+    const keptCloseMs = 2200;
+    const locatorPauseMs = 600;
     const h = harness(t);
     const started = performance.now();
     const result = await acquireLocalDockerBeeStream(
       syntheticTarget,
       async () => {
-        await pause(120);
+        await pause(locatorPauseMs);
         return locator();
       },
-      { acquisitionTimeoutMs: 250, preflightTimeoutMs: 20, postTimeoutMs: 20, cleanupGraceMs: 10 },
+      limits,
       qualified,
       undefined,
       h.connect,
     );
     await new Promise<void>((resolve) => result.stream.once('close', resolve));
-    assert.ok(performance.now() - started < 400, 'Resetting the total allowance after resolution would permit420ms');
+    const closedAfter = performance.now() - started;
+    assert.ok(
+      closedAfter < keptCloseMs + locatorPauseMs / 2,
+      `closed ${Math.round(closedAfter)} ms in, a deadline restarted after the locator would close it near ${keptCloseMs + locatorPauseMs} ms`,
+    );
     assert.equal(h.docker.transport.destroyed, true);
   });
 
