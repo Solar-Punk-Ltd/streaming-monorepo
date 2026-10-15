@@ -95,7 +95,8 @@ APIs: the manager writes `0.0.0.0` into each Bee API bind its settings leave emp
 can dial it, and that host's firewall decides who reaches it. Ingest, the viewer and the peer ports default to every address, and which of them
 the internet reaches is the operator's firewall.
 
-An SRS stage offers RTMP beside SRT. SRS allows play from its own container only, because RTMP
+An SRS stage takes RTMP beside SRT. The manager's console offers it, and the web2 admin shows
+broadcasters SRT only. SRS allows play from its own container only, because RTMP
 publishing and playback share one port. RTMP is not encrypted: a broadcaster's stream key crosses
 the network as readable text, and a key read off the network publishes over RTMP whichever protocol
 it was read from, because SRT sends its stream id, key included, before encryption starts. With the
