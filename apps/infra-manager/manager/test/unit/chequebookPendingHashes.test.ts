@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 import { ChequebookPendingHashes } from '../../src/domain/chequebook/ChequebookPendingHashes.js';
+import { ChainReadError } from '../../src/domain/errors/ChainReadError.js';
 import { operationCandidate, transactionHash } from '../support/chequebookOperations.js';
 
 function harness() {
@@ -117,5 +118,32 @@ describe('identity-bound pending Bee hashes', () => {
     controller.abort();
     await assert.rejects(promise);
     assert.equal(disposed, 1);
+  });
+
+  it('refuses, before any session opens, a saved move whose deployment instance is missing or not the resolved one', async () => {
+    // A deployment recreated under the same name, with the same wallet and chequebook, must not stand in for the one
+    // the move was sent through: its pending list may be empty while the original node still holds the transfer.
+    for (const profileInstanceId of [null, '22222222-2222-4222-8222-222222222222']) {
+      let sessions = 0;
+      const reader = new ChequebookPendingHashes(
+        async () => ({
+          url: 'http://bee.example.invalid:1633',
+          topology: 'operator_asserted_direct',
+          profileInstanceId: '11111111-1111-4111-8111-111111111111',
+          revision: '1',
+        }),
+        () => {
+          sessions++;
+          return assert.fail('no session is opened for a move of another deployment instance');
+        },
+      );
+      const operation = { ...operationCandidate(), profileInstanceId };
+      await assert.rejects(
+        reader.read(operation, new AbortController().signal),
+        (error) => error instanceof ChainReadError,
+        String(profileInstanceId),
+      );
+      assert.equal(sessions, 0, String(profileInstanceId));
+    }
   });
 });

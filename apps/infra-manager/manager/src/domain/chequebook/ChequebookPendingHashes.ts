@@ -106,9 +106,14 @@ export class ChequebookPendingHashes extends PendingHashesReader {
   ) {
     super(async (operation, signal, deadline) => {
       requireActive(signal, deadline);
+      // Only the deployment instance the move was sent through may answer for it, as on the Docker route: one
+      // recreated under the same name, with the same wallet, may hold an empty list while the original node still has
+      // the transfer pending. A saved move with no instance cannot be matched, so it is refused too.
+      if (!operation.profileInstanceId) throw new ChainReadError();
       const target = await resolveTarget(operation.profileName);
       requireActive(signal, deadline);
-      if (target.topology !== 'operator_asserted_direct') throw new ChainReadError();
+      if (target.topology !== 'operator_asserted_direct' || target.profileInstanceId !== operation.profileInstanceId)
+        throw new ChainReadError();
       return createSession(target.url);
     });
   }
