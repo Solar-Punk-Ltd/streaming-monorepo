@@ -175,6 +175,14 @@ says so where the operator clicked:
   every service the encoder is disconnected and the broadcast stops until it
   reconnects, and the restart still waits for the old uploader to write its
   recording first, for the same seconds to about five minutes.
+- The manager answers Apply as soon as the recreate has started, so after it
+  the card reads the uploaders' settings again on a growing wait (2, 4, 8, then
+  every 15 seconds) until the uploader it applied runs again on the saved
+  settings, for up to seven minutes, while an info line says it is waiting. It
+  then says the uploader runs the saved batch, or, if it never caught up, that
+  the uploader still ran its old batch, was not running again, or could not be
+  read, and points at the deployment's page (since 2026-10-15). The card's
+  buttons stay usable meanwhile.
 - The chip on each batch follows the running uploader, read from the
   `runningValue` the settings list carries for `STAMP` (see
   [deployment-settings.md](deployment-settings.md)): **in use** on the batch
@@ -201,7 +209,11 @@ holds. Each stage's settings list is read under a fifteen second deadline, so
 a stage that does not answer is left out and the others still show. The
 warning names each stage that is behind, with a link to its page and an Apply
 now of its own, and a stage's chip reads its rung's entry of
-`BEE_PUBLISHERS` in the same way. See [abr-ladder.md](abr-ladder.md).
+`BEE_PUBLISHERS` in the same way. The saved batch reads **in use** only once
+no stage is behind on it, so while one stage has restarted on it and another
+still pays with the old batch it keeps reading **saved, not in use until
+Apply** and the old batch **in use until Apply** (since 2026-10-15). See
+[abr-ladder.md](abr-ladder.md).
 
 ### Top up
 

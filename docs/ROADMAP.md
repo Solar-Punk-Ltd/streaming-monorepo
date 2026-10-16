@@ -22,8 +22,9 @@ scope `@streaming-monorepo/`.
   server-wide SRT passphrase shown alongside. The RTMP server and stream key were
   shown only where the deployment opened RTMP ingest (`INGEST_RTMP_PUBLIC`), which
   was off by default, since ingest was SRT only then. That key left the admin's
-  env with phase 4 of the stages work. RTMP is now offered where a stage's
-  record says `rtmpPublic`, which every SRS stage's does, below.
+  env with phase 4 of the stages work. RTMP was then offered where a stage's
+  record says `rtmpPublic`, which every SRS stage's does, below, until the
+  console stopped showing it (SPDV-1682).
 - A real stream for a draft: the uploader (swarm-hls-stream `main-v3`) resolves
   the draft by ingest stream id through the admin's internal API, checks the
   key, publishes under the draft's topic and reports live and vod; the admin
@@ -198,8 +199,8 @@ Decided after a broadcaster could not go live from OBS. Nothing was broken: ever
 because the panel sent OBS users to an "OBS Passphrase field" that OBS does
 not have.
 
-- The OBS panel says, for SRT and, where it is offered, for RTMP, what goes
-  in OBS's Server box and its Stream Key box. For SRT the passphrase rides on the Server
+- The OBS panel says, for SRT, what goes in OBS's Server box and its Stream
+  Key box (it named RTMP too until SPDV-1682). For SRT the passphrase rides on the Server
   line as `&passphrase=`, which OBS reads after its Use authentication Password
   and so wins, and the Stream Key stays empty, because OBS hands that box to
   SRT as the stream id and the URL's own `streamid=` replaces it. OBS ends a
@@ -406,14 +407,17 @@ Left open after the nine phases:
 
 ## RTMP ingest beside SRT
 
-**A stage whose engine is SRS offers RTMP beside SRT, in both consoles.** Which
-ports are reachable is the operator's firewall, so no console hides RTMP
-because one firewall draft leaves its port closed.
+**A stage whose engine is SRS takes RTMP beside SRT.** Which ports are
+reachable is the operator's firewall, so the manager's console does not hide
+RTMP because one firewall draft leaves its port closed.
 
 - A stage record says `rtmpPublic` from its engine: true on SRS, false on
-  OvenMediaEngine, which takes SRT alone. The web2 admin's OBS panel and the
-  manager's Publish card offer both protocols on an SRS stage, and Copy
-  publish URL copies both.
+  OvenMediaEngine, which takes SRT alone. The manager's Publish card offers
+  both protocols on an SRS stage, and Copy publish URL copies both.
+- The web2 admin shows SRT only (SPDV-1682). Streaming uses SRT, so the OBS
+  panel and the Stages page leave RTMP out on every stage. Only the console
+  changed: the admin API still sends a stream's RTMP server and stream key,
+  and the stage's RTMP ingest keeps working.
 - The manager's firewall draft generator is unchanged. Its port policy has no
   RTMP band, so the draft it writes drops `10002 + 10 × slot` over TCP, and an
   operator who wants broadcasters on RTMP opens that port in the host firewall.
@@ -437,9 +441,9 @@ because one firewall draft leaves its port closed.
   A quicker reconnect meets the same hung encoders. Dropping the source from the
   uploader is not built and stays open.
 
-The shared warning beside RTMP states what the protocol does with a key. SRS 6
-has no TLS on its RTMP listener, so there is no RTMPS. An RTMP stream key
-crosses the network as readable text, and a key read off the network publishes
+The shared warning beside RTMP, which the manager's Publish card shows, states
+what the protocol does with a key. SRS 6 has no TLS on its RTMP listener, so
+there is no RTMPS. An RTMP stream key crosses the network as readable text, and a key read off the network publishes
 over RTMP whichever protocol it was read from, because SRT sends the key before
 encryption starts. With the takeover on, such a publisher can replace a live
 broadcast too. The SRT passphrase keeps the picture private but not the key. A
@@ -481,6 +485,26 @@ signed-in users.**
 
 - Branding writes the brand config the Viewer SPA bootstrap reads: theme,
   logo, stream list, gateway list, domain.
+
+## One encoder per stream, later
+
+SPDV-1681, parked on 2026-10-15 after a measured edge-case run. Two encoders with the same stream details take the
+stream from each other (see [known-issues.md](known-issues.md)). Kept as it is for now. To weigh in a later version:
+
+- Per-user publish keys. Each admin user copies their own key for a stream, and while one user's encoder is live a
+  key of any other user is refused. Their own key may still take over, so a crashed encoder comes straight back. This
+  covers two people on one stream, not one person running two encoders. The key format changes, so keys already in
+  encoders need a transition.
+- A warning in the admin when one stream sees several takeovers within a minute, naming the cause and Rotate key as
+  the way out, the way large platforms report a duplicate connection.
+- A takeover only of a silent encoder: a new connection wins only after the live one has sent nothing for a few
+  seconds. It ends the fight, but a crashed encoder's return then waits those seconds, and the takeover decision is
+  the code the crash return depends on, so it needs the crash, frozen-connection and fight cases measured before and
+  after.
+- One broadcast per stage at a time, as a stage setting rather than a rule. It limits what one stage's quality nodes
+  spend, but it conflicts with parallel broadcasts as a feature, and the 60 second reconnect window would hold a stage
+  for about a minute after each broadcast.
+- Whether a finished recording's key should still go live. Today a new broadcast on it is added to the old recording.
 
 ## Open decisions (blocking the second brand, not the first)
 

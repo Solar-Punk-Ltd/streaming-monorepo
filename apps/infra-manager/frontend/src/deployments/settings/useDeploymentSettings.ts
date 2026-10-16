@@ -16,8 +16,8 @@ export interface DeploymentSettingsLoad {
   catalog: DeploymentSettingsCatalog | null;
   /** Why the latest read failed, or null. */
   failure: LoadFailure | null;
-  /** Reads the list again, and resolves once the answer or the failure is in place. */
-  reload: () => Promise<void>;
+  /** Reads the list again, and resolves once the answer or the failure is in place, with the answer, or null when it failed or a newer read overtook it. */
+  reload: () => Promise<DeploymentSettingsCatalog | null>;
 }
 
 /**
@@ -56,16 +56,18 @@ export function useDeploymentSettings(profile: Profile): DeploymentSettingsLoad 
     }, READ_TIMEOUT_MS);
     try {
       const answer = await fetchDeploymentSettings(name, controller.signal);
-      if (request !== latest.current) return;
+      if (request !== latest.current) return null;
       setCatalog(answer);
       setFailure(null);
+      return answer;
     } catch (caught) {
-      if (request !== latest.current) return;
+      if (request !== latest.current) return null;
       setFailure(
         caught instanceof ApiError
           ? loadFailureOf(caught.code, caught.message)
           : loadFailureOf(null, timedOut ? TIMED_OUT : getErrorMessage(caught, 'The manager did not say why.')),
       );
+      return null;
     } finally {
       clearTimeout(timer);
     }

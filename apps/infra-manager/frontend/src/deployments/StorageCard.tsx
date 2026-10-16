@@ -1,9 +1,10 @@
-import { useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { Alert, Button, CircularProgress, Divider, Link, Stack, Typography } from '@mui/material';
 import RefreshIcon from '@mui/icons-material/Refresh';
 
 import {
   type ChequebookHealth,
+  type DeploymentSettingsApplied,
   formatFillPercent,
   getErrorMessage,
   isStampExpiringSoon,
@@ -31,12 +32,24 @@ import { type BeeStamp, buyStamp, diluteStamp, setStamp, topUpStamp, type BuySta
 import { TopUpStampDialog } from '../uploaders/TopUpStampDialog';
 import { topUpSentNotice } from '../uploaders/topUpView';
 import type { BeeUtils } from '../uploaders/useBeeUtils';
-import { type BatchUploader, applyNow, batchNotice, setBatchAndReread } from './batchUploaders';
+import {
+  type ApplyFollowText,
+  type BatchUploader,
+  applyFollowingText,
+  applyFollowText,
+  applyNow,
+  batchNotice,
+  followApply,
+  setBatchAndReread,
+} from './batchUploaders';
 import { fetchIngestHealth } from './ingestHealthApi';
 import { newBatchReach } from './newBatchReach';
 import { applyDeploymentSettings } from './settings/deploymentSettingsApi';
 import { appliedText, applyRefusalText } from './settings/settingsText';
 import type { BatchUploadersLoad } from './useBatchUploaders';
+
+/** Apply now's recreate, while the card follows it and once it stopped. */
+type ApplyFollow = { name: string; following: true } | { name: string; following: false; said: ApplyFollowText };
 
 /** A change to a batch the node holds, while its dialog is open. */
 interface StampChange {
@@ -86,6 +99,10 @@ export function StorageCard({
   /** What bee answered the last change with, until the operator closes it. */
   const [sentNotice, setSentNotice] = useState<string | null>(null);
   const [confirm, setConfirm] = useState<ConfirmRequest | null>(null);
+  const [applyFollow, setApplyFollow] = useState<ApplyFollow | null>(null);
+  const following = useRef<AbortController | null>(null);
+
+  useEffect(() => () => following.current?.abort(), []);
 
   // Every action goes through here and lands its failure in actionError, so a caller need not await it.
   const run = async (action: () => Promise<void>) => {
@@ -122,13 +139,24 @@ export function StorageCard({
         readIngest: fetchIngestHealth,
         confirm: (request) => setConfirm({ ...request, onConfirm: () => void run(request.onConfirm) }),
         apply: applyRefusedInWords,
-        done: async (applied) => {
+        done: (applied) => {
           const text = appliedText(applied);
           setSentNotice(uploader.own ? text : `${uploader.name}: ${text}`);
-          await uploaders.reread();
+          void follow(applied, uploader.name);
         },
       }),
     );
+
+  // Outside run, so the card's buttons stay usable for the minutes a recreate can take.
+  const follow = async (applied: DeploymentSettingsApplied, name: string) => {
+    following.current?.abort();
+    const controller = new AbortController();
+    following.current = controller;
+    setApplyFollow({ name, following: true });
+    const outcome = await followApply(applied, name, { reread: uploaders.reread, signal: controller.signal });
+    if (outcome === 'stopped') return;
+    setApplyFollow({ name, following: false, said: applyFollowText(name, outcome) });
+  };
 
   const openChange = (kind: StampChange['kind'], stamp: BeeStamp) => {
     setActionError(null);
@@ -191,6 +219,16 @@ export function StorageCard({
         {sentNotice && (
           <Alert severity="info" onClose={() => setSentNotice(null)}>
             {sentNotice}
+          </Alert>
+        )}
+        {applyFollow?.following && (
+          <Alert severity="info" icon={<CircularProgress size={18} />} data-apply-follow="following">
+            {applyFollowingText(applyFollow.name)}
+          </Alert>
+        )}
+        {applyFollow && !applyFollow.following && (
+          <Alert severity={applyFollow.said.severity} data-apply-follow="done" onClose={() => setApplyFollow(null)}>
+            {applyFollow.said.text}
           </Alert>
         )}
         {notice && (
