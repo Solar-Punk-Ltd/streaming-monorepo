@@ -54,7 +54,7 @@ WORKDIR /app
 # same version is a deliberate edit here, never a silent move.
 RUN apk add --no-cache \
       bash jq git \
-      docker-cli docker-cli-compose=5.1.4-r1 \
+      docker-cli docker-cli-compose=5.1.4-r2 \
       rsync openssh-client \
       ca-certificates
 
