@@ -20,8 +20,9 @@ import { NodeUnreachableError } from './NodeUnreachableError.js';
  *
  * ## The listener goes first
  *
- * The uploader starts and says its node is not available, then tries to reconnect. So the listener goes first and this runs behind it. A failure that says the node is not
- * answering costs one log line and a wait. The wait doubles from a second and holds at thirty, and it
+ * The uploader starts, says its node is not available, and keeps trying to reconnect. So the listener
+ * goes first and this runs behind it. A failure that says the node is not answering costs one log
+ * line and a wait. The wait doubles from a second and holds at thirty, and it
  * does not give up, because there is no number of attempts after which the right answer becomes
  * exiting: a node that is down for an hour is a node that comes back in an hour, and a process that
  * is up and saying so the whole time is worth more than one that died at attempt ten.

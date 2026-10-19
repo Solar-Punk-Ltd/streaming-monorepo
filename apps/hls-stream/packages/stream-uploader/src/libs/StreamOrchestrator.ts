@@ -1233,7 +1233,7 @@ export class StreamOrchestrator {
    * own restart has no claimant and cannot get one from an announce: both engines resume it by
    * delivering segments, OME because `resumeRecoveredStream` restarts the puller with no admission
    * behind it and SRS because its publish session never closed, so no `startStream` call ever
-   * follows. Three lenses of the broadcast takeover fix gate reached this independently. So an absent record means
+   * follows. So an absent record means
    * the owner is *unknown*, and an unknown owner is protected by the stall window rather than
    * yielded to anyone who asks. `POST /stream/start` is the other case and it is genuinely different:
    * it records `ANONYMOUS_CLAIMANT`, which is a positive statement that the caller named nobody.
@@ -1242,8 +1242,8 @@ export class StreamOrchestrator {
    * fallback for when nobody proved anything.** Who may _stop_ one is screened too, but not here.
    * `stopStream` still takes a stream id and no claimant, because it does not need one: a configured
    * secret means every publish either engine accepted had proved a key, so each engine screens its
-   * own close webhook against the value it is already holding. The key's derivation is in the shared package. That is what retires the two residuals
-   * this used to end on. An attacker sharing the victim's address is no longer indistinguishable from
+   * own close webhook against the value it is already holding. The key's derivation is in the shared
+   * package. A proven key retires two residual risks. An attacker sharing the victim's address is no longer indistinguishable from
    * them, because the address is no longer what is being asked. And a squatter who claimed an id
    * first is evicted by the owner rather than by an operator, because the symmetry that protected
    * whoever arrived first only applies while neither can be identified.
