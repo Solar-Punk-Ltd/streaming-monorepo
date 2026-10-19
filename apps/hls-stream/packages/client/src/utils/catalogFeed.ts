@@ -13,7 +13,7 @@ import { FetchTimeoutError } from './fetchTimeoutError';
  * per poll has a catch-up rate equal to its poll rate, so a reader that falls behind never recovers.
  * Walking while the slots keep answering fixes that, and this caps what one poll can spend doing it.
  *
- * Thirty two is far more than a five second poll can fall behind on a catalog that gains a slot per
+ * Thirty two is far more than a poll a minute can fall behind on a catalog that gains a slot per
  * broadcast, and small enough that a pathological feed cannot hold the page for a minute.
  */
 const MAX_WALK_PER_READ = 32;
