@@ -13,6 +13,7 @@ import type {
   StageListResponse,
   StageSummary,
   Stream,
+  StreamFinishAnswer,
   StreamInput,
   StreamListResponse,
   User,
@@ -292,6 +293,11 @@ export function fetchIngest(id: string): Promise<IngestDetails> {
 
 export function rotateIngestKey(id: string): Promise<IngestDetails> {
   return sendJson<IngestDetails>('POST', `${API}/streams/${encodeURIComponent(id)}/ingest/rotate-key`);
+}
+
+/** Changes the key of a live or ended stream for good, and answers the stream with its new OBS details. */
+export function finishStream(id: string): Promise<StreamFinishAnswer> {
+  return sendJson<StreamFinishAnswer>('POST', `${API}/streams/${encodeURIComponent(id)}/finish`);
 }
 
 // --- stages -----------------------------------------------------------------

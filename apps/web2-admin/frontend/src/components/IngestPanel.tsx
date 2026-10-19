@@ -1,11 +1,13 @@
 import { useId, useState, type ReactNode } from 'react';
 import { Alert, Button, Paper, Stack, Typography } from '@mui/material';
 import AutorenewIcon from '@mui/icons-material/Autorenew';
+import SportsScoreIcon from '@mui/icons-material/SportsScore';
 import {
   buildObsSrtServer,
   OBS_SRT_PASSPHRASE_FIELD_HELP,
   type IngestDetails,
   type IngestSrtDetails,
+  type Stream,
 } from '@streaming-monorepo/web2-admin-common';
 
 import * as api from '../api';
@@ -21,6 +23,22 @@ export const NO_STAGE_NOTE = 'Pick the stage this stream is broadcast on, in its
 /** What the panel says under the details of a stage the manager retired. */
 export const RETIRED_STAGE_NOTE =
   'The manager retired this stage. These are the details it last pushed, and they may no longer answer.';
+
+/** What Finish does, said before it happens. */
+const FINISH_WARNING =
+  'Its key changes now, so no encoder can start it again on the old key. To go live on it later on purpose, copy ' +
+  'the new SRT line.';
+
+/** Added on a live stream: Finish changes the key and drops no encoder that is already pushing. */
+const LIVE_FINISH_WARNING = 'The broadcast carries on until the encoder stops; then it ends for good.';
+
+/** Finish, as the stream page offers it beside Rotate key: on a live or ended stream that is not finished yet. */
+export interface FinishOffer {
+  /** Whether the stream is live now, about which the confirmation says more. */
+  live: boolean;
+  /** Called with the stream as the API answers it once finished. Its new details go to `onRotated`. */
+  onFinished: (stream: Stream) => void;
+}
 
 /**
  * The SRT Server line carries `key=<publishKey>` and, where it can ride there,
@@ -82,14 +100,22 @@ export function IngestPanel({
   streamId,
   details,
   onRotated,
+  finish = null,
 }: {
   streamId: string;
   details: IngestDetails;
   onRotated: (details: IngestDetails) => void;
+  /** Offers Finish beside Rotate key. Left out, or null, the panel has no Finish. */
+  finish?: FinishOffer | null;
 }) {
   const snackbar = useSnackbar();
   const [confirmOpen, setConfirmOpen] = useState(false);
   const [rotating, setRotating] = useState(false);
+  const [finishOpen, setFinishOpen] = useState(false);
+  const [finishing, setFinishing] = useState(false);
+  // Read when the dialog opens and kept while it closes: a Finish that worked
+  // takes the offer away, and the closing dialog must keep its words.
+  const [finishingLive, setFinishingLive] = useState(false);
 
   const rotate = async () => {
     setRotating(true);
@@ -105,16 +131,43 @@ export function IngestPanel({
     }
   };
 
+  const askToFinish = (offer: FinishOffer) => {
+    setFinishingLive(offer.live);
+    setFinishOpen(true);
+  };
+
+  // Closed on success only, as Rotate key is: after a failure the operator can
+  // try again or cancel.
+  const runFinish = async () => {
+    setFinishing(true);
+    try {
+      const answer = await api.finishStream(streamId);
+      onRotated(answer.ingest);
+      finish?.onFinished(answer.stream);
+      snackbar.success('Stream finished. Its key has changed.');
+      setFinishOpen(false);
+    } catch (e) {
+      snackbar.error(errorMessage(e, 'Failed to finish the stream'));
+    } finally {
+      setFinishing(false);
+    }
+  };
+
   return (
     <Paper variant="outlined" sx={{ p: 3 }}>
       <Stack spacing={2}>
-        <Stack direction="row" spacing={2} sx={{ alignItems: 'center' }}>
+        <Stack direction="row" spacing={2} useFlexGap sx={{ alignItems: 'center', flexWrap: 'wrap' }}>
           <Typography variant="h6" sx={{ flexGrow: 1 }}>
             OBS connection details
           </Typography>
           <Button size="small" color="warning" startIcon={<AutorenewIcon />} onClick={() => setConfirmOpen(true)}>
             Rotate key
           </Button>
+          {finish ? (
+            <Button size="small" color="warning" startIcon={<SportsScoreIcon />} onClick={() => askToFinish(finish)}>
+              Finish
+            </Button>
+          ) : null}
         </Stack>
 
         {details.stage && details.srt ? (
@@ -146,6 +199,16 @@ export function IngestPanel({
         busy={rotating}
         onConfirm={() => void rotate()}
         onCancel={() => setConfirmOpen(false)}
+      />
+
+      <ConfirmDialog
+        open={finishOpen}
+        title="Finish this stream?"
+        message={finishingLive ? `${FINISH_WARNING} ${LIVE_FINISH_WARNING}` : FINISH_WARNING}
+        confirmText={finishing ? 'Finishing…' : 'Finish'}
+        busy={finishing}
+        onConfirm={() => void runFinish()}
+        onCancel={() => setFinishOpen(false)}
       />
     </Paper>
   );

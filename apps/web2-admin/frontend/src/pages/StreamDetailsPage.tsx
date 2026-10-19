@@ -118,6 +118,23 @@ function unpublishPromptFor(status: StreamStatus): UnpublishPrompt {
   return status === 'vod' ? UNPUBLISH_PROMPTS.recording : UNPUBLISH_PROMPTS.scheduled;
 }
 
+/**
+ * Where a live or ended stream stands with its key: until when an ended one
+ * can still go live again on it, or that it was finished and the key changed.
+ * The API works out the window, so the page never reads the setting. Null on
+ * every other stream, a live one nobody finished included: its chip says it.
+ */
+function keyLine(stream: Stream): string | null {
+  if (stream.status === 'vod' && stream.finishedAt) return 'Finished — the key has changed';
+  if (stream.status === 'vod' && stream.restartUntil) {
+    return `Ended — can go live again until ${formatDateTime(stream.restartUntil)}`;
+  }
+  if (stream.status === 'live' && stream.finishedAt) {
+    return 'Live — finished, the key has changed; it ends for good when the encoder stops';
+  }
+  return null;
+}
+
 export function StreamDetailsPage() {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
@@ -261,6 +278,11 @@ export function StreamDetailsPage() {
   // button is disabled anyway.
   const publishLabel = stream.status === 'draft' || stream.status === 'publishing' ? 'Publish' : 'Republish';
   const canUnpublish = stream.status === 'published' || stream.status === 'vod';
+  // Finish changes the key for good, so it is offered only while the current
+  // key could still bring the stream back: live, or ended inside its window.
+  // A stream that never went live has nothing to finish.
+  const canFinish = (stream.status === 'live' || stream.status === 'vod') && !stream.finishedAt;
+  const standing = keyLine(stream);
   const viewerBaseUrl = config?.viewerBaseUrl ?? null;
 
   return (
@@ -293,6 +315,8 @@ export function StreamDetailsPage() {
           Back to Streams
         </Button>
       </Stack>
+
+      {standing ? <Alert severity="info">{standing}</Alert> : null}
 
       {stream.publishError ? <Alert severity="error">Last publish attempt failed: {stream.publishError}</Alert> : null}
 
@@ -522,7 +546,14 @@ export function StreamDetailsPage() {
         ) : null}
       </Paper>
 
-      {ingest ? <IngestPanel streamId={stream.id} details={ingest} onRotated={setIngest} /> : null}
+      {ingest ? (
+        <IngestPanel
+          streamId={stream.id}
+          details={ingest}
+          onRotated={setIngest}
+          finish={canFinish ? { live: stream.status === 'live', onFinished: setStream } : null}
+        />
+      ) : null}
 
       <ConfirmDialog
         open={unpublishOpen}

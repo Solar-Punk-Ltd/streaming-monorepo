@@ -65,6 +65,9 @@ const FRIENDLY: Record<string, string> = {
   media_type_locked: MEDIA_TYPE_LOCKED,
   stream_locked: SCHEDULE_LOCKED,
   stream_live: 'Stop the broadcast first: a live stream stays on the feed.',
+  // Finish's two refusals, in the backend's own sentences.
+  stream_not_started: 'Only a live or ended stream can be finished.',
+  stream_finished: 'This stream is already finished: its key has changed.',
   invalid_state_transition:
     'The uploader reported a state this stream cannot be in. Reload to see where it actually is.',
   payload_too_large: `The thumbnail is too large. ${THUMBNAIL_LIMIT_SENTENCE}`,

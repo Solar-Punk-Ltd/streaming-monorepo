@@ -1,11 +1,33 @@
 import { fireEvent, screen, within } from '@testing-library/react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
+import type { StreamFinishAnswer } from '@streaming-monorepo/web2-admin-common';
 
 import { IngestPanel, NO_STAGE_NOTE, RETIRED_STAGE_NOTE } from '../components/IngestPanel';
-import { RTMP_OFFERED, makeIngest, mockFetch, renderWithProviders } from './helpers';
+import {
+  RTMP_OFFERED,
+  jsonError,
+  jsonOk,
+  makeIngest,
+  makeStream,
+  mockFetch,
+  type Route as MockRoute,
+  renderWithProviders,
+} from './helpers';
 
 const renderPanel = (details = makeIngest()) =>
   renderWithProviders(<IngestPanel streamId="stream-1" details={details} onRotated={vi.fn()} />);
+
+/** The panel as the stream page shows it on a live or ended stream that is not finished yet. */
+const renderFinishable = ({ live = false, onRotated = vi.fn(), onFinished = vi.fn() } = {}) =>
+  renderWithProviders(
+    <IngestPanel streamId="stream-1" details={makeIngest()} onRotated={onRotated} finish={{ live, onFinished }} />,
+  );
+
+const FINISH_WARNING =
+  'Its key changes now, so no encoder can start it again on the old key. To go live on it later on purpose, copy ' +
+  'the new SRT line.';
+
+const LIVE_FINISH_WARNING = 'The broadcast carries on until the encoder stops; then it ends for good.';
 
 const section = (name: 'SRT') => within(screen.getByRole('region', { name }));
 
@@ -183,4 +205,95 @@ describe('IngestPanel', () => {
     await screen.findByText('Stream key rotated. Update your encoder.');
     expect(onRotated).toHaveBeenCalledWith(rotated);
   });
+
+  it('offers no Finish unless the page asks for it', () => {
+    mockFetch([]);
+
+    renderPanel();
+
+    expect(screen.getByRole('button', { name: /Rotate key/ })).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Finish' })).not.toBeInTheDocument();
+  });
+
+  it('confirms before finishing an ended stream, then hands on its new key and the finished stream', async () => {
+    const answer = finishAnswer();
+    const fetchMock = mockFetch([finishRoute(() => jsonOk(answer))]);
+    const onRotated = vi.fn();
+    const onFinished = vi.fn();
+
+    renderFinishable({ onRotated, onFinished });
+
+    fireEvent.click(screen.getByRole('button', { name: 'Finish' }));
+    const dialog = await screen.findByRole('dialog');
+    expect(within(dialog).getByText('Finish this stream?')).toBeInTheDocument();
+    expect(dialog).toHaveTextContent(FINISH_WARNING);
+    expect(dialog).not.toHaveTextContent(LIVE_FINISH_WARNING);
+    expect(finishCalls(fetchMock)).toBe(0);
+
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Finish' }));
+
+    expect(await screen.findByText('Stream finished. Its key has changed.')).toBeInTheDocument();
+    expect(finishCalls(fetchMock)).toBe(1);
+    // The page shows the new SRT line from these, as after a rotation.
+    expect(onRotated).toHaveBeenCalledWith(answer.ingest);
+    expect(onFinished).toHaveBeenCalledWith(answer.stream);
+  });
+
+  it('says, before finishing a live stream, that its broadcast carries on until the encoder stops', async () => {
+    mockFetch([]);
+
+    renderFinishable({ live: true });
+
+    fireEvent.click(screen.getByRole('button', { name: 'Finish' }));
+
+    const dialog = await screen.findByRole('dialog');
+    expect(dialog).toHaveTextContent(FINISH_WARNING);
+    expect(dialog).toHaveTextContent(LIVE_FINISH_WARNING);
+  });
+
+  it.each([
+    ['stream_not_started', 'Only a live or ended stream can be finished.'],
+    ['stream_finished', 'This stream is already finished: its key has changed.'],
+  ])('answers a Finish refused with %s in its own words', async (code, sentence) => {
+    // A message of the API's own, to show that the console's sentence for the code wins.
+    mockFetch([finishRoute(() => jsonError(409, { error: code, message: 'Refused.' }))]);
+    const onRotated = vi.fn();
+    const onFinished = vi.fn();
+
+    renderFinishable({ onRotated, onFinished });
+
+    fireEvent.click(screen.getByRole('button', { name: 'Finish' }));
+    fireEvent.click(within(await screen.findByRole('dialog')).getByRole('button', { name: 'Finish' }));
+
+    expect(await screen.findByText(sentence)).toBeInTheDocument();
+    expect(screen.queryByText('Refused.')).not.toBeInTheDocument();
+    expect(onRotated).not.toHaveBeenCalled();
+    expect(onFinished).not.toHaveBeenCalled();
+  });
 });
+
+function finishRoute(respond: () => Response): MockRoute {
+  return { method: 'POST', path: '/api/streams/stream-1/finish', respond };
+}
+
+/** The Finishes sent. The theme provider reads the console's config on its own, so not every call is one. */
+function finishCalls(fetchMock: ReturnType<typeof mockFetch>): number {
+  return fetchMock.mock.calls.filter(
+    ([url, init]) => String(url) === '/api/streams/stream-1/finish' && init?.method === 'POST',
+  ).length;
+}
+
+/** The API's answer to a Finish: the stream as it now stands, and its details with the new key. */
+function finishAnswer(): StreamFinishAnswer {
+  const finishedAt = '2026-10-19T12:10:00.000Z';
+  return {
+    stream: makeStream({
+      id: 'stream-1',
+      status: 'vod',
+      endedAt: '2026-10-19T12:00:00.000Z',
+      finishedAt,
+      restartUntil: null,
+    }),
+    ingest: makeIngest({ publishKey: 'eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee', publishKeyRotatedAt: finishedAt }),
+  };
+}
