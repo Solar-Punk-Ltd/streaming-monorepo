@@ -705,8 +705,11 @@ for another one.
 The edge runs on the host's network, and Docker reports no port map for such a
 container. Until the manager is told what it holds, every removal on that host
 refuses with "Container removal or port release could not be verified", and so
-do port handovers and the firewall export of step 3. Name it in the manager's
-env file with the ports Caddy listens on, then restart the manager:
+do port handovers and the firewall export of step 3. Add the line below, with
+the ports Caddy listens on, to `manager/.env` in your checkout and run
+`./deploy/deploy.sh` again, which sends the file and recreates the api
+container. An edit made on the host is undone by the next deploy, and a plain
+`docker compose restart` does not re-read the file.
 
 ```sh
 KNOWN_HOST_NETWORK_PORTS=edge=80/tcp,443/tcp,443/udp
