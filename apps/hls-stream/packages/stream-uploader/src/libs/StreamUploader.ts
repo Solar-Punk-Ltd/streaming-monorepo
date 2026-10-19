@@ -1801,9 +1801,8 @@ export class StreamUploader {
    * nothing counted it: `recordSegmentDropped` answers a failed upload and `recordSegmentsLost`
    * answers segments the engine never had.
    *
-   * The window has to outrun its own publishing for this to happen, which
-   * `MANIFEST_UPLOAD_RETRY_WINDOW_MS` permits for {@link MANIFEST_UPLOAD_RETRY_WINDOW_MS}ms while the
-   * segment queue keeps running.
+   * The window has to outrun its own publishing for this to happen, which the manifest retry window
+   * ({@link MANIFEST_UPLOAD_RETRY_WINDOW_MS}, 15 s) permits while the segment queue keeps running.
    */
   private reportSegmentsNeverNamed(count: number): void {
     if (count === 0) {
