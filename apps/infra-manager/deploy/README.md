@@ -687,7 +687,9 @@ the name in the edge's env file:
 
 ```sh
 cp infra/edge/.env.sample infra/edge/.env
-# set MANAGER_DOMAIN=manager.example.org, and MANAGER_PORT if WEB_PORT is not 8080
+# set MANAGER_DOMAIN=manager.example.org, and the edge's MANAGER_PORT when
+# WEB_PORT in manager/.env is not 8080. The edge's MANAGER_PORT is the
+# console's web port, not the api port of the same name in manager/.env.
 ./infra/edge/edge.sh --host=<control-host>
 ```
 
