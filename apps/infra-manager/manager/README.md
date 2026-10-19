@@ -38,13 +38,16 @@ container publishes no port of its own and the web container's nginx forwards
 `/health` and the rest of the API to it. Under `pnpm dev` the API answers on
 `localhost:9876` directly, which is what the curl examples further down assume.
 
-Until that last command has been run once, every route but `/health` and
-`POST /auth/login` answers 401, and the sign-in page says so.
+Until that last command has been run once, every route but `/health`,
+`POST /auth/login` and `POST /auth/logout` answers 401, and the sign-in page
+says so.
 
 ## Authentication
 
-Every route needs a session except two: `GET /health`, which answers
-`{"status":"ok"}` and nothing more, and `POST /auth/login`. That includes both
+Every route needs a session except four: `GET /health`, which answers
+`{"status":"ok"}` and nothing more, `POST /auth/login`, `GET /auth/session`,
+which answers 401 so the page can tell signed-out from refused, and
+`POST /auth/logout`, which answers 204 whatever cookie it was sent. That includes both
 Server-Sent Events streams, `/config`, `/version`, `/metrics` and `/profiles`.
 The web2 admin's funding API under `/api/admin-funding` is apart from all of
 them: it takes a bearer token of its own and refuses a session, and every other
