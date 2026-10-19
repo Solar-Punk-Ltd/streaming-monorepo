@@ -400,8 +400,8 @@ Left open after the nine phases:
   manager's readiness verdict, and the catalogue stamp record the catalogue
   batch's. Funding from the admin was decided on 2026-10-05
   ([funding.md](architecture/funding.md)): phase 1, sends from the brand
-  wallet to node wallets, and phase 2, stamp top-ups and dilutions, are built
-  on `feat/funds`.
+  wallet to node wallets, and phase 2, stamp top-ups and dilutions, are merged
+  to `main` as #119.
 - Decide how the admin layer authenticates to the manager once they are on
   different hosts. Decided 2026-09-28: it does not, because the manager
   pushes, on the admin's registrar token, and every uploader presents a token
