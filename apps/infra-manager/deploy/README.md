@@ -761,8 +761,11 @@ docker compose down -v            # nuke postgres data too, so be sure
 - **`postgres`** has no published port. The api reaches it by service name,
   and a host-side `pnpm dev` gets a loopback port from `docker-compose.dev.yml`
   through `pnpm database:start`, at `MANAGER_DEV_PG_PORT` (5432 unless set).
-- The whole repo is bind-mounted into the `api` container at the same
-  absolute path it has on the host (`/opt/streaming/streaming-infra-manager`).
-  This is so compose files under `manager/swarm-hls-stream/` resolve volume
-  paths consistently when their `docker compose up` is forwarded to the host
-  daemon via the mounted socket.
+- The manager's folder (`MANAGER_ROOT`, `/opt/streaming/streaming-infra-manager`
+  by default) and the versions root are bind-mounted into the `api` container
+  at the same absolute paths they have on the host. The api starts deployments
+  with `docker compose` against compose files in those trees, and the daemon on
+  the host resolves their relative volumes against the host's filesystem, so
+  the two paths have to match. The legacy tree `manager/swarm-hls-stream/`,
+  which engines deployed before the versions root still mount, sits inside the
+  first.
