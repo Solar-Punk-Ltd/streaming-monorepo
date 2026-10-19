@@ -71,7 +71,8 @@ mean two-factor or single sign-on. Both can be added later without changing the 
   **Change my password** form (current, new, new again).
   - An admin reads `You can add and remove users here.` above the table and gets the **Add user**
     form below it: a username, a starting password typed twice and handed over in person, and a
-    `Can manage users` box. Their own row's Remove is disabled.
+    `Can manage users: add and remove them, sign anyone out` box. Their own row's Remove is
+    disabled.
   - Anyone else reads `Only a user who can manage users adds or removes one.` and gets no Add
     user form. The buttons are still on every row, disabled: Remove on every row, and Sign out
     everywhere on every row but their own, each with a tooltip saying why. The API refuses the
