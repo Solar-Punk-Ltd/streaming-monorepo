@@ -1388,9 +1388,10 @@ curl -G http://localhost:3000/stream/status \
 
 ## Scripts
 
-| Script           | Description                 |
-| ---------------- | --------------------------- |
-| `pnpm build`     | Compile TypeScript          |
-| `pnpm start`     | Start the server            |
-| `pnpm lint`      | Run oxlint                  |
-| `pnpm typecheck` | Type check without emitting |
+| Script           | Description                                                              |
+| ---------------- | ------------------------------------------------------------------------ |
+| `pnpm build`     | Compile TypeScript                                                       |
+| `pnpm start`     | Start the server                                                         |
+| `pnpm lint`      | Run oxlint                                                               |
+| `pnpm typecheck` | Type check without emitting                                              |
+| `pnpm test`      | Unit tests, then the test-count floor in `scripts/assert-test-floor.mjs` |
