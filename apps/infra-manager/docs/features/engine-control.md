@@ -259,13 +259,13 @@ uses:
 
 Routes, `manager/src/api/routes/engine.ts`:
 
-| Method | Path                                                | Answer                                                                                                                                        |
-| ------ | --------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------- |
-| GET    | `/profiles/:name/engine`                            | `{ engine, abr, settings, defaults, fields, live, liveUnavailableReason }`, where `live` is null in PR 1 and `liveUnavailableReason` says why |
-| PUT    | `/profiles/:name/engine-settings`                   | 202, the profile. For scripts since 2026-09-26. 400 `validation_error` naming a key neither engine reads                                      |
-| POST   | `/profiles/:name/containers/:service/restart`       | 202                                                                                                                                           |
-| GET    | `/profiles/:name/containers/:service/logs?tail=200` | `text/plain`                                                                                                                                  |
-| GET    | `/profiles/:name/engine/config`                     | `text/plain`, no-store                                                                                                                        |
+| Method | Path                                                | Answer                                                                                                                                                                                                                           |
+| ------ | --------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| GET    | `/profiles/:name/engine`                            | `{ engine, abr, identity, settings, defaults, defaultSources, fields, observations, effective, notInConfig, live, liveUnavailableReason }`, where `live` is null until live status is built and `liveUnavailableReason` says why |
+| PUT    | `/profiles/:name/engine-settings`                   | 202, the profile. For scripts since 2026-09-26. 400 `validation_error` naming a key neither engine reads                                                                                                                         |
+| POST   | `/profiles/:name/containers/:service/restart`       | 202                                                                                                                                                                                                                              |
+| GET    | `/profiles/:name/containers/:service/logs?tail=200` | `text/plain`                                                                                                                                                                                                                     |
+| GET    | `/profiles/:name/engine/config`                     | `text/plain`, no-store                                                                                                                                                                                                           |
 
 ### Live status (PR 2, after the SRS API port backport)
 
