@@ -54,9 +54,11 @@ them: it takes a bearer token of its own and refuses a session, and every other
 route refuses a bearer. [Funding API](#funding-api-the-web2-admins-on-a-bearer-token)
 has the rules.
 
-No Docker healthcheck reads `/health`, as of 2026-09-23 at `87673c99`: the
-`api` service in `docker-compose.yml` has none and neither Dockerfile declares
-one. Its readers are `manager:upgrade`, which `deploy/deploy.sh` runs and which
+Docker's own healthcheck reads `/health` too: the `api` service in
+`docker-compose.yml` asks it every 30 seconds, with a 60 second start period,
+and `web`'s `depends_on` does not wait on it. The check runs a query, so healthy
+means the database answers as well, and it is logged like any request. Its
+other readers are `manager:upgrade`, which `deploy/deploy.sh` runs and which
 waits for the new api to answer it, the integration suite, whose preflight asks
 it and whose CI job in the root workflow `.github/workflows/infra-manager-docker.yml`
 waits for it first, and the curl in the quick start above.

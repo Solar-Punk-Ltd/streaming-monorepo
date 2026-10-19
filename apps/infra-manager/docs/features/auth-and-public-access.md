@@ -136,8 +136,10 @@ CREATE INDEX sessions_user_idx ON sessions (user_id);
   `Retry-After`. Every failure is logged with username and IP. Successful sign-in resets the
   username key.
 - **What stays open**: `GET /health` (it returns `{status:'ok'}` and nothing else) and
-  `POST /auth/login`. No Docker healthcheck reads `/health`: the `api` service in
-  `manager/docker-compose.yml` has none and neither Dockerfile declares one. `manager:upgrade`
+  `POST /auth/login`. Docker's own healthcheck reads `/health`: the `api` service in
+  `manager/docker-compose.yml` asks it every 30 seconds, with a 60 second start period, and
+  `web`'s `depends_on` does not wait on it. The check runs a query, so healthy means the
+  database answers as well, and it is logged like any request. `manager:upgrade`
   waits for the new api to answer it during a deploy, the integration suite asks it in its
   preflight and its CI job in the root workflow `.github/workflows/infra-manager-docker.yml` waits
   for it first, and the
