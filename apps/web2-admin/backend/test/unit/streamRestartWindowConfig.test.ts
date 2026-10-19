@@ -44,10 +44,12 @@ describe('STREAM_RESTART_WINDOW_MINUTES', () => {
     assert.equal(await windowWith('0'), 0);
     assert.equal(await windowWith('10080'), 10080);
     assert.equal(await windowWith('45'), 45);
+    assert.equal(await windowWith(' 45 '), 45, 'surrounding spaces are trimmed');
   });
 
   it('stops the start on anything that is not a whole number of minutes from 0 to a week, naming the key', async () => {
-    for (const value of ['-1', '10081', '1.5', 'abc']) {
+    // Digits only: Number() alone would read the last four as 1000, 30, 30 and 30.
+    for (const value of ['-1', '10081', '1.5', 'abc', '1e3', '0x1E', '30.0', '+30']) {
       await assert.rejects(windowWith(value), (error: unknown) => {
         assert.ok(error instanceof Error, value);
         assert.match(error.message, /STREAM_RESTART_WINDOW_MINUTES/, value);
