@@ -96,6 +96,11 @@ export class IngestService {
   async detailsFor(id: string): Promise<IngestDetails> {
     const stream = await this.streams.findById(id);
     if (!stream) throw new StreamNotFoundError(id);
+    return this.detailsOf(stream);
+  }
+
+  /** The ingest details of a row already read, with its stage: what Finish answers with the new key. */
+  async detailsOf(stream: StreamRow): Promise<IngestDetails> {
     return ingestDetailsFor(stream, await this.stageOf(stream));
   }
 

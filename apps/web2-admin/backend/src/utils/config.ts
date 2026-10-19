@@ -4,6 +4,11 @@ import { PrivateKey } from '@ethersphere/bee-js';
 import { ADMIN_API_TOKEN_MIN_LENGTH } from '@streaming-monorepo/contracts';
 import type { VersionInfo } from '@streaming-monorepo/web2-admin-common';
 
+import {
+  STREAM_RESTART_WINDOW_DEFAULT_MINUTES,
+  STREAM_RESTART_WINDOW_MAX_MINUTES,
+} from '../domain/StreamFinishService.js';
+
 import { versionFrom } from './buildVersion.js';
 import { getErrorMessage } from './errorUtils.js';
 import {
@@ -97,6 +102,12 @@ export interface AppConfig {
    */
   managerFunding: ManagerFundingSettings | null;
   /**
+   * `STREAM_RESTART_WINDOW_MINUTES`: how long after a stream ends it can still go live again on its key, 30 unless set.
+   * A whole number from 0, the key changes as soon as the stream ends, to 10080, a week. Then the admin changes the
+   * key itself, so an old encoder profile cannot bring the stream back by mistake (StreamFinishService).
+   */
+  streamRestartWindowMinutes: number;
+  /**
    * `WEB2_ADMIN_VERSION` and `WEB2_ADMIN_COMMIT`: the build this process runs, which deploy/deploy.sh builds into the
    * api image. Signed-in users read it at GET /api/version.
    */
@@ -174,6 +185,18 @@ function managerFunding(): ManagerFundingSettings | null {
   return { url: managerFundingBaseUrl(url), token };
 }
 
+/** STREAM_RESTART_WINDOW_MINUTES, or the start stops with a sentence that names it. */
+function streamRestartWindowMinutes(): number {
+  const name = 'STREAM_RESTART_WINDOW_MINUTES';
+  const minutes = optionalNumber(name, STREAM_RESTART_WINDOW_DEFAULT_MINUTES);
+  if (!Number.isInteger(minutes) || minutes < 0 || minutes > STREAM_RESTART_WINDOW_MAX_MINUTES) {
+    throw new Error(
+      `Env var ${name} must be a whole number of minutes from 0 to ${STREAM_RESTART_WINDOW_MAX_MINUTES}, got: ${minutes}`,
+    );
+  }
+  return minutes;
+}
+
 export const config: AppConfig = {
   port: optionalNumber('WEB2_ADMIN_PORT', 9877),
   host: optional('WEB2_ADMIN_HOST', '0.0.0.0'),
@@ -186,5 +209,6 @@ export const config: AppConfig = {
   catalogueMoveEnabled: optionalFlag('CATALOGUE_MOVE_ENABLED'),
   brandWalletSecret: brandWalletSecret(),
   managerFunding: managerFunding(),
+  streamRestartWindowMinutes: streamRestartWindowMinutes(),
   version: versionFrom(process.env),
 };

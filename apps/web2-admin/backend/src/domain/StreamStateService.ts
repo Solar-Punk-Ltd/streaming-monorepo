@@ -47,11 +47,24 @@ export interface StateStreamStore {
  * not asked to.
  */
 export class StreamStateService {
+  /** The restart-window sweeps started in the tail of a `vod` report and not finished yet. */
+  private readonly tails = new Set<Promise<void>>();
+
   constructor(
     private readonly streams: StateStreamStore,
     private readonly publishService: PublishService,
     private readonly audit: AuditLog,
+    /**
+     * StreamFinishService's sweep, run in the tail of every `vod` report, so a restart window of 0 finishes the stream
+     * the report ended. Never awaited by the report and never failing it.
+     */
+    private readonly finishEnded?: () => Promise<unknown>,
   ) {}
+
+  /** Resolves once every sweep started in the tail of a `vod` report has run: for the tests. */
+  async idle(): Promise<void> {
+    await Promise.all([...this.tails]);
+  }
 
   /**
    * The ingest stream id is `<mediaType>/<topic>`. Both halves must match the
@@ -137,6 +150,9 @@ export class StreamStateService {
       const message = error instanceof PublishFailedError ? error.reason : getErrorMessage(error);
       await recordAudit(this.audit, { ...entry, details: { ...recording, feedIndex: null, publishError: message } });
       throw error;
+    } finally {
+      // The status is written whether the catalogue write went or not, so the window may already have run out.
+      if (report.state === 'vod') this.sweepAfterVod();
     }
     await recordAudit(this.audit, {
       ...entry,
@@ -148,6 +164,22 @@ export class StreamStateService {
       },
     });
     return outcome;
+  }
+
+  /**
+   * Starts the restart-window sweep behind a `vod` report, in the background: the uploader's answer neither waits on it
+   * nor fails with it, and a sweep that fails is logged and left to the next run.
+   */
+  private sweepAfterVod(): void {
+    if (!this.finishEnded) return;
+    const tail = this.finishEnded().then(
+      () => undefined,
+      (error: unknown) => {
+        logger.error('[State] restart-window sweep after a vod report failed:', getErrorMessage(error));
+      },
+    );
+    this.tails.add(tail);
+    void tail.finally(() => this.tails.delete(tail));
   }
 
   private async apply(existing: StreamRow, report: StreamStateReport): Promise<StreamRow | null> {

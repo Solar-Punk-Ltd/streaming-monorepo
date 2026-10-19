@@ -16,6 +16,7 @@ import type { RenditionReportOutcome } from '../domain/LadderService.js';
 import type { PublishOutcome } from '../domain/PublishService.js';
 import { stageTakesStreams } from '../domain/StageService.js';
 import { stampAge } from '../domain/stampAge.js';
+import { restartUntilOf, STREAM_RESTART_WINDOW_DEFAULT_MINUTES } from '../domain/StreamFinishService.js';
 import { hasUnpublishedEdits } from '../domain/unpublishedEdits.js';
 import type { DesignatedCatalogueStamp, StageRow, StreamRow, UserRow } from '../types/index.js';
 
@@ -32,6 +33,14 @@ export function toUser(row: UserRow): User {
     passwordChangedAt: iso(row.password_changed_at),
     lastLoginAt: iso(row.last_login_at),
   };
+}
+
+/** STREAM_RESTART_WINDOW_MINUTES as the process was started with, which `restartUntil` is worked out with. */
+let restartWindowMinutes = STREAM_RESTART_WINDOW_DEFAULT_MINUTES;
+
+/** Sets the restart window every stream is presented with: once, at boot, from the config. */
+export function useRestartWindow(minutes: number): void {
+  restartWindowMinutes = minutes;
 }
 
 export function toStream(row: StreamRow): Stream {
@@ -55,6 +64,7 @@ export function toStream(row: StreamRow): Stream {
     liveSince: iso(row.live_since),
     endedAt: iso(row.ended_at),
     finishedAt: iso(row.finished_at),
+    restartUntil: iso(restartUntilOf(row, restartWindowMinutes)),
     hasUnpublishedEdits: hasUnpublishedEdits(row),
     stageId: row.stage_id,
     createdAt: row.created_at.toISOString(),

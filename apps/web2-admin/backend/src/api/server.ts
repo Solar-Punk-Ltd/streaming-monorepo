@@ -15,6 +15,7 @@ import { LadderService } from '../domain/LadderService.js';
 import { Logger } from '../domain/Logger.js';
 import { PublishService } from '../domain/PublishService.js';
 import { StageService } from '../domain/StageService.js';
+import type { StreamFinishService } from '../domain/StreamFinishService.js';
 import { StreamService } from '../domain/StreamService.js';
 import { StreamStateService } from '../domain/StreamStateService.js';
 
@@ -47,6 +48,8 @@ export interface ApiDeps {
   ladderService: LadderService;
   publishService: PublishService;
   ingestService: IngestService;
+  /** Finish, and the restart window's sweep: a finished stream cannot be restarted by mistake. */
+  streamFinishService: StreamFinishService;
   stageService: StageService;
   catalogueBatch: CatalogueBatchService;
   /** Moving the catalogue's history onto another batch, started from the Stages page. */
@@ -142,6 +145,7 @@ export function startApiServer(deps: ApiDeps, port: number, host: string): ApiSe
       streamService: deps.streamService,
       publishService: deps.publishService,
       ingestService: deps.ingestService,
+      streamFinishService: deps.streamFinishService,
       requireAuth,
     }),
   );

@@ -19,6 +19,7 @@ import {
   type IngestDetails,
   type PublishResult,
   type Stream,
+  type StreamFinishAnswer,
 } from '@streaming-monorepo/web2-admin-common';
 import express from 'express';
 
@@ -30,6 +31,7 @@ import { AuthService } from '../../src/domain/auth/AuthService.js';
 import { FakeFeedGateway } from '../../src/domain/FakeFeedGateway.js';
 import type { FeedIdentity } from '../../src/domain/feedIdentity.js';
 import { IngestService } from '../../src/domain/IngestService.js';
+import { StreamFinishService } from '../../src/domain/StreamFinishService.js';
 import { PublishService } from '../../src/domain/PublishService.js';
 import { splitStageRecord } from '../../src/domain/StageService.js';
 import { StreamService } from '../../src/domain/StreamService.js';
@@ -120,6 +122,7 @@ before(async () => {
       streamService: new StreamService(store, stages, feed, audit),
       publishService,
       ingestService: new IngestService(store, stages, audit),
+      streamFinishService: new StreamFinishService(store, new IngestService(store, stages, audit), audit, 30),
       requireAuth,
     }),
   );
@@ -307,5 +310,53 @@ describe('the stream routes, on stages', () => {
     assert.equal(none.stage, null);
     assert.equal(none.srt, null);
     assert.equal(none.publishKey.length, 32);
+  });
+
+  it('finish a live or ended stream with 200, its key changed, and name the signed-in user', async () => {
+    const created = (await (await send('ann', 'POST', '/api/streams', FORM)).json()) as Stream;
+    const before = store.get(created.id).publish_key;
+    store.rows.set(created.id, { ...store.get(created.id), status: 'vod', ended_at: new Date(Date.now() - 60_000) });
+    audit.entries.length = 0;
+
+    const res = await send('bob', 'POST', `/api/streams/${created.id}/finish`);
+
+    assert.equal(res.status, 200);
+    const answer = (await res.json()) as StreamFinishAnswer;
+    assert.equal(answer.stream.id, created.id);
+    assert.equal(answer.stream.status, 'vod');
+    assert.ok(answer.stream.finishedAt);
+    assert.equal(answer.stream.restartUntil, null);
+    assert.notEqual(answer.ingest.publishKey, before);
+    assert.equal(answer.ingest.publishKey, store.get(created.id).publish_key);
+    assert.ok(answer.ingest.srt?.url.includes(`key=${answer.ingest.publishKey}`), 'the new SRT line for the page');
+    const [entry] = audit.withAction('stream.finish');
+    assert.deepEqual(entry?.actor, { kind: 'operator', userId: userIds.get('bob'), username: 'bob' });
+  });
+
+  it('refuse a Finish of a stream that never went live, or of one already finished, with their 409s', async () => {
+    const draft = (await (await send('ann', 'POST', '/api/streams', FORM)).json()) as Stream;
+
+    const notStarted = await send('ann', 'POST', `/api/streams/${draft.id}/finish`);
+    assert.equal(notStarted.status, 409);
+    assert.deepEqual(await notStarted.json(), {
+      error: 'stream_not_started',
+      id: draft.id,
+      message: 'Only a live or ended stream can be finished.',
+    });
+
+    store.rows.set(draft.id, { ...store.get(draft.id), status: 'live' });
+    assert.equal((await send('ann', 'POST', `/api/streams/${draft.id}/finish`)).status, 200);
+    const again = await send('ann', 'POST', `/api/streams/${draft.id}/finish`);
+    assert.equal(again.status, 409);
+    assert.deepEqual(await again.json(), {
+      error: 'stream_finished',
+      id: draft.id,
+      message: 'This stream is already finished: its key has changed.',
+    });
+  });
+
+  it('answer a Finish of a stream that does not exist with 404', async () => {
+    const res = await send('ann', 'POST', '/api/streams/00000000-0000-4000-8000-0000000000ff/finish');
+    assert.equal(res.status, 404);
   });
 });

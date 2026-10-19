@@ -354,6 +354,62 @@ export class StreamRepository {
   }
 
   /**
+   * Finish: the key changes for good, in one conditional statement with `finished_at`, on a stream that is live or
+   * ended (`vod`) and not finished yet. Null when nothing matched: no such stream, one that never went live, or one
+   * already finished; the caller re-reads to say which. Neither key reaches a log line.
+   */
+  async finish(id: string, publishKey: string): Promise<StreamRow | null> {
+    const result = await this.pool.query<StreamRow>(
+      `UPDATE streams
+          SET publish_key = $2,
+              publish_key_rotated_at = NOW(),
+              finished_at = NOW(),
+              updated_at = NOW()
+        WHERE id = $1 AND status IN ('live', 'vod') AND finished_at IS NULL
+        RETURNING ${STREAM_COLUMNS}`,
+      [id, publishKey],
+    );
+    return this.one(result.rows, result.rowCount);
+  }
+
+  /**
+   * The recorded streams whose restart window has run out: `vod`, not finished, and ended at least `windowMinutes`
+   * ago, or with no `ended_at` at all (a row from before migration 002 counts as ended long ago). The window is worked
+   * out against the database's clock, which wrote `ended_at`, never the process's. Migration 022's partial index
+   * `streams_restart_window` serves it. Oldest first.
+   */
+  async listRestartWindowRunOut(windowMinutes: number): Promise<string[]> {
+    const result = await this.pool.query<{ id: string }>(
+      `SELECT id FROM streams
+        WHERE status = 'vod' AND finished_at IS NULL
+          AND (ended_at IS NULL OR ended_at <= NOW() - make_interval(mins => $1))
+        ORDER BY ended_at NULLS FIRST, id`,
+      [windowMinutes],
+    );
+    return result.rows.map((row) => row.id);
+  }
+
+  /**
+   * The sweep's change of one stream's key once its restart window ran out: conditional on everything the selection
+   * asked, checked again in the same statement, so a second process or a retry changes nothing twice, and a stream
+   * that went live again since, or ended again more recently, is left alone. Null when nothing matched.
+   */
+  async finishAfterWindow(id: string, publishKey: string, windowMinutes: number): Promise<StreamRow | null> {
+    const result = await this.pool.query<StreamRow>(
+      `UPDATE streams
+          SET publish_key = $2,
+              publish_key_rotated_at = NOW(),
+              finished_at = NOW(),
+              updated_at = NOW()
+        WHERE id = $1 AND status = 'vod' AND finished_at IS NULL
+          AND (ended_at IS NULL OR ended_at <= NOW() - make_interval(mins => $3))
+        RETURNING ${STREAM_COLUMNS}`,
+      [id, publishKey, windowMinutes],
+    );
+    return this.one(result.rows, result.rowCount);
+  }
+
+  /**
    * The uploader's `live` report. `live_since` is set once per live run: a
    * repeated report (the uploader retries) must not keep moving it, and a
    * stream that goes live after having been announced gets a fresh one.
@@ -370,6 +426,12 @@ export class StreamRepository {
    * must not throw away rungs that have finalized since, and there is nothing
    * to clear for a broadcast that is starting for the first time. Index and
    * duration go null together, as migration 004 requires.
+   *
+   * `finished_at` is cleared with them, and also only for a row coming back
+   * from `vod`: that broadcast came on the new key a Finish or the restart
+   * window gave it, and starts a new window at its next end (migration 022).
+   * The uploader's retried `live → live` leaves it, which is how Finish on a
+   * live stream survives until the encoder stops.
    *
    * Conditional on `allowedFrom` for the same reason every other transition
    * here is: the check and the write are one statement, so two reports racing
@@ -398,6 +460,7 @@ export class StreamRepository {
                 manifest_index = NULL,
                 duration_seconds = NULL,
                 ended_at = NULL,
+                finished_at = CASE WHEN status = 'vod' THEN NULL ELSE finished_at END,
                 publish_error = NULL,
                 updated_at = NOW()
           WHERE id IN (SELECT id FROM locked WHERE status = ANY($2::text[]))
