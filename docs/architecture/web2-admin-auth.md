@@ -2,9 +2,9 @@
 
 What the admin API does about who you are, ported from the manager's
 [`auth-and-public-access.md`](../../apps/infra-manager/docs/features/auth-and-public-access.md)
-and the code under `apps/infra-manager/manager/src/domain/auth/`. That page is the reasoning; this one is the port:
-what was taken as it stood, what was adapted to this codebase, and what was
-deliberately left behind.
+and the code under `apps/infra-manager/manager/src/domain/auth/`. That page is
+the reasoning, and this one is the port: what was taken as it stood, what was
+adapted to this codebase, and what was deliberately left behind.
 
 Status: on `main` since 2026-09-18, migration `005_auth_users.sql`. The
 manager's design has run on a host since 2026-09-11 and is public behind a TLS
