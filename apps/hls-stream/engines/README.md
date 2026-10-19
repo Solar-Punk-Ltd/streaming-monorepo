@@ -356,7 +356,7 @@ first. Check the copy with the fork's image, because stock SRS refuses the templ
 ```bash
 sed -E '/^(TRANSCODE|ABR_VHOST)_PLACEHOLDER$/d; s/[A-Z_]+_PLACEHOLDER/1/g' my-srs.conf > my-srs.check.conf
 docker run --rm -v "$PWD/my-srs.check.conf:/check/srs.conf:ro" \
-  ghcr.io/solar-punk-ltd/swarm-srs:6.0-r2-swarm.3 ./objs/srs -t -c /check/srs.conf
+  ghcr.io/solar-punk-ltd/swarm-srs:6.0-r2-swarm.4 ./objs/srs -t -c /check/srs.conf
 ```
 
 The copy that passes is not the file you deploy. The deploy mounts `my-srs.conf` itself, and the
