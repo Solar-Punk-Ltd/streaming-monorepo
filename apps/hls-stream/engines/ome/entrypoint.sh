@@ -75,23 +75,21 @@ require_number HLS_SEGMENT_COUNT "${HLS_SEGMENT_COUNT:-5}"
 sed -i "s/SEGMENT_DURATION_PLACEHOLDER/${HLS_SEGMENT_DURATION:-2}/g" "$CONF"
 sed -i "s/SEGMENT_COUNT_PLACEHOLDER/${HLS_SEGMENT_COUNT:-5}/g" "$CONF"
 
-# Substitute webhook host and port
 sed -i "s/OME_ADAPTER_HOST_PLACEHOLDER/${OME_ADAPTER_HOST:-stream-uploader}/g" "$CONF"
 sed -i "s/OME_ADAPTER_PORT_PLACEHOLDER/${OME_ADAPTER_PORT:-3000}/g" "$CONF"
 sed -i "s|OME_ADMISSION_SECRET_PLACEHOLDER|${OME_ADMISSION_SECRET:-}|g" "$CONF"
 
-# The ports OME itself binds, which used to be hardcoded in the template at 10080 and 8081 while
-# `OME_SRT_PORT` and `OME_HLS_PORT` existed only as compose publish mappings.
+# The ports OME itself binds, taken from `OME_SRT_PORT` and `OME_HLS_PORT` rather than fixed in the
+# template.
 #
-# On the bridge that difference is invisible, because the mapping translates the fixed container port
-# to whatever the operator asked for. **Under `network_mode: host` compose discards the mapping**, so
-# those two variables became inert: OME stayed on 10080 and 8081, the publisher dialled the port it
-# was configured with and reached nothing, and the uploader's puller polled an HLS port where nothing
-# served. Every scenario then failed on its warmup with no admission ever logged, which reads as a
-# broken engine rather than as a port that was never applied. Measured on 2026-08-03.
+# On the bridge a fixed port would be invisible, because the compose mapping translates the container
+# port to whatever the operator asked for. **Under `network_mode: host` compose discards the mapping**,
+# so a fixed port leaves OME on 10080 and 8081 while the publisher dials the configured port and
+# reaches nothing, and the uploader's puller polls an HLS port where nothing serves. Every scenario
+# then fails on its warmup with no admission logged, which reads as a broken engine rather than as a
+# port that was never applied (measured 2026-08-03).
 #
-# Binding what the operator configured also makes two OME stacks on one host possible at all. They
-# previously collided on 10080 and 8081 however they were configured.
+# Binding what the operator configured is also what lets two OME stacks share one host.
 sed -i "s/OME_SRT_PORT_PLACEHOLDER/${OME_SRT_PORT:-10080}/g" "$CONF"
 sed -i "s/OME_HLS_PORT_PLACEHOLDER/${OME_HLS_PORT:-8081}/g" "$CONF"
 
