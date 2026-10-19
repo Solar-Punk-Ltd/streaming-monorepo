@@ -149,8 +149,9 @@ normal and not a divergence.
   `X-Forwarded-Proto`, never from configuration.
 - Four free sign-in attempts per username and per client address, then a minute
   that doubles to an hour; attempts still waiting on scrypt count, so a burst
-  sent together buys no extra guesses. Changing a password is throttled on a
-  key of its own.
+  sent together buys no extra guesses. A wrong current password on a password
+  change, a pin or a send counts under the account's sign-in key, so either
+  kind of guess locks both (SPDV-1664).
 - Every non-GET request must carry `x-requested-with: web2-admin` and must not
   look cross-site, or it is `403 cross_site_request` before its body is read.
   **`/api/internal` is exempt** — it is a machine caller with a bearer token,
