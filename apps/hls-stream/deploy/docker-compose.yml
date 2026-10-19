@@ -282,9 +282,8 @@ services:
       CHEQUEBOOK_MIN_BZZ: ${CHEQUEBOOK_MIN_BZZ:-0.5}
       CHEQUEBOOK_RECHECK_MS: ${CHEQUEBOOK_RECHECK_MS:-60000}
       # The other two thresholds `PostageGate` reads a batch against, and they belong here for the
-      # same reason CHEQUEBOOK_MIN_BZZ does. Neither reached the container before, so the gate ran on its
-      # compiled 24 and 0.9 whatever an operator wrote in .env, which is the ORPHAN_REAP_MS shape
-      # again: an argued-for setting that no deployment could actually move. The defaults repeat
+      # same reason CHEQUEBOOK_MIN_BZZ does. A threshold that does not reach the container leaves the
+      # gate on its compiled default whatever an operator writes in .env. The defaults repeat
       # config.ts on purpose, and `bee-publishers.sh` carries the same pair, which
       # `deploy/test/beePublishers.test.js` holds in step.
       STAMP_MIN_TTL_HOURS: ${STAMP_MIN_TTL_HOURS:-12}
