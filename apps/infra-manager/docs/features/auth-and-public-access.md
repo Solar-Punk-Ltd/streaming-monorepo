@@ -85,6 +85,10 @@ mean two-factor or single sign-on. Both can be added later without changing the 
 
 ### Users and sessions
 
+Since the monorepo, the hashing, cookie, lockout and same-site rules below are the shared
+package `packages/web-auth`, which the web2 admin uses too. The manager wraps it in
+`api/middleware/requireSameSite.ts` and `api/sessionCookie.ts`.
+
 Migration `008_auth.sql`:
 
 ```sql
