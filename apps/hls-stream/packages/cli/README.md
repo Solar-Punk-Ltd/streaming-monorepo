@@ -174,14 +174,29 @@ src/
     node-addresses.ts          # Ethereum + overlay addresses
     node-wallets.ts            # BZZ + xDAI balances, warning on unfunded publishers
   lib/
+    args.ts                    # Parse the command line, refuse --rung on a command that does not take it
+    batch-id-record.ts         # Record a paid-for batch id in .env, or a recovery file if that fails
     bee-client.ts              # Bee instance factory
     config-reader.ts           # Read config.json + .env, resolve node targets
     publishers.ts              # Parse BEE_PUBLISHERS (read-only)
     nodes.ts                   # Iterate nodes, apply --url, select a publisher by rung
+    confirm.ts                 # Ask the operator to approve a spend, anything but y declines
+    stamp.ts                   # Stamp options, the price quote, and the purchase itself
     env-writer.ts              # Update a key in .env (line-level replace)
     wait.ts                    # Poll with timeout (node health, stamp usability)
     output.ts                  # Colored console output helpers
 test/
+  argsFlags.test.ts            # --rung refused on every command but stamp:buy
+  batchCapacity.test.ts        # How much a batch holds, and when it is worth a warning
+  batchIdRecord.test.ts        # A bought batch id is never lost, and a malformed one stays contained
+  configReader.test.ts         # config.json and BEE_PUBLISHERS that cannot be read
+  dotenvQuiet.test.ts          # Loading the env files prints nothing
+  envWriter.test.ts            # Updating a key in .env
+  permissionGuard.test.ts      # The guard that skips the write-refusal cases when run as root
   publishers.test.ts           # BEE_PUBLISHERS parsing
+  spendGuards.test.ts          # The guards on a spend, and batch parameters that cannot be priced
+  stampBuy.test.ts             # stamp:buy, single node and per rung
+  stampLifecycle.test.ts       # stamp:setup end to end against a faked node
+  stampSetup.test.ts           # stamp:setup never loses the batch id after a spend
   targets.test.ts              # Node target resolution, --url narrowing, rung selection
 ```
