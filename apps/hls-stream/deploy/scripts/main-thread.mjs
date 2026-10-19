@@ -41,9 +41,10 @@ import { enableMetrics, readMetrics } from './chrome-cpu.mjs';
 const ENDPOINT_RETRY_MS = 250;
 
 /**
- * How long to keep asking for a page that has routed to the viewer, in seconds.
+ * How long to keep asking for a page that has routed to the viewer, in seconds. 240 unless
+ * MAIN_THREAD_ATTACH_S sets it.
  *
- * ⛔⛔⛔ THIS WAS TEN SECONDS AND IT DECLINED EVERY ARM OF A PAID SITTING.
+ * ⛔⛔⛔ A TEN SECOND WINDOW DECLINED EVERY ARM OF A PAID SITTING.
  *
  * Proving the sampler by hand pointed it at a Chrome already sitting on the watch route, so the
  * attach was instant and ten seconds looked like ample slack. A real arm is nothing like that: the
