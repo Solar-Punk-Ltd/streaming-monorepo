@@ -56,7 +56,6 @@ export interface LegacyMetadata {
 export interface NewStackVersion {
   name: string;
   gitRef: string;
-  /** Null only for the bundled row, which the migration inserts. */
   rootPath: string;
   /** The repository its builds are fetched from. The folder comes with the first build that publishes. */
   sourceUrl: string;
