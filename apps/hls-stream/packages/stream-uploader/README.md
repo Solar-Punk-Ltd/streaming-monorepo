@@ -341,7 +341,7 @@ is an ordinary event with a designed answer.
 empty, and the playlist lists every empty sequence between two held segments as an `#EXT-X-GAP` entry
 carrying the same derived date-time, the deployment's declared fragment length and a URI of
 `gap-<sequence>`. RFC 8216bis §4.4.4.7 defines the tag as an entry whose URI holds no media and which
-a client should skip, and hls.js 1.6.15 reads it into `frag.gap` and skips the fragment.
+a client should skip, and hls.js (1.6.15 when this was measured) reads it into `frag.gap` and skips the fragment.
 
 The alternative was leaving the hole out, which is what the playlists did until then, and HLS numbers
 the entries it lists consecutively from `#EXT-X-MEDIA-SEQUENCE`. So every entry behind a hole was
