@@ -15,7 +15,7 @@ Config-driven deployment for the Swarm HLS Stream stack.
 ./deploy/scripts/setup.sh
 ```
 
-Creates `config.json`, `.env`, and builds packages. Then edit both files:
+Creates `deploy/config.json` and `.env`, both under `apps/hls-stream`, and builds packages. Then edit both files:
 
 - **config.json**: set where each service runs
 - **.env**: set `STREAM_KEY`, `BEE_UPLOADER_NAT_ADDR`, ports, etc.
@@ -67,7 +67,7 @@ The deploy script will skip stream-uploader and configure SRS to reach it via `h
 
 ### .env
 
-Single `.env` in monorepo root for core options, shared by dev and deploy. See [.env.sample](../.env.sample). **Engine-specific options live in `engines/<name>/.env`** (samples: [engines/srs/.env.sample](../engines/srs/.env.sample), [engines/ome/.env.sample](../engines/ome/.env.sample)), loaded at runtime for the engine selected via `ENGINE`. `setup.sh` creates them from the samples for engines enabled in `config.json`. `deploy.sh` loads the enabled engines' env files too (below the root env, so root values win on duplicate keys, matching the native uploader's dotenv order) and feeds them into compose interpolation.
+Single `.env` at the root of `apps/hls-stream` for core options, shared by dev and deploy. See [.env.sample](../.env.sample). **Engine-specific options live in `engines/<name>/.env`** (samples: [engines/srs/.env.sample](../engines/srs/.env.sample), [engines/ome/.env.sample](../engines/ome/.env.sample)), loaded at runtime for the engine selected via `ENGINE`. `setup.sh` creates them from the samples for engines enabled in `config.json`. `deploy.sh` loads the enabled engines' env files too (below the root env, so root values win on duplicate keys, matching the native uploader's dotenv order) and feeds them into compose interpolation.
 
 ### What the broadcaster's encoder must send
 
@@ -490,7 +490,7 @@ OBS/FFmpeg ──SRT or RTMP──> SRS (SRT on port 10080/udp, RTMP on port 193
 | `bee-gateway`        | `ethersphere/bee:2.8.3`                           | Bee node for reading (paired with `client`)            |
 | `stream-uploader`    | Built from `Dockerfile.uploader`                  | Receives segments, uploads to Swarm                    |
 | `srs`                | `ghcr.io/solar-punk-ltd/swarm-srs:6.0-r2-swarm.4` | SRT/RTMP to HLS, ABR transcode, see engines/README.md  |
-| `ome`                | `airensoft/ovenmediaengine:latest`                | SRT ingest, uploader pulls HLS over HTTP               |
+| `ome`                | `airensoft/ovenmediaengine:v0.21.0`               | SRT ingest, uploader pulls HLS over HTTP               |
 | `client`             | Built from `Dockerfile.client`                    | React viewer (nginx), proxies `/bee/` to `bee-gateway` |
 
 Those nine names are every key `config.json` accepts. A service the file does not mention runs, with

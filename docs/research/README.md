@@ -5,6 +5,10 @@ reading the sibling repositories. They are snapshots: file paths and line
 numbers refer to the commits current that day (streaming-infra-manager master
 b94caf3, swarm-hls-stream main bbfb8bf plus the named origin branches).
 
+Both repositories were imported whole on 2026-09-27 and live under
+`apps/infra-manager` and `apps/hls-stream`. The `scratchpad/repos/...` paths in
+the notes were a clone made for the reading.
+
 | File                                                                       | What                                                                                                             |
 | -------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------- |
 | [streaming-infra-manager.md](streaming-infra-manager.md)                   | Conventions we copy, the Manager API, its data model, port arithmetic.                                           |

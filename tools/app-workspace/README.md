@@ -5,7 +5,7 @@ folder, on the hosts it deploys to as in CI, because that keeps every Dockerfile
 was. This tool gives such a build what it needs: the app's own `pnpm-lock.yaml` and `pnpm-workspace.yaml`, cut out of
 the root ones at build time. A cut is never committed and never written into a working checkout.
 
-Plain Node scripts with no dependencies, because a cut runs before anything is installed. They need Node 22 or later,
+Plain Node scripts with no dependencies, because a cut runs before anything is installed. They need Node 24 or later,
 and `in-copy.mjs` needs git.
 
 ## The two commands

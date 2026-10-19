@@ -14,8 +14,8 @@ asks for a name and a message, then creates an annotated tag on the commit and p
 node tools/release/tag.mjs
 ```
 
-It takes any name a deploy can carry, and suggests and enforces no scheme: `QA-build-2026-10-07`, `v2.4.0` and
-`release/2026.10` all work. In order, it:
+It takes any name a deploy can carry, at most 80 characters, and suggests and enforces no scheme:
+`QA-build-2026-10-07`, `v2.4.0` and `release/2026.10` all work. In order, it:
 
 1. Fetches the remote's tags, and its branches with them. When the fetch fails, as offline, it warns that a name a
    teammate pushed cannot be checked, and goes on.

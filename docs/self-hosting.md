@@ -54,6 +54,22 @@ sudo usermod -aG docker deploy
 sudo install -d -o deploy -g deploy /opt/streaming
 ```
 
+Then put your own public key into the account, so you can log in to it. The key is your own, the
+one on the machine you run the deploy scripts from. The manager's deploy key comes later, on the
+stage and Bee hosts. `~deploy` is the shell's name for the account's home folder.
+
+```sh
+sudo install -d -m 700 -o deploy -g deploy ~deploy/.ssh
+```
+
+```sh
+echo '<your own public key, one line>' | sudo tee -a ~deploy/.ssh/authorized_keys
+```
+
+```sh
+sudo chown deploy:deploy ~deploy/.ssh/authorized_keys && sudo chmod 600 ~deploy/.ssh/authorized_keys
+```
+
 It worked when `ssh deploy@203.0.113.6 docker ps` from your machine prints an empty table. Ubuntu's
 own archive names the Compose plugin `docker-compose-v2` and Docker's apt repository names it
 `docker-compose-plugin`, so install whichever your sources offer.
@@ -70,6 +86,10 @@ with the admin. [architecture/stages.md](architecture/stages.md) is the design.
 Each deploy names its build after the git tag on the commit it deploys, and the consoles show that
 name to signed-in users. A first installation needs no tag: a build without one is named after its
 commit. A release is tagged before its deploys, and [releasing.md](releasing.md) is that order.
+
+On your own machine you need bash, ssh, rsync, git and Node 24, which run every deploy script and
+the firewall generator of the Bee host. The stack's CLI needs pnpm as well, and `pnpm install` once
+at the repository root.
 
 1. **An ssh alias on your machine**, in `~/.ssh/config`. The forward is the way into the manager
    before the edge serves it, and stays the way in when the edge is down.
@@ -123,7 +143,12 @@ commit. A release is tagged before its deploys, and [releasing.md](releasing.md)
    `BEE_GATEWAY_API_BIND`, `BEE_RUNG_480P_API_BIND`, `BEE_RUNG_720P_API_BIND` or
    `BEE_RUNG_1080P_API_BIND`, and let the firewall decide who reaches it.
 
-4. **The manager's first user**, on the host. It asks for the password twice.
+4. **The manager's first user**, on the host. Log in to it first, then make the user. It asks for
+   the password twice.
+
+   ```sh
+   ssh <control-host>
+   ```
 
    ```sh
    cd /opt/streaming/streaming-infra-manager/manager && docker compose exec -it api node dist/cli.js user:add <username>
@@ -131,8 +156,19 @@ commit. A release is tagged before its deploys, and [releasing.md](releasing.md)
 
 5. **The manager's deploy key**, which it logs in to the stage and Bee hosts with. It lives on the
    host in `/opt/streaming/manager-ssh/`, as a key pair named `deploy_key` beside an `ssh_config` and
-   a `known_hosts`. "Deploying Bee nodes to other hosts" in `apps/infra-manager/deploy/README.md`
-   shows how to make it. The one line of `deploy_key.pub` is what the stage and Bee hosts authorize.
+   a `known_hosts`. Make the key on the host, still logged in as in step 4:
+
+   ```sh
+   mkdir -p -m 700 /opt/streaming/manager-ssh
+   ```
+
+   ```sh
+   ssh-keygen -t ed25519 -N '' -f /opt/streaming/manager-ssh/deploy_key
+   ```
+
+   "Deploying Bee nodes to other hosts" in `apps/infra-manager/deploy/README.md` shows the
+   `ssh_config` and `known_hosts` beside it. The one line of `deploy_key.pub` is what the stage and
+   Bee hosts authorize.
 
 6. **The web2 admin.** From `apps/web2-admin`, make the profile's env file from the sample and fill
    in what it asks for: `POSTGRES_PASSWORD`, `FEED_PRIVATE_KEY`, the brand key the catalog is
@@ -173,6 +209,13 @@ commit. A release is tagged before its deploys, and [releasing.md](releasing.md)
    It worked when `https://manager.example.org` and `https://admin.example.org` show the two sign-in
    pages. A host that runs the manager alone leaves `ADMIN_DOMAIN` empty.
 
+   Then tell the manager what the edge holds. Docker reports no ports for a container on the
+   host's network, and the manager refuses to remove or export anything on a host with an
+   unexplained one. Add `KNOWN_HOST_NETWORK_PORTS=edge=80/tcp,443/tcp,443/udp` to the env file of
+   step 3, `apps/infra-manager/manager/.env` in your checkout or the profile's own, and run the
+   manager's deploy again. A host that deploys only to other hosts can
+   skip this, until it deploys to itself.
+
 8. **The admin link.** In the manager, **Manager settings**, the card **Web2 admin link for new
    deployments**: the address `https://admin.example.org` and the admin's `INTERNAL_API_TOKEN`,
    then **Test connection** and **Save**. The test proves the token on the admin's registrar check.
@@ -189,7 +232,7 @@ commit. A release is tagged before its deploys, and [releasing.md](releasing.md)
    batch as the brand's catalogue node. The manager pushes it to the admin, whose Stages page then
    shows the catalogue batch. The Bee host's firewall admits the control host to that node's API.
 
-10. **The stage**, by the stage host recipe below: an **ABR Uploader** deployment with the pool's
+10. **The stage**, by the stage host recipe below: an **ABR uploader** deployment with the pool's
     string and a stream key of its own, which the wizard generates. Its Web2 admin group starts on,
     from the manager's link, with **A token of its own**. The first deploy generates that token and
     registers the stage with the admin before the uploader starts. It worked when the admin's
@@ -347,7 +390,9 @@ stage hosts publish through. It is prepared like a stage host.
    - **The bind.** The manager already binds each rung's API to `0.0.0.0`, because this is another
      host than the control host, so the API answers on every address from the first deploy. That is
      why the firewall below goes in first.
-   - **The firewall.** Generate this host's table and name each allowed address once, as a `/32`:
+   - **The firewall.** Generate this host's table and name each allowed address once, as a `/32`.
+     Run it from `apps/infra-manager`. `firewall-inventory.json` is the download from
+     `/targets/firewall?alias=bee-1` in the signed-in manager.
 
      ```sh
      ./deploy/host/firewall-rules.sh --iface <public interface> --inventory firewall-inventory.json --bee-api-source <stage-host-address>/32 --bee-api-source <control-host-address>/32 > /tmp/bee-1-firewall.nft
@@ -355,15 +400,15 @@ stage hosts publish through. It is prepared like a stage host.
 
    A provider firewall that admits the same addresses to the same ports does the same job.
 
-3. **Create the pool.** **New deployment**, **Deployment type**, **ABR Node Pool**, with `bee-1` as
-   the host. The manager creates one deployment per rung. Each rung's data, its wallet and keys
+3. **Create the pool.** **New deployment**, **What do you want to set up?**, **ABR node pool**,
+   with `bee-1` as the host. The manager creates one deployment per rung. Each rung's data, its wallet and keys
    included, lands on this host and nowhere else, so back it up before the host is ever rebuilt. Set
    `BEE_UPLOADER_NAT_ADDR` in each rung's settings to this host's public address, so peers can dial
    it, and deploy the rungs again.
 
 4. **Fund each rung and buy its batch**, below.
 
-5. **Hand the pool to an uploader.** Copy the pool string from the pool card into an **ABR Uploader**
+5. **Hand the pool to an uploader.** Copy the pool string from the pool card into an **ABR uploader**
    deployment on a stage host.
 
 6. **The catalogue node.** **New deployment**, a Bee-only deployment with `bee-1` as the host, fund it
@@ -379,37 +424,25 @@ Every uploader Bee node needs two tokens on Gnosis Chain: xDAI for gas and xBZZ 
 batch and its chequebook. The manager holds no wallet. It shows each node's address, and you send the
 tokens there from a wallet of your own.
 
-1. **Read each node's address.** The pool card in the manager shows it, and so does the CLI from a
-   checkout of `apps/hls-stream`:
-
-   ```sh
-   pnpm node:addresses
-   ```
+1. **Read each node's address.** From the pool card in the manager.
 
 2. **Send xDAI and xBZZ to that address**, from your own wallet. A fraction of an xDAI covers a long
    time of gas. How much xBZZ depends on the batch you buy, and the next step prints the cost first.
 
-3. **Buy a batch per rung.** From the pool card in the manager, or with the CLI. The batch is held by
-   the node that bought it, so name the rung:
+3. **Buy a batch per rung.** From the pool card in the manager. The batch is held by the node that
+   bought it, so buy it on the rung it is for. Higher rungs burn postage faster, roughly seven times
+   as fast at 1080p as at 360p, so watch the top rung's batch.
 
-   ```sh
-   pnpm stamp:buy --rung 360p <amount> <depth>
-   ```
+4. **Check the balances** at any time, on the pool card. Watch the available balance of a
+   chequebook, not its total. The difference is cheques already written that a peer has not cashed
+   yet.
 
-   It prints the cost and how long the batch lasts, and asks before it spends. Higher rungs burn
-   postage faster, roughly seven times as fast at 1080p as at 360p, so watch the top rung's batch.
-
-4. **Check the balances** at any time:
-
-   ```sh
-   pnpm node:wallets
-   ```
-
-   Watch `availableBalance` on a chequebook, not `totalBalance`. The difference is cheques already
-   written that a peer has not cashed yet.
-
-`apps/infra-manager/docs/features/abr-ladder.md` and `apps/hls-stream/packages/cli/README.md` have
-the details of both paths.
+The stack's CLI does the same for a stack you run by hand from a checkout of `apps/hls-stream`,
+where `deploy/config.json` and `.env` name the node: `pnpm node:addresses`,
+`pnpm stamp:buy --rung 360p <amount> <depth>` and `pnpm node:wallets`. It cannot reach a pool the
+manager deployed unless you point it there with `--url` and the Bee host firewall admits your
+address. `apps/infra-manager/docs/features/abr-ladder.md` and `apps/hls-stream/packages/cli/README.md`
+have the details of both paths.
 
 ## Firewall advice
 
@@ -440,3 +473,6 @@ each one has a setting that moves it. Once a host runs, keep that setting as it 
 | The manager's stacks  | `/opt/streaming/streaming-infra-manager-versions` and `/opt/streaming/streaming-infra-manager-data/<deployment>`, `STACK_VERSIONS_ROOT` and `BEE_DATA_ROOT` |                                                                |                               |
 | The manager's ssh key | `/opt/streaming/manager-ssh`, `MANAGER_SSH_DIR`                                                                                                             |                                                                |                               |
 | A stack deployment    | `~/swarm-hls-stream-<profile>` of the account the manager logs in as                                                                                        | the deployment's profile name                                  | `srs-media`, `uploader-state` |
+
+The admin's host folder holds `apps/web2-admin` alone, whatever its name: its deploy sends the
+admin's own folder, not the whole repository.

@@ -19,10 +19,11 @@ node tools/release/tag.mjs
 
 It fetches the tags, shows the commit and the tags there are, asks for a name and a message, and asks before it
 creates an annotated tag on the commit and pushes it. Any name works within letters, digits and `. _ + / -`, starting
-with a letter or a digit, such as `QA-build-2026-10-07`, `v2.4.0` or `release/2026.10`. A name a tag already has on
-another commit, here or on the remote, is refused. On a commit that already has an annotated tag, Enter keeps it.
-A tag also names the release's published images, which take letters, digits and `. _ -` only, so a name with a `/` or
-a `+` is tagged but not published. `vX.Y.Z`, such as `v2.4.0`, is the shape a deploy's version list offers.
+with a letter or a digit and at most 80 characters long, such as `QA-build-2026-10-07`, `v2.4.0` or
+`release/2026.10`. A name a tag already has on another commit, here or on the remote, is refused. On a commit that
+already has an annotated tag, Enter keeps it. A tag also names the release's published images, which take letters,
+digits and `. _ -` only, so a name with a `/` or a `+` is tagged but not published, and the `publish-images` run for
+that tag fails on purpose, saying why. `vX.Y.Z`, such as `v2.4.0`, is the shape a deploy's version list offers.
 
 It worked when it ends with "Pushed <tag> to origin." or, for a tag it kept, "origin already has <tag>."
 
@@ -35,7 +36,7 @@ its own repository outside this one, pulls them by that tag: `streaming-manager-
 ## 2. Deploy each manager
 
 ```sh
-./apps/infra-manager/deploy/deploy.sh --host <ssh-target> --profile <profile>
+./apps/infra-manager/deploy/deploy.sh --host=<ssh-target> --profile=<profile>
 ```
 
 Once for each host that runs a manager, each with its own profile.

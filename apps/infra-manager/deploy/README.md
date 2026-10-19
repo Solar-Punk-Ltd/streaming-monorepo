@@ -16,13 +16,18 @@ stack versions and the ssh identity default to folders beside it, and
 ```sh
 # As deploy@server
 sudo apt-get update
-sudo apt-get install -y docker.io docker-compose-plugin rsync
+sudo apt-get install -y docker.io docker-compose-v2 rsync curl
 sudo usermod -aG docker deploy
 sudo install -d -o deploy -g deploy /opt/streaming
 # log out + back in so the group takes effect
-
-mkdir -p /opt/streaming/streaming-infra-manager/manager
 ```
+
+Ubuntu's own archive names the Compose plugin `docker-compose-v2` and Docker's apt repository names
+it `docker-compose-plugin`, so install whichever your sources offer.
+
+The account also needs your own public key in its `authorized_keys`, or no deploy can log in
+to it. [What every host needs](../../../docs/self-hosting.md#what-every-host-needs) has the
+commands.
 
 Make sure `manager/.env` exists in your local checkout. Every deploy sends it
 to the server, so your laptop is the source of truth. Another server gets a
@@ -291,8 +296,11 @@ key pair, an `ssh_config` and a `known_hosts`:
 # As deploy@<control-host>
 mkdir -p /opt/streaming/manager-ssh
 ssh-keygen -t ed25519 -N '' -f /opt/streaming/manager-ssh/deploy_key
-ssh-copy-id -i /opt/streaming/manager-ssh/deploy_key.pub deploy@203.0.113.7
 ```
+
+Put the one line of `deploy_key.pub` into the target's `authorized_keys`, as the
+stage host recipe in [docs/self-hosting.md](../../../docs/self-hosting.md#a-stage-host)
+shows.
 
 One `Host` block per target in `/opt/streaming/manager-ssh/ssh_config`. `IdentityFile` is the
 path _inside the container_, where the directory is mounted at `/root/.ssh`:
@@ -700,8 +708,11 @@ for another one.
 The edge runs on the host's network, and Docker reports no port map for such a
 container. Until the manager is told what it holds, every removal on that host
 refuses with "Container removal or port release could not be verified", and so
-do port handovers and the firewall export of step 3. Name it in the manager's
-env file with the ports Caddy listens on, then restart the manager:
+do port handovers and the firewall export of step 3. Add the line below, with
+the ports Caddy listens on, to `manager/.env` in your checkout and run
+`./deploy/deploy.sh` again, which sends the file and recreates the api
+container. An edit made on the host is undone by the next deploy, and a plain
+`docker compose restart` does not re-read the file.
 
 ```sh
 KNOWN_HOST_NETWORK_PORTS=edge=80/tcp,443/tcp,443/udp
