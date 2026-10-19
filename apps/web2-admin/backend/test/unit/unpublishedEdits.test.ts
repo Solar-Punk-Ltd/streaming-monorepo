@@ -30,6 +30,7 @@ describe('hasUnpublishedEdits', () => {
       published_feed_index: 4,
       live_since: new Date('2026-09-24T10:01:00.000Z'),
       ended_at: new Date('2026-09-24T11:30:00.000Z'),
+      finished_at: null,
       manifest_index: 412,
       duration_seconds: 5340,
       // The live and vod reports moved this, and nothing else did.

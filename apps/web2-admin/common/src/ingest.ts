@@ -1,4 +1,4 @@
-import type { MediaType } from './api.js';
+import type { MediaType, Stream } from './api.js';
 
 /** What OBS needs to push over RTMP. */
 export interface IngestRtmpDetails {
@@ -59,6 +59,20 @@ export interface IngestDetails {
    * crosses the network as readable text.
    */
   rtmp: IngestRtmpDetails | null;
+}
+
+/**
+ * `POST /api/streams/:id/finish`: finish the stream, which changes its key at once, behind a confirmation. On a
+ * recorded stream (`vod`) it closes the restart window early; on a live one the broadcast goes on until the encoder
+ * stops or drops, and the stream then ends for good. Allowed to whoever may rotate a key. It answers the stream as it
+ * now stands, with `finishedAt` set, and the ingest details with the new key, which the page shows as after Rotate
+ * key. Refused with 404 `not_found` for no such stream, 409 `stream_not_started` for a stream that never went live
+ * (draft, published or publishing), and 409 `stream_finished` for one already finished. Nothing stops an encoder that
+ * is still pushing.
+ */
+export interface StreamFinishAnswer {
+  stream: Stream;
+  ingest: IngestDetails;
 }
 
 export {
