@@ -483,8 +483,8 @@ services:
       SRS_HTTP_PORT: ${SRS_HTTP_PORT:-8080}
       SRS_SRT_PORT: ${SRS_SRT_PORT:-10080}
       SRS_HTTP_API_PORT: ${SRS_HTTP_API_PORT:-1985}
-      # The latency knobs. `main` passed the first two and this branch stopped, which left the
-      # entrypoint substituting defaults into a template that no longer had placeholders.
+      # The latency knobs. Each one is restated here because a knob that never reaches the container
+      # is not the operator's: the entrypoint falls back to its own default for it, or refuses to start.
       #
       # ⛔ `HLS_FRAGMENT` is NOT the segment length. Measured over 20 arms and replicated to three
       # decimals, the segment is `ceil(HLS_FRAGMENT / GOP) * GOP`, so the publisher's keyframe
