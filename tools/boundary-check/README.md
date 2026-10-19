@@ -21,7 +21,7 @@ Every package carries one scope tag and one type tag in the `nx` field of its ow
 | --------------------------------------------- | ------------------------------------------------------------------------- |
 | `scope:admin`, `scope:manager`, `scope:stack` | a package of that app, under `apps/`                                      |
 | `scope:shared`                                | a package under `packages/`, shared by two or more apps                   |
-| `scope:infra`                                 | a package under `infra/`                                                  |
+| `scope:infra`                                 | a package under `infra/` (none today)                                     |
 | `scope:tools`                                 | a package under `tools/`                                                  |
 | `type:app`                                    | something that runs: a service, a UI, a command-line tool, a test harness |
 | `type:lib`                                    | code other projects import                                                |
