@@ -250,16 +250,19 @@ export function parseRules({ allowJson, denyText }) {
   const allow = JSON.parse(allowJson);
   const allowedAddresses = new Set(allow.ethereumAddresses.map((entry) => entry.address.toLowerCase()));
   const allowedSecretHashes = new Set();
-  for (const { sha256 } of allow.publishedSecrets ?? []) {
-    if (!SHA256_HEX.test(sha256)) throw new Error(`allow list secret is not a lowercase sha256: ${sha256}`);
+  // A malformed entry may be a raw value pasted in place of its hash, so errors name its place only.
+  for (const [index, { sha256 }] of (allow.publishedSecrets ?? []).entries()) {
+    if (!SHA256_HEX.test(sha256)) {
+      throw new Error(`allow list secret entry ${index + 1} is not a lowercase sha256`);
+    }
     allowedSecretHashes.add(sha256);
   }
   const homeUsers = new Set((allow.homeUsers ?? []).map((entry) => entry.name));
   const deniedHashes = new Set();
-  for (const raw of denyText.split('\n')) {
+  for (const [index, raw] of denyText.split('\n').entries()) {
     const line = raw.replace(/#.*/, '').trim();
     if (!line) continue;
-    if (!SHA256_HEX.test(line)) throw new Error(`deny list line is not a lowercase sha256: ${raw}`);
+    if (!SHA256_HEX.test(line)) throw new Error(`deny list line ${index + 1} is not a lowercase sha256`);
     deniedHashes.add(line);
   }
   return { allowedAddresses, allowedSecretHashes, homeUsers, deniedHashes };

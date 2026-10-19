@@ -235,6 +235,18 @@ describe('64 hex digits beside a key word', () => {
       /lowercase sha256/,
     );
   });
+
+  it('names a bad allow list entry by its place, never by its value', () => {
+    const pasted = `0x${KEY_HEX}`;
+    assert.throws(
+      () =>
+        parseRules({
+          allowJson: JSON.stringify({ ethereumAddresses: [], publishedSecrets: [{ sha256: pasted, why: 'x' }] }),
+          denyText: '',
+        }),
+      (error) => !error.message.includes(KEY_HEX) && /entry 1/.test(error.message),
+    );
+  });
 });
 
 /** The rules the committed lists give, for the cases that hinge on what the repository allows. */
@@ -354,6 +366,14 @@ describe('the hashed deny list', () => {
     assert.throws(
       () => parseRules({ allowJson: '{"ethereumAddresses":[]}', denyText: 'not-a-hash' }),
       /lowercase sha256/,
+    );
+  });
+
+  it('names a bad deny list line by its number, never by its text', () => {
+    const pasted = `# a comment\n0x${KEY_HEX}`;
+    assert.throws(
+      () => parseRules({ allowJson: '{"ethereumAddresses":[]}', denyText: pasted }),
+      (error) => !error.message.includes(KEY_HEX) && /line 2/.test(error.message),
     );
   });
 });
