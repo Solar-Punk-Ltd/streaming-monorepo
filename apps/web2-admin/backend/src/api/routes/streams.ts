@@ -1,9 +1,15 @@
-import { STREAM_LIMITS, type Stream, type StreamListResponse } from '@streaming-monorepo/web2-admin-common';
+import {
+  STREAM_LIMITS,
+  type Stream,
+  type StreamFinishAnswer,
+  type StreamListResponse,
+} from '@streaming-monorepo/web2-admin-common';
 import express, { Request, RequestHandler, Response, Router } from 'express';
 
 import { UnsupportedMediaTypeError } from '../../domain/errors/index.js';
 import { IngestService } from '../../domain/IngestService.js';
 import { PublishService } from '../../domain/PublishService.js';
+import { StreamFinishService } from '../../domain/StreamFinishService.js';
 import { normaliseThumbnailMime, StreamService } from '../../domain/StreamService.js';
 import { StreamInputBody, streamIdParamSchema, streamInputSchema } from '../../schemas/stream.js';
 import { THUMBNAIL_MIME_TYPES } from '../../types/index.js';
@@ -16,6 +22,8 @@ export interface StreamRoutesDeps {
   streamService: StreamService;
   publishService: PublishService;
   ingestService: IngestService;
+  /** Finish: the key changes for good, allowed to whoever may rotate a key. */
+  streamFinishService: StreamFinishService;
   requireAuth: RequestHandler;
 }
 
@@ -41,7 +49,7 @@ function streamId(req: Request): string {
 }
 
 export function createStreamsRouter(deps: StreamRoutesDeps): Router {
-  const { streamService, publishService, ingestService, requireAuth } = deps;
+  const { streamService, publishService, ingestService, streamFinishService, requireAuth } = deps;
   const router = Router();
 
   router.use(requireAuth);
@@ -168,6 +176,18 @@ export function createStreamsRouter(deps: StreamRoutesDeps): Router {
     validateParams(streamIdParamSchema),
     asyncHandler(async (req: Request, res: Response) => {
       res.json(await ingestService.rotateKey(actorOf(req), streamId(req)));
+    }),
+  );
+
+  // Finish: the key changes at once, behind the page's confirmation, with the same gate as rotating it. Answers the
+  // stream as it now stands and the ingest details with the new key (StreamFinishAnswer).
+  router.post(
+    '/:id/finish',
+    validateParams(streamIdParamSchema),
+    asyncHandler(async (req: Request, res: Response) => {
+      const { stream, ingest } = await streamFinishService.finish(actorOf(req), streamId(req));
+      const answer: StreamFinishAnswer = { stream: toStream(stream), ingest };
+      res.json(answer);
     }),
   );
 

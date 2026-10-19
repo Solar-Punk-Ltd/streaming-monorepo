@@ -1,11 +1,13 @@
 import { SESSION_ABSOLUTE_TIMEOUT_MS, SESSION_IDLE_TIMEOUT_MS } from '@streaming-monorepo/web2-admin-common';
 
+import { useRestartWindow } from './api/presenters.js';
 import { ApiServerHandle, startApiServer } from './api/server.js';
 import { AuthService } from './domain/auth/AuthService.js';
 import { PostgresCredentialRepository } from './domain/auth/PostgresCredentialRepository.js';
 import { PostgresSessionRepository } from './domain/auth/PostgresSessionRepository.js';
 import { PostgresUserRepository } from './domain/auth/PostgresUserRepository.js';
 import { SessionSweep, startSessionSweep } from './domain/auth/sessionSweep.js';
+import { startStreamFinishSweep, StreamFinishService, type StreamFinishSweep } from './domain/StreamFinishService.js';
 import { BeeFeedGateway } from './domain/BeeFeedGateway.js';
 import { CatalogueBatchService } from './domain/CatalogueBatch.js';
 import { CatalogueMoveService } from './domain/CatalogueMove.js';
@@ -120,6 +122,7 @@ function createFeedGateway(): FeedGateway & CatalogueRestamper {
 let apiServer: ApiServerHandle | undefined;
 let database: Database | undefined;
 let sessionSweep: SessionSweep | undefined;
+let streamFinishSweep: StreamFinishSweep | undefined;
 let catalogueMove: CatalogueMoveService | undefined;
 let isShuttingDown = false;
 
@@ -135,6 +138,10 @@ async function gracefulShutdown(signal: string): Promise<void> {
     if (sessionSweep) {
       sessionSweep.stop();
       sessionSweep = undefined;
+    }
+    if (streamFinishSweep) {
+      streamFinishSweep.stop();
+      streamFinishSweep = undefined;
     }
     if (apiServer) {
       await apiServer.close();
@@ -239,7 +246,21 @@ async function main(): Promise<void> {
   await catalogueMove.resumeOnBoot();
 
   const ingestService = new IngestService(streamRepository, stageRepository, auditLog);
-  const streamStateService = new StreamStateService(streamRepository, publishService, auditLog);
+  // A finished stream cannot be restarted by mistake: Finish, and the sweep that changes a stream's key once its
+  // restart window (STREAM_RESTART_WINDOW_MINUTES) has run out. Every stream is presented with the same window.
+  useRestartWindow(config.streamRestartWindowMinutes);
+  const streamFinishService = new StreamFinishService(
+    streamRepository,
+    ingestService,
+    auditLog,
+    config.streamRestartWindowMinutes,
+  );
+  const streamStateService = new StreamStateService(streamRepository, publishService, auditLog, () =>
+    streamFinishService.finishEnded(),
+  );
+  // Once now, before the API listens, so the first start after migration 022 finishes every older recording, then
+  // every minute. A failed run is logged and never stops the start.
+  streamFinishSweep = await startStreamFinishSweep(streamFinishService);
   const ladderService = new LadderService(streamRepository, renditionRepository, publishService, auditLog);
   const stageService = new StageService(stageRepository, catalogueStampRepository, auditLog, {
     registrarToken: config.internalApiToken,
@@ -278,6 +299,7 @@ async function main(): Promise<void> {
       ladderService,
       publishService,
       ingestService,
+      streamFinishService,
       stageService,
       catalogueBatch,
       catalogueMove,

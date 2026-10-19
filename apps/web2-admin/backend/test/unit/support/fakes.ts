@@ -334,7 +334,8 @@ export class FakeStreamStore
       manifest_index: null,
       duration_seconds: null,
       ended_at: null,
-      finished_at: null,
+      // As the SQL does: only a comeback from `vod` clears it; a retried `live → live` leaves it.
+      finished_at: row.status === 'vod' ? null : row.finished_at,
       publish_error: null,
     });
   }
@@ -353,9 +354,42 @@ export class FakeStreamStore
       manifest_index: manifestIndex,
       duration_seconds: durationSeconds,
       ended_at: new Date('2026-09-11T11:00:00.000Z'),
-      finished_at: null,
       publish_error: null,
     });
+  }
+
+  /** The database's clock, as `NOW()` reads it in the restart window's SQL; a test sets it. */
+  dbNow: () => Date = () => new Date();
+
+  /** Finish, conditional as the SQL is: a live or recorded stream not finished yet. */
+  async finish(id: string, publishKey: string): Promise<StreamRow | null> {
+    const row = this.rows.get(id);
+    if (!row || (row.status !== 'live' && row.status !== 'vod') || row.finished_at !== null) return null;
+    const at = this.dbNow();
+    return this.patch(id, { publish_key: publishKey, publish_key_rotated_at: at, finished_at: at });
+  }
+
+  /** As the SQL is: recorded, not finished, and ended at least the window ago by the database's clock, or never. */
+  private restartWindowRanOut(row: StreamRow, windowMinutes: number): boolean {
+    return (
+      row.status === 'vod' &&
+      row.finished_at === null &&
+      (row.ended_at === null || row.ended_at.getTime() <= this.dbNow().getTime() - windowMinutes * 60_000)
+    );
+  }
+
+  async listRestartWindowRunOut(windowMinutes: number): Promise<string[]> {
+    return [...this.rows.values()]
+      .filter((row) => this.restartWindowRanOut(row, windowMinutes))
+      .sort((a, b) => (a.ended_at?.getTime() ?? -Infinity) - (b.ended_at?.getTime() ?? -Infinity))
+      .map((row) => row.id);
+  }
+
+  async finishAfterWindow(id: string, publishKey: string, windowMinutes: number): Promise<StreamRow | null> {
+    const row = this.rows.get(id);
+    if (!row || !this.restartWindowRanOut(row, windowMinutes)) return null;
+    const at = this.dbNow();
+    return this.patch(id, { publish_key: publishKey, publish_key_rotated_at: at, finished_at: at });
   }
 
   /** As the SQL is: reconcile has to see every row that should be on the feed. */

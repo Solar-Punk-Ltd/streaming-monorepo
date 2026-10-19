@@ -16,6 +16,9 @@ export type AuditAction =
   | 'stream.thumbnail.set'
   | 'stream.thumbnail.clear'
   | 'stream.key.rotate'
+  // The key changed for good: by Finish on the stream page, or by the sweep once a stream's restart window ran out.
+  | 'stream.finish'
+  | 'stream.finish.window'
   | 'stream.publish'
   | 'stream.republish'
   | 'stream.unpublish'

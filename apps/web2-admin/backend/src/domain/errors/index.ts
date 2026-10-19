@@ -25,8 +25,10 @@ export { STAGE_LOCKED_MESSAGES, StageLockedError, type StageLockReason } from '.
 export { STAGE_REQUIRED_MESSAGE, StageRequiredError } from './StageRequiredError.js';
 export { StageUnavailableError, type StageUnavailableReason } from './StageUnavailableError.js';
 export { StreamBusyError } from './StreamBusyError.js';
+export { StreamFinishedError } from './StreamFinishedError.js';
 export { StreamLiveError } from './StreamLiveError.js';
 export { StreamLockedError } from './StreamLockedError.js';
+export { StreamNotStartedError } from './StreamNotStartedError.js';
 export { StreamNotFoundError } from './StreamNotFoundError.js';
 export { StreamPublishedError } from './StreamPublishedError.js';
 export { ThumbnailCheckError } from './ThumbnailCheckError.js';

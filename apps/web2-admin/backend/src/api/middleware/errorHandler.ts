@@ -25,9 +25,11 @@ import {
   StageRequiredError,
   StageUnavailableError,
   StreamBusyError,
+  StreamFinishedError,
   StreamLiveError,
   StreamLockedError,
   StreamNotFoundError,
+  StreamNotStartedError,
   StreamPublishedError,
   ThumbnailNotAnImageError,
   ThumbnailNotFoundError,
@@ -150,6 +152,15 @@ export function errorHandler(err: unknown, req: Request, res: Response, next: Ne
       id: err.streamId,
       message: err.message,
     });
+    return;
+  }
+  // The two refusals of Finish (StreamFinishAnswer in web2-admin-common): the page shows each sentence as it is.
+  if (err instanceof StreamNotStartedError) {
+    res.status(409).json({ error: 'stream_not_started', id: err.streamId, message: err.message });
+    return;
+  }
+  if (err instanceof StreamFinishedError) {
+    res.status(409).json({ error: 'stream_finished', id: err.streamId, message: err.message });
     return;
   }
   if (err instanceof StreamLockedError) {
