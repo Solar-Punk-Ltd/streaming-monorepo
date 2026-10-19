@@ -232,7 +232,7 @@ at the repository root.
    batch as the brand's catalogue node. The manager pushes it to the admin, whose Stages page then
    shows the catalogue batch. The Bee host's firewall admits the control host to that node's API.
 
-10. **The stage**, by the stage host recipe below: an **ABR Uploader** deployment with the pool's
+10. **The stage**, by the stage host recipe below: an **ABR uploader** deployment with the pool's
     string and a stream key of its own, which the wizard generates. Its Web2 admin group starts on,
     from the manager's link, with **A token of its own**. The first deploy generates that token and
     registers the stage with the admin before the uploader starts. It worked when the admin's
@@ -398,15 +398,15 @@ stage hosts publish through. It is prepared like a stage host.
 
    A provider firewall that admits the same addresses to the same ports does the same job.
 
-3. **Create the pool.** **New deployment**, **Deployment type**, **ABR Node Pool**, with `bee-1` as
-   the host. The manager creates one deployment per rung. Each rung's data, its wallet and keys
+3. **Create the pool.** **New deployment**, **What do you want to set up?**, **ABR node pool**,
+   with `bee-1` as the host. The manager creates one deployment per rung. Each rung's data, its wallet and keys
    included, lands on this host and nowhere else, so back it up before the host is ever rebuilt. Set
    `BEE_UPLOADER_NAT_ADDR` in each rung's settings to this host's public address, so peers can dial
    it, and deploy the rungs again.
 
 4. **Fund each rung and buy its batch**, below.
 
-5. **Hand the pool to an uploader.** Copy the pool string from the pool card into an **ABR Uploader**
+5. **Hand the pool to an uploader.** Copy the pool string from the pool card into an **ABR uploader**
    deployment on a stage host.
 
 6. **The catalogue node.** **New deployment**, a Bee-only deployment with `bee-1` as the host, fund it
