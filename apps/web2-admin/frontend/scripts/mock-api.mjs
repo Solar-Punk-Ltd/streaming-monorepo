@@ -1,10 +1,11 @@
 #!/usr/bin/env node
 /**
  * A throwaway in-memory stand-in for the web2-admin backend, for UI work when
- * the real API (and its Postgres and Bee) are not running. It implements the
- * checkpoint-2 contract closely enough to click through every screen: cookie
- * sessions, the seeded admin user, stream CRUD, thumbnails, publish/unpublish
- * against a fake feed, and the ingest details.
+ * the real API (and its Postgres and Bee) are not running. It implements enough
+ * of the API to click through every screen: cookie sessions, the seeded admin
+ * user, stream CRUD, thumbnails, publish/unpublish against a fake feed, the
+ * ingest details, the stages, the catalogue stamp and its move, the Funding
+ * page's three tabs, the build line and the host's look.
  *
  * It is NOT the contract and never validates like yup does. Point the console
  * at it with these, from apps/web2-admin:
