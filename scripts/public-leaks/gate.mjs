@@ -2,8 +2,9 @@
 /**
  * Fails when a file git tracks carries something that points at one real deployment: an IPv4
  * address outside the documentation and private ranges, an Ethereum address that is not a known
- * fake or a public contract, or a token on the hashed deny list. README.md beside this file says
- * what each rule allows and how to add to either list.
+ * fake or a public contract, a token on the hashed deny list, or a value shaped like a secret. A
+ * finding names the file, the line and the rule, and prints the value only for addresses. README.md
+ * beside this file says what each rule allows and how to add to either list.
  *
  *   node scripts/public-leaks/gate.mjs [--root <dir>]
  *
@@ -18,6 +19,8 @@ import { parseRules, scanText } from './lib.mjs';
 const HERE = dirname(fileURLToPath(import.meta.url));
 /** The lockfile names only registry packages and their integrity hashes. */
 const SKIPPED_FILES = new Set(['pnpm-lock.yaml']);
+/** Rules whose value is safe to print. Every other finding is shown by its length alone. */
+const PRINTED_RULES = new Set(['ipv4', 'host-private-ipv4', 'eth-address']);
 const BINARY_EXTENSION = /\.(png|jpe?g|gif|ico|webp|woff2?|ttf|otf|pdf|zip|gz|mp4|ts-segment|wasm)$/i;
 
 function argument(name) {
@@ -54,8 +57,7 @@ function main() {
     files += 1;
     for (const finding of scanText(text, rules, cache)) {
       count += 1;
-      const shown =
-        finding.rule === 'denied-token' ? `a denied token of ${finding.value.length} characters` : finding.value;
+      const shown = PRINTED_RULES.has(finding.rule) ? finding.value : `a value of ${finding.value.length} characters`;
       console.log(`${path}:${finding.line}: ${finding.rule}: ${shown}`);
     }
   }

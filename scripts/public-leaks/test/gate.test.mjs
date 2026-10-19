@@ -113,6 +113,55 @@ describe('Ethereum addresses', () => {
   });
 });
 
+/**
+ * One made-up value per secret shape, assembled here so no line of this file has the shape itself.
+ * None of them was ever issued by anybody.
+ * @type {Record<string, string>}
+ */
+const SECRET_SHAPES = {
+  'private-key-block': '-----' + 'BEGIN OPENSSH ' + 'PRIVATE KEY' + '-----',
+  'aws-access-key': 'AKI' + 'A' + 'Z3Q7'.repeat(4),
+  'github-token': 'gh' + 'p_' + 'a1B2'.repeat(9),
+  'slack-token': 'xo' + 'xb-' + '1234567890-abcdefghij',
+  'stripe-key': 'sk' + '_live_' + 'Zq9'.repeat(8),
+  jwt: ['ey' + 'JhbGciOiJIUzI1NiJ9', 'ey' + 'JzdWIiOiIxIn0', 'c2lnbmF0dXJlLXN0dWI'].join('.'),
+};
+
+describe('secrets by shape', () => {
+  for (const [rule, value] of Object.entries(SECRET_SHAPES)) {
+    it(`refuses a ${rule}`, () => {
+      assert.deepEqual(scanText(`token = "${value}"`, rulesWith()), [{ rule, line: 1, value }]);
+    });
+  }
+
+  it('refuses the other private key headers and a fine-grained GitHub token', () => {
+    const values = [
+      '-----' + 'BEGIN RSA ' + 'PRIVATE KEY' + '-----',
+      '-----' + 'BEGIN EC ' + 'PRIVATE KEY' + '-----',
+      '-----' + 'BEGIN ' + 'PRIVATE KEY' + '-----',
+      '-----' + 'BEGIN PGP ' + 'PRIVATE KEY BLOCK' + '-----',
+      'github' + '_pat_' + 'Ab3_'.repeat(8),
+      'gh' + 's_' + 'a1B2'.repeat(9),
+      'rk' + '_live_' + 'Zq9'.repeat(8),
+      'sk' + '_test_' + 'Zq9'.repeat(8),
+    ];
+    for (const value of values) assert.equal(scanText(value, rulesWith()).length, 1, `${value.length} characters`);
+  });
+
+  it('lets through a public key block, bare prefixes and words that only start the same way', () => {
+    const text = [
+      '-----' + 'BEGIN PUBLIC KEY' + '-----',
+      '-----' + 'BEGIN CERTIFICATE' + '-----',
+      'AKIA is the prefix of an access key id',
+      'ghp_ starts a classic token',
+      'sk_live_ starts a live key',
+      'eyJ starts a JSON object in base64',
+      'xoxb- starts a bot token',
+    ].join('\n');
+    assert.deepEqual(scanText(text, rulesWith()), []);
+  });
+});
+
 describe('the hashed deny list', () => {
   it('refuses a denied token wherever it stands in a longer run', () => {
     const rules = rulesWith({ denied: [DENIED_TOKEN] });
@@ -194,6 +243,19 @@ describe('the command, on a repository of its own', () => {
       assert.equal(run.status, 1, run.stdout + run.stderr);
       assert.match(run.stdout, new RegExp(`notes\\.md:1: ipv4: ${PUBLIC_ADDRESS.replaceAll('.', '\\.')}`));
       assert.match(run.stdout, new RegExp(`notes\\.md:2: eth-address: ${REAL_LOOKING_WALLET}`));
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
+  });
+
+  it('goes red on a planted secret and names its kind and length, never the value', () => {
+    const token = SECRET_SHAPES['github-token'];
+    const root = repositoryWith({ 'notes.md': `export GH_TOKEN=${token}\n` });
+    try {
+      const run = spawnSync(process.execPath, [GATE, '--root', root], { encoding: 'utf8' });
+      assert.equal(run.status, 1, run.stdout + run.stderr);
+      assert.match(run.stdout, new RegExp(`notes\\.md:1: github-token: a value of ${token.length} characters`));
+      assert.equal(run.stdout.includes(token), false);
     } finally {
       rmSync(root, { recursive: true, force: true });
     }

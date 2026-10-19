@@ -2,15 +2,16 @@
  * The rules of the public leak gate, as pure functions over text, so the tests can drive them with
  * placeholder fixtures and the command line only has to list files.
  *
- * Four things fail a file: an IPv4 address outside the ranges documentation and private networks
- * use, a private address inside one of the few ranges that describe a single host's setup, an
- * Ethereum address that is not on the allow list of known fakes and public contracts, and a
- * token whose sha256 is on the deny list. The deny list holds hashes only, so it names nothing it
- * refuses.
+ * These fail a file: an IPv4 address outside the ranges documentation and private networks use, a
+ * private address inside one of the few ranges that describe a single host's setup, an Ethereum
+ * address that is not on the allow list of known fakes and public contracts, a token whose sha256 is
+ * on the deny list, and a value shaped like a secret: a private key block or a token in the format
+ * a known issuer uses. The deny list holds hashes only, so it names nothing it refuses.
  */
 import { createHash } from 'node:crypto';
 
-/** @typedef {{ rule: 'ipv4' | 'host-private-ipv4' | 'eth-address' | 'denied-token', line: number, value: string }} Finding */
+/** @typedef {'private-key-block' | 'aws-access-key' | 'github-token' | 'slack-token' | 'stripe-key' | 'jwt'} SecretShapeRule */
+/** @typedef {{ rule: 'ipv4' | 'host-private-ipv4' | 'eth-address' | 'denied-token' | SecretShapeRule, line: number, value: string }} Finding */
 /** @typedef {{ allowedAddresses: Set<string>, deniedHashes: Set<string> }} Rules */
 
 const IPV4 = /(?<![\w.§])(\d{1,3})\.(\d{1,3})\.(\d{1,3})\.(\d{1,3})(?![\w]|\.\d)/g;
@@ -19,6 +20,19 @@ const ETH_ADDRESS = /(?<![0-9a-fA-F])0x[0-9a-fA-F]{40}(?![0-9a-fA-F])/g;
 const TOKEN_RUN = /[A-Za-z0-9][A-Za-z0-9._@-]*/g;
 const TOKEN_SEPARATOR = /[._@-]/;
 const MAX_PARTS_PER_RUN = 12;
+/**
+ * Secrets recognised by the format their issuer gives them. Each pattern needs the whole value, so
+ * a prefix named in prose, such as `ghp_` alone, passes.
+ * @type {ReadonlyArray<{ rule: SecretShapeRule, pattern: RegExp }>}
+ */
+const SECRET_SHAPES = [
+  { rule: 'private-key-block', pattern: /-----BEGIN [A-Z0-9 ]*PRIVATE KEY[A-Z ]*-----/g },
+  { rule: 'aws-access-key', pattern: /\b(?:AKIA|ASIA)[0-9A-Z]{16}\b/g },
+  { rule: 'github-token', pattern: /\b(?:gh[pousr]_[A-Za-z0-9]{36,}|github_pat_[A-Za-z0-9_]{22,})/g },
+  { rule: 'slack-token', pattern: /\bxox[baprs]-[A-Za-z0-9-]{10,}/g },
+  { rule: 'stripe-key', pattern: /\b[rs]k_(?:live|test)_[A-Za-z0-9]{16,}/g },
+  { rule: 'jwt', pattern: /\beyJ[A-Za-z0-9_-]{8,}\.eyJ[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]*/g },
+];
 /** The shortest and longest token the deny list is checked against. */
 const MIN_TOKEN_LENGTH = 3;
 const MAX_TOKEN_LENGTH = 128;
@@ -134,6 +148,9 @@ export function scanText(text, rules, hashCache = new Map()) {
       if (!rules.allowedAddresses.has(match[0].toLowerCase())) {
         findings.push({ rule: 'eth-address', line: index + 1, value: match[0] });
       }
+    }
+    for (const { rule, pattern } of SECRET_SHAPES) {
+      for (const match of line.matchAll(pattern)) findings.push({ rule, line: index + 1, value: match[0] });
     }
     if (rules.deniedHashes.size === 0) continue;
     for (const run of line.matchAll(TOKEN_RUN)) {
