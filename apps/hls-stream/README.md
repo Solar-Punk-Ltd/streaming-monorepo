@@ -55,10 +55,11 @@ results. CI does the same: its `verify` job runs typecheck, lint, build and test
 as four steps of one job, and a failing step ends the job. Only the format check
 runs as a job of its own, so it reports whatever the other four did.
 
-Two CI jobs are deliberately outside `pnpm verify`, so the local loop needs
+Three CI jobs are deliberately outside `pnpm verify`, so the local loop needs
 neither a registry nor a docker daemon: `pnpm audit:check` for dependency
-advisories, and `pnpm shellcheck` for the deploy and node shell scripts. Run
-either directly before touching what it covers.
+advisories, `pnpm shellcheck` for the deploy and node shell scripts, and
+`images`, which builds the uploader, client, bench and browser Dockerfiles. Run
+the first two directly before touching what they cover.
 
 ### Agent hook settings
 
