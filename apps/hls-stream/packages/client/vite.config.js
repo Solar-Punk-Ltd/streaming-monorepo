@@ -9,7 +9,7 @@ const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
 export default defineConfig(({ mode }) => {
-  // Load env from monorepo root
+  // Load env from the stack's root, two levels up from packages/client
   const env = loadEnv(mode, path.resolve(__dirname, '../..'), '');
   const beeUrl = env.VITE_READER_BEE_URL || 'http://127.0.0.1:1633';
   const { name, version } = JSON.parse(readFileSync(path.join(__dirname, 'package.json'), 'utf8'));

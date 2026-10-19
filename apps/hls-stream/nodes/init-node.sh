@@ -3,7 +3,6 @@ set -e
 
 DATA_DIR="${1:?Usage: ./init-node.sh <data-dir>}"
 
-# If password file exists, node is already initialized — skip
 if [ -f "$DATA_DIR/password" ]; then
   echo "Node already initialized: $DATA_DIR"
   exit 0
@@ -11,7 +10,7 @@ fi
 
 # A bee data dir is a directory this deployment owns, and the check above is what recognises one it
 # already owns. Anything else that already has contents belongs to someone else, and `chmod -R 777`
-# four lines below would open all of it. The character check in `require_safe_data_dir` cannot make
+# further down would open all of it. The character check in `require_safe_data_dir` cannot make
 # this call: `.`, `/etc` and the deployment account's home are ordinary-looking paths, so refusing
 # `../..` there while accepting the same directory spelled absolutely is the whole of the gap. Only
 # the host holding the directory can answer it, which is here. See SEC-21.

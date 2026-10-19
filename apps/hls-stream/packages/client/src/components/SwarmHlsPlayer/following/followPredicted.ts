@@ -90,7 +90,7 @@ interface Ask {
  * per segment after that, at the later lag, which is what a coalesced publish looks like: one playlist
  * covering two segments. After a small budget of unanswered asks the follower backs off, so a paused
  * or stalled publisher cannot pile early asks onto one address. A slot that is late is looked past by
- * one, once when it is `lateMs` late and again on every backoff turn, in case the node is refusing it
+ * one, once when it is `trigger.lateSegments` segments late and again on every backoff turn, in case the node is refusing it
  * while the publisher has moved on.
  *
  * ⛔ **A feed with markers stops asking a slot that does not come.** Bee skips, for a minute, every

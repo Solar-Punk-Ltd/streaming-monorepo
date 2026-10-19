@@ -20,8 +20,8 @@ import { GateRefusalError } from './GateRefusalError.js';
  *
  * ## The uploader starts whatever the chequebook says
  *
- * The uploader and the engine start no matter what the status of the chequebook is.
- * So the readings stay, on every boot, and by default a gate that cannot clear its node writes its
+ * By default the uploader and the engine start whatever the chequebook says. The readings stay, on
+ * every boot, and a gate that cannot clear its node writes its
  * whole refusal as a warning and the service starts. `UPLOADER_START_GATES=refuse` is how a
  * deployment asks for the old behaviour, unchanged: same gates, same order, same messages.
  *

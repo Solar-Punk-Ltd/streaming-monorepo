@@ -45,13 +45,12 @@ services:
 
   # --- One Bee node per ABR rung ---
   #
-  # ⛔⛔⛔ **Owner instruction, and measuring around its absence cost real runs.** All four rungs
+  # ⛔⛔⛔ **Owner instruction.** All four rungs
   # pushing through the single `bee-uploader` above is a shared pipe, and on 2026-08-31 that pipe
   # delivered 5.61 segment uploads a second across the ladder where four rungs at 0.5s segments need
   # 8.00. Per rung it was 1.14 to 1.53 a second against the 2.00 realtime asks for, so the broadcast
   # itself was produced below realtime and every viewer reading taken on that stage was of a viewer
-  # that could not have kept up whatever it did. `BEE_PUBLISHERS` has existed, built and unit-tested,
-  # the whole time; there were simply no nodes for it to name.
+  # that could not have kept up whatever it did.
   #
   # ⭐ `bee-uploader` above is the 360p rung as well as the shared default, because the catalog and
   # each ladder's master playlist go through the LOWEST rung's node (see `.env.sample`), and those two
@@ -162,17 +161,13 @@ services:
       # part in the decision, it is only refused at node.go:429 when swap is asked for without a
       # chain. So an endpoint left set here keeps the chain ON however the other flags read: the
       # node comes up as plain `light`, replays the postage contract for about three minutes on
-      # every empty data dir and answers 503 throughout, and gains nothing for it. An earlier
-      # version of this comment stated the rule wrongly and four other places in the tree carried
-      # the same error.
+      # every empty data dir and answers 503 throughout, and gains nothing for it.
       #
-      # A node's mode is chosen when the node is created, so the
-      # two flags below are settings and their defaults are what this file has always started. A
-      # deployment that sets neither key gets the ultra-light gateway exactly as before: the endpoint
-      # is empty, swap is off, and there is nothing to fund. The manager writes both keys into a
-      # deployment's env file for a gateway an operator created on the chain, and neither key for one
-      # created ultra-light. Both used to be literals here,
-      # which made a gateway on the chain a deliberate edit to this file.
+      # A node's mode is chosen when the node is created, so the two flags below are settings and
+      # their defaults start an ultra-light gateway. A deployment that sets neither key gets that
+      # gateway: the endpoint is empty, swap is off, and there is nothing to fund. The manager writes
+      # both keys into a deployment's env file for a gateway an operator created on the chain, and
+      # neither key for one created ultra-light.
       #
       # --full-node stays a literal because a full node is never what a viewer's gateway is. What
       # ultra-light costs is this: such a node has no chequebook, lives on the free bandwidth
@@ -282,9 +277,8 @@ services:
       CHEQUEBOOK_MIN_BZZ: ${CHEQUEBOOK_MIN_BZZ:-0.5}
       CHEQUEBOOK_RECHECK_MS: ${CHEQUEBOOK_RECHECK_MS:-60000}
       # The other two thresholds `PostageGate` reads a batch against, and they belong here for the
-      # same reason CHEQUEBOOK_MIN_BZZ does. Neither reached the container before, so the gate ran on its
-      # compiled 24 and 0.9 whatever an operator wrote in .env, which is the ORPHAN_REAP_MS shape
-      # again: an argued-for setting that no deployment could actually move. The defaults repeat
+      # same reason CHEQUEBOOK_MIN_BZZ does. A threshold that does not reach the container leaves the
+      # gate on its compiled default whatever an operator writes in .env. The defaults repeat
       # config.ts on purpose, and `bee-publishers.sh` carries the same pair, which
       # `deploy/test/beePublishers.test.js` holds in step.
       STAMP_MIN_TTL_HOURS: ${STAMP_MIN_TTL_HOURS:-12}
@@ -343,8 +337,8 @@ services:
       # never sees however carefully an operator sets it in .env.
       LOG_LEVEL: ${LOG_LEVEL:-debug}
       LOG_FORMAT: ${LOG_FORMAT:-}
-    # Something finally reads /health. Every 503 it can raise was a value in a response body nobody
-    # requested: there was no healthcheck here, health.sh is human-run, and `restart: unless-stopped`
+    # This healthcheck is what reads /health, so a 503 shows in the container's state rather than
+    # only in a response body nobody requests. health.sh is human-run, and `restart: unless-stopped`
     # cannot act on a degraded service because the process does not exit.
     #
     # This reports and does not act, deliberately. Compose does not restart a container for failing
@@ -441,9 +435,8 @@ services:
     profiles: ['srs']
     restart: unless-stopped
     logging: *default-logging
-    # Same port on both sides, because the entrypoint now binds SRS to these values rather than to
-    # the fixed ones its config used to carry. Mapping a shifted host port onto a fixed container
-    # port would leave the mapping pointing at nothing.
+    # Same port on both sides, because the entrypoint binds SRS to these values. Mapping a shifted
+    # host port onto a fixed container port would leave the mapping pointing at nothing.
     #
     # The two HTTP ports default to the host's Docker bridge address, as the Bee APIs do. SRS's control
     # API has no authentication of any kind, and `/api/v1/streams` names every live stream as
@@ -484,8 +477,8 @@ services:
       SRS_HTTP_PORT: ${SRS_HTTP_PORT:-8080}
       SRS_SRT_PORT: ${SRS_SRT_PORT:-10080}
       SRS_HTTP_API_PORT: ${SRS_HTTP_API_PORT:-1985}
-      # The latency knobs. `main` passed the first two and this branch stopped, which left the
-      # entrypoint substituting defaults into a template that no longer had placeholders.
+      # The latency knobs. Each one is restated here because a knob that never reaches the container
+      # is not the operator's: the entrypoint falls back to its own default for it, or refuses to start.
       #
       # ⛔ `HLS_FRAGMENT` is NOT the segment length. Measured over 20 arms and replicated to three
       # decimals, the segment is `ceil(HLS_FRAGMENT / GOP) * GOP`, so the publisher's keyframe
@@ -543,10 +536,9 @@ services:
     profiles: ['ome']
     restart: unless-stopped
     logging: *default-logging
-    # Host and container port are the same number on purpose, because the entrypoint now binds OME to
-    # the configured port rather than to a fixed one. A mapping from a fixed container port hid the
-    # fact that these two variables never reached the container at all, which `network_mode: host`
-    # then exposed by discarding the mapping.
+    # Host and container port are the same number on purpose, because the entrypoint binds OME to the
+    # configured port. A mapping onto a fixed container port would hide a variable that never reached
+    # the container, until `network_mode: host` discarded the mapping.
     #
     # The HLS port serves the segments themselves, so it defaults to the host's Docker bridge address
     # the way SRS's two HTTP ports do.
@@ -563,8 +555,8 @@ services:
       OME_ADAPTER_HOST: ${OME_ADAPTER_HOST:-stream-uploader}
       OME_ADAPTER_PORT: ${API_PORT:-3000}
       OME_ADMISSION_SECRET: ${OME_ADMISSION_SECRET:-}
-      # Without these two the entrypoint cannot bind what the operator configured, which is the whole
-      # problem. They were previously publish mappings only, so the container never saw them.
+      # Without these two the entrypoint cannot bind what the operator configured, because a publish
+      # mapping alone never reaches the container.
       OME_SRT_PORT: ${OME_SRT_PORT:-10080}
       OME_HLS_PORT: ${OME_HLS_PORT:-8081}
       # Blank leaves the entrypoint's default, Google's public STUN server.

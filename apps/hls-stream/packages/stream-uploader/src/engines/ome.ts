@@ -599,7 +599,7 @@ async function handleAdmission(
 
     logger.info(`[OME] Stream opening: ${streamId} (${mediatype})`);
 
-    // Spin up the HLS poller. Don't block the admission reply on it.
+    // The poller starts in the background, so the admission reply is not held up on it.
     startPuller(orchestrator, streamId, parsed.app, parsed.stream);
 
     reply(res, { allowed: true, lifetime: 0, reason: 'ok' });

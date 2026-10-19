@@ -94,7 +94,7 @@ import { StreamUploader } from './StreamUploader.js';
  */
 const WITHHOLD_OPENING_CEILING_SECONDS = 10;
 
-const DRAIN_TIMEOUT_MS = 5 * 60 * 1000; // 5 minutes
+const DRAIN_TIMEOUT_MS = 5 * 60 * 1000;
 
 /**
  * Where a replacement session's playlist starts numbering again. A later broadcast on the same stream
@@ -116,7 +116,7 @@ const REJOIN_WITHIN_FRAGMENTS = 1;
  * `DRAIN_TIMEOUT_MS`, so a caller polling a stop that ran to its own deadline still finds the verdict
  * waiting, and short enough that the map is bounded by the poll window rather than by uptime.
  */
-const DEFAULT_STOP_OUTCOME_TTL_MS = 15 * 60 * 1000; // 15 minutes
+const DEFAULT_STOP_OUTCOME_TTL_MS = 15 * 60 * 1000;
 
 export interface StreamOrchestratorConfig {
   streamKey: string;
@@ -390,7 +390,7 @@ export class StreamOrchestrator {
    * An entry means a live session. **Its absence does not mean the id is free**, which is what the
    * guard used to read it as: `recoverStream` registers a live stream and writes no claimant, and
    * both engines resume such a stream by delivering segments rather than by announcing, so nothing
-   * ever fills it in. Absent means the owner is unknown. See `mayTakeOver`.
+   * ever fills it in. Absent means the owner is unknown. See `reasonToRefuseTakeover`.
    */
   private streamClaimants = new Map<string, StreamClaimant>();
   /**
@@ -567,7 +567,6 @@ export class StreamOrchestrator {
       return false;
     }
 
-    // If recovering, cancel the recovery timeout and resume
     const recoveryTimer = this.recoveryTimers.get(streamId);
     if (recoveryTimer) {
       recoveryTimer.cancel();
@@ -580,7 +579,7 @@ export class StreamOrchestrator {
       // restart, so whoever announced the broadcast originally was never recorded here and there is
       // nothing to compare against. What this does is make the session that resumed it the incumbent,
       // so the announce after this one is judged against a real address instead of against the
-      // unknown-owner rule in `mayTakeOver`. Reaching here at all is the uncommon case: an engine
+      // unknown-owner rule in `reasonToRefuseTakeover`. Reaching here at all is the uncommon case: an engine
       // that resumed the stream with segments never calls this method again.
       this.streamClaimants.set(streamId, claimant);
       // ⛔ Reaching here at all proves the engine opened a NEW publish session, so what the recovered
@@ -1233,7 +1232,7 @@ export class StreamOrchestrator {
    * own restart has no claimant and cannot get one from an announce: both engines resume it by
    * delivering segments, OME because `resumeRecoveredStream` restarts the puller with no admission
    * behind it and SRS because its publish session never closed, so no `startStream` call ever
-   * follows. Three lenses of the broadcast takeover fix gate reached this independently. So an absent record means
+   * follows. So an absent record means
    * the owner is *unknown*, and an unknown owner is protected by the stall window rather than
    * yielded to anyone who asks. `POST /stream/start` is the other case and it is genuinely different:
    * it records `ANONYMOUS_CLAIMANT`, which is a positive statement that the caller named nobody.
@@ -1242,8 +1241,8 @@ export class StreamOrchestrator {
    * fallback for when nobody proved anything.** Who may _stop_ one is screened too, but not here.
    * `stopStream` still takes a stream id and no claimant, because it does not need one: a configured
    * secret means every publish either engine accepted had proved a key, so each engine screens its
-   * own close webhook against the value it is already holding. The key's derivation is in the shared package. That is what retires the two residuals
-   * this used to end on. An attacker sharing the victim's address is no longer indistinguishable from
+   * own close webhook against the value it is already holding. The key's derivation is in the shared
+   * package. A proven key retires two residual risks. An attacker sharing the victim's address is no longer indistinguishable from
    * them, because the address is no longer what is being asked. And a squatter who claimed an id
    * first is evicted by the owner rather than by an operator, because the symmetry that protected
    * whoever arrived first only applies while neither can be identified.
@@ -1413,8 +1412,7 @@ export class StreamOrchestrator {
   /**
    * Registers the stream before returning, which is the whole of the fix.
    *
-   * This used to defer its body into a concurrency-1 `PQueue`, and the race that opened is not the one
-   * first described. p-queue 8 runs a synchronous job inside `add()` when a slot is free, so a first
+   * Deferring the body into a concurrency-1 `PQueue` opens a race, and not the obvious one. p-queue 8 runs a synchronous job inside `add()` when a slot is free, so a first
    * announce did register before returning and a second one did see it. What it could not do is run a
    * *second* job synchronously: the slot is only released a microtask later. So the window opened on
    * the re-announce path, which retires the live session and then queues its replacement. Between
@@ -1627,15 +1625,13 @@ export class StreamOrchestrator {
       this.logger.info(`[StreamOrchestrator] Segments resumed for ${streamId}; cancelled recovery finalize timer`);
     }
 
-    // Deduplication
     const processed = this.processedSegments.get(streamId);
     if (processed?.has(segmentIndex)) {
       // Deliberately not counted as activity. A replayed index does no upload work and advances no
       // manifest, so a sender stuck on one index would otherwise look alive to the stall signal.
-      return { accepted: true }; // silently accept duplicate
+      return { accepted: true };
     }
 
-    // Backpressure check
     if (uploader.segmentQueue.size >= this.config.maxQueueSize) {
       return { accepted: false, reason: REJECT_QUEUE_FULL };
     }
@@ -2000,7 +1996,6 @@ export class StreamOrchestrator {
   }
 
   public async stopStream(streamId: string): Promise<void> {
-    // Cancel recovery timer if stopping a recovering stream
     const recoveryTimer = this.recoveryTimers.get(streamId);
     if (recoveryTimer) {
       recoveryTimer.cancel();
@@ -2284,12 +2279,10 @@ export class StreamOrchestrator {
    * broadcast that had ended, and no VOD was ever published. Detection was already right and there
    * was no way out of it but a restart by hand.
    *
-   * **The window is `recoveryTimeout`, deliberately, and not `segmentStallMs`.** That one is a health
-   * *reporting* threshold at half this value, and ending a broadcast on it would kill streams that
-   * recover: a twenty second write outage is survivable and measured, and a pull engine retries a
-   * silent origin for its own patience window, 60s by default, which is what `recoveryTimeout` was
-   * already chosen against. Reusing it keeps one number governing "how long do we wait for
-   * an engine that might come back" instead of two that can drift apart.
+   * **The window is `orphanReapMs` (ORPHAN_REAP_MS), deliberately its own value** rather than
+   * `segmentStallMs`, a health reporting threshold at half of it, or `recoveryTimeout`, which is tuned
+   * for how fast a restarted process gives up on restored streams. Both shipped engines retry for
+   * 60 s, and this window is sized against that.
    *
    * Rearms itself rather than being reset per segment, so a stream feeding at four segments a second
    * costs one timer rather than four cancellations a second, and a healthy stream is only looked at
@@ -2875,13 +2868,11 @@ export class StreamOrchestrator {
     }
     this.firstRungDeadlines.clear();
 
-    // Clear all recovery timers
     for (const timer of this.recoveryTimers.values()) {
       timer.cancel();
     }
     this.recoveryTimers.clear();
 
-    // Stop all active streams
     const streamIds = Array.from(this.activeStreams.keys());
     await Promise.all(
       streamIds.map(async (streamId) => {

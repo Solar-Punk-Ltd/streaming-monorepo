@@ -8,7 +8,7 @@
  * weeks old. Everything under `e2e/src/browser/` parses that client's behaviour: its console lines,
  * the fetch backend it publishes on `globalThis`, the weeb-3 worker it serves. A rename on either
  * side leaves the harness reading a client that never learned about it, and the reading blames the
- * product for a silence. `uploader-log-shape.ts` closed exactly this on the upload side after it
+ * product for a silence. `deployedLogShape.ts` closed exactly this on the upload side after it
  * cost a paid sitting. Nothing closed it on the viewer side.
  *
  * ## Why a build stamp rather than a probe

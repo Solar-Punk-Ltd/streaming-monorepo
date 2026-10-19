@@ -20,8 +20,9 @@ import { NodeUnreachableError } from './NodeUnreachableError.js';
  *
  * ## The listener goes first
  *
- * The uploader starts and says its node is not available, then tries to reconnect. So the listener goes first and this runs behind it. A failure that says the node is not
- * answering costs one log line and a wait. The wait doubles from a second and holds at thirty, and it
+ * The uploader starts, says its node is not available, and keeps trying to reconnect. So the listener
+ * goes first and this runs behind it. A failure that says the node is not answering costs one log
+ * line and a wait. The wait doubles from a second and holds at thirty, and it
  * does not give up, because there is no number of attempts after which the right answer becomes
  * exiting: a node that is down for an hour is a node that comes back in an hour, and a process that
  * is up and saying so the whole time is worth more than one that died at attempt ten.
@@ -213,7 +214,7 @@ export function isNodeUnavailable(error: unknown): boolean {
 /**
  * Node's own codes for a request that never reached the node, or reached it and lost the connection.
  *
- * ECONNRESET and ECONNABORTED are in, unlike the transfer-lost set in `StreamOrchestrator`, and the
+ * ECONNRESET and ECONNABORTED are in, unlike the transfer-lost set in `utils/transportFailure.ts`, and the
  * difference is what the two decide. There, a lost transfer means a write may have landed and must
  * not be repeated blindly. Here nothing has been written yet and every read is safe to repeat.
  */

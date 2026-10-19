@@ -9,7 +9,7 @@ import { readPublishers } from './publishers.js';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 
-/** Monorepo root, four levels up from packages/cli/src/lib/ */
+/** Root of the stack (apps/hls-stream), four levels up from packages/cli/src/lib/ */
 const ROOT_DIR = resolve(__dirname, '../../../..');
 const DEPLOY_DIR = resolve(ROOT_DIR, 'deploy');
 const CONFIG_PATH = resolve(DEPLOY_DIR, 'config.json');
@@ -109,7 +109,8 @@ function hostFromTarget(target: string): string {
 
 /**
  * Resolve a bee node target from config.json + .env.
- * Returns null if the service is explicitly disabled.
+ * Returns null only when the service is set to false. No entry, or the string 'disabled', falls
+ * back to the fallback env var and then localhost.
  */
 function resolveBeeTarget(
   service: string,
@@ -207,7 +208,7 @@ export function resolvePublisherTargets(): NamedTarget[] {
 
   // Two targets for one rung also share a name, so a report keyed by name shows one of them twice
   // with no sign the config is at fault. The spend path refuses a duplicate outright, in
-  // resolveSpendTarget. Listing carries on, because a node that is holding a batch has to stay
+  // selectPublisherByRung. Listing carries on, because a node that is holding a batch has to stay
   // visible whether or not the config is tidy.
   if (duplicated.length > 0) {
     warn(

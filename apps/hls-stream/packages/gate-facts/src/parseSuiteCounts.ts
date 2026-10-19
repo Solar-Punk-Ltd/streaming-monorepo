@@ -18,7 +18,7 @@ const TAP_TOTAL = /^(\S+)\s+test:\s+#\s+(tests|pass|fail)\s+(\d+)\s*$/;
 /**
  * Vitest reports its own way and never prints the TAP totals, so a parser that only reads `# tests`
  * silently drops the one package that does not use `node:test`. Dropping it is worse than failing,
- * because the artifact then shows four packages where the repository has five and nothing says which
+ * because the artifact then lists one package fewer than the repository has and nothing says which
  * is missing.
  */
 const VITEST_TOTAL = /^(\S+)\s+test:\s+Tests\s+(\d+)\s+passed\s+\((\d+)\)\s*$/;

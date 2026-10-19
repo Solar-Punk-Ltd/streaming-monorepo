@@ -7,12 +7,9 @@ import { MAX_STREAM_ID_LENGTH, STREAM_ID_SEGMENT } from '../../utils/streamId.js
 /**
  * Slash-separated {@link STREAM_ID_SEGMENT}s.
  *
- * This used to claim the shape "is what the engines already produce … so restricting to it costs
- * nothing a real broadcaster sends". That was false in the direction that matters: `parseAppStream`
- * would produce names this refuses, so a stream the engine had started could not be named to
- * `POST /stream/stop`, `/stream/status` or the `x-stream-id` header, and the per-stream rate limit
- * keyed on that header never saw it. The premise is now enforced rather than asserted, by building
- * both ends out of the same segment rule.
+ * Built out of the same segment rule `parseAppStream` uses, so every name an engine produces can be
+ * named to `POST /stream/stop`, `/stream/status` or the `x-stream-id` header, and the per-stream
+ * rate limit keyed on that header sees it.
  */
 const STREAM_ID_PATTERN = new RegExp(`^${STREAM_ID_SEGMENT}(?:\\/${STREAM_ID_SEGMENT})*$`);
 

@@ -54,8 +54,8 @@ export const DEFAULT_LOG_LEVEL: LogThreshold = LOG_LEVEL_DEBUG;
  * went **completely silent, including at `error`**, and the "not a log level" message that would
  * have explained it was suppressed by the same fault. The failure concealed its own cause.
  *
- * `hasOwnProperty.call` rather than `Object.hasOwn`, which needs an ES2022 lib and this package
- * targets ES2020. Moving the target is a decision for a change that says so.
+ * `hasOwnProperty.call` rather than `Object.hasOwn`, to stay within the ES2020 emit target. Moving
+ * the target is a decision for a change that says so.
  */
 export function isLogThreshold(value: string): value is LogThreshold {
   return Object.prototype.hasOwnProperty.call(RANK, value);

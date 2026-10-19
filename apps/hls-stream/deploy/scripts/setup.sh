@@ -6,10 +6,8 @@ source "$(cd "$(dirname "$0")" && pwd)/_lib.sh"
 
 echo "=== Swarm HLS Stream: Setup ==="
 
-# 1. Check jq
 require_jq
 
-# 2. Create config.json if missing
 if [ ! -f "$CONFIG_FILE" ]; then
   cp "$DEPLOY_DIR/config.sample.json" "$CONFIG_FILE"
   echo ""
@@ -21,7 +19,7 @@ else
   log_ok "config.json already exists"
 fi
 
-# 3. Create .env if missing, or top up one that is missing sample keys.
+# Create .env if missing, or top up one that is missing sample keys.
 # Existence is not enough: pnpm stamp:setup creates .env when it records a batch id, so a run in
 # that order would otherwise leave a one-key file that this step skips and nothing ever fills in.
 missing_sample_keys() {
@@ -61,7 +59,6 @@ else
   log_ok ".env already exists"
 fi
 
-# 4. Create engine .env files for engines enabled in config.json
 for engine in "$SVC_SRS" "$SVC_OME"; do
   engine_env="$ROOT_DIR/engines/$engine/.env"
   engine_sample="$ROOT_DIR/engines/$engine/.env.sample"
@@ -80,7 +77,6 @@ for engine in "$SVC_SRS" "$SVC_OME"; do
   fi
 done
 
-# 5. Init bee data dirs for local services
 require_config
 load_env
 
@@ -100,7 +96,6 @@ if is_enabled "$bee_gateway_target" && is_local "$bee_gateway_target"; then
   "$ROOT_DIR/nodes/init-node.sh" "$(local_data_dir "${BEE_GATEWAY_DATA_DIR:-$DEFAULT_BEE_GATEWAY_DATA_DIR}")"
 fi
 
-# 6. Build packages
 echo ""
 log_info "Building packages"
 cd "$ROOT_DIR"
