@@ -1599,11 +1599,11 @@ curl -b cookies.txt -X DELETE localhost:9876/profiles/streamer1 \
 ## Environment
 
 Everything comes from `manager/.env` but the build's name. `manager/.env.sample`
-documents the keys an operator sets by hand. Four more are used that it does
-not carry: `SHLS_ROOT` and `BEE_DATA_ROOT`, which `docker-compose.yml` sets for
-the `api` container, `WEB_PORT`, which the compose file interpolates for the
-`web` port binding, and `DOCKER_HOST`, which the compose file leaves unset and
-the table below describes. Two more no file carries, `MANAGER_VERSION` and
+documents the keys an operator sets by hand, `WEB_PORT` among them, which the
+compose file interpolates for the `web` port binding. Three more are used that
+it does not carry: `SHLS_ROOT` and `BEE_DATA_ROOT`, which `docker-compose.yml`
+sets for the `api` container, and `DOCKER_HOST`, which the compose file leaves
+unset and the table below describes. Two more no file carries, `MANAGER_VERSION` and
 `MANAGER_COMMIT`, which the next paragraph describes.
 
 **`MANAGER_VERSION`** and **`MANAGER_COMMIT`** are the build this manager runs,
