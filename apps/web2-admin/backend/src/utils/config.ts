@@ -185,13 +185,17 @@ function managerFunding(): ManagerFundingSettings | null {
   return { url: managerFundingBaseUrl(url), token };
 }
 
-/** STREAM_RESTART_WINDOW_MINUTES, or the start stops with a sentence that names it. */
+/**
+ * STREAM_RESTART_WINDOW_MINUTES, or the start stops with a sentence that names it. Digits only, spaces around them
+ * trimmed: `Number()` alone would read `1e3`, `0x1E`, `30.0` or `+30` as a number of minutes nobody wrote.
+ */
 function streamRestartWindowMinutes(): number {
   const name = 'STREAM_RESTART_WINDOW_MINUTES';
-  const minutes = optionalNumber(name, STREAM_RESTART_WINDOW_DEFAULT_MINUTES);
-  if (!Number.isInteger(minutes) || minutes < 0 || minutes > STREAM_RESTART_WINDOW_MAX_MINUTES) {
+  const raw = optional(name, String(STREAM_RESTART_WINDOW_DEFAULT_MINUTES)).trim();
+  const minutes = /^\d+$/.test(raw) ? Number(raw) : Number.NaN;
+  if (!(minutes >= 0 && minutes <= STREAM_RESTART_WINDOW_MAX_MINUTES)) {
     throw new Error(
-      `Env var ${name} must be a whole number of minutes from 0 to ${STREAM_RESTART_WINDOW_MAX_MINUTES}, got: ${minutes}`,
+      `Env var ${name} must be a whole number of minutes from 0 to ${STREAM_RESTART_WINDOW_MAX_MINUTES}, got: ${raw}`,
     );
   }
   return minutes;
