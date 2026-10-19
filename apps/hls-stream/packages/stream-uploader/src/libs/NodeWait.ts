@@ -213,7 +213,7 @@ export function isNodeUnavailable(error: unknown): boolean {
 /**
  * Node's own codes for a request that never reached the node, or reached it and lost the connection.
  *
- * ECONNRESET and ECONNABORTED are in, unlike the transfer-lost set in `StreamOrchestrator`, and the
+ * ECONNRESET and ECONNABORTED are in, unlike the transfer-lost set in `utils/transportFailure.ts`, and the
  * difference is what the two decide. There, a lost transfer means a write may have landed and must
  * not be repeated blindly. Here nothing has been written yet and every read is safe to repeat.
  */

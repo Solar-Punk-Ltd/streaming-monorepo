@@ -6,7 +6,7 @@
  * because the only writer of the second is the announce itself and the announce is gated on the
  * first. `restoreState` produced it directly, by assigning both straight from a persisted entry.
  *
- * The cost of that state is silent. `uploadLiveManifest` announces on `SEGMENT_READY` and nothing
+ * The cost of that state is silent. `uploadLiveManifest` announces on `READINESS_SEGMENT_READY` and nothing
  * else, so a stream restored as `ANNOUNCED` having never announced is never published, and no
  * viewer can find a broadcast that is otherwise running correctly.
  */
@@ -72,7 +72,7 @@ export function onCatalogAnnounced(from: AnnounceReadiness): AnnounceReadiness {
  * catalog entry went on saying `live` forever, and the file stayed on disk failing identically on
  * every restart. The old code, for all that it never announced, did at least reach that cleanup.
  *
- * `SEGMENT_READY` is the repair because it is the assumption whose two failure modes are not
+ * `READINESS_SEGMENT_READY` is the repair because it is the assumption whose two failure modes are not
  * comparable. Assuming the announce happened when it did not leaves the broadcast undiscoverable for
  * its whole duration. Assuming it did not when it did costs one extra `addStream`, which overwrites
  * an entry with the same content.
