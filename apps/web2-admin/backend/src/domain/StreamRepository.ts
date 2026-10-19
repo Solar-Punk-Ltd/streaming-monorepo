@@ -427,11 +427,13 @@ export class StreamRepository {
    * to clear for a broadcast that is starting for the first time. Index and
    * duration go null together, as migration 004 requires.
    *
-   * `finished_at` is cleared with them, and also only for a row coming back
-   * from `vod`: that broadcast came on the new key a Finish or the restart
-   * window gave it, and starts a new window at its next end (migration 022).
-   * The uploader's retried `live → live` leaves it, which is how Finish on a
-   * live stream survives until the encoder stops.
+   * `finished_at` is cleared by every `live` report that starts a broadcast,
+   * whatever the row comes from: that broadcast came on the key the stream
+   * now has, and starts a new window at its next end (migration 022). Only
+   * the uploader's retried `live → live` leaves it, which is how Finish on a
+   * live stream survives until the encoder stops. A finished recording that a
+   * reset at boot put back to `published` therefore loses its mark when it
+   * goes live again, and the sweep finishes it in its turn.
    *
    * Conditional on `allowedFrom` for the same reason every other transition
    * here is: the check and the write are one statement, so two reports racing
@@ -460,7 +462,7 @@ export class StreamRepository {
                 manifest_index = NULL,
                 duration_seconds = NULL,
                 ended_at = NULL,
-                finished_at = CASE WHEN status = 'vod' THEN NULL ELSE finished_at END,
+                finished_at = CASE WHEN status = 'live' THEN finished_at ELSE NULL END,
                 publish_error = NULL,
                 updated_at = NOW()
           WHERE id IN (SELECT id FROM locked WHERE status = ANY($2::text[]))

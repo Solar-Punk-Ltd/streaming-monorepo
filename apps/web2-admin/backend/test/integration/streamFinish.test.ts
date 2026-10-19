@@ -135,6 +135,21 @@ describe('finished_at through the state reports', () => {
     const back = await streams.markLive(live.id, ['live', 'vod']);
     assert.equal(back?.finished_at, null, 'vod → live clears it: a new window at its next end');
   });
+
+  it('is cleared by a broadcast that starts from published, so the sweep finishes that recording in its turn', async () => {
+    // A finished recording whose republish was claimed when the process died: the boot's reset puts it back to
+    // `published` with its mark still set.
+    const stream = await streamIn('vod', '2 hours');
+    await streams.finish(stream.id, newPublishKey());
+    await database.pool.query(`UPDATE streams SET status = 'published' WHERE id = $1`, [stream.id]);
+
+    const live = await streams.markLive(stream.id, ['published', 'live', 'vod']);
+    assert.equal(live?.finished_at, null, 'a live report that starts a broadcast clears it');
+    await streams.markVod(stream.id, ['live'], 2, 20);
+    await database.pool.query(`UPDATE streams SET ended_at = NOW() - interval '31 minutes' WHERE id = $1`, [stream.id]);
+
+    assert.deepEqual(await selected(30, [stream]), [stream.id], 'its window runs out like any other');
+  });
 });
 
 describe("the restart window's sweep", () => {

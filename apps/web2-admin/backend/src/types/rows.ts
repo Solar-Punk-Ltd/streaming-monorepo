@@ -64,8 +64,8 @@ export interface StreamRow {
   ended_at: Date | null;
   /**
    * When the key was changed for good because the stream is finished, by Finish or by the restart window running
-   * out (migration 022). Null while the stream can still come back on its key. A `vod → live` clears it; a retried
-   * `live → live` leaves it.
+   * out (migration 022). Null while the stream can still come back on its key. A `live` report that starts a
+   * broadcast clears it; a retried `live → live` leaves it.
    */
   finished_at: Date | null;
   /**
