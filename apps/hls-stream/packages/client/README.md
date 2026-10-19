@@ -376,13 +376,13 @@ only symptom is `the in-tab node did not reach the network: SharedWorker request
 A SharedWorker script has to come from the page's own origin, so the client serves the package's
 runtime itself. Five things go into one directory, because they resolve relative to each other:
 
-| Served as                | What it is                                                        |
-| ------------------------ | ----------------------------------------------------------------- |
-| `/weeb-3/worker.js`      | The worker script. `Weeb3FetchBackend` passes this URL explicitly |
-| `/weeb-3/weeb_3.js`      | The wasm-bindgen glue, which `worker.js` imports                  |
-| `/weeb-3/weeb_3_bg.wasm` | 3.9 MB of node, which the glue fetches beside itself              |
-| `/weeb-3/snippets/**`    | Two files the glue imports by relative path                       |
-| `/weeb-3/service.js`     | A ServiceWorker the glue registers at boot, scoped to `/weeb-3/`  |
+| Served as                | What it is                                                                       |
+| ------------------------ | -------------------------------------------------------------------------------- |
+| `/weeb-3/worker.js`      | The worker script. `Weeb3FetchBackend` passes this URL explicitly                |
+| `/weeb-3/weeb_3.js`      | The wasm-bindgen glue, which `worker.js` imports                                 |
+| `/weeb-3/weeb_3_bg.wasm` | The node itself, several megabytes of wasm, which the glue fetches beside itself |
+| `/weeb-3/snippets/**`    | Two files the glue imports by relative path                                      |
+| `/weeb-3/service.js`     | A ServiceWorker the glue registers at boot, scoped to `/weeb-3/`                 |
 
 `scripts/copy-weeb3-runtime.mjs` copies them out of `node_modules` into `public/weeb-3/`, which Vite
 copies verbatim into `dist/`. It runs from `prebuild` and `predev`, so a plain `pnpm build` or
