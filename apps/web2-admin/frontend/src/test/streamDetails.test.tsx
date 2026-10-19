@@ -22,13 +22,17 @@ const ID = 'stream-under-test';
 
 const EDITED_SINCE_PUBLISH = 'Edited since it was published. Republish to update the feed.';
 
-const LIVE_SINCE = '2026-10-19T11:00:00.000Z';
-const ENDED_AT = '2026-10-19T12:00:00.000Z';
-const RESTART_UNTIL = '2026-10-19T12:30:00.000Z';
-const FINISHED_AT = '2026-10-19T12:10:00.000Z';
+/** A time this many minutes from now. The page reads `restartUntil` against the clock, so these follow it. */
+const minutesFromNow = (minutes: number) => new Date(Date.now() + minutes * 60_000).toISOString();
+
+const LIVE_SINCE = minutesFromNow(-70);
+const ENDED_AT = minutesFromNow(-5);
+const RESTART_UNTIL = minutesFromNow(25);
+const FINISHED_AT = minutesFromNow(-1);
 
 /** Where a live or ended stream stands with its key, word for word as the design puts it. */
 const ENDED_LINE = `Ended — can go live again until ${formatDateTime(RESTART_UNTIL)}`;
+const RUN_OUT_LINE = 'Ended — its restart window has run out';
 const FINISHED_LINE = 'Finished — the key has changed';
 const LIVE_FINISHED_LINE = 'Live — finished, the key has changed; it ends for good when the encoder stops';
 
@@ -610,6 +614,32 @@ describe('StreamDetailsPage', () => {
     renderDetails();
 
     expect(await screen.findByText(line)).toBeInTheDocument();
+  });
+
+  it('says the restart window has run out once its time has passed, while the stream waits for the sweep', async () => {
+    // Up to a minute passes between the window's end and the sweep that
+    // finishes the stream, and a time already past is no promise.
+    mockFetch(
+      routesFor(
+        makeStream({
+          id: ID,
+          status: 'vod',
+          stageId: MAIN_STAGE_ID,
+          publishedFeedIndex: 2,
+          liveSince: LIVE_SINCE,
+          endedAt: minutesFromNow(-31),
+          restartUntil: minutesFromNow(-1),
+          finishedAt: null,
+        }),
+      ),
+    );
+
+    renderDetails();
+
+    expect(await screen.findByText(RUN_OUT_LINE)).toBeInTheDocument();
+    expect(screen.queryByText(/can go live again/)).not.toBeInTheDocument();
+    // Not finished yet, so Finish still changes the key now, before the sweep does.
+    expect(await screen.findByRole('button', { name: 'Finish' })).toBeEnabled();
   });
 
   it('finishes an ended stream once confirmed, then shows its new SRT line and says it is finished', async () => {

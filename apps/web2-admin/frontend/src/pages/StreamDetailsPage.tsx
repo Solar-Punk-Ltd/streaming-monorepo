@@ -127,7 +127,12 @@ function unpublishPromptFor(status: StreamStatus): UnpublishPrompt {
 function keyLine(stream: Stream): string | null {
   if (stream.status === 'vod' && stream.finishedAt) return 'Finished — the key has changed';
   if (stream.status === 'vod' && stream.restartUntil) {
-    return `Ended — can go live again until ${formatDateTime(stream.restartUntil)}`;
+    // The sweep finishes the stream up to a minute after its window ends, and
+    // until then the API still answers the window's end. A time already past
+    // is no promise, so the line says the window has run out.
+    return Date.parse(stream.restartUntil) <= Date.now()
+      ? 'Ended — its restart window has run out'
+      : `Ended — can go live again until ${formatDateTime(stream.restartUntil)}`;
   }
   if (stream.status === 'live' && stream.finishedAt) {
     return 'Live — finished, the key has changed; it ends for good when the encoder stops';
