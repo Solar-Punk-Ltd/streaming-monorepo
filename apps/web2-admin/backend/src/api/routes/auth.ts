@@ -88,8 +88,9 @@ export function createAuthRouter(authService: AuthService, requireAuth: RequestH
     }),
   );
 
-  // Kept for compatibility: it is what the console asked before /session, and
-  // it says the same thing, only behind the gate.
+  // The gated twin of /session. The console asks it again when the operator
+  // comes back to the tab, so a session that ended answers with the gate's 401
+  // and the console signs out.
   router.get('/me', requireAuth, (req: Request, res: Response) => {
     const { user } = requireUser(req);
     const response: MeResponse = { user: toUser(user) };
