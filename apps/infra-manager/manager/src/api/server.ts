@@ -140,10 +140,11 @@ export function startApiServer(deps: ApiDeps, port: number, host: string): ApiSe
   const metrics = createMetricsRouter(deps.metricsCollector, deps.openStreams);
   const requireSession = createRequireSession(deps.authService);
 
-  // Everything above this line is open, everything below it needs a session.
-  // /health needs no session: manager:upgrade and the integration suite wait on it.
   app.use('/health', createHealthRouter(deps.database));
   app.use('/auth', createAuthRouter(deps.authService, requireSession));
+  // The two mounts just above need no session: /health, which manager:upgrade
+  // and the integration suite wait on, and /auth, whose own routes decide.
+  // Everything below needs a session.
   app.use(requireSession);
 
   app.use(
