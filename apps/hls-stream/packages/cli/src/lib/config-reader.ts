@@ -207,7 +207,7 @@ export function resolvePublisherTargets(): NamedTarget[] {
 
   // Two targets for one rung also share a name, so a report keyed by name shows one of them twice
   // with no sign the config is at fault. The spend path refuses a duplicate outright, in
-  // resolveSpendTarget. Listing carries on, because a node that is holding a batch has to stay
+  // selectPublisherByRung. Listing carries on, because a node that is holding a batch has to stay
   // visible whether or not the config is tidy.
   if (duplicated.length > 0) {
     warn(
