@@ -1413,8 +1413,7 @@ export class StreamOrchestrator {
   /**
    * Registers the stream before returning, which is the whole of the fix.
    *
-   * This used to defer its body into a concurrency-1 `PQueue`, and the race that opened is not the one
-   * first described. p-queue 8 runs a synchronous job inside `add()` when a slot is free, so a first
+   * Deferring the body into a concurrency-1 `PQueue` opens a race, and not the obvious one. p-queue 8 runs a synchronous job inside `add()` when a slot is free, so a first
    * announce did register before returning and a second one did see it. What it could not do is run a
    * *second* job synchronously: the slot is only released a microtask later. So the window opened on
    * the re-announce path, which retires the live session and then queues its replacement. Between

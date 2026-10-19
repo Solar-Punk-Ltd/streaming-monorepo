@@ -1387,10 +1387,8 @@ export class StreamUploader {
    * was built with, which is the whole point: its closing playlist and its VOD are what give the
    * broadcast it recorded an ending.
    *
-   * ⚠️ That was safe for as long as the topic was a per-session `crypto.randomUUID()`, and this doc
-   * said so — "the published media is unaffected, since each uploader owns its own feed topic". Admin
-   * mode removed the premise without removing the sentence. There the topic comes from the declaration
-   * and outlives every session on it, so a retired session and its replacement hold the same feed, and
+   * ⚠️ That is safe only while the topic is a per-session `crypto.randomUUID()`. In admin mode the
+   * topic comes from the declaration and outlives every session on it, so a retired session and its replacement hold the same feed, and
    * the retired one's closing and VOD writes race the replacement's live ones for the same indexes.
    *
    * What makes it safe again is not this method: the orchestrator hands the replacement the retired
@@ -1988,9 +1986,8 @@ export class StreamUploader {
       // 30-minute broadcasts, against 9.04s and 9.27s with the synchronous write, and the buffer a
       // player needs 12.08s against 7.08s.
       //
-      // The comment this replaces justified deferring as avoiding an ~80s block behind the segment
-      // backlog. That was a post-restart condition. In steady state the synchronous push of a live
-      // playlist, one chunk, costs about 300ms and logs no retries at all.
+      // An ~80s block behind the segment backlog is a post-restart condition. In steady state the
+      // synchronous push of a live playlist, one chunk, costs about 300ms and logs no retries at all.
       //
       // A recording is many chunks, and bee-js pushes every one of them under the writer's single
       // deadline, so its writer is made with a deadline sized to it, see manifestWriteTimeoutMs. The
