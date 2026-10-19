@@ -79,8 +79,8 @@ const MANIFEST_RETRY_BASE_MS = 2_000;
  * than the one-rung case a ladder is built out of.
  *
  * It is also where this client already draws the line for itself. {@link UNSERVED_SLOT_STALL_MS}
- * is thirty polls, which its own corrected note puts at about eight seconds of healthy polling, so
- * eight seconds is the interval at which the player decides a quiet feed is worth telling a viewer
+ * is eight seconds, which replaced a count of thirty polls that came to about eight seconds while
+ * healthy, so eight seconds is where the player decides a quiet feed is worth telling a viewer
  * about. A retry ceiling longer than that is a client complaining about a fault it has stopped
  * looking for.
  *
