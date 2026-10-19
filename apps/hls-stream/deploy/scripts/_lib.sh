@@ -72,7 +72,7 @@ STAMP_ID_OVERRIDE=""
 RELEASE_LABEL=""
 RELEASE_COMMIT=""
 
-# Populated by parse_profile_args with the argv minus the --profile / --portSlot flags.
+# Populated by parse_profile_args with the argv minus every flag it consumes.
 REST_ARGS=()
 
 # Host ports, as `NAME:stock:base`.
@@ -142,12 +142,15 @@ require_override_shape() {
   fi
 }
 
-# Parse profile + portSlot flags from argv.
-# Accepted: --profile=<n>, --profile <n>, --portSlot=<N>, --portSlot <N>
+# Parse the shared deploy flags from argv.
+# Accepted, each as --flag=<v> or --flag <v>: --profile, --portSlot, --host, --feed-owner,
+# --feed-topic, --private-key, --stamp-id, --release-label, --release-commit
 # Caller pattern:
 #   parse_profile_args "$@"
 #   set -- "${REST_ARGS[@]}"
-# Side effects: sets PROFILE, ENV_FILE, REMOTE_BASE, PORT_SLOT, REST_ARGS globals.
+# Side effects: sets PROFILE, ENV_FILE, REMOTE_BASE, PORT_SLOT, HOST_OVERRIDE, FEED_OWNER_OVERRIDE,
+# FEED_TOPIC_OVERRIDE, PRIVATE_KEY_OVERRIDE, STAMP_ID_OVERRIDE, RELEASE_LABEL, RELEASE_COMMIT and
+# REST_ARGS globals.
 parse_profile_args() {
   REST_ARGS=()
   while [ $# -gt 0 ]; do
