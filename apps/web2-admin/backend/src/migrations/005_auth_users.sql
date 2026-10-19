@@ -21,7 +21,8 @@ UPDATE users SET is_admin = true
 -- that has never been used is the one worth asking about.
 ALTER TABLE users ADD COLUMN last_login_at TIMESTAMPTZ;
 
--- Mirrors USERNAME_RE in web2-admin-common: 2 to 32 characters of a-z, 0-9,
+-- Mirrors USERNAME_RE in the shared web-auth package
+-- (packages/web-auth/src/rules.ts): 2 to 32 characters of a-z, 0-9,
 -- dot, underscore or dash, starting with a letter or digit. Enforced here as
 -- well as in the yup schema so no path can write a name the console cannot
 -- render or the CLI cannot be asked for.
