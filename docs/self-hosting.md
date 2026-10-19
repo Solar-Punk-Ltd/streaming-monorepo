@@ -54,6 +54,22 @@ sudo usermod -aG docker deploy
 sudo install -d -o deploy -g deploy /opt/streaming
 ```
 
+Then put your own public key into the account, so you can log in to it. The key is your own, the
+one on the machine you run the deploy scripts from. The manager's deploy key comes later, on the
+stage and Bee hosts. `~deploy` is the shell's name for the account's home folder.
+
+```sh
+sudo install -d -m 700 -o deploy -g deploy ~deploy/.ssh
+```
+
+```sh
+echo '<your own public key, one line>' | sudo tee -a ~deploy/.ssh/authorized_keys
+```
+
+```sh
+sudo chown deploy:deploy ~deploy/.ssh/authorized_keys && sudo chmod 600 ~deploy/.ssh/authorized_keys
+```
+
 It worked when `ssh deploy@203.0.113.6 docker ps` from your machine prints an empty table. Ubuntu's
 own archive names the Compose plugin `docker-compose-v2` and Docker's apt repository names it
 `docker-compose-plugin`, so install whichever your sources offer.

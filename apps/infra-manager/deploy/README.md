@@ -24,6 +24,10 @@ sudo install -d -o deploy -g deploy /opt/streaming
 mkdir -p /opt/streaming/streaming-infra-manager/manager
 ```
 
+The account also needs your own public key in its `authorized_keys`, or no deploy can log in
+to it. [What every host needs](../../../docs/self-hosting.md#what-every-host-needs) has the
+commands.
+
 Make sure `manager/.env` exists in your local checkout. Every deploy sends it
 to the server, so your laptop is the source of truth. Another server gets a
 file of its own, as "Which env file a deploy sends" below says. Example:

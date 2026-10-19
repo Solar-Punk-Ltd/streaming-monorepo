@@ -25,6 +25,10 @@ sudo install -d -o deploy -g deploy /opt/streaming
 # log out and back in so the group takes effect
 ```
 
+The account also needs your own public key in its `authorized_keys`, or no deploy can log in
+to it. [What every host needs](../../../docs/self-hosting.md#what-every-host-needs) has the
+commands.
+
 On your machine you need bash, ssh, rsync, git and Node 24 or later, which runs
 `tools/release/version.mjs` to name the build, and a Host block for the server
 in `~/.ssh/config`:
