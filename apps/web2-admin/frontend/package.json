@@ -2,7 +2,7 @@
   "name": "@streaming-monorepo/web2-admin-frontend",
   "version": "0.1.0",
   "private": true,
-  "description": "web2-admin console: React 18 + MUI + Vite, modelled on msrs-client.",
+  "description": "web2-admin console: React 19 + MUI + Vite, modelled on msrs-client.",
   "license": "MIT",
   "type": "module",
   "scripts": {

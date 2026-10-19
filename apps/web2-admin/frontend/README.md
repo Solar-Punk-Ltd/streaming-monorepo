@@ -1,6 +1,6 @@
 # @streaming-monorepo/web2-admin-frontend
 
-The web2-admin console: React 18 + MUI 6 + Vite, modelled on the msrs-client
+The web2-admin console: React 19 + MUI 9 + Vite, modelled on the msrs-client
 screens its operators already know and on streaming-infra-manager's frontend
 conventions. It talks to [`../backend`](../backend/) over `/api` and takes its
 types from [`../common`](../common/).
