@@ -50,7 +50,7 @@ Targets support SSH aliases (e.g. `"my-server"` if defined in `~/.ssh/config`).
 
 ### Local development / debugging stream-uploader natively
 
-Set `stream-uploader` to `"native"` to run it as a host process (e.g. `pnpm dev`) while SRS still runs in Docker:
+Set `stream-uploader` to `"native"` to run it as a host process (`pnpm build:uploader && pnpm uploader:start` from `apps/hls-stream`) while SRS still runs in Docker:
 
 ```json
 {
