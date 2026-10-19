@@ -49,7 +49,7 @@ set -euo pipefail
 readonly BUILD_IMAGE="node:24.21.0-alpine@sha256:ebfe2f90462722a7a4de65e91990e97fe0d401c70e0e762c5b53302f905ec1c1"
 # corepack, left to pick its own pnpm, installs the latest major, and a recent
 # one stopped reading the `pnpm.overrides` block in package.json. A checkout
-# that keeps its overrides there (as swarm-hls-stream does) then fails the
+# that keeps its overrides there (as the stack did before the monorepo) then fails the
 # frozen install with ERR_PNPM_LOCKFILE_CONFIG_MISMATCH. Pin the pnpm that
 # matches the lockfile format instead. A stack that names its own in a
 # `packageManager` field builds with that one, because corepack honours it over

@@ -1,8 +1,7 @@
 /**
  * What every mock route needs: writing a JSON answer, streaming a script the
  * way the manager streams one, reading a JSON body, and reading the Cookie
- * header. Shared by mock-manager.mjs and mock-auth.mjs so neither keeps its
- * own copy.
+ * header. Shared by every mock under dev/ so none keeps its own copy.
  */
 
 export function send(res, status, body, headers = {}) {

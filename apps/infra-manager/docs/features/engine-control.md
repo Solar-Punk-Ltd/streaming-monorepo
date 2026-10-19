@@ -215,8 +215,8 @@ stack version, and validation lives in code:
   `engineSettingsEnv(engine, settings)` returns the `KEY=value` pairs to write. Shared, so the
   settings page, its save and the deploy validate identically. Since 2026-09-23 it takes the host's defaults as
   well and adds a default the manager owns, `managerOwnsDefault` on the field, for a key the
-  deployment does not store and the host's base `.env` does not set. `SRT_LATENCY` is the only
-  such field.
+  deployment does not store and the host's base `.env` does not set. `SRT_LATENCY` and
+  `HLS_FRAGMENT` are the two such fields.
 - `writeProfileEnv` writes those pairs (every value goes through the same character check the
   passphrase gets, because it lands inside a `sed` expression in the entrypoint).
 - `effectiveEnvOf` reads the keys back from the env file the deploy wrote, and `containerKeysSpec`
@@ -248,7 +248,9 @@ uses:
   `stream-uploader`, `bee-uploader`. Bee is included because a stuck node is the other thing an
   operator restarts, and the route is the same. The profile status does not change, this is
   below the deploy state machine, but an activity line is published on the event bus:
-  `engine.restarted { profile, service }`.
+  `engine.restarted { profile, service }`. Refused with 409 `profile_busy` while the deployment
+  is deploying, stopping or being removed, and with 409 `restart_in_progress` while a restart of
+  the same service is still in flight or within its cooldown.
 - `logs(profile, service, tail)`: `container.logs({ stdout, stderr, tail, timestamps })`,
   demultiplexed, capped at 2000 lines, returned as text.
 - `effectiveConfig(profile)`: `container.exec` with `cat /usr/local/srs/conf/srs.conf` (SRS) or
@@ -259,13 +261,13 @@ uses:
 
 Routes, `manager/src/api/routes/engine.ts`:
 
-| Method | Path                                                | Answer                                                                                                                                        |
-| ------ | --------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------- |
-| GET    | `/profiles/:name/engine`                            | `{ engine, abr, settings, defaults, fields, live, liveUnavailableReason }`, where `live` is null in PR 1 and `liveUnavailableReason` says why |
-| PUT    | `/profiles/:name/engine-settings`                   | 202, the profile. For scripts since 2026-09-26. 400 `validation_error` naming a key neither engine reads                                      |
-| POST   | `/profiles/:name/containers/:service/restart`       | 202                                                                                                                                           |
-| GET    | `/profiles/:name/containers/:service/logs?tail=200` | `text/plain`                                                                                                                                  |
-| GET    | `/profiles/:name/engine/config`                     | `text/plain`, no-store                                                                                                                        |
+| Method | Path                                                | Answer                                                                                                                                                                                                                           |
+| ------ | --------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| GET    | `/profiles/:name/engine`                            | `{ engine, abr, identity, settings, defaults, defaultSources, fields, observations, effective, notInConfig, live, liveUnavailableReason }`, where `live` is null until live status is built and `liveUnavailableReason` says why |
+| PUT    | `/profiles/:name/engine-settings`                   | 202, the profile. For scripts since 2026-09-26. 400 `validation_error` naming a key neither engine reads                                                                                                                         |
+| POST   | `/profiles/:name/containers/:service/restart`       | 202                                                                                                                                                                                                                              |
+| GET    | `/profiles/:name/containers/:service/logs?tail=200` | `text/plain`                                                                                                                                                                                                                     |
+| GET    | `/profiles/:name/engine/config`                     | `text/plain`, no-store                                                                                                                                                                                                           |
 
 ### Live status (PR 2, after the SRS API port backport)
 

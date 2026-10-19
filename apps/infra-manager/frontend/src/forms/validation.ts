@@ -8,17 +8,18 @@ import {
   SRT_PASSPHRASE_RE,
 } from '@streaming-infra-manager/common';
 
+// Exported so anything that has to agree with these rules can test against the
+// same expressions rather than writing its own.
 /**
  * The field rules the wizard and the drawers check before anything is sent.
  *
- * Every regex here is the manager's own, copied from
- * `manager/src/schemas/profile.ts`. They are duplicated rather than imported
- * because the schemas live behind yup in the API package, and a form that
+ * The host, feed topic and SRT passphrase rules come from common, where the
+ * manager reads them too. The four below are copies of the manager's own in
+ * `manager/src/schemas/profile.ts` (`PROFILE_NAME_RE` and the hex shapes), kept
+ * here because those schemas sit behind yup in the API package. A form that
  * guesses at the rules refuses values the server accepts, or worse accepts
  * values it refuses and turns a typo into a failed request.
  */
-// Exported so anything that has to agree with these rules can test against the
-// same expressions rather than writing its own.
 export const NAME_RE = /^[a-z0-9][a-z0-9-]{0,30}$/;
 export const ETH_ADDRESS_RE = /^0x[0-9a-fA-F]{40}$/;
 export const PRIVATE_KEY_RE = /^0x[0-9a-fA-F]{64}$/;

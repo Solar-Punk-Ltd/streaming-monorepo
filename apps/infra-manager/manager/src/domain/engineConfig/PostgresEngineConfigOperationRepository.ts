@@ -153,7 +153,7 @@ function endsRecovery(state: EngineConfigOperationState): boolean {
  * it for ever, and the deployment could not be removed at all, with no page
  * offering a way to clear it. A hold outlives its rollout only while a
  * recovery may still want the build: the interrupted state, and the saved
- * source an explicit restore keeps reaching for, which `beginExplicitRestore`
+ * source an explicit restore keeps reaching for, which `beginRestorePreviousDeploy`
  * deliberately leaves held across restore attempts.
  */
 async function releaseEndedHolds(client: PoolClient, operationIds: readonly number[]): Promise<void> {

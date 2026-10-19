@@ -108,13 +108,13 @@ export function StampTable({
   );
 }
 
-/** One batch: its readings, and under them what can be done with it. */
 /** The Usable column's chip: spent, paying, or bought and not yet confirmed. */
 function usabilityChip(stamp: BeeStamp, expired: boolean): { color: 'error' | 'success' | 'warning'; label: string } {
   if (expired) return { color: 'error', label: 'expired' };
   return stamp.usable ? { color: 'success', label: 'usable' } : { color: 'warning', label: 'pending' };
 }
 
+/** One batch: its readings, and under them what can be done with it. */
 function BatchRows({
   stamp,
   use,

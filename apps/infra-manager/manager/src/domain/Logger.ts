@@ -15,7 +15,7 @@ export function isLogLevel(value: string): value is LogLevel {
 }
 
 /**
- * Same singleton-Logger pattern used in swarm-hls-stream/stream-uploader so
+ * Same singleton-Logger pattern used in apps/hls-stream/packages/stream-uploader so
  * log output across the project is uniform.
  */
 export class Logger {

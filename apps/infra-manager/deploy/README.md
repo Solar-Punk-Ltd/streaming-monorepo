@@ -695,7 +695,9 @@ the name in the edge's env file:
 
 ```sh
 cp infra/edge/.env.sample infra/edge/.env
-# set MANAGER_DOMAIN=manager.example.org, and MANAGER_PORT if WEB_PORT is not 8080
+# set MANAGER_DOMAIN=manager.example.org, and the edge's MANAGER_PORT when
+# WEB_PORT in manager/.env is not 8080. The edge's MANAGER_PORT is the
+# console's web port, not the api port of the same name in manager/.env.
 ./infra/edge/edge.sh --host=<control-host>
 ```
 
@@ -758,7 +760,9 @@ docker compose down -v            # nuke postgres data too, so be sure
   loopback, never directly from outside. It serves the built React SPA and
   reverse-proxies `/auth`, `/profiles`, `/groups`, `/health`, `/services`,
   `/config`, `/targets`, `/manager-settings`, `/stages`, `/version`,
-  `/versions`, `/chequebook`, `/metrics` and `/events` to `api:9876`. Every
+  `/versions`, `/chequebook`, `/metrics` and `/events` to `api:9876`, and
+  `/api/admin-funding`, which only the web2 admin calls and the dev server
+  does not proxy. Every
   path the dev server proxies has to appear here too. A path wired in one
   place and not the other is how the
   whole transfer history had no route in production until 2026-09-11, and a
@@ -768,8 +772,11 @@ docker compose down -v            # nuke postgres data too, so be sure
 - **`postgres`** has no published port. The api reaches it by service name,
   and a host-side `pnpm dev` gets a loopback port from `docker-compose.dev.yml`
   through `pnpm database:start`, at `MANAGER_DEV_PG_PORT` (5432 unless set).
-- The whole repo is bind-mounted into the `api` container at the same
-  absolute path it has on the host (`/opt/streaming/streaming-infra-manager`).
-  This is so compose files under `manager/swarm-hls-stream/` resolve volume
-  paths consistently when their `docker compose up` is forwarded to the host
-  daemon via the mounted socket.
+- The manager's folder (`MANAGER_ROOT`, `/opt/streaming/streaming-infra-manager`
+  by default) and the versions root are bind-mounted into the `api` container
+  at the same absolute paths they have on the host. The api starts deployments
+  with `docker compose` against compose files in those trees, and the daemon on
+  the host resolves their relative volumes against the host's filesystem, so
+  the two paths have to match. The legacy tree `manager/swarm-hls-stream/`,
+  which engines deployed before the versions root still mount, sits inside the
+  first.

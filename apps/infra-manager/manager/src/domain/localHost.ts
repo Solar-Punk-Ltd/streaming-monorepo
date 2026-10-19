@@ -32,7 +32,7 @@ export const LOCAL_PUBLISHED_HOST = config.beeLocalHost ?? (existsSync('/.docker
  *
  * `profiles.host` is a deploy target rather than an address, and a target that
  * means this machine is reached on {@link LOCAL_PUBLISHED_HOST} rather than on
- * what it says. `native` is swarm-hls-stream's own sentinel for a deployment
+ * what it says. `native` is the stack's own sentinel for a deployment
  * that runs outside compose on this machine, see `is_native` in
  * `deploy/scripts/_lib.sh`, and the empty string is a row that names no target
  * at all.

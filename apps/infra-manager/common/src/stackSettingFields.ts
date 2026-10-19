@@ -4,7 +4,7 @@ import type { StackSettingField } from './deploymentSettings.js';
 /**
  * What the stack accepts for the settings whose shape a page can check before
  * a save. The bounds are the stream uploader's own, from its config reader
- * (`packages/stream-uploader/src/utils/config.ts` in swarm-hls-stream), and the
+ * (`apps/hls-stream/packages/stream-uploader/src/utils/config.ts`), and the
  * choices are the values the stack's samples name.
  *
  * A key missing here is plain text, and the container checks it when it

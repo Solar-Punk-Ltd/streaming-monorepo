@@ -2,7 +2,7 @@
 
 **Status, 2026-09-10.** This is a source-verification record made on 2026-09-08 and it holds except for one sentence about the journal, corrected below where it appears. The code it describes is merged to `main-v2`. It was written at `6dc33d1` on `feat/ai-remediation`, the head of the remediation set, which landed. Durable receipt updates and recovery, named at the end as separate parts of the transaction work, are both in, and the manager now checks for a receipt on its own within a bounded budget. As of 2026-09-08, when this record was made, no funded node, live chain endpoint or host had been queried from this branch. That changed afterwards: the branch was deployed on 2026-09-11, a node was funded and a batch bought on 2026-09-13, and migration 032 exists because a live chain endpoint rate-limited a node on 2026-09-15. See the remediation's handover record, which the repository's history keeps. No chequebook transfer has been made with real money.
 
-The two commits below are the stack's, not this repository's, so `git cat-file` finds them only from inside `manager/swarm-hls-stream`.
+The two commits below are the stack's. `ec3063f` came into this repository with the stack's history, so `git cat-file` finds it here. `ee99c368` did not, and resolves only in the stack's old repository, `Solar-Punk-Ltd/swarm-hls-stream`.
 
 The recorded review stack commit `ec3063f` pins Bee 2.8.2 in `nodes/docker-compose.yml`. The older manager baseline submodule `ee99c368` pins 2.8.1. These are local source facts. They do not prove the digest currently running on the host.
 

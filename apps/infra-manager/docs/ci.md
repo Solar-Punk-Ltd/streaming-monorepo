@@ -14,8 +14,12 @@ once, with a bypass kept for the repository's administrators. Main-branch pushes
 
 The workflow runs on a pull request into `main`, the monorepo's integration
 branch, and on a push to it, whenever `apps/infra-manager`,
-`apps/hls-stream` or the workflow file changed. The stack counts because the
-manager's tests read it. Its steps run in `apps/infra-manager`.
+`apps/hls-stream`, `tools/app-workspace`, `packages/`, the root manifests
+(`package.json`, `pnpm-lock.yaml`, `pnpm-workspace.yaml`), the root lint and
+format settings or the workflow file changed. The stack counts because the
+manager's tests read it, the packages because the manager imports them and its
+images carry them, and the cut tool because the images build through it. Its
+steps run in `apps/infra-manager`.
 
 **Where this stands.** This page was first written at `6dc33d1` on
 `feat/ai-remediation`, the head of the remediation set, which was merged.
@@ -24,14 +28,15 @@ container or on a runner. Everything else here describes what the workflow files
 declare, which is a different thing from what a runner has done.
 
 **The file counts in this page drift, because suites are added.** Those below
-were counted on 2026-09-26 at `04c4165`. Re-measure rather than trusting them: the SQL
+were counted on 2026-10-19 at `8271460cb`. Re-measure rather than trusting them: the SQL
 suites are `find manager/test/database -name '*.test.ts'`, and the browser
 suites are `find frontend/test -name '*.test.mjs'`.
 
 ### checks
 
 Check out the repository, install from the frozen lockfile, build common, type
-checks in every package with the test files included, the unit suites of
+checks in every package with the test files included, lint with oxlint and the
+format check with oxfmt against the root settings, the unit suites of
 common, manager and frontend, the native transport suites, the frontend build.
 Manager unit tests compare the stack's guides, samples and contract fixtures
 against `apps/hls-stream` of the same commit, which every checkout of the
@@ -89,7 +94,7 @@ runner: diagnose it, never retry it.
 
 ### database
 
-The 42 SQL suites in `manager/test/database/` (2026-09-26), each against the
+The 47 SQL suites in `manager/test/database/` (2026-10-19), each against the
 suite database it owns, through `manager/test/database/run-all.mjs`.
 
 Every one of those files gates itself on a port variable and skips
@@ -143,9 +148,10 @@ that fails half the time is worth more than the difference.
 
 ### browser
 
-The 43 suites under `frontend/test/` (2026-09-26), of which 24 drive a real
-headless Chrome, 14 of those against a real Vite they start themselves and the
-rest against a fixture server or no page at all, and 19 need no browser. They live outside `pnpm test`, which only takes `src`,
+The 53 suites under `frontend/test/` (2026-10-19). On 2026-09-26, when there
+were 43, 24 drove a real headless Chrome, 14 of those against a real Vite they
+start themselves and the rest against a fixture server or no page at all, and
+19 needed no browser. They live outside `pnpm test`, which only takes `src`,
 so they ran nowhere on a pull request.
 `pnpm --filter @streaming-infra-manager/frontend-prototype test:browser` takes
 all of them, through `frontend/test/run-all.mjs`.
@@ -168,7 +174,7 @@ starts its own Vite and its own Chrome. Concurrency 2 was not qualified: the
 rule was three consecutive failure-free runs under three minutes, and the same
 class of clock-reading
 failure had already shown up in the SQL job under parallel files, on a laptop
-with three times the runner's cores. If it is worth the risk later, the
+with six times the runner's cores. If it is worth the risk later, the
 measurement to beat is below.
 
 **What the first runner run showed, and what changed.** Run 34477086525 on
@@ -331,7 +337,7 @@ here, so the estimate below is built on the slow end rather than the lucky one:
 | native transport suites, 7                                                                                                        | 3 s       |
 | frontend build                                                                                                                    | 6 s       |
 | SQL suites, one file at a time. 526 cases across 34 files, measured 2026-09-16 against a disposable Postgres                      | 235 s     |
-| browser suites, one child per file. Case count last measured 208 on 2026-09-10 across 27 files, and there are 43 now (2026-09-26) | 360 s     |
+| browser suites, one child per file. Case count last measured 208 on 2026-09-10 across 27 files, and there are 53 now (2026-10-19) | 360 s     |
 
 The jobs run in parallel in wall-clock time but GitHub bills each one
 separately, so a push costs the sum. A standard GitHub-hosted Linux runner on
@@ -569,8 +575,9 @@ it, and the job's first step proves it rather than trusting it.
 
 `createdb` is not needed on the runner: both jobs that need databases call it
 inside the Postgres service container. Verified here on 2026-09-10 against
-`postgres:16-alpine` at the digest below, which is the image the commands at
-the end of this page name too.
+`postgres:16-alpine`, the image pinned then. The jobs now run
+`postgres:16.15-alpine` at the digest below, resolved 2026-09-27, and the commands
+at the end of this page name that image too.
 
 ## What nothing here guards
 
@@ -593,11 +600,11 @@ request.
 Actions are pinned by commit with the tag in a comment. Both workflows use
 the same three pins:
 
-| Action               | Pin                                                  |
-| -------------------- | ---------------------------------------------------- |
-| `actions/checkout`   | `3d3c42e5aac5ba805825da76410c181273ba90b1` (v7.0.1)  |
-| `pnpm/action-setup`  | `0977fd99725f1db4007ccb2928dbb4e90d06cc86` (v6.0.10) |
-| `actions/setup-node` | `820762786026740c76f36085b0efc47a31fe5020` (v7.0.0)  |
+| Action               | Pin                                                 |
+| -------------------- | --------------------------------------------------- |
+| `actions/checkout`   | `3d3c42e5aac5ba805825da76410c181273ba90b1` (v7.0.1) |
+| `pnpm/action-setup`  | `ea17c68df8912ef543352723c149a84f56e3d413` (v6.1.0) |
+| `actions/setup-node` | `820762786026740c76f36085b0efc47a31fe5020` (v7.0.0) |
 
 pnpm itself comes from the `packageManager` field. When a pin moves, the new
 tag's age and its commit are checked the way a dependency bump is: publish age,
@@ -609,7 +616,7 @@ Container images are pinned by digest, each with the date it was resolved:
 
 | Image                       | Digest                                                                    | Resolved   | Used by                                         |
 | --------------------------- | ------------------------------------------------------------------------- | ---------- | ----------------------------------------------- |
-| `postgres:16-alpine`        | `sha256:cf78e76683b9ca8c5733cbbdce6c9262b45b6767934dd0a95e671f9a0fc20685` | 2026-09-10 | database, browser, integration                  |
+| `postgres:16.15-alpine`     | `sha256:721873c34ceb9f8d8fc265984940dc982404c105f19ad51be9fdc5970a6080ea` | 2026-09-27 | database, browser, integration                  |
 | `ossrs/srs:6`               | `sha256:2be08a0fe28737bf28bae8a575bb5776e09b620366dd1e62dd4f8a41cf4310f3` | 2026-09-10 | srs-parser, and the engine startup observations |
 | `airensoft/ovenmediaengine` | `sha256:172da9129d32093f3c92c426d385a318db38c7e70de0a3a685693e69614672a6` | 2026-09-08 | ome-gate                                        |
 
@@ -622,7 +629,7 @@ The SQL suites, on a disposable PostgreSQL of their own:
 ```sh
 docker run --rm -d --name manager-test-pg -e POSTGRES_HOST_AUTH_METHOD=trust \
   -p 127.0.0.1:55432:5432 \
-  postgres:16-alpine@sha256:cf78e76683b9ca8c5733cbbdce6c9262b45b6767934dd0a95e671f9a0fc20685
+  postgres:16.15-alpine@sha256:721873c34ceb9f8d8fc265984940dc982404c105f19ad51be9fdc5970a6080ea
 for name in engine_config_test build_references_test stack_versions_test port_reservations_test version_approval_test chequebook_test profile_removal_test deployment_settings_test deploy_phases_test; do
   docker exec manager-test-pg createdb -U postgres "$name"
 done

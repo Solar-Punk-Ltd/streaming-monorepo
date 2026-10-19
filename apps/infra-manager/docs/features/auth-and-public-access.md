@@ -71,7 +71,8 @@ mean two-factor or single sign-on. Both can be added later without changing the 
   **Change my password** form (current, new, new again).
   - An admin reads `You can add and remove users here.` above the table and gets the **Add user**
     form below it: a username, a starting password typed twice and handed over in person, and a
-    `Can manage users` box. Their own row's Remove is disabled.
+    `Can manage users: add and remove them, sign anyone out` box. Their own row's Remove is
+    disabled.
   - Anyone else reads `Only a user who can manage users adds or removes one.` and gets no Add
     user form. The buttons are still on every row, disabled: Remove on every row, and Sign out
     everywhere on every row but their own, each with a tooltip saying why. The API refuses the
@@ -84,6 +85,10 @@ mean two-factor or single sign-on. Both can be added later without changing the 
 ## Design
 
 ### Users and sessions
+
+Since the monorepo, the hashing, cookie, lockout and same-site rules below are the shared
+package `packages/web-auth`, which the web2 admin uses too. The manager wraps it in
+`api/middleware/requireSameSite.ts` and `api/sessionCookie.ts`.
 
 Migration `008_auth.sql`:
 
@@ -136,8 +141,10 @@ CREATE INDEX sessions_user_idx ON sessions (user_id);
   `Retry-After`. Every failure is logged with username and IP. Successful sign-in resets the
   username key.
 - **What stays open**: `GET /health` (it returns `{status:'ok'}` and nothing else) and
-  `POST /auth/login`. No Docker healthcheck reads `/health`: the `api` service in
-  `manager/docker-compose.yml` has none and neither Dockerfile declares one. `manager:upgrade`
+  `POST /auth/login`. Docker's own healthcheck reads `/health`: the `api` service in
+  `manager/docker-compose.yml` asks it every 30 seconds, with a 60 second start period, and
+  `web`'s `depends_on` does not wait on it. The check runs a query, so healthy means the
+  database answers as well, and it is logged like any request. `manager:upgrade`
   waits for the new api to answer it during a deploy, the integration suite asks it in its
   preflight and its CI job in the root workflow `.github/workflows/infra-manager-docker.yml` waits
   for it first, and the
@@ -185,9 +192,9 @@ with the CLI can add the next, and migration `011_admin_users.sql` made the olde
 on a manager that already had users. The last admin cannot be removed.
 
 The role gates those three actions and nothing else. Every other route is open to any signed-in
-user, read from `manager/src/api/server.ts` on 2026-09-23 at `87673c99`: `/config`, `/metrics`,
-`/events`, `/services`, `/chequebook/operations`, `/groups`, `/targets`, `/versions` with
-`/versions/attempts`, and `/profiles` with everything under a deployment. That includes
+user: `requireAdmin` is used in `manager/src/api/routes/auth.ts` alone, so every other mount in
+`manager/src/api/server.ts` is open to them, apart from the web2 admin's funding API, which takes
+a bearer token of its own. That includes
 deploying and stopping it, buying a stamp, a chequebook deposit or withdrawal, its engine
 settings and config file, restarting its containers and reading its SRT passphrase.
 

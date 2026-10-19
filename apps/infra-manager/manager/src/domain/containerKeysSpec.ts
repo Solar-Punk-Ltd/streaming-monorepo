@@ -65,7 +65,7 @@ function engineSettingKeysFor(engine: EngineName): string[] {
 /**
  * The env keys each compose service reads, by service name.
  *
- * Mirrors the variable groupings in swarm-hls-stream/.env.sample.
+ * Mirrors the variable groupings in apps/hls-stream/.env.sample.
  */
 export const SERVICE_ENV_KEYS: Record<string, readonly string[]> = {
   [SRS_SERVICE]: [

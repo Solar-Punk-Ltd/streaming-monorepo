@@ -141,11 +141,6 @@ export function rungOrder(rungName: string): number {
   return DEFAULT_ABR_RUNGS.indexOf(rungName);
 }
 
-// `isLadderGroup` / `looksLikeLadderGroup` lived here, deriving pool-ness from
-// the member names. `deployment_groups.kind` answers that now, and answers it
-// for a damaged pool too, so both had no callers left, only tests and a doc
-// paragraph arguing for a distinction the column removed.
-
 /**
  * Depth to suggest for a rung's batch, given the depth chosen for the lowest rung.
  *

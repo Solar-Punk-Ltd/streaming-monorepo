@@ -7,7 +7,7 @@ const MANAGER_URL =
 
 /**
  * Pass the browser's own Host through, the way nginx does in production with
- * `proxy_set_header Host $host`.
+ * `proxy_set_header Host $http_host`.
  *
  * Vite's string shorthand would set changeOrigin, which rewrites Host to the
  * manager's address while the browser's Origin still says localhost:5080. The
