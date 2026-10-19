@@ -8,18 +8,18 @@ Uses [@ethersphere/bee-js](https://github.com/ethersphere/bee-js) for all Bee AP
 
 ### Stamp management
 
-| Command            | Description                                           |
-| ------------------ | ----------------------------------------------------- |
-| `pnpm stamp:setup` | Full workflow: wait for node → buy stamp → write .env |
-| `pnpm stamp:buy`   | Buy a stamp: `[--rung <rung>] [amount] [depth]`       |
-| `pnpm stamp:check` | List all stamps with status                           |
+| Command            | Description                                                           |
+| ------------------ | --------------------------------------------------------------------- |
+| `pnpm stamp:setup` | Full workflow: wait for node → buy stamp → write .env                 |
+| `pnpm stamp:buy`   | Buy a stamp: `[--rung <rung>] [amount] [depth] [--immutable] [--yes]` |
+| `pnpm stamp:check` | List all stamps with status                                           |
 
 `--rung` picks which publisher buys, and is required once `BEE_PUBLISHERS` is set:
 a batch can only be spent by the node that bought it. Without it the single-node
 path is used, which is `BEE_URL` and `STAMP`.
 
 Both commands that spend show the batch cost and how long it will last, then ask
-to confirm. `--yes` approves without a prompt, and is required for any run with
+to confirm. `--yes` (or `-y`) approves without a prompt, and is required for any run with
 no terminal: without one the confirmation is declined rather than assumed.
 
 ### Node info
