@@ -6,14 +6,15 @@
  * private address inside one of the few ranges that describe a single host's setup, an Ethereum
  * address that is not on the allow list of known fakes and public contracts, a token whose sha256 is
  * on the deny list, and a value shaped like a secret: a private key block, a token in the format a
- * known issuer uses, or 64 hex digits beside a word such as key or secret, and a home folder that
- * names a person rather than a role user. The deny list and the
+ * known issuer uses, or 64 hex digits beside a word such as key or secret, a home folder that names
+ * a person rather than a role user, and an email address outside the reserved example domains. The
+ * deny list and the
  * allow list of published sample secrets hold hashes only, so neither names what it lists.
  */
 import { createHash } from 'node:crypto';
 
 /** @typedef {'private-key-block' | 'aws-access-key' | 'github-token' | 'slack-token' | 'stripe-key' | 'jwt'} SecretShapeRule */
-/** @typedef {{ rule: 'ipv4' | 'host-private-ipv4' | 'eth-address' | 'denied-token' | 'keyed-hex-64' | 'home-path' | SecretShapeRule, line: number, value: string }} Finding */
+/** @typedef {{ rule: 'ipv4' | 'host-private-ipv4' | 'eth-address' | 'denied-token' | 'keyed-hex-64' | 'home-path' | 'email' | SecretShapeRule, line: number, value: string }} Finding */
 /** @typedef {{ allowedAddresses: Set<string>, allowedSecretHashes: Set<string>, homeUsers: Set<string>, deniedHashes: Set<string> }} Rules */
 
 const IPV4 = /(?<![\w.§])(\d{1,3})\.(\d{1,3})\.(\d{1,3})\.(\d{1,3})(?![\w]|\.\d)/g;
@@ -45,6 +46,26 @@ const DIGEST_BEFORE = /sha256:$/i;
 const SHA256_HEX = /^[0-9a-f]{64}$/;
 /** A home folder on macOS or Linux, standing at the start of a path rather than inside a longer one. */
 const HOME_PATH = /(?<![\w.~/-])\/(?:Users|home)\/([A-Za-z0-9._-]+)(?![A-Za-z0-9._-])/g;
+const EMAIL = /(?<![A-Za-z0-9._%+-])[A-Za-z0-9._%+-]+@((?:[A-Za-z0-9-]+\.)+[A-Za-z]{2,})(?![A-Za-z0-9-])/g;
+/** The second-level domains RFC 2606 reserves for examples. */
+const EXAMPLE_DOMAINS = ['example.com', 'example.net', 'example.org'];
+/** The top-level names RFC 2606 and RFC 6761 reserve, which never reach a real mailbox. */
+const RESERVED_TOP_LEVEL = new Set(['example', 'invalid', 'test', 'localhost']);
+/** The SSH user of every GitHub clone URL stands at this domain, and it is not a person. */
+const SERVICE_EMAIL_DOMAINS = new Set(['github.com']);
+
+/**
+ * Whether an email address at this domain can be left in the public tree: a reserved example
+ * domain, or a service's own SSH user.
+ * @param {string} domain
+ */
+export function isExampleEmailDomain(domain) {
+  const lower = domain.toLowerCase();
+  if (SERVICE_EMAIL_DOMAINS.has(lower)) return true;
+  if (RESERVED_TOP_LEVEL.has(lower.slice(lower.lastIndexOf('.') + 1))) return true;
+  return EXAMPLE_DOMAINS.some((example) => lower === example || lower.endsWith(`.${example}`));
+}
+
 /** The shortest and longest token the deny list is checked against. */
 const MIN_TOKEN_LENGTH = 3;
 const MAX_TOKEN_LENGTH = 128;
@@ -184,6 +205,9 @@ export function scanText(text, rules, hashCache = new Map()) {
     }
     for (const match of line.matchAll(HOME_PATH)) {
       if (!rules.homeUsers.has(match[1])) findings.push({ rule: 'home-path', line: index + 1, value: match[0] });
+    }
+    for (const match of line.matchAll(EMAIL)) {
+      if (!isExampleEmailDomain(match[1])) findings.push({ rule: 'email', line: index + 1, value: match[0] });
     }
     for (const match of line.matchAll(HEX_64)) {
       const end = match.index + match[0].length;

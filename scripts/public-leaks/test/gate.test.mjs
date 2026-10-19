@@ -261,6 +261,39 @@ describe('home folders', () => {
   });
 });
 
+describe('email addresses', () => {
+  it('refuses an address at a real-looking domain', () => {
+    for (const domain of ['personal-mail.net', 'some-company.io', 'mail.some-company.co.uk']) {
+      const address = 'jane.doe' + '@' + domain;
+      assert.deepEqual(scanText(`contact ${address}`, rulesWith()), [{ rule: 'email', line: 1, value: address }]);
+    }
+  });
+
+  it('lets through the reserved example domains and the GitHub SSH user', () => {
+    const text = [
+      'ops@example.com',
+      'a@admin.example.org',
+      'b@example.net',
+      'c@bee.example.invalid',
+      'd@funding.example.test',
+      'e@admin.offline.example',
+      'f@app.localhost',
+      'git clone git@github.com:owner/repo.git',
+    ].join('\n');
+    assert.deepEqual(scanText(text, rulesWith()), []);
+  });
+
+  it('lets through package versions, scopes and a user at a bare host', () => {
+    const text = ['pnpm add left-pad@1.3.0', 'import x from "@scope/name"', 'ssh deploy@bastion'].join('\n');
+    assert.deepEqual(scanText(text, rulesWith()), []);
+  });
+
+  it('refuses a domain that only starts like an example one', () => {
+    const address = 'ops' + '@' + 'example.com.attacker.net';
+    assert.equal(scanText(address, rulesWith()).length, 1);
+  });
+});
+
 describe('the hashed deny list', () => {
   it('refuses a denied token wherever it stands in a longer run', () => {
     const rules = rulesWith({ denied: [DENIED_TOKEN] });
