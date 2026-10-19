@@ -279,8 +279,9 @@ manager.
 
 Built in nine phases, each a pull request into `feat/stages`: phases 1 to 8
 merged there on 2026-09-28, and the fix and phase 9 below opened for review on
-2026-09-29. Nothing has been deployed; the feature branch goes to `main` once
-it has been tried whole on a real installation.
+2026-09-29. The branch went into `main` as #74 on 2026-10-03, after the review
+below, and first ran on a test deployment in the live test round of 2026-10-04
+([known-issues.md](known-issues.md)).
 
 - Phase 1, the brief and the records (#56, 2026-09-28): the spec, this entry,
   and the stage and catalogue stamp records as zod schemas in
