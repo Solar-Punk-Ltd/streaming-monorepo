@@ -72,6 +72,7 @@ describe('buildFeedEntry', () => {
         manifest_index: 412,
         duration_seconds: 3725.5,
         ended_at: new Date('2026-10-01T10:02:05.000Z'),
+        finished_at: null,
       }),
       null,
       1_700_000_000_000,

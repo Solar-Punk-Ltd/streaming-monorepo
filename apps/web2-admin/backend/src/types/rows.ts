@@ -63,6 +63,12 @@ export interface StreamRow {
   live_since: Date | null;
   ended_at: Date | null;
   /**
+   * When the key was changed for good because the stream is finished, by Finish or by the restart window running
+   * out (migration 022). Null while the stream can still come back on its key. A `vod → live` clears it; a retried
+   * `live → live` leaves it.
+   */
+  finished_at: Date | null;
+  /**
    * When the console last changed something the catalogue entry carries:
    * title, description, tags, media type, scheduled start or thumbnail. Null
    * when nothing has changed since migration 006. Nothing else moves it.

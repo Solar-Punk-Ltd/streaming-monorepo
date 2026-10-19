@@ -778,6 +778,7 @@ describe('PublishService republishing a stream that has gone live', () => {
         duration_seconds: 61,
         live_since: new Date('2026-09-11T10:01:00.000Z'),
         ended_at: new Date('2026-09-11T10:02:01.000Z'),
+        finished_at: null,
       }),
     );
     await renditions.upsert(row.id, rung('720p', 720, 12));
@@ -1025,6 +1026,7 @@ describe('PublishService.unpublish', () => {
       duration_seconds: 3540,
       live_since: liveSince,
       ended_at: endedAt,
+      finished_at: null,
     });
 
     const outcome = await service.unpublish(TEST_OPERATOR, row.id);

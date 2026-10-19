@@ -119,6 +119,20 @@ export interface Stream {
   liveSince?: string | null;
   endedAt?: string | null;
   /**
+   * When the stream was finished: the moment the admin changed its key for good, by Finish on the stream page or
+   * by the restart window running out after the stream ended. A finished stream's old key is refused at the next
+   * connect, so an old encoder profile cannot bring it back by mistake; it goes live again only with the new key,
+   * copied from the page. Null while the stream can still come back, and on a stream that never went live. Cleared
+   * by a broadcast that does go live again on the new key, which starts a new window at its next end.
+   */
+  finishedAt?: string | null;
+  /**
+   * Until when the stream can go live again on its current key: the end of the restart window, worked out by the
+   * backend from `endedAt` and `STREAM_RESTART_WINDOW_MINUTES`, so the page never needs the setting. Set only while
+   * the stream is `vod` and not finished; null otherwise. A time already past means the next sweep finishes it.
+   */
+  restartUntil?: string | null;
+  /**
    * True while the console holds an edit this stream's catalogue entry does
    * not carry: its title, description, tags, media type, scheduled start or
    * thumbnail changed after the last write that rebuilt the entry from the

@@ -54,6 +54,7 @@ export function toStream(row: StreamRow): Stream {
     durationSeconds: row.duration_seconds,
     liveSince: iso(row.live_since),
     endedAt: iso(row.ended_at),
+    finishedAt: iso(row.finished_at),
     hasUnpublishedEdits: hasUnpublishedEdits(row),
     stageId: row.stage_id,
     createdAt: row.created_at.toISOString(),

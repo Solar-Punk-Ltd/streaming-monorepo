@@ -98,6 +98,7 @@ export function streamRow(over: Partial<StreamRow> = {}): StreamRow {
     duration_seconds: null,
     live_since: null,
     ended_at: null,
+    finished_at: null,
     content_edited_at: null,
     entry_content_edited_at: null,
     // On the stage `stageFakes` pushes, as every stream picked in the form now
@@ -333,6 +334,7 @@ export class FakeStreamStore
       manifest_index: null,
       duration_seconds: null,
       ended_at: null,
+      finished_at: null,
       publish_error: null,
     });
   }
@@ -351,6 +353,7 @@ export class FakeStreamStore
       manifest_index: manifestIndex,
       duration_seconds: durationSeconds,
       ended_at: new Date('2026-09-11T11:00:00.000Z'),
+      finished_at: null,
       publish_error: null,
     });
   }
