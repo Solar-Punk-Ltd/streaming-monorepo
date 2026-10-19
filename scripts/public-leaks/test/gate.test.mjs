@@ -9,10 +9,11 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { describe, it } from 'node:test';
 import { fileURLToPath } from 'node:url';
-import { candidateTokens, isAllowedIpv4, parseRules, scanText, tokenHash } from '../lib.mjs';
+import { candidateTokens, isAllowedIpv4, parseRules, scanText, secretHash, tokenHash } from '../lib.mjs';
 
 const GATE = fileURLToPath(new URL('../gate.mjs', import.meta.url));
 const DENY_LIST = fileURLToPath(new URL('../deny.sha256', import.meta.url));
+const ALLOW_LIST = fileURLToPath(new URL('../allow.json', import.meta.url));
 
 /** An address in public space that no documentation range covers, built here and never written down. */
 const PUBLIC_ADDRESS = ['11', '22', '33', '44'].join('.');
@@ -20,9 +21,12 @@ const PUBLIC_ADDRESS = ['11', '22', '33', '44'].join('.');
 const REAL_LOOKING_WALLET = '0x' + '9a3f'.repeat(10);
 const DENIED_TOKEN = ['leaky', 'host', 'name'].join('-');
 
-function rulesWith({ allowed = [], denied = [] } = {}) {
+function rulesWith({ allowed = [], allowedSecrets = [], denied = [] } = {}) {
   return parseRules({
-    allowJson: JSON.stringify({ ethereumAddresses: allowed.map((address) => ({ address, why: 'test' })) }),
+    allowJson: JSON.stringify({
+      ethereumAddresses: allowed.map((address) => ({ address, why: 'test' })),
+      publishedSecrets: allowedSecrets.map((value) => ({ sha256: secretHash(value), why: 'test' })),
+    }),
     denyText: denied.map(tokenHash).join('\n'),
   });
 }
@@ -159,6 +163,64 @@ describe('secrets by shape', () => {
       'xoxb- starts a bot token',
     ].join('\n');
     assert.deepEqual(scanText(text, rulesWith()), []);
+  });
+});
+
+/** Thirty-two made-up bytes, built here so no line of this file holds 64 hex digits. */
+const KEY_HEX = 'c0ffee12'.repeat(8);
+
+describe('64 hex digits beside a key word', () => {
+  it('refuses them after a key, secret, private, seed, signer or wallet word', () => {
+    for (const text of [
+      `PRIVATE_KEY=0x${KEY_HEX}`,
+      `const signerSecret = '${KEY_HEX}';`,
+      `seed: ${KEY_HEX}`,
+      `WALLET="${KEY_HEX}"`,
+    ]) {
+      const findings = scanText(text, rulesWith());
+      assert.equal(findings.length, 1, text.replace(KEY_HEX, '<hex>'));
+      assert.equal(findings[0].rule, 'keyed-hex-64');
+    }
+  });
+
+  it('refuses them before a key word on the same line', () => {
+    assert.equal(scanText(`${KEY_HEX} # the signer`, rulesWith()).length, 1);
+  });
+
+  it('lets through 64 hex digits with no key word near, and a key word too far away', () => {
+    const text = [`topic: ${KEY_HEX}`, `key word first, then a long gap of padding text: ${KEY_HEX}`].join('\n');
+    assert.deepEqual(scanText(text, rulesWith()), []);
+  });
+
+  it('lets through an image digest beside a secret word', () => {
+    assert.deepEqual(scanText(`-e SECRET=$SECRET node:24-alpine@sha256:${KEY_HEX}`, rulesWith()), []);
+  });
+
+  it('lets through a published sample by its hash, with or without 0x and in any case', () => {
+    const rules = rulesWith({ allowedSecrets: [KEY_HEX] });
+    for (const text of [`PRIVATE_KEY=0x${KEY_HEX}`, `secret ${KEY_HEX.toUpperCase()}`]) {
+      assert.deepEqual(scanText(text, rules), [], text.replace(/[0-9a-f]{64}/i, '<hex>'));
+    }
+  });
+
+  it('keeps the committed allow list of published secrets as lowercase sha256 hashes', () => {
+    const allow = JSON.parse(readFileSync(ALLOW_LIST, 'utf8'));
+    assert.ok(allow.publishedSecrets.length > 0);
+    for (const entry of allow.publishedSecrets) {
+      assert.match(entry.sha256, /^[0-9a-f]{64}$/);
+      assert.ok(entry.why);
+    }
+  });
+
+  it('refuses an allow list entry that is not a lowercase sha256', () => {
+    assert.throws(
+      () =>
+        parseRules({
+          allowJson: JSON.stringify({ ethereumAddresses: [], publishedSecrets: [{ sha256: 'nope', why: 'x' }] }),
+          denyText: '',
+        }),
+      /lowercase sha256/,
+    );
   });
 });
 
