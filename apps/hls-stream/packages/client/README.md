@@ -430,14 +430,26 @@ src/
     StreamWatcher/        # Watch, plays a single stream
   providers/
     App.tsx               # Global state (stream list, gateway URL, the Swarm client)
+    catalogPoll.ts        # How often a page reads the catalog again, once a minute
+    catalogState.ts       # One catalog read, carrying the gateway it went to
+    gatewayTestHandle.ts  # Where a measurement harness finds the gateway switch
+    sourceStorage.ts      # A viewer's sources, routing and fallback order, kept in localStorage
+    useCatalogPoll.ts     # The hook that polls the catalog and hands each answer to the stream list
   swarm/                  # The one layer that reads Swarm: answers, providers, the client, settings
   types/
     stream.ts             # MediaType, StreamState, Stream interface
   utils/
+    buildLabel.ts         # The build this page is, as the node picker's report names it
     catalogFeed.ts        # Follows the stream catalog feed by walking slots
+    catalogList.ts        # Validates one catalog poll and works out the stream list it leaves
     config.ts             # Environment config with auto proxy detection
     fetchTimeoutError.ts  # The error a read whose window ran out reaches the player and the stream list as
     format.ts             # formatDuration (mm:ss)
+    gatewayClock.ts       # How far the gateway's clock is from the viewer's, from the HTTP Date header
+    playableRenditions.ts # The rungs of a catalog entry a viewer can be handed
+    playerRelease.ts      # The release label and commit the QoE overlay shows
     requestJitter.ts      # Gateway request jitter, to desynchronise pollers
+    scheduledStart.ts     # An announced broadcast's start time, in the viewer's own locale
     thumbnailManifest.ts  # A stream card's playlist read and its segment's URL
+    watchPageView.ts      # What the watch page shows: loading, not started, unavailable or the player
 ```
