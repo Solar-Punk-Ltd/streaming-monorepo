@@ -85,8 +85,7 @@ export function TagsField({
   const addTag = () => {
     const trimmed = draft.trim();
     if (!trimmed || full) return;
-    // A repeat is not an error, it is a no-op that clears the box — the same
-    // way msrs-client behaves.
+    // A repeat clears the box without an error, as msrs-client does.
     if (!value.includes(trimmed)) onChange([...value, trimmed]);
     setDraft('');
   };

@@ -1,8 +1,10 @@
-# web2-admin backend image. Build context is apps/web2-admin:
+# web2-admin backend image. Build context is a copy of apps/web2-admin with the
+# admin's own lockfile cut into it, made outside the checkout. From the
+# repository root:
 #
-#   docker build -f backend/Dockerfile .
+#   node tools/app-workspace/in-copy.mjs --app apps/web2-admin -- docker build -f backend/Dockerfile -t web2-admin-api .
 #
-# Two stages, as in streaming-infra-manager: install + build the workspace,
+# Two stages, as in the manager (apps/infra-manager): install + build the workspace,
 # then `pnpm deploy` a self-contained prod tree into the runtime image.
 FROM node:24.21.0-alpine@sha256:ebfe2f90462722a7a4de65e91990e97fe0d401c70e0e762c5b53302f905ec1c1 AS build
 WORKDIR /repo
@@ -33,11 +35,10 @@ RUN pnpm --filter @streaming-monorepo/web2-admin-backend... build
 
 # Produces a self-contained tree at /out with prod node_modules + dist.
 #
-# --legacy because pnpm 10 refuses to deploy from a workspace that does not
-# inject its workspace packages, and this image had never been built since the
-# workspace moved to pnpm 10. The manager sets injectWorkspacePackages in its
-# pnpm-workspace.yaml instead; doing that here would rewrite the lockfile and
-# turn the dev-time link to common into a copy, for the sake of one image.
+# --legacy because pnpm 11 and later deploy without it only when injection is
+# on for the whole workspace. The root pnpm-workspace.yaml keeps
+# injectWorkspacePackages off, so the dev-time link to common stays a link. Its
+# comment says why.
 RUN pnpm deploy --legacy --filter=@streaming-monorepo/web2-admin-backend --prod /out
 
 # --- runtime stage ----------------------------------------------------------

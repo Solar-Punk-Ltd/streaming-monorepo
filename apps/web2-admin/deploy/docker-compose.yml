@@ -58,8 +58,10 @@ services:
     depends_on:
       postgres:
         condition: service_healthy
-    # A Bee node on the same host is reached as host.docker.internal, since
-    # localhost inside this container is the container itself.
+    # A manager on the same host is reached as host.docker.internal in
+    # MANAGER_FUNDING_URL, since localhost inside this container is the
+    # container itself. The catalogue node's address comes from the manager's
+    # push and needs nothing here.
     extra_hosts:
       - 'host.docker.internal:host-gateway'
     env_file: ${WEB2_ADMIN_ENV_FILE:?WEB2_ADMIN_ENV_FILE is set by deploy/deploy.sh; export it to run compose by hand}

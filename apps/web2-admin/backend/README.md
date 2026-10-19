@@ -60,6 +60,7 @@ for the whole design.
 | `pnpm test`                             | unit tests (`test/unit`), no database or network                                                         |
 | `pnpm test:integration`                 | starts a backend of its own and drives it over HTTP — see [test/integration](test/integration/README.md) |
 | `pnpm typecheck`                        | `tsc -p tsconfig.typecheck.json`, which includes `test/`                                                 |
+| `pnpm lint`                             | `oxlint --type-aware .`, the repository's one lint, settings in the root `.oxlintrc.json`                |
 | `pnpm database:start` / `database:stop` | the Postgres container                                                                                   |
 
 The API runs in Docker too (two-stage `pnpm deploy` image, `Dockerfile`). Its
@@ -149,8 +150,9 @@ normal and not a divergence.
   `X-Forwarded-Proto`, never from configuration.
 - Four free sign-in attempts per username and per client address, then a minute
   that doubles to an hour; attempts still waiting on scrypt count, so a burst
-  sent together buys no extra guesses. Changing a password is throttled on a
-  key of its own.
+  sent together buys no extra guesses. A wrong current password on a password
+  change, a pin or a send counts under the account's sign-in key, so either
+  kind of guess locks both (SPDV-1664).
 - Every non-GET request must carry `x-requested-with: web2-admin` and must not
   look cross-site, or it is `403 cross_site_request` before its body is read.
   **`/api/internal` is exempt** — it is a machine caller with a bearer token,
@@ -187,8 +189,8 @@ its `[Boot]   version:` line.
 `GET /api/config` answers `defaultTheme` beside the feed and the viewer link:
 the look this host's console starts in for a browser whose admin picked none
 of their own. It is one of the names in `ADMIN_THEME_NAMES` of
-web2-admin-common, `default`, `swarm` or `web3privacy`, and `default` until an
-admin sets another. The route needs no session, so the login page wears it too.
+web2-admin-common, `swarm` or `web3privacy`, and `swarm` until an admin sets
+another. The route needs no session, so the login page wears it too.
 
 `PUT /api/config/default-theme` with `{ "defaultTheme": "swarm" }` sets it, for
 admins only (403 `admin_required` for anyone else, 401 without a session), and
@@ -196,11 +198,12 @@ answers `{ "defaultTheme": "swarm" }`. A name the console does not carry is 400
 `validation_error`. It is stored in the one row of `console_settings`
 (migration 021) with who set it and when, and audited as `console.theme.set`.
 The table does not check the name: a stored look that a later console no longer
-carries is answered as `default`, so retiring a look needs no migration. A
-read of it that fails is answered as `default` too, with a warning in the log,
-so the feed and the viewer link stay up while the database is away. The
-console's side, where an admin sets it and how it meets a browser's own pick,
-is in [the frontend's README](../frontend/README.md#themes).
+carries, the retired `default` among them, is answered as `swarm`, so retiring
+a look needs no migration. A read of it that fails is answered as `swarm` too,
+with a warning in the log, so the feed and the viewer link stay up while the
+database is away. The console has no page that calls the PUT since 2026-10-12,
+so today it is set with curl. How the answer meets a browser's own pick is in
+[the frontend's README](../frontend/README.md#themes).
 
 ## Publishing
 
@@ -1644,7 +1647,7 @@ available balance, hash, state and error.
 The console's look ([The console's look](#the-consoles-look)):
 `console.theme.set`, one row per change an admin saves, with
 `details: { from, to }`, the look the console wore before and the one it wears
-now. A stored look the console no longer carries is recorded as the `default`
+now. A stored look the console no longer carries is recorded as the `swarm`
 it was worn as. The row has no `stream_id`.
 
 **A failed audit write never fails the operation.** The row is written after

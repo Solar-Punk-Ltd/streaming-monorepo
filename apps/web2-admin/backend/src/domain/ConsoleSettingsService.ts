@@ -7,7 +7,7 @@ import { Logger } from './Logger.js';
 
 const logger = Logger.getInstance();
 
-/** A stored name the console no longer carries, or none at all, is worn as Default. */
+/** A stored name the console no longer carries, or none at all, is worn as `DEFAULT_ADMIN_THEME`. */
 function wornLook(stored: string | null): AdminThemeName {
   return isAdminThemeName(stored) ? stored : DEFAULT_ADMIN_THEME;
 }
@@ -20,8 +20,8 @@ export class ConsoleSettingsService {
   ) {}
 
   /**
-   * A read that fails answers Default rather than failing `/api/config`, which also carries the feed and the
-   * viewer link the login page and the stream pages need, and which never touched the database before.
+   * A read that fails answers `DEFAULT_ADMIN_THEME` rather than failing `/api/config`, which also carries the feed and
+   * the viewer link the login page and the stream pages need, and which never touched the database before.
    */
   async defaultTheme(): Promise<AdminThemeName> {
     try {

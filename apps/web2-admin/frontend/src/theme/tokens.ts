@@ -91,8 +91,6 @@ export const THEME_TOKENS: Record<AdminThemeName, ThemeTokens> = {
     flatSurfaces: true,
     shades: null,
   },
-  // web3privacy.info's own: a black page, white text, the neon green with its dark green written on
-  // it, Archivo for text and Domine headings in the regular weight, calls to action in capitals.
   web3privacy: {
     label: 'Web3Privacy',
     colors: {

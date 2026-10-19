@@ -49,7 +49,7 @@ export function saveThemeChoice(name: AdminThemeName | null, storage: ThemeStora
   saveLook(THEME_CHOICE_STORAGE_KEY, name, storage);
 }
 
-/** The host's default as this browser last heard it, or Default before it ever did. */
+/** The host's default as this browser last heard it, or `DEFAULT_ADMIN_THEME` before it ever did. */
 export function loadHostLook(storage: ThemeStorage | null = browserStorage()): AdminThemeName {
   return loadLook(HOST_THEME_STORAGE_KEY, storage) ?? DEFAULT_ADMIN_THEME;
 }

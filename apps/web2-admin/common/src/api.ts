@@ -227,7 +227,7 @@ export interface FeedStreamEntry {
   renditions?: Rendition[];
 }
 
-/** GET /api/streams/:id/feed and POST /api/streams/:id/publish */
+/** POST /api/streams/:id/publish and /unpublish, and the uploader's POST /api/internal/streams/:id/state. */
 export interface PublishResult {
   stream: Stream;
   feed: {
@@ -280,8 +280,8 @@ export interface PublicConfig {
   /** Base URL of the branded viewer, if configured, for "open in player" links. */
   viewerBaseUrl: string | null;
   /**
-   * The look this host's console starts in for a browser whose admin picked none of their own. Default until an
-   * admin sets another, and Default again when the stored one is a look the console no longer carries.
+   * The look this host's console starts in for a browser whose admin picked none of their own. `DEFAULT_ADMIN_THEME`
+   * until an admin sets another, and that again when the stored one is a look the console no longer carries.
    */
   defaultTheme: AdminThemeName;
 }
@@ -293,10 +293,12 @@ export interface ApiError {
 }
 
 /* ── Internal API: what the stream uploader calls ─────────────────────────
- * Routes under /api/internal, authenticated with `Authorization: Bearer
- * <INTERNAL_API_TOKEN>`, never with a session cookie. The uploader resolves a
- * draft when an encoder connects and reports state changes; the admin API
- * stays the only writer of the stream list feed.
+ * Routes under /api/internal, authenticated with a bearer token and never with
+ * a session cookie. The manager's routes take the registrar token,
+ * `INTERNAL_API_TOKEN`. The uploader's take its stage's own token, which the
+ * manager generated and pushed by its sha256, and refuse the registrar token.
+ * The uploader resolves a draft when an encoder connects and reports state
+ * changes. The admin API stays the only writer of the stream list feed.
  */
 
 /** GET /api/internal/streams/by-ingest/:app/:stream (ingest stream id = `<app>/<stream>`) */

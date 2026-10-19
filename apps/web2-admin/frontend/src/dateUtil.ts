@@ -22,8 +22,8 @@ const pad = (n: number) => String(n).padStart(2, '0');
 
 /**
  * The single producer of the `DD/MM/YYYY HH:mm` string. Hand-rolled rather
- * than `toLocaleString`, because the picker renders the same instant from
- * `DATE_TIME_FORMAT` and a locale would answer something else.
+ * than `toLocaleString`, because the schedule field's date box renders the
+ * day from `DATE_FORMAT` and a locale would answer something else.
  */
 export function formatHumanDateTime(date: Date): string {
   return (

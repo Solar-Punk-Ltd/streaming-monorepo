@@ -1,10 +1,11 @@
 #!/usr/bin/env node
 /**
  * A throwaway in-memory stand-in for the web2-admin backend, for UI work when
- * the real API (and its Postgres and Bee) are not running. It implements the
- * checkpoint-2 contract closely enough to click through every screen: cookie
- * sessions, the seeded admin user, stream CRUD, thumbnails, publish/unpublish
- * against a fake feed, and the ingest details.
+ * the real API (and its Postgres and Bee) are not running. It implements enough
+ * of the API to click through every screen: cookie sessions, the seeded admin
+ * user, stream CRUD, thumbnails, publish/unpublish against a fake feed, the
+ * ingest details, the stages, the catalogue stamp and its move, the Funding
+ * page's three tabs, the build line and the host's look.
  *
  * It is NOT the contract and never validates like yup does. Point the console
  * at it with these, from apps/web2-admin:
@@ -33,9 +34,10 @@
  * tab shows, and a deposit or a withdrawal is mined two seconds after it is
  * sent and confirmed six seconds after that, once its block is final, the
  * chequebook bulk named in the view until then.
- * The host's default look starts as MOCK_DEFAULT_THEME, Default when unset, and
- * an admin changes it on the Access page as on a real host, for as long as the
- * mock runs.
+ * The host's default look starts as MOCK_DEFAULT_THEME. Unset, it is the retired
+ * `default`, which the console does not carry, so the console wears Swarm.
+ * PUT /api/config/default-theme changes it for as long as the mock runs. The
+ * console has no page that calls it.
  *
  * MOCK_FUNDING=off answers the page as not set up, and MOCK_FUNDING=refuse has
  * the chain's node refuse every transfer at the relay, which is then mined

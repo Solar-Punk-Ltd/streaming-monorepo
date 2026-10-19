@@ -12,7 +12,7 @@
 --                  to null when that user is removed, because the row has to
 --                  outlive the account it names.
 --   actor_name     the username at the time, which survives the removal, or
---                  the system reason ('boot', 'cli'). Null for the uploader.
+--                  the system reason ('boot', 'cli', 'funding'). Null for the uploader.
 --   action         dotted: stream.create, stream.publish, user.add, ...
 --   stream_id      no foreign key, deliberately. Deleting a stream is one of
 --                  the things recorded here, and its history must not be

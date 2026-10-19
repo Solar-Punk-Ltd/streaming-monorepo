@@ -17,11 +17,11 @@ import { Logger } from './Logger.js';
 
 const logger = Logger.getInstance();
 
-/** Long enough for a busy node, short enough not to hold a publish open. */
 // A reference the node does not hold is not a local miss: Bee asks the network
 // first and answers 404 only when retrieval gives up, measured at 5-10 s on the
 // test node against 0.2 s for a reference it has. The budget has to cover that
 // or every stale reference reads as "could not verify".
+/** Long enough for a busy node, short enough not to hold a publish open. */
 const REFERENCE_CHECK_TIMEOUT_MS = 30_000;
 
 /**

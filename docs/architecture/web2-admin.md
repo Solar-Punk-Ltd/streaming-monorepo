@@ -52,9 +52,9 @@ At the platform level the admin layer also:
 
 - writes the brand's catalogue, signed by the brand key, through the dedicated
   catalogue node and the immutable batch the manager designates,
-- shows each rung's stamp and chequebook as the manager last pushed them,
-  and tops up or dilutes a batch and fills or drains a chequebook through the
-  manager's funding API,
+- shows each rung's stamp and chequebook as the manager last pushed them, and
+  tops up or dilutes a node's batches and brings its chequebook to a target
+  through the manager's funding API, each paid for by that node,
 - funds the brand's node wallets with xDAI and xBZZ from the brand wallet,
 - hands brand config to the Viewer SPA.
 
@@ -65,7 +65,9 @@ At the platform level the admin layer also:
   it holds is the brand wallet, and it signs with that alone.
 - It calls the manager's funding API and nothing else of the manager's. It
   does not provision or stop a stage, buy a batch, or choose the catalogue's
-  batch: the manager pushes what it runs, and the admin reads it.
+  batch: the manager pushes what it runs, and the admin reads it. A top-up, a
+  dilution or a chequebook move is asked of the manager, which asks the node,
+  and the admin signs nothing for it.
 - It carries no stage in its env file: no ingest address, port or passphrase,
   Bee address or batch id. It learns them from the manager's pushes, and
   refuses to publish, saying why, until the manager has designated a
@@ -120,7 +122,7 @@ Same as streaming-infra-manager, so the two codebases feel like one team's:
 - TypeScript, ESM, exact-pinned dependencies, pnpm workspace.
 - `apps/web2-admin/backend`: Express 5, `pg`, yup validation, SQL migrations in
   the repo run on startup, Node test runner through tsx (unit and integration).
-- `apps/web2-admin/frontend`: React 18, MUI, Vite. The console is modelled on
+- `apps/web2-admin/frontend`: React 19, MUI 9, Vite. The console is modelled on
   msrs-client (https://github.com/Solar-Punk-Ltd/msrs-client), the deprecated
   admin UI this console replaces.
 - Package scope `@streaming-monorepo/`.

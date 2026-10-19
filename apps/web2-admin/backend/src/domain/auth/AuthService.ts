@@ -66,8 +66,8 @@ export interface SignInResult {
 }
 
 /**
- * Who may use the console, and which sessions are open. Ported from
- * streaming-infra-manager's `manager/src/domain/auth/AuthService.ts`.
+ * Who may use the console, and which sessions are open. Ported from the
+ * manager's `apps/infra-manager/manager/src/domain/auth/AuthService.ts`.
  *
  * Everything that decides whether a request gets in is here: the password
  * check, the lockout, the session's two clocks. The middleware and the routes
