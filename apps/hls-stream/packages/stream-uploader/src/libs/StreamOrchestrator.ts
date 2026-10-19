@@ -390,7 +390,7 @@ export class StreamOrchestrator {
    * An entry means a live session. **Its absence does not mean the id is free**, which is what the
    * guard used to read it as: `recoverStream` registers a live stream and writes no claimant, and
    * both engines resume such a stream by delivering segments rather than by announcing, so nothing
-   * ever fills it in. Absent means the owner is unknown. See `mayTakeOver`.
+   * ever fills it in. Absent means the owner is unknown. See `reasonToRefuseTakeover`.
    */
   private streamClaimants = new Map<string, StreamClaimant>();
   /**
@@ -580,7 +580,7 @@ export class StreamOrchestrator {
       // restart, so whoever announced the broadcast originally was never recorded here and there is
       // nothing to compare against. What this does is make the session that resumed it the incumbent,
       // so the announce after this one is judged against a real address instead of against the
-      // unknown-owner rule in `mayTakeOver`. Reaching here at all is the uncommon case: an engine
+      // unknown-owner rule in `reasonToRefuseTakeover`. Reaching here at all is the uncommon case: an engine
       // that resumed the stream with segments never calls this method again.
       this.streamClaimants.set(streamId, claimant);
       // ⛔ Reaching here at all proves the engine opened a NEW publish session, so what the recovered
