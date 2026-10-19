@@ -77,18 +77,17 @@ REST_ARGS=()
 
 # Host ports, as `NAME:stock:base`.
 #
-# The two numbers are different questions and used to be one. `stock` is what a plain deploy falls
+# The two numbers are different questions. `stock` is what a plain deploy falls
 # back to when the variable is unset, and it matches the `${NAME:-NNNN}` fallback in the compose file
 # that publishes it. `base` is the origin of the `base + slot*10` arithmetic, where each service
 # holds a unique last digit (0-9) so slots cannot collide.
 #
-# Collapsing them hid a real divergence for seven of the ten, because `apply_port_slot` leaves an
-# already-set variable alone at slot 0 and those seven carry a value in `.env.sample`. SRS_RTMP_PORT,
-# SRS_HTTP_PORT and SRS_HTTP_API_PORT carry none, in `.env.sample` or `engines/srs/.env.sample`, so a stock deploy took
-# 10002 and 10003 from the arithmetic origin while `engines/srs/docker-compose.yml` documents 1935
-# and 8080. Since d6394a3 passed these into SRS's own config, that is what SRS bound: consistent end
-# to end, and not what the ports are documented as, so an operator opening 1935 for a broadcaster
-# opened a port nothing listened on.
+# Keeping them apart matters because `apply_port_slot` leaves an already-set variable alone at slot 0,
+# and SRS_RTMP_PORT, SRS_HTTP_PORT and SRS_HTTP_API_PORT carry no value in `.env.sample` or
+# `engines/srs/.env.sample`. With one number a stock deploy would take 10002 and 10003 from the
+# arithmetic origin while `engines/srs/docker-compose.yml` documents 1935 and 8080. Since the
+# entrypoint passes these into SRS's own config, that is what SRS would bind, so an operator opening
+# 1935 for a broadcaster would open a port nothing listens on.
 readonly PORT_VARS=(
   "API_PORT:3000:10000"
   "SRS_SRT_PORT:10080:10001"
@@ -99,7 +98,7 @@ readonly PORT_VARS=(
   "BEE_UPLOADER_P2P_PORT:1634:10006"
   "BEE_GATEWAY_API_PORT:1733:10007"
   "BEE_GATEWAY_P2P_PORT:1734:10008"
-  # SRS's read-only stats API. Added so two profiles no longer collide on the fixed 1985 it bound.
+  # SRS's read-only stats API, slotted so two profiles on one host do not collide on 1985.
   "SRS_HTTP_API_PORT:1985:10009"
 
   # ⛔ A SECOND DECADE, because the first one has no digit left. The rule above is that each service
@@ -108,9 +107,7 @@ readonly PORT_VARS=(
   # arithmetic and the same unique-digit rule inside it.
   #
   # ⚠️ The two blocks meet at slot 100, where 10000 + 100*10 is 11000, so a deployment there would
-  # collide with slot 0's own bee nodes. Since 2026-09-04 `parse_profile_args` refuses any slot above
-  # 99, which is what this second decade costs and it is now paid for. Filed with the port scheme's
-  # own note above.
+  # collide with slot 0's own bee nodes, so `parse_profile_args` refuses any slot above 99.
   "BEE_RUNG_480P_API_PORT:11001:11001"
   "BEE_RUNG_480P_P2P_PORT:11002:11002"
   "BEE_RUNG_720P_API_PORT:11003:11003"
@@ -288,8 +285,7 @@ parse_profile_args() {
   #
   # ⛔ The ceiling is the SECOND port block and not the TCP range. The per-rung bee nodes take six
   # ports out of 1100x on the same arithmetic, so slot 100 puts the first block at 11000, on top of
-  # slot 0's own bee nodes. That collision was carried as a ⚠️ note beside PORT_VARS and nothing
-  # enforced it until 2026-09-04. Slots 1, 2 and 7 are all that have ever been used.
+  # slot 0's own bee nodes.
   if ! [[ "$PORT_SLOT" =~ ^[0-9]{1,2}$ ]]; then
     echo -e "${RED}ERROR: --portSlot must be 0-99 (got: $PORT_SLOT).${NC}" >&2
     echo "Slot 100 puts the first port block at 11000, on top of the per-rung bee ports." >&2
@@ -318,16 +314,16 @@ parse_profile_args() {
   require_override_shape "--release-commit" "$RELEASE_COMMIT" '^[0-9a-f]{40}$' \
     "a whole commit, 40 lower-case hex characters"
 
-  # A named profile always points at its OWN env file, present or not. The old fallback to the
-  # default `.env` did not merely lose this profile's settings, it silently adopted the default
-  # deployment's ports, STAMP and STREAM_KEY, so `--profile=streamr1` brought up a second stack
-  # fighting the first one for the same port range.
+  # A named profile always points at its OWN env file, present or not. Falling back to the default
+  # `.env` would not merely lose this profile's settings, it would silently adopt the default
+  # deployment's ports, STAMP and STREAM_KEY, and bring up a second stack fighting the first one for
+  # the same port range.
   #
   # Missing is a warning here and a refusal in `require_env`, which only `deploy.sh` calls, because
   # the two cases are genuinely different. Deploying without the profile's settings is the harm.
   # Stopping, cleaning and health-checking need no env at all: those containers are identified by
-  # the compose project name, and refusing here stranded a running stack whose env file had been
-  # deleted, or that was being torn down from a fresh clone of the deploy host.
+  # the compose project name, and refusing here would strand a running stack whose env file has been
+  # deleted, or that is being torn down from a fresh clone of the deploy host.
   if [ "$PROFILE" != "default" ]; then
     ENV_FILE="$ROOT_DIR/.env.$PROFILE"
     REMOTE_BASE="~/swarm-hls-stream-$PROFILE"
@@ -344,12 +340,12 @@ parse_profile_args() {
 PORT_OVERRIDES_TEXT=""
 
 # Resolve every PORT_VAR and write the chosen value into PORT_OVERRIDES_TEXT
-# (which deploy.sh injects into .env.deploy as a 2nd --env-file for compose).
+# (which deploy.sh injects into .env.deploy.<profile> as a 2nd --env-file for compose).
 #
 # Rule:
 #   - PORT_SLOT=0 (no --portSlot flag): keep env values; only fill the
 #     unset ports with their built-in default.
-#   - PORT_SLOT=1-99: AUTHORITATIVE, every port becomes default + slot*10,
+#   - PORT_SLOT=1-99: AUTHORITATIVE, every port becomes base + slot*10,
 #     regardless of any value in .env.<profile>. This avoids surprises where a
 #     hand-edited port in the env file silently survives the slot shift.
 #
@@ -448,12 +444,9 @@ release_overrides_text() {
 
 # Print a script's leading comment header as its `--help`, with the `#` prefix stripped.
 #
-# ⛔ This used to be a hardcoded line range, `sed -n '2,NNp'`, once per script, and a line number is
-# not a thing a comment stays at. It drifted twice. `bee-publishers.sh` ended its help with a stray
-# `set -u`, `spend-ledger.sh` with `set -u` and a blank line, and `drain-stage.sh` spent two days
-# cutting its own last paragraph in half so the help said no batch id is ever printed whole and
-# stopped before saying what it is printed as instead. The header's end is where the comments end,
-# so that is what is read now.
+# ⛔ The header's end is where the comments end, and that is what is read, never a fixed line range.
+# A line number is not a thing a comment stays at, and a range that drifts cuts a help text short or
+# pads it with code.
 #
 # @param $1 the script to read, which a caller passes as "${BASH_SOURCE[0]}"
 print_comment_header() {
@@ -523,7 +516,7 @@ require_env() {
 get_target() {
   local service="$1"
   local value svc
-  # Use `type` to distinguish false (boolean) from missing (null) from string
+  # Tell false (boolean) from missing (null) from any other value
   value=$(jq -r ".services[\"$service\"] | if . == false then \"false\" elif . == null then \"missing\" else tostring end" "$CONFIG_FILE")
   if [ "$value" = "missing" ]; then
     value="localhost"
@@ -621,7 +614,6 @@ get_targets() {
     local target
     target=$(get_target "$svc")
     if is_enabled "$target" && ! is_native "$target"; then
-      # Check if already seen
       local found=false
       for s in "${seen[@]}"; do
         [ "$s" = "$target" ] && found=true && break
@@ -634,7 +626,6 @@ get_targets() {
   done
 }
 
-# Get services assigned to a specific target.
 get_services_for_target() {
   local target="$1"
   for svc in "${ALL_SERVICES[@]}"; do
@@ -689,7 +680,6 @@ get_filtered_services_for_target() {
   done
 }
 
-# Build --profile flags for a list of services.
 build_profile_flags() {
   local flags=""
   for svc in "$@"; do
@@ -826,10 +816,8 @@ shell_quote() {
 # which is the UTF-16 code units `String.length` uses, so a non-ASCII secret could pass here and
 # throw at service startup.
 #
-# **node is not on a deploy target**, which is where an operator issues keys from, and this used to
-# say the requirement was fair because `deploy.sh` did not ship `config.json` "so it cannot run there
-# anyway". That premise has gone, and what was left underneath was `node: command not found`
-# on the one machine the script exists for. Measured on `<host>`: no node, docker present.
+# **node is not on a deploy target**, which is where an operator issues keys from. Measured on
+# `<host>`: no node, docker present.
 #
 # So node if it is here, and node in a container if it is not. The derivation itself is written once
 # and handed to whichever runs it, because two copies of an HMAC is two chances to issue keys the
@@ -1016,10 +1004,9 @@ engine_env_overrides_text() {
       fi
       # Single-quote the value: the override file is both `source`d and parsed by compose, and
       # secrets may contain $, !, #, ... Through `shell_quote` rather than repeating the escape,
-      # because the copy that used to live here was the same expression that is wrong on bash 3.2:
-      # an engine env value containing an apostrophe wrote an unbalanced line, and the `source` of
-      # it at the two sites below then failed with `unexpected EOF` under `set -e`, aborting the
-      # deploy on a syntax error naming a temp file.
+      # because a hand-written copy of it is wrong on bash 3.2: an engine env value containing an
+      # apostrophe writes an unbalanced line, and the `source` of it at the two sites below then
+      # fails with `unexpected EOF` under `set -e`, aborting the deploy.
       value=$(shell_quote "${!key:-}")
       out+="${key}=${value}\n"
     done < "$file"
