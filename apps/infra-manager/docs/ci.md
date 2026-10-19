@@ -575,8 +575,8 @@ it, and the job's first step proves it rather than trusting it.
 
 `createdb` is not needed on the runner: both jobs that need databases call it
 inside the Postgres service container. Verified here on 2026-09-10 against
-`postgres:16-alpine`, the image pinned then. The jobs have run
-`postgres:16.15-alpine` at the digest below since 2026-09-27, and the commands
+`postgres:16-alpine`, the image pinned then. The jobs now run
+`postgres:16.15-alpine` at the digest below, resolved 2026-09-27, and the commands
 at the end of this page name that image too.
 
 ## What nothing here guards
