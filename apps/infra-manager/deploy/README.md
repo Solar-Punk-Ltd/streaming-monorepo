@@ -749,7 +749,9 @@ docker compose down -v            # nuke postgres data too, so be sure
   loopback, never directly from outside. It serves the built React SPA and
   reverse-proxies `/auth`, `/profiles`, `/groups`, `/health`, `/services`,
   `/config`, `/targets`, `/manager-settings`, `/stages`, `/version`,
-  `/versions`, `/chequebook`, `/metrics` and `/events` to `api:9876`. Every
+  `/versions`, `/chequebook`, `/metrics` and `/events` to `api:9876`, and
+  `/api/admin-funding`, which only the web2 admin calls and the dev server
+  does not proxy. Every
   path the dev server proxies has to appear here too. A path wired in one
   place and not the other is how the
   whole transfer history had no route in production until 2026-09-11, and a
