@@ -50,7 +50,7 @@ Targets support SSH aliases (e.g. `"my-server"` if defined in `~/.ssh/config`).
 
 ### Local development / debugging stream-uploader natively
 
-Set `stream-uploader` to `"native"` to run it as a host process (e.g. `pnpm dev`) while SRS still runs in Docker:
+Set `stream-uploader` to `"native"` to run it as a host process (`pnpm build:uploader && pnpm uploader:start` from `apps/hls-stream`) while SRS still runs in Docker:
 
 ```json
 {
@@ -263,7 +263,7 @@ A profile is a deployment instance: same topology (from `config.json`), separate
 
 - **Docker compose project name** (`-p <profile>`): namespaces containers and named volumes (`streamer1-bee-uploader-1`, `streamer1_srs-media`, ...).
 - **Env file** at `<repo-root>/.env.<profile>`: required when `--profile` is given (no silent fallback to `.env`).
-- **Engine env files** at `engines/<engine>/.env.<profile>` for each enabled engine: created automatically on first deploy (copied from the engine's `.env`, or its `.env.sample`). Engine ports (`OME_SRT_PORT`, `OME_HLS_PORT`, ...) are **not** shifted by `--portSlot`, so review the generated file when running multiple instances on one host.
+- **Engine env files** at `engines/<engine>/.env.<profile>` for each enabled engine: created automatically on first deploy (copied from the engine's `.env`, or its `.env.sample`). OME's ports (`OME_SRT_PORT`, `OME_HLS_PORT`) are **not** shifted by `--portSlot`, while the SRS ports are (table below), so review the generated file when running more than one OME instance on one host.
 - **Bee data dir** (set `BEE_UPLOADER_DATA_DIR=./data/bee-uploader-<profile>` etc. in the profile env).
 - **Host ports**: see `--portSlot` below for the easy way, or set `BEE_UPLOADER_API_PORT`, `API_PORT`, `SRS_*_PORT`, ... explicitly in `.env.<profile>`.
 - **Remote dir** when targets are SSH hosts: `~/swarm-hls-stream-<profile>`.

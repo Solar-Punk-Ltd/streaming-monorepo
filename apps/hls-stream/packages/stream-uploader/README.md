@@ -341,7 +341,7 @@ is an ordinary event with a designed answer.
 empty, and the playlist lists every empty sequence between two held segments as an `#EXT-X-GAP` entry
 carrying the same derived date-time, the deployment's declared fragment length and a URI of
 `gap-<sequence>`. RFC 8216bis §4.4.4.7 defines the tag as an entry whose URI holds no media and which
-a client should skip, and hls.js 1.6.15 reads it into `frag.gap` and skips the fragment.
+a client should skip, and hls.js (1.6.15 when this was measured) reads it into `frag.gap` and skips the fragment.
 
 The alternative was leaving the hole out, which is what the playlists did until then, and HLS numbers
 the entries it lists consecutively from `#EXT-X-MEDIA-SEQUENCE`. So every entry behind a hole was
@@ -557,7 +557,7 @@ The epochs ride with the group in `state/ladder/groups.json` and with each rung'
 a crash after a restart comes back on the re-anchored dating rather than re-dating everything after
 the gap. The recording is built from the same function as the live playlists, so it carries the same
 dates. A rung that rejoined the ladder as a new session can carry different sequences there, numbered on
-from its own last segment, see the rejoined rung entry in `docs/known-issues.md`.
+from its own last segment, see the rejoined rung entry in the monorepo's [docs/known-issues.md](../../../../docs/known-issues.md).
 
 ⚠️ Nothing has measured what a player makes of the step across the break, which is the length of the
 outage rather than a whole number of fragments. The harness contract allows a forward step of any
@@ -1030,12 +1030,14 @@ Currently supported: **SRS** (SRT/RTMP to HLS) and **OME** (OvenMediaEngine, MPE
 
 ## Supported Engines
 
-Neither engine transcodes as this repository configures them. OME's output profile sets
-`<Bypass>true</Bypass>` on both the video and the audio encode, and the SRS config carries no
-`transcode` section at all, so both engines remux the broadcaster's own elementary streams into HLS
-and the picture a viewer gets is the picture that was published. Changing the resolution or the
-bitrate is therefore the broadcaster's to do, not the deployment's, which is the same fact
-the `profiles` measurement (kept outside the repository) records from the other direction.
+With `ABR_ENABLED` off, neither engine transcodes. OME's output profile sets
+`<Bypass>true</Bypass>` on both the video and the audio encode, and the SRS template carries no
+transcode block until `engines/srs/entrypoint.sh` writes one in for the ladder. So without the ladder
+both engines remux the broadcaster's own elementary streams into HLS and the picture a viewer gets is
+the picture that was published. Changing the resolution or the bitrate is then the broadcaster's to
+do, not the deployment's, which is the same fact the `profiles` measurement (kept outside the
+repository) records from the other direction. With the ladder on, SRS re-encodes every rung, see
+[ABR ladder](#abr-ladder) above.
 
 ### OME Engine - OvenMediaEngine :
 
@@ -1386,9 +1388,10 @@ curl -G http://localhost:3000/stream/status \
 
 ## Scripts
 
-| Script           | Description                 |
-| ---------------- | --------------------------- |
-| `pnpm build`     | Compile TypeScript          |
-| `pnpm start`     | Start the server            |
-| `pnpm lint`      | Run oxlint                  |
-| `pnpm typecheck` | Type check without emitting |
+| Script           | Description                                                              |
+| ---------------- | ------------------------------------------------------------------------ |
+| `pnpm build`     | Compile TypeScript                                                       |
+| `pnpm start`     | Start the server                                                         |
+| `pnpm lint`      | Run oxlint                                                               |
+| `pnpm typecheck` | Type check without emitting                                              |
+| `pnpm test`      | Unit tests, then the test-count floor in `scripts/assert-test-floor.mjs` |
