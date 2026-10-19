@@ -471,3 +471,6 @@ each one has a setting that moves it. Once a host runs, keep that setting as it 
 | The manager's stacks  | `/opt/streaming/streaming-infra-manager-versions` and `/opt/streaming/streaming-infra-manager-data/<deployment>`, `STACK_VERSIONS_ROOT` and `BEE_DATA_ROOT` |                                                                |                               |
 | The manager's ssh key | `/opt/streaming/manager-ssh`, `MANAGER_SSH_DIR`                                                                                                             |                                                                |                               |
 | A stack deployment    | `~/swarm-hls-stream-<profile>` of the account the manager logs in as                                                                                        | the deployment's profile name                                  | `srs-media`, `uploader-state` |
+
+The admin's host folder holds `apps/web2-admin` alone, whatever its name: its deploy sends the
+admin's own folder, not the whole repository.
