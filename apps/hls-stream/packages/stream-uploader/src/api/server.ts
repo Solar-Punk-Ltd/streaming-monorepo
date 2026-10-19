@@ -52,7 +52,6 @@ export function createApiApp(streamOrchestrator: StreamOrchestrator, options: Ap
   const { authToken, engines = [], limits = DEFAULT_REQUEST_LIMITS, waitingForNode = () => null } = options;
   const app = express();
 
-  // Global middleware
   app.use(requestLogger);
   // Ahead of every gate, so the refusal is counted whichever one answers.
   app.use(
@@ -131,13 +130,11 @@ export function createApiApp(streamOrchestrator: StreamOrchestrator, options: Ap
     }),
   );
 
-  // Engine plugin routers
   for (const engine of engines) {
     app.use(engine.prefix, engine.createRouter(streamOrchestrator));
     logger.info(`[ApiServer] Engine mounted: ${engine.name} at ${engine.prefix}`);
   }
 
-  // Core routes
   app.use('/stream', createStreamRouter(streamOrchestrator));
   app.use('/metrics', createMetricsRouter(streamOrchestrator));
   app.use(
@@ -149,7 +146,6 @@ export function createApiApp(streamOrchestrator: StreamOrchestrator, options: Ap
     ),
   );
 
-  // 404 + error handling
   app.use(notFound);
   app.use(errorHandler);
 

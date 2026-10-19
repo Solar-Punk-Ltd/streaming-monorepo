@@ -227,7 +227,6 @@ export class OmeHlsPuller {
     if (!this.mediaPlaylistUrl) {
       const playlistUrl = await this.fetchMediaPlaylistUrl();
       if (!playlistUrl) {
-        // If not ready yet (404)
         return null;
       }
     }
