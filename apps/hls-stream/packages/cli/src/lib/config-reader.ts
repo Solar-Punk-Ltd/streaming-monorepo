@@ -109,7 +109,8 @@ function hostFromTarget(target: string): string {
 
 /**
  * Resolve a bee node target from config.json + .env.
- * Returns null if the service is explicitly disabled.
+ * Returns null only when the service is set to false. No entry, or the string 'disabled', falls
+ * back to the fallback env var and then localhost.
  */
 function resolveBeeTarget(
   service: string,
