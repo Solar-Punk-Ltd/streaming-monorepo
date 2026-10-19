@@ -599,7 +599,7 @@ async function handleAdmission(
 
     logger.info(`[OME] Stream opening: ${streamId} (${mediatype})`);
 
-    // Not awaited, so the admission reply is not held up.
+    // The poller starts in the background, so the admission reply is not held up on it.
     startPuller(orchestrator, streamId, parsed.app, parsed.stream);
 
     reply(res, { allowed: true, lifetime: 0, reason: 'ok' });
