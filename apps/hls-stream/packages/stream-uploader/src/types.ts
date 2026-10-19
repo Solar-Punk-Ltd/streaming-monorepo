@@ -695,10 +695,6 @@ export type StreamLifecycle =
   | typeof STREAM_LIFECYCLE_FAILED
   | typeof STREAM_LIFECYCLE_UNKNOWN;
 
-/**
- * What became of a stream, for a caller that was answered `202` by `POST /stream/stop` and needs to
- * find out whether the VOD it asked for exists.
- */
 /** The drain ran past its deadline. The finalize may still be in flight, so a VOD may yet appear. */
 export const STOP_FAILURE_DRAIN_TIMEOUT = 'drain_timeout' as const;
 /** The finalize rejected. Nothing further will happen for this stream without an operator. */
@@ -715,6 +711,10 @@ export const STOP_FAILURE_FINALIZE_FAILED = 'finalize_failed' as const;
  */
 export type StopFailureReason = typeof STOP_FAILURE_DRAIN_TIMEOUT | typeof STOP_FAILURE_FINALIZE_FAILED;
 
+/**
+ * What became of a stream, for a caller that was answered `202` by `POST /stream/stop` and needs to
+ * find out whether the VOD it asked for exists.
+ */
 export interface StreamStatusReport {
   streamId: string;
   state: StreamLifecycle;
