@@ -1030,12 +1030,14 @@ Currently supported: **SRS** (SRT/RTMP to HLS) and **OME** (OvenMediaEngine, MPE
 
 ## Supported Engines
 
-Neither engine transcodes as this repository configures them. OME's output profile sets
-`<Bypass>true</Bypass>` on both the video and the audio encode, and the SRS config carries no
-`transcode` section at all, so both engines remux the broadcaster's own elementary streams into HLS
-and the picture a viewer gets is the picture that was published. Changing the resolution or the
-bitrate is therefore the broadcaster's to do, not the deployment's, which is the same fact
-the `profiles` measurement (kept outside the repository) records from the other direction.
+With `ABR_ENABLED` off, neither engine transcodes. OME's output profile sets
+`<Bypass>true</Bypass>` on both the video and the audio encode, and the SRS template carries no
+transcode block until `engines/srs/entrypoint.sh` writes one in for the ladder. So without the ladder
+both engines remux the broadcaster's own elementary streams into HLS and the picture a viewer gets is
+the picture that was published. Changing the resolution or the bitrate is then the broadcaster's to
+do, not the deployment's, which is the same fact the `profiles` measurement (kept outside the
+repository) records from the other direction. With the ladder on, SRS re-encodes every rung, see
+[ABR ladder](#abr-ladder) above.
 
 ### OME Engine - OvenMediaEngine :
 
