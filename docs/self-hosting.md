@@ -402,37 +402,25 @@ Every uploader Bee node needs two tokens on Gnosis Chain: xDAI for gas and xBZZ 
 batch and its chequebook. The manager holds no wallet. It shows each node's address, and you send the
 tokens there from a wallet of your own.
 
-1. **Read each node's address.** The pool card in the manager shows it, and so does the CLI from a
-   checkout of `apps/hls-stream`:
-
-   ```sh
-   pnpm node:addresses
-   ```
+1. **Read each node's address.** From the pool card in the manager.
 
 2. **Send xDAI and xBZZ to that address**, from your own wallet. A fraction of an xDAI covers a long
    time of gas. How much xBZZ depends on the batch you buy, and the next step prints the cost first.
 
-3. **Buy a batch per rung.** From the pool card in the manager, or with the CLI. The batch is held by
-   the node that bought it, so name the rung:
+3. **Buy a batch per rung.** From the pool card in the manager. The batch is held by the node that
+   bought it, so buy it on the rung it is for. Higher rungs burn postage faster, roughly seven times
+   as fast at 1080p as at 360p, so watch the top rung's batch.
 
-   ```sh
-   pnpm stamp:buy --rung 360p <amount> <depth>
-   ```
+4. **Check the balances** at any time, on the pool card. Watch the available balance of a
+   chequebook, not its total. The difference is cheques already written that a peer has not cashed
+   yet.
 
-   It prints the cost and how long the batch lasts, and asks before it spends. Higher rungs burn
-   postage faster, roughly seven times as fast at 1080p as at 360p, so watch the top rung's batch.
-
-4. **Check the balances** at any time:
-
-   ```sh
-   pnpm node:wallets
-   ```
-
-   Watch `availableBalance` on a chequebook, not `totalBalance`. The difference is cheques already
-   written that a peer has not cashed yet.
-
-`apps/infra-manager/docs/features/abr-ladder.md` and `apps/hls-stream/packages/cli/README.md` have
-the details of both paths.
+The stack's CLI does the same for a stack you run by hand from a checkout of `apps/hls-stream`,
+where `deploy/config.json` and `.env` name the node: `pnpm node:addresses`,
+`pnpm stamp:buy --rung 360p <amount> <depth>` and `pnpm node:wallets`. It cannot reach a pool the
+manager deployed unless you point it there with `--url` and the Bee host firewall admits your
+address. `apps/infra-manager/docs/features/abr-ladder.md` and `apps/hls-stream/packages/cli/README.md`
+have the details of both paths.
 
 ## Firewall advice
 
