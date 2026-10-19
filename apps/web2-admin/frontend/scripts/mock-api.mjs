@@ -33,9 +33,10 @@
  * tab shows, and a deposit or a withdrawal is mined two seconds after it is
  * sent and confirmed six seconds after that, once its block is final, the
  * chequebook bulk named in the view until then.
- * The host's default look starts as MOCK_DEFAULT_THEME, Default when unset, and
- * an admin changes it on the Access page as on a real host, for as long as the
- * mock runs.
+ * The host's default look starts as MOCK_DEFAULT_THEME. Unset, it is the retired
+ * `default`, which the console does not carry, so the console wears Swarm.
+ * PUT /api/config/default-theme changes it for as long as the mock runs. The
+ * console has no page that calls it.
  *
  * MOCK_FUNDING=off answers the page as not set up, and MOCK_FUNDING=refuse has
  * the chain's node refuse every transfer at the relay, which is then mined

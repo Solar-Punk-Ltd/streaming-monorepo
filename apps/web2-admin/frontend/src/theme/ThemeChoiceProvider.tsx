@@ -17,7 +17,6 @@ interface ThemeChoice {
   hostLook: AdminThemeName;
   /** Keeps a pick of the admin's own, or forgets it with null so the console follows the host. */
   chooseLook: (name: AdminThemeName | null) => void;
-  /** Tells the console the host's default changed, after an admin saved a new one. */
 }
 
 const ThemeChoiceContext = createContext<ThemeChoice | null>(null);
