@@ -27,7 +27,7 @@
 # while a deliberately bogus codec answers false, so the probe discriminates rather than agreeing
 # with everything. Verified on x86-64 only; the v1.57 notes keep Arm64 Linux on Chromium.
 #
-# So the reason below no longer chooses anything, and nothing is invented to replace it. The open
+# So the reason above no longer chooses anything, and nothing is invented to replace it. The open
 # decision is whether to drop this apt repository for Chrome for Testing, whose archive keeps known
 # good builds rather than current stable only, which would make the browser version pinned by
 # playwright-core in the lockfile instead of unpinnable. That would also remove the signing key and
@@ -69,6 +69,7 @@ RUN apt-get update \
 # what it measures is the interval between the two. Split across a shell script and a report reader,
 # the fault's time and the sample's time come from different clocks on different machines, and the
 # quantity being measured is a few seconds.
+#
 # `iproute2` is `tc` and `ip`, which `deploy/scripts/shape-container-ingress.sh` needs to put a real
 # ingress policer on this container's own interface. ⛔ It belongs in THIS image and not only in
 # `Dockerfile.bench`: `browser-on-host.sh` builds this one, so a shaped viewer arm runs here, and
