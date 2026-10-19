@@ -31,7 +31,8 @@
  * curve. Never gate a browser arm on a peer floor with a short timeout.**
  *
  * The load-test write-ups are `docs/measurements/2026-08-15-b3-twelve-browser-nodes-on-one-host.md`
- * and `2026-08-15-a-penned-browser-node-holds-one-connection-per-node-we-give-it.md`.
+ * and `2026-08-15-a-penned-browser-node-holds-one-connection-per-node-we-give-it.md` (kept outside the
+ * repository).
  */
 import { spawn } from 'node:child_process';
 import { mkdtempSync } from 'node:fs';
