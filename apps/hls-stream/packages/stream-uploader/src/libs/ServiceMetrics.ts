@@ -457,7 +457,10 @@ interface MetricsCounters {
   segmentDurationsUnreadTotal: number;
   /** Requests refused by a credential gate, across every gate in the process. */
   authRejectionsTotal: number;
-  /** Announces refused because a live session on that stream id is still producing. */
+  /**
+   * Announces refused because another publisher holds that stream id, either still feeding it or
+   * having proved its publish key.
+   */
   takeoversRefusedTotal: number;
   ladderMarkersWrittenTotal: number;
   ladderMarkersFailedTotal: number;
