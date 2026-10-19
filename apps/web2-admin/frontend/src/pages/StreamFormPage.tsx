@@ -138,8 +138,6 @@ export function StreamFormPage() {
   const [error, setError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
 
-  // Thumbnail is three pieces of state: what the server has, what the
-  // operator just picked, and whether they asked for the stored one to go.
   const [picked, setPicked] = useState<File | null>(null);
   const [removeStored, setRemoveStored] = useState(false);
   // A refused pick is shown beside the picker, at the foot of a long form. In the form's own error
@@ -149,8 +147,8 @@ export function StreamFormPage() {
   // the form moved to another stream, is dropped instead of landing on the wrong one.
   const pickGeneration = useRef(0);
 
-  // The stages the manager pushed, for the picker. Loaded once: a stage that
-  // appears meanwhile shows on the next visit to the form.
+  // Loaded once, so a stage that appears meanwhile shows on the next visit to
+  // the form.
   const [stages, setStages] = useState<StageSummary[] | null>(null);
   const [stagesError, setStagesError] = useState<string | null>(null);
   // The save waiting on the operator's word that the first stage is final.
