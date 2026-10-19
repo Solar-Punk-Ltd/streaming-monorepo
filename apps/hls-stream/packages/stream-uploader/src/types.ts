@@ -251,11 +251,7 @@ export interface SegmentSize {
   duration: number;
 }
 
-/**
- * One rung as the player sees it: enough to build an EXT-X-STREAM-INF and to find the feed
- * carrying that rung's media playlist.
- */
-
+/** One uploaded segment as the manifest manager holds it. */
 export interface SegmentEntry {
   /** The engine's own running counter for this segment, which every uploader log line names. */
   index: number;
