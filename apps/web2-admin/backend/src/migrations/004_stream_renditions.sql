@@ -33,9 +33,10 @@
 --                     together — a ladder is finished when every rung has them,
 --                     which is what tells the uploader to report `vod`.
 --
--- ON DELETE CASCADE, plus an explicit delete in `finishUnpublish`: a row sent
--- back to `draft` has no ladder any more, and stale rungs would ride onto the
--- next entry it is published with.
+-- ON DELETE CASCADE: deleting the stream takes its rungs with it. An unpublish
+-- keeps them with the rest of the recording (since 2026-09-26), so a
+-- republished recording comes back with its ladder. A `live` report
+-- un-finishes them in the same statement that takes the row out of `vod`.
 
 CREATE TABLE stream_renditions (
   stream_id         UUID NOT NULL REFERENCES streams(id) ON DELETE CASCADE,
