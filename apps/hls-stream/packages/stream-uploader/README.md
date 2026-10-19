@@ -557,7 +557,7 @@ The epochs ride with the group in `state/ladder/groups.json` and with each rung'
 a crash after a restart comes back on the re-anchored dating rather than re-dating everything after
 the gap. The recording is built from the same function as the live playlists, so it carries the same
 dates. A rung that rejoined the ladder as a new session can carry different sequences there, numbered on
-from its own last segment, see the rejoined rung entry in `docs/known-issues.md`.
+from its own last segment, see the rejoined rung entry in the monorepo's [docs/known-issues.md](../../../../docs/known-issues.md).
 
 ⚠️ Nothing has measured what a player makes of the step across the break, which is the length of the
 outage rather than a whole number of fragments. The harness contract allows a forward step of any
