@@ -384,9 +384,10 @@ Left open after the nine phases:
   go dark. "Upgrading" in `docs/self-hosting.md` has each step. A fresh
   installation needs none of this.
 
-## Checkpoint 3: manager integration (built on `feat/stages`, 2026-09-29)
+## Checkpoint 3: manager integration (done with stages, merged 2026-10-03)
 
-- Manager deploys swarm-hls-stream from `main-v3`.
+- Manager deploys the stack from `apps/hls-stream` of this repository (it
+  deployed swarm-hls-stream's `main-v3` until the move of 2026-09-27).
 - Derive ingest host and ports from a manager profile (`10001 + slot*10`
   etc.) instead of env; provision and stop through the Manager API. Done as
   [stages](architecture/stages.md): the manager pushes each stage's public
