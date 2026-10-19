@@ -242,7 +242,7 @@ const CAUSE_SLOT = 'CAUSESLOT';
  * Written when a segment's whole retry window is spent with nothing landing, so the segment is
  * dropped and the next one to land carries the break.
  *
- * The only one of the six an index can be read off, which is why the bee-outage scenario asserts on
+ * The only one of the seven an index can be read off, which is why the bee-outage scenario asserts on
  * that index. {@link engineSkippedSegments} names two segments and neither of them is this one: it
  * names the edges of a gap rather than a segment anything was attempted for.
  */
@@ -380,12 +380,12 @@ export function omeSegmentLossReportedPattern(flags = ''): RegExp {
  *
  * ⛔ **The reason this is here and not an ordinary info line.** The shipped SRS webhook path
  * declares no break of its own, so on that engine the reset is the only evidence there is, and the
- * segment carries the marker on the strength of it. That made a fifth way to arm a discontinuity
- * that the harness could not count, which is exactly the blind spot the four above are spelled out
+ * segment carries the marker on the strength of it. That made another way to arm a discontinuity
+ * that the harness could not count, which is exactly the blind spot the lines above are spelled out
  * to prevent: six suites assert a clean broadcast armed none, and an arming the counter cannot see
  * passes them for ever.
  *
- * ⚠️ **It names no stream**, unlike the other four, because `ManifestManager` is not given one and
+ * ⚠️ **It names no stream**, unlike most of the others, because `ManifestManager` is not given one and
  * every line it writes is already anonymous. Nothing reads a stream off this: the counter counts.
  *
  * @param sequence the playlist sequence the numbering and the dating both continue from
