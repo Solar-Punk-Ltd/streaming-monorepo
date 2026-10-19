@@ -15,16 +15,16 @@ without `BEE_URL`, `POSTAGE_BATCH_ID` and `INGEST_HOST`.
 
 ## Decisions
 
-| Topic           | Decision                                                                                                                                                                                     |
-| --------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| What a stage is | A manager deployment that runs a stream uploader (kind `abr-uploader`, or `streamer`), with the node pool behind it. No new entity in the manager. Its id is the deployment's `instance_id`. |
-| Catalogue       | One per brand, signed by the brand key, listing the streams of every stage. One viewer per brand.                                                                                            |
-| Direction       | The manager **pushes** each stage's record into the admin. The admin calls one API of the manager's, the funding API, on a bearer token of its own, and nothing else.                        |
-| Binding         | A stream goes live only on its own stage. Every uploader gets a token of its own, and the admin answers a token only about its own stage's streams.                                          |
-| Keys            | Every stage signs its feeds with its own key. The brand key signs the catalogue alone and never leaves the admin.                                                                            |
-| Catalogue stamp | A batch of its own, immutable and deep, on a dedicated catalogue node the manager runs, pinned by id. Never a batch a rung stamps segments with.                                             |
-| Scope           | The admin reads stages and funds the node wallets ([funding.md](funding.md)). Buying batches stays in the manager; stamp top-ups, chequebook deposits and dilution come in later phases.     |
-| Engines         | SRS stages only. An OvenMediaEngine stage is listed and marked as not supported.                                                                                                             |
+| Topic           | Decision                                                                                                                                                                                                              |
+| --------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| What a stage is | A manager deployment that runs a stream uploader (kind `abr-uploader`, or `streamer`), with the node pool behind it. No new entity in the manager. Its id is the deployment's `instance_id`.                          |
+| Catalogue       | One per brand, signed by the brand key, listing the streams of every stage. One viewer per brand.                                                                                                                     |
+| Direction       | The manager **pushes** each stage's record into the admin. The admin calls one API of the manager's, the funding API, on a bearer token of its own, and nothing else.                                                 |
+| Binding         | A stream goes live only on its own stage. Every uploader gets a token of its own, and the admin answers a token only about its own stage's streams.                                                                   |
+| Keys            | Every stage signs its feeds with its own key. The brand key signs the catalogue alone and never leaves the admin.                                                                                                     |
+| Catalogue stamp | A batch of its own, immutable and deep, on a dedicated catalogue node the manager runs, pinned by id. Never a batch a rung stamps segments with.                                                                      |
+| Scope           | The admin reads stages, funds the node wallets, tops up and dilutes batches and moves chequebooks, every operation through the manager's funding API ([funding.md](funding.md)). Buying batches stays in the manager. |
+| Engines         | SRS stages only. An OvenMediaEngine stage is listed and marked as not supported.                                                                                                                                      |
 
 ## Why these
 
