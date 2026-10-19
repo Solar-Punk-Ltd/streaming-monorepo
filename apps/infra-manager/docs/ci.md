@@ -575,8 +575,9 @@ it, and the job's first step proves it rather than trusting it.
 
 `createdb` is not needed on the runner: both jobs that need databases call it
 inside the Postgres service container. Verified here on 2026-09-10 against
-`postgres:16-alpine` at the digest below, which is the image the commands at
-the end of this page name too.
+`postgres:16-alpine`, the image pinned then. The jobs have run
+`postgres:16.15-alpine` at the digest below since 2026-09-27, and the commands
+at the end of this page name that image too.
 
 ## What nothing here guards
 
@@ -615,7 +616,7 @@ Container images are pinned by digest, each with the date it was resolved:
 
 | Image                       | Digest                                                                    | Resolved   | Used by                                         |
 | --------------------------- | ------------------------------------------------------------------------- | ---------- | ----------------------------------------------- |
-| `postgres:16-alpine`        | `sha256:cf78e76683b9ca8c5733cbbdce6c9262b45b6767934dd0a95e671f9a0fc20685` | 2026-09-10 | database, browser, integration                  |
+| `postgres:16.15-alpine`     | `sha256:721873c34ceb9f8d8fc265984940dc982404c105f19ad51be9fdc5970a6080ea` | 2026-09-27 | database, browser, integration                  |
 | `ossrs/srs:6`               | `sha256:2be08a0fe28737bf28bae8a575bb5776e09b620366dd1e62dd4f8a41cf4310f3` | 2026-09-10 | srs-parser, and the engine startup observations |
 | `airensoft/ovenmediaengine` | `sha256:172da9129d32093f3c92c426d385a318db38c7e70de0a3a685693e69614672a6` | 2026-09-08 | ome-gate                                        |
 
@@ -628,7 +629,7 @@ The SQL suites, on a disposable PostgreSQL of their own:
 ```sh
 docker run --rm -d --name manager-test-pg -e POSTGRES_HOST_AUTH_METHOD=trust \
   -p 127.0.0.1:55432:5432 \
-  postgres:16-alpine@sha256:cf78e76683b9ca8c5733cbbdce6c9262b45b6767934dd0a95e671f9a0fc20685
+  postgres:16.15-alpine@sha256:721873c34ceb9f8d8fc265984940dc982404c105f19ad51be9fdc5970a6080ea
 for name in engine_config_test build_references_test stack_versions_test port_reservations_test version_approval_test chequebook_test profile_removal_test deployment_settings_test deploy_phases_test; do
   docker exec manager-test-pg createdb -U postgres "$name"
 done
