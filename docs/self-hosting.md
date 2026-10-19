@@ -143,7 +143,12 @@ at the repository root.
    `BEE_GATEWAY_API_BIND`, `BEE_RUNG_480P_API_BIND`, `BEE_RUNG_720P_API_BIND` or
    `BEE_RUNG_1080P_API_BIND`, and let the firewall decide who reaches it.
 
-4. **The manager's first user**, on the host. It asks for the password twice.
+4. **The manager's first user**, on the host. Log in to it first, then make the user. It asks for
+   the password twice.
+
+   ```sh
+   ssh <control-host>
+   ```
 
    ```sh
    cd /opt/streaming/streaming-infra-manager/manager && docker compose exec -it api node dist/cli.js user:add <username>
@@ -151,8 +156,19 @@ at the repository root.
 
 5. **The manager's deploy key**, which it logs in to the stage and Bee hosts with. It lives on the
    host in `/opt/streaming/manager-ssh/`, as a key pair named `deploy_key` beside an `ssh_config` and
-   a `known_hosts`. "Deploying Bee nodes to other hosts" in `apps/infra-manager/deploy/README.md`
-   shows how to make it. The one line of `deploy_key.pub` is what the stage and Bee hosts authorize.
+   a `known_hosts`. Make the key on the host, still logged in as in step 4:
+
+   ```sh
+   mkdir -p -m 700 /opt/streaming/manager-ssh
+   ```
+
+   ```sh
+   ssh-keygen -t ed25519 -N '' -f /opt/streaming/manager-ssh/deploy_key
+   ```
+
+   "Deploying Bee nodes to other hosts" in `apps/infra-manager/deploy/README.md` shows the
+   `ssh_config` and `known_hosts` beside it. The one line of `deploy_key.pub` is what the stage and
+   Bee hosts authorize.
 
 6. **The web2 admin.** From `apps/web2-admin`, make the profile's env file from the sample and fill
    in what it asks for: `POSTGRES_PASSWORD`, `FEED_PRIVATE_KEY`, the brand key the catalog is

@@ -296,8 +296,11 @@ key pair, an `ssh_config` and a `known_hosts`:
 # As deploy@<control-host>
 mkdir -p /opt/streaming/manager-ssh
 ssh-keygen -t ed25519 -N '' -f /opt/streaming/manager-ssh/deploy_key
-ssh-copy-id -i /opt/streaming/manager-ssh/deploy_key.pub deploy@203.0.113.7
 ```
+
+Put the one line of `deploy_key.pub` into the target's `authorized_keys`, as the
+stage host recipe in [docs/self-hosting.md](../../../docs/self-hosting.md#a-stage-host)
+shows.
 
 One `Host` block per target in `/opt/streaming/manager-ssh/ssh_config`. `IdentityFile` is the
 path _inside the container_, where the directory is mounted at `/root/.ssh`:
