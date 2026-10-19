@@ -20,8 +20,8 @@ export class ConsoleSettingsService {
   ) {}
 
   /**
-   * A read that fails answers `DEFAULT_ADMIN_THEME` rather than failing `/api/config`, which also carries the feed and the
-   * viewer link the login page and the stream pages need, and which never touched the database before.
+   * A read that fails answers `DEFAULT_ADMIN_THEME` rather than failing `/api/config`, which also carries the feed and
+   * the viewer link the login page and the stream pages need, and which never touched the database before.
    */
   async defaultTheme(): Promise<AdminThemeName> {
     try {
