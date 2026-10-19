@@ -1626,13 +1626,18 @@ async function handle(req, res) {
 
   if (sub === '/finish' && method === 'POST') {
     // The API's two refusals, told apart in its order: a stream that never
-    // went live, then one already finished.
+    // went live, then one already finished. Each body is the API's.
     if (row.status !== 'live' && row.status !== 'vod') {
-      return send(res, 409, { error: 'stream_not_started', message: 'Only a live or ended stream can be finished.' });
+      return send(res, 409, {
+        error: 'stream_not_started',
+        id: row.id,
+        message: 'Only a live or ended stream can be finished.',
+      });
     }
     if (row.finishedAt !== null) {
       return send(res, 409, {
         error: 'stream_finished',
+        id: row.id,
         message: 'This stream is already finished: its key has changed.',
       });
     }
