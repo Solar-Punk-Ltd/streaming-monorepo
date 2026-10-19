@@ -9,6 +9,16 @@ coverage/
 !.env.example
 # The committed templates the real env files are copied from.
 !.env.sample
+# Keys, certificates and wallets. None belongs in a public tree, so a stray one is never picked up
+# by `git add -A`. A fixture key a test needs is built while the test runs instead.
+*.pem
+*.key
+*.p12
+*.pfx
+id_rsa*
+id_ed25519*
+*.keystore
+*.wallet
 .pnpm-store/
 # Nx's task cache and the files it writes, kept in the checkout by nx.json's cacheDirectory.
 .nx/
