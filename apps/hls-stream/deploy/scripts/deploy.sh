@@ -493,8 +493,6 @@ init_bee_dirs() {
   done
 }
 
-# --- Sync files to remote ---
-
 # --- The stack's lockfile in a checkout of the one workspace ---
 #
 # See _workspace.sh. A remote deploy from such a checkout sends a pair cut out of the root's into a
@@ -532,7 +530,6 @@ sync_to_remote() {
 
   log_info "Syncing files to $target"
 
-  # Ensure remote directory structure exists
   ssh "$target" "mkdir -p $REMOTE_BASE/deploy/scripts $REMOTE_BASE/engines/srs $REMOTE_BASE/engines/ome $REMOTE_BASE/packages/stream-uploader $REMOTE_BASE/packages/shared $REMOTE_BASE/nodes"
 
   # Always sync compose and every override build_compose_files can add, Dockerfiles, nginx template,
@@ -549,7 +546,6 @@ sync_to_remote() {
     "$DEPLOY_DIR/client-nginx.conf.template" \
     "$target:$REMOTE_BASE/deploy/"
 
-  # Sync root .env
   rsync -az "$ENV_FILE" "$target:$REMOTE_BASE/.env"
 
   rsync -az "$DEPLOY_DIR/scripts/" "$target:$REMOTE_BASE/deploy/scripts/"
@@ -650,7 +646,6 @@ sync_to_remote() {
     fi
   fi
 
-  # Sync node init script
   rsync -az "$ROOT_DIR/nodes/init-node.sh" "$target:$REMOTE_BASE/nodes/"
 }
 
@@ -803,12 +798,10 @@ deploy_target() {
 
   read_bridge_address "$target"
 
-  # Generate env overrides
   local overrides
   overrides=$(generate_env_overrides "$target" "${services[@]}")
 
   if is_local "$target"; then
-    # Init bee dirs
     init_bee_dirs "$target" "${services[@]}"
 
     # Write overrides to per-profile temp file (concurrent group deploys would
@@ -819,7 +812,6 @@ deploy_target() {
     # as a line ending of its own.
     printf '%s' "$overrides" > "$override_file"
 
-    # Export overrides into current env for compose
     if [ -n "$overrides" ]; then
       set -a
       # shellcheck disable=SC1090
@@ -861,7 +853,6 @@ deploy_target() {
 
     log_ok "Local deploy complete"
   else
-    # Remote deploy
     sync_to_remote "$target" "${services[@]}"
     init_bee_dirs "$target" "${services[@]}"
 
@@ -956,7 +947,6 @@ if [ "$has_uploader" = "true" ]; then
   fi
 fi
 
-# Deploy to each target
 for target in $(get_targets); do
   services=($(get_filtered_services_for_target "$target"))
   [ ${#services[@]} -eq 0 ] && continue
