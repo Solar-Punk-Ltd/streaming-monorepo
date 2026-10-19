@@ -9,7 +9,7 @@ import { readPublishers } from './publishers.js';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 
-/** Monorepo root, four levels up from packages/cli/src/lib/ */
+/** Root of the stack (apps/hls-stream), four levels up from packages/cli/src/lib/ */
 const ROOT_DIR = resolve(__dirname, '../../../..');
 const DEPLOY_DIR = resolve(ROOT_DIR, 'deploy');
 const CONFIG_PATH = resolve(DEPLOY_DIR, 'config.json');
