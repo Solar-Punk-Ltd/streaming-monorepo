@@ -490,7 +490,7 @@ OBS/FFmpeg ──SRT or RTMP──> SRS (SRT on port 10080/udp, RTMP on port 193
 | `bee-gateway`        | `ethersphere/bee:2.8.3`                           | Bee node for reading (paired with `client`)            |
 | `stream-uploader`    | Built from `Dockerfile.uploader`                  | Receives segments, uploads to Swarm                    |
 | `srs`                | `ghcr.io/solar-punk-ltd/swarm-srs:6.0-r2-swarm.4` | SRT/RTMP to HLS, ABR transcode, see engines/README.md  |
-| `ome`                | `airensoft/ovenmediaengine:latest`                | SRT ingest, uploader pulls HLS over HTTP               |
+| `ome`                | `airensoft/ovenmediaengine:v0.21.0`               | SRT ingest, uploader pulls HLS over HTTP               |
 | `client`             | Built from `Dockerfile.client`                    | React viewer (nginx), proxies `/bee/` to `bee-gateway` |
 
 Those nine names are every key `config.json` accepts. A service the file does not mention runs, with
