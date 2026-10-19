@@ -191,8 +191,9 @@ commit. A release is tagged before its deploys, and [releasing.md](releasing.md)
 
    Then tell the manager what the edge holds. Docker reports no ports for a container on the
    host's network, and the manager refuses to remove or export anything on a host with an
-   unexplained one. Add `KNOWN_HOST_NETWORK_PORTS=edge=80/tcp,443/tcp,443/udp` to `manager/.env`
-   in your checkout and run the manager's deploy again. A host that deploys only to other hosts can
+   unexplained one. Add `KNOWN_HOST_NETWORK_PORTS=edge=80/tcp,443/tcp,443/udp` to the env file of
+   step 3, `apps/infra-manager/manager/.env` in your checkout or the profile's own, and run the
+   manager's deploy again. A host that deploys only to other hosts can
    skip this, until it deploys to itself.
 
 8. **The admin link.** In the manager, **Manager settings**, the card **Web2 admin link for new
