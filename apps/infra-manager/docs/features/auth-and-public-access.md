@@ -192,9 +192,9 @@ with the CLI can add the next, and migration `011_admin_users.sql` made the olde
 on a manager that already had users. The last admin cannot be removed.
 
 The role gates those three actions and nothing else. Every other route is open to any signed-in
-user, read from `manager/src/api/server.ts` on 2026-09-23 at `87673c99`: `/config`, `/metrics`,
-`/events`, `/services`, `/chequebook/operations`, `/groups`, `/targets`, `/versions` with
-`/versions/attempts`, and `/profiles` with everything under a deployment. That includes
+user: `requireAdmin` is used in `manager/src/api/routes/auth.ts` alone, so every other mount in
+`manager/src/api/server.ts` is open to them, apart from the web2 admin's funding API, which takes
+a bearer token of its own. That includes
 deploying and stopping it, buying a stamp, a chequebook deposit or withdrawal, its engine
 settings and config file, restarting its containers and reading its SRT passphrase.
 
