@@ -37,13 +37,14 @@ In production builds or when pointing to a remote gateway, requests go directly 
 
 ## Environment Variables (in the stack's `.env`)
 
-| Variable               | Required | Description                                                                                                                                                                  |
-| ---------------------- | -------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `VITE_READER_BEE_URL`  | Yes      | Bee node URL for fetching streams                                                                                                                                            |
-| `VITE_APP_OWNER`       | Yes      | Feed owner address (hex, no 0x prefix)                                                                                                                                       |
-| `VITE_APP_RAW_TOPIC`   | Yes      | Feed topic for the stream catalog, must match `STREAM_LIST_TOPIC`                                                                                                            |
-| `VITE_SWARM_PROVIDERS` | No       | The gateways the viewer reads, as JSON. Empty means the one gateway `VITE_READER_BEE_URL` names. See [The Swarm client](#the-swarm-client)                                   |
-| `VITE_EXPOSE_PLAYER`   | No       | Test builds only. Puts the player, gateway and fetch-backend handles on `window` for the e2e browser suites. No shipping build sets it, and `bundle.test.ts` holds that line |
+| Variable                     | Required | Description                                                                                                                                                                  |
+| ---------------------------- | -------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `VITE_READER_BEE_URL`        | Yes      | Bee node URL for fetching streams                                                                                                                                            |
+| `VITE_APP_OWNER`             | Yes      | Feed owner address (hex, no 0x prefix)                                                                                                                                       |
+| `VITE_APP_RAW_TOPIC`         | Yes      | Feed topic for the stream catalog, must match `STREAM_LIST_TOPIC`                                                                                                            |
+| `VITE_SWARM_PROVIDERS`       | No       | The gateways the viewer reads, as JSON. Empty means the one gateway `VITE_READER_BEE_URL` names. See [The Swarm client](#the-swarm-client)                                   |
+| `VITE_EXPOSE_PLAYER`         | No       | Test builds only. Puts the player, gateway and fetch-backend handles on `window` for the e2e browser suites. No shipping build sets it, and `bundle.test.ts` holds that line |
+| `VITE_BROWSER_FETCH_BACKEND` | No       | Set to `weeb3` to fetch segment bytes from the in-tab node, see [weeb-3 runs in a SharedWorker](#weeb-3-runs-in-a-sharedworker). Unset means the gateway                     |
 
 The dockerized client is also built with `VITE_APP_RELEASE_LABEL` and `VITE_APP_RELEASE_COMMIT`, the release
 `deploy.sh` was told it deploys with `--release-label` and `--release-commit`, which the QoE overlay shows. They are not
