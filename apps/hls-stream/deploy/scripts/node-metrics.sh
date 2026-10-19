@@ -12,6 +12,7 @@
 # Usage:
 #   node-metrics.sh snapshot <out.json> [label]
 #   node-metrics.sh diff <before.json> <after.json>
+#   node-metrics.sh diff-all <before.json> <after.json>
 #   node-metrics.sh watch <out_dir> <interval_s> <stop_file> [label]
 set -u
 
