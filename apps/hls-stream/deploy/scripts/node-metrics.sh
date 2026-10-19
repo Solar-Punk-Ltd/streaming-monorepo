@@ -72,10 +72,6 @@ MAX_UTILIZATION_PCT="${MAX_UTILIZATION_PCT:-75}"
 # saying the chequebook was 99.9999% drained and 67% of pushes were blocking on a payment allowance.
 # Two of those three families were then added to the allowlist. The allowlist itself was the defect,
 # and the whole surface costs 64 KB a node against the 16 KB the slice cost.
-#
-# ⚠️ `_bucket` rows are still dropped. That is a stated exclusion rather than a subsystem choice: the
-# sum and count carry the mean a sitting compares, the edges are fixed configuration, and they are
-# 45% of the bytes.
 get() { curl -s --max-time 20 "$1" 2>/dev/null || true; }
 
 snapshot_to() {
@@ -83,6 +79,9 @@ snapshot_to() {
   # it, not an environment for it, which is how the first version handed python an empty LABEL.
   local out="$1" LABEL="${2:-}" LOAD UP GW STAMPS HEALTH CHQ_UP CHQ_GW
   LOAD="$(cut -d' ' -f1-3 /proc/loadavg 2>/dev/null || echo '')"
+  # ⚠️ `_bucket` rows are still dropped. That is a stated exclusion rather than a subsystem choice:
+  # the sum and count carry the mean a sitting compares, the edges are fixed configuration, and they
+  # are 45% of the bytes.
   UP="$(get "http://${UPLOADER_HOST}:${UPLOADER_PORT}/metrics" | grep -v '_bucket')"
   GW="$(get "http://${GATEWAY_HOST}:${GATEWAY_PORT}/metrics" | grep -v '_bucket')"
   STAMPS="$(get "http://${UPLOADER_HOST}:${UPLOADER_PORT}/stamps")"
