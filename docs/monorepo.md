@@ -129,7 +129,8 @@ A version built from swarm-hls-stream before the move keeps its record of coming
 Every workflow lives in the root `.github/workflows`, since GitHub runs workflows from there only:
 one per app (`hls-stream.yml`, `infra-manager.yml` with `infra-manager-docker.yml`,
 `web2-admin.yml`), one for the shared packages (`packages.yml`), one for `tools/` (`tools.yml`),
-and the boundary check (`boundaries.yml`). The root `.github` also holds `CODEOWNERS`.
+the boundary check (`boundaries.yml`), and the image publish on every pushed tag
+(`publish-images.yml`, [releasing.md](releasing.md)). The root `.github` also holds `CODEOWNERS`.
 
 ## How the history came along
 
