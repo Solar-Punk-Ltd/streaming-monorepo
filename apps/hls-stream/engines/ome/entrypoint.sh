@@ -70,7 +70,6 @@ require_secret() {
 require_secret OME_ADMISSION_SECRET "${OME_ADMISSION_SECRET:-}"
 
 # Segment length and playlist depth, applied to both the video and audio applications.
-# Defaults reproduce the previous hardcoded values, which were 2s where SRS used 1.5s.
 require_number HLS_SEGMENT_DURATION "${HLS_SEGMENT_DURATION:-2}"
 require_number HLS_SEGMENT_COUNT "${HLS_SEGMENT_COUNT:-5}"
 sed -i "s/SEGMENT_DURATION_PLACEHOLDER/${HLS_SEGMENT_DURATION:-2}/g" "$CONF"
