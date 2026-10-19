@@ -52,8 +52,9 @@ At the platform level the admin layer also:
 
 - writes the brand's catalogue, signed by the brand key, through the dedicated
   catalogue node and the immutable batch the manager designates,
-- shows each rung's stamp and chequebook as the manager last pushed them,
-  where topping up stays in the manager's console for now,
+- shows each rung's stamp and chequebook as the manager last pushed them, and
+  tops up or dilutes a node's batches and brings its chequebook to a target
+  through the manager's funding API, each paid for by that node,
 - funds the brand's node wallets with xDAI and xBZZ from the brand wallet,
 - hands brand config to the Viewer SPA.
 
@@ -63,9 +64,10 @@ At the platform level the admin layer also:
   ssh and docker compose all live in streaming-infra-manager. The one wallet
   it holds is the brand wallet, and it signs with that alone.
 - It calls the manager's funding API and nothing else of the manager's. It
-  does not provision or stop a stage, buy a batch, top one up (a later phase
-  of funding), or choose the catalogue's batch: the manager pushes what it
-  runs, and the admin reads it.
+  does not provision or stop a stage, buy a batch, or choose the catalogue's
+  batch: the manager pushes what it runs, and the admin reads it. A top-up, a
+  dilution or a chequebook move is asked of the manager, which asks the node,
+  and the admin signs nothing for it.
 - It carries no stage in its env file: no ingest address, port or passphrase,
   Bee address or batch id. It learns them from the manager's pushes, and
   refuses to publish, saying why, until the manager has designated a
