@@ -28,7 +28,7 @@ container or on a runner. Everything else here describes what the workflow files
 declare, which is a different thing from what a runner has done.
 
 **The file counts in this page drift, because suites are added.** Those below
-were counted on 2026-09-26 at `04c4165`. Re-measure rather than trusting them: the SQL
+were counted on 2026-10-19 at `8271460cb`. Re-measure rather than trusting them: the SQL
 suites are `find manager/test/database -name '*.test.ts'`, and the browser
 suites are `find frontend/test -name '*.test.mjs'`.
 
@@ -94,7 +94,7 @@ runner: diagnose it, never retry it.
 
 ### database
 
-The 42 SQL suites in `manager/test/database/` (2026-09-26), each against the
+The 47 SQL suites in `manager/test/database/` (2026-10-19), each against the
 suite database it owns, through `manager/test/database/run-all.mjs`.
 
 Every one of those files gates itself on a port variable and skips
@@ -148,9 +148,10 @@ that fails half the time is worth more than the difference.
 
 ### browser
 
-The 43 suites under `frontend/test/` (2026-09-26), of which 24 drive a real
-headless Chrome, 14 of those against a real Vite they start themselves and the
-rest against a fixture server or no page at all, and 19 need no browser. They live outside `pnpm test`, which only takes `src`,
+The 53 suites under `frontend/test/` (2026-10-19). On 2026-09-26, when there
+were 43, 24 drove a real headless Chrome, 14 of those against a real Vite they
+start themselves and the rest against a fixture server or no page at all, and
+19 needed no browser. They live outside `pnpm test`, which only takes `src`,
 so they ran nowhere on a pull request.
 `pnpm --filter @streaming-infra-manager/frontend-prototype test:browser` takes
 all of them, through `frontend/test/run-all.mjs`.
@@ -336,7 +337,7 @@ here, so the estimate below is built on the slow end rather than the lucky one:
 | native transport suites, 7                                                                                                        | 3 s       |
 | frontend build                                                                                                                    | 6 s       |
 | SQL suites, one file at a time. 526 cases across 34 files, measured 2026-09-16 against a disposable Postgres                      | 235 s     |
-| browser suites, one child per file. Case count last measured 208 on 2026-09-10 across 27 files, and there are 43 now (2026-09-26) | 360 s     |
+| browser suites, one child per file. Case count last measured 208 on 2026-09-10 across 27 files, and there are 53 now (2026-10-19) | 360 s     |
 
 The jobs run in parallel in wall-clock time but GitHub bills each one
 separately, so a push costs the sum. A standard GitHub-hosted Linux runner on
