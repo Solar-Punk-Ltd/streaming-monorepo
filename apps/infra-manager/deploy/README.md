@@ -16,13 +16,14 @@ stack versions and the ssh identity default to folders beside it, and
 ```sh
 # As deploy@server
 sudo apt-get update
-sudo apt-get install -y docker.io docker-compose-plugin rsync
+sudo apt-get install -y docker.io docker-compose-v2 rsync curl
 sudo usermod -aG docker deploy
 sudo install -d -o deploy -g deploy /opt/streaming
 # log out + back in so the group takes effect
-
-mkdir -p /opt/streaming/streaming-infra-manager/manager
 ```
+
+Ubuntu's own archive names the Compose plugin `docker-compose-v2` and Docker's apt repository names
+it `docker-compose-plugin`, so install whichever your sources offer.
 
 The account also needs your own public key in its `authorized_keys`, or no deploy can log in
 to it. [What every host needs](../../../docs/self-hosting.md#what-every-host-needs) has the
