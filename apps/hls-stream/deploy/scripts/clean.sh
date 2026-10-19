@@ -186,7 +186,6 @@ clean_target() {
     local remote_compose_files profiles
     remote_compose_files=$(build_compose_files "$REMOTE_BASE/deploy")
     profiles=$(build_profile_flags "${services[@]}")
-    # Capture compose's exit code on the remote so we can tell whether anything happened.
     ssh "$target" bash -s <<REMOTE_SCRIPT
       set -e
       if [ ! -d $REMOTE_BASE/deploy ]; then
