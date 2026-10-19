@@ -87,6 +87,10 @@ Each deploy names its build after the git tag on the commit it deploys, and the 
 name to signed-in users. A first installation needs no tag: a build without one is named after its
 commit. A release is tagged before its deploys, and [releasing.md](releasing.md) is that order.
 
+On your own machine you need bash, ssh, rsync, git and Node 24, which run every deploy script and
+the firewall generator of the Bee host. The stack's CLI needs pnpm as well, and `pnpm install` once
+at the repository root.
+
 1. **An ssh alias on your machine**, in `~/.ssh/config`. The forward is the way into the manager
    before the edge serves it, and stays the way in when the edge is down.
    `<control-host>` stands for whatever alias you choose, and the steps below use it.
