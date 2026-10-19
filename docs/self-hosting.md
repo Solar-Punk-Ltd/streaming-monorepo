@@ -390,7 +390,9 @@ stage hosts publish through. It is prepared like a stage host.
    - **The bind.** The manager already binds each rung's API to `0.0.0.0`, because this is another
      host than the control host, so the API answers on every address from the first deploy. That is
      why the firewall below goes in first.
-   - **The firewall.** Generate this host's table and name each allowed address once, as a `/32`:
+   - **The firewall.** Generate this host's table and name each allowed address once, as a `/32`.
+     Run it from `apps/infra-manager`. `firewall-inventory.json` is the download from
+     `/targets/firewall?alias=bee-1` in the signed-in manager.
 
      ```sh
      ./deploy/host/firewall-rules.sh --iface <public interface> --inventory firewall-inventory.json --bee-api-source <stage-host-address>/32 --bee-api-source <control-host-address>/32 > /tmp/bee-1-firewall.nft
