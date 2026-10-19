@@ -5,13 +5,13 @@ the decisions first and then what each part does.
 
 ## The problem
 
-The admin carries one stage in its env file: `INGEST_HOST`, the SRT and RTMP ports and
-`INGEST_SRT_PASSPHRASE` for the OBS panel, `BEE_URL` and `POSTAGE_BATCH_ID` for the catalogue,
-one `INTERNAL_API_TOKEN` every uploader shares, and a `FEED_PRIVATE_KEY` every uploader's
-`STREAM_KEY` must equal. The manager already knows every one of these facts, so a second stage
-means copying them by hand, and a batch that is topped up or replaced leaves the admin's copy
-stale. The admin cannot even be deployed before a stage exists, since its deploy refuses to run
-without `BEE_URL`, `POSTAGE_BATCH_ID` and `INGEST_HOST`.
+Before this work the admin carried one stage in its env file: `INGEST_HOST`, the SRT and RTMP
+ports and `INGEST_SRT_PASSPHRASE` for the OBS panel, `BEE_URL` and `POSTAGE_BATCH_ID` for the
+catalogue, one `INTERNAL_API_TOKEN` every uploader shared, and a `FEED_PRIVATE_KEY` every
+uploader's `STREAM_KEY` had to equal. The manager already knew every one of these facts, so a
+second stage meant copying them by hand, and a batch that was topped up or replaced left the
+admin's copy stale. The admin could not even be deployed before a stage existed, since its deploy
+refused to run without `BEE_URL`, `POSTAGE_BATCH_ID` and `INGEST_HOST`.
 
 ## Decisions
 
