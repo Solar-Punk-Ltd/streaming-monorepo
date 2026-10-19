@@ -551,7 +551,7 @@ export function StreamDetailsPage() {
           streamId={stream.id}
           details={ingest}
           onRotated={setIngest}
-          finish={canFinish ? { live: stream.status === 'live', onFinished: setStream } : null}
+          finish={canFinish ? { live: stream.status === 'live', onFinished: setStream, onRefused: load } : null}
         />
       ) : null}
 

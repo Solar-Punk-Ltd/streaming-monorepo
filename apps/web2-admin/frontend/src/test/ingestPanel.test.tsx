@@ -1,4 +1,4 @@
-import { fireEvent, screen, within } from '@testing-library/react';
+import { fireEvent, screen, waitFor, within } from '@testing-library/react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import type { StreamFinishAnswer } from '@streaming-monorepo/web2-admin-common';
 
@@ -18,9 +18,14 @@ const renderPanel = (details = makeIngest()) =>
   renderWithProviders(<IngestPanel streamId="stream-1" details={details} onRotated={vi.fn()} />);
 
 /** The panel as the stream page shows it on a live or ended stream that is not finished yet. */
-const renderFinishable = ({ live = false, onRotated = vi.fn(), onFinished = vi.fn() } = {}) =>
+const renderFinishable = ({ live = false, onRotated = vi.fn(), onFinished = vi.fn(), onRefused = vi.fn() } = {}) =>
   renderWithProviders(
-    <IngestPanel streamId="stream-1" details={makeIngest()} onRotated={onRotated} finish={{ live, onFinished }} />,
+    <IngestPanel
+      streamId="stream-1"
+      details={makeIngest()}
+      onRotated={onRotated}
+      finish={{ live, onFinished, onRefused }}
+    />,
   );
 
 const FINISH_WARNING =
@@ -254,21 +259,54 @@ describe('IngestPanel', () => {
   it.each([
     ['stream_not_started', 'Only a live or ended stream can be finished.'],
     ['stream_finished', 'This stream is already finished: its key has changed.'],
-  ])('answers a Finish refused with %s in its own words', async (code, sentence) => {
-    // A message of the API's own, to show that the console's sentence for the code wins.
-    mockFetch([finishRoute(() => jsonError(409, { error: code, message: 'Refused.' }))]);
-    const onRotated = vi.fn();
-    const onFinished = vi.fn();
+  ])(
+    'answers a Finish refused with %s in its own words, closes, and has the page read the stream again',
+    async (code, sentence) => {
+      // A message of the API's own, to show that the console's sentence for the code wins.
+      mockFetch([finishRoute(() => jsonError(409, { error: code, id: 'stream-1', message: 'Refused.' }))]);
+      const onRotated = vi.fn();
+      const onFinished = vi.fn();
+      const onRefused = vi.fn();
 
-    renderFinishable({ onRotated, onFinished });
+      renderFinishable({ onRotated, onFinished, onRefused });
+
+      fireEvent.click(screen.getByRole('button', { name: 'Finish' }));
+      fireEvent.click(within(await screen.findByRole('dialog')).getByRole('button', { name: 'Finish' }));
+
+      expect(await screen.findByText(sentence)).toBeInTheDocument();
+      expect(screen.queryByText('Refused.')).not.toBeInTheDocument();
+      // The stream is no longer where the page showed it, so asking again cannot help.
+      await waitFor(() => {
+        expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+      });
+      expect(onRefused).toHaveBeenCalledTimes(1);
+      expect(onRotated).not.toHaveBeenCalled();
+      expect(onFinished).not.toHaveBeenCalled();
+    },
+  );
+
+  it('keeps the dialog open after a failure that is no refusal, to retry or cancel, and reads nothing again', async () => {
+    mockFetch([finishRoute(() => jsonError(500, { error: 'internal_error' }))]);
+    const onRefused = vi.fn();
+
+    renderFinishable({ onRefused });
 
     fireEvent.click(screen.getByRole('button', { name: 'Finish' }));
     fireEvent.click(within(await screen.findByRole('dialog')).getByRole('button', { name: 'Finish' }));
 
-    expect(await screen.findByText(sentence)).toBeInTheDocument();
-    expect(screen.queryByText('Refused.')).not.toBeInTheDocument();
-    expect(onRotated).not.toHaveBeenCalled();
-    expect(onFinished).not.toHaveBeenCalled();
+    expect(await screen.findByText('The server hit an unexpected error.')).toBeInTheDocument();
+    // MUI keeps a closing dialog on the page for its exit transition, so
+    // "still there" proves nothing until that time has passed.
+    await expect(
+      waitFor(
+        () => {
+          expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+        },
+        { timeout: 600 },
+      ),
+    ).rejects.toThrow();
+    expect(within(screen.getByRole('dialog')).getByRole('button', { name: 'Finish' })).toBeEnabled();
+    expect(onRefused).not.toHaveBeenCalled();
   });
 });
 
