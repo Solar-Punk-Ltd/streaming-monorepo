@@ -94,7 +94,7 @@ import { StreamUploader } from './StreamUploader.js';
  */
 const WITHHOLD_OPENING_CEILING_SECONDS = 10;
 
-const DRAIN_TIMEOUT_MS = 5 * 60 * 1000; // 5 minutes
+const DRAIN_TIMEOUT_MS = 5 * 60 * 1000;
 
 /**
  * Where a replacement session's playlist starts numbering again. A later broadcast on the same stream
@@ -116,7 +116,7 @@ const REJOIN_WITHIN_FRAGMENTS = 1;
  * `DRAIN_TIMEOUT_MS`, so a caller polling a stop that ran to its own deadline still finds the verdict
  * waiting, and short enough that the map is bounded by the poll window rather than by uptime.
  */
-const DEFAULT_STOP_OUTCOME_TTL_MS = 15 * 60 * 1000; // 15 minutes
+const DEFAULT_STOP_OUTCOME_TTL_MS = 15 * 60 * 1000;
 
 export interface StreamOrchestratorConfig {
   streamKey: string;
@@ -567,7 +567,6 @@ export class StreamOrchestrator {
       return false;
     }
 
-    // If recovering, cancel the recovery timeout and resume
     const recoveryTimer = this.recoveryTimers.get(streamId);
     if (recoveryTimer) {
       recoveryTimer.cancel();
@@ -1626,15 +1625,13 @@ export class StreamOrchestrator {
       this.logger.info(`[StreamOrchestrator] Segments resumed for ${streamId}; cancelled recovery finalize timer`);
     }
 
-    // Deduplication
     const processed = this.processedSegments.get(streamId);
     if (processed?.has(segmentIndex)) {
       // Deliberately not counted as activity. A replayed index does no upload work and advances no
       // manifest, so a sender stuck on one index would otherwise look alive to the stall signal.
-      return { accepted: true }; // silently accept duplicate
+      return { accepted: true };
     }
 
-    // Backpressure check
     if (uploader.segmentQueue.size >= this.config.maxQueueSize) {
       return { accepted: false, reason: REJECT_QUEUE_FULL };
     }
@@ -1999,7 +1996,6 @@ export class StreamOrchestrator {
   }
 
   public async stopStream(streamId: string): Promise<void> {
-    // Cancel recovery timer if stopping a recovering stream
     const recoveryTimer = this.recoveryTimers.get(streamId);
     if (recoveryTimer) {
       recoveryTimer.cancel();
@@ -2872,13 +2868,11 @@ export class StreamOrchestrator {
     }
     this.firstRungDeadlines.clear();
 
-    // Clear all recovery timers
     for (const timer of this.recoveryTimers.values()) {
       timer.cancel();
     }
     this.recoveryTimers.clear();
 
-    // Stop all active streams
     const streamIds = Array.from(this.activeStreams.keys());
     await Promise.all(
       streamIds.map(async (streamId) => {
