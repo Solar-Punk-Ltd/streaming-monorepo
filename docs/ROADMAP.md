@@ -12,8 +12,8 @@ short note here on what was decided.
 ## Checkpoint 2: first working slice (merged 2026-09-18, PRs 1 to 5)
 
 Spec: docs/architecture/web2-admin-checkpoint-2.md. Decided: same stack as
-streaming-infra-manager, packages `web2-admin/{common,backend,frontend}`,
-scope `@streaming-monorepo/`.
+streaming-infra-manager, packages `web2-admin/{common,backend,frontend}` (now
+under `apps/`), scope `@streaming-monorepo/`.
 
 - Authentication with a seeded admin user and password change in the UI.
 - Stream drafts in Postgres with the msrs-client form fields.
@@ -58,8 +58,8 @@ re-uploads a missing one. The viewer ignored the catalogue's `thumbnail` field
 and probed each stream's manifest feed, which does not exist before the first
 segment; fixed on swarm-hls-stream branch `feat/catalogue-thumbnails` off
 `main-v3` (cards render the catalogue thumbnail, scheduled streams show
-"Upcoming", the watch page says the stream has not started). The viewer must be
-rebuilt from that branch. The player link in the console now opens the viewer
+"Upcoming", the watch page says the stream has not started). The viewer had to be
+rebuilt from that branch at the time. The player link in the console now opens the viewer
 catalogue, not the per-stream route, for the same reason.
 
 Decided 2026-09-15, ABR ladder in admin mode (spec: the "ABR ladder in admin
