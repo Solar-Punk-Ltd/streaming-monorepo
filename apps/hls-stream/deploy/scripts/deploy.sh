@@ -163,6 +163,18 @@ check_engine
 
 # --- Local Bee node guard ---
 
+# Whether this invocation brings up the stream-uploader, which is the only service in the compose
+# file that reads BEE_URL.
+deploys_uploader() {
+  local target svc
+  for target in $(get_targets); do
+    for svc in $(get_filtered_services_for_target "$target"); do
+      [ "$svc" = "$SVC_UPLOADER" ] && return 0
+    done
+  done
+  return 1
+}
+
 # LOCAL_BEE_UPLOADER is the profile's own statement of whether this deployment runs a Bee node,
 # written into .env.<profile> by the deployment manager and read by resolve_bee_url below.
 #
@@ -176,18 +188,6 @@ check_engine
 # the old rule, because falling through is indistinguishable from the key working: a profile with
 # an external node and LOCAL_BEE_UPLOADER=flase would quietly get the compose service back and
 # crash-loop exactly as it did before the key existed.
-# Whether this invocation brings up the stream-uploader, which is the only service in the compose
-# file that reads BEE_URL.
-deploys_uploader() {
-  local target svc
-  for target in $(get_targets); do
-    for svc in $(get_filtered_services_for_target "$target"); do
-      [ "$svc" = "$SVC_UPLOADER" ] && return 0
-    done
-  done
-  return 1
-}
-
 check_local_bee_uploader() {
   case "${LOCAL_BEE_UPLOADER:-}" in
     true | false | '') ;;
