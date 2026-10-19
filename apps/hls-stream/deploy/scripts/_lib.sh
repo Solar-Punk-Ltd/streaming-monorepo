@@ -808,7 +808,7 @@ shell_quote() {
 
 # The publish key for one stream id, derived from the master secret.
 #
-# Must agree byte for byte with `derivePublishKey` in packages/stream-uploader/src/utils/publishKey.ts,
+# Must agree byte for byte with `derivePublishKey` in packages/shared/src/publishKey.ts,
 # because the service recomputes it and compares. Pinned to one golden vector, asserted here in
 # deploy/test/publishKey.test.js and there in publishKey.test.ts, so either side drifting fails a test.
 #
