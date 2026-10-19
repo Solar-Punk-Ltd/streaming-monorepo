@@ -1,12 +1,12 @@
 /**
  * Copying to the clipboard, degrading twice.
  *
- * `navigator.clipboard` only exists in a secure context, and the console is
- * deployed over plain http on an IP address, so on the host that matters it is
- * simply undefined. Every OBS value is something the operator has to paste
- * into an encoder, so a Copy button that cannot copy is not an option:
- * `document.execCommand('copy')` is deprecated but works everywhere, over
- * http included, and is the one that will actually run in production.
+ * `navigator.clipboard` exists only in a secure context. Behind the host's edge
+ * and on a localhost tunnel the console has one, but a console reached over
+ * plain http at an IP address does not. Every OBS value is something the
+ * operator has to paste into an encoder, so a Copy button that cannot copy is
+ * not an option: Copy falls back to `document.execCommand('copy')`, deprecated
+ * but working over http too, and, failing that, to selecting the value.
  */
 export type CopyOutcome = 'copied' | 'unavailable';
 
