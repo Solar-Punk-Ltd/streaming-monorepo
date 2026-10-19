@@ -35,7 +35,7 @@ its own repository outside this one, pulls them by that tag: `streaming-manager-
 ## 2. Deploy each manager
 
 ```sh
-./apps/infra-manager/deploy/deploy.sh --host <ssh-target> --profile <profile>
+./apps/infra-manager/deploy/deploy.sh --host=<ssh-target> --profile=<profile>
 ```
 
 Once for each host that runs a manager, each with its own profile.
