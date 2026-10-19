@@ -21,11 +21,12 @@ const PUBLIC_ADDRESS = ['11', '22', '33', '44'].join('.');
 const REAL_LOOKING_WALLET = '0x' + '9a3f'.repeat(10);
 const DENIED_TOKEN = ['leaky', 'host', 'name'].join('-');
 
-function rulesWith({ allowed = [], allowedSecrets = [], denied = [] } = {}) {
+function rulesWith({ allowed = [], allowedSecrets = [], homeUsers = [], denied = [] } = {}) {
   return parseRules({
     allowJson: JSON.stringify({
       ethereumAddresses: allowed.map((address) => ({ address, why: 'test' })),
       publishedSecrets: allowedSecrets.map((value) => ({ sha256: secretHash(value), why: 'test' })),
+      homeUsers: homeUsers.map((name) => ({ name, why: 'test' })),
     }),
     denyText: denied.map(tokenHash).join('\n'),
   });
@@ -221,6 +222,42 @@ describe('64 hex digits beside a key word', () => {
         }),
       /lowercase sha256/,
     );
+  });
+});
+
+/** The rules the committed lists give, for the cases that hinge on what the repository allows. */
+function committedRules() {
+  return parseRules({ allowJson: readFileSync(ALLOW_LIST, 'utf8'), denyText: readFileSync(DENY_LIST, 'utf8') });
+}
+
+describe('home folders', () => {
+  const person = ['ali', 'ce'].join('');
+
+  it('refuses a home folder on macOS and on Linux that names a person', () => {
+    for (const path of [`/${'Users'}/${person}/project`, `/${'home'}/${person}/.ssh`, `HOME=/${'home'}/${person}`]) {
+      const findings = scanText(path, rulesWith());
+      assert.equal(findings.length, 1, path);
+      assert.equal(findings[0].rule, 'home-path');
+    }
+  });
+
+  it('lets through the role users the committed allow list names', () => {
+    const text = [
+      `/${'home'}/bee/.bee`,
+      `/${'home'}/deploy/streaming`,
+      `ps line for /${'Users'}/x/chrome`,
+    ].join('\n');
+    assert.deepEqual(scanText(text, committedRules()), []);
+  });
+
+  it('lets through a placeholder, a bare root and a longer path that only contains one', () => {
+    const text = ['/Users/<name>/', '/home/', '/home/$USER/', 'var/lib/home/data'].join('\n');
+    assert.deepEqual(scanText(text, rulesWith()), []);
+  });
+
+  it('refuses a person even when a role user shares the prefix', () => {
+    const findings = scanText(`/${'home'}/beekeeper/`, rulesWith({ homeUsers: ['bee'] }));
+    assert.equal(findings.length, 1);
   });
 });
 

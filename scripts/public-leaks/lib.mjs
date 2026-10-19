@@ -6,14 +6,15 @@
  * private address inside one of the few ranges that describe a single host's setup, an Ethereum
  * address that is not on the allow list of known fakes and public contracts, a token whose sha256 is
  * on the deny list, and a value shaped like a secret: a private key block, a token in the format a
- * known issuer uses, or 64 hex digits beside a word such as key or secret. The deny list and the
+ * known issuer uses, or 64 hex digits beside a word such as key or secret, and a home folder that
+ * names a person rather than a role user. The deny list and the
  * allow list of published sample secrets hold hashes only, so neither names what it lists.
  */
 import { createHash } from 'node:crypto';
 
 /** @typedef {'private-key-block' | 'aws-access-key' | 'github-token' | 'slack-token' | 'stripe-key' | 'jwt'} SecretShapeRule */
-/** @typedef {{ rule: 'ipv4' | 'host-private-ipv4' | 'eth-address' | 'denied-token' | 'keyed-hex-64' | SecretShapeRule, line: number, value: string }} Finding */
-/** @typedef {{ allowedAddresses: Set<string>, allowedSecretHashes: Set<string>, deniedHashes: Set<string> }} Rules */
+/** @typedef {{ rule: 'ipv4' | 'host-private-ipv4' | 'eth-address' | 'denied-token' | 'keyed-hex-64' | 'home-path' | SecretShapeRule, line: number, value: string }} Finding */
+/** @typedef {{ allowedAddresses: Set<string>, allowedSecretHashes: Set<string>, homeUsers: Set<string>, deniedHashes: Set<string> }} Rules */
 
 const IPV4 = /(?<![\w.§])(\d{1,3})\.(\d{1,3})\.(\d{1,3})\.(\d{1,3})(?![\w]|\.\d)/g;
 const SECTION_BEFORE = /(§|\bsection\s|\bRFC\s?\d+\s)$/i;
@@ -42,6 +43,8 @@ const KEY_WORD_REACH = 40;
 /** A content digest, which is public by design. */
 const DIGEST_BEFORE = /sha256:$/i;
 const SHA256_HEX = /^[0-9a-f]{64}$/;
+/** A home folder on macOS or Linux, standing at the start of a path rather than inside a longer one. */
+const HOME_PATH = /(?<![\w.~/-])\/(?:Users|home)\/([A-Za-z0-9._-]+)(?![A-Za-z0-9._-])/g;
 /** The shortest and longest token the deny list is checked against. */
 const MIN_TOKEN_LENGTH = 3;
 const MAX_TOKEN_LENGTH = 128;
@@ -179,6 +182,9 @@ export function scanText(text, rules, hashCache = new Map()) {
         findings.push({ rule: 'eth-address', line: index + 1, value: match[0] });
       }
     }
+    for (const match of line.matchAll(HOME_PATH)) {
+      if (!rules.homeUsers.has(match[1])) findings.push({ rule: 'home-path', line: index + 1, value: match[0] });
+    }
     for (const match of line.matchAll(HEX_64)) {
       const end = match.index + match[0].length;
       if (DIGEST_BEFORE.test(line.slice(0, match.index))) continue;
@@ -208,8 +214,8 @@ export function scanText(text, rules, hashCache = new Map()) {
 }
 
 /**
- * The rules from the two committed files: the allow list's addresses and published secret hashes,
- * and the deny list's hashes, one per line, with `#` starting a comment.
+ * The rules from the two committed files: the allow list's addresses, published secret hashes and
+ * role users, and the deny list's hashes, one per line, with `#` starting a comment.
  * @param {{ allowJson: string, denyText: string }} sources
  * @returns {Rules}
  */
@@ -221,6 +227,7 @@ export function parseRules({ allowJson, denyText }) {
     if (!SHA256_HEX.test(sha256)) throw new Error(`allow list secret is not a lowercase sha256: ${sha256}`);
     allowedSecretHashes.add(sha256);
   }
+  const homeUsers = new Set((allow.homeUsers ?? []).map((entry) => entry.name));
   const deniedHashes = new Set();
   for (const raw of denyText.split('\n')) {
     const line = raw.replace(/#.*/, '').trim();
@@ -228,5 +235,5 @@ export function parseRules({ allowJson, denyText }) {
     if (!SHA256_HEX.test(line)) throw new Error(`deny list line is not a lowercase sha256: ${raw}`);
     deniedHashes.add(line);
   }
-  return { allowedAddresses, allowedSecretHashes, deniedHashes };
+  return { allowedAddresses, allowedSecretHashes, homeUsers, deniedHashes };
 }
