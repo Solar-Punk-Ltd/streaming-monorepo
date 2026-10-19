@@ -686,6 +686,67 @@ describe('StreamDetailsPage', () => {
     });
     expect(screen.queryByRole('button', { name: 'Finish' })).not.toBeInTheDocument();
   });
+
+  it('reads the stream and its OBS details again after a refused Finish, and shows where it now stands', async () => {
+    const ended = makeStream({
+      id: ID,
+      status: 'vod',
+      stageId: MAIN_STAGE_ID,
+      publishedFeedIndex: 2,
+      liveSince: LIVE_SINCE,
+      endedAt: ENDED_AT,
+      restartUntil: RESTART_UNTIL,
+      finishedAt: null,
+    });
+    const renewed = ingestWithKey('eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee', FINISHED_AT);
+    let current = ended;
+    let currentIngest = makeIngest();
+    const fetchMock = mockFetch([
+      { path: `/api/streams/${ID}`, respond: () => jsonOk(current) },
+      { path: `/api/streams/${ID}/ingest`, respond: () => jsonOk(currentIngest) },
+      {
+        path: '/api/config',
+        respond: () => jsonOk({ feed: { owner: 'abc', topic: 'swarm-stream', topicHex: 'ff' }, viewerBaseUrl: null }),
+      },
+      {
+        method: 'POST',
+        path: `/api/streams/${ID}/finish`,
+        respond: () =>
+          jsonError(409, {
+            error: 'stream_finished',
+            id: ID,
+            message: 'This stream is already finished: its key has changed.',
+          }),
+      },
+    ]);
+
+    renderDetails();
+
+    expect(await screen.findByText(ENDED_LINE)).toBeInTheDocument();
+    fireEvent.click(await screen.findByRole('button', { name: 'Finish' }));
+    const dialog = await screen.findByRole('dialog');
+    // Meanwhile the stream was finished, with a new key: its window ran out
+    // and the sweep finished it, or someone pressed Finish elsewhere.
+    current = { ...ended, restartUntil: null, finishedAt: FINISHED_AT };
+    currentIngest = renewed;
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Finish' }));
+
+    expect(await screen.findByText('This stream is already finished: its key has changed.')).toBeInTheDocument();
+    expect(await screen.findByText(FINISHED_LINE)).toBeInTheDocument();
+    expect(screen.queryByText(ENDED_LINE)).not.toBeInTheDocument();
+    await waitFor(() => {
+      expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+    });
+    expect(screen.queryByRole('button', { name: 'Finish' })).not.toBeInTheDocument();
+
+    // The SRT line on the page is the one the API holds now, not the stale one.
+    fireEvent.click(screen.getByLabelText('show srt server'));
+    expect(screen.getByLabelText('SRT Server')).toHaveValue(
+      `${renewed.srt!.url}&passphrase=${renewed.srt!.passphrase}`,
+    );
+    expect(calls(fetchMock, 'GET', `/api/streams/${ID}`)).toBe(2);
+    expect(calls(fetchMock, 'GET', `/api/streams/${ID}/ingest`)).toBe(2);
+  });
 });
 
 /** The API's answer to a Finish: the stream as it now stands, and its OBS details with the new key. */

@@ -12,6 +12,7 @@ import {
 
 import * as api from '../api';
 import { errorMessage } from '../errors';
+import { ApiError } from '../http';
 import { formatDateTime } from '../dateUtil';
 import { ConfirmDialog } from './ConfirmDialog';
 import { useSnackbar } from './Snackbar';
@@ -38,6 +39,18 @@ export interface FinishOffer {
   live: boolean;
   /** Called with the stream as the API answers it once finished. Its new details go to `onRotated`. */
   onFinished: (stream: Stream) => void;
+  /**
+   * Called when the API refuses the Finish because the stream has moved on
+   * since the page read it: its window ran out and the sweep finished it, or
+   * someone finished or unpublished it elsewhere. The page reads it again, so
+   * it shows the key and the state the API holds, not a stale SRT line.
+   */
+  onRefused: () => void;
+}
+
+/** Finish's two refusals. Either means the stream is no longer where the page showed it. */
+function isFinishRefusal(e: unknown): boolean {
+  return e instanceof ApiError && (e.code === 'stream_not_started' || e.code === 'stream_finished');
 }
 
 /**
@@ -136,8 +149,9 @@ export function IngestPanel({
     setFinishOpen(true);
   };
 
-  // Closed on success only, as Rotate key is: after a failure the operator can
-  // try again or cancel.
+  // Closed on success, and on a refusal, after which the page reads the
+  // stream again: asking again cannot help. After any other failure the
+  // operator can try again or cancel, as with Rotate key.
   const runFinish = async () => {
     setFinishing(true);
     try {
@@ -148,6 +162,10 @@ export function IngestPanel({
       setFinishOpen(false);
     } catch (e) {
       snackbar.error(errorMessage(e, 'Failed to finish the stream'));
+      if (isFinishRefusal(e)) {
+        setFinishOpen(false);
+        finish?.onRefused();
+      }
     } finally {
       setFinishing(false);
     }
