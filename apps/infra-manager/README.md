@@ -99,6 +99,9 @@ run any of it on a laptop: [docs/ci.md](docs/ci.md).
   - [postage-stamps.md](docs/features/postage-stamps.md): what a postage batch
     is, and buying, using, topping up and diluting one on a deployment's
     Storage card.
+  - [bee-node-mode.md](docs/features/bee-node-mode.md): whether a
+    deployment's Bee node runs light or ultra-light, and which chain endpoint
+    it is given.
   - [auth-and-public-access.md](docs/features/auth-and-public-access.md): the
     login gate, the HTTPS edge, the API binds and the host firewall.
   - [next-features-2026-09.md](docs/features/next-features-2026-09.md): the
