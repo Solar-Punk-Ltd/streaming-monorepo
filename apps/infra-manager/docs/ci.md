@@ -14,8 +14,12 @@ once, with a bypass kept for the repository's administrators. Main-branch pushes
 
 The workflow runs on a pull request into `main`, the monorepo's integration
 branch, and on a push to it, whenever `apps/infra-manager`,
-`apps/hls-stream` or the workflow file changed. The stack counts because the
-manager's tests read it. Its steps run in `apps/infra-manager`.
+`apps/hls-stream`, `tools/app-workspace`, `packages/`, the root manifests
+(`package.json`, `pnpm-lock.yaml`, `pnpm-workspace.yaml`), the root lint and
+format settings or the workflow file changed. The stack counts because the
+manager's tests read it, the packages because the manager imports them and its
+images carry them, and the cut tool because the images build through it. Its
+steps run in `apps/infra-manager`.
 
 **Where this stands.** This page was first written at `6dc33d1` on
 `feat/ai-remediation`, the head of the remediation set, which was merged.
