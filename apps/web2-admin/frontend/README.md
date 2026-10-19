@@ -141,7 +141,8 @@ honours a few env vars:
 ```bash
 pnpm --filter @streaming-monorepo/web2-admin-frontend test       # vitest + jsdom
 pnpm --filter @streaming-monorepo/web2-admin-frontend typecheck  # tsc --noEmit
-pnpm --filter @streaming-monorepo/web2-admin-frontend build      # builds common, then vite build
+pnpm --filter @streaming-monorepo/web2-admin-frontend lint       # oxlint
+pnpm --filter @streaming-monorepo/web2-admin-frontend build      # builds common, typechecks, then vite build
 ```
 
 `build` builds `../common` first: its package `exports` only map to the TS

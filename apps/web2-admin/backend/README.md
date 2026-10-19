@@ -60,6 +60,7 @@ for the whole design.
 | `pnpm test`                             | unit tests (`test/unit`), no database or network                                                         |
 | `pnpm test:integration`                 | starts a backend of its own and drives it over HTTP — see [test/integration](test/integration/README.md) |
 | `pnpm typecheck`                        | `tsc -p tsconfig.typecheck.json`, which includes `test/`                                                 |
+| `pnpm lint`                             | `oxlint --type-aware .`, the repository's one lint, settings in the root `.oxlintrc.json`                |
 | `pnpm database:start` / `database:stop` | the Postgres container                                                                                   |
 
 The API runs in Docker too (two-stage `pnpm deploy` image, `Dockerfile`). Its
