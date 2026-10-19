@@ -35,7 +35,8 @@ suites are `find frontend/test -name '*.test.mjs'`.
 ### checks
 
 Check out the repository, install from the frozen lockfile, build common, type
-checks in every package with the test files included, the unit suites of
+checks in every package with the test files included, lint with oxlint and the
+format check with oxfmt against the root settings, the unit suites of
 common, manager and frontend, the native transport suites, the frontend build.
 Manager unit tests compare the stack's guides, samples and contract fixtures
 against `apps/hls-stream` of the same commit, which every checkout of the
