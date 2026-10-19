@@ -454,8 +454,9 @@ full viewer run is seven paid broadcasts rather than two. Each crash arm is size
 `crashArmMinutes`, which derives it from the fault rather than letting a suite guess.
 
 Admin mode, on a stage whose uploader takes its streams from the web2 admin. Every other suite publishes standalone and
-mints a fresh topic per broadcast, so only these reuse a declared stream's topic across broadcasts. They skip, printed as
-skipped, unless the admin settings are given, and `pnpm e2e:admin` runs the gates and these alone:
+mints a fresh topic per broadcast, so only these reuse a declared stream's topic across broadcasts. They are outside
+`pnpm e2e:run`'s globs, so `pnpm e2e:admin` is the only run that reaches them, running the gates and these alone. Even
+there they skip, printed as skipped, unless the admin settings are given:
 
 | file                              | proves                                                                                                                                                                                                                                                                                                                                                                                                                                                                             |
 | --------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
