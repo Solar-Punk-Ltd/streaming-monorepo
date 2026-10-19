@@ -248,7 +248,9 @@ uses:
   `stream-uploader`, `bee-uploader`. Bee is included because a stuck node is the other thing an
   operator restarts, and the route is the same. The profile status does not change, this is
   below the deploy state machine, but an activity line is published on the event bus:
-  `engine.restarted { profile, service }`.
+  `engine.restarted { profile, service }`. Refused with 409 `profile_busy` while the deployment
+  is deploying, stopping or being removed, and with 409 `restart_in_progress` while a restart of
+  the same service is still in flight or within its cooldown.
 - `logs(profile, service, tail)`: `container.logs({ stdout, stderr, tail, timestamps })`,
   demultiplexed, capped at 2000 lines, returned as text.
 - `effectiveConfig(profile)`: `container.exec` with `cat /usr/local/srs/conf/srs.conf` (SRS) or
