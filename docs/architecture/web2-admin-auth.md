@@ -6,7 +6,7 @@ What the admin API does about who you are, ported from streaming-infra-manager's
 what was taken as it stood, what was adapted to this codebase, and what was
 deliberately left behind.
 
-Status: landed on `feat/web2admin-auth`, migration `005_auth_users.sql`. The
+Status: landed, migration `005_auth_users.sql`. The
 manager's design has run on a host since 2026-09-11 and is public behind a TLS
 edge; this is the same design on a database that already had users in it.
 
