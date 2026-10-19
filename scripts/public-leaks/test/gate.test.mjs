@@ -253,6 +253,14 @@ describe('home folders', () => {
     }
   });
 
+  it('refuses a home folder written as a file URL or after a double slash', () => {
+    for (const path of [`file:///${'Users'}/${person}/proj/a.mjs:1:1`, `//${'home'}/${person}/data`]) {
+      const findings = scanText(path, rulesWith());
+      assert.equal(findings.length, 1, path);
+      assert.equal(findings[0].rule, 'home-path');
+    }
+  });
+
   it('lets through the role users the committed allow list names', () => {
     const text = [`/${'home'}/bee/.bee`, `/${'home'}/deploy/streaming`, `ps line for /${'Users'}/x/chrome`].join('\n');
     assert.deepEqual(scanText(text, committedRules()), []);

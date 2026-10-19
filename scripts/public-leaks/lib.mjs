@@ -44,8 +44,11 @@ const KEY_WORD_REACH = 40;
 /** A content digest, which is public by design. */
 const DIGEST_BEFORE = /sha256:$/i;
 const SHA256_HEX = /^[0-9a-f]{64}$/;
-/** A home folder on macOS or Linux, standing at the start of a path rather than inside a longer one. */
-const HOME_PATH = /(?<![\w.~/-])\/(?:Users|home)\/([A-Za-z0-9._-]+)(?![A-Za-z0-9._-])/g;
+/**
+ * A home folder on macOS or Linux, standing at the start of a path rather than inside a longer one.
+ * A slash before it is allowed, so a `file:///` URL still counts.
+ */
+const HOME_PATH = /(?<![\w.~-])\/(?:Users|home)\/([A-Za-z0-9._-]+)(?![A-Za-z0-9._-])/g;
 const EMAIL = /(?<![A-Za-z0-9._%+-])[A-Za-z0-9._%+-]+@((?:[A-Za-z0-9-]+\.)+[A-Za-z]{2,})(?![A-Za-z0-9-])/g;
 /** The second-level domains RFC 2606 reserves for examples. */
 const EXAMPLE_DOMAINS = ['example.com', 'example.net', 'example.org'];
