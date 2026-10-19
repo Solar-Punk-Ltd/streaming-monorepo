@@ -1,6 +1,7 @@
 -- Sign-in, second pass: roles, the sliding session clock, and no seeded user.
 --
--- Ported from streaming-infra-manager's 008_auth.sql and 011_admin_users.sql.
+-- Ported from the manager's 008_auth.sql and 011_admin_users.sql
+-- (apps/infra-manager/manager/src/migrations).
 -- What this backend already had (a users table, a sessions table holding only
 -- the sha256 of the cookie value, and the self-describing
 -- "scrypt$N$r$p$saltb64$hashb64" hash format) is unchanged, so every stored

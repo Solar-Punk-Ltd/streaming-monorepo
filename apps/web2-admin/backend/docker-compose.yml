@@ -4,8 +4,8 @@
 #   docker compose -p web2-admin --profile full up -d   → + the API image, built first
 #     from a copy of apps/web2-admin by tools/app-workspace/in-copy.mjs, as README.md shows
 #
-# Port 5433 rather than 5432 on purpose: streaming-infra-manager publishes its
-# own postgres on 5432 and both are often up on the same laptop.
+# Port 5433 rather than 5432 on purpose: the manager (apps/infra-manager)
+# publishes its own postgres on 5432 and both are often up on the same laptop.
 #
 # This file is for development only. The stack that goes to a server is
 # deploy/docker-compose.yml, brought up by deploy/deploy.sh (deploy/README.md):

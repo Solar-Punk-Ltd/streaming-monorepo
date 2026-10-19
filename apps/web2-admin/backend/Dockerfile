@@ -4,7 +4,7 @@
 #
 #   node tools/app-workspace/in-copy.mjs --app apps/web2-admin -- docker build -f backend/Dockerfile -t web2-admin-api .
 #
-# Two stages, as in streaming-infra-manager: install + build the workspace,
+# Two stages, as in the manager (apps/infra-manager): install + build the workspace,
 # then `pnpm deploy` a self-contained prod tree into the runtime image.
 FROM node:24.21.0-alpine@sha256:ebfe2f90462722a7a4de65e91990e97fe0d401c70e0e762c5b53302f905ec1c1 AS build
 WORKDIR /repo
