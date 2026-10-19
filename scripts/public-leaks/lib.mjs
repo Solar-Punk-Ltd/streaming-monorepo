@@ -38,7 +38,7 @@ const SECRET_SHAPES = [
 ];
 /** A 32-byte value written as hex, the size of a private key, a wallet secret or a seed. */
 const HEX_64 = /(?<![0-9a-fA-F])(?:0x)?([0-9a-fA-F]{64})(?![0-9a-fA-F])/g;
-const KEY_WORD = /key|secret|private|seed|signer|wallet/i;
+const KEY_WORD = /key|secret|private|seed|signer|wallet|token|pass(?:word|phrase)|mnemonic/i;
 /** How far either side of a 64-hex value a key word makes it a secret. */
 const KEY_WORD_REACH = 40;
 /** A content digest, which is public by design. */

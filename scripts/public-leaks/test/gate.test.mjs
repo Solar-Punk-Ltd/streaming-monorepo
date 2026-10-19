@@ -184,6 +184,18 @@ describe('64 hex digits beside a key word', () => {
     }
   });
 
+  it('refuses them after a token, password, passphrase or mnemonic word', () => {
+    const word = (...parts) => parts.join('');
+    for (const text of [
+      `API_AUTH_${word('TOK', 'EN')}=${KEY_HEX}`,
+      `DB_${word('PASS', 'WORD')}=${KEY_HEX}`,
+      `${word('pass', 'phrase')}: ${KEY_HEX}`,
+      `${word('MNEM', 'ONIC')}_HEX=${KEY_HEX}`,
+    ]) {
+      assert.equal(scanText(text, rulesWith()).length, 1, text.replace(KEY_HEX, '<hex>'));
+    }
+  });
+
   it('refuses them before a key word on the same line', () => {
     assert.equal(scanText(`${KEY_HEX} # the signer`, rulesWith()).length, 1);
   });
