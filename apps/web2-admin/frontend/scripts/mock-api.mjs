@@ -16,9 +16,17 @@
  * MOCK_NO_USERS=true starts with an empty users table, which is the only way
  * to see the console's "no users yet" screen and the command it prints.
  *
- * MOCK_RECORDING=true starts with one finished recording on the feed, which is
- * the only way to see the recording's details and to unpublish and publish it
- * again, since nothing here can broadcast.
+ * MOCK_RECORDING=true adds one more recording on the feed, one that ended weeks
+ * before, so it is finished at start like the oldest of the seeded streams.
+ *
+ * Every start seeds three published streams, one in each state the stream page
+ * tells apart once a stream has gone live: one live now, one that ended five
+ * minutes before the mock started and can go live again for the rest of its
+ * restart window, and one that ended three days before, whose window ran out,
+ * so it is finished and its key has changed. As the API does with its default
+ * STREAM_RESTART_WINDOW_MINUTES, the mock finishes a recording, with a new key,
+ * once 30 minutes have passed since it ended, and Finish does it at once on a
+ * live or ended stream.
  *
  * The mock holds one stage, as if a manager had pushed it, so the stream
  * form's picker and the OBS panel have something to show. MOCK_NO_STAGES=true
@@ -859,13 +867,52 @@ async function readJson(req) {
 /** The statuses whose stream has an entry on the catalogue. */
 const ON_FEED_STATUSES = ['published', 'live', 'vod'];
 
+/** The API's default STREAM_RESTART_WINDOW_MINUTES: how long an ended stream can go live again on its key. */
+const RESTART_WINDOW_MS = 30 * 60 * 1000;
+
 function publicStream(row) {
   const { thumbnail, thumbnailMime, editsNotOnFeed, ...rest } = row;
   return {
     ...rest,
     hasThumbnail: thumbnail !== null && thumbnailMime !== null,
     hasUnpublishedEdits: editsNotOnFeed && ON_FEED_STATUSES.includes(row.status),
+    restartUntil: restartUntil(row),
   };
+}
+
+/**
+ * The end of the restart window, as the API's presenter works it out: only
+ * while the stream is `vod` and not finished, and null otherwise.
+ */
+function restartUntil(row) {
+  if (row.status !== 'vod' || row.finishedAt !== null || row.endedAt === null) return null;
+  return new Date(Date.parse(row.endedAt) + RESTART_WINDOW_MS).toISOString();
+}
+
+/**
+ * What Finish and the window's sweep both do, as the API's one conditional
+ * UPDATE does: a new key, and the stream finished. An encoder already pushing
+ * is not dropped; the old key is refused at its next connect.
+ */
+function finish(row, at) {
+  row.publishKey = hex(16);
+  row.publishKeyRotatedAt = at;
+  row.finishedAt = at;
+  row.updatedAt = at;
+}
+
+/**
+ * The API's sweep: a recording whose restart window has run out is finished,
+ * so an old encoder profile cannot bring it back. A `vod` with no end counts
+ * as ended long ago. The API runs it at boot and every minute after; the mock
+ * runs it at start and before it answers about streams, which shows the same.
+ */
+function finishEnded(now = Date.now()) {
+  for (const row of streams.values()) {
+    if (row.status !== 'vod' || row.finishedAt !== null) continue;
+    const endedAt = row.endedAt === null ? Number.NEGATIVE_INFINITY : Date.parse(row.endedAt);
+    if (endedAt + RESTART_WINDOW_MS <= now) finish(row, new Date(now).toISOString());
+  }
 }
 
 function ingestDetails(row) {
@@ -942,6 +989,9 @@ function newStream(input) {
     durationSeconds: null,
     liveSince: null,
     endedAt: null,
+    // When the key changed for good, by Finish or once the restart window ran
+    // out. Nothing here goes live again, so nothing clears it.
+    finishedAt: null,
     // Stands in for the API's two timestamps: an edit the catalogue entry
     // does not carry yet. Cleared by a publish, which rebuilds the entry.
     editsNotOnFeed: false,
@@ -969,6 +1019,71 @@ function publishResult(row, written) {
   };
 }
 
+/** A stream on the feed, as a publish puts it there, with what the uploader would have reported. */
+function seedStream(input, fields) {
+  const row = newStream({ tags: ['mock'], mediaType: 'video', ...input });
+  feedIndex += 1;
+  feedEntries += 1;
+  Object.assign(row, { publishedFeedIndex: feedIndex, stageId: stages[0]?.stageId ?? null, ...fields });
+  streams.set(row.id, row);
+}
+
+// One stream in each state the stream page tells apart once a stream has gone
+// live, since nothing here can broadcast. Their times count back from the start.
+const startedAt = Date.now();
+const minutesBefore = (minutes) => new Date(startedAt - minutes * 60_000).toISOString();
+const DAYS_3 = 3 * 24 * 60;
+
+seedStream(
+  {
+    title: 'Live now',
+    description: 'Seeded live: Finish changes its key, and the broadcast carries on until its encoder stops.',
+    scheduledStartTime: minutesBefore(15),
+  },
+  {
+    status: 'live',
+    publishedAt: minutesBefore(20),
+    liveSince: minutesBefore(12),
+    createdAt: minutesBefore(30),
+    updatedAt: minutesBefore(12),
+  },
+);
+seedStream(
+  {
+    title: 'Ended a few minutes ago',
+    description:
+      'Seeded as ended five minutes before the mock started: it can go live again until its window runs out.',
+    scheduledStartTime: minutesBefore(65),
+  },
+  {
+    status: 'vod',
+    publishedAt: minutesBefore(70),
+    liveSince: minutesBefore(65),
+    endedAt: minutesBefore(5),
+    durationSeconds: 3600,
+    manifestIndex: 360,
+    createdAt: minutesBefore(80),
+    updatedAt: minutesBefore(5),
+  },
+);
+seedStream(
+  {
+    title: 'Ended days ago',
+    description: 'Seeded as ended three days before the mock started: its window ran out, so its key has changed.',
+    scheduledStartTime: minutesBefore(DAYS_3 + 65),
+  },
+  {
+    status: 'vod',
+    publishedAt: minutesBefore(DAYS_3 + 70),
+    liveSince: minutesBefore(DAYS_3 + 65),
+    endedAt: minutesBefore(DAYS_3),
+    durationSeconds: 3600,
+    manifestIndex: 360,
+    createdAt: minutesBefore(DAYS_3 + 80),
+    updatedAt: minutesBefore(DAYS_3),
+  },
+);
+
 if (process.env.MOCK_RECORDING === 'true') {
   const row = newStream({
     title: 'A finished broadcast',
@@ -991,6 +1106,10 @@ if (process.env.MOCK_RECORDING === 'true') {
   });
   streams.set(row.id, row);
 }
+
+// The API's boot run: every recording whose window ran out before the start is
+// finished before anything is answered.
+finishEnded(startedAt);
 
 function stageUnavailable(res, stageId) {
   return send(res, 409, {
@@ -1351,6 +1470,9 @@ async function handle(req, res) {
     });
   }
 
+  // The sweep, before anything about a stream is answered.
+  if (path === '/api/streams' || path.startsWith('/api/streams/')) finishEnded();
+
   if (path === '/api/streams' && method === 'GET') {
     const list = [...streams.values()].sort((a, b) => b.createdAt.localeCompare(a.createdAt)).map(publicStream);
     return send(res, 200, { streams: list });
@@ -1500,6 +1622,22 @@ async function handle(req, res) {
     row.publishKeyRotatedAt = new Date().toISOString();
     row.updatedAt = row.publishKeyRotatedAt;
     return send(res, 200, ingestDetails(row));
+  }
+
+  if (sub === '/finish' && method === 'POST') {
+    // The API's two refusals, told apart in its order: a stream that never
+    // went live, then one already finished.
+    if (row.status !== 'live' && row.status !== 'vod') {
+      return send(res, 409, { error: 'stream_not_started', message: 'Only a live or ended stream can be finished.' });
+    }
+    if (row.finishedAt !== null) {
+      return send(res, 409, {
+        error: 'stream_finished',
+        message: 'This stream is already finished: its key has changed.',
+      });
+    }
+    finish(row, new Date().toISOString());
+    return send(res, 200, { stream: publicStream(row), ingest: ingestDetails(row) });
   }
 
   return send(res, 404, { error: 'not_found', path });

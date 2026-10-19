@@ -1,9 +1,10 @@
 import { fireEvent, screen, waitFor, within } from '@testing-library/react';
 import { Route, Routes } from 'react-router';
 import { describe, expect, it } from 'vitest';
-import type { Stream } from '@streaming-monorepo/web2-admin-common';
+import type { IngestDetails, Stream } from '@streaming-monorepo/web2-admin-common';
 
 import { NO_STAGE_NOTE } from '../components/IngestPanel';
+import { formatDateTime } from '../dateUtil';
 import { shortHex } from '../format';
 import { NEEDS_STAGE_HINT, StreamDetailsPage, UP_TO_DATE_HINT } from '../pages/StreamDetailsPage';
 import {
@@ -20,6 +21,18 @@ import {
 const ID = 'stream-under-test';
 
 const EDITED_SINCE_PUBLISH = 'Edited since it was published. Republish to update the feed.';
+
+const LIVE_SINCE = '2026-10-19T11:00:00.000Z';
+const ENDED_AT = '2026-10-19T12:00:00.000Z';
+const RESTART_UNTIL = '2026-10-19T12:30:00.000Z';
+const FINISHED_AT = '2026-10-19T12:10:00.000Z';
+
+/** Where a live or ended stream stands with its key, word for word as the design puts it. */
+const ENDED_LINE = `Ended — can go live again until ${formatDateTime(RESTART_UNTIL)}`;
+const FINISHED_LINE = 'Finished — the key has changed';
+const LIVE_FINISHED_LINE = 'Live — finished, the key has changed; it ends for good when the encoder stops';
+
+const LIVE_FINISH_WARNING = 'The broadcast carries on until the encoder stops; then it ends for good.';
 
 function routesFor(stream: Stream, extra: MockRoute[] = []): MockRoute[] {
   return [
@@ -540,7 +553,164 @@ describe('StreamDetailsPage', () => {
       }),
     ).toBeEnabled();
   });
+
+  it.each([
+    ['a live stream', { status: 'live', liveSince: LIVE_SINCE }],
+    ['an ended stream', { status: 'vod', liveSince: LIVE_SINCE, endedAt: ENDED_AT, restartUntil: RESTART_UNTIL }],
+  ] as const)('offers Finish on %s that is not finished yet', async (_, fields) => {
+    mockFetch(
+      routesFor(makeStream({ id: ID, stageId: MAIN_STAGE_ID, publishedFeedIndex: 2, finishedAt: null, ...fields })),
+    );
+
+    renderDetails();
+
+    expect(await screen.findByRole('button', { name: 'Finish' })).toBeEnabled();
+    expect(screen.queryByText(/key has changed/)).not.toBeInTheDocument();
+  });
+
+  it.each([
+    ['a finished recording', { status: 'vod', endedAt: ENDED_AT, finishedAt: FINISHED_AT, restartUntil: null }],
+    ['a live stream already finished', { status: 'live', liveSince: LIVE_SINCE, finishedAt: FINISHED_AT }],
+    ['a draft', { status: 'draft' }],
+    ['a stream being published', { status: 'publishing' }],
+    ['a published stream that never went live', { status: 'published', publishedFeedIndex: 2 }],
+  ] as const)('offers no Finish on %s', async (_, fields) => {
+    mockFetch(routesFor(makeStream({ id: ID, stageId: MAIN_STAGE_ID, ...fields })));
+
+    renderDetails();
+
+    // Finish sits in the OBS panel, which has loaded once Rotate key shows.
+    expect(await screen.findByRole('button', { name: /Rotate key/ })).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Finish' })).not.toBeInTheDocument();
+  });
+
+  it.each([
+    [
+      'an ended stream inside its restart window',
+      { status: 'vod', endedAt: ENDED_AT, restartUntil: RESTART_UNTIL, finishedAt: null },
+      ENDED_LINE,
+    ],
+    [
+      'a finished recording',
+      { status: 'vod', endedAt: ENDED_AT, restartUntil: null, finishedAt: FINISHED_AT },
+      FINISHED_LINE,
+    ],
+    [
+      'a live stream that was finished',
+      { status: 'live', liveSince: LIVE_SINCE, finishedAt: FINISHED_AT },
+      LIVE_FINISHED_LINE,
+    ],
+  ] as const)('says where %s stands', async (_, fields, line) => {
+    mockFetch(
+      routesFor(
+        makeStream({ id: ID, stageId: MAIN_STAGE_ID, publishedFeedIndex: 2, liveSince: LIVE_SINCE, ...fields }),
+      ),
+    );
+
+    renderDetails();
+
+    expect(await screen.findByText(line)).toBeInTheDocument();
+  });
+
+  it('finishes an ended stream once confirmed, then shows its new SRT line and says it is finished', async () => {
+    const ended = makeStream({
+      id: ID,
+      status: 'vod',
+      stageId: MAIN_STAGE_ID,
+      publishedFeedIndex: 2,
+      liveSince: LIVE_SINCE,
+      endedAt: ENDED_AT,
+      restartUntil: RESTART_UNTIL,
+      finishedAt: null,
+    });
+    const renewed = ingestWithKey('eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee', FINISHED_AT);
+    const fetchMock = mockFetch(
+      routesFor(ended, [finishRoute({ ...ended, restartUntil: null, finishedAt: FINISHED_AT }, renewed)]),
+    );
+
+    renderDetails();
+
+    expect(await screen.findByText(ENDED_LINE)).toBeInTheDocument();
+    fireEvent.click(await screen.findByRole('button', { name: 'Finish' }));
+    const dialog = await screen.findByRole('dialog');
+    expect(dialog).not.toHaveTextContent(LIVE_FINISH_WARNING);
+    expect(calls(fetchMock, 'POST', `/api/streams/${ID}/finish`)).toBe(0);
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Finish' }));
+
+    expect(await screen.findByText(FINISHED_LINE)).toBeInTheDocument();
+    expect(screen.queryByText(ENDED_LINE)).not.toBeInTheDocument();
+    // An open dialog hides the rest of the page from role queries.
+    await waitFor(() => {
+      expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+    });
+    expect(screen.queryByRole('button', { name: 'Finish' })).not.toBeInTheDocument();
+
+    // The new key comes from the answer, so the page reads nothing again.
+    fireEvent.click(screen.getByLabelText('show srt server'));
+    expect(screen.getByLabelText('SRT Server')).toHaveValue(
+      `${renewed.srt!.url}&passphrase=${renewed.srt!.passphrase}`,
+    );
+    expect(calls(fetchMock, 'POST', `/api/streams/${ID}/finish`)).toBe(1);
+    expect(calls(fetchMock, 'GET', `/api/streams/${ID}/ingest`)).toBe(1);
+    expect(calls(fetchMock, 'GET', `/api/streams/${ID}`)).toBe(1);
+  });
+
+  it('says, before finishing a live stream, that the broadcast carries on, then that it ends when the encoder stops', async () => {
+    const live = makeStream({
+      id: ID,
+      status: 'live',
+      stageId: MAIN_STAGE_ID,
+      publishedFeedIndex: 2,
+      liveSince: LIVE_SINCE,
+      finishedAt: null,
+    });
+    mockFetch(
+      routesFor(live, [
+        finishRoute(
+          { ...live, finishedAt: FINISHED_AT },
+          ingestWithKey('eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee', FINISHED_AT),
+        ),
+      ]),
+    );
+
+    renderDetails();
+
+    fireEvent.click(await screen.findByRole('button', { name: 'Finish' }));
+    const dialog = await screen.findByRole('dialog');
+    expect(dialog).toHaveTextContent(LIVE_FINISH_WARNING);
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Finish' }));
+
+    expect(await screen.findByText(LIVE_FINISHED_LINE)).toBeInTheDocument();
+    await waitFor(() => {
+      expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+    });
+    expect(screen.queryByRole('button', { name: 'Finish' })).not.toBeInTheDocument();
+  });
 });
+
+/** The API's answer to a Finish: the stream as it now stands, and its OBS details with the new key. */
+function finishRoute(stream: Stream, ingest: IngestDetails): MockRoute {
+  return {
+    method: 'POST',
+    path: `/api/streams/${ID}/finish`,
+    respond: () => jsonOk({ stream, ingest }),
+  };
+}
+
+/** `makeIngest()`'s details once the key has changed to `publishKey`. */
+function ingestWithKey(publishKey: string, publishKeyRotatedAt: string): IngestDetails {
+  const before = makeIngest();
+  return makeIngest({
+    publishKey,
+    publishKeyRotatedAt,
+    srt: { url: before.srt!.url.replace(before.publishKey, publishKey), passphrase: before.srt!.passphrase },
+  });
+}
+
+function calls(fetchMock: ReturnType<typeof mockFetch>, method: string, path: string): number {
+  return fetchMock.mock.calls.filter(([url, init]) => String(url) === path && (init?.method ?? 'GET') === method)
+    .length;
+}
 
 /** A stream the uploader reported as a finished recording. */
 function recordingStream(): Stream {
