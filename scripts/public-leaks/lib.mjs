@@ -2,16 +2,20 @@
  * The rules of the public leak gate, as pure functions over text, so the tests can drive them with
  * placeholder fixtures and the command line only has to list files.
  *
- * Four things fail a file: an IPv4 address outside the ranges documentation and private networks
- * use, a private address inside one of the few ranges that describe a single host's setup, an
- * Ethereum address that is not on the allow list of known fakes and public contracts, and a
- * token whose sha256 is on the deny list. The deny list holds hashes only, so it names nothing it
- * refuses.
+ * These fail a file: an IPv4 address outside the ranges documentation and private networks use, a
+ * private address inside one of the few ranges that describe a single host's setup, an Ethereum
+ * address that is not on the allow list of known fakes and public contracts, a token whose sha256 is
+ * on the deny list, and a value shaped like a secret: a private key block, a token in the format a
+ * known issuer uses, or 64 hex digits beside a word such as key or secret, a home folder that names
+ * a person rather than a role user, and an email address outside the reserved example domains. The
+ * deny list and the
+ * allow list of published sample secrets hold hashes only, so neither names what it lists.
  */
 import { createHash } from 'node:crypto';
 
-/** @typedef {{ rule: 'ipv4' | 'host-private-ipv4' | 'eth-address' | 'denied-token', line: number, value: string }} Finding */
-/** @typedef {{ allowedAddresses: Set<string>, deniedHashes: Set<string> }} Rules */
+/** @typedef {'private-key-block' | 'aws-access-key' | 'github-token' | 'slack-token' | 'stripe-key' | 'jwt'} SecretShapeRule */
+/** @typedef {{ rule: 'ipv4' | 'host-private-ipv4' | 'eth-address' | 'denied-token' | 'keyed-hex-64' | 'home-path' | 'email' | SecretShapeRule, line: number, value: string }} Finding */
+/** @typedef {{ allowedAddresses: Set<string>, allowedSecretHashes: Set<string>, homeUsers: Set<string>, deniedHashes: Set<string> }} Rules */
 
 const IPV4 = /(?<![\w.§])(\d{1,3})\.(\d{1,3})\.(\d{1,3})\.(\d{1,3})(?![\w]|\.\d)/g;
 const SECTION_BEFORE = /(§|\bsection\s|\bRFC\s?\d+\s)$/i;
@@ -19,6 +23,52 @@ const ETH_ADDRESS = /(?<![0-9a-fA-F])0x[0-9a-fA-F]{40}(?![0-9a-fA-F])/g;
 const TOKEN_RUN = /[A-Za-z0-9][A-Za-z0-9._@-]*/g;
 const TOKEN_SEPARATOR = /[._@-]/;
 const MAX_PARTS_PER_RUN = 12;
+/**
+ * Secrets recognised by the format their issuer gives them. Each pattern needs the whole value, so
+ * a prefix named in prose, such as `ghp_` alone, passes.
+ * @type {ReadonlyArray<{ rule: SecretShapeRule, pattern: RegExp }>}
+ */
+const SECRET_SHAPES = [
+  { rule: 'private-key-block', pattern: /-----BEGIN [A-Z0-9 ]*PRIVATE KEY[A-Z ]*-----/g },
+  { rule: 'aws-access-key', pattern: /\b(?:AKIA|ASIA)[0-9A-Z]{16}\b/g },
+  { rule: 'github-token', pattern: /\b(?:gh[pousr]_[A-Za-z0-9]{36,}|github_pat_[A-Za-z0-9_]{22,})/g },
+  { rule: 'slack-token', pattern: /\bxox[baprs]-[A-Za-z0-9-]{10,}/g },
+  { rule: 'stripe-key', pattern: /\b[rs]k_(?:live|test)_[A-Za-z0-9]{16,}/g },
+  { rule: 'jwt', pattern: /\beyJ[A-Za-z0-9_-]{8,}\.eyJ[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]*/g },
+];
+/** A 32-byte value written as hex, the size of a private key, a wallet secret or a seed. */
+const HEX_64 = /(?<![0-9a-fA-F])(?:0x)?([0-9a-fA-F]{64})(?![0-9a-fA-F])/g;
+const KEY_WORD = /key|secret|private|seed|signer|wallet|token|pass(?:word|phrase)|mnemonic/i;
+/** How far either side of a 64-hex value a key word makes it a secret. */
+const KEY_WORD_REACH = 40;
+/** A content digest, which is public by design. */
+const DIGEST_BEFORE = /sha256:$/i;
+const SHA256_HEX = /^[0-9a-f]{64}$/;
+/**
+ * A home folder on macOS or Linux, standing at the start of a path rather than inside a longer one.
+ * A slash before it is allowed, so a `file:///` URL still counts.
+ */
+const HOME_PATH = /(?<![\w.~-])\/(?:Users|home)\/([A-Za-z0-9._-]+)(?![A-Za-z0-9._-])/g;
+const EMAIL = /(?<![A-Za-z0-9._%+-])[A-Za-z0-9._%+-]+@((?:[A-Za-z0-9-]+\.)+[A-Za-z]{2,})(?![A-Za-z0-9-])/g;
+/** The second-level domains RFC 2606 reserves for examples. */
+const EXAMPLE_DOMAINS = ['example.com', 'example.net', 'example.org'];
+/** The top-level names RFC 2606 and RFC 6761 reserve, which never reach a real mailbox. */
+const RESERVED_TOP_LEVEL = new Set(['example', 'invalid', 'test', 'localhost']);
+/** The SSH user of every GitHub clone URL stands at this domain, and it is not a person. */
+const SERVICE_EMAIL_DOMAINS = new Set(['github.com']);
+
+/**
+ * Whether an email address at this domain can be left in the public tree: a reserved example
+ * domain, or a service's own SSH user.
+ * @param {string} domain
+ */
+export function isExampleEmailDomain(domain) {
+  const lower = domain.toLowerCase();
+  if (SERVICE_EMAIL_DOMAINS.has(lower)) return true;
+  if (RESERVED_TOP_LEVEL.has(lower.slice(lower.lastIndexOf('.') + 1))) return true;
+  return EXAMPLE_DOMAINS.some((example) => lower === example || lower.endsWith(`.${example}`));
+}
+
 /** The shortest and longest token the deny list is checked against. */
 const MIN_TOKEN_LENGTH = 3;
 const MAX_TOKEN_LENGTH = 128;
@@ -74,6 +124,27 @@ export function isAllowedIpv4(octets) {
   if (a === 198 && b === 51 && c === 100) return true;
   if (a === 203 && b === 0 && c === 113) return true;
   return false;
+}
+
+/**
+ * The sha256 of a 64-hex secret, written lowercase and without `0x`, which is what the allow list of
+ * published sample secrets holds.
+ * @param {string} hex
+ */
+export function secretHash(hex) {
+  return createHash('sha256').update(hex.toLowerCase().replace(/^0x/, '')).digest('hex');
+}
+
+/**
+ * Whether a key word stands within reach of the value at `start` to `end` on this line.
+ * @param {string} line
+ * @param {number} start
+ * @param {number} end
+ */
+function hasKeyWordNear(line, start, end) {
+  const before = line.slice(Math.max(0, start - KEY_WORD_REACH), start);
+  const after = line.slice(end, end + KEY_WORD_REACH);
+  return KEY_WORD.test(before) || KEY_WORD.test(after);
 }
 
 /** The lowercase sha256 of a token, which is what the deny list holds. */
@@ -135,6 +206,22 @@ export function scanText(text, rules, hashCache = new Map()) {
         findings.push({ rule: 'eth-address', line: index + 1, value: match[0] });
       }
     }
+    for (const match of line.matchAll(HOME_PATH)) {
+      if (!rules.homeUsers.has(match[1])) findings.push({ rule: 'home-path', line: index + 1, value: match[0] });
+    }
+    for (const match of line.matchAll(EMAIL)) {
+      if (!isExampleEmailDomain(match[1])) findings.push({ rule: 'email', line: index + 1, value: match[0] });
+    }
+    for (const match of line.matchAll(HEX_64)) {
+      const end = match.index + match[0].length;
+      if (DIGEST_BEFORE.test(line.slice(0, match.index))) continue;
+      if (!hasKeyWordNear(line, match.index, end)) continue;
+      if (rules.allowedSecretHashes.has(secretHash(match[1]))) continue;
+      findings.push({ rule: 'keyed-hex-64', line: index + 1, value: match[0] });
+    }
+    for (const { rule, pattern } of SECRET_SHAPES) {
+      for (const match of line.matchAll(pattern)) findings.push({ rule, line: index + 1, value: match[0] });
+    }
     if (rules.deniedHashes.size === 0) continue;
     for (const run of line.matchAll(TOKEN_RUN)) {
       const candidates = TOKEN_SEPARATOR.test(run[0]) ? candidateTokens(run[0]) : [run[0]];
@@ -154,20 +241,29 @@ export function scanText(text, rules, hashCache = new Map()) {
 }
 
 /**
- * The rules from the two committed files: the allow list's addresses, and the deny list's hashes,
- * one per line, with `#` starting a comment.
+ * The rules from the two committed files: the allow list's addresses, published secret hashes and
+ * role users, and the deny list's hashes, one per line, with `#` starting a comment.
  * @param {{ allowJson: string, denyText: string }} sources
  * @returns {Rules}
  */
 export function parseRules({ allowJson, denyText }) {
   const allow = JSON.parse(allowJson);
   const allowedAddresses = new Set(allow.ethereumAddresses.map((entry) => entry.address.toLowerCase()));
+  const allowedSecretHashes = new Set();
+  // A malformed entry may be a raw value pasted in place of its hash, so errors name its place only.
+  for (const [index, { sha256 }] of (allow.publishedSecrets ?? []).entries()) {
+    if (!SHA256_HEX.test(sha256)) {
+      throw new Error(`allow list secret entry ${index + 1} is not a lowercase sha256`);
+    }
+    allowedSecretHashes.add(sha256);
+  }
+  const homeUsers = new Set((allow.homeUsers ?? []).map((entry) => entry.name));
   const deniedHashes = new Set();
-  for (const raw of denyText.split('\n')) {
+  for (const [index, raw] of denyText.split('\n').entries()) {
     const line = raw.replace(/#.*/, '').trim();
     if (!line) continue;
-    if (!/^[0-9a-f]{64}$/.test(line)) throw new Error(`deny list line is not a lowercase sha256: ${raw}`);
+    if (!SHA256_HEX.test(line)) throw new Error(`deny list line ${index + 1} is not a lowercase sha256`);
     deniedHashes.add(line);
   }
-  return { allowedAddresses, deniedHashes };
+  return { allowedAddresses, allowedSecretHashes, homeUsers, deniedHashes };
 }

@@ -9,10 +9,11 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { describe, it } from 'node:test';
 import { fileURLToPath } from 'node:url';
-import { candidateTokens, isAllowedIpv4, parseRules, scanText, tokenHash } from '../lib.mjs';
+import { candidateTokens, isAllowedIpv4, parseRules, scanText, secretHash, tokenHash } from '../lib.mjs';
 
 const GATE = fileURLToPath(new URL('../gate.mjs', import.meta.url));
 const DENY_LIST = fileURLToPath(new URL('../deny.sha256', import.meta.url));
+const ALLOW_LIST = fileURLToPath(new URL('../allow.json', import.meta.url));
 
 /** An address in public space that no documentation range covers, built here and never written down. */
 const PUBLIC_ADDRESS = ['11', '22', '33', '44'].join('.');
@@ -20,9 +21,13 @@ const PUBLIC_ADDRESS = ['11', '22', '33', '44'].join('.');
 const REAL_LOOKING_WALLET = '0x' + '9a3f'.repeat(10);
 const DENIED_TOKEN = ['leaky', 'host', 'name'].join('-');
 
-function rulesWith({ allowed = [], denied = [] } = {}) {
+function rulesWith({ allowed = [], allowedSecrets = [], homeUsers = [], denied = [] } = {}) {
   return parseRules({
-    allowJson: JSON.stringify({ ethereumAddresses: allowed.map((address) => ({ address, why: 'test' })) }),
+    allowJson: JSON.stringify({
+      ethereumAddresses: allowed.map((address) => ({ address, why: 'test' })),
+      publishedSecrets: allowedSecrets.map((value) => ({ sha256: secretHash(value), why: 'test' })),
+      homeUsers: homeUsers.map((name) => ({ name, why: 'test' })),
+    }),
     denyText: denied.map(tokenHash).join('\n'),
   });
 }
@@ -113,6 +118,210 @@ describe('Ethereum addresses', () => {
   });
 });
 
+/**
+ * One made-up value per secret shape, assembled here so no line of this file has the shape itself.
+ * None of them was ever issued by anybody.
+ * @type {Record<string, string>}
+ */
+const SECRET_SHAPES = {
+  'private-key-block': '-----' + 'BEGIN OPENSSH ' + 'PRIVATE KEY' + '-----',
+  'aws-access-key': 'AKI' + 'A' + 'Z3Q7'.repeat(4),
+  'github-token': 'gh' + 'p_' + 'a1B2'.repeat(9),
+  'slack-token': 'xo' + 'xb-' + '1234567890-abcdefghij',
+  'stripe-key': 'sk' + '_live_' + 'Zq9'.repeat(8),
+  jwt: ['ey' + 'JhbGciOiJIUzI1NiJ9', 'ey' + 'JzdWIiOiIxIn0', 'c2lnbmF0dXJlLXN0dWI'].join('.'),
+};
+
+describe('secrets by shape', () => {
+  for (const [rule, value] of Object.entries(SECRET_SHAPES)) {
+    it(`refuses a ${rule}`, () => {
+      assert.deepEqual(scanText(`token = "${value}"`, rulesWith()), [{ rule, line: 1, value }]);
+    });
+  }
+
+  it('refuses the other private key headers and a fine-grained GitHub token', () => {
+    const values = [
+      '-----' + 'BEGIN RSA ' + 'PRIVATE KEY' + '-----',
+      '-----' + 'BEGIN EC ' + 'PRIVATE KEY' + '-----',
+      '-----' + 'BEGIN ' + 'PRIVATE KEY' + '-----',
+      '-----' + 'BEGIN PGP ' + 'PRIVATE KEY BLOCK' + '-----',
+      'github' + '_pat_' + 'Ab3_'.repeat(8),
+      'gh' + 's_' + 'a1B2'.repeat(9),
+      'rk' + '_live_' + 'Zq9'.repeat(8),
+      'sk' + '_test_' + 'Zq9'.repeat(8),
+    ];
+    for (const value of values) assert.equal(scanText(value, rulesWith()).length, 1, `${value.length} characters`);
+  });
+
+  it('lets through a public key block, bare prefixes and words that only start the same way', () => {
+    const text = [
+      '-----' + 'BEGIN PUBLIC KEY' + '-----',
+      '-----' + 'BEGIN CERTIFICATE' + '-----',
+      'AKIA is the prefix of an access key id',
+      'ghp_ starts a classic token',
+      'sk_live_ starts a live key',
+      'eyJ starts a JSON object in base64',
+      'xoxb- starts a bot token',
+    ].join('\n');
+    assert.deepEqual(scanText(text, rulesWith()), []);
+  });
+});
+
+/** Thirty-two made-up bytes, built here so no line of this file holds 64 hex digits. */
+const KEY_HEX = 'c0ffee12'.repeat(8);
+
+describe('64 hex digits beside a key word', () => {
+  it('refuses them after a key, secret, private, seed, signer or wallet word', () => {
+    for (const text of [
+      `PRIVATE_KEY=0x${KEY_HEX}`,
+      `const signerSecret = '${KEY_HEX}';`,
+      `seed: ${KEY_HEX}`,
+      `WALLET="${KEY_HEX}"`,
+    ]) {
+      const findings = scanText(text, rulesWith());
+      assert.equal(findings.length, 1, text.replace(KEY_HEX, '<hex>'));
+      assert.equal(findings[0].rule, 'keyed-hex-64');
+    }
+  });
+
+  it('refuses them after a token, password, passphrase or mnemonic word', () => {
+    const word = (...parts) => parts.join('');
+    for (const text of [
+      `API_AUTH_${word('TOK', 'EN')}=${KEY_HEX}`,
+      `DB_${word('PASS', 'WORD')}=${KEY_HEX}`,
+      `${word('pass', 'phrase')}: ${KEY_HEX}`,
+      `${word('MNEM', 'ONIC')}_HEX=${KEY_HEX}`,
+    ]) {
+      assert.equal(scanText(text, rulesWith()).length, 1, text.replace(KEY_HEX, '<hex>'));
+    }
+  });
+
+  it('refuses them before a key word on the same line', () => {
+    assert.equal(scanText(`${KEY_HEX} # the signer`, rulesWith()).length, 1);
+  });
+
+  it('lets through 64 hex digits with no key word near, and a key word too far away', () => {
+    const text = [`topic: ${KEY_HEX}`, `key word first, then a long gap of padding text: ${KEY_HEX}`].join('\n');
+    assert.deepEqual(scanText(text, rulesWith()), []);
+  });
+
+  it('lets through an image digest beside a secret word', () => {
+    assert.deepEqual(scanText(`-e SECRET=$SECRET node:24-alpine@sha256:${KEY_HEX}`, rulesWith()), []);
+  });
+
+  it('lets through a published sample by its hash, with or without 0x and in any case', () => {
+    const rules = rulesWith({ allowedSecrets: [KEY_HEX] });
+    for (const text of [`PRIVATE_KEY=0x${KEY_HEX}`, `secret ${KEY_HEX.toUpperCase()}`]) {
+      assert.deepEqual(scanText(text, rules), [], text.replace(/[0-9a-f]{64}/i, '<hex>'));
+    }
+  });
+
+  it('keeps the committed allow list of published secrets as lowercase sha256 hashes', () => {
+    const allow = JSON.parse(readFileSync(ALLOW_LIST, 'utf8'));
+    assert.ok(allow.publishedSecrets.length > 0);
+    for (const entry of allow.publishedSecrets) {
+      assert.match(entry.sha256, /^[0-9a-f]{64}$/);
+      assert.ok(entry.why);
+    }
+  });
+
+  it('refuses an allow list entry that is not a lowercase sha256', () => {
+    assert.throws(
+      () =>
+        parseRules({
+          allowJson: JSON.stringify({ ethereumAddresses: [], publishedSecrets: [{ sha256: 'nope', why: 'x' }] }),
+          denyText: '',
+        }),
+      /lowercase sha256/,
+    );
+  });
+
+  it('names a bad allow list entry by its place, never by its value', () => {
+    const pasted = `0x${KEY_HEX}`;
+    assert.throws(
+      () =>
+        parseRules({
+          allowJson: JSON.stringify({ ethereumAddresses: [], publishedSecrets: [{ sha256: pasted, why: 'x' }] }),
+          denyText: '',
+        }),
+      (error) => !error.message.includes(KEY_HEX) && /entry 1/.test(error.message),
+    );
+  });
+});
+
+/** The rules the committed lists give, for the cases that hinge on what the repository allows. */
+function committedRules() {
+  return parseRules({ allowJson: readFileSync(ALLOW_LIST, 'utf8'), denyText: readFileSync(DENY_LIST, 'utf8') });
+}
+
+describe('home folders', () => {
+  const person = ['ali', 'ce'].join('');
+
+  it('refuses a home folder on macOS and on Linux that names a person', () => {
+    for (const path of [`/${'Users'}/${person}/project`, `/${'home'}/${person}/.ssh`, `HOME=/${'home'}/${person}`]) {
+      const findings = scanText(path, rulesWith());
+      assert.equal(findings.length, 1, path);
+      assert.equal(findings[0].rule, 'home-path');
+    }
+  });
+
+  it('refuses a home folder written as a file URL or after a double slash', () => {
+    for (const path of [`file:///${'Users'}/${person}/proj/a.mjs:1:1`, `//${'home'}/${person}/data`]) {
+      const findings = scanText(path, rulesWith());
+      assert.equal(findings.length, 1, path);
+      assert.equal(findings[0].rule, 'home-path');
+    }
+  });
+
+  it('lets through the role users the committed allow list names', () => {
+    const text = [`/${'home'}/bee/.bee`, `/${'home'}/deploy/streaming`, `ps line for /${'Users'}/x/chrome`].join('\n');
+    assert.deepEqual(scanText(text, committedRules()), []);
+  });
+
+  it('lets through a placeholder, a bare root and a longer path that only contains one', () => {
+    const text = ['/Users/<name>/', '/home/', '/home/$USER/', 'var/lib/home/data'].join('\n');
+    assert.deepEqual(scanText(text, rulesWith()), []);
+  });
+
+  it('refuses a person even when a role user shares the prefix', () => {
+    const findings = scanText(`/${'home'}/beekeeper/`, rulesWith({ homeUsers: ['bee'] }));
+    assert.equal(findings.length, 1);
+  });
+});
+
+describe('email addresses', () => {
+  it('refuses an address at a real-looking domain', () => {
+    for (const domain of ['personal-mail.net', 'some-company.io', 'mail.some-company.co.uk']) {
+      const address = 'jane.doe' + '@' + domain;
+      assert.deepEqual(scanText(`contact ${address}`, rulesWith()), [{ rule: 'email', line: 1, value: address }]);
+    }
+  });
+
+  it('lets through the reserved example domains and the GitHub SSH user', () => {
+    const text = [
+      'ops@example.com',
+      'a@admin.example.org',
+      'b@example.net',
+      'c@bee.example.invalid',
+      'd@funding.example.test',
+      'e@admin.offline.example',
+      'f@app.localhost',
+      'git clone git@github.com:owner/repo.git',
+    ].join('\n');
+    assert.deepEqual(scanText(text, rulesWith()), []);
+  });
+
+  it('lets through package versions, scopes and a user at a bare host', () => {
+    const text = ['pnpm add left-pad@1.3.0', 'import x from "@scope/name"', 'ssh deploy@bastion'].join('\n');
+    assert.deepEqual(scanText(text, rulesWith()), []);
+  });
+
+  it('refuses a domain that only starts like an example one', () => {
+    const address = 'ops' + '@' + 'example.com.attacker.net';
+    assert.equal(scanText(address, rulesWith()).length, 1);
+  });
+});
+
 describe('the hashed deny list', () => {
   it('refuses a denied token wherever it stands in a longer run', () => {
     const rules = rulesWith({ denied: [DENIED_TOKEN] });
@@ -137,6 +346,11 @@ describe('the hashed deny list', () => {
     assert.deepEqual(scanText('leakyness', rules), []);
   });
 
+  it('refuses a hosted issue tracker link through the committed list', () => {
+    const link = `https://team.${'atlas' + 'sian'}.net/browse/ABC-1`;
+    assert.equal(scanText(link, committedRules()).filter((finding) => finding.rule === 'denied-token').length, 1);
+  });
+
   it('offers every contiguous span of a run', () => {
     assert.deepEqual(candidateTokens('a-b.c'), ['a', 'a-b', 'a-b.c', 'b', 'b.c', 'c']);
   });
@@ -152,6 +366,14 @@ describe('the hashed deny list', () => {
     assert.throws(
       () => parseRules({ allowJson: '{"ethereumAddresses":[]}', denyText: 'not-a-hash' }),
       /lowercase sha256/,
+    );
+  });
+
+  it('names a bad deny list line by its number, never by its text', () => {
+    const pasted = `# a comment\n0x${KEY_HEX}`;
+    assert.throws(
+      () => parseRules({ allowJson: '{"ethereumAddresses":[]}', denyText: pasted }),
+      (error) => !error.message.includes(KEY_HEX) && /line 2/.test(error.message),
     );
   });
 });
@@ -194,6 +416,19 @@ describe('the command, on a repository of its own', () => {
       assert.equal(run.status, 1, run.stdout + run.stderr);
       assert.match(run.stdout, new RegExp(`notes\\.md:1: ipv4: ${PUBLIC_ADDRESS.replaceAll('.', '\\.')}`));
       assert.match(run.stdout, new RegExp(`notes\\.md:2: eth-address: ${REAL_LOOKING_WALLET}`));
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
+  });
+
+  it('goes red on a planted secret and names its kind and length, never the value', () => {
+    const token = SECRET_SHAPES['github-token'];
+    const root = repositoryWith({ 'notes.md': `export GH_TOKEN=${token}\n` });
+    try {
+      const run = spawnSync(process.execPath, [GATE, '--root', root], { encoding: 'utf8' });
+      assert.equal(run.status, 1, run.stdout + run.stderr);
+      assert.match(run.stdout, new RegExp(`notes\\.md:1: github-token: a value of ${token.length} characters`));
+      assert.equal(run.stdout.includes(token), false);
     } finally {
       rmSync(root, { recursive: true, force: true });
     }

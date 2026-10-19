@@ -22,5 +22,22 @@
       "why": "the public Swarm postage stamp contract on Gnosis Chain"
     },
     { "address": "0xca11bde05977b3631167028862be2a173976ca11", "why": "the public Multicall3 contract" }
+  ],
+  "publishedSecrets": [
+    {
+      "sha256": "bc1a50966c9e6486bc4ebf880b51611a2a97fcb8e7a6976e9b81a9e3e8ca0e3c",
+      "why": "the private key of Hardhat's first test account, published by Hardhat, which the feed sample signs with"
+    },
+    {
+      "sha256": "a8ae6e6ee929abea3afcfc5258c8ccd6f85273e0d4626d26c7279f3250f77c8e",
+      "why": "the counting-digits sample brand wallet secret, which a deploy refuses without --allow-sample-secrets"
+    }
+  ],
+  "homeUsers": [
+    { "name": "bee", "why": "the user the Bee container image runs as" },
+    { "name": "deploy", "why": "the role user a host is set up with in docs/self-hosting.md" },
+    { "name": "pwuser", "why": "the user the Playwright browser image runs as" },
+    { "name": "pwuser2", "why": "a test fixture, the account a browser test must not mistake for pwuser" },
+    { "name": "x", "why": "a placeholder in a process list fixture" }
   ]
 }
