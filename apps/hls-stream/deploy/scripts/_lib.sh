@@ -879,7 +879,7 @@ readonly DEFAULT_BEE_GATEWAY_DATA_DIR="./data/bee-gateway"
 #
 # This character check is the layer that carries the safety, not `shell_quote`, and it is worth being
 # exact about that: the value reaches an `ssh` command line, `shell_quote` wraps it, and the quoting
-# was itself wrong on bash 3.2 until this branch fixed it. Two layers only look like two when both
+# was itself wrong on bash 3.2 before `shell_quote` was rewritten. Two layers only look like two when both
 # work, so this one is written to hold on its own.
 #
 # It is not sufficient by itself either. The path is handed to `mkdir -p` and `chmod -R 777` on the
