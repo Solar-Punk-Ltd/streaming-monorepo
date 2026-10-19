@@ -161,7 +161,7 @@ function Rungs({ stage }: { stage: StageSummary }) {
 /**
  * The stages the manager runs for the brand, as it last pushed them, and the brand's catalogue stamp. Read only but
  * for one action: moving the catalogue's history onto the batch the manager designated. The manager registers,
- * changes and retires a stage, and every top-up happens in the manager's console.
+ * changes and retires a stage. A top-up is the Funding page's Stamps tab.
  */
 export function StagesPage() {
   const [stages, setStages] = useState<StageSummary[] | null>(null);

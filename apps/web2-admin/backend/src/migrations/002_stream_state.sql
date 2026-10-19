@@ -21,8 +21,9 @@
 --                     uploader measures it in fractional seconds.
 --
 -- All four are nullable and stay null for a draft: nothing here is known until
--- an encoder actually connects. Unpublishing clears them, because that returns
--- the row to `draft` and hands it a fresh life.
+-- an encoder actually connects. Since 2026-09-26 an unpublish keeps them, so a
+-- draft that holds a recording lists it as `vod` again when it is published.
+-- Only a `live` report clears manifest_index and duration_seconds.
 
 ALTER TABLE streams
   ADD COLUMN manifest_index    BIGINT,

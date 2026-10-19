@@ -29,7 +29,6 @@ export const WALLET_EXPORT_USAGE = [
   'standard output alone; the warning and the address go to standard error.',
 ].join('\n');
 
-/** The warning printed before the key. */
 const WARNING = [
   "WARNING: the brand wallet's private key is printed below, once.",
   '',

@@ -8,9 +8,7 @@ services:
       - ./Server.xml.template:/opt/ovenmediaengine/conf-template/Server.xml.template:ro
       - ./entrypoint.sh:/opt/ovenmediaengine/conf-template/entrypoint.sh:ro
     # Host and container port are the same number on purpose, because the entrypoint binds OME to the
-    # configured port rather than to a fixed one. A mapping from a fixed container port hid the fact
-    # that these two variables never reached the container, which host networking then exposed by
-    # discarding the mapping. See the matching block in deploy/docker-compose.yml.
+    # configured port. See the matching block in deploy/docker-compose.yml.
     #
     # The HLS port takes a bind address, the same knob and default as in `deploy/docker-compose.yml`,
     # because it serves the segments themselves. On this path the variable is read from `.env` beside
@@ -19,10 +17,10 @@ services:
     ports:
       - '${OME_HTTP_BIND:-${DOCKER_BRIDGE_ADDRESS:-127.0.0.1}}:${OME_HLS_PORT:-8081}:${OME_HLS_PORT:-8081}'
       - '${OME_SRT_BIND:-0.0.0.0}:${OME_SRT_PORT:-10080}:${OME_SRT_PORT:-10080}/udp'
-    # Enumerated rather than inherited, deliberately. This used to be `env_file: ../../.env`, which
-    # fills the container with **every** root variable, including PUBLISH_KEY_SECRET: the master
-    # secret every stream's publish key derives from, handed to the third-party publisher-facing
-    # image it exists to authenticate publishers against. Anyone who can read that environment mints
+    # Enumerated rather than inherited, deliberately. `env_file: ../../.env` would fill the container
+    # with **every** root variable, including PUBLISH_KEY_SECRET: the master secret every stream's
+    # publish key derives from, handed to the third-party publisher-facing image it exists to
+    # authenticate publishers against. Anyone who can read that environment mints
     # a valid key for every stream, and rotating is the only response because there is no per-stream
     # revocation.
     #

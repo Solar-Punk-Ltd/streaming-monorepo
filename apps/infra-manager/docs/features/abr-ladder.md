@@ -93,14 +93,15 @@ two addresses a viewer needs to open a stage.
 | the batch it pays with                | `profiles.stamp_id` (already existed, already managed)      |
 | its bee API port                      | derived from `port_slot`, as it always was                  |
 
-One migration, adding one column. No new table, and no second port-slot family,
+Two migrations for the group: 004 adds the `kind` column and 005 renames the
+pool kind to `abr-node-pool`. No new table, and no second port-slot family,
 one port map, the original one.
 
 ### Why the kind is a column and not derived
 
 Ladder-ness was briefly inferred by parsing member names for a rung suffix. That
 works while the ladder is intact and fails precisely when it is not: remove one
-rung and the group stops _looking_ like a ladder, so the Uploaders tab stops
+rung and the group stops _looking_ like a ladder, so the console stops
 offering the ladder view, at the moment the operator most needs it to say
 "1080p is missing".
 
@@ -114,22 +115,24 @@ removes.
 
 ## Using it
 
-1. **New deployment → Deployment type → ABR Node Pool.** Four profiles are
+1. **New deployment → the goal card ABR node pool.** Four profiles are
    created: `<pool>-360p` … `<pool>-1080p`, each with the single `bee-uploader`
    component.
 2. **The rungs deploy themselves.** Creating the pool reserves and deploys
    every member, so the four Bee nodes come up without another click. Fund
    and stamp them next.
-3. **Uploaders tab.** The ladder card lists its four rungs, each expandable:
-   fund its address with xDAI and xBZZ, then buy its batch. The buy form starts
+3. **The group page.** It lists the pool's four rungs. On each rung's own
+   deployment page, under **Storage and funding**, fund its address with xDAI
+   and xBZZ, then buy its batch. A rung's **Buy stamp** on the group page opens
+   that card. The buy form starts
    at that rung's suggested depth (**17 / 18 / 19 / 20** across the shipped
    ladder), because a rung's batch fills in proportion to its bitrate and a flat
    depth would put the four expiries hours apart.
 4. **Copy `BEE_PUBLISHERS`** from the pool card once all four rungs report a
    _live_ batch. The card only offers the value when each rung's own node
    confirms its batch. See [Rung validity](#rung-validity).
-5. **Paste it into an ABR Uploader.** New deployment → Deployment type → **ABR
-   Uploader**. See [The ABR Uploader](#the-abr-uploader).
+5. **Paste it into an ABR Uploader.** New deployment → the goal card **ABR
+   uploader**. See [The ABR Uploader](#the-abr-uploader).
 
 ## The ABR Uploader
 
@@ -149,18 +152,18 @@ admits it, as The address explains.
 its own self-contained form, for the same reason the pool has one: it shares
 almost nothing with a single-node deployment.
 
-|                  | single-node uploader                       | ABR Uploader                                         |
-| ---------------- | ------------------------------------------ | ---------------------------------------------------- |
-| services         | `srs` + `stream-uploader` + `bee-uploader` | `srs` + `stream-uploader`                            |
-| where uploads go | its own Bee node, or `BEE_URL`             | the pool's four rungs                                |
-| postage          | its own `stamp_id`                         | the pool's, one batch per rung                       |
-| Uploaders tab    | fund it, buy batches                       | no actions, just shows publish URL with pool targets |
+|                  | single-node uploader                       | ABR Uploader                                   |
+| ---------------- | ------------------------------------------ | ---------------------------------------------- |
+| services         | `srs` + `stream-uploader` + `bee-uploader` | `srs` + `stream-uploader`                      |
+| where uploads go | its own Bee node, or `BEE_URL`             | the pool's four rungs                          |
+| postage          | its own `stamp_id`                         | the pool's, one batch per rung                 |
+| its page         | fund it, buy batches                       | nothing to fund or buy, shows its pool targets |
 
 It runs **no Bee node**: the pool's rungs are the publish targets, so there is no
 wallet to fund, no batch to buy and no stamp to wait for. `managesOwnStamp` is
-false, so it does not appear on the Uploaders tab at all, because a funding panel there
-would point at a node that does not exist. `isPendingStamp` is false, so
-**Deploy uploader** is enabled from the start.
+false, so its page has no funding panel, because one would point at a node that
+does not exist. `isPendingStamp` is false, so the uploader can be started at
+once.
 
 `BEE_PUBLISHERS` is required, because without it the deployment would come up and
 never upload anything, and it is validated where the operator can still fix it (form, API,
@@ -372,7 +375,7 @@ request or block the value.
 | `src/groups/groupReadiness.ts`, `useBeePublishers.ts` | What the page asks the manager and how it counts the header chip, from the _verified_ state the manager reports rather than from the profile rows.                                                                                                                                                                                                                                                                                                |
 | `src/uploaders/BuyStampForm.tsx`                      | Optional `defaultDepth`, so a rung's form starts at _its_ suggested depth rather than a flat 17. Since 2026-09-25 its caption says what a newly set batch reaches, from `src/deployments/newBatchReach.ts`: on a rung, the pool string, and an ABR uploader of its pool at that uploader's next deploy (since 2026-10-04).                                                                                                                        |
 | `src/uploaders/NodeFunding.tsx`, `StampTable.tsx`     | A rung's wallet, address and batch list. The Usable column has an `expired` state, which previously read `pending`, that is, as something that would come good on its own, and an empty table names the orphaned id instead of saying "No stamps on this node yet." Since 2026-09-25 a Used column says how full each batch's fullest bucket is, and under each batch are Use, Top up and Dilute, with Use unavailable on a full immutable batch. |
-| `src/forms/wizard/`                                   | **Deployment type** is a step of the wizard, and `PoolPrerequisites.tsx` and `PoolSettings.tsx` are the pool's own screens. `poolDraft.ts`, `poolIdentity.ts` and `poolMembership.ts` hold its draft, so a pool created mid-wizard is not lost by a step back.                                                                                                                                                                                    |
+| `src/forms/wizard/`                                   | The goal cards are the first step of the wizard, and `steps/PoolPrerequisites.tsx` and `steps/PoolSettings.tsx` are the pool's own screens. `poolDraft.ts`, `poolIdentity.ts` and `poolMembership.ts` hold its draft, so a pool created mid-wizard is not lost by a step back.                                                                                                                                                                    |
 | `src/PublisherRungs.tsx`                              | Renders the rungs a pasted `BEE_PUBLISHERS` resolves to, because a line of four URLs and four 64-character batch ids is not something anyone proof-reads.                                                                                                                                                                                                                                                                                         |
 | `src/deployments/PoolTargetCard.tsx`                  | On an ABR uploader's own page, where its four rungs land.                                                                                                                                                                                                                                                                                                                                                                                         |
 | `src/data.ts`                                         | `fetchBeePublishers`, returning `null` for a group that is not a ladder so callers can probe cheaply. The response types are re-exported from `common` rather than redeclared. The local copy had already gone stale, with the per-rung verification fields arriving in the JSON and invisible to the compiler.                                                                                                                                   |
@@ -640,7 +643,7 @@ names would have dropped both guards at exactly the wrong moment, letting
 ## Known gaps
 
 1. **Nothing enforces ladder integrity after creation.** Any rung can be stopped
-   or removed individually, leaving a 3-rung ladder. The ladder card reports
+   or removed individually, leaving a 3-rung ladder. The group page reports
    which rung is missing. Nothing prevents it.
 2. **Ports are not dense.** Four slots at 10 ports each = 40 reserved to use 8.
    Deliberate: it is the price of a rung being an ordinary profile. At the
@@ -657,7 +660,7 @@ names would have dropped both guards at exactly the wrong moment, letting
 - Liveness on the Deployments tab: the tab reads every node's batch and
   chequebook, and since 2026-09-25 every running uploader's health, the same
   readings as the overview. `pendingStamp` is read on the deployment page alone,
-  for the Deploy uploader button.
+  for the uploader row of its Containers card.
 - Reachability _from the uploader_ rather than from the manager. The probe can
   only tell you what the manager can reach, which is why an unreachable published
   address warns instead of blocking. A check run from where the uploader actually

@@ -172,15 +172,12 @@ export class StreamCatalog implements LadderRegistry {
    * queues a single rewrite, because {@link MasterRewriteSchedule.beginRewrite} marks the shape being
    * written as in flight until that write settles.
    *
-   * ⛔ **A rewrite that did not reach the feed is not a shape anyone is being offered, and this used
-   * to record it as one.** `advertised` was stamped before the write ran, so a master the writer
-   * could not publish was remembered as published: `republishMaster` rejects when the master feed
-   * exhausts its own retry window, the catch only logged, and nothing ever tried again. The reasoning
-   * written here leaned on the next transition or the next announce to put it right, and a steady
-   * broadcast produces neither, so one failed write left a viewer joining that broadcast offered a
-   * dead rung for the rest of it. Now `advertised`, kept in {@link MasterRewriteSchedule} since the web2 admin link change,
-   * records only what the feed took, and a failure holds the group off for
-   * {@link MASTER_REWRITE_RETRY_MS} rather than for good.
+   * ⛔ **A rewrite that did not reach the feed is not a shape anyone is being offered.** So
+   * `advertised`, kept in {@link MasterRewriteSchedule}, records only what the feed took, and a
+   * failure holds the group off for {@link MASTER_REWRITE_RETRY_MS} rather than for good.
+   * `republishMaster` rejects when the master feed exhausts its own retry window, and a steady
+   * broadcast produces no next transition or announce to put it right, so a failed write remembered
+   * as published would leave a viewer joining that broadcast offered a dead rung for the rest of it.
    */
   private republishIfLadderShapeChanged(group: string, liveRungs: readonly string[]): void {
     if (this.masterWriter === undefined) {

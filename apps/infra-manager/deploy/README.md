@@ -16,13 +16,18 @@ stack versions and the ssh identity default to folders beside it, and
 ```sh
 # As deploy@server
 sudo apt-get update
-sudo apt-get install -y docker.io docker-compose-plugin rsync
+sudo apt-get install -y docker.io docker-compose-v2 rsync curl
 sudo usermod -aG docker deploy
 sudo install -d -o deploy -g deploy /opt/streaming
 # log out + back in so the group takes effect
-
-mkdir -p /opt/streaming/streaming-infra-manager/manager
 ```
+
+Ubuntu's own archive names the Compose plugin `docker-compose-v2` and Docker's apt repository names
+it `docker-compose-plugin`, so install whichever your sources offer.
+
+The account also needs your own public key in its `authorized_keys`, or no deploy can log in
+to it. [What every host needs](../../../docs/self-hosting.md#what-every-host-needs) has the
+commands.
 
 Make sure `manager/.env` exists in your local checkout. Every deploy sends it
 to the server, so your laptop is the source of truth. Another server gets a
@@ -291,8 +296,11 @@ key pair, an `ssh_config` and a `known_hosts`:
 # As deploy@<control-host>
 mkdir -p /opt/streaming/manager-ssh
 ssh-keygen -t ed25519 -N '' -f /opt/streaming/manager-ssh/deploy_key
-ssh-copy-id -i /opt/streaming/manager-ssh/deploy_key.pub deploy@203.0.113.7
 ```
+
+Put the one line of `deploy_key.pub` into the target's `authorized_keys`, as the
+stage host recipe in [docs/self-hosting.md](../../../docs/self-hosting.md#a-stage-host)
+shows.
 
 One `Host` block per target in `/opt/streaming/manager-ssh/ssh_config`. `IdentityFile` is the
 path _inside the container_, where the directory is mounted at `/root/.ssh`:
@@ -687,7 +695,9 @@ the name in the edge's env file:
 
 ```sh
 cp infra/edge/.env.sample infra/edge/.env
-# set MANAGER_DOMAIN=manager.example.org, and MANAGER_PORT if WEB_PORT is not 8080
+# set MANAGER_DOMAIN=manager.example.org, and the edge's MANAGER_PORT when
+# WEB_PORT in manager/.env is not 8080. The edge's MANAGER_PORT is the
+# console's web port, not the api port of the same name in manager/.env.
 ./infra/edge/edge.sh --host=<control-host>
 ```
 
@@ -700,8 +710,11 @@ for another one.
 The edge runs on the host's network, and Docker reports no port map for such a
 container. Until the manager is told what it holds, every removal on that host
 refuses with "Container removal or port release could not be verified", and so
-do port handovers and the firewall export of step 3. Name it in the manager's
-env file with the ports Caddy listens on, then restart the manager:
+do port handovers and the firewall export of step 3. Add the line below, with
+the ports Caddy listens on, to `manager/.env` in your checkout and run
+`./deploy/deploy.sh` again, which sends the file and recreates the api
+container. An edit made on the host is undone by the next deploy, and a plain
+`docker compose restart` does not re-read the file.
 
 ```sh
 KNOWN_HOST_NETWORK_PORTS=edge=80/tcp,443/tcp,443/udp
@@ -747,7 +760,9 @@ docker compose down -v            # nuke postgres data too, so be sure
   loopback, never directly from outside. It serves the built React SPA and
   reverse-proxies `/auth`, `/profiles`, `/groups`, `/health`, `/services`,
   `/config`, `/targets`, `/manager-settings`, `/stages`, `/version`,
-  `/versions`, `/chequebook`, `/metrics` and `/events` to `api:9876`. Every
+  `/versions`, `/chequebook`, `/metrics` and `/events` to `api:9876`, and
+  `/api/admin-funding`, which only the web2 admin calls and the dev server
+  does not proxy. Every
   path the dev server proxies has to appear here too. A path wired in one
   place and not the other is how the
   whole transfer history had no route in production until 2026-09-11, and a
@@ -757,8 +772,11 @@ docker compose down -v            # nuke postgres data too, so be sure
 - **`postgres`** has no published port. The api reaches it by service name,
   and a host-side `pnpm dev` gets a loopback port from `docker-compose.dev.yml`
   through `pnpm database:start`, at `MANAGER_DEV_PG_PORT` (5432 unless set).
-- The whole repo is bind-mounted into the `api` container at the same
-  absolute path it has on the host (`/opt/streaming/streaming-infra-manager`).
-  This is so compose files under `manager/swarm-hls-stream/` resolve volume
-  paths consistently when their `docker compose up` is forwarded to the host
-  daemon via the mounted socket.
+- The manager's folder (`MANAGER_ROOT`, `/opt/streaming/streaming-infra-manager`
+  by default) and the versions root are bind-mounted into the `api` container
+  at the same absolute paths they have on the host. The api starts deployments
+  with `docker compose` against compose files in those trees, and the daemon on
+  the host resolves their relative volumes against the host's filesystem, so
+  the two paths have to match. The legacy tree `manager/swarm-hls-stream/`,
+  which engines deployed before the versions root still mount, sits inside the
+  first.

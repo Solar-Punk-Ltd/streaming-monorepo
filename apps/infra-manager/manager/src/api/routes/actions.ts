@@ -53,7 +53,7 @@ export function createActionsRouter(deployService: DeployService, openStreams: O
       const authenticated = registerAuthenticatedRunStream(req, res, openStreams);
       try {
         const handle = await deployService.run(profileName, 'deploy-uploader');
-        // The action runs the submodule's deploy.sh scoped to the uploader,
+        // The action runs the stack's deploy.sh scoped to the uploader,
         // report that, not a nonexistent "deploy-uploader.sh".
         pipeRunHandleToSSE(
           res,

@@ -12,8 +12,8 @@ short note here on what was decided.
 ## Checkpoint 2: first working slice (merged 2026-09-18, PRs 1 to 5)
 
 Spec: docs/architecture/web2-admin-checkpoint-2.md. Decided: same stack as
-streaming-infra-manager, packages `web2-admin/{common,backend,frontend}`,
-scope `@streaming-monorepo/`.
+streaming-infra-manager, packages `web2-admin/{common,backend,frontend}` (now
+under `apps/`), scope `@streaming-monorepo/`.
 
 - Authentication with a seeded admin user and password change in the UI.
 - Stream drafts in Postgres with the msrs-client form fields.
@@ -45,8 +45,9 @@ with thumbnail (index 1, reference recorded), rotate key, unpublish (index 2,
 empty list), password change signing out other sessions, logout. The Bee
 gateway ran in `fake` mode; the bee-js integration test is skipped until
 `BEE_URL` and `POSTAGE_BATCH_ID` (`ITEST_BEE_URL` and `ITEST_BATCH_ID` since
-phase 7 of stages) point at a real node. Docker image builds are unverified on
-this machine (no registry access).
+phase 7 of stages) point at a real node. Docker image builds were unverified
+on that day. The `web2-admin` workflow now builds both images on every pull
+request that touches the admin.
 
 Real-Swarm test, same day: a colleague pointed the backend at their Bee node,
 published two streams with thumbnails, and deployed a viewer built for the feed
@@ -57,8 +58,8 @@ re-uploads a missing one. The viewer ignored the catalogue's `thumbnail` field
 and probed each stream's manifest feed, which does not exist before the first
 segment; fixed on swarm-hls-stream branch `feat/catalogue-thumbnails` off
 `main-v3` (cards render the catalogue thumbnail, scheduled streams show
-"Upcoming", the watch page says the stream has not started). The viewer must be
-rebuilt from that branch. The player link in the console now opens the viewer
+"Upcoming", the watch page says the stream has not started). The viewer had to be
+rebuilt from that branch at the time. The player link in the console now opens the viewer
 catalogue, not the per-stream route, for the same reason.
 
 Decided 2026-09-15, ABR ladder in admin mode (spec: the "ABR ladder in admin
@@ -279,8 +280,9 @@ manager.
 
 Built in nine phases, each a pull request into `feat/stages`: phases 1 to 8
 merged there on 2026-09-28, and the fix and phase 9 below opened for review on
-2026-09-29. Nothing has been deployed; the feature branch goes to `main` once
-it has been tried whole on a real installation.
+2026-09-29. The branch went into `main` as #74 on 2026-10-03, after the review
+below, and first ran on a test deployment in the live test round of 2026-10-04
+([known-issues.md](known-issues.md)).
 
 - Phase 1, the brief and the records (#56, 2026-09-28): the spec, this entry,
   and the stage and catalogue stamp records as zod schemas in
@@ -355,9 +357,10 @@ Left open after the nine phases:
 - **Top-ups from the admin.** Decided 2026-10-05: a brand wallet in the
   admin, and every funding operation through the manager's funding API, as
   [funding.md](architecture/funding.md) plans. Phase 1, the brand wallet, the
-  Balance tab and sends to node wallets, is built on `feat/funds` in #101 to
-  #106, phase 2, the Stamps tab's top-ups and dilutions, in #114, and phase 3,
-  the Chequebooks tab, on `feat/funds-chequebook` (decided 2026-10-08): one
+  Balance tab and sends to node wallets, was built in #101 to #106, phase 2,
+  the Stamps tab's top-ups and dilutions, in #114, and phase 3, the
+  Chequebooks tab, on the same branch, all merged to `main` as #119
+  (decided 2026-10-08): one
   target of 1 xBZZ or more brings each ticked chequebook there, with a deposit
   from its node's wallet or a withdrawal into it. A gateway's chequebook is
   read but not moved, here or in the manager's console.
@@ -382,9 +385,10 @@ Left open after the nine phases:
   go dark. "Upgrading" in `docs/self-hosting.md` has each step. A fresh
   installation needs none of this.
 
-## Checkpoint 3: manager integration (built on `feat/stages`, 2026-09-29)
+## Checkpoint 3: manager integration (done with stages, merged 2026-10-03)
 
-- Manager deploys swarm-hls-stream from `main-v3`.
+- Manager deploys the stack from `apps/hls-stream` of this repository (it
+  deployed swarm-hls-stream's `main-v3` until the move of 2026-09-27).
 - Derive ingest host and ports from a manager profile (`10001 + slot*10`
   etc.) instead of env; provision and stop through the Manager API. Done as
   [stages](architecture/stages.md): the manager pushes each stage's public
@@ -396,8 +400,8 @@ Left open after the nine phases:
   manager's readiness verdict, and the catalogue stamp record the catalogue
   batch's. Funding from the admin was decided on 2026-10-05
   ([funding.md](architecture/funding.md)): phase 1, sends from the brand
-  wallet to node wallets, and phase 2, stamp top-ups and dilutions, are built
-  on `feat/funds`.
+  wallet to node wallets, and phase 2, stamp top-ups and dilutions, are merged
+  to `main` as #119.
 - Decide how the admin layer authenticates to the manager once they are on
   different hosts. Decided 2026-09-28: it does not, because the manager
   pushes, on the admin's registrar token, and every uploader presents a token

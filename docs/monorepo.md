@@ -52,8 +52,8 @@ and `db-migrate` the migration runner both backends use. Any app may depend on a
 boundary check refuses a package that depends on an app. And the repository is one pnpm workspace:
 the root `package.json` pins its pnpm, the root `pnpm-workspace.yaml` lists every app's projects
 under the app's own folder and holds the security overrides, and one lockfile covers all three apps.
-Each app keeps its own `package.json` and its own Node. The [README](../README.md#working-in-an-app)
-says how to work in one.
+Each app keeps its own `package.json`, and every app runs on the one Node release the root `.nvmrc`
+names. The [README](../README.md#working-in-an-app) says how to work in one.
 
 `tools/release` holds what a release runs: the tag script an operator runs on the commit about to be
 deployed, and the script each deploy runs to name its build after that tag.
@@ -129,7 +129,8 @@ A version built from swarm-hls-stream before the move keeps its record of coming
 Every workflow lives in the root `.github/workflows`, since GitHub runs workflows from there only:
 one per app (`hls-stream.yml`, `infra-manager.yml` with `infra-manager-docker.yml`,
 `web2-admin.yml`), one for the shared packages (`packages.yml`), one for `tools/` (`tools.yml`),
-and the boundary check (`boundaries.yml`). The root `.github` also holds `CODEOWNERS`.
+the boundary check (`boundaries.yml`), and the image publish on every pushed tag
+(`publish-images.yml`, [releasing.md](releasing.md)). The root `.github` also holds `CODEOWNERS`.
 
 ## How the history came along
 

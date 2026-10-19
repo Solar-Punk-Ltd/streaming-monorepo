@@ -10,8 +10,8 @@ services:
       - ./healthcheck.sh:/usr/local/srs/conf/healthcheck.sh:ro
       # HLS output — shared with the Node app's media directory
       - ${SRS_MEDIA_PATH:-./media}:/usr/local/srs/objs/nginx/html
-    # Same port on both sides, because the entrypoint binds SRS to these values now, so a mapping
-    # onto a fixed container port would point at nothing.
+    # Same port on both sides, because the entrypoint binds SRS to these values, so a mapping onto a
+    # fixed container port would point at nothing.
     #
     # The `environment:` block below is what makes that safe. Compose interpolates `${...}` in both
     # blocks from the **project's** env file, `.env` beside this compose file, so restating the three
@@ -30,10 +30,10 @@ services:
       - '${SRS_HTTP_API_BIND:-${DOCKER_BRIDGE_ADDRESS:-127.0.0.1}}:${SRS_HTTP_API_PORT:-1985}:${SRS_HTTP_API_PORT:-1985}'
       - '${SRS_HTTP_BIND:-${DOCKER_BRIDGE_ADDRESS:-127.0.0.1}}:${SRS_HTTP_PORT:-8080}:${SRS_HTTP_PORT:-8080}'
       - '${SRS_SRT_BIND:-0.0.0.0}:${SRS_SRT_PORT:-10080}:${SRS_SRT_PORT:-10080}/udp'
-    # Enumerated rather than inherited, deliberately. This used to be `env_file: ../../.env`, which
-    # fills the container with **every** root variable, including PUBLISH_KEY_SECRET: the master
-    # secret every stream's publish key derives from, handed to the third-party publisher-facing
-    # image it exists to authenticate publishers against. Anyone who can read that environment mints
+    # Enumerated rather than inherited, deliberately. `env_file: ../../.env` would fill the container
+    # with **every** root variable, including PUBLISH_KEY_SECRET: the master secret every stream's
+    # publish key derives from, handed to the third-party publisher-facing image it exists to
+    # authenticate publishers against. Anyone who can read that environment mints
     # a valid key for every stream, and rotating is the only response because there is no per-stream
     # revocation.
     #

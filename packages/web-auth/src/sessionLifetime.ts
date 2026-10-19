@@ -32,10 +32,7 @@ export function hasExpired(session: SessionClocks, now: Date): boolean {
   return endsAt(session).getTime() <= now.getTime();
 }
 
-/**
- * Whether `last_seen_at` is stale enough to be worth a write. Without this
- * every request would be a write.
- */
+/** Whether `last_seen_at` is older than `LAST_SEEN_REFRESH_MS`. */
 export function needsTouch(session: SessionClocks, now: Date): boolean {
   return now.getTime() - session.lastSeenAt.getTime() >= LAST_SEEN_REFRESH_MS;
 }

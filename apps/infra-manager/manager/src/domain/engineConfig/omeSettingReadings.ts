@@ -109,7 +109,8 @@ export function omeSettingReadings(
   const file = parsedPaths(fileXml);
   return Object.fromEntries(
     fields.map((field) => {
-      // ee99c36 deploy/docker-compose.yml passes this to createOmeEngineFromEnv independently of Server.xml.
+      // apps/hls-stream/deploy/docker-compose.yml passes this to createOmeEngineFromEnv independently of
+      // Server.xml (first seen on the stack's main-v2 at ee99c36, before the monorepo).
       if (field.key === 'OME_HLS_POLL_INTERVAL_MS') return [field.key, [{ kind: 'environment' }]];
       if (!template) return [field.key, [unverified('metadata-unavailable')]];
       if (!file) return [field.key, [unverified(fileXml === null ? 'metadata-unavailable' : 'unsupported-syntax')]];

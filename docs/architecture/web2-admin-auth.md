@@ -1,12 +1,12 @@
 # Sign in: the web2-admin login gate
 
-What the admin API does about who you are, ported from streaming-infra-manager's
-`docs/features/auth-and-public-access.md` and the code under
-`manager/src/domain/auth/`. That page is the reasoning; this one is the port:
-what was taken as it stood, what was adapted to this codebase, and what was
-deliberately left behind.
+What the admin API does about who you are, ported from the manager's
+[`auth-and-public-access.md`](../../apps/infra-manager/docs/features/auth-and-public-access.md)
+and the code under `apps/infra-manager/manager/src/domain/auth/`. That page is
+the reasoning, and this one is the port: what was taken as it stood, what was
+adapted to this codebase, and what was deliberately left behind.
 
-Status: landed on `feat/web2admin-auth`, migration `005_auth_users.sql`. The
+Status: on `main` since 2026-09-18, migration `005_auth_users.sql`. The
 manager's design has run on a host since 2026-09-11 and is public behind a TLS
 edge; this is the same design on a database that already had users in it.
 

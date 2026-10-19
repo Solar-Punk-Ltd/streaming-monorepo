@@ -322,7 +322,6 @@ export class PublishService {
     private readonly catalogue: CatalogueTargets,
     private readonly feed: FeedIdentity,
     private readonly audit: AuditLog,
-    /** Every feed write in this process goes through this one mutex. */
     private readonly mutex: Mutex = new Mutex(),
   ) {}
 

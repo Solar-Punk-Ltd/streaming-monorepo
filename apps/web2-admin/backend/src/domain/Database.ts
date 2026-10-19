@@ -14,10 +14,10 @@ const MIGRATIONS_DIR = join(here, '..', 'migrations');
 const logger = Logger.getInstance();
 
 // node-postgres hands BIGINT back as a string, because int8 does not fit in a
-// double. The only int8 this schema reads is a feed index (and feed_writes.id,
-// which nothing reads): sequence numbers of catalog writes, nowhere near 2^53.
-// Parsing them as numbers keeps `publishedFeedIndex` a number on the wire, as
-// the API contract declares.
+// double. The int8 values this schema reads are feed and manifest indexes,
+// bitrates, move counters, a nonce, a block number and row counts, all far
+// below 2^53. Parsing them as numbers keeps `publishedFeedIndex` and the rest
+// numbers on the wire, as the API contract declares.
 pg.types.setTypeParser(pg.types.builtins.INT8, (value) => Number(value));
 
 export class Database {

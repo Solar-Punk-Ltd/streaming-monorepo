@@ -185,8 +185,7 @@ The Bee client is behind an interface (`FeedGateway`: `readLatest`, `write`,
 `uploadThumbnail`) so unit tests use an in-memory fake; the bee-js
 implementation is exercised by an integration test that is skipped unless
 `BEE_URL` and `POSTAGE_BATCH_ID` are set. Pin `@ethersphere/bee-js` to the
-version swarm-hls-stream's `packages/stream-uploader` uses; read it from the
-clone at `scratchpad/repos/swarm-hls-stream/packages/stream-uploader/package.json`.
+version `apps/hls-stream/packages/stream-uploader` uses.
 
 ### Ingest details (`domain/IngestService.ts`)
 

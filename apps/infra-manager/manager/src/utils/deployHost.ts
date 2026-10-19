@@ -23,7 +23,7 @@ const DEFAULT_TTL_MS = 60_000;
 
 /**
  * Names that are never ssh aliases, so asking ssh about them only costs a fork.
- * `native` is swarm-hls-stream's sentinel for "runs outside compose on this
+ * `native` is the stack's sentinel for "runs outside compose on this
  * machine" (see `is_native` in deploy/scripts/_lib.sh), not a host at all.
  */
 const NOT_ALIASES = new Set(['', 'localhost', '127.0.0.1', '0.0.0.0', '::1', 'native']);

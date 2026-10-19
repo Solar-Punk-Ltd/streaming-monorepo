@@ -2,7 +2,7 @@ import { Bee, type PostageBatch } from '@ethersphere/bee-js';
 
 import { spinner } from './output.js';
 
-const DEFAULT_TIMEOUT_MS = 5 * 60 * 1000; // 5 minutes
+const DEFAULT_TIMEOUT_MS = 5 * 60 * 1000;
 // Real default. Exposed as a parameter so a test can drive the same loop in milliseconds rather
 // than waiting out a real batch propagation.
 const POLL_INTERVAL_MS = 3000;
@@ -11,8 +11,7 @@ const POLL_INTERVAL_MS = 3000;
  * Poll until the bee node answers a health check. Throws after the timeout.
  *
  * It does not inspect the response, so this establishes the node is up and serving, not that it is
- * connected to peers or that its status reads ok. The docstring claimed peer connectivity and never
- * checked it.
+ * connected to peers or that its status reads ok.
  */
 export async function waitForNode(bee: Bee, timeoutMs = DEFAULT_TIMEOUT_MS, pollMs = POLL_INTERVAL_MS): Promise<void> {
   const s = spinner('Waiting for bee node to be ready...');

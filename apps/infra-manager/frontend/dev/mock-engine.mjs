@@ -192,6 +192,7 @@ function serverXml(settings) {
 /**
  * @param deps.readBody  reads a JSON request body
  * @param deps.withProfile wraps a handler so the 404 is written once
+ * @param deps.findProfile the deployment of that name in the mock's state, or null
  * @param deps.deploy    the mock's own DEPLOYING then RUNNING transition
  * @param deps.publish   writes an event to every open SSE client
  * @param deps.settingsSaved moves the settings revision of a deployment whose engine settings were saved here

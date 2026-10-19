@@ -100,8 +100,8 @@ check_stamp() {
     # never reads STAMP at all: the uploader's own `buildPublishers` takes the per-rung pool the
     # moment that variable is set. `capacity-gate.sh` names the same either-or when it decides which
     # batch to check, and `.env.sample` says the batch is the one in BEE_PUBLISHERS "or STAMP when
-    # unsplit". This guard was the one place that had not been told, so a fully funded ABR
-    # deployment was refused here for an empty variable its uploader would never have read.
+    # unsplit". So this guard accepts either, and does not refuse an ABR deployment for an empty
+    # STAMP its uploader never reads.
     publishers_val=$(grep -E '^BEE_PUBLISHERS=' "$ENV_FILE" | cut -d= -f2- | tr -d '[:space:]')
     stamp_val=$(grep -E '^STAMP=' "$ENV_FILE" | cut -d= -f2-)
     if [ -z "$publishers_val" ] && [ -z "$stamp_val" ]; then
@@ -163,6 +163,18 @@ check_engine
 
 # --- Local Bee node guard ---
 
+# Whether this invocation brings up the stream-uploader, which is the only service in the compose
+# file that reads BEE_URL.
+deploys_uploader() {
+  local target svc
+  for target in $(get_targets); do
+    for svc in $(get_filtered_services_for_target "$target"); do
+      [ "$svc" = "$SVC_UPLOADER" ] && return 0
+    done
+  done
+  return 1
+}
+
 # LOCAL_BEE_UPLOADER is the profile's own statement of whether this deployment runs a Bee node,
 # written into .env.<profile> by the deployment manager and read by resolve_bee_url below.
 #
@@ -176,18 +188,6 @@ check_engine
 # the old rule, because falling through is indistinguishable from the key working: a profile with
 # an external node and LOCAL_BEE_UPLOADER=flase would quietly get the compose service back and
 # crash-loop exactly as it did before the key existed.
-# Whether this invocation brings up the stream-uploader, which is the only service in the compose
-# file that reads BEE_URL.
-deploys_uploader() {
-  local target svc
-  for target in $(get_targets); do
-    for svc in $(get_filtered_services_for_target "$target"); do
-      [ "$svc" = "$SVC_UPLOADER" ] && return 0
-    done
-  done
-  return 1
-}
-
 check_local_bee_uploader() {
   case "${LOCAL_BEE_UPLOADER:-}" in
     true | false | '') ;;
@@ -233,7 +233,7 @@ UPLOADER_ENTRY="$UPLOADER_DIST/index.js"
 # build, or a `tsc` run that got as far as writing `.tsbuildinfo`, leaves the directory there with
 # nothing the image can run. Testing the directory called that built, skipped the build, and handed
 # compose a container that exits on `Cannot find module '/app/dist/index.js'` and restarts. The
-# pnpm-absent path below has read the entry file since 2026-09-16 and this one had not been told.
+# pnpm-absent path below reads the entry file too.
 build_if_needed() {
   if [ ! -f "$UPLOADER_ENTRY" ]; then
     log_info "Building packages"
@@ -388,10 +388,9 @@ read_bridge_address() {
 
 DEPLOY_BRIDGE_ADDRESS=""
 
-# When stream-uploader is on a different host than the media engine,
-# engine webhooks need the real IP. (Currently blocked by validation for SRS,
-# but this handles future flexibility.) Takes the engine service name
-# (defaults to srs for backward compatibility).
+# When stream-uploader is on a different host than the media engine, engine webhooks need the real
+# IP. validate_config refuses that split for SRS. Takes the engine service name, srs when none is
+# given.
 resolve_adapter_host() {
   local engine_svc="${1:-$SVC_SRS}"
   local engine_target uploader_target
@@ -493,8 +492,6 @@ init_bee_dirs() {
   done
 }
 
-# --- Sync files to remote ---
-
 # --- The stack's lockfile in a checkout of the one workspace ---
 #
 # See _workspace.sh. A remote deploy from such a checkout sends a pair cut out of the root's into a
@@ -532,7 +529,6 @@ sync_to_remote() {
 
   log_info "Syncing files to $target"
 
-  # Ensure remote directory structure exists
   ssh "$target" "mkdir -p $REMOTE_BASE/deploy/scripts $REMOTE_BASE/engines/srs $REMOTE_BASE/engines/ome $REMOTE_BASE/packages/stream-uploader $REMOTE_BASE/packages/shared $REMOTE_BASE/nodes"
 
   # Always sync compose and every override build_compose_files can add, Dockerfiles, nginx template,
@@ -549,7 +545,6 @@ sync_to_remote() {
     "$DEPLOY_DIR/client-nginx.conf.template" \
     "$target:$REMOTE_BASE/deploy/"
 
-  # Sync root .env
   rsync -az "$ENV_FILE" "$target:$REMOTE_BASE/.env"
 
   rsync -az "$DEPLOY_DIR/scripts/" "$target:$REMOTE_BASE/deploy/scripts/"
@@ -650,7 +645,6 @@ sync_to_remote() {
     fi
   fi
 
-  # Sync node init script
   rsync -az "$ROOT_DIR/nodes/init-node.sh" "$target:$REMOTE_BASE/nodes/"
 }
 
@@ -803,12 +797,10 @@ deploy_target() {
 
   read_bridge_address "$target"
 
-  # Generate env overrides
   local overrides
   overrides=$(generate_env_overrides "$target" "${services[@]}")
 
   if is_local "$target"; then
-    # Init bee dirs
     init_bee_dirs "$target" "${services[@]}"
 
     # Write overrides to per-profile temp file (concurrent group deploys would
@@ -819,7 +811,6 @@ deploy_target() {
     # as a line ending of its own.
     printf '%s' "$overrides" > "$override_file"
 
-    # Export overrides into current env for compose
     if [ -n "$overrides" ]; then
       set -a
       # shellcheck disable=SC1090
@@ -861,7 +852,6 @@ deploy_target() {
 
     log_ok "Local deploy complete"
   else
-    # Remote deploy
     sync_to_remote "$target" "${services[@]}"
     init_bee_dirs "$target" "${services[@]}"
 
@@ -932,7 +922,7 @@ fi
 # Build once before deploying (only if uploader is being deployed).
 #
 # A remote target forces a rebuild, so a hand-run deploy always ships a fresh dist, but only where
-# there is a toolchain to do it with. streaming-infra-manager runs this script inside its api
+# there is a toolchain to do it with. The infra manager (apps/infra-manager) runs this script inside its api
 # container, which has no pnpm and a checkout with no node_modules: that deploy builds the packages on
 # the operator's machine and rsyncs the result in. So a deploy without pnpm ships the dist it was
 # given rather than dying at `pnpm: command not found` from the middle of a build function, and names
@@ -956,7 +946,6 @@ if [ "$has_uploader" = "true" ]; then
   fi
 fi
 
-# Deploy to each target
 for target in $(get_targets); do
   services=($(get_filtered_services_for_target "$target"))
   [ ${#services[@]} -eq 0 ] && continue

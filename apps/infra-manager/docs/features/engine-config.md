@@ -197,10 +197,11 @@ outcome. A successful HTTP response does not prove playback.
 
 ## What has been checked, and where the containers are missing
 
-Everything below is a laptop result for the container-backed harnesses. The
-unit, database and browser suites run on GitHub's runners on every push and the
-branch has been deployed to the host twice, as the status above says, but no
-container harness and no integration file has run on a runner.
+The container-backed harnesses below were first measured on a laptop. Since
+2026-09-19 the two container harnesses also run on a GitHub runner through the
+docker-backed workflow, as the paragraph on them says. The unit, database and
+browser suites run on GitHub's runners on every push, and the branch has been
+deployed to the host twice, as the status above says.
 
 Unit, database and browser suites cover operation ownership, restart
 reconciliation, isolated SRS check files, XML parsing and protected paths, and

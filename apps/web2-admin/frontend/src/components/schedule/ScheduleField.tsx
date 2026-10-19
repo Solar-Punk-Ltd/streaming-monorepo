@@ -58,9 +58,8 @@ export function ScheduleField({ value, onChange, error = false, disabled = false
   const [heldTime, setHeldTime] = useState('');
   const chosenTime = time || heldTime;
 
-  // The text in the time box. Text that is not a time of day changes nothing
-  // in the form, so the box goes back to the chosen time rather than keeping
-  // text the form never took.
+  // Text that is not a time of day changes nothing in the form, so the box
+  // goes back to the chosen time.
   const [timeText, setTimeText] = useState(chosenTime);
 
   const handleDate = (next: Dayjs | null) => {

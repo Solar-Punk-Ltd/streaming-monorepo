@@ -2,8 +2,8 @@ import { readdirSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 
 /**
- * The three entries of `pnpm-workspace.yaml`, kept as literals because reading YAML to find them is
- * worse. `packages/*` is a directory of packages, and `deploy` and `e2e` are packages themselves.
+ * This app's package entries of the root `pnpm-workspace.yaml`, relative to apps/hls-stream and kept
+ * as literals because reading YAML to find them is worse. `packages/*` is a directory of packages, and `deploy` and `e2e` are packages themselves.
  */
 const WORKSPACE_ROOTS = ['packages'] as const;
 const STANDALONE_PACKAGES = ['deploy', 'e2e'] as const;

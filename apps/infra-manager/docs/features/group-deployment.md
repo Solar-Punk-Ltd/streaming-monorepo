@@ -29,7 +29,9 @@ Out of scope (deferred):
 Built since this page was written, and no longer deferred: editing a group's shared
 settings in one write (`PATCH /groups/:id/config`, the **Edit shared settings** button on a
 group's page), adding members to an existing group (`POST /groups/:id/members`) and removing
-a group once it has no members left (`DELETE /groups/:id`). A group's page also has
+a group once it has no members left (`DELETE /groups/:id`). The body of that last one
+carries `expectedName`, the group's name as the page showed it, and a name that no longer
+matches is refused. A group's page also has
 **Start all**, **Stop all** and **Remove group** buttons, which act on every member one by
 one. An ABR node pool refuses a `stamp_id` in the first, because one batch would then pay
 for every rung, and refuses the second, because a new member would not carry a rung name.

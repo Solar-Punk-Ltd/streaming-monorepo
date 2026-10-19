@@ -1,11 +1,11 @@
 # Manager API image.
 #
-# NOTE: swarm-hls-stream is NOT baked into this image. It is bind-mounted from
-# the host at runtime (see manager/docker-compose.yml) at the SAME absolute
-# path on both sides. This matters because the api process shells out to
-# `docker compose ... up` against compose files inside that tree; the docker
-# daemon runs on the host, so any relative volume in those compose files is
-# resolved against the host filesystem. Matching paths keeps that consistent.
+# The stack is not in this image. The api builds each version, the bundled one
+# included, under the versions root on the host, which docker-compose.yml
+# mounts at the same absolute path on both sides. The api shells out to
+# `docker compose ... up` against compose files in that tree, and the daemon on
+# the host resolves their relative volumes against the host filesystem, so the
+# paths must match.
 #
 # The stack is not built here, and deploy/deploy.sh does not build it either.
 # The deploy writes the pinned commit into manager/.stack-commit, and the api

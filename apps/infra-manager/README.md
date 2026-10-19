@@ -58,13 +58,12 @@ See [docs/features/abr-ladder.md](docs/features/abr-ladder.md).
 ## Checks
 
 The `checks` workflow declares four jobs on every pull request and push to
-`main` (and `main-v2` during the release transition): the build and the unit suites, the SQL suites against nine
+`main`: the build and the unit suites, the SQL suites against nine
 disposable databases, the browser suites against a real headless Chrome, and a
 build of the web and api images the way a deploy builds them on the host. A
-second workflow, started by hand, runs the container-backed regressions and the
-signed-in integration suite. Its five runs on push events of 2026-09-10 and
-2026-09-11 all failed. Dispatched by hand, it first passed on 2026-09-19 (run 35447516491) and has passed on every stack pin move since, most recently run
-36099132624 on 2026-09-25 for `v3.4`, read on GitHub that day. What each job proves, what it does not, and how to
+second workflow, started by hand or by adding the `docker-checks` label to a
+pull request, runs the container-backed regressions and the signed-in
+integration suite. What each job proves, what it does not, and how to
 run any of it on a laptop: [docs/ci.md](docs/ci.md).
 
 ## Documents
@@ -100,6 +99,9 @@ run any of it on a laptop: [docs/ci.md](docs/ci.md).
   - [postage-stamps.md](docs/features/postage-stamps.md): what a postage batch
     is, and buying, using, topping up and diluting one on a deployment's
     Storage card.
+  - [bee-node-mode.md](docs/features/bee-node-mode.md): whether a
+    deployment's Bee node runs light or ultra-light, and which chain endpoint
+    it is given.
   - [auth-and-public-access.md](docs/features/auth-and-public-access.md): the
     login gate, the HTTPS edge, the API binds and the host firewall.
   - [next-features-2026-09.md](docs/features/next-features-2026-09.md): the

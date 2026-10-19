@@ -7,7 +7,7 @@ import { Request } from 'express';
  * The defaults are sized for real ingest and not for the tests: a broadcaster sends roughly one
  * segment every two seconds per stream, so 30 a minute is the working rate and `perStreamMax` is
  * several times that to leave a reconnect burst room. Tests drive a configured rate of their own
- * rather than trying to exceed these, which is also what the acceptance criterion asks for.
+ * rather than trying to exceed these.
  */
 export interface RequestLimits {
   windowMs: number;

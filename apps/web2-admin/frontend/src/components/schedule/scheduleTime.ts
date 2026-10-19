@@ -3,7 +3,7 @@ import dayjs, { type Dayjs } from 'dayjs';
 import { formatHumanDateTime, toDateTimeLocalValue } from '../../dateUtil';
 
 /**
- * Every date calculation the three scheduler variants need, as pure
+ * Every date calculation the schedule field needs, as pure
  * functions. `now` is always a parameter — never `Date.now()` inside — so the
  * awkward cases (a DST transition, the last hour of a year, a Saturday
  * evening) can be tested by handing in a fixed instant.
@@ -76,9 +76,9 @@ export function relativeLabel(target: Date, now: Date): string {
 }
 
 /**
- * The caption under every variant, or null when there is nothing to read. The
- * date half comes from `formatHumanDateTime`, the same function behind the
- * `DATE_TIME_FORMAT` the picker field renders, because two spellings of one
+ * The caption under the field, or null when there is nothing to read. The
+ * date half comes from `formatHumanDateTime`, which spells the day as
+ * `DATE_FORMAT` does in the field's date box, because two spellings of one
  * date a line apart look like two dates.
  */
 export function describeSchedule(value: string, now: Date): string | null {
@@ -137,7 +137,7 @@ export function quickPicks(now: Date): QuickPick[] {
 
 export const SLOT_MINUTES = 15;
 
-/** `00:00`, `00:15`, … `23:45` — the split variant's time menu. */
+/** `00:00`, `00:15`, … `23:45`, the time menu. */
 export function timeSlots(): string[] {
   const slots: string[] = [];
   for (let minute = 0; minute < 24 * 60; minute += SLOT_MINUTES) {
@@ -211,7 +211,7 @@ export function dayjsToDateTimeLocal(value: Dayjs | null): string {
   return toDateTimeLocalValue(value.toDate());
 }
 
-/** The date-only siblings, for the calendar half of the split field. */
+/** The date-only siblings, for the calendar half of the field. */
 export function dateToDayjs(value: string): Dayjs | null {
   return dateTimeLocalToDayjs(`${value}T00:00`);
 }

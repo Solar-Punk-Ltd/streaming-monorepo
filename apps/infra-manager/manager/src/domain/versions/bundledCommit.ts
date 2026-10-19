@@ -35,8 +35,8 @@ export function readCheckoutCommit(root: string): string | null {
 /**
  * Which commit the bundled checkout is on, or null when the host cannot tell.
  *
- * Two hosts, two answers. On a laptop the submodule has a `.git`, so git can be
- * asked. On the deploy host the tree arrives over rsync with `.git` excluded,
+ * Two hosts, two answers. On a laptop the stack is `apps/hls-stream` inside
+ * this repository's checkout, so git can be asked. On the deploy host the tree arrives over rsync with `.git` excluded,
  * so there is nothing to ask: `deploy/deploy.sh` writes the commit into
  * `manager/.stack-commit` next to the checkout before the rsync, and that file
  * is the answer there. Null is a real outcome, for a checkout that arrived by
@@ -57,8 +57,9 @@ function fromCommitFile(bundledRoot: string): string | null {
 /**
  * The stack commit this manager ships with, or null when it ships none.
  *
- * `deploy/deploy.sh` writes it beside the checkout, from the submodule pin the
- * repository records rather than from anybody's working tree, and that is what
+ * `deploy/deploy.sh` writes it beside the checkout: the last commit that changed
+ * `apps/hls-stream`, read from the repository rather than from anybody's
+ * working tree, and that is what
  * the host builds the bundled version from. A developer machine has no such
  * file, and null is how that says so: there the bundled version stays on the
  * tree in the checkout.

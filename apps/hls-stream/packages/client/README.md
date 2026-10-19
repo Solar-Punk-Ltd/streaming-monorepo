@@ -37,13 +37,14 @@ In production builds or when pointing to a remote gateway, requests go directly 
 
 ## Environment Variables (in the stack's `.env`)
 
-| Variable               | Required | Description                                                                                                                                                                  |
-| ---------------------- | -------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `VITE_READER_BEE_URL`  | Yes      | Bee node URL for fetching streams                                                                                                                                            |
-| `VITE_APP_OWNER`       | Yes      | Feed owner address (hex, no 0x prefix)                                                                                                                                       |
-| `VITE_APP_RAW_TOPIC`   | Yes      | Feed topic for the stream catalog, must match `STREAM_LIST_TOPIC`                                                                                                            |
-| `VITE_SWARM_PROVIDERS` | No       | The gateways the viewer reads, as JSON. Empty means the one gateway `VITE_READER_BEE_URL` names. See [The Swarm client](#the-swarm-client)                                   |
-| `VITE_EXPOSE_PLAYER`   | No       | Test builds only. Puts the player, gateway and fetch-backend handles on `window` for the e2e browser suites. No shipping build sets it, and `bundle.test.ts` holds that line |
+| Variable                     | Required | Description                                                                                                                                                                  |
+| ---------------------------- | -------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `VITE_READER_BEE_URL`        | Yes      | Bee node URL for fetching streams                                                                                                                                            |
+| `VITE_APP_OWNER`             | Yes      | Feed owner address (hex, no 0x prefix)                                                                                                                                       |
+| `VITE_APP_RAW_TOPIC`         | Yes      | Feed topic for the stream catalog, must match `STREAM_LIST_TOPIC`                                                                                                            |
+| `VITE_SWARM_PROVIDERS`       | No       | The gateways the viewer reads, as JSON. Empty means the one gateway `VITE_READER_BEE_URL` names. See [The Swarm client](#the-swarm-client)                                   |
+| `VITE_EXPOSE_PLAYER`         | No       | Test builds only. Puts the player, gateway and fetch-backend handles on `window` for the e2e browser suites. No shipping build sets it, and `bundle.test.ts` holds that line |
+| `VITE_BROWSER_FETCH_BACKEND` | No       | Set to `weeb3` to fetch segment bytes from the in-tab node, see [weeb-3 runs in a SharedWorker](#weeb-3-runs-in-a-sharedworker). Unset means the gateway                     |
 
 The dockerized client is also built with `VITE_APP_RELEASE_LABEL` and `VITE_APP_RELEASE_COMMIT`, the release
 `deploy.sh` was told it deploys with `--release-label` and `--release-commit`, which the QoE overlay shows. They are not
@@ -376,13 +377,13 @@ only symptom is `the in-tab node did not reach the network: SharedWorker request
 A SharedWorker script has to come from the page's own origin, so the client serves the package's
 runtime itself. Five things go into one directory, because they resolve relative to each other:
 
-| Served as                | What it is                                                        |
-| ------------------------ | ----------------------------------------------------------------- |
-| `/weeb-3/worker.js`      | The worker script. `Weeb3FetchBackend` passes this URL explicitly |
-| `/weeb-3/weeb_3.js`      | The wasm-bindgen glue, which `worker.js` imports                  |
-| `/weeb-3/weeb_3_bg.wasm` | 3.9 MB of node, which the glue fetches beside itself              |
-| `/weeb-3/snippets/**`    | Two files the glue imports by relative path                       |
-| `/weeb-3/service.js`     | A ServiceWorker the glue registers at boot, scoped to `/weeb-3/`  |
+| Served as                | What it is                                                                       |
+| ------------------------ | -------------------------------------------------------------------------------- |
+| `/weeb-3/worker.js`      | The worker script. `Weeb3FetchBackend` passes this URL explicitly                |
+| `/weeb-3/weeb_3.js`      | The wasm-bindgen glue, which `worker.js` imports                                 |
+| `/weeb-3/weeb_3_bg.wasm` | The node itself, several megabytes of wasm, which the glue fetches beside itself |
+| `/weeb-3/snippets/**`    | Two files the glue imports by relative path                                      |
+| `/weeb-3/service.js`     | A ServiceWorker the glue registers at boot, scoped to `/weeb-3/`                 |
 
 `scripts/copy-weeb3-runtime.mjs` copies them out of `node_modules` into `public/weeb-3/`, which Vite
 copies verbatim into `dist/`. It runs from `prebuild` and `predev`, so a plain `pnpm build` or
@@ -429,14 +430,26 @@ src/
     StreamWatcher/        # Watch, plays a single stream
   providers/
     App.tsx               # Global state (stream list, gateway URL, the Swarm client)
+    catalogPoll.ts        # How often a page reads the catalog again, once a minute
+    catalogState.ts       # One catalog read, carrying the gateway it went to
+    gatewayTestHandle.ts  # Where a measurement harness finds the gateway switch
+    sourceStorage.ts      # A viewer's sources, routing and fallback order, kept in localStorage
+    useCatalogPoll.ts     # The hook that polls the catalog and hands each answer to the stream list
   swarm/                  # The one layer that reads Swarm: answers, providers, the client, settings
   types/
     stream.ts             # MediaType, StreamState, Stream interface
   utils/
+    buildLabel.ts         # The build this page is, as the node picker's report names it
     catalogFeed.ts        # Follows the stream catalog feed by walking slots
+    catalogList.ts        # Validates one catalog poll and works out the stream list it leaves
     config.ts             # Environment config with auto proxy detection
     fetchTimeoutError.ts  # The error a read whose window ran out reaches the player and the stream list as
     format.ts             # formatDuration (mm:ss)
+    gatewayClock.ts       # How far the gateway's clock is from the viewer's, from the HTTP Date header
+    playableRenditions.ts # The rungs of a catalog entry a viewer can be handed
+    playerRelease.ts      # The release label and commit the QoE overlay shows
     requestJitter.ts      # Gateway request jitter, to desynchronise pollers
+    scheduledStart.ts     # An announced broadcast's start time, in the viewer's own locale
     thumbnailManifest.ts  # A stream card's playlist read and its segment's URL
+    watchPageView.ts      # What the watch page shows: loading, not started, unavailable or the player
 ```

@@ -1,6 +1,6 @@
 /**
- * Same singleton-Logger pattern as streaming-infra-manager and
- * swarm-hls-stream, so log output across the project is uniform.
+ * Same singleton-Logger pattern as the manager (`apps/infra-manager`) and the
+ * stack (`apps/hls-stream`), so log output across the project is uniform.
  */
 export class Logger {
   private static instance: Logger;

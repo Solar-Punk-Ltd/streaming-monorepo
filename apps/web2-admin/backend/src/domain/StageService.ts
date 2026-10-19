@@ -215,7 +215,8 @@ export class StageService {
 
   /**
    * Retires the stage as of `observedAt`, the moment the manager saw the deployment gone. Its row stays: streams and
-   * old catalogue entries name its owner. Answers true only when this call retired a stored, active stage.
+   * old catalogue entries name its owner. Answers `{ retired: true }` only when this call retired a stored, active
+   * stage.
    */
   retire(stageId: string, observedAt: string): Promise<StageRetireAnswer> {
     return this.mutex.run(async () => {
@@ -282,7 +283,7 @@ export class StageService {
 
   /**
    * Clears the designation as of `observedAt`, the moment the manager saw it gone: the admin then has no catalogue
-   * batch. Answers true only when this call cleared a designation the admin held.
+   * batch. Answers `{ cleared: true }` only when this call cleared a designation the admin held.
    */
   clearCatalogueStamp(observedAt: string): Promise<CatalogueStampClearAnswer> {
     return this.mutex.run(async () => {

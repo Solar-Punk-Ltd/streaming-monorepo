@@ -5,7 +5,7 @@ import { promisify } from 'node:util';
 
 import { type BoundPort, boundHost, LOOPBACK_ADDRESS } from '../boundHost.js';
 
-// `import type` at statement level rather than an inline marker, because `config.ts` now imports
+// `import type` at statement level rather than an inline marker, because `config.ts` imports
 // DEFAULT_LOCAL_HOST_ADDRESS from here. Only this form is guaranteed to leave no runtime import
 // behind, and `config.ts` applies the run profile at module scope, so a real cycle would decide when
 // that happens by import order.

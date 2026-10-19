@@ -35,8 +35,8 @@ SIZE="${PROBE_SIZE:-1920x1080}"
 BITRATE_KBPS="${PROBE_BITRATE_KBPS:-6000}"
 # Deliberately high so SRS's absolute-overflow path cannot fire, which is what isolates the
 # fragment-versus-GOP relationship from the ceiling. Overridable, because the ceiling is itself worth
-# probing: `HLS_FRAGMENT * HLS_AOF_RATIO` is what SRS force-closes at, and the old 0.5 default was
-# paired with 4.2 rather than the 10 assumed here. ⛔ An arm run with a non-default ratio is NOT comparable with
+# probing: `HLS_FRAGMENT * HLS_AOF_RATIO` is what SRS force-closes at. ⛔ An arm run with a non-default
+# ratio is NOT comparable with
 # `gop-vs-fragment-2026-08-12.md`, every row of which was measured at 10.
 AOF_RATIO="${PROBE_AOF_RATIO:-10}"
 # Held at 200 throughout the bench profiles.
@@ -109,7 +109,7 @@ if ! ssh -o ConnectTimeout=15 "$HOST" "docker ps --format '{{.Names}}' | grep -q
   exit 1
 fi
 
-# The container reports healthy before SRT is bound, and a publisher that arrives early is refused
+# The container is running before SRT is bound, and a publisher that arrives early is refused
 # with no retry, so the wait is on the port rather than on docker.
 for _ in $(seq 1 40); do
   if ssh -o ConnectTimeout=10 "$HOST" "docker exec ${CONTAINER} sh -c 'netstat -lun 2>/dev/null | grep -q :${SRT_PORT}'" 2>/dev/null; then

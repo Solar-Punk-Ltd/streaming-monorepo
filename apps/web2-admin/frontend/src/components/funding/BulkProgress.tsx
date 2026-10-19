@@ -207,7 +207,6 @@ export function BulkProgress<Item extends BulkItem>({
   const settled = !unread && items.every((item) => item.settled);
   const final = !unread && items.every((item) => ended(item));
 
-  // One read of the bulk, for the interval and for Check again. A failed read is said, and forgotten once one succeeds.
   const read = useCallback(() => {
     readItems(bulkId)
       .then((next) => {

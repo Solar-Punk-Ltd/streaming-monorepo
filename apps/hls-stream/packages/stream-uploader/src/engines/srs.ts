@@ -70,7 +70,6 @@ export interface SrsEngineOptions {
 const SRS_ACCEPT = 0;
 const SRS_REJECT = 1;
 
-// SRS webhook actions
 const SRS_ACTION_PUBLISH = 'on_publish';
 const SRS_ACTION_UNPUBLISH = 'on_unpublish';
 const SRS_ACTION_HLS = 'on_hls';

@@ -178,7 +178,6 @@ async function main(): Promise<void> {
   const feedWriteRepository = new FeedWriteRepository(database.pool);
   const auditLog = new PostgresAuditLog(database.pool);
 
-  // Logs a line per row it repairs.
   await resetOrphanedPublishing(streamRepository, auditLog);
 
   const authService = new AuthService(

@@ -79,6 +79,7 @@ Every original commit of the imported repositories is in this one under its own 
 - [docs/self-hosting.md](docs/self-hosting.md): running your own deployment, the three kinds of host, the edge, a recipe for each kind of fresh host, and the names on the hosts that never change.
 - [docs/releasing.md](docs/releasing.md): releasing: tag the build, deploy each manager and admin, and check the version each console shows.
 - [docs/ROADMAP.md](docs/ROADMAP.md): the roadmap and the checkpoint log.
+- [docs/known-issues.md](docs/known-issues.md): what the live test rounds found and what was decided not to fix yet.
 - [docs/architecture/](docs/architecture/): the design briefs, starting with the [admin layer](docs/architecture/web2-admin.md).
 - [docs/research/](docs/research/README.md): condensed notes on the systems the admin talks to.
 - Deploying: [the admin](apps/web2-admin/deploy/README.md), [the stack](apps/hls-stream/deploy/README.md), and [the manager](apps/infra-manager/deploy/README.md).

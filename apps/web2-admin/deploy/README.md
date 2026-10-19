@@ -19,11 +19,18 @@ The examples run as a user named `deploy` and keep the checkout at
 ```sh
 # As deploy@host
 sudo apt-get update
-sudo apt-get install -y docker.io docker-compose-plugin rsync curl
+sudo apt-get install -y docker.io docker-compose-v2 rsync curl
 sudo usermod -aG docker deploy
 sudo install -d -o deploy -g deploy /opt/streaming
 # log out and back in so the group takes effect
 ```
+
+Ubuntu's own archive names the Compose plugin `docker-compose-v2` and Docker's apt repository names
+it `docker-compose-plugin`, so install whichever your sources offer.
+
+The account also needs your own public key in its `authorized_keys`, or no deploy can log in
+to it. [What every host needs](../../../docs/self-hosting.md#what-every-host-needs) has the
+commands.
 
 On your machine you need bash, ssh, rsync, git and Node 24 or later, which runs
 `tools/release/version.mjs` to name the build, and a Host block for the server

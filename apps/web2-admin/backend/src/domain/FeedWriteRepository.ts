@@ -8,7 +8,6 @@ export interface FeedWriteRecord {
   topic: string;
   feedIndex: number;
   entryCount: number;
-  /** The list, element by element. */
   payload: unknown[];
   /**
    * The exact string uploaded as the payload (migration 013), or null for a head adopted from the network when the

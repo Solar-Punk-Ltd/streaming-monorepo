@@ -23,7 +23,7 @@ Tech tags from the model: Postgres, REST.
 | Component                    | Role                                                                                                                                                                                                                                                                                                                                                                                                                    | Tech          | On loss                                                                               |
 | ---------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------- | ------------------------------------------------------------------------------------- |
 | Brand console                | The only surface a customer touches. Streams and the stage each is on, the stages the manager pushed with their readiness, stamps and cheque balances, the catalogue batch, and branding.                                                                                                                                                                                                                               | web UI        | API unaffected, brand cannot reach it.                                                |
-| Authentication and ownership | OPEN. Who may create and manage a brand's streams. Candidates: OIDC against something the brand already has, wallet signature, magic link.                                                                                                                                                                                                                                                                              | OIDC / wallet | Anyone reaching the API can act as any brand. Blocks the second brand, not the first. |
+| Authentication and ownership | Operator sign-in is built ([web2-admin-auth.md](web2-admin-auth.md)). OPEN: which brand a call may act for. Candidates: OIDC against something the brand already has, wallet signature, magic link.                                                                                                                                                                                                                     | OIDC / wallet | Anyone reaching the API can act as any brand. Blocks the second brand, not the first. |
 | Admin API                    | Every state change a brand can make, in one place. The only writer, so ownership is enforced in exactly one place. Takes the manager's stage and catalogue stamp records on the registrar token, and each stage's uploader on a token of its own, answered only about that stage's streams. Writes the catalogue through the catalogue node's batch. Calls the manager's funding API and nothing else of the manager's. | REST          | Nothing can be created or changed. Running streams carry on.                          |
 | Postgres                     | Users, streams and their stages, the stage and catalogue stamp records the manager pushed, every catalogue write with its exact bytes, the audit log, and later brands and branding. The one row set that has to be right about which brand owns what. Small enough that a nightly dump is a real backup.                                                                                                               | Postgres      | Console and API stop answering. Published streams stay published (Swarm holds them).  |
 | Branding                     | Logo, colours and domain, turned into the config the Viewer SPA bootstrap reads: theme, logo, stream list, serving domain.                                                                                                                                                                                                                                                                                              | theme, domain | Player falls back to unbranded default, a visible failure for a white-label product.  |
@@ -52,8 +52,9 @@ At the platform level the admin layer also:
 
 - writes the brand's catalogue, signed by the brand key, through the dedicated
   catalogue node and the immutable batch the manager designates,
-- shows each rung's stamp and chequebook as the manager last pushed them,
-  where topping up stays in the manager's console for now,
+- shows each rung's stamp and chequebook as the manager last pushed them, and
+  tops up or dilutes a node's batches and brings its chequebook to a target
+  through the manager's funding API, each paid for by that node,
 - funds the brand's node wallets with xDAI and xBZZ from the brand wallet,
 - hands brand config to the Viewer SPA.
 
@@ -63,9 +64,10 @@ At the platform level the admin layer also:
   ssh and docker compose all live in streaming-infra-manager. The one wallet
   it holds is the brand wallet, and it signs with that alone.
 - It calls the manager's funding API and nothing else of the manager's. It
-  does not provision or stop a stage, buy a batch, top one up (a later phase
-  of funding), or choose the catalogue's batch: the manager pushes what it
-  runs, and the admin reads it.
+  does not provision or stop a stage, buy a batch, or choose the catalogue's
+  batch: the manager pushes what it runs, and the admin reads it. A top-up, a
+  dilution or a chequebook move is asked of the manager, which asks the node,
+  and the admin signs nothing for it.
 - It carries no stage in its env file: no ingest address, port or passphrase,
   Bee address or batch id. It learns them from the manager's pushes, and
   refuses to publish, saying why, until the manager has designated a
@@ -120,7 +122,7 @@ Same as streaming-infra-manager, so the two codebases feel like one team's:
 - TypeScript, ESM, exact-pinned dependencies, pnpm workspace.
 - `apps/web2-admin/backend`: Express 5, `pg`, yup validation, SQL migrations in
   the repo run on startup, Node test runner through tsx (unit and integration).
-- `apps/web2-admin/frontend`: React 18, MUI, Vite. The console is modelled on
+- `apps/web2-admin/frontend`: React 19, MUI 9, Vite. The console is modelled on
   msrs-client (https://github.com/Solar-Punk-Ltd/msrs-client), the deprecated
   admin UI this console replaces.
 - Package scope `@streaming-monorepo/`.

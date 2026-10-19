@@ -97,8 +97,8 @@ for target in $(get_targets); do
 done
 
 echo ""
-# Naming a service that runs nowhere docker can reach it, "native" or disabled in config.json, used
-# to print the success banner after touching nothing. deploy.sh already says this; stop.sh did not.
+# A service that runs nowhere docker can reach it, "native" or disabled in config.json, is touched by
+# nothing above, so naming only such services warns rather than printing the success banner.
 if [ "$STOPPED_ANY" = "false" ]; then
   log_warn "No services to stop (check config.json and the service filter)"
 else

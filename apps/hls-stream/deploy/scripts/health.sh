@@ -24,11 +24,10 @@ apply_port_slot
 
 # What the exit status at the bottom is made of.
 #
-# ⛔ Nothing kept these until 2026-09-16, and the last command in the file was an `echo`, so this
-# command exited 0 whether every service answered or none of them did. `deploy.sh` ends by telling
-# the operator to run it and `deploy/README.md` documents it as the way to check a stack, so the
-# reader is as likely to be a scheduled job or a wrapper as a person, and a status is all either of
-# those gets. The five red crosses on the terminal were correct the whole time.
+# ⛔ `deploy.sh` ends by telling the operator to run this and `deploy/README.md` documents it as the
+# way to check a stack, so the reader is as likely to be a scheduled job or a wrapper as a person,
+# and a status is all either of those gets. The exit status must fail when any service did not
+# answer, whatever the terminal shows.
 SERVICES_CHECKED=0
 SERVICES_FAILED=0
 
@@ -143,7 +142,6 @@ check_target() {
     esac
   done
 
-  # Show container status
   echo ""
   echo "  Containers:"
   local profiles compose_files project_flag

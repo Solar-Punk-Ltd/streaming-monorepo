@@ -2,9 +2,9 @@
 
 Plan, 2026-10-05. Phase 1, the brand wallet, the Balance tab and sends to node wallets, phase 2,
 the Stamps tab's top-ups and dilutions, and phase 3, the Chequebooks tab's deposits and
-withdrawals, are built on `feat/funds`. It lets a brand keep its stages alive after handover, from
-the web2 admin: fund the nodes, top up and dilute the batches, and keep the chequebooks at a
-target. Every funding operation goes through the infra manager.
+withdrawals, are built and merged to `main` (#119). It lets a brand keep its stages alive after
+handover, from the web2 admin: fund the nodes, top up and dilute the batches, and keep the
+chequebooks at a target. Every funding operation goes through the infra manager.
 
 ## The flow
 

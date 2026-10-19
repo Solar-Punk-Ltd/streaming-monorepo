@@ -61,17 +61,6 @@ function readPts(bytes: Uint8Array, at: number): number {
 }
 
 /**
- * Every video presentation timestamp in one MPEG-TS segment, in the order its packets carried them.
- *
- * **Not sorted**, and that is load-bearing rather than incidental. Packets are in decode order, so
- * with B-frames the newest frame is not the last one listed, and `measureSpanTicks` sorts for itself
- * precisely so that a caller cannot quietly hand it a list already flattened the wrong way.
- *
- * Returns an empty list rather than throwing when the bytes are not a transport stream at all. What
- * to do about a segment that says nothing is the caller's decision, and it is a different decision
- * from what to do about one that says too little, which `measureSpanTicks` refuses on its own.
- */
-/**
  * Every PES header the segment opens, as an offset and the elementary stream it names.
  *
  * Shared by the two readers below so that only one of them holds the packet walk. The walk is the
@@ -113,6 +102,17 @@ function forEachPesHeader(segment: Uint8Array, visit: (streamId: number, at: num
   }
 }
 
+/**
+ * Every video presentation timestamp in one MPEG-TS segment, in the order its packets carried them.
+ *
+ * **Not sorted**, and that is load-bearing rather than incidental. Packets are in decode order, so
+ * with B-frames the newest frame is not the last one listed, and `measureSpanTicks` sorts for itself
+ * precisely so that a caller cannot quietly hand it a list already flattened the wrong way.
+ *
+ * Returns an empty list rather than throwing when the bytes are not a transport stream at all. What
+ * to do about a segment that says nothing is the caller's decision, and it is a different decision
+ * from what to do about one that says too little, which `measureSpanTicks` refuses on its own.
+ */
 export function readVideoPts(segment: Uint8Array): number[] {
   const timestamps: number[] = [];
 

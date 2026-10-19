@@ -87,11 +87,10 @@ const logger = Logger.getInstance();
 /** The chain the admin signs for, fixed in the admin: Gnosis Chain. */
 export const ADMIN_FUNDING_CHAIN_ID = 100;
 
-/**
- * The admin's own ceilings on what the manager suggests, held before anything is signed. The manager holds a transfer
- * to three times its own suggestion, which guards it against a hostile admin; only these guard the brand wallet against
- * a hostile or broken manager.
- */
+// The admin's own ceilings on what the manager suggests, held before anything is signed. The manager holds a transfer
+// to three times its own suggestion, which guards it against a hostile admin; only these guard the brand wallet against
+// a hostile or broken manager.
+
 /** The most wei per gas the admin signs for, base fee and tip together: 100 gwei. */
 export const FUNDING_MAX_FEE_PER_GAS_WEI = 100_000_000_000n;
 /** The gas limit of an xDAI transfer, exactly: a plain transfer costs 21000 and no more. */

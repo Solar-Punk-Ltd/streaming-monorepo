@@ -11,6 +11,8 @@ import { Writable } from 'node:stream';
  * The streams are parameters so the no-echo behaviour can be tested without a
  * terminal. Nothing but the tests passes anything but the defaults.
  */
+
+/** Where a prompt reads and echoes, the process's own streams when left out. */
 export interface SecretInputStreams {
   input?: NodeJS.ReadableStream;
   echo?: NodeJS.WritableStream;
@@ -30,6 +32,7 @@ class HidableOutput extends Writable {
   }
 }
 
+/** Asks for a secret on the terminal with echo off. */
 export function promptSecret(prompt: string, streams: SecretInputStreams = {}): Promise<string> {
   const echo = streams.echo ?? process.stdout;
   const output = new HidableOutput(echo);
