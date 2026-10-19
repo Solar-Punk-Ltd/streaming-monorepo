@@ -318,6 +318,11 @@ describe('the hashed deny list', () => {
     assert.deepEqual(scanText('leakyness', rules), []);
   });
 
+  it('refuses a hosted issue tracker link through the committed list', () => {
+    const link = `https://team.${'atlas' + 'sian'}.net/browse/ABC-1`;
+    assert.equal(scanText(link, committedRules()).filter((finding) => finding.rule === 'denied-token').length, 1);
+  });
+
   it('offers every contiguous span of a run', () => {
     assert.deepEqual(candidateTokens('a-b.c'), ['a', 'a-b', 'a-b.c', 'b', 'b.c', 'c']);
   });
