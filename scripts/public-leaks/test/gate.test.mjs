@@ -242,11 +242,7 @@ describe('home folders', () => {
   });
 
   it('lets through the role users the committed allow list names', () => {
-    const text = [
-      `/${'home'}/bee/.bee`,
-      `/${'home'}/deploy/streaming`,
-      `ps line for /${'Users'}/x/chrome`,
-    ].join('\n');
+    const text = [`/${'home'}/bee/.bee`, `/${'home'}/deploy/streaming`, `ps line for /${'Users'}/x/chrome`].join('\n');
     assert.deepEqual(scanText(text, committedRules()), []);
   });
 
