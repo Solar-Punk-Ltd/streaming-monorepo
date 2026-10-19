@@ -91,7 +91,6 @@ require_secret() {
 require_secret SRT_PASSPHRASE "${SRT_PASSPHRASE:-}"
 require_secret SRS_WEBHOOK_TOKEN "${SRS_WEBHOOK_TOKEN:-}"
 
-# Substitute passphrase or remove SRT encryption lines if empty
 if [ -n "$SRT_PASSPHRASE" ]; then
   sed -i "s/PASSPHRASE_PLACEHOLDER/$SRT_PASSPHRASE/" "$CONF"
 else
@@ -107,7 +106,7 @@ fi
 # 2026-08-03, a 2s GOP against a 1.5 fragment produced segments of exactly 2.00s on every sample.
 # Lowering this alone therefore changes nothing until the GOP comes down with it.
 #
-# **Except past `HLS_AOF_RATIO`, which this comment used to omit and which cost twelve runs.** SRS
+# **Except past `HLS_AOF_RATIO`.** SRS
 # force-closes a segment at `HLS_FRAGMENT * HLS_AOF_RATIO` whether a keyframe has arrived or not, so
 # the preference above is only a preference while the GOP fits inside that product. On 2026-08-05 a
 # fragment of 0.25 against a 2s GOP produced 0.53s segments of 13 packets, against 2.11s and 59 at a
@@ -125,9 +124,7 @@ fi
 #
 # There is no default. The deployment names its segment length, the example config names 2, and
 # the entrypoint refuses to start without one, because the player and the uploader both work from the
-# length the stage really cuts at and a fallback here was a length nobody chose. This used to fall
-# back to 0.5, the value that measured best on 2026-08-03, and the uploader and the viewer were tuned
-# for one length while the stage ran another.
+# length the stage really cuts at and a fallback here was a length nobody chose.
 #
 # ⛔ **A SHORT FRAGMENT IS NOT ONLY A LATENCY LEVER, AND ON A LADDER IT HAS A CEILING.** SRS announces
 # each closed segment over `on_hls`, once per rung, so the announcement rate is `rungs / HLS_FRAGMENT`
@@ -144,8 +141,8 @@ fi
 # ⚠️ The 6.7/s is one measurement on a co-tenanted host and wants replicating before it becomes a
 # gate. What SRS spends the time on is not known: the uploader answers each callback in 1ms.
 #
-# ⚠️ `HLS_WINDOW` is SECONDS of playlist, not fragments. This comment used to say "fifteen fragments",
-# which is only the same number when the fragment is 1.0 and is double the intent at 0.5.
+# ⚠️ `HLS_WINDOW` is SECONDS of playlist, not fragments. Fifteen seconds is fifteen fragments only
+# when the fragment is 1.0, and thirty at 0.5.
 # --- hls tuning ---
 if [ -z "$HLS_FRAGMENT" ]; then
   echo "HLS_FRAGMENT is not set. It is the stage's segment length in seconds, for example 2, and SRS and the uploader both read it." >&2
@@ -541,7 +538,6 @@ sed -i "s/HLS_FRAGMENT_PLACEHOLDER/${HLS_FRAGMENT}/" "$CONF"
 sed -i "s/HLS_AOF_RATIO_PLACEHOLDER/${HLS_AOF_RATIO}/" "$CONF"
 sed -i "s/HLS_WINDOW_PLACEHOLDER/${HLS_WINDOW:-15}/" "$CONF"
 
-# Substitute webhook host and port
 sed -i "s/SRS_ADAPTER_HOST_PLACEHOLDER/${SRS_ADAPTER_HOST:-stream-uploader}/g" "$CONF"
 sed -i "s/SRS_WEBHOOK_TOKEN_PLACEHOLDER/${SRS_WEBHOOK_TOKEN}/g" "$CONF"
 sed -i "s/SRS_ADAPTER_PORT_PLACEHOLDER/${SRS_ADAPTER_PORT:-3000}/g" "$CONF"
@@ -556,9 +552,8 @@ sed -i "s/SRS_ADAPTER_PORT_PLACEHOLDER/${SRS_ADAPTER_PORT:-3000}/g" "$CONF"
 sed -i "s/RTMP_PORT_PLACEHOLDER/${SRS_RTMP_PORT:-1935}/g" "$CONF"
 sed -i "s/HTTP_PORT_PLACEHOLDER/${SRS_HTTP_PORT:-8080}/g" "$CONF"
 sed -i "s/SRT_PORT_PLACEHOLDER/${SRS_SRT_PORT:-10080}/g" "$CONF"
-# The read-only stats API. Was the last SRS listen port left hard-coded, so two profiles on one host
-# collided on it under host networking exactly as 8080 above once did. Left enabled on every interface
-# on purpose: this is a demo stack and the loop check the API exists for has to be reachable.
+# The read-only stats API, slotted like the ports above so two profiles on one host do not collide
+# on it under host networking. Left enabled on every interface on purpose: this is a demo stack and the loop check the API exists for has to be reachable.
 sed -i "s/HTTP_API_PORT_PLACEHOLDER/${SRS_HTTP_API_PORT:-1985}/g" "$CONF"
 
 # The ladder's ffmpeg INPUT is built by SRS itself from the port the source arrived on, and an
