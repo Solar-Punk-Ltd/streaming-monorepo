@@ -2284,12 +2284,10 @@ export class StreamOrchestrator {
    * broadcast that had ended, and no VOD was ever published. Detection was already right and there
    * was no way out of it but a restart by hand.
    *
-   * **The window is `recoveryTimeout`, deliberately, and not `segmentStallMs`.** That one is a health
-   * *reporting* threshold at half this value, and ending a broadcast on it would kill streams that
-   * recover: a twenty second write outage is survivable and measured, and a pull engine retries a
-   * silent origin for its own patience window, 60s by default, which is what `recoveryTimeout` was
-   * already chosen against. Reusing it keeps one number governing "how long do we wait for
-   * an engine that might come back" instead of two that can drift apart.
+   * **The window is `orphanReapMs` (ORPHAN_REAP_MS), deliberately its own value** rather than
+   * `segmentStallMs`, a health reporting threshold at half of it, or `recoveryTimeout`, which is tuned
+   * for how fast a restarted process gives up on restored streams. Both shipped engines retry for
+   * 60 s, and this window is sized against that.
    *
    * Rearms itself rather than being reset per segment, so a stream feeding at four segments a second
    * costs one timer rather than four cancellations a second, and a healthy stream is only looked at
