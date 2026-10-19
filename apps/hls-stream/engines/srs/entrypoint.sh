@@ -118,9 +118,6 @@ fi
 # holds the fragment still while moving the GOP has to raise the ratio far enough to cover the whole
 # range, which is what the ratio is a knob for.
 #
-# These were configurable on `main` and this branch hard-coded them back, which took the knob away
-# without anything failing. Restored under main's names.
-#
 # The sweep of 2026-08-03 took 105 samples across four segment durations on the deployment host, and
 # capture to fetchable came out at 1.96s, 2.94s, 5.00s and 9.42s for segments of 0.5s, 1.0s, 2.0s and
 # 4.0s. Close to linear in the segment, and the segment is not the only term that moves, because a
