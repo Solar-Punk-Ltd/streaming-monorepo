@@ -100,8 +100,8 @@ check_stamp() {
     # never reads STAMP at all: the uploader's own `buildPublishers` takes the per-rung pool the
     # moment that variable is set. `capacity-gate.sh` names the same either-or when it decides which
     # batch to check, and `.env.sample` says the batch is the one in BEE_PUBLISHERS "or STAMP when
-    # unsplit". This guard was the one place that had not been told, so a fully funded ABR
-    # deployment was refused here for an empty variable its uploader would never have read.
+    # unsplit". So this guard accepts either, and does not refuse an ABR deployment for an empty
+    # STAMP its uploader never reads.
     publishers_val=$(grep -E '^BEE_PUBLISHERS=' "$ENV_FILE" | cut -d= -f2- | tr -d '[:space:]')
     stamp_val=$(grep -E '^STAMP=' "$ENV_FILE" | cut -d= -f2-)
     if [ -z "$publishers_val" ] && [ -z "$stamp_val" ]; then
@@ -233,7 +233,7 @@ UPLOADER_ENTRY="$UPLOADER_DIST/index.js"
 # build, or a `tsc` run that got as far as writing `.tsbuildinfo`, leaves the directory there with
 # nothing the image can run. Testing the directory called that built, skipped the build, and handed
 # compose a container that exits on `Cannot find module '/app/dist/index.js'` and restarts. The
-# pnpm-absent path below has read the entry file since 2026-09-16 and this one had not been told.
+# pnpm-absent path below reads the entry file too.
 build_if_needed() {
   if [ ! -f "$UPLOADER_ENTRY" ]; then
     log_info "Building packages"
@@ -388,10 +388,9 @@ read_bridge_address() {
 
 DEPLOY_BRIDGE_ADDRESS=""
 
-# When stream-uploader is on a different host than the media engine,
-# engine webhooks need the real IP. (Currently blocked by validation for SRS,
-# but this handles future flexibility.) Takes the engine service name
-# (defaults to srs for backward compatibility).
+# When stream-uploader is on a different host than the media engine, engine webhooks need the real
+# IP. validate_config refuses that split for SRS. Takes the engine service name, srs when none is
+# given.
 resolve_adapter_host() {
   local engine_svc="${1:-$SVC_SRS}"
   local engine_target uploader_target
@@ -923,7 +922,7 @@ fi
 # Build once before deploying (only if uploader is being deployed).
 #
 # A remote target forces a rebuild, so a hand-run deploy always ships a fresh dist, but only where
-# there is a toolchain to do it with. streaming-infra-manager runs this script inside its api
+# there is a toolchain to do it with. The infra manager (apps/infra-manager) runs this script inside its api
 # container, which has no pnpm and a checkout with no node_modules: that deploy builds the packages on
 # the operator's machine and rsyncs the result in. So a deploy without pnpm ships the dist it was
 # given rather than dying at `pnpm: command not found` from the middle of a build function, and names
