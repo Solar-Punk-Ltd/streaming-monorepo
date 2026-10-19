@@ -173,7 +173,7 @@ starts its own Vite and its own Chrome. Concurrency 2 was not qualified: the
 rule was three consecutive failure-free runs under three minutes, and the same
 class of clock-reading
 failure had already shown up in the SQL job under parallel files, on a laptop
-with three times the runner's cores. If it is worth the risk later, the
+with six times the runner's cores. If it is worth the risk later, the
 measurement to beat is below.
 
 **What the first runner run showed, and what changed.** Run 34477086525 on
