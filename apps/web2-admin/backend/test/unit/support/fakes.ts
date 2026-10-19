@@ -334,8 +334,8 @@ export class FakeStreamStore
       manifest_index: null,
       duration_seconds: null,
       ended_at: null,
-      // As the SQL does: only a comeback from `vod` clears it; a retried `live → live` leaves it.
-      finished_at: row.status === 'vod' ? null : row.finished_at,
+      // As the SQL does: a live report that starts a broadcast clears it; only a retried `live → live` leaves it.
+      finished_at: row.status === 'live' ? row.finished_at : null,
       publish_error: null,
     });
   }

@@ -142,6 +142,18 @@ describe('Finish', () => {
     assert.equal(store.get(stream.id).finished_at, null, 'vod → live clears it');
   });
 
+  it('is cleared by a broadcast that starts from published, where a reset left a finished recording', async () => {
+    const { store, publishService, state } = setup();
+    const stream = store.add(streamRow({ publish_key: OLD_KEY }));
+    await publishService.publish(TEST_OPERATOR, stream.id);
+    // What the boot's reset leaves of a finished recording whose republish was claimed when the process died.
+    store.rows.set(stream.id, { ...store.get(stream.id), status: 'published', finished_at: ENDED });
+
+    await state.report(stream.id, { state: 'live' }, ON_STAGE);
+
+    assert.equal(store.get(stream.id).finished_at, null, 'a live report that starts a broadcast clears it');
+  });
+
   it('refuses a stream that is neither live nor ended, one already finished, and one that does not exist', async () => {
     const { store, audit, finishing } = setup();
     for (const status of ['draft', 'published', 'publishing'] as const) {

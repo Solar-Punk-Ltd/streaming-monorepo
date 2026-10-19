@@ -12,9 +12,10 @@
 --   finished_at  when the key was changed for good: by Finish, or by a sweep
 --                that found the window run out. Null while the stream can
 --                still come back on its key, and on a stream that never went
---                live. A broadcast that goes live again on the new key
---                (`vod → live`) clears it and starts a new window at its next
---                end; the uploader's retried `live → live` leaves it.
+--                live. A `live` report that starts a broadcast, from `vod` or
+--                from any other status, clears it and starts a new window at
+--                its next end; only the uploader's retried `live → live`
+--                leaves it.
 --
 -- The sweep selects recorded streams with no finished_at whose ended_at is
 -- older than the window, or null (a row from before migration 002 counts as
