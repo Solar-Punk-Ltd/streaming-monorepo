@@ -600,11 +600,11 @@ request.
 Actions are pinned by commit with the tag in a comment. Both workflows use
 the same three pins:
 
-| Action               | Pin                                                  |
-| -------------------- | ---------------------------------------------------- |
-| `actions/checkout`   | `3d3c42e5aac5ba805825da76410c181273ba90b1` (v7.0.1)  |
-| `pnpm/action-setup`  | `ea17c68df8912ef543352723c149a84f56e3d413` (v6.1.0)  |
-| `actions/setup-node` | `820762786026740c76f36085b0efc47a31fe5020` (v7.0.0)  |
+| Action               | Pin                                                 |
+| -------------------- | --------------------------------------------------- |
+| `actions/checkout`   | `3d3c42e5aac5ba805825da76410c181273ba90b1` (v7.0.1) |
+| `pnpm/action-setup`  | `ea17c68df8912ef543352723c149a84f56e3d413` (v6.1.0) |
+| `actions/setup-node` | `820762786026740c76f36085b0efc47a31fe5020` (v7.0.0) |
 
 pnpm itself comes from the `packageManager` field. When a pin moves, the new
 tag's age and its commit are checked the way a dependency bump is: publish age,

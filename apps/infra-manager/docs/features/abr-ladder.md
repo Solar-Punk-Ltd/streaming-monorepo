@@ -152,12 +152,12 @@ admits it, as The address explains.
 its own self-contained form, for the same reason the pool has one: it shares
 almost nothing with a single-node deployment.
 
-|                  | single-node uploader                       | ABR Uploader                                         |
-| ---------------- | ------------------------------------------ | ---------------------------------------------------- |
-| services         | `srs` + `stream-uploader` + `bee-uploader` | `srs` + `stream-uploader`                            |
-| where uploads go | its own Bee node, or `BEE_URL`             | the pool's four rungs                                |
-| postage          | its own `stamp_id`                         | the pool's, one batch per rung                       |
-| its page         | fund it, buy batches                       | nothing to fund or buy, shows its pool targets       |
+|                  | single-node uploader                       | ABR Uploader                                   |
+| ---------------- | ------------------------------------------ | ---------------------------------------------- |
+| services         | `srs` + `stream-uploader` + `bee-uploader` | `srs` + `stream-uploader`                      |
+| where uploads go | its own Bee node, or `BEE_URL`             | the pool's four rungs                          |
+| postage          | its own `stamp_id`                         | the pool's, one batch per rung                 |
+| its page         | fund it, buy batches                       | nothing to fund or buy, shows its pool targets |
 
 It runs **no Bee node**: the pool's rungs are the publish targets, so there is no
 wallet to fund, no batch to buy and no stamp to wait for. `managesOwnStamp` is
