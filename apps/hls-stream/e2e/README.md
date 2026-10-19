@@ -384,7 +384,7 @@ Fault scenarios:
 | `scenarios/rung-node-restart`           | one rung's own Bee node stopped for 20s under a live ladder: the master drops that rung, and once the node is back its feed moves again and the master offers it again, while the siblings, whose nodes were never touched, keep moving playlists and write no stale warning                                                                                                                                                                                                                               |
 | `scenarios/rung-never-starts`           | a rung that never lands a segment, because the stage routes its `BEE_PUBLISHERS` entry to a closed port: the master stops offering it once the siblings publish, the three others publish normally, `/health` says degraded, and a viewer is never told the broadcast ended. **Needs an armed stage** declared with `E2E_NEVER_STARTS_RUNG`, and is red until the never-started-rung fix lands                                                                                                             |
 
-Both scenarios run in every full sitting and neither needs an arming. `pnpm e2e:reconnect-into-recovery`
+K and M run in every full sitting and neither needs an arming. `pnpm e2e:reconnect-into-recovery`
 runs the gates and M alone, which is the cheapest way to read it after a change to the recovery path.
 
 Service coverage, no faults:
