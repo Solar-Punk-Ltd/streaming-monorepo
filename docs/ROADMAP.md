@@ -45,8 +45,9 @@ with thumbnail (index 1, reference recorded), rotate key, unpublish (index 2,
 empty list), password change signing out other sessions, logout. The Bee
 gateway ran in `fake` mode; the bee-js integration test is skipped until
 `BEE_URL` and `POSTAGE_BATCH_ID` (`ITEST_BEE_URL` and `ITEST_BATCH_ID` since
-phase 7 of stages) point at a real node. Docker image builds are unverified on
-this machine (no registry access).
+phase 7 of stages) point at a real node. Docker image builds were unverified
+on that day. The `web2-admin` workflow now builds both images on every pull
+request that touches the admin.
 
 Real-Swarm test, same day: a colleague pointed the backend at their Bee node,
 published two streams with thumbnails, and deployed a viewer built for the feed
