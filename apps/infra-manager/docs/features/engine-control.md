@@ -215,8 +215,8 @@ stack version, and validation lives in code:
   `engineSettingsEnv(engine, settings)` returns the `KEY=value` pairs to write. Shared, so the
   settings page, its save and the deploy validate identically. Since 2026-09-23 it takes the host's defaults as
   well and adds a default the manager owns, `managerOwnsDefault` on the field, for a key the
-  deployment does not store and the host's base `.env` does not set. `SRT_LATENCY` is the only
-  such field.
+  deployment does not store and the host's base `.env` does not set. `SRT_LATENCY` and
+  `HLS_FRAGMENT` are the two such fields.
 - `writeProfileEnv` writes those pairs (every value goes through the same character check the
   passphrase gets, because it lands inside a `sed` expression in the entrypoint).
 - `effectiveEnvOf` reads the keys back from the env file the deploy wrote, and `containerKeysSpec`
