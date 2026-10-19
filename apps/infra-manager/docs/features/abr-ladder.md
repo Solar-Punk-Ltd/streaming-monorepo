@@ -93,7 +93,8 @@ two addresses a viewer needs to open a stage.
 | the batch it pays with                | `profiles.stamp_id` (already existed, already managed)      |
 | its bee API port                      | derived from `port_slot`, as it always was                  |
 
-One migration, adding one column. No new table, and no second port-slot family,
+Two migrations for the group: 004 adds the `kind` column and 005 renames the
+pool kind to `abr-node-pool`. No new table, and no second port-slot family,
 one port map, the original one.
 
 ### Why the kind is a column and not derived
