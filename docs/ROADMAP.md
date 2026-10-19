@@ -356,9 +356,10 @@ Left open after the nine phases:
 - **Top-ups from the admin.** Decided 2026-10-05: a brand wallet in the
   admin, and every funding operation through the manager's funding API, as
   [funding.md](architecture/funding.md) plans. Phase 1, the brand wallet, the
-  Balance tab and sends to node wallets, is built on `feat/funds` in #101 to
-  #106, phase 2, the Stamps tab's top-ups and dilutions, in #114, and phase 3,
-  the Chequebooks tab, on `feat/funds-chequebook` (decided 2026-10-08): one
+  Balance tab and sends to node wallets, was built in #101 to #106, phase 2,
+  the Stamps tab's top-ups and dilutions, in #114, and phase 3, the
+  Chequebooks tab, on the same branch, all merged to `main` as #119
+  (decided 2026-10-08): one
   target of 1 xBZZ or more brings each ticked chequebook there, with a deposit
   from its node's wallet or a withdrawal into it. A gateway's chequebook is
   read but not moved, here or in the manager's console.
