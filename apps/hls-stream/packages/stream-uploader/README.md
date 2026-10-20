@@ -646,7 +646,7 @@ pnpm build
 
 # Create .env from sample (if not done yet)
 cp .env.sample .env
-# Edit .env — fill in STREAM_KEY, run `pnpm stamp:setup` for STAMP
+# Edit .env: fill in STREAM_KEY, run `pnpm stamp:setup` for STAMP
 
 # Start the uploader
 pnpm uploader:start
@@ -1235,7 +1235,7 @@ cp .env.sample .env
 ```
 
 ```ini
-# engines/srs/.env — the values the local overlay needs
+# engines/srs/.env: the values the local overlay needs
 SRS_WEBHOOK_TOKEN=<same value the uploader gets>   # openssl rand -hex 32
 SRT_PASSPHRASE=<10-79 chars, or empty for no SRT encryption>
 SRS_ADAPTER_HOST=host.docker.internal              # the uploader is on the host, not in the network

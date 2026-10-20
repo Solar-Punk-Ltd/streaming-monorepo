@@ -165,7 +165,7 @@ pnpm stamp:setup -- 6000000000 23 --yes
 
 ```
 src/
-  index.ts                     # CLI entry — command routing, --url parsing
+  index.ts                     # CLI entry: command routing, --url parsing
   commands/
     stamp-setup.ts             # Full stamp workflow, single node
     stamp-buy.ts               # Buy a batch for one rung, by name

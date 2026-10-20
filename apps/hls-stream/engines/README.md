@@ -405,7 +405,7 @@ engines/
 
 packages/stream-uploader/src/engines/
   types.ts                    # EnginePlugin interface
-  registry.ts                 # engineRegistry — maps an engine name to its plugin factory
-  load.ts                     # loadEngines() — builds the configured engine's plugins
+  registry.ts                 # engineRegistry: maps an engine name to its plugin factory
+  load.ts                     # loadEngines(): builds the configured engine's plugins
   <engine-name>.ts            # Engine plugin implementation
 ```
