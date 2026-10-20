@@ -496,6 +496,10 @@ stream from each other (see [known-issues.md](known-issues.md)). Kept as it is f
   for about a minute after each broadcast.
 - Whether a finished recording's key should still go live. Today a new broadcast on it is added to the old recording.
 
+## Audio as its own rendition, later
+
+The ABR ladder muxes the audio into every rung. Splitting it into an `EXT-X-MEDIA` rendition group is a later item.
+
 ## Open decisions (blocking the second brand, not the first)
 
 - Authentication and ownership: OIDC, wallet signature, or magic link.
