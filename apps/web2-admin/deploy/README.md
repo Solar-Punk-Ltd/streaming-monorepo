@@ -105,7 +105,7 @@ Things that differ from running the API on your laptop:
   `docker-compose.yml` and whatever the file says is ignored.
 - `POSTGRES_PASSWORD` is written into the database URL as it is, so it may
   only hold letters, digits and `. _ ~ -`. It is fixed when the profile's
-  database volume is first created; changing it later needs an `ALTER USER`
+  database volume is first created. Changing it later needs an `ALTER USER`
   in the database as well.
 - The api container dials the catalogue node at the Bee API address the
   manager pushes with the catalogue stamp. A loopback address there is the
@@ -161,12 +161,12 @@ deploy.sh --host=<ssh-target> [--profile=<name>] [--portSlot=<N>] [--remote-path
 
 A deploy:
 
-1. checks the arguments and the env file;
+1. checks the arguments and the env file.
 2. names the build with `tools/release/version.mjs`, and in a terminal offers
-   the tag script first when the commit has no tag (see "The version" below);
-   then writes the commit into `deploy/.deployed-commit`;
+   the tag script first when the commit has no tag (see "The version" below),
+   then writes the commit into `deploy/.deployed-commit`.
 3. refuses a `--remote-path` that is a non-empty directory but not a checkout
-   of this repository, since `--delete` would empty it;
+   of this repository, since `--delete` would empty it.
 4. rsyncs `apps/web2-admin` to the host with `--delete`, leaving out `.git`,
    `node_modules`, `dist`, build caches, `.scratch/`, `.claude/`,
    `deploy/edge/` (the host's edge, which `edge.sh` looks after), and every env
@@ -174,12 +174,12 @@ A deploy:
    one lockfile at its root, the admin's own `pnpm-lock.yaml` and
    `pnpm-workspace.yaml` go with it, cut out of the root's by
    `tools/app-workspace/cut.mjs` into a folder outside the checkout that is
-   removed when the deploy exits;
+   removed when the deploy exits.
 5. over one ssh session, runs `docker compose up -d --build` for the profile's
    project with the version exported to it, waits for each service's
    healthcheck, asks for `/api/health` through nginx from inside the console
    container, and checks that the api container reports the version just
-   built;
+   built.
 6. ends with `deployed <label> (<short commit>)`.
 
 With `--host=localhost` nothing is sent, and when the root keeps the one
@@ -205,11 +205,11 @@ Before a release the operator tags the commit with the tag script, step 1 of
 `tools/release/version.mjs --app apps/web2-admin` (see
 [tools/release](../../../tools/release/README.md)):
 
-- the label is the tag on the commit; on a commit without one, the nearest tag
+- the label is the tag on the commit. On a commit without one, it is the nearest tag
   before it and how many commits past it, `QA-build-2026-10-07+3`, or the short
-  commit when no tag is behind it; and `-dirty` ends it when `apps/web2-admin`,
+  commit when no tag is behind it. `-dirty` ends it when `apps/web2-admin`,
   `packages/` or the root's `package.json`, `pnpm-lock.yaml` or
-  `pnpm-workspace.yaml` hold changes not yet committed;
+  `pnpm-workspace.yaml` hold changes not yet committed.
 - the commit is the full one, which `deploy/.deployed-commit` and the
   containers' `web2-admin.commit` label carry, without `-dirty`: that mark is
   the version label's alone.
@@ -232,7 +232,7 @@ The label and the commit reach compose as `WEB2_ADMIN_VERSION` and
 checkout or from the copy `in-copy.mjs` makes. Compose passes them to both
 images as build arguments. The api image keeps them in its environment, where
 the API reads them once at boot and answers them, to signed-in users only, at
-`GET /api/version`; the console shows them beside the signed-in account. Both
+`GET /api/version`, and the console shows them beside the signed-in account. Both
 images carry them as the labels `org.opencontainers.image.version` and
 `org.opencontainers.image.revision`. They come last in each Dockerfile, so a
 new version rebuilds no layer above them.
@@ -252,7 +252,7 @@ Every profile on a host shares one checkout, as the manager's profiles share
 one, and is kept apart by its compose project: its own network, its own
 database volume (`web2-admin-<profile>_pg-data`), its own images and its own
 port. Deploying one profile syncs the code for all of them but rebuilds and
-restarts only its own; the others pick the new code up at their next deploy.
+restarts only its own. The others pick the new code up at their next deploy.
 
 Env files are the exception to `--delete`. Only the deploying profile's file
 is sent, and the rest are excluded, which also keeps them from being deleted:
@@ -351,7 +351,7 @@ refuses to start with the wrong one. See "Funding" in
 to `deploy/`) and refuses to run without it, so a hand-run command cannot pick
 up the wrong profile's secrets. `WEB2_ADMIN_WEB_PORT` falls back to 9090 when
 unset, so anything that recreates the web container, such as `up`, should go
-through `deploy.sh`; `ps`, `logs` and `exec` are safe by hand:
+through `deploy.sh`. `ps`, `logs` and `exec` are safe by hand:
 
 ```sh
 cd /opt/streaming/streaming-monorepo
@@ -542,18 +542,18 @@ probe waits, default 90 seconds, 0 to skip it.
 A run:
 
 1. checks the arguments and `infra/edge/.env` (names, ports, email), and
-   refuses before anything leaves your machine;
+   refuses before anything leaves your machine.
 2. renders `infra/edge/Caddyfile` from it, one site per name with
    compression, HSTS and `reverse_proxy 127.0.0.1:<port>`, and validates it
-   with the pinned Caddy image when Docker runs on your machine;
+   with the pinned Caddy image when Docker runs on your machine.
 3. sends the Caddyfile and `infra/edge/docker-compose.yml` to `deploy/edge/`
-   in the host's checkout;
+   in the host's checkout.
 4. on the host, refuses when something else holds 80 or 443, recreates the
    edge so Caddy reads the new Caddyfile (the names do not answer for a second
    or two), waits for Caddy to stay running, and asks each console for an
-   answer on `127.0.0.1:<port>`;
+   answer on `127.0.0.1:<port>`.
 5. from your machine, asks `https://<name>/` for each name and reports: the
-   site answers with a valid certificate; the certificate is still coming; or
+   site answers with a valid certificate, the certificate is still coming, or
    the name does not resolve, with what `dig +short` says.
 
 It exits non-zero when the edge does not start or stay up, and when a console
@@ -597,9 +597,9 @@ that gets its certificates from certbot's webroot plugin:
    }
    ```
 
-   `Host` as the browser sent it is what the API compares with `Origin`;
-   `X-Forwarded-Proto https` is what makes the session cookie `Secure`; and
-   the console's own nginx takes the client address from `X-Forwarded-For`,
+   `Host` as the browser sent it is what the API compares with `Origin`.
+   `X-Forwarded-Proto https` is what makes the session cookie `Secure`.
+   The console's own nginx takes the client address from `X-Forwarded-For`,
    since the connection reaches it from the Docker bridge gateway.
 
 4. Reload. If that nginx runs in a container with the config bind-mounted as
@@ -614,7 +614,7 @@ and Caddy's saved config in `edge_caddy-config`. Every run recreates the
 container, and the volumes are why that does not ask Let's Encrypt for new
 certificates and run into its limits. `docker compose -p edge -f
 deploy/edge/docker-compose.yml down` on the host stops the edge and keeps
-them; `down -v` deletes them, and every name is then issued again.
+them. `down -v` deletes them, and every name is then issued again.
 
 The Caddyfile disables Caddy's admin API. On the host's network it would
 listen on the host's `127.0.0.1:2019`, where any local user could rewrite the
