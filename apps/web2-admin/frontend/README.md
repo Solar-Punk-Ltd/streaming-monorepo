@@ -34,17 +34,17 @@ pnpm --filter @streaming-monorepo/web2-admin-frontend dev
 From this package, `pnpm mock-api` does the same. Sign in as `admin` with the password
 `admin1234`. Nothing deployed the mock, so its build line reads `Version development build`.
 
-| Variable              | Default                  | What it does                                                                                                                       |
-| --------------------- | ------------------------ | ---------------------------------------------------------------------------------------------------------------------------------- |
-| `MOCK_API_PORT`       | `9877`                   | the port it listens on                                                                                                             |
-| `SEED_ADMIN_USERNAME` | `admin`                  | the user it starts with                                                                                                            |
-| `SEED_ADMIN_PASSWORD` | `admin1234`              | that user's password, which the console can change                                                                                 |
-| `MOCK_NO_USERS`       | unset                    | `true` starts with no users, the only way to see the console's "no users yet" screen                                               |
-| `MOCK_NO_STAGES`      | unset                    | `true` starts with no stages: the Stages page's empty state, and a stage picker with nothing to pick                               |
-| `MOCK_RECORDING`      | unset                    | `true` adds one more recording, which ended on 2026-09-11 and is finished at start, beside the [seeded streams](#the-mock-streams) |
-| `MOCK_FUNDING`        | unset                    | `off` shows the Funding page's "not set up" state. `refuse` and `lost` play the two failures, as [below](#the-mock-funding)        |
-| `MOCK_DEFAULT_THEME`  | `swarm`                  | the host's default look `GET /api/config` answers. The mock checks no name. Set `web3privacy` to see a host's default at work      |
-| `VIEWER_BASE_URL`     | `http://localhost:10074` | the "open player catalogue" link. It must be a viewer built for this catalogue                                                     |
+| Variable              | Default                  | What it does                                                                                                                        |
+| --------------------- | ------------------------ | ----------------------------------------------------------------------------------------------------------------------------------- |
+| `MOCK_API_PORT`       | `9877`                   | the port it listens on                                                                                                              |
+| `SEED_ADMIN_USERNAME` | `admin`                  | the user it starts with                                                                                                             |
+| `SEED_ADMIN_PASSWORD` | `admin1234`              | that user's password, which the console can change                                                                                  |
+| `MOCK_NO_USERS`       | unset                    | `true` starts with no users, the only way to see the console's "no users yet" screen                                                |
+| `MOCK_NO_STAGES`      | unset                    | `true` starts with no stages: the Stages page's empty state, and a stage picker with nothing to pick                                |
+| `MOCK_RECORDING`      | unset                    | `true` adds one more recording, which ended on 2026-09-11 and is finalized at start, beside the [seeded streams](#the-mock-streams) |
+| `MOCK_FUNDING`        | unset                    | `off` shows the Funding page's "not set up" state. `refuse` and `lost` play the two failures, as [below](#the-mock-funding)         |
+| `MOCK_DEFAULT_THEME`  | `swarm`                  | the host's default look `GET /api/config` answers. The mock checks no name. Set `web3privacy` to see a host's default at work       |
+| `VIEWER_BASE_URL`     | `http://localhost:10074` | the "open player catalogue" link. It must be a viewer built for this catalogue                                                      |
 
 #### The mock streams
 
@@ -55,24 +55,26 @@ live:
 - "Live now", live since 12 minutes before the start.
 - "Ended a few minutes ago", which ended 5 minutes before the start and can go live again until 25
   minutes after it.
-- "Ended days ago", which ended 3 days before and is finished at start with a new key.
+- "Ended days ago", which ended 3 days before and is finalized at start with a new key.
 
 So a default run never shows the Streams list's "No streams yet." state, and the live seed cannot
 be deleted (`409 stream_live`, as the API answers).
 
-Every stream carries `finishedAt`, null until it is finished, and `restartUntil`, `endedAt` plus 30
-minutes while it is `vod` and not finished, and null otherwise. The window is fixed at 30 minutes,
+Every stream carries `finishedAt`, null until it is finalized, and `restartUntil`, `endedAt` plus 30
+minutes while it is `vod` and not finalized, and null otherwise. The window is fixed at 30 minutes,
 the API's default, and the mock reads no `STREAM_RESTART_WINDOW_MINUTES`. Its sweep runs at start
-and before every request under `/api/streams`. It finishes every `vod` whose 30 minutes have passed,
-or that has no `endedAt`, with a new key, and sets `publishKeyRotatedAt` and `finishedAt` to that
-moment.
+and before every request under `/api/streams`. It finalizes every `vod` whose 30 minutes have
+passed, or that has no `endedAt`, with a new key, and sets `publishKeyRotatedAt` and `finishedAt` to
+that moment.
 
-`POST /api/streams/:id/finish` does the same at once on a live stream or an unfinished recording,
-and answers `200 { stream, ingest }` with the new key. A live stream stays live. A draft, published
-or publishing stream is `409 stream_not_started` and a finished one `409 stream_finished`, each
-answered `{ error, id, message }` with the API's sentence. An unknown id is `404 not_found`, the
-mock's own convention where the API answers `stream_not_found`. Rotate key, Unpublish and
-Republish leave `finishedAt` as it is, and nothing in the mock goes live, so nothing clears it.
+`POST /api/streams/:id/finish`, Finalize, does the same at once on a recording not finalized yet,
+and answers `200 { stream, ingest }` with the new key. A live stream is `409 stream_live`, as on a
+real host: the page keeps Finalize disabled on "Live now", and a call made anyway is refused. A
+draft, published or publishing stream is `409 stream_not_started` and a finalized one
+`409 stream_finished`. Each refusal is answered `{ error, id, message }` with the API's sentence.
+An unknown id is `404 not_found`, the mock's own convention where the API answers
+`stream_not_found`. Rotate key, Unpublish and Republish leave `finishedAt` as it is, and nothing in
+the mock goes live, so nothing clears it.
 
 #### The mock funding
 
