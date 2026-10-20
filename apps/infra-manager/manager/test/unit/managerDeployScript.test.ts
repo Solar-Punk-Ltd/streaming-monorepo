@@ -1218,6 +1218,63 @@ describe('deploy/deploy.sh, run against a repository on this disk', () => {
   });
 
   /**
+   * manager/.env.sample is public, so its POSTGRES_PASSWORD guards nothing. A file copied from it
+   * and deployed unchanged is refused, the way web2-admin's deploy refuses its sample secrets, with
+   * the same flag to keep it on a test install. The password is read as compose reads it: the last
+   * assignment wins, and quotes and a carriage return are not part of the value.
+   */
+  it("refuses the sample's POSTGRES_PASSWORD unless --allow-sample-secrets says the install is a test one", () => {
+    const root = mkdtempSync(join(tmpdir(), 'manager-deploy-sample-password-'));
+    try {
+      const { manager, environment } = checkout(root);
+      const sample = readFileSync(join(here, '..', '..', '.env.sample'), 'utf8');
+      const samplePassword = /^POSTGRES_PASSWORD=(.*)$/m.exec(sample)?.[1];
+      assert.equal(samplePassword, 'pwd', 'the password the committed sample ships');
+
+      for (const envText of [
+        'POSTGRES_PASSWORD=pwd\n',
+        'POSTGRES_PASSWORD="pwd"\r\n',
+        "POSTGRES_PASSWORD='pwd'\n",
+        'POSTGRES_PASSWORD=synthetic-not-a-secret\nPOSTGRES_PASSWORD=pwd\n',
+      ]) {
+        writeFileSync(join(manager, 'manager', '.env'), envText);
+        const refused = deploy(root, manager, environment, ['--host=fixture-host']);
+
+        stoppedBeforeAnything(refused);
+        assert.ok(
+          refused.stderr.includes('ERROR: POSTGRES_PASSWORD in manager/.env is the placeholder from manager/.env.sample.'),
+          `${JSON.stringify(envText)}: ${refused.stderr}`,
+        );
+        assert.match(refused.stderr, /--allow-sample-secrets/);
+      }
+
+      writeFileSync(join(manager, 'manager', '.env'), 'POSTGRES_PASSWORD=pwd\n');
+      for (const args of [
+        ['--host=fixture-host', '--allow-sample-secrets'],
+        ['--allow-sample-secrets', 'fixture-host'],
+      ]) {
+        const deployed = deploy(root, manager, environment, args);
+
+        assert.equal(deployed.status, 0, deployed.stderr);
+        assert.match(
+          deployed.stderr,
+          /WARNING: POSTGRES_PASSWORD in manager\/\.env is the placeholder from manager\/\.env\.sample\..*Deploying anyway: --allow-sample-secrets\./,
+          args.join(' '),
+        );
+        assert.deepEqual(deployed.ssh, ['fixture-host']);
+      }
+
+      writeFileSync(join(manager, 'manager', '.env'), 'POSTGRES_PASSWORD=pwd-of-its-own\n');
+      const own = deploy(root, manager, environment, ['--host=fixture-host']);
+
+      assert.equal(own.status, 0, own.stderr);
+      assert.doesNotMatch(own.stderr, /placeholder/, 'a password that only starts like the sample is its own');
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
+  });
+
+  /**
    * Every setting the deploy reads before anything leaves comes from the profile's file: the
    * password the host needs, the host's folder, and the repository the host fetches the stack from.
    */

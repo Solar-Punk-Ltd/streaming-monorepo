@@ -107,8 +107,9 @@ at the repository root.
    it. Nothing else: both consoles listen on the host's loopback only.
 
 3. **The manager.** From `apps/infra-manager` on your machine, make `manager/.env` from the sample
-   and set at least `POSTGRES_PASSWORD`. The file travels with every deploy, so your checkout is its
-   source. Set `MANAGER_ROOT` there if the manager should live anywhere but
+   and set at least `POSTGRES_PASSWORD`, for example with `openssl rand -hex 24`. The deploy
+   refuses the sample's `pwd` unless `--allow-sample-secrets` is given for a test install. The file
+   travels with every deploy, so your checkout is its source. Set `MANAGER_ROOT` there if the manager should live anywhere but
    `/opt/streaming/streaming-infra-manager`.
 
    ```sh

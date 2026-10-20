@@ -73,6 +73,12 @@ test fixtures'. Each flag takes its value after `=` or as the next word, so
 `./deploy/deploy.sh <control-host>`. The host is required. There is no default,
 as there is none for the admin's deploy or the edge's.
 
+The deploy refuses a `POSTGRES_PASSWORD` that is still `pwd`, the value
+`manager/.env.sample` ships, because the sample is public. Generate one, for
+example with `openssl rand -hex 24`. A test install can keep the sample's
+password with `--allow-sample-secrets`, which deploys it with a warning, the
+same flag the admin's deploy takes for its own sample secrets.
+
 When the repository keeps its one lockfile at its root, the manager's folder
 holds none of its own. The deploy then cuts the manager's `pnpm-lock.yaml` and
 `pnpm-workspace.yaml` out of the root's with `tools/app-workspace/cut.mjs`, into
