@@ -1,8 +1,8 @@
 # app-workspace
 
-The repository is one pnpm workspace with one lockfile at its root. Each app still builds its images from its own
-folder, on the hosts it deploys to as in CI, because that keeps every Dockerfile, compose file and host folder as it
-was. This tool gives such a build what it needs: the app's own `pnpm-lock.yaml` and `pnpm-workspace.yaml`, cut out of
+This README is the reference for the tool that cuts one app's install files out of the root's. The repository is one
+pnpm workspace with one lockfile at its root. Each app builds its images from its own folder, on the hosts it deploys
+to as in CI, so every Dockerfile, compose file and host folder stays the app's own. This tool gives such a build what it needs: the app's own `pnpm-lock.yaml` and `pnpm-workspace.yaml`, cut out of
 the root ones at build time. A cut is never committed and never written into a working checkout.
 
 Plain Node scripts with no dependencies, because a cut runs before anything is installed. They need Node 24 or later,
@@ -27,7 +27,7 @@ node ../../tools/app-workspace/in-copy.mjs --app apps/infra-manager -- docker bu
 The copy holds the files git sees on disk: every tracked file with its changes not yet committed, and every new file
 git does not ignore. Ignored files, such as `node_modules`, `dist` and every `.env`, stay behind. `--also` copies one
 more path git ignores, such as a build output an image copies in, and refuses a path that is or holds an env file,
-`.env` or `.env.<anything>`. Where the root holds no lockfile, as on a commit from before it did, the apps keep their
+`.env` or `.env.<anything>`. Where the root holds no lockfile, the apps keep their
 own and the copy gets no cut.
 
 Each script prints its usage with `--help`.
@@ -45,8 +45,7 @@ Each script prints its usage with `--help`.
   links in turn, as `workspace-packages/<name>` beside the pair. The lockfile names its importer there, points the
   app's links at it, and keeps what it reaches. The workspace file lists `workspace-packages/*` after the app's globs
   and keeps the build permissions of what it reaches. Its files are git's view of its folder when the root is a
-  checkout, and every file but `node_modules` when the root is an export, such as the one `git archive` writes. A cut
-  of an app that links no shared package is the same as it was before shared packages were carried.
+  checkout, and every file but `node_modules` when the root is an export, such as the one `git archive` writes.
 
 The injection setting comes from [apps.mjs](apps.mjs). It is on for the manager alone, because its image runs
 `pnpm deploy` without `--legacy`, and pnpm refuses that unless injection is on for the whole workspace the deploy

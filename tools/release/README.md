@@ -15,7 +15,7 @@ node tools/release/tag.mjs
 ```
 
 It takes any name a deploy can carry, at most 80 characters, and suggests and enforces no scheme:
-`QA-build-2026-10-07`, `v2.4.0` and `release/2026.10` all work. In order, it:
+`qa-build-7`, `v2.4.0` and `release/2.4` all work. In order, it:
 
 1. Fetches the remote's tags, and its branches with them. When the fetch fails, as offline, it warns that a name a
    teammate pushed cannot be checked, and goes on.
@@ -37,7 +37,7 @@ It takes any name a deploy can carry, at most 80 characters, and suggests and en
    - one `git check-ref-format` refuses, and `HEAD`, which `git tag` refuses,
    - the name of a tag, here or on the remote, that names another commit, and it says which commit,
    - a name that differs from a tag's only in case, which git on a Mac or on Windows mixes up,
-   - `release` when there is a `release/2026`, or the other way round, which git cannot hold together.
+   - `release` when there is a `release/2.4`, or the other way round, which git cannot hold together.
 
    The name of a tag already on this commit keeps that tag. An empty answer cancels when there is nothing to keep.
 
@@ -76,15 +76,15 @@ node tools/release/version.mjs --app apps/web2-admin
 ```text
 VERSION_COMMIT=635b4e1753cd35d06191fdd54a1f426f7478d438
 VERSION_SHORT=635b4e175
-VERSION_TAG=QA-build-2026-10-07
-VERSION_LABEL=QA-build-2026-10-07
+VERSION_TAG=v2.4.0
+VERSION_LABEL=v2.4.0
 VERSION_DIRTY=false
 ```
 
 - `VERSION_TAG` is the tag on the commit, and empty when it has none. When several tags name the commit, an
   annotated tag wins over a lightweight one, and the newest wins among equals.
 - `VERSION_LABEL` is that tag. On a commit without one it is the nearest tag before it and how many commits the
-  build is past it, `QA-build-2026-10-07+3`, and the short commit when there is no tag behind it at all.
+  build is past it, `v2.4.0+3`, and the short commit when there is no tag behind it at all.
 - `-dirty` ends the label when the app's folder, `packages/`, or the root's `package.json`, `pnpm-lock.yaml` or
   `pnpm-workspace.yaml` holds a change or a new file git has not committed. Ignored files, the env files among them,
   never count. Without `--app` the whole checkout counts.
@@ -117,6 +117,6 @@ both admin images, so an image reused under a new tag would show the older relea
 image carries no version. The version an image shows, where it shows one, is always the tag it was pulled by.
 
 A tag an image cannot carry is refused: letters, digits, `_`, `.` and `-` only, such as `v2.4.0` or
-`2026-10-10-build-1`. The checkout must be at the tag. `--dry-run` names each image it would build and changes
+`qa-build-7`. The checkout must be at the tag. `--dry-run` names each image it would build and changes
 nothing. `--registry` publishes elsewhere than
 `ghcr.io/solar-punk-ltd`, and `--root` names another checkout, both for tests.
