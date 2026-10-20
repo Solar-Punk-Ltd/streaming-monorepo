@@ -34,7 +34,8 @@ the manager hold a value to the same rule before any save. The address is an htt
 or https address with a host and no user name, password or `#` part, because the
 uploader builds every request by adding a path after it. The token is at least
 `ADMIN_API_TOKEN_MIN_LENGTH` (32) characters, the floor the uploader itself
-holds. No refusal repeats either value.
+holds, defined once in `packages/contracts/src/adminLink.ts` at the repository
+root. No refusal repeats either value.
 
 The uploader turns admin mode on from the address alone, and then refuses to
 start without a token. So `adminLinkEditProblem` in `common/src/adminLink.ts`
