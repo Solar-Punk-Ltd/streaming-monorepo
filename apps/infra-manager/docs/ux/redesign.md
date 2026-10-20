@@ -1,5 +1,9 @@
 # Frontend UX rework
 
+This is the September 2026 brief the console's rework was built from. It is kept as the record of
+that decision and does not describe today's console, which has changed since. Read the code under
+`frontend/src/` and the pages in `docs/features/` for what the console does now.
+
 Status: merged into `main-v2` on 2026-09-05 as squash `007f558`, the UX rework. Decided 2026-09-05 from the
 clickable mockup in [redesign-mockup.html](redesign-mockup.html) (open it in a browser, it runs
 on fake data and every button works).
