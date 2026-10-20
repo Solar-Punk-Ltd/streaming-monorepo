@@ -103,22 +103,23 @@ Deploying to a server is a different compose file and a script:
 The API reads its settings from the environment, or from `.env` in this folder.
 [.env.sample](.env.sample) documents each one beside its line. The summary:
 
-| Var                                   | Default            | Meaning                                                                                                                                        |
-| ------------------------------------- | ------------------ | ---------------------------------------------------------------------------------------------------------------------------------------------- |
-| `WEB2_ADMIN_PORT` / `WEB2_ADMIN_HOST` | `9877` / `0.0.0.0` | where to listen (the manager API uses 9876)                                                                                                    |
-| `DATABASE_URL`                        | required           | `postgres://web2admin:web2admin@127.0.0.1:5433/web2admin`                                                                                      |
-| `FEED_GATEWAY`                        | `bee`              | `fake` swaps in an in-memory gateway (see below)                                                                                               |
-| `FEED_PRIVATE_KEY`                    | required           | 0x + 64 hex. The brand key: signs the stream list feed, and is `owner` on a stream with no stage. A stream on a stage has its stage's          |
-| `FEED_TOPIC`                          | `swarm-stream`     | raw topic of that feed                                                                                                                         |
-| `VIEWER_BASE_URL`                     | empty              | branded viewer built for this feed, for "open player catalogue" links                                                                          |
-| `INTERNAL_API_TOKEN`                  | required           | 32+ chars. The registrar token the manager pushes stages with on `/api/internal`. No uploader is given it, and the uploader's routes refuse it |
-| `CATALOGUE_MOVE_ENABLED`              | `false`            | `true` lets an operator move the catalogue's history onto another batch from the Stages page. Try it on a scratch node before turning it on    |
-| `BRAND_WALLET_SECRET`                 | empty              | 64 hex (32 bytes). The brand wallet's key is encrypted under it. The first start creates the wallet. Required with `MANAGER_FUNDING_URL`       |
-| `MANAGER_FUNDING_URL`                 | empty              | the manager's address for its funding API: https, or plain http to this host only. Empty: funding is not set up                                |
-| `MANAGER_FUNDING_TOKEN`               | with the URL       | 32+ chars, printable ASCII, no space: the manager's `FUNDING_API_TOKEN`. Refused without the URL. Never logged                                 |
-| `WEB2_ADMIN_VERSION`                  | unset              | the build's label, which `deploy/deploy.sh` builds into the image. Never in the env file: [The build it runs](#the-build-it-runs)              |
-| `WEB2_ADMIN_COMMIT`                   | unset              | the build's commit, built in the same way. `GET /api/version` answers both                                                                     |
-| `POSTGRES_PASSWORD`                   | `web2admin`        | read by the compose files, not by the API: the database's password, written into the `DATABASE_URL` they set                                   |
+| Var                                   | Default            | Meaning                                                                                                                                                                                                                                         |
+| ------------------------------------- | ------------------ | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `WEB2_ADMIN_PORT` / `WEB2_ADMIN_HOST` | `9877` / `0.0.0.0` | where to listen (the manager API uses 9876)                                                                                                                                                                                                     |
+| `DATABASE_URL`                        | required           | `postgres://web2admin:web2admin@127.0.0.1:5433/web2admin`                                                                                                                                                                                       |
+| `FEED_GATEWAY`                        | `bee`              | `fake` swaps in an in-memory gateway (see below)                                                                                                                                                                                                |
+| `FEED_PRIVATE_KEY`                    | required           | 0x + 64 hex. The brand key: signs the stream list feed, and is `owner` on a stream with no stage. A stream on a stage has its stage's                                                                                                           |
+| `FEED_TOPIC`                          | `swarm-stream`     | raw topic of that feed                                                                                                                                                                                                                          |
+| `VIEWER_BASE_URL`                     | empty              | branded viewer built for this feed, for "open player catalogue" links                                                                                                                                                                           |
+| `INTERNAL_API_TOKEN`                  | required           | 32+ chars. The registrar token the manager pushes stages with on `/api/internal`. No uploader is given it, and the uploader's routes refuse it                                                                                                  |
+| `CATALOGUE_MOVE_ENABLED`              | `false`            | `true` lets an operator move the catalogue's history onto another batch from the Stages page. Try it on a scratch node before turning it on                                                                                                     |
+| `STREAM_RESTART_WINDOW_MINUTES`       | `30`               | how long after a stream ends it can go live again on its key: a whole number of minutes from 0 to 10080, or the start stops. Then the admin changes the key. 0 changes it as soon as the stream ends: [Finishing a stream](#finishing-a-stream) |
+| `BRAND_WALLET_SECRET`                 | empty              | 64 hex (32 bytes). The brand wallet's key is encrypted under it. The first start creates the wallet. Required with `MANAGER_FUNDING_URL`                                                                                                        |
+| `MANAGER_FUNDING_URL`                 | empty              | the manager's address for its funding API: https, or plain http to this host only. Empty: funding is not set up                                                                                                                                 |
+| `MANAGER_FUNDING_TOKEN`               | with the URL       | 32+ chars, printable ASCII, no space: the manager's `FUNDING_API_TOKEN`. Refused without the URL. Never logged                                                                                                                                  |
+| `WEB2_ADMIN_VERSION`                  | unset              | the build's label, which `deploy/deploy.sh` builds into the image. Never in the env file: [The build it runs](#the-build-it-runs)                                                                                                               |
+| `WEB2_ADMIN_COMMIT`                   | unset              | the build's commit, built in the same way. `GET /api/version` answers both                                                                                                                                                                      |
+| `POSTGRES_PASSWORD`                   | `web2admin`        | read by the compose files, not by the API: the database's password, written into the `DATABASE_URL` they set                                                                                                                                    |
 
 There is no ingest setting, no Bee node and no postage batch among these. Each
 stream's OBS details come from the stage it is broadcast on, as the manager
@@ -742,7 +743,12 @@ uploader retries) and clears `ended_at`. `vod` sets `status`, `manifest_index`,
 `duration_seconds` and `ended_at`. Allowed: `published → live`, `live → live`,
 `live → vod`, `vod → vod`, `published → vod` for a broadcast that ended before
 its `live` report ever got through, and `vod → live` for a broadcast that goes
-live again. Every feed of a declared stream outlives the sessions written to
+live again within the restart window. Once the window has run out, the stream's
+key has changed, so the uploader refuses the old one at its next connect and no
+report comes ([Finishing a stream](#finishing-a-stream)). A `live` report that
+starts a broadcast also clears `finished_at`, so a stream that comes back on its
+new key starts a new window at its next end. Only a retried `live → live` keeps
+it, and `vod` never touches it. Every feed of a declared stream outlives the sessions written to
 it, so a reconnected encoder continues them above the previous head. That
 `live` therefore clears `manifest_index` and `duration_seconds` on the row and
 on every rung in the same statement, and the entry lists the latest recording
@@ -807,7 +813,8 @@ the stream takes them with it through the foreign key.
 
 - A stream that is `live` or `vod` is still editable (title, description, tags
   and thumbnail), and `GET /streams/:id/ingest` still answers, so an encoder
-  that dropped can reconnect. The media type stays refused with
+  that dropped can reconnect within the restart window
+  ([Finishing a stream](#finishing-a-stream)). The media type stays refused with
   `409 media_type_locked`, and the schedule joins it with `409 stream_locked`:
   it is a promise viewers have already read off the entry.
 - `POST /streams/:id/publish` on a live or recorded stream republishes it _as
@@ -928,6 +935,81 @@ curl -sS -X DELETE http://127.0.0.1:9877/api/internal/stages/5f0c2a8e-1b2c-4d3e-
   -d '{ "observedAt": "2030-01-01T10:05:00.000Z" }'
 # {"retired":true}
 ```
+
+## Finishing a stream
+
+The uploader accepts a stream that is already `vod`, so a broadcaster who
+dropped for longer than the uploader waits can come back. That holds for the
+**restart window** after a stream ends, `STREAM_RESTART_WINDOW_MINUTES`, 30
+unless set. Then the admin changes the stream's key itself, so an old encoder
+profile pressed later is refused at its next connect and nothing reaches
+Swarm. **Finish** does the same at once, on an operator's word. Migration 022
+adds the column behind both, `streams.finished_at`, with a partial index on
+`ended_at` for the streams still in their window.
+
+**`POST /api/streams/:id/finish`** is behind the same gate as
+`POST /api/streams/:id/ingest/rotate-key`: whoever may rotate a key may finish
+a stream. On a `live` or `vod` stream it changes the key, stamps
+`publish_key_rotated_at` and `finished_at`, all in one conditional statement,
+and answers `200` with `StreamFinishAnswer { stream, ingest }`, the stream as
+it now stands and its ingest details with the new key, so the page shows the
+new SRT line without a second read. On a recording it closes the window early.
+On a live stream the broadcast goes on, since nothing here stops an encoder,
+and the stream ends for good when the encoder stops or drops. The refusals:
+
+- `404 stream_not_found` for no such stream;
+- `409 stream_not_started`, "Only a live or ended stream can be finished.",
+  for a draft, published or publishing stream. A draft that holds a recording
+  did go live once, but it was unpublished and is no longer ended;
+- `409 stream_finished`, "This stream is already finished: its key has
+  changed."
+
+The two are told apart by reading the row again after the statement matched
+nothing, as a state report does.
+
+**The fields.** Every stream the API returns carries `finishedAt`, when it was
+finished, or null, and `restartUntil`: `ended_at` plus the window, only while
+the stream is `vod` and not finished, and null otherwise. A time already past
+means the same as null; the next sweep finishes the stream. The API works it
+out, so the page never needs the setting.
+
+**`finished_at`** is set by Finish, on a `live` or `vod` stream, and by the
+sweep. It is cleared by a `live` report that starts a broadcast, from `vod` or
+from any other status, which on a finished stream it can do only on the new
+key: a stream that goes live again on purpose starts a new window at its next
+end, and so does a finished recording that a reset at boot put back to
+`published`. Only a retried `live → live` keeps it, which is how Finish on a
+live stream survives the uploader's retries, and a `vod` report never touches
+it.
+
+**The sweep** finishes every `vod` stream whose window has run out:
+`ended_at` at most the window ago on the database's clock, since the database
+wrote `ended_at`, and a `vod` with no `ended_at` counts as ended long ago. It
+runs at boot, after the migrations and before the API listens, then every 60
+seconds, and once more in the tail of every `vod` report, so a window of 0
+finishes a stream as soon as it ends. Its first run after the deploy that
+brings migration 022 finishes every older recording. Each stream is one
+conditional statement, so a second admin process, a retry or a race changes
+no key twice. A run that fails is logged and left to the next one: it never
+stops the start, and the tail never delays or fails the uploader's answer.
+
+**The setting.** `STREAM_RESTART_WINDOW_MINUTES` is a whole number of minutes
+from 0 to 10080, a week. Unset or empty, it is 30. Anything else stops the
+start with a sentence that names it. A host that wants 30 sets nothing.
+
+**Audit and log.** Finish writes `stream.finish`, naming the operator, and
+the sweep `stream.finish.window`, with the actor `system` and the reason
+`restart window`, one row per stream whose key it changed. Each also logs a
+`[Finish]` line: `[Finish] alice finished "Opening keynote" (topic …): its key
+changed`, or `the restart window of … ran out`, and the sweep a count of the
+streams it changed. Neither key reaches a log line or an audit row.
+
+**A broadcast that connects in the window's last seconds can lose its key.** The uploader
+checks the key when an encoder connects, while the window runs on the clock. An encoder that
+connects just before the window runs out goes live on the old key, and the sweep can change the
+key a moment later. The broadcast carries on, since nothing here stops an encoder, but a
+reconnect is refused until the operator copies the new SRT line into the encoder. This is
+accepted in this version.
 
 ## Funding
 
@@ -1599,6 +1681,7 @@ is harmless. `pnpm build` copies the folder into `dist`.
 | `019_funding_chequebook_operations.sql` | `funding_chequebook_operations`, the journal of chequebook deposits and withdrawals ([Chequebook operations](#chequebook-operations))                                                             |
 | `020_funding_chequebook_mined.sql`      | that journal's `mined`, whether a submitted move is mined and waits for its block to be final                                                                                                     |
 | `021_console_settings.sql`              | the single-row `console_settings`, the look this host's console starts in ([The console's look](#the-consoles-look))                                                                              |
+| `022_streams_finished.sql`              | `streams.finished_at`, when a stream was finished, and a partial index on `ended_at` for the streams still in their restart window ([Finishing a stream](#finishing-a-stream))                    |
 
 ## Audit log
 
@@ -1618,7 +1701,7 @@ into the log for any reader, nor reorder what its line appears to say.
 | Column                          | What it holds                                                                                                                                                                                                                                                                                                                                  |
 | ------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `at`                            | when the row was written, just after the mutation                                                                                                                                                                                                                                                                                              |
-| `actor_kind`                    | `operator` (a signed-in user), `uploader` (the uploader's internal routes), `manager` (the manager's stage routes) or `system` (the boot repair, the CLI, a funding refresh)                                                                                                                                                                   |
+| `actor_kind`                    | `operator` (a signed-in user), `uploader` (the uploader's internal routes), `manager` (the manager's stage routes) or `system` (the boot repair, the CLI, a funding refresh, the restart window's sweep)                                                                                                                                       |
 | `actor_user_id`, `actor_name`   | the operator's id and username at the time. The id goes null if the user is removed, the name stays. For `system`, `actor_name` is the reason (`boot`, `cli`, `funding`). For the uploader and the manager it is null                                                                                                                          |
 | `action`                        | see below                                                                                                                                                                                                                                                                                                                                      |
 | `stream_id`, `topic`            | the stream, with no foreign key so a deleted stream's history stays                                                                                                                                                                                                                                                                            |
@@ -1629,7 +1712,8 @@ The actions: `stream.create`, `stream.update` (only when a field actually
 changed. A save of an unchanged form is logged, not audited), `stream.stage`
 (a draft moved to another stage, or on or off one, `details: { from, to }`),
 `stream.delete`, `stream.thumbnail.set`, `stream.thumbnail.clear` (only when
-there was an image to remove), `stream.key.rotate`, `stream.publish`,
+there was an image to remove), `stream.key.rotate`, `stream.finish` and
+`stream.finish.window` ([Finishing a stream](#finishing-a-stream)), `stream.publish`,
 `stream.republish` (only a publish of a live or recorded stream. Publishing one
 that is already `published` records `stream.publish` with
 `published → published`), `stream.unpublish`, `stream.publish.failed`,

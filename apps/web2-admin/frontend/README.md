@@ -34,17 +34,45 @@ pnpm --filter @streaming-monorepo/web2-admin-frontend dev
 From this package, `pnpm mock-api` does the same. Sign in as `admin` with the password
 `admin1234`. Nothing deployed the mock, so its build line reads `Version development build`.
 
-| Variable              | Default                  | What it does                                                                                                                   |
-| --------------------- | ------------------------ | ------------------------------------------------------------------------------------------------------------------------------ |
-| `MOCK_API_PORT`       | `9877`                   | the port it listens on                                                                                                         |
-| `SEED_ADMIN_USERNAME` | `admin`                  | the user it starts with                                                                                                        |
-| `SEED_ADMIN_PASSWORD` | `admin1234`              | that user's password, which the console can change                                                                             |
-| `MOCK_NO_USERS`       | unset                    | `true` starts with no users, the only way to see the console's "no users yet" screen                                           |
-| `MOCK_NO_STAGES`      | unset                    | `true` starts with no stages: the Stages page's empty state, and a stage picker with nothing to pick                           |
-| `MOCK_RECORDING`      | unset                    | `true` starts with one finished recording on the catalogue, to see a recording's details and to unpublish and publish it again |
-| `MOCK_FUNDING`        | unset                    | `off` shows the Funding page's "not set up" state. `refuse` and `lost` play the two failures, as [below](#the-mock-funding)    |
-| `MOCK_DEFAULT_THEME`  | `swarm`                  | the host's default look `GET /api/config` answers. The mock checks no name. Set `web3privacy` to see a host's default at work  |
-| `VIEWER_BASE_URL`     | `http://localhost:10074` | the "open player catalogue" link. It must be a viewer built for this catalogue                                                 |
+| Variable              | Default                  | What it does                                                                                                                       |
+| --------------------- | ------------------------ | ---------------------------------------------------------------------------------------------------------------------------------- |
+| `MOCK_API_PORT`       | `9877`                   | the port it listens on                                                                                                             |
+| `SEED_ADMIN_USERNAME` | `admin`                  | the user it starts with                                                                                                            |
+| `SEED_ADMIN_PASSWORD` | `admin1234`              | that user's password, which the console can change                                                                                 |
+| `MOCK_NO_USERS`       | unset                    | `true` starts with no users, the only way to see the console's "no users yet" screen                                               |
+| `MOCK_NO_STAGES`      | unset                    | `true` starts with no stages: the Stages page's empty state, and a stage picker with nothing to pick                               |
+| `MOCK_RECORDING`      | unset                    | `true` adds one more recording, which ended on 2026-09-11 and is finished at start, beside the [seeded streams](#the-mock-streams) |
+| `MOCK_FUNDING`        | unset                    | `off` shows the Funding page's "not set up" state. `refuse` and `lost` play the two failures, as [below](#the-mock-funding)        |
+| `MOCK_DEFAULT_THEME`  | `swarm`                  | the host's default look `GET /api/config` answers. The mock checks no name. Set `web3privacy` to see a host's default at work      |
+| `VIEWER_BASE_URL`     | `http://localhost:10074` | the "open player catalogue" link. It must be a viewer built for this catalogue                                                     |
+
+#### The mock streams
+
+Every start seeds three published streams on the catalogue, on the mock stage or, with
+`MOCK_NO_STAGES`, on none. They show the states the stream page tells apart once a stream has gone
+live:
+
+- "Live now", live since 12 minutes before the start.
+- "Ended a few minutes ago", which ended 5 minutes before the start and can go live again until 25
+  minutes after it.
+- "Ended days ago", which ended 3 days before and is finished at start with a new key.
+
+So a default run never shows the Streams list's "No streams yet." state, and the live seed cannot
+be deleted (`409 stream_live`, as the API answers).
+
+Every stream carries `finishedAt`, null until it is finished, and `restartUntil`, `endedAt` plus 30
+minutes while it is `vod` and not finished, and null otherwise. The window is fixed at 30 minutes,
+the API's default, and the mock reads no `STREAM_RESTART_WINDOW_MINUTES`. Its sweep runs at start
+and before every request under `/api/streams`. It finishes every `vod` whose 30 minutes have passed,
+or that has no `endedAt`, with a new key, and sets `publishKeyRotatedAt` and `finishedAt` to that
+moment.
+
+`POST /api/streams/:id/finish` does the same at once on a live stream or an unfinished recording,
+and answers `200 { stream, ingest }` with the new key. A live stream stays live. A draft, published
+or publishing stream is `409 stream_not_started` and a finished one `409 stream_finished`, each
+answered `{ error, id, message }` with the API's sentence. An unknown id is `404 not_found`, the
+mock's own convention where the API answers `stream_not_found`. Rotate key, Unpublish and
+Republish leave `finishedAt` as it is, and nothing in the mock goes live, so nothing clears it.
 
 #### The mock funding
 
@@ -114,7 +142,14 @@ catalogue to another batch is waiting, and when its batch is under 48 hours from
   edit.
 - A link to the viewer's catalogue, the copyable route of this stream in the viewer, and the last
   publish error.
-- The OBS panel, described below.
+- Once the stream has gone live, a notice under the title says where its key stands.
+  "Ended — can go live again until <time>" shows while its restart window runs, the time in the
+  console's DD/MM/YYYY HH:mm. "Ended — its restart window has run out" shows once that time has
+  passed, until the admin's next check finishes the stream, up to a minute later.
+  "Finished — the key has changed" shows once the window or Finish has finished it, and a live
+  stream that was finished shows
+  "Live — finished, the key has changed; it ends for good when the encoder stops".
+- The OBS panel, with Rotate key and Finish, described below.
 
 ### Stages, `#/stages`
 
@@ -218,6 +253,18 @@ take over a live stream and OBS reconnects by itself. The stream then carries on
 segments and shows as Live throughout. To end such a fight, press Rotate key and put the new details
 into the one encoder that should broadcast. Its next connection takes the stream over, and the
 other encoder's reconnects with the old key are refused.
+
+Finish stands beside Rotate key on a live or ended stream that is not finished yet, for whoever may
+rotate a key. It asks first, under the title "Finish this stream?": the key changes now, so no
+encoder can start the stream again on the old one. On a live stream the broadcast carries on until
+the encoder stops. Finish then changes the key at once, the panel shows the new SRT line, and a
+snackbar says "Stream finished. Its key has changed." If the API refuses it as
+`stream_not_started` or `stream_finished`, the stream has moved on since the page read it, for
+example because its restart window ran out. The snackbar then gives the API's sentence, the dialog
+closes, and the page reads the stream and its OBS details again, so it never shows a stale SRT
+line. After any other failure the dialog stays open. To go live on a finished stream on purpose,
+copy the new SRT line into OBS, as after Rotate key. The panel's header row wraps on a narrow
+screen.
 
 ### Sessions
 

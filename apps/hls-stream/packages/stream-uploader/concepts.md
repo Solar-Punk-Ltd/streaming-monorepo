@@ -398,7 +398,8 @@ master's topic is the group id, so the two have to be the same.
   declaration, so a restarted rung continues its feed, and its recording opens with the one already
   there. The admin's entry therefore points at a recording of the whole broadcast, seams marked. The
   admin accepts `live` after `vod` for this reason: a broadcaster who stops and comes back is a stream
-  going live again.
+  going live again. It does so within its restart window only. Once that has run out, the admin
+  changes the stream's key, and the old key is refused at the next connect.
 - The merge of rungs moves from the catalogue feed into the admin. Each rung posts its `Rendition` to
   `POST /api/internal/streams/:id/renditions` with `ADMIN_API_TOKEN`. The admin merges it by the same
   rule `StreamCatalog.keepingWhatFinished` states, a rung that has finished stays finished, writes
