@@ -61,15 +61,6 @@ advisories, `pnpm shellcheck` for the deploy and node shell scripts, and
 `images`, which builds the uploader, client, bench and browser Dockerfiles. Run
 the first two directly before touching what they cover.
 
-### Agent hook settings
-
-`.claude/settings.json` is committed, so it applies to everyone working in this
-repository, not just one machine. Its `ECC_DISABLED_HOOKS` setting names both
-`pre:edit-write:gateguard-fact-force` and `pre:bash:gateguard-fact-force`, disabling
-the fact-recital hooks for file edits and shell commands in a harness that reads
-that setting. The file does not establish which other hooks are installed or
-enforced by a particular tool.
-
 ## CLI
 
 ```bash
