@@ -138,7 +138,7 @@ describe('splitting one segment across the pipeline', () => {
 /**
  * The reason a two-clock measurement is usable. If skew moved the total, the whole instrument would
  * be bounded by how well two machines agree on the time, which is routinely worse than the seconds
- * S5.2 is trying to detect.
+ * the bench is trying to detect.
  */
 /**
  * The bench attributes a segment to the first manifest publish logged at or after its upload, and

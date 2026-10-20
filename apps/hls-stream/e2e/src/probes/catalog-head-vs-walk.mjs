@@ -1,7 +1,7 @@
 /**
  * Head lookup against slot walk, on the REAL app catalog feed rather than a synthetic one.
  *
- * This is the prediction from `docs/reviews/catalog-off-the-head-lookup.md` put to the deployment:
+ * This puts one prediction to the deployment, that reading slots by number beats the head lookup:
  * the catalog poll should fall from seconds to milliseconds. It measures the read pattern rather than
  * the shipped client, so it needs no deploy, and it is the same round-robin shape as every other
  * probe here because this environment drifts between sittings.

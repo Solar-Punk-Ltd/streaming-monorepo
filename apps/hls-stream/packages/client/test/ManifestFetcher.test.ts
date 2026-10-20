@@ -112,7 +112,7 @@ const manager = ManifestStateManager.getInstance();
 const realFetch = globalThis.fetch;
 const realConsoleError = console.error;
 
-describe('ManifestFetcher follow-up fetches (CON-29)', () => {
+describe('ManifestFetcher follow-up fetches', () => {
   let fetcher: ManifestFetcher;
   let requested: bigint[];
   let publishedThrough: bigint;
@@ -546,7 +546,7 @@ describe('keeping up with a publisher that writes faster than hls.js reloads', (
    *
    * The clock still moves, because a frozen one would hide the day the walk does start recording
    * one. The claim that a healthy feed never ages into a stall is carried by
-   * `does not age a feed that keeps being served into a stall` in the CON-29 block, which drives
+   * `does not age a feed that keeps being served into a stall` in the follow-up fetches block, which drives
    * the unserved path deliberately and was mutation-checked.
    */
   const GENEROUS_POLL_INTERVAL_MS = UNSERVED_SLOT_STALL_MS * 2;
@@ -696,7 +696,7 @@ describe('keeping up with a publisher that writes faster than hls.js reloads', (
  *
  * So the bound carries the slack that granularity needs and nothing more. It still separates every
  * defect worth naming, because those are a wait that returns immediately and a wait that ignores its
- * argument, and both are off by tens of milliseconds rather than by one. See TEST-53.
+ * argument, and both are off by tens of milliseconds rather than by one.
  */
 
 /** Measured worst-case early return is 0.87ms, so this is a shade over 2x that and still tiny. */

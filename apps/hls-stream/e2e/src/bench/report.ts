@@ -4,7 +4,7 @@
  *
  * The one decision worth stating is that a run reports **the median sample, whole**, rather than a
  * split averaged across samples. Averaging each hop independently produces a row set that sums to a
- * total no segment ever had, and describes a run that did not happen. Sprint 5's criterion is a drop
+ * total no segment ever had, and describes a run that did not happen. The goal is a drop
  * measured against a baseline, so the baseline has to be a thing that occurred.
  */
 

@@ -123,7 +123,7 @@ export function impliedCaptureInstantMs(frame: FramePts, window: CaptureWindow):
  *
  * Both timestamps must come from the same machine's clock, which is why the publisher and the fetch
  * both run on the bench host: a measurement split across two clocks would carry their skew, and skew
- * between machines is routinely larger than the effect Sprint 5 is trying to detect.
+ * between machines is routinely larger than the effect the bench is trying to detect.
  *
  * @throws UnusableTimestampsError when the implied capture instant falls outside `window`.
  */

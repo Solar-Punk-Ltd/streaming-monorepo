@@ -18,7 +18,7 @@ import {
  * beside the tags the uploader builds a manifest with, and the master-playlist builder and the swarm
  * URI scheme, beside the uploader that publishes the master this one synthesises as a fallback. Both
  * halves of each contract are then one definition rather than two that promise to agree. They are
- * re-exported for the call sites that used to find them here. See ARCH-1.
+ * re-exported for the call sites that used to find them here.
  */
 
 export { buildMasterPlaylist, buildSwarmUri, parseManifest, parseSwarmUri, type Segment };

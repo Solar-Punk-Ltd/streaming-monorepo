@@ -153,7 +153,7 @@ describe('V10 — a viewer whose broadcast ends because the engine restarted', {
       maxSegmentRequests: MAX_WEEB3_SEGMENT_REQUESTS,
     });
     assert.equal(notWatching, null, `this run is not a viewer who was watching when the engine went: ${notWatching}`);
-    // ⭐ Phase 1 of docs/e2e-viewer-coverage-plan.md. The resolutions were already being captured and
+    // The resolutions were already being captured and
     // printed, so a viewer riding a rung nobody configured passed every suite on a reading that was
     // sitting right there. Asks whether the rung is one the ladder declares, never which one.
     const wrongQuality = ladderResolutionRefusal(result, cfg.abrLadderResolutions);

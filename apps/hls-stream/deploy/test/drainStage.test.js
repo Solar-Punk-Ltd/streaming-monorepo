@@ -16,7 +16,7 @@ const SCRIPTS = resolve(dirname(fileURLToPath(import.meta.url)), '..', 'scripts'
  * That the script arming one rung's postage batch to run dry swaps exactly one rung, refuses every
  * batch that would not run dry, and never buys anything.
  *
- * ⛔ The sitting it arms is `docs/e2e-batch-drain-plan.md`: one rung is pointed at a deliberately tiny
+ * The sitting it arms is described in `e2e/README.md`, under "One rung's postage runs out": one rung is pointed at a deliberately tiny
  * batch, the batch fills mid-broadcast, and the other three rungs are supposed to carry on. Arming it
  * means rewriting one entry of `BEE_PUBLISHERS` in the profile env and redeploying the uploader,
  * because the uploader reads that variable once at process start. Two things make that worth a test
@@ -1747,7 +1747,7 @@ describe('drain-stage argument handling', () => {
 
     assert.equal(run.exitCode, 0, `${run.stdout}${run.stderr}`);
     assert.match(run.stdout, /print-buy/);
-    assert.match(run.stdout, /e2e-batch-drain-plan/);
+    assert.match(run.stdout, /e2e\/README\.md/);
     // The help is every leading comment line, found by reading them rather than by a line number.
     // It was a line number, and a comment added past the end of the header silently truncated it
     // while one added inside it spilled code into it. Both ends are still asserted, because a
@@ -1778,10 +1778,9 @@ describe('drain-stage argument handling', () => {
 /**
  * ⛔ Depth 17 is a test affordance rather than a size. It is the only depth a short broadcast can
  * fill, which is what a drain sitting needs and what starves a rung that is meant to stream:
- * `docs/e2e-batch-drain-plan.md` measures the whole batch gone in about 20 seconds of 1080p. Arming
+ * the smallest batch Bee allows fills in about 20 seconds of 1080p. Arming
  * anything roomier was refused outright, so the one rig that wires a batch into a rung could not be
- * pointed at a sustained run at all, and a cross-provider review ran into exactly that on
- * 2026-09-15.
+ * pointed at a sustained run at all, and a review ran into exactly that.
  *
  * The depth is now the run's to name, and 17 stays the default, because a drain sitting that quietly
  * armed a batch it cannot fill would report a rung that never ran dry and read as the product

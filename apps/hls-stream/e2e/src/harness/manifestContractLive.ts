@@ -8,7 +8,7 @@
  *
  * ## ⭐ Why this needs nothing new from the uploader
  *
- * `docs/e2e-coverage.md` recorded, correctly for the log lines it looked at, that a ladder announce
+ * An earlier reading recorded, correctly for the log lines it looked at, that a ladder announce
  * carries the topic and the group and no owner, and concluded that either the uploader had to log
  * one or the harness had to hold `STREAM_KEY`. Neither is so. **There is one feed owner for the whole
  * uploader**: `StreamCatalog`, `MasterFeedWriter` and every `StreamUploader` build their signer from

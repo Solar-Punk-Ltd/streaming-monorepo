@@ -16,10 +16,8 @@ import {
 /**
  * Preflight — the deployed stage must cut segments at the length this run's viewer can actually use.
  *
- * ⭐⭐⭐ **The two viewer types want opposite numbers, so there is no setting that is simply correct.**
- * Measured 2026-08-16 by a separate load-testing repository, in
- * `docs/measurements/2026-08-16-a-stock-tab-holds-realtime-on-two-second-segments.md`, and carried
- * unresolved as Q23 of its `docs/spec/product-spec.md`:
+ * **The two viewer types want opposite numbers, so there is no setting that is simply correct.**
+ * Measured by a separate load-testing repository, and still an open product question:
  *
  *  - a stock in-tab weeb-3 node holds **1.000x of realtime on 2s segments** with about 90s of buffer,
  *    and **0.426x on 0.5s** with 0.5 to 3.5s, because it admits about one segment per second whatever

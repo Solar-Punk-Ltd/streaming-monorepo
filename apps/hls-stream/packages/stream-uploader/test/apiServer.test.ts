@@ -93,7 +93,7 @@ function postSegment(api: ApiTestServer, index: number, streamId = STREAM_ID) {
   });
 }
 
-describe('api server over http (S0.7 test layer)', () => {
+describe('api server over http', () => {
   const servers: ApiTestServer[] = [];
 
   async function start(...args: Parameters<typeof startTestApi>): Promise<ApiTestServer> {
@@ -478,7 +478,7 @@ describe('POST /stream/segment duration validation (gate on PR 52)', () => {
   });
 });
 
-describe('POST /stream/stop outcome (S2.5)', () => {
+describe('POST /stream/stop outcome', () => {
   const servers: ApiTestServer[] = [];
   after(async () => {
     await Promise.all(servers.map((server) => server.close()));
@@ -609,7 +609,7 @@ describe('POST /stream/segment for a finalizing stream', () => {
   });
 });
 
-describe('GET /health status (S2.1)', () => {
+describe('GET /health status', () => {
   const servers: ApiTestServer[] = [];
 
   const STALL_WINDOW_MS = 60;
@@ -750,7 +750,7 @@ describe('GET /health status (S2.1)', () => {
   });
 
   /**
-   * S2.6's acceptance criterion, read over HTTP rather than through `deriveHealthStatus`. Everything
+   * The acceptance criterion, read over HTTP rather than through `deriveHealthStatus`. Everything
    * about the running process is fine and stays fine, which is exactly why this was invisible: the
    * segment uploads, the manifest publishes, the catalog accepts it, and the only thing that has
    * happened is that a crash would now resume from state older than reality.

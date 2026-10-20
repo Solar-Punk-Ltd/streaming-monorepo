@@ -34,7 +34,7 @@ import { sleep, waitFor } from '../../src/harness/wait.js';
  *
  * ## The bug this exists to prove fixed
  *
- * Finding 1 of `docs/reviews/2026-09-05-cross-provider-review.md`. When the uploader boots holding a
+ * When the uploader boots holding a
  * recovery entry it restores the stream, seeds the duplicate filter with every segment index the
  * entry carries, and arms a 60 second timer that finalizes the broadcast if nothing comes back. If
  * the engine opens a NEW publish session for that stream id inside the window,

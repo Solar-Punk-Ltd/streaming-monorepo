@@ -13,7 +13,7 @@ import {
   readinessToPersisted,
 } from '../src/libs/AnnounceReadiness.js';
 
-describe('announce readiness transitions (ARCH-3)', () => {
+describe('announce readiness transitions', () => {
   it('starts pending and reaches segment-ready on the first segment', () => {
     assert.equal(onFirstSegmentUploaded(READINESS_PENDING), READINESS_SEGMENT_READY);
   });
@@ -54,7 +54,7 @@ describe('announce readiness transitions (ARCH-3)', () => {
   });
 });
 
-describe('announce readiness gate (ARCH-3)', () => {
+describe('announce readiness gate', () => {
   it('owes the catalog an announce only once a segment is up and before it has announced', () => {
     assert.equal(needsCatalogAnnounce(READINESS_SEGMENT_READY), true);
     assert.equal(needsCatalogAnnounce(READINESS_PENDING), false);
@@ -62,7 +62,7 @@ describe('announce readiness gate (ARCH-3)', () => {
   });
 });
 
-describe('announce readiness persistence (ARCH-3)', () => {
+describe('announce readiness persistence', () => {
   for (const readiness of [READINESS_PENDING, READINESS_SEGMENT_READY, READINESS_ANNOUNCED] as const) {
     it(`round-trips ${readiness} through the persisted shape`, () => {
       const restored = readinessFromPersisted(readinessToPersisted(readiness));

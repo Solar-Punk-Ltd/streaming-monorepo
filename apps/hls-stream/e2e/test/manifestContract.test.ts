@@ -16,7 +16,7 @@ import {
  *
  * ⛔ Every case here is built from strings, so it is free and it runs in CI. What it cannot do is
  * prove the stage writes such a playlist, which is the paid half and is what the scenario suites are
- * for. See `docs/e2e-coverage.md` for what those suites still need before they can call this.
+ * for. See `e2e/README.md` for what those suites still need before they can call this.
  */
 
 const FRAGMENT_SECONDS = 2;

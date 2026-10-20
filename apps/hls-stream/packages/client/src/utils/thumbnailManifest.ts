@@ -48,7 +48,7 @@ export function previewSegmentUrl(uri: string, urlFor: (reference: string) => st
  * at the median** against **4ms** for the slot, and the two returned byte-identical manifests for 12
  * entries out of 12, with the head resolving to exactly the published index every time. The previews
  * share a queue at concurrency 1, so those lookups are serial and ten cards is about 26 seconds of
- * them. See `docs/reviews/catalog-off-the-head-lookup.md`.
+ * them.
  *
  * A live entry has no index to give, because `notifyStart` publishes none, so it keeps the search.
  */

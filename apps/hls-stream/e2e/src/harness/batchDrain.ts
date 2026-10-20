@@ -94,7 +94,7 @@ export const DEFAULT_DRAIN_RUNG = '1080p';
  * Two stamp slots per bucket across 65536 buckets, so bee stops accepting chunks once any bucket
  * gets a third, which happens after roughly 3000 chunks. That is the only size a broadcast can fill,
  * and it is why the whole test is possible: expiry cannot be a lever, because bee refuses to create
- * a batch that would live under 24 hours. See `docs/e2e-batch-drain-plan.md`.
+ * a batch that would live under 24 hours. See `e2e/README.md`, section "One rung's postage runs out".
  */
 export const DRAIN_BATCH_DEPTH = 17;
 
@@ -160,7 +160,7 @@ export function drainRungRefusal(rung: string): string | null {
       'catalog, every master playlist and the recording announce at the end of a broadcast. Draining ' +
       'it stops the master being rewritten for all four rungs at once rather than costing one ' +
       'quality, and no failover for that exists in this repo. It is filed as a known product gap in ' +
-      `docs/e2e-batch-drain-plan.md. Point ${DRAIN_RUNG_VAR} at a rung that is not the coordinator, ` +
+      `e2e/README.md. Point ${DRAIN_RUNG_VAR} at a rung that is not the coordinator, ` +
       `${DEFAULT_DRAIN_RUNG} by default.`
     );
   }

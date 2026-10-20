@@ -16,7 +16,7 @@ import { TEST_ANCHOR } from './helpers/fakes.js';
  * The two halves of the manifest contract, exercised against each other.
  *
  * The build side is the uploader's own `ManifestManager`, the parse side is the function the client
- * player calls on every feed slot it reads. Before ARCH-1 these sat in different packages with their
+ * player calls on every feed slot it reads. Before the tags were shared these sat in different packages with their
  * own copies of the tag literals and nothing compared them, so a tag could be renamed on one side
  * and the only report would have been a viewer seeing no segments.
  */
@@ -64,7 +64,7 @@ const SEGMENTS: AddedSegment[] = [
   { index: 3, duration: 2, ref: 'ref-d' },
 ];
 
-describe('manifest round trip (ARCH-1)', () => {
+describe('manifest round trip', () => {
   for (const [name, build] of [
     ['live', (m: ManifestManager) => m.buildLiveManifest()],
     ['VOD', (m: ManifestManager) => m.buildVODManifest()],

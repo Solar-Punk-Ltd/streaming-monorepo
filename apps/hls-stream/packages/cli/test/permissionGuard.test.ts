@@ -42,8 +42,8 @@ describe('the permission guard', () => {
  * ⛔⛔ The cases do not call `unwritableIsEnforceable`. They read the exported constant, and until
  * this block existed nothing did. Three green cases in front of an untested export is a guard on the
  * wrong side of its own seam: replace the constant with an unconditional reason string and all
- * fourteen stand down on every machine while every case here still passes. A cross-provider review
- * on 2026-09-14 found that gap, after the session that wrote the guard had claimed in writing that
+ * fourteen stand down on every machine while every case here still passes. A review
+ * found that gap, after the session that wrote the guard had claimed in writing that
  * these cases closed it.
  *
  * ⭐ The rule worth carrying out of it: test the value the callers read, not the function behind it.

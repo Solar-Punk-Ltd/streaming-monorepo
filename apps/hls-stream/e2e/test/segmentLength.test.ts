@@ -16,8 +16,7 @@ import {
 /**
  * The two viewer types this project ships want OPPOSITE segment lengths, so a run has to say which.
  *
- * ⭐⭐⭐ Measured 2026-08-16 by a separate load-testing repository, in
- * `docs/measurements/2026-08-16-a-stock-tab-holds-realtime-on-two-second-segments.md`. A stock
+ * Measured by a separate load-testing repository. A stock
  * weeb-3 tab holds **1.000x of realtime on 2s segments** with about 90s of buffer ahead of the
  * playhead, and **0.426x on 0.5s** with 0.5 to 3.5s of buffer, which is a viewer falling behind for
  * as long as it is open. The mechanism is arithmetic rather than tuning: weeb-3 admits roughly one

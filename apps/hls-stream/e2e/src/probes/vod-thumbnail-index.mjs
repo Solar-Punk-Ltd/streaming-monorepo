@@ -2,8 +2,8 @@
  * Whether a VOD catalog entry's published index actually addresses the manifest its thumbnail wants.
  *
  * `StreamPreview` resolves `/feeds/{owner}/{topic}` once per card to find a VOD manifest whose SOC
- * index the catalog entry already carries. Fix 2 in `docs/reviews/catalog-off-the-head-lookup.md`
- * proposes reading that slot by address instead. Two things have to hold for that to be a fix rather
+ * index the catalog entry already carries. The proposed fix
+ * is to read that slot by address instead. Two things have to hold for that to be a fix rather
  * than a regression, and only one of them is about speed:
  *
  *   1. **The bytes are the same.** If the head of a finished stream's feed is newer than the index the

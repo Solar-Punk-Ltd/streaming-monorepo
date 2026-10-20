@@ -33,7 +33,7 @@ import { waitMs } from './waitMs';
 
 // The parser and the segment shape now live beside the tags the uploader builds with, so the two
 // halves of the manifest contract cannot drift apart. Re-exported because the player's own modules
-// and tests import them from here. See ARCH-1.
+// and tests import them from here.
 export { parseManifest, type Segment };
 
 interface TopicState {
@@ -1085,7 +1085,7 @@ export class ManifestFetcher {
 
     // One outstanding walk per topic. This method is fire and forget by design: it returns the
     // already serialised state at once and leaves the walk running, so hls.js schedules its next
-    // level reload on the ordinary cadence while the previous one is still open. See CON-29.
+    // level reload on the ordinary cadence while the previous one is still open.
     if (!this.inFlight.has(hexTopic) && this.feedHealth.backoffRemainingMs(hexTopic) === 0) {
       // Staggered, because hls.js derives its reload cadence from the playlist's target duration and
       // its newest segment, and every viewer of one broadcast reads the same two. So the cadence that

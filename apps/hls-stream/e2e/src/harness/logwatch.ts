@@ -691,8 +691,7 @@ export function maxSegmentIndexByStream(text: string): ReadonlyMap<string, numbe
  * shipped engines number segments per session and a whole-stack restart restarts the engine itself,
  * so a session that reconnects afterwards opens far below where the session before it had run to. A
  * duplicate filter carried across that reconnect answers every one of those indexes without
- * uploading anything, so this reader comes back empty however healthy the engine was. See finding 1
- * of `docs/reviews/2026-09-05-cross-provider-review.md` and the recovery branch of
+ * uploading anything, so this reader comes back empty however healthy the engine was. See the recovery branch of
  * `StreamOrchestrator.startStream`.
  *
  * ⚠️ **An answer here is evidence and an empty one is not, so read it as the first and never as a

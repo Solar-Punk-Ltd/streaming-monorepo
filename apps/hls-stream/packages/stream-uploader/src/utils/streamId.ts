@@ -18,7 +18,7 @@ const STREAM_ID_SEGMENT_RE = new RegExp(`^${STREAM_ID_SEGMENT}$`);
 /**
  * Long enough for the deepest `app/stream` an engine builds, short enough that the value cannot be
  * used as storage. It bounds a key, not a name: a stream id is retained per stream in several maps,
- * and the rate limiter added in S1.6 keys on the one arriving in `x-stream-id`.
+ * and the rate limiter keys on the one arriving in `x-stream-id`.
  */
 export const MAX_STREAM_ID_LENGTH = 128;
 

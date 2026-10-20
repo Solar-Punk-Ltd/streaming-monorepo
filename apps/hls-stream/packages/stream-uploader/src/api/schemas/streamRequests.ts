@@ -16,8 +16,7 @@ const STREAM_ID_PATTERN = new RegExp(`^${STREAM_ID_SEGMENT}(?:\\/${STREAM_ID_SEG
 /**
  * Every message in this file is written here rather than taken from the validator's defaults, and
  * says what the caller should send instead. A validator's own text names the schema, the union
- * branch and the received value, which is internal shape reaching an unauthenticated caller. See
- * S1.7.
+ * branch and the received value, which is internal shape reaching an unauthenticated caller.
  */
 const STREAM_ID_MESSAGE =
   `streamId must be 1 to ${MAX_STREAM_ID_LENGTH} characters, letters, digits, dot, dash and underscore, ` +

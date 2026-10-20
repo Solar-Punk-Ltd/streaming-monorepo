@@ -7,7 +7,7 @@
  * `uploaderLog.ts` is the same idea on the upload side, and its docblocks record what a blind parse
  * has already cost this project.
  *
- * One definition, so the producer and the reader cannot drift apart. See ARCH-1.
+ * One definition, so the producer and the reader cannot drift apart.
  */
 
 /** Regex metacharacters, escaped so a composed message is matched as the literal text it is. */

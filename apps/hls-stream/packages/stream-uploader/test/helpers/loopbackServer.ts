@@ -27,7 +27,7 @@ interface LoopbackServer {
  * Measured on 2026-08-01: three failures across 280 suite runs, every one of them on port 57446,
  * which a desktop application on the machine was holding as `*:57446`. Binding that port the way this
  * helper does and dialling `127.0.0.1` answers 200 from the test's own server, while binding it the
- * old way and dialling the same URL reproduces the parser error on demand. See TEST-31.
+ * old way and dialling the same URL reproduces the parser error on demand.
  *
  * Returning the origin rather than the port is what keeps it fixed: a caller cannot reintroduce the
  * mismatch by writing the host out again.

@@ -37,7 +37,7 @@ import { sleep, waitFor } from '../../src/harness/wait.js';
  * of two rungs where there was one of four. hls.js would then read a master naming half the rungs and
  * ABR would have nowhere to step up to, with nothing in the logs calling it an error.
  *
- * It also covers the re-announce path directly, which is where CON-1 lived: a re-announce that left
+ * It also covers the re-announce path directly, which is where an old bug lived: a re-announce that left
  * `activeStreams` empty refused the next segment as `unknown_stream` and eventually started a session
  * that was never retired. Four rungs re-announcing at once is the widest version of that window.
  *
@@ -286,7 +286,7 @@ describe('ABR — engine restart: the ladder comes back whole', { skip: abrOff(c
    * session. The count in this window is therefore each recovered playlist's segments plus whatever
    * drained, and the derivation then declines to call the playlist the broadcast's first. The dates,
    * their step and their gaps are asserted either way, and the printed summary says which sequence
-   * each rung declared. See `docs/e2e-coverage.md` under "What the sequence column is saying".
+   * each rung declared. See `e2e/README.md`, section "What the sequence column says".
    */
   it('dates every recovered rung off one anchor, with a timeline no log line carries', async () => {
     const { restartedAt } = await restartAndReconnect();

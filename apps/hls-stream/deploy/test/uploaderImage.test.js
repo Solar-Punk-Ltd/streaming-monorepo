@@ -41,7 +41,7 @@ function contextPaths(text) {
  * tsx against the workspace symlink rather than against the compiled copy that ships, so the first
  * report of a break here is a failed deploy.
  */
-describe('uploader image install (ARCH-1)', () => {
+describe('uploader image install', () => {
   /**
    * ⛔ The whole point of the pnpm rewrite of 2026-09-05. The image used to install with
    * `npm install --omit=dev` from the uploader manifest alone, with no lockfile in the context, so
