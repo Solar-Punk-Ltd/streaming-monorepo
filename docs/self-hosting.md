@@ -280,7 +280,7 @@ token of its own from its first deploy.
 After the upgrade, give each stage a `STREAM_KEY` of its own in the manager and redeploy it right
 after. A stage from before stages signs with the brand key, which its `STREAM_KEY` had to equal, so
 until then a compromised stage host leaks the brand key. A scheduled stream keeps the owner it was
-published with and is refused at the gate until it is unpublished and published again; a recording
+published with and is refused at the gate until it is unpublished and published again. A recording
 keeps the key it was made under.
 
 **Until the catalogue is moved, keep the batch from before stages.** On an upgraded host every
@@ -288,8 +288,8 @@ catalogue slot written before step 2 is stamped by the env file's `POSTAGE_BATCH
 the admin records as `batch_id NULL`, and the viewer stops at the first slot it cannot find. Until
 the move has been tried on a real node
 ([architecture/stages.md](architecture/stages.md#trying-the-move-on-a-real-node)) and run here:
-keep that batch topped up and its node running; never dilute it, replace it or name it in a pool
-string, since the manager does not know it and guards only the catalogue node's batches; and run
+keep that batch topped up and its node running. Never dilute it, replace it or name it in a pool
+string, since the manager does not know it and guards only the catalogue node's batches. And run
 the move as the first thing after the trial. This is the one remaining way the catalogue can go
 dark.
 

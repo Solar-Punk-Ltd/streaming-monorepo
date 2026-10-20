@@ -69,8 +69,8 @@ which `?qoe=1` on a watch URL opens, under the overlay's header as `Player <rele
 
 A deploy of a commit with no tag of its own still names its build:
 
-- the nearest tag before the commit and how many commits past it, `<tag>+<n>`, as `QA-build-2026-10-07+3`;
-- the short commit, as `635b4e175`, when there is no tag behind it at all;
+- the nearest tag before the commit and how many commits past it, `<tag>+<n>`, as `QA-build-2026-10-07+3`.
+- the short commit, as `635b4e175`, when there is no tag behind it at all.
 - either of them, or the tag, followed by `-dirty` when the app, `packages/` or the root's install files held a change
   git had not committed.
 
