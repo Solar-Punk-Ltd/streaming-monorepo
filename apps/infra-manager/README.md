@@ -4,8 +4,7 @@ A web console and API for running the Swarm HLS live-streaming stack,
 `apps/hls-stream`, on your own hosts. It deploys, checks, stops and removes each
 piece of the stack as a deployment, keeps the ports of deployments on one host
 apart, buys and tops up postage for the Bee nodes it runs, and fills their
-chequebooks. The new-deployment wizard offers five kinds of deployment, defined in
-`frontend/src/forms/wizard/wizardGoals.ts`:
+chequebooks. The new-deployment wizard offers five kinds of deployment:
 
 - **Stream to Swarm**: `srs`, `stream-uploader` and a Bee node,
   `bee-uploader`. It takes a live feed from OBS or FFmpeg and publishes it to
@@ -114,14 +113,20 @@ run any of it on a laptop: [docs/ci.md](docs/ci.md).
     it is given.
   - [auth-and-public-access.md](docs/features/auth-and-public-access.md): the
     login gate, the HTTPS edge, the API binds and the host firewall.
-  - [next-features-2026-09.md](docs/features/next-features-2026-09.md): the
-    September plan, kept as the record of what was asked for and why.
 - [docs/ci.md](docs/ci.md): what each CI job proves, what it does not, and how
   to run any suite on a laptop.
 - [docs/testing/](docs/testing/): what particular suites cover and, as
   importantly, what they do not model.
-- [docs/ux/](docs/ux/): the UX rework brief and the clickable mockup it was
-  decided from. Merged 2026-09-05.
+
+### History
+
+The team's records of how the manager came to be, kept for reference rather than as documentation
+of the current behaviour:
+
+- [docs/features/next-features-2026-09.md](docs/features/next-features-2026-09.md): the September
+  2026 plan, the record of what was asked for and why.
+- [docs/ux/](docs/ux/): the brief of the console's UX rework and the clickable mockup it was
+  decided from.
 
 ## The stack this manager bundles
 
@@ -131,8 +136,5 @@ manager deploy bundles the stack of the commit it deploys, so moving the bundled
 stack on is a change to `apps/hls-stream` in the same repository, reviewed and
 merged like any other.
 
-Until the monorepo, this repository pinned the stack as a git submodule. The
-last pin was the stack's release `v3.4`, commit `dc0c55e1`, as of 2026-09-25.
-Its commits are in the monorepo's history under the same ids, so a version of
-that release can still be added on the Versions page, by its tag `stack/v3.4`
-or by its commit, and it is built as the whole tree it was then.
+An older stack release can still be added on the Versions page by its tag, such
+as `stack/v3.4`, or by its commit.

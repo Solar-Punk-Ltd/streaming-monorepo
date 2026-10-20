@@ -1,13 +1,13 @@
 # Manager API
 
-Thin TypeScript backend that runs the `swarm-hls-stream` deploy scripts on
+Thin TypeScript backend that runs the stack's deploy scripts, `apps/hls-stream`, on
 demand and tracks each profile's `port_slot` in PostgreSQL so two profiles
 on the same host can never collide on a port.
 
 ## Stack
 
 - **Express 5** + ESM + **TypeScript**
-- **PostgreSQL 16**, the single source of truth for `port_slot` allocations (1 to 100)
+- **PostgreSQL 16**, the single source of truth for `port_slot` allocations (1 to 100, and no higher than the stack version allows, which is 99 for the stack in this repository)
 - **Yup**, request body and params validation at the API edge
 - **dotenv**, config from `.env`
 - **Docker-out-of-Docker**: the API container spawns `bash deploy.sh ...`,
