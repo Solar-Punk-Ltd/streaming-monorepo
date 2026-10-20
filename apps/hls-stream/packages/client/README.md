@@ -27,7 +27,7 @@ pnpm client:start
 
 Opens at `http://localhost:5173`.
 
-> **Note:** Both packages share a single `.env` file in the **stack folder, `apps/hls-stream`**, not the monorepo root, which nothing reads. See [.env.sample](../../.env.sample) for all available variables.
+The viewer and the uploader read one `.env` file, in the stack folder `apps/hls-stream`. Nothing reads a `.env` at the monorepo root. [.env.sample](../../.env.sample) lists every variable.
 
 ## Vite Dev Proxy
 
@@ -62,12 +62,14 @@ that decide what the bundle actually does. `deploy.sh`
 mints the values from git and `deploy/Dockerfile.client` writes them into `dist/`, so nginx serves
 the file off the filesystem with no configuration of its own.
 
-It exists because nothing else can tell a stale client from a current one. `bench-on-host.sh` syncs
-the e2e harness to the deployment host on every run and never rebuilds this image, and the harness
-parses this client's own behaviour, so the two can drift for weeks in silence. The
-`client-shape` e2e preflight reads the stamp over HTTP and refuses a sitting whose served client did
-not come from the harness checkout's sources. A build whose args were never passed writes empty
-hashes, which that gate reads as a client predating the stamp and answers with a redeploy.
+It exists because nothing else can tell a stale client from a current one. The e2e suites
+([e2e/README.md](../../e2e/README.md)) read this client's console lines to judge its behaviour.
+`bench-on-host.sh` copies those suites to the deployment host on every run and never rebuilds this
+image, so the client on the host and the suites can come from different sources without any sign.
+The `client-shape` e2e preflight reads the stamp over HTTP and refuses to start a test run whose
+served client was not built from the same checkout as the suites. A build whose args were never
+passed writes empty hashes, which that check reads as a client built without a stamp and answers
+with a redeploy.
 
 ## Features
 
@@ -268,7 +270,7 @@ There is no limit on how many rungs are dropped. A rung refused at a switch is d
 
 The rule is in `LadderFeedPoller.ts`, `rungPosition.ts` and `rungHealth.ts`. `MIN_LEVELS_TO_DROP_ONE` is 2 because the last rung standing is still the only thing a viewer can be offered, under the stalled overlay. The uploader keeps its own rule in `LadderLiveness` for what the master advertises, by segment lag and at most one rung at once. The two need not agree, because the player reads the master once at most, and not at all when the catalogue names the renditions.
 
-A drop is not reversible. hls.js's `removeLevel` deletes the rung for the session, so a viewer who lives through an outage stays on the remaining rungs until they reload. Capping with `autoLevelCapping` instead is not used, because it froze the player without recovering, for a reason not yet understood.
+A drop is not reversible. hls.js's `removeLevel` deletes the rung for the session, and hls.js has no call that puts a level back, so a viewer who lives through an outage stays on the remaining rungs until they reload. The player does not cap with `autoLevelCapping` instead, because that froze the player without recovering.
 
 ### A segment that will not load
 
@@ -346,8 +348,9 @@ and the registry of kinds stay behind it, so a new kind of provider changes noth
 - **The measurement switch.** A build made with `VITE_EXPOSE_PLAYER` puts a gateway switch on `window`
   (`src/providers/gatewayTestHandle.ts`). Its `select` reads every part from one source at the address
   given, the source that already has it or a Bee node added for it, and its `current` answers the
-  video's source's address. An arm seeded under `swarm-gateway-url` before the page loads is moved into
-  a source on that first load, so a sweep seeds each arm in a fresh browser context.
+  video's source's address. An address a test writes to localStorage under `swarm-gateway-url` before
+  the page loads is moved into a source on that first load, so a test that compares gateways starts
+  each gateway in a fresh browser context with its address already set.
 - **The contract** (`test/swarm/providerContract.ts`) is the suite every provider kind must pass, run
   for Bee over HTTP against a gateway held in memory (`test/helpers/fakeBeeGateway.ts`).
 
@@ -358,12 +361,12 @@ Standard hls.js expects static manifest URLs. On Swarm, every manifest update pr
 1. **CustomManifestLoader**, Instead of fetching a static URL, hands hls.js's playlist requests to the `ManifestFetcher`. The top-level playlist is built from the stream list when the list names the renditions, and is otherwise the source feed's head. A single-rendition stream is then followed by reading its next slots by number, and a rung of a ladder by `LadderFeedPoller` (item 4), which never uses Bee's feed lookup.
 2. **CustomFragmentLoader**, Resolves segment references from the manifest (which contain Swarm hashes) into fetchable URLs, the ones the Swarm client's player reader gives.
 3. **ManifestStateManager**, Merges incoming live manifests into a growing EVENT-type playlist so segments remain available longer than the sliding window. Tracks feed indices, handles deduplication, and caches serialized output.
-4. **LadderFeedPoller**. For ABR streams, owns the feed walk of the rung hls.js plays, plus the one being switched to while a switch is under way. Every rung is registered and only those are read. A rung left behind forgets where it was, so coming back to it starts at its newest playlist. Where a walk starts comes from a `NewestIndexFinder`, injected so it can be swapped: the `MarkerFinder`, which reads the ladder's time marker and falls back to the `IndexSearchFinder`. How it follows is `followPredicted` in `SwarmHlsPlayer/following/`, the polling study's choice. The player assumes no segment length: the follower and the searches take it from the `#EXTINF` values of the playlist they stand on, and a join from a time marker takes the `segmentMs` the marker names, which is the stage's `HLS_FRAGMENT`. The study's simulator and the strategies it was compared with are in `test/feedModel/`.
+4. **LadderFeedPoller**. For ABR streams, owns the feed walk of the rung hls.js plays, plus the one being switched to while a switch is under way. Every rung is registered and only those are read. A rung left behind forgets where it was, so coming back to it starts at its newest playlist. Where a walk starts comes from a `NewestIndexFinder`, injected so it can be swapped: the `MarkerFinder`, which reads the ladder's time marker and falls back to the `IndexSearchFinder`. How it follows is `followPredicted` in `SwarmHlsPlayer/following/`, chosen by a simulation that compares ways of polling a feed. The player assumes no segment length: the follower and the searches take it from the `#EXTINF` values of the playlist they stand on, and a join from a time marker takes the `segmentMs` the marker names, which is the stage's `HLS_FRAGMENT`. That simulation, a model of a Bee node, a publisher and a player, and the other ways it compares are in `test/feedModel/`.
    - **How it times its reads.** The player asks for the next playlist when it is due: the newest segment's end, plus one segment, plus a delay it learns from its own reads, set so that about one ask in four comes too early. A second ask covers that one, then one ask per segment, then asks every 2 seconds rising to 4 while nothing comes. A playlist 4 seconds late is looked past, one slot further on.
    - **When the broadcast goes quiet.** Bee skips, for a minute, every peer it asked for an address not written yet, so a slot asked for over and over during an outage stays unreadable for about a minute after the broadcaster is back. So once the next slot has had five asks, the player stops asking for it and reads the ladder's time markers instead (next item), each one once, 4 seconds into its 10 seconds. When a marker names a slot past the missing one, the player reads that slot, whose playlist also holds the segments it skips, and follows on from there. The picture is back 4 to 14 seconds after the broadcaster has new video, rather than about a minute. In a 10 second period whose marker is missing, the slot itself is asked once.
    - **How it finds the newest playlist.** It reads slots by their number, never Bee's feed lookup. The uploader writes a time marker for each ladder every 10 seconds, at an address worked out from the clock, naming every rung's newest playlist (`packages/shared/src/ladderMarker.ts`). At the start, at a switch, and when a rung stops or finishes, the player reads the marker of the previous 10 seconds, and the one before if that is missing, then one round of eight slots from where it says. One marker read serves every rung for a few seconds, and a marker address found missing is never asked again. The clock is the gateway's, taken from the `Date` header of every answer the Swarm client reads, so a viewer whose clock is wrong still finds the marker. A gateway on another origin has to list `Date` in `Access-Control-Expose-Headers` for the browser to show it, and without that the correction stays zero. With no marker, it searches: at the start eight slots at once, spread out to the feed's length, closing in on the newest in a few rounds, and at a switch from the playing rung's newest slot, usually one round. The new rung is read further back when the viewer is behind the live edge, at most ten reads.
 
-5. **`fragmentRequested` and `fragmentSettled` are a parsed contract, not debug output.** The loaders write those two console lines, `packages/shared/src/clientLog.ts` composes them and owns their wording, and `e2e/src/browser/fragmentRequests.ts` reads them back. They are the only thing that lets a sitting say whether a down-switch the player asked for actually completed or starved. Rewording either one throws nothing and fails nothing: the e2e quality arm's reading simply comes back empty, and the run reports on a viewer it could not see.
+5. **`fragmentRequested` and `fragmentSettled` are a parsed contract, not debug output.** The loaders write those two console lines, `packages/shared/src/clientLog.ts` composes them and owns their wording, and `e2e/src/browser/fragmentRequests.ts` reads them back. They are the only thing that lets an e2e test run say whether a down-switch the player asked for completed or starved. Rewording either one throws nothing and fails nothing. The e2e quality check then reads no lines at all, and the run reports on a viewer it could not see.
 
 ## weeb-3 runs in a SharedWorker
 
@@ -409,8 +412,8 @@ That registration also means **the in-tab node only boots in a secure context**:
 loopback host such as `localhost`. On a plain-http page reached by IP or hostname
 `navigator.serviceWorker` does not exist, and the node dies at boot with `could not install
 ServiceWorker relay listener` before it reaches any peer. A deployment that wants viewers on the
-in-tab backend serves the client over https. The e2e harness, which reaches a stage over plain http,
-launches Chrome with `--unsafely-treat-insecure-origin-as-secure` for that one origin instead.
+in-tab backend serves the client over https. The e2e browser tests, which reach a stage over plain http,
+launch Chrome with `--unsafely-treat-insecure-origin-as-secure` for that one origin instead.
 
 ## Project Structure
 
@@ -432,7 +435,7 @@ src/
     App.tsx               # Global state (stream list, gateway URL, the Swarm client)
     catalogPoll.ts        # How often a page reads the catalog again, once a minute
     catalogState.ts       # One catalog read, carrying the gateway it went to
-    gatewayTestHandle.ts  # Where a measurement harness finds the gateway switch
+    gatewayTestHandle.ts  # Where an e2e test finds the gateway switch          
     sourceStorage.ts      # A viewer's sources, routing and fallback order, kept in localStorage
     useCatalogPoll.ts     # The hook that polls the catalog and hands each answer to the stream list
   swarm/                  # The one layer that reads Swarm: answers, providers, the client, settings
