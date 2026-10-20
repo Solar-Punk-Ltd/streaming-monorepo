@@ -72,6 +72,10 @@ swarm-hls-stream before the move keeps its record of where it came from.
 Every original commit of the imported repositories is in this one under its own id.
 [docs/monorepo.md](docs/monorepo.md#how-the-history-came-along) says how to read that history.
 
+## Related repositories
+
+- [stream-event-client](https://github.com/Solar-Punk-Ltd/stream-event-client): a web app for watching an event's live streams and recordings over Swarm, with a chat beside each stream. It reads what this platform publishes ([how they are coupled](docs/architecture/overview.md#who-reads-what-we-publish)).
+
 ## Documents
 
 - [docs/monorepo.md](docs/monorepo.md): the layout, the rules between projects, and how the history came along.

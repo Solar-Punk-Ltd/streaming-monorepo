@@ -27,6 +27,8 @@ and how the pieces fit under `docs/`. Read it before moving anything.
   deploy. Change it with the deploy scripts and the tag script it describes.
 - `docs/research/` holds condensed reports on the neighbouring systems. Read the relevant one
   before touching anything that talks to those systems.
+- Another repository reads what this one publishes to Swarm. `docs/architecture/overview.md`,
+  "Who reads what we publish", says which formats it copies and must change with ours.
 
 ## Rules that hold everywhere
 

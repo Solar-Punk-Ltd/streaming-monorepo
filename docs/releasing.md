@@ -32,6 +32,8 @@ tag to `ghcr.io/solar-punk-ltd`, building every image again for every release. T
 its own repository outside this one, pulls them by that tag: `streaming-manager-api`, `streaming-manager-web`,
 `streaming-admin-api` and `streaming-admin-web`. The two deploy scripts below build on the host instead.
 [tools/release/README.md](../tools/release/README.md) says how the images are published.
+The event viewer, stream-event-client, is not released here. It ships as its own image,
+`ghcr.io/solar-punk-ltd/stream-event-client:<tag>`, built from a `v*` tag in its own repository.
 
 ## 2. Deploy each manager
 

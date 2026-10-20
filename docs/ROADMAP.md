@@ -367,23 +367,10 @@ Left open after the nine phases:
 - **Brand separation** inside one admin, and a second admin link per manager
   for a second brand, among the open decisions below.
 - **Rollout**, decided 2026-09-29, for a host that runs the admin and
-  manager from before stages: the catalogue node created; the manager that
-  pushes stage records (phase 9), with the node designated at once; the
-  intermediate admin, the phase 8 state of `feat/stages` (commit `d29616851`;
-  tag it `web2-admin/stages-intermediate` before `feat/stages` is merged to
-  `main`, because a squash or rebase merge leaves that commit unreachable);
-  every scheduled stream unpublished, given a stage and published again, and
-  every draft given a stage; every stage rotated and redeployed until the
-  admin's Stages page reads "Its own token" for all; the admin that refuses
-  the shared token (phase 9); then a `STREAM_KEY` of its own for each stage.
-  Until the catalogue is moved, the batch from before stages holds every slot
-  written before the intermediate admin: it stays topped up and alive, is
-  never diluted (superseded on 2026-10-08: the catalogue batch may be diluted
-  like any other, as [funding.md](architecture/funding.md) records), replaced
-  or put in a pool string, and the move runs first
-  after the real-node trial. That is the one remaining way the catalogue can
-  go dark. "Upgrading" in `docs/self-hosting.md` has each step. A fresh
-  installation needs none of this.
+  manager from before stages: six steps in a fixed order, with an
+  intermediate admin that takes both tokens while every stage is rotated.
+  "Upgrading" in [self-hosting.md](self-hosting.md#the-control-host) has
+  each step. A fresh installation needs none of this.
 
 ## Checkpoint 3: manager integration (done with stages, merged 2026-10-03)
 
@@ -445,14 +432,8 @@ RTMP because one firewall draft leaves its port closed.
   A quicker reconnect meets the same hung encoders. Dropping the source from the
   uploader is not built and stays open.
 
-The shared warning beside RTMP, which the manager's Publish card shows, states
-what the protocol does with a key. SRS 6 has no TLS on its RTMP listener, so
-there is no RTMPS. An RTMP stream key crosses the network as readable text, and a key read off the network publishes
-over RTMP whichever protocol it was read from, because SRT sends the key before
-encryption starts. With the takeover on, such a publisher can replace a live
-broadcast too. The SRT passphrase keeps the picture private but not the key. A
-key of RTMP's own, separate from the SRT one, would close that last part, and
-is not built.
+What RTMP does with a stream key, the warning the manager's Publish card shows
+beside it, is in [the architecture overview](architecture/overview.md#a-stack-deployment).
 
 ## Build versions and release tags (decided 2026-10-07)
 
@@ -482,8 +463,13 @@ signed-in users.**
 
 ## Checkpoint 4: brand console
 
-- Login (placeholder until the auth decision), stream list, create stream,
-  stamp and cheque views, branding editor.
+- Done: sign-in ([operator authentication](#operator-authentication-2026-09-18)),
+  the stream list, creating a stream, and the stamp and chequebook views (the
+  Stamps and Chequebooks tabs of Funding, merged as #119).
+- Done: a theme switcher in the user menu (#124, 2026-10-11). Since
+  2026-10-12 it offers two looks, Swarm and Web3Privacy, and Swarm is the
+  fallback.
+- Open: the branding editor.
 
 ## Checkpoint 5: branding to the player
 
@@ -509,6 +495,10 @@ stream from each other (see [known-issues.md](known-issues.md)). Kept as it is f
   spend, but it conflicts with parallel broadcasts as a feature, and the 60 second reconnect window would hold a stage
   for about a minute after each broadcast.
 - Whether a finished recording's key should still go live. Today a new broadcast on it is added to the old recording.
+
+## Audio as its own rendition, later
+
+The ABR ladder muxes the audio into every rung. Splitting it into an `EXT-X-MEDIA` rendition group is a later item.
 
 ## Open decisions (blocking the second brand, not the first)
 

@@ -53,6 +53,20 @@ viewer <--HTTP-- Bee gateway <-- Swarm
 viewer <--light node in the tab-- Swarm
 ```
 
+## Who reads what we publish
+
+Besides the stack's own viewer, [stream-event-client](https://github.com/Solar-Punk-Ltd/stream-event-client)
+reads what the platform writes to Swarm. It is a web app for watching an event's live streams and
+recordings over Swarm, with a chat beside each stream, kept in its own public repository. It reads
+the stream list (the catalog) feed that its runtime `config.json` names, once a minute. For each
+stream it reads the playlist feed of the one quality it plays and the segments that playlist names,
+and the uploader's ladder time markers to find the newest slot. It builds the master playlist itself
+from the catalog's renditions and never reads the master feed. It imports no package of this
+repository and no version pin ties it to the stack. It keeps its own copies of the catalog format,
+the feed following and the ladder marker layout in its `src/shared/`. **So a change to the catalog
+format, the playlist feeds or the marker layout must land in stream-event-client's `src/shared/`
+too.**
+
 ## The three kinds of host
 
 A host is a Linux machine with Docker on it. One machine can carry every role, or each role can have
@@ -97,11 +111,13 @@ the internet reaches is the operator's firewall.
 
 An SRS stage takes RTMP beside SRT. The manager's console offers it, and the web2 admin shows
 broadcasters SRT only. SRS allows play from its own container only, because RTMP
-publishing and playback share one port. RTMP is not encrypted: a broadcaster's stream key crosses
-the network as readable text, and a key read off the network publishes over RTMP whichever protocol
-it was read from, because SRT sends its stream id, key included, before encryption starts. With the
+publishing and playback share one port. RTMP is not encrypted. SRS 6 has no TLS on its RTMP
+listener, so there is no RTMPS. A broadcaster's stream key crosses the network as readable text, and
+a key read off the network publishes over RTMP whichever protocol it was read from, because SRT
+sends its stream id, key included, before encryption starts. With the
 takeover on, such a publisher can also replace a live broadcast. The SRT passphrase keeps the picture
-private but not the key.
+private but not the key. A key of RTMP's own, separate from the SRT one, would close that last part,
+and is not built. The manager's Publish card shows this warning beside RTMP.
 
 The per-rung Bee nodes of an ABR ladder take a second block, from `11001 + 10 × s`, with the same
 rule: each peer port is public and each API is not.
