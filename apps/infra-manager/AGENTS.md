@@ -26,5 +26,8 @@ reasoning live in the pages that describe the feature they belong to:
 - `docs/ci.md` for what the two workflows run and what they prove.
 - `docs/testing/` for the test topology of individual remediation rows.
 
-A statement in any of these carries the date and the commit it was true at. When you change
+A statement in any of these carries the date and the commit it was true at.
+A status line or note that names `main-v2` or `main-v3` dates from before
+2026-09-28, the day `main-v3` became `main`. Read it as history, not as a
+branch to work on. When you change
 behaviour, change the page that describes it in the same branch.
