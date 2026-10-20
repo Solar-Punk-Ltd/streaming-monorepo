@@ -432,14 +432,8 @@ RTMP because one firewall draft leaves its port closed.
   A quicker reconnect meets the same hung encoders. Dropping the source from the
   uploader is not built and stays open.
 
-The shared warning beside RTMP, which the manager's Publish card shows, states
-what the protocol does with a key. SRS 6 has no TLS on its RTMP listener, so
-there is no RTMPS. An RTMP stream key crosses the network as readable text, and a key read off the network publishes
-over RTMP whichever protocol it was read from, because SRT sends the key before
-encryption starts. With the takeover on, such a publisher can replace a live
-broadcast too. The SRT passphrase keeps the picture private but not the key. A
-key of RTMP's own, separate from the SRT one, would close that last part, and
-is not built.
+What RTMP does with a stream key, the warning the manager's Publish card shows
+beside it, is in [the architecture overview](architecture/overview.md#a-stack-deployment).
 
 ## Build versions and release tags (decided 2026-10-07)
 

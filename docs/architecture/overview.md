@@ -97,11 +97,13 @@ the internet reaches is the operator's firewall.
 
 An SRS stage takes RTMP beside SRT. The manager's console offers it, and the web2 admin shows
 broadcasters SRT only. SRS allows play from its own container only, because RTMP
-publishing and playback share one port. RTMP is not encrypted: a broadcaster's stream key crosses
-the network as readable text, and a key read off the network publishes over RTMP whichever protocol
-it was read from, because SRT sends its stream id, key included, before encryption starts. With the
+publishing and playback share one port. RTMP is not encrypted. SRS 6 has no TLS on its RTMP
+listener, so there is no RTMPS. A broadcaster's stream key crosses the network as readable text, and
+a key read off the network publishes over RTMP whichever protocol it was read from, because SRT
+sends its stream id, key included, before encryption starts. With the
 takeover on, such a publisher can also replace a live broadcast. The SRT passphrase keeps the picture
-private but not the key.
+private but not the key. A key of RTMP's own, separate from the SRT one, would close that last part,
+and is not built. The manager's Publish card shows this warning beside RTMP.
 
 The per-rung Bee nodes of an ABR ladder take a second block, from `11001 + 10 × s`, with the same
 rule: each peer port is public and each API is not.
