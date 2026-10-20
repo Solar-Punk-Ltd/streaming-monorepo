@@ -1,7 +1,7 @@
 # web2-admin
 
-The Web2 admin layer of the multi-brand Swarm streaming platform, split like
-streaming-infra-manager:
+The brand console of the platform, in three packages: the API contract, the
+backend and the frontend.
 
 | Package     | Name                                      | What                                                                                                                                                                             |
 | ----------- | ----------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
@@ -16,7 +16,8 @@ file carries no stage: it needs its database, a brand key and the registrar
 token, the token the manager presents when it registers each stage and the
 catalogue batch with the admin, and every stage's uploader presents a token of
 its own.
-Checkpoint 2 spec: [docs/architecture/web2-admin-checkpoint-2.md](../../docs/architecture/web2-admin-checkpoint-2.md).
+Design notes on the first working slice, kept for their reasoning:
+[docs/architecture/web2-admin-checkpoint-2.md](../../docs/architecture/web2-admin-checkpoint-2.md).
 Roadmap: [docs/ROADMAP.md](../../docs/ROADMAP.md).
 
 ## Run it locally
