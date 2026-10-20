@@ -566,7 +566,7 @@ compared with the hybrid by `pnpm browser:viewer-order` (see `src/browser/viewer
 | ------------------------------- | ------------ | ------------------------------------------------------------------------------------ |
 | `browser:watch`                 | yes          | The long-run watcher                                                                 |
 | `browser:crash`                 | yes          | The five fault scenarios                                                             |
-| `browser:buffer-sweep`          | yes          | One byte source for the whole sweep                                                  |
+| `browser:buffer-sweep`          | yes          | One byte source for the whole run                                                    |
 | `browser:fetch-backend-check`   | yes          | The comparison of the two byte sources                                               |
 | `browser:weeb3-native`          | gateway-less | weeb-3's own page                                                                    |
 | `browser:viewer-order`          | both         | Native against hybrid, counterbalanced                                               |
@@ -576,14 +576,15 @@ compared with the hybrid by `pnpm browser:viewer-order` (see `src/browser/viewer
 | `browser:in-tab-throttle-probe` | in-tab only  | No player. Drives the node's retrieval path directly                                 |
 | `e2e:run`                       | yes          | Upload side throughout, plus `suites/viewer/`, which launches `browser:watch` itself |
 
-`browser:arm-order` and `browser:byte-source-order` open no viewer. They print the counterbalanced order
-a run's arms must follow.
+A comparison plays the viewer under two or more conditions in turn, such as the in-tab node and a
+gateway. Each condition under test is an arm. `browser:arm-order` and `browser:byte-source-order` open
+no viewer. They print the counterbalanced order in which a comparison runs its arms.
 
 The in-tab node needs time to boot: a few megabytes of wasm and several seconds of dialling. Every
 driver holds the boot for `BROWSER_BYTE_SOURCE_SETTLE_SECONDS` (60 by default) before it opens its
 counted window. `watch.ts` reads `BROWSER_SETTLE_SECONDS` instead.
 
-### An arm is proved, never believed
+### An arm is proved before it counts
 
 A weeb-3 run's headline is zero gateway reads, and a client that never loaded the node produces the
 same zero. `openByteSourceArmSession` hands back a proof with the arm, so a driver cannot hold one
