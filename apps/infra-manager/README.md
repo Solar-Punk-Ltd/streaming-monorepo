@@ -13,7 +13,8 @@ chequebooks. The new-deployment wizard offers five kinds of deployment, defined 
 - **Watch a stream**: the web player, `client`, and a Bee node it reads
   through, `bee-gateway`. A player for one stream.
 - **ABR node pool**: four Bee nodes, one per quality from 360p to 1080p, as
-  the upload targets of an ABR uploader. It produces the `BEE_PUBLISHERS`
+  the upload targets of an ABR uploader. ABR, adaptive bitrate, means one
+  broadcast in several qualities, so a player can switch as its connection allows. It produces the `BEE_PUBLISHERS`
   string.
 - **ABR uploader**: `srs` and `stream-uploader`, encoding a quality ladder and
   publishing it to a node pool. It has no Bee node and no postage of its own.

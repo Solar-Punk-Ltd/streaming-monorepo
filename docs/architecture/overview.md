@@ -8,7 +8,8 @@ the deploy scripts use.
 ## What the platform does
 
 A broadcaster sends a live video stream from an encoder such as OBS or ffmpeg. The platform cuts it
-into HLS segments, optionally transcodes it into a ladder of qualities, and writes every segment to
+into HLS segments, optionally transcodes it into a ladder of qualities (adaptive bitrate, ABR: the
+player switches between them as its connection allows), and writes every segment to
 Swarm, the decentralised storage network run by Bee nodes. A viewer's browser then plays the stream
 straight from Swarm, either through a Bee node that acts as a gateway or through a light Swarm node
 running inside the browser tab. Once the segments are on Swarm, playback depends on no server of the
@@ -29,6 +30,10 @@ broadcaster's.
 | Edge          | `infra/edge`                                      | One Caddy container per control host. Holds ports 80 and 443, gets the HTTPS certificates, and sends each domain to the console behind it.                                                                                                                                   |
 
 A stage is a manager deployment that runs a stream uploader, with the node pool behind it.
+
+The stack can also run on its own, without the manager and the web2 admin. Its README calls that
+standalone mode: the uploader then writes the catalogue itself. With the admin it runs in admin mode,
+which is the platform this page describes.
 [stages.md](stages.md) says what the manager pushes about each one and how the admin uses it.
 
 ## How a stream travels

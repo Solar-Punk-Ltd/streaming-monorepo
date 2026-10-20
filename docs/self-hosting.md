@@ -193,7 +193,8 @@ pnpm install
 
 6. **The web2 admin.** From `apps/web2-admin`, make the profile's env file from the sample and fill
    in what it asks for: `POSTGRES_PASSWORD`, `FEED_PRIVATE_KEY`, the brand key the catalog is
-   signed with, and `INTERNAL_API_TOKEN`, the registrar token the manager pushes with. Generate
+   signed with, and `INTERNAL_API_TOKEN`, the registrar token: the token the manager presents when it registers
+   each stage and the catalogue batch with the admin. Generate
    your own key and token. The sample's values are public and the deploy script refuses them,
    unless `--allow-sample-secrets` is given for a test install. The admin takes no stage settings:
    no ingest address, port or passphrase, no Bee node and no batch. It learns each stage from the

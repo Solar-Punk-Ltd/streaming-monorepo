@@ -16,7 +16,9 @@ streaming-monorepo/
 │   │   ├── common/          the API contract: types shared by its backend and frontend
 │   │   └── deploy/          its deploy script and production compose file
 │   ├── hls-stream/          the streaming stack
-│   │   ├── packages/        stream-uploader, client (the viewer), shared, cli, audit-gate, gate-facts
+│   │   ├── packages/        stream-uploader, client (the viewer), shared, cli, and two development
+│   │   │                    tools that are not part of the product: audit-gate (the dependency
+│   │   │                    advisory check) and gate-facts (the figures a pull request quotes)
 │   │   ├── engines/         SRS and OME configuration
 │   │   ├── nodes/           Bee node initialisation
 │   │   ├── deploy/          deploy scripts, compose files, Dockerfiles and their tests
