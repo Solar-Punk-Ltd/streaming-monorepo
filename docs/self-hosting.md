@@ -258,9 +258,8 @@ needs none of this. On a running one, in this order:
    token there. Create no stage and rotate nothing until step 2 is done: an admin from before stages
    refuses a token of its own.
 2. **Deploy the intermediate admin**, which takes stage records and still accepts the shared
-   token on an uploader's routes: commit `d29616851` of `feat/stages` (tag it
-   `web2-admin/stages-intermediate` before `feat/stages` is merged to `main`, because a squash or
-   rebase merge leaves that commit unreachable). It takes both the shared token and a stage's own.
+   token on an uploader's routes: commit `d29616851`, which `main` holds. It takes both the shared
+   token and a stage's own.
    It refuses every catalogue write, `503`, until it holds a catalogue stamp, so publishing and the
    uploaders' state reports (which retry) wait from its start until the manager's next push, at
    most ten seconds after it answers. Note the env file's `POSTAGE_BATCH_ID` and `BEE_URL` before
@@ -359,11 +358,8 @@ images on the host itself.
    admin shows a brand's broadcasters SRT only, because streaming uses SRT. SRS allows play
    from its own container only, so an open RTMP port takes publishes and refuses playback.
 
-   RTMP is not encrypted. A broadcaster's stream key crosses the network as readable text, and a
-   key read off the network publishes over RTMP whichever protocol it was read from, because SRT
-   sends its stream id, key included, before encryption starts. With the takeover on, such a
-   publisher can also replace a live broadcast. The SRT passphrase keeps the picture private but
-   not the key.
+   RTMP is not encrypted, so an open RTMP port puts every broadcaster's stream key at risk, as
+   [Ports](architecture/overview.md#ports) in the architecture overview explains.
 
 7. **Deploy onto it.** **New deployment**, with `stage-1` as the host. The deployment's port slot
    decides its ports, as [architecture/overview.md](architecture/overview.md#ports) lists. It worked
