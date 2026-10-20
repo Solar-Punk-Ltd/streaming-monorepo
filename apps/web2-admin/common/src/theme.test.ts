@@ -4,7 +4,7 @@ import assert from 'node:assert/strict';
 import * as common from './index.js';
 import { ADMIN_THEME_NAMES, DEFAULT_ADMIN_THEME, isAdminThemeName } from './theme.js';
 
-test('the console carries three looks, Default first', () => {
+test('the console carries two looks, Swarm first and the fallback', () => {
   assert.deepEqual([...ADMIN_THEME_NAMES], ['swarm', 'web3privacy']);
   assert.equal(DEFAULT_ADMIN_THEME, 'swarm');
 });
