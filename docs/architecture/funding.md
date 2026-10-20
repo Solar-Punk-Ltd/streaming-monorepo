@@ -9,7 +9,7 @@ chequebooks at a target. Every funding operation goes through the infra manager.
 ## The flow
 
 1. The admin creates a **brand wallet** once, on its first start. Its private key is stored
-   encrypted in the admin's database; its address is shown on the Funding page.
+   encrypted in the admin's database, and its address is shown on the Funding page.
 2. The brand sends xDAI and xBZZ to that address from any wallet, for example with Swarm's
    Multichain app. The page shows the address, a QR code and a link to the app.
 3. **Balance tab**: the brand wallet's balances, then every node grouped by stage, each with its
@@ -21,7 +21,7 @@ chequebooks at a target. Every funding operation goes through the infra manager.
    it costs. Confirm. Each node pays from its own wallet, so the tab shows any node short of xBZZ
    or out of xDAI, and one Fund all fills in on the Balance tab what each of them lacks.
 5. **Chequebooks tab**: each stage's nodes with their chequebooks, the available balance, the
-   total and the uncashed cheques to the last digit; the catalogue node is not listed. Type a
+   total and the uncashed cheques to the last digit. The catalogue node is not listed. Type a
    target and tick chequebooks, as on the Stamps tab: one under the target takes a deposit of the
    difference from its node's wallet, one over it a withdrawal of the difference into its node's
    wallet. Apply, then confirm. A move reads Mined once its block is in and Confirmed once that
@@ -30,7 +30,7 @@ chequebooks at a target. Every funding operation goes through the infra manager.
 6. The tabs keep what you tick, type and choose while you stay on the Funding page, so a round
    trip to the Balance tab to fund the nodes loses nothing.
 7. The admin asks the infra manager for all of it, through a new manager API with a bearer token.
-   The manager talks to the nodes and to the chain; the admin talks to neither.
+   The manager talks to the nodes and to the chain. The admin talks to neither.
 
 ## Who does what
 
@@ -48,18 +48,18 @@ admin needs no chain connection of its own.
 ## The manager API
 
 - A new API on the manager for the admin alone, behind a bearer token. The manager generates the
-  token and shows it once, and keeps only its hash; the admin keeps the manager's address and the
+  token and shows it once, and keeps only its hash. The admin keeps the manager's address and the
   token. Neither the token nor a session cookie works on the other's routes.
 - It answers:
   - every stage's nodes, with their wallet balances, batches (depth, time left, fill) and
-    chequebook balance;
-  - the catalogue node and batch;
-  - the brand wallet's balances;
+    chequebook balance
+  - the catalogue node and batch
+  - the brand wallet's balances
   - the price a top-up costs.
 - It does:
-  - sends a signed transfer and reports its receipt;
-  - tops up batches;
-  - dilutes batches;
+  - sends a signed transfer and reports its receipt
+  - tops up batches
+  - dilutes batches
   - deposits into and withdraws from chequebooks.
 - Each operation is a list, run item by item with each item's result reported, under a request
   id, so a retry never runs twice. The manager journals each item before it starts, as it already
@@ -67,8 +67,8 @@ admin needs no chain connection of its own.
 - It never answers Bee API addresses, RPC endpoints or keys. https, or plain http only on the same
   host, as the admin link already requires.
 - Safety rules, not limits:
-  - an operation names only the manager's own nodes and batches;
-  - a dilution takes at most two steps, leaves at least 7 days, and is refused if the depth moved;
+  - an operation names only the manager's own nodes and batches
+  - a dilution takes at most two steps, leaves at least 7 days, and is refused if the depth moved
   - a chequebook is brought to no target under 1 xBZZ, and a withdrawal goes to its node's own
     wallet, the one place Bee sends one.
 
@@ -76,8 +76,8 @@ admin needs no chain connection of its own.
 
 - **Wallet key**:
   - encrypted with a secret of its own, generated at deploy, which the deploy script refuses while
-    it is the sample value;
-  - decrypted only to sign, never logged or answered;
+    it is the sample value
+  - decrypted only to sign, never logged or answered
   - backed up at handover with a command on the host, and the backup handed to the brand: with it,
     the brand can move the funds from any wallet app.
 - **Transfers go only to node wallets the manager lists.** Each address is remembered at
@@ -85,7 +85,7 @@ admin needs no chain connection of its own.
   and a fee the manager supplies is checked against a sane bound before signing.
 - **A small wallet**: no spending limits. The brand keeps only what the next months need in it.
 - **Who may fund**: every operator, for now. The password is asked again before every send from
-  the brand wallet; stamp and chequebook operations take a confirm dialog.
+  the brand wallet. Stamp and chequebook operations take a confirm dialog.
 - Every operation and every send gets an audit entry with its transaction hash.
 - **Settling**: one send at a time, enforced on the server. A lost tab leaves no send stuck: the
   next send and the Funding page refresh the open one, which the page resumes. Items the chain's
@@ -105,7 +105,7 @@ admin needs no chain connection of its own.
 | 1   | Brand wallet and Balance tab: the manager API's inventory and balances, send to node wallets          | M    |
 | 2   | Stamps tab: bulk top-up and dilute through the manager, the days slider, the "short of xBZZ" shortcut | M    |
 | 3   | Chequebooks tab: to a target, a deposit or withdrawal per ticked chequebook, through the manager      | S    |
-| 4   | Dilute through the manager: built with phase 2, decided 2026-10-08                                    | —    |
+| 4   | Dilute through the manager: built with phase 2, decided 2026-10-08                                    | none |
 
 The Stamps tab follows msrs-client's bulk stamp pages, ticked lists, a days slider and per-item
 progress, with the Balance tab's line per row. Before a brand relies on it, the owner tries each
@@ -114,15 +114,15 @@ against a real node before phase 2, so its first trial is theirs too.
 
 ## Decided, 2026-10-05
 
-- Every funding operation goes through the manager; the admin has no chain connection.
-- No spending limits; the brand wallet stays small.
-- No recovery address; the key's backup, handed to the brand, covers recovery.
-- Every operator may fund, for now; the password again before every send from the brand wallet.
+- Every funding operation goes through the manager. The admin has no chain connection.
+- No spending limits. The brand wallet stays small.
+- No recovery address. The key's backup, handed to the brand, covers recovery.
+- Every operator may fund, for now. The password is asked again before every send from the brand wallet.
 
 ## Decided, 2026-10-08
 
 - Dilute comes with phase 2, beside the top-up.
-- One days slider, any whole number of days from 1 with no cap, applies to every ticked batch; a
+- One days slider, any whole number of days from 1 with no cap, applies to every ticked batch, and a
   dilution takes 1 or 2 steps.
 - Every batch read whole, usable and not expired can be topped up. A dilution must leave the batch 7
   days or more after it.
@@ -161,7 +161,7 @@ against a real node before phase 2, so its first trial is theirs too.
 - One Fund all, beside the tab's action button, replaces a Fund link in each row. It fills in on
   the Balance tab what every short node lacks: its xBZZ rounded up to three decimals, and 0.01
   xDAI for one with none, leaving everything else typed there as it was.
-- The tabs keep their state while you stay on the Funding page; a reload starts afresh.
+- The tabs keep their state while you stay on the Funding page. A reload starts afresh.
 - A chequebook move counts as confirmed only once its block is final, as the manager's chequebook
-  path has it, about 3 minutes after it is mined on Gnosis Chain; stamp operations and transfers
+  path has it, about 3 minutes after it is mined on Gnosis Chain. Stamp operations and transfers
   count once mined. The progress shows the step between as Mined.

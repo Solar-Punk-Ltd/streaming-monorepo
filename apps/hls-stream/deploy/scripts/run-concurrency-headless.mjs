@@ -12,9 +12,7 @@
  * a sick node from missing content, and our corpus turned out to be decaying, so rounds were being
  * discarded for the wrong reason. Pass canaries from a stream that is known to be read.
  *
- * ⛔ REFUTED 2026-08-15: there is no one-node-per-machine limit. Six, then twelve, separate
- * browser processes each reached 200 peers on one host. See `cdp.mjs` for what produced the
- * original numbers and for the harness rule that survives it.
+ * ⛔ Refuted 2026-08-15: there is no limit of one weeb-3 node per machine. See `cdp.mjs`.
  *
  * Usage:
  *   node deploy/scripts/run-concurrency-headless.mjs <plan.json> <out.tsv>

@@ -3,6 +3,10 @@
 > This is a dated record of one test deployment, not a description of the product. Any raw
 > measurement it cites is kept outside the repository.
 
+Status, 2026-10-20: a record of the first mutation run of `packages/shared`, on 2026-08-10. No later
+run of that package is recorded, so the scores below are that day's. Item 3 under "What is worth
+doing" is still open: `packages/shared/test/` has no publish-key test of its own.
+
 First mutation run against `packages/shared`, 2026-08-10. **76.00%**, 206 killed, 3 timed out, 66
 survived, 275 mutants over 9 files in 24m45s at concurrency 2.
 

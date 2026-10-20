@@ -1,10 +1,11 @@
 # streaming-monorepo
 
-Solar Punk's multi-brand live streaming platform on [Swarm](https://www.ethswarm.org/). A brand
-signs in to a console, creates a stream and gets its OBS settings. The streaming stack takes the
-broadcast in, puts the video on Swarm as it happens and serves a viewer that plays it back without
-a CDN. A manager deploys stack versions onto hosts and looks after the Bee nodes, postage stamps
-and chequebooks they need.
+Solar Punk's live streaming platform on [Swarm](https://www.ethswarm.org/), for several brands,
+each with its own console users, signing key and stream list. A brand signs in to a console,
+creates a stream and gets its OBS settings. The streaming stack takes the broadcast in, puts the
+video on Swarm as it happens and serves a viewer that plays it back without a CDN. A manager
+deploys stack versions onto hosts and looks after the Bee nodes they need, with the postage stamps
+that prepay their Swarm storage and the chequebooks that pay their peers for bandwidth.
 
 Every project of the platform lives here, each in its own folder with only its own dependencies.
 How the folders relate and the rules that keep them apart are in
@@ -12,14 +13,14 @@ How the folders relate and the rules that keep them apart are in
 
 ## What is here
 
-| Folder                                                                       | What it is                                                                                                                                                                         |
-| ---------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| [`apps/web2-admin`](apps/web2-admin/README.md)                               | The brand console: an API on Postgres, a React front end, the API contract the two share, and its deploy script.                                                                   |
-| [`apps/hls-stream`](apps/hls-stream/README.md)                               | The streaming stack: SRS and OME ingest, the uploader that writes HLS segments to Swarm, the viewer, Bee node setup, the deploy scripts, and the e2e and bench harness.            |
-| [`apps/infra-manager`](apps/infra-manager/README.md)                         | The manager: an API and a console that deploy stack versions onto hosts and handle profiles, port slots, stamps and chequebooks.                                                   |
-| [`packages`](docs/monorepo.md)                                               | Code two apps share, once: the shapes they send each other (`contracts`), the sign-in and session code of the two backends (`web-auth`) and their migration runner (`db-migrate`). |
-| [`infra/edge`](apps/web2-admin/deploy/README.md#public-https-the-hosts-edge) | The front door of a host: one Caddy that holds ports 80 and 443, gets the HTTPS certificates and sends each domain to the console behind it.                                       |
-| [`docs`](docs/)                                                              | How the pieces fit: the layout and its rules, the host roles, the roadmap, the design briefs, and notes on the neighbouring systems.                                               |
+| Folder                                                                       | What it is                                                                                                                                                                                                       |
+| ---------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| [`apps/web2-admin`](apps/web2-admin/README.md)                               | The brand console: an API on Postgres, a React front end, the API contract the two share, and its deploy script.                                                                                                 |
+| [`apps/hls-stream`](apps/hls-stream/README.md)                               | The streaming stack: two ingest engines, SRS and OvenMediaEngine, the uploader that writes HLS segments to Swarm, the viewer, Bee node setup, the deploy scripts, and the end-to-end test and benchmark harness. |
+| [`apps/infra-manager`](apps/infra-manager/README.md)                         | The manager: an API and a console that deploy stack versions onto hosts and handle profiles, port slots, stamps and chequebooks.                                                                                 |
+| [`packages`](docs/monorepo.md)                                               | Code two apps share, once: the shapes they send each other (`contracts`), the sign-in and session code of the two backends (`web-auth`) and their migration runner (`db-migrate`).                               |
+| [`infra/edge`](apps/web2-admin/deploy/README.md#public-https-the-hosts-edge) | The front door of a host: one Caddy that holds ports 80 and 443, gets the HTTPS certificates and sends each domain to the console behind it.                                                                     |
+| [`docs`](docs/)                                                              | How the pieces fit: the layout and its rules, the host roles, the roadmap, the design briefs, and notes on the neighbouring systems.                                                                             |
 
 Scripts that serve the whole repository go under `tools/`: the boundary check, which keeps the apps
 from depending on each other, the cut of each app's own lockfile out of the root one, and the release
@@ -60,17 +61,13 @@ Each app's README says what its commands are and what a development setup needs:
 
 ## Where the work happens
 
-All work on the platform happens here, since 2026-09-27. The stack and the manager came in whole
-from their own repositories, swarm-hls-stream and streaming-infra-manager. Those repositories are left as they are: they get
-nothing new, and nothing more is pulled from them.
-
-The manager builds the stack it bundles from `apps/hls-stream` of the same commit it is deployed
-from, and builds every version added on its Versions page from this repository too, so a plain
-clone has everything and nothing links back to the old repositories. A version built from
-swarm-hls-stream before the move keeps its record of where it came from.
-
-Every original commit of the imported repositories is in this one under its own id.
+All work on the platform happens here. The stack and the manager were imported on 2026-09-27 from
+their own repositories, with every commit under its own id, and a plain clone holds everything.
 [docs/monorepo.md](docs/monorepo.md#how-the-history-came-along) says how to read that history.
+
+## Related repositories
+
+- [stream-event-client](https://github.com/Solar-Punk-Ltd/stream-event-client): a web app for watching an event's live streams and recordings over Swarm, with a chat beside each stream. It reads what this platform publishes ([how they are coupled](docs/architecture/overview.md#who-reads-what-we-publish)).
 
 ## Documents
 

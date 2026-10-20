@@ -6,7 +6,7 @@ the brand, and learns each one from the manager: for every such deployment the
 manager builds a **stage record** and pushes it into the admin its web2 admin
 link names. The admin calls the manager for nothing else than its funding API
 (`README.md`, "Funding API"). The design is `docs/architecture/stages.md`
-at the repository root; the record's shape is `stageRecordSchema` in
+at the repository root, and the record's shape is `stageRecordSchema` in
 `packages/contracts/src/stage.ts`.
 
 Status, 2026-10-01, checked against the code at `372d1ff01`: built. The manager
@@ -41,7 +41,7 @@ One record per stage, checked against `stageRecordSchema` before it leaves:
 | `engine`, `stackVersion`            | the deployment's components, `ome` when it runs OvenMediaEngine and `srs` otherwise, and its version's name                                                                                                                                                        |
 | `observedAt`                        | the moment the manager read the deployment's row, before the slower readings of nodes and the uploader                                                                                                                                                             |
 | `ingest.host`                       | the deployment's public ingest address, below                                                                                                                                                                                                                      |
-| `ingest.srtPort`, `ingest.rtmpPort` | `SRS_SRT_PORT` and `SRS_RTMP_PORT` of the environment the next deploy gives, which is the version's port table shifted by the slot; an OME stage takes `OME_SRT_PORT`                                                                                              |
+| `ingest.srtPort`, `ingest.rtmpPort` | `SRS_SRT_PORT` and `SRS_RTMP_PORT` of the environment the next deploy gives, which is the version's port table shifted by the slot. An OME stage takes `OME_SRT_PORT`                                                                                              |
 | `ingest.rtmpPublic`                 | true where the deployment's engine takes RTMP, which SRS does and OvenMediaEngine does not. Which ports are reachable is the operator's firewall, so the port policy does not decide it                                                                            |
 | `ingest.srtPassphrase`              | `SRT_PASSPHRASE` of that environment: the deployment's own passphrase, else the version's host-wide one, else null                                                                                                                                                 |
 | `owner`                             | `addressOfStreamKey` of the `STREAM_KEY` the next deploy gives the uploader. The key goes nowhere                                                                                                                                                                  |
@@ -63,8 +63,8 @@ them reaches the JSON that is sent.
 
 A deploy gives an uploader linked to the manager's admin a token
 of its own, generated the first time, kept with the deployment's generated
-secrets and never replaced (`manager/src/domain/adminLink/ownAdminToken.ts`;
-[web2-admin-link.md](web2-admin-link.md) has the rule). The admin knows it by
+secrets and never replaced (`manager/src/domain/adminLink/ownAdminToken.ts`,
+and [web2-admin-link.md](web2-admin-link.md) has the rule). The admin knows it by
 the sha256 on the record alone, which is why the push before the uploader
 starts matters: that push is the one that registers a new token. Until a push
 carrying it has been stored, the admin refuses the token, and the
@@ -72,7 +72,7 @@ deployment's Test connection answers `token-not-registered` rather than
 `token-refused`.
 
 **Rotate the uploader's admin token**, on the stage card, takes the token out.
-The next push carries no token, so the admin stops taking the old one; the
+The next push carries no token, so the admin stops taking the old one. The
 next deploy generates a new one and its pre-start push registers it. A
 deployment on any token the manager did not generate, `shared`, which the admin
 refuses, gets one of its own this way and no other: its Test
@@ -124,15 +124,15 @@ fallback the console's component links use never reaches a record.
 `manager/src/domain/stages/StagePublisher.ts` pushes a stage's record:
 
 - **when the deployment changes**, on its `profile.changed` event, gathered
-  per deployment for one second from the first event;
-- **every 30 seconds while it runs**, for each stage whose status is `RUNNING`;
+  per deployment for one second from the first event,
+- **every 30 seconds while it runs**, for each stage whose status is `RUNNING`,
 - **before a deploy starts its uploader**, once the deployment's env file is
   written, so the uploader's first call finds its token known. The deploy waits
   for it at most ten seconds, and a push that fails there is a warning in the
   log: the deploy goes on.
 
 A push already in flight is never doubled. A change or the pre-start push
-waits for it and then pushes once more with what changed since; the 30-second
+waits for it and then pushes once more with what changed since. The 30-second
 pass leaves it to answer. A removed deployment, on its `profile.deleted` event,
 is retired with `DELETE`, carrying `{ observedAt }`, the moment the manager saw
 it gone (`stageRetireRequestSchema`), so a record read before the removal and
@@ -164,7 +164,7 @@ To the manager's web2 admin link, `PUT <link>/api/internal/stages/<stageId>`
 with the link's stored token as the bearer, the admin's `INTERNAL_API_TOKEN`,
 which registers stages. `<link>` is the address the link stores, as Test
 connection asks it. Only a deployment whose effective `ADMIN_API_URL` is on the
-link's origin is pushed (`sameAdminOrigin`); a path may differ. A deployment
+link's origin is pushed (`sameAdminOrigin`), though a path may differ. A deployment
 linked to another admin, one not linked at all, or any while the link stores no
 token, is skipped with an outcome saying which.
 
@@ -209,7 +209,7 @@ say, never what the admin answered, its address or a token.
 
 The client is bounded like Test connection: http and https alone, plain http
 only to the manager's own host (`web2-admin-link.md`), no redirect followed, five seconds a call, at most 64 KiB of an answer read. The last
-outcome of each deployment and its time are kept in memory; the log says a
+outcome of each deployment and its time are kept in memory. The log says a
 deployment's outcome when it changes, and why its record could not be put
 together once.
 
@@ -226,19 +226,19 @@ together once.
   read when the page opens and every 30 seconds after, the cadence a running
   stage is pushed on, and again on Refresh. Each row shows:
   - the stage's name, which opens its deployment page, with its kind, its
-    engine and its stack version;
-  - the deployment's status, in the words and tone of every other row;
+    engine and its stack version,
+  - the deployment's status, in the words and tone of every other row,
   - the record's readiness: its verdict in the web2 admin's four words, Ready,
     Warning, Blocked or Unknown, on the console's green, amber, red and blue,
     with every reason beneath it in the manager's order, so the first is the
-    console's own label;
-  - the owner, shortened, with a copy button for the whole address;
+    console's own label,
+  - the owner, shortened, with a copy button for the whole address,
   - the public ingest host, with the SRT port and whether a passphrase goes
     with it, and the RTMP port marked unencrypted, or "RTMP not offered" on a
-    stage that takes no RTMP;
+    stage that takes no RTMP,
   - the uploader's token: Own, None, or Shared, which is red and says to rotate
     the uploader's admin token on the deployment page and redeploy, since the
-    admin refuses it;
+    admin refuses it,
   - the last push, in the stage card's words, with how long ago it ended:
     seconds for the first minute, then minutes, hours and days.
 
@@ -259,7 +259,7 @@ together once.
 records carry the readiness the manager works out from the deployment alone,
 and its own token, but for a stage whose name carries `legacy`, a shared one,
 or `standalone`, none. `frontend/test/stage-card-browser.test.mjs` drives the
-card in Chrome; no browser suite drives the Stages page yet.
+card in Chrome. No browser suite drives the Stages page yet.
 
 ## The catalogue node
 
@@ -276,7 +276,7 @@ One row, `catalogue_designation`, migration 047: the deployment's name, the
 pinned batch id (64 hex digits, lower case, no `0x`), the depth the node
 reported at designation, when and by whom it was designated, when it was last
 cleared, and a revision. The deployment and the batch stay recorded after a
-clear, which only sets `cleared_at`; a designation is in force while
+clear, which only sets `cleared_at`. A designation is in force while
 `cleared_at` is NULL. A save and a clear name the revision the page
 read, so two operators cannot overwrite each other unseen, as the admin link's
 save does. `CatalogueDesignationService` refuses, with one sentence each
@@ -301,7 +301,7 @@ when the designation is saved.
 The minimum depth holds a new batch alone, `catalogueShallowBatchRefusal`: the
 pinned batch designated again after a clear, and a move back to the batch moved
 from, are taken at the depth they have, so a designation made before the
-minimum keeps working. The card does not mark a shallow batch in its list; the
+minimum keeps working. The card does not mark a shallow batch in its list. The
 save says why it is refused.
 
 Once a batch has been designated, the catalogue stays on it. The same batch can
@@ -328,9 +328,9 @@ says there when it is done.
 While the move is pending:
 
 - the batch moved to can be designated again after a clear, and a clear keeps
-  the move as it is;
+  the move as it is,
 - a move back to the batch moved from, `move: true` again, swaps the two, so
-  whichever still holds history is the one recorded as moved from;
+  whichever still holds history is the one recorded as moved from,
 - any third batch is refused with `catalogueReleaseFirstRefusal`, "The
   catalogue is still moving off batch …, so release the previous batch first,
   once the web2 admin reports the move done, before moving it to another."
@@ -340,7 +340,7 @@ ends the move: it takes the `moving_from_*` and `move_started_*` columns out,
 records `released_at` and `released_by`, which stay until the next release, and
 tells the publisher. It is refused with "No move of the catalogue is pending, so
 there is no previous batch to release." when none is. The operator presses it
-once the admin reports the move done; the manager cannot tell that itself.
+once the admin reports the move done. The manager cannot tell that itself.
 
 There is no audit table. A designation, a move, a move back, a clear and a
 release are each logged with the user: a designation with its whole batch id,
@@ -356,7 +356,7 @@ cleared since, and while a move is pending neither is the deployment of the
 batch moved from. Their removal, from the page or the Clean action, answers
 409 `catalogue_node_designated`, asked before the deployment is claimed and
 once more before the clean script runs, so a designation saved in between is
-caught. The one moved from says to release the previous batch first; after the
+caught. The one moved from says to release the previous batch first. After the
 release it can be removed, and its batch may lapse.
 
 A pool string may not name the catalogue either. A create or an update of a
@@ -379,10 +379,10 @@ builds it, and `catalogueRequest.ts` checks it against
 | `nodeName`                                      | the designated deployment's name                                                                                                           |
 | `beeApiUrl`                                     | the node's Bee API as the control host reaches it, `beeApiUrlFor`, the address the Storage card reads, not a container's pool URL          |
 | `batchId`, `designatedAt`                       | the designation row                                                                                                                        |
-| `state`, `ttlSeconds`, `fillRatio`, `immutable` | `StampService.batchReadingFor`, the node's `GET /stamps/{id}` read as `stampHealthFrom` reads it; a node that does not answer is `unknown` |
+| `state`, `ttlSeconds`, `fillRatio`, `immutable` | `StampService.batchReadingFor`, the node's `GET /stamps/{id}` read as `stampHealthFrom` reads it. A node that does not answer is `unknown` |
 | `depth`                                         | the same reading, or the last one the node gave, or the depth at designation while the node does not answer                                |
 | `observedAt`                                    | the moment the designation row was read, before the node is asked                                                                          |
-| `previous`                                      | while a move is pending, the batch moved from: its node's name and Bee API, and the same readings of it; null otherwise                    |
+| `previous`                                      | while a move is pending, the batch moved from: its node's name and Bee API, and the same readings of it, null otherwise                    |
 
 `previous` is there because the admin keeps writing with the batch moved from
 until its own move runs, and would otherwise hold readings of it that only age,
@@ -407,15 +407,15 @@ http and https alone, plain http only to the manager's own host, no redirect
 followed, five seconds, 64 KiB of an answer
 read. It is pushed:
 
-- **when the designation changes**, at once after the save;
-- **when the designated deployment changes**, on its `profile.changed` event;
+- **when the designation changes**, at once after the save,
+- **when the designated deployment changes**, on its `profile.changed` event,
 - **when the pinned batch's readings change**: the batch is read every ten
   seconds, and a record goes when its state, depth, fill or kind moved, or its
   life moved more than five minutes off the clock, as a top-up or a dilution
-  moves it. The same holds for the batch moved from, while a move is pending;
+  moves it. The same holds for the batch moved from, while a move is pending,
 - **every 30 seconds** otherwise, and at start.
 
-While a designation is in force its batch is read and pushed; once cleared it
+While a designation is in force its batch is read and pushed. Once cleared it
 is read no more. While a move is pending, the batch moved from is read on its
 node on the same ten-second round, cleared or not, for the card and for the
 record's `previous`. Both nodes are read at once, so the push waits for the
@@ -450,8 +450,8 @@ it, and until its console says the move is done the previous batch has to stay
 alive. While the move is pending the card shows "Moving from batch … on …" with
 that batch's last reading and who started the move, the steps (in the web2
 admin, on the Stages page, start "Move the catalogue to batch …", which needs
-`CATALOGUE_MOVE_ENABLED` on that installation; wait until it says the move is
-done; press Release the previous batch here), and **Release the previous
+`CATALOGUE_MOVE_ENABLED` on that installation, then wait until it says the move is
+done, then press Release the previous batch here), and **Release the previous
 batch**, which asks first as well: the node moved from can then be removed and
 its batch may lapse, so it is pressed only once the admin reports the move
 done. A third batch is refused on the card with the manager's sentence while

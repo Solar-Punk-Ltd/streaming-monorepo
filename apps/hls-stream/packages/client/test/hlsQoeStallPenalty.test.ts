@@ -85,7 +85,8 @@ afterEach(() => {
 });
 
 /**
- * The defect this exists for, measured out of hls.js 1.6.15's own `LatencyController`:
+ * The defect this exists for, measured out of hls.js 1.6.15's own `LatencyController` (the client
+ * now pins 1.7.3):
  *
  *   maxLiveSyncOnStallIncrease = targetduration
  *   return targetLatency + Math.min(stallCount * config.liveSyncOnStallIncrease, maxLiveSyncOnStallIncrease)

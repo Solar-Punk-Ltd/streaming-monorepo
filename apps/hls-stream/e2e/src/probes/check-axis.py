@@ -189,8 +189,9 @@ def main() -> int:
     if discarded_share > NOTEWORTHY_DISCARDED_SHARE:
         notes.append("UNREADABLE-HIGH")
     # A reader at the bound is not slow. It has exactly the right rate and no headroom left, so the
-    # pace check above passes it and cannot ever say so. See gate lesson ADR: a fix to an accumulation
-    # problem shows in position rather than rate, and so does the failure of one.
+    # pace check above passes it and cannot ever say so. See gate lesson ADR (kept outside the
+    # repository): a fix to an accumulation problem shows in position rather than rate, and so does
+    # the failure of one.
     if pace is not None and pace[4] > READER_AT_BOUND_SHARE:
         notes.append("READER-AT-BOUND")
     note = f" {' '.join(notes)}" if notes else ""

@@ -508,7 +508,7 @@ here, and `BEE_PUBLISHERS` in the root `.env` pointing at them. A rung node enab
 `BEE_PUBLISHERS` is a node nothing publishes through, and the reverse is a rung pointing at nothing,
 because both startup gates read every publisher before the first broadcast and a URL with no node
 behind it cannot answer. Since the owner's rulings of 2026-09-17 that no longer takes the uploader off
-the air. The boot asks the coordinator, the node the catalog goes through, whether it is there
+the air. The boot asks the coordinator, the node the catalogue goes through, whether it is there
 before anything else, and a coordinator that is not there is waited for rather than refused on, so the
 service listens, answers `/health` with `waiting_for_node` naming that url, and keeps retrying until it
 is there. The other rung nodes are reached by the gates instead: under the shipped mode one that does
@@ -526,7 +526,7 @@ node holds `CHEQUEBOOK_MIN_BZZ`. A node that falls under the floor later, during
 reported on `/health` as `chequebook_low` until it is funded, and the broadcast goes on.
 A postage warning stays until the uploader is restarted. What a deployment cannot ask
 for is an exit on a node that never answered, which is the state the ruling removed. `bee-uploader` is the 360p rung as well as the shared default, so the
-catalog and every ladder master go through it. Their ports, data directories and what each one has to
+catalogue and every ladder master go through it. Their ports, data directories and what each one has to
 hold are in [.env.sample](../.env.sample) under "Per-rung Bee nodes".
 
 ### Viewer stack (`client` + `bee-gateway`)

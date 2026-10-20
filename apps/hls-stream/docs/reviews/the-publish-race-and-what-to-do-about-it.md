@@ -3,6 +3,10 @@
 > This is a dated record of one test deployment, not a description of the product. Any raw
 > measurement it cites is kept outside the repository.
 
+Status, 2026-10-20: decided. Option C was taken on 2026-08-12. The bench can wait out a refused
+segment and time it rather than count it lost (`e2e/src/bench/unservedWatch.ts`). Option A stays
+open: the uploader still writes a segment deferred.
+
 Written 2026-08-12 straight after `gop-floor-replicate-2026-08-12.md` measured the window. No
 broadcast needed to reach any of this.
 

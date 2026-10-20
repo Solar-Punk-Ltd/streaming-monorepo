@@ -83,7 +83,8 @@ describe('readPreviewPlaylist', () => {
  * That playlist reaches hls.js as a blob, and hls.js resolves a relative media line against the
  * playlist's own URL. Resolved against a blob, a rooted path loses everything that identifies the
  * gateway: `/bytes/<ref>` against `blob:http://viewer.example/<uuid>` comes back as
- * `blob:http:/bytes/<ref>`, run through hls.js 1.6.15's own resolver on 2026-08-07. So an unresolved
+ * `blob:http:/bytes/<ref>`, run through hls.js 1.6.15's own resolver on 2026-08-07 (the client now
+ * pins 1.7.3). So an unresolved
  * line is not merely awkward downstream, it is unrecoverable, and this is the last place that knows
  * which gateway was meant.
  *

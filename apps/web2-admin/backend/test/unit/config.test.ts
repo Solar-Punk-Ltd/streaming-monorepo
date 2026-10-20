@@ -179,15 +179,14 @@ describe('BRAND_WALLET_SECRET', () => {
     }
   });
 
-  it('ships in the env sample as a placeholder the API starts with and deploy.sh refuses', async () => {
+  /**
+   * Only an admin that funds nodes needs the secret. A copy of the sample deploys with funding off and creates no
+   * wallet, and nobody holds a secret printed in a public file.
+   */
+  it('ships in the env sample commented out and empty, so a copy of it creates no wallet', () => {
     const sample = readFileSync(new URL('../../.env.sample', import.meta.url), 'utf8');
-    const placeholder = /^BRAND_WALLET_SECRET=(\S*)$/m.exec(sample)?.[1];
-    assert.ok(placeholder, 'the sample sets no BRAND_WALLET_SECRET');
-
-    withFunding({ BRAND_WALLET_SECRET: placeholder });
-    const config = await loadConfig('secret-sample');
-
-    assert.equal(config.brandWalletSecret, placeholder, 'a test install keeps it with --allow-sample-secrets');
+    assert.doesNotMatch(sample, /^\s*BRAND_WALLET_SECRET\s*=/m, 'the sample sets BRAND_WALLET_SECRET');
+    assert.match(sample, /^# BRAND_WALLET_SECRET=$/m, 'the sample names the key, commented out, with no value');
   });
 });
 

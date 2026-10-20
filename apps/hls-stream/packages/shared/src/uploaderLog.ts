@@ -647,10 +647,10 @@ function oneLine(message: string): string {
  * offering it. {@link segmentUploadFailed} fires for each dropped segment and says only that the retry
  * window is spent, which a node that went away produces just as well.
  *
- * ⚠️ **Not a classification of bee's answer, and deliberately so.** Which status family bee 2.8.2
- * answers a full batch with is recorded nowhere in this repo, and the unit tests assume 402. The
- * status and the message are reproduced verbatim so the first live drain settles that off the log
- * rather than costing a second sitting.
+ * ⚠️ **Not a classification of bee's answer, and deliberately so.** Bee has answered a full batch
+ * with 402 live: `402 batch is overissued` in the drain sitting of 2026-09-05, and 402 again on
+ * 2026-09-23, recorded at the top of `LadderCompletion.ts` in the uploader. The status and the
+ * message are still reproduced verbatim, so a bee that answers differently shows on the log as it is.
  *
  * ⚠️ **Written once and never re-armed by a segment that lands.** A batch that is filling refuses a
  * growing share of segments rather than all of them: measured live on 2026-09-04, four refusals in

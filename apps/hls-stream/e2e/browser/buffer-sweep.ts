@@ -99,7 +99,8 @@ interface SweepRun {
  * The report a person reads, which leads with what was thrown away.
  *
  * An excluded arm is printed in the same table as a counted one rather than filtered out, because a
- * sweep that silently drops arms reports a clean result it did not measure. See gate lesson AHC.
+ * sweep that silently drops arms reports a clean result it did not measure. See gate lesson AHC
+ * (kept outside the repository).
  */
 function renderSweepReport(run: SweepRun): string {
   const counted = run.results.filter((row) => row.counted && !row.excludedBecause);

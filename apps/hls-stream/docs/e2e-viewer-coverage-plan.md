@@ -3,16 +3,22 @@
 > This is a dated record of one test deployment, not a description of the product. Any raw
 > measurement it cites is kept outside the repository.
 
+Status, 2026-10-20: phases 1 and 2 are done and were green live in both byte sources, V3 and V4
+since 2026-08-30 and V2 since 2026-09-04. Of phase 3 the nodes and the preflight are done, and three
+of the four tests that need four nodes were green live: one rung dies on 2026-09-04, the drain on
+2026-09-05, the viewer through a drain on 2026-09-06. One test is still open: the proof that each
+rung's bytes leave through its own Bee node, read from the four nodes' own counters. No suite reads
+a Bee node's counters today. The only per-rung counters the suites read are the uploader's own
+(`e2e/src/harness/uploaderMetrics.ts`). The live status of every suite is in `docs/e2e-coverage.md`.
+
 Written 2026-08-29, after the owner asked where the ABR viewer tests and the per-rung publisher
 tests were. The answer was that neither exists. This is the plan to get them.
-
-**Status 2026-09-16.** Phases 1 and 2 are done and green live: V2 since 2026-09-04, V3 and V4 since 2026-08-30, in both byte sources. Of Phase 3 the nodes and the preflight are done, and three of the four tests that need four nodes are green (one rung dies on 2026-09-04, the drain on 2026-09-05, the viewer through a drain on 2026-09-06). Open: the proof that each rung's bytes leave through its own node, read from the four nodes' own counters. The live statuses are kept in `docs/e2e-coverage.md`.
 
 ## The gap, stated once
 
 **Every ABR test reads the uploader's log. None of them opens a browser.** Seven assertions across
 two suites prove the encoder produced four rungs, one uploader wrote all four without dropping
-anything, they stayed grouped as one catalog entry, and they came back after an engine restart.
+anything, they stayed grouped as one catalogue entry, and they came back after an engine restart.
 
 That is the plumbing. It says nothing about a viewer receiving more than one quality, and nothing
 about ever switching between them.
@@ -28,7 +34,7 @@ deliberately so, for the reason at the end of phase 2.
 ⚠️ `suites/scenarios/gateway-outage-viewer.test.ts` has "viewer" in its name and opens no browser.
 It tests the upload side while a viewer's gateway is down.
 
-## Phase 1 — assert what the watching tests already observe
+## Phase 1: assert what the watching tests already observe
 
 **Free. No infrastructure, no broadcast, no BZZ.** The data is already captured and printed under
 "observations, none of them asserted".
@@ -48,7 +54,7 @@ product rather than about timing:
 
 **What it does not buy:** it cannot catch a failure to _switch_. That is phase 2.
 
-## Phase 2 — the three watching tests that were planned and never built
+## Phase 2: the three watching tests that were planned and never built
 
 Run time and harness work. No new infrastructure. Numbers reserved in `docs/e2e-coverage.md`.
 
@@ -62,7 +68,7 @@ Run time and harness work. No new infrastructure. Numbers reserved in `docs/e2e-
 > thing in it most likely to be wrong, and those warnings are worth reading before a rerun on a stage
 > that has changed under them.
 
-### V2, quality switch works — ⛔ BUILT 2026-08-30, RED across four sittings, cause measured
+### V2, quality switch works: ⛔ BUILT 2026-08-30, RED across four sittings, cause measured
 
 ✅ **Green since 2026-09-04 in both byte sources** (`docs/e2e-coverage.md`, the row "Viewer: quality switch works"). The red below is the record of the first four sittings and of what was measured to explain them.
 
@@ -100,7 +106,7 @@ an order of magnitude in request count. Run both, expect both to switch, compare
 
 **Done when:** a client that ignores bandwidth and rides one rung into a stall fails.
 
-### V3, a rung goes quiet and the viewer steps down — ✅ BUILT 2026-08-30, GREEN LIVE, three of four
+### V3, a rung goes quiet and the viewer steps down: ✅ BUILT 2026-08-30, GREEN LIVE, three of four
 
 `pnpm browser:rung-outage` and `suites/viewer/rung-outage.test.ts`. SRS runs one ffmpeg per rung, so
 the fault is a SIGSTOP on the transcode producing the rung the viewer settled on, read off the
@@ -120,7 +126,7 @@ rather than freezing, and that the overlay does not claim the broadcast ended.
 
 **Done when:** a viewer frozen on a dead rung while three healthy ones sit beside it fails.
 
-### V4, VOD playback in a browser — ✅ BUILT 2026-08-30, GREEN LIVE, every run so far
+### V4, VOD playback in a browser: ✅ BUILT 2026-08-30, GREEN LIVE, every run so far
 
 `suites/viewer/vod-playback.test.ts`, on an extended `pnpm browser:vod`.
 
@@ -143,7 +149,7 @@ advances, and the timeline is the whole broadcast.
 
 **Done when:** a recording that only plays its lowest rung fails.
 
-### Also here, cheaply — ✅ BUILT 2026-08-30
+### Also here, cheaply: ✅ BUILT 2026-08-30
 
 `suites/service/multi-stream-concurrent.test.ts` now asserts that BOTH concurrent streams carry the
 whole ladder, per ladder rather than across both, and that every rung-stream stays gapless while
@@ -157,7 +163,7 @@ It reads the log the existing case already produces, so it costs no extra broadc
 three tabs measured zero peers, never re-dialling and never erroring. Two watched ladders would be a
 measurement of that rather than of concurrency.
 
-## Phase 3 — per-rung bee nodes, the shape we meant to ship
+## Phase 3: per-rung bee nodes, the shape we meant to ship
 
 ✅ **The split is deployed. `BEE_PUBLISHERS` names one Bee node per rung, and a gate proves it before
 every sitting.** This section used to open by saying the variable had never been deployed or tested
@@ -182,7 +188,7 @@ Where the three blockers stand:
    - ⛔ open: each rung's bytes actually leave through its own node, proven from the four nodes' **own**
      counters and not from the uploader's log
    - ✅ one node's batch runs dry and only that rung degrades, the other three keep publishing (scenario L, green live 2026-09-05)
-   - ✅ one node is killed and the ladder stays one catalog entry across the survivors ("One rung dies, others carry on", green 2026-09-04 and 2026-09-06)
+   - ✅ one node is killed and the ladder stays one catalogue entry across the survivors ("One rung dies, others carry on", green 2026-09-04 and 2026-09-06)
    - ✅ a viewer keeps a working ladder throughout (V11, green on both byte sources 2026-09-06)
 
 **Done when:** losing one node costs one quality instead of the broadcast, and a test says so.
@@ -194,22 +200,22 @@ Where the three blockers stand:
   announces itself before it finalizes, that announcement carries no `index` because it has not
   published its recording yet, and `mergeRendition` replaced the finished rendition wholesale. The
   index went, `renditions.every(r => r.index)` went false, and **the whole finished ladder went back
-  to `live` in the catalog** until the recovery timer finalized it a second time. So for about a
+  to `live` in the catalogue** until the recovery timer finalized it a second time. So for about a
   minute an ended recording was advertised as a live broadcast, which is the larger half of the harm.
   Fixed in `StreamCatalog.keepingWhatFinished`.
 
   **There was a second cause, and it cost money rather than accuracy.** The recovery timer did not
-  merely re-flip the catalog, it re-ran the whole finalize: a second VOD manifest was published and
-  paid for, and the catalog moved to name the newer one. The discriminator read zero catalog losses,
+  merely re-flip the catalogue, it re-ran the whole finalize: a second VOD manifest was published and
+  paid for, and the catalogue moved to name the newer one. The discriminator read zero catalogue losses,
   so that second finalize was honest against a feed that genuinely still said live. Fixed in
   `f2e7305`: the ladder flip announce now happens after the feed write takes, so the line means the
   entry is already vod, and a finalize on a session rebuilt from a recovery entry first reads its own
-  manifest feed head. A finished recording found there is resumed at the catalog write and never
+  manifest feed head. A finished recording found there is resumed at the catalogue write and never
   republished, through a new log line that is deliberately not a flip. An unreadable head defers to
   the next boot rather than guessing, because the guess costs a recording.
 
   ✅ **Both fixes are deployed**, on the late 2026-09-01 redeploy, and **H ran green on that stack** in
-  the fourth sitting: one flip, zero catalog losses, zero resumes, four of four renditions kept, no
+  the fourth sitting: one flip, zero catalogue losses, zero resumes, four of four renditions kept, no
   recovery entry left behind. ⚠️ That run's kill landed after finalize had completed, so the green
   proves the clean ordering and not the resume path. The resume path is covered by thirteen unit
   tests and has not yet been exercised live, because moving the announce later also moved it out of

@@ -19,10 +19,9 @@ import { viewerGate } from '../../src/viewerCoverage.js';
 /**
  * A rung that never lands a single segment, under a ladder whose other rungs publish normally.
  *
- * ⛔⛔ **This goes green only with the never-started-rung fix, which lives on a separate branch.** Until it lands, a
- * rung that never published is not one the dead-rung rule knows about, so the master goes on offering it and a viewer
- * joining is handed a quality with nothing behind it. This suite is written to that fix's contract and is expected to
- * be red against a stage without it.
+ * It checks the never-started-rung fix (633abd6bc). Before it, a rung that never published was not one the dead-rung
+ * rule knew about, so the master went on offering it and a viewer joining was handed a quality with nothing behind it.
+ * A stage running a build without that fix fails this suite.
  *
  * The fault is a stage arming rather than something a suite does mid-broadcast: the uploader's `BEE_PUBLISHERS` entry
  * for one rung points at a port nothing listens on, so every upload on that rung is refused from the first segment.

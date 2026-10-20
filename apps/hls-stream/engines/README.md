@@ -4,17 +4,17 @@ Transcoding engines that produce HLS segments for the [stream-uploader](../packa
 
 Each engine has two parts:
 
-1. **Server config** — lives here under `engines/<name>/` (docker-compose, config files)
-2. **Plugin** — lives in the stream-uploader at `packages/stream-uploader/src/engines/<name>.ts`
+1. **Server config**: lives here under `engines/<name>/` (docker-compose, config files)
+2. **Plugin**: lives in the stream-uploader at `packages/stream-uploader/src/engines/<name>.ts`
 
-The plugin registers engine-specific HTTP routes on the uploader's server. No separate process needed — the engine's webhooks call the uploader directly.
+The plugin registers engine-specific HTTP routes on the uploader's server. No separate process is needed, because the engine's webhooks call the uploader directly.
 
 ## Available Engines
 
-| Engine        | Plugin       | Description                                                                                                  |
-| ------------- | ------------ | ------------------------------------------------------------------------------------------------------------ |
-| [srs](./srs/) | `ENGINE=srs` | SRT/RTMP ingest via [SRS](https://github.com/ossrs/srs)                                                      |
-| [ome](./ome/) | `ENGINE=ome` | SRT ingest via [OvenMediaEngine](https://github.com/AirenSoft/OvenMediaEngine); uploader pulls HLS over HTTP |
+| Engine        | Plugin       | Description                                                                                                          |
+| ------------- | ------------ | -------------------------------------------------------------------------------------------------------------------- |
+| [srs](./srs/) | `ENGINE=srs` | SRT/RTMP ingest via [SRS](https://github.com/ossrs/srs)                                                              |
+| [ome](./ome/) | `ENGINE=ome` | SRT ingest via [OvenMediaEngine](https://github.com/AirenSoft/OvenMediaEngine), and the uploader pulls HLS over HTTP |
 
 ## How It Works
 
@@ -201,9 +201,9 @@ names each such stream under `publisherGopStreams` with both lengths. Neither re
 refuses a segment or ends a broadcast.
 
 The uploader then writes a fifth feed: the ladder's **master playlist**, a multivariant playlist
-naming the four rung feeds, on a topic that _is_ the ladder's group id. The catalog entry points at
+naming the four rung feeds, on a topic that _is_ the ladder's group id. The catalogue entry points at
 that, so one URL yields the whole ladder. It is rewritten whenever a rung's measured bandwidth
-drifts, and always before the catalog entry referring to it — the other order would publish an
+drifts, and always before the catalogue entry referring to it. The other order would publish an
 entry whose topic resolves to nothing.
 
 ```
@@ -218,12 +218,12 @@ Three things about this shape are load-bearing:
 stream level and the matches are cumulative (`parse_scope_engines` in SRS's `srs_app_encoder.cpp`).
 A rung republished into the vhost that transcodes matches the same rule and gets transcoded again,
 and so does _its_ output. A vhost with no transcode block terminates that. If `?vhost=` ever fails
-to match, SRS silently falls back to `__defaultVhost__` and the loop starts — which is why the
+to match, SRS silently falls back to `__defaultVhost__` and the loop starts. That is why the
 ingest vhost keeps its webhooks even though it segments nothing, so the uploader can see a
 rendition arrive on the wrong vhost and say so.
 
 **Every rung must cut segments at the same media timestamps.** `ABR_FPS x HLS_FRAGMENT` is the GOP
-and has to be a whole number of frames; the entrypoint refuses to start rather than round it,
+and has to be a whole number of frames. The entrypoint refuses to start rather than round it,
 because a fractional GOP drifts the rungs apart and every switch then lands mid-GOP.
 
 **The transcode input dials the port the broadcast came in on.** SRS builds each rung's ffmpeg input
@@ -266,8 +266,8 @@ compose now publishes it. Expect five streams (one source, four rungs) and the c
 count that keeps climbing is the loop.
 
 Audio is muxed into each rung rather than split into an `EXT-X-MEDIA` rendition group. With
-`ABR_ACODEC=copy` the four copies are bit-identical and cost no CPU. Splitting it is the right
-production answer and is left as a TODO.
+`ABR_ACODEC=copy`, the default, the four copies are bit-identical and cost no CPU. Splitting audio
+out is a later item on the [roadmap](../../../docs/ROADMAP.md).
 
 ## What SRS logs
 
@@ -405,7 +405,7 @@ engines/
 
 packages/stream-uploader/src/engines/
   types.ts                    # EnginePlugin interface
-  registry.ts                 # engineRegistry — maps an engine name to its plugin factory
-  load.ts                     # loadEngines() — builds the configured engine's plugins
+  registry.ts                 # engineRegistry: maps an engine name to its plugin factory
+  load.ts                     # loadEngines(): builds the configured engine's plugins
   <engine-name>.ts            # Engine plugin implementation
 ```

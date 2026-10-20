@@ -32,6 +32,8 @@ COPY workspace-packages/contracts/package.json workspace-packages/contracts/
 # not honour that flag on pnpm 9.12.0: measured against a manifest whose zod range had been moved off
 # the lockfile's, it re-resolved to the drifted version and exited 0, while `install` with the same
 # flag refused. So a deploy alone would reintroduce exactly the defect this file was rewritten for.
+# That was measured on pnpm 9 and has not been measured again on the pnpm this image pins, 12.4.1, so
+# both passes stay.
 #
 # `deploy` is then what makes the runtime stage one COPY. It writes a self-contained tree at a single
 # path, with no workspace symlinks to keep in step and no pnpm store to carry into the image. It takes

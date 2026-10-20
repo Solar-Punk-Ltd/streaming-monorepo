@@ -37,7 +37,8 @@
  * do when something is pacing it, which is the number the stamped path needs to be judged against.
  *
  * Arms alternate within the sitting rather than running one recipe then the other, because thermal
- * state and whatever else shares the machine both drift over a sitting. See the gate lessons, AGS.
+ * state and whatever else shares the machine both drift over a sitting. That is gate lesson AGS
+ * (kept outside the repository).
  *
  * Usage:
  *   node deploy/scripts/encoder-capability.mjs <arms.json> <out.json>

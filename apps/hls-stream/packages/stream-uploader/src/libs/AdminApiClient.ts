@@ -61,10 +61,9 @@ export const MIN_ADMIN_API_TOKEN_LENGTH = ADMIN_API_TOKEN_MIN_LENGTH;
 /**
  * How long one lookup may take before the gate gives up on it.
  *
- * Bounded by what the engine is holding open, not by what the network might need. SRS waits on the
- * `on_publish` webhook before it admits a publisher and OME's admission timeout is 3000ms, so a
- * lookup that spends much longer than this turns "the admin is slow" into "the engine gave up on the
- * uploader", which is a worse failure than a refusal because it is invisible from this side.
+ * A ceiling for an admin that is up and healthy. It is not derived from any engine's own wait for its
+ * admission webhook. A lookup that runs past it counts as an admin that cannot be reached, and the
+ * gate refuses the publish, because a broadcast the admin cannot vouch for is one nobody declared.
  */
 const DEFAULT_LOOKUP_TIMEOUT_MS = 5_000;
 

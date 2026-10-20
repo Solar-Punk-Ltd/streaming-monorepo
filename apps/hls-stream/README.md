@@ -4,9 +4,9 @@ Live and on-demand video streaming over [Swarm](https://www.ethswarm.org/) decen
 
 Takes HLS segments from a media server, uploads them to Swarm in real time, and maintains a feed-based manifest that clients can play back without a centralized CDN.
 
-The stream-uploader supports [SRS](https://github.com/ossrs/srs) and OvenMediaEngine (OME). A deployment selects one engine. In standalone mode, other HLS producers can also integrate through the HTTP API.
+The stream-uploader supports [SRS](https://github.com/ossrs/srs) and OvenMediaEngine (OME). A deployment selects one engine.
 
-Standalone uploaders maintain the stream catalogue on Swarm. With `ADMIN_API_URL` set, the admin service owns that catalogue and declares streams before they publish. The uploader authenticates engine publishes against those declarations, writes their media and playlist feeds, and reports stream state back to the admin. The viewer supports both catalogues, including admin-provided thumbnails and scheduled streams.
+The uploader runs in one of two modes. Standalone mode, the default, runs the stack on its own: no admin service, and the uploader maintains the stream catalogue on Swarm itself. Other HLS producers can also integrate through its HTTP API. Admin mode, which setting `ADMIN_API_URL` turns on, is how the platform runs it: the admin service, `apps/web2-admin`, owns that catalogue and declares streams before they publish. The uploader authenticates engine publishes against those declarations, writes their media and playlist feeds, and reports stream state back to the admin. The viewer supports both catalogues, including admin-provided thumbnails and scheduled streams.
 
 ```
 OBS/FFmpeg ──> SRS or OME ──HLS segments──> Stream Uploader ──> Swarm Network
@@ -16,16 +16,16 @@ OBS/FFmpeg ──> SRS or OME ──HLS segments──> Stream Uploader ──> 
 
 ## Packages
 
-| Package                                      | Description                                              |
-| -------------------------------------------- | -------------------------------------------------------- |
-| [stream-uploader](packages/stream-uploader/) | Receives HLS segments, uploads to Swarm, manages feeds   |
-| [client](packages/client/)                   | React app for browsing and playing Swarm-backed streams  |
-| [cli](packages/cli/)                         | Bee node and postage stamp management                    |
-| [shared](packages/shared/)                   | Shared stream, playlist and publish-key contracts        |
-| [audit-gate](packages/audit-gate/)           | Dependency advisory checks and their recorded exceptions |
-| [gate-facts](packages/gate-facts/)           | Collects change, test and dependency provenance evidence |
-| [deploy](deploy/)                            | Deployment scripts, service profiles and their tests     |
-| [e2e](e2e/)                                  | Deployed-stream scenarios and tests of the test harness  |
+| Package                                      | Description                                                                                                                                                                                                               |
+| -------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| [stream-uploader](packages/stream-uploader/) | Receives HLS segments, uploads to Swarm, manages feeds                                                                                                                                                                    |
+| [client](packages/client/)                   | React app for browsing and playing Swarm-backed streams                                                                                                                                                                   |
+| [cli](packages/cli/)                         | Bee node and postage stamp management                                                                                                                                                                                     |
+| [shared](packages/shared/)                   | Shared stream, playlist and publish-key contracts                                                                                                                                                                         |
+| [audit-gate](packages/audit-gate/)           | Development tooling, not part of the product: the CI check `pnpm audit:check`, which fails on a dependency advisory that is not on its reviewed list of exceptions                                                        |
+| [gate-facts](packages/gate-facts/)           | Development tooling, not part of the product: `pnpm gate:facts` prints the figures a pull request description may quote, the diff, the test results and the dependency provenance, each with the command that produced it |
+| [deploy](deploy/)                            | Deployment scripts, service profiles and their tests                                                                                                                                                                      |
+| [e2e](e2e/)                                  | Deployed-stream scenarios and tests of the test harness                                                                                                                                                                   |
 
 ## Prerequisites
 
@@ -55,20 +55,11 @@ results. CI does the same: its `verify` job runs typecheck, lint, build and test
 as four steps of one job, and a failing step ends the job. Only the format check
 runs as a job of its own, so it reports whatever the other four did.
 
-Three CI jobs are deliberately outside `pnpm verify`, so the local loop needs
+Three CI jobs are outside `pnpm verify`, so the local loop needs
 neither a registry nor a docker daemon: `pnpm audit:check` for dependency
 advisories, `pnpm shellcheck` for the deploy and node shell scripts, and
 `images`, which builds the uploader, client, bench and browser Dockerfiles. Run
 the first two directly before touching what they cover.
-
-### Agent hook settings
-
-`.claude/settings.json` is committed, so it applies to everyone working in this
-repository, not just one machine. Its `ECC_DISABLED_HOOKS` setting names both
-`pre:edit-write:gateguard-fact-force` and `pre:bash:gateguard-fact-force`, disabling
-the fact-recital hooks for file edits and shell commands in a harness that reads
-that setting. The file does not establish which other hooks are installed or
-enforced by a particular tool.
 
 ## CLI
 

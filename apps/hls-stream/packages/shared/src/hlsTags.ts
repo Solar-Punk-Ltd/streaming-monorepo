@@ -29,8 +29,9 @@ export const HLS_ENDLIST = '#EXT-X-ENDLIST';
  * been watching since the start.
  *
  * RFC 8216 §4.3.3.3. It belongs in the header, before the first media entry and before any
- * `#EXT-X-DISCONTINUITY`: hls.js 1.6.15 parses it into `level.startCC` and reports a playlist that
- * declares it after a fragment, or twice, as a playlist error.
+ * `#EXT-X-DISCONTINUITY`. hls.js, read at 1.6.15 (the client now pins 1.7.3), parses it into
+ * `level.startCC` and reports a playlist that declares it after a fragment, or twice, as a playlist
+ * error.
  */
 export const HLS_DISCONTINUITY_SEQUENCE = '#EXT-X-DISCONTINUITY-SEQUENCE';
 

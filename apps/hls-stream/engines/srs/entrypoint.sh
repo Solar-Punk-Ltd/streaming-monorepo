@@ -304,9 +304,10 @@ SRS_ADAPTER_PORT="${SRS_ADAPTER_PORT:-3000}"
 # output again, without limit. A vhost with no transcode block is what terminates that.
 #
 # Audio is muxed into every rung rather than split into an EXT-X-MEDIA rendition group. Four
-# copies of the audio track cost single-digit percent against the video ladder, and muxing keeps
-# A/V sync and alternate-track handling out of a POC whose question is whether ABR works over
-# Swarm feeds at all. TODO: split audio once the ladder is proven.
+# copies of the audio track cost single-digit percent against the video ladder, and with
+# ABR_ACODEC=copy, the default, they are bit-identical and cost no CPU. Muxing also keeps A/V sync
+# and alternate-track handling out of the player. Splitting audio out is a later item on the
+# repository's roadmap, docs/ROADMAP.md.
 # ---------------------------------------------------------------------------------------------
 
 # ABR_ENABLED is read by the stream-uploader as well, through a parser that accepts only

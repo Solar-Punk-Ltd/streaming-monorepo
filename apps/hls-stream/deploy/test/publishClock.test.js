@@ -170,8 +170,9 @@ describe('publish-clock.sh waiting on a detached publisher', () => {
  *   ✗ publish FAILED (exit
  *   missing). Nothing usable was broadcast, so do not measure against this.
  *
- * ⭐⭐⭐ Gate lesson AHL is the whole point: an alarm that fires on every successful stop is one the
- * operator learns to skip, and the next time it is real nobody reads it.
+ * ⭐⭐⭐ Gate lesson AHL (kept outside the repository) is the whole point: an alarm that fires on
+ * every successful stop is one the operator learns to skip, and the next time it is real nobody
+ * reads it.
  */
 function sshStubVanishingAt(statePath, stopFilePath, requestStop) {
   return `#!/usr/bin/env node

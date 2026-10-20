@@ -51,6 +51,9 @@ BOUND="$(dirname "${BASH_SOURCE[0]}")/bound-host.sh"
   echo "cannot read ${BOUND}: sync deploy/scripts as a directory, not one script" >&2
   exit 1
 }
+# REFS, ACCT and METRICS default to files in `phase06`, a working folder in the measurement host's
+# home that is kept outside the repository: a list of segment references, a script that reads the
+# gateway's peer accounting, and a script that reads its metrics.
 REFS="${REFS:-${HOME}/phase06/refs.txt}"
 # Where a named reference pattern is looked up, as `refs-<name>.txt`. An arm that names one walks it
 # instead of ${REFS}, which is what lets one sitting interleave access patterns rather than compare a
@@ -90,16 +93,8 @@ ROUNDS="${ROUNDS:-2}"
 #   ARM_PLAN='U:false:60 U:false:600 U:false:60 U:false:600'
 ARM_PLAN="${ARM_PLAN:-L:true:0 U:false:0}"
 
-# The per-segment budget a retrieval has to land inside. Default is 267ms, which is what an eight-frame
-# GOP at 30fps gives.
-#
-# ⛔ That is NOT the shipping profile, and this comment used to say it was. The old 0.5 default was a
-# 0.5s GOP against `HLS_FRAGMENT=0.5`, so the budget for an arm at that default is **500**.
-#
-# ⛔⛔ This comment also used to justify that with "a 0.25s GOP loses 18-21% of live-edge reads to
-# 404". THAT NUMBER IS WITHDRAWN: a replicate the same afternoon gave 2.9%, 13.1% and 0.0%, and the
-# refusals were our own publish race rather than the GOP. The budget above is 500 because that is
-# what ships, which never needed the 404 rate. See the `gop-floor-replicate-2026-08-12` measurement (kept outside the repository).
+# The per-segment budget a retrieval has to land inside, in ms. The default is 267, which is what an
+# eight-frame GOP at 30fps gives. An arm on a 0.5s GOP, against `HLS_FRAGMENT=0.5`, sets 500.
 #
 # ⛔ This is the headline the first sitting nearly missed. Across six arms the median penalty was 2.9x
 # and the share of segments over budget was **45x**, 0.3% against 15.0%. A buffer drains on late

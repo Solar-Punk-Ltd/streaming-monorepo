@@ -1,7 +1,7 @@
 # Releasing
 
-Since 2026-10-07 every deploy names the build it sends after the git tag on its commit and builds that name into its
-images, and the consoles show it to signed-in users. So a release is tagged first and deployed after, in this order.
+Every deploy names the build it sends after the git tag on its commit and builds that name into its images, and the
+consoles show it to signed-in users. So a release is tagged first and deployed after, in this order.
 [tools/release/README.md](../tools/release/README.md) says what each script checks.
 
 Run every step from your own checkout of this repository, on the commit you deploy. `<ssh-target>` stands for a host's
@@ -28,10 +28,12 @@ that tag fails on purpose, saying why. `vX.Y.Z`, such as `v2.4.0`, is the shape 
 It worked when it ends with "Pushed <tag> to origin." or, for a tag it kept, "origin already has <tag>."
 
 Pushing the tag starts the `publish-images` workflow, which publishes the manager's and the admin's images under the
-tag to `ghcr.io/solar-punk-ltd`, building every image again for every release. The stream deploy, kept in
-its own repository outside this one, pulls them by that tag: `streaming-manager-api`, `streaming-manager-web`,
-`streaming-admin-api` and `streaming-admin-web`. The two deploy scripts below build on the host instead.
+tag to `ghcr.io/solar-punk-ltd`, building every image again for every release: `streaming-manager-api`,
+`streaming-manager-web`, `streaming-admin-api` and `streaming-admin-web`. This repository has no recipe for running
+those images yet. The supported way to deploy is the two deploy scripts below, which build the images on the host.
 [tools/release/README.md](../tools/release/README.md) says how the images are published.
+The event viewer, stream-event-client, is not released here. It ships as its own image,
+`ghcr.io/solar-punk-ltd/stream-event-client:<tag>`, built from a `v*` tag in its own repository.
 
 ## 2. Deploy each manager
 
@@ -67,8 +69,8 @@ which `?qoe=1` on a watch URL opens, under the overlay's header as `Player <rele
 
 A deploy of a commit with no tag of its own still names its build:
 
-- the nearest tag before the commit and how many commits past it, `<tag>+<n>`, as `QA-build-2026-10-07+3`;
-- the short commit, as `635b4e175`, when there is no tag behind it at all;
+- the nearest tag before the commit and how many commits past it, `<tag>+<n>`, as `QA-build-2026-10-07+3`.
+- the short commit, as `635b4e175`, when there is no tag behind it at all.
 - either of them, or the tag, followed by `-dirty` when the app, `packages/` or the root's install files held a change
   git had not committed.
 
