@@ -106,6 +106,14 @@ An env file that sets a key the admin ignores deploys, with a warning naming
 each one. [Retired keys](../backend/README.md#retired-keys) in the backend
 README lists them.
 
+`STREAM_RESTART_WINDOW_MINUTES` is how long after a stream ends it can still go
+live again on its key, 30 minutes unless set. Then the admin changes the key,
+as [Finishing a stream](../backend/README.md#finishing-a-stream) in the backend
+README says. No host needs a change for it unless it wants another value. The
+script does not check it: the API refuses anything but a whole number from 0 to
+10080 at its start, with a sentence in its log, which the deploy prints when the
+API does not come up.
+
 Nor does the file name the build: `deploy.sh` builds `WEB2_ADMIN_VERSION` and
 `WEB2_ADMIN_COMMIT` into the api image (see "The version" below). An env file
 that sets either one, even to nothing, is refused, since its value would win
