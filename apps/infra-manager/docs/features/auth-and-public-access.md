@@ -16,10 +16,10 @@ procedure is "Opening the manager to the internet" in
 [../../deploy/README.md](../../deploy/README.md), which is the one to follow. What is kept below
 is the reasoning, because the order of the steps is the part worth understanding.
 
-**The manager's own edge is gone** (2026-09-28). The `edge` service, its `public` profile and
-`MANAGER_DOMAIN` in `manager/.env` described below were removed. HTTPS for the manager is the
-host's edge in `infra/edge/`, one Caddy per host for every console the host runs, and "Opening the
-manager to the internet" in the deploy README says how to use it.
+**The manager's own edge is gone** (2026-09-28). It had an `edge` service of its own, with a
+`public` compose profile and `MANAGER_DOMAIN` in `manager/.env`, and all three were removed. HTTPS
+for the manager is the host's edge in `infra/edge/`, one Caddy per host for every console the host
+runs, and "Opening the manager to the internet" in the deploy README says how to use it.
 
 The decisions this page rests on were taken on 2026-09-05: Caddy for HTTPS, several users, and closing
 the host doors first.
@@ -248,30 +248,13 @@ add_header Permissions-Policy "camera=(), microphone=(), geolocation=()" always;
 `script-src 'self'` holds. Links to deployments' own pages (viewer, SRS) open in new tabs and are
 unaffected.
 
-HTTPS (Caddy, as recommended): a new `edge` service in `manager/docker-compose.yml`,
-image `caddy:2` pinned by digest, publishing `80` and `443`, with a five line Caddyfile:
-
-```
-{$MANAGER_DOMAIN} {
-    encode zstd gzip
-    header Strict-Transport-Security "max-age=31536000; includeSubDomains"
-    reverse_proxy web:80
-}
-```
-
-`MANAGER_DOMAIN` comes from `manager/.env`. Caddy obtains and renews the Let's Encrypt
-certificate itself, which needs an A record for the domain pointing at the host and ports 80 and
-443 open. `web` keeps publishing `127.0.0.1:8080` as the break-glass path. Caddy sends
+HTTPS comes from the host's edge in `infra/edge/` at the repository root. The edge sends
 `X-Forwarded-Proto`, and nginx passes it on rather than overwriting it with its own plain `http`,
 which is the whole of how the manager knows whether to mark the cookie `Secure`. Through the
 tunnel there is no edge and no such header, so it is not marked, and both answers are the right
-one for the transport in use.
-
-As built: the service sits in the `public` compose profile with two named volumes for the
-certificate, and `deploy.sh` adds `--profile public` when `MANAGER_DOMAIN` is set. Two things in
-`frontend/nginx.conf` follow from having an edge at all. `set_real_ip_from` for the private ranges
-the compose network is drawn from, so the last `X-Forwarded-For` hop is the browser rather than the
-edge's own container address, which is the address the login lockout would otherwise blame for
+one for the transport in use. Two more things in `frontend/nginx.conf` follow from having an edge
+at all. `set_real_ip_from` for the private ranges, so the last `X-Forwarded-For` hop is the browser
+rather than the edge's address, which is the address the login lockout would otherwise blame for
 everybody. And `limit_req` on `/auth/login` only, ten a minute per address with a burst of five,
 because the manager's own lockout counts an attempt after it has paid for a scrypt, so a flood is
 expensive before it is refused.
@@ -304,9 +287,9 @@ passphrase and OvenMediaEngine publish URLs remain available immediately.
 
 1. **Login gate**: migration, hashing, sessions, limiter, middleware, routes, CLI, sign-in page,
    Access page, mock, headers in nginx, docs. Nothing changes on the host until deployed.
-2. **Edge**: the Caddy service and compose wiring, `deploy/deploy.sh` reading `MANAGER_DOMAIN`,
-   the real client address and the sign-in rate limit in nginx, the host firewall generator script
-   (below) and the runbook in `deploy/README.md`.
+2. **Edge**: HTTPS in front of the manager, which is now the host's edge in `infra/edge/`, the real
+   client address and the sign-in rate limit in nginx, the host firewall generator script (below)
+   and the runbook in `deploy/README.md`.
 
 ## Host steps, for the host's operator to run
 
@@ -376,9 +359,8 @@ moved and are marked where they do.
    encryption starts, and with the takeover on such a publisher can replace a live broadcast. The
    SRT passphrase keeps the picture private but not the key.
 
-4. Point a DNS A record at the host, set `MANAGER_DOMAIN` in `manager/.env`, deploy PR 2.
-   `deploy.sh` reads that name, adds `--profile public` so the edge starts, and says which of the
-   two it did. Watch `docker compose logs -f edge` for the certificate, open the domain, sign in.
+4. Point a DNS A record at the host and put the manager behind the host's edge in `infra/edge/`.
+   Open the domain and sign in.
 5. Keep the tunnel. `web` still publishes `127.0.0.1:8080`, which is the way back in when the edge
    is down, the certificate is stuck or the domain is wrong.
 
@@ -406,7 +388,4 @@ moved and are marked where they do.
 - The first user is created by the CLI with a hidden prompt or a pipe, never an env var.
 - Security headers present on every response, checked in the Browser pane.
 - Docs updated: `manager/README.md` loses "No auth", `deploy/README.md` gains the runbook.
-- No new npm dependency in PR 1, and none in PR 2 either. PR 2 adds one image,
-  `caddy:2.11.4@sha256:df7f1c2fb114453b951de51a98efc010db1655a92c2e86be6706714e2417a78d`: the
-  newest 2.x patch release, a Docker Official Image, published 2026-08-12 and so 25 days old when
-  it was pinned, its index digest read back from the registry rather than taken from the tag page.
+- No new npm dependency in PR 1, and none in PR 2 either.
