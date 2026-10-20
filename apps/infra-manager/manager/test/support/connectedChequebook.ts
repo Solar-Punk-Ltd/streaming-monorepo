@@ -334,13 +334,10 @@ export async function startConnectedChequebook(
       receiptPollBudgetMs: options.receiptPollBudgetMs,
     });
     const settings = options.chainSettings ?? 'configured';
-    // Built as a value and not a literal, so the runtime's retired Docker fields can go without touching this file.
-    const runtimeFields = {
+    const runtime: ChequebookRuntime = {
       rpcEndpoints: settings === 'configured' ? `{"100":"${CONNECTED_CHAIN_ENDPOINT}"}` : undefined,
       chainEndpoint: settings === 'none' ? undefined : CONNECTED_DEFAULT_CHAIN_ENDPOINT,
-      dockerTransports: undefined,
     };
-    const runtime: ChequebookRuntime = runtimeFields;
     const directRoute = {
       profiles: new ProfileRepository(pool),
       containers,

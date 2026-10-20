@@ -245,7 +245,7 @@ async function within<T>(promise: Promise<T>, ms: number): Promise<T | null> {
  * The funding API's chequebook operations: a deposit into, or a withdrawal from, the chequebook of a stage's own Bee
  * node or a rung, which the node carries out and pays the gas of in xDAI. A thin adapter over the manager's own
  * chequebook path, `ChequebookOperationsService`, the one behind the deployment page's Fill chequebook and Withdraw:
- * the same preparation over the node's own Docker connection, the same last check before sending, the same single
+ * the same preparation through the node's Bee API, the same last check before sending, the same single
  * POST to the node and the same journal, `chequebook_operations`, where the move is recorded as requested by
  * `web2-admin`. This adapter journals nothing of its own.
  *

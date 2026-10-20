@@ -1,12 +1,6 @@
 import type { Pool } from 'pg';
 import { ChequebookChainRegistry, type ChequebookChainReader } from './ChequebookChainRegistry.js';
-import type { ChequebookOperation } from '@streaming-infra-manager/common';
-import {
-  ChequebookTransferPreparation,
-  ownedAcquisitionBudgets,
-  type CaptureTransferTarget,
-  type OwnedTransferPreparationOptions,
-} from './ChequebookTransferPreparation.js';
+import { ChequebookTransferPreparation, type CaptureTransferTarget } from './ChequebookTransferPreparation.js';
 import { ChequebookPendingHashes } from './ChequebookPendingHashes.js';
 import { ChequebookReceiptInspector } from './ChequebookReceiptInspector.js';
 import { ChequebookReceiptCheck } from './ChequebookReceiptCheck.js';
@@ -17,15 +11,7 @@ import { ChequebookOperationsService } from './ChequebookOperationsService.js';
 import { ChequebookReceiptPoller, type ReceiptPollerOptions } from './ChequebookReceiptPoller.js';
 import { PostgresChequebookOperationRepository } from './PostgresChequebookOperationRepository.js';
 import { PostgresChequebookTargetOwnership } from './PostgresChequebookTargetOwnership.js';
-import { PostgresBeeBridgeQualifications } from './PostgresBeeBridgeQualifications.js';
 import type { ChequebookOperationRepository } from './ChequebookOperationRepository.js';
-import type { BeeBridgeQualificationRecord } from './beeBridgeQualification.js';
-import { ChequebookDockerTransports, localDockerSocketPath } from './ChequebookDockerTransports.js';
-import {
-  OwnedChequebookTransports,
-  type ChequebookTransportCleanup,
-  type ChequebookTransportDependencies,
-} from './OwnedChequebookTransports.js';
 import { ChequebookPreparationError } from '../errors/ChequebookPreparationError.js';
 import { ConfiguredBeeTargetResolver } from './ConfiguredBeeTargetResolver.js';
 import { PinnedBeeSession, type BeeTransferSession } from './PinnedBeeSession.js';
@@ -33,120 +19,59 @@ import type { ContainerRepository } from '../ContainerRepository.js';
 import type { ProfileRepository } from '../ProfileRepository.js';
 import { Logger } from '../Logger.js';
 
-export interface ChequebookServiceDependencies extends ChequebookTransportDependencies {
+export interface ChequebookServiceDependencies {
+  /** The deployments and their recorded containers, which a node's Bee API address is worked out of. */
+  readonly profiles: Pick<ProfileRepository, 'findByName'>;
+  readonly containers: Pick<ContainerRepository, 'listApiContainers'>;
   readonly repository?: ChequebookOperationRepository;
   readonly captureTarget?: CaptureTransferTarget;
   readonly createChainReader?: (endpoint: string) => ChequebookChainReader;
-  readonly qualificationCatalog?: readonly BeeBridgeQualificationRecord[];
-  readonly preparation?: OwnedTransferPreparationOptions;
+  readonly preparation?: { readonly timeoutMs?: number };
   readonly receiptPolling?: ReceiptPollerOptions;
   /**
-   * The deployments and their recorded containers, which the direct route works a node's Bee API address out of.
-   * With both given the service reaches every node through its Bee API and opens no Docker connection, which is how
-   * the running manager is built. Without them it takes the Docker route, kept unused until a cleanup PR removes it.
+   * The session to a node's Bee API, a plain HTTP one unless a test hands in its own: the transfer session, plus the
+   * pending-transactions read recovery makes on it.
    */
-  readonly profiles?: Pick<ProfileRepository, 'findByName'>;
-  readonly containers?: Pick<ContainerRepository, 'listApiContainers'>;
-  /**
-   * The direct route's session to a node's Bee API, a plain HTTP one unless a test hands in its own: the transfer
-   * session, plus the pending-transactions read recovery makes on it.
-   */
-  readonly createSession?: (url: string) => BeeTransferSession & Pick<PinnedBeeSession, 'getPendingTransactions'>;
+  readonly createSession?: (url: string) => DirectSession;
 }
-
-/** A saved transfer's node, which the chain registry reads again when it does not know that node's endpoint. */
-type SavedChainNode = Pick<ChequebookOperation, 'chainId' | 'nodeAddress'> & {
-  readonly profileName?: string;
-  readonly profileInstanceId?: string | null;
-};
 
 /** The manager's own process settings a transfer reads. None of them comes from a request or a profile. */
 export interface ChequebookRuntime {
   readonly rpcEndpoints: string | undefined;
   /**
-   * The manager's default chain endpoint, FUNDING_RPC_URL or else BEE_RPC_ENDPOINT: where receipts, finality and
-   * recovery read the chain for any chain CHEQUEBOOK_RPC_ENDPOINTS does not name. Verified against the node's chain
-   * before use.
+   * The manager's default chain endpoint, FUNDING_RPC_URL or else BEE_RPC_ENDPOINT: where preparation, receipts,
+   * finality and recovery read the chain for any chain CHEQUEBOOK_RPC_ENDPOINTS does not name. Verified against the
+   * node's chain before use.
    */
   readonly chainEndpoint?: string | undefined;
-  /**
-   * CHEQUEBOOK_DOCKER_TRANSPORTS, read by the Docker route alone. The running manager takes the direct route and
-   * passes neither Docker setting; both stay for the Docker route's code, unused until a cleanup PR removes it.
-   */
-  readonly dockerTransports?: string | undefined;
-  /** The manager's DOCKER_HOST, which decides the local socket a transfer on localhost uses on the Docker route. */
-  readonly dockerHost?: string | undefined;
 }
 
 /** Runtime strings override the default routes, never the other way round. Test dependencies are trusted code, never API or profile fields. */
 export function createChequebookOperationsService(
   pool: Pool,
   runtime: ChequebookRuntime,
-  dependencies: ChequebookServiceDependencies = {},
+  dependencies: ChequebookServiceDependencies,
 ): ChequebookOperationsService {
   let chainRegistry: ChequebookChainRegistry | undefined;
   const registry = () =>
     (chainRegistry ??= new ChequebookChainRegistry(runtime.rpcEndpoints, dependencies.createChainReader, {
       defaultEndpoint: runtime.chainEndpoint,
     }));
+  const forChain = (chainId: number, signal?: AbortSignal) => registry().forChain(chainId, signal);
   const ownership = new PostgresChequebookTargetOwnership(pool);
   const captureTarget = dependencies.captureTarget ?? ownership.capture.bind(ownership);
-  const direct =
-    dependencies.profiles && dependencies.containers
-      ? new ConfiguredBeeTargetResolver(dependencies.profiles, dependencies.containers, captureTarget)
-      : null;
-  const routes = direct
-    ? null
-    : new ChequebookDockerTransports(runtime.dockerTransports, dependencies.qualificationCatalog, {
-        localSocketPath: localDockerSocketPath(runtime.dockerHost),
-      });
-  const transports = routes
-    ? new OwnedChequebookTransports(routes, {
-        ...dependencies,
-        bridgeQualifications: dependencies.bridgeQualifications ?? new PostgresBeeBridgeQualifications(pool),
-      })
-    : null;
-  const acquire = transports ? transports.acquire.bind(transports) : null;
-  const budgets = ownedAcquisitionBudgets(structuredClone(dependencies.preparation ?? {}));
-  /**
-   * Opens the node's owned connection only to read the endpoint its container runs with. The bridge it opens is
-   * closed unused. The direct route reads no node for an endpoint: it answers null, and the manager's own settings
-   * name the chain endpoint.
-   */
-  const readNodeEndpoint = (node: SavedChainNode) => async (signal?: AbortSignal) => {
-    if (direct || !acquire || !node.profileName || !node.profileInstanceId) return null;
-    const acquired = await acquire(
-      await captureTarget(node.profileName, node.profileInstanceId),
-      budgets,
-      signal ?? new AbortController().signal,
-    );
-    acquired.stream.destroy();
-    return acquired.chainEndpoint;
-  };
-  const chains = {
-    forPreparedNode: (chainId: number, nodeAddress: string, nodeEndpoint: string | null, signal?: AbortSignal) =>
-      registry().forPreparedNode(chainId, nodeAddress, nodeEndpoint, signal),
-    forSavedNode: (node: SavedChainNode, signal?: AbortSignal) =>
-      registry().forSavedNode(node.chainId, node.nodeAddress, readNodeEndpoint(node), signal),
-  };
-  // The real session serves both readers; the type above says a test's must too.
+  const resolver = new ConfiguredBeeTargetResolver(dependencies.profiles, dependencies.containers, captureTarget);
+  const resolve = resolver.resolve.bind(resolver);
   const sessions = ownedDirectSessions(dependencies.createSession ?? ((url: string) => new PinnedBeeSession(url)));
-  const createSession = sessions.create;
-  const preparation = direct
-    ? new ChequebookTransferPreparation(direct.resolve.bind(direct), chains, createSession, {
-        timeoutMs: dependencies.preparation?.timeoutMs,
-      })
-    : ChequebookTransferPreparation.fromOwnedTarget(captureTarget, acquire!, chains, dependencies.preparation);
-  const pending = direct
-    ? new ChequebookPendingHashes(direct.resolve.bind(direct), createSession)
-    : ChequebookPendingHashes.fromOwnedTarget(captureTarget, acquire!, dependencies.preparation);
+  const preparation = new ChequebookTransferPreparation(resolve, { forChain }, sessions.create, {
+    timeoutMs: dependencies.preparation?.timeoutMs,
+  });
+  const pending = new ChequebookPendingHashes(resolve, sessions.create);
   const repository = dependencies.repository ?? new PostgresChequebookOperationRepository(pool);
-  const receiptInspector = new ChequebookReceiptInspector((operation, signal) =>
-    chains.forSavedNode(operation, signal),
-  );
+  const receiptInspector = new ChequebookReceiptInspector((operation, signal) => forChain(operation.chainId, signal));
   const receipts = new ChequebookReceiptCheck(repository, receiptInspector.inspect.bind(receiptInspector));
   const recoveryInspector = new ChequebookRecoveryInspector(
-    (operation, signal) => chains.forSavedNode(operation, signal),
+    (operation, signal) => forChain(operation.chainId, signal),
     pending.read.bind(pending),
   );
   const poller = new ChequebookReceiptPoller(
@@ -159,19 +84,19 @@ export function createChequebookOperationsService(
     new ChequebookSubmission(repository, preparation.prepare.bind(preparation)),
     receipts,
     new ChequebookRecovery(repository, recoveryInspector, receipts),
-    transports ? transports.shutdown.bind(transports) : sessions.shutdown,
+    sessions.shutdown,
     poller,
   );
 }
 
-/** A session to a node's Bee API on the direct route: the transfer session plus the pending read recovery makes. */
+/** A session to a node's Bee API: the transfer session plus the pending read recovery makes. */
 type DirectSession = BeeTransferSession & Pick<PinnedBeeSession, 'getPendingTransactions'>;
 
 /**
- * The direct route's sessions to nodes, owned the way the Docker route's transports own their connections. Each is
- * tracked while open. Shutdown disposes every one before it resolves, which aborts a POST in flight and leaves a
- * prepared move unable to send, and from then on no session is opened, so a move still being prepared refuses before
- * anything is saved or sent. The preparation's sessions and recovery's pending reads go through the same owner.
+ * The sessions to nodes. Each is tracked while open. Shutdown disposes every one before it resolves, which aborts a
+ * POST in flight and leaves a prepared move unable to send, and from then on no session is opened, so a move still
+ * being prepared refuses before anything is saved or sent. The preparation's sessions and recovery's pending reads go
+ * through the same owner.
  */
 function ownedDirectSessions(open: (url: string) => DirectSession) {
   const live = new Set<DirectSession>();
@@ -196,11 +121,10 @@ function ownedDirectSessions(open: (url: string) => DirectSession) {
         },
       };
     },
-    async shutdown(): Promise<readonly ChequebookTransportCleanup[]> {
+    async shutdown(): Promise<void> {
       closing = true;
       for (const session of live) session.dispose();
       live.clear();
-      return [];
     },
   };
 }

@@ -5,7 +5,7 @@
  * restarted while that polling was still owed. No node is asked for the
  * endpoint it was started with, and with no setting a transfer is refused as
  * `chain_endpoint_missing` before anything is sent. The deployment here is a
- * remote one, `user@host`, which the Docker route could not reach.
+ * remote one, `user@host`.
  */
 import assert from 'node:assert/strict';
 import { it, type TestContext } from 'node:test';
@@ -16,10 +16,14 @@ import {
   type ChequebookServiceDependencies,
 } from '../../src/domain/chequebook/createChequebookOperationsService.js';
 import type { ChequebookChainReader } from '../../src/domain/chequebook/ChequebookChainRegistry.js';
-import { InMemoryChequebookOperations, transferContext, transferIntent } from '../support/chequebookOperations.js';
+import {
+  InMemoryChequebookOperations,
+  syntheticTarget,
+  transferContext,
+  transferIntent,
+} from '../support/chequebookOperations.js';
 import { syntheticBeeNode } from '../support/connectedChequebook.js';
 import { makeProfile } from '../support/profileFixtures.js';
-import { syntheticTarget } from '../support/syntheticDockerBee.js';
 import type { Profile } from '../../src/types/index.js';
 
 const DEFAULT_ENDPOINT = 'https://funding.example.invalid';
@@ -121,7 +125,7 @@ function composition(t: TestContext, chainEndpoint: string | null = DEFAULT_ENDP
   const start = () => {
     const service = createChequebookOperationsService(
       pool,
-      { rpcEndpoints: undefined, chainEndpoint: chainEndpoint ?? undefined, dockerTransports: undefined },
+      { rpcEndpoints: undefined, chainEndpoint: chainEndpoint ?? undefined },
       dependencies,
     );
     t.after(() => service.shutdown());

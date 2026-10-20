@@ -16,7 +16,6 @@ import type { ChequebookReceiptPoller } from './ChequebookReceiptPoller.js';
 import type { ChequebookRecovery } from './ChequebookRecovery.js';
 import { normalizeHistoryQuery } from './chequebookHistory.js';
 import { operationId } from './operationIdentity.js';
-import type { ChequebookTransportCleanup } from './OwnedChequebookTransports.js';
 
 /** Global saved-operation reads are independent of current profile existence and configuration. */
 export class ChequebookOperationsService {
@@ -25,7 +24,7 @@ export class ChequebookOperationsService {
     private readonly submission: ChequebookSubmission,
     private readonly receipts: ChequebookReceiptCheck,
     private readonly recovery: ChequebookRecovery,
-    private readonly closeTransports: () => Promise<readonly ChequebookTransportCleanup[]> = async () => [],
+    private readonly closeSessions: () => Promise<void> = async () => {},
     private readonly poller?: Pick<ChequebookReceiptPoller, 'start' | 'stop'>,
   ) {}
 
@@ -34,9 +33,9 @@ export class ChequebookOperationsService {
     this.poller?.start();
   }
 
-  async shutdown(): Promise<readonly ChequebookTransportCleanup[]> {
+  async shutdown(): Promise<void> {
     await this.poller?.stop();
-    return this.closeTransports();
+    await this.closeSessions();
   }
 
   async submit(intent: ChequebookTransferIntent): Promise<ChequebookAdmissionDetail> {

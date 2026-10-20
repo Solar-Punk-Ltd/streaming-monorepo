@@ -180,7 +180,7 @@ describe('configured Bee target locator', () => {
     assert.deepEqual(result.submissionTarget, captured);
   });
 
-  it('reaches a user@host deployment at the host alone: only the Docker route ever refused the @', async () => {
+  it('reaches a user@host deployment at the host alone', async () => {
     const result = await resolver({ current: { ...profile, host: 'operator@bee.example.invalid' } }).resolve(
       'deployment',
     );

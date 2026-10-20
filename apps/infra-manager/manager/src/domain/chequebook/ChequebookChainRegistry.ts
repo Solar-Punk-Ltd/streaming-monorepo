@@ -7,12 +7,6 @@ export type ChequebookChainReader = Pick<
   ChainRpc,
   'chainId' | 'transactionCount' | 'transaction' | 'receipt' | 'blockHeader' | 'blockTransactions'
 >;
-/**
- * Reads, again, the endpoint a saved transfer's node was started with. Null when it names none. Only the Docker route
- * can answer one, and the registry no longer calls it; the parameter goes with that route's cleanup.
- */
-export type ReadNodeChainEndpoint = (signal?: AbortSignal) => Promise<string | null>;
-
 /** An endpoint a transfer may read the chain through: http or https, a host, and no user information or fragment. */
 function usableChainEndpoint(value: unknown): value is string {
   if (typeof value !== 'string') return false;
@@ -85,32 +79,6 @@ export class ChequebookChainRegistry {
     } catch (error) {
       throw ChainReadError.keeping(error);
     }
-  }
-
-  /**
-   * A transfer being prepared, read as `forChain`. The endpoint the node was started with, which only the Docker route
-   * can name, is taken and never used: the signature stays for that route until it is removed.
-   */
-  async forPreparedNode(
-    chainId: number,
-    _nodeAddress: string,
-    _nodeEndpoint: string | null,
-    signal?: AbortSignal,
-  ): Promise<ChequebookChainReader> {
-    return this.forChain(chainId, signal);
-  }
-
-  /**
-   * A saved transfer's receipts, finality and recovery, read as `forChain`. The node is never read for an endpoint:
-   * the reader passed for it is never called, and the signature stays for the Docker route until it is removed.
-   */
-  async forSavedNode(
-    chainId: number,
-    _nodeAddress: string,
-    _readNodeEndpoint: ReadNodeChainEndpoint,
-    signal?: AbortSignal,
-  ): Promise<ChequebookChainReader> {
-    return this.forChain(chainId, signal);
   }
 
   /** A reader for the endpoint, once it answered the chain it is meant to read. */

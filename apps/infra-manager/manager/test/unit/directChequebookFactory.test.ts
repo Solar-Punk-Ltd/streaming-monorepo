@@ -1,9 +1,8 @@
 /**
  * The service as index.ts builds it: given the deployments and their recorded containers, it reaches a node through
- * its Bee API and opens no Docker connection, whatever host the deployment names.
+ * its Bee API, whatever host the deployment names.
  *
- * Unit test, no database and no network: the journal is in memory, the node's session and the chain are fakes, and a
- * Docker connection, were one opened, fails the test.
+ * Unit test, no database and no network: the journal is in memory, and the node's session and the chain are fakes.
  */
 import assert from 'node:assert/strict';
 import { describe, it, type TestContext } from 'node:test';
@@ -14,10 +13,10 @@ import type { Profile } from '../../src/types/index.js';
 import {
   InMemoryChequebookOperations,
   profileInstanceId,
+  syntheticTarget,
   transferContext,
   transferIntent,
 } from '../support/chequebookOperations.js';
-import { syntheticTarget } from '../support/syntheticDockerBee.js';
 
 const deployment = {
   instance_id: profileInstanceId,
@@ -149,7 +148,7 @@ function directService(t: TestContext, host = deployment.host, options: NodeOpti
   const repository = new InMemoryChequebookOperations();
   let resolving = false;
   let release: (() => void) | undefined;
-  // The runtime index.ts passes: no Docker setting at all.
+  // The runtime index.ts passes.
   const service = createChequebookOperationsService(
     pool,
     { rpcEndpoints: '{"100":"https://rpc.example.invalid"}' },
@@ -182,7 +181,6 @@ function directService(t: TestContext, host = deployment.host, options: NodeOpti
         urls.push(url);
         return node.create();
       },
-      connectUnix: () => assert.fail('the direct route opens no Docker connection'),
       preparation: { timeoutMs: 3000 },
     },
   );
@@ -199,7 +197,7 @@ function directService(t: TestContext, host = deployment.host, options: NodeOpti
 }
 
 describe('the chequebook service built with the deployments and their containers', () => {
-  it("takes the direct route: one move, through a session at the deployment's address and recorded port", async (t) => {
+  it("sends one move through a session at the deployment's address and recorded port", async (t) => {
     const d = directService(t);
     const result = await d.service.submit(transferIntent());
     assert.equal(result.operation.state, 'submitted');
@@ -207,7 +205,7 @@ describe('the chequebook service built with the deployments and their containers
     assert.deepEqual(d.urls, [`http://bee-host:${reserved}/`]);
   });
 
-  it('reaches a user@host deployment at the host alone, with no Docker route to refuse the @', async (t) => {
+  it('reaches a user@host deployment at the host alone', async (t) => {
     const d = directService(t, 'operator@bee.example.invalid');
     const result = await d.service.submit(transferIntent());
     assert.equal(result.operation.state, 'submitted');
@@ -217,16 +215,15 @@ describe('the chequebook service built with the deployments and their containers
 });
 
 /**
- * Shutdown on the direct route, as the Docker route's transports gave it: every session open to a node is disposed
- * before shutdown resolves, which aborts a POST in flight, and no session is opened after it, so a move that was
- * waiting to be prepared or to claim its dispatch sends nothing.
+ * Shutdown: every session open to a node is disposed before shutdown resolves, which aborts a POST in flight, and no
+ * session is opened after it, so a move that was waiting to be prepared or to claim its dispatch sends nothing.
  */
-describe('the direct route at shutdown', { timeout: 10_000 }, () => {
+describe('the chequebook service at shutdown', { timeout: 10_000 }, () => {
   it('disposes a held POST, and refuses every later move without opening a session', async (t) => {
     const d = directService(t, deployment.host, { holdPost: true });
     const submitting = d.service.submit(transferIntent());
     while (d.posts() === 0) await pause();
-    assert.deepEqual(await d.service.shutdown(), []);
+    await d.service.shutdown();
     const result = await submitting;
     assert.equal(result.operation.state, 'unknown');
     assert.equal(d.posts(), 1);
@@ -240,7 +237,7 @@ describe('the direct route at shutdown', { timeout: 10_000 }, () => {
     const submitting = d.service.submit(transferIntent());
     const refused = assert.rejects(submitting);
     while (!d.resolving()) await pause();
-    assert.deepEqual(await d.service.shutdown(), []);
+    await d.service.shutdown();
     d.releaseResolve();
     await refused;
     assert.equal(d.counts().sessions, 0);
@@ -261,7 +258,7 @@ describe('the direct route at shutdown', { timeout: 10_000 }, () => {
     };
     const submitting = d.service.submit(transferIntent());
     while (!claiming) await pause();
-    assert.deepEqual(await d.service.shutdown(), []);
+    await d.service.shutdown();
     release();
     const result = await submitting;
     assert.equal(result.operation.state, 'unknown');

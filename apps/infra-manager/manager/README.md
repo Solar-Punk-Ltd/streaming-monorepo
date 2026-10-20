@@ -413,8 +413,7 @@ uses no Docker connection and no SSH.
 whose values are `http` or `https` URLs with no user information and no fragment, for example
 `{"100":"https://rpc.example.invalid"}`. All three are manager settings, never read from a request,
 a deployment or a Bee answer, and changing one takes a restart. A URL can carry a key, so route the
-value into the process rather than writing it in a committed file. `CHEQUEBOOK_DOCKER_TRANSPORTS`
-is not read.
+value into the process rather than writing it in a committed file.
 
 A transfer the manager could not prepare is answered `503` with
 `{"error":"chequebook_preparation_unavailable","cause":...,"check":...,"message":...}`, where

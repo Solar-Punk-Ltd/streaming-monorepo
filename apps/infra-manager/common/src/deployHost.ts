@@ -3,12 +3,7 @@
  * schemas and the UI's inline validation so both refuse exactly the same values.
  *
  * It is `localhost` or the name of a Host block in the manager's ssh config,
- * never `user@host`. Deploying reaches a `user@host` target fine, but the
- * chequebook's Docker route opens `ssh -- <alias>` and refuses a name with `@`,
- * because ssh would read it as a destination rather than a Host block. A
- * deployment created that way runs and then cannot deposit, withdraw or read its
- * balance, and only a redeploy under an alias recovers it. So the `@` is refused
- * here, at create, before any money goes in.
+ * never `user@host`.
  *
  * Deployments stored before this rule keep their `user@host` and can still be
  * started, stopped and deleted, because `targetAlias` still reads that form.

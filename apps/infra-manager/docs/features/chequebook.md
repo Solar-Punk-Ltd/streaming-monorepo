@@ -282,7 +282,6 @@ Check, Resolve and Assert work on them as on any other operation.
 | `CHEQUEBOOK_RPC_ENDPOINTS`     | Optional JSON object from chain id to endpoint, for example `{"100":"https://rpc.example.com"}`. Wins for each chain it names. |
 | `FUNDING_RPC_URL`              | The default chain endpoint for any chain the setting above does not name.                                                      |
 | `BEE_RPC_ENDPOINT`             | The default when `FUNDING_RPC_URL` is unset.                                                                                   |
-| `CHEQUEBOOK_DOCKER_TRANSPORTS` | Not read by the running manager.                                                                                               |
 
 The chain settings are read at startup. A change takes effect after a restart.
 
