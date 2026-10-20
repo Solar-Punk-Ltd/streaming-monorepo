@@ -189,20 +189,17 @@ its `[Boot]   version:` line.
 `GET /api/config` answers `defaultTheme` beside the feed and the viewer link:
 the look this host's console starts in for a browser whose admin picked none
 of their own. It is one of the names in `ADMIN_THEME_NAMES` of
-web2-admin-common, `swarm` or `web3privacy`, and `swarm` until an admin sets
-another. The route needs no session, so the login page wears it too.
+web2-admin-common, `swarm` or `web3privacy`. The route needs no session, so the
+login page wears it too.
 
-`PUT /api/config/default-theme` with `{ "defaultTheme": "swarm" }` sets it, for
-admins only (403 `admin_required` for anyone else, 401 without a session), and
-answers `{ "defaultTheme": "swarm" }`. A name the console does not carry is 400
-`validation_error`. It is stored in the one row of `console_settings`
-(migration 021) with who set it and when, and audited as `console.theme.set`.
-The table does not check the name: a stored look that a later console no longer
-carries, the retired `default` among them, is answered as `swarm`, so retiring
-a look needs no migration. A read of it that fails is answered as `swarm` too,
-with a warning in the log, so the feed and the viewer link stay up while the
-database is away. The console has no page that calls the PUT since 2026-10-12,
-so today it is set with curl. How the answer meets a browser's own pick is in
+It is read from the one row of `console_settings` (migration 021), and `swarm`
+while there is no row. Nothing in the admin writes that row since the console
+dropped its page for it on 2026-10-12, so a host has a row only if an earlier
+admin stored one. The table does not check the name: a stored look the console
+no longer carries, the retired `default` among them, is answered as `swarm`. A
+read of it that fails is answered as `swarm` too, with a warning in the log, so
+the feed and the viewer link stay up while the database is away. How the answer
+meets a browser's own pick is in
 [the frontend's README](../frontend/README.md#themes).
 
 ## Publishing
@@ -1644,11 +1641,10 @@ and the available balance the move was worked out from), and
 item's bulk, request id, node, label, direction, amount, target, that
 available balance, hash, state and error.
 
-The console's look ([The console's look](#the-consoles-look)):
-`console.theme.set`, one row per change an admin saves, with
-`details: { from, to }`, the look the console wore before and the one it wears
-now. A stored look the console no longer carries is recorded as the `swarm`
-it was worn as. The row has no `stream_id`.
+An earlier admin also wrote `console.theme.set` rows, one per change of the
+host's default look ([The console's look](#the-consoles-look)), with
+`details: { from, to }`. Nothing writes them now, and the ones already stored
+stay in the log.
 
 **A failed audit write never fails the operation.** The row is written after
 the mutation it describes, which has already happened by then; the failure is
