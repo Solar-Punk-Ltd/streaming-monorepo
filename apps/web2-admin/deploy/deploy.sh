@@ -59,8 +59,9 @@ readonly KNOWN_SERVICES="postgres api web"
 # console is on 8080, and both are often tunnelled from one laptop.
 readonly DEFAULT_WEB_PORT=9090
 # Published values: the first Hardhat test account's key, which every Hardhat
-# install documents, and the placeholders in .env.sample: the internal API
-# token, the brand wallet's secret and the manager funding token. They must
+# install documents, the placeholders in .env.sample, the internal API token
+# and the manager funding token, and the brand wallet secret that samples
+# before 2026-10-20 shipped and env files copied from them still hold. They must
 # never sign a real catalogue, guard a real internal API, encrypt a brand
 # wallet's key or open a manager's funding API, so a deploy refuses them unless
 # --allow-sample-secrets is given.
@@ -410,7 +411,7 @@ if [ -z "$BRAND_WALLET_SECRET" ]; then
 elif ! [[ "$BRAND_WALLET_SECRET" =~ ^[0-9a-fA-F]{64}$ ]]; then
     problem "BRAND_WALLET_SECRET must be 64 hex characters (32 bytes)."
 elif [ "$(lower "$BRAND_WALLET_SECRET")" = "$SAMPLE_BRAND_WALLET_SECRET" ]; then
-    sample_secret "BRAND_WALLET_SECRET is the placeholder from .env.sample. The brand wallet's key is encrypted under it, so generate a real one with openssl rand -hex 32 before the wallet is created."
+    sample_secret "BRAND_WALLET_SECRET is the placeholder earlier .env.sample files shipped. The brand wallet's key is encrypted under it, so generate a real one with openssl rand -hex 32 before the wallet is created."
 fi
 
 if [ -n "$MANAGER_FUNDING_URL" ]; then
