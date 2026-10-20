@@ -339,8 +339,8 @@ under `/api/admin-funding`, on its bearer token and not a session
 node with the same two `PATCH` requests and pays from the node's own wallet.
 Its checks are stricter than the Storage card's: it reads the node's wallet
 and refuses a top-up the xBZZ does not cover and either operation with no xDAI
-for the gas; a dilution takes one step or two and must leave seven days, not
-one; and the postage contract is read before the node is asked, for the
+for the gas. A dilution takes one step or two and must leave seven days, not
+one. The postage contract is read before the node is asked, for the
 batch's depth and owner and its balance there. Each operation is journalled
 before the node is asked, so the same request is never sent twice, and one
 whose answer was lost is settled by what the postage contract shows. Like the

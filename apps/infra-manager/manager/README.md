@@ -634,7 +634,7 @@ generated secrets and written into its env file like them. A stored value is
 never replaced. The stage record carries its sha256 as `own`, the one kind
 decided by where the token came from (every other token is `shared`), and the push
 before the uploader starts registers it, so the uploader's first call finds it
-known. Only an address on the link's origin is given it; an address moved
+known. Only an address on the link's origin is given it. An address moved
 elsewhere needs a token typed for it. A create never copies the manager's
 stored token: the wizard and a create through the API store the address alone.
 A deployment created by a manager from before stages keeps the token it was
@@ -648,7 +648,7 @@ connection answers `token-not-own` until the token is rotated.
 stage card, takes the token out: the one the manager generated, and one stored
 in the settings, typed or copied, with the origin recorded for it. Nothing that
 runs changes. The next deploy generates a new one and registers it before the
-uploader starts; until then the admin stops taking the old one once the
+uploader starts. Until then the admin stops taking the old one once the
 manager next pushes the stage, whose record then carries no token. It is the
 one way back for an uploader on a `shared` token. The rotation is refused for a
 deployment that runs no stream uploader, one in the middle of a deploy, stop or
@@ -684,7 +684,7 @@ the same way. A token stored before that migration is recorded by its next
 deploy. A token the version's base `.env` sets is not held to this.
 
 **The owner rule.** Every stage signs the feeds it writes with a key of its
-own, the deployment's `STREAM_KEY`, which the wizard generates; the admin signs
+own, the deployment's `STREAM_KEY`, which the wizard generates. The admin signs
 its catalog with a key no deployment holds. The stage record the manager pushes
 names the stage's address as its `owner`, and the admin writes that owner into
 the catalog entry of every stream on the stage. When it starts, the uploader
@@ -703,7 +703,7 @@ replaces the stored token, Clear takes it out, and leaving the field empty
 keeps it. Every new uploader deployment starts with this link's address, a
 create through the API that names neither key included, where the manager
 stores both an address and a token and the version lets a create set both keys.
-Its first deploy generates a token of its own; the stored token registers it,
+Its first deploy generates a token of its own. The stored token registers it,
 and is never copied into a deployment. It reaches only
 deployments created after it is set, because a deployment keeps what it was
 created with in its own settings. The address is stored in clear and the token
@@ -738,7 +738,7 @@ a deployment's Stack settings card right after the two keys. The manager asks
 the admin, from where the manager runs, what the holder of the token would ask
 it. The manager's own token, on the Manager settings card and for the wizard's
 token of its own, is the admin's registrar token, proved on its registrar
-check, `GET <address>/api/internal/registrar`, which answers 204; an admin
+check, `GET <address>/api/internal/registrar`, which answers 204. An admin
 older than the check answers its own 404 there, and only then is the lookup
 below asked. An uploader's token, a deployment's or one typed in the wizard,
 is proved as the uploader asks: the internal lookup of a stream nobody
@@ -765,7 +765,7 @@ each:
 | `owner-unconfirmed`      | The admin took the token but did not say which owner it knows for it, so the stream address was not compared. The uploader starts and checks each declaration instead.                                                                                                                                  |
 | `owner-mismatch`         | The admin took the token but knows another owner for it: its stage's, or on a token of no stage its catalog's. The uploader will refuse to start.                                                                                                                                                       |
 | `token-refused`          | The admin answered its own 401: the token is wrong.                                                                                                                                                                                                                                                     |
-| `token-not-own`          | At the link's address, the deployment's token is not one the manager generated: typed, copied from the link, or the version's. An admin that takes only a stage's own token refuses it, and an older one still takes it. Rotate it and redeploy; a version's token is taken out of the version instead. |
+| `token-not-own`          | At the link's address, the deployment's token is not one the manager generated: typed, copied from the link, or the version's. An admin that takes only a stage's own token refuses it, and an older one still takes it. Rotate it and redeploy. A version's token is taken out of the version instead. |
 | `token-not-registered`   | The admin answered its own 401 to the deployment's own token while no push of the stage has been stored there, so the admin does not know the token yet. A deploy registers it.                                                                                                                         |
 | `not-admin`              | Something answered, but not the way a web2 admin does: another status, another server's 404, a body that is not the admin's JSON, or one past the bound.                                                                                                                                                |
 | `redirected`             | The address answered with a redirect, which the test does not follow. Give the address the admin itself answers on.                                                                                                                                                                                     |
@@ -816,7 +816,7 @@ admin. The manager builds its stage record, `stageRecordSchema` in
 `ADMIN_API_URL` is on the link's origin: when the deployment changes, every 30
 seconds while it runs, and before a deploy starts its uploader, which never
 holds the deploy. A removed deployment is retired with `DELETE` at the same
-path; the retirement is written with the deletion (migration 049) and sent again
+path. The retirement is written with the deletion (migration 049) and sent again
 every 30 seconds and at start until the admin answers it. The record carries the ingest encoders dial, the owner the stage signs
 as, its rungs' stamps and chequebooks, the uploader's reading, the readiness the
 console shows and the sha256 of the uploader's admin token, and never a key, a
@@ -859,7 +859,7 @@ are not removed (409 `catalogue_node_designated`), and a create or update whose
 | Method | Path                                       | Body                                                | Answer                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                    |
 | ------ | ------------------------------------------ | --------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | GET    | `/manager-settings/catalogue-node`         | none                                                | `{ designation, pinned, movingFrom, lastRelease, revision, reading, lastPush }`, `no-store`. `designation` null is none, `pinned` the node and batch recorded, cleared or not, `movingFrom` the batch a pending move went off (`profileName`, `batchId`, `startedAt`, `startedBy`, `reading`) or null, `lastRelease` `{ at, by }` of the last release or null, `reading` the last reading of the pinned batch and `lastPush` the last push or clear, the readings and the push from memory                                                                                                                                                                                |
-| PUT    | `/manager-settings/catalogue-node`         | `{ expectedRevision, profileName, batchId, move? }` | The answer as it stands after. 400 `validation_error`, one sentence each, for a deployment that is more than a Bee node or a pool's rung, and for a batch the node does not hold, calls mutable, does not report the kind of, calls expired, or an ABR uploader stamps with, for another batch than the pinned one without `move: true`, for a third batch while a move is pending, and for a new batch shallower than `MIN_CATALOGUE_DEPTH`, 18, the pinned batch designated again and a move back to the batch moved from excepted; 409 `manager_settings_changed` for an older revision. `move: true` for the pinned batch, or before any designation, changes nothing |
+| PUT    | `/manager-settings/catalogue-node`         | `{ expectedRevision, profileName, batchId, move? }` | The answer as it stands after. 400 `validation_error`, one sentence each, for a deployment that is more than a Bee node or a pool's rung, and for a batch the node does not hold, calls mutable, does not report the kind of, calls expired, or an ABR uploader stamps with, for another batch than the pinned one without `move: true`, for a third batch while a move is pending, and for a new batch shallower than `MIN_CATALOGUE_DEPTH`, 18, the pinned batch designated again and a move back to the batch moved from excepted. 409 `manager_settings_changed` for an older revision. `move: true` for the pinned batch, or before any designation, changes nothing |
 | DELETE | `/manager-settings/catalogue-node`         | `{ expectedRevision }`                              | The answer as it stands after. A pending move stays. 400 `validation_error` when nothing is designated, 409 `manager_settings_changed` for an older revision                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                              |
 | POST   | `/manager-settings/catalogue-node/release` | `{ expectedRevision }`                              | The answer as it stands after, with `movingFrom` null and `lastRelease` set: the batch moved from and its node are kept no more. 400 `validation_error` when no move is pending, 409 `manager_settings_changed` for an older revision                                                                                                                                                                                                                                                                                                                                                                                                                                     |
 
@@ -869,7 +869,7 @@ The web2 admin funds a brand's stages from its brand wallet through these
 routes, and has no chain connection of its own (`docs/architecture/funding.md`
 at the repository root). They are mounted at `/api/admin-funding`, ahead of the
 cross-site and session gates, and the console's nginx sends that path to the
-api. The shapes are `packages/contracts/src/funding.ts`; added 2026-10-05.
+api. The shapes are `packages/contracts/src/funding.ts`, added 2026-10-05.
 
 - `FUNDING_API_TOKEN` unset: the API is off, and every path under it answers
   404 `{ error: "funding_off" }`, whatever is presented.
@@ -885,14 +885,14 @@ api. The shapes are `packages/contracts/src/funding.ts`; added 2026-10-05.
   says which), `node_unreachable` 502 (the manager could not connect to the
   node's Bee API) and `chequebook_refused` 422 (a check of a chequebook
   operation failed, or the manager could not prepare it, and the sentence says
-  which; nothing was asked of the node).
+  which, and nothing was asked of the node).
 
 | Method | Path                                      | Answer                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                  |
 | ------ | ----------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| GET    | `/api/admin-funding/inventory`            | `{ observedAt, chain: { chainId, bzzToken, postage }, stages: [{ stageId, name, nodes }], catalogue }`, `no-store`. A stage's nodes are its own Bee node, its gateway when that runs light, and its pool's rungs run by this manager, lowest first; `catalogue` is the designated catalogue node or null. Each node is `{ nodeId, label, role, walletAddress, xdaiWei, xbzzPlur, readError, batch, chequebook }`: an opaque `<instance_id>:<service>` id, its wallet from `GET /wallet` read now (five seconds at most each), amounts in wei and PLUR as decimal strings, or nulls and a sentence saying why it could not be read, the batch it uploads with ([below](#batches-and-the-price-of-postage)) and the chequebook it pays its peers from ([below](#chequebooks)). The chain is Gnosis Chain, 100, and its BZZ token, and `postage` what postage costs now; a node on another chain has no wallet answered. Never a Bee API address, an RPC endpoint or a key                                                                                                                                                                                                                 |
+| GET    | `/api/admin-funding/inventory`            | `{ observedAt, chain: { chainId, bzzToken, postage }, stages: [{ stageId, name, nodes }], catalogue }`, `no-store`. A stage's nodes are its own Bee node, its gateway when that runs light, and its pool's rungs run by this manager, lowest first. `catalogue` is the designated catalogue node or null. Each node is `{ nodeId, label, role, walletAddress, xdaiWei, xbzzPlur, readError, batch, chequebook }`: an opaque `<instance_id>:<service>` id, its wallet from `GET /wallet` read now (five seconds at most each), amounts in wei and PLUR as decimal strings, or nulls and a sentence saying why it could not be read, the batch it uploads with ([below](#batches-and-the-price-of-postage)) and the chequebook it pays its peers from ([below](#chequebooks)). The chain is Gnosis Chain, 100, and its BZZ token, and `postage` what postage costs now. A node on another chain has no wallet answered. Never a Bee API address, an RPC endpoint or a key                                                                                                                                                                                                                 |
 | GET    | `/api/admin-funding/accounts/:address`    | `{ address, chainId, xdaiWei, xbzzPlur, nonce, maxFeePerGasWei, maxPriorityFeePerGasWei, gasNative, gasBzzTransfer }`, `no-store`: the address's xDAI (`eth_getBalance`) and xBZZ (`balanceOf` on the BZZ token), its pending nonce, a fee cap of twice the latest base fee plus the node's suggested tip, that tip, and the suggested gas limits, 21000 for xDAI and 65000 for an xBZZ `transfer`. 502 `chain_unreachable` when the chain does not answer or no endpoint is set. A path that names no address is 404                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                   |
-| POST   | `/api/admin-funding/transfers`            | 202 `{ requestId, state, txHash }`. Takes `{ requestId, nodeId, kind, to, amount, rawTransaction }`, the contract's shape, or 422 `bad_transaction` naming the field. The transaction is decoded and held to the request, each failure 422 `bad_transaction` with a sentence: EIP-1559 on chain 100, no access list; for `xdai` sent to `to` with exactly `amount` and no data; for `xbzz` sent to the BZZ token with no value and data exactly `transfer(to, amount)`; a gas limit from 21000 to three times the suggestion and a fee cap within three times the suggested one and a tip at most the fee cap; an amount of at most 2^256 - 1. `to` must be the wallet of `nodeId` in the inventory read now, or 404 `unknown_node`. The row is journalled in `funding_transfers` as `unknown` before the broadcast; a broadcast the chain takes is `submitted`, one it refuses `failed` with the kind of refusal in a sentence (geth's words and Nethermind's codes alike, an already-known one read as `submitted`), and one whose answer is lost stays `unknown`. The same `requestId` again answers the journalled state and sends nothing; another body under it is 409 `conflict` |
-| GET    | `/api/admin-funding/transfers/:requestId` | `{ requestId, state, txHash, blockNumber, error }`, `no-store`. While `submitted` or `unknown`, refreshed from the chain and journalled: a receipt makes it `confirmed` (status 1, with its block) or `failed` (status 0, reverted); without one, a transaction the chain still holds is `submitted`, and one it no longer knows thirty minutes after it was journalled is `unknown`. A transfer a node refused at the broadcast, `failed` with no block, is read for its receipt and for the chain's pool, since a node can answer with an error and keep the transaction: a receipt settles it, one the chain holds is `submitted` again, and one it neither mined nor holds stays as recorded, never `unknown`. The chain is read at most once every five seconds per request id; in between, and when the chain does not answer or answers something unreadable, the journalled state is answered. 404 `unknown_request` for a request id never journalled, which is safe to send again under the same id, and the manager's 404 for a path that names none                                                                                                                         |
+| POST   | `/api/admin-funding/transfers`            | 202 `{ requestId, state, txHash }`. Takes `{ requestId, nodeId, kind, to, amount, rawTransaction }`, the contract's shape, or 422 `bad_transaction` naming the field. The transaction is decoded and held to the request, each failure 422 `bad_transaction` with a sentence: EIP-1559 on chain 100, no access list. For `xdai` sent to `to` with exactly `amount` and no data. For `xbzz` sent to the BZZ token with no value and data exactly `transfer(to, amount)`. A gas limit from 21000 to three times the suggestion and a fee cap within three times the suggested one and a tip at most the fee cap. An amount of at most 2^256 - 1. `to` must be the wallet of `nodeId` in the inventory read now, or 404 `unknown_node`. The row is journalled in `funding_transfers` as `unknown` before the broadcast. A broadcast the chain takes is `submitted`, one it refuses `failed` with the kind of refusal in a sentence (geth's words and Nethermind's codes alike, an already-known one read as `submitted`), and one whose answer is lost stays `unknown`. The same `requestId` again answers the journalled state and sends nothing. Another body under it is 409 `conflict` |
+| GET    | `/api/admin-funding/transfers/:requestId` | `{ requestId, state, txHash, blockNumber, error }`, `no-store`. While `submitted` or `unknown`, refreshed from the chain and journalled: a receipt makes it `confirmed` (status 1, with its block) or `failed` (status 0, reverted). Without one, a transaction the chain still holds is `submitted`, and one it no longer knows thirty minutes after it was journalled is `unknown`. A transfer a node refused at the broadcast, `failed` with no block, is read for its receipt and for the chain's pool, since a node can answer with an error and keep the transaction: a receipt settles it, one the chain holds is `submitted` again, and one it neither mined nor holds stays as recorded, never `unknown`. The chain is read at most once every five seconds per request id. In between, and when the chain does not answer or answers something unreadable, the journalled state is answered. 404 `unknown_request` for a request id never journalled, which is safe to send again under the same id, and the manager's 404 for a path that names none                                                                                                                         |
 
 #### Batches and the price of postage
 
@@ -906,8 +906,8 @@ share is read once.
 
 - A batch is
   `{ batchId, depth, immutable, usable, ttlSeconds, fillRatio, readError }`:
-  `0x` and 64 hex digits; Bee's depth, `immutableFlag` and `usable`; the seconds
-  left, 0 once it has expired and null when Bee cannot work them out; and how
+  `0x` and 64 hex digits, then Bee's depth, `immutableFlag` and `usable`, then the seconds
+  left (0 once it has expired and null when Bee cannot work them out), and how
   full its fullest bucket is, from 0 to 1, as the postage page reads it
   (`fullestBucketFillRatio`), null when the node's counts do not make one.
 - A batch that could not be read has every reading null and `readError` saying
@@ -917,7 +917,7 @@ share is read once.
 - `chain.postage` is
   `{ pricePerChunkPerBlockPlur, blockSeconds, minimumValidityBlocks }`: the
   price from the `/chainstate` of the first node listed whose wallet reads on
-  Gnosis Chain, since the price is the chain's; 5 seconds a block; and the
+  Gnosis Chain (since the price is the chain's), 5 seconds a block, and the
   postage contract's floor, 17280 blocks, a day. It is null when no such node
   names a price.
 
@@ -931,7 +931,7 @@ gateway, each rung and the catalogue node. A node two stages share is read
 once.
 
 - A chequebook is `{ address, availablePlur, totalPlur, readError }`: its
-  address in lower case; what the node can still pay out of it; and its total,
+  address in lower case, what the node can still pay out of it, and its total,
   which also holds the cheques the node wrote that its peers have not cashed
   yet, so total less available is what it owes them. Both balances are PLUR as
   decimal strings.
@@ -958,17 +958,17 @@ its own wallet: xBZZ for a top-up, xDAI for the gas of either.
 
 | Method | Path                                             | Answer                                                                                                                                                                                                                                                                                                                                                                                                                                                                            |
 | ------ | ------------------------------------------------ | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| POST   | `/api/admin-funding/stamp-operations`            | 202 `{ requestId, kind, state, txHash }`, once the node has answered. Takes `{ requestId, kind: "topup", nodeId, batchId, expectedDepth, amountPerChunkPlur }` or `{ requestId, kind: "dilute", nodeId, batchId, expectedDepth, newDepth }`, the contract's shape, or 422 `stamp_refused` naming the field. Checked, journalled and asked of the node as below. The same `requestId` again answers the journalled state and asks nothing; another body under it is 409 `conflict` |
+| POST   | `/api/admin-funding/stamp-operations`            | 202 `{ requestId, kind, state, txHash }`, once the node has answered. Takes `{ requestId, kind: "topup", nodeId, batchId, expectedDepth, amountPerChunkPlur }` or `{ requestId, kind: "dilute", nodeId, batchId, expectedDepth, newDepth }`, the contract's shape, or 422 `stamp_refused` naming the field. Checked, journalled and asked of the node as below. The same `requestId` again answers the journalled state and asks nothing. Another body under it is 409 `conflict` |
 | GET    | `/api/admin-funding/stamp-operations/:requestId` | `{ requestId, kind, state, txHash, error }`, `no-store`. An `unknown` operation is read from the postage contract and journalled, as below. 404 `unknown_request` for a request id never journalled, which is safe to send again under the same id, and the manager's 404 for a path that names none                                                                                                                                                                              |
 
 - **The checks**, each refused with 422 `stamp_refused` and a sentence before
   anything is journalled or asked. Against the inventory read now: `batchId` is
   the batch `nodeId` uploads with, wherever the node is listed (404
-  `unknown_node` for a node this manager does not run); the batch was read, has
-  time left, is usable and is at `expectedDepth`; a top-up's cost,
-  `amountPerChunkPlur × 2^depth`, is in the node's xBZZ; a dilution goes to
+  `unknown_node` for a node this manager does not run). The batch was read, has
+  time left, is usable and is at `expectedDepth`. A top-up's cost,
+  `amountPerChunkPlur × 2^depth`, is in the node's xBZZ. A dilution goes to
   depth 40 at most and leaves seven days or more, the time left halved for
-  every step; and the node's wallet holds some xDAI for the gas, since Bee's
+  every step. The node's wallet holds some xDAI for the gas, since Bee's
   own refusal of an empty gas wallet says nothing clear. Then against the
   postage contract, `batches(id)` on Swarm's PostageStamp on Gnosis Chain read
   through `FUNDING_RPC_URL` or `BEE_RPC_ENDPOINT` (502 `chain_unreachable` when
@@ -991,14 +991,14 @@ its own wallet: xBZZ for a top-up, xDAI for the gas of either.
   is at `newDepth` or deeper, with no hash when the node never answered one.
   With no sign of either thirty minutes after it was journalled, it is
   `failed`. The contract is read at most once every five seconds for a request
-  id; in between, and when the chain does not answer or answers something
+  id. In between, and when the chain does not answer or answers something
   unreadable, the journalled state is answered. A node's answer that comes
   after such a reading confirmed the operation adds its hash.
 - **Limits**: an `unknown` operation is settled by what the batch shows, not
   by its transaction, so another top-up or dilution of the same batch in that
   window counts as well, and a dilution between a top-up and its reading can
   hide the top-up until it fails. A transaction mined more than thirty minutes
-  after it was asked for still reads `failed`; the inventory shows the batch
+  after it was asked for still reads `failed`. The inventory shows the batch
   as it is. Nothing here has run against a real node or chain: the tests use
   fakes.
 
@@ -1018,7 +1018,7 @@ into the node's own wallet, the one place Bee withdraws to.
 
 | Method | Path                                                  | Answer                                                                                                                                                                                                                                                                                                                                                                                                                                                                           |
 | ------ | ----------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| POST   | `/api/admin-funding/chequebook-operations`            | 202 `{ requestId, direction, state, txHash }`, once the chequebook path has answered. Takes `{ requestId, nodeId, direction, amountPlur }`, the contract's shape: `direction` is `deposit` or `withdraw`, and `amountPlur` 30 digits at most. Anything else is 422 `chequebook_refused` naming the field. Checked and handed to the chequebook path as below. The same `requestId` again answers the journalled state and sends nothing; another move under it is 409 `conflict` |
+| POST   | `/api/admin-funding/chequebook-operations`            | 202 `{ requestId, direction, state, txHash }`, once the chequebook path has answered. Takes `{ requestId, nodeId, direction, amountPlur }`, the contract's shape: `direction` is `deposit` or `withdraw`, and `amountPlur` 30 digits at most. Anything else is 422 `chequebook_refused` naming the field. Checked and handed to the chequebook path as below. The same `requestId` again answers the journalled state and sends nothing. Another move under it is 409 `conflict` |
 | GET    | `/api/admin-funding/chequebook-operations/:requestId` | `{ requestId, direction, state, txHash, error, mined }`, `no-store`, an open operation checked first, as below. 404 `unknown_request` for a request id the funding API never journalled, which is safe to send again under the same id, and the manager's 404 for a path that names none                                                                                                                                                                                         |
 
 - **A request id already journalled** answers that operation's state when it
@@ -1030,13 +1030,13 @@ into the node's own wallet, the one place Bee withdraws to.
   the chequebook path journals a move only once it has prepared it, up to about
   half a minute after the `POST` arrived: until that call has answered, the
   `GET` answers its request id `submitted`, with no hash and no error, rather
-  than 404 `unknown_request`; the same request sent again waits for the call
-  and answers what it answered, its refusal included; and another move under
+  than 404 `unknown_request`. The same request sent again waits for the call
+  and answers what it answered, its refusal included. Another move under
   the id is 409 `conflict` at once.
 - **The checks**, each refused before anything is journalled, against the
   inventory read now: `nodeId` is listed in a stage as its own Bee node or a
   rung (404 `unknown_node` for a node listed nowhere, or one whose deployment
-  is gone; 422 `chequebook_refused` for a gateway, and for the catalogue node
+  is gone. 422 `chequebook_refused` for a gateway, and for the catalogue node
   where no stage lists it, since the chequebook path moves only a deployment's
   own `bee-uploader`). Then, each 422 `chequebook_refused` with a sentence: the
   node's wallet and its chequebook were read, a deposit is at most the wallet's
@@ -1051,9 +1051,9 @@ into the node's own wallet, the one place Bee withdraws to.
   read or write is its own 503 `chequebook_journal_unavailable`, which says
   nothing of whether the move was made.
 - **The states** are the transfers' four: `submitting` and `submitted` are
-  `submitted`; `settled` is `confirmed`; `reverted`, `rejected` (the last check
+  `submitted`. `settled` is `confirmed`. `reverted`, `rejected` (the last check
   refused it before sending, with that check's sentence) and `asserted` (an
-  operator recorded that it was never made) are `failed`, with a sentence; and
+  operator recorded that it was never made) are `failed`, with a sentence.
   `unknown` is `unknown`, as is any operation whose transaction another
   operation's evidence names too, until an operator reviews it. `txHash` is the
   journal's.
@@ -1069,7 +1069,7 @@ into the node's own wallet, the one place Bee withdraws to.
   operation first, through its recovery, and a `submitted` one past its
   `receiptPollUntil` or with none, through its receipt check, at most once
   every 30 seconds per request id. When that check fails, or is still under way
-  after five seconds, the journal is answered as it stands; a check that runs
+  after five seconds, the journal is answered as it stands. A check that runs
   on journals what it finds for the next read.
 - **Timing**: the `POST` holds until the chequebook path is done. By that
   path's budgets that is at most about 225 seconds and the journal's own
@@ -1637,7 +1637,7 @@ numbers and how much it logs:
 | `HOST_ROOTFS`                 | `/host/rootfs`, then `/`                          | Where the resource monitor reads the host's disk, mounted read-only the same way, with the same fallback.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                              |
 | `LOG_LEVEL`                   | `info`                                            | How much the api writes to its console, applied from startup. One of `trace`, `debug`, `info`, `warn` or `error`, in either case, and each writes its own lines and those of every level after it. `error` is failures alone, `warn` adds what an operator should look at, `info` adds what the manager did, such as its boot lines, deploys and pushes, and `debug` adds each read that failed and was answered for anyway, a host or container metric, a disk usage, an uploader health address, an SRS log or an ssh alias, which repeat on every poll. `trace` writes what `debug` does, since nothing logs below it. Any other value stops the manager at startup. The command line, `node dist/cli.js`, writes at `info` whatever this says.                                                                                                                                                                                     |
 | `ADMIN_LINK_ALLOW_PLAIN_HTTP` | `false`                                           | Whether the web2 admin link may be plain http to another host than the manager's own. Off, the manager takes plain http only to a loopback address, `host.docker.internal` or the bridge address it resolves to, or a name that resolves into a Docker network of the api container, and refuses to save anything else or to send to it: a link saved before this rule says `refused-plain-http` until it is given https or this is `true`. Set it only for a test setup: every push carries the registrar token and each stage's SRT passphrase. Any value but `true` or `false` stops the manager at startup.                                                                                                                                                                                                                                                                                                                        |
-| `FUNDING_API_TOKEN`           | none, which turns the API off                     | The bearer token of the web2 admin's funding API under `/api/admin-funding`, the same value as the admin's `MANAGER_FUNDING_TOKEN`. Unset, every path under that API answers 404 `funding_off`. 32 characters or more with no space inside, or the manager stops at startup naming the variable and not the value. Never logged; the boot lines say only whether the API is on. See [Funding API](#funding-api-the-web2-admins-on-a-bearer-token).                                                                                                                                                                                                                                                                                                                                                                                                                                                                                     |
+| `FUNDING_API_TOKEN`           | none, which turns the API off                     | The bearer token of the web2 admin's funding API under `/api/admin-funding`, the same value as the admin's `MANAGER_FUNDING_TOKEN`. Unset, every path under that API answers 404 `funding_off`. 32 characters or more with no space inside, or the manager stops at startup naming the variable and not the value. Never logged. The boot lines say only whether the API is on. See [Funding API](#funding-api-the-web2-admins-on-a-bearer-token).                                                                                                                                                                                                                                                                                                                                                                                                                                                                                     |
 | `FUNDING_RPC_URL`             | `BEE_RPC_ENDPOINT`                                | The chain endpoint the funding API reads balances, nonces, fees, receipts and the postage contract's batches through and broadcasts the admin's transfers to. Chequebook moves read the chain through it too, for any chain `CHEQUEBOOK_RPC_ENDPOINTS` does not name. Unset, it is `BEE_RPC_ENDPOINT`, and with neither the chain routes answer 502 `chain_unreachable`. Held to `BEE_RPC_ENDPOINT`'s shape rules, and a secret like it: it can carry a provider key, so it is never logged or answered, and the boot lines name only which variable is used. A malformed value stops the manager at startup, naming the variable and not the value.                                                                                                                                                                                                                                                                                   |
 | `MANAGER_INSTANCE_NAME`       | none                                              | The name this manager instance goes by, such as `swarm-dev`, which the sidebar shows under "Streaming Infra" beside the build it runs and `GET /config` answers as `instanceName`. Without it the sidebar shows the build alone. At most 40 letters, digits, dots, dashes or underscores, and any other value stops the manager at startup.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                            |
 | `KNOWN_HOST_NETWORK_PORTS`    | none                                              | Containers on the host's network that count as known, by compose project, with the ports each holds, as in `edge=80/tcp,443/tcp,443/udp`, projects separated by `;`. Docker reports no port map for such a container, so without an entry one running blocks every removal, port handover and firewall export on its host. Name the host's edge reverse proxy here, and nothing whose ports you cannot vouch for. The trust is per compose project: every host-network container in a named project counts as holding only the ports listed for it, so list every port those containers hold, because a port left out counts as free and can be handed to a deployment. A deployment's compose project is its name, so creating a deployment called after a named project is refused, and an existing one stops the manager at startup. Any other host-network container still blocks. A malformed value stops the manager at startup. |

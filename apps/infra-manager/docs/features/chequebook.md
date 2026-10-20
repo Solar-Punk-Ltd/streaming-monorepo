@@ -253,13 +253,13 @@ the POST works the target out again, and a deployment whose address, port or
 shape changed since makes it refuse the recorded transfer, `rejected` with
 `preflight_failed`. The refusals before anything is recorded are:
 
-- no `bee-uploader` container recorded: `bee_container_not_found`;
+- no `bee-uploader` container recorded: `bee_container_not_found`,
 - a deployment that is deploying, stopping or removing, two `bee-uploader`
-  containers recorded, or a capture that refuses: `target_changed`;
+  containers recorded, or a capture that refuses: `target_changed`,
 - a recorded port that is missing, out of range or not the reserved one:
-  `bee_container_unsupported`;
+  `bee_container_unsupported`,
 - no such deployment, one without a Bee node of its own, or a Bee API address
-  that is not plain `http`: `unavailable`;
+  that is not plain `http`: `unavailable`,
 - a deployment the capture finds removed or replaced keeps its own error,
   answered as `409 chequebook_profile_changed`.
 
