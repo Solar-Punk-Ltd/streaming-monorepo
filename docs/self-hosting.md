@@ -543,5 +543,17 @@ stack version of the new release, and each stage takes it when you deploy it aga
 Read [known-issues.md](known-issues.md) before you upgrade, and keep every host folder, compose
 project and volume name in [the table above](#the-names-that-never-change) as it is.
 
+A control host whose bundled stack runs from one stack folder, the one `SHLS_ROOT` names, rather
+than from a build keeps its settings and its running deployments through a manager upgrade:
+
+- The bundled version's first build takes `.env`, `deploy/config.json` and the engine env files from
+  that folder, byte for byte, as its first settings revision. A config root that already holds
+  settings is left alone.
+- The manager only reads the folder, because the engines of the deployments that run from it mount
+  it.
+- Each such deployment keeps running from the folder until you deploy it again from the manager,
+  which moves it onto a build. Updating the manager does not restart those deployments or discard
+  their data.
+
 An admin env file can carry keys the admin no longer reads, such as `INGEST_*`, `BEE_URL` and
 `POSTAGE_BATCH_ID`. The admin's deploy names each one it finds, and you can delete them.

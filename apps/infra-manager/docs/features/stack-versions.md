@@ -95,9 +95,7 @@ Every version keeps three kinds of file that you own, in `<name>/`: the base `.e
 
 A version's first build seeds those files from the samples in the build, so an added version starts with the stack's own defaults. Then every env file is completed from the sample of the version being built: the sample's line for each key the file lacks is appended, in the sample's order, as one more revision. A key you already set keeps its bytes. A value the sample leaves blank stays blank.
 
-On a host whose bundled stack still has a legacy flat tree (`BUNDLED_STACK_ROOT`), the bundled version's first build takes `.env`, `deploy/config.json` and the engine envs from that tree, byte for byte, as its first revision. The legacy tree is only read, because the engines of deployments that still run from it mount it. A config root that already holds settings is left alone.
-
-A build or a deploy takes the same lock and checks what it captured against that revision. An edit that is not finished produces a refusal rather than a mix of old and new files. A root without a revision manifest is adopted from its current files.
+A build or a deploy takes the same lock and checks what it captured against that revision. An edit that is not finished produces a refusal rather than a mix of old and new files. A root without a revision manifest is adopted from its current files. A control host whose bundled stack has no builds yet carries its settings over on the first build, see [Upgrading an existing installation](../../../../docs/self-hosting.md#upgrading-an-existing-installation).
 
 These files carry the stream passphrase, the API token, the webhook token and the Bee passphrase. Every file the manager writes into a config root or a build is owner only, and a file it replaces keeps the mode you gave it. Every path of the set is checked for links before it is read.
 
@@ -180,8 +178,6 @@ A manager deploy does not carry the stack. It writes into `manager/.stack-commit
 The API reads the pin at boot. When the bundled row is not on a complete build of it, boot builds that commit through the same build script, the same build lock and the same log on the Versions page. **Update** on the bundled card builds the pin again. A manager with no pin, such as a developer checkout, keeps the row on the tree in its checkout and refuses the rebuild with a plain reason.
 
 A build the lock refuses, and a build script that cannot start, write their reason into the row and move the row onto the pin. A version that still has a build stays ready with the reason beside it. A version with nothing to deploy from is failed. A pin file that holds something other than a commit is logged, and recorded on the row only when the row has no build to fall back on.
-
-A deployment that still runs from the bundled version's legacy flat tree keeps running from it until its own next deploy moves it onto a build. Updating the manager does not restart those deployments or discard their data.
 
 The upgrade command on the host holds one directory under the versions root for its whole run. It goes through the steps checking, stopping, migrating, starting and verifying, then waits a bounded time for the API's boot to reach a build of the pin. A build that failed or timed out is printed and the command exits non zero, after it releases the directory, because the manager is up by then.
 
