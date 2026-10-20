@@ -29,8 +29,8 @@ It worked when it ends with "Pushed <tag> to origin." or, for a tag it kept, "or
 
 Pushing the tag starts the `publish-images` workflow, which publishes the manager's and the admin's images under the
 tag to `ghcr.io/solar-punk-ltd`, building every image again for every release: `streaming-manager-api`,
-`streaming-manager-web`, `streaming-admin-api` and `streaming-admin-web`. A deployment that runs prebuilt images
-pulls them by that tag. The two deploy scripts below build on the host instead.
+`streaming-manager-web`, `streaming-admin-api` and `streaming-admin-web`. This repository has no recipe for running
+those images yet. The supported way to deploy is the two deploy scripts below, which build the images on the host.
 [tools/release/README.md](../tools/release/README.md) says how the images are published.
 The event viewer, stream-event-client, is not released here. It ships as its own image,
 `ghcr.io/solar-punk-ltd/stream-event-client:<tag>`, built from a `v*` tag in its own repository.
