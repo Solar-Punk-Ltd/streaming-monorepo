@@ -3,6 +3,9 @@
 > This is a dated record of one test deployment, not a description of the product. Any raw
 > measurement it cites is kept outside the repository.
 
+Status, 2026-10-20: done. Every step under "What is built, in order" below is built. Scenario L ran green live
+on 2026-09-05 and V11 on 2026-09-06.
+
 Written 2026-09-04 at the owner's word ("okay you can do this"). Its sibling is
 `docs/e2e-viewer-coverage-plan.md`. Where this page says a reading was taken on a date, the reading
 itself is in the session record kept outside the repository, and every claim about the code is meant

@@ -3,6 +3,10 @@
 > This is a dated record of one test deployment, not a description of the product. Any raw
 > measurement it cites is kept outside the repository.
 
+Status, 2026-10-20: fixes 1 and 2 shipped. Fix 3 was never built. A live catalog entry still carries
+no index, so a live stream's card still finds its thumbnail through the head lookup
+(`packages/client/src/utils/thumbnailManifest.ts`).
+
 **2026-08-05. Written from reading, then measured against the deployment, then fix 1 built.
 The measurement is in the middle and the state of each fix is on its heading.**
 

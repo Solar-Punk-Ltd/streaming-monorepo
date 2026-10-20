@@ -3,10 +3,16 @@
 > This is a dated record of one test deployment, not a description of the product. Any raw
 > measurement it cites is kept outside the repository.
 
+Status, 2026-10-20: phases 1 and 2 are done and were green live in both byte sources, V3 and V4
+since 2026-08-30 and V2 since 2026-09-04. Of phase 3 the nodes and the preflight are done, and three
+of the four tests that need four nodes were green live: one rung dies on 2026-09-04, the drain on
+2026-09-05, the viewer through a drain on 2026-09-06. One test is still open: the proof that each
+rung's bytes leave through its own Bee node, read from the four nodes' own counters. No suite reads
+a Bee node's counters today. The only per-rung counters the suites read are the uploader's own
+(`e2e/src/harness/uploaderMetrics.ts`). The live status of every suite is in `docs/e2e-coverage.md`.
+
 Written 2026-08-29, after the owner asked where the ABR viewer tests and the per-rung publisher
 tests were. The answer was that neither exists. This is the plan to get them.
-
-**Status 2026-09-16.** Phases 1 and 2 are done and green live: V2 since 2026-09-04, V3 and V4 since 2026-08-30, in both byte sources. Of Phase 3 the nodes and the preflight are done, and three of the four tests that need four nodes are green (one rung dies on 2026-09-04, the drain on 2026-09-05, the viewer through a drain on 2026-09-06). Open: the proof that each rung's bytes leave through its own node, read from the four nodes' own counters. The live statuses are kept in `docs/e2e-coverage.md`.
 
 ## The gap, stated once
 

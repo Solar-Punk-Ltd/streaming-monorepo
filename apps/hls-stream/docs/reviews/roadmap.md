@@ -3,6 +3,9 @@
 > This is a dated record of one test deployment, not a description of the product. Any raw
 > measurement it cites is kept outside the repository.
 
+Status, 2026-10-20: closed. This was the stack's roadmap from 2026-08-05 to 2026-09-17, kept as a
+record. The plan the platform follows today is [the repository's roadmap](../../../../docs/ROADMAP.md).
+
 **2026-08-05, re-ordered 2026-08-08.** Ordered by what unblocks what, not by appeal. Every claim below
 is either measured and cited, or marked as a guess. Items already tracked carry their task number.
 
