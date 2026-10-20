@@ -8,7 +8,7 @@ name, and an SSH tunnel is the way in without it.
 
 `deploy.sh` is written so streaming-infra-manager can run it the way it runs
 swarm-hls-stream's: same flags, standard input closed, output streamed. The
-manager does not run it yet; see "Running it from the manager" below.
+manager does not run it yet. See "Running it from the manager" below.
 
 ## One-time host setup
 
@@ -637,33 +637,7 @@ routes, and a new Caddyfile takes effect by recreating the container anyway.
 
 ## Running it from the manager
 
-The manager does not run this script yet. It runs a stack's `deploy.sh` with
-`bash`, standard input from `/dev/null`, and each line of output streamed to
-the console:
-
-```
-deploy.sh --profile=<name> --portSlot=<N> --host=<target> [service...]
-```
-
-with `--host=localhost` for a profile on the manager's own host. This script
-takes exactly that and:
-
-- never prompts without a terminal: the tag offer needs standard input and
-  output both to be one. ssh runs with `BatchMode=yes` whenever standard input
-  is not a terminal, so a missing key or an unknown host key fails at once
-  instead of waiting;
-- prefixes its own lines with `[deploy]`, errors with `[deploy] ERROR:` on
-  standard error, and exits non-zero on every failure;
-- refuses a bad argument or env file before any ssh or rsync;
-- keeps `--portSlot=<N> (1-99)` in its usage text, the string the manager reads
-  a stack's slot ceiling from.
-
-Not decided yet, for that step: where the manager's checkout of this repo
-lives and how it writes `apps/web2-admin/backend/.env.<profile>` (it writes a
-stack's env file at that checkout's root today); whether it passes the
-hls-only flags `--feed-owner`, `--feed-topic` and `--stamp-id`, which this
-script refuses; and the `stop.sh`, `health.sh` and `clean.sh` it expects
-beside `deploy.sh`, which this repo does not have.
+The manager does not run this script yet, and the questions that step still has to answer are open question 4 in [docs/architecture/web2-admin.md](../../../docs/architecture/web2-admin.md#open-questions-carried-into-the-build).
 
 ## The scripts' own tests
 

@@ -114,6 +114,15 @@ and the behaviour as built.
    its own ([funding.md](funding.md)).
 3. Chat: Swarm feeds/GSOC versus a websocket in the web2 layer. Drawn in the
    SPA, not decided. Only matters here if the websocket answer wins.
+4. The manager running the admin's deploy. `apps/web2-admin/deploy/deploy.sh`
+   takes the flags the manager hands a stack's `deploy.sh`, closed standard
+   input included, but the manager does not run it yet. Open for that step:
+   where the manager's checkout of this repository lives and how it writes
+   `apps/web2-admin/backend/.env.<profile>`, since it writes a stack's env file
+   at that checkout's root today. Whether it passes the stack-only flags
+   `--feed-owner`, `--feed-topic` and `--stamp-id`, which the admin's script
+   refuses. And the `stop.sh`, `health.sh` and `clean.sh` the manager expects
+   beside `deploy.sh`, which the admin does not have.
 
 ## Stack (decided 2026-09-11)
 
