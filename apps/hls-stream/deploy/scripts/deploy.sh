@@ -11,7 +11,8 @@ require_config
 
 usage() {
   echo "Usage: deploy.sh [--profile=<name>] [--portSlot=<N>] [--host=<target>]"
-  echo "                 [--release-label=<label>] [--release-commit=<commit>] [service...]"
+  echo "                 [--release-label=<label>] [--release-commit=<commit>]"
+  echo "                 [--feed-owner=<address>] [--feed-topic=<topic>] [--stamp-id=<batch>] [service...]"
   echo ""
   echo "  deploy.sh                                                             Deploy enabled services (default profile)"
   echo "  deploy.sh --profile=streamer1                                         Deploy under profile streamer1 (.env.streamer1)"
@@ -34,6 +35,11 @@ usage() {
   echo "--release-label=<label> and --release-commit=<commit> name the release being deployed,"
   echo "which the client builds in and its QoE overlay shows (?qoe=1 on a watch URL). A label is"
   echo "letters, digits and . _ + / -, at most 96, and a commit is 40 lower-case hex characters."
+  echo "--feed-owner=<address> sets the owner of the stream list feed the client reads, a 40"
+  echo "character hex address. --feed-topic=<topic> sets that feed's topic for the uploader and the"
+  echo "client, letters, digits, dot, underscore or hyphen, at most 64. --stamp-id=<batch> sets STAMP,"
+  echo "the postage batch the uploader stamps with, a 64 character hex id. A 0x prefix is accepted on"
+  echo "the address and the batch id. Each replaces the value in .env.<profile> for this deploy."
 }
 
 if [ "${1:-}" = "--help" ] || [ "${1:-}" = "-h" ]; then

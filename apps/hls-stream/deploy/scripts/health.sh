@@ -12,7 +12,9 @@ set -- "${REST_ARGS[@]}"
 
 for arg in "$@"; do
   add_service_filter "$arg" || {
-    echo "Usage: health.sh [--profile=<name>] [service...]"
+    echo "Usage: health.sh [--profile=<name>] [--portSlot=<N>] [--host=<target>] [service...]"
+    echo "--portSlot=<N> and --host=<target> mean what they mean to deploy.sh: the port slot the"
+    echo "stack runs on, and one target for every enabled service in place of config.json's."
     echo "Services: ${ALL_SERVICES[*]}"
     exit 1
   }
