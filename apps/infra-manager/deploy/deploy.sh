@@ -1,23 +1,30 @@
 #!/usr/bin/env bash
 # Deploy the streaming-infra-manager to a server via rsync + remote build.
 #
-#   ./deploy/deploy.sh [--host=<ssh-target> | <ssh-target>] [--profile=<name>]
+#   ./deploy/deploy.sh (--host=<ssh-target> | <ssh-target>) [--profile=<name>]
+#                      [--allow-sample-secrets]
 #
 # Each flag also takes its value as the next word, as in --host <ssh-target>
 # --profile <name>, the way web2-admin's deploy.sh does.
 #
-# ssh-target defaults to `viewer` (configure in ~/.ssh/config). Example:
-#   Host viewer
-#     HostName <ip>
+# The ssh target is required, as it is for web2-admin's deploy and the edge's.
+# It is an ssh alias from ~/.ssh/config, a host name or address, or user@host.
+# An alias for the manager's host could read:
+#   Host <control-host>
+#     HostName 192.0.2.10
 #     User <deploy user>
 #     LocalForward 8080 localhost:8080
 #
 # --profile=<name> deploys manager/.env.<name> in place of manager/.env, for a
-# host with settings of its own, and only to a host named with it, because the
-# default target would get that profile's settings. "default" is manager/.env.
-# The file must exist: a profile never falls back to manager/.env. Whatever its
-# name here, the host keeps it as manager/.env, so the host's folder, compose
-# project and volumes are the same for every profile.
+# host with settings of its own. "default" is manager/.env. The file must
+# exist: a profile never falls back to manager/.env. Whatever its name here,
+# the host keeps it as manager/.env, so the host's folder, compose project and
+# volumes are the same for every profile.
+#
+# --allow-sample-secrets deploys a POSTGRES_PASSWORD that is still the one
+# manager/.env.sample ships, with a warning. For a test install only: without
+# it, that password refuses the deploy, as web2-admin's deploy refuses its own
+# sample secrets.
 #
 # What it does:
 #   1. Names the build it sends with tools/release/version.mjs at the
@@ -73,11 +80,15 @@ set -euo pipefail
 # Each argument at most once, however it is written: the ssh target, as
 # --host=<ssh-target>, --host <ssh-target> or on its own, and the profile, as
 # --profile=<name> or --profile <name>. Any other word that starts with a dash
-# is refused.
-SSH_TARGET="viewer"
+# is refused, but --allow-sample-secrets.
+SSH_TARGET=""
 TARGET_GIVEN=false
 PROFILE="default"
 PROFILE_GIVEN=false
+ALLOW_SAMPLE_SECRETS=false
+# The database password manager/.env.sample ships. The sample is public, so the
+# password guards nothing.
+readonly SAMPLE_POSTGRES_PASSWORD="pwd"
 take_target() {
     if [ "$TARGET_GIVEN" = true ]; then
         echo "ERROR: the ssh target is given twice (the second: $1)" >&2
@@ -98,6 +109,7 @@ while [ $# -gt 0 ]; do
     case "$1" in
         --host=*) take_target "${1#--host=}" ;;
         --profile=*) take_profile "${1#--profile=}" ;;
+        --allow-sample-secrets) ALLOW_SAMPLE_SECRETS=true ;;
         --host | --profile)
             # The value is the next word. One that starts with a dash is the
             # next flag, and taking it as the value would hide that this flag
@@ -110,7 +122,7 @@ while [ $# -gt 0 ]; do
             shift
             ;;
         -*)
-            echo "ERROR: unknown option $1. Usage: deploy.sh [--host=<ssh-target> | <ssh-target>] [--profile=<name>], each flag also with its value as the next word" >&2
+            echo "ERROR: unknown option $1. Usage: deploy.sh (--host=<ssh-target> | <ssh-target>) [--profile=<name>] [--allow-sample-secrets], each flag also with its value as the next word" >&2
             exit 1
             ;;
         # The target on its own. An empty one is taken here and refused below.
@@ -118,10 +130,10 @@ while [ $# -gt 0 ]; do
     esac
     shift
 done
-# A profile is one host's settings, its database password among them, and the
-# default target would get them, so a profile goes only to a host named with it.
-if [ "$PROFILE_GIVEN" = true ] && [ "$TARGET_GIVEN" = false ]; then
-    echo "ERROR: --profile=$PROFILE needs the host named, as --host=<ssh-target> or <ssh-target>. Without one the deploy would give that profile's settings to $SSH_TARGET, the default target." >&2
+# A guessed host would get this checkout's settings, its database password
+# among them.
+if [ "$TARGET_GIVEN" = false ]; then
+    echo "ERROR: the ssh target is required, as --host=<ssh-target> or <ssh-target>. There is no default host." >&2
     exit 1
 fi
 # It is handed to ssh as the destination, where a leading dash is an option.
@@ -184,6 +196,18 @@ fi
 if ! grep -q "POSTGRES_PASSWORD=.\+" "$ENV_FILE"; then
     echo "ERROR: POSTGRES_PASSWORD is missing or empty in $ENV_FILE." >&2
     exit 1
+fi
+# Read the way compose reads it: the last assignment wins, and a carriage return
+# and surrounding quotes are not part of the value. The value is never printed.
+POSTGRES_PASSWORD_SETTING="$(sed -n 's/^POSTGRES_PASSWORD=//p' "$ENV_FILE" | tail -n 1 | tr -d '\r"' | tr -d "'")"
+if [ "$POSTGRES_PASSWORD_SETTING" = "$SAMPLE_POSTGRES_PASSWORD" ]; then
+    SAMPLE_PASSWORD_MESSAGE="POSTGRES_PASSWORD in $ENV_FILE is the placeholder from manager/.env.sample. The sample is public, so generate a password of your own, for example with openssl rand -hex 24."
+    if [ "$ALLOW_SAMPLE_SECRETS" = true ]; then
+        echo "WARNING: $SAMPLE_PASSWORD_MESSAGE Deploying anyway: --allow-sample-secrets." >&2
+    else
+        echo "ERROR: $SAMPLE_PASSWORD_MESSAGE A test install can keep it with --allow-sample-secrets." >&2
+        exit 1
+    fi
 fi
 # The funding API's bearer token is optional, but a short one stops the manager
 # at startup, so it is refused here before anything reaches the host. The value
