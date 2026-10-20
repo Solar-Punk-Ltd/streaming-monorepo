@@ -302,7 +302,10 @@ Once a batch exists, `POST /profiles/:name/deploy-uploader` deploys that one ser
 
 The test is the component set, never the kind: a `custom` deployment with `stream-uploader`
 behaves like a `streamer`. A pool-backed `abr-uploader` pays with the pool's batches, one per rung,
-so `BEE_PUBLISHERS` satisfies the stack and nothing is held back.
+so `BEE_PUBLISHERS` satisfies the stack and nothing is held back. Its `.env.<name>` starts as a copy of
+the base `.env`, so the manager writes `STAMP` empty there unless the deployment sets a stamp of its
+own: a `STAMP` from the base file belongs to another deployment, and the uploader does not read it
+while `BEE_PUBLISHERS` is set.
 
 ## Postage stamps
 
