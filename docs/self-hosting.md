@@ -153,8 +153,8 @@ pnpm install
    ./deploy/deploy.sh --host=<second-control-host> --profile=<name>
    ```
 
-   Every Bee API and engine HTTP port the stack runs answers on the host's Docker bridge address
-   wherever its own `*_BIND` setting is empty, because the API asks for no password and Docker
+   Nothing to do here on a first install. Every Bee API and engine HTTP port the stack runs answers
+   on the host's Docker bridge address wherever its own `*_BIND` setting is empty, because the API asks for no password and Docker
    publishes past a host firewall. The stack's deploy reads that address at deploy time. Under
    `COMPOSE_NETWORK=host` the Bee APIs listen there through `*_API_LISTEN` instead. "Check where the
    node and engine APIs answer" in `apps/infra-manager/deploy/README.md` names the settings. A
@@ -530,7 +530,8 @@ each one has a setting that moves it. Once a host runs, keep that setting as it 
 | A stack deployment    | `~/swarm-hls-stream-<profile>` of the account the manager logs in as                                                                                        | the deployment's profile name                                  | `srs-media`, `uploader-state` |
 
 The admin's host folder holds `apps/web2-admin` alone, whatever its name: its deploy sends the
-admin's own folder, not the whole repository.
+admin's own folder, not the whole repository. The edge's source is `infra/edge/` in this repository,
+and on the host its deploy puts it under the admin's folder as `deploy/edge/`.
 
 ## Upgrading an existing installation
 
