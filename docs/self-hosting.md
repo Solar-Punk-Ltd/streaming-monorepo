@@ -213,8 +213,13 @@ at the repository root.
    host's network, and the manager refuses to remove or export anything on a host with an
    unexplained one. Add `KNOWN_HOST_NETWORK_PORTS=edge=80/tcp,443/tcp,443/udp` to the env file of
    step 3, `apps/infra-manager/manager/.env` in your checkout or the profile's own, and run the
-   manager's deploy again. A host that deploys only to other hosts can
-   skip this, until it deploys to itself.
+   manager's deploy again.
+
+   This recipe's control host does not need it. The manager checks the control host's own ports
+   once, at its first start in step 3, before the edge exists, and after that only when it deploys
+   to the control host itself, which this recipe never does. Add the line before the first
+   deployment you make with **This machine** as its **Host**, or as soon as the manager reports "A
+   host-network container has unknown bindings".
 
 8. **The admin link.** In the manager, **Manager settings**, the card **Web2 admin link for new
    deployments**: the address `https://admin.example.org` and the admin's `INTERNAL_API_TOKEN`,
@@ -238,12 +243,29 @@ at the repository root.
     registers the stage with the admin before the uploader starts. It worked when the admin's
     **Stages** page lists the stage, ready, with "Its own token".
 
-11. **The viewer and the first stream.** Build a viewer for the brand's catalog owner and topic,
-    the address and topic the admin's `/api/config` names: a **Watch a stream** deployment, with
-    `feed.owner`, `0x` in front, under **A streamer somewhere else** and `feed.topic` in **Feed
-    topic**. Put its address in the admin's `VIEWER_BASE_URL`. Then in the admin, **My Streams**:
-    create a stream, pick its stage, schedule and publish. The OBS panel shows that stage's ingest
-    details.
+11. **The viewer and the first stream.** The viewer is a web player built for one feed, the
+    brand's stream list, so it needs that feed's owner address and topic.
+    1. **Read the feed's owner and topic.** Open `https://admin.example.org/api/config` in a
+       browser. It needs no sign-in. Note `feed.owner`, the address of the brand key, written
+       without `0x`, and `feed.topic`.
+    2. **Make the viewer in the manager.** **New deployment**, then on **What to set up** pick
+       **Watch a stream** and press **Continue**. On **Basics** give it a **Name**, pick **Another
+       host over SSH** under **Host**, enter `stage-1`, and press **Continue**. On **Settings**,
+       under **Stream to follow**, pick **A streamer somewhere else** and paste `feed.owner` with
+       `0x` in front. Put `feed.topic` in **Feed topic**. Press **Continue**, then **Deploy** on
+       **Review**. The deployment's **Edit** drawer later shows the same owner field as
+       **Streamer to follow**.
+    3. **Find the viewer's address.** The deployment's page lists its ports. The viewer page is
+       the one ending in 4, `10004 + 10 × s`, so on slot 3 it is `http://203.0.113.7:10034`. It
+       worked when that address opens the player page.
+    4. **Give the admin the viewer's address.** Set `VIEWER_BASE_URL` to that address in the env
+       file of step 6, `apps/web2-admin/backend/.env.brand-a`, and run the admin's deploy of step 6
+       again. It worked when `https://admin.example.org/api/config` shows it as `viewerBaseUrl`.
+    5. **Make the first stream in the admin.** On **Streams**, press **Create New Stream**. Fill in
+       **Stream Name**, pick the stage under **Stage**, set **Scheduled Date** and
+       **Scheduled Time**, and press **Create Stream**. On the stream's page press **Publish**.
+       It worked when the stream's page shows **OBS connection details** for that stage, and
+       **Open player catalogue** opens the viewer with the stream listed.
 
 **Upgrading a host that runs the admin and manager from before stages.** A fresh installation
 needs none of this. On a running one, in this order:
@@ -386,17 +408,81 @@ stage hosts publish through. It is prepared like a stage host.
    - **The bind.** The manager already binds each rung's API to `0.0.0.0`, because this is another
      host than the control host, so the API answers on every address from the first deploy. That is
      why the firewall below goes in first.
-   - **The firewall.** Generate this host's table and name each allowed address once, as a `/32`.
-     Run it from `apps/infra-manager`. `firewall-inventory.json` is the download from
-     `/targets/firewall?alias=bee-1` in the signed-in manager.
+   - **The firewall.** An nftables table the manager's generator writes for this host. It filters
+     the traffic Docker publishes as well, which a firewall such as ufw does not see.
 
-     ```sh
-     ./deploy/host/firewall-rules.sh --iface <public interface> --inventory firewall-inventory.json --bee-api-source <stage-host-address>/32 --bee-api-source <control-host-address>/32 > /tmp/bee-1-firewall.nft
-     ```
+   A provider firewall that admits the same addresses to the same ports does the same job, and then
+   the steps below can be skipped. Otherwise:
 
-   A provider firewall that admits the same addresses to the same ports does the same job.
+   1. **Download the host's inventory.** It is a browser address, not a button in the console. Sign
+      in to the manager, then open `https://manager.example.org/targets/firewall?alias=bee-1` in the
+      same browser, or `http://localhost:8080/targets/firewall?alias=bee-1` while
+      `ssh <control-host>` is open. Your sign-in is all it asks for. The browser saves
+      `firewall-inventory.json`. The manager refuses the export, and says why, while something on
+      that host is unfinished or unexplained.
+   2. **Find the host's public interface**, on the Bee host. The name after `dev` is the one, such
+      as `eth0`.
 
-3. **Create the pool.** **New deployment**, **What do you want to set up?**, **ABR node pool**,
+      ```sh
+      ip -4 route show default
+      ```
+
+   3. **Generate the table**, on your own machine, from `apps/infra-manager`. Name each address
+      that may reach the Bee API once, as a `/32`: every stage host that publishes through these
+      rungs, and the control host. It prints the table and applies nothing.
+
+      ```sh
+      ./deploy/host/firewall-rules.sh --iface <public interface> --inventory <path to firewall-inventory.json> --bee-api-source 203.0.113.7/32 --bee-api-source 203.0.113.6/32 > /tmp/bee-1-firewall.nft
+      ```
+
+   4. **Copy it to the Bee host**, with your own account there, the one that can run `sudo`:
+
+      ```sh
+      scp /tmp/bee-1-firewall.nft <your account>@203.0.113.8:/tmp/bee-1-firewall.nft
+      ```
+
+   5. **Check it, then apply it**, on the Bee host. Keep that ssh session open until a second
+      login works, so a mistake cannot lock you out. The check prints nothing when the file is
+      valid.
+
+      ```sh
+      sudo apt-get install -y nftables
+      ```
+
+      ```sh
+      sudo nft -c -f /tmp/bee-1-firewall.nft
+      ```
+
+      ```sh
+      sudo nft -f /tmp/bee-1-firewall.nft
+      ```
+
+   6. **Keep it across a reboot.** Install it as a file of its own and have nftables load it at
+      boot beside the host's own rules, never in place of them:
+
+      ```sh
+      sudo install -m 600 /tmp/bee-1-firewall.nft /etc/nftables-streaming.nft
+      ```
+
+      ```sh
+      echo 'include "/etc/nftables-streaming.nft"' | sudo tee -a /etc/nftables.conf
+      ```
+
+      ```sh
+      sudo systemctl enable nftables
+      ```
+
+      `/etc/nftables.conf` starts with `flush ruleset`, which also removes Docker's rules. So never
+      restart the nftables service on a running host. A newer table is loaded with `sudo nft -f`,
+      as in step 5, and installed again as in this step.
+
+   It worked when `sudo nft list table inet streaming_infra_manager` prints the table with your
+   addresses in its `bee_api_sources` set, a second ssh login works, and after `sudo reboot` the
+   same command still prints it. Once the rungs run, a rung's Bee API port, `10005 + 10 × s`, does
+   not answer from your own machine. Generate, check and apply the table again after you add a
+   stage host.
+
+3. **Create the pool.** **New deployment**, **What to set up**, **ABR node pool**,
    with `bee-1` as the host. The manager creates one deployment per rung. Each rung's data, its wallet and keys
    included, lands on this host and nowhere else, so back it up before the host is ever rebuilt. Set
    `BEE_UPLOADER_NAT_ADDR` in each rung's settings to this host's public address, so peers can dial
