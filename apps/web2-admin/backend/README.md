@@ -31,6 +31,8 @@ pnpm dev                  # API on :9877
 curl localhost:9877/api/health                   # {"status":"ok"}
 ```
 
+### The first user
+
 **There is no seeded account and no sign-up route.** A fresh database has no
 users: the API boots, logs a warning, serves `/api/health`, `/api/config` and
 `/api/internal`, and answers every sign-in with `401 no_users` until a user is
@@ -43,8 +45,12 @@ docker compose exec -it api node dist/cli.js user:add alice
   | docker compose exec -T api node dist/cli.js user:add alice --password-stdin
 ```
 
-The first user ever added can manage users whatever the flags said; later ones
-are plain unless `--admin` is given. See
+The first user ever added can manage users whatever the flags said. Later ones
+are plain unless `--admin` is given, or an admin sends `admin: true` on
+`POST /api/auth/users`. On a server, `deploy/deploy.sh` prints the command
+for the profile at the end of every deploy, and the console's sign-in page
+shows `docker exec -it <api-container> node dist/cli.js user:add <username>`
+to run on the host. See
 [docs/architecture/web2-admin-auth.md](../../../docs/architecture/web2-admin-auth.md)
 for the whole design.
 
@@ -98,6 +104,8 @@ reference; the summary:
 | `MANAGER_FUNDING_TOKEN`               | with the URL       | 32+ chars, printable ASCII, no space: the manager's `FUNDING_API_TOKEN`. Refused without the URL. Never logged                                 |
 | `WEB2_ADMIN_VERSION`                  | unset              | the build's label, which `deploy/deploy.sh` builds into the image. Never in the env file: [The build it runs](#the-build-it-runs)              |
 | `WEB2_ADMIN_COMMIT`                   | unset              | the build's commit, built in the same way. `GET /api/version` answers both                                                                     |
+
+### Keys no longer read
 
 There is no ingest setting. Each stream's OBS details come from the stage it
 is broadcast on, as the manager pushed it: see [A stream's stage](#a-streams-stage).

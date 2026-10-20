@@ -27,12 +27,7 @@ pnpm --filter @streaming-monorepo/web2-admin-backend database:start
 pnpm dev                                                    # backend on :9877, frontend on :5081
 ```
 
-There is no seeded account. Create the first user on the host, which makes it
-an admin:
-
-```bash
-pnpm --filter @streaming-monorepo/web2-admin-backend user:add <username>
-```
-
-Then log in at http://localhost:5081. The Access page manages users and
+There is no seeded account. Make the first user with the `user:add` CLI, as
+[backend/README.md](backend/README.md#the-first-user) shows, then log in at
+http://localhost:5081. The Access page manages users and
 passwords.

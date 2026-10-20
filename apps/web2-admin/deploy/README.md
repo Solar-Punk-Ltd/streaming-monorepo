@@ -90,16 +90,9 @@ value is printed. The address itself is the API's to judge: one that is not
 https, or plain http to this host, stops the API with a sentence in its log,
 which the deploy prints when the API does not come up.
 
-No Bee node or batch is set here either: the catalogue is written through the
-catalogue node and batch the manager designates and pushes. An env file that
-still sets `BEE_URL` or `POSTAGE_BATCH_ID` deploys as it did, with a warning
-naming each one.
-
-No ingest key is needed: each stream's OBS details come from its stage, as the
-manager pushes it. An env file that still sets `INGEST_HOST`,
-`INGEST_SRT_PORT`, `INGEST_RTMP_PORT`, `INGEST_RTMP_PUBLIC`,
-`INGEST_SRT_PASSPHRASE` or `INGEST_KEY_VERIFIED` deploys as it did, with a
-warning naming each one; remove them when convenient.
+An env file that still sets a key the admin no longer reads deploys as it did,
+with a warning naming each one. [Keys no longer read](../backend/README.md#keys-no-longer-read)
+in the backend README lists them and says what replaced them.
 
 Nor does the file name the build: `deploy.sh` builds `WEB2_ADMIN_VERSION` and
 `WEB2_ADMIN_COMMIT` into the api image (see "The version" below). An env file
@@ -326,17 +319,9 @@ prints the exact line at the end of every deploy.
 
 ### The first user
 
-A new database has no users, and every sign-in is refused until one is made.
-The script prints this command, once per deploy, filled in for the profile:
-
-```sh
-ssh -t admin-host 'cd /opt/streaming/streaming-monorepo && WEB2_ADMIN_ENV_FILE=../backend/.env.brand-a docker compose -p web2-admin-brand-a -f deploy/docker-compose.yml --env-file backend/.env.brand-a exec api node dist/cli.js user:add <username>'
-```
-
-It prompts for the password twice. The first user can manage users. The
-console's sign-in page shows the shorter equivalent, `docker exec -it
-web2-admin-<profile>-api-1 node dist/cli.js user:add <username>`, to run on
-the host; `docker ps` shows the container's name.
+Every deploy ends by printing the command that makes the first user, filled in
+for the profile, and [The first user](../backend/README.md#the-first-user) in
+the backend README says what it does.
 
 ### The brand wallet's backup
 
@@ -422,8 +407,8 @@ call.
 
 ### A profile not yet redeployed
 
-Its env file is still only at the old path on the host, so the commands in "The
-first user" and "Running compose by hand" do not find it. Until the profile's
+Its env file is still only at the old path on the host, so the first user's
+command and those in "Running compose by hand" do not find it. Until the profile's
 next deploy, name the old path in them:
 
 ```sh

@@ -217,21 +217,10 @@ server.
 that read them. A password in a file is a password, and a default one that
 nobody changes is the account an attacker tries first.
 
-A fresh database has no users. The API boots, logs a warning, answers
-`/api/health`, `/api/config` and `/api/internal`, and refuses every sign-in with
-401 `no_users` until:
-
-```bash
-pnpm user:add alice                 # prompts twice, echoes nothing
-# or, in the image:
-docker compose exec -it api node dist/cli.js user:add alice
-# or piped from a password manager's command line, never in a file or an argv:
-<command that prints the password> \
-  | docker compose exec -T api node dist/cli.js user:add alice --password-stdin
-```
-
-The first user is an admin whatever the flags said. Later ones are plain unless
-an admin passes `--admin`, or `admin: true` on `POST /api/auth/users`.
+A fresh database has no users and refuses every sign-in with 401 `no_users`
+until the first one is made with the `user:add` CLI, as
+[The first user](../../apps/web2-admin/backend/README.md#the-first-user) in the
+backend README shows.
 
 ## Migration 005 on a database that was already in use
 
