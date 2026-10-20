@@ -25,7 +25,8 @@ the tables on this page are the only place a suite is listed. `test/readmeSuiteT
 that every suite file has a row here and every row names a file.
 
 `packages/shared` has no publish-key test of its own yet. Its publish-key code is exercised through
-the uploader's tests.
+the uploader's tests. The client's `typecheck` covers `src/` only, so its `test/` folder is not
+type-checked.
 
 ### Why the harness has unit tests
 
@@ -475,6 +476,11 @@ feed's SOC index, while the playlist publishes a different number, so a suite ha
 playlist. `e2e/src/harness/manifestContractLive.ts` reads it, and `e2e/test/manifestContractLive.test.ts`
 covers everything in it but the feed read. One `STREAM_KEY` signs the catalogue, every master and every
 rung's feed, so the owner read from the `[StreamCatalog]` log line owns every rung playlist too.
+
+The log-side counter `discontinuitiesArmed` in `harness/logwatch.ts` counts lines of several
+messages, most of which report a lost segment rather than a break, and one of which can repeat for the
+same segment. The suites assert its zero on clean runs. Read any non-zero figure as an upper bound, not
+as a count of discontinuities.
 
 Each live suite prints one line per rung: whether the feed answered a live playlist or a recording, how
 many segments, gap entries and discontinuities it holds, the sequence it declares and its span of
