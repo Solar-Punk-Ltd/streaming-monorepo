@@ -78,12 +78,12 @@ idempotent.
 
 `deploy/config.json` maps each service to a target:
 
-| Value         | Meaning                                                           |
-| ------------- | ----------------------------------------------------------------- |
-| `"localhost"` | Run in Docker on this machine                                     |
-| `"user@host"` | Deploy over SSH and rsync to a remote host. SSH aliases work too  |
+| Value         | Meaning                                                            |
+| ------------- | ------------------------------------------------------------------ |
+| `"localhost"` | Run in Docker on this machine                                      |
+| `"user@host"` | Deploy over SSH and rsync to a remote host. SSH aliases work too   |
 | `"native"`    | The service runs as a host process outside Docker. Deploy skips it |
-| `false`       | Disabled                                                          |
+| `false`       | Disabled                                                           |
 
 ```json
 {
@@ -105,17 +105,17 @@ To debug the uploader natively, set `stream-uploader` to `"native"` and run it o
 
 ### Services
 
-| Service              | Image                                             | What it is                                                |
-| -------------------- | ------------------------------------------------- | --------------------------------------------------------- |
-| `bee-uploader`       | `ethersphere/bee:2.8.3`                           | The Bee node that publishes, and the 360p rung's node     |
-| `bee-uploader-480p`  | `ethersphere/bee:2.8.3`                           | The 480p rung's own Bee node. Off by default              |
-| `bee-uploader-720p`  | `ethersphere/bee:2.8.3`                           | The 720p rung's own Bee node. Off by default              |
-| `bee-uploader-1080p` | `ethersphere/bee:2.8.3`                           | The 1080p rung's own Bee node. Off by default             |
-| `bee-gateway`        | `ethersphere/bee:2.8.3`                           | The Bee node viewers read through                         |
-| `stream-uploader`    | Built from `Dockerfile.uploader`                  | Receives segments and publishes them to Swarm             |
+| Service              | Image                                             | What it is                                                                            |
+| -------------------- | ------------------------------------------------- | ------------------------------------------------------------------------------------- |
+| `bee-uploader`       | `ethersphere/bee:2.8.3`                           | The Bee node that publishes, and the 360p rung's node                                 |
+| `bee-uploader-480p`  | `ethersphere/bee:2.8.3`                           | The 480p rung's own Bee node. Off by default                                          |
+| `bee-uploader-720p`  | `ethersphere/bee:2.8.3`                           | The 720p rung's own Bee node. Off by default                                          |
+| `bee-uploader-1080p` | `ethersphere/bee:2.8.3`                           | The 1080p rung's own Bee node. Off by default                                         |
+| `bee-gateway`        | `ethersphere/bee:2.8.3`                           | The Bee node viewers read through                                                     |
+| `stream-uploader`    | Built from `Dockerfile.uploader`                  | Receives segments and publishes them to Swarm                                         |
 | `srs`                | `ghcr.io/solar-punk-ltd/swarm-srs:6.0-r2-swarm.4` | SRT and RTMP to HLS, ABR transcode. See the [engines reference](../engines/README.md) |
-| `ome`                | `airensoft/ovenmediaengine:v0.21.0`               | SRT ingest. The uploader pulls HLS over HTTP              |
-| `client`             | Built from `Dockerfile.client`                    | The viewer (nginx), which proxies `/bee/` to `bee-gateway` |
+| `ome`                | `airensoft/ovenmediaengine:v0.21.0`               | SRT ingest. The uploader pulls HLS over HTTP                                          |
+| `client`             | Built from `Dockerfile.client`                    | The viewer (nginx), which proxies `/bee/` to `bee-gateway`                            |
 
 Those nine names are every key `config.json` accepts. A service the file does not mention runs, except
 `ome` and the three per-rung Bee nodes, which stay off until the file names them.
@@ -185,11 +185,11 @@ Without the ABR ladder nothing transcodes. SRS cuts the stream it is given, so t
 interval decides the segment length, and the segment is the largest single delay between a camera and
 a viewer.
 
-| Setting                 | Use                              | Why                                                                                      |
-| ----------------------- | -------------------------------- | ---------------------------------------------------------------------------------------- |
+| Setting                 | Use                               | Why                                                                                     |
+| ----------------------- | --------------------------------- | --------------------------------------------------------------------------------------- |
 | Keyframe interval (GOP) | `HLS_FRAGMENT`, 2 s in the sample | SRS cuts on keyframes, so a matching interval cuts every segment at its declared length |
-| Video bitrate           | 2500k                            | 720p30. 1080p at 6000k also works, and costs about 2.3 times the BZZ                     |
-| B-frames                | off                              | `-tune zerolatency` or the equivalent                                                    |
+| Video bitrate           | 2500k                             | 720p30. 1080p at 6000k also works, and costs about 2.3 times the BZZ                    |
+| B-frames                | off                               | `-tune zerolatency` or the equivalent                                                   |
 
 In OBS this is Settings, Output, Advanced, Keyframe Interval, in seconds. Its default of 0 lets the
 encoder choose. In ffmpeg it is `-g <frames>`, so a 2 s interval at 30 fps is `-g 60`.
@@ -321,7 +321,7 @@ port values in `.env.<profile>` are ignored. Without it, the env files decide.
 99 is the ceiling because the per-rung Bee nodes take 11001 to 11006 at slot 0, shifted the same way,
 and slot 100 would put the first block on top of them.
 
-| Setting               | No flag | Base  | `--portSlot=1` | `--portSlot=2` | `--portSlot=99` |
+| Setting               | No flag |  Base | `--portSlot=1` | `--portSlot=2` | `--portSlot=99` |
 | --------------------- | ------: | ----: | -------------: | -------------: | --------------: |
 | API_PORT              |    3000 | 10000 |          10010 |          10020 |           10990 |
 | SRS_SRT_PORT          |   10080 | 10001 |          10011 |          10021 |           10991 |

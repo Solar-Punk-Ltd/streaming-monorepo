@@ -34,10 +34,10 @@ Segments in ──▶ StreamOrchestrator ──▶ StreamUploader ──▶ Swar
 
 ## Two modes
 
-| Mode                  | Turned on by          | Who owns the catalogue                                                                                                                       |
-| --------------------- | --------------------- | -------------------------------------------------------------------------------------------------------------------------------------------- |
-| Standalone, the default | `ADMIN_API_URL` empty | The uploader writes the catalogue feed itself. Any publisher with a valid publish key may start a stream                                   |
-| Admin mode            | `ADMIN_API_URL` set   | The admin (`apps/web2-admin`) owns the catalogue. A stream must be declared in the admin before it may publish, and the uploader reports state to it |
+| Mode                    | Turned on by          | Who owns the catalogue                                                                                                                               |
+| ----------------------- | --------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Standalone, the default | `ADMIN_API_URL` empty | The uploader writes the catalogue feed itself. Any publisher with a valid publish key may start a stream                                             |
+| Admin mode              | `ADMIN_API_URL` set   | The admin (`apps/web2-admin`) owns the catalogue. A stream must be declared in the admin before it may publish, and the uploader reports state to it |
 
 See [Admin mode](#admin-mode) for what changes.
 
@@ -65,46 +65,46 @@ To deploy it with the rest of the stack, see the [deploy guide](../../deploy/REA
 
 Required:
 
-| Variable            | Description                                                                                                                                              |
-| ------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `BEE_URL`           | Bee node API URL                                                                                                                                         |
-| `STAMP`             | Postage batch id (`pnpm stamp:setup`). Required on a single-node deployment. With `BEE_PUBLISHERS` set it is optional and unread                         |
-| `STREAM_KEY`        | Private key (hex) that signs every feed                                                                                                                  |
-| `STREAM_LIST_TOPIC` | Feed topic of the catalogue                                                                                                                              |
-| `API_AUTH_TOKEN`    | Bearer token for `/stream/*` and `GET /metrics`, at least 32 characters. Generate one with `openssl rand -hex 32`                                       |
+| Variable            | Description                                                                                                                                          |
+| ------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `BEE_URL`           | Bee node API URL                                                                                                                                     |
+| `STAMP`             | Postage batch id (`pnpm stamp:setup`). Required on a single-node deployment. With `BEE_PUBLISHERS` set it is optional and unread                     |
+| `STREAM_KEY`        | Private key (hex) that signs every feed                                                                                                              |
+| `STREAM_LIST_TOPIC` | Feed topic of the catalogue                                                                                                                          |
+| `API_AUTH_TOKEN`    | Bearer token for `/stream/*` and `GET /metrics`, at least 32 characters. Generate one with `openssl rand -hex 32`                                    |
 | `HLS_FRAGMENT`      | The stage's segment length in seconds, the same variable the engine reads. Every segment's date is read against it. No default, `2` in `.env.sample` |
 
 Optional:
 
-| Variable                 | Default              | Description                                                                                                                                                                       |
-| ------------------------ | -------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `BEE_PUBLISHERS`         | _(empty)_            | One Bee node and batch per rung, as `rung@url<batch>`. Empty means one node for everything. See [One Bee node per rung](concepts.md#one-bee-node-per-rung)                   |
-| `PUBLISH_KEY_SECRET`     | _(empty)_            | Master secret for per-stream publish keys, at least 32 characters. Empty leaves publishers unauthenticated. See [Publisher authentication](#publisher-authentication)          |
-| `API_PORT`               | `3000`               | HTTP API port                                                                                                                                                                     |
-| `STATE_DIR`              | `./state`            | Directory for crash recovery state                                                                                                                                                |
-| `MAX_QUEUE_SIZE`         | `100`                | Most segments queued per stream                                                                                                                                                   |
-| `RECOVERY_TIMEOUT`       | `60000`              | How long, in ms, a stream recovered after a crash waits for its encoder before it is finalized                                                                                   |
-| `SEGMENT_STALL_MS`       | `30000`              | Silence after which `/health` reads degraded                                                                                                                                      |
-| `FIRST_RUNG_DEADLINE_MS` | `45000`              | How long a ladder source SRS accepted may go without any rung publishing before `/health` reports `ladder_not_started`                                                            |
-| `ORPHAN_REAP_MS`         | `60000`              | Silence after which a live stream is finalized. This is also the reconnect window                                                                                                |
-| `UPLOADER_START_GATES`   | `chequebook-warn`    | Which startup gate stops the boot. See [Startup gates](#startup-gates)                                                                                                            |
-| `START_GATE_TIMEOUT_MS`  | `20000`              | How long one startup gate read of one node, or the liveness probe before the gates, may take. 600000 at most. Separate from `BEE_REQUEST_TIMEOUT_MS`                             |
-| `CHEQUEBOOK_MIN_BZZ`     | `0.5`                | Available chequebook balance every node must hold to count as funded. 1000 at most                                                                                               |
-| `CHEQUEBOOK_RECHECK_MS`  | `60000`              | Time between reads of every node's chequebook while the uploader runs, 1000 to 3600000                                                                                           |
-| `STAMP_MIN_TTL_HOURS`    | `12`                 | Hours a postage batch must have left for the postage gate to accept it                                                                                                           |
-| `STAMP_MAX_UTILIZATION`  | `0.9`                | How full an immutable batch may be, as a ratio, for the postage gate to accept it. A mutable batch overwrites its oldest chunks when full, so it is never held to this          |
-| `BEE_REQUEST_TIMEOUT_MS` | `4000`               | Deadline on every upload-loop call to a Bee node. A feed lookup carries a 15 s deadline of its own, and a recording's write one sized to the recording                         |
-| `SEGMENT_DEDUP_WINDOW`   | `10000`              | Segment indexes remembered per stream for deduplication. Twice this many are held at most                                                                                        |
-| `SEGMENT_REDUNDANCY`     | `1`                  | Erasure-coding parity on segment uploads. `0` turns it off                                                                                                                        |
-| `ENGINE`                 | _(empty)_            | Engine plugin to load: `srs`, `ome` or empty                                                                                                                                      |
-| `ABR_ENABLED`            | `false`              | Whether the engine publishes a ladder. Read here to group the rungs                                                                                                              |
-| `ABR_LADDER`             | the engine's default | The rungs, as `name:width:height:kbps`. See `engines/srs/.env.sample`                                                                                                             |
-| `ABR_VHOST`              | `abr`                | The SRS vhost rungs arrive on                                                                                                                                                     |
-| `LADDER_MARKERS`         | `true`               | Write a time marker per ladder every 10 s, so a viewer finds every rung's newest playlist with one read. See [Ladder time markers](concepts.md#ladder-time-markers)            |
-| `ADMIN_API_URL`          | _(empty)_            | Admin service base URL. Setting it turns on admin mode                                                                                                                           |
-| `ADMIN_API_TOKEN`        | _(empty)_            | Bearer token for the admin's internal routes, at least 32 characters. Required when `ADMIN_API_URL` is set. It is the stage's own token, which the manager generates           |
-| `LOG_LEVEL`              | `debug`              | `debug`, `log`, `info`, `warn`, `error` or `silent`. `log` writes one line per segment, `info` one per lifecycle event                                                           |
-| `LOG_FORMAT`             | _(empty)_            | `json` for one `{ts, level, msg}` object per line. Anything else keeps the readable format                                                                                       |
+| Variable                 | Default              | Description                                                                                                                                                            |
+| ------------------------ | -------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `BEE_PUBLISHERS`         | _(empty)_            | One Bee node and batch per rung, as `rung@url<batch>`. Empty means one node for everything. See [One Bee node per rung](concepts.md#one-bee-node-per-rung)             |
+| `PUBLISH_KEY_SECRET`     | _(empty)_            | Master secret for per-stream publish keys, at least 32 characters. Empty leaves publishers unauthenticated. See [Publisher authentication](#publisher-authentication)  |
+| `API_PORT`               | `3000`               | HTTP API port                                                                                                                                                          |
+| `STATE_DIR`              | `./state`            | Directory for crash recovery state                                                                                                                                     |
+| `MAX_QUEUE_SIZE`         | `100`                | Most segments queued per stream                                                                                                                                        |
+| `RECOVERY_TIMEOUT`       | `60000`              | How long, in ms, a stream recovered after a crash waits for its encoder before it is finalized                                                                         |
+| `SEGMENT_STALL_MS`       | `30000`              | Silence after which `/health` reads degraded                                                                                                                           |
+| `FIRST_RUNG_DEADLINE_MS` | `45000`              | How long a ladder source SRS accepted may go without any rung publishing before `/health` reports `ladder_not_started`                                                 |
+| `ORPHAN_REAP_MS`         | `60000`              | Silence after which a live stream is finalized. This is also the reconnect window                                                                                      |
+| `UPLOADER_START_GATES`   | `chequebook-warn`    | Which startup gate stops the boot. See [Startup gates](#startup-gates)                                                                                                 |
+| `START_GATE_TIMEOUT_MS`  | `20000`              | How long one startup gate read of one node, or the liveness probe before the gates, may take. 600000 at most. Separate from `BEE_REQUEST_TIMEOUT_MS`                   |
+| `CHEQUEBOOK_MIN_BZZ`     | `0.5`                | Available chequebook balance every node must hold to count as funded. 1000 at most                                                                                     |
+| `CHEQUEBOOK_RECHECK_MS`  | `60000`              | Time between reads of every node's chequebook while the uploader runs, 1000 to 3600000                                                                                 |
+| `STAMP_MIN_TTL_HOURS`    | `12`                 | Hours a postage batch must have left for the postage gate to accept it                                                                                                 |
+| `STAMP_MAX_UTILIZATION`  | `0.9`                | How full an immutable batch may be, as a ratio, for the postage gate to accept it. A mutable batch overwrites its oldest chunks when full, so it is never held to this |
+| `BEE_REQUEST_TIMEOUT_MS` | `4000`               | Deadline on every upload-loop call to a Bee node. A feed lookup carries a 15 s deadline of its own, and a recording's write one sized to the recording                 |
+| `SEGMENT_DEDUP_WINDOW`   | `10000`              | Segment indexes remembered per stream for deduplication. Twice this many are held at most                                                                              |
+| `SEGMENT_REDUNDANCY`     | `1`                  | Erasure-coding parity on segment uploads. `0` turns it off                                                                                                             |
+| `ENGINE`                 | _(empty)_            | Engine plugin to load: `srs`, `ome` or empty                                                                                                                           |
+| `ABR_ENABLED`            | `false`              | Whether the engine publishes a ladder. Read here to group the rungs                                                                                                    |
+| `ABR_LADDER`             | the engine's default | The rungs, as `name:width:height:kbps`. See `engines/srs/.env.sample`                                                                                                  |
+| `ABR_VHOST`              | `abr`                | The SRS vhost rungs arrive on                                                                                                                                          |
+| `LADDER_MARKERS`         | `true`               | Write a time marker per ladder every 10 s, so a viewer finds every rung's newest playlist with one read. See [Ladder time markers](concepts.md#ladder-time-markers)    |
+| `ADMIN_API_URL`          | _(empty)_            | Admin service base URL. Setting it turns on admin mode                                                                                                                 |
+| `ADMIN_API_TOKEN`        | _(empty)_            | Bearer token for the admin's internal routes, at least 32 characters. Required when `ADMIN_API_URL` is set. It is the stage's own token, which the manager generates   |
+| `LOG_LEVEL`              | `debug`              | `debug`, `log`, `info`, `warn`, `error` or `silent`. `log` writes one line per segment, `info` one per lifecycle event                                                 |
+| `LOG_FORMAT`             | _(empty)_            | `json` for one `{ts, level, msg}` object per line. Anything else keeps the readable format                                                                             |
 
 Admin mode does not change what the uploader needs from Bee. `BEE_URL`, `STREAM_KEY`,
 `STREAM_LIST_TOPIC`, `API_AUTH_TOKEN` and `HLS_FRAGMENT` stay required, and `STAMP` stays conditional
@@ -136,10 +136,10 @@ broadcaster's choice. With the ladder on, SRS re-encodes every rung.
 
 With `ENGINE=srs` the uploader mounts:
 
-| Route                       | What SRS sends                                 |
-| --------------------------- | ---------------------------------------------- |
-| `POST /engines/srs/streams` | The `on_publish` and `on_unpublish` webhooks   |
-| `POST /engines/srs/hls`     | The `on_hls` webhook, one per closed segment   |
+| Route                       | What SRS sends                               |
+| --------------------------- | -------------------------------------------- |
+| `POST /engines/srs/streams` | The `on_publish` and `on_unpublish` webhooks |
+| `POST /engines/srs/hls`     | The `on_hls` webhook, one per closed segment |
 
 SRS writes segments to a volume both containers share. The uploader reads each segment from disk,
 uploads it, and deletes the file. Both routes check `SRS_WEBHOOK_TOKEN` in the hook URL, the only
@@ -167,14 +167,14 @@ variables. The [engines reference](../../engines/README.md#adding-a-new-engine) 
 
 ## HTTP API
 
-| Route                  | Input                                 | What it does                                          |
-| ---------------------- | ------------------------------------- | ----------------------------------------------------- |
-| `POST /stream/start`   | JSON body `{ streamId, mediatype }`   | Register a stream                                     |
-| `POST /stream/segment` | Raw body, and the headers below       | Push one segment                                      |
-| `POST /stream/stop`    | JSON body `{ streamId }`              | End a stream. Answered `202`, drains in the background |
-| `GET /stream/status`   | Query `?streamId=<id>`                | What became of a stream                               |
-| `GET /metrics`         | None                                  | Prometheus exposition                                 |
-| `GET /health`          | None                                  | Service health, `200` ok or `503`                     |
+| Route                  | Input                               | What it does                                           |
+| ---------------------- | ----------------------------------- | ------------------------------------------------------ |
+| `POST /stream/start`   | JSON body `{ streamId, mediatype }` | Register a stream                                      |
+| `POST /stream/segment` | Raw body, and the headers below     | Push one segment                                       |
+| `POST /stream/stop`    | JSON body `{ streamId }`            | End a stream. Answered `202`, drains in the background |
+| `GET /stream/status`   | Query `?streamId=<id>`              | What became of a stream                                |
+| `GET /metrics`         | None                                | Prometheus exposition                                  |
+| `GET /health`          | None                                | Service health, `200` ok or `503`                      |
 
 The four `/stream/*` routes and `GET /metrics` need `Authorization: Bearer $API_AUTH_TOKEN`. The token
 is checked in constant time before the body is parsed, so an unauthenticated request neither reaches
@@ -186,10 +186,10 @@ The `/engines/*` webhook routes carry their own checks instead: the HMAC signatu
 
 Segment headers on `POST /stream/segment`:
 
-| Header            | Meaning                    |
-| ----------------- | -------------------------- |
-| `x-stream-id`     | Stream identifier          |
-| `x-segment-index` | Segment sequence number    |
+| Header            | Meaning                     |
+| ----------------- | --------------------------- |
+| `x-stream-id`     | Stream identifier           |
+| `x-segment-index` | Segment sequence number     |
 | `x-duration`      | Segment duration in seconds |
 
 Error answers:
@@ -213,11 +213,11 @@ does not.
 background, because a drain has up to five minutes to publish the recording and no media server holds
 a webhook open that long. Read the outcome from `GET /stream/status?streamId=<id>`:
 
-| `state`     | Meaning                                                                                  |
-| ----------- | ---------------------------------------------------------------------------------------- |
-| `live`      | Registered and accepting segments                                                        |
-| `draining`  | Stopping. The recording has not settled yet                                              |
-| `finalized` | The recording was committed and the catalogue entry published                            |
+| `state`     | Meaning                                                                                         |
+| ----------- | ----------------------------------------------------------------------------------------------- |
+| `live`      | Registered and accepting segments                                                               |
+| `draining`  | Stopping. The recording has not settled yet                                                     |
+| `finalized` | The recording was committed and the catalogue entry published                                   |
 | `failed`    | The finalize did not complete, with a `reason`. There is no recording and no retry is scheduled |
 
 A stream the service has never seen, or one whose stop settled more than fifteen minutes ago, answers
@@ -293,13 +293,13 @@ Rotating `PUBLISH_KEY_SECRET` invalidates every key at once. There is no per-str
 Setting `ADMIN_API_URL` turns admin mode on. A stream must then be declared in the admin before
 anything may publish to it. The admin mints the feed topic and the publish key.
 
-| Without `ADMIN_API_URL`                             | With it                                                                        |
-| --------------------------------------------------- | ------------------------------------------------------------------------------ |
-| Any publisher with the right derived key may start  | Only an ingest id the admin has declared, presenting that declaration's key    |
-| A single rendition gets a random feed topic         | A single rendition publishes on the declared topic, resuming from its feed head |
-| The uploader writes the catalogue feed              | It writes none, and reports `live` then `vod` to the admin                     |
-| `PUBLISH_KEY_SECRET` authenticates publishers       | `PUBLISH_KEY_SECRET` is ignored                                                |
-| A ladder's rungs are merged in the catalogue feed   | The admin merges them, and the declared topic is the ladder's master feed      |
+| Without `ADMIN_API_URL`                            | With it                                                                         |
+| -------------------------------------------------- | ------------------------------------------------------------------------------- |
+| Any publisher with the right derived key may start | Only an ingest id the admin has declared, presenting that declaration's key     |
+| A single rendition gets a random feed topic        | A single rendition publishes on the declared topic, resuming from its feed head |
+| The uploader writes the catalogue feed             | It writes none, and reports `live` then `vod` to the admin                      |
+| `PUBLISH_KEY_SECRET` authenticates publishers      | `PUBLISH_KEY_SECRET` is ignored                                                 |
+| A ladder's rungs are merged in the catalogue feed  | The admin merges them, and the declared topic is the ladder's master feed       |
 
 A publish is refused when:
 
@@ -320,12 +320,12 @@ address, and the admin's catalogue entry points a viewer at that owner. An uploa
 another key writes feeds nobody reads while every report answers 200. So the uploader compares its own
 address with the stage's owner at boot, and with each declaration's `owner` on every publish.
 
-| The admin's answer to `GET /api/internal/stages/self` (with `ADMIN_API_TOKEN`) | The uploader                                                                               |
-| ------------------------------------------------------------------------------ | ------------------------------------------------------------------------------------------ |
-| 200 with `{ stageId, owner }`                                                  | Compares `owner` with its signer. A mismatch refuses to start, naming both addresses       |
-| 404, an admin with no stages or one answering a shared token                   | Compares the catalogue owner of the public `/api/config` instead                           |
-| 401, an admin that takes only a stage's own token                              | Warns and starts. Every lookup and report it makes is refused the same way                 |
-| Anything else, or nothing                                                      | Warns and starts. The publish gate still compares each declaration's owner                 |
+| The admin's answer to `GET /api/internal/stages/self` (with `ADMIN_API_TOKEN`) | The uploader                                                                         |
+| ------------------------------------------------------------------------------ | ------------------------------------------------------------------------------------ |
+| 200 with `{ stageId, owner }`                                                  | Compares `owner` with its signer. A mismatch refuses to start, naming both addresses |
+| 404, an admin with no stages or one answering a shared token                   | Compares the catalogue owner of the public `/api/config` instead                     |
+| 401, an admin that takes only a stage's own token                              | Warns and starts. Every lookup and report it makes is refused the same way           |
+| Anything else, or nothing                                                      | Warns and starts. The publish gate still compares each declaration's owner           |
 
 A refusal says to fix the deployment's `STREAM_KEY` in the manager, or the stage the admin holds for
 it. An uploader the manager did not deploy against that admin has no stage token and cannot report to
@@ -343,24 +343,24 @@ shows `(unhealthy)` after three in a row. It reports and does not act. Compose d
 container for failing its healthcheck, and a restart would drop every live broadcast without fixing
 media that is already lost.
 
-| Reason                   | Meaning                                                                                                                                                                                                                                                                                                                                                                      |
-| ------------------------ | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `segment_upload_failure` | A segment reached the uploader and was never stored, because its upload retry window ran out or Bee refused it with a status the uploader does not retry, such as a full postage batch. That data is gone                                                                                                                                                                   |
-| `segment_loss`           | A segment never reached the uploader: the engine could not get it from its origin, or skipped the index. Reported for `SEGMENT_STALL_MS` after the loss                                                                                                                                                                                                                      |
-| `stale_manifest`         | Three live playlist publishes in a row failed or were held, so the live playlist is not moving. A held publish waits for a restarted stream's feed position and logs `is held:`, so a few seconds of this at the start of a re-broadcast is that wait                                                                                                                       |
-| `queue_pressure`         | A segment queue is above 80% of `MAX_QUEUE_SIZE`, where the next segments start being refused, or a backlog holds more than `SEGMENT_STALL_MS` of playing time                                                                                                                                                                                                              |
-| `segment_stall`          | A stream that should be producing has sent nothing for `SEGMENT_STALL_MS`                                                                                                                                                                                                                                                                                                    |
-| `ladder_not_started`     | SRS accepted a ladder source and none of its rungs published within `FIRST_RUNG_DEADLINE_MS`, so its transcoders never started and viewers see the broadcast as scheduled. `ladderNotStartedStreams` names each source. Cleared when a rung publishes or the source leaves. The broadcaster has to stop for longer than the encoder hold (about 15 s by default) and start again |
-| `unlisted_stream`        | A live stream is missing from the catalogue, so no viewer can find it. Reported from the first failed announce, after the catalogue's own retries (10 s for the write, 15 s for the read it appends to, none for a 404)                                                                                                                                                     |
-| `state_not_persisted`    | A write into `STATE_DIR` is failing, so the next restart would resume from stale state                                                                                                                                                                                                                                                                                       |
+| Reason                   | Meaning                                                                                                                                                                                                                                                                                                                                                                              |
+| ------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `segment_upload_failure` | A segment reached the uploader and was never stored, because its upload retry window ran out or Bee refused it with a status the uploader does not retry, such as a full postage batch. That data is gone                                                                                                                                                                            |
+| `segment_loss`           | A segment never reached the uploader: the engine could not get it from its origin, or skipped the index. Reported for `SEGMENT_STALL_MS` after the loss                                                                                                                                                                                                                              |
+| `stale_manifest`         | Three live playlist publishes in a row failed or were held, so the live playlist is not moving. A held publish waits for a restarted stream's feed position and logs `is held:`, so a few seconds of this at the start of a re-broadcast is that wait                                                                                                                                |
+| `queue_pressure`         | A segment queue is above 80% of `MAX_QUEUE_SIZE`, where the next segments start being refused, or a backlog holds more than `SEGMENT_STALL_MS` of playing time                                                                                                                                                                                                                       |
+| `segment_stall`          | A stream that should be producing has sent nothing for `SEGMENT_STALL_MS`                                                                                                                                                                                                                                                                                                            |
+| `ladder_not_started`     | SRS accepted a ladder source and none of its rungs published within `FIRST_RUNG_DEADLINE_MS`, so its transcoders never started and viewers see the broadcast as scheduled. `ladderNotStartedStreams` names each source. Cleared when a rung publishes or the source leaves. The broadcaster has to stop for longer than the encoder hold (about 15 s by default) and start again     |
+| `unlisted_stream`        | A live stream is missing from the catalogue, so no viewer can find it. Reported from the first failed announce, after the catalogue's own retries (10 s for the write, 15 s for the read it appends to, none for a 404)                                                                                                                                                              |
+| `state_not_persisted`    | A write into `STATE_DIR` is failing, so the next restart would resume from stale state                                                                                                                                                                                                                                                                                               |
 | `ingest_refused`         | A credential gate turned away an ingest request (an engine webhook, or `POST /stream/start` or `/stream/segment`) and no segment has reached Swarm since the process started. This is what a wrong `SRS_WEBHOOK_TOKEN` or `OME_ADMISSION_SECRET` looks like. Latched until the first segment lands. A refused operator route, such as a tokenless `/metrics` scrape, never raises it |
-| `unrecoverable_stream`   | A recovery entry could not be parsed at boot, so a broadcast that was live when the service last stopped cannot be finalized. The entry is kept as `<id>.json.corrupt` for repair. Latched until an operator clears it                                                                                                                                                      |
-| `fragment_mismatch`      | With `ABR_ENABLED`, eight measured segments of a stream miss `HLS_FRAGMENT` by more than 5%. The engine and the uploader disagree on the segment length, which usually means one container runs an older deploy. Redeploy both                                                                                                                                              |
-| `fragment_publisher_gop` | With no ladder, eight measured segments run more than 5% over `HLS_FRAGMENT`. The publisher's keyframe interval decides the segment, so set `HLS_FRAGMENT` to that interval, or turn the ladder on. `publisherGopStreams` gives both lengths                                                                                                                                 |
-| `postage_refused`        | Bee refused a paid write on a rung's postage batch with a status nothing retries, usually a full or expired batch. Latched until a restart, because a rung's batch is read once at start. Redeploy once the batch pays again                                                                                                                                                |
-| `node_unavailable`       | The boot is waiting for a Bee node to answer. Always reported alone. See [Waiting for the node](#waiting-for-the-node)                                                                                                                                                                                                                                                      |
-| `start_gate_warned`      | A startup gate could not clear a node and the uploader started anyway, as `UPLOADER_START_GATES` allows. `startGateWarnings` names the gate and the rung. A postage warning stays until a restart. A chequebook warning clears per rung once its node holds its floor                                                                                                       |
-| `chequebook_low`         | A publisher node's available chequebook balance has fallen under `CHEQUEBOOK_MIN_BZZ` after the boot, or the node no longer has a chequebook. A dry node keeps answering its own health check while every paid push on its rung stalls. `lowChequebooks` names each rung. Cleared on the first read that finds the node funded. The broadcast goes on                        |
+| `unrecoverable_stream`   | A recovery entry could not be parsed at boot, so a broadcast that was live when the service last stopped cannot be finalized. The entry is kept as `<id>.json.corrupt` for repair. Latched until an operator clears it                                                                                                                                                               |
+| `fragment_mismatch`      | With `ABR_ENABLED`, eight measured segments of a stream miss `HLS_FRAGMENT` by more than 5%. The engine and the uploader disagree on the segment length, which usually means one container runs an older deploy. Redeploy both                                                                                                                                                       |
+| `fragment_publisher_gop` | With no ladder, eight measured segments run more than 5% over `HLS_FRAGMENT`. The publisher's keyframe interval decides the segment, so set `HLS_FRAGMENT` to that interval, or turn the ladder on. `publisherGopStreams` gives both lengths                                                                                                                                         |
+| `postage_refused`        | Bee refused a paid write on a rung's postage batch with a status nothing retries, usually a full or expired batch. Latched until a restart, because a rung's batch is read once at start. Redeploy once the batch pays again                                                                                                                                                         |
+| `node_unavailable`       | The boot is waiting for a Bee node to answer. Always reported alone. See [Waiting for the node](#waiting-for-the-node)                                                                                                                                                                                                                                                               |
+| `start_gate_warned`      | A startup gate could not clear a node and the uploader started anyway, as `UPLOADER_START_GATES` allows. `startGateWarnings` names the gate and the rung. A postage warning stays until a restart. A chequebook warning clears per rung once its node holds its floor                                                                                                                |
+| `chequebook_low`         | A publisher node's available chequebook balance has fallen under `CHEQUEBOOK_MIN_BZZ` after the boot, or the node no longer has a chequebook. A dry node keeps answering its own health check while every paid push on its rung stalls. `lowChequebooks` names each rung. Cleared on the first read that finds the node funded. The broadcast goes on                                |
 
 Neither fragment reason changes a date, refuses a segment or ends a broadcast. They report a stage
 that cuts a length the deployment did not declare.
@@ -419,11 +419,11 @@ Two gates read every publisher node before the first broadcast. The chequebook g
 node holds `CHEQUEBOOK_MIN_BZZ`. The postage gate checks that each node holds its configured batch, with
 `STAMP_MIN_TTL_HOURS` left and, for an immutable batch, under `STAMP_MAX_UTILIZATION`.
 
-| `UPLOADER_START_GATES`        | Chequebook gate | Postage gate                                                                                  |
-| ----------------------------- | --------------- | --------------------------------------------------------------------------------------------- |
+| `UPLOADER_START_GATES`         | Chequebook gate | Postage gate                                                                                                            |
+| ------------------------------ | --------------- | ----------------------------------------------------------------------------------------------------------------------- |
 | `chequebook-warn`, the default | warns           | refuses a batch the node answered about as absent, unusable, expired or full. Warns on a batch it could not read at all |
-| `warn`                        | warns           | warns                                                                                         |
-| `refuse`                      | refuses         | refuses                                                                                       |
+| `warn`                         | warns           | warns                                                                                                                   |
+| `refuse`                       | refuses         | refuses                                                                                                                 |
 
 A gate that warns reads every node rather than stopping at the first, so one boot names every rung to
 fix. The service is degraded while a warning stands, which the healthcheck and
@@ -646,21 +646,21 @@ With `PUBLISH_KEY_SECRET` set, add the stream's key inside the `r=` value:
 
 ## Source layout
 
-| Module               | What it does                                                                     |
-| -------------------- | -------------------------------------------------------------------------------- |
-| `StreamOrchestrator` | Stream lifecycle, queue, backpressure, recovery                                  |
-| `StreamUploader`     | One stream's upload session: uploads segments, publishes its playlists           |
-| `StreamCatalog`      | The catalogue feed                                                               |
-| `RecoveryStore`      | Stream state on disk, for crash recovery                                         |
-| `ManifestManager`    | Builds the live, closing and recording playlists                                 |
-| `AbrLadder`          | The rung list from `ABR_LADDER`, and the map from a stream name to its rung      |
-| `BeePublisherPool`   | Which Bee node and postage batch each rung publishes through                     |
-| `MasterPlaylist`     | Builds a ladder's master playlist                                                |
-| `MasterFeedWriter`   | Publishes the master to a feed per ladder, whose topic is the ladder's group id  |
-| `BitrateMeter`       | Measures each rung's real bitrate, which becomes the master's `BANDWIDTH`        |
-| `LadderLiveness`     | Which rungs are still producing, so the master stops offering one that is not    |
-| `LadderMarkerWriter` | Writes a ladder's time markers                                                   |
-| `NodeWait`           | The boot's wait for a Bee node                                                   |
+| Module               | What it does                                                                    |
+| -------------------- | ------------------------------------------------------------------------------- |
+| `StreamOrchestrator` | Stream lifecycle, queue, backpressure, recovery                                 |
+| `StreamUploader`     | One stream's upload session: uploads segments, publishes its playlists          |
+| `StreamCatalog`      | The catalogue feed                                                              |
+| `RecoveryStore`      | Stream state on disk, for crash recovery                                        |
+| `ManifestManager`    | Builds the live, closing and recording playlists                                |
+| `AbrLadder`          | The rung list from `ABR_LADDER`, and the map from a stream name to its rung     |
+| `BeePublisherPool`   | Which Bee node and postage batch each rung publishes through                    |
+| `MasterPlaylist`     | Builds a ladder's master playlist                                               |
+| `MasterFeedWriter`   | Publishes the master to a feed per ladder, whose topic is the ladder's group id |
+| `BitrateMeter`       | Measures each rung's real bitrate, which becomes the master's `BANDWIDTH`       |
+| `LadderLiveness`     | Which rungs are still producing, so the master stops offering one that is not   |
+| `LadderMarkerWriter` | Writes a ladder's time markers                                                  |
+| `NodeWait`           | The boot's wait for a Bee node                                                  |
 
 | Script           | What it does                                                             |
 | ---------------- | ------------------------------------------------------------------------ |

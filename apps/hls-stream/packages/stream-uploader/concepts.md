@@ -244,9 +244,9 @@ SRS ends a publish within seconds of any interruption. The uploader does not tak
 the broadcast. `on_unpublish` is reported and ends nothing, and the live playlist simply stops
 advancing. The broadcast ends after `ORPHAN_REAP_MS` (60 s by default) with no media.
 
-| What the encoder does        | What a viewer gets                                                                                                                                                                                                         |
-| ---------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Comes back inside the window | The same session, recording and feed, with one `#EXT-X-DISCONTINUITY` at the seam and the dating re-anchored on the clock it returned at. No `#EXT-X-ENDLIST` was written, so a player following the feed carries on |
+| What the encoder does        | What a viewer gets                                                                                                                                                                                                     |
+| ---------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Comes back inside the window | The same session, recording and feed, with one `#EXT-X-DISCONTINUITY` at the seam and the dating re-anchored on the clock it returned at. No `#EXT-X-ENDLIST` was written, so a player following the feed carries on   |
 | Does not come back           | The reaper finalizes the broadcast one window after its last segment: closing playlist, recording, and `vod` to the admin. An encoder returning later starts a new session, which takes the recording at the feed head |
 
 So the catalogue shows `live` for up to one window after the encoder leaves, and a clean stop reaches
@@ -365,12 +365,12 @@ newest entry. A viewer that finds no marker searches the feeds instead. The conv
 `@swarm-hls-stream/shared` (`ladderMarker.ts`), so the writer and every reader compute the same
 address.
 
-| Part    | Value                                                                                                                                                                                                                        |
-| ------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Period  | `p = floor(unix seconds / 10)` (`MARKER_PERIOD_SECONDS`). Global time, so a reader needs only the clock                                                                                                                     |
-| Address | A single owner chunk owned by the ladder's signer, with identifier `keccak256("ladder-marker" ‖ group topic ‖ p as 8 bytes big-endian)`. The group topic is the master feed's topic, `Topic.fromString(group)`            |
+| Part    | Value                                                                                                                                                                                                                                                     |
+| ------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Period  | `p = floor(unix seconds / 10)` (`MARKER_PERIOD_SECONDS`). Global time, so a reader needs only the clock                                                                                                                                                   |
+| Address | A single owner chunk owned by the ladder's signer, with identifier `keccak256("ladder-marker" ‖ group topic ‖ p as 8 bytes big-endian)`. The group topic is the master feed's topic, `Topic.fromString(group)`                                            |
 | Payload | JSON naming only rungs that have published, keyed by each rung's feed topic in hex, and `segmentMs`, the stage's `HLS_FRAGMENT` in milliseconds. A viewer joining from a marker moves the head on by the time since the write, in segments of that length |
-| Version | `LADDER_MARKER_VERSION`, 2. A reader treats any other version as absent and searches instead. `parseLadderMarker` rejects anything malformed                                                                               |
+| Version | `LADDER_MARKER_VERSION`, 2. A reader treats any other version as absent and searches instead. `parseLadderMarker` rejects anything malformed                                                                                                              |
 
 ```json
 { "v": 2, "period": 175983840, "writtenAt": 1759838400250, "rungs": { "<rung feed topic hex>": 41 }, "segmentMs": 2000 }

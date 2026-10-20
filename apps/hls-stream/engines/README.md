@@ -13,7 +13,7 @@ Each engine has two parts:
 
 | Engine        | Plugin       | Ingest                                                                                                     |
 | ------------- | ------------ | ---------------------------------------------------------------------------------------------------------- |
-| [srs](./srs/) | `ENGINE=srs` | SRT and RTMP into [SRS](https://github.com/ossrs/srs). The only engine with the ABR ladder                  |
+| [srs](./srs/) | `ENGINE=srs` | SRT and RTMP into [SRS](https://github.com/ossrs/srs). The only engine with the ABR ladder                 |
 | [ome](./ome/) | `ENGINE=ome` | SRT into [OvenMediaEngine](https://github.com/AirenSoft/OvenMediaEngine). The uploader pulls HLS over HTTP |
 
 ## How it works
@@ -42,10 +42,10 @@ deploy runs the same build. A workflow in the fork builds SRS's own root `Docker
 `linux/amd64` with upstream's release flags (`--sanitizer=off --gb28181=on`). That Dockerfile copies
 ffmpeg from upstream's build image.
 
-| Image tag        | Adds                                                                                                                         |
-| ---------------- | ---------------------------------------------------------------------------------------------------------------------------- |
-| `6.0-r2-swarm.2` | The SRT takeover                                                                                                             |
-| `6.0-r2-swarm.3` | The RTMP takeover, and `, vhost=<vhost>` at the end of each RTMP publisher's statistics line, which the manager reads for RTMP ingest health |
+| Image tag        | Adds                                                                                                                                                                               |
+| ---------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `6.0-r2-swarm.2` | The SRT takeover                                                                                                                                                                   |
+| `6.0-r2-swarm.3` | The RTMP takeover, and `, vhost=<vhost>` at the end of each RTMP publisher's statistics line, which the manager reads for RTMP ingest health                                       |
 | `6.0-r2-swarm.4` | Keeps a new RTMP broadcast's source while its publisher is still getting ready (upstream [ossrs/srs#4755](https://github.com/ossrs/srs/issues/4755), fixed upstream only in SRS 7) |
 
 Without the `swarm.4` change, stock SRS 6 can drop a new RTMP source between the publisher connecting
@@ -77,9 +77,9 @@ The hold is the transcode directive `unpublish_hold`, in seconds, inside the `tr
 fork defaults it to 0, which is off. The stack sets it from `ABR_UNPUBLISH_HOLD`, 12 seconds by
 default. SRS checks it every 3 seconds, so a 12 second hold ends 12 to 15 seconds after the drop.
 
-| Gap before the broadcaster returns | What happens                                                                                                                                                                                                                                                                        |
-| ---------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Up to about 12 s                   | The same encoders carry on and no rung sends a hook. Each rung's segment numbers and media time continue without the gap. Every rung has a new segment 2 to 3 seconds after the new publish                                                                                         |
+| Gap before the broadcaster returns | What happens                                                                                                                                                                                                                                                                                 |
+| ---------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Up to about 12 s                   | The same encoders carry on and no rung sends a hook. Each rung's segment numbers and media time continue without the gap. Every rung has a new segment 2 to 3 seconds after the new publish                                                                                                  |
 | Longer                             | The hold has stopped the encoders, so the return starts a fresh set, and every rung has a new segment about 4 seconds after the new publish. SRS also cuts each idle rung publish after its 5 second publish timeout, so the uploader sees each rung's `on_unpublish` and later `on_publish` |
 
 The hold is short on purpose. SRS cuts the idle rung publishes about 13 to 17 seconds into a drop, and
@@ -205,12 +205,12 @@ it cannot keep up. Announcements fall behind the media until the lag passes `HLS
 SRS deletes each segment before announcing it: the uploader gets a callback naming a file that is
 already gone, and the tallest rung is unpublished a few minutes in.
 
-| Rungs | `HLS_FRAGMENT` | Announcements asked | Result                                    |
-| ----: | -------------: | ------------------: | ----------------------------------------- |
-|     1 |          0.5 s |               2.0/s | Fine                                      |
-|     4 |          0.5 s |               8.0/s | Over the ceiling. Loses the top rung      |
-|     4 |          1.0 s |               4.0/s | Fine, lag stays flat                      |
-|     4 |          2.0 s |               2.0/s | Fine. The shipped default                 |
+| Rungs | `HLS_FRAGMENT` | Announcements asked | Result                               |
+| ----: | -------------: | ------------------: | ------------------------------------ |
+|     1 |          0.5 s |               2.0/s | Fine                                 |
+|     4 |          0.5 s |               8.0/s | Over the ceiling. Loses the top rung |
+|     4 |          1.0 s |               4.0/s | Fine, lag stays flat                 |
+|     4 |          2.0 s |               2.0/s | Fine. The shipped default            |
 
 A four-rung ladder therefore needs `HLS_FRAGMENT` of at least 1.0. The e2e preflight
 `announcement-rate` refuses a run on a stage that asks for more, but the stack itself does not refuse

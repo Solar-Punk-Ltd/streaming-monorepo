@@ -5,12 +5,12 @@ suite proves, and what each one needs. The end-to-end suites here drive the real
 media engine through the stream uploader, Bee and Swarm to the gateway and a viewer, and inject real
 failures: they stop containers, freeze Bee nodes and kill the uploader.
 
-| Layer             | What it is                                                     | Needs a deployment | Spends postage |
-| ----------------- | -------------------------------------------------------------- | ------------------ | -------------- |
-| Unit tests        | Each package's own `test/`, and `e2e/test/` for this harness   | no                 | no             |
-| `e2e/suites/`     | Fault scenarios, service checks, viewer checks in a real browser | yes              | yes            |
-| `e2e/bench/`      | The latency benchmark                                          | yes                | yes            |
-| `e2e/browser/`    | Browser drivers that measure a viewer and report, with no verdict | yes             | yes            |
+| Layer          | What it is                                                        | Needs a deployment | Spends postage |
+| -------------- | ----------------------------------------------------------------- | ------------------ | -------------- |
+| Unit tests     | Each package's own `test/`, and `e2e/test/` for this harness      | no                 | no             |
+| `e2e/suites/`  | Fault scenarios, service checks, viewer checks in a real browser  | yes                | yes            |
+| `e2e/bench/`   | The latency benchmark                                             | yes                | yes            |
+| `e2e/browser/` | Browser drivers that measure a viewer and report, with no verdict | yes                | yes            |
 
 ## Unit tests
 
@@ -53,22 +53,22 @@ E2E_SSH_TARGET=stage-host E2E_PUBLIC_HOST=203.0.113.10 pnpm e2e:smoke   # a defa
 E2E_PROFILE=streamer1 E2E_PORT_SLOT=2 … pnpm e2e:smoke                   # a profile deploy
 ```
 
-| Variable               | Default                            | What it is                                                                         |
-| ---------------------- | ---------------------------------- | ---------------------------------------------------------------------------------- |
-| `E2E_SSH_TARGET`       | `localhost`                        | SSH target for container control and curl. Must work without a prompt             |
-| `E2E_PUBLIC_HOST`      | `127.0.0.1`                        | Address the publisher and viewer reach the deployment on                           |
-| `E2E_PROFILE`          | `default`                          | The deploy's `--profile`, so containers are `<profile>-<service>-1`                |
-| `E2E_PORT_SLOT`        | `0`                                | The deploy's `--portSlot`. `0` means no slot, and the env files decide the ports   |
-| `E2E_ENGINE`           | the deployment's `ENGINE`          | `srs` or `ome`                                                                     |
-| `E2E_STREAM_PATH`      | per engine                         | `live/stream` for SRS, `video/stream` for OME                                      |
+| Variable               | Default                            | What it is                                                                             |
+| ---------------------- | ---------------------------------- | -------------------------------------------------------------------------------------- |
+| `E2E_SSH_TARGET`       | `localhost`                        | SSH target for container control and curl. Must work without a prompt                  |
+| `E2E_PUBLIC_HOST`      | `127.0.0.1`                        | Address the publisher and viewer reach the deployment on                               |
+| `E2E_PROFILE`          | `default`                          | The deploy's `--profile`, so containers are `<profile>-<service>-1`                    |
+| `E2E_PORT_SLOT`        | `0`                                | The deploy's `--portSlot`. `0` means no slot, and the env files decide the ports       |
+| `E2E_ENGINE`           | the deployment's `ENGINE`          | `srs` or `ome`                                                                         |
+| `E2E_STREAM_PATH`      | per engine                         | `live/stream` for SRS, `video/stream` for OME                                          |
 | `E2E_INGEST_PROTOCOL`  | `srt`                              | `srt` or `rtmp`, what a suite publishes over when it names neither. OME takes SRT only |
-| `E2E_OME_SRT_PORT`     | `OME_SRT_PORT` from the engine env | Only for a standalone OME that no profile deployed                                 |
-| `E2E_OME_CONTAINER`    | `<profile>-ome-1`                  | The same                                                                           |
-| `E2E_EXPECT_ABR`       | undeclared                         | What this run covers: `true` a ladder, `false` a single rendition. See below       |
-| `E2E_EXPECT_BROWSER`   | undeclared                         | Whether a real viewer watches. See below                                           |
-| `E2E_EXPECT_SEGMENT_S` | undeclared                         | Seconds per segment this run needs, or `any`. See below                            |
-| `E2E_RUN_PROFILE`      | `in-browser`                       | The run profile. See [Run profiles](#run-profiles)                                 |
-| `E2E_MODE`             | `attach`                           | Only `attach` exists. `deploy` refuses and points at `deploy/scripts/deploy.sh`    |
+| `E2E_OME_SRT_PORT`     | `OME_SRT_PORT` from the engine env | Only for a standalone OME that no profile deployed                                     |
+| `E2E_OME_CONTAINER`    | `<profile>-ome-1`                  | The same                                                                               |
+| `E2E_EXPECT_ABR`       | undeclared                         | What this run covers: `true` a ladder, `false` a single rendition. See below           |
+| `E2E_EXPECT_BROWSER`   | undeclared                         | Whether a real viewer watches. See below                                               |
+| `E2E_EXPECT_SEGMENT_S` | undeclared                         | Seconds per segment this run needs, or `any`. See below                                |
+| `E2E_RUN_PROFILE`      | `in-browser`                       | The run profile. See [Run profiles](#run-profiles)                                     |
+| `E2E_MODE`             | `attach`                           | Only `attach` exists. `deploy` refuses and points at `deploy/scripts/deploy.sh`        |
 
 Ports come from `.env` or `.env.<profile>` and `engines/<engine>/.env[.<profile>]`, layered under the
 process environment in the order the deploy uses. OME's ports are not slot-shifted.
@@ -87,11 +87,11 @@ So a run has to say what it covers, and three preflight gates refuse a run that 
 **Whether it covers the ABR ladder.** `preflight/abr-coverage` reads `E2E_EXPECT_ABR`, which takes
 `ABR_ENABLED`'s own spellings (`true`, `1`, `false`, `0`). Anything else is refused.
 
-| `E2E_EXPECT_ABR` | `ABR_ENABLED` off                 | `ABR_ENABLED` on                           |
-| ---------------- | --------------------------------- | ------------------------------------------ |
-| unset            | refused                           | runs                                       |
-| `true`           | refused                           | runs                                       |
-| `false`          | runs, single rendition on purpose | refused                                    |
+| `E2E_EXPECT_ABR` | `ABR_ENABLED` off                 | `ABR_ENABLED` on |
+| ---------------- | --------------------------------- | ---------------- |
+| unset            | refused                           | runs             |
+| `true`           | refused                           | runs             |
+| `false`          | runs, single rendition on purpose | refused          |
 
 A single-rendition deployment sets `E2E_EXPECT_ABR=false` once in its profile env. A ladder with fewer
 than two rungs is refused whatever was declared, because it cannot show a rung going missing.
@@ -99,10 +99,10 @@ than two rungs is refused whatever was declared, because it cannot show a rung g
 **Whether a real browser watches.** `suites/viewer/` opens a real Chrome on the deployed client.
 `preflight/viewer-coverage` reads `E2E_EXPECT_BROWSER`:
 
-| `E2E_EXPECT_BROWSER` | What happens                                                                |
-| -------------------- | --------------------------------------------------------------------------- |
-| unset                | refused                                                                     |
-| `false`              | the viewer suites skip, and the preflight says so                           |
+| `E2E_EXPECT_BROWSER` | What happens                                                                  |
+| -------------------- | ----------------------------------------------------------------------------- |
+| unset                | refused                                                                       |
+| `false`              | the viewer suites skip, and the preflight says so                             |
 | `true`               | a real browser watches, and `BROWSER_FETCH_BACKEND` must name the byte source |
 
 `BROWSER_FETCH_BACKEND` is `weeb3` for a Swarm node in the viewer's own tab or `gateway` for a Bee
@@ -110,33 +110,33 @@ gateway. It belongs to the run, not the deployment. The default run profile sets
 
 A browser run also needs:
 
-| Variable                | Default                    | What it is                                                                                         |
-| ----------------------- | -------------------------- | -------------------------------------------------------------------------------------------------- |
+| Variable                | Default                    | What it is                                                                                                                                  |
+| ----------------------- | -------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------- |
 | `E2E_BROWSER_REPO_DIR`  | required                   | Absolute path of the harness checkout on the host, mounted into the browser container as `/repo`. The directory `bench-on-host.sh` syncs to |
-| `E2E_BROWSER_IMAGE`     | `swarm-hls-browser:latest` | The image `browser-on-host.sh` builds from `e2e/Dockerfile.browser`                                |
-| `E2E_BROWSER_CONTAINER` | `e2e-viewer-browser`       | The browser container's name. Reclaimed by exact name before each run                              |
+| `E2E_BROWSER_IMAGE`     | `swarm-hls-browser:latest` | The image `browser-on-host.sh` builds from `e2e/Dockerfile.browser`                                                                         |
+| `E2E_BROWSER_CONTAINER` | `e2e-viewer-browser`       | The browser container's name. Reclaimed by exact name before each run                                                                       |
 
 `E2E_BROWSER_REPO_DIR` has no default because the suite runs inside that mount and cannot work out the
 host path. A guessed path that did not exist would make Docker mount an empty directory.
 
 **How long a segment the run needs.** The two kinds of viewer want opposite segment lengths:
 
-| Segment length                  | 0.5 s      | 2 s    |
-| ------------------------------- | ---------- | ------ |
-| In-tab weeb-3 node, realtime ratio | 0.426x  | 1.000x |
-| Buffer it holds ahead           | 0.5 to 3.5 s | about 90 s |
-| Gateway, capture to fetchable   | 1.55 s     | 3.88 s |
+| Segment length                     | 0.5 s        | 2 s        |
+| ---------------------------------- | ------------ | ---------- |
+| In-tab weeb-3 node, realtime ratio | 0.426x       | 1.000x     |
+| Buffer it holds ahead              | 0.5 to 3.5 s | about 90 s |
+| Gateway, capture to fetchable      | 1.55 s       | 3.88 s     |
 
 An in-tab node admits about one segment a second whatever its peer count, so it cannot keep up with
 0.5 s segments. A gateway viewer gets shorter segments sooner. A four-rung ladder cannot run 0.5 s at
 all, because of [the announcement ceiling](../engines/README.md#the-announcement-ceiling), so the
 gateway profile uses 1.0 s. `preflight/segment-length` reads `E2E_EXPECT_SEGMENT_S`:
 
-| `E2E_EXPECT_SEGMENT_S` | What happens                                                                                                                    |
-| ---------------------- | ------------------------------------------------------------------------------------------------------------------------------- |
-| unset                  | refused                                                                                                                         |
+| `E2E_EXPECT_SEGMENT_S` | What happens                                                                                                                     |
+| ---------------------- | -------------------------------------------------------------------------------------------------------------------------------- |
+| unset                  | refused                                                                                                                          |
 | a number               | the running SRS config and both containers' `HLS_FRAGMENT` are read, and a stage that cuts or dates at another length is refused |
-| `any`                  | the check stands down, and says so. Also the answer for OME, whose segmenter config this gate cannot read                      |
+| `any`                  | the check stands down, and says so. Also the answer for OME, whose segmenter config this gate cannot read                        |
 
 The engine cuts segments by `HLS_FRAGMENT` and the uploader dates them by it, so the gate reads both
 containers and refuses a pair that disagrees. It reads the SRS config with one `docker exec cat` and
@@ -179,27 +179,27 @@ The preflight runs as its own `tsx --test` invocation chained with `&&`, so a re
 run before anything is published. A run therefore prints two TAP documents with two `# tests`, `# pass`
 and `# fail` blocks. Sum them.
 
-| Command                              | Runs, after the preflight gates                                              |
-| ------------------------------------ | ---------------------------------------------------------------------------- |
-| `pnpm e2e:preflight`                 | The gates alone                                                              |
-| `pnpm e2e:abr-ladder`                | `service/abr-ladder`                                                         |
-| `pnpm e2e:master-rungs`              | `service/master-offers-every-rung`                                           |
-| `pnpm e2e:ladder-restored`           | The ladder suite and the master suite, after a drain is restored             |
-| `pnpm e2e:quality`                   | `viewer/quality-switch`                                                      |
-| `pnpm e2e:vod`                       | `viewer/vod-playback`                                                        |
-| `pnpm e2e:broadcast-ended`           | `viewer/broadcast-ended`                                                     |
-| `pnpm e2e:finalize-crash`            | `scenarios/finalize-crash`                                                   |
-| `pnpm e2e:crash-recovery`            | `scenarios/uploader-crash-recovery`                                          |
-| `pnpm e2e:reconnect-into-recovery`   | `scenarios/reconnect-into-recovery`                                          |
-| `pnpm e2e:rung-restart`              | `scenarios/rung-restart`                                                     |
-| `pnpm e2e:rung-node-restart`         | `scenarios/rung-node-restart`                                                |
-| `pnpm e2e:rung-never-starts`         | `scenarios/rung-never-starts`, on an armed stage                             |
-| `pnpm e2e:long-broadcast`            | `scenarios/long-broadcast`                                                   |
-| `pnpm e2e:stream-list-restart`       | `scenarios/stream-list-after-restart`                                        |
-| `pnpm e2e:batch-drain`               | `scenarios/batch-drain`, on an armed stage                                   |
-| `pnpm e2e:batch-drain-viewer`        | `viewer/batch-drain-viewer`, on an armed stage                               |
-| `pnpm e2e:rtmp`                      | `suites/ingest/`                                                             |
-| `pnpm e2e:admin`                     | `suites/admin/`                                                              |
+| Command                            | Runs, after the preflight gates                                  |
+| ---------------------------------- | ---------------------------------------------------------------- |
+| `pnpm e2e:preflight`               | The gates alone                                                  |
+| `pnpm e2e:abr-ladder`              | `service/abr-ladder`                                             |
+| `pnpm e2e:master-rungs`            | `service/master-offers-every-rung`                               |
+| `pnpm e2e:ladder-restored`         | The ladder suite and the master suite, after a drain is restored |
+| `pnpm e2e:quality`                 | `viewer/quality-switch`                                          |
+| `pnpm e2e:vod`                     | `viewer/vod-playback`                                            |
+| `pnpm e2e:broadcast-ended`         | `viewer/broadcast-ended`                                         |
+| `pnpm e2e:finalize-crash`          | `scenarios/finalize-crash`                                       |
+| `pnpm e2e:crash-recovery`          | `scenarios/uploader-crash-recovery`                              |
+| `pnpm e2e:reconnect-into-recovery` | `scenarios/reconnect-into-recovery`                              |
+| `pnpm e2e:rung-restart`            | `scenarios/rung-restart`                                         |
+| `pnpm e2e:rung-node-restart`       | `scenarios/rung-node-restart`                                    |
+| `pnpm e2e:rung-never-starts`       | `scenarios/rung-never-starts`, on an armed stage                 |
+| `pnpm e2e:long-broadcast`          | `scenarios/long-broadcast`                                       |
+| `pnpm e2e:stream-list-restart`     | `scenarios/stream-list-after-restart`                            |
+| `pnpm e2e:batch-drain`             | `scenarios/batch-drain`, on an armed stage                       |
+| `pnpm e2e:batch-drain-viewer`      | `viewer/batch-drain-viewer`, on an armed stage                   |
+| `pnpm e2e:rtmp`                    | `suites/ingest/`                                                 |
+| `pnpm e2e:admin`                   | `suites/admin/`                                                  |
 
 Browser drivers launched through `deploy/scripts/bench-on-host.sh`, directly or through
 `browser-on-host.sh`, run the same gates first. The older measurement scripts under `deploy/scripts/` that
@@ -212,10 +212,10 @@ A run profile is a named set of the settings that decide what a run is, never wh
 The files are `e2e/profiles/<name>.env` and the loader is `e2e/src/profiles.ts`. Pick one with
 `E2E_RUN_PROFILE`. An unknown name stops the run and lists the names that exist.
 
-| Profile        | Segment bytes come from                      | Segment length | Notes                                  |
-| -------------- | -------------------------------------------- | -------------- | -------------------------------------- |
+| Profile        | Segment bytes come from                      | Segment length | Notes                                   |
+| -------------- | -------------------------------------------- | -------------- | --------------------------------------- |
 | `in-browser`   | a Swarm node running in the viewer's own tab | 2 s            | The default. The subject being measured |
-| `light-client` | a Bee gateway                                | 1.0 s          | The control                            |
+| `light-client` | a Bee gateway                                | 1.0 s          | The control                             |
 
 Both declare that the run covers the ABR ladder. The two segment lengths differ because of the byte
 source, so do not reconcile them. A run that switches profiles on one stage states the length it
@@ -235,70 +235,70 @@ The single letters and V numbers are the labels the suite files carry in their o
 
 Read-only smoke. No faults, no broadcast, no postage:
 
-| File           | Proves                                                                                                                                                                                 |
-| -------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| File           | Proves                                                                                                                                                                                                                               |
+| -------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
 | `smoke/attach` | The harness reaches the deployed profile: SSH answers, the uploader is healthy, every publisher node holds its configured batch (with its TTL and fill), the ingest container is up, and the log level is readable. `pnpm e2e:smoke` |
 
 Preflight gates, which run ahead of every paid run and spend nothing:
 
-| File                           | Proves                                                                                                                                         |
-| ------------------------------ | ---------------------------------------------------------------------------------------------------------------------------------------------- |
-| `preflight/chequebook-funding` | Every publisher node holds at least 0.5 BZZ available. Reports a shortfall with the deposit command, and never spends                          |
-| `preflight/spend-ceiling`      | The run is inside the ceiling the operator authorised in `.spend-ledger.env`. Reads one balance per node that can spend                       |
-| `preflight/bee-publishers`     | The uploader's live routing is the one `BEE_PUBLISHERS` declares. Reads `/health` only                                                         |
-| `preflight/client-shape`       | The client the stage serves was built from the sources this checkout holds. See [Stale builds](#stale-builds)                                 |
-| `preflight/abr-coverage`       | The run is not silently skipping the ABR suites. Reads config only                                                                            |
-| `preflight/viewer-coverage`    | The run says whether a real browser watched, and which byte source. Config only                                                               |
-| `preflight/profile`            | The run profile parses and the run declared what it covers. Config only                                                                       |
-| `preflight/segment-length`     | The stage cuts at the length this run declares, and its uploader dates by the same one                                                        |
-| `preflight/announcement-rate`  | The ladder does not ask SRS for more announcements a second than SRS sustains, which would kill the top rung                                  |
-| `preflight/uploader-log-shape` | The deployed uploader writes every log family this harness parses, and prints how many it confirmed. See [Stale builds](#stale-builds)       |
+| File                           | Proves                                                                                                                                 |
+| ------------------------------ | -------------------------------------------------------------------------------------------------------------------------------------- |
+| `preflight/chequebook-funding` | Every publisher node holds at least 0.5 BZZ available. Reports a shortfall with the deposit command, and never spends                  |
+| `preflight/spend-ceiling`      | The run is inside the ceiling the operator authorised in `.spend-ledger.env`. Reads one balance per node that can spend                |
+| `preflight/bee-publishers`     | The uploader's live routing is the one `BEE_PUBLISHERS` declares. Reads `/health` only                                                 |
+| `preflight/client-shape`       | The client the stage serves was built from the sources this checkout holds. See [Stale builds](#stale-builds)                          |
+| `preflight/abr-coverage`       | The run is not silently skipping the ABR suites. Reads config only                                                                     |
+| `preflight/viewer-coverage`    | The run says whether a real browser watched, and which byte source. Config only                                                        |
+| `preflight/profile`            | The run profile parses and the run declared what it covers. Config only                                                                |
+| `preflight/segment-length`     | The stage cuts at the length this run declares, and its uploader dates by the same one                                                 |
+| `preflight/announcement-rate`  | The ladder does not ask SRS for more announcements a second than SRS sustains, which would kill the top rung                           |
+| `preflight/uploader-log-shape` | The deployed uploader writes every log family this harness parses, and prints how many it confirmed. See [Stale builds](#stale-builds) |
 
 Fault scenarios:
 
-| File                                    | Proves                                                                                                                                                                                                                                      |
-| --------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `scenarios/bee-outage-short` (A)        | The writer's Bee node frozen inside the 15 s retry window: segments buffer, nothing is lost, nothing is announced                                                                                                                         |
-| `scenarios/bee-outage-long` (B)         | The writer's Bee node down past the window: the segment in flight is lost and reported, published as a gap entry, and the stream resumes cleanly                                                                                         |
-| `scenarios/publish-stop-to-vod` (D)     | A clean broadcaster stop becomes a recording one reap window later                                                                                                                                                                         |
-| `scenarios/gateway-outage-viewer` (G)   | The viewers' gateway down: uploads are unaffected                                                                                                                                                                                          |
-| `scenarios/engine-restart` (E)          | An engine restart, then the broadcaster reconnects: a sound timeline, and every rung publishing a moving live playlist again, reading the head of any topic it reopened                                                                   |
-| `scenarios/uploader-crash-recovery` (F) | The uploader killed with SIGKILL: the same stream recovers and is not finalized by the recovery timer                                                                                                                                     |
-| `scenarios/finalize-crash` (H)          | The uploader killed inside its finalize: after the restart there is exactly one recording, and the catalogue names it                                                                                                                     |
-| `scenarios/whole-stack-restart` (I)     | A host reboot, where the finalize races a cold Bee node: one recording, no recovery entry left behind                                                                                                                                      |
-| `scenarios/recovery-entry-corrupt` (J)  | A bad recovery entry is set aside loudly, never deleted in silence, and `/health` degrades                                                                                                                                                 |
-| `scenarios/reconnect-during-drain` (K)  | The broadcaster reconnects the moment the outgoing session starts to drain: the reconnected session stays live, keeps the recovery entry, publishes a moving live playlist on every rung, and finalizes into a recording that joins both sessions |
-| `scenarios/abr-engine-restart`          | An engine restart under a ladder: every rung returns as one ladder, and every recovered rung publishes a moving live playlist, reading the head of the topic it reopened                                                                  |
-| `scenarios/batch-drain` (L)             | One rung's postage runs out: that rung alone goes quiet, the others carry on, and the master drops it. Needs an armed stage, see [below](#one-rungs-postage-runs-out)                                                                     |
-| `scenarios/reconnect-into-recovery` (M) | The uploader is killed while its engine restarts, and the broadcaster returns inside the recovery window: the restarted engine counter is taken rather than dropped as duplicates, and the same broadcast stays live                      |
-| `scenarios/rung-restart`                | One rung's transcode frozen past the 60 s reap, then resumed: the master drops it and takes it back, the rung reopens its own topic at or above the index its recording holds, no playlist goes stale, and the recording keeps two sessions on that rung. SRS and a ladder only |
-| `scenarios/long-broadcast`              | One broadcast of `E2E_LONG_BROADCAST_MINUTES` (20 by default), whose recording outgrows one chunk many times: every rung keeps a moving live playlist, the finalize succeeds, the catalogue flips to vod, the recording names every segment, and a browser plays it |
-| `scenarios/stream-list-after-restart`   | Two broadcasts recorded, the uploader restarted while the coordinator node is paused for 30 s, then a third broadcast: the catalogue still lists every earlier entry, and the third                                                       |
-| `scenarios/rung-node-restart`           | One rung's own Bee node stopped for 20 s under a live ladder: the master drops that rung and offers it again once the node is back, while the other rungs keep moving playlists                                                          |
+| File                                    | Proves                                                                                                                                                                                                                                                                               |
+| --------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `scenarios/bee-outage-short` (A)        | The writer's Bee node frozen inside the 15 s retry window: segments buffer, nothing is lost, nothing is announced                                                                                                                                                                    |
+| `scenarios/bee-outage-long` (B)         | The writer's Bee node down past the window: the segment in flight is lost and reported, published as a gap entry, and the stream resumes cleanly                                                                                                                                     |
+| `scenarios/publish-stop-to-vod` (D)     | A clean broadcaster stop becomes a recording one reap window later                                                                                                                                                                                                                   |
+| `scenarios/gateway-outage-viewer` (G)   | The viewers' gateway down: uploads are unaffected                                                                                                                                                                                                                                    |
+| `scenarios/engine-restart` (E)          | An engine restart, then the broadcaster reconnects: a sound timeline, and every rung publishing a moving live playlist again, reading the head of any topic it reopened                                                                                                              |
+| `scenarios/uploader-crash-recovery` (F) | The uploader killed with SIGKILL: the same stream recovers and is not finalized by the recovery timer                                                                                                                                                                                |
+| `scenarios/finalize-crash` (H)          | The uploader killed inside its finalize: after the restart there is exactly one recording, and the catalogue names it                                                                                                                                                                |
+| `scenarios/whole-stack-restart` (I)     | A host reboot, where the finalize races a cold Bee node: one recording, no recovery entry left behind                                                                                                                                                                                |
+| `scenarios/recovery-entry-corrupt` (J)  | A bad recovery entry is set aside loudly, never deleted in silence, and `/health` degrades                                                                                                                                                                                           |
+| `scenarios/reconnect-during-drain` (K)  | The broadcaster reconnects the moment the outgoing session starts to drain: the reconnected session stays live, keeps the recovery entry, publishes a moving live playlist on every rung, and finalizes into a recording that joins both sessions                                    |
+| `scenarios/abr-engine-restart`          | An engine restart under a ladder: every rung returns as one ladder, and every recovered rung publishes a moving live playlist, reading the head of the topic it reopened                                                                                                             |
+| `scenarios/batch-drain` (L)             | One rung's postage runs out: that rung alone goes quiet, the others carry on, and the master drops it. Needs an armed stage, see [below](#one-rungs-postage-runs-out)                                                                                                                |
+| `scenarios/reconnect-into-recovery` (M) | The uploader is killed while its engine restarts, and the broadcaster returns inside the recovery window: the restarted engine counter is taken rather than dropped as duplicates, and the same broadcast stays live                                                                 |
+| `scenarios/rung-restart`                | One rung's transcode frozen past the 60 s reap, then resumed: the master drops it and takes it back, the rung reopens its own topic at or above the index its recording holds, no playlist goes stale, and the recording keeps two sessions on that rung. SRS and a ladder only      |
+| `scenarios/long-broadcast`              | One broadcast of `E2E_LONG_BROADCAST_MINUTES` (20 by default), whose recording outgrows one chunk many times: every rung keeps a moving live playlist, the finalize succeeds, the catalogue flips to vod, the recording names every segment, and a browser plays it                  |
+| `scenarios/stream-list-after-restart`   | Two broadcasts recorded, the uploader restarted while the coordinator node is paused for 30 s, then a third broadcast: the catalogue still lists every earlier entry, and the third                                                                                                  |
+| `scenarios/rung-node-restart`           | One rung's own Bee node stopped for 20 s under a live ladder: the master drops that rung and offers it again once the node is back, while the other rungs keep moving playlists                                                                                                      |
 | `scenarios/rung-never-starts`           | A rung that never lands a segment, because the stage routes its `BEE_PUBLISHERS` entry to a closed port: the master stops offering it, the others publish, `/health` says degraded, and a viewer is never told the broadcast ended. Needs a stage armed with `E2E_NEVER_STARTS_RUNG` |
 
 Service checks, no faults:
 
-| File                               | Proves                                                                     |
-| ---------------------------------- | -------------------------------------------------------------------------- |
-| `service/happy-path`               | Gapless segments and an advancing playlist, nothing lost or broken         |
-| `service/health-endpoint`          | `/health` across live and then idle                                        |
-| `service/catalog-via-gateway`      | A viewer's catalogue, read through the gateway, shows `live` and then `vod` |
-| `service/multi-stream-concurrent`  | Two concurrent streams, each with its own topic and its own recording      |
-| `service/abr-ladder`               | Every configured rung publishes, under one ladder, gapless                 |
+| File                               | Proves                                                                                 |
+| ---------------------------------- | -------------------------------------------------------------------------------------- |
+| `service/happy-path`               | Gapless segments and an advancing playlist, nothing lost or broken                     |
+| `service/health-endpoint`          | `/health` across live and then idle                                                    |
+| `service/catalog-via-gateway`      | A viewer's catalogue, read through the gateway, shows `live` and then `vod`            |
+| `service/multi-stream-concurrent`  | Two concurrent streams, each with its own topic and its own recording                  |
+| `service/abr-ladder`               | Every configured rung publishes, under one ladder, gapless                             |
 | `service/master-offers-every-rung` | The ladder's master offers every rung the broadcast announced. Skips on an armed stage |
 
 RTMP ingest. Every other suite publishes over SRT unless `E2E_INGEST_PROTOCOL=rtmp`. The publisher
 dials the server and stream key the admin hands a broadcaster for OBS. These need an SRS image with the
 RTMP takeover, `6.0-r2-swarm.3` or later:
 
-| File                      | Proves                                                                                                                                                       |
-| ------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| `ingest/rtmp-publish`     | An RTMP broadcast uploads gapless with every playlist advancing, holds to the manifest contract, and the gateway serves the newest segment it uploaded       |
-| `ingest/rtmp-wrong-key`   | An RTMP publish with a key issued for another stream is refused and counted, and never takes a live RTMP broadcast over. Skips where no key is checked        |
+| File                      | Proves                                                                                                                                                                           |
+| ------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `ingest/rtmp-publish`     | An RTMP broadcast uploads gapless with every playlist advancing, holds to the manifest contract, and the gateway serves the newest segment it uploaded                           |
+| `ingest/rtmp-wrong-key`   | An RTMP publish with a key issued for another stream is refused and counted, and never takes a live RTMP broadcast over. Skips where no key is checked                           |
 | `ingest/rtmp-reconnect`   | An RTMP broadcaster back after a clean drop rejoins its session, and one whose network died takes its stream back through the takeover, each with one seam and nothing finalized |
-| `ingest/protocol-switch`  | A broadcaster moving from SRT to RTMP, and back, in the middle of a broadcast stays one broadcast                                                            |
-| `ingest/rtmp-ladder-hold` | A ladder whose RTMP source drops for two seconds keeps every rung on the encoders it had, with one seam per rung. Skips without a ladder                     |
+| `ingest/protocol-switch`  | A broadcaster moving from SRT to RTMP, and back, in the middle of a broadcast stays one broadcast                                                                                |
+| `ingest/rtmp-ladder-hold` | A ladder whose RTMP source drops for two seconds keeps every rung on the encoders it had, with one seam per rung. Skips without a ladder                                         |
 
 The unclean reconnect and both switches need the takeover for the new publisher's protocol, and read
 it off the running SRS config first. A stage with it off skips them and says why. The unclean drop
@@ -310,20 +310,20 @@ Viewer checks, in a real browser. These are the only suites that can say what a 
 than what one could have fetched. They need the browser image on the host and the settings in
 [Declaring what the run covers](#declaring-what-the-run-covers):
 
-| File                             | Proves                                                                                                                                                         |
-| -------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `viewer/live-playback`           | (V1) A viewer keeps up with a live broadcast, decodes a picture, hits no error, and is the byte source it is filed as                                         |
-| `viewer/quality-switch`          | (V2) A viewer whose connection gets worse keeps watching at a quality it can carry, and comes back up when the squeeze lifts                                   |
-| `viewer/rung-outage`             | (V3) A viewer whose rung goes quiet moves to one that has not, rather than freezing                                                                           |
-| `viewer/vod-playback`            | (V4) A finished recording plays through, offers every rung it was published with, and every rung ends at the uploader's last segment                          |
-| `viewer/broadcast-ended`         | (V5) The broadcaster stops under a watching viewer, and the viewer is told                                                                                    |
-| `viewer/crash-gateway-outage`    | (V6) The gateway taken away for 20 s: the picture plays out its buffer, says why it stopped, and comes back on its own                                        |
-| `viewer/crash-uploader-killed`   | (V7) The uploader killed: the viewer waits, and resumes when it answers again                                                                                 |
-| `viewer/crash-writer-bee-pause`  | (V8) An 8 s pause of the writer's node costs a viewer no more than the pause                                                                                  |
-| `viewer/crash-writer-bee-outage` | (V9) A 20 s writer outage costs a segment, published as a gap entry, and the viewer plays through the hole                                                    |
-| `viewer/crash-engine-restart`    | (V10) The engine restart ends the broadcast, and the end reaches the screen                                                                                   |
+| File                             | Proves                                                                                                                                                                                         |
+| -------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `viewer/live-playback`           | (V1) A viewer keeps up with a live broadcast, decodes a picture, hits no error, and is the byte source it is filed as                                                                          |
+| `viewer/quality-switch`          | (V2) A viewer whose connection gets worse keeps watching at a quality it can carry, and comes back up when the squeeze lifts                                                                   |
+| `viewer/rung-outage`             | (V3) A viewer whose rung goes quiet moves to one that has not, rather than freezing                                                                                                            |
+| `viewer/vod-playback`            | (V4) A finished recording plays through, offers every rung it was published with, and every rung ends at the uploader's last segment                                                           |
+| `viewer/broadcast-ended`         | (V5) The broadcaster stops under a watching viewer, and the viewer is told                                                                                                                     |
+| `viewer/crash-gateway-outage`    | (V6) The gateway taken away for 20 s: the picture plays out its buffer, says why it stopped, and comes back on its own                                                                         |
+| `viewer/crash-uploader-killed`   | (V7) The uploader killed: the viewer waits, and resumes when it answers again                                                                                                                  |
+| `viewer/crash-writer-bee-pause`  | (V8) An 8 s pause of the writer's node costs a viewer no more than the pause                                                                                                                   |
+| `viewer/crash-writer-bee-outage` | (V9) A 20 s writer outage costs a segment, published as a gap entry, and the viewer plays through the hole                                                                                     |
+| `viewer/crash-engine-restart`    | (V10) The engine restart ends the broadcast, and the end reaches the screen                                                                                                                    |
 | `viewer/batch-drain-viewer`      | (V11) A viewer watches through one rung's postage running out: the picture keeps moving, they are never told the broadcast ended, and the master loses exactly that rung. Needs an armed stage |
-| `viewer/late-join`               | A viewer joining three minutes into a broadcast starts at the live edge, within the client's catch-up limit, rather than at the head of the live window        |
+| `viewer/late-join`               | A viewer joining three minutes into a broadcast starts at the live edge, within the client's catch-up limit, rather than at the head of the live window                                        |
 
 - None of them asserts how far behind live the player sat. That figure is printed and filed.
 - V7 and V9 tolerate an overlay that says nothing during the freeze (`mustSpeak: false`). They refuse
@@ -336,14 +336,14 @@ Admin mode, on a stage whose uploader takes its streams from the admin. These ar
 reuse a declared stream's topic across broadcasts. They are outside `pnpm e2e:run`, so `pnpm e2e:admin`
 is the only way to reach them, and they skip, printed as skipped, unless the admin settings are given:
 
-| File                              | Proves                                                                                                                                                                                                         |
-| --------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| File                              | Proves                                                                                                                                                                                                                                                                                                                                                                      |
+| --------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `admin/rebroadcast`               | (G1) One declared stream broadcast twice: every rung publishes at least 6 live playlists within 120 s of its first segment both times, every head moves, nothing goes stale, every rung resumes the topic above index 0, the master offers every rung, and the recording grows by one session on every rung. A viewer on the ended overlay is taken into the second session |
-| `admin/rebroadcast-three-times`   | (G2) Three broadcasts in a row on one declared stream: each rung resumes at a higher index each time, the recording grows by one session per broadcast, and the live recovery entry does not grow with every session |
-| `admin/rebroadcast-vod`           | (G17) The recording a declared stream joined from several sessions plays as one broadcast: the whole ladder, finished, as long as its longest rung. Needs a browser, and reads the recording `admin/rebroadcast-three-times` leaves |
-| `admin/rebroadcast-expired-batch` | (G3) A declared stream broadcast again after its earlier batch expired still publishes a moving live playlist on every rung and finishes with a recording on every rung. Needs `E2E_ADMIN_EXPIRED_STREAM_ID` |
-| `admin/catalog-lifecycle`         | A throwaway declared stream is broadcast, unpublished as a draft with its recording kept, published again as the same recording, then unpublished and deleted. The admin refuses an unpublish or delete while live. Needs `E2E_ADMIN_STAGE_ID` |
-| `admin/admin-unreachable`         | With the admin stopped, a broadcast to a declared key is refused and uploads nothing. With it stopped for 30 s mid-broadcast, no rung loses its live playlist and the broadcast finalizes into a row the admin calls vod. Needs `E2E_ADMIN_CONTAINER` |
+| `admin/rebroadcast-three-times`   | (G2) Three broadcasts in a row on one declared stream: each rung resumes at a higher index each time, the recording grows by one session per broadcast, and the live recovery entry does not grow with every session                                                                                                                                                        |
+| `admin/rebroadcast-vod`           | (G17) The recording a declared stream joined from several sessions plays as one broadcast: the whole ladder, finished, as long as its longest rung. Needs a browser, and reads the recording `admin/rebroadcast-three-times` leaves                                                                                                                                         |
+| `admin/rebroadcast-expired-batch` | (G3) A declared stream broadcast again after its earlier batch expired still publishes a moving live playlist on every rung and finishes with a recording on every rung. Needs `E2E_ADMIN_EXPIRED_STREAM_ID`                                                                                                                                                                |
+| `admin/catalog-lifecycle`         | A throwaway declared stream is broadcast, unpublished as a draft with its recording kept, published again as the same recording, then unpublished and deleted. The admin refuses an unpublish or delete while live. Needs `E2E_ADMIN_STAGE_ID`                                                                                                                              |
+| `admin/admin-unreachable`         | With the admin stopped, a broadcast to a declared key is refused and uploads nothing. With it stopped for 30 s mid-broadcast, no rung loses its live playlist and the broadcast finalizes into a row the admin calls vod. Needs `E2E_ADMIN_CONTAINER`                                                                                                                       |
 
 ### Running the admin suites
 
@@ -371,11 +371,11 @@ The token is a session, so it expires with the session. Sign in to the console a
 
 ### Settings the newer scenarios read
 
-| Variable                     | Default | What it is                                                                                   |
-| ---------------------------- | ------- | -------------------------------------------------------------------------------------------- |
-| `E2E_LONG_BROADCAST_MINUTES` | `20`    | How long `scenarios/long-broadcast` broadcasts. A typo is refused at import                  |
-| `E2E_NEVER_STARTS_RUNG`      | unset   | Declares a stage armed for `scenarios/rung-never-starts`, naming the rung routed nowhere     |
-| `E2E_DRAIN_RUNG`             | `1080p` | The rung the drain suites expect to run dry. Never the coordinator                           |
+| Variable                     | Default | What it is                                                                               |
+| ---------------------------- | ------- | ---------------------------------------------------------------------------------------- |
+| `E2E_LONG_BROADCAST_MINUTES` | `20`    | How long `scenarios/long-broadcast` broadcasts. A typo is refused at import              |
+| `E2E_NEVER_STARTS_RUNG`      | unset   | Declares a stage armed for `scenarios/rung-never-starts`, naming the rung routed nowhere |
+| `E2E_DRAIN_RUNG`             | `1080p` | The rung the drain suites expect to run dry. Never the coordinator                       |
 
 ## What a healthy ladder suite asks of every rung
 
@@ -385,11 +385,11 @@ is media no viewer can reach. So every suite that claims a healthy ladder (`abr-
 recoveries, and K) asks three things of every rung, through `checkRungPlaylistsLive` in
 `src/harness/rungPublishing.ts`:
 
-| Reading                      | What it is                                                                                                                       |
-| ---------------------------- | -------------------------------------------------------------------------------------------------------------------------------- |
-| Live playlist publishes (H1) | `Manifest of <stream> uploaded at SOC index N`, counted per rung, at least n in the window                                       |
+| Reading                      | What it is                                                                                                                                             |
+| ---------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| Live playlist publishes (H1) | `Manifest of <stream> uploaded at SOC index N`, counted per rung, at least n in the window                                                             |
 | No stale warning (H1)        | `Live manifest for stream X is stale`, which a broadcast with no fault never writes. A held publish, `is held:`, is printed and never counted as stale |
-| The head moves (H2)          | Each rung's feed read off the gateway twice, and its last sequence moved on every rung                                           |
+| The head moves (H2)          | Each rung's feed read off the gateway twice, and its last sequence moved on every rung                                                                 |
 
 A suite whose session reopens a topic also asks for the uploader's `resumes its topic at SOC index N`
 line on each such rung. After a stop, H3 in `src/harness/recordingListing.ts` reads the finished master
@@ -437,11 +437,11 @@ pnpm e2e:ladder-restored            # every rung publishes again, and the master
 
 Three refusals keep a drain run apart from an ordinary one:
 
-| The run                                             | What happens                                                                                                                  |
-| --------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------- |
+| The run                                             | What happens                                                                                                                                                |
+| --------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | A drain script on a stage nobody armed              | Refused before a broadcast starts, naming the batch the rung is spending and the command that arms one. A batch a previous run already spent is refused too |
-| Any other run, `pnpm e2e:run` included              | The two suites skip, because only the two drain scripts set `E2E_DRAIN_ARMED`                                                 |
-| `pnpm e2e:batch-drain-viewer` with no browser asked | Refused at import, because `E2E_EXPECT_BROWSER=false` leaves V11 nothing to read                                              |
+| Any other run, `pnpm e2e:run` included              | The two suites skip, because only the two drain scripts set `E2E_DRAIN_ARMED`                                                                               |
+| `pnpm e2e:batch-drain-viewer` with no browser asked | Refused at import, because `E2E_EXPECT_BROWSER=false` leaves V11 nothing to read                                                                            |
 
 `e2e/src/harness/stageStamps.ts` gates every suite on postage: every Bee node the uploader publishes
 through must hold the batch `BEE_PUBLISHERS` routes its rung to, usable, with more time to live than
@@ -488,14 +488,14 @@ dates. Everything but the sequence is asserted in all of them. `service/happy-pa
 `service/abr-ladder` also assert zero gap entries. The fragment length is the run's own
 `E2E_EXPECT_SEGMENT_S`. A run declaring `any` skips the timeline and says so.
 
-| Suite                                       | What only this one can see                                                                               | Sequence 0 |
-| ------------------------------------------- | -------------------------------------------------------------------------------------------------------- | ---------- |
-| `service/happy-path`                        | The baseline, a broadcast with no fault                                                                  | asserted   |
-| `service/abr-ladder`                        | Every rung deriving both numbers from one anchor, which is what a level switch lands on                  | asserted   |
-| H `finalize-crash`, I `whole-stack-restart` | The recording's own numbering, which no catalogue entry speaks for                                       | asserted   |
-| E `engine-restart`, `abr-engine-restart`    | The resumed session dating its media off its own anchor                                                  | when shown |
-| F `uploader-crash-recovery`                 | The recovered session writing the playlist a viewer holds, on sequences restored from disk, with the hole as gap entries | no |
-| M `reconnect-into-recovery`                 | The break a reconnected session earns, and no hole invented by a forgotten accounting index              | no         |
+| Suite                                       | What only this one can see                                                                                               | Sequence 0 |
+| ------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------ | ---------- |
+| `service/happy-path`                        | The baseline, a broadcast with no fault                                                                                  | asserted   |
+| `service/abr-ladder`                        | Every rung deriving both numbers from one anchor, which is what a level switch lands on                                  | asserted   |
+| H `finalize-crash`, I `whole-stack-restart` | The recording's own numbering, which no catalogue entry speaks for                                                       | asserted   |
+| E `engine-restart`, `abr-engine-restart`    | The resumed session dating its media off its own anchor                                                                  | when shown |
+| F `uploader-crash-recovery`                 | The recovered session writing the playlist a viewer holds, on sequences restored from disk, with the hole as gap entries | no         |
+| M `reconnect-into-recovery`                 | The break a reconnected session earns, and no hole invented by a forgotten accounting index                              | no         |
 
 ### What the sequence column says
 
@@ -553,27 +553,27 @@ runs the preflight gates first.
 The default subject of a viewer measurement is the client reading segment bytes from a Swarm node
 running in the tab. A gateway is the control. `BROWSER_FETCH_BACKEND` sets it:
 
-| Value     | What the viewer is                                                          |
-| --------- | --------------------------------------------------------------------------- |
+| Value     | What the viewer is                                                                                                      |
+| --------- | ----------------------------------------------------------------------------------------------------------------------- |
 | unset     | Whatever the client build defaults to. Reach it with `BROWSER_FETCH_BACKEND=`, because the default profile sets `weeb3` |
-| `gateway` | Segment bytes from a Bee gateway                                            |
-| `weeb3`   | Segment bytes from the in-tab node, with feeds and playlists still read through a gateway |
+| `gateway` | Segment bytes from a Bee gateway                                                                                        |
+| `weeb3`   | Segment bytes from the in-tab node, with feeds and playlists still read through a gateway                               |
 
 `weeb3` is a hybrid. Fully gateway-less is weeb-3's own page, run by `pnpm browser:weeb3-native` and
 compared with the hybrid by `pnpm browser:viewer-order` (see `src/browser/viewerConditions.ts`).
 
-| Command                         | In-tab node  | Notes                                                                       |
-| ------------------------------- | ------------ | --------------------------------------------------------------------------- |
-| `browser:watch`                 | yes          | The long-run watcher                                                        |
-| `browser:crash`                 | yes          | The five fault scenarios                                                    |
-| `browser:buffer-sweep`          | yes          | One byte source for the whole sweep                                         |
-| `browser:fetch-backend-check`   | yes          | The comparison of the two byte sources                                      |
-| `browser:weeb3-native`          | gateway-less | weeb-3's own page                                                           |
-| `browser:viewer-order`          | both         | Native against hybrid, counterbalanced                                      |
-| `browser:vod`                   | yes          | Recorded playback, with seeks or a squeeze                                  |
-| `browser:selfcheck`             | no           | Proves the instrument, not a viewer condition                               |
-| `browser:gateway-check`         | n/a          | Gateway by definition                                                       |
-| `browser:in-tab-throttle-probe` | in-tab only  | No player. Drives the node's retrieval path directly                        |
+| Command                         | In-tab node  | Notes                                                                                |
+| ------------------------------- | ------------ | ------------------------------------------------------------------------------------ |
+| `browser:watch`                 | yes          | The long-run watcher                                                                 |
+| `browser:crash`                 | yes          | The five fault scenarios                                                             |
+| `browser:buffer-sweep`          | yes          | One byte source for the whole sweep                                                  |
+| `browser:fetch-backend-check`   | yes          | The comparison of the two byte sources                                               |
+| `browser:weeb3-native`          | gateway-less | weeb-3's own page                                                                    |
+| `browser:viewer-order`          | both         | Native against hybrid, counterbalanced                                               |
+| `browser:vod`                   | yes          | Recorded playback, with seeks or a squeeze                                           |
+| `browser:selfcheck`             | no           | Proves the instrument, not a viewer condition                                        |
+| `browser:gateway-check`         | n/a          | Gateway by definition                                                                |
+| `browser:in-tab-throttle-probe` | in-tab only  | No player. Drives the node's retrieval path directly                                 |
 | `e2e:run`                       | yes          | Upload side throughout, plus `suites/viewer/`, which launches `browser:watch` itself |
 
 `browser:arm-order` and `browser:byte-source-order` open no viewer. They print the counterbalanced order

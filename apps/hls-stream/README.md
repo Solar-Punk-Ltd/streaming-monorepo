@@ -41,28 +41,28 @@ The [deploy guide](deploy/README.md) walks through each step.
 
 ## Where to read next
 
-| Page                                                         | What it covers                                                                 |
-| ------------------------------------------------------------ | ------------------------------------------------------------------------------ |
-| [Deploy guide](deploy/README.md)                             | Topology, first deploy, profiles and port slots, the deploy scripts            |
-| [Stream uploader](packages/stream-uploader/README.md)        | Settings, HTTP API, publish keys, admin mode, health states, metrics, limits   |
-| [How the uploader publishes](packages/stream-uploader/concepts.md) | Feeds, the ABR ladder, the manifest contract, reconnects, time markers   |
-| [Engines](engines/README.md)                                 | SRS and OME, the SRS fork, the ABR ladder, your own config file                |
-| [Client](packages/client/README.md)                          | The viewer: settings, the node picker, playback behaviour, the QoE overlay     |
-| [CLI](packages/cli/README.md)                                | Bee node and postage batch commands                                            |
-| [Testing](e2e/README.md)                                     | Unit tests, the end-to-end suites, browser drivers, the latency benchmark      |
+| Page                                                               | What it covers                                                               |
+| ------------------------------------------------------------------ | ---------------------------------------------------------------------------- |
+| [Deploy guide](deploy/README.md)                                   | Topology, first deploy, profiles and port slots, the deploy scripts          |
+| [Stream uploader](packages/stream-uploader/README.md)              | Settings, HTTP API, publish keys, admin mode, health states, metrics, limits |
+| [How the uploader publishes](packages/stream-uploader/concepts.md) | Feeds, the ABR ladder, the manifest contract, reconnects, time markers       |
+| [Engines](engines/README.md)                                       | SRS and OME, the SRS fork, the ABR ladder, your own config file              |
+| [Client](packages/client/README.md)                                | The viewer: settings, the node picker, playback behaviour, the QoE overlay   |
+| [CLI](packages/cli/README.md)                                      | Bee node and postage batch commands                                          |
+| [Testing](e2e/README.md)                                           | Unit tests, the end-to-end suites, browser drivers, the latency benchmark    |
 
 ## Packages
 
-| Package                                      | What it is                                                                                                       |
-| -------------------------------------------- | ---------------------------------------------------------------------------------------------------------------- |
-| [stream-uploader](packages/stream-uploader/) | Receives HLS segments, uploads them to Swarm, publishes the feeds                                                |
-| [client](packages/client/)                   | The React viewer for browsing and playing streams                                                                |
-| [cli](packages/cli/)                         | Bee node and postage batch management                                                                            |
-| [shared](packages/shared/)                   | The stream, playlist, log and publish-key contracts the uploader, the client and the harness share               |
-| [audit-gate](packages/audit-gate/)           | Development tooling: `pnpm audit:check`, which fails on a dependency advisory that is not on its reviewed list   |
+| Package                                      | What it is                                                                                                                             |
+| -------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------- |
+| [stream-uploader](packages/stream-uploader/) | Receives HLS segments, uploads them to Swarm, publishes the feeds                                                                      |
+| [client](packages/client/)                   | The React viewer for browsing and playing streams                                                                                      |
+| [cli](packages/cli/)                         | Bee node and postage batch management                                                                                                  |
+| [shared](packages/shared/)                   | The stream, playlist, log and publish-key contracts the uploader, the client and the harness share                                     |
+| [audit-gate](packages/audit-gate/)           | Development tooling: `pnpm audit:check`, which fails on a dependency advisory that is not on its reviewed list                         |
 | [gate-facts](packages/gate-facts/)           | Development tooling: `pnpm gate:facts` prints the figures a pull request description may quote, each with the command that produced it |
-| [deploy](deploy/)                            | Deploy scripts, the compose file and their tests                                                                 |
-| [e2e](e2e/)                                  | End-to-end suites against a deployed stack, and the harness's own tests                                          |
+| [deploy](deploy/)                            | Deploy scripts, the compose file and their tests                                                                                       |
+| [e2e](e2e/)                                  | End-to-end suites against a deployed stack, and the harness's own tests                                                                |
 
 ```
 packages/
