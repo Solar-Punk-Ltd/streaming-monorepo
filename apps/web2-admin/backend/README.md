@@ -183,8 +183,23 @@ ahead of that check, because its callers are servers with a bearer token.
 ### Sign in and users
 
 How sign-in works, and why, is in
-[docs/architecture/web2-admin-auth.md](../../../docs/architecture/web2-admin-auth.md),
-which also lists every `/api/auth` route. In short:
+[docs/architecture/web2-admin-auth.md](../../../docs/architecture/web2-admin-auth.md).
+
+| Method | Path                         | Who                | Answer                                                                                                                |
+| ------ | ---------------------------- | ------------------ | --------------------------------------------------------------------------------------------------------------------- |
+| POST   | `/api/auth/login`            | anyone             | `MeResponse` and the cookie, or 401 `invalid_credentials`, 401 `no_users`, 429 `too_many_attempts`                    |
+| POST   | `/api/auth/logout`           | anyone             | 204, the cookie cleared and the session row deleted                                                                   |
+| GET    | `/api/auth/session`          | anyone             | `MeResponse`, or 401 `no_users` when there are no users, 401 `unauthenticated` otherwise                              |
+| GET    | `/api/auth/me`               | signed in          | `MeResponse`                                                                                                          |
+| POST   | `/api/auth/password`         | signed in          | `MeResponse`, or 401 `invalid_credentials` for a wrong current password, 400 `validation_error`, 429                  |
+| GET    | `/api/auth/users`            | signed in          | `UserListResponse`                                                                                                    |
+| POST   | `/api/auth/users`            | admin              | 201 `UserSummary`, or 409 `user_exists`, 400 `validation_error`, 403 `admin_required`                                 |
+| DELETE | `/api/auth/users/:id`        | admin              | 204, or 409 `cannot_remove_user` (yourself, the last user, the last admin), 404 `user_not_found`                      |
+| POST   | `/api/auth/users/:id/revoke` | admin, or yourself | 204, or 403 `admin_required`, 404 `user_not_found`                                                                    |
+| PUT    | `/api/config/default-theme`  | admin              | `SetDefaultThemeResponse` ([The console's look](#the-consoles-look)), or 400 `validation_error`, 403 `admin_required` |
+
+A weak password or a bad username is `400 validation_error` with the reason in
+`errors`. In short:
 
 - A password is hashed with scrypt (`N=2^15, r=8, p=3`) and stored as
   `scrypt$N$r$p$salt$hash`, so the cost can be raised without invalidating
