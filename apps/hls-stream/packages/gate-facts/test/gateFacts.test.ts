@@ -411,14 +411,13 @@ describe('surfacesTouched', () => {
   });
 
   it('classifies every surface in the catalogue, not only the ones a diff usually hits', () => {
-    // Three of the seven matchers were entirely unexercised, so replacing any of them with a
+    // Three of the matchers were entirely unexercised, so replacing any of them with a
     // constant false went unnoticed.
     assert.deepEqual(surfacesTouched(['.github/workflows/ci.yml']), ['ci']);
     assert.deepEqual(surfacesTouched(['deploy/scripts/clean.sh']), ['deploy']);
     assert.deepEqual(surfacesTouched(['engines/srs/srs.conf.template']), ['deploy']);
     assert.deepEqual(surfacesTouched(['nodes/docker-compose.yml']), ['deploy']);
     assert.deepEqual(surfacesTouched(['packages/x/src/a.ts']), ['src']);
-    assert.deepEqual(surfacesTouched(['docs/reviews/review-gate.md']), ['protocol']);
     assert.deepEqual(surfacesTouched(['README.md']), ['docs']);
     assert.deepEqual(surfacesTouched(['packages/client/index.html']), ['client-assets']);
   });
@@ -436,9 +435,9 @@ describe('surfacesTouched', () => {
   });
 
   it('returns surfaces in catalogue order regardless of the order the paths arrive in', () => {
-    const paths = ['package.json', 'docs/reviews/review-gate.md', 'packages/x/src/a.ts'];
+    const paths = ['README.md', 'package.json', 'packages/stream-uploader/src/index.ts'];
 
-    assert.deepEqual(surfacesTouched(paths), ['protocol', 'src', 'config']);
+    assert.deepEqual(surfacesTouched(paths), ['src', 'config', 'docs']);
   });
 });
 
@@ -521,7 +520,7 @@ describe('mutationApplicability', () => {
   });
 
   it('is not applicable when nothing under src or test changed', () => {
-    assert.equal(mutationApplicability(['docs/reviews/review-gate.md', 'package.json']).state, 'not-applicable');
+    assert.equal(mutationApplicability(['README.md', 'package.json']).state, 'not-applicable');
   });
 });
 
