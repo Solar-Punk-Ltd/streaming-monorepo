@@ -112,7 +112,8 @@ page says so and shows the command that makes the first one.
 
 Every stream of the installation, whoever drafted it: thumbnail, title with up to two lines of
 description (all of it on hover), stage (retired ones marked, No stage for none), media type,
-status, scheduled start, and Edit, Details and Delete. A Stage filter narrows the list to one stage
+status (VOD reads "Video On Demand" on hover, here and on the stream's page), scheduled start, and
+Edit, Details and Delete. A Stage filter narrows the list to one stage
 or to the streams with none. A banner says when the catalogue cannot be written, when a move of the
 catalogue to another batch is waiting, and when its batch is under 48 hours from expiry or 90% full.
 
@@ -317,7 +318,9 @@ admin stored another ([the backend's README](../backend/README.md#the-consoles-l
 A look is one record in `src/theme/tokens.ts`: its colours, three typefaces, the heading weight, the
 corner radius, the button lettering, whether surfaces stay flat, and the shades of each colour when
 they must be written out rather than worked out by MUI. `src/theme/createAdminTheme.ts` is the one
-place a record becomes a MUI theme.
+place a record becomes a MUI theme. It also centres every chip's label on its capital letters, in
+every look: CSS `text-box` trims the label's line box where the browser has it, and a 1px nudge
+stands in where it does not.
 
 - Components read only the MUI theme, such as `text.secondary` or `primary.main`, and set a
   monospace value with `sx={{ fontFamily: monoFont }}`. `src/test/theme.test.tsx` fails on a colour
