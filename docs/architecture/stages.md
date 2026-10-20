@@ -44,7 +44,7 @@ refused to run without `BEE_URL`, `POSTAGE_BATCH_ID` and `INGEST_HOST`.
   resolves each entry under that entry's own `owner` and `topic`, so Swarm never needed the two
   keys to be one. Only three checks in code tie them: the uploader's boot check, the admin's
   publish check and the manager's Test connection. A stage host is the most exposed machine of
-  the platform; with one key per stage its compromise leaks that stage's key, not the brand's.
+  the platform. With one key per stage its compromise leaks that stage's key, not the brand's.
 - **One catalogue batch, of its own.** A batch that expires drops the chunks it stamped, and the
   viewer walks the catalogue's slots until the first 404, so one missing slot hides every entry
   after it. That happened on 2026-09-13. A batch shared with a rung fills with segments, and then
@@ -59,26 +59,26 @@ that receives them.
 
 **A stage record**, pushed by the manager for one deployment:
 
-| Field                                    | What it is                                                                                                                              |
-| ---------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------- |
-| `schemaVersion`                          | 1                                                                                                                                       |
-| `stageId`                                | the deployment's `instance_id`                                                                                                          |
-| `managerId`                              | the manager's own generated id, which names the manager a record came from                                                              |
-| `name`, `kind`, `engine`, `stackVersion` | for display; `kind` is `abr-uploader` or `streamer`, `engine` `srs` or `ome`                                                            |
-| `status`                                 | the deployment's status as the manager reports it                                                                                       |
-| `observedAt`                             | when the manager read what the record says; an older record never replaces a newer one                                                  |
-| `ingest`                                 | `host` (the public address encoders dial), `srtPort`, `rtmpPort`, `rtmpPublic`, `srtPassphrase` (or null)                               |
-| `owner`                                  | the address of the stage's `STREAM_KEY`, never the key                                                                                  |
-| `rungs[]`                                | per rung: its name, its stamp (`batchId`, `state`, `ttlSeconds`, `fillRatio`, `immutable`) and its chequebook's health; no node address |
-| `uploader`                               | the uploader's health reading, or null when it could not be read                                                                        |
-| `readiness`                              | the manager's verdict (`ready`, `warning`, `blocked`, `unknown`) with its reasons, worked out in the manager and shown as it is         |
-| `adminToken`                             | the sha256 of the token the deployment's uploader presents to the admin, and where it came from: `own` or `shared`, below               |
+| Field                                    | What it is                                                                                                                                  |
+| ---------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------- |
+| `schemaVersion`                          | 1                                                                                                                                           |
+| `stageId`                                | the deployment's `instance_id`                                                                                                              |
+| `managerId`                              | the manager's own generated id, which names the manager a record came from                                                                  |
+| `name`, `kind`, `engine`, `stackVersion` | for display. `kind` is `abr-uploader` or `streamer`, `engine` `srs` or `ome`                                                                |
+| `status`                                 | the deployment's status as the manager reports it                                                                                           |
+| `observedAt`                             | when the manager read what the record says. An older record never replaces a newer one                                                      |
+| `ingest`                                 | `host` (the public address encoders dial), `srtPort`, `rtmpPort`, `rtmpPublic`, `srtPassphrase` (or null)                                   |
+| `owner`                                  | the address of the stage's `STREAM_KEY`, never the key                                                                                      |
+| `rungs[]`                                | per rung: its name, its stamp (`batchId`, `state`, `ttlSeconds`, `fillRatio`, `immutable`) and its chequebook's health, and no node address |
+| `uploader`                               | the uploader's health reading, or null when it could not be read                                                                            |
+| `readiness`                              | the manager's verdict (`ready`, `warning`, `blocked`, `unknown`) with its reasons, worked out in the manager and shown as it is             |
+| `adminToken`                             | the sha256 of the token the deployment's uploader presents to the admin, and where it came from: `own` or `shared`, below                   |
 
 **A catalogue stamp record**, pushed by the manager for the brand: the catalogue node's name, its
 Bee API address as the control host reaches it, the pinned `batchId`, whether the batch is
 `immutable`, its `depth`, its stamp `state`, `ttlSeconds` and `fillRatio`, when it was designated,
 and `observedAt`. While a move is pending in the manager, `previous` carries the batch moved from,
-its node's name and Bee API and the same readings (`catalogueStampPreviousSchema`); it is null or
+its node's name and Bee API and the same readings (`catalogueStampPreviousSchema`). It is null or
 absent otherwise.
 
 Neither record ever carries a signing key, a wallet key, an RPC endpoint, a token or a rung's
@@ -91,10 +91,10 @@ bearer token and no session:
 
 | Route                                  | Who calls it | What it does                                                                                                                                                    |
 | -------------------------------------- | ------------ | --------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `PUT /api/internal/stages/:stageId`    | the manager  | stores a stage record, unless the stored one is newer; answers whether it stored it                                                                             |
+| `PUT /api/internal/stages/:stageId`    | the manager  | stores a stage record, unless the stored one is newer, and answers whether it stored it                                                                         |
 | `DELETE /api/internal/stages/:stageId` | the manager  | retires the stage as of the `observedAt` its body carries: its row stays, because streams and old catalogue entries name its owner, and it takes no new streams |
 | `PUT /api/internal/catalogue-stamp`    | the manager  | stores the catalogue stamp record                                                                                                                               |
-| `DELETE /api/internal/catalogue-stamp` | the manager  | clears it as of the `observedAt` its body carries; the admin then refuses to publish, with a sentence saying why                                                |
+| `DELETE /api/internal/catalogue-stamp` | the manager  | clears it as of the `observedAt` its body carries. The admin then refuses to publish, with a sentence saying why                                                |
 | `GET /api/internal/stages/self`        | an uploader  | answers the stage its token belongs to, and the owner that stage signs as                                                                                       |
 | `GET /api/internal/registrar`          | the manager  | answers 204 and does nothing else: the manager's Test connection proves its stored token with it                                                                |
 
@@ -163,7 +163,7 @@ single-row `catalogue_stamp`, and `streams.stage_id`.
 
 A stream's stage is picked in the stream form, is required before publish, and shows as a column
 and a filter in My Streams. It can change while the stream is a draft. Publishing fixes it,
-because the catalogue entry and every viewer link carry the stage's owner; to move a published
+because the catalogue entry and every viewer link carry the stage's owner. To move a published
 stream, unpublish it, change it, publish again. A stream that holds a recording keeps its stage,
 since the recording lives under that stage's owner. The OBS panel shows the stream's stage's
 ingest details. The admin warns before a stream is scheduled on a stage whose readiness is not
@@ -196,7 +196,7 @@ In `apps/web2-admin/backend/src/domain/CatalogueBatch.ts`:
   batch and the feed has a recorded write, the admin keeps the pinned one, at its node, and My
   Streams says a move is waiting. With no recorded write (the feed key changed) the designated batch
   is pinned in its place. The first write after the upgrade from `POSTAGE_BATCH_ID` pins the
-  designated batch; the writes before it keep a null batch in `feed_writes`, which is how the move
+  designated batch. The writes before it keep a null batch in `feed_writes`, which is how the move
   finds them.
 - The pinned batch's readings, once the manager designates another, are the last ones pushed while
   it was the designated batch, kept with the moment they were read, and the ones a record's
@@ -210,7 +210,7 @@ In `apps/web2-admin/backend/src/domain/CatalogueBatch.ts`:
 - A publish, an unpublish or a reconcile is refused before it moves anything, as `503` with the
   reason: no designation, a cleared one, or the pinned batch expired, gone or mutable. A clear
   leaves the pin, so a designation that comes back finds the history where it was. The uploader's
-  reports store their state first and are refused the same way when their rewrite comes; `503` is
+  reports store their state first and are refused the same way when their rewrite comes, and `503` is
   a failure it retries. A failed write's reason never carries the catalogue node's address.
 - `feed_writes.payload_text` holds the exact string uploaded and `feed_writes.batch_id` the batch
   that stamped it (migration 013).
@@ -261,10 +261,10 @@ In `apps/web2-admin/backend/src/domain/CatalogueBatch.ts`:
   a mutable batch or one whose kind the node did not report, and a new batch shallower than depth
   18: an immutable batch refuses a chunk whose bucket is full and a slot is written again at the
   same address, so the first slot refused freezes the catalogue for every stage. Buying or using
-  another batch on that node leaves the catalogue on the pinned one, and the page says so; moving
+  another batch on that node leaves the catalogue on the pinned one, and the page says so. Moving
   the catalogue is its own action. Once a batch has been designated, the manager takes another
   only as a move, through a clear as well, and the same batch can be designated again. A clear
-  keeps the node and the batch recorded; that node is not removed, and a pool string that names
+  keeps the node and the batch recorded. That node is not removed, and a pool string that names
   its batch or its Bee API is refused on create and update. A move keeps the previous batch
   guarded until it is released
   ([Moving the catalogue to another batch](#moving-the-catalogue-to-another-batch)).
@@ -295,7 +295,7 @@ a stream of another stage is refused at the gate.
   that holds a recording never changes owner: a publish of one whose stage now signs as another
   address is refused, `409 feed_owner_mismatch`, "the recording was made under another key". A
   stream already on the catalogue keeps the owner publishing fixed, and so does a state report's
-  write; the check that every row's owner is the brand key's is gone from both. The catalogue is
+  write. The check that every row's owner is the brand key's is gone from both. The catalogue is
   still signed by `FEED_PRIVATE_KEY`, and `/api/config` still names that address for the viewer
   build. A reconcile, and the boot's dry run of it, count as ours every entry whose owner is the
   brand key's or any stage's the admin holds, retired stages included.
@@ -348,13 +348,13 @@ a stream of another stage is refused at the gate.
   settings or a create that leaves a stored `ADMIN_API_TOKEN` at an address on the origin of the
   manager's link, while the link stores a token, is refused with the wizard's sentence
   (`TYPED_TOKEN_AT_LINK`, `typedTokenAtLinkProblem` in `common/src/adminLink.ts`). Clearing the
-  token, or resetting it to the version's, takes it; the first deploy then generates one of its
+  token, or resetting it to the version's, takes it. The first deploy then generates one of its
   own.
 - **The registrar token is never an uploader's.** The uploader's door compares the presented
   token with `INTERNAL_API_TOKEN` itself before any lookup, and the admin refuses a pushed record
   whose own-token hash is that token's, with a 400 that names neither.
 - **No create copies the link's token.** `use_manager_admin_token` is gone from `POST /profiles`
-  and `POST /groups`; a create drops it as any key it does not name.
+  and `POST /groups`, and a create drops it as any key it does not name.
 
 **Rolling out on a host that runs the admin and manager from before stages.**
 [Upgrading](../self-hosting.md#the-control-host), at the end of the control host in the
@@ -372,7 +372,7 @@ on the catalogue node.
 ## Moving the catalogue to another batch
 
 A top-up keeps the batch id and extends the life of every chunk it stamped, the history
-included; nothing changes in the admin but the readings. Moving to another batch means stamping
+included. Nothing changes in the admin but the readings. Moving to another batch means stamping
 the history again: the admin rewrites every slot of the feed, in order, with the exact bytes it
 recorded, under the new batch, then every thumbnail a stream names, published or not, and every
 one the latest entry names, and then the admin writes with the new batch. bee-js puts a payload
@@ -387,7 +387,7 @@ with the admin's move off: they change which batch is designated and which is gu
 a move is pending the manager pushes the batch moved from as the record's `previous`, so the
 admin, which keeps writing with it, keeps its readings fresh.
 
-On the manager's side (`CatalogueDesignationService`, migration 048;
+On the manager's side (`CatalogueDesignationService`, migration 048, and
 `apps/infra-manager/docs/features/stages.md` is the page):
 
 - Designating another batch than the pinned one is a move, saved only when the request says
@@ -401,12 +401,12 @@ On the manager's side (`CatalogueDesignationService`, migration 048;
   swaps the two.
 - **Release the previous batch**, `POST /manager-settings/catalogue-node/release`, revisioned,
   behind the session and the same-site check, takes the previous batch out once the admin
-  reports the move done; only then does the guard lift. It is logged with the user and
+  reports the move done, and only then does the guard lift. It is logged with the user and
   recorded in the row, like a designation. The manager cannot see the admin's progress, so the
   card says the steps and asks before it releases.
 
 On the admin's side (`apps/web2-admin/backend/src/domain/CatalogueMove.ts`,
-migration 014; the admin backend's README has the detail):
+migration 014, and the admin backend's README has the detail):
 
 - A move waits when the feed has history and the pinned batch is not the designated one (another
   designated, or a move back to one that still holds every slot, which needs the switch alone),
@@ -418,14 +418,14 @@ migration 014; the admin backend's README has the detail):
   the new batch through the catalogue node. From `payload_text` where there is one: the chunk
   is built as `updateFeedWithPayload` built it, and signed again with the brand key. secp256k1
   signing with RFC 6979 nonces is deterministic, so the chunk is the one first uploaded, byte for
-  byte; `test/unit/catalogueRestamp.test.ts` holds the job to the bytes bee-js's own write
+  byte. `test/unit/catalogueRestamp.test.ts` holds the job to the bytes bee-js's own write
   produced. A slot with no recorded bytes, a row from before migration 013 or a slot with no
   row at all (before 003), is read from the network through the catalogue node, checked against
   its address, and uploaded with its own signature. A payload over 4096 bytes has its
   content-addressed data uploaded again first. A slot already under the new batch by the record
   is left as it is.
 - Then every thumbnail a stream names, published or not, and every one the latest entry names,
-  from `streams.thumbnail` where the row holds the bytes and otherwise from the network; one an
+  from `streams.thumbnail` where the row holds the bytes and otherwise from the network. One an
   entry names has to come out at the same reference. Each is recorded on its streams as under the
   new batch (`streams.thumbnail_batch_id`), and a publish uploads a thumbnail again whenever that
   batch is not the one it writes with, so a draft published after the move names an image the
@@ -449,7 +449,7 @@ migration 014; the admin backend's README has the detail):
 ### Trying the move on a real node
 
 Once, before `CATALOGUE_MOVE_ENABLED` is turned on anywhere. Nothing in the repository runs
-this; every unit and integration test uses a fake Bee.
+this. Every unit and integration test uses a fake Bee.
 
 1. **Set up a scratch installation.** A testnet or scratch Bee node as a Bee-only deployment of
    a scratch manager, and a scratch admin with its own `FEED_PRIVATE_KEY` and `FEED_TOPIC`, so no
@@ -469,7 +469,7 @@ this; every unit and integration test uses a fake Bee.
    the node answers the same bytes as before the move, and `GET /stamps/<B>` shows its
    utilisation grown by about the number of slots and data chunks. The admin's log has one
    `Restamped feed index=` line per slot, and none failed. A slot's address is
-   keccak256(identifier, owner); the `ref=` of each `Wrote feed index=` line in the log is it.
+   keccak256(identifier, owner), and the `ref=` of each `Wrote feed index=` line in the log is it.
 5. **Check the viewer.** Dilute or let batch A lapse (on a testnet, a batch bought with the
    smallest amount lapses in hours), or point the viewer at a node that never held A's chunks.
    The viewer still lists every entry it listed in step 2, with its thumbnail, and the stream
@@ -488,8 +488,8 @@ admin keeps writing with A, and the log and the Stages page say which.
 | 1   | Terraform        | The hosts, DNS names for both consoles, the provider's firewall                                                                                                           |
 | 2   | The hosts        | The manager's ssh key authorised on the stage and Bee hosts                                                                                                               |
 | 3   | The control host | The manager, the admin and the edge. The admin needs its database, a generated brand key and a generated `INTERNAL_API_TOKEN`, and no stage                               |
-| 4   | Both consoles    | The first user from the command line, then the other users; the two consoles keep separate users                                                                          |
-| 5   | Manager          | Manager settings: the admin link, with the admin's public address and its `INTERNAL_API_TOKEN`; Test connection                                                           |
+| 4   | Both consoles    | The first user from the command line, then the other users. The two consoles keep separate users                                                                          |
+| 5   | Manager          | Manager settings: the admin link, with the admin's public address and its `INTERNAL_API_TOKEN`, and Test connection                                                       |
 | 6   | Manager          | The ABR node pool and the catalogue node: fund their wallets from outside, buy the batches (the catalogue's immutable), fill the chequebooks, set the Bee host's firewall |
 | 7   | Manager          | Manager settings: designate the catalogue node and its batch                                                                                                              |
 | 8   | Manager          | The ABR uploader, the stage, with its own generated key, linked by default. It registers itself with the admin                                                            |

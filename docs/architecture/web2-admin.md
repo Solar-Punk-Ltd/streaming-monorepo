@@ -13,7 +13,7 @@ deploys pushes its record into the admin. The admin holds the brand wallet, its
 key encrypted under a secret of its own, and funds the node wallets from it
 through the manager's funding API ([funding.md](funding.md)).
 
-Exactly one admin layer for every brand. If it is down, streaming continues;
+Exactly one admin layer for every brand. If it is down, streaming continues, but
 nobody can create a stream, fund a node or change a logo until it is back.
 
 Tech tags from the model: Postgres, REST.
@@ -73,7 +73,7 @@ At the platform level the admin layer also:
   refuses to publish, saying why, until the manager has designated a
   catalogue batch.
 - It holds no stage's signing key. Each stage signs its feeds with a key of
-  its own, and the admin knows only its address; the brand key signs the
+  its own, and the admin knows only its address. The brand key signs the
   catalogue alone and never leaves the admin.
 - It does not serve media. Ingest, the ABR ladder, packaging and upload live on
   a stage host. Publishers and gateways live on a Bee host.
@@ -93,7 +93,7 @@ and the behaviour as built.
 ## Open questions carried into the build
 
 1. Ownership across brands: which brand a call may act for. The operator half
-   of this is answered — the console has usernames, passwords, an admin role
+   of this is answered: the console has usernames, passwords, an admin role
    and user management, ported from streaming-infra-manager and described in
    [web2-admin-auth.md](web2-admin-auth.md). A stream belongs to the
    installation: every signed-in operator can act on every stream,
