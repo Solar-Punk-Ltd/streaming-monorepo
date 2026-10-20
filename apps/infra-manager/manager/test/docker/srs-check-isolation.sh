@@ -21,21 +21,19 @@
 # the image below. No funds, no host, no network beyond the image: every check
 # container runs with --network none.
 #
-# Evidence, 2026-09-10, this laptop, arm64, Docker 29.7.2, on the digest below:
-# PASS. Eight checks at once, four accepted, four refused, each refusal naming
-# only its own directive, scratch directory empty. Wall time 2 s.
-#
-# Re-run the same day on the corrected pin, after the first one turned out to
-# name a real image in this repository that no tag points at any more. PASS
-# again, wall time 2 s, and the four refusal strings came back word for word
-# the ones test/unit/srsCheckIsolation.test.ts records.
+# Evidence, 2026-10-20, this laptop, arm64, Docker 29.9.1, on the image below,
+# which is built for amd64 and ran under emulation: PASS. Eight checks at once,
+# four accepted, four refused, each refusal naming only its own directive,
+# scratch directory empty. The four refusal strings are the ones
+# test/unit/srsCheckIsolation.test.ts records.
 set -u
 
 ROOT="$(cd "$(dirname "$0")/../../.." && pwd)"
 STACK="$(cd "$ROOT/../hls-stream" && pwd)"
-# ossrs/srs:6 resolved to this manifest list on 2026-09-10. The stack runs the
-# same tag, so the parser here is the parser a deployment gets.
-IMAGE="${SRS_CHECK_IMAGE:-ossrs/srs@sha256:2be08a0fe28737bf28bae8a575bb5776e09b620366dd1e62dd4f8a41cf4310f3}"
+# The image and digest the stack's compose files pin for its srs service, so
+# the parser here is the parser a deployment gets. test/unit/srsImagePin.test.ts
+# fails when the two differ.
+IMAGE="${SRS_CHECK_IMAGE:-ghcr.io/solar-punk-ltd/swarm-srs:6.0-r2-swarm.4@sha256:090f7b4e9017629b6837866e314e5576f7a1becf4cf3bfd85f393ada0e5f5d5a}"
 
 # An override is for pinning a different build, never for going back to a tag.
 # A tag moves, and the whole claim of this harness is that the parser it asks

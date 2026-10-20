@@ -425,9 +425,9 @@ about it. The isolation evidence is in the four refusals, each of which must
 name its own directive and none of the other seven files' directives.
 
 Locally: `bash manager/test/docker/srs-check-isolation.sh`. Exit 0 on a pass,
-1 on a wrong answer, 2 on a harness problem. Run here on 2026-09-10, arm64,
-Docker 29.7.2: pass, all eight right, 2 s. Re-run the same day on the
-corrected image pin below, with the same four refusal strings word for word.
+1 on a wrong answer, 2 on a harness problem. Run here on 2026-10-20, arm64,
+Docker 29.9.1, on the stack's SRS image from the pin table below, which is built
+for amd64 and ran under emulation: pass, all eight right.
 
 `SRS_CHECK_IMAGE` overrides the image and is refused unless it carries
 `@sha256:`, because a tag can move under the check and the whole claim of the
@@ -539,8 +539,7 @@ separate path is covered by the engine-config unit tests.
 The integration file uses the version's own template with one added line,
 `work_dir /no/such/directory;`, and the two observations that make that the
 right file, one for the parse and one for the start, are in the test's header
-with the image digest and the date, taken again on the corrected pin the day
-it was corrected. Run 35446479777 at `722b379e` proved the startup refusal,
+with the image digest and the date. Run 35446479777 at `722b379e` proved the startup refusal,
 successful previous-file recovery and restored services. Its sole rollout
 assertion failure was the stale `reverted` expectation, while the recorded
 state was the contract's `failed` outcome.
@@ -612,13 +611,17 @@ signature and attestation, the installed tree where applicable, and known
 malware, with the results recorded on this page. A release under two weeks old
 is a flag and the newest release is the riskiest choice.
 
-Container images are pinned by digest, each with the date it was resolved:
+Container images are pinned by digest, each with the date it was resolved. The
+SRS image is the one the stack's compose files pin for their `srs` service, and
+its date is the day they first pinned that digest.
+`manager/test/unit/srsImagePin.test.ts` fails when the harness, the startup
+observations or this row name another.
 
-| Image                       | Digest                                                                    | Resolved   | Used by                                         |
-| --------------------------- | ------------------------------------------------------------------------- | ---------- | ----------------------------------------------- |
-| `postgres:16.15-alpine`     | `sha256:721873c34ceb9f8d8fc265984940dc982404c105f19ad51be9fdc5970a6080ea` | 2026-09-27 | database, browser, integration                  |
-| `ossrs/srs:6`               | `sha256:2be08a0fe28737bf28bae8a575bb5776e09b620366dd1e62dd4f8a41cf4310f3` | 2026-09-10 | srs-parser, and the engine startup observations |
-| `airensoft/ovenmediaengine` | `sha256:172da9129d32093f3c92c426d385a318db38c7e70de0a3a685693e69614672a6` | 2026-09-08 | ome-gate                                        |
+| Image                                             | Digest                                                                    | Resolved   | Used by                                         |
+| ------------------------------------------------- | ------------------------------------------------------------------------- | ---------- | ----------------------------------------------- |
+| `postgres:16.15-alpine`                           | `sha256:721873c34ceb9f8d8fc265984940dc982404c105f19ad51be9fdc5970a6080ea` | 2026-09-27 | database, browser, integration                  |
+| `ghcr.io/solar-punk-ltd/swarm-srs:6.0-r2-swarm.4` | `sha256:090f7b4e9017629b6837866e314e5576f7a1becf4cf3bfd85f393ada0e5f5d5a` | 2026-10-05 | srs-parser, and the engine startup observations |
+| `airensoft/ovenmediaengine`                       | `sha256:172da9129d32093f3c92c426d385a318db38c7e70de0a3a685693e69614672a6` | 2026-09-08 | ome-gate                                        |
 
 ## Running any of it here
 
