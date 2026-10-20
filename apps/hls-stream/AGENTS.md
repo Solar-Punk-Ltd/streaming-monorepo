@@ -15,44 +15,49 @@ The stack's docs are its READMEs, one per part, linked from `README.md`. There i
 
 Platform-wide pages live in the monorepo's `docs/`.
 
-## ⛔⛔⛔ Never engineer around money
+## Never engineer around money
 
 **This rule overrides any instinct to be careful with the balance, and any earlier judgement written
-into a doc, a roadmap or a comment that shrank a test to save funds.** Funds for proper tests and
-measurements can always be added. A test plan is never shaped by what the balance happens to be.
+down anywhere, in a doc, a plan or a comment, that shrank a test to save funds.** Funds for
+proper tests and measurements can always be added. A test plan is never shaped by what the balance
+happens to be.
 
 ### What this means in practice
 
-**Size the work from the question, never from the balance.** How many arms, how many replicates, how
-long a broadcast, how many rungs. Decide all of it from what would actually settle the question, then
-report what it costs in the same message as the plan, then run it.
+A measurement run is one broadcast run to answer a question. A configuration under test is one of
+the setups that run compares. A rung is one quality level of the stream, 480p, 720p or 1080p.
 
-**A cheaper experiment that cannot settle the question is not thrift, it is waste.** An n=1 arm
-shipped with a caveat costs the same broadcast and answers less. Repeating always beats a warning.
+**Size the work from the question, never from the balance.** How many configurations under test, how
+many repeat runs of each, how long a broadcast, how many rungs. Decide all of it from what would
+actually settle the question, then report what it costs in the same message as the plan, then run it.
 
-**If the pot is short, that is a sentence, not a redesign.** Say the amount needed, hand over the
+**A cheaper experiment that cannot settle the question is not thrift, it is waste.** A configuration
+run once and shipped with a caveat costs the same broadcast and answers less. Repeating always beats
+a warning.
+
+**If the balance is short, that is a sentence, not a redesign.** Say the amount needed, hand over the
 exact command, and carry on planning the run that answers the question. Whoever operates the
 deployment adds funds when asked, and does not need to be asked twice.
 
 **Never write any of these as a reason to stop:** "deferred because it costs BZZ", "needs funds",
 "no longer free", "we should wait until there is more headroom", "a smaller version to fit the
-budget". Price it and say so instead.
+budget". BZZ is the Swarm token that pays for storage. Price the work and say so instead.
 
-**Never quietly run a smaller sitting and report it as the answer.** That is the failure this rule
-exists to prevent. Scaling work down is the operator's call, never the agent's.
+**Never quietly run a smaller measurement run and report it as the answer.** That is the failure this
+rule exists to prevent. Scaling work down is the operator's call, never the agent's.
 
-### What this rule does NOT change
+### What this rule does not change
 
-⛔ **The agent never moves money.** No deposit, no top up, no dilute, no buy, no send. Write the exact
+**The agent never moves money.** No deposit, no top up, no dilute, no buy, no send. Write the exact
 command, hand it over, stop. The operator runs it from their own shell. This is a mechanic and it is
 never a reason to shrink anything.
 
-⛔ **The spend ceiling is an operator setting.** `.spend-ledger.env` holds the ceiling the operator
+**The spend ceiling is an operator setting.** `.spend-ledger.env` holds the ceiling the operator
 authorised, and the gates in `deploy/scripts/` read it before a publisher starts. **Never rewrite the
-ledger to make your own plan pass.** A night that does not fit the authorised ceiling stays a night
-that does not fit, and the answer is to ask the operator for a higher one, not to edit the file.
+ledger to make your own plan pass.** A run that does not fit the authorised ceiling stays a run that
+does not fit, and the answer is to ask the operator for a higher one, not to edit the file.
 
-⛔ **Cost is still worth measuring and reporting as a product fact.** What a broadcaster pays per hour
+**Cost is still worth measuring and reporting as a product fact.** What a broadcaster pays per hour
 is a real number this project exists partly to establish. That is completely different from letting
 the balance shape a test plan.
 
@@ -91,13 +96,13 @@ rungs. Read the ports from the env file in that case.
 
 The chequebook preflight and `pnpm e2e:smoke` print the same readings per node.
 
-⚠️ Watch `availableBalance`, never `totalBalance`. They differ because `available = total - outstanding
+**Watch `availableBalance`, never `totalBalance`.** They differ because `available = total - outstanding
 cheques`, so a peer cashing a cheque the node already wrote moves total without anything being spent.
 
-## ⛔ An e2e suite checks correctness, never performance
+## An e2e suite checks correctness, never performance
 
-A suite under `e2e/suites/` asserts that a feature works and stays stable.
-It never gates on a timing.
+An e2e suite is an end-to-end test suite under `e2e/suites/`. It asserts that a feature works and
+stays stable. It never gates on a timing.
 
 Durations, latencies, freeze lengths and recovery times are **measured on every run, printed under a
 heading that says `observations, none of them asserted`, and filed in the artifact**. None of them
