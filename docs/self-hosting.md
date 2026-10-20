@@ -245,7 +245,7 @@ pnpm install
 8. **The admin link.** In the manager, **Manager settings**, the card **Web2 admin link for new
    deployments**: the address `https://admin.example.org` and the admin's `INTERNAL_API_TOKEN`,
    then **Test connection** and **Save**. The test proves the token on the admin's registrar check.
-   It worked when it says "The admin answered and took the token." The manager pushes every
+   It worked when it says "The web2 admin answered and took the token." The manager pushes every
    stage and the catalogue stamp with this token, and gives it to no uploader. The address is the
    edge's https one: every push carries this token and each stage's SRT passphrase and token hash,
    and the manager refuses a plain http address to another host than its own unless its
@@ -271,7 +271,8 @@ pnpm install
        without `0x`, and `feed.topic`.
     2. **Make the viewer in the manager.** **New deployment**, then on **What to set up** pick
        **Watch a stream** and press **Continue**. On **Basics** give it a **Name**, pick **Another
-       host over SSH** under **Host**, enter `stage-1`, and press **Continue**. On **Settings**,
+       host over SSH** under **Host**, enter `stage-1`, the stage host of step 10, and press
+       **Continue**. On **Settings**,
        under **Stream to follow**, pick **A streamer somewhere else** and paste `feed.owner` with
        `0x` in front. Put `feed.topic` in **Feed topic**. Press **Continue**, then **Deploy** on
        **Review**. The deployment's **Edit** drawer later shows the same owner field as
