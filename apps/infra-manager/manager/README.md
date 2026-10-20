@@ -1106,4 +1106,7 @@ Compose file as a host path.
   refused until the manager has read a Docker daemon identity on it over SSH.
 - **A remote Bee node's data is outside the manager's reach.** The disk figure and the cleanup on
   removal cover the manager's own host only.
-- **The engines' live status is not read.**
+- **The engines' live status is not read.** The manager does not yet ask SRS or OvenMediaEngine what
+  is publishing right now, even on a stack version that publishes SRS's API port. The Engine card
+  and `GET /profiles/:name/engine` give the reason in `liveUnavailableReason` instead (see
+  [Engine control](#engine-control)).
