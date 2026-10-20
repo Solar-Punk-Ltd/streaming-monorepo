@@ -1,7 +1,8 @@
 -- The console's own settings for this host, today one: the look its console
--- starts in for a browser whose admin picked none of their own. An admin sets
--- it with `PUT /api/config/default-theme`, and
--- `GET /api/config` answers it to every console, the login page included.
+-- starts in for a browser whose admin picked none of their own. An admin set
+-- it with `PUT /api/config/default-theme` until that route was removed on
+-- 2026-10-20. `GET /api/config` answers it to every console, the login page
+-- included.
 --
 -- One host, one row: `id` can only be true, as in brand_wallet (migration
 -- 015). No row means the fallback look, DEFAULT_ADMIN_THEME in
@@ -14,7 +15,7 @@
 --                  retiring a look needs no migration.
 --   updated_at     when it was last set, by the admin's clock.
 --   updated_by     the admin's username at the time. The audit log's
---                  `console.theme.set` rows hold the history.
+--                  `console.theme.set` rows hold the history of those sets.
 --
 -- Going back to an older admin needs no step: it never reads the table.
 

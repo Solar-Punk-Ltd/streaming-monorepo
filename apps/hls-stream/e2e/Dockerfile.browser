@@ -40,17 +40,13 @@ FROM node:24.21.0-bookworm-slim@sha256:0e0ff40c39bc087845bfb27465a0df4ea41952009
 # Chrome from Google's own repository, verified against their signing key. `xvfb` is the display the
 # browser is foregrounded on, and `fonts-liberation` is what stops the clock overlay and the client's
 # own text rendering as boxes in the screenshots the run is read from.
-#
-# `xauth` is listed because `--no-install-recommends` does not pull it and `xvfb-run` shells out to
-# it for every invocation. Without it the entrypoint fails before Chrome is reached, which reads as
-# the harness being broken rather than as a missing package.
 RUN apt-get update \
   && apt-get install -y --no-install-recommends wget gnupg ca-certificates \
   && wget -qO /usr/share/keyrings/google-chrome.asc https://dl-ssl.google.com/linux/linux_signing_key.pub \
   && echo "deb [arch=amd64 signed-by=/usr/share/keyrings/google-chrome.asc] https://dl-ssl.google.com/linux/chrome/deb/ stable main" \
      > /etc/apt/sources.list.d/google-chrome.list \
   && apt-get update \
-  && apt-get install -y --no-install-recommends google-chrome-stable xvfb xauth fonts-liberation \
+  && apt-get install -y --no-install-recommends google-chrome-stable xvfb fonts-liberation \
   && rm -rf /var/lib/apt/lists/* \
   && google-chrome-stable --version
 

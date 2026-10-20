@@ -267,7 +267,7 @@ async function main(): Promise<void> {
     audit: auditLog,
   });
 
-  const consoleSettings = new ConsoleSettingsService(new ConsoleSettingsRepository(database.pool), auditLog);
+  const consoleSettings = new ConsoleSettingsService(new ConsoleSettingsRepository(database.pool));
 
   apiServer = startApiServer(
     {

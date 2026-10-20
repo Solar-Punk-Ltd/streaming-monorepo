@@ -217,24 +217,22 @@ describe(
       });
     }
 
-    it('leaves historical operations explicitly without invented recovery evidence', async () => {
-      const historical = await operations.begin({
-        profileName: initial.name,
-        engine: 'srs',
-        kind: 'apply',
-        config: 'synthetic old API config',
-        expectedRevision: initial.engine_config_revision,
-        previousConfig: 'synthetic previous config',
-        previousIsTemplate: false,
-      });
-      assert.ok(historical);
-      const stored = (
-        await pool.query('SELECT * FROM engine_config_operations WHERE id = $1', [historical.operation.id])
-      ).rows[0];
+    it('reads a historical operation, recorded with no recovery evidence, as having none', async () => {
+      const inserted = await pool.query<{ id: number }>(
+        `INSERT INTO engine_config_operations (
+           profile_name, profile_instance_id, engine, kind,
+           previous_config, previous_is_template, applied_revision, intent_revision, state
+         )
+         VALUES ($1, $2, 'srs', 'apply', 'synthetic previous config', false, $3, $4, 'applying')
+         RETURNING id`,
+        [initial.name, initial.instance_id, initial.engine_config_revision, initial.intent_revision],
+      );
+      const id = inserted.rows[0]!.id;
+      const stored = (await pool.query('SELECT * FROM engine_config_operations WHERE id = $1', [id])).rows[0];
       assert.equal(stored.recovery_descriptor, null);
       assert.equal(stored.recovery_reference_id, null);
       assert.equal(stored.deployment_job_reference_id, null);
-      assert.equal(historical.operation.recoveryDescriptor, null);
+      assert.equal((await operations.findById(id))!.recoveryDescriptor, null);
     });
 
     for (const bundled of [false, true]) {
