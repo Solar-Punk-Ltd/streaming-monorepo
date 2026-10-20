@@ -34,7 +34,7 @@ manager for a version that requires it. The manager reads those server side,
 where the secrets are, so the check sees an empty token the version sets as
 empty. The token of the deployment's own counts too, for an address on the
 origin of the manager's link and no other (`generatedFor` in `AdminLinkBefore`),
-since that is the one address a deploy writes it for; one it has generated
+since that is the one address a deploy writes it for. One it has generated
 already is not counted anywhere else. A save that names neither key is not held
 to the rule, the way a save that names no engine setting is not held to the
 engine rules.
@@ -47,7 +47,7 @@ names, and who saved it last. The address is answered in clear. The token column
 is never selected by a read, only `token IS NOT NULL`, and two things read it:
 the stage publisher, which presents it as the registrar token, and Test
 connection. A manager from before stages copied it into a new deployment at
-its insert as well; nothing does now. The
+its insert as well. Nothing does now. The
 columns refuse a token with no address, a token under 32 characters and an empty
 address, as a backstop to the service.
 
@@ -66,10 +66,10 @@ Every uploader linked to the manager's admin presents a token of its own
 (`manager/src/domain/adminLink/ownAdminToken.ts`). A deploy generates
 `ADMIN_API_TOKEN` for a deployment when all of these hold:
 
-- it runs a stream uploader;
+- it runs a stream uploader,
 - the address its next deploy gives the uploader is on the origin of the
   manager's link (`sameAdminOrigin`), and the link stores a token, which is
-  what registers the deployment's stage and so the new token with the admin;
+  what registers the deployment's stage and so the new token with the admin,
 - the deployment stores no `ADMIN_API_TOKEN` of its own, and its version's env
   files set none.
 
@@ -233,7 +233,7 @@ own, is the registrar's. It is proved on the admin's registrar check,
 `204` (`token-accepted`) or the admin's own 401 (`token-refused`), and no owner
 is compared. That token goes in plain http only where the manager's pushes may,
 so an address in plain http to another host answers `plain-http-refused` and is
-not asked; an uploader's token goes wherever its uploader would send it. The
+not asked. An uploader's token goes wherever its uploader would send it. The
 uploader's routes refuse that token, so the lookup below would read it as
 refused. An admin older than the check answers its own `404 not_found` there
 only past its door, and only then is the lookup below asked with the same
@@ -247,7 +247,7 @@ with the bearer token. The admin checks the token before anything else, so its
 own 404 says it took the token and its own 401 that it did not, each told apart
 from any other server's by the error code in its body. A deployment's test
 presents the deployment's own token, which the admin knows once the stage was
-pushed; when the admin refuses a token of the deployment's own, one that is
+pushed. When the admin refuses a token of the deployment's own, one that is
 not the link's, at the link's address while no push of its stage has been
 stored, the test answers `token-not-registered` rather than `token-refused`,
 since a deploy registers it. At the link's address, a token the manager did
@@ -287,7 +287,7 @@ log line. Only a deployment for which neither sets a key compares no owner.
 The wizard's test depends on the token choice. With a token of its own, it
 proves the manager's stored token on the registrar check and compares no
 owner, since that token does not exist before the first deploy and the admin
-learns the stage's address from its first push; the deployment's own Test
+learns the stage's address from its first push. The deployment's own Test
 connection compares it once the stage exists. A token typed there is an
 uploader's, for another admin than the manager's own: the test compares the
 address of the stream key chosen in the step, which the browser derives with
@@ -341,14 +341,14 @@ and so on, and every sentence can be seen with `pnpm -C frontend dev:mock`.
   uploader would refuse to start with no token.
 - A token of its own is generated for the link's address at the deploy that
   needs it. A link moved to another origin after that leaves the deployment's
-  uploader without it, since it is written only for the link's origin; such a
+  uploader without it, since it is written only for the link's origin. Such a
   deployment is refused at save by the rule, and at deploy its uploader refuses
   to start until a token is typed for the address or the link is put back.
 - A stored token at the link's address, while the link stores a token, is
   refused by the manager at a save and a create (`typedTokenAtLinkProblem` in
   `common/src/adminLink.ts`), with the wizard's sentence, and the wizard holds
   it before. One an older manager stored stays until a save of either key or a
-  rotation takes it out; its Test connection says `token-not-own`. At another
+  rotation takes it out. Its Test connection says `token-not-own`. At another
   address, a typed token reaches only an older admin, the intermediate one or
   one from before stages, since an admin that takes only a stage's own token
   learns it only from the manager linked to it.
