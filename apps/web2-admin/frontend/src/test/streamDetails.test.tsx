@@ -1,5 +1,5 @@
-import { fireEvent, screen, waitFor, within } from '@testing-library/react';
-import { Route, Routes } from 'react-router';
+import { act, fireEvent, screen, waitFor, within } from '@testing-library/react';
+import { Route, Routes, useNavigate } from 'react-router';
 import { describe, expect, it } from 'vitest';
 import type { IngestDetails, Stream } from '@streaming-monorepo/web2-admin-common';
 
@@ -19,6 +19,7 @@ import {
 } from './helpers';
 
 const ID = 'stream-under-test';
+const OTHER_ID = 'another-stream';
 
 const EDITED_SINCE_PUBLISH = 'Edited since it was published. Republish to update the feed.';
 
@@ -759,7 +760,151 @@ describe('StreamDetailsPage', () => {
     expect(within(screen.getByRole('dialog')).getByRole('button', { name: 'Finalize' })).toBeEnabled();
     expect(calls(fetchMock, 'GET', `/api/streams/${ID}`)).toBe(1);
   });
+
+  it('keeps a read that left before Finalize from putting the old key back', async () => {
+    const ended = makeStream({ id: ID, stageId: MAIN_STAGE_ID, publishedFeedIndex: 2, ...STATES.ended });
+    const renewed = ingestWithKey(NEW_KEY, FINISHED_AT);
+    // Refresh's reads are held back until the Finalize has answered.
+    let releaseReads: () => void = () => undefined;
+    const readsHeld = new Promise<void>((resolve) => {
+      releaseReads = resolve;
+    });
+    let streamReads = 0;
+    let ingestReads = 0;
+    mockFetch([
+      finishRoute({ ...ended, restartUntil: null, finishedAt: FINISHED_AT }, renewed),
+      {
+        path: `/api/streams/${ID}`,
+        respond: async () => {
+          streamReads += 1;
+          if (streamReads > 1) await readsHeld;
+          return jsonOk(ended);
+        },
+      },
+      {
+        path: `/api/streams/${ID}/ingest`,
+        respond: async () => {
+          ingestReads += 1;
+          if (ingestReads > 1) await readsHeld;
+          return jsonOk(makeIngest());
+        },
+      },
+      {
+        path: '/api/config',
+        respond: () => jsonOk({ feed: { owner: 'abc', topic: 'swarm-stream', topicHex: 'ff' }, viewerBaseUrl: null }),
+      },
+    ]);
+
+    renderDetails();
+
+    expect(await screen.findByText(ENDED_TITLE)).toBeInTheDocument();
+    fireEvent.click(screen.getByLabelText('refresh stream'));
+    fireEvent.click(screen.getByRole('button', { name: 'Finalize' }));
+    fireEvent.click(within(await screen.findByRole('dialog')).getByRole('button', { name: 'Finalize' }));
+    expect(await screen.findByText(FINALIZED_TITLE)).toBeInTheDocument();
+
+    // The reads that left before the POST land only now, with the stream as it was.
+    await act(async () => {
+      releaseReads();
+      await new Promise((resolve) => setTimeout(resolve, 20));
+    });
+
+    expect(screen.getByText(FINALIZED_TITLE)).toBeInTheDocument();
+    expect(screen.queryByText(ENDED_TITLE)).not.toBeInTheDocument();
+    await waitFor(() => {
+      expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+    });
+    fireEvent.click(screen.getByLabelText('show srt server'));
+    expect(screen.getByLabelText('SRT Server')).toHaveValue(
+      `${renewed.srt!.url}&passphrase=${renewed.srt!.passphrase}`,
+    );
+  });
+
+  it.each([
+    ['answered', 'Stream finalized. Its key has changed.', () => finishAnswer()],
+    [
+      'refused',
+      'This stream is already finalized: its key has changed.',
+      () => jsonError(409, { error: 'stream_finished', id: ID, message: 'Refused.' }),
+    ],
+  ] as const)(
+    "leaves another stream's page alone when a Finalize begun on this one is %s after the move",
+    async (_, sentence, answer) => {
+      const ended = makeStream({ id: ID, stageId: MAIN_STAGE_ID, publishedFeedIndex: 2, ...STATES.ended });
+      const other = makeStream({
+        id: OTHER_ID,
+        title: 'The other stream',
+        status: 'published',
+        stageId: MAIN_STAGE_ID,
+        publishedFeedIndex: 3,
+      });
+      const otherIngest = ingestWithKey('dddddddddddddddddddddddddddddddd', FINISHED_AT);
+      let releasePost: (response: Response) => void = () => undefined;
+      const postHeld = new Promise<Response>((resolve) => {
+        releasePost = resolve;
+      });
+      mockFetch([
+        { method: 'POST', path: `/api/streams/${ID}/finish`, respond: () => postHeld },
+        { path: `/api/streams/${ID}`, respond: () => jsonOk(ended) },
+        { path: `/api/streams/${ID}/ingest`, respond: () => jsonOk(makeIngest()) },
+        { path: `/api/streams/${OTHER_ID}`, respond: () => jsonOk(other) },
+        { path: `/api/streams/${OTHER_ID}/ingest`, respond: () => jsonOk(otherIngest) },
+        {
+          path: '/api/config',
+          respond: () => jsonOk({ feed: { owner: 'abc', topic: 'swarm-stream', topicHex: 'ff' }, viewerBaseUrl: null }),
+        },
+      ]);
+
+      renderWithProviders(
+        <>
+          <Routes>
+            <Route path="/streams/:id" element={<StreamDetailsPage />} />
+          </Routes>
+          <OpenStream id={OTHER_ID} />
+        </>,
+        { route: `/streams/${ID}` },
+      );
+
+      fireEvent.click(await screen.findByRole('button', { name: 'Finalize' }));
+      fireEvent.click(within(await screen.findByRole('dialog')).getByRole('button', { name: 'Finalize' }));
+      // While the POST is out, the operator moves on to another stream.
+      fireEvent.click(screen.getByText('Open the other stream'));
+      expect(await screen.findByText('The other stream')).toBeInTheDocument();
+
+      await act(async () => {
+        releasePost(answer());
+        await new Promise((resolve) => setTimeout(resolve, 20));
+      });
+
+      expect(screen.getByText('The other stream')).toBeInTheDocument();
+      expect(screen.queryByText(ended.title)).not.toBeInTheDocument();
+      expect(screen.queryByText(FINALIZED_TITLE)).not.toBeInTheDocument();
+      expect(screen.queryByText(sentence)).not.toBeInTheDocument();
+      fireEvent.click(screen.getByLabelText('show srt server'));
+      expect(screen.getByLabelText('SRT Server')).toHaveValue(
+        `${otherIngest.srt!.url}&passphrase=${otherIngest.srt!.passphrase}`,
+      );
+    },
+  );
 });
+
+/** The API's answer to a Finalize of the stream under test, finalized with the new key. */
+function finishAnswer(): Response {
+  return jsonOk({
+    stream: makeStream({ id: ID, stageId: MAIN_STAGE_ID, ...STATES.finalized }),
+    ingest: ingestWithKey(NEW_KEY, FINISHED_AT),
+  });
+}
+
+/** A way off the page under test, to another stream's page. */
+function OpenStream({ id }: { id: string }) {
+  const navigate = useNavigate();
+  return (
+    <button type="button" onClick={() => navigate(`/streams/${id}`)}>
+      Open the other stream
+    </button>
+  );
+}
 
 /** The API's answer to a Finish: the stream as it now stands, and its OBS details with the new key. */
 function finishRoute(stream: Stream, ingest: IngestDetails): MockRoute {
