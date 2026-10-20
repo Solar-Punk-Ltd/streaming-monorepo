@@ -8,7 +8,7 @@ name, and an SSH tunnel is the way in without it.
 
 `deploy.sh` is written so streaming-infra-manager can run it the way it runs
 swarm-hls-stream's: same flags, standard input closed, output streamed. The
-manager does not run it yet; see "Running it from the manager" below.
+manager does not run it yet. See "Running it from the manager" below.
 
 ## One-time host setup
 
@@ -90,16 +90,9 @@ value is printed. The address itself is the API's to judge: one that is not
 https, or plain http to this host, stops the API with a sentence in its log,
 which the deploy prints when the API does not come up.
 
-No Bee node or batch is set here either: the catalogue is written through the
-catalogue node and batch the manager designates and pushes. An env file that
-still sets `BEE_URL` or `POSTAGE_BATCH_ID` deploys as it did, with a warning
-naming each one.
-
-No ingest key is needed: each stream's OBS details come from its stage, as the
-manager pushes it. An env file that still sets `INGEST_HOST`,
-`INGEST_SRT_PORT`, `INGEST_RTMP_PORT`, `INGEST_RTMP_PUBLIC`,
-`INGEST_SRT_PASSPHRASE` or `INGEST_KEY_VERIFIED` deploys as it did, with a
-warning naming each one; remove them when convenient.
+An env file that still sets a key the admin no longer reads deploys as it did,
+with a warning naming each one. [Keys no longer read](../backend/README.md#keys-no-longer-read)
+in the backend README lists them and says what replaced them.
 
 Nor does the file name the build: `deploy.sh` builds `WEB2_ADMIN_VERSION` and
 `WEB2_ADMIN_COMMIT` into the api image (see "The version" below). An env file
@@ -326,17 +319,9 @@ prints the exact line at the end of every deploy.
 
 ### The first user
 
-A new database has no users, and every sign-in is refused until one is made.
-The script prints this command, once per deploy, filled in for the profile:
-
-```sh
-ssh -t admin-host 'cd /opt/streaming/streaming-monorepo && WEB2_ADMIN_ENV_FILE=../backend/.env.brand-a docker compose -p web2-admin-brand-a -f deploy/docker-compose.yml --env-file backend/.env.brand-a exec api node dist/cli.js user:add <username>'
-```
-
-It prompts for the password twice. The first user can manage users. The
-console's sign-in page shows the shorter equivalent, `docker exec -it
-web2-admin-<profile>-api-1 node dist/cli.js user:add <username>`, to run on
-the host; `docker ps` shows the container's name.
+Every deploy ends by printing the command that makes the first user, filled in
+for the profile, and [The first user](../backend/README.md#the-first-user) in
+the backend README says what it does.
 
 ### The brand wallet's backup
 
@@ -422,8 +407,8 @@ call.
 
 ### A profile not yet redeployed
 
-Its env file is still only at the old path on the host, so the commands in "The
-first user" and "Running compose by hand" do not find it. Until the profile's
+Its env file is still only at the old path on the host, so the first user's
+command and those in "Running compose by hand" do not find it. Until the profile's
 next deploy, name the old path in them:
 
 ```sh
@@ -637,33 +622,7 @@ routes, and a new Caddyfile takes effect by recreating the container anyway.
 
 ## Running it from the manager
 
-The manager does not run this script yet. It runs a stack's `deploy.sh` with
-`bash`, standard input from `/dev/null`, and each line of output streamed to
-the console:
-
-```
-deploy.sh --profile=<name> --portSlot=<N> --host=<target> [service...]
-```
-
-with `--host=localhost` for a profile on the manager's own host. This script
-takes exactly that and:
-
-- never prompts without a terminal: the tag offer needs standard input and
-  output both to be one. ssh runs with `BatchMode=yes` whenever standard input
-  is not a terminal, so a missing key or an unknown host key fails at once
-  instead of waiting;
-- prefixes its own lines with `[deploy]`, errors with `[deploy] ERROR:` on
-  standard error, and exits non-zero on every failure;
-- refuses a bad argument or env file before any ssh or rsync;
-- keeps `--portSlot=<N> (1-99)` in its usage text, the string the manager reads
-  a stack's slot ceiling from.
-
-Not decided yet, for that step: where the manager's checkout of this repo
-lives and how it writes `apps/web2-admin/backend/.env.<profile>` (it writes a
-stack's env file at that checkout's root today); whether it passes the
-hls-only flags `--feed-owner`, `--feed-topic` and `--stamp-id`, which this
-script refuses; and the `stop.sh`, `health.sh` and `clean.sh` it expects
-beside `deploy.sh`, which this repo does not have.
+The manager does not run this script yet, and the questions that step still has to answer are open question 4 in [docs/architecture/web2-admin.md](../../../docs/architecture/web2-admin.md#open-questions-carried-into-the-build).
 
 ## The scripts' own tests
 
