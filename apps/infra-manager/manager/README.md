@@ -530,25 +530,21 @@ the node's container, after checking the Bee image for it and storing the
 result in `bee_bridge_qualifications`. That code stays in the tree, unused,
 until a cleanup removes it. The running manager never takes it, so the image
 check no longer runs, the table keeps the records it has, and
-`CHEQUEBOOK_DOCKER_TRANSPORTS` changes nothing. `manager/scripts/qualify-bee-bridge.mjs`
-still runs the image check by hand.
+`CHEQUEBOOK_DOCKER_TRANSPORTS` changes nothing, so remove it from the env file
+when convenient. `manager/scripts/qualify-bee-bridge.mjs` still runs the image
+check by hand.
 
-**The chain settings.** Both are manager process settings, never read from a
-request, a profile or a Bee answer. Changing either takes a manager restart.
-
-- **`CHEQUEBOOK_RPC_ENDPOINTS`** is optional: a JSON object keyed by chain id,
-  one of `1`, `100` and `11155111`, whose values are `http` or `https` URLs with
-  no user information and no fragment, for example
-  `{"100":"https://rpc.example.invalid"}`. Every transfer on a chain it names
-  reads the chain there instead of through the default. A URL can carry a key,
-  so route the value into the process rather than writing it in a committed
-  file.
-- **The default**, `FUNDING_RPC_URL`, else `BEE_RPC_ENDPOINT`, serves every
-  chain `CHEQUEBOOK_RPC_ENDPOINTS` does not name. A value that is not a usable
-  `http` or `https` URL refuses every transfer with `chain_setting_invalid`.
-- **`CHEQUEBOOK_DOCKER_TRANSPORTS`** is retired for chequebook moves: the
-  manager no longer reads it, and an env file that still sets it changes
-  nothing. Remove it when convenient.
+**`CHEQUEBOOK_RPC_ENDPOINTS`** is optional, and commented out in the sample. It
+is a JSON object keyed by chain id, one of `1`, `100` and `11155111`, whose
+values are `http` or `https` URLs with no user information and no fragment, for
+example `{"100":"https://rpc.example.invalid"}`. Every transfer on a chain it
+names reads the chain there instead of through the default, `FUNDING_RPC_URL`
+else `BEE_RPC_ENDPOINT`, whose rows are in [Environment](#environment). A
+default that is not a usable `http` or `https` URL refuses every transfer with
+`chain_setting_invalid`. All three are manager process settings, never read
+from a request, a profile or a Bee answer, and changing one takes a manager
+restart. A URL can carry a key, so route the value into the process rather than
+writing it in a committed file.
 
 **Every refusal and its fix.** A transfer the manager could not prepare is
 answered `503` with `{"error":"chequebook_preparation_unavailable","cause":...,"check":...,"message":...}`,
@@ -660,19 +656,11 @@ removal, checked again by the statement that takes the token out, one whose
 uploader is given another address than the link's, a link with no token, and a
 version whose env files set the token.
 
-**Rolling it out.** An admin from before stages refuses a token of its own, so a
-host that runs the admin and manager from before stages is upgraded in this
-order: the catalogue node created, then the manager that pushes stage records
-with the node designated, then the intermediate admin, which takes both the
-shared token and a stage's own (commit `d29616851` of `feat/stages`; tag it
-`web2-admin/stages-intermediate` before `feat/stages` is merged to `main`,
-because a squash or rebase merge leaves that commit unreachable), then every
-scheduled stream and every draft given a stage, then every stage rotated and
-redeployed until the admin's Stages page says "Its own token" for all, then the
-admin that refuses the shared token. Skipping the middle steps means every
-running uploader gets 401 until its stage is rotated and redeployed. "Upgrading"
-in the repository's `docs/self-hosting.md` has each step. A fresh installation
-needs none of this.
+**Rolling it out.** A fresh installation needs no rollout. A host that runs the
+admin and manager from before stages is upgraded through an intermediate admin
+that takes both the shared token and a stage's own. The steps, in order, are in
+[Upgrading a host that runs the admin and manager from before stages](../../../docs/self-hosting.md#the-control-host)
+in the repository's self-hosting guide.
 
 In admin mode the uploader refuses to start without a token, so a save of a
 deployment's settings, or a create, that names either key and leaves an address
@@ -1621,13 +1609,8 @@ a line for either one, even an empty one, before anything leaves the machine,
 and still fails after the upgrade when the api reports another build than the
 one it built.
 
-**`CHEQUEBOOK_RPC_ENDPOINTS`** is in the sample commented out, because it is an
-optional override. Without it a transfer reads the chain through
-`FUNDING_RPC_URL`, else `BEE_RPC_ENDPOINT`. **`CHEQUEBOOK_DOCKER_TRANSPORTS`** is
-retired for chequebook moves and no longer read. Their exact shapes are in
-"Funding a chequebook on a new host" above. An endpoint can
-carry a key, so route the value into the process rather than writing it in a
-committed file.
+**`CHEQUEBOOK_RPC_ENDPOINTS`**, and the retired `CHEQUEBOOK_DOCKER_TRANSPORTS`,
+are described in [Funding a chequebook on a new host](#funding-a-chequebook-on-a-new-host).
 
 **`PUBLIC_HOST`**, in the sample, is the address clients reach this host's
 deployments on. It is also the public ingest address a stage record carries
