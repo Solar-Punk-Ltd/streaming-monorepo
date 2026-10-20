@@ -12,9 +12,11 @@ them.
 
 RTMP part, 2026-10-03: built on `feat/rtmp-ingest-manager` beside RTMP ingest
 opening to broadcasters. It reads a line that images of the stack's SRS fork
-print from `6.0-r2-swarm.3`, which no deployment runs yet, so it has been run
-against fixture lines and a stand-in `docker` only. Below, "The RTMP part" says
-what it reads and why.
+print from `6.0-r2-swarm.3` on. The stack now pins `6.0-r2-swarm.4`
+(`engines/srs/docker-compose.yml` and `deploy/docker-compose.yml` in
+`apps/hls-stream`). No record shows the RTMP reader run against a live SRS. It
+has been run against fixture lines and a stand-in `docker` only. Below, "The
+RTMP part" says what it reads and why.
 
 Status, 2026-09-25. Merged to `main` through PR 45. It was built on
 `feat/srt-ingest-health`, branched from `main` at `87673c99` on 2026-09-23 and
