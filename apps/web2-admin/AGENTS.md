@@ -19,9 +19,8 @@ of the repository holds the rules that apply everywhere. This file adds the admi
 - At the repository root, `../../docs/architecture/web2-admin.md` says what the admin is for and
   how it relates to the manager and the stack, and `../../docs/architecture/web2-admin-auth.md`
   how sign-in works. `../../docs/ROADMAP.md` is the plan. `../../docs/self-hosting.md` says how a
-  host is set up. `../../docs/research/` holds condensed reports on the sibling systems (the
-  manager and the stack). Read the relevant one before touching anything that talks to those
-  systems.
+  host is set up. The manager and the stack document themselves under `../infra-manager/` and
+  `../hls-stream/`. Read the relevant pages before touching anything that talks to them.
 
 ## Conventions
 

@@ -23,7 +23,7 @@ const logger = Logger.getInstance();
 
 /**
  * The outcomes of an admin that took the token. A token the manager did not generate for the deployment is still
- * taken by an older admin, which an upgrade runs for a while (docs/architecture/stages.md), so at the link's address
+ * taken by an older admin, which a host may still run while it is upgraded, so at the link's address
  * such a token reads as `token-not-own` whatever that admin answered: an admin that takes only a stage's own token
  * refuses it.
  */
