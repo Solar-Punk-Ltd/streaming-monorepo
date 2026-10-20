@@ -53,6 +53,20 @@ viewer <--HTTP-- Bee gateway <-- Swarm
 viewer <--light node in the tab-- Swarm
 ```
 
+## Who reads what we publish
+
+Besides the stack's own viewer, [stream-event-client](https://github.com/Solar-Punk-Ltd/stream-event-client)
+reads what the platform writes to Swarm. It is a web app for watching an event's live streams and
+recordings over Swarm, with a chat beside each stream, kept in its own public repository. It reads
+the stream list (the catalog) feed that its runtime `config.json` names, once a minute. For each
+stream it reads the playlist feed of the one quality it plays and the segments that playlist names,
+and the uploader's ladder time markers to find the newest slot. It builds the master playlist itself
+from the catalog's renditions and never reads the master feed. It imports no package of this
+repository and no version pin ties it to the stack. It keeps its own copies of the catalog format,
+the feed following and the ladder marker layout in its `src/shared/`. **So a change to the catalog
+format, the playlist feeds or the marker layout must land in stream-event-client's `src/shared/`
+too.**
+
 ## The three kinds of host
 
 A host is a Linux machine with Docker on it. One machine can carry every role, or each role can have
