@@ -28,11 +28,7 @@ import {
 } from './rolloutRecoveryDescriptor.js';
 import { versionRemovalProblem } from '../versions/versionRemovalMarker.js';
 
-import type {
-  BeginRollout,
-  EngineConfigOperationRepository,
-  RolloutStarted,
-} from './EngineConfigOperationRepository.js';
+import type { EngineConfigOperationRepository } from './EngineConfigOperationRepository.js';
 import {
   type EngineConfigOperation,
   type EngineConfigOperationKind,
@@ -561,57 +557,6 @@ export class PostgresEngineConfigOperationRepository implements EngineConfigOper
     return this.versionsRoot;
   }
 
-  async begin(input: BeginRollout): Promise<RolloutStarted | null> {
-    return this.inTransaction(async (client) => {
-      const current = await lockProfile(client, input.profileName);
-      if (!current || current.engine_config_revision !== input.expectedRevision) {
-        return null;
-      }
-      const replaced = await client.query<{ id: number }>(
-        `UPDATE engine_config_operations
-            SET state = 'superseded', finished_at = NOW(), message = $2
-          WHERE profile_instance_id = $1 AND state = ANY($3::text[]) RETURNING id`,
-        [current.instance_id, `Superseded by a new ${input.kind}.`, OPEN_OPERATION_STATES],
-      );
-      await releaseEndedHolds(
-        client,
-        replaced.rows.map((row) => row.id),
-      );
-      const written = await client.query<Profile>(
-        `UPDATE profiles
-            SET engine_config = $2,
-                engine_config_error = NULL,
-                engine_config_revision = engine_config_revision + 1,
-                intent_revision = intent_revision + 1,
-                engine_config_state = 'applying',
-                updated_at = NOW()
-          WHERE name = $1
-          RETURNING ${PROFILE_COLUMNS}`,
-        [input.profileName, input.config],
-      );
-      const profile = written.rows[0]!;
-      const inserted = await client.query<OperationRow>(
-        `INSERT INTO engine_config_operations (
-           profile_name, profile_instance_id, engine, kind,
-           previous_config, previous_is_template, applied_revision, intent_revision, state
-         )
-         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, 'applying')
-         RETURNING ${OPERATION_COLUMNS}`,
-        [
-          profile.name,
-          profile.instance_id,
-          input.engine,
-          input.kind,
-          input.previousConfig,
-          input.previousIsTemplate,
-          profile.engine_config_revision,
-          profile.intent_revision,
-        ],
-      );
-      return { profile, operation: toOperation(inserted.rows[0]!) };
-    });
-  }
-
   async findById(id: number): Promise<EngineConfigOperation | null> {
     const result = await this.pool.query<OperationRow>(
       `SELECT ${OPERATION_COLUMNS} FROM engine_config_operations WHERE id = $1`,
@@ -715,36 +660,6 @@ export class PostgresEngineConfigOperationRepository implements EngineConfigOper
         [owned.profile.name, to, patch.message ?? null],
       );
       return toOperation(updated.rows[0]!);
-    });
-  }
-
-  async beginRevert(ownership: RolloutOwnership, message: string): Promise<RolloutStarted | null> {
-    return this.inTransaction(async (client) => {
-      const owned = await lockOwned(client, ownership);
-      if (!owned || !['watching', 'applying', 'reverting'].includes(owned.operation.state)) {
-        return null;
-      }
-      const previous = owned.operation.previousIsTemplate ? null : owned.operation.previousConfig;
-      const written = await client.query<Profile>(
-        `UPDATE profiles
-            SET engine_config = $2,
-                engine_config_error = $3,
-                engine_config_revision = engine_config_revision + 1,
-                engine_config_state = 'reverting',
-                updated_at = NOW()
-          WHERE name = $1
-          RETURNING ${PROFILE_COLUMNS}`,
-        [owned.profile.name, previous, message],
-      );
-      const profile = written.rows[0]!;
-      const updated = await client.query<OperationRow>(
-        `UPDATE engine_config_operations
-            SET state = 'reverting', message = $2, applied_revision = $3
-          WHERE id = $1
-          RETURNING ${OPERATION_COLUMNS}`,
-        [ownership.operationId, message, profile.engine_config_revision],
-      );
-      return { profile, operation: toOperation(updated.rows[0]!) };
     });
   }
 
