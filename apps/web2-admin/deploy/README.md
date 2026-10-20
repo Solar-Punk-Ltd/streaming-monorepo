@@ -178,7 +178,7 @@ A deploy:
 3. refuses a `--remote-path` that is a non-empty directory but not a checkout
    of this repository, since `--delete` would empty it.
 4. rsyncs `apps/web2-admin` to the host with `--delete`, leaving out `.git`,
-   `node_modules`, `dist`, build caches, `.scratch/`, `.claude/`,
+   `node_modules`, `dist`, build caches, local scratch and editor folders,
    `deploy/edge/` (the host's edge, which `edge.sh` looks after), and every env
    file except this profile's and the sample. When the repository keeps its
    one lockfile at its root, the admin's own `pnpm-lock.yaml` and
