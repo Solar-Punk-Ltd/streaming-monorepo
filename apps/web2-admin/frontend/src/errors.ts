@@ -36,6 +36,14 @@ export const THUMBNAIL_NOT_AN_IMAGE = 'This file is not a PNG, JPEG, WebP or GIF
 
 const THUMBNAIL_LIMIT_SENTENCE = `A thumbnail can be at most 5 MB (${STREAM_LIMITS.THUMBNAIL_MAX_BYTES.toLocaleString('en-US')} bytes).`;
 
+/**
+ * A Finalize refused because the stream is live, in the backend's own sentence. The
+ * console's line for `stream_live` speaks of the feed, which is what Unpublish and
+ * Delete are about. Finalize is about the key, and the status notice says when it
+ * can be pressed.
+ */
+export const FINALIZE_WHILE_LIVE = 'Stop the broadcast first.';
+
 /** Why a picked file is refused for its size, with both numbers so the operator can see by how much. */
 export function thumbnailTooLargeMessage(size: number): string {
   return `This file is too large: ${size.toLocaleString('en-US')} bytes. ${THUMBNAIL_LIMIT_SENTENCE}`;
@@ -65,9 +73,10 @@ const FRIENDLY: Record<string, string> = {
   media_type_locked: MEDIA_TYPE_LOCKED,
   stream_locked: SCHEDULE_LOCKED,
   stream_live: 'Stop the broadcast first: a live stream stays on the feed.',
-  // Finish's two refusals, in the backend's own sentences.
-  stream_not_started: 'Only a live or ended stream can be finished.',
-  stream_finished: 'This stream is already finished: its key has changed.',
+  // Two of Finalize's refusals, in the backend's own sentences. The third,
+  // stream_live, reads FINALIZE_WHILE_LIVE there.
+  stream_not_started: 'Only an ended stream can be finalized.',
+  stream_finished: 'This stream is already finalized: its key has changed.',
   invalid_state_transition:
     'The uploader reported a state this stream cannot be in. Reload to see where it actually is.',
   payload_too_large: `The thumbnail is too large. ${THUMBNAIL_LIMIT_SENTENCE}`,

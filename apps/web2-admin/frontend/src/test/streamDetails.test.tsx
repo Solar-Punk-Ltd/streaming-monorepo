@@ -30,13 +30,36 @@ const ENDED_AT = minutesFromNow(-5);
 const RESTART_UNTIL = minutesFromNow(25);
 const FINISHED_AT = minutesFromNow(-1);
 
-/** Where a live or ended stream stands with its key, word for word as the design puts it. */
-const ENDED_LINE = `Ended — can go live again until ${formatDateTime(RESTART_UNTIL)}`;
-const RUN_OUT_LINE = 'Ended — its restart window has run out';
-const FINISHED_LINE = 'Finished — the key has changed';
-const LIVE_FINISHED_LINE = 'Live — finished, the key has changed; it ends for good when the encoder stops';
+/** The status notice under the title, word for word as the plan puts it. */
+const LIVE_TITLE = `Live since ${formatDateTime(LIVE_SINCE)}`;
+const LIVE_HELPER = 'Finalize is enabled once live streaming has ended.';
+const ENDED_TITLE = `Ended — can go live again until ${formatDateTime(RESTART_UNTIL)}`;
+const RUN_OUT_TITLE = 'Ended — its restart window has run out';
+const ENDED_HELPER = 'Finalize will rotate the SRT key to protect this stream.';
+const FINALIZED_TITLE = 'Finalized — the SRT key has changed';
+const FINALIZED_HELPER = 'The old SRT line is refused. To go live on purpose, copy the new one.';
 
-const LIVE_FINISH_WARNING = 'The broadcast carries on until the encoder stops; then it ends for good.';
+const FINALIZE_TEXT =
+  'Its key changes now, so no encoder can start it again on the old key. To go live on it later on purpose, copy ' +
+  'the new SRT line.';
+
+const NEW_KEY = 'eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee';
+
+/** A stream in each state the status notice tells apart, once it has gone live. */
+const STATES = {
+  live: { status: 'live', liveSince: LIVE_SINCE, finishedAt: null },
+  // QA's tests on rc.6 left live rows that carry a finalized time.
+  liveWithFinishedAt: { status: 'live', liveSince: LIVE_SINCE, finishedAt: FINISHED_AT },
+  ended: { status: 'vod', liveSince: LIVE_SINCE, endedAt: ENDED_AT, restartUntil: RESTART_UNTIL, finishedAt: null },
+  runOut: {
+    status: 'vod',
+    liveSince: LIVE_SINCE,
+    endedAt: minutesFromNow(-31),
+    restartUntil: minutesFromNow(-1),
+    finishedAt: null,
+  },
+  finalized: { status: 'vod', liveSince: LIVE_SINCE, endedAt: ENDED_AT, restartUntil: null, finishedAt: FINISHED_AT },
+} as const satisfies Record<string, Partial<Stream>>;
 
 function routesFor(stream: Stream, extra: MockRoute[] = []): MockRoute[] {
   return [
@@ -559,121 +582,85 @@ describe('StreamDetailsPage', () => {
   });
 
   it.each([
-    ['a live stream', { status: 'live', liveSince: LIVE_SINCE }],
-    ['an ended stream', { status: 'vod', liveSince: LIVE_SINCE, endedAt: ENDED_AT, restartUntil: RESTART_UNTIL }],
-  ] as const)('offers Finish on %s that is not finished yet', async (_, fields) => {
-    mockFetch(
-      routesFor(makeStream({ id: ID, stageId: MAIN_STAGE_ID, publishedFeedIndex: 2, finishedAt: null, ...fields })),
-    );
+    ['a live stream', STATES.live, LIVE_TITLE, LIVE_HELPER, false],
+    ['a live stream that carries a finalized time', STATES.liveWithFinishedAt, LIVE_TITLE, LIVE_HELPER, false],
+    ['an ended stream inside its restart window', STATES.ended, ENDED_TITLE, ENDED_HELPER, true],
+    ['an ended stream whose restart window has run out', STATES.runOut, RUN_OUT_TITLE, ENDED_HELPER, true],
+    ['a finalized stream', STATES.finalized, FINALIZED_TITLE, FINALIZED_HELPER, false],
+  ] as const)(
+    'says under the title where %s stands, and whether it can be finalized',
+    async (_, fields, title, helper, enabled) => {
+      mockFetch(routesFor(makeStream({ id: ID, stageId: MAIN_STAGE_ID, publishedFeedIndex: 2, ...fields })));
 
-    renderDetails();
+      renderDetails();
 
-    expect(await screen.findByRole('button', { name: 'Finish' })).toBeEnabled();
-    expect(screen.queryByText(/key has changed/)).not.toBeInTheDocument();
-  });
+      const notice = (await screen.findByText(title)).closest('[role="alert"]') as HTMLElement;
+      expect(within(notice).getByText(helper)).toBeInTheDocument();
+      // Finalize sits in the notice, and only there.
+      expect((within(notice).getByRole('button', { name: 'Finalize' }) as HTMLButtonElement).disabled).toBe(!enabled);
+      expect(screen.getAllByRole('button', { name: /Finali[sz]e|Finish/ })).toHaveLength(1);
+      // The lines of the Finish round are gone.
+      expect(screen.queryByText(/Live — finished|Finished — /)).not.toBeInTheDocument();
+    },
+  );
 
   it.each([
-    ['a finished recording', { status: 'vod', endedAt: ENDED_AT, finishedAt: FINISHED_AT, restartUntil: null }],
-    ['a live stream already finished', { status: 'live', liveSince: LIVE_SINCE, finishedAt: FINISHED_AT }],
     ['a draft', { status: 'draft' }],
     ['a stream being published', { status: 'publishing' }],
     ['a published stream that never went live', { status: 'published', publishedFeedIndex: 2 }],
-  ] as const)('offers no Finish on %s', async (_, fields) => {
+  ] as const)('has no status notice and no Finalize on %s', async (_, fields) => {
     mockFetch(routesFor(makeStream({ id: ID, stageId: MAIN_STAGE_ID, ...fields })));
 
     renderDetails();
 
-    // Finish sits in the OBS panel, which has loaded once Rotate key shows.
+    // The page and its OBS panel have loaded once Rotate key shows.
     expect(await screen.findByRole('button', { name: /Rotate key/ })).toBeInTheDocument();
-    expect(screen.queryByRole('button', { name: 'Finish' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /Finali[sz]e|Finish/ })).not.toBeInTheDocument();
+    expect(screen.queryByText(/Live since|Ended — |Finalized — /)).not.toBeInTheDocument();
   });
 
   it.each([
-    [
-      'an ended stream inside its restart window',
-      { status: 'vod', endedAt: ENDED_AT, restartUntil: RESTART_UNTIL, finishedAt: null },
-      ENDED_LINE,
-    ],
-    [
-      'a finished recording',
-      { status: 'vod', endedAt: ENDED_AT, restartUntil: null, finishedAt: FINISHED_AT },
-      FINISHED_LINE,
-    ],
-    [
-      'a live stream that was finished',
-      { status: 'live', liveSince: LIVE_SINCE, finishedAt: FINISHED_AT },
-      LIVE_FINISHED_LINE,
-    ],
-  ] as const)('says where %s stands', async (_, fields, line) => {
-    mockFetch(
-      routesFor(
-        makeStream({ id: ID, stageId: MAIN_STAGE_ID, publishedFeedIndex: 2, liveSince: LIVE_SINCE, ...fields }),
-      ),
-    );
+    ['enabled, on an ended stream', STATES.ended],
+    ['disabled, on a live stream', STATES.live],
+  ] as const)('says what Finalize does on hover, %s', async (_, fields) => {
+    mockFetch(routesFor(makeStream({ id: ID, stageId: MAIN_STAGE_ID, publishedFeedIndex: 2, ...fields })));
 
     renderDetails();
 
-    expect(await screen.findByText(line)).toBeInTheDocument();
+    // A disabled button takes no pointer events, so the tooltip hangs on its wrapper.
+    const finalize = await screen.findByRole('button', { name: 'Finalize' });
+    fireEvent.mouseOver(finalize.parentElement as HTMLElement);
+
+    expect(await screen.findByRole('tooltip')).toHaveTextContent('Finalize streaming');
   });
 
-  it('says the restart window has run out once its time has passed, while the stream waits for the sweep', async () => {
-    // Up to a minute passes between the window's end and the sweep that
-    // finishes the stream, and a time already past is no promise.
-    mockFetch(
-      routesFor(
-        makeStream({
-          id: ID,
-          status: 'vod',
-          stageId: MAIN_STAGE_ID,
-          publishedFeedIndex: 2,
-          liveSince: LIVE_SINCE,
-          endedAt: minutesFromNow(-31),
-          restartUntil: minutesFromNow(-1),
-          finishedAt: null,
-        }),
-      ),
-    );
-
-    renderDetails();
-
-    expect(await screen.findByText(RUN_OUT_LINE)).toBeInTheDocument();
-    expect(screen.queryByText(/can go live again/)).not.toBeInTheDocument();
-    // Not finished yet, so Finish still changes the key now, before the sweep does.
-    expect(await screen.findByRole('button', { name: 'Finish' })).toBeEnabled();
-  });
-
-  it('finishes an ended stream once confirmed, then shows its new SRT line and says it is finished', async () => {
-    const ended = makeStream({
-      id: ID,
-      status: 'vod',
-      stageId: MAIN_STAGE_ID,
-      publishedFeedIndex: 2,
-      liveSince: LIVE_SINCE,
-      endedAt: ENDED_AT,
-      restartUntil: RESTART_UNTIL,
-      finishedAt: null,
-    });
-    const renewed = ingestWithKey('eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee', FINISHED_AT);
+  it('finalizes an ended stream once confirmed, then shows its new SRT line and says it is finalized', async () => {
+    const ended = makeStream({ id: ID, stageId: MAIN_STAGE_ID, publishedFeedIndex: 2, ...STATES.ended });
+    const renewed = ingestWithKey(NEW_KEY, FINISHED_AT);
     const fetchMock = mockFetch(
       routesFor(ended, [finishRoute({ ...ended, restartUntil: null, finishedAt: FINISHED_AT }, renewed)]),
     );
 
     renderDetails();
 
-    expect(await screen.findByText(ENDED_LINE)).toBeInTheDocument();
-    fireEvent.click(await screen.findByRole('button', { name: 'Finish' }));
+    expect(await screen.findByText(ENDED_TITLE)).toBeInTheDocument();
+    fireEvent.click(await screen.findByRole('button', { name: 'Finalize' }));
     const dialog = await screen.findByRole('dialog');
-    expect(dialog).not.toHaveTextContent(LIVE_FINISH_WARNING);
+    expect(within(dialog).getByText('Finalize this stream?')).toBeInTheDocument();
+    expect(dialog).toHaveTextContent(FINALIZE_TEXT);
+    expect(within(dialog).getByRole('button', { name: 'Cancel' })).toBeEnabled();
     expect(calls(fetchMock, 'POST', `/api/streams/${ID}/finish`)).toBe(0);
-    fireEvent.click(within(dialog).getByRole('button', { name: 'Finish' }));
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Finalize' }));
 
-    expect(await screen.findByText(FINISHED_LINE)).toBeInTheDocument();
-    expect(screen.queryByText(ENDED_LINE)).not.toBeInTheDocument();
+    expect(await screen.findByText('Stream finalized. Its key has changed.')).toBeInTheDocument();
+    expect(await screen.findByText(FINALIZED_TITLE)).toBeInTheDocument();
+    expect(screen.getByText(FINALIZED_HELPER)).toBeInTheDocument();
+    expect(screen.queryByText(ENDED_TITLE)).not.toBeInTheDocument();
     // An open dialog hides the rest of the page from role queries.
     await waitFor(() => {
       expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
     });
-    expect(screen.queryByRole('button', { name: 'Finish' })).not.toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Finalize' })).toBeDisabled();
 
     // The new key comes from the answer, so the page reads nothing again.
     fireEvent.click(screen.getByLabelText('show srt server'));
@@ -685,97 +672,92 @@ describe('StreamDetailsPage', () => {
     expect(calls(fetchMock, 'GET', `/api/streams/${ID}`)).toBe(1);
   });
 
-  it('says, before finishing a live stream, that the broadcast carries on, then that it ends when the encoder stops', async () => {
-    const live = makeStream({
-      id: ID,
-      status: 'live',
-      stageId: MAIN_STAGE_ID,
-      publishedFeedIndex: 2,
-      liveSince: LIVE_SINCE,
-      finishedAt: null,
-    });
-    mockFetch(
-      routesFor(live, [
-        finishRoute(
-          { ...live, finishedAt: FINISHED_AT },
-          ingestWithKey('eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee', FINISHED_AT),
-        ),
+  it.each([
+    // It went live again on its key, inside its window.
+    ['stream_live', 'Stop the broadcast first.', STATES.live, LIVE_TITLE],
+    // Its window ran out and the admin finalized it, or someone did elsewhere.
+    ['stream_finished', 'This stream is already finalized: its key has changed.', STATES.finalized, FINALIZED_TITLE],
+    // Someone unpublished it, back to a draft.
+    ['stream_not_started', 'Only an ended stream can be finalized.', { status: 'draft' }, 'Draft'],
+  ] as const)(
+    'reads the stream again after Finalize is refused as %s, and says why',
+    async (code, sentence, now, shown) => {
+      const ended = makeStream({ id: ID, stageId: MAIN_STAGE_ID, publishedFeedIndex: 2, ...STATES.ended });
+      const renewed = ingestWithKey(NEW_KEY, FINISHED_AT);
+      let current: Stream = ended;
+      let currentIngest = makeIngest();
+      const fetchMock = mockFetch([
+        { path: `/api/streams/${ID}`, respond: () => jsonOk(current) },
+        { path: `/api/streams/${ID}/ingest`, respond: () => jsonOk(currentIngest) },
+        {
+          path: '/api/config',
+          respond: () => jsonOk({ feed: { owner: 'abc', topic: 'swarm-stream', topicHex: 'ff' }, viewerBaseUrl: null }),
+        },
+        {
+          method: 'POST',
+          path: `/api/streams/${ID}/finish`,
+          // A message of the API's own, to show that the console's sentence wins.
+          respond: () => jsonError(409, { error: code, id: ID, message: 'Refused.' }),
+        },
+      ]);
+
+      renderDetails();
+
+      fireEvent.click(await screen.findByRole('button', { name: 'Finalize' }));
+      const dialog = await screen.findByRole('dialog');
+      current = { ...ended, ...now };
+      currentIngest = renewed;
+      fireEvent.click(within(dialog).getByRole('button', { name: 'Finalize' }));
+
+      expect(await screen.findByText(sentence)).toBeInTheDocument();
+      expect(screen.queryByText('Refused.')).not.toBeInTheDocument();
+      // The stream is no longer where the page showed it, so asking again cannot help.
+      await waitFor(() => {
+        expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+      });
+      expect(await screen.findByText(shown)).toBeInTheDocument();
+      expect(screen.queryByText(ENDED_TITLE)).not.toBeInTheDocument();
+
+      // The SRT line on the page is the one the API holds now, not a stale one.
+      fireEvent.click(screen.getByLabelText('show srt server'));
+      expect(screen.getByLabelText('SRT Server')).toHaveValue(
+        `${renewed.srt!.url}&passphrase=${renewed.srt!.passphrase}`,
+      );
+      expect(calls(fetchMock, 'GET', `/api/streams/${ID}`)).toBe(2);
+      expect(calls(fetchMock, 'GET', `/api/streams/${ID}/ingest`)).toBe(2);
+    },
+  );
+
+  it('keeps the dialog open after a failure that is no refusal, to retry or cancel, and reads nothing again', async () => {
+    const ended = makeStream({ id: ID, stageId: MAIN_STAGE_ID, publishedFeedIndex: 2, ...STATES.ended });
+    const fetchMock = mockFetch(
+      routesFor(ended, [
+        {
+          method: 'POST',
+          path: `/api/streams/${ID}/finish`,
+          respond: () => jsonError(500, { error: 'internal_error' }),
+        },
       ]),
     );
 
     renderDetails();
 
-    fireEvent.click(await screen.findByRole('button', { name: 'Finish' }));
-    const dialog = await screen.findByRole('dialog');
-    expect(dialog).toHaveTextContent(LIVE_FINISH_WARNING);
-    fireEvent.click(within(dialog).getByRole('button', { name: 'Finish' }));
+    fireEvent.click(await screen.findByRole('button', { name: 'Finalize' }));
+    fireEvent.click(within(await screen.findByRole('dialog')).getByRole('button', { name: 'Finalize' }));
 
-    expect(await screen.findByText(LIVE_FINISHED_LINE)).toBeInTheDocument();
-    await waitFor(() => {
-      expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
-    });
-    expect(screen.queryByRole('button', { name: 'Finish' })).not.toBeInTheDocument();
-  });
-
-  it('reads the stream and its OBS details again after a refused Finish, and shows where it now stands', async () => {
-    const ended = makeStream({
-      id: ID,
-      status: 'vod',
-      stageId: MAIN_STAGE_ID,
-      publishedFeedIndex: 2,
-      liveSince: LIVE_SINCE,
-      endedAt: ENDED_AT,
-      restartUntil: RESTART_UNTIL,
-      finishedAt: null,
-    });
-    const renewed = ingestWithKey('eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee', FINISHED_AT);
-    let current = ended;
-    let currentIngest = makeIngest();
-    const fetchMock = mockFetch([
-      { path: `/api/streams/${ID}`, respond: () => jsonOk(current) },
-      { path: `/api/streams/${ID}/ingest`, respond: () => jsonOk(currentIngest) },
-      {
-        path: '/api/config',
-        respond: () => jsonOk({ feed: { owner: 'abc', topic: 'swarm-stream', topicHex: 'ff' }, viewerBaseUrl: null }),
-      },
-      {
-        method: 'POST',
-        path: `/api/streams/${ID}/finish`,
-        respond: () =>
-          jsonError(409, {
-            error: 'stream_finished',
-            id: ID,
-            message: 'This stream is already finished: its key has changed.',
-          }),
-      },
-    ]);
-
-    renderDetails();
-
-    expect(await screen.findByText(ENDED_LINE)).toBeInTheDocument();
-    fireEvent.click(await screen.findByRole('button', { name: 'Finish' }));
-    const dialog = await screen.findByRole('dialog');
-    // Meanwhile the stream was finished, with a new key: its window ran out
-    // and the sweep finished it, or someone pressed Finish elsewhere.
-    current = { ...ended, restartUntil: null, finishedAt: FINISHED_AT };
-    currentIngest = renewed;
-    fireEvent.click(within(dialog).getByRole('button', { name: 'Finish' }));
-
-    expect(await screen.findByText('This stream is already finished: its key has changed.')).toBeInTheDocument();
-    expect(await screen.findByText(FINISHED_LINE)).toBeInTheDocument();
-    expect(screen.queryByText(ENDED_LINE)).not.toBeInTheDocument();
-    await waitFor(() => {
-      expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
-    });
-    expect(screen.queryByRole('button', { name: 'Finish' })).not.toBeInTheDocument();
-
-    // The SRT line on the page is the one the API holds now, not the stale one.
-    fireEvent.click(screen.getByLabelText('show srt server'));
-    expect(screen.getByLabelText('SRT Server')).toHaveValue(
-      `${renewed.srt!.url}&passphrase=${renewed.srt!.passphrase}`,
-    );
-    expect(calls(fetchMock, 'GET', `/api/streams/${ID}`)).toBe(2);
-    expect(calls(fetchMock, 'GET', `/api/streams/${ID}/ingest`)).toBe(2);
+    expect(await screen.findByText('The server hit an unexpected error.')).toBeInTheDocument();
+    // MUI keeps a closing dialog on the page for its exit transition, so
+    // "still there" proves nothing until that time has passed.
+    await expect(
+      waitFor(
+        () => {
+          expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+        },
+        { timeout: 600 },
+      ),
+    ).rejects.toThrow();
+    expect(within(screen.getByRole('dialog')).getByRole('button', { name: 'Finalize' })).toBeEnabled();
+    expect(calls(fetchMock, 'GET', `/api/streams/${ID}`)).toBe(1);
   });
 });
 

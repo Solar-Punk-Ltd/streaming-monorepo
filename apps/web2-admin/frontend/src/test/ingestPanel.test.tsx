@@ -1,40 +1,13 @@
-import { fireEvent, screen, waitFor, within } from '@testing-library/react';
+import { fireEvent, screen, within } from '@testing-library/react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import type { StreamFinishAnswer } from '@streaming-monorepo/web2-admin-common';
 
 import { IngestPanel, NO_STAGE_NOTE, RETIRED_STAGE_NOTE } from '../components/IngestPanel';
-import {
-  RTMP_OFFERED,
-  jsonError,
-  jsonOk,
-  makeIngest,
-  makeStream,
-  mockFetch,
-  type Route as MockRoute,
-  renderWithProviders,
-} from './helpers';
+import { RTMP_OFFERED, makeIngest, mockFetch, renderWithProviders } from './helpers';
 
 const renderPanel = (details = makeIngest()) =>
   renderWithProviders(<IngestPanel streamId="stream-1" details={details} onRotated={vi.fn()} />);
 
-/** The panel as the stream page shows it on a live or ended stream that is not finished yet. */
-const renderFinishable = ({ live = false, onRotated = vi.fn(), onFinished = vi.fn(), onRefused = vi.fn() } = {}) =>
-  renderWithProviders(
-    <IngestPanel
-      streamId="stream-1"
-      details={makeIngest()}
-      onRotated={onRotated}
-      finish={{ live, onFinished, onRefused }}
-    />,
-  );
-
-const FINISH_WARNING =
-  'Its key changes now, so no encoder can start it again on the old key. To go live on it later on purpose, copy ' +
-  'the new SRT line.';
-
-const LIVE_FINISH_WARNING = 'The broadcast carries on until the encoder stops; then it ends for good.';
-
-const section = (name: 'SRT') => within(screen.getByRole('region', { name }));
+const section = (name: 'SRT Connection') => within(screen.getByRole('region', { name }));
 
 const shownValue = (label: string) => (screen.getByLabelText(label) as HTMLInputElement).value;
 
@@ -76,7 +49,7 @@ describe('IngestPanel', () => {
     );
 
     expect(screen.getByText(RETIRED_STAGE_NOTE)).toBeInTheDocument();
-    expect(screen.getByRole('region', { name: 'SRT' })).toBeInTheDocument();
+    expect(screen.getByRole('region', { name: 'SRT Connection' })).toBeInTheDocument();
   });
 
   it('says what goes in the OBS Server and Stream Key boxes for SRT', () => {
@@ -87,7 +60,7 @@ describe('IngestPanel', () => {
     renderPanel(details);
 
     expect(screen.getByText(/set Service to Custom/)).toBeInTheDocument();
-    const srt = section('SRT');
+    const srt = section('SRT Connection');
 
     // One line carries the stream id, the key and the passphrase. Both
     // secrets start masked, while host and port stay readable.
@@ -113,7 +86,7 @@ describe('IngestPanel', () => {
 
     renderPanel(makeIngest({ rtmp: RTMP_OFFERED }));
 
-    expect(screen.getByRole('region', { name: 'SRT' })).toBeInTheDocument();
+    expect(screen.getByRole('region', { name: 'SRT Connection' })).toBeInTheDocument();
     expect(screen.getByText(/copy the SRT values below into OBS/)).toBeInTheDocument();
     expect(screen.queryByRole('region', { name: 'RTMP' })).not.toBeInTheDocument();
     expect(screen.queryByLabelText('RTMP Server')).not.toBeInTheDocument();
@@ -128,7 +101,7 @@ describe('IngestPanel', () => {
 
     renderPanel(makeIngest({ rtmp: null }));
 
-    expect(screen.getByRole('region', { name: 'SRT' })).toBeInTheDocument();
+    expect(screen.getByRole('region', { name: 'SRT Connection' })).toBeInTheDocument();
     expect(screen.getByText(/copy the SRT values below into OBS/)).toBeInTheDocument();
     expect(screen.queryByText(/RTMP/)).not.toBeInTheDocument();
   });
@@ -157,7 +130,7 @@ describe('IngestPanel', () => {
     });
 
     renderPanel(details);
-    const srt = section('SRT');
+    const srt = section('SRT Connection');
 
     fireEvent.click(srt.getByLabelText('show srt server'));
     expect(srt.getByLabelText('SRT Server')).toHaveValue(details.srt!.url);
@@ -173,7 +146,7 @@ describe('IngestPanel', () => {
     const url = 'srt://host:10061?streamid=x';
 
     renderPanel(makeIngest({ srt: { url, passphrase: null } }));
-    const srt = section('SRT');
+    const srt = section('SRT Connection');
 
     expect(srt.getByText('No SRT passphrase is configured on this stage.')).toBeInTheDocument();
     fireEvent.click(srt.getByLabelText('show srt server'));
@@ -211,127 +184,17 @@ describe('IngestPanel', () => {
     expect(onRotated).toHaveBeenCalledWith(rotated);
   });
 
-  it('offers no Finish unless the page asks for it', () => {
+  it('heads the SRT settings "SRT Connection", and offers Rotate key but no Finalize', () => {
     mockFetch([]);
 
     renderPanel();
 
+    const srt = section('SRT Connection');
+    expect(screen.getByText('SRT Connection')).toBeInTheDocument();
+    // OBS still shows a Stream Key box, and it must stay empty.
+    expect(srt.getByText(/leave it empty/)).toBeInTheDocument();
     expect(screen.getByRole('button', { name: /Rotate key/ })).toBeInTheDocument();
-    expect(screen.queryByRole('button', { name: 'Finish' })).not.toBeInTheDocument();
-  });
-
-  it('confirms before finishing an ended stream, then hands on its new key and the finished stream', async () => {
-    const answer = finishAnswer();
-    const fetchMock = mockFetch([finishRoute(() => jsonOk(answer))]);
-    const onRotated = vi.fn();
-    const onFinished = vi.fn();
-
-    renderFinishable({ onRotated, onFinished });
-
-    fireEvent.click(screen.getByRole('button', { name: 'Finish' }));
-    const dialog = await screen.findByRole('dialog');
-    expect(within(dialog).getByText('Finish this stream?')).toBeInTheDocument();
-    expect(dialog).toHaveTextContent(FINISH_WARNING);
-    expect(dialog).not.toHaveTextContent(LIVE_FINISH_WARNING);
-    expect(finishCalls(fetchMock)).toBe(0);
-
-    fireEvent.click(within(dialog).getByRole('button', { name: 'Finish' }));
-
-    expect(await screen.findByText('Stream finished. Its key has changed.')).toBeInTheDocument();
-    expect(finishCalls(fetchMock)).toBe(1);
-    // The page shows the new SRT line from these, as after a rotation.
-    expect(onRotated).toHaveBeenCalledWith(answer.ingest);
-    expect(onFinished).toHaveBeenCalledWith(answer.stream);
-  });
-
-  it('says, before finishing a live stream, that its broadcast carries on until the encoder stops', async () => {
-    mockFetch([]);
-
-    renderFinishable({ live: true });
-
-    fireEvent.click(screen.getByRole('button', { name: 'Finish' }));
-
-    const dialog = await screen.findByRole('dialog');
-    expect(dialog).toHaveTextContent(FINISH_WARNING);
-    expect(dialog).toHaveTextContent(LIVE_FINISH_WARNING);
-  });
-
-  it.each([
-    ['stream_not_started', 'Only a live or ended stream can be finished.'],
-    ['stream_finished', 'This stream is already finished: its key has changed.'],
-  ])(
-    'answers a Finish refused with %s in its own words, closes, and has the page read the stream again',
-    async (code, sentence) => {
-      // A message of the API's own, to show that the console's sentence for the code wins.
-      mockFetch([finishRoute(() => jsonError(409, { error: code, id: 'stream-1', message: 'Refused.' }))]);
-      const onRotated = vi.fn();
-      const onFinished = vi.fn();
-      const onRefused = vi.fn();
-
-      renderFinishable({ onRotated, onFinished, onRefused });
-
-      fireEvent.click(screen.getByRole('button', { name: 'Finish' }));
-      fireEvent.click(within(await screen.findByRole('dialog')).getByRole('button', { name: 'Finish' }));
-
-      expect(await screen.findByText(sentence)).toBeInTheDocument();
-      expect(screen.queryByText('Refused.')).not.toBeInTheDocument();
-      // The stream is no longer where the page showed it, so asking again cannot help.
-      await waitFor(() => {
-        expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
-      });
-      expect(onRefused).toHaveBeenCalledTimes(1);
-      expect(onRotated).not.toHaveBeenCalled();
-      expect(onFinished).not.toHaveBeenCalled();
-    },
-  );
-
-  it('keeps the dialog open after a failure that is no refusal, to retry or cancel, and reads nothing again', async () => {
-    mockFetch([finishRoute(() => jsonError(500, { error: 'internal_error' }))]);
-    const onRefused = vi.fn();
-
-    renderFinishable({ onRefused });
-
-    fireEvent.click(screen.getByRole('button', { name: 'Finish' }));
-    fireEvent.click(within(await screen.findByRole('dialog')).getByRole('button', { name: 'Finish' }));
-
-    expect(await screen.findByText('The server hit an unexpected error.')).toBeInTheDocument();
-    // MUI keeps a closing dialog on the page for its exit transition, so
-    // "still there" proves nothing until that time has passed.
-    await expect(
-      waitFor(
-        () => {
-          expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
-        },
-        { timeout: 600 },
-      ),
-    ).rejects.toThrow();
-    expect(within(screen.getByRole('dialog')).getByRole('button', { name: 'Finish' })).toBeEnabled();
-    expect(onRefused).not.toHaveBeenCalled();
+    // Finalize lives in the stream's status notice, not here.
+    expect(screen.queryByRole('button', { name: /Finali[sz]e|Finish/ })).not.toBeInTheDocument();
   });
 });
-
-function finishRoute(respond: () => Response): MockRoute {
-  return { method: 'POST', path: '/api/streams/stream-1/finish', respond };
-}
-
-/** The Finishes sent. The theme provider reads the console's config on its own, so not every call is one. */
-function finishCalls(fetchMock: ReturnType<typeof mockFetch>): number {
-  return fetchMock.mock.calls.filter(
-    ([url, init]) => String(url) === '/api/streams/stream-1/finish' && init?.method === 'POST',
-  ).length;
-}
-
-/** The API's answer to a Finish: the stream as it now stands, and its details with the new key. */
-function finishAnswer(): StreamFinishAnswer {
-  const finishedAt = '2026-10-19T12:10:00.000Z';
-  return {
-    stream: makeStream({
-      id: 'stream-1',
-      status: 'vod',
-      endedAt: '2026-10-19T12:00:00.000Z',
-      finishedAt,
-      restartUntil: null,
-    }),
-    ingest: makeIngest({ publishKey: 'eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee', publishKeyRotatedAt: finishedAt }),
-  };
-}

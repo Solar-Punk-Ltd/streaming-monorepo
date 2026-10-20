@@ -143,14 +143,27 @@ catalogue to another batch is waiting, and when its batch is under 48 hours from
   edit.
 - A link to the viewer's catalogue, the copyable route of this stream in the viewer, and the last
   publish error.
-- Once the stream has gone live, a notice under the title says where its key stands.
-  "Ended — can go live again until <time>" shows while its restart window runs, the time in the
-  console's DD/MM/YYYY HH:mm. "Ended — its restart window has run out" shows once that time has
-  passed, until the admin's next check finishes the stream, up to a minute later.
-  "Finished — the key has changed" shows once the window or Finish has finished it, and a live
-  stream that was finished shows
-  "Live — finished, the key has changed; it ends for good when the encoder stops".
-- The OBS panel, with Rotate key and Finish, described below.
+- Once the stream has gone live, a status notice under the title says where it stands, with
+  Finalize beside it, outlined in the warning colour. Its tooltip, "Finalize streaming", shows
+  while it is disabled too. Times read DD/MM/YYYY HH:mm.
+  - Live: "Live since <time>" and "Finalize is enabled once live streaming has ended." Finalize is
+    disabled, as on a live row that carries a finalized time.
+  - Ended, while its restart window runs: "Ended — can go live again until <time>" and "Finalize
+    will rotate the SRT key to protect this stream." Finalize is enabled.
+  - Ended, once that time has passed and until the admin finalizes the stream, up to a minute
+    later: "Ended — its restart window has run out", with the same line. Finalize is enabled.
+  - Finalized: "Finalized — the SRT key has changed" and "The old SRT line is refused. To go live
+    on purpose, copy the new one." Finalize is disabled.
+  - A stream that never went live has no notice.
+- Finalize asks first, under the title "Finalize this stream?": "Its key changes now, so no encoder
+  can start it again on the old key. To go live on it later on purpose, copy the new SRT line." It
+  then changes the key at once, the OBS panel shows the new SRT line, and a snackbar says "Stream
+  finalized. Its key has changed." The API refuses it on a live stream as `stream_live`, which the
+  page answers "Stop the broadcast first.", on a stream that never went live as
+  `stream_not_started`, and on one already finalized as `stream_finished`. Each means the stream has
+  moved on since the page read it, so the snackbar gives the sentence, the dialog closes, and the
+  page reads the stream and its OBS details again. After any other failure the dialog stays open.
+- The OBS panel, with Rotate key, described below.
 
 ### Stages, `#/stages`
 
@@ -238,7 +251,8 @@ Everyone can change their own password. `#/account` redirects here.
 ### The OBS panel
 
 The panel on a stream's details page tells an operator what to type into OBS's Server and Stream
-Key boxes. It is built from the stream's stage, as the manager pushed it, and offers SRT only. On a
+Key boxes. It is built from the stream's stage, as the manager pushed it, and offers SRT only, under
+the heading SRT Connection. Its Stream Key line says to leave that box empty. On a
 stage that also takes RTMP the API still answers the RTMP server and stream key, and the panel
 leaves them out. The SRT Server line carries the stream's `key=` and, where OBS can read it there,
 the SRT passphrase, so the panel hides those values, and the SRT Password field when there is one,
@@ -255,17 +269,8 @@ segments and shows as Live throughout. To end such a fight, press Rotate key and
 into the one encoder that should broadcast. Its next connection takes the stream over, and the
 other encoder's reconnects with the old key are refused.
 
-Finish stands beside Rotate key on a live or ended stream that is not finished yet, for whoever may
-rotate a key. It asks first, under the title "Finish this stream?": the key changes now, so no
-encoder can start the stream again on the old one. On a live stream the broadcast carries on until
-the encoder stops. Finish then changes the key at once, the panel shows the new SRT line, and a
-snackbar says "Stream finished. Its key has changed." If the API refuses it as
-`stream_not_started` or `stream_finished`, the stream has moved on since the page read it, for
-example because its restart window ran out. The snackbar then gives the API's sentence, the dialog
-closes, and the page reads the stream and its OBS details again, so it never shows a stale SRT
-line. After any other failure the dialog stays open. To go live on a finished stream on purpose,
-copy the new SRT line into OBS, as after Rotate key. The panel's header row wraps on a narrow
-screen.
+To go live on a finalized stream on purpose, copy the new SRT line into OBS, as after Rotate key.
+Finalize itself sits in the stream's status notice, [above](#stream-details-streamsid).
 
 ### Sessions
 

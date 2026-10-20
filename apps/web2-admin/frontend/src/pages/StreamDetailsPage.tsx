@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef, useState, type ReactNode } from 'react'
 import { Link as RouterLink, useNavigate, useParams } from 'react-router';
 import {
   Alert,
+  AlertTitle,
   Box,
   Button,
   Chip,
@@ -18,6 +19,7 @@ import {
 import CloudUploadIcon from '@mui/icons-material/CloudUpload';
 import CloudOffIcon from '@mui/icons-material/CloudOff';
 import EditIcon from '@mui/icons-material/Edit';
+import FlagIcon from '@mui/icons-material/Flag';
 import OpenInNewIcon from '@mui/icons-material/OpenInNew';
 import RefreshIcon from '@mui/icons-material/Refresh';
 import type {
@@ -29,7 +31,8 @@ import type {
 } from '@streaming-monorepo/web2-admin-common';
 
 import * as api from '../api';
-import { errorMessage } from '../errors';
+import { errorMessage, FINALIZE_WHILE_LIVE } from '../errors';
+import { ApiError } from '../http';
 import { formatDateTime } from '../dateUtil';
 import { formatDuration, shortHex } from '../format';
 import { ConfirmDialog } from '../components/ConfirmDialog';
@@ -118,26 +121,61 @@ function unpublishPromptFor(status: StreamStatus): UnpublishPrompt {
   return status === 'vod' ? UNPUBLISH_PROMPTS.recording : UNPUBLISH_PROMPTS.scheduled;
 }
 
+/** The status notice under the title: where the stream stands, and whether Finalize is enabled. */
+interface StatusNotice {
+  title: string;
+  helper: string;
+  canFinalize: boolean;
+}
+
+/** What Finalize does, said before it happens. */
+const FINALIZE_PROMPT =
+  'Its key changes now, so no encoder can start it again on the old key. To go live on it later on purpose, copy ' +
+  'the new SRT line.';
+
 /**
- * Where a live or ended stream stands with its key: until when an ended one
- * can still go live again on it, or that it was finished and the key changed.
- * The API works out the window, so the page never reads the setting. Null on
- * every other stream, a live one nobody finished included: its chip says it.
+ * The status notice of a stream that has gone live: the API refuses Finalize on
+ * a live stream, so only an ended one that is not finalized yet can press it.
+ * The API works out the restart window, so the page never reads the setting.
+ * None for a stream that never went live.
  */
-function keyLine(stream: Stream): string | null {
-  if (stream.status === 'vod' && stream.finishedAt) return 'Finished — the key has changed';
-  if (stream.status === 'vod' && stream.restartUntil) {
-    // The sweep finishes the stream up to a minute after its window ends, and
-    // until then the API still answers the window's end. A time already past
-    // is no promise, so the line says the window has run out.
-    return Date.parse(stream.restartUntil) <= Date.now()
-      ? 'Ended — its restart window has run out'
-      : `Ended — can go live again until ${formatDateTime(stream.restartUntil)}`;
+function statusNoticeOf(stream: Stream): StatusNotice | null {
+  // A live row may carry `finishedAt`: the earlier Finish could be pressed on a
+  // live stream, as QA's tests on rc.6 did. It is live all the same.
+  if (stream.status === 'live') {
+    return {
+      title: `Live since ${formatDateTime(stream.liveSince)}`,
+      helper: 'Finalize is enabled once live streaming has ended.',
+      canFinalize: false,
+    };
   }
-  if (stream.status === 'live' && stream.finishedAt) {
-    return 'Live — finished, the key has changed; it ends for good when the encoder stops';
+  if (stream.status !== 'vod') return null;
+  if (stream.finishedAt) {
+    return {
+      title: 'Finalized — the SRT key has changed',
+      helper: 'The old SRT line is refused. To go live on purpose, copy the new one.',
+      canFinalize: false,
+    };
   }
-  return null;
+  // The admin finalizes the stream up to a minute after its window ends, and
+  // until then the API still answers the window's end. A time already past is
+  // no promise, and a recording with no end counts as ended long ago.
+  const windowOpen = stream.restartUntil != null && Date.parse(stream.restartUntil) > Date.now();
+  return {
+    title: windowOpen
+      ? `Ended — can go live again until ${formatDateTime(stream.restartUntil)}`
+      : 'Ended — its restart window has run out',
+    helper: 'Finalize will rotate the SRT key to protect this stream.',
+    canFinalize: true,
+  };
+}
+
+/** Finalize's refusals. Each means the stream is no longer where the page showed it. */
+function isFinalizeRefusal(e: unknown): e is ApiError {
+  return (
+    e instanceof ApiError &&
+    (e.code === 'stream_live' || e.code === 'stream_not_started' || e.code === 'stream_finished')
+  );
 }
 
 export function StreamDetailsPage() {
@@ -156,6 +194,8 @@ export function StreamDetailsPage() {
   // unpublish, which turns the stream into a draft, cannot swap the wording
   // under the closing dialog.
   const [unpublishPrompt, setUnpublishPrompt] = useState<UnpublishPrompt>(UNPUBLISH_PROMPTS.scheduled);
+  const [finalizeOpen, setFinalizeOpen] = useState(false);
+  const [finalizing, setFinalizing] = useState(false);
 
   // Bumped on every load so a slow response for the previous stream cannot
   // overwrite the current one — showing one stream's ingest key under
@@ -200,6 +240,7 @@ export function StreamDetailsPage() {
     setIngest(null);
     setLastResult(null);
     setUnpublishOpen(false);
+    setFinalizeOpen(false);
     load();
   }, [load]);
 
@@ -245,6 +286,31 @@ export function StreamDetailsPage() {
     if (await runPublish('unpublish')) setUnpublishOpen(false);
   };
 
+  // Closed on success, and on a refusal, after which the page reads the stream
+  // again: asking again cannot help. After any other failure the operator can
+  // try again or cancel, as with Unpublish.
+  const runFinalize = async () => {
+    if (!id) return;
+    setFinalizing(true);
+    try {
+      const answer = await api.finishStream(id);
+      setStream(answer.stream);
+      setIngest(answer.ingest);
+      snackbar.success('Stream finalized. Its key has changed.');
+      setFinalizeOpen(false);
+    } catch (e) {
+      if (isFinalizeRefusal(e)) {
+        snackbar.error(e.code === 'stream_live' ? FINALIZE_WHILE_LIVE : e.message);
+        setFinalizeOpen(false);
+        load();
+      } else {
+        snackbar.error(errorMessage(e, 'Failed to finalize the stream'));
+      }
+    } finally {
+      setFinalizing(false);
+    }
+  };
+
   if (error) {
     return (
       <Alert
@@ -283,11 +349,7 @@ export function StreamDetailsPage() {
   // button is disabled anyway.
   const publishLabel = stream.status === 'draft' || stream.status === 'publishing' ? 'Publish' : 'Republish';
   const canUnpublish = stream.status === 'published' || stream.status === 'vod';
-  // Finish changes the key for good, so it is offered only while the current
-  // key could still bring the stream back: live, or ended inside its window.
-  // A stream that never went live has nothing to finish.
-  const canFinish = (stream.status === 'live' || stream.status === 'vod') && !stream.finishedAt;
-  const standing = keyLine(stream);
+  const notice = statusNoticeOf(stream);
   const viewerBaseUrl = config?.viewerBaseUrl ?? null;
 
   return (
@@ -321,7 +383,32 @@ export function StreamDetailsPage() {
         </Button>
       </Stack>
 
-      {standing ? <Alert severity="info">{standing}</Alert> : null}
+      {notice ? (
+        <Alert
+          severity="info"
+          sx={{ alignItems: 'center' }}
+          action={
+            <Tooltip title="Finalize streaming">
+              {/* A disabled button takes no pointer events, so the tooltip hangs on this wrapper. */}
+              <span>
+                <Button
+                  size="small"
+                  variant="outlined"
+                  color="warning"
+                  startIcon={<FlagIcon />}
+                  disabled={!notice.canFinalize}
+                  onClick={() => setFinalizeOpen(true)}
+                >
+                  Finalize
+                </Button>
+              </span>
+            </Tooltip>
+          }
+        >
+          <AlertTitle>{notice.title}</AlertTitle>
+          {notice.helper}
+        </Alert>
+      ) : null}
 
       {stream.publishError ? <Alert severity="error">Last publish attempt failed: {stream.publishError}</Alert> : null}
 
@@ -551,14 +638,7 @@ export function StreamDetailsPage() {
         ) : null}
       </Paper>
 
-      {ingest ? (
-        <IngestPanel
-          streamId={stream.id}
-          details={ingest}
-          onRotated={setIngest}
-          finish={canFinish ? { live: stream.status === 'live', onFinished: setStream, onRefused: load } : null}
-        />
-      ) : null}
+      {ingest ? <IngestPanel streamId={stream.id} details={ingest} onRotated={setIngest} /> : null}
 
       <ConfirmDialog
         open={unpublishOpen}
@@ -568,6 +648,16 @@ export function StreamDetailsPage() {
         busy={busy}
         onConfirm={() => void confirmUnpublish()}
         onCancel={() => setUnpublishOpen(false)}
+      />
+
+      <ConfirmDialog
+        open={finalizeOpen}
+        title="Finalize this stream?"
+        message={FINALIZE_PROMPT}
+        confirmText={finalizing ? 'Finalizing…' : 'Finalize'}
+        busy={finalizing}
+        onConfirm={() => void runFinalize()}
+        onCancel={() => setFinalizeOpen(false)}
       />
     </Stack>
   );
