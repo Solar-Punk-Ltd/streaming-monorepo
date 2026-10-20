@@ -22,8 +22,7 @@ streaming-monorepo/
 │   │   ├── engines/         SRS and OvenMediaEngine configuration
 │   │   ├── nodes/           Bee node initialisation
 │   │   ├── deploy/          deploy scripts, compose files, Dockerfiles and their tests
-│   │   ├── e2e/             fault-injection suites, the browser and bench harness
-│   │   └── docs/            the stack's own documentation
+│   │   └── e2e/             fault-injection suites, the browser and bench harness
 │   └── infra-manager/       the manager
 │       ├── manager/         the API, and the script that builds stack versions
 │       ├── frontend/        the manager console
