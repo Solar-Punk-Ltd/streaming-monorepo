@@ -144,6 +144,8 @@ describe('CustomFragmentLoader reporting the gateway it just reached', () => {
 /**
  * The other branch through `load`, for a url hls.js could not resolve to a gateway.
  *
+ * The hls.js readings in this file were taken at 1.6.15, and the client now pins 1.7.3.
+ *
  * `blob:http:/bytes/abc123` is not a hand-written example. It is what hls.js 1.6.15's own resolver
  * returns for the media line `/bytes/abc123` against the blob base a preview playlist is served
  * from, measured on 2026-08-07: the page origin and the blob id are both consumed, leaving a url

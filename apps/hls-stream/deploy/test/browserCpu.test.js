@@ -22,9 +22,10 @@ const SCRIPT = join(ROOT, 'deploy/scripts/browser-cpu.sh');
  * still be a viewer whose single thread is pegged. `chrome-cpu.mjs` explains that at length and takes
  * the main-thread reading over CDP. Nothing here does, and no figure from here may be quoted as one.
  *
- * ⛔⛔ EVERY ASSERTION ON A SAMPLE'S VALUE IS PRECEDED BY ONE ON THE COUNT. Gate lesson AHU: a `for`
- * over an empty list is an `if` that defaults to true, and that is exactly how a floor check that
- * polled a file nobody wrote survived two paid sittings and a passing test.
+ * ⛔⛔ EVERY ASSERTION ON A SAMPLE'S VALUE IS PRECEDED BY ONE ON THE COUNT. Gate lesson AHU (kept
+ * outside the repository): a `for` over an empty list is an `if` that defaults to true, and that is
+ * exactly how a floor check that polled a file nobody wrote survived two paid sittings and a passing
+ * test.
  */
 
 const cleanups = [];

@@ -20,9 +20,10 @@ const PUBLISHER = 'publish-clock.sh';
  * good arms, 363,952 push-synced chunks and 0.7321 BZZ, with 595s of the broadcast unused.
  *
  * ⭐⭐⭐ An alarm that fires on every good run is one the operator learns to skip, and the next time it
- * is real nobody reads it. That is gate lesson AHL, and it is why HALF the cases below are about the
- * quieting NOT working: a container that exits non-zero is still loud with a marker sitting next to
- * it, and a marker left behind by a previous sitting cannot vouch for this one.
+ * is real nobody reads it. That is gate lesson AHL (kept outside the repository), and it is why HALF
+ * the cases below are about the quieting NOT working: a container that exits non-zero is still loud
+ * with a marker sitting next to it, and a marker left behind by a previous sitting cannot vouch for
+ * this one.
  *
  * These drive the real `publish-clock.sh` against a stubbed `docker` that models one container's
  * lifecycle, rather than asserting on a reading of the script.

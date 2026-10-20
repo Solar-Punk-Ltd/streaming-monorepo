@@ -1824,7 +1824,8 @@ describe('gluing the recording onto what was already on the feed', () => {
   /**
    * RFC 8216 §4.3.3.3: a window that has slid past a break has to say how many are behind it, or a
    * client joining now numbers the breaks it can see from a different place than one that has been
-   * watching. hls.js 1.6.15 reads the tag into `level.startCC`.
+   * watching. hls.js, read at 1.6.15 (the client now pins 1.7.3), reads the tag into
+   * `level.startCC`.
    */
   describe('the discontinuity sequence on live playlists', () => {
     it('declares nothing at all on a broadcast that opened on an empty feed and never broke', () => {

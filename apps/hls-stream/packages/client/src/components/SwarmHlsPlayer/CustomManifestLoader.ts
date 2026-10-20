@@ -135,8 +135,9 @@ export class CustomFragmentLoader extends FragmentLoader {
 
   load(context: FragmentLoaderContext, config: LoaderConfiguration, callbacks: LoaderCallbacks<LoaderContext>) {
     // ⛔ One attempt to one settle line, enforced here rather than rested on hls.js. A second `load` on
-    // one instance is unreachable in 1.6.15, whose own loader throws `Loader can only be used once` and
-    // whose fragment loader builds one loader per fragment, but if it ever became reachable the first
+    // one instance is unreachable in hls.js as read at 1.6.15 (the client now pins 1.7.3), whose own
+    // loader throws `Loader can only be used once` and whose fragment loader builds one loader per
+    // fragment, but if it ever became reachable the first
     // attempt would lose its ending and hand its elapsed to the second. That is a missing line and a
     // wrong number rather than a crash, which is the kind of defect this instrument cannot afford.
     // `recordSettle` is a no-op when no attempt is outstanding, so this costs an ordinary load nothing.

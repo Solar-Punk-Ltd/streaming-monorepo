@@ -36,10 +36,11 @@ export interface PlaybackPosition {
  * Whether this viewer has reached the end of what they were playing, and so loses nothing to a
  * restart at the live edge.
  *
- * `ended` is the ordinary way there. hls.js 1.6.15 ends the media source once a finished playlist's
- * last fragment is appended (`_streamEnded`, then `BUFFER_EOS`), so a viewer who watched the broadcast
- * finish is left on an element that has ended and paused, which fits the viewer of 2026-09-24. Paused
- * at the end of what is held is the other way, for a viewer who stopped there themselves.
+ * `ended` is the ordinary way there. hls.js, read at 1.6.15 (the client now pins 1.7.3), ends the
+ * media source once a finished playlist's last fragment is appended (`_streamEnded`, then
+ * `BUFFER_EOS`), so a viewer who watched the broadcast finish is left on an element that has ended
+ * and paused, which fits the viewer of 2026-09-24. Paused at the end of what is held is the other
+ * way, for a viewer who stopped there themselves.
  *
  * ⚠️ Still playing is never the end, however little is held. A player waiting on a fragment of the
  * recording it is watching looks exactly like one that has run out, and moving it would be the one

@@ -266,8 +266,8 @@ compose now publishes it. Expect five streams (one source, four rungs) and the c
 count that keeps climbing is the loop.
 
 Audio is muxed into each rung rather than split into an `EXT-X-MEDIA` rendition group. With
-`ABR_ACODEC=copy` the four copies are bit-identical and cost no CPU. Splitting it is the right
-production answer and is left as a TODO.
+`ABR_ACODEC=copy`, the default, the four copies are bit-identical and cost no CPU. Splitting audio
+out is a later item on the [roadmap](../../../docs/ROADMAP.md).
 
 ## What SRS logs
 

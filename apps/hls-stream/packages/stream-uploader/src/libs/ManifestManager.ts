@@ -373,7 +373,8 @@ function mediaSecondsOf(timeline: readonly string[]): number {
  * derived stamp, declared fragment length and a URI that every other entry carries. RFC 8216bis
  * §4.4.4.7 defines the tag as "the segment URI to which it applies does not contain media data and
  * SHOULD NOT be loaded by clients", and §6.3.3 tells a client to skip such an entry rather than fetch
- * it. hls.js 1.6.15, the version this project pins, reads it into `frag.gap` and skips the fragment.
+ * it. hls.js, read at 1.6.15 (the client now pins 1.7.3), reads it into `frag.gap` and skips the
+ * fragment.
  *
  * ⛔ **A gap entry never starts a window and never ends a playlist.** The window is a slice of the
  * segments actually held, so `#EXT-X-MEDIA-SEQUENCE` is always a held segment's own sequence, and a
@@ -1303,7 +1304,7 @@ export class ManifestManager {
   /**
    * @param discontinuitySequence breaks in front of this window's first entry. Written out only when
    *   there are any, so a broadcast opening on an empty feed publishes the playlist it always did,
-   *   byte for byte. RFC 8216 §4.3.3.3 puts the tag in the header, and hls.js 1.6.15 reports one
+   *   byte for byte. RFC 8216 §4.3.3.3 puts the tag in the header, and hls.js, read at 1.6.15, reports one
    *   declared after a fragment as a playlist error, so it goes beside the media sequence.
    */
   private liveHeaderLines(mediaSequence: number, discontinuitySequence: number): string[] {

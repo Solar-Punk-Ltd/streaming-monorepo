@@ -54,7 +54,8 @@ browser_cpu_cores() {
 # ⛔⛔⛔ DECLINING IS ANNOUNCED RATHER THAN RETURNED QUIETLY, and that is the whole reason this branch
 # is four lines instead of one. Two drivers shipped with a floor check reading a file no process in
 # the run wrote, and no sitting log anywhere said so, because the launcher of the only writer had
-# quietly declined. A control that is off must be as loud as one that fired. Gate lesson AHU.
+# quietly declined. A control that is off must be as loud as one that fired. Gate lesson AHU
+# (kept outside the repository).
 start_browser_cpu() {
   local out="$1" label="$2"
   if ! awk -v v="${BROWSER_CPU_INTERVAL_S}" 'BEGIN { exit !(v + 0 > 0) }'; then

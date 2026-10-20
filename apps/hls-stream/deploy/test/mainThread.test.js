@@ -20,12 +20,13 @@ import {
  * for a browser it launched itself, could sample that proof and report a pegged thread that the
  * harness pegged deliberately, in a context nobody was watching.
  *
- * ⛔⛔ EVERY ASSERTION ON A MEMBER IS PRECEDED BY ONE ON THE COUNT. Gate lesson AHU: a `find` that
- * returns undefined and a `filter` that returns nothing both make a property check vacuously true.
+ * ⛔⛔ EVERY ASSERTION ON A MEMBER IS PRECEDED BY ONE ON THE COUNT. Gate lesson AHU (kept outside the
+ * repository): a `find` that returns undefined and a `filter` that returns nothing both make a
+ * property check vacuously true.
  *
  * ⭐ No clock anywhere in this file. Every function under test is fed timestamps, so a threshold can
- * never be relaxed to make a slow machine pass. That is gate lesson AHY, learned from a timing test
- * whose limit had been raised twice.
+ * never be relaxed to make a slow machine pass. That is gate lesson AHY (kept outside the repository),
+ * learned from a timing test whose limit had been raised twice.
  */
 
 const page = (url) => ({ type: 'page', url, webSocketDebuggerUrl: `ws://127.0.0.1:9333/devtools/page/${url}` });

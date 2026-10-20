@@ -196,8 +196,9 @@ export interface LatencyTargetVerdict {
  * `raisedByS: 0, held: true`. Wrong, and wrong in the flattering direction.
  *
  * ⭐ Note which field survived: `medianPastTargetS` subtracts the target from the reading **per
- * sample**, so it was right the whole time. That is gate lesson AHT stated as code. A verdict that
- * compares against a constant is not measuring a setpoint that can move.
+ * sample**, so it was right the whole time. That is gate lesson AHT (kept outside the repository)
+ * stated as code. A verdict that compares against a constant is not measuring a setpoint that can
+ * move.
  */
 export function judgeLatencyTarget(
   samples: readonly ViewerSample[],
