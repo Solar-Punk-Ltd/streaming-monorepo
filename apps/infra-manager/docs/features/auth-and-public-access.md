@@ -106,7 +106,7 @@ Four routes answer without a session: `GET /health`, `POST /auth/login`, `GET /a
 healthcheck for the `api` service reads it every 30 seconds after a 60 second start period, and
 `manager:upgrade` waits on it during a deploy.
 
-The web2 admin's funding API under `/api/admin-funding` has a credential of its own. See
+The admin's funding API under `/api/admin-funding` has a credential of its own. See
 [Endpoints](#endpoints).
 
 ## Using it in the console
@@ -202,7 +202,7 @@ open to any signed-in user. That includes deploying and stopping a deployment, b
 chequebook deposit or withdrawal, engine settings and config files, restarting containers and
 reading an SRT passphrase.
 
-**The funding API's credential.** The routes under `/api/admin-funding`, which the web2 admin calls
+**The funding API's credential.** The routes under `/api/admin-funding`, which the admin calls
 server to server, take `Authorization: Bearer <FUNDING_API_TOKEN>` and refuse a session cookie.
 While `FUNDING_API_TOKEN` is unset they answer 404 `funding_off`. They are mounted ahead of the
 write header gate and `requireSession`. Right after them, `refuseFundingBearer` makes every other
@@ -316,7 +316,7 @@ Keys in `manager/.env`:
 | ------------------- | ---------------------- | ---------------------------------------------------------------------------------------------------------------------------------------- |
 | `WEB_PORT`          | `8080`                 | The host port the console is published on                                                                                                |
 | `MANAGER_WEB_BIND`  | `127.0.0.1`            | The host address `WEB_PORT` is published on. Docker publishes past a host firewall, so widen it only behind one                          |
-| `FUNDING_API_TOKEN` | none                   | The web2 admin's bearer token for `/api/admin-funding`. Unset turns that API off                                                         |
+| `FUNDING_API_TOKEN` | none                   | The admin's bearer token for `/api/admin-funding`. Unset turns that API off                                                              |
 | `BEE_LOCAL_HOST`    | `host.docker.internal` | The address the manager reaches a local Bee node's API and OME's HLS port on. Set it when the binds name something other than the bridge |
 
 The stack's `*_BIND` and `*_API_LISTEN` keys are in the deploy guide's step 2. The manager's other

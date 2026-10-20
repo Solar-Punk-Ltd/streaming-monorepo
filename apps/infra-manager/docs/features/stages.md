@@ -1,9 +1,9 @@
 # Stages
 
 A stage is a deployment that runs a stream uploader, of kind `abr-uploader` or
-`streamer`, with the Bee nodes behind it. The web2 admin (the admin) serves every
+`streamer`, with the Bee nodes behind it. The admin (`apps/web2-admin`) serves every
 stage of a brand, and it learns each one from the manager: for every stage the
-manager builds a **stage record** and pushes it into the admin its web2 admin link
+manager builds a **stage record** and pushes it into the admin its admin link
 names. The manager also pushes one **catalogue stamp record**, which tells the admin
 which Bee node and which batch to write the brand's stream list (the catalogue)
 with. This is a feature page of the manager, the web console and API in
@@ -30,7 +30,7 @@ manager for nothing else than its funding API (the "Funding API" section of
   carries the address of that key, never the key. The admin writes the owner into
   every catalogue entry of the stage's streams, and signs the catalogue itself
   with the brand key alone.
-- **Registrar token.** The token the manager's web2 admin link stores. It is the
+- **Registrar token.** The token the manager's admin link stores. It is the
   admin's `INTERNAL_API_TOKEN`, and every push presents it. No uploader is given
   it.
 - **Catalogue node.** A Bee-only deployment of this manager, with one immutable
@@ -195,7 +195,7 @@ While the link stores no address or no token, a retirement waits for one.
 
 ## To whom
 
-To the manager's web2 admin link, `PUT <link>/api/internal/stages/<stageId>`, with
+To the manager's admin link, `PUT <link>/api/internal/stages/<stageId>`, with
 the link's stored token as the bearer. `<link>` is the address the link stores.
 Only a deployment whose effective `ADMIN_API_URL` is on the link's origin is
 pushed (`sameAdminOrigin`), though a path may differ. A deployment linked to
@@ -417,7 +417,7 @@ changes.
 
 ### When and to whom the catalogue record goes
 
-To the manager's web2 admin link, `PUT <link>/api/internal/catalogue-stamp`, with
+To the manager's admin link, `PUT <link>/api/internal/catalogue-stamp`, with
 the link's stored token, on the stage client's bounds. It is pushed:
 
 - **when the designation changes**, at once after the save,
@@ -463,7 +463,7 @@ into **Move the catalogue to batch …**, which asks first. While the move is
 pending the card shows "Moving from batch … on …" with that batch's last reading
 and who started the move, and the steps:
 
-1. In the web2 admin, on its Stages page, start "Move the catalogue to batch …".
+1. In the admin, on its Stages page, start "Move the catalogue to batch …".
    This needs `CATALOGUE_MOVE_ENABLED` on that admin.
 2. Wait until the admin says the move is done.
 3. Press **Release the previous batch** here. It asks first, since the node moved

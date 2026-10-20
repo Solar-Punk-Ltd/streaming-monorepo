@@ -19,12 +19,12 @@ the Vite dev server serve one page and never see them. An unknown hash shows the
 | Deployments      | `#/deployments`        | Every deployment, with filter chips, a search box, groups as collapsible blocks, and per row a status, a readiness pill, quick links, a Start or Stop button and a menu. Clicking a row opens its page                                          |
 | A deployment     | `#/deployments/<name>` | See [A deployment's page](#a-deployments-page)                                                                                                                                                                                                  |
 | A group          | `#/groups/<id>`        | Its members, Start all, Stop all, Add members, Edit shared settings and Remove group. For an ABR node pool, one row per rung and the pool string. See [Group deployment](features/group-deployment.md) and [ABR ladder](features/abr-ladder.md) |
-| Stages           | `#/stages`             | Every stage record the manager pushes into the web2 admin, with its last push. See [Stages](features/stages.md)                                                                                                                                 |
+| Stages           | `#/stages`             | Every stage record the manager pushes into the admin, with its last push. See [Stages](features/stages.md)                                                                                                                                      |
 | Transfers        | `#/transfers`          | Every chequebook transfer, with a page per transfer and its recovery actions. See [Chequebook](features/chequebook.md)                                                                                                                          |
 | Host             | `#/host`               | CPU, memory, disk, network and disk I/O of the host, and a table of every deployment's containers                                                                                                                                               |
 | Versions         | `#/versions`           | The stack versions, their builds and the deploy attempts that hold a project. **Settings** on a card opens `#/versions/<id>/settings`. See [Stack versions](features/stack-versions.md)                                                         |
 | Access           | `#/access`             | The users, their sessions, and the password change. See [Sign-in and public access](features/auth-and-public-access.md)                                                                                                                         |
-| Manager settings | `#/manager-settings`   | The web2 admin link for new deployments and the catalogue node. See [The web2 admin link](features/web2-admin-link.md) and [Stages](features/stages.md#the-catalogue-node)                                                                      |
+| Manager settings | `#/manager-settings`   | The admin link for new deployments and the catalogue node. See [The admin link](features/web2-admin-link.md) and [Stages](features/stages.md#the-catalogue-node)                                                                                |
 
 The sidebar shows the manager's instance name and the build it runs, from `GET /config` and
 `GET /version`. The theme follows the system and can be switched to light or dark in the sidebar.
@@ -99,7 +99,7 @@ survives a page reload.
 2. **Basics.** The name, the host (this machine or another host over SSH), whether to create
    several at once as a group, and notes.
 3. **Settings.** Only the fields the choice needs: the media engine, the SRT passphrase, the stream
-   key, the postage batch, the Bee node, the stream to follow, the node pool, the web2 admin link,
+   key, the postage batch, the Bee node, the stream to follow, the node pool, the admin link,
    and under Advanced settings every key of the stack version.
 4. **Review.** Everything chosen, and one sentence on what happens next.
 

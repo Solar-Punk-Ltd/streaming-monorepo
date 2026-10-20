@@ -296,7 +296,7 @@ Both sit behind the same session as every stamp route. The other stamp routes,
 buy, set and the node readings, are in
 [manager/README.md](../../manager/README.md#postage-stamps).
 
-The web2 admin tops up and dilutes the same batches through the funding API's
+The admin tops up and dilutes the same batches through the funding API's
 stamp operations, on its bearer token
 ([manager/README.md](../../manager/README.md#stamp-operations)). Each asks the
 node with the same two `PATCH` requests and pays from the node's own wallet.

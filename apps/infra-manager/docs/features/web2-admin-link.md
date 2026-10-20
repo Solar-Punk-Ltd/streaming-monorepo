@@ -1,8 +1,8 @@
-# The web2 admin link
+# The admin link
 
-The web2 admin (the admin) is a separate service where streams are declared and
+The admin (`apps/web2-admin`) is a separate service where streams are declared and
 listed. A deployment's stream uploader reports to it when the stack gives it
-`ADMIN_API_URL` and `ADMIN_API_TOKEN`. The web2 admin link is how the manager sets
+`ADMIN_API_URL` and `ADMIN_API_TOKEN`. The admin link is how the manager sets
 that up: one link for the whole manager, which every new uploader deployment
 starts with, and a token of its own for every uploader linked to it. This is a
 feature page of the manager, the web console and API in `apps/infra-manager` that
@@ -10,7 +10,7 @@ deploys the streaming stack (`apps/hls-stream`) onto hosts.
 
 The same link is where the manager pushes each stage's record and the catalogue
 stamp record ([stages.md](stages.md)). The operator's view of the routes is the
-section [Linking uploaders to the web2 admin](../../manager/README.md#linking-uploaders-to-the-web2-admin)
+section [Linking uploaders to the admin](../../manager/README.md#linking-uploaders-to-the-admin)
 of the API reference.
 
 ## What it does
@@ -283,7 +283,7 @@ admin said, the address or a token. The log names who tested and the outcome.
 | `token-refused`          | the admin refused the token                                                                |
 | `token-not-own`          | a deployment's token at the link's address is not one the manager generated for it         |
 | `token-not-registered`   | the admin refused the deployment's own token, and no push of its stage has been stored yet |
-| `not-admin`              | something answered, but not as a web2 admin answers                                        |
+| `not-admin`              | something answered, but not as an admin answers                                            |
 | `redirected`             | the address answered with a redirect, which the test does not follow                       |
 | `unreachable`            | nothing answered from where the manager runs, in time or at all                            |
 | `invalid-address`        | the address is not an http or https one the uploader could use                             |
@@ -341,7 +341,7 @@ Test connection reads its outcome off the address, so
 
 All routes are behind the session, and every write behind the same-site check.
 The full reference is
-[the API reference](../../manager/README.md#linking-uploaders-to-the-web2-admin).
+[the API reference](../../manager/README.md#linking-uploaders-to-the-admin).
 
 | Method | Path                                       | Body                                                | Answer                                                       |
 | ------ | ------------------------------------------ | --------------------------------------------------- | ------------------------------------------------------------ |

@@ -443,13 +443,13 @@ not created yet, which the new-deployment wizard edits. A deployment's list also
 setting it reads. [Deployment settings](../docs/features/deployment-settings.md) describes the
 console's side.
 
-| Method | Path                                                     | Body                                                                  | Answer                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                   |
-| ------ | -------------------------------------------------------- | --------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| GET    | `/profiles/:name/settings`                               |                                                                       | `{ instanceId, revision, buildId, entries, drift, running, engine, abr, engineSettingsProblem }`, `no-store`. No secret value, only whether one is stored. `engineSettingsProblem` is the sentence the next deploy would refuse the stored engine settings with, or null. 409 `settings_not_ready` for a version with no build                                                                                                                                                                                                           |
-| PUT    | `/profiles/:name/settings`                               | `{ expectedInstanceId, expectedRevision, entries: [{ key, value }] }` | `{ revision }`. Stores and runs nothing, and one refused key refuses the whole save. `value` null goes back to the version, or for an engine setting to its default. 400 `validation_error` for a key the version does not declare, a key named twice, a key a control of the deployment decides, a value the stack would read differently or outside its bounds, engine values the engine refuses together, or a web2 admin address left with no token. 409 `deployment_settings_changed`, `profile_instance_changed` or `profile_busy` |
-| POST   | `/profiles/:name/settings/apply`                         | `{ expectedInstanceId }`                                              | 202 `{ recreated: [service] }` or `{ recreated: 'all' }`, 200 `{ recreated: [] }` when nothing is behind. 400 `validation_error` while `engineSettingsProblem` stands, 409 `profile_stopped`, `profile_busy` or `profile_instance_changed`                                                                                                                                                                                                                                                                                               |
-| GET    | `/versions/:id/settings-catalog?kind=&components=&host=` |                                                                       | `{ versionId, buildId, entries }`, `no-store`. What a deployment not created yet starts with. `kind` defaults to `custom`, `components` is a comma list, and an absent `host` is the manager's own. 404 `stack_version_not_found`, 409 `settings_not_ready`                                                                                                                                                                                                                                                                              |
-| POST   | `/profiles/:name/settings/admin-link/test`               |                                                                       | `{ outcome }`, `no-store`. Test connection for what the next deploy would give the uploader (see [Linking uploaders to the web2 admin](#linking-uploaders-to-the-web2-admin))                                                                                                                                                                                                                                                                                                                                                            |
+| Method | Path                                                     | Body                                                                  | Answer                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                               |
+| ------ | -------------------------------------------------------- | --------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| GET    | `/profiles/:name/settings`                               |                                                                       | `{ instanceId, revision, buildId, entries, drift, running, engine, abr, engineSettingsProblem }`, `no-store`. No secret value, only whether one is stored. `engineSettingsProblem` is the sentence the next deploy would refuse the stored engine settings with, or null. 409 `settings_not_ready` for a version with no build                                                                                                                                                                                                       |
+| PUT    | `/profiles/:name/settings`                               | `{ expectedInstanceId, expectedRevision, entries: [{ key, value }] }` | `{ revision }`. Stores and runs nothing, and one refused key refuses the whole save. `value` null goes back to the version, or for an engine setting to its default. 400 `validation_error` for a key the version does not declare, a key named twice, a key a control of the deployment decides, a value the stack would read differently or outside its bounds, engine values the engine refuses together, or an admin address left with no token. 409 `deployment_settings_changed`, `profile_instance_changed` or `profile_busy` |
+| POST   | `/profiles/:name/settings/apply`                         | `{ expectedInstanceId }`                                              | 202 `{ recreated: [service] }` or `{ recreated: 'all' }`, 200 `{ recreated: [] }` when nothing is behind. 400 `validation_error` while `engineSettingsProblem` stands, 409 `profile_stopped`, `profile_busy` or `profile_instance_changed`                                                                                                                                                                                                                                                                                           |
+| GET    | `/versions/:id/settings-catalog?kind=&components=&host=` |                                                                       | `{ versionId, buildId, entries }`, `no-store`. What a deployment not created yet starts with. `kind` defaults to `custom`, `components` is a comma list, and an absent `host` is the manager's own. 404 `stack_version_not_found`, 409 `settings_not_ready`                                                                                                                                                                                                                                                                          |
+| POST   | `/profiles/:name/settings/admin-link/test`               |                                                                       | `{ outcome }`, `no-store`. Test connection for what the next deploy would give the uploader (see [Linking uploaders to the admin](#linking-uploaders-to-the-admin))                                                                                                                                                                                                                                                                                                                                                                  |
 
 Plain values are stored in `profiles.stack_settings` and secret ones in
 `profiles.stack_settings_secret`, which no page and no event carries. A deploy writes them into
@@ -465,9 +465,9 @@ reads and the keys only the deploy scripts read, a plain value where the page ma
 salted digest of every key, so the page can tell which settings a running container is behind on.
 A secret, and a chain endpoint, are kept as the digest alone.
 
-## Linking uploaders to the web2 admin
+## Linking uploaders to the admin
 
-The web2 admin, `apps/web2-admin`, is the service where streams are declared and listed. A
+The admin, `apps/web2-admin`, is the service where streams are declared and listed. A
 deployment's stream uploader reports to it when the stack gives it two settings:
 
 - `ADMIN_API_URL` is where the uploader reaches the admin. Set, it turns the uploader's admin mode
@@ -477,13 +477,13 @@ deployment's stream uploader reports to it when the stack gives it two settings:
 - `ADMIN_API_TOKEN` is the bearer token the uploader presents on the admin's internal routes, at
   least 32 characters. It is a secret: no answer carries it, only whether one is stored.
 
-An uploader linked to the manager's own web2 admin link gets a token of its own: its first deploy
+An uploader linked to the manager's own admin link gets a token of its own: its first deploy
 generates 64 hex characters, keeps them with the deployment's other generated secrets, and the
 stage record carries their SHA-256 so the admin knows the token. That admin takes no other token
 from an uploader. An uploader linked to another admin is given a token typed for it. A save or a
 create that leaves an address with no token anywhere is refused, because the uploader refuses to
 start without one. A stored token goes only to the origin (scheme, host and port) it was stored
-for. [The web2 admin link](../docs/features/web2-admin-link.md) describes the rules, the wizard's
+for. [The admin link](../docs/features/web2-admin-link.md) describes the rules, the wizard's
 group, rotation and the owner check in full.
 
 | Method | Path                                       | Body                                                                                                                                           | Answer                                                                                                                                                                                                                        |
@@ -508,7 +508,7 @@ names who tested and the outcome, never the address or a token.
 | `token-refused`          | The admin answered its own 401: the token is wrong.                                                                                                                            |
 | `token-not-own`          | At the link's address, the deployment's token is not one the manager generated. An admin that takes only a stage's own token refuses it. Rotate it and redeploy.               |
 | `token-not-registered`   | The admin answered its own 401 to the deployment's own token while no push of the stage has reached it yet. A deploy registers it.                                             |
-| `not-admin`              | Something answered, but not the way a web2 admin does.                                                                                                                         |
+| `not-admin`              | Something answered, but not the way an admin does.                                                                                                                             |
 | `redirected`             | The address answered with a redirect, which the test does not follow. Give the address the admin itself answers on.                                                            |
 | `unreachable`            | Nothing answered from where the manager runs, within five seconds a request.                                                                                                   |
 | `invalid-address`        | The address is not an `http` or `https` one the uploader can use.                                                                                                              |
@@ -519,7 +519,7 @@ names who tested and the outcome, never the address or a token.
 
 ## Stages
 
-Every deployment of kind `abr-uploader` or `streamer` is a stage of the web2 admin. The manager
+Every deployment of kind `abr-uploader` or `streamer` is a stage of the admin. The manager
 builds its stage record, `stageRecordSchema` in `packages/contracts`, and pushes it with the link's
 stored token to `PUT <link>/api/internal/stages/<instance_id>`, for each one whose effective
 `ADMIN_API_URL` is on the link's origin: when the deployment changes, every 30 seconds while it
@@ -566,7 +566,7 @@ either batch or node is refused.
 
 ## Funding API
 
-The web2 admin funds a brand's stages from its brand wallet through these routes, and has no chain
+The admin funds a brand's stages from its brand wallet through these routes, and has no chain
 connection of its own (`docs/architecture/funding.md` at the repository root). They are mounted at
 `/api/admin-funding`, ahead of the cross-site and session gates, and the console's nginx sends that
 path to the api. The shapes are in `packages/contracts/src/funding.ts`.
@@ -646,7 +646,7 @@ listed.
 
 ### Stamp operations
 
-The web2 admin tops up and dilutes the batches the inventory names, one operation per request. The
+The admin tops up and dilutes the batches the inventory names, one operation per request. The
 node that uploads with a batch carries out its operation through its own Bee API and pays for it
 from its own wallet: xBZZ for a top-up, xDAI for the gas of either.
 
@@ -677,7 +677,7 @@ from its own wallet: xBZZ for a top-up, xDAI for the gas of either.
 
 ### Chequebook operations
 
-The web2 admin brings the nodes' chequebooks to a target, one deposit or withdrawal per request.
+The admin brings the nodes' chequebooks to a target, one deposit or withdrawal per request.
 These routes are a thin adapter over the manager's own chequebook path (see [Chequebook](#chequebook)):
 the same preparation, the same last check before sending and the same record,
 `chequebook_operations`, where the move is recorded as requested by `web2-admin`. The node pays: a
@@ -708,7 +708,7 @@ own wallet.
   `unknown` stays `unknown`, as does an operation whose transaction another operation's evidence
   names too, until an operator reviews it.
 - **`mined`** is true while a `submitted` operation's transaction is in a block that is not final
-  yet, which the web2 admin shows as Mined.
+  yet, which the admin shows as Mined.
 - **The `GET`** has the chequebook path check an open operation first, at most once every 30
   seconds per request id. When that check fails, or takes longer than five seconds, the record is
   answered as it stands.
@@ -1078,7 +1078,7 @@ keys an operator sets by hand. `docker-compose.yml` sets `SHLS_ROOT` and `BEE_DA
 | `CHEQUEBOOK_RPC_ENDPOINTS`    | none                                              | A chain endpoint per chain id for chequebook transfers, ahead of the defaults. See [Funding a chequebook on a new host](#funding-a-chequebook-on-a-new-host)                                                                                                                                                                                                                                                                                        |
 | `CHEQUEBOOK_FLOOR_BZZ`        | `0.5`                                             | The chequebook balance below which the manager warns, a decimal BZZ amount above zero with at most 16 decimal places. A malformed value stops the manager at startup                                                                                                                                                                                                                                                                                |
 | `FUNDING_API_TOKEN`           | none, the API is off                              | The bearer token of the funding API under `/api/admin-funding`, the same value as the admin's `MANAGER_FUNDING_TOKEN`. 32 characters or more with no space, or the manager stops at startup naming the variable. Never logged                                                                                                                                                                                                                       |
-| `ADMIN_LINK_ALLOW_PLAIN_HTTP` | `false`                                           | Whether the web2 admin link may be plain `http` to another host than the manager's own. Off, the manager takes plain `http` only to a loopback address, `host.docker.internal` or the bridge address it resolves to, or a name in a Docker network of the api container. Set it only for a test setup: every push carries the registrar token and each stage's SRT passphrase                                                                       |
+| `ADMIN_LINK_ALLOW_PLAIN_HTTP` | `false`                                           | Whether the admin link may be plain `http` to another host than the manager's own. Off, the manager takes plain `http` only to a loopback address, `host.docker.internal` or the bridge address it resolves to, or a name in a Docker network of the api container. Set it only for a test setup: every push carries the registrar token and each stage's SRT passphrase                                                                            |
 | `KNOWN_HOST_NETWORK_PORTS`    | none                                              | Host-network containers that count as known, by Compose project, with the ports each holds, as in `edge=80/tcp,443/tcp,443/udp`, projects separated by `;`. Docker reports no port map for such a container, so an unnamed one blocks every removal, port handover and firewall export on its host. A port left out counts as free. No deployment may carry a named project's name. A malformed value stops the manager at startup                  |
 
 `MANAGER_ROOT` and `STACK_VERSIONS_ROOT` are mounted into the api container at the same absolute

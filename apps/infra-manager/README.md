@@ -4,7 +4,7 @@ The manager is a web console and an API for running the Swarm HLS live-streaming
 `apps/hls-stream`, on your own hosts. An operator uses it to create a deployment, which is one
 running copy of some of the stack's services, and the manager deploys, checks, stops and removes
 it. It keeps the ports of deployments on one host apart, buys and tops up postage for the Bee nodes
-it runs, fills their chequebooks, and tells the web2 admin (`apps/web2-admin`) about every stage
+it runs, fills their chequebooks, and tells the admin (`apps/web2-admin`) about every stage
 that publishes.
 
 ## What you can deploy
@@ -104,9 +104,9 @@ All three sit outside the folder a manager deploy replaces, so a deploy never wi
     postage batch.
   - [chequebook.md](docs/features/chequebook.md): filling a Bee node's chequebook and recovering a
     transfer.
-  - [web2-admin-link.md](docs/features/web2-admin-link.md): linking uploaders to the web2 admin, the
+  - [web2-admin-link.md](docs/features/web2-admin-link.md): linking uploaders to the admin, the
     uploader's own token, and Test connection.
-  - [stages.md](docs/features/stages.md): the stage records the manager pushes into the web2 admin,
+  - [stages.md](docs/features/stages.md): the stage records the manager pushes into the admin,
     and the catalogue node.
   - [auth-and-public-access.md](docs/features/auth-and-public-access.md): the sign-in, the HTTPS
     edge, the API binds and the host firewall.

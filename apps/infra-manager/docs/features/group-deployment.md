@@ -45,7 +45,7 @@ Everything the create form fills is applied to every member as it is:
   pre-fills a two-second segment length wherever the deployment runs SRS,
 - `stack_settings`, so every member starts with the same stack settings.
 
-No web2 admin token is shared. Each uploader linked to the manager's admin gets a
+No admin token is shared. Each uploader linked to the manager's admin gets a
 token of its own at its first deploy ([web2-admin-link.md](web2-admin-link.md)).
 
 ### What each member has of its own

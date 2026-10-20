@@ -266,7 +266,7 @@ The list also holds `docker_unreachable`, `docker_route_missing`,
 `docker_setting_invalid` and `bridge_not_qualified`. The running manager never
 answers them, and `check` is always `null` from it.
 
-The web2 admin moves chequebooks through the same preparation, the same last
+The admin moves chequebooks through the same preparation, the same last
 check and the same journal, on its own bearer-token route,
 `POST /api/admin-funding/chequebook-operations`
 ([manager/README.md](../../manager/README.md#chequebook-operations)). Its

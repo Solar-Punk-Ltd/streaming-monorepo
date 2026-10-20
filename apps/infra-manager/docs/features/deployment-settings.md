@@ -70,7 +70,7 @@ A save names the revision the page read, and a save made against an older one is
 
 ## The shape a value may have
 
-Every value follows the rules of the version settings page (see [stack-versions.md](stack-versions.md)), which keep out a value the stack's loader and the manager's parser would read differently. A value holds at most 8192 characters. For keys whose accepted values are known, such as the start gate mode, the chequebook floor and re-check interval, the stamp limits, the log level and format, the switches, and the two web2 admin keys, the value is also held to what the stack takes, in `common/src/stackSettingFields.ts`:
+Every value follows the rules of the version settings page (see [stack-versions.md](stack-versions.md)), which keep out a value the stack's loader and the manager's parser would read differently. A value holds at most 8192 characters. For keys whose accepted values are known, such as the start gate mode, the chequebook floor and re-check interval, the stamp limits, the log level and format, the switches, and the two admin keys, the value is also held to what the stack takes, in `common/src/stackSettingFields.ts`:
 
 - a number to the stream uploader's own bounds,
 - a choice or a switch to the values the stack's samples name,
@@ -79,7 +79,7 @@ Every value follows the rules of the version settings page (see [stack-versions.
 
 Any other key is plain text, checked by its container when it starts.
 
-The two web2 admin keys also follow a rule together, because the uploader turns admin mode on from the address alone and then refuses to start without a token. A save that names either key and leaves an address with no token anywhere, stored, set by the version or generated, is refused with both keys named. A save of other keys is not held to it. A stored token goes only to the origin of the address it was stored for, so a save that moves `ADMIN_API_URL` to another origin must come with a new token or a cleared one, and a deploy that would give the uploader another origin is refused. [The web2 admin link](web2-admin-link.md) has the rest of that feature.
+The two admin keys also follow a rule together, because the uploader turns admin mode on from the address alone and then refuses to start without a token. A save that names either key and leaves an address with no token anywhere, stored, set by the version or generated, is refused with both keys named. A save of other keys is not held to it. A stored token goes only to the origin of the address it was stored for, so a save that moves `ADMIN_API_URL` to another origin must come with a new token or a cleared one, and a deploy that would give the uploader another origin is refused. [The admin link](web2-admin-link.md) has the rest of that feature.
 
 ## The Stack settings card
 
@@ -94,7 +94,7 @@ The Engine card and the engine line of **At a glance** show the stored engine se
 - **A key the version does not declare** shows its stored value and offers only a reset.
 - **An engine setting** is named by its label with the key beside it, shows its help, and takes a number field with its unit and bounds or a list of its choices. Its default is beside it with where it comes from: set on this host, the version's own, or the manager's own. A search finds it by label and help as well as key. A screen reader hears the field as its label and key, then the line under it with the unit and bounds, which is also read out when a refusal replaces it, then the default a reset goes back to.
 
-After the two web2 admin keys the card offers **Test connection**. It asks the manager to try the saved values the next deploy would give the uploader, and shows one sentence for the outcome. The stored token never leaves the manager for it.
+After the two admin keys the card offers **Test connection**. It asks the manager to try the saved values the next deploy would give the uploader, and shows one sentence for the outcome. The stored token never leaves the manager for it.
 
 A value the manager would refuse is named under its field, by the same shared rules, and keeps **Save** off. A pair of engine settings the engine would refuse is named once above Save, in the manager's words, and keeps Save off until the pair is valid. Stored engine settings the next deploy would refuse are named there too, saying that Apply is refused and any other deploy fails until they change. They do not block a save, so a save of other keys still goes through, and so does the save that fixes them.
 
