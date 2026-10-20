@@ -485,7 +485,7 @@ admin keeps writing with A, and the log and the Stages page say which.
 
 | #   | Where            | Step                                                                                                                                                                      |
 | --- | ---------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| 1   | Terraform        | The hosts, DNS names for both consoles, the provider's firewall                                                                                                           |
+| 1   | Your provider    | The hosts, DNS names for both consoles, the provider's firewall                                                                                                           |
 | 2   | The hosts        | The manager's ssh key authorised on the stage and Bee hosts                                                                                                               |
 | 3   | The control host | The manager, the admin and the edge. The admin needs its database, a generated brand key and a generated `INTERNAL_API_TOKEN`, and no stage                               |
 | 4   | Both consoles    | The first user from the command line, then the other users. The two consoles keep separate users                                                                          |

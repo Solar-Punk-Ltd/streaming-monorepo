@@ -7,11 +7,11 @@ short note here on what was decided.
 
 - MIT license, copyright Solar Punk Ltd.
 - pnpm workspace at the root, `web2-admin` as the first package.
-- Design brief for the admin layer copied out of the interactive model.
+- Design brief for the admin layer.
 
 ## Checkpoint 2: first working slice (merged 2026-09-18, PRs 1 to 5)
 
-Spec: docs/architecture/web2-admin-checkpoint-2.md. Decided: same stack as
+Spec: [architecture/web2-admin-checkpoint-2.md](architecture/web2-admin-checkpoint-2.md). Decided: same stack as
 streaming-infra-manager, packages `web2-admin/{common,backend,frontend}` (now
 under `apps/`), scope `@streaming-monorepo/`.
 

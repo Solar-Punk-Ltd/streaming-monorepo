@@ -1,7 +1,7 @@
 # Releasing
 
-Since 2026-10-07 every deploy names the build it sends after the git tag on its commit and builds that name into its
-images, and the consoles show it to signed-in users. So a release is tagged first and deployed after, in this order.
+Every deploy names the build it sends after the git tag on its commit and builds that name into its images, and the
+consoles show it to signed-in users. So a release is tagged first and deployed after, in this order.
 [tools/release/README.md](../tools/release/README.md) says what each script checks.
 
 Run every step from your own checkout of this repository, on the commit you deploy. `<ssh-target>` stands for a host's

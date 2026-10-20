@@ -683,7 +683,7 @@ itself, so two reports racing cannot both win.
 Each accepted report then rewrites the catalogue entry through the same
 single-writer publish path, with `state` set accordingly and `index` /
 `duration` on a `vod` entry. **The state is persisted first and the feed
-written second**, deliberately: a feed write can fail for reasons that have
+written second**, because a feed write can fail for reasons that have
 nothing to do with this stream, and the uploader retries. A failure answers
 `502 publish_failed` with `publish_error` recorded and the state intact, so the
 retry has only the write left to do.
@@ -1596,7 +1596,7 @@ its row shows `index` and `duration` null beside a finished `entryRung`
 although nothing came after it. A rendition report never moves the status,
 so its row names one status on both sides: the one its write saw, or, when
 the write failed, the one the row had when the report arrived. A repeated
-`live` report (the uploader retries) writes one row per report, deliberately:
+`live` report (the uploader retries) writes one row per report, because
 each is a report the row accepted. A failed publish or unpublish carries the
 error, and `feedIndex` when the gateway had already taken the write, which
 means the entry is on the catalogue although the row says it is not. A failed

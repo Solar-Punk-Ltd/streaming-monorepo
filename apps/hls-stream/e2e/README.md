@@ -562,9 +562,8 @@ watches no broadcast: it boots the node through the client's own switch, then pu
 references from an existing recording straight through the client's retrieval path, unthrottled and
 under a cap, counting the tab's WebSocket frames either side of each one. Under the emulated cap
 three idle windows come first, which is where the cap is shown to reach the transport at all, and
-every capped figure is void if it does not. Nothing is asserted, the pre-registered predictions in
-the `in-tab-throttle-probe-prediction-2026-09-02` measurement (kept outside the repository) are restated in the report beside what
-was observed, and it costs **0 BZZ**, so it needs no sitting and no gate. Run it on the host with
+every capped figure is void if it does not. Nothing is asserted, the predictions written down before
+the run are restated in the report beside what was observed, and it costs **0 BZZ**, so it needs no sitting and no gate. Run it on the host with
 `deploy/scripts/browser-on-host.sh --target <host> --profile <profile> --portSlot <slot> --script browser:in-tab-throttle-probe`. `PROBE_OWNER`,
 `PROBE_TOPIC_360_HEX` and `PROBE_TOPIC_1080_HEX` choose the recording, and `PROBE_CAP_KBPS`,
 `PROBE_LOW_CAP_KBPS`, `PROBE_IDLE_SECONDS`, `PROBE_RETRIEVALS_PER_ARM`, `PROBE_BUDGET_SECONDS`,
