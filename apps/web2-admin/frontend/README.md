@@ -34,17 +34,17 @@ pnpm --filter @streaming-monorepo/web2-admin-frontend dev
 From this package, `pnpm mock-api` does the same. Sign in as `admin` with the password
 `admin1234`. Nothing deployed the mock, so its build line reads `Version development build`.
 
-| Variable              | Default                  | What it does                                                                                                                                                   |
-| --------------------- | ------------------------ | -------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `MOCK_API_PORT`       | `9877`                   | the port it listens on                                                                                                                                         |
-| `SEED_ADMIN_USERNAME` | `admin`                  | the user it starts with                                                                                                                                        |
-| `SEED_ADMIN_PASSWORD` | `admin1234`              | that user's password, which the console can change                                                                                                             |
-| `MOCK_NO_USERS`       | unset                    | `true` starts with no users, the only way to see the console's "no users yet" screen                                                                           |
-| `MOCK_NO_STAGES`      | unset                    | `true` starts with no stages: the Stages page's empty state, and a stage picker with nothing to pick                                                           |
-| `MOCK_RECORDING`      | unset                    | `true` starts with one finished recording on the catalogue, to see a recording's details and to unpublish and publish it again                                 |
-| `MOCK_FUNDING`        | unset                    | `off` shows the Funding page's "not set up" state. `refuse` and `lost` play the two failures, as [below](#the-mock-funding)                                    |
-| `MOCK_DEFAULT_THEME`  | `swarm`                  | the host's default look `GET /api/config` answers. The mock checks no name. Set `web3privacy` to see a host's default at work                                  |
-| `VIEWER_BASE_URL`     | `http://localhost:10074` | the "open player catalogue" link. It must be a viewer built for this catalogue                                                                                 |
+| Variable              | Default                  | What it does                                                                                                                   |
+| --------------------- | ------------------------ | ------------------------------------------------------------------------------------------------------------------------------ |
+| `MOCK_API_PORT`       | `9877`                   | the port it listens on                                                                                                         |
+| `SEED_ADMIN_USERNAME` | `admin`                  | the user it starts with                                                                                                        |
+| `SEED_ADMIN_PASSWORD` | `admin1234`              | that user's password, which the console can change                                                                             |
+| `MOCK_NO_USERS`       | unset                    | `true` starts with no users, the only way to see the console's "no users yet" screen                                           |
+| `MOCK_NO_STAGES`      | unset                    | `true` starts with no stages: the Stages page's empty state, and a stage picker with nothing to pick                           |
+| `MOCK_RECORDING`      | unset                    | `true` starts with one finished recording on the catalogue, to see a recording's details and to unpublish and publish it again |
+| `MOCK_FUNDING`        | unset                    | `off` shows the Funding page's "not set up" state. `refuse` and `lost` play the two failures, as [below](#the-mock-funding)    |
+| `MOCK_DEFAULT_THEME`  | `swarm`                  | the host's default look `GET /api/config` answers. The mock checks no name. Set `web3privacy` to see a host's default at work  |
+| `VIEWER_BASE_URL`     | `http://localhost:10074` | the "open player catalogue" link. It must be a viewer built for this catalogue                                                 |
 
 #### The mock funding
 
