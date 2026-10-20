@@ -51,6 +51,9 @@ BOUND="$(dirname "${BASH_SOURCE[0]}")/bound-host.sh"
   echo "cannot read ${BOUND}: sync deploy/scripts as a directory, not one script" >&2
   exit 1
 }
+# REFS, ACCT and METRICS default to files in `phase06`, a working folder in the measurement host's
+# home that is kept outside the repository: a list of segment references, a script that reads the
+# gateway's peer accounting, and a script that reads its metrics.
 REFS="${REFS:-${HOME}/phase06/refs.txt}"
 # Where a named reference pattern is looked up, as `refs-<name>.txt`. An arm that names one walks it
 # instead of ${REFS}, which is what lets one sitting interleave access patterns rather than compare a

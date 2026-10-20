@@ -6,8 +6,9 @@
 #   CONTAINER          the gateway container name, for gateway_cpu_seconds
 #   METRICS            path to gateway-retrieval-metrics.sh, for metrics. It takes the API port and
 #                      then the address, where node-metrics.sh wants a subcommand first. The two
-#                      scripts that call metrics default it to ~/phase06/metrics.sh
-#                      on the host.
+#                      scripts that call metrics default it to `metrics.sh` in `phase06`,
+#                      a working folder in the measurement host's home that is kept outside
+#                      the repository.
 #   GATEWAY_BEE_PORT   the gateway's API port, for metrics
 #   GATEWAY_HOST       the address the gateway's API is bound to, for metrics
 #   ENV_FILE           the compose env file, for set_env_value

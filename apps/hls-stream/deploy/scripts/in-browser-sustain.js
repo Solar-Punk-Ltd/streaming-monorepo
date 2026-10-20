@@ -1,8 +1,8 @@
 /* eslint-env browser */
 /**
- * Sustained-playback probe for an in-browser Swarm node (weeb-3). Answers in-browser question 2:
- * can a browser viewer hold 2.86 Mbps, measured as playhead advance per wall second rather than as
- * arithmetic over per-chunk fetches.
+ * Sustained-playback probe for an in-browser Swarm node (weeb-3). Answers question 2 of the in-browser
+ * list (kept outside the repository): can a browser viewer hold 2.86 Mbps, measured as playhead
+ * advance per wall second rather than as arithmetic over per-chunk fetches.
  *
  * ⛔ THIS CANNOT RUN IN AN AUTOMATED BROWSER PANE, AND THE SCRIPT REFUSES TO TRY.
  *
