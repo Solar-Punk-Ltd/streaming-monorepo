@@ -62,13 +62,13 @@ export interface IngestDetails {
 }
 
 /**
- * `POST /api/streams/:id/finish`: finish the stream, which changes its key at once, behind a confirmation. On a
- * recorded stream (`vod`) it closes the restart window early; on a live one the broadcast goes on until the encoder
- * stops or drops, and the stream then ends for good. Allowed to whoever may rotate a key. It answers the stream as it
- * now stands, with `finishedAt` set, and the ingest details with the new key, which the page shows as after Rotate
- * key. Refused with 404 `stream_not_found` for no such stream, 409 `stream_not_started` for a stream that never went
- * live (draft, published or publishing), and 409 `stream_finished` for one already finished. Nothing stops an encoder
- * that is still pushing.
+ * `POST /api/streams/:id/finish`: Finalize, which changes the key of a stream that has ended (`vod`) at once, behind a
+ * confirmation, and closes its restart window early. Never on a live stream: the broadcast is stopped first. Allowed
+ * to whoever may rotate a key. It answers the stream as it now stands, with `finishedAt` set, and the ingest details
+ * with the new key, which the page shows as after Rotate key. Refused with 404 `stream_not_found` for no such stream,
+ * 409 `stream_live` for a live one ("Stop the broadcast first."), 409 `stream_not_started` for one that never ended
+ * (draft, published or publishing), and 409 `stream_finished` for one already finalized. The route, the codes and the
+ * audit names keep the word "finish".
  */
 export interface StreamFinishAnswer {
   stream: Stream;

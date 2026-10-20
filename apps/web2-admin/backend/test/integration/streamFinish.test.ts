@@ -95,29 +95,23 @@ describe('migration 022', () => {
 });
 
 describe('Finish', () => {
-  it('changes the key of a live or recorded stream once, with finished_at, and matches nothing a second time', async () => {
-    for (const status of ['live', 'vod'] as const) {
-      const stream = await streamIn(status, status === 'vod' ? '1 minute' : null);
-      const key = newPublishKey();
+  it('changes the key of a recorded stream once, with finished_at, and matches nothing a second time', async () => {
+    const stream = await streamIn('vod', '1 minute');
+    const key = newPublishKey();
 
-      const finished = await streams.finish(stream.id, key);
+    const finished = await streams.finish(stream.id, key);
 
-      assert.ok(finished, status);
-      assert.equal(finished.publish_key, key);
-      assert.ok(finished.finished_at instanceof Date, `${status}: finished_at is read back`);
-      assert.deepEqual(finished.publish_key_rotated_at, finished.finished_at);
-      assert.equal(finished.status, status);
-      assert.equal(
-        await streams.finish(stream.id, newPublishKey()),
-        null,
-        `${status}: a second Finish matches nothing`,
-      );
-      assert.equal((await streams.findById(stream.id))?.publish_key, key);
-    }
+    assert.ok(finished);
+    assert.equal(finished.publish_key, key);
+    assert.ok(finished.finished_at instanceof Date, 'finished_at is read back');
+    assert.deepEqual(finished.publish_key_rotated_at, finished.finished_at);
+    assert.equal(finished.status, 'vod');
+    assert.equal(await streams.finish(stream.id, newPublishKey()), null, 'a second Finalize matches nothing');
+    assert.equal((await streams.findById(stream.id))?.publish_key, key);
   });
 
-  it('matches nothing on a stream that never went live', async () => {
-    for (const status of ['draft', 'published', 'publishing'] as const) {
+  it('matches nothing on a live stream, nor on one that never ended', async () => {
+    for (const status of ['live', 'draft', 'published', 'publishing'] as const) {
       const stream = await streamIn(status);
       assert.equal(await streams.finish(stream.id, newPublishKey()), null, status);
       assert.equal((await streams.findById(stream.id))?.publish_key, stream.publish_key);
@@ -127,8 +121,9 @@ describe('Finish', () => {
 
 describe('finished_at through the state reports', () => {
   it('is cleared by a comeback from vod, and left by a retried live report and by the vod report', async () => {
+    // A row finalized while live by an earlier release (rc.6 on QA): Finalize refuses a live stream now.
     const live = await streamIn('live');
-    await streams.finish(live.id, newPublishKey());
+    await database.pool.query(`UPDATE streams SET finished_at = NOW() WHERE id = $1`, [live.id]);
     assert.ok((await streams.markLive(live.id, ['live', 'vod']))?.finished_at, 'live → live leaves it');
     assert.ok((await streams.markVod(live.id, ['live', 'vod'], 2, 20))?.finished_at, 'the vod report leaves it');
 

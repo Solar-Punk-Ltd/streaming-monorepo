@@ -354,9 +354,10 @@ export class StreamRepository {
   }
 
   /**
-   * Finish: the key changes for good, in one conditional statement with `finished_at`, on a stream that is live or
-   * ended (`vod`) and not finished yet. Null when nothing matched: no such stream, one that never went live, or one
-   * already finished; the caller re-reads to say which. Neither key reaches a log line.
+   * Finalize (the route `/finish`): the key changes for good, in one conditional statement with `finished_at`, on a
+   * stream that has ended (`vod`) and is not finalized yet. Never on a live one: the broadcast is stopped first. Null
+   * when nothing matched: no such stream, a live one, one that never ended, or one already finalized; the caller
+   * re-reads to say which. Neither key reaches a log line.
    */
   async finish(id: string, publishKey: string): Promise<StreamRow | null> {
     const result = await this.pool.query<StreamRow>(
@@ -365,7 +366,7 @@ export class StreamRepository {
               publish_key_rotated_at = NOW(),
               finished_at = NOW(),
               updated_at = NOW()
-        WHERE id = $1 AND status IN ('live', 'vod') AND finished_at IS NULL
+        WHERE id = $1 AND status = 'vod' AND finished_at IS NULL
         RETURNING ${STREAM_COLUMNS}`,
       [id, publishKey],
     );

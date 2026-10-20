@@ -11,7 +11,12 @@ import { describe, it } from 'node:test';
 import type { IngestDetails } from '@streaming-monorepo/web2-admin-common';
 
 import { toStream, useRestartWindow } from '../../src/api/presenters.js';
-import { StreamFinishedError, StreamNotFoundError, StreamNotStartedError } from '../../src/domain/errors/index.js';
+import {
+  StreamFinishedError,
+  StreamLiveError,
+  StreamNotFoundError,
+  StreamNotStartedError,
+} from '../../src/domain/errors/index.js';
 import { FakeFeedGateway } from '../../src/domain/FakeFeedGateway.js';
 import type { FeedIdentity } from '../../src/domain/feedIdentity.js';
 import { IngestService } from '../../src/domain/IngestService.js';
@@ -103,26 +108,41 @@ describe('Finish', () => {
     assert.equal(auditText(audit).includes(OLD_KEY), false);
   });
 
-  it('finishes a live stream, which stays finished through retried live reports and its end', async () => {
-    const { store, finishing, publishService, state } = setup();
+  it('refuses a live stream: stop the broadcast first, its key unchanged', async () => {
+    const { store, audit, finishing, publishService, state } = setup();
     const stream = store.add(streamRow({ publish_key: OLD_KEY }));
     await publishService.publish(TEST_OPERATOR, stream.id);
     await state.report(stream.id, { state: 'live' }, ON_STAGE);
 
-    const { stream: finished } = await finishing.finish(TEST_OPERATOR, stream.id);
-    assert.equal(finished.status, 'live');
-    assert.ok(finished.finished_at);
+    await assert.rejects(finishing.finish(TEST_OPERATOR, stream.id), (error: unknown) => {
+      assert.ok(error instanceof StreamLiveError);
+      assert.equal(error.message, 'Stop the broadcast first.');
+      return true;
+    });
 
-    // The uploader retries its `live` report; the broadcast goes on, finished.
+    assert.equal(store.get(stream.id).publish_key, OLD_KEY);
+    assert.equal(store.get(stream.id).finished_at, null);
+    assert.equal(audit.withAction('stream.finish').length, 0);
+  });
+
+  it('keeps the mark of a live row finalized before Finalize refused one, through retried live reports and its end', async () => {
+    // A row finished while live by an earlier release (rc.6 on QA), which still exist.
+    const { store, publishService, state } = setup();
+    const stream = store.add(streamRow({ publish_key: OLD_KEY }));
+    await publishService.publish(TEST_OPERATOR, stream.id);
+    await state.report(stream.id, { state: 'live' }, ON_STAGE);
+    store.rows.set(stream.id, { ...store.get(stream.id), finished_at: ENDED });
+
+    // The uploader retries its `live` report; the broadcast goes on, finalized.
     await state.report(stream.id, { state: 'live' }, ON_STAGE);
     assert.ok(store.get(stream.id).finished_at, 'a retried live → live leaves it');
-    // The encoder stops: the stream ends, finished, with no window to come back in.
+    // The encoder stops: the stream ends, finalized, with no window to come back in.
     await state.report(stream.id, { state: 'vod', index: 3, duration: 10 }, ON_STAGE);
     await state.idle();
     const ended = store.get(stream.id);
     assert.equal(ended.status, 'vod');
     assert.ok(ended.finished_at, 'the vod report leaves it');
-    assert.equal(ended.publish_key, finished.publish_key, 'the sweep changes nothing on a finished stream');
+    assert.equal(ended.publish_key, OLD_KEY, 'the sweep changes nothing on a finalized stream');
     assert.equal(restartUntilOf(ended, 30), null);
   });
 
@@ -154,13 +174,13 @@ describe('Finish', () => {
     assert.equal(store.get(stream.id).finished_at, null, 'a live report that starts a broadcast clears it');
   });
 
-  it('refuses a stream that is neither live nor ended, one already finished, and one that does not exist', async () => {
+  it('refuses a stream that never ended, one already finalized, and one that does not exist', async () => {
     const { store, audit, finishing } = setup();
     for (const status of ['draft', 'published', 'publishing'] as const) {
       const stream = store.add(streamRow({ status, publish_key: OLD_KEY }));
       await assert.rejects(finishing.finish(TEST_OPERATOR, stream.id), (error: unknown) => {
         assert.ok(error instanceof StreamNotStartedError, status);
-        assert.equal(error.message, 'Only a live or ended stream can be finished.');
+        assert.equal(error.message, 'Only an ended stream can be finalized.');
         return true;
       });
       assert.equal(store.get(stream.id).publish_key, OLD_KEY, `${status}: the key is unchanged`);
@@ -168,7 +188,7 @@ describe('Finish', () => {
     const finished = store.add(streamRow({ status: 'vod', ended_at: ENDED, finished_at: ENDED }));
     await assert.rejects(finishing.finish(TEST_OPERATOR, finished.id), (error: unknown) => {
       assert.ok(error instanceof StreamFinishedError);
-      assert.equal(error.message, 'This stream is already finished: its key has changed.');
+      assert.equal(error.message, 'This stream is already finalized: its key has changed.');
       return true;
     });
     assert.equal(store.get(finished.id).publish_key, finished.publish_key);
