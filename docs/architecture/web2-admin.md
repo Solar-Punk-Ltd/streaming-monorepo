@@ -1,137 +1,105 @@
-# Web2 admin layer
+# The admin
 
-This page is the design of the admin layer, written down so that everyone
-working in the repository has it in one place.
+This page explains what the admin (`apps/web2-admin`) is for, how it fits with the manager and the
+stack, and why it is shaped the way it is. It describes concepts, not routes or settings: those are
+in [the backend's README](../../apps/web2-admin/backend/README.md).
 
-## What it is
+## What it is for
 
-The brand console and the API behind it. Streams, branding, users and the
-brand wallet, for every brand rather than one. Anything that touches a host or
-a node's wallet is the streaming-infra-manager's, and the manager tells the
-admin what it runs: since the [stages](stages.md) work, every stage the manager
-deploys pushes its record into the admin. The admin holds the brand wallet, its
-key encrypted under a secret of its own, and funds the node wallets from it
-through the manager's funding API ([funding.md](funding.md)).
+The admin is the brand console and the API behind it. A brand is a customer that streams under its
+own name. Its operators sign in to the admin to draft streams, publish them to the stream list that
+viewers read, called the catalogue, get the OBS details for each broadcast, watch the stages their
+streams run on, and fund the nodes behind those stages.
 
-Exactly one admin layer for every brand. If it is down, streaming continues, but
-nobody can create a stream, fund a node or change a logo until it is back.
+The admin is the one place a brand changes anything. Anything that touches a host or a node's
+wallet belongs to the manager. If the admin is down, broadcasts that are running carry on, and
+published streams stay published, because Swarm holds them. Nobody can create, publish or change a
+stream, or fund a node, until it is back.
 
-Tech tags from the model: Postgres, REST.
+## The parts
 
-## Components (five)
+| Part         | Role                                                                                                                                                                                                                                                         |
+| ------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| The console  | The only surface an operator touches: streams and the stage each is on, the stages the manager pushed with their readiness, stamps and chequebooks, the catalogue's batch, funding, and the users who may sign in.                                           |
+| The API      | Every change an operator can make, in one place. It is the only writer of the catalogue, so who may do what is enforced in one place. It takes the manager's pushes and each stage uploader's reports on bearer tokens, and calls the manager's funding API. |
+| Postgres     | Users and sessions, streams and their stages, the records the manager pushed, every catalogue write with its exact bytes, the funding journals and the audit log.                                                                                            |
+| Sign-in      | Usernames, passwords, an admin role and server-side sessions ([web2-admin-auth.md](web2-admin-auth.md)).                                                                                                                                                     |
+| The contract | `@streaming-monorepo/web2-admin-common`, the types the API answers and the console reads.                                                                                                                                                                    |
 
-| Component                    | Role                                                                                                                                                                                                                                                                                                                                                                                                                    | Tech          | On loss                                                                               |
-| ---------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------- | ------------------------------------------------------------------------------------- |
-| Brand console                | The only surface a customer touches. Streams and the stage each is on, the stages the manager pushed with their readiness, stamps and cheque balances, the catalogue batch, and branding.                                                                                                                                                                                                                               | web UI        | API unaffected, brand cannot reach it.                                                |
-| Authentication and ownership | Operator sign-in is built ([web2-admin-auth.md](web2-admin-auth.md)). OPEN: which brand a call may act for. Candidates: OIDC against something the brand already has, wallet signature, magic link.                                                                                                                                                                                                                     | OIDC / wallet | Anyone reaching the API can act as any brand. Blocks the second brand, not the first. |
-| Admin API                    | Every state change a brand can make, in one place. The only writer, so ownership is enforced in exactly one place. Takes the manager's stage and catalogue stamp records on the registrar token, and each stage's uploader on a token of its own, answered only about that stage's streams. Writes the catalogue through the catalogue node's batch. Calls the manager's funding API and nothing else of the manager's. | REST          | Nothing can be created or changed. Running streams carry on.                          |
-| Postgres                     | Users, streams and their stages, the stage and catalogue stamp records the manager pushed, every catalogue write with its exact bytes, the audit log, and later brands and branding. The one row set that has to be right about which brand owns what. Small enough that a nightly dump is a real backup.                                                                                                               | Postgres      | Console and API stop answering. Published streams stay published (Swarm holds them).  |
-| Branding                     | Logo, colours and domain, turned into the config the Viewer SPA bootstrap reads: theme, logo, stream list, serving domain.                                                                                                                                                                                                                                                                                              | theme, domain | Player falls back to unbranded default, a visible failure for a white-label product.  |
+## How it relates to the manager and the stack
 
-## Connections
+```
+  console ──────────────────────────▶ admin API ──── writes ───▶ the catalogue on Swarm
+                                       ▲     │
+     stage and catalogue stamp pushes  │     │  funding API calls
+                                       │     ▼
+                                      manager
 
-Inside the container:
+  stage's uploader ── lookup and state reports, on the stage's own token ──▶ admin API
+```
 
-- Brand operator logs in to the Brand console.
-- Brand console calls the Admin API.
-- Admin API keeps state in Postgres.
-- Authentication authorises calls to the Admin API. It sits beside the API, not
-  in front of the console, because the question is which brand a call may act
-  for, not who may see a page.
-- The manager (streaming-infra-manager) pushes each stage's record and the
-  brand's catalogue stamp record into the Admin API over its admin link. The
-  Admin API keeps what it was told.
-- The Admin API calls the manager's funding API, on a bearer token of its
-  own, for the node wallets and their balances, and to send the transfers the
-  brand wallet signs.
-- Each stage's stream uploader asks the Admin API which stream an encoder
-  publishes to and reports its state, on a token of its own.
-- Branding writes the theme and domain the Viewer SPA bootstrap reads.
+- **The manager** (`apps/infra-manager`) deploys and runs the stages, a stage being one deployment
+  of the stack that takes broadcasts in, and the Swarm nodes they upload through. Over its admin
+  link, it pushes the admin a record of every stage it runs (its ingest address, the address it
+  signs as, its rungs' stamps and chequebooks, its readiness, and the sha256 of its uploader's own
+  token) and the record of the catalogue stamp, the postage batch and node the catalogue is written
+  with. The admin keeps what it was told. [stages.md](stages.md) describes those records.
+- **The admin calls the manager** for one thing, its funding API, on a bearer token of its own:
+  to read the node wallets, to relay transfers the brand wallet signed, and to ask a node to top up
+  or dilute a batch or move its chequebook, which the node pays for itself.
+  [funding.md](funding.md) describes it.
+- **The stack's uploader** runs on each stage. When an encoder connects, it asks the admin which
+  stream that is, checks the stream's key, and uploads the broadcast. It reports to the admin when
+  the broadcast goes live and when it ends, and each rung of an adaptive bitrate ladder reports its
+  own feed.
 
-At the platform level the admin layer also:
+## Who writes what on Swarm
 
-- writes the brand's catalogue, signed by the brand key, through the dedicated
-  catalogue node and the immutable batch the manager designates,
-- shows each rung's stamp and chequebook as the manager last pushed them, and
-  tops up or dilutes a node's batches and brings its chequebook to a target
-  through the manager's funding API, each paid for by that node,
-- funds the brand's node wallets with xDAI and xBZZ from the brand wallet,
-- hands brand config to the Viewer SPA.
+A viewer finds streams in the catalogue, a Swarm feed holding one JSON list of entries, and plays a
+stream from its own manifest feeds. Two writers on one feed fork it, because each would take the
+same next index. So the writing is split:
+
+- **The admin is the only writer of the catalogue.** It signs it with the brand key, a key that
+  never leaves the admin. It takes the next index from its own record of every write, never from a
+  Bee node, because a node's view of a feed can lag a write it just made.
+- **The uploader is the only writer of each stream's feeds.** Each stage signs with a key of its own,
+  and a stream takes its stage's address as its owner, so the owner on the catalogue entry is the
+  owner of the feeds the viewer plays. The admin holds no stage's key.
+- **The uploader reports, the admin rewrites the entry.** A state report moves the stream to live
+  or recorded, and the admin writes that onto the stream's catalogue entry. With an adaptive bitrate
+  ladder, the stream's topic is the topic of the master playlist, each rung's feed topic is derived
+  from it and the rung's name, and the admin merges the rungs' reports onto the entry.
+
+A stream is a row in Postgres first and a catalogue entry second. An operator drafts it, and
+publishing writes the entry. A write that fails leaves the row as it was, with the reason, to try
+again.
 
 ## What it does not do
 
-- It never holds a node's key and never touches a host. Postage, cheques,
-  ssh and docker compose all live in streaming-infra-manager. The one wallet
-  it holds is the brand wallet, and it signs with that alone.
-- It calls the manager's funding API and nothing else of the manager's. It
-  does not provision or stop a stage, buy a batch, or choose the catalogue's
-  batch: the manager pushes what it runs, and the admin reads it. A top-up, a
-  dilution or a chequebook move is asked of the manager, which asks the node,
-  and the admin signs nothing for it.
-- It carries no stage in its env file: no ingest address, port or passphrase,
-  Bee address or batch id. It learns them from the manager's pushes, and
-  refuses to publish, saying why, until the manager has designated a
-  catalogue batch.
-- It holds no stage's signing key. Each stage signs its feeds with a key of
-  its own, and the admin knows only its address. The brand key signs the
-  catalogue alone and never leaves the admin.
-- It does not serve media. Ingest, the ABR ladder, packaging and upload live on
-  a stage host. Publishers and gateways live on a Bee host.
+- It never holds a node's key and never touches a host. Postage, cheques, ssh and Docker all belong
+  to the manager. The one wallet the admin holds is the brand wallet, and it signs with that alone.
+- It does not provision or stop a stage, buy a batch, or choose the catalogue's batch. The manager
+  pushes what it runs, and the admin reads it.
+- It carries no stage in its settings: no ingest address, port or passphrase, Bee address or batch
+  id. It learns them from the manager's pushes, and refuses to publish, saying why, until the
+  manager has designated a catalogue batch.
+- It does not serve media. Ingest, the bitrate ladder, packaging and upload live on a stage host.
 
-## The manager that talks to it
+## Not yet built
 
-The manager, [`apps/infra-manager`](../../apps/infra-manager/README.md),
-provisions, stops and funds the stages, behind its own sessions. The admin
-layer calls one API of it, the funding API, on its own bearer token, and sends
-every funding operation through it. The manager holds the admin's address and
-its `INTERNAL_API_TOKEN`, the registrar token, in its admin link, and pushes with
-them: every stage's record (its ingest details, the owner it signs as, its
-rungs' stamps and chequebooks, its readiness, and the sha256 of its uploader's
-own token) and the catalogue stamp record. [stages.md](stages.md) is the design
-and the behaviour as built.
+- **Separate brands.** One admin serves one installation. Every signed-in operator can act on every
+  stream, and the audit log records who did. Keeping one brand's streams apart from another's, and
+  how a brand proves who it is, are not yet built.
+- **Branding.** The console has two looks, and a host's default look is a setting. A brand's logo,
+  colours and domain, turned into the configuration the viewer reads, are not yet built.
+- **The manager deploying the admin.** The admin's deploy script takes the manager's flags, but the
+  manager does not run it yet. [The deploy guide](../../apps/web2-admin/deploy/README.md#known-limits)
+  lists what that step still needs.
+- **Chat.** Whether viewer chat runs over Swarm feeds or a websocket in the admin is not decided.
 
-## Open questions carried into the build
+## The stack it is built on
 
-1. Ownership across brands: which brand a call may act for. The operator half
-   of this is answered: the console has usernames, passwords, an admin role
-   and user management, ported from streaming-infra-manager and described in
-   [web2-admin-auth.md](web2-admin-auth.md). A stream belongs to the
-   installation: every signed-in operator can act on every stream,
-   `streams.user_id` records who drafted it, and the audit log
-   (migration 007) records who acted on it since. That is the single-tenant
-   shape of the answer. Separating one brand's streams from another's, and
-   choosing how a brand proves itself (OIDC against something it already has,
-   a wallet signature, or a magic link), are still open and still block the
-   second brand rather than the first.
-2. Manager API authentication once admin and manager are on different hosts.
-   The manager answered its own half on `main-v2`: sessions, roles and a
-   cross-site check. What is undecided is how this service authenticates to it
-   as a machine caller, which is the same shape of problem the uploader's
-   bearer token solves in the other direction. Decided on 2026-09-28 and
-   described in [stages.md](stages.md): the manager pushes what the admin
-   needs over the admin link it already holds. Funding is the one call the
-   other way: the admin calls the manager's funding API on a bearer token of
-   its own ([funding.md](funding.md)).
-3. Chat: Swarm feeds/GSOC versus a websocket in the web2 layer. Drawn in the
-   SPA, not decided. Only matters here if the websocket answer wins.
-4. The manager running the admin's deploy. `apps/web2-admin/deploy/deploy.sh`
-   takes the flags the manager hands a stack's `deploy.sh`, closed standard
-   input included, but the manager does not run it yet. Open for that step:
-   where the manager's checkout of this repository lives and how it writes
-   `apps/web2-admin/backend/.env.<profile>`, since it writes a stack's env file
-   at that checkout's root today. Whether it passes the stack-only flags
-   `--feed-owner`, `--feed-topic` and `--stamp-id`, which the admin's script
-   refuses. And the `stop.sh`, `health.sh` and `clean.sh` the manager expects
-   beside `deploy.sh`, which the admin does not have.
-
-## Stack (decided 2026-09-11)
-
-Same as streaming-infra-manager, so the two codebases feel like one team's:
-
-- TypeScript, ESM, exact-pinned dependencies, pnpm workspace.
-- `apps/web2-admin/backend`: Express 5, `pg`, yup validation, SQL migrations in
-  the repo run on startup, Node test runner through tsx (unit and integration).
-- `apps/web2-admin/frontend`: React 19, MUI 9, Vite. The console is modelled on
-  msrs-client (https://github.com/Solar-Punk-Ltd/msrs-client), the deprecated
-  admin UI this console replaces.
-- Package scope `@streaming-monorepo/`.
+The admin follows the manager's conventions where a choice is arbitrary, so the two read as one
+codebase: TypeScript and ESM with exact-pinned dependencies in the repository's pnpm workspace,
+Express 5 with `pg` and yup, SQL migrations run at startup, `node:test` through tsx, and a React,
+MUI and Vite console. Sign-in shares its code with the manager through `packages/web-auth`.

@@ -1,14 +1,28 @@
-# Server deployment
+# Deploying the admin
 
-One host, one checkout, one `docker compose` project per profile: postgres,
-the admin API, and the nginx-served console in front of it. Nothing is
-published but the console, on the host's loopback. The host's edge, one Caddy
-per host set up with `infra/edge/edge.sh`, serves it over HTTPS under its own
-name, and an SSH tunnel is the way in without it.
+This guide puts the admin on a host and serves its console over HTTPS. A host
+runs one checkout and one `docker compose` project per profile, where a profile
+is one brand's admin with its own env file and database: Postgres, the admin
+API, and the console served by nginx in front of it. Nothing is published but
+the console, on the host's loopback. The host's edge, one Caddy per host set up
+with `infra/edge/edge.sh`, serves it over HTTPS under its own name, and an SSH
+tunnel is the way in without it.
 
-`deploy.sh` is written so streaming-infra-manager can run it the way it runs
-swarm-hls-stream's: same flags, standard input closed, output streamed. The
-manager does not run it yet. See "Running it from the manager" below.
+In short:
+
+1. Set up the host once ([One-time host setup](#one-time-host-setup)).
+2. Make the profile's env file on your machine ([The env file](#the-env-file)).
+3. Run `./deploy/deploy.sh --host=<ssh-target> --profile=<profile>` from
+   `apps/web2-admin` ([Deploying](#deploying)). It worked when its last line is
+   `deployed <label> (<short commit>)`.
+4. Run the first-user command the deploy printed
+   ([The first user](#the-first-user)).
+5. Serve the console over HTTPS with the host's edge
+   ([Public HTTPS: the host's edge](#public-https-the-hosts-edge)).
+
+`deploy.sh` takes the same flags and runs the same way as the stack's deploy
+script, with standard input closed and output streamed, so that the manager can
+run it. The manager does not run it yet ([Known limits](#known-limits)).
 
 ## One-time host setup
 
@@ -62,10 +76,6 @@ Make one from the sample and fill it in, from `apps/web2-admin`:
 cp backend/.env.sample backend/.env.brand-a
 ```
 
-A checkout that deployed before the admin moved into `apps/web2-admin` still
-keeps its env files in `web2-admin/backend/`. Move them rather than making new
-ones: see "Upgrading from before the move into apps/web2-admin" below.
-
 The script refuses to deploy, before anything leaves your machine, when a key
 the API cannot start without is missing or malformed: `POSTGRES_PASSWORD`,
 `FEED_PRIVATE_KEY` and `INTERNAL_API_TOKEN` (32 characters or more), plus the
@@ -90,9 +100,9 @@ value is printed. The address itself is the API's to judge: one that is not
 https, or plain http to this host, stops the API with a sentence in its log,
 which the deploy prints when the API does not come up.
 
-An env file that still sets a key the admin no longer reads deploys as it did,
-with a warning naming each one. [Keys no longer read](../backend/README.md#keys-no-longer-read)
-in the backend README lists them and says what replaced them.
+An env file that sets a key the admin ignores deploys, with a warning naming
+each one. [Retired keys](../backend/README.md#retired-keys) in the backend
+README lists them.
 
 Nor does the file name the build: `deploy.sh` builds `WEB2_ADMIN_VERSION` and
 `WEB2_ADMIN_COMMIT` into the api image (see "The version" below). An env file
@@ -154,7 +164,7 @@ deploy.sh --host=<ssh-target> [--profile=<name>] [--portSlot=<N>] [--remote-path
 - Services are `postgres`, `api` and `web`. None named means all three. Compose
   starts whatever a named service depends on.
 - Each flag with a value also takes it as the next word (`--host admin-host`), as
-  swarm-hls-stream's do. An empty value (`--portSlot=`) is an error, never the
+  the stack's do. An empty value (`--portSlot=`) is an error, never the
   default. Anything else starting with a dash is refused.
 - `HEALTH_TIMEOUT` in the environment sets how long the host waits for the
   stack to come up healthy, default 120 seconds.
@@ -206,7 +216,7 @@ Before a release the operator tags the commit with the tag script, step 1 of
 [tools/release](../../../tools/release/README.md)):
 
 - the label is the tag on the commit. On a commit without one, it is the nearest tag
-  before it and how many commits past it, `QA-build-2026-10-07+3`, or the short
+  before it and how many commits past it, such as `v2.4.0+3`, or the short
   commit when no tag is behind it. `-dirty` ends it when `apps/web2-admin`,
   `packages/` or the root's `package.json`, `pnpm-lock.yaml` or
   `pnpm-workspace.yaml` hold changes not yet committed.
@@ -269,9 +279,6 @@ without its own exclude every deploy would delete them. Excluded, the whole
 directory is neither sent nor deleted, and a web2-admin deploy never touches
 the edge.
 
-Two deploys to the same host at the same time are not guarded against. They
-write into the same tree.
-
 ### `--host=localhost`
 
 No rsync and no ssh: the same steps run in this checkout against the local
@@ -286,9 +293,9 @@ own, and it is also a quick way to try the production stack on a laptop.
 | no slot        | `WEB2_ADMIN_WEB_PORT` from the env file, else `9090`                |
 
 With a slot the slot wins, and a `WEB2_ADMIN_WEB_PORT` in the file is ignored
-with a line saying so. That is swarm-hls-stream's rule.
+with a line saying so. That is the stack's rule.
 
-Why 11009: swarm-hls-stream's slots give every service a last digit, `base +
+Why 11009: the stack's port slots give every service a last digit, `base +
 N*10`. Its first block, 10000 to 10009, has no digit left (10009 is the SRS
 HTTP API), and its second block uses digits 1 to 6 of 11000 to 11999 for the
 per-rung Bee nodes. Digit 9 of the second block is used by no stack service at
@@ -359,94 +366,11 @@ export WEB2_ADMIN_ENV_FILE=../backend/.env.brand-a
 docker compose -p web2-admin-brand-a -f deploy/docker-compose.yml --env-file backend/.env.brand-a logs -f api
 ```
 
-On a host deployed to before the move, a profile that has not been deployed
-since keeps its env file at the old path, and these commands name that path
-instead: see "A profile not yet redeployed" below.
-
-## Upgrading from before the move into apps/web2-admin
-
-Until the admin moved into `apps/web2-admin` it sat at the repository root: a
-profile's env file was `web2-admin/backend/.env.<profile>`, and the edge's was
-`deploy/edge/.env`. Git moves the files it tracks and leaves ignored ones where
-they are, so a checkout that deployed before the move still holds its env files
-at the old paths, and so does every host it deployed to.
-
-### On your machine
-
-Move each env file, from the repository root, rather than making a new one from
-the sample. A new `POSTGRES_PASSWORD` locks the API out of the profile's
-existing database, and a new `FEED_PRIVATE_KEY` is a new brand key, so the
-admin writes a new catalogue feed under another owner, one no viewer was built
-for, and the one viewers read stops changing.
-
-```sh
-mv web2-admin/backend/.env.brand-a apps/web2-admin/backend/.env.brand-a   # each profile
-mv web2-admin/backend/.env apps/web2-admin/backend/.env                   # the default profile, if you use it
-mv deploy/edge/.env infra/edge/.env                                       # the edge, if you run it
-```
-
-`deploy.sh` and `edge.sh` refuse while a file is only at its old path, and
-print the `mv` for it.
-
-### On the host
-
-The host folder is the same, but a profile's env file now lands at
-`backend/.env.<profile>`, where it used to land at
-`web2-admin/backend/.env.<profile>`. The old copy stays, because every env file
-is excluded from rsync's `--delete`, and it keeps a second copy of the
-profile's signing key and token. Every deploy of a profile warns, once the
-profile is up, while its old copy is still there, and prints the command that
-removes it, such as:
-
-```sh
-ssh admin-host 'rm /opt/streaming/streaming-monorepo/web2-admin/backend/.env.brand-a'
-```
-
-Nothing removes it for you. Whether and when to remove it is the host owner's
-call.
-
-### A profile not yet redeployed
-
-Its env file is still only at the old path on the host, so the first user's
-command and those in "Running compose by hand" do not find it. Until the profile's
-next deploy, name the old path in them:
-
-```sh
-cd /opt/streaming/streaming-monorepo
-export WEB2_ADMIN_ENV_FILE=../web2-admin/backend/.env.brand-b
-docker compose -p web2-admin-brand-b -f deploy/docker-compose.yml --env-file web2-admin/backend/.env.brand-b logs -f api
-```
-
-Its containers keep running meanwhile. Compose read the env file when it
-created them, and nothing reads it again until the profile is deployed.
-
-## When a loopback port connects but nothing answers
-
-`ssh -L` accepts the connection and the browser waits forever, while `docker ps`
-on the host shows the console healthy on `127.0.0.1:<port>`. The edge reaches
-the console the same way, so there its site times out too, and `edge.sh`
-reports it as `127.0.0.1:<port>` not answering within 5 seconds. The forward is
-a small proxy on the host that opens a second connection to the container. This
-happens when the host's persisted firewall accepts traffic from Docker's default
-`172.x` bridges but the daemon hands out a custom `default-address-pools` range
-(set in `/etc/docker/daemon.json`) that the firewall does not name. Projects
-created before the pool changed keep working, because a network keeps the
-subnet it was created with.
-
-To tell: `curl -m 5 http://127.0.0.1:<port>/` on the host itself times out too,
-and `docker exec <web container> nc -z -w 3 <bridge gateway> 22` reports the
-host as unreachable, while the same against the manager's gateway answers.
-
-The fix is on the host, not in this repo: let INPUT accept traffic from the
-Docker bridges (`iptables -I INPUT 1 -i br-+ -j ACCEPT`, then
-`netfilter-persistent save`), or whatever narrower rule that host already uses
-for the manager's bridge.
-
 ## Public HTTPS: the host's edge
 
 One Caddy per host serves the consoles that host publishes on its loopback,
-each under its own name with its own Let's Encrypt certificate: this repo's
-console, and streaming-infra-manager's when the host runs that too. It is a
+each under its own name with its own Let's Encrypt certificate: the admin's
+console, and the manager's when the host runs that too. It is a
 compose project of its own, `edge`, kept in `infra/edge/` in this repository
 and run from `deploy/edge/` in the host's checkout, on the host's network:
 Caddy binds ports 80 and 443 itself and reaches `127.0.0.1:9090` and
@@ -479,9 +403,8 @@ admin.example.org {
 
 Get DNS and the firewall right before the first run. A name that does not
 resolve to the host, or a closed port, turns every attempt into a failed
-validation, and Let's Encrypt limits those (five an hour per name and account,
-at the time of writing) as well as new certificates for the same names (five a
-week).
+validation, and Let's Encrypt limits those per name and account, as well as new
+certificates for the same names.
 
 ### Running it
 
@@ -509,7 +432,7 @@ The sample carries example.org names only.
 | ---------------- | ------------------------------------------------------------------------------------------------------------------------------ | ------- |
 | `ADMIN_DOMAIN`   | The name the web2-admin console is served at. Empty: not served.                                                               | empty   |
 | `ADMIN_PORT`     | The loopback port that console is on, as `deploy.sh` printed: 9090, `WEB2_ADMIN_WEB_PORT`, or `11009 + N*10` with a port slot. | 9090    |
-| `MANAGER_DOMAIN` | The name streaming-infra-manager's console is served at. Empty: not served.                                                    | empty   |
+| `MANAGER_DOMAIN` | The name the manager's console is served at. Empty: not served.                                                                | empty   |
 | `MANAGER_PORT`   | The loopback port that console is on, the manager's `WEB_PORT`.                                                                | 8080    |
 | `ACME_EMAIL`     | Contact address on the Let's Encrypt account. With it set, Caddy also lists ZeroSSL as a fallback authority.                   | empty   |
 
@@ -620,9 +543,43 @@ The Caddyfile disables Caddy's admin API. On the host's network it would
 listen on the host's `127.0.0.1:2019`, where any local user could rewrite the
 routes, and a new Caddyfile takes effect by recreating the container anyway.
 
-## Running it from the manager
+## When a loopback port connects but nothing answers
 
-The manager does not run this script yet, and the questions that step still has to answer are open question 4 in [docs/architecture/web2-admin.md](../../../docs/architecture/web2-admin.md#open-questions-carried-into-the-build).
+`ssh -L` accepts the connection and the browser waits forever, while `docker ps`
+on the host shows the console healthy on `127.0.0.1:<port>`. The edge reaches
+the console the same way, so there its site times out too, and `edge.sh`
+reports it as `127.0.0.1:<port>` not answering within 5 seconds. The forward is
+a small proxy on the host that opens a second connection to the container. This
+happens when the host's persisted firewall accepts traffic from Docker's default
+`172.x` bridges but the daemon hands out a custom `default-address-pools` range
+(set in `/etc/docker/daemon.json`) that the firewall does not name. Projects
+created before the pool changed keep working, because a network keeps the
+subnet it was created with.
+
+To tell: `curl -m 5 http://127.0.0.1:<port>/` on the host itself times out too,
+and `docker exec <web container> nc -z -w 3 <bridge gateway> 22` reports the
+host as unreachable, while the same against the manager's gateway answers.
+
+The fix is on the host, not in this repository: let INPUT accept traffic from the
+Docker bridges (`iptables -I INPUT 1 -i br-+ -j ACCEPT`, then
+`netfilter-persistent save`), or whatever narrower rule that host already uses
+for the manager's bridge.
+
+## When the script names an env file at an old path
+
+The admin's env files live in `apps/web2-admin/backend/` and the edge's in
+`infra/edge/`. A checkout that still holds one at `web2-admin/backend/` or
+`deploy/edge/`, the paths an older layout used, makes `deploy.sh` and `edge.sh`
+refuse and print the `mv` that moves it. Run that `mv` from the repository root.
+Do not make a new file from the sample instead: a new `POSTGRES_PASSWORD` locks
+the API out of the profile's database, and a new `FEED_PRIVATE_KEY` is a new
+brand key, which starts a new catalogue no viewer was built for.
+
+On a host, a profile's env file lands at `backend/.env.<profile>`. A copy left
+at `web2-admin/backend/.env.<profile>` by the older layout holds a second copy
+of the profile's signing key and token, so every deploy of that profile warns
+while it is there and prints the `rm` that removes it. Nothing removes it for
+you.
 
 ## The scripts' own tests
 
@@ -640,18 +597,26 @@ admin's `test` script runs them, and from the repository root:
 node --test 'apps/web2-admin/deploy/test/*.test.mjs'
 ```
 
-## Deliberately not here
+## Known limits
 
-- **Manager integration.** See the section above.
-- **A filter on `/api/internal` at the edge.** swarm-hls-stream's uploader
-  calls the admin's internal API. Without the edge nothing outside the host
-  reaches it. With the edge, nginx passes all of `/api/` through, so
+- **The manager does not run this script yet.** `deploy.sh` takes the flags
+  the manager hands the stack's deploy script, closed standard input included.
+  Before the manager can run it, three things are open: where the manager's
+  checkout of this repository lives and how it writes
+  `apps/web2-admin/backend/.env.<profile>`, whether it passes the stack-only
+  flags `--feed-owner`, `--feed-topic` and `--stamp-id`, which this script
+  refuses, and the `stop.sh`, `health.sh` and `clean.sh` the manager expects
+  beside `deploy.sh`, which the admin does not have.
+- **No stop, health or clean script, and no database backup.** Use compose by
+  hand ([Running compose by hand](#running-compose-by-hand)) until they exist.
+  `down -v` deletes the profile's database.
+- **Two deploys to one host at the same time are not guarded against.** They
+  write into the same tree.
+- **The edge does not filter `/api/internal`.** The stack's uploaders call the
+  admin's internal API. Without the edge nothing outside the host reaches it.
+  With the edge, nginx passes all of `/api/` through, so
   `https://<ADMIN_DOMAIN>/api/internal` answers from anywhere, guarded by a
   bearer token alone: `INTERNAL_API_TOKEN` (32 characters or more, compared in
-  constant time) on the manager's routes, and on the uploader's a stage's own
-  token, known by its sha256, and nothing else: the uploader's routes refuse
-  `INTERNAL_API_TOKEN`. The edge passes it through on purpose: an uploader on a
-  stage host reaches the admin there, at the link's address, on its stage's own
-  token.
-- **Stop, health and clean scripts, and database backups.** Use compose by hand
-  (above) until they exist. `down -v` deletes the profile's database.
+  constant time) on the manager's routes, and a stage's own token, known by its
+  sha256, on the uploader's. The edge passes it through so that an uploader on
+  a stage host can reach the admin at the address the manager's link names.
