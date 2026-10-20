@@ -463,8 +463,13 @@ signed-in users.**
 
 ## Checkpoint 4: brand console
 
-- Login (placeholder until the auth decision), stream list, create stream,
-  stamp and cheque views, branding editor.
+- Done: sign-in ([operator authentication](#operator-authentication-2026-09-18)),
+  the stream list, creating a stream, and the stamp and chequebook views (the
+  Stamps and Chequebooks tabs of Funding, merged as #119).
+- Done: a theme switcher in the user menu (#124, 2026-10-11). Since
+  2026-10-12 it offers two looks, Swarm and Web3Privacy, and Swarm is the
+  fallback.
+- Open: the branding editor.
 
 ## Checkpoint 5: branding to the player
 
