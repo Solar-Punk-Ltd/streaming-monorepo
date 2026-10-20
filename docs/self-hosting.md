@@ -153,9 +153,10 @@ pnpm install
    ./deploy/deploy.sh --host=<second-control-host> --profile=<name>
    ```
 
-   Nothing to do here on a first install. Every Bee API and engine HTTP port the stack runs answers
-   on the host's Docker bridge address wherever its own `*_BIND` setting is empty, because the API asks for no password and Docker
-   publishes past a host firewall. The stack's deploy reads that address at deploy time. Under
+   Where the Bee and engine APIs answer needs no setting on a first install. Every Bee API and
+   engine HTTP port the stack runs answers on the host's Docker bridge address wherever its own
+   `*_BIND` setting is empty, because the API asks for no password and Docker publishes past a host
+   firewall. The stack's deploy reads that address at deploy time. Under
    `COMPOSE_NETWORK=host` the Bee APIs listen there through `*_API_LISTEN` instead. "Check where the
    node and engine APIs answer" in `apps/infra-manager/deploy/README.md` names the settings. A
    client that dials a Bee API by `localhost`, `127.0.0.1` or the host's public or LAN address does
