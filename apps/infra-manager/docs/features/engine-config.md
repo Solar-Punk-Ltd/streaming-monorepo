@@ -246,9 +246,11 @@ result, and it has not been repeated since.
 Private execution copies landed on 2026-09-11, so a deployment now runs out of a
 copy of its build rather than out of the immutable build directory. See "The
 tree a deployment runs in" in [stack-versions.md](stack-versions.md). What that
-leaves open here is the engine config ownership work's own remaining slice: the atomic begin and revert of a
-config rollout, the creator receipt, and the release of operation holds after a
-proven watch. Those repository APIs exist and nothing calls them.
+leaves open here is the creator receipt, which has no code. A rollout starts and
+reverts through the deploy claims (`beginDeploy`, `beginRevertDeploy` and
+`beginRestorePreviousDeploy` in `EngineConfigOperationRepository`), and an
+operation's build hold is released when its recovery ends or the operation is
+superseded.
 
 The live acceptance run separately verifies authorised live Swarm delivery, and it waits for
 its spending cap and duration and a separate authorisation to spend. Unit tests do not substitute

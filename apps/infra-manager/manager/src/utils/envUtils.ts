@@ -454,15 +454,10 @@ export function managedEnvLines(
     set('ABR_ENABLED', 'true');
     const rungSettings = applicableEngineSettings(values.engine, values.engineSettings ?? {}, { abr: true });
     set(ABR_LADDER_ENV_KEY, composedAbrLadderEnvValue(rungSettings));
-    // STAMP is deliberately left alone, tempting though it is to clear: a
-    // pool-backed uploader owns no batch, and .env.<profile> is a full copy of
-    // the base .env, so whatever STAMP was configured there rides along and
-    // belongs to someone else. But the uploader declares `stamp: required(…)`
-    // unconditionally and its `required()` throws on an empty string, so
-    // blanking it stops the container at config load, even though `config.stamp`
-    // is only ever read by `BeePublisherPool.single()`, which pool mode does not
-    // call. Making STAMP conditional belongs upstream. Until then a stray value
-    // is inert and an empty one is fatal.
+    // A pool-backed uploader owns no batch, and .env.<profile> is a full copy
+    // of the base .env, so a STAMP set there belongs to someone else. The
+    // uploader reads STAMP only when BEE_PUBLISHERS is empty, so it is blanked.
+    if (!stamp) set('STAMP', '');
   }
 
   // Every Bee node reads this, and the only place to set it used to be the
