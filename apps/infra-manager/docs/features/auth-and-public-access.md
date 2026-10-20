@@ -352,12 +352,8 @@ moved and are marked where they do.
    **RTMP.** The step above lists RTMP (2) among the ports that fall to the drop policy, and the
    draft still opens no RTMP band. That is the draft's choice: the consoles offer RTMP on every SRS
    stage, because which ports are reachable is the firewall's job, and an operator who wants
-   broadcasters on RTMP opens the port in the host firewall. SRS allows play from its own container
-   only, `SRS_PLAY_FROM` in the stack, because RTMP publishing and playback share one port. RTMP is
-   not encrypted: a stream key crosses the network as readable text, a key read off the network
-   publishes over RTMP whichever protocol it was read from, because SRT sends the key before
-   encryption starts, and with the takeover on such a publisher can replace a live broadcast. The
-   SRT passphrase keeps the picture private but not the key.
+   broadcasters on RTMP opens the port in the host firewall. What an open RTMP port does to a
+   stream key is in the [architecture overview's ports section](../../../../docs/architecture/overview.md#a-stack-deployment).
 
 4. Point a DNS A record at the host and put the manager behind the host's edge in `infra/edge/`.
    Open the domain and sign in.
