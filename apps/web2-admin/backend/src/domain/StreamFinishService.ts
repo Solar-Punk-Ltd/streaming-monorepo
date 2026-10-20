@@ -5,7 +5,7 @@ import { getErrorMessage } from '../utils/errorUtils.js';
 
 import { describeActor, describeStream, type Actor } from './actor.js';
 import { recordAudit, type AuditLog } from './AuditLog.js';
-import { StreamFinishedError, StreamNotFoundError, StreamNotStartedError } from './errors/index.js';
+import { StreamFinishedError, StreamLiveError, StreamNotFoundError, StreamNotStartedError } from './errors/index.js';
 import { Logger } from './Logger.js';
 import { newPublishKey } from './StreamService.js';
 
@@ -61,9 +61,10 @@ export interface StreamFinishOutcome {
  * (STREAM_RESTART_WINDOW_MINUTES) that goes on as before. Then the admin changes the stream's key itself, so an old
  * encoder profile pressed later is refused at its next connect, and nothing reaches Swarm.
  *
- * Finish does the same at once, by an operator: on a recorded stream it closes the window early, and on a live one the
- * broadcast goes on, since nothing here stops an encoder, and the stream ends for good when the encoder stops or drops.
- * A stream that goes live again on the new key starts a new window at its next end.
+ * Finalize (the route `/finish`) does the same at once, by an operator, on a recorded stream: it closes the window
+ * early. A live stream is refused (`StreamLiveError`, 409 `stream_live`), as Unpublish and Delete refuse one: nothing
+ * here stops an encoder, so the broadcast is stopped first. A stream that goes live again on the new key starts a new
+ * window at its next end.
  *
  * Every key change is one conditional statement, so a second process, a retry or a race changes nothing twice, and
  * leaves one audit row: `stream.finish` naming the operator, or `stream.finish.window` naming the restart window.
@@ -79,16 +80,18 @@ export class StreamFinishService {
   ) {}
 
   /**
-   * Finishes a live or recorded stream: a new key, at once. Refused for no such stream (`StreamNotFoundError`), for
-   * one that is neither live nor ended (`StreamNotStartedError`) and for one already finished (`StreamFinishedError`),
-   * told apart by reading the row again after a conditional update that matched nothing, as a state report does.
+   * Finalizes a recorded stream: a new key, at once. Refused for no such stream (`StreamNotFoundError`), for a live one
+   * (`StreamLiveError`), for one that never ended (`StreamNotStartedError`: draft, published or publishing) and for one
+   * already finalized (`StreamFinishedError`), told apart by reading the row again after a conditional update that
+   * matched nothing, as a state report does.
    */
   async finish(actor: Actor, id: string): Promise<StreamFinishOutcome> {
     const finished = await this.streams.finish(id, this.newKey());
     if (!finished) {
       const current = await this.streams.findById(id);
       if (!current) throw new StreamNotFoundError(id);
-      if (current.status !== 'live' && current.status !== 'vod') throw new StreamNotStartedError(id);
+      if (current.status === 'live') throw new StreamLiveError(id);
+      if (current.status !== 'vod') throw new StreamNotStartedError(id);
       throw new StreamFinishedError(id);
     }
 

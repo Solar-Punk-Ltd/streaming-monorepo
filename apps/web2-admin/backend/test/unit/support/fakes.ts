@@ -361,10 +361,10 @@ export class FakeStreamStore
   /** The database's clock, as `NOW()` reads it in the restart window's SQL; a test sets it. */
   dbNow: () => Date = () => new Date();
 
-  /** Finish, conditional as the SQL is: a live or recorded stream not finished yet. */
+  /** Finalize, conditional as the SQL is: a recorded stream not finalized yet, never a live one. */
   async finish(id: string, publishKey: string): Promise<StreamRow | null> {
     const row = this.rows.get(id);
-    if (!row || (row.status !== 'live' && row.status !== 'vod') || row.finished_at !== null) return null;
+    if (!row || row.status !== 'vod' || row.finished_at !== null) return null;
     const at = this.dbNow();
     return this.patch(id, { publish_key: publishKey, publish_key_rotated_at: at, finished_at: at });
   }

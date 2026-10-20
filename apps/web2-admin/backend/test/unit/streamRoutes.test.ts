@@ -312,7 +312,7 @@ describe('the stream routes, on stages', () => {
     assert.equal(none.publishKey.length, 32);
   });
 
-  it('finish a live or ended stream with 200, its key changed, and name the signed-in user', async () => {
+  it('finalize an ended stream with 200, its key changed, and name the signed-in user', async () => {
     const created = (await (await send('ann', 'POST', '/api/streams', FORM)).json()) as Stream;
     const before = store.get(created.id).publish_key;
     store.rows.set(created.id, { ...store.get(created.id), status: 'vod', ended_at: new Date(Date.now() - 60_000) });
@@ -333,7 +333,7 @@ describe('the stream routes, on stages', () => {
     assert.deepEqual(entry?.actor, { kind: 'operator', userId: userIds.get('bob'), username: 'bob' });
   });
 
-  it('refuse a Finish of a stream that never went live, or of one already finished, with their 409s', async () => {
+  it('refuse a Finalize of a stream that never ended, one still live, or one already finalized, with their 409s', async () => {
     const draft = (await (await send('ann', 'POST', '/api/streams', FORM)).json()) as Stream;
 
     const notStarted = await send('ann', 'POST', `/api/streams/${draft.id}/finish`);
@@ -341,17 +341,23 @@ describe('the stream routes, on stages', () => {
     assert.deepEqual(await notStarted.json(), {
       error: 'stream_not_started',
       id: draft.id,
-      message: 'Only a live or ended stream can be finished.',
+      message: 'Only an ended stream can be finalized.',
     });
 
     store.rows.set(draft.id, { ...store.get(draft.id), status: 'live' });
+    const live = await send('ann', 'POST', `/api/streams/${draft.id}/finish`);
+    assert.equal(live.status, 409);
+    assert.deepEqual(await live.json(), { error: 'stream_live', id: draft.id, message: 'Stop the broadcast first.' });
+    assert.equal(store.get(draft.id).finished_at, null);
+
+    store.rows.set(draft.id, { ...store.get(draft.id), status: 'vod', ended_at: new Date(Date.now() - 60_000) });
     assert.equal((await send('ann', 'POST', `/api/streams/${draft.id}/finish`)).status, 200);
     const again = await send('ann', 'POST', `/api/streams/${draft.id}/finish`);
     assert.equal(again.status, 409);
     assert.deepEqual(await again.json(), {
       error: 'stream_finished',
       id: draft.id,
-      message: 'This stream is already finished: its key has changed.',
+      message: 'This stream is already finalized: its key has changed.',
     });
   });
 
