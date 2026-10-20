@@ -266,7 +266,7 @@ When one quality stops publishing and the others carry on, the player drops that
 
 There is no limit on how many rungs are dropped. A rung refused at a switch is dropped too, and the player keeps moving on until it is on a rung that moves. A broadcast ending cannot be read as every rung failing in turn, because a rung is dropped only while another is seen moving.
 
-The rule is in `LadderFeedPoller.ts`, `rungPosition.ts` and `rungHealth.ts`. `MIN_LEVELS_TO_DROP_ONE` is 2 because the last rung standing is still the only thing a viewer can be offered, under the stalled overlay. The uploader keeps its own rule in `LadderLiveness` for what the master advertises, by segment lag and at most one rung at once. The two no longer have to agree, because the player reads the master once at most, and not at all when the catalogue names the renditions.
+The rule is in `LadderFeedPoller.ts`, `rungPosition.ts` and `rungHealth.ts`. `MIN_LEVELS_TO_DROP_ONE` is 2 because the last rung standing is still the only thing a viewer can be offered, under the stalled overlay. The uploader keeps its own rule in `LadderLiveness` for what the master advertises, by segment lag and at most one rung at once. The two need not agree, because the player reads the master once at most, and not at all when the catalogue names the renditions.
 
 A drop is not reversible. hls.js's `removeLevel` deletes the rung for the session, so a viewer who lives through an outage stays on the remaining rungs until they reload. Capping with `autoLevelCapping` instead is not used, because it froze the player without recovering, for a reason not yet understood.
 

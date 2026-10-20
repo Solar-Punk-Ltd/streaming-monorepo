@@ -202,7 +202,7 @@ and `# fail` blocks. Sum them.
 | `pnpm e2e:admin`                     | `suites/admin/`                                                              |
 
 Browser drivers launched through `deploy/scripts/bench-on-host.sh`, directly or through
-`browser-on-host.sh`, run the same gates first. The older sitting scripts under `deploy/scripts/` that
+`browser-on-host.sh`, run the same gates first. The older measurement scripts under `deploy/scripts/` that
 start the browser image themselves, such as `byte-source-arms.sh`, are not gated. A launch is also
 refused from a checkout with no `.spend-ledger.env` at its root.
 
