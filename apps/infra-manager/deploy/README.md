@@ -70,8 +70,8 @@ file in the tree, every file whose name starts with `.env`, copies such as
 `.envrc` or `.env~` included, but the `.env.sample` files, `manager/`'s and the
 test fixtures'. Each flag takes its value after `=` or as the next word, so
 `--host <control-host>` works too, and so does the host alone,
-`./deploy/deploy.sh <control-host>`. With no host at all the deploy goes to the
-ssh alias `viewer`.
+`./deploy/deploy.sh <control-host>`. The host is required. There is no default,
+as there is none for the admin's deploy or the edge's.
 
 When the repository keeps its one lockfile at its root, the manager's folder
 holds none of its own. The deploy then cuts the manager's `pnpm-lock.yaml` and
@@ -147,9 +147,7 @@ cp manager/.env.sample manager/.env.staging
 The name follows the manager's rule for a profile name,
 `^[a-z0-9][a-z0-9-]{0,30}$`, and `default` means `manager/.env`. `sample` is
 not a profile: `manager/.env.sample` is the file every profile is copied from.
-A profile needs its host named, because the default target would get its
-settings, and a missing file stops the deploy rather than falling back to
-`manager/.env`. Every check before anything leaves reads that file, and the
+A missing file stops the deploy rather than falling back to `manager/.env`. Every check before anything leaves reads that file, and the
 deploy prints which profile and file it uses. A profile changes only which file
 is sent. The server runs it as any manager host does: in the folder its
 `MANAGER_ROOT` names, on `manager/.env`, as compose project `manager` with the
@@ -712,7 +710,7 @@ container. Until the manager is told what it holds, every removal on that host
 refuses with "Container removal or port release could not be verified", and so
 do port handovers and the firewall export of step 3. Add the line below, with
 the ports Caddy listens on, to `manager/.env` in your checkout and run
-`./deploy/deploy.sh` again, which sends the file and recreates the api
+`./deploy/deploy.sh --host=<control-host>` again, which sends the file and recreates the api
 container. An edit made on the host is undone by the next deploy, and a plain
 `docker compose restart` does not re-read the file.
 

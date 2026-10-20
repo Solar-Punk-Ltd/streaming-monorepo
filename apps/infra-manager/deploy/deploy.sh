@@ -1,23 +1,24 @@
 #!/usr/bin/env bash
 # Deploy the streaming-infra-manager to a server via rsync + remote build.
 #
-#   ./deploy/deploy.sh [--host=<ssh-target> | <ssh-target>] [--profile=<name>]
+#   ./deploy/deploy.sh (--host=<ssh-target> | <ssh-target>) [--profile=<name>]
 #
 # Each flag also takes its value as the next word, as in --host <ssh-target>
 # --profile <name>, the way web2-admin's deploy.sh does.
 #
-# ssh-target defaults to `viewer` (configure in ~/.ssh/config). Example:
-#   Host viewer
-#     HostName <ip>
+# The ssh target is required, as it is for web2-admin's deploy and the edge's.
+# It is an ssh alias from ~/.ssh/config, a host name or address, or user@host.
+# An alias for the manager's host could read:
+#   Host <control-host>
+#     HostName 192.0.2.10
 #     User <deploy user>
 #     LocalForward 8080 localhost:8080
 #
 # --profile=<name> deploys manager/.env.<name> in place of manager/.env, for a
-# host with settings of its own, and only to a host named with it, because the
-# default target would get that profile's settings. "default" is manager/.env.
-# The file must exist: a profile never falls back to manager/.env. Whatever its
-# name here, the host keeps it as manager/.env, so the host's folder, compose
-# project and volumes are the same for every profile.
+# host with settings of its own. "default" is manager/.env. The file must
+# exist: a profile never falls back to manager/.env. Whatever its name here,
+# the host keeps it as manager/.env, so the host's folder, compose project and
+# volumes are the same for every profile.
 #
 # What it does:
 #   1. Names the build it sends with tools/release/version.mjs at the
@@ -74,7 +75,7 @@ set -euo pipefail
 # --host=<ssh-target>, --host <ssh-target> or on its own, and the profile, as
 # --profile=<name> or --profile <name>. Any other word that starts with a dash
 # is refused.
-SSH_TARGET="viewer"
+SSH_TARGET=""
 TARGET_GIVEN=false
 PROFILE="default"
 PROFILE_GIVEN=false
@@ -110,7 +111,7 @@ while [ $# -gt 0 ]; do
             shift
             ;;
         -*)
-            echo "ERROR: unknown option $1. Usage: deploy.sh [--host=<ssh-target> | <ssh-target>] [--profile=<name>], each flag also with its value as the next word" >&2
+            echo "ERROR: unknown option $1. Usage: deploy.sh (--host=<ssh-target> | <ssh-target>) [--profile=<name>], each flag also with its value as the next word" >&2
             exit 1
             ;;
         # The target on its own. An empty one is taken here and refused below.
@@ -118,10 +119,10 @@ while [ $# -gt 0 ]; do
     esac
     shift
 done
-# A profile is one host's settings, its database password among them, and the
-# default target would get them, so a profile goes only to a host named with it.
-if [ "$PROFILE_GIVEN" = true ] && [ "$TARGET_GIVEN" = false ]; then
-    echo "ERROR: --profile=$PROFILE needs the host named, as --host=<ssh-target> or <ssh-target>. Without one the deploy would give that profile's settings to $SSH_TARGET, the default target." >&2
+# A guessed host would get this checkout's settings, its database password
+# among them.
+if [ "$TARGET_GIVEN" = false ]; then
+    echo "ERROR: the ssh target is required, as --host=<ssh-target> or <ssh-target>. There is no default host." >&2
     exit 1
 fi
 # It is handed to ssh as the destination, where a leading dash is an option.

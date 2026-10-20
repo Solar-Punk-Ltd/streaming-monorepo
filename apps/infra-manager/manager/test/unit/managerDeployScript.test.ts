@@ -1053,24 +1053,29 @@ describe('deploy/deploy.sh, run against a repository on this disk', () => {
   });
 
   /**
-   * With no arguments at all the target is viewer and the file manager/.env, as before. The file
-   * here holds no password, so the run stops at its check, before anything could reach viewer, an
-   * alias a real ~/.ssh/config can hold.
+   * There is no default host, as there is none for web2-admin's deploy or the edge's. A deploy
+   * that guessed one would send this checkout's settings, the database password among them, to
+   * whatever machine an ssh alias of that name reaches. Both env files here hold a password, so
+   * only the missing host can be what refuses the run.
    */
-  it('checks manager/.env for viewer, the default target, when it is given no arguments', () => {
-    const root = mkdtempSync(join(tmpdir(), 'manager-deploy-default-target-'));
+  it('refuses to run without a host named, with or without a profile, before anything runs', () => {
+    const root = mkdtempSync(join(tmpdir(), 'manager-deploy-no-host-'));
     try {
       const { manager, environment } = checkout(root);
-      writeFileSync(join(manager, 'manager', '.env'), 'LOG_LEVEL=info\n');
+      writeFileSync(join(manager, 'manager', '.env.dev'), 'POSTGRES_PASSWORD=synthetic-dev-not-a-secret\n');
 
-      const refused = deploy(root, manager, environment, []);
+      for (const args of [[], ['--profile=dev'], ['--profile', 'dev'], ['--profile=default']]) {
+        const refused = deploy(root, manager, environment, args);
 
-      stoppedBeforeAnything(refused);
-      assert.ok(
-        refused.stdout.includes('==> Deploying profile default to viewer\n==> Checking manager/.env\n'),
-        refused.stdout,
-      );
-      assert.match(refused.stderr, /POSTGRES_PASSWORD is missing or empty in manager\/\.env\./);
+        stoppedBeforeAnything(refused);
+        assert.ok(
+          refused.stderr.includes(
+            'ERROR: the ssh target is required, as --host=<ssh-target> or <ssh-target>. There is no default host.\n',
+          ),
+          `${args.join(' ')}: ${refused.stderr}`,
+        );
+        assert.doesNotMatch(refused.stdout, /==> Deploying/, 'it names no host it would deploy to');
+      }
     } finally {
       rmSync(root, { recursive: true, force: true });
     }
@@ -1207,32 +1212,6 @@ describe('deploy/deploy.sh, run against a repository on this disk', () => {
         refused.stderr,
         /manager\/\.env\.dev not found\. Copy manager\/\.env\.sample to manager\/\.env\.dev /,
       );
-    } finally {
-      rmSync(root, { recursive: true, force: true });
-    }
-  });
-
-  /**
-   * With no host named the deploy goes to viewer, and a profile is one host's settings, so it is
-   * refused rather than sent there, even the default one named as such. Neither file holds a
-   * password, so a deploy that went past the refusal would stop at its check, before anything
-   * could reach viewer.
-   */
-  it('refuses a profile without the host named, because the default target would get its settings', () => {
-    const root = mkdtempSync(join(tmpdir(), 'manager-deploy-profile-no-host-'));
-    try {
-      const { manager, environment } = checkout(root);
-      writeInto(join(manager, 'manager'), { '.env': 'LOG_LEVEL=info\n', '.env.dev': 'LOG_LEVEL=info\n' });
-
-      for (const profile of ['dev', 'default']) {
-        for (const args of [[`--profile=${profile}`], ['--profile', profile]]) {
-          const refused = deploy(root, manager, environment, args);
-
-          stoppedBeforeAnything(refused);
-          assert.match(refused.stderr, new RegExp(`--profile=${profile} needs the host named`), args.join(' '));
-          assert.match(refused.stderr, /would give that profile's settings to viewer, the default target/);
-        }
-      }
     } finally {
       rmSync(root, { recursive: true, force: true });
     }

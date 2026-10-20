@@ -124,7 +124,8 @@ at the repository root.
    builds the stack version the manager bundles.
 
    A second manager host gets an env file of its own, `manager/.env.<name>` made from the same
-   sample, and `--profile=<name>` deploys it to the host named with it. A deploy sends only the file
+   sample, and `--profile=<name>` deploys it to the host named. Every deploy names its host. There
+   is no default. A deploy sends only the file
    it uses, and every host keeps it as `manager/.env`. Both flags also take their value as the next
    word, as in `--host <control-host>`.
 
