@@ -1,182 +1,160 @@
-# Group Deployment
+# Group deployment
 
-Status, 2026-09-16: built, and on `main`. The page opens with the prototype scope it was
-written for, and the paragraph after it records what has been built since. Corrected 2026-09-23
-against the code at `87673c99`: "Shared fields", which left out five fields every member is
-given and the port slot each member takes for itself.
+A group is a set of near-identical deployments created from one form, under one
+name you choose, sharing one configuration. You use it to run many streamers,
+viewers or custom deployments at once, for fan-out and load tests, without
+creating each one by hand. This is a feature page of the manager, the web console
+and API in `apps/infra-manager` that deploys the streaming stack
+(`apps/hls-stream`) onto hosts.
 
-Provision N deployments at once from a single form, grouped under a user-named umbrella, sharing all configuration parameters.
+## What it does
 
-## Motivation
+- **Group.** A row of `deployment_groups`: an id, a unique name, a size, a kind
+  and when it was created. A group holds no settings of its own. Every setting
+  lives on its members, exactly as it would for a single deployment, so editing,
+  redeploying and removing one member work unchanged.
+- **Member.** An ordinary deployment whose `group_id` names the group.
+- **Kind.** `standard` (`STANDARD_GROUP_KIND`) for the groups on this page.
+  `abr-node-pool` (`ABR_NODE_POOL_GROUP_KIND`) is a group of one Bee node per
+  quality rung, created with `abr_ladder: true`, and has rules of its own
+  ([abr-ladder.md](abr-ladder.md)).
 
-The single-profile `New deployment` flow is fine for one-off setups, but exercising the streaming pipeline at scale (fan-out testing, viewer load tests, multi-replica streamer experiments) requires creating many near-identical profiles by hand. Group deployment collapses that into a single form submission.
+### Member names
 
-## Scope (prototype)
+You give the group a name, such as `loadtest`. Members are named
+`<group>-profile-<N>`, from `N = 1`. A name already taken, by a single deployment
+or by an earlier group with the same prefix, is skipped, and `N` advances until
+the group has as many free names as it asked for. The group name is unique among
+groups, and follows the deployment name rule `^[a-z0-9][a-z0-9-]{0,30}$`.
 
-In scope:
+### What every member shares
 
-- A "group mode" choice in the new deployment flow.
-- A new `deployment_groups` table, and profiles get a nullable `group_id`.
-- A `POST /groups` endpoint that transactionally persists the group + N member profiles, then kicks off deployments for each.
-- Collapsible group rows on the deployments table.
+Everything the create form fills is applied to every member as it is:
 
-Out of scope (deferred):
+- `kind`, `components`, `host`, `notes`,
+- `feed_owner` and `feed_topic`, for a deployment that runs a client. The topic is
+  optional and follows the stack's `FEED_TOPIC_RE`, `^[A-Za-z0-9._-]{1,64}$`,
+- `private_key`, the stream key, and its address `public_key`, for a deployment
+  that runs a stream uploader, and `stamp_id`,
+- `srt_passphrase`, so every member takes the same SRT passphrase,
+- `node_mode`, `rpc_endpoint_source` and `rpc_endpoint`: one chain answer for the
+  whole group. A source the body leaves out is worked out once, for every member,
+- `stack_version_id`, the default version when the body names none, so every
+  member runs one version,
+- `engine_settings`, so every member cuts the same segments. The wizard
+  pre-fills a two-second segment length wherever the deployment runs SRS,
+- `stack_settings`, so every member starts with the same stack settings.
 
-- Bulk start, stop, destroy and redeploy. Members are operated on individually after creation.
-- Distributing members across multiple hosts.
-- Per-member overrides of shared parameters.
+No web2 admin token is shared. Each uploader linked to the manager's admin gets a
+token of its own at its first deploy ([web2-admin-link.md](web2-admin-link.md)).
 
-Built since this page was written, and no longer deferred: editing a group's shared
-settings in one write (`PATCH /groups/:id/config`, the **Edit shared settings** button on a
-group's page), adding members to an existing group (`POST /groups/:id/members`) and removing
-a group once it has no members left (`DELETE /groups/:id`). The body of that last one
-carries `expectedName`, the group's name as the page showed it, and a name that no longer
-matches is refused. A group's page also has
-**Start all**, **Stop all** and **Remove group** buttons, which act on every member one by
-one. An ABR node pool refuses a `stamp_id` in the first, because one batch would then pay
-for every rung, and refuses the second, because a new member would not carry a rung name.
-See [abr-ladder.md](abr-ladder.md).
+### What each member has of its own
 
-## Data model
+Its name, and its port slot. Each member takes the lowest free slot, with the
+ports that slot reserves, as it is inserted (`insertMemberWithFreeSlot` in
+`manager/src/domain/DeploymentGroupRepository.ts`). A slot any of whose ports the
+fetch standard blocks is never given out, as for a single deployment.
 
-New table:
+## How to use it in the console
 
-```sql
-CREATE TABLE deployment_groups (
-  id          SERIAL PRIMARY KEY,
-  name        TEXT NOT NULL UNIQUE,
-  size        INTEGER NOT NULL,
-  created_at  TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-  CONSTRAINT deployment_groups_name_format CHECK (name ~ '^[a-z0-9][a-z0-9-]{0,30}$'),
-  CONSTRAINT deployment_groups_size_positive CHECK (size >= 1)
-);
+### Creating a group
 
-ALTER TABLE profiles
-  ADD COLUMN group_id INTEGER REFERENCES deployment_groups(id) ON DELETE SET NULL;
-```
+1. Open the new-deployment wizard and pick a stream, a viewer or a custom
+   deployment. Group mode is offered for these goals alone (`allowsGroup` in
+   `frontend/src/forms/wizard/wizardState.ts`), whose members are
+   interchangeable.
+2. Turn on **Deploy several at once as a group**. The **Name** field becomes
+   **Group name**, and a **How many** field appears, 2 by default. Above 20
+   members (`LARGE_GROUP` in `frontend/src/forms/wizard/steps/BasicsStep.tsx`) the
+   step says "Large group, double check before deploying." For a stream it says
+   that every member shares one stream key.
+3. Fill the other steps as for one deployment.
+4. Press **Deploy group (N)**. Every member is created, then deployed.
 
-That is `manager/src/migrations/002_deployment_groups.sql`, which also indexes
-`profiles (group_id)`. A later migration, `004_group_kind.sql`, adds the `kind`
-column the ABR work uses.
-
-Group rows are immutable metadata. The shared parameter values are not snapshotted on the group row, they live on each member profile, exactly as they would for a single deployment. This keeps per-member operations (edit, redeploy) unchanged.
-
-## Member naming
-
-The user supplies a group name (e.g. `loadtest`). Members are named `${groupName}-profile-${N}` starting at `N = 1`. If a profile name is already taken (collision with a pre-existing single profile, or a prior group with the same prefix), `N` advances until N distinct unused names are found. Group name itself is globally unique.
-
-## Shared fields
-
-All form fields filled in group mode are applied verbatim to every member:
-
-- `kind`, `components`, `host`, `notes`
-- `feed_owner`, `feed_topic` (when `client` is selected). The topic is optional and held to the
-  stack's `^[A-Za-z0-9._-]{1,64}$`. Since 2026-10-06 **Edit shared settings** asks for it too, and
-  emptying it there sends null, which puts every member back on its version's own topic
-- `private_key`, `stamp_id` (when `stream-uploader` is selected), and `public_key` is derived
-- `srt_passphrase`, so every member takes the same SRT passphrase
-- `node_mode`, `rpc_endpoint_source` and `rpc_endpoint`, one chain answer for the whole group. A
-  source the body leaves out is worked out once, for every member
-- `stack_version_id`, the default version when the body names none, so every member runs one
-  version
-- `engine_settings`, so every member cuts the same segments
-- `stack_settings`, so every member starts with the same stack settings, a node pool's rungs
-  included
-- no web2 admin token: each uploader linked to the manager's admin gets a token of its own at
-  its first deploy (`web2-admin-link.md`). `use_manager_admin_token`, with which a manager from
-  before stages copied the link's token into every member, is gone, and a create drops it as any
-  key it does not name
-
-Members differ in `name` and in their port slot, which each takes for itself as it is inserted:
-the lowest free slot, with the ports that slot reserves (`insertMemberWithFreeSlot` in
-`manager/src/domain/DeploymentGroupRepository.ts`). All of them carry the group's `group_id`.
-A slot any of whose ports is a bad port of the fetch standard is never given out, as for a
-single deployment (`manager/README.md`, Limitations).
-
-A group's members start with the engine settings the create body carries, and the wizard
-pre-fills a two-second segment length wherever the deployment runs SRS, so the whole group
-cuts the same lengths instead of falling back to whatever its stack version does. A member
-added later takes the settings its siblings already run. An ABR node pool carries no engine
-settings, because it is Bee nodes and no media server, and a create body that sends engine settings
-for one is refused with the sentence a single deployment with no engine gets.
-
-### Known caveat: shared streamer identity
-
-When `stream-uploader` is part of a group, all members write to the **same Swarm feed with the same private key**. This is rarely what you want for a real workload. The prototype permits it deliberately so you can stress-test viewer fan-out without inventing a per-member key story. A future iteration may auto-generate per-member keys or block group mode for streamer kinds.
-
-## Execution flow
-
-The `POST /groups` handler runs in two phases:
-
-1. **Persist.** Open a transaction, insert the group row, insert N profile rows referencing it. If any row fails (name collision, validation), the entire transaction rolls back and the API returns an error before any deploy is kicked off.
-2. **Deploy.** With profiles committed, dispatch the existing per-profile deploy path for each member. Per-member deploy outcomes surface through the existing SSE event stream and per-row status chips. A member that fails to deploy stays in the database as a profile that can be retried individually.
-
-The endpoint returns as soon as phase 1 succeeds and phase 2 has been kicked off, and it does not block on every member finishing.
-
-## Frontend changes
-
-### The new deployment flow
-
-As designed in 2026-05. The drawer is now a wizard, see the module table below.
-
-- New switch: **"Deploy several at once as a group"**.
-- When enabled:
-  - `Name` label becomes `Group name` (same regex as profile name).
-  - New input: `How many` (default 2).
-  - Above a size of 20 an inline warning appears: _"Large group, double check before deploying."_
-    (`LARGE_GROUP` in `frontend/src/forms/wizard/steps/BasicsStep.tsx`.)
-  - The submit button label becomes `Deploy group (N)`, with the size as N.
-  - All other fields keep their existing semantics.
-- Group mode is offered only for the goals `allowsGroup` in
-  `frontend/src/forms/wizard/wizardState.ts` lets through, a stream, a viewer and a custom
-  deployment. Editing a deployment happens in its own drawer, which has no group mode.
+Editing a single deployment happens in its own drawer, which has no group mode.
 
 ### The deployments table
 
-- Members with the same `group_id` collapse under a group header row.
-- Group header shows: expand/collapse caret, group name, member count, readiness, how many
-  members run, and the **Start all**, **Stop all** and **Open** buttons.
-- Per-row actions on individual members remain unchanged.
-- Profiles with `group_id = null` continue to render as flat rows.
+Members of one group collapse under a group row on the Deployments page. The
+group row shows a caret to expand or collapse it, the group's name, how many
+members it has, its readiness, how many members run, and the buttons
+**Stop all**, **Start all** and **Open**. Each member keeps its own row and its
+own actions. A deployment in no group is a flat row.
 
-## Backend changes
+### A group's page
 
-| File                                                    | Change                                                                  |
-| ------------------------------------------------------- | ----------------------------------------------------------------------- |
-| `manager/src/migrations/002_deployment_groups.sql`      | Create `deployment_groups`, add `group_id` to `profiles`.               |
-| `manager/src/domain/ProfileRepository.ts`               | Read group_id alongside other fields.                                   |
-| `manager/src/domain/DeploymentGroupRepository.ts` (new) | `createGroupWithMembers(...)` in a single transaction.                  |
-| `manager/src/domain/ProfileService.ts`                  | `createGroup(...)` orchestration: validate, transact, dispatch deploys. |
-| `manager/src/schemas/profile.ts`                        | Add `createGroupSchema` (yup) for `POST /groups`.                       |
-| `manager/src/api/routes/groups.ts`                      | `POST /groups`, `GET /groups`.                                          |
-| `manager/src/api/server.ts`                             | Mount `/groups` router.                                                 |
-| `manager/src/api/middleware/errorHandler.ts`            | Map `GroupExistsError` → 409.                                           |
+**Open** leads to the group's page, `#/groups/<id>`. It shows the group's
+readiness and its members, and offers:
 
-## Frontend module touches
+- **Start all** and **Stop all**, which start or stop every member one by one.
+- **Edit shared settings**, which changes the notes, the SRT passphrase, and for a
+  group that runs a client the streamer to follow and the feed topic, for every
+  member at once. Emptying the feed topic puts every member back on its version's
+  own topic. Every member is redeployed.
+- **Add members**, with a count, which creates and deploys that many new members.
+  A new member takes the settings its siblings run, its secrets, its engine
+  settings and its stack settings included.
+- **Remove group**, which asks first, then stops and removes every member one by
+  one and wipes their data directories. The group row goes when its last member
+  does.
 
-| File                                          | Change                                                                      |
-| --------------------------------------------- | --------------------------------------------------------------------------- |
-| `frontend/src/types/interfaces.ts`            | `DeploymentGroup` type, `group_id?: number \| null` on `Profile`.           |
-| `frontend/src/data.ts`                        | `createDeploymentGroup`, `fetchGroups`.                                     |
-| `frontend/src/forms/wizard/`                  | Group size and the branching submit, as steps of the new deployment wizard. |
-| `frontend/src/deployments/GroupBlockRows.tsx` | Collapsible group row rendering on the deployments page.                    |
-| `frontend/src/groups/GroupPage.tsx`           | A group's own page, with its shared settings and members.                   |
+## How a create runs
 
-The first four rows named `frontend/src/types.ts`, `NewDeploymentDrawer.tsx` and
-`DeploymentsTable.tsx` when this page was written. The UX rework replaced
-the drawer with a wizard and split the table, so the files above are where that
-behaviour lives now.
+`POST /groups` runs in two steps:
 
-## Validation rules
+1. **Persist.** One transaction inserts the group row and every member row. If
+   any row fails, such as a name collision or a slot shortage, the whole
+   transaction rolls back and the API answers an error before any deploy starts.
+2. **Deploy.** With the members stored, each member is claimed and its deploy
+   started on the ordinary per-deployment path. A member that cannot be claimed
+   or started stays as a deployment you can start on its own. Each member's
+   progress reaches the page through the event stream and its row's status.
 
-- Group name: same regex as profile name (`^[a-z0-9][a-z0-9-]{0,30}$`), globally unique across `deployment_groups.name`.
-- Size: integer ≥ 1. No hard upper bound, and a warning over 20.
-- All field-level validation from single-profile mode applies unchanged.
-- Phase-1 transaction rolls back on any profile-row failure.
+The route answers 202 once every member's deploy has been started. It does not
+wait for them to finish.
 
-## Open questions / future work
+An edit of the shared settings claims every member before it writes anything. If
+any member is in the middle of a deploy, stop or removal, the edit changes none of
+them and answers 409 `group_busy`, naming the busy members.
 
-- Per-member secret generation (private keys, stamp ids) for genuine streamer fan-out.
-- Group-level bulk redeploy. Editing shared parameters, adding members and bulk start,
-  stop and removal were built, all listed under Scope above.
-- Multi-host distribution.
+## Routes
+
+All behind the session. The full reference is the Groups section of
+[the API reference](../../manager/README.md).
+
+| Method | Path                         | Body                                                                     | Answer                                                               |
+| ------ | ---------------------------- | ------------------------------------------------------------------------ | -------------------------------------------------------------------- |
+| POST   | `/groups`                    | `group_name`, `size`, `kind`, the shared fields above                    | 202, `{ group, profiles }` with each member's state after its start  |
+| GET    | `/groups`                    |                                                                          | `{ groups }`, every group, oldest first                              |
+| PATCH  | `/groups/:id/config`         | any of `notes`, `feed_owner`, `feed_topic`, `stamp_id`, `srt_passphrase` | 202, `{ group, profiles }` after every member is redeployed          |
+| POST   | `/groups/:id/members`        | `{ count }`, at least 1                                                  | 202, `{ group, profiles }` with the new members                      |
+| DELETE | `/groups/:id`                | `{ expectedName }`, the group's name as the page showed it               | 204 for a group with no members left                                 |
+| GET    | `/groups/:id/bee-publishers` |                                                                          | an ABR node pool's `BEE_PUBLISHERS` ([abr-ladder.md](abr-ladder.md)) |
+
+In a `PATCH`, a field left out keeps every member's own value, and a field sent,
+null included, is applied to every member.
+
+| Refusal                              | When                                                                 |
+| ------------------------------------ | -------------------------------------------------------------------- |
+| 409 `group_exists`                   | a group of that name exists                                          |
+| 404 `group_not_found`                | no group has that id, or it has no members                           |
+| 409 `group_busy`                     | an edit while a member is in the middle of a deploy, stop or removal |
+| 409 `group_changed`                  | a removal whose `expectedName` is not the group's name               |
+| 409 `group_not_empty`                | a removal of a group that still has members                          |
+| 409 `ladder_group_invalid_operation` | a `stamp_id` for an ABR node pool, or members added to one           |
+
+## Limits
+
+- A group cannot yet redeploy all its members in one action. Members are
+  redeployed one by one, or through an edit of the shared settings.
+- A group's members all run on one host. A group cannot yet spread its members
+  across hosts.
+- A member cannot yet override a shared setting. Change it on the member itself,
+  where it stops matching its siblings.
+- Every member of a group that runs a stream uploader signs with the same stream
+  key, so they all publish under one owner. That suits fan-out tests and rarely a
+  real stage. The manager does not yet generate a key per member.
+- The size has no upper bound. The wizard warns above 20.
+- An ABR node pool takes no `stamp_id` at create or in an edit, because one batch
+  would then pay for every rung, and takes no added members, because a new member
+  would carry no rung name ([abr-ladder.md](abr-ladder.md)).

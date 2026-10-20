@@ -1,140 +1,120 @@
 # The manager, `apps/infra-manager`
 
-A web console and API for running the Swarm HLS live-streaming stack,
-`apps/hls-stream`, on your own hosts. It deploys, checks, stops and removes each
-piece of the stack as a deployment, keeps the ports of deployments on one host
-apart, buys and tops up postage for the Bee nodes it runs, and fills their
-chequebooks. The new-deployment wizard offers five kinds of deployment:
+The manager is a web console and an API for running the Swarm HLS live-streaming stack,
+`apps/hls-stream`, on your own hosts. An operator uses it to create a deployment, which is one
+running copy of some of the stack's services, and the manager deploys, checks, stops and removes
+it. It keeps the ports of deployments on one host apart, buys and tops up postage for the Bee nodes
+it runs, fills their chequebooks, and tells the web2 admin (`apps/web2-admin`) about every stage
+that publishes.
 
-- **Stream to Swarm**: `srs`, `stream-uploader` and a Bee node,
-  `bee-uploader`. It takes a live feed from OBS or FFmpeg and publishes it to
-  Swarm.
-- **Watch a stream**: the web player, `client`, and a Bee node it reads
-  through, `bee-gateway`. A player for one stream.
-- **ABR node pool**: four Bee nodes, one per quality from 360p to 1080p, as
-  the upload targets of an ABR uploader. ABR, adaptive bitrate, means one
-  broadcast in several qualities, so a player can switch as its connection allows. It produces the `BEE_PUBLISHERS`
-  string.
-- **ABR uploader**: `srs` and `stream-uploader`, encoding a quality ladder and
-  publishing it to a node pool. It has no Bee node and no postage of its own.
-  The wizard copies the pool's `BEE_PUBLISHERS` string into it.
-- **Custom**: any of the components above, and the OME engine, picked by hand.
+## What you can deploy
 
-An ABR node pool and its uploader together are an ABR stage. They can share one
-host, the manager's own included, or run on hosts of their own: the pool on a
-Bee host and the uploader on a stage host, which is the layout
-[docs/self-hosting.md](../../docs/self-hosting.md) sets up.
+The new-deployment wizard offers five kinds of deployment:
 
-When the pool runs on the manager's own host and its uploader on another
-machine, that uploader needs two things: a `BEE_LOCAL_HOST` naming an address
-that machine can reach, and a Bee API bind that admits it. See
-[deploy/README.md](deploy/README.md) for the bind.
+- **Stream to Swarm**: `srs`, `stream-uploader` and a Bee node, `bee-uploader`. It takes a live
+  feed from OBS or FFmpeg and publishes it to Swarm.
+- **Watch a stream**: the web player, `client`, and a Bee node it reads through, `bee-gateway`.
+- **ABR node pool**: four Bee nodes, one per quality from 360p to 1080p, as the upload targets of an
+  ABR uploader. ABR, adaptive bitrate, means one broadcast in several qualities, so a player can
+  switch as its connection allows. The pool produces the `BEE_PUBLISHERS` string.
+- **ABR uploader**: `srs` and `stream-uploader`, encoding a quality ladder and publishing it to a
+  node pool. It has no Bee node and no postage of its own.
+- **Custom**: any of the components above, and the OvenMediaEngine media server (`ome`), picked by
+  hand.
 
-See [docs/features/abr-ladder.md](docs/features/abr-ladder.md).
+An ABR node pool and its uploader together are an ABR stage. They can share one host or run on
+hosts of their own, the pool on a Bee host and the uploader on a stage host, which is the layout
+[docs/self-hosting.md](../../docs/self-hosting.md) sets up. When the pool runs on the manager's own
+host and its uploader on another machine, the uploader needs a `BEE_LOCAL_HOST` it can reach and a
+Bee API bind that admits it. [ABR ladder](docs/features/abr-ladder.md) has the details.
+
+## Run it in one minute
+
+To work on the console without Docker, a database or a Bee node, from the repository root:
+
+```sh
+corepack pnpm install
+cd apps/infra-manager/frontend
+pnpm dev:mock    # an offline mock manager on 127.0.0.1:9876
+pnpm dev         # in a second terminal: the console, at the address Vite prints
+```
+
+Sign in as `dev` with the password `dev-password-1234`. Every value in the mock is made up at start.
+
+To run the real manager on one machine, deploying to `localhost`, follow "Run it" in
+[the API reference](manager/README.md#run-it). To put it on a server, follow
+[the deploy guide](deploy/README.md).
 
 ## Layout
 
-- `../hls-stream/`, the monorepo's `apps/hls-stream`: the streaming stack, with
-  the packages under `packages/` and the engine trees under `engines/`. The
-  monorepo commit a manager is deployed from holds both, and the stack in it is
-  the **bundled** stack version, the default until another is chosen. A deploy
-  does not carry this tree. It writes that commit into `manager/.stack-commit`,
-  and the server fetches it and builds its `apps/hls-stream` itself, the same
-  way it builds any version added on the Versions page.
-- `/opt/streaming/streaming-infra-manager-versions/` on the deploy host
-  (`STACK_VERSIONS_ROOT`). Each version keeps three siblings there:
-  `<name>.repo/`, the clone it builds from, `<name>.builds/<build id>/`, one
-  immutable directory per published build, and `<name>/`, the settings files
-  the operator owns. A build is a checkout with its packages built, so it runs
-  to about a gigabyte, and more than one build of a version can be kept at
-  once. The root is a sibling of the data root and sits outside the tree
-  `deploy/deploy.sh` rsyncs with `--delete`, so a manager deploy cannot wipe
-  it. The Versions page adds, updates, configures and removes these. See
-  [docs/features/stack-versions.md](docs/features/stack-versions.md) and
-  [deploy/README.md](deploy/README.md).
-- `/opt/streaming/streaming-infra-manager-data/<deployment>/` on the deploy
-  host (`BEE_DATA_ROOT`): the deployment's Bee node data and keys, and under
-  `engine/` the config file of its own when it runs on one. Survives a manager
-  deploy, removed with the deployment. See
-  [docs/features/engine-config.md](docs/features/engine-config.md).
-- `/opt/streaming/manager-ssh/` on the deploy host (`MANAGER_SSH_DIR`): the ssh
-  identity the manager deploys to _other_ hosts with (the deploy key, an
-  `ssh_config` with a `Host` block per target alias, and `known_hosts`),
-  bind-mounted into the api container at `/root/.ssh`. Another sibling outside
-  the tree `deploy/deploy.sh` rsyncs, and only needed when a deployment's host
-  is not `localhost`. See [deploy/README.md](deploy/README.md).
+| Path        | What it is                                                                                         |
+| ----------- | -------------------------------------------------------------------------------------------------- |
+| `manager/`  | The API, `@streaming-infra-manager/api`: Express, PostgreSQL, the deploy orchestration and the CLI |
+| `frontend/` | The console, `@streaming-infra-manager/frontend-prototype`: React, served by nginx                 |
+| `common/`   | Shapes and rules the API, the console and the mock share, `@streaming-infra-manager/common`        |
+| `deploy/`   | `deploy.sh`, which puts the manager on a server, and the host firewall generator                   |
+| `docs/`     | The feature pages, the console page and the CI page                                                |
 
-## Checks
+The manager reads the stack from `../hls-stream/`, the monorepo's `apps/hls-stream`. The stack in
+the commit a manager is deployed from is the bundled stack version, the default until another is
+chosen. A deploy does not carry the stack tree. It writes the stack's commit into
+`manager/.stack-commit`, and the server fetches that commit and builds its `apps/hls-stream` itself,
+the same way it builds any version added on the Versions page. An older stack release can be added
+there by its tag, such as `stack/v3.4`, or by its commit.
 
-The `checks` workflow declares four jobs on every pull request and push to
-`main`: the build and the unit suites, the SQL suites against nine
-disposable databases, the browser suites against a real headless Chrome, and a
-build of the web and api images the way a deploy builds them on the host. A
-second workflow, started by hand or by adding the `docker-checks` label to a
-pull request, runs the container-backed regressions and the signed-in
-integration suite. What each job proves, what it does not, and how to
-run any of it on a laptop: [docs/ci.md](docs/ci.md).
+On a server, the manager keeps three folders beside its own:
+
+| Folder (default)                                   | Setting               | What it holds                                                                                                                                                     |
+| -------------------------------------------------- | --------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `/opt/streaming/streaming-infra-manager-versions/` | `STACK_VERSIONS_ROOT` | Each stack version's clone (`<name>.repo/`), its published builds (`<name>.builds/<build id>/`, about a gigabyte each) and the settings files you own (`<name>/`) |
+| `/opt/streaming/streaming-infra-manager-data/`     | `BEE_DATA_ROOT`       | Each local deployment's Bee node data and keys, and its engine config file under `engine/`. Removed with the deployment                                           |
+| `/opt/streaming/manager-ssh/`                      | `MANAGER_SSH_DIR`     | The SSH identity the manager deploys to other hosts with. Needed only when a deployment's host is not `localhost`                                                 |
+
+All three sit outside the folder a manager deploy replaces, so a deploy never wipes them.
 
 ## Documents
 
-- [docs/features/](docs/features/): one page per feature, what the operator
-  sees and how the code behaves. Start here to understand a capability.
-  - [stack-versions.md](docs/features/stack-versions.md): versions, immutable
-    builds, the copies a deploy runs from, and settings revisions.
-  - [engine-control.md](docs/features/engine-control.md): engine settings,
-    restart, logs and the effective config from the UI.
-  - [engine-config.md](docs/features/engine-config.md): a deployment's own SRS
-    or OvenMediaEngine configuration file.
-  - [deployment-settings.md](docs/features/deployment-settings.md): every key a
-    deployment's version declares and its engine settings, set for one
-    deployment on its page or in the new-deployment wizard, and Apply for the
-    containers behind on them.
-  - [srt-ingest-health.md](docs/features/srt-ingest-health.md): how the
-    broadcast coming into SRS held up over the last minute, from SRS's own
-    statistics: the SRT link and what to change when it drops packets, and the
-    RTMP publishers with the bitrate SRS received from them.
-  - [group-deployment.md](docs/features/group-deployment.md): several
-    deployments created at once under one name.
-  - [web2-admin-link.md](docs/features/web2-admin-link.md): an uploader linked
-    to the web2 admin out of the box, the token of its own every uploader
-    presents, and Test connection.
-  - [stages.md](docs/features/stages.md): the stage records the manager pushes
-    into the web2 admin, the console's Stages page that lists them, the
-    catalogue node, and moving the catalogue to another batch.
-  - [abr-ladder.md](docs/features/abr-ladder.md): a node pool with one Bee node
-    per quality rung, and the pool string an uploader publishes to.
-  - [chequebook.md](docs/features/chequebook.md): funding a node's chequebook
-    and recovering a transfer.
-  - [postage-stamps.md](docs/features/postage-stamps.md): what a postage batch
-    is, and buying, using, topping up and diluting one on a deployment's
-    Storage card.
-  - [bee-node-mode.md](docs/features/bee-node-mode.md): whether a
-    deployment's Bee node runs light or ultra-light, and which chain endpoint
-    it is given.
-  - [auth-and-public-access.md](docs/features/auth-and-public-access.md): the
-    login gate, the HTTPS edge, the API binds and the host firewall.
-- [docs/ci.md](docs/ci.md): what each CI job proves, what it does not, and how
-  to run any suite on a laptop.
-- [docs/testing/](docs/testing/): what particular suites cover and, as
-  importantly, what they do not model.
+- [manager/README.md](manager/README.md): the API and settings reference, every route and every
+  environment variable.
+- [deploy/README.md](deploy/README.md): putting the manager on a server, deploying Bee nodes to
+  other hosts, and opening the manager to the internet.
+- [docs/console.md](docs/console.md): the console's pages, the readiness checklist and the
+  new-deployment wizard.
+- [docs/ci.md](docs/ci.md): what the CI jobs run, the pins, and how to run the same checks locally.
+- [manager/test/integration/README.md](manager/test/integration/README.md): the signed-in
+  integration suite against a running manager.
+- [docs/features/](docs/features/): one page per feature.
+  - [stack-versions.md](docs/features/stack-versions.md): stack versions, their builds and their
+    settings files.
+  - [deployment-settings.md](docs/features/deployment-settings.md): every key a deployment's version
+    declares, set for one deployment or in the wizard, and Apply.
+  - [engine-control.md](docs/features/engine-control.md): the media engine's settings, restart,
+    logs and effective config.
+  - [engine-config.md](docs/features/engine-config.md): a deployment's own SRS or OvenMediaEngine
+    configuration file.
+  - [srt-ingest-health.md](docs/features/srt-ingest-health.md): how the broadcast coming into SRS
+    held up over the last minute.
+  - [group-deployment.md](docs/features/group-deployment.md): several deployments created at once
+    under one name.
+  - [abr-ladder.md](docs/features/abr-ladder.md): a node pool with one Bee node per quality, and the
+    pool string an uploader publishes to.
+  - [bee-node-mode.md](docs/features/bee-node-mode.md): whether a Bee node runs light or
+    ultra-light, and which chain endpoint it uses.
+  - [postage-stamps.md](docs/features/postage-stamps.md): buying, using, topping up and diluting a
+    postage batch.
+  - [chequebook.md](docs/features/chequebook.md): filling a Bee node's chequebook and recovering a
+    transfer.
+  - [web2-admin-link.md](docs/features/web2-admin-link.md): linking uploaders to the web2 admin, the
+    uploader's own token, and Test connection.
+  - [stages.md](docs/features/stages.md): the stage records the manager pushes into the web2 admin,
+    and the catalogue node.
+  - [auth-and-public-access.md](docs/features/auth-and-public-access.md): the sign-in, the HTTPS
+    edge, the API binds and the host firewall.
 
-### History
+## Checks
 
-The team's records of how the manager came to be, kept for reference rather than as documentation
-of the current behaviour:
-
-- [docs/features/next-features-2026-09.md](docs/features/next-features-2026-09.md): the September
-  2026 plan, the record of what was asked for and why.
-- [docs/ux/](docs/ux/): the brief of the console's UX rework and the clickable mockup it was
-  decided from.
-
-## The stack this manager bundles
-
-The stack sits beside the manager in the monorepo, in `apps/hls-stream`, so a
-plain clone of the monorepo holds both and nothing more has to be fetched. A
-manager deploy bundles the stack of the commit it deploys, so moving the bundled
-stack on is a change to `apps/hls-stream` in the same repository, reviewed and
-merged like any other.
-
-An older stack release can still be added on the Versions page by its tag, such
-as `stack/v3.4`, or by its commit.
+The `infra-manager` workflow runs on every pull request into `main`: the build, type checks, lint,
+format and unit suites, the SQL suites against disposable databases, the browser suites against a
+real headless Chrome, and a build of the two images. The Docker-backed suites and the signed-in
+integration suite run when started by hand or by the `docker-checks` label.
+[docs/ci.md](docs/ci.md) has the details.
