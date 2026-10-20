@@ -70,8 +70,8 @@ it comes back in the same broadcast it rejoins the ladder live at the siblings' 
 recording written at the end numbers that rung's returning segments on from its own last segment instead, so after
 the gap its sequences sit below its siblings' by the gap in segments, counted from the rung's last segment before it to
 its first after the return. Every segment is kept and every date agrees, but a player that places a recording's
-segments by summed durations can land the gap's length off at a quality switch after it. Measured on 2026-10-15 on a
-release candidate of v1.2.1, with 2 s segments: 1080p's encoder was paused for 70 s, and about 92 s passed from its
+segments by summed durations can land the gap's length off at a quality switch after it. Measured on 2026-10-15 on the
+build tagged `v1.2.1-rc.1`, with 2 s segments: 1080p's encoder was paused for 70 s, and about 92 s passed from its
 last segment before the pause to its first after the return. It rejoined live at sequence 1057, and its recording
 numbered the same segments from 1011, 46 below its siblings. To see it: during a
 broadcast pause one rung's encoder for more than 60 s, let it go, and after the recording is written compare that
@@ -100,7 +100,7 @@ but the admin does not show it.
 **Two encoders on one stream's details take it from each other (P2, SPDV-1681).** A stage lets an encoder
 with the right key take over a stream that is already live, so a broadcaster whose OBS crashed comes straight back.
 OBS reconnects by itself when it is pushed off, so two encoders with the same details push each other off every 2 to
-3 seconds for as long as both run. Measured on 2026-10-15 on v1.2.0: the stream carried about 9 of its 30 segments a
+3 seconds for as long as both run. Measured on 2026-10-15 on the build tagged `v1.2.0`: the stream carried about 9 of its 30 segments a
 minute, with three encoders none at all, and the admin showed Live throughout. When one encoder stops, the stream is
 back to normal within about 10 seconds. A wrong or missing passphrase or key, another stream's key and malformed
 stream ids are refused without touching the live stream. Kept as it is for now: a stream's details belong in one
