@@ -358,33 +358,16 @@ a stream of another stage is refused at the gate.
 
 **Rolling out on a host that runs the admin and manager from before stages.**
 [Upgrading](../self-hosting.md#the-control-host), at the end of the control host in the
-self-hosting guide, has each step in full:
-
-0. **Create the catalogue node** and buy its immutable batch.
-1. **Deploy the manager that pushes stage records** and designate the catalogue node. The admin
-   from before stages has no `/api/internal/stages` route, so every push comes to `not-admin`
-   until step 2, which is harmless. Create no stage and rotate nothing yet.
-2. **Deploy the intermediate admin**, which takes stage records and still accepts the shared
-   token on an uploader's routes: commit `d29616851` of `feat/stages` (tag it
-   `web2-admin/stages-intermediate` before `feat/stages` is merged to `main`, because a squash
-   or rebase merge leaves that commit unreachable). It refuses every catalogue write, `503`, until
-   it holds a catalogue stamp, which the manager pushes within ten seconds of its start.
-3. **Give every stream a stage** before any rotation: unpublish every scheduled stream, pick its
-   stage, publish it again, and pick a stage for every draft. A stage on its own token is answered
-   only about its own streams, and a stream live at rotation keeps its live state until an operator
-   unpublishes it.
-4. **Rotate and redeploy every stage** until the admin's Stages page reads "Its own token" for all.
-5. **Deploy the admin that refuses the shared token**, the one this page describes.
-
-Skipping steps 2 to 4 means every running uploader gets 401 from the admin that refuses the shared
-token until its stage is rotated and redeployed. After the upgrade, give each stage a `STREAM_KEY`
-of its own and redeploy it, since a stage from before stages signs with the brand key, then
-publish its scheduled streams again. Until the catalogue is moved, the batch the admin's env file
-named as `POSTAGE_BATCH_ID` stamps every slot written before step 2 (`batch_id NULL`): keep it
-topped up and its node alive, never dilute or replace it or name it in a pool string, and run the
-move first after the trial below. That is the one remaining way the catalogue can go dark. A
-fresh installation needs none of this: every stage it creates has a token and a key of its own
-from its first deploy, and its catalogue starts on the catalogue node.
+self-hosting guide, has the steps. The order follows from three facts. An intermediate admin takes
+both the shared token and a stage's own, so every running uploader keeps working while its stage is
+rotated and redeployed. Without that step, the admin that refuses the shared token answers every
+running uploader 401 until its stage is rotated. A stage on
+its own token is answered only about its own streams, so every stream gets a stage before any
+rotation. And until the catalogue is moved, every slot written before the upgrade is stamped by the
+batch the admin's env file named as `POSTAGE_BATCH_ID`, so that batch has to stay alive. That is
+the one remaining way the catalogue can go dark. A fresh installation needs none of this: every
+stage it creates has a token and a key of its own from its first deploy, and its catalogue starts
+on the catalogue node.
 
 ## Moving the catalogue to another batch
 

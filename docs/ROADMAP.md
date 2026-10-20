@@ -367,23 +367,10 @@ Left open after the nine phases:
 - **Brand separation** inside one admin, and a second admin link per manager
   for a second brand, among the open decisions below.
 - **Rollout**, decided 2026-09-29, for a host that runs the admin and
-  manager from before stages: the catalogue node created; the manager that
-  pushes stage records (phase 9), with the node designated at once; the
-  intermediate admin, the phase 8 state of `feat/stages` (commit `d29616851`;
-  tag it `web2-admin/stages-intermediate` before `feat/stages` is merged to
-  `main`, because a squash or rebase merge leaves that commit unreachable);
-  every scheduled stream unpublished, given a stage and published again, and
-  every draft given a stage; every stage rotated and redeployed until the
-  admin's Stages page reads "Its own token" for all; the admin that refuses
-  the shared token (phase 9); then a `STREAM_KEY` of its own for each stage.
-  Until the catalogue is moved, the batch from before stages holds every slot
-  written before the intermediate admin: it stays topped up and alive, is
-  never diluted (superseded on 2026-10-08: the catalogue batch may be diluted
-  like any other, as [funding.md](architecture/funding.md) records), replaced
-  or put in a pool string, and the move runs first
-  after the real-node trial. That is the one remaining way the catalogue can
-  go dark. "Upgrading" in `docs/self-hosting.md` has each step. A fresh
-  installation needs none of this.
+  manager from before stages: six steps in a fixed order, with an
+  intermediate admin that takes both tokens while every stage is rotated.
+  "Upgrading" in [self-hosting.md](self-hosting.md#the-control-host) has
+  each step. A fresh installation needs none of this.
 
 ## Checkpoint 3: manager integration (done with stages, merged 2026-10-03)
 
