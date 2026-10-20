@@ -1,4 +1,4 @@
-# streaming-infra-manager
+# The manager, `apps/infra-manager`
 
 A web console and API for running the Swarm HLS live-streaming stack,
 `apps/hls-stream`, on your own hosts. It deploys, checks, stops and removes each
