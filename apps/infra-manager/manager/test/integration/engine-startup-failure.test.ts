@@ -13,8 +13,9 @@
  *
  *     work_dir /no/such/directory;
  *
- * Two observations on ossrs/srs@sha256:2be08a0fe28737bf28bae8a575bb5776e09b620366dd1e62dd4f8a41cf4310f3,
- * which is the tag the stack runs, taken on this laptop on 2026-09-10 with the
+ * Two observations on
+ * ghcr.io/solar-punk-ltd/swarm-srs:6.0-r2-swarm.4@sha256:090f7b4e9017629b6837866e314e5576f7a1becf4cf3bfd85f393ada0e5f5d5a,
+ * which is the image the stack runs, taken on this laptop on 2026-10-20 with the
  * template substituted the way the check substitutes it:
  *
  *   1. The parse the manager runs, `./objs/srs -t -c /check/srs.conf` in a
@@ -28,10 +29,6 @@
  *      "do_main() [./src/main/srs_main_server.cpp:150][errno=2](No such file
  *      or directory)". SRS reads its config, then changes directory, and only
  *      the second step touches the file system.
- *
- * Both were taken again the same day, on this digest, after the first pin
- * turned out to name an image no tag points at any more. Same two answers:
- * the parse exited 0 and the start exited 255 on the chdir line.
  *
  * Run 35446479777 exercised this path against stack v3.1 on 2026-09-19. The
  * startup command refused the poisoned file and recovery brought the template

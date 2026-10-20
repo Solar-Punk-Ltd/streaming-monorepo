@@ -1,6 +1,6 @@
 /**
  * How the config check isolation harness judges eight concurrent parser checks, exercised
- * against answers recorded from the pinned SRS image on 2026-09-10.
+ * against answers recorded from the SRS image the stack runs on 2026-10-20.
  *
  * The harness itself starts eight containers and cannot run in a unit suite.
  * What can run here is the part that decides: which case each answer belongs
@@ -14,14 +14,14 @@ import { describe, it } from 'node:test';
 
 import { ACCEPTED_CASES, CHECK_CASES, REFUSED_CASES, applyCase, wrongAnswers } from '../docker/srsCheckIsolation.js';
 
-/** The answers the pinned image gave on 2026-09-10, as the manager words them. */
+/** The answers the stack's SRS image gave on 2026-10-20, as the manager words them. */
 const RECORDED: Record<string, string> = {
   'listen emptied':
     'SRS refused the file. invalid configcode=1023(ConfigInvalid) : check normal : listen requires params in your config',
   'max_connections without its semicolon':
     'SRS refused the file. invalid configcode=1023(ConfigInvalid) : parse buffer your config : root parse : read token, line=2, state=0 : line 2: unexpected end of line to parse token max_connections in your config',
   'pbkeylen without its semicolon':
-    'SRS refused the file. invalid configcode=1023(ConfigInvalid) : parse buffer your config : root parse : parse dir : read token, line=24, state=0 : line 24: unexpected end of line to parse token pbkeylen in your config',
+    'SRS refused the file. invalid configcode=1023(ConfigInvalid) : parse buffer your config : root parse : parse dir : read token, line=26, state=0 : line 26: unexpected end of line to parse token pbkeylen in your config',
   'http_server left unclosed':
     'SRS refused the file. invalid configcode=1023(ConfigInvalid) : parse buffer your config : root parse : read token, line=5, state=0 : line 5: unexpected end of line to parse token http_server in your config',
 };

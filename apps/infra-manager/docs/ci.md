@@ -80,14 +80,15 @@ pnpm comes from the `packageManager` field of the root `package.json`, and Node 
 known-malware advisories, as for any dependency.
 
 Container images are pinned by digest. The resolved column is the day the tag was resolved to that
-digest, because a tag moves and a digest does not. `manager/test/unit/srsImagePin.test.ts` reads
-the `ossrs/srs:6` row and fails when it disagrees with the harness.
+digest, because a tag moves and a digest does not. The SRS row is the image the stack's own compose
+files pin, and its date is the day they first pinned that digest. `manager/test/unit/srsImagePin.test.ts`
+fails when that row, the harness and the stack's compose files disagree.
 
-| Image                       | Digest                                                                    | Resolved   | Used by                                         |
-| --------------------------- | ------------------------------------------------------------------------- | ---------- | ----------------------------------------------- |
-| `postgres:16.15-alpine`     | `sha256:721873c34ceb9f8d8fc265984940dc982404c105f19ad51be9fdc5970a6080ea` | 2026-09-27 | database, browser, integration                  |
-| `ossrs/srs:6`               | `sha256:2be08a0fe28737bf28bae8a575bb5776e09b620366dd1e62dd4f8a41cf4310f3` | 2026-09-10 | srs-parser, and the engine startup observations |
-| `airensoft/ovenmediaengine` | `sha256:172da9129d32093f3c92c426d385a318db38c7e70de0a3a685693e69614672a6` | 2026-09-08 | ome-gate                                        |
+| Image                                             | Digest                                                                    | Resolved   | Used by                                         |
+| ------------------------------------------------- | ------------------------------------------------------------------------- | ---------- | ----------------------------------------------- |
+| `postgres:16.15-alpine`                           | `sha256:721873c34ceb9f8d8fc265984940dc982404c105f19ad51be9fdc5970a6080ea` | 2026-09-27 | database, browser, integration                  |
+| `ghcr.io/solar-punk-ltd/swarm-srs:6.0-r2-swarm.4` | `sha256:090f7b4e9017629b6837866e314e5576f7a1becf4cf3bfd85f393ada0e5f5d5a` | 2026-10-05 | srs-parser, and the engine startup observations |
+| `airensoft/ovenmediaengine`                       | `sha256:172da9129d32093f3c92c426d385a318db38c7e70de0a3a685693e69614672a6` | 2026-09-08 | ome-gate                                        |
 
 `SRS_CHECK_IMAGE` overrides the SRS harness image and is refused unless it carries `@sha256:`.
 
