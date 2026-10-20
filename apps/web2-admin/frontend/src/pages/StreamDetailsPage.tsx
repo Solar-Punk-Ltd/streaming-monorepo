@@ -197,9 +197,9 @@ export function StreamDetailsPage() {
   const [finalizeOpen, setFinalizeOpen] = useState(false);
   const [finalizing, setFinalizing] = useState(false);
 
-  // Bumped on every load so a slow response for the previous stream cannot
-  // overwrite the current one — showing one stream's ingest key under
-  // another's title would be worse than showing nothing.
+  // Bumped on every load and every Finalize, so a slow response for the
+  // previous stream cannot overwrite the current one — showing one stream's
+  // ingest key under another's title would be worse than showing nothing.
   const requestId = useRef(0);
 
   const load = useCallback(() => {
@@ -291,14 +291,22 @@ export function StreamDetailsPage() {
   // try again or cancel, as with Unpublish.
   const runFinalize = async () => {
     if (!id) return;
+    // Taken as a load takes one: a read that left before the POST cannot put
+    // the old key back after it, and an answer that lands once the page has
+    // moved on to another stream changes nothing there, a refusal's re-read
+    // of this stream included.
+    const request = (requestId.current += 1);
+    const current = () => requestId.current === request;
     setFinalizing(true);
     try {
       const answer = await api.finishStream(id);
+      if (!current()) return;
       setStream(answer.stream);
       setIngest(answer.ingest);
       snackbar.success('Stream finalized. Its key has changed.');
       setFinalizeOpen(false);
     } catch (e) {
+      if (!current()) return;
       if (isFinalizeRefusal(e)) {
         snackbar.error(e.code === 'stream_live' ? FINALIZE_WHILE_LIVE : e.message);
         setFinalizeOpen(false);
