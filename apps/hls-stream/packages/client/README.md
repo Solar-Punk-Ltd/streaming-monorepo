@@ -73,12 +73,48 @@ with a redeploy.
 
 ## Features
 
-- **Stream Browser**: Fetches the stream catalogue from Swarm feeds, lists every entry in it, live first and then newest first, and reads the catalogue again once a minute. Each read asks the list's next slot before it is written, and Bee skips each peer asked that early for a minute, so the page asks no more often than that, and a new or changed entry reaches an open page up to a minute after it is written. A read that fails is tried again after 5 seconds until the list has been shown from the node selected now, on the first load and after a switch of node, and after the same minute once it has, never after a growing backoff. A read from a newer feed slot replaces the list whatever changed in it, so an entry edited, unpublished or gone live in place shows on an open page without a reload. When a read or the list on screen does not say which slot it came from, only a new newest entry replaces the list
-- **Stream Preview**: The catalogue entry's uploaded `thumbnail` when it has one, otherwise a frame decoded from the stream's first segment. Includes live and upcoming badges plus duration display. A recording's entry carries its playlist's feed index, so its card reads that slot directly. A live entry carries no index, so a live card finds its playlist through Bee's feed head lookup, which is slower
-- **Scheduled streams**: An entry whose `state` is `scheduled` has been announced but never broadcast, so nothing is written under its topic yet. Its card renders the uploaded image or the placeholder and never probes for a manifest, and its watch page says the stream has not started instead of starting a player against a feed that does not exist. While the entry is scheduled the watch page reads the broadcast's ladder markers, each period's marker once, about 4 seconds into the period, and each marker found prompts one read of the catalogue. The player starts once the catalogue says live, with the stream's renditions. Apart from that the page reads the catalogue once a minute, for a new start time, a title change or an unpublish, because asking the catalogue's unwritten next slot more often makes the node skip its peers for that slot and the live entry then arrives up to a minute late. If the stream is unpublished while the page waits, the page says it is no longer available rather than starting the player, and keeps reading the catalogue, so publishing the stream again reaches the page without a reload
-- **A broadcast that comes back**: In admin mode a declared stream's broadcaster can stop and later return to the same feeds, and the admin lists the stream as live again. After a feed finishes, the player keeps asking for the slot after the finished playlist, about every 30 seconds and spread per viewer. Once that slot holds an open playlist and the viewer has reached the end of what they were playing, the player rejoins the live broadcast. A viewer still watching the recording further back is not moved, and a broadcast that never comes back stays on "This broadcast has ended"
-- **HLS Playback**: Video and audio stream playback via custom hls.js loaders
-- **Sources**: The build's gateways and any number of gateways and Bee nodes a viewer adds, read from as one source or one per part, with the fallback order, a status dot per source, a Test of each, who answered each feature in the last minute, and a copyable report, all kept in localStorage
+- **Stream browser.** Reads the catalogue from its Swarm feed and lists every entry, live first, then
+  newest first.
+  - It reads the catalogue again once a minute (`CATALOG_POLL_INTERVAL_MS`). Each read asks for the
+    feed's next slot before anyone has written it, and Bee skips every peer asked that early for a
+    minute, so asking more often gains nothing. A new or changed entry reaches an open page up to a
+    minute after it is written.
+  - A read that fails is tried again after 5 seconds (`FIRST_LOAD_RETRY_MS`) until the list has been
+    shown from the node selected now, on the first load and after a switch of node. After that a
+    failed read waits the same minute. There is no growing backoff.
+  - A read from a newer feed slot replaces the list whatever changed in it, so an entry edited,
+    unpublished or gone live in place shows on an open page without a reload. When a read or the list
+    on screen does not say which slot it came from, only a new newest entry replaces the list.
+- **Stream preview.** The entry's uploaded `thumbnail` when it has one, otherwise a frame decoded from
+  the stream's first segment, with live and upcoming badges and the duration.
+  - A recording's entry carries its playlist's feed index, so its card reads that slot directly.
+  - A live entry carries no index, so a live card finds its playlist through Bee's feed head lookup,
+    which is slower.
+- **Scheduled streams.** An entry whose `state` is `scheduled` has been announced but never broadcast,
+  so nothing is written under its topic yet.
+  - Its card shows the uploaded image or the placeholder and never asks for a manifest. Its watch page
+    says the stream has not started instead of starting a player against a feed that does not exist.
+  - While the entry is scheduled, the watch page reads the broadcast's ladder markers, each period's
+    marker once, about 4 seconds into the period. Each marker found prompts one read of the catalogue,
+    and the player starts with the stream's renditions once the catalogue says live.
+  - Apart from that the page reads the catalogue once a minute, for a new start time, a title change
+    or an unpublish, for the same reason as the stream browser.
+  - If the stream is unpublished while the page waits, the page says it is no longer available and
+    keeps reading the catalogue, so publishing it again reaches the page without a reload.
+- **A broadcast that comes back.** In admin mode a declared stream's broadcaster can stop and later
+  return to the same feeds, and the admin lists the stream as live again.
+  - After a feed finishes, the player keeps asking for the slot after the finished playlist, about
+    every 30 seconds (`FEED_RETURN_WATCH_INTERVAL_MS`), spread per viewer.
+  - Once that slot holds an open playlist and the viewer has reached the end of what they were
+    playing, the player rejoins the live broadcast. A viewer still watching the recording further back
+    is not moved.
+  - A broadcast that never comes back stays on "This broadcast has ended".
+- **HLS playback.** Video and audio through hls.js with custom loaders, see
+  [Custom hls.js Loaders](#custom-hlsjs-loaders).
+- **Sources.** The build's gateways plus any number of gateways and Bee nodes a viewer adds, read as
+  one source or one per part, with the fallback order, a status dot and a Test for each, who answered
+  each feature in the last minute, and a copyable report, all kept in localStorage. See
+  [The node picker](#the-node-picker).
 
 ## The node picker
 
@@ -358,15 +394,29 @@ and the registry of kinds stay behind it, so a new kind of provider changes noth
 
 Standard hls.js expects static manifest URLs. On Swarm, every manifest update produces a new content hash. The client solves this with custom loaders:
 
-1. **CustomManifestLoader**, Instead of fetching a static URL, hands hls.js's playlist requests to the `ManifestFetcher`. The top-level playlist is built from the stream list when the list names the renditions, and is otherwise the source feed's head. A single-rendition stream is then followed by reading its next slots by number, and a rung of a ladder by `LadderFeedPoller` (item 4), which never uses Bee's feed lookup.
-2. **CustomFragmentLoader**, Resolves segment references from the manifest (which contain Swarm hashes) into fetchable URLs, the ones the Swarm client's player reader gives.
-3. **ManifestStateManager**, Merges incoming live manifests into a growing EVENT-type playlist so segments remain available longer than the sliding window. Tracks feed indices, handles deduplication, and caches serialized output.
-4. **LadderFeedPoller**. For ABR streams, owns the feed walk of the rung hls.js plays, plus the one being switched to while a switch is under way. Every rung is registered and only those are read. A rung left behind forgets where it was, so coming back to it starts at its newest playlist. Where a walk starts comes from a `NewestIndexFinder`, injected so it can be swapped: the `MarkerFinder`, which reads the ladder's time marker and falls back to the `IndexSearchFinder`. How it follows is `followPredicted` in `SwarmHlsPlayer/following/`, chosen by a simulation that compares ways of polling a feed. The player assumes no segment length: the follower and the searches take it from the `#EXTINF` values of the playlist they stand on, and a join from a time marker takes the `segmentMs` the marker names, which is the stage's `HLS_FRAGMENT`. That simulation, a model of a Bee node, a publisher and a player, and the other ways it compares are in `test/feedModel/`.
-   - **How it times its reads.** The player asks for the next playlist when it is due: the newest segment's end, plus one segment, plus a delay it learns from its own reads, set so that about one ask in four comes too early. A second ask covers that one, then one ask per segment, then asks every 2 seconds rising to 4 while nothing comes. A playlist 4 seconds late is looked past, one slot further on.
-   - **When the broadcast goes quiet.** Bee skips, for a minute, every peer it asked for an address not written yet, so a slot asked for over and over during an outage stays unreadable for about a minute after the broadcaster is back. So once the next slot has had five asks, the player stops asking for it and reads the ladder's time markers instead (next item), each one once, 4 seconds into its 10 seconds. When a marker names a slot past the missing one, the player reads that slot, whose playlist also holds the segments it skips, and follows on from there. The picture is back 4 to 14 seconds after the broadcaster has new video, rather than about a minute. In a 10 second period whose marker is missing, the slot itself is asked once.
-   - **How it finds the newest playlist.** It reads slots by their number, never Bee's feed lookup. The uploader writes a time marker for each ladder every 10 seconds, at an address worked out from the clock, naming every rung's newest playlist (`packages/shared/src/ladderMarker.ts`). At the start, at a switch, and when a rung stops or finishes, the player reads the marker of the previous 10 seconds, and the one before if that is missing, then one round of eight slots from where it says. One marker read serves every rung for a few seconds, and a marker address found missing is never asked again. The clock is the gateway's, taken from the `Date` header of every answer the Swarm client reads, so a viewer whose clock is wrong still finds the marker. A gateway on another origin has to list `Date` in `Access-Control-Expose-Headers` for the browser to show it, and without that the correction stays zero. With no marker, it searches: at the start eight slots at once, spread out to the feed's length, closing in on the newest in a few rounds, and at a switch from the playing rung's newest slot, usually one round. The new rung is read further back when the viewer is behind the live edge, at most ten reads.
-
+1. **CustomManifestLoader.** Instead of fetching a static URL, it hands hls.js's playlist requests to the `ManifestFetcher`. The top-level playlist is built from the stream list when the list names the renditions, and is otherwise the source feed's head. A single-rendition stream is then followed by reading its next slots by number, and a rung of a ladder by `LadderFeedPoller` (item 4), which never uses Bee's feed lookup.
+2. **CustomFragmentLoader.** Resolves segment references from the manifest (which contain Swarm hashes) into fetchable URLs, the ones the Swarm client's player reader gives.
+3. **ManifestStateManager.** Merges incoming live manifests into a growing EVENT-type playlist so segments remain available longer than the sliding window. Tracks feed indices, handles deduplication, and caches serialized output.
+4. **LadderFeedPoller.** For ABR streams, owns the feed walk of the rung hls.js plays, plus the one being switched to while a switch is under way. See [Following a rung's feed](#following-a-rungs-feed).
 5. **`fragmentRequested` and `fragmentSettled` are a parsed contract, not debug output.** The loaders write those two console lines, `packages/shared/src/clientLog.ts` composes them and owns their wording, and `e2e/src/browser/fragmentRequests.ts` reads them back. They are the only thing that lets an e2e test run say whether a down-switch the player asked for completed or starved. Rewording either one throws nothing and fails nothing. The e2e quality check then reads no lines at all, and the run reports on a viewer it could not see.
+
+### Following a rung's feed
+
+Every rung of the ladder is registered with `LadderFeedPoller`, and it reads only the rung hls.js plays and, during a switch, the one being switched to. A rung left behind forgets where it was, so coming back to it starts at its newest playlist.
+
+- **Its parts.** Where a walk starts comes from a `NewestIndexFinder`, injected so it can be swapped: the `MarkerFinder`, which reads the ladder's time marker and falls back to the `IndexSearchFinder`. How it follows is `followPredicted` in `SwarmHlsPlayer/following/`.
+- **Why `followPredicted`.** A simulation in `test/feedModel/`, a model of a Bee node, a publisher and a player, compares it with other ways of polling a feed. `followPredicted` is the one it recommends.
+- **Segment length.** The player assumes none. The follower and the searches take it from the `#EXTINF` values of the playlist they stand on, and a join from a time marker takes the `segmentMs` the marker names, which is the stage's `HLS_FRAGMENT`.
+- **How it times its reads.** The player asks for the next playlist when it is due: the newest segment's end, plus one segment, plus a delay it learns from its own reads, set so that about one ask in four comes too early. A second ask covers that one, then one ask per segment, then asks every 2 seconds rising to 4 while nothing comes. A playlist 4 seconds late is looked past, one slot further on.
+- **When the broadcast goes quiet.** Bee skips, for a minute, every peer it asked for an address not written yet, so a slot asked for over and over during an outage stays unreadable for about a minute after the broadcaster is back.
+  - Once the next slot has had five asks, the player stops asking for it and reads the ladder's time markers instead (next item), each one once, 4 seconds into its 10 seconds.
+  - When a marker names a slot past the missing one, the player reads that slot, whose playlist also holds the segments it skips, and follows on from there.
+  - The picture is back 4 to 14 seconds after the broadcaster has new video, rather than about a minute. In a 10 second period whose marker is missing, the slot itself is asked once.
+- **How it finds the newest playlist.** It reads slots by their number, never Bee's feed lookup.
+  - The uploader writes a time marker for each ladder every 10 seconds, at an address worked out from the clock, naming every rung's newest playlist (`packages/shared/src/ladderMarker.ts`).
+  - At the start, at a switch, and when a rung stops or finishes, the player reads the marker of the previous 10 seconds, and the one before if that is missing, then one round of eight slots from where it says. One marker read serves every rung for a few seconds, and a marker address found missing is never asked again.
+  - The clock is the gateway's, taken from the `Date` header of every answer the Swarm client reads, so a viewer whose clock is wrong still finds the marker. A gateway on another origin has to list `Date` in `Access-Control-Expose-Headers` for the browser to show it, and without that the correction stays zero.
+  - With no marker, it searches. At the start it reads eight slots at once, spread out to the feed's length, closing in on the newest in a few rounds. At a switch it starts from the playing rung's newest slot, usually one round. The new rung is read further back when the viewer is behind the live edge, at most ten reads.
 
 ## weeb-3 runs in a SharedWorker
 
@@ -435,7 +485,7 @@ src/
     App.tsx               # Global state (stream list, gateway URL, the Swarm client)
     catalogPoll.ts        # How often a page reads the catalog again, once a minute
     catalogState.ts       # One catalog read, carrying the gateway it went to
-    gatewayTestHandle.ts  # Where an e2e test finds the gateway switch          
+    gatewayTestHandle.ts  # Where an e2e test finds the gateway switch
     sourceStorage.ts      # A viewer's sources, routing and fallback order, kept in localStorage
     useCatalogPoll.ts     # The hook that polls the catalog and hands each answer to the stream list
   swarm/                  # The one layer that reads Swarm: answers, providers, the client, settings
