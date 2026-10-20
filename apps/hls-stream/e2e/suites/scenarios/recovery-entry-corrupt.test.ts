@@ -23,7 +23,7 @@ import { waitFor } from '../../src/harness/wait.js';
  * ## The three shapes, and they do not share a path
  *
  * `recoverStreams` and `readinessFromPersisted` sort a bad entry into one of three outcomes, and only
- * one of them is the "documented repair path" the roadmap names:
+ * one of them repairs the entry:
  *
  * | on disk | what happens | what it costs |
  * | --- | --- | --- |

@@ -98,8 +98,9 @@ const DRAIN_TIMEOUT_MS = 5 * 60 * 1000;
 
 /**
  * Where a replacement session's playlist starts numbering again. A later broadcast on the same stream
- * does not start here: each rung continues above what its feed already holds, see the restarted
- * broadcast entry in `docs/known-issues.md`.
+ * does not start here: each rung continues above what its feed already holds. The lower rungs often
+ * end a broadcast one short segment after the higher ones, so a later broadcast's rungs can open one or
+ * two numbers apart.
  */
 const FIRST_BROADCAST_SEQUENCE = 0;
 

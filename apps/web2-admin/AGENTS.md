@@ -18,7 +18,7 @@ of the repository holds the rules that apply everywhere. This file adds the admi
   `backend/test/integration/README.md` is the integration tests' page.
 - At the repository root, `../../docs/architecture/web2-admin.md` says what the admin is for and
   how it relates to the manager and the stack, and `../../docs/architecture/web2-admin-auth.md`
-  how sign-in works. `../../docs/ROADMAP.md` is the plan. `../../docs/self-hosting.md` says how a
+  how sign-in works. `../../docs/self-hosting.md` says how a
   host is set up. The manager and the stack document themselves under `../infra-manager/` and
   `../hls-stream/`. Read the relevant pages before touching anything that talks to them.
 

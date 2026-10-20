@@ -546,8 +546,8 @@ stack version of the new release, and each stage takes it when you deploy it aga
 A manager page reads the manager's version once, when it loads, so reload every manager page that
 was open through the upgrade.
 
-Read [known-issues.md](known-issues.md) before you upgrade, and keep every host folder, compose
-project and volume name in [the table above](#the-names-that-never-change) as it is.
+Keep every host folder, compose project and volume name in
+[the table above](#the-names-that-never-change) as it is.
 
 A control host whose bundled stack runs from one stack folder, the one `SHLS_ROOT` names, rather
 than from a build keeps its settings and its running deployments through a manager upgrade:

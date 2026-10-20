@@ -13,7 +13,7 @@ The stack's docs are its READMEs, one per part, linked from `README.md`. There i
 - `packages/client/README.md` and `packages/cli/README.md`: the viewer's and the CLI's references.
 - `e2e/README.md`: the testing page. `e2e/test/readmeSuiteTables.test.ts` reads its suite tables.
 
-Platform-wide pages, the roadmap and known issues live in the monorepo's `docs/`.
+Platform-wide pages live in the monorepo's `docs/`.
 
 ## ⛔⛔⛔ Never engineer around money
 

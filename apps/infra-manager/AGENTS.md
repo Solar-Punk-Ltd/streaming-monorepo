@@ -8,8 +8,6 @@ those conventions change.
 
 The manager keeps no issue files, review records or decision logs in the tree. Records of finished
 work are read from the repository's history, and new work does not add records of that kind here.
-Current problems belong in the repository's `docs/known-issues.md`, and planned work in
-`docs/ROADMAP.md`.
 
 `.scratch/` is gitignored and local to one machine. Working notes kept there are not a source
 anything in the repository can cite.

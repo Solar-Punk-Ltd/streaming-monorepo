@@ -351,8 +351,9 @@ as the live playlists, so it carries the same dates.
   still finalizing writes an epoch at sequence 0, which replaces the ladder's whole list. A sibling
   still coming back from a return then mints a second line. This needs a replacement and a return at
   the same moment.
-- A rung that rejoined as a new session can carry different sequences in the recording. See the
-  rejoined rung entry in [known issues](../../../../docs/known-issues.md).
+- **A rung that rejoined as a new session can carry different sequences in the recording.** The
+  recording numbers the rung's returning segments on from its own last segment, so after the gap its
+  sequences sit below its siblings' by the length of the gap in segments. The dates still agree.
 
 ## Ladder time markers
 

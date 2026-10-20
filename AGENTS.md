@@ -18,9 +18,6 @@ Each `CLAUDE.md` is the one line `@AGENTS.md`, so every tool reads the same text
 `infra/`, shared code under `packages/` when there is any, repository-wide scripts under `tools/`,
 and how the pieces fit under `docs/`. Read it before moving anything.
 
-- `docs/ROADMAP.md` is a short forward-looking page: what the platform does today, then Next and
-  Later. Keep it that way. It holds no dates, checkpoints, pull request numbers or history.
-- `docs/known-issues.md` lists current problems only. Remove an entry in the change that fixes it.
 - `docs/architecture/` holds the concepts pages: `overview.md`, `stages.md`, `funding.md`, and the
   admin's own pages.
 - `docs/self-hosting.md` is the guide from empty hosts to a first stream: the host roles, the edge,
@@ -64,5 +61,4 @@ and how the pieces fit under `docs/`. Read it before moving anything.
 ## Working model
 
 Work arrives with a self-contained brief, and every change is reviewed before it
-lands. The docs, the roadmap and the verification move with the code they
-describe.
+lands. The docs and the verification move with the code they describe.

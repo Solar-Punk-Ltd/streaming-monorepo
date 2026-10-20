@@ -73,7 +73,6 @@ Running the platform:
 
 - [docs/self-hosting.md](docs/self-hosting.md): a guide from empty hosts to a first live stream, the firewall, funding the Bee nodes, and the host names that never change.
 - [docs/releasing.md](docs/releasing.md): a guide to tagging a release and deploying it.
-- [docs/known-issues.md](docs/known-issues.md): current problems, with workarounds.
 
 How it works:
 
@@ -85,7 +84,6 @@ How it works:
 Working on the code:
 
 - [docs/monorepo.md](docs/monorepo.md): the layout, the rules between apps, the workflows, and how to read the history.
-- [docs/ROADMAP.md](docs/ROADMAP.md): what comes next.
 - Each app's README, and its deploy guide: [the admin](apps/web2-admin/deploy/README.md), [the stack](apps/hls-stream/deploy/README.md), [the manager](apps/infra-manager/deploy/README.md).
 
 ## Related repositories
