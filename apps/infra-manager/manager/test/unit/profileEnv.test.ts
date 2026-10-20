@@ -66,19 +66,16 @@ describe('writeProfileEnv — BEE_PUBLISHERS', () => {
     assert.equal(lineFor(path, 'BEE_URL'), 'BEE_URL=http://bee-uploader:1633');
   });
 
-  it('leaves an inherited STAMP alone — an empty one is fatal upstream', () => {
-    // Tempting to clear: the batch belongs to whatever the base .env was set up
-    // for, not to this profile. But the uploader declares `stamp: required(…)`
-    // and its required() throws on '', so a blank STAMP stops the container at
-    // config load. Inert-but-wrong beats fatal until STAMP is made conditional
-    // upstream.
+  it('clears an inherited STAMP, which belongs to whatever the base .env was set up for', () => {
+    // The uploader reads STAMP only when BEE_PUBLISHERS is empty, so a
+    // pool-backed uploader starts with it blank.
     const foreign = 'f'.repeat(64);
     writeBaseEnv(`ENGINE=srs\nSTAMP=${foreign}\n`);
     const path = writeProfileEnv(root, 'stage-inherit', {
       engine: 'srs',
       beePublishers: PUBLISHERS,
     });
-    assert.equal(lineFor(path, 'STAMP'), `STAMP=${foreign}`);
+    assert.equal(lineFor(path, 'STAMP'), 'STAMP=');
     // No restore needed: beforeEach rewrites the base env for the next case.
   });
 
