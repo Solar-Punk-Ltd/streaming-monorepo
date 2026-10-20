@@ -79,6 +79,14 @@ describe('the looks', () => {
     expect(theme.typography.h1.fontFamily).toBe(tokens.fonts.heading);
     expect(theme.shape.borderRadius).toBe(tokens.radius);
   });
+
+  it.each(ADMIN_THEME_NAMES)("%s centres a chip's label on its capital letters", (name) => {
+    expect(createAdminTheme(name).components?.MuiChip?.styleOverrides?.label).toEqual({
+      lineHeight: 1,
+      textBox: 'trim-both cap alphabetic',
+      '@supports not (text-box: trim-both cap alphabetic)': { paddingTop: 1 },
+    });
+  });
 });
 
 type Rgba = [number, number, number, number];

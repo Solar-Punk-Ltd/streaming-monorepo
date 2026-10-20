@@ -60,6 +60,19 @@ export function createAdminTheme(name: AdminThemeName): Theme {
         },
       },
       ...(tokens.flatSurfaces ? { MuiPaper: { styleOverrides: { root: { backgroundImage: 'none' } } } } : {}),
+      // A chip centres its label's line box, and the looks' typefaces sit
+      // unevenly in theirs, so the letters read off the middle. Trimming the box
+      // to the capital letters centres them; a browser without `text-box` gets
+      // a 1px nudge instead.
+      MuiChip: {
+        styleOverrides: {
+          label: {
+            lineHeight: 1,
+            textBox: 'trim-both cap alphabetic',
+            '@supports not (text-box: trim-both cap alphabetic)': { paddingTop: 1 },
+          },
+        },
+      },
     },
   });
 }
