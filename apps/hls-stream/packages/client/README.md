@@ -183,10 +183,10 @@ button stay inside the browser window's visible area, not the player's: they may
 outside the player, which an audio stream's player needs, a control bar too short to hold the panel.
 It opens 250 × 800 px, with the button at the player's top right and the panel below it, shorter
 where the window's bottom is nearer, and can be resized as tall as the window, less the button above
-it. A window resize pulls the two back inside; a scroll does not, since the overlay is placed in the
+it. A window resize pulls the two back inside. A scroll does not, since the overlay is placed in the
 player and scrolls with the page. The video's own fullscreen, from its native controls, shows the
 video alone, without the overlay. With the panel hidden, the button drags on its own, anywhere in
-the window; shown again, the panel hangs from the button's corner, and the two are pulled back
+the window. Shown again, the panel hangs from the button's corner, and the two are pulled back
 inside the window together. The panel's size and place, relative to the player, are remembered in
 this browser, under the localStorage key `swarm-hls.qoe-overlay.v1`, and restored on the next load,
 pulled back inside the window (shrunk first, then moved) if they no longer fit. The geometry is in
@@ -200,7 +200,7 @@ shows no such line. The overlay is the only place the player shows it (`src/util
 **Copy** and **Save** in the panel's header export what the panel shows, as JSON pretty-printed with two spaces: the
 title, the release line as `player` when the panel shows one, every section and row in the panel's order, the ABR
 ladder rows with their labels as shown, and the footer. Every value is the string the panel prints, rounding and all,
-and nothing the panel does not show; the panel and the export are built by one function,
+and nothing the panel does not show. The panel and the export are built by one function,
 `overlays/qoe/qoeContent.ts`. Copy puts it on the clipboard. A browser refuses the clipboard to a page served over plain
 http, so Copy then tries the older copy of a selection, and where that is refused too it says so. Save downloads the
 same JSON as `qoe-<stream>-<YYYYMMDD-HHMMSS>.json`, the stream's topic made file-safe and the viewer's local time, and
