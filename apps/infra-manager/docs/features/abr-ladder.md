@@ -291,8 +291,8 @@ funding card, buys room and keeps the batch id. See [postage-stamps.md](postage-
 A batch past 90% of its fullest bucket (`STAMP_FILL_WARNING_RATIO`) that still takes uploads
 stays `active` and warns. That is the uploader's default start ceiling, the stack's
 `STAMP_MAX_UTILIZATION`: an uploader restarted on an immutable batch past it refuses to start. A
-mutable batch warns there too, because once full it overwrites the oldest recordings, and the
-uploader of stack `v3.3` and earlier holds a mutable batch to the same ceiling. The wording is
+mutable batch warns there too, for the reasons in
+[When the fullest bucket fills](postage-stamps.md#when-the-fullest-bucket-fills). The wording is
 `nearlyFullConsequence` in `common/src/stampHealth.ts`.
 
 ### Blocking versus warning

@@ -45,8 +45,9 @@ full**. 90% is the uploader's default start ceiling, the stack's
 `STAMP_MAX_UTILIZATION`: an uploader restarted on such an immutable batch
 refuses to start while uploads still work. An immutable batch warns until it
 is full, then fails as `full`. A mutable batch warns full or not, with its own
-consequence: once full its node overwrites its oldest chunks, and an uploader
-of stack v3.3 or earlier refuses to restart on it past 90% as well
+consequence: once full its node overwrites its oldest chunks. The manager can
+still deploy a stack version before `v3.4`, whose uploader also refuses to
+restart on a mutable batch past 90%, so the warning says that too
 (`isStampNearlyFull`, `nearlyFullConsequence`).
 
 ## Life and price
