@@ -258,9 +258,8 @@ needs none of this. On a running one, in this order:
    token there. Create no stage and rotate nothing until step 2 is done: an admin from before stages
    refuses a token of its own.
 2. **Deploy the intermediate admin**, which takes stage records and still accepts the shared
-   token on an uploader's routes: commit `d29616851` of `feat/stages` (tag it
-   `web2-admin/stages-intermediate` before `feat/stages` is merged to `main`, because a squash or
-   rebase merge leaves that commit unreachable). It takes both the shared token and a stage's own.
+   token on an uploader's routes: commit `d29616851`, which `main` holds. It takes both the shared
+   token and a stage's own.
    It refuses every catalogue write, `503`, until it holds a catalogue stamp, so publishing and the
    uploaders' state reports (which retry) wait from its start until the manager's next push, at
    most ten seconds after it answers. Note the env file's `POSTAGE_BATCH_ID` and `BEE_URL` before
