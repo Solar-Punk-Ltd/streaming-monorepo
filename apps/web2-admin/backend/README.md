@@ -10,15 +10,15 @@ a feed entry second.
 
 - **Express 5** + ESM + **TypeScript**, conventions shared with
   streaming-infra-manager (`.js` import suffixes, exact-pinned versions)
-- **PostgreSQL 16** — users, sessions, stream drafts, feed-write log, audit log
-- **Yup** — body and params validation at the API edge, limits from
+- **PostgreSQL 16**: users, sessions, stream drafts, feed-write log, audit log
+- **Yup**: body and params validation at the API edge, limits from
   `@streaming-monorepo/web2-admin-common`
-- **@ethersphere/bee-js** — the only Swarm dependency, behind a `FeedGateway`
+- **@ethersphere/bee-js**: the only Swarm dependency, behind a `FeedGateway`
   interface (`src/domain/FeedGateway.ts`)
-- **node:crypto** — scrypt passwords, random session tokens stored as sha256,
+- **node:crypto**: scrypt passwords, random session tokens stored as sha256,
   and AES-256-GCM for the brand wallet's key. No auth, session, CSRF or
   rate-limit dependency
-- **viem** — the brand wallet's key and the transfers it signs
+- **viem**: the brand wallet's key and the transfers it signs
   ([Funding](#funding))
 
 ## Quick start
@@ -56,18 +56,18 @@ for the whole design.
 
 ## Scripts
 
-| Script                                  | What                                                                                                     |
-| --------------------------------------- | -------------------------------------------------------------------------------------------------------- |
-| `pnpm dev`                              | `tsx watch` against `src/index.ts`                                                                       |
-| `pnpm build`                            | builds the shared packages and common, then `tsc` + copies `src/migrations` into `dist`                  |
-| `pnpm start`                            | `node --conditions=compiled dist/index.js`, which loads the shared packages' built `dist`                |
-| `pnpm user:add <name> [--admin]`        | add a user; `--password-stdin` reads it from a pipe. The only way to make the first one                  |
-| `pnpm wallet:export --i-understand`     | print the brand wallet's private key once, for the backup handed to the brand. Refuses without the flag  |
-| `pnpm test`                             | unit tests (`test/unit`), no database or network                                                         |
-| `pnpm test:integration`                 | starts a backend of its own and drives it over HTTP — see [test/integration](test/integration/README.md) |
-| `pnpm typecheck`                        | `tsc -p tsconfig.typecheck.json`, which includes `test/`                                                 |
-| `pnpm lint`                             | `oxlint --type-aware .`, the repository's one lint, settings in the root `.oxlintrc.json`                |
-| `pnpm database:start` / `database:stop` | the Postgres container                                                                                   |
+| Script                                  | What                                                                                                    |
+| --------------------------------------- | ------------------------------------------------------------------------------------------------------- |
+| `pnpm dev`                              | `tsx watch` against `src/index.ts`                                                                      |
+| `pnpm build`                            | builds the shared packages and common, then `tsc` + copies `src/migrations` into `dist`                 |
+| `pnpm start`                            | `node --conditions=compiled dist/index.js`, which loads the shared packages' built `dist`               |
+| `pnpm user:add <name> [--admin]`        | add a user. `--password-stdin` reads it from a pipe. The only way to make the first one                 |
+| `pnpm wallet:export --i-understand`     | print the brand wallet's private key once, for the backup handed to the brand. Refuses without the flag |
+| `pnpm test`                             | unit tests (`test/unit`), no database or network                                                        |
+| `pnpm test:integration`                 | starts a backend of its own and drives it over HTTP, see [test/integration](test/integration/README.md) |
+| `pnpm typecheck`                        | `tsc -p tsconfig.typecheck.json`, which includes `test/`                                                |
+| `pnpm lint`                             | `oxlint --type-aware .`, the repository's one lint, settings in the root `.oxlintrc.json`               |
+| `pnpm database:start` / `database:stop` | the Postgres container                                                                                  |
 
 The API runs in Docker too (two-stage `pnpm deploy` image, `Dockerfile`). Its
 image builds from a copy of `apps/web2-admin` made outside the checkout by
@@ -87,19 +87,19 @@ Deploying to a server is a different compose file and a script:
 ## Configuration
 
 Every variable is documented in [.env.sample](.env.sample), which is the
-reference; the summary:
+reference. The summary:
 
 | Var                                   | Default            | Meaning                                                                                                                                        |
 | ------------------------------------- | ------------------ | ---------------------------------------------------------------------------------------------------------------------------------------------- |
 | `WEB2_ADMIN_PORT` / `WEB2_ADMIN_HOST` | `9877` / `0.0.0.0` | where to listen (the manager API uses 9876)                                                                                                    |
 | `DATABASE_URL`                        | required           | `postgres://web2admin:web2admin@127.0.0.1:5433/web2admin`                                                                                      |
 | `FEED_GATEWAY`                        | `bee`              | `fake` swaps in an in-memory gateway (see below)                                                                                               |
-| `FEED_PRIVATE_KEY`                    | required           | 0x + 64 hex. The brand key: signs the stream list feed, and is `owner` on a stream with no stage; a stream on a stage has its stage's          |
+| `FEED_PRIVATE_KEY`                    | required           | 0x + 64 hex. The brand key: signs the stream list feed, and is `owner` on a stream with no stage. A stream on a stage has its stage's          |
 | `FEED_TOPIC`                          | `swarm-stream`     | raw topic of that feed                                                                                                                         |
 | `VIEWER_BASE_URL`                     | empty              | branded viewer built for this feed, for "open player catalogue" links                                                                          |
 | `INTERNAL_API_TOKEN`                  | required           | 32+ chars. The registrar token the manager pushes stages with on `/api/internal`. No uploader is given it, and the uploader's routes refuse it |
 | `CATALOGUE_MOVE_ENABLED`              | `false`            | `true` lets an operator move the catalogue's history onto another batch from the Stages page. Off until tried on a real node                   |
-| `BRAND_WALLET_SECRET`                 | empty              | 64 hex (32 bytes). The brand wallet's key is encrypted under it; the first start creates the wallet. Required with `MANAGER_FUNDING_URL`       |
+| `BRAND_WALLET_SECRET`                 | empty              | 64 hex (32 bytes). The brand wallet's key is encrypted under it. The first start creates the wallet. Required with `MANAGER_FUNDING_URL`       |
 | `MANAGER_FUNDING_URL`                 | empty              | the manager's address for its funding API: https, or plain http to this host only. Empty: funding is not set up                                |
 | `MANAGER_FUNDING_TOKEN`               | with the URL       | 32+ chars, printable ASCII, no space: the manager's `FUNDING_API_TOKEN`. Refused without the URL. Never logged                                 |
 | `WEB2_ADMIN_VERSION`                  | unset              | the build's label, which `deploy/deploy.sh` builds into the image. Never in the env file: [The build it runs](#the-build-it-runs)              |
@@ -117,7 +117,7 @@ sets.
 There is no Bee node and no postage batch among these either. The catalogue
 is written through the catalogue node and batch the manager pushes (see
 [Where the catalogue is written](#where-the-catalogue-is-written)). `BEE_URL`
-and `POSTAGE_BATCH_ID` are no longer read; an env file that still sets them
+and `POSTAGE_BATCH_ID` are no longer read. An env file that still sets them
 starts as it did, and the boot log names them with the ingest keys.
 
 Startup logs the resolved configuration with the feed key and the internal API
@@ -138,36 +138,36 @@ target, and records the write with no batch. A designation the manager does
 push is followed as under `bee`, the pin, a waiting move and the refusal of an
 expired or gone batch included.
 
-It forgets every write on restart while `feed_writes` — which decides the next
-index — does not, so the first write after a restart continues from whatever
+It forgets every write on restart while `feed_writes`, which decides the next
+index, does not, so the first write after a restart continues from whatever
 the database says and the in-memory feed adopts that index. The boot check then
 reports a network head of `none` behind a recorded one, which under `fake` is
 normal and not a divergence.
 
 ## Sign in
 
-`docs/architecture/web2-admin-auth.md` is the design; the short version:
+`docs/architecture/web2-admin-auth.md` is the design. The short version:
 
 - A password is scrypt (`N=2^15, r=8, p=3`) in `scrypt$N$r$p$salt$hash`, so the
   cost can be raised without invalidating what is stored. Minimum 12
   characters, must not contain the username.
 - A session is 32 random bytes in an httpOnly SameSite=Lax cookie with **no
-  expiry of its own**; the row is the clock. Twelve hours of inactivity,
+  expiry of its own**. The row is the clock. Twelve hours of inactivity,
   fourteen days at most, `last_seen_at` written at most once a minute. Only the
   sha256 of the cookie value is stored. `Secure` is decided per request from
   `X-Forwarded-Proto`, never from configuration.
 - Four free sign-in attempts per username and per client address, then a minute
-  that doubles to an hour; attempts still waiting on scrypt count, so a burst
+  that doubles to an hour. Attempts still waiting on scrypt count, so a burst
   sent together buys no extra guesses. A wrong current password on a password
   change, a pin or a send counts under the account's sign-in key, so either
   kind of guess locks both (SPDV-1664).
 - Every non-GET request must carry `x-requested-with: web2-admin` and must not
   look cross-site, or it is `403 cross_site_request` before its body is read.
-  **`/api/internal` is exempt** — it is a machine caller with a bearer token,
+  **`/api/internal` is exempt**: it is a machine caller with a bearer token,
   and it is mounted ahead of the check for that reason.
 - `GET /api/auth/users`, `POST /api/auth/users` (admin),
   `DELETE /api/auth/users/:id` (admin, never yourself, never the last user or
-  the last admin; the user's streams stay, with `user_id` set to null) and
+  the last admin. The user's streams stay, with `user_id` set to null) and
   `POST /api/auth/users/:id/revoke` (admin, or anyone for themselves) are the
   Access page.
 
@@ -270,7 +270,7 @@ into the admin (`docs/architecture/stages.md` at the repository root).
   `409 stage_locked` with `reason: 'published'`: unpublish, change it, publish
   again. A draft that holds a recording (`manifest_index` set) keeps its
   stage, `409 stage_locked` with `reason: 'recording'`, since the recording
-  lives under that stage's owner; a recorded draft from before stages, which
+  lives under that stage's owner. A recorded draft from before stages, which
   has none, may be given its first, and only one that signs as the
   recording's owner, the brand key's address when it was made: any other is
   `409 stage_locked` with `reason: 'owner'`. The conditional `UPDATE` holds these rules
@@ -285,7 +285,7 @@ into the admin (`docs/architecture/stages.md` at the repository root).
   stage is `409 stage_required` ("Pick the stage this stream is broadcast on
   before publishing."), and the claim refuses it too. A draft without a
   recording whose stage no longer takes streams (retired since it was picked,
-  or not supported) is `409 stage_unavailable`; a draft that holds a recording
+  or not supported) is `409 stage_unavailable`. A draft that holds a recording
   is published as that recording whatever became of its stage. A stream already on the
   catalogue is republished as it is, so one published before stages existed
   keeps working, with no stage until it is unpublished.
@@ -303,21 +303,21 @@ into the admin (`docs/architecture/stages.md` at the repository root).
 - **A stream signs as its stage.** Every stage signs with a key of its own,
   and the stage record names its address as `owner`. A stream takes its
   stage's owner, lower case and without `0x`, when it is created on a stage
-  and whenever its stage is set or changed; one with no stage has the brand
+  and whenever its stage is set or changed. One with no stage has the brand
   key's. The publish claim of a draft that holds no recording reads it from
   the stage again, in the same statement, since a key rotated in the manager
   is pushed as a new owner. A row that holds a recording never changes owner,
   because the recording's feeds resolve only under the key they were signed
   with, and publishing one whose stage now signs as another address is
   `409 feed_owner_mismatch` ("The recording was made under another key: …"),
-  with the stream's `id` and its `stageId`; the publish claim itself refuses
+  with the stream's `id` and its `stageId`. The publish claim itself refuses
   it, so a rotation that lands between the read and the claim is refused too.
   A publish of a draft whose last publish failed first takes off any entry of
   ours for its topic under another owner, which the failed write may have left
   under the owner the row had then. A stream already on the catalogue
   keeps the owner publishing fixed. The catalogue itself is still signed by
   `FEED_PRIVATE_KEY`, and `GET /api/config` still names that address, for the
-  viewer build; every entry names its own stream's owner.
+  viewer build. Every entry names its own stream's owner.
 - **Audited.** A change is its own `stream.stage` row, `details: { from, to }`,
   with `ownerFrom` and `ownerTo` when the stream's owner moved with it,
   beside the `stream.update` row of any field the same save changed, and the
@@ -361,7 +361,7 @@ chunks it wrote and the feed's history is those chunks. Migration `013` adds
   expired or gone among them is still a refusal worth making, and so is a time
   to live that has run out since, and they only age.
 - The first write after an upgrade from `POSTAGE_BATCH_ID` pins the designated
-  batch; the feed's earlier writes were stamped by the env file's batch, which
+  batch. The feed's earlier writes were stamped by the env file's batch, which
   the admin never recorded, and the log says so. Their rows keep a null
   `batch_id`, which is how the move finds them. While any is left, My Streams
   says how many and that a move is waiting, pin or no pin: the batch that
@@ -392,11 +392,11 @@ rule (`src/domain/stampAge.ts`), so it never shows time left on a batch the
 admin refuses. `mutable` holds on the admin's side the rule the manager
 already keeps when it designates a batch. The uploader's state and rendition reports store their state first
 and are refused the same way when their rewrite of the catalogue comes, with
-the sentence recorded as the stream's `publish_error`; 503 is a 5xx, so the
+the sentence recorded as the stream's `publish_error`. 503 is a 5xx, so the
 uploader retries them. A reason a failed write stores or answers never
 carries the catalogue node's address: bee-js and Node print it, as a URL or as
 `host:port` after `ECONNREFUSED` and the like, and it is replaced with "the
-catalogue node" (`src/domain/catalogueNodeText.ts`); the log keeps the error as
+catalogue node" (`src/domain/catalogueNodeText.ts`). The log keeps the error as
 it was. `GET /api/catalogue-stamp` tells the console the rest:
 `catalogueWrite` holds the batch the catalogue is written with, the refusal, a
 waiting move and `unrecordedHistory`, the count of this feed's writes with no
@@ -409,7 +409,7 @@ Every write records the exact string it uploaded as the payload in
 batch that stamped it in `feed_writes.batch_id` (migration `013`). bee-js puts
 a payload straight into the feed's chunk with no timestamp, so the same bytes at
 the same index make the same chunk: these are what moving the catalogue uploads
-again. Rows from before the migration have neither; a head adopted at boot has
+again. Rows from before the migration have neither. A head adopted at boot has
 the text the node gave and no batch.
 
 ### Moving the catalogue to another batch
@@ -431,7 +431,7 @@ designated one (another designated, `moveWaitingTo`, or a move back to one that
 still holds every slot, which needs the switch alone), or some slot from 0 to the
 head is not under the designated batch by the admin's record (written with
 another batch, or with one the admin never recorded: `unrecordedHistory`, the env
-file's; rows a move uploaded again under the pinned batch no longer count there),
+file's. Rows a move uploaded again under the pinned batch no longer count there),
 or the latest move to it has not finished (a failure after its last slot, at the
 thumbnails, is retried). Nothing waits only when the pinned batch is the
 designated one and every slot is under it. The Stages page then shows the
@@ -445,7 +445,7 @@ move's batch is both pinned and designated.
   the catalogue node, byte for byte. From `payload_text` where the row has it:
   the chunk is built as bee-js's `updateFeedWithPayload` built it, and signed
   again with the feed key, which gives the same signature (secp256k1 with RFC
-  6979 nonces; `test/unit/catalogueRestamp.test.ts` holds both to it). A row
+  6979 nonces. `test/unit/catalogueRestamp.test.ts` holds both to it). A row
   without it, or a slot with no row at all (written before migration `003`),
   is read from the network through the catalogue node, checked against its
   address, and uploaded with the signature it carries. A payload over 4096
@@ -472,7 +472,7 @@ written last, and the switch, so no slot is ever left under the old batch alone.
 
 **Resumable.** After every slot `catalogue_moves.next_index` moves on and the
 row's `feed_writes.restamped_batch_id` and `restamped_at` are set, in one
-transaction. A process that stops resumes a running move at boot; a shutdown
+transaction. A process that stops resumes a running move at boot. A shutdown
 pauses it after the slot it is on. A failure stops with its reason in
 `catalogue_moves.error`, without the catalogue node's address, and the same
 start retries it from there. With the move turned off since, a move left
@@ -486,15 +486,15 @@ recorded bytes, which only the network could give), and `changed` (the page
 named another batch than the designated one).
 
 **Audited** as `catalogue.move.start`, `catalogue.move.done` and
-`catalogue.move.failed`, with the move's id and both batches; the log lines,
+`catalogue.move.failed`, with the move's id and both batches. The log lines,
 `[CatalogueMove]`, shorten batch ids. Once the page says the move is done, the
 previous batch is released in the manager's Catalogue node card, which is what
 lets its node be removed and its batch lapse.
 
 ### Where the next index comes from
 
-**`feed_writes` is the source of truth for the next index and the base payload;
-the network is a cross-check at boot.** The invariant this rests on is that
+**`feed_writes` is the source of truth for the next index and the base payload.
+The network is a cross-check at boot.** The invariant this rests on is that
 **exactly one backend process writes a given feed key**.
 
 It used to read the head from Bee and write at `head + 1`. That assumed a
@@ -502,11 +502,11 @@ node's feed lookup reflects an update that node itself made. It does not: on
 the test node the head lagged this backend's own write by up to ~30 s. Writes
 3-4 s apart through the mutex therefore computed the same index, and since a
 feed update's chunk address is `f(owner, topic, index)`, the later chunk simply
-replaced the earlier one — silently, three times in 55 writes. The stale head
+replaced the earlier one, silently, three times in 55 writes. The stale head
 came with a stale _payload_, which made it worse: a publish rebuilt the list
 from a snapshot taken before the previous unpublish, so a stream that had been
 unpublished and then deleted came back onto the catalogue with no row left to
-remove it; and an unpublish that read a snapshot from before its own publish
+remove it. And an unpublish that read a snapshot from before its own publish
 found no entry to remove, skipped the write, and left the entry there while the
 row went back to `draft`.
 
@@ -517,16 +517,16 @@ index on `(feed_owner, feed_topic, feed_index)` so a repeat of an index fails
 loudly instead of overwriting a chunk. `readLatest()` is now used for two
 things only:
 
-- **Fallback.** A feed with no recorded write — a fresh install, or rows that
-  predate migration `003` — takes its first base from the network, and says so
+- **Fallback.** A feed with no recorded write (a fresh install, or rows that
+  predate migration `003`) takes its first base from the network, and says so
   in the log. From the write after that, the log leads.
 - **Boot check.** Startup compares the network head against the last recorded
   write. Behind is normal (the node lagging itself) and is an info line. Ahead
-  is a WARN — another writer under this key, or the wrong database — and the
+  is a WARN (another writer under this key, or the wrong database), and the
   network head and its payload are adopted as the base by recording them, so
   the next write goes _after_ what is out there rather than over it. Bee being
   unreachable here is a warning, not a failed boot. The head is read through
-  the catalogue node; an admin that starts before the manager designated a
+  the catalogue node. An admin that starts before the manager designated a
   batch has none, so the check is skipped with a warning and runs once, as
   soon as a push stores a designation (`src/domain/feedBootCheck.ts`).
 
@@ -538,10 +538,10 @@ catalogue entry that has no stream row behind it.
 The repair path for exactly that: an entry no request can name, because
 `unpublish` needs a row and topics are server-minted. Session auth, no body.
 Under the publish mutex it takes the authoritative base and rewrites the list
-from the database — "ours" being every entry whose owner is the brand key's,
+from the database ("ours" being every entry whose owner is the brand key's,
 any stage's the admin holds, retired stages included, since their streams and
 old entries still name them, or any row's on the catalogue, which keeps a
-stream published under a stage's key from before a rotation — drops entries of ours whose topic has no row in
+stream published under a stage's key from before a rotation). It drops entries of ours whose topic has no row in
 `published`/`live`/`vod`, rebuilds entries that no longer match their row,
 appends published rows that are missing, and copies everything written by
 anyone else through untouched. It writes only if something changed, so running
@@ -555,24 +555,24 @@ and leaves it, and a reconcile leaves `publishedAt` alone.
 
 A stored `thumbnail_ref` is reused only when `thumbnail_batch_id` (migration
 `014`) says it was uploaded under the batch the write goes with, and the
-gateway still holds it; otherwise the same bytes are uploaded again under that
+gateway still holds it. Otherwise the same bytes are uploaded again under that
 batch, which comes to the same reference, and the batch is recorded. An image
 only an older batch holds would lapse with it. The gateway is asked whether it
 still holds that reference, and only then is it carried onto the feed. A reference the gateway does not have is re-uploaded and the new one
 persisted, with a warning naming the stream and the stale reference. This is
-what makes the `fake`/`bee` switch safe — `fake` mints references that exist
+what makes the `fake`/`bee` switch safe: `fake` mints references that exist
 nowhere, and without the check a stream published under `fake` would keep
 advertising one after the switch, giving every viewer a 404. The same applies
 when the catalogue stamp names a node that never saw the chunks. A gateway that
 cannot answer (node unreachable, timeout, an unexpected status) fails the
 publish with `502 publish_failed` instead of re-uploading: "unreachable" is not
 "missing", and guessing would spend a stamp on every hiccup. A check that
-times out (30 s; a missing reference makes Bee try the network first, 5-10 s
+times out (30 s, since a missing reference makes Bee try the network first, 5-10 s
 on the test node) is treated as missing and the image is re-uploaded, which is
-content-addressed and so costs no new chunks; a node that cannot be reached at
+content-addressed and so costs no new chunks. A node that cannot be reached at
 all fails the publish with `publish_failed`.
 
-A restart that interrupts a publish leaves the row claimed; boot repairs it
+A restart that interrupts a publish leaves the row claimed. Boot repairs it
 (`resetOrphanedPublishing`), sending a first-time publish back to `draft` and
 an interrupted republish back to `published`, since that one's entry is still
 on the feed and only an unpublish may remove it. Publishing also refuses with
@@ -581,15 +581,15 @@ as another key, as above. Unpublishing is always allowed, by the owner stored
 on the row.
 
 **Do not give `FEED_PRIVATE_KEY` to a running swarm-hls-stream uploader.** It
-caches the feed's next index; two writers at one index fork the feed.
+caches the feed's next index. Two writers at one index fork the feed.
 The uploader reports into this API instead (`POST /streams/:id/state` and
 `/renditions`).
 
 ## The internal API
 
 `/api/internal` is what the swarm-hls-stream uploader and the manager call, and
-nothing else. It is authenticated by `Authorization: Bearer <token>` — never by
-a session cookie — and it is mounted before the console's routes on a path of
+nothing else. It is authenticated by `Authorization: Bearer <token>`, never by
+a session cookie, and it is mounted before the console's routes on a path of
 its own, so the two authentications cover disjoint surfaces. Each route names
 the token it takes (`src/api/routes/internal.ts`). A wrong or missing token is
 `401 unauthenticated`, the same answer the console's routes give. The manager's
@@ -598,24 +598,24 @@ four stage routes are described in
 `GET /registrar`, the manager's proof of its token, answers `204` and nothing
 else.
 
-| Method | Path                              | Token     | Answer                                                                                                            |
-| ------ | --------------------------------- | --------- | ----------------------------------------------------------------------------------------------------------------- |
-| GET    | `/streams/by-ingest/:app/:stream` | uploader  | `IngestLookupResponse` — id, topic, owner, mediaType, title, status and the `publishKey` the encoder must present |
-| POST   | `/streams/:id/state`              | uploader  | `StreamStateReport` in, `PublishResult` out (200)                                                                 |
-| POST   | `/streams/:id/renditions`         | uploader  | `RenditionReport` in, `RenditionReportResponse` out (200) — one rung of an ABR ladder                             |
-| GET    | `/stages/self`                    | uploader  | `stageSelfAnswerSchema`, `{ stageId, owner }`: the stage the caller's token is on, and the owner it signs as      |
-| PUT    | `/stages/:stageId`                | registrar | the manager: a stage record in, `{ stored }` out                                                                  |
-| DELETE | `/stages/:stageId`                | registrar | the manager: retires the stage, `{ retired }` out                                                                 |
-| PUT    | `/catalogue-stamp`                | registrar | the manager: the catalogue stamp record in, `{ stored }` out                                                      |
-| DELETE | `/catalogue-stamp`                | registrar | the manager: clears the catalogue stamp, `{ cleared }` out                                                        |
-| GET    | `/registrar`                      | registrar | the manager's Test connection on its link: `204`, no body                                                         |
+| Method | Path                              | Token     | Answer                                                                                                           |
+| ------ | --------------------------------- | --------- | ---------------------------------------------------------------------------------------------------------------- |
+| GET    | `/streams/by-ingest/:app/:stream` | uploader  | `IngestLookupResponse`: id, topic, owner, mediaType, title, status and the `publishKey` the encoder must present |
+| POST   | `/streams/:id/state`              | uploader  | `StreamStateReport` in, `PublishResult` out (200)                                                                |
+| POST   | `/streams/:id/renditions`         | uploader  | `RenditionReport` in, `RenditionReportResponse` out (200), one rung of an ABR ladder                             |
+| GET    | `/stages/self`                    | uploader  | `stageSelfAnswerSchema`, `{ stageId, owner }`: the stage the caller's token is on, and the owner it signs as     |
+| PUT    | `/stages/:stageId`                | registrar | the manager: a stage record in, `{ stored }` out                                                                 |
+| DELETE | `/stages/:stageId`                | registrar | the manager: retires the stage, `{ retired }` out                                                                |
+| PUT    | `/catalogue-stamp`                | registrar | the manager: the catalogue stamp record in, `{ stored }` out                                                     |
+| DELETE | `/catalogue-stamp`                | registrar | the manager: clears the catalogue stamp, `{ cleared }` out                                                       |
+| GET    | `/registrar`                      | registrar | the manager's Test connection on its link: `204`, no body                                                        |
 
 **The two tokens.** The manager's routes take the **registrar token**,
 `INTERNAL_API_TOKEN`, and nothing else: a stage's own uploader token is `401`
 there. The uploader's routes take **a stage's own token** alone
 (`src/api/middleware/requireUploaderToken.ts`). The manager generates a token
 for every deployment that runs an uploader and pushes its sha256 on the stage
-record, with `adminToken.kind: 'own'`; any token it did not generate is
+record, with `adminToken.kind: 'own'`. Any token it did not generate is
 `shared`. The token is 64 hex characters, and a bearer of any other shape is
 `401` without a query. The admin hashes the presented token and looks it up
 among the stages it holds (migration 012): the one active stage whose record
@@ -664,20 +664,20 @@ in flight that may still fail back to `draft`. Every refusal is the same
 `404 stream_not_found`, so a token holder probing ingest addresses learns
 nothing from the difference. A malformed app or topic is `400`.
 
-**The state report** is `{state:'live'}` or `{state:'vod', index, duration}` —
+**The state report** is `{state:'live'}` or `{state:'vod', index, duration}`,
 both numbers required with `vod`, refused with `live`. `live` sets `status`,
 stamps `live_since` (kept as it is when the stream is already live, because the
-uploader retries) and clears `ended_at`; `vod` sets `status`, `manifest_index`,
+uploader retries) and clears `ended_at`. `vod` sets `status`, `manifest_index`,
 `duration_seconds` and `ended_at`. Allowed: `published → live`, `live → live`,
 `live → vod`, `vod → vod`, `published → vod` for a broadcast that ended before
 its `live` report ever got through, and `vod → live` for a broadcast that goes
 live again. Every feed of a declared stream outlives the sessions written to
-it, so a reconnected encoder continues them above the previous head; that
+it, so a reconnected encoder continues them above the previous head. That
 `live` therefore clears `manifest_index` and `duration_seconds` on the row and
 on every rung in the same statement, and the entry lists the latest recording
 once the next `vod` arrives. Anything else is
-`409 invalid_state_transition` with `from` and `to`. The rule is enforced twice
-— once to answer the 409, once as the `WHERE status = ANY(...)` of the UPDATE
+`409 invalid_state_transition` with `from` and `to`. The rule is enforced twice:
+once to answer the 409 and once as the `WHERE status = ANY(...)` of the UPDATE
 itself, so two reports racing cannot both win.
 
 Each accepted report then rewrites the catalogue entry through the same
@@ -690,11 +690,11 @@ retry has only the write left to do.
 
 **The rendition report** is how an ABR ladder reaches the catalogue. With
 `ABR_ENABLED` the uploader publishes a master playlist plus one feed per rung,
-and in admin mode the master's topic _is_ the stream's declared topic — so the
+and in admin mode the master's topic _is_ the stream's declared topic, so the
 ladder's merge state, which swarm-hls-stream keeps inside the catalogue feed it
 writes for itself, has to live here instead. Each rung POSTs its own
 `Rendition` (`name`, `width`, `height`, `topic`, `bandwidth`, `avgBandwidth`,
-plus `index` and `duration` — both or neither — once it finalizes) and gets
+plus `index` and `duration`, both or neither, once it finalizes) and gets
 back the merged ladder, ascending by height, with `ladder { finished,
 flippedToFinished, duration }`.
 
@@ -704,30 +704,30 @@ the stored one, except that a rung which already reported an `index` keeps its
 same `topic`**, taking only geometry and bandwidths from it. A rung's topic is
 derived from the stream's declared topic and the rung name, so every report for
 a rung arrives on the feed that rung's recordings already sit on, and an
-indexless one is that rung delivering again — recovered from a crash, or a new
+indexless one is that rung delivering again, recovered from a crash, or a new
 session above the previous head. Either way the recording it finished last
 stays addressable until that rung's next final report replaces it, which is
 what keeps the master playlist a viewer seeks with on the entry. The rule is
-`StreamCatalog.keepingWhatFinished` from the uploader, where it was learned;
-the topic test is true for every rung of a well-formed ladder, and a report
+`StreamCatalog.keepingWhatFinished` from the uploader, where it was learned.
+The topic test is true for every rung of a well-formed ladder, and a report
 naming some other feed is taken as it arrived. Un-finishing a ladder is the
 `live` state report's job, not the merge's.
 
 **A rendition report never moves the status.** It stores the rung and rewrites
 the entry, adding `renditions` and `group` (= the stream's topic) whenever the
-stream has at least one rung — an entry for a single-rendition stream is
+stream has at least one rung. An entry for a single-rendition stream is
 exactly what it was before ABR existed. `live` and `vod` still come from the
 state route, and `vod.index` for a ladder is the _master's_ feed index, not a
-rung's; the rung indexes ride inside `renditions`. `flippedToFinished` is what
+rung's. The rung indexes ride inside `renditions`. `flippedToFinished` is what
 tells the uploader to send that one `vod`. The ladder, `finished` and
 `flippedToFinished` in the answer are all read from the catalogue write itself,
-under the publish mutex — the ladder the write put on the entry, judged against
-the one the entry carried before — so two reports that overlap answer in the
+under the publish mutex (the ladder the write put on the entry, judged against
+the one the entry carried before), so two reports that overlap answer in the
 order their entries landed and only one of them flips. Refused with
 `409 invalid_state` for `draft` (nothing has been announced) and `publishing`
-(a feed write is in flight); the row is stored before the feed is written, like
+(a feed write is in flight). The row is stored before the feed is written, like
 a state report, so a failed write is `502 publish_failed` and the retry has
-only the write left to do — the merge is idempotent.
+only the write left to do, since the merge is idempotent.
 
 Migration 004 adds `stream_renditions`, one row per `(stream_id, name)`. An
 unpublish keeps a stream's rungs with the rest of its recording, and deleting
@@ -735,13 +735,13 @@ the stream takes them with it through the foreign key.
 
 ### What that changes for the console
 
-- A stream that is `live` or `vod` is still editable — title, description, tags
-  and thumbnail — and `GET /streams/:id/ingest` still answers, so an encoder
+- A stream that is `live` or `vod` is still editable (title, description, tags
+  and thumbnail), and `GET /streams/:id/ingest` still answers, so an encoder
   that dropped can reconnect. The media type stays refused with
   `409 media_type_locked`, and the schedule joins it with `409 stream_locked`:
   it is a promise viewers have already read off the entry.
 - `POST /streams/:id/publish` on a live or recorded stream republishes it _as
-  it is_ — the entry keeps its state and its index and duration — rather than
+  it is_ (the entry keeps its state and its index and duration) rather than
   claiming the row into `publishing` and returning it as `published`, which
   would quietly tell every viewer the broadcast had stopped. One whose entry
   the catalogue already carries writes nothing, as for a published stream
@@ -768,7 +768,7 @@ The manager pushes every stage it runs for the brand into the admin, and the
 brand's catalogue stamp (`docs/architecture/stages.md` at the repository root
 is the design, `packages/contracts/src/stage.ts` the records). It calls with
 the registrar token, which is `INTERNAL_API_TOKEN`, the one the manager's admin
-link stores; a stage's own uploader token is refused here. The console's Stages page lists the records, and the stream form
+link stores. A stage's own uploader token is refused here. The console's Stages page lists the records, and the stream form
 and the OBS panel read them ([A stream's stage](#a-streams-stage)), and the
 catalogue is written through the catalogue stamp
 ([Where the catalogue is written](#where-the-catalogue-is-written)).
@@ -781,7 +781,7 @@ when something arrived, so the two hosts' clocks never need to agree.
 - **`PUT /stages/:stageId`** takes a `stageRecordSchema` record and answers
   `{ stored }`. The path id must be the record's `stageId` (either case), or
   it is `400`. A record observed before the stored one is kept out and answers
-  `{ stored: false }`; one observed at the same moment is a repeat and stores.
+  `{ stored: false }`. One observed at the same moment is a repeat and stores.
   The manager pushes every 30 seconds per stage, so this is mostly repeats.
   The last manager to push a stage wins: `managerId` is taken from each stored
   record, so a manager reinstalled with a new id takes its stages back, and
@@ -794,9 +794,9 @@ when something arrived, so the two hosts' clocks never need to agree.
   and otherwise stores it and leaves the stage retired, so a push already on
   its way when the deployment was deleted does not undo the delete. The answer
   is `true` only when this call retired an active stage, and `false` when:
-  - the stage was retired already (the later of the two moments is kept);
+  - the stage was retired already (the later of the two moments is kept).
   - the admin holds a record observed after the retirement's moment, so the
-    manager has seen the deployment since and the retirement is not taken;
+    manager has seen the deployment since and the retirement is not taken.
   - the admin never stored the stage. The retirement is still kept, in
     `stage_retirements`, and a `PUT` for that id is stored only when its
     record was observed after it, so a first push that arrives late does not
@@ -812,18 +812,18 @@ when something arrived, so the two hosts' clocks never need to agree.
 
 A body the contract refuses is `400 validation_error` with the reasons, never
 the values it refused. The SRT passphrase and the sha256 of the uploader's
-token are kept in columns of their own (migration 009) that no list selects;
-neither is logged, audited or answered to anyone. The console reads the
+token are kept in columns of their own (migration 009) that no list selects,
+and neither is logged, audited or answered to anyone. The console reads the
 records back behind the session:
 
 | Method | Path                   | Answer                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                |
 | ------ | ---------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | GET    | `/api/stages`          | `StageListResponse`: every stage, retired ones last, with `supported` (the engine is SRS), its status, owner, ingest host and ports, `hasSrtPassphrase`, rung stamp and chequebook readings, uploader, readiness, `adminTokenKind` (`own`, `shared`, or `null` when the manager pushed no token) and when it was observed. Each rung stamp carries `remainingSeconds` and `expiredByClock`, aged at request time from the stage's `observedAt`                                                        |
-| GET    | `/api/catalogue-stamp` | `CatalogueStampResponse`: `catalogueStamp`, the designated batch's node name, batch id, immutable, depth, state, time to live and fill, or null; `catalogueWrite`, the batch the catalogue is written with, the refusal and a waiting move; and `catalogueMove`, the move of the history ([Moving the catalogue](#moving-the-catalogue-to-another-batch)). Both batch readings carry `remainingSeconds` and `expiredByClock`, aged at request time from their `observedAt`. Never the Bee API address |
+| GET    | `/api/catalogue-stamp` | `CatalogueStampResponse`: `catalogueStamp`, the designated batch's node name, batch id, immutable, depth, state, time to live and fill, or null. `catalogueWrite`, the batch the catalogue is written with, the refusal and a waiting move, and `catalogueMove`, the move of the history ([Moving the catalogue](#moving-the-catalogue-to-another-batch)). Both batch readings carry `remainingSeconds` and `expiredByClock`, aged at request time from their `observedAt`. Never the Bee API address |
 
 `POST /api/catalogue-stamp/move`, behind the session and the same-site check,
 takes `{ targetBatchId }` and starts the move, or retries a failed one, and
-answers `202` with the move's status; `409 catalogue_move_refused`, with
+answers `202` with the move's status. `409 catalogue_move_refused`, with
 `problem` and the sentence, when it cannot start.
 
 To register a stage by hand in local development, with `INTERNAL_API_TOKEN`
@@ -923,15 +923,15 @@ docker compose exec -T api node dist/cli.js wallet:export --i-understand
 The command refuses without `--i-understand`, since anyone who holds the key
 can move everything the wallet holds. It needs `BRAND_WALLET_SECRET` and the
 database, as the API does, and changes neither. The key goes to standard
-output alone, one line, so it can be piped straight into a password manager;
-the warning and the wallet's address go to standard error. Nothing is logged,
+output alone, one line, so it can be piped straight into a password manager,
+and the warning and the wallet's address go to standard error. Nothing is logged,
 and a wallet that cannot be opened prints nothing. The command for a server
 deployment is in [deploy/README.md](../deploy/README.md).
 
 ### The manager's address and token
 
-`MANAGER_FUNDING_URL` and `MANAGER_FUNDING_TOKEN` come together or not at all;
-with neither, funding is not set up. With them, `BRAND_WALLET_SECRET` is
+`MANAGER_FUNDING_URL` and `MANAGER_FUNDING_TOKEN` come together or not at all.
+With neither, funding is not set up. With them, `BRAND_WALLET_SECRET` is
 required as well, since funding signs every transfer with the brand wallet:
 the API refuses to start with the address and no secret. Every request
 carries the token, so the address is https, or plain http only to this
@@ -993,7 +993,7 @@ and `chequebookOperationStatus(requestId)`, which the chequebook service uses
   without one of the contract's codes (the manager's 503
   `chequebook_journal_unavailable` among them), an answer over the limit, or a
   redirect. After a relay, `unreachable` and `timeout` leave it unknown whether
-  the manager took the transfer; relayed again under the same request id, it
+  the manager took the transfer. Relayed again under the same request id, it
   answers its state, and the manager never sends it twice. A status read that
   answers `unknown_request` (404) says the manager journalled no transfer under
   the id: the relay never reached it, so relaying again under the same request
@@ -1008,21 +1008,21 @@ every transfer's state from the manager through the client above, and signs
 with the brand wallet. `src/index.ts` builds it with the wallet it started and
 with the client, or with none while `MANAGER_FUNDING_URL` is unset.
 `src/domain/funding/FundingService.ts` is the service, and
-`src/api/routes/funding.ts` its routes, behind the session; the writes are
+`src/api/routes/funding.ts` its routes, behind the session. The writes are
 behind the same-site check as well. The answers are the types of
 `web2-admin-common`'s `funding.ts`.
 
 | Method | Path                                 | Answer                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                     |
 | ------ | ------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| GET    | `/api/funding`                       | `FundingView`: `configured` (false while the manager funding settings are unset, and then the manager is not asked), the brand wallet's address and balances or null while there is none, `chainId` 100, every stage's nodes and the catalogue node, each with `pin` and `pinnedAddress` (below) and the `batch` the manager uses for its uploads as the manager read it (null for a gateway and a node with no batch, and left out altogether from a manager that reads none, one older than the Stamps tab, so the page can say so; every reading of it null, with `readError`, when the node could not be read about it) and its `chequebook` as the manager read it (null for a node that answered it has none, left out altogether from a manager older than the Chequebooks tab, and every reading of it null, with `readError`, when the node could not be read about it), `postage`, what postage costs now as the manager read it from a node (the price per chunk per block in PLUR, the block time and the contract's floor in blocks, or null when no node answered), `observedAt`, and `openBulkId`, the latest send that still has an item holding up a new one (`queued`, `submitted`, or `unknown` within the manager's 30 minutes), or null, so the page resumes it after a reload or in another tab, `openStampBulkId`, the same for stamp bulks ([Stamp operations](#stamp-operations)), and `openChequebookBulkId`, the same for chequebook bulks ([Chequebook operations](#chequebook-operations)). It first refreshes the latest sends with an item still asked about, three at most ([Settling](#settling)), and the latest stamp and chequebook bulks likewise. When the manager cannot be read, `managerError` says why in a sentence of the admin's own, never the manager's address or token, and the balances, the nodes, `postage` and `observedAt` are empty |
-| POST   | `/api/funding/pins`                  | `{ password, nodeIds }` in: pins the address each node answers now, read from the manager's inventory, and answers `{ pinned }`. A node the inventory does not hold is `409 funding_refused`, `problem: "node"`; a node whose address could not be read is `400 validation_error` with the sentence, since there is no address to pin. Either way nothing is pinned                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                        |
+| GET    | `/api/funding`                       | `FundingView`: `configured` (false while the manager funding settings are unset, and then the manager is not asked), the brand wallet's address and balances or null while there is none, `chainId` 100, every stage's nodes and the catalogue node, each with `pin` and `pinnedAddress` (below) and the `batch` the manager uses for its uploads as the manager read it (null for a gateway and a node with no batch, and left out altogether from a manager that reads none, one older than the Stamps tab, so the page can say so. Every reading of it null, with `readError`, when the node could not be read about it) and its `chequebook` as the manager read it (null for a node that answered it has none, left out altogether from a manager older than the Chequebooks tab, and every reading of it null, with `readError`, when the node could not be read about it), `postage`, what postage costs now as the manager read it from a node (the price per chunk per block in PLUR, the block time and the contract's floor in blocks, or null when no node answered), `observedAt`, and `openBulkId`, the latest send that still has an item holding up a new one (`queued`, `submitted`, or `unknown` within the manager's 30 minutes), or null, so the page resumes it after a reload or in another tab, `openStampBulkId`, the same for stamp bulks ([Stamp operations](#stamp-operations)), and `openChequebookBulkId`, the same for chequebook bulks ([Chequebook operations](#chequebook-operations)). It first refreshes the latest sends with an item still asked about, three at most ([Settling](#settling)), and the latest stamp and chequebook bulks likewise. When the manager cannot be read, `managerError` says why in a sentence of the admin's own, never the manager's address or token, and the balances, the nodes, `postage` and `observedAt` are empty |
+| POST   | `/api/funding/pins`                  | `{ password, nodeIds }` in: pins the address each node answers now, read from the manager's inventory, and answers `{ pinned }`. A node the inventory does not hold is `409 funding_refused`, `problem: "node"`. A node whose address could not be read is `400 validation_error` with the sentence, since there is no address to pin. Either way nothing is pinned                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                        |
 | POST   | `/api/funding/transfers`             | `{ password, items: [{ nodeId, kind, amount }] }` in, `202` with `{ bulkId, items }` out: each item's `requestId`, `nodeId`, `kind`, `amount`, `state`, `txHash`, `blockNumber` (null until it is mined), `error`, and the flags `settled` (it no longer holds up a new send) and `watched` (it is still asked about) ([Settling](#settling)). The refusals below                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                          |
 | GET    | `/api/funding/transfers?bulkId=<id>` | `{ items }` of that send, as above, each refreshed from the manager first ([Settling](#settling)). `400` without a UUID, `404 bulk_not_found` for a send the admin never journalled                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                        |
 
 A node's `pin` is `pinned` when its pin is the address it answers now, `new`
 when it has none, and `changed` when it answers another. A node whose wallet
 could not be read keeps the state its pin gives it, `pinned` or `new`, never
-`changed`, and its `readError` says why; it takes no send until it is read.
+`changed`, and its `readError` says why. It takes no send until it is read.
 
 Both writes ask for the operator's password again, checked exactly as a
 password change checks the current one (`AuthService.confirmPassword`), behind
@@ -1035,21 +1035,21 @@ at most 200, a node id as the contract takes it, `kind` `xdai` or `xbzz`, and
 an amount that is a string of base units (wei, PLUR) above 0 and at most
 2^256 - 1. Then it is refused, in this order, nothing signed:
 
-1. a wrong password: `401` or `429`, as above;
-2. a node named twice for one kind: `400 validation_error` with the sentence;
+1. a wrong password: `401` or `429`, as above.
+2. a node named twice for one kind: `400 validation_error` with the sentence.
 3. funding not set up (no manager settings or no brand wallet), or a manager
    on another chain than Gnosis Chain: `409 funding_refused`, `problem`
-   `not_set_up` or `chain`;
+   `not_set_up` or `chain`.
 4. a node not in the manager's inventory, never pinned, answering another
    address than its pin, or whose address could not be read, so it cannot be
    checked against the pin: `409 funding_refused`, `problem: "node"`, with the
-   sentence;
+   sentence.
 5. an item of an earlier send still `queued` or `submitted`, or `unknown`
    within the manager's 30 minutes, after that send was refreshed
    ([Settling](#settling)), or another send being signed at that moment:
-   `409 { "error": "conflict" }`;
+   `409 { "error": "conflict" }`.
 6. a fee or gas limit over the admin's own ceilings: `409 funding_refused`,
-   `problem: "fee"`, with the sentence (below);
+   `problem: "fee"`, with the sentence (below).
 7. a wallet that cannot pay for it: the account is read once from the manager,
    and the xDAI sent plus, for every item, its gas limit (`gasNative` for xDAI,
    `gasBzzTransfer` for xBZZ) at `maxFeePerGasWei` must fit the xDAI balance,
@@ -1092,7 +1092,7 @@ never reads the page gets the same check.
 **Signed, journalled, then relayed.** The items are signed in turn, chain id
 100, with consecutive nonces from the account's pending one and its fees: an
 xDAI item is a plain transfer of the amount to the node's pinned wallet with
-`gasNative`; an xBZZ item is a call of the BZZ token the inventory names,
+`gasNative`. An xBZZ item is a call of the BZZ token the inventory names,
 `transfer(wallet, amount)` with no value and `gasBzzTransfer`. Every item is
 written to `funding_transfers`, `queued`, with its request id, the send's
 bulk id, the signed transaction and its hash, before any is relayed. Then they
@@ -1112,12 +1112,12 @@ minutes counted from when the manager answered the relay
 (`FUNDING_UNKNOWN_SETTLES_AFTER_MS`,
 which mirrors the manager's `FUNDING_UNKNOWN_AFTER_MS` in
 `apps/infra-manager/manager/src/domain/funding/FundingChainService.ts` and must
-stay equal to it). The manager answers `unknown` in two cases: when the answer
+stay equal to it). The manager answers `unknown` in two cases. One is when the answer
 of `eth_sendRawTransaction` was lost, and the transaction may well sit in the
-chain's pool at its nonce; and when it has no receipt and the chain has not
+chain's pool at its nonce. The other is when it has no receipt and the chain has not
 held the transaction for those 30 minutes. In the first case a send let
 through at once would read the next pending nonce, both would be mined, and the
-node would be paid twice; so a young `unknown` item counts as open until the
+node would be paid twice. So a young `unknown` item counts as open until the
 manager finds it (`submitted`, then `confirmed` or `failed`) or the 30 minutes
 pass. The manager counts its 30 minutes from its own journal row, written when
 the relay reaches it, which may be long after the admin journalled the item
@@ -1131,23 +1131,23 @@ back, it is at or after the manager's own moment, so the admin's window never
 ends before the manager's: the safe side. A `submitted` item that the
 manager's 30-minute rule later turns `unknown` was answered more than 30
 minutes before, so it settles at once. `relayed_at` is null while an item is
-`queued`, and on one failed before the manager ever answered for it; the
+`queued`, and on one failed before the manager ever answered for it. The
 service never writes an `unknown` item without it, and `created_at` stands in
 only as a backstop for a row written otherwise, so that no item holds a send
 for good. Every other item is settled for that gate:
 
 - `confirmed`, and `failed` in a block (the transaction reverted): settled for
-  good, never asked about again;
+  good, never asked about again.
 - `failed` with no block: the chain's node refused it when the manager sent it.
   The manager still reads such a transfer for a late receipt and for the
   chain's pool, so it is watched: asked about again, turned `submitted`, open
   again, if the chain holds it, and `confirmed` if the receipt comes. Its
   sentence says the chain's node refused it, that the row will say so if it is
-  mined anyway, and to check the node's balance before sending to it again;
+  mined anyway, and to check the node's balance before sending to it again.
 - `unknown` for longer than the 30 minutes: the manager has no receipt and the
   chain no longer holds it. It is watched, as a young one is. Letting a new
   send past it is safe: the chain does not hold it, so the next send reuses its
-  nonce, and at most one of the two can ever be mined;
+  nonce, and at most one of the two can ever be mined.
 - `failed` by the admin or the manager before the chain saw it (a refusal at
   the relay, or never sent after one before it failed): settled for good.
 
@@ -1176,24 +1176,24 @@ of its relay's answer:
 | `confirmed`, `failed` in a block             | true      | false     |
 | `failed` before the chain saw it             | true      | false     |
 
-`settled` false holds up a new send; `watched` true says the item is still
+`settled` false holds up a new send. `watched` true says the item is still
 asked about and may still change. The page frees Send once every item is
 settled, and reads a send on while any item is not settled or is watched.
 
 **The refresh** reads, in nonce order, where each open or watched item of a
 send stands on the manager, and records it. An open item the manager never
 received (`unknown_request`) is relayed again: the journalled bytes, byte for
-byte, under the same request id, never signed again; unless an item before it
+byte, under the same request id, never signed again, unless an item before it
 failed or was lost, and then it fails as never sent. A watched item is only
 read, never relayed again, and a failed one is never sent again: the operator
 sends anew. The refresh stops at the first item the manager cannot answer for
 and leaves it, and those after it, as they are. It runs:
 
-- for `GET /api/funding/transfers?bulkId=`, on that send;
+- for `GET /api/funding/transfers?bulkId=`, on that send.
 - for `GET /api/funding`, on the latest sends with an open or watched item (a
   young `unknown` one is both),
-  three at most (`FUNDING_REFRESH_LIMIT`); an older watched item is refreshed
-  when its send is read by its id;
+  three at most (`FUNDING_REFRESH_LIMIT`). An older watched item is refreshed
+  when its send is read by its id.
 - for every send, before check 5: on the latest sends with an open or watched
   item, three at most, and on the open sends, three at most.
 
@@ -1211,8 +1211,8 @@ nothing logs or audits it.
 | `funding_node_pins` | migration 017: one row per pinned node, its address in lower case, when and by whom                                                                                                                                                                                                                                                                                                                                                                                            |
 
 Without `MANAGER_FUNDING_URL` and `MANAGER_FUNDING_TOKEN` the page answers
-`configured: false`, and without `BRAND_WALLET_SECRET` it shows no wallet;
-either way every send is refused as not set up, and a pin needs the manager.
+`configured: false`, and without `BRAND_WALLET_SECRET` it shows no wallet.
+Either way every send is refused as not set up, and a pin needs the manager.
 
 ### Stamp operations
 
@@ -1228,7 +1228,7 @@ the page shows.
 
 | Method | Path                                        | Answer                                                                                                                                                                                                                                                                                                                                                                                                                                                                   |
 | ------ | ------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| POST   | `/api/funding/stamp-operations`             | `{ items }` in, all of one kind, each `{ kind: "topup", nodeId, batchId, expectedDepth, days, pricePerChunkPerBlockPlur }` or `{ kind: "dilute", nodeId, batchId, expectedDepth, steps }`; `202` with `{ bulkId, items }` out, at once, every item `queued`: its `requestId`, `kind`, `nodeId`, `nodeLabel`, `batchId`, `days` or `steps`, `costPlur` (a top-up's, null for a dilution), `state`, `txHash`, `error`, `settled` and `watched` (below). The refusals below |
+| POST   | `/api/funding/stamp-operations`             | `{ items }` in, all of one kind, each `{ kind: "topup", nodeId, batchId, expectedDepth, days, pricePerChunkPerBlockPlur }` or `{ kind: "dilute", nodeId, batchId, expectedDepth, steps }`. `202` with `{ bulkId, items }` out, at once, every item `queued`: its `requestId`, `kind`, `nodeId`, `nodeLabel`, `batchId`, `days` or `steps`, `costPlur` (a top-up's, null for a dilution), `state`, `txHash`, `error`, `settled` and `watched` (below). The refusals below |
 | GET    | `/api/funding/stamp-operations?bulkId=<id>` | `{ items }` of that stamp bulk, as above, refreshed from the manager first (below). `400` without a UUID, `404 bulk_not_found` for a bulk the admin never journalled                                                                                                                                                                                                                                                                                                     |
 
 A request's body is checked first, `400 validation_error`: one item at least
@@ -1237,32 +1237,32 @@ and 200 at most, a node id as the contract takes it, a batch id of `0x` and
 for a dilution, the deepest the manager dilutes a batch to (`STAMP_MAX_DEPTH`
 of `web2-admin-common`), a top-up's `days` a whole number from 1 with no cap
 but the journal column's (2^31 - 1), and a dilution's `steps` 1 or 2, each a
-JSON number; a top-up's `pricePerChunkPerBlockPlur`, the price of postage the
+JSON number. A top-up's `pricePerChunkPerBlockPlur`, the price of postage the
 page quoted it at, PLUR per chunk per block as a string of decimal digits,
-more than nothing and at most 2^256 - 1; and no field of the other kind. Then
+more than nothing and at most 2^256 - 1, and no field of the other kind. Then
 it is refused, in this order, nothing journalled:
 
 1. a request of both kinds, or one that names a batch twice:
-   `400 validation_error` with the sentence;
+   `400 validation_error` with the sentence.
 2. funding not set up, or a manager on another chain than Gnosis Chain:
    `409 funding_refused`, `problem` `not_set_up` or `chain`. A manager whose
-   inventory cannot be read is `502 manager_unavailable`;
+   inventory cannot be read is `502 manager_unavailable`.
 3. each item in turn, against the manager's inventory, read fresh:
    `409 funding_refused` with the sentence, `problem: "node"` for a node the
-   manager does not hold; `problem: "batch"` for a batch the node does not
+   manager does not hold. `problem: "batch"` for a batch the node does not
    upload with, one that could not be read, is not usable or has expired (an
    operation goes only to a batch read whole, usable and not expired,
    `operableBatch`), one no longer at the depth the page showed, or a dilution
    that would leave it under 7 days or take it past depth 40, the manager's
-   ceiling; `problem: "price"` for a top-up when the
+   ceiling. `problem: "price"` for a top-up when the
    manager read no price of postage, or one higher than the page quoted it
-   at;
+   at.
 4. a node whose wallet could not be read (`problem: "node"`), or a wallet that
    holds no xDAI for the gas, or less xBZZ than the top-ups it pays for
    (`problem: "insufficient_funds"`, naming each shortfall). A wallet is
    counted once: a node is listed once for each batch it uploads with, as a
    stage's own node and as the catalogue node, say, and pays for both from one
-   wallet;
+   wallet.
 5. an item of an earlier stamp bulk that still holds up a new one, after the
    latest such bulks were refreshed, or another stamp request at that moment:
    `409 { "error": "conflict" }`. A send does not hold a stamp bulk up, nor a
@@ -1318,7 +1318,7 @@ answers:
 or `unknown` item stands on the manager, and records it, its hash once the
 manager answers one. A `queued` item the manager never received
 (`unknown_request`) is relayed again, the same fields under the same request
-id, which the manager runs at most once; one that waits on its node is
+id, which the manager runs at most once. One that waits on its node is
 neither read nor relayed. An item the manager answered for before is never
 relayed again, whatever the manager says of it, since a second run would pay
 again. The refresh stops at the first item the manager cannot answer for. It
@@ -1343,7 +1343,7 @@ operation the manager confirmed from the chain ([Audit log](#audit-log)).
 The Chequebooks tab brings the chequebooks of the stages' nodes to a target the
 operator types, in xBZZ. A ticked chequebook under the target takes a deposit
 of the difference from its node's wallet, and one over it a withdrawal of the
-difference into its node's wallet, the one place Bee withdraws to; one at the
+difference into its node's wallet, the one place Bee withdraws to. One at the
 target is not sent. Each node pays from its own wallet: a deposit's xBZZ, and
 the gas of either way in xDAI. The admin signs nothing for them and nothing
 leaves the brand wallet, so a chequebook request takes the page's confirm
@@ -1355,33 +1355,33 @@ chequebook bulk with. The arithmetic is `chequebookPlan.ts` of
 
 | Method | Path                                             | Answer                                                                                                                                                                                                                                                                                                                                                                                                                                                         |
 | ------ | ------------------------------------------------ | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| POST   | `/api/funding/chequebook-operations`             | `{ targetPlur, items: [{ nodeId, availablePlur }] }` in: the target, and each ticked node with the available balance of its chequebook as the page showed it, PLUR as strings of digits; `202` with `{ bulkId, items }` out, at once, every item `queued`: its `requestId`, `nodeId`, `nodeLabel`, `direction` (`deposit` or `withdraw`), `amountPlur`, `targetPlur`, `state`, `txHash`, `error`, `mined`, `settled` and `watched` (below). The refusals below |
+| POST   | `/api/funding/chequebook-operations`             | `{ targetPlur, items: [{ nodeId, availablePlur }] }` in: the target, and each ticked node with the available balance of its chequebook as the page showed it, PLUR as strings of digits. `202` with `{ bulkId, items }` out, at once, every item `queued`: its `requestId`, `nodeId`, `nodeLabel`, `direction` (`deposit` or `withdraw`), `amountPlur`, `targetPlur`, `state`, `txHash`, `error`, `mined`, `settled` and `watched` (below). The refusals below |
 | GET    | `/api/funding/chequebook-operations?bulkId=<id>` | `{ items }` of that chequebook bulk, as above, refreshed from the manager first (below). `400` without a UUID, `404 bulk_not_found` for a bulk the admin never journalled                                                                                                                                                                                                                                                                                      |
 
 A request's body is checked first, `400 validation_error`: a `targetPlur` of
 whole PLUR as a string of decimal digits, 30 at most, and at least 1 xBZZ, the
 owner's floor (`CHEQUEBOOK_TARGET_MIN_PLUR` of `web2-admin-common`, 10^16
-PLUR); one item at least and 200 at most, each a node id as the contract takes
+PLUR). One item at least and 200 at most, each a node id as the contract takes
 it and an `availablePlur` of whole PLUR, 30 digits at most. Thirty digits keep
 the move within what the manager's chequebook journal holds, and are far more
 xBZZ than there is. Then it is refused, in this order, nothing journalled:
 
-1. a node named twice: `400 validation_error` with the sentence;
+1. a node named twice: `400 validation_error` with the sentence.
 2. funding not set up, or a manager on another chain than Gnosis Chain:
    `409 funding_refused`, `problem` `not_set_up` or `chain`. A manager whose
-   inventory cannot be read is `502 manager_unavailable`;
+   inventory cannot be read is `502 manager_unavailable`.
 3. each item in turn, against the manager's inventory, read fresh:
    `409 funding_refused` with the sentence. `problem: "node"` for a node no
    stage lists (the catalogue node alone is not listed: the tab leaves its
    chequebook alone), a gateway, whose chequebook the manager does not move,
-   and a node whose wallet could not be read; `problem: "chequebook"` for a
+   and a node whose wallet could not be read. `problem: "chequebook"` for a
    node that has no chequebook, one the manager did not read or could not, an
    item at the target as the page showed it, and one whose chequebook is at
    the target or past it now, which moves nothing (below: read the page
    again). A node two stages list, as a stage's own and as another's rung, is
-   one node, read once, and moved once;
+   one node, read once, and moved once.
 4. a wallet that holds no xDAI for the gas, or less xBZZ than its deposit as
-   worked out now (`problem: "insufficient_funds"`, naming each shortfall);
+   worked out now (`problem: "insufficient_funds"`, naming each shortfall).
 5. an item of an earlier chequebook bulk that still holds up a new one, after
    the latest such bulks were refreshed, or another chequebook request at that
    moment: `409 { "error": "conflict" }`. A send and a stamp bulk do not hold a
@@ -1398,11 +1398,11 @@ its chequebook, and another move may land in it, so each item moves
 `web2-admin-common`, worked out again against the available balance in the
 inventory read for the request, and never more than the dialog listed. A
 deposit is the target less the larger of the two balances: into a chequebook
-that grew since, it shrinks and lands on the target; into one its node drew on
+that grew since, it shrinks and lands on the target. Into one its node drew on
 since, it keeps the amount listed and lands a little under the target. A
 withdrawal is the smaller of the two less the target: from a chequebook that
 drew down since, it shrinks and lands on the target, so it never takes a
-chequebook under the target, nor under the floor; from one that grew, it keeps
+chequebook under the target, nor under the floor. From one that grew, it keeps
 the amount listed and lands a little over the target. A chequebook at the
 target or past it now moves nothing, and refuses the request. The node keeps
 paying its peers after the move as well, so its balance lands near the target,
@@ -1496,14 +1496,14 @@ when the item first comes to that state, with its hash ([Audit log](#audit-log))
 
 | Table                           | What it holds                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                               |
 | ------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `funding_chequebook_operations` | migration 019: one row per item of a chequebook bulk, by `request_id`, with `bulk_id`, its `position` in the bulk, the node's id and label, `direction`, `amount_plur`, `target_plur`, `available_plur` (the available balance the move was worked out from: of the page's and the one read for the request, the larger for a deposit and the smaller for a withdrawal), `state`, `tx_hash`, `error`, `mined` (migration 020: whether a submitted item's move is mined and its block not final yet, false by default), `relayed_at`, the operator's id and name, and when. One item per node and one per place in a bulk; the move is the one that brings `available_plur` to `target_plur`, the target at least 1 xBZZ, and every amount 30 digits at most |
+| `funding_chequebook_operations` | migration 019: one row per item of a chequebook bulk, by `request_id`, with `bulk_id`, its `position` in the bulk, the node's id and label, `direction`, `amount_plur`, `target_plur`, `available_plur` (the available balance the move was worked out from: of the page's and the one read for the request, the larger for a deposit and the smaller for a withdrawal), `state`, `tx_hash`, `error`, `mined` (migration 020: whether a submitted item's move is mined and its block not final yet, false by default), `relayed_at`, the operator's id and name, and when. One item per node and one per place in a bulk. The move is the one that brings `available_plur` to `target_plur`, the target at least 1 xBZZ, and every amount 30 digits at most |
 
 ## Migrations
 
 `src/migrations/NNN_name.sql`, applied in order inside a transaction at every
 boot and recorded in `_migrations` (`src/domain/Database.ts`) by file name
 alone, so a database that already applied a file never runs it again. Add a
-file for a change, and never change an applied one's SQL; a corrected comment
+file for a change, and never change an applied one's SQL. A corrected comment
 is harmless. `001_init.sql` carries the rationale for each table in its
 header. `pnpm build` copies the directory into `dist`. `007_audit_log.sql` is
 the audit log below, and `008_streams_user_id_set_null.sql` stops removing a
@@ -1546,7 +1546,7 @@ Every signed-in user can act on every stream, so each mutation leaves a row in
 the log, actor first (`[Publish] alice published "Opening keynote" (topic …):
 draft → published at feed index 12 (3 entries)`). A state or rendition report
 logs two lines, its own and the republish it caused (`[Publish] the uploader
-republished …`); a rendition report whose write failed logs only the failure.
+republished …`). A rendition report whose write failed logs only the failure.
 The line is at info, except a reconcile that wrote and the boot repair, which
 are at warn, and failures, which are at error. Titles are written as JSON
 strings, with U+2028 and U+2029, DEL and the C1 controls, and the
@@ -1558,18 +1558,18 @@ into the log for any reader, nor reorder what its line appears to say.
 | ------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `at`                            | when the row was written, just after the mutation                                                                                                                                                                                                                                                                                              |
 | `actor_kind`                    | `operator` (a signed-in user), `uploader` (the uploader's internal routes), `manager` (the manager's stage routes, since migration 009) or `system` (the boot repair, the CLI, a funding refresh)                                                                                                                                              |
-| `actor_user_id`, `actor_name`   | the operator's id and username at the time; the id goes null if the user is removed, the name stays. For `system`, `actor_name` is the reason (`boot`, `cli`, `funding`); for the uploader and the manager it is null                                                                                                                          |
+| `actor_user_id`, `actor_name`   | the operator's id and username at the time. The id goes null if the user is removed, the name stays. For `system`, `actor_name` is the reason (`boot`, `cli`, `funding`). For the uploader and the manager it is null                                                                                                                          |
 | `action`                        | see below                                                                                                                                                                                                                                                                                                                                      |
 | `stream_id`, `topic`            | the stream, with no foreign key so a deleted stream's history stays                                                                                                                                                                                                                                                                            |
 | `status_before`, `status_after` | the stream's status before and after the action. Every stream action fills both, with the same status on both sides when nothing moved (an edit, a thumbnail, a key rotation, a republish, a rendition report), except that `stream.create` has no before and `stream.delete` no after. `feed.reconcile` and the `user.*` rows leave both null |
 | `details`                       | JSON: changed fields, feed index and what that write published, rung, error message, target username. Never a key, hash or token                                                                                                                                                                                                               |
 
 The actions: `stream.create`, `stream.update` (only when a field actually
-changed; a save of an unchanged form is logged, not audited), `stream.stage`
+changed. A save of an unchanged form is logged, not audited), `stream.stage`
 (a draft moved to another stage, or on or off one, `details: { from, to }`),
 `stream.delete`, `stream.thumbnail.set`, `stream.thumbnail.clear` (only when
 there was an image to remove), `stream.key.rotate`, `stream.publish`,
-`stream.republish` (only a publish of a live or recorded stream; publishing one
+`stream.republish` (only a publish of a live or recorded stream. Publishing one
 that is already `published` records `stream.publish` with
 `published → published`), `stream.unpublish`, `stream.publish.failed`,
 `stream.unpublish.failed`, `stream.state.live`, `stream.state.vod`,
@@ -1580,7 +1580,7 @@ that is already `published` records `stream.publish` with
 is false for a republish whose entry the catalogue already carried: nothing
 was written, and `feedIndex` is the index the feed stood at. A state or
 rendition report is one row, carrying the feed index of the republish it
-caused, or the publish error when that write failed; the republish adds none
+caused, or the publish error when that write failed. The republish adds none
 of its own. That republish reads the row and the ladder again when its turn at the
 publish mutex comes, so a later report stored in the meantime is what it
 publishes, as it should be. Beside `feedIndex` the row therefore says what
@@ -1608,12 +1608,12 @@ are not recorded: nothing moved.
 The manager's pushes are audited only when something that matters moved,
 since one arrives every 30 seconds per stage: `stage.register` (a stage first
 stored), `stage.change` (its manager, owner, ingest host, ports or RTMP flag,
-SRT passphrase, uploader token or token kind changed; `details.changes` has
+SRT passphrase, uploader token or token kind changed. `details.changes` has
 `{ from, to }` for each, and `"set"`, `"removed"` or `"changed"` for the
 passphrase and the token, never their values), `stage.retire`,
 `stage.unretire` (a retired stage pushed again after its retirement),
 `catalogue.stamp.set`, `catalogue.stamp.change` (another batch, node, Bee API
-address or manager; the address only as `"changed"`) and
+address or manager, the address only as `"changed"`) and
 `catalogue.stamp.clear`. Each is also a line at info (`[Stages] the manager
 registered stage "Main stage" (stage 5f0c…): …`). `stage.retire` and
 `catalogue.stamp.clear` carry the manager's `observedAt`. A push that changes
@@ -1621,7 +1621,7 @@ nothing else, a record kept out as older and a second retirement or clear log
 at debug and write no row. A retirement or clear the admin does not take
 because it holds a newer record, and one kept for a stage or stamp it never
 stored, log at info and write no row either: nothing it held moved. The stage
-is in `details.stageId`; the rows have no `stream_id`.
+is in `details.stageId`. The rows have no `stream_id`.
 
 The Funding page's actions ([Funding transfers](#funding-transfers)):
 `funding.pin` (one row per pin request, `details.pins` with each node's id,
@@ -1631,7 +1631,7 @@ item's request id, node, label, kind, amount, address, nonce and hash),
 `funding.transfer.sent` (an item the manager took), `funding.transfer.confirmed`
 and `funding.transfer.failed`, each with the item's send, request id, node,
 label, kind, amount, address, nonce, hash, state, error and block. The operator
-is the actor of a pin, a request, and of whatever their send's relays learned;
+is the actor of a pin, a request, and of whatever their send's relays learned.
 `system` with the reason `funding` is the actor of what a refresh learned. No
 row carries the password, a signed transaction or a key. The stamp operations
 ([Stamp operations](#stamp-operations)): `funding.stamp.request` (one row per
@@ -1642,7 +1642,7 @@ cost), and `funding.stamp.confirmed` and `funding.stamp.failed`, each with the
 item's bulk, request id, node, label, batch, kind, days, steps, depths,
 amount, cost, hash (null for an operation the manager confirmed from the
 chain), state and error. The operator is the actor of a request and of what
-its relays learned, though they end after the request answered; `system`
+its relays learned, though they end after the request answered. `system`
 with the reason `funding` of what a refresh learned. The chequebook
 operations ([Chequebook operations](#chequebook-operations)), likewise:
 `funding.chequebook.request` (one row per chequebook bulk, with its `bulkId`,
@@ -1659,7 +1659,7 @@ now. A stored look the console no longer carries is recorded as the `swarm`
 it was worn as. The row has no `stream_id`.
 
 **A failed audit write never fails the operation.** The row is written after
-the mutation it describes, which has already happened by then; the failure is
+the mutation it describes, which has already happened by then. The failure is
 logged as `[Audit] could not record …` and the request answers as it would
 have.
 
@@ -1675,7 +1675,7 @@ SELECT at, actor_name, action, status_before, status_after, details
   FROM audit_log WHERE stream_id = '<stream id>' ORDER BY at;
 ```
 
-`feed.reconcile` rows are not about one stream and have no `stream_id`; the
+`feed.reconcile` rows are not about one stream and have no `stream_id`. The
 topics they removed, added and updated are in `details`. Nor are the manager's:
 
 ```sql
@@ -1688,7 +1688,7 @@ SELECT at, action, details FROM audit_log
 
 - **A stream belongs to the installation.** Every signed-in user sees and can
   edit, publish, unpublish and delete every stream. `streams.user_id` records
-  who drafted a row and scopes no query; the audit log records who acted on it
+  who drafted a row and scopes no query. The audit log records who acted on it
   since. Removing a user keeps their streams and sets `user_id` to null
   (migration 008). For a stream created since migration 007 its `stream.create`
   audit row still names them. For an older one nothing in the database does:
@@ -1700,7 +1700,7 @@ SELECT at, action, details FROM audit_log
   the row read before the UPDATE with the one it returns, so two edits racing
   can each be recorded against the other's starting point.
 - **Nothing polls.** A state report is the only thing that moves a stream to
-  `live` or `vod`; an uploader that dies without reporting leaves the stream
+  `live` or `vod`. An uploader that dies without reporting leaves the stream
   live on the catalogue until someone republishes or unpublishes it by hand.
 - **A stage on a token the manager did not generate reports nothing** until
   its token is rotated in the manager and it is redeployed, and a published

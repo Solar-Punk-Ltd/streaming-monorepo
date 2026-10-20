@@ -8,7 +8,7 @@ adapted to this codebase, and what was deliberately left behind.
 
 Status: on `main` since 2026-09-18, migration `005_auth_users.sql`. The
 manager's design has run on a host since 2026-09-11 and is public behind a TLS
-edge; this is the same design on a database that already had users in it.
+edge. This is the same design on a database that already had users in it.
 
 The pieces the two apps then held alike, named below, have since moved into the
 shared package `packages/web-auth`, which both backends import, so a fix to one
@@ -16,7 +16,7 @@ of them lands once. Each app passes it its own cookie name and header value.
 
 ## Why port rather than design
 
-The admin layer had a login already — a users table, a sessions table holding
+The admin layer had a login already: a users table, a sessions table holding
 only the sha256 of the cookie value, scrypt hashes in a self-describing format.
 What it did not have was everything around them: one operator was assumed, the
 first user came from `SEED_ADMIN_PASSWORD` in a file, sessions never slid or
@@ -69,7 +69,7 @@ and being wrong about a different half of it.
 - **The decoy hash.** A sign-in for a username that does not exist is still
   checked, against a throwaway hash built at startup, so the clock does not say
   which usernames exist. The old code skipped the hash entirely for an unknown
-  name and said so in a comment; that comment is now wrong and is gone.
+  name and said so in a comment. That comment is now wrong and is gone.
 - **The cross-site check** (`src/api/middleware/requireSameSite.ts`, built by
   `packages/web-auth/src/requireSameSite.ts`). Three layers, mounted ahead
   of the body parser so a write from another site is refused before its body is
@@ -101,19 +101,19 @@ and being wrong about a different half of it.
 | `StoredSession` carries `username` and `isAdmin`   | carries the whole `UserRow`                                              | `/api/auth/me` answers its `User`, `POST /api/streams` records its id as the drafter, and every change behind the gate names it as its actor: one join, no second lookup.   |
 | `SESSION_COOKIE_NAME = 'sim_session'`              | `web2_admin_session`                                                     | Different product, and the two run on the same laptop.                                                                                                                      |
 | `REQUESTED_WITH_VALUE = 'streaming-infra-manager'` | `web2-admin`                                                             | Same.                                                                                                                                                                       |
-| `POST /login` → 204                                | → `MeResponse`                                                           | The console already had the user from the login answer; taking it away would have been a change to a working contract for nothing.                                          |
+| `POST /login` → 204                                | → `MeResponse`                                                           | The console already had the user from the login answer, and taking it away would have been a change to a working contract for nothing.                                      |
 | `POST /users/:id/revoke-sessions`                  | `POST /users/:id/revoke`                                                 | Shorter, and nothing was using the longer name yet.                                                                                                                         |
 | `LockedOutError` → `locked_out`                    | `TooManyAttemptsError` → `too_many_attempts`                             | The console already renders that code. The body gained `retryAfterSeconds` beside the `Retry-After` header, as in the manager.                                              |
 | `NoUsersError` → 409                               | → 401                                                                    | It is an answer to "who am I", and the console's fetch wrapper already treats `/auth/session` and `/auth/login` as routes where a 401 is an answer rather than an eviction. |
 | `GET /auth/users` → a bare array                   | → `{ users: [...] }`                                                     | `UserListResponse` in web2-admin-common.                                                                                                                                    |
 | One password check throttled per route             | Same, but the wrong _current_ password answers 401 `invalid_credentials` | The manager's choice, kept: the console's wrapper exempts `/auth/password` from the sign-out-on-401 rule, and signs out there only on 401 `unauthenticated`.                |
-| No audit log; user add and remove log no actor     | takes an `AuditLog`: every user action names its actor and is audited    | Every operator can act on every stream, so who did what is kept in `audit_log` (migration 007), and changing the users is one of those things.                              |
+| No audit log, and user add and remove log no actor | takes an `AuditLog`: every user action names its actor and is audited    | Every operator can act on every stream, so who did what is kept in `audit_log` (migration 007), and changing the users is one of those things.                              |
 | `manager/src/domain/auth/*`                        | `apps/web2-admin/backend/src/domain/auth/*`                              | Same shape, under this repo's `src/domain/`.                                                                                                                                |
 
 The login body is **not** trimmed, which the old `loginSchema` did. That is the
 manager's choice and the reason is in its comment: a wrong pair must answer the
 same way whatever it looked like. A username with a space in it could never
-match a row anyway — the CHECK forbids spaces.
+match a row anyway, since the CHECK forbids spaces.
 
 ## What was deliberately left out
 
@@ -166,18 +166,18 @@ Everything is under `/api`. The open routes are `GET /api/health`,
 `POST /api/auth/logout` and `GET /api/auth/session`. Everything else needs a
 session.
 
-| Method | Path                         | Who                | Answer                                                                                                                                                                 |
-| ------ | ---------------------------- | ------------------ | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| POST   | `/api/auth/login`            | anyone             | `MeResponse` + the cookie; 401 `invalid_credentials`, 401 `no_users`, 429 `too_many_attempts`                                                                          |
-| POST   | `/api/auth/logout`           | anyone             | 204, cookie cleared, session row deleted                                                                                                                               |
-| GET    | `/api/auth/session`          | anyone             | `MeResponse`; 401 `no_users` when the table is empty, 401 `unauthenticated` otherwise                                                                                  |
-| GET    | `/api/auth/me`               | signed in          | `MeResponse` — kept for compatibility                                                                                                                                  |
-| POST   | `/api/auth/password`         | signed in          | `MeResponse`; 401 `invalid_credentials`, 400 `validation_error`, 429                                                                                                   |
-| GET    | `/api/auth/users`            | signed in          | `UserListResponse`                                                                                                                                                     |
-| POST   | `/api/auth/users`            | admin              | 201 `UserSummary`; 409 `user_exists`, 400 `validation_error`, 403 `admin_required`                                                                                     |
-| DELETE | `/api/auth/users/:id`        | admin              | 204, and the user's streams stay, with `user_id` set to null (migration 008); 409 `cannot_remove_user` (yourself, the last user, the last admin), 404 `user_not_found` |
-| POST   | `/api/auth/users/:id/revoke` | admin, or yourself | 204; 403 `admin_required`, 404 `user_not_found`                                                                                                                        |
-| PUT    | `/api/config/default-theme`  | admin              | `SetDefaultThemeResponse`, the look the console starts in on this host; 400 `validation_error` for a look the console does not carry, 403 `admin_required`             |
+| Method | Path                         | Who                | Answer                                                                                                                                                                    |
+| ------ | ---------------------------- | ------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| POST   | `/api/auth/login`            | anyone             | `MeResponse` + the cookie, or 401 `invalid_credentials`, 401 `no_users`, 429 `too_many_attempts`                                                                          |
+| POST   | `/api/auth/logout`           | anyone             | 204, cookie cleared, session row deleted                                                                                                                                  |
+| GET    | `/api/auth/session`          | anyone             | `MeResponse`, or 401 `no_users` when the table is empty, 401 `unauthenticated` otherwise                                                                                  |
+| GET    | `/api/auth/me`               | signed in          | `MeResponse`, kept for compatibility                                                                                                                                      |
+| POST   | `/api/auth/password`         | signed in          | `MeResponse`, or 401 `invalid_credentials`, 400 `validation_error`, 429                                                                                                   |
+| GET    | `/api/auth/users`            | signed in          | `UserListResponse`                                                                                                                                                        |
+| POST   | `/api/auth/users`            | admin              | 201 `UserSummary`, or 409 `user_exists`, 400 `validation_error`, 403 `admin_required`                                                                                     |
+| DELETE | `/api/auth/users/:id`        | admin              | 204, and the user's streams stay, with `user_id` set to null (migration 008), or 409 `cannot_remove_user` (yourself, the last user, the last admin), 404 `user_not_found` |
+| POST   | `/api/auth/users/:id/revoke` | admin, or yourself | 204, or 403 `admin_required`, 404 `user_not_found`                                                                                                                        |
+| PUT    | `/api/config/default-theme`  | admin              | `SetDefaultThemeResponse`, the look the console starts in on this host, or 400 `validation_error` for a look the console does not carry, 403 `admin_required`             |
 
 New error codes: `cross_site_request` 403, `admin_required` 403, `no_users` 401,
 `user_exists` 409, `user_not_found` 404, `cannot_remove_user` 409, and
@@ -187,7 +187,7 @@ weak password or a bad username is a 400 `validation_error` with the reason in
 
 Adding a user, removing one, revoking sessions and changing a password each
 write a row to the audit log (migration 007, `audit_log`) with the acting user
-and the username acted on; the `user:add` CLI acts as `system (cli)`. Neither
+and the username acted on. The `user:add` CLI acts as `system (cli)`. Neither
 signing in nor signing out is audited: a sign-in has a log line of its own, and
 a sign-out logs nothing beyond the `[HTTP]` request line. No row carries a
 password, a hash or a token, and a failed audit write never fails the change it
@@ -207,7 +207,7 @@ So `/api/internal` is mounted in `src/api/server.ts` **before**
 `app.use(requireSameSite)`, with a body parser of its own, and the check never
 sees those requests. It costs nothing: a page on another site cannot forge the
 bearer token either, and a session cookie is never accepted on those routes.
-Two tests hold it — one in `test/unit/authRoutes.test.ts` against a harness
+Two tests hold it: one in `test/unit/authRoutes.test.ts` against a harness
 wired the same way, one in `test/integration/auth.test.ts` against the real
 server.
 

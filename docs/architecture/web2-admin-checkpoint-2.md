@@ -11,9 +11,9 @@ this repo, working end to end for four features, improved later. The four
 features:
 
 1. Authentication. A sample user with a sample password exists after first
-   start; the password can be changed in the UI.
+   start. The password can be changed in the UI.
 2. Stream drafts saved in Postgres. msrs-client wrote straight to Swarm and
-   that had caveats (see below); the draft fixes them.
+   that had caveats (see below). The draft fixes them.
 3. Publish a draft to the stream list feed on Swarm.
 4. Show the OBS connection details for a stream, protected by a passphrase or
    a stream key.
@@ -23,7 +23,7 @@ Research behind every decision here is in [docs/research/](../research/)
 short version of what they found:
 
 - msrs-client (deprecated) creates a stream by uploading the thumbnail, then
-  writing one GSOC chunk carrying an encrypted token; an off-client aggregator
+  writing one GSOC chunk carrying an encrypted token, and an off-client aggregator
   rewrites the list feed.
   Failure loses the stream, success is inferred by polling.
 - swarm-hls-stream (the stack the test infra runs) has no draft concept. OBS
@@ -37,7 +37,7 @@ short version of what they found:
 
 | Package                    | Name                                      | Role                                                                                                                                          |
 | -------------------------- | ----------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------- |
-| `apps/web2-admin/common`   | `@streaming-monorepo/web2-admin-common`   | The API contract: types and the ingest URL builders. Written by the orchestrator; agents extend it only when the contract changes and say so. |
+| `apps/web2-admin/common`   | `@streaming-monorepo/web2-admin-common`   | The API contract: types and the ingest URL builders. Written by the orchestrator. Agents extend it only when the contract changes and say so. |
 | `apps/web2-admin/backend`  | `@streaming-monorepo/web2-admin-backend`  | Express 5 + pg API.                                                                                                                           |
 | `apps/web2-admin/frontend` | `@streaming-monorepo/web2-admin-frontend` | React 18 + MUI + Vite console.                                                                                                                |
 
@@ -63,7 +63,7 @@ as `createXRouter(deps)` factories, manual constructor injection in
 | `SESSION_TTL_HOURS`     | `24`           | session lifetime                                                                                                                       |
 | `COOKIE_SECURE`         | `false`        | set true behind TLS                                                                                                                    |
 | `SEED_ADMIN_USERNAME`   | `admin`        | created at first start if the users table is empty                                                                                     |
-| `SEED_ADMIN_PASSWORD`   | `admin1234`    | same; logged as a warning at startup while it is unchanged                                                                             |
+| `SEED_ADMIN_PASSWORD`   | `admin1234`    | same, logged as a warning at startup while it is unchanged                                                                             |
 | `BEE_URL`               | required       | Bee API used for feed writes and thumbnail uploads                                                                                     |
 | `POSTAGE_BATCH_ID`      | required       | batch for feed writes and thumbnails                                                                                                   |
 | `FEED_PRIVATE_KEY`      | required       | 0x + 64 hex. Signs the stream list feed. Its address is `owner` on every stream                                                        |
@@ -110,7 +110,7 @@ feed_writes      id BIGSERIAL PK, feed_index BIGINT NOT NULL, entry_count INT NO
 use `node:crypto` scrypt, no dependency. Migration files carry a `--` header
 explaining why.
 
-### Routes (all under `/api`; JSON unless stated)
+### Routes (all under `/api`, JSON unless stated)
 
 Auth. Session cookie `web2_admin_session`, httpOnly, sameSite lax, `secure`
 from config, path `/`. `requireAuth` middleware loads the session, rejects with
@@ -118,12 +118,12 @@ from config, path `/`. `requireAuth` middleware loads the session, rejects with
 limited in memory to 10 attempts per username per 15 minutes
 (`429 {error:'too_many_attempts'}`), no dependency.
 
-| Method | Path             | Body                                    | Response                                                                                                         |
-| ------ | ---------------- | --------------------------------------- | ---------------------------------------------------------------------------------------------------------------- |
-| POST   | `/auth/login`    | `LoginRequest`                          | `MeResponse`, sets cookie. `401 {error:'invalid_credentials'}`                                                   |
-| POST   | `/auth/logout`   |                                         | 204, deletes session, clears cookie                                                                              |
-| GET    | `/auth/me`       |                                         | `MeResponse`                                                                                                     |
-| POST   | `/auth/password` | `ChangePasswordRequest` (new ≥ 8 chars) | `MeResponse`; `400 {error:'invalid_password'}` when current is wrong; all other sessions of the user are deleted |
+| Method | Path             | Body                                    | Response                                                                                                            |
+| ------ | ---------------- | --------------------------------------- | ------------------------------------------------------------------------------------------------------------------- |
+| POST   | `/auth/login`    | `LoginRequest`                          | `MeResponse`, sets cookie. `401 {error:'invalid_credentials'}`                                                      |
+| POST   | `/auth/logout`   |                                         | 204, deletes session, clears cookie                                                                                 |
+| GET    | `/auth/me`       |                                         | `MeResponse`                                                                                                        |
+| POST   | `/auth/password` | `ChangePasswordRequest` (new ≥ 8 chars) | `MeResponse`, or `400 {error:'invalid_password'}` when current is wrong. All other sessions of the user are deleted |
 
 Streams, all behind `requireAuth`. A user sees only their own streams in
 checkpoint 2 (single tenant, but the column is there).
@@ -131,10 +131,10 @@ checkpoint 2 (single tenant, but the column is there).
 | Method | Path                             | Body                               | Response                                                                                                                                                                                                              |
 | ------ | -------------------------------- | ---------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | GET    | `/streams`                       |                                    | `StreamListResponse` newest first                                                                                                                                                                                     |
-| POST   | `/streams`                       | `StreamInput`                      | 201 `Stream`; mints `topic` (uuid v4), `owner` (from feed key), `publish_key` (16 random bytes hex)                                                                                                                   |
+| POST   | `/streams`                       | `StreamInput`                      | 201 `Stream`. Mints `topic` (uuid v4), `owner` (from feed key), `publish_key` (16 random bytes hex)                                                                                                                   |
 | GET    | `/streams/:id`                   |                                    | `Stream`                                                                                                                                                                                                              |
-| PUT    | `/streams/:id`                   | `StreamInput`                      | `Stream`. Allowed in `draft` and `published`; a published stream keeps status `published` and the response carries no feed write, the operator republishes explicitly. `409 {error:'stream_busy'}` while `publishing` |
-| DELETE | `/streams/:id`                   |                                    | 204. `409 {error:'stream_published'}` if published; unpublish first                                                                                                                                                   |
+| PUT    | `/streams/:id`                   | `StreamInput`                      | `Stream`. Allowed in `draft` and `published`. A published stream keeps status `published` and the response carries no feed write, the operator republishes explicitly. `409 {error:'stream_busy'}` while `publishing` |
+| DELETE | `/streams/:id`                   |                                    | 204. `409 {error:'stream_published'}` if published, so unpublish first                                                                                                                                                |
 | PUT    | `/streams/:id/thumbnail`         | raw body, `Content-Type: image/png | jpeg                                                                                                                                                                                                                  | webp | gif`, `express.raw({type:'image/*', limit:'5mb'})` | `Stream`. `413` over the limit, `415 {error:'unsupported_media_type'}` for another type, `415 {error:'thumbnail_not_an_image'}` when the body's first bytes are not a PNG, JPEG, WebP or GIF, whatever the type claimed. The stored mime is the one the bytes say |
 | GET    | `/streams/:id/thumbnail`         |                                    | the image bytes with its mime, 404 when none                                                                                                                                                                          |
 | DELETE | `/streams/:id/thumbnail`         |                                    | `Stream`                                                                                                                                                                                                              |
@@ -153,7 +153,7 @@ Validation is yup, `.noUnknown(true)` bodies, `.strict()` params, limits from
 ### Publish semantics (`domain/PublishService.ts`)
 
 Publishing is a single writer on one feed the backend owns. Do not share the
-feed key with a running swarm-hls-stream uploader; two writers at one index
+feed key with a running swarm-hls-stream uploader. Two writers at one index
 fork the feed. Checkpoint 3 makes the uploader report state into this API
 instead.
 
@@ -165,7 +165,7 @@ instead.
    store the hex reference.
 3. Read the current feed: `bee.makeFeedReader(Topic.fromString(FEED_TOPIC), ownerAddress).downloadPayload()`.
    404 means never written, start at index 0 with an empty list. Parse the
-   payload as a JSON array of `FeedStreamEntry`; entries that fail to parse are
+   payload as a JSON array of `FeedStreamEntry`. Entries that fail to parse are
    kept verbatim so a foreign entry is never dropped.
 4. Replace or append this stream's entry by `(owner, topic)`. Entry state is
    `scheduled`, `timestamp` is now in ms, field names as in `FeedStreamEntry`.
@@ -182,7 +182,7 @@ uploader reported, the recording and its rungs, and publishing a draft that
 holds a recording lists it as `vod` again.
 
 The Bee client is behind an interface (`FeedGateway`: `readLatest`, `write`,
-`uploadThumbnail`) so unit tests use an in-memory fake; the bee-js
+`uploadThumbnail`) so unit tests use an in-memory fake. The bee-js
 implementation is exercised by an integration test that is skipped unless
 `BEE_URL` and `POSTAGE_BATCH_ID` are set. Pin `@ethersphere/bee-js` to the
 version `apps/hls-stream/packages/stream-uploader` uses.
@@ -231,7 +231,7 @@ Routes and screens:
 | ------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `/login`                  | Username, password, Log in. Error text from the API. Redirect to `/` when already logged in.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                       |
 | `/`                       | My Streams: cards or a table with thumbnail, title, media type chip, status chip (draft grey, published green, publishing spinner, error red with tooltip), scheduled time, buttons Edit, Details, Delete (confirm dialog), and a Create New Stream button. Empty state text.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                      |
-| `/create` and `/edit/:id` | Form with the msrs-client fields and limits: Stream Name with n/100 counter, Description n/500, Tags (add on Enter or button, chips, n/10), Media Type radio Video Stream or Audio Only, Upload Thumbnail (max 5MB, preview, remove), Scheduled Start Time (datetime-local, min now). Preview step is optional; Save creates or updates, thumbnail is PUT separately after save.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                   |
+| `/create` and `/edit/:id` | Form with the msrs-client fields and limits: Stream Name with n/100 counter, Description n/500, Tags (add on Enter or button, chips, n/10), Media Type radio Video Stream or Audio Only, Upload Thumbnail (max 5MB, preview, remove), Scheduled Start Time (datetime-local, min now). Preview step is optional. Save creates or updates, thumbnail is PUT separately after save.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                   |
 | `/streams/:id`            | Details: all metadata, status, publish and unpublish buttons with result feedback (feed index and owner/topic shown, "open player catalogue" link to the viewer's root when the viewer base URL is configured, since the viewer lists the catalogue feed it was built for, and the per-stream route `#/watch/<mediatype>/<owner>/<topic>` is shown as copyable text and only plays once the uploader has written a manifest), last publish error, and the OBS panel, which says for SRT, and for RTMP where `INGEST_RTMP_PUBLIC` is on, what goes in OBS's Server box and its Stream Key box: for SRT the URL with `&passphrase=` on the end and an empty Stream Key (a passphrase with characters that line cannot carry goes in OBS's Use authentication Password instead), for RTMP the server and the stream key. Secrets are masked with show/hide, each value has a copy button that copies the real value, Rotate key asks first, and a note shows when `keyVerified` is false: "The ingest does not verify this key yet. Anyone with the SRT passphrase can publish under this name until the uploader is upgraded." Unpublish asks first, and for a recording it says the recording stops being listed while this admin keeps its recording details, so publishing it again lists it as that recording. An "Edited since it was published" notice shows while the catalogue entry does not carry the latest console edit. |
 | `/account`                | Change password form.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                              |
 
@@ -267,14 +267,14 @@ viewer plays.
 
 | Method | Path                              | Purpose                                                                                                                                                                                                                                                                                                                                                                                                                                                |
 | ------ | --------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| GET    | `/streams/by-ingest/:app/:stream` | Resolve a draft from the ingest stream id `<mediaType>/<topic>`. Returns `IngestLookupResponse` or 404. Only streams in `published`, `live` or `vod` resolve; a `draft` is not announced and is refused.                                                                                                                                                                                                                                               |
+| GET    | `/streams/by-ingest/:app/:stream` | Resolve a draft from the ingest stream id `<mediaType>/<topic>`. Returns `IngestLookupResponse` or 404. Only streams in `published`, `live` or `vod` resolve. A `draft` is not announced and is refused.                                                                                                                                                                                                                                               |
 | POST   | `/streams/:id/state`              | `StreamStateReport`. `live` sets status `live` and `liveSince`, `vod` sets status `vod`, `manifestIndex`, `durationSeconds`, `endedAt`. `vod → live` is allowed: a broadcast may go live again, because its feeds continue, and the `live` clears the finished recording from the row and from every rung. Each report rewrites the catalogue entry with the new state (and `index`, `duration` for vod), through the same single-writer publish path. |
 
 Config: `INTERNAL_API_TOKEN` (required, 32+ chars). Migration 002 adds
 `manifest_index BIGINT`, `duration_seconds DOUBLE PRECISION`,
 `live_since TIMESTAMPTZ`, `ended_at TIMESTAMPTZ`.
 
-The console's status chips already know `live` and `vod`; the details page
+The console's status chips already know `live` and `vod`, and the details page
 shows the new fields when present. A stream in `live` or `vod` cannot be
 edited except title, description, tags and thumbnail, and a republish keeps
 its state.
@@ -288,11 +288,11 @@ its state.
   `publishKey` (constant-time compare). Missing or wrong: refuse. In admin
   mode `PUBLISH_KEY_SECRET` is not consulted.
 - No catalogue writes. On the first successful manifest publish, `POST
-.../state {state:'live'}`; on stop, `{state:'vod', index, duration}`. Failed
-  reports are retried a few times and logged; they never stop the stream.
+.../state {state:'live'}`, and on stop, `{state:'vod', index, duration}`. Failed
+  reports are retried a few times and logged. They never stop the stream.
 - Without `ADMIN_API_URL` everything behaves as on `main-v3` today.
 - ABR ladder in admin mode was out of scope for the first step (single
-  rendition only); the section below is what lifted that, 2026-09-15.
+  rendition only). The section below is what lifted that, 2026-09-15.
 
 #### ABR ladder in admin mode
 
@@ -309,12 +309,12 @@ itself. In admin mode it writes no catalogue at all, so two things move:
   change: it plays a ladder whenever the feed at the topic in the link holds a
   master playlist.
 - **The merge state moves into the admin's database.** Each rung reports its
-  own record; the admin merges it, stores it, and writes the merged ladder onto
+  own record. The admin merges it, stores it, and writes the merged ladder onto
   the catalogue entry.
 
-| Method | Path                      | Purpose                                                                                                                                                                                                                                                                                                                                              |
-| ------ | ------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| POST   | `/streams/:id/renditions` | `RenditionReport` (= `Rendition`: `name`, `width`, `height`, `topic`, `bandwidth`, `avgBandwidth`, and `index` + `duration` once the rung finalizes — both or neither). Answers `RenditionReportResponse`: the stream, the merged ladder ascending by height, `ladder { finished, flippedToFinished, duration }`, and the catalogue write it caused. |
+| Method | Path                      | Purpose                                                                                                                                                                                                                                                                                                                                             |
+| ------ | ------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| POST   | `/streams/:id/renditions` | `RenditionReport` (= `Rendition`: `name`, `width`, `height`, `topic`, `bandwidth`, `avgBandwidth`, and `index` + `duration` once the rung finalizes, both or neither). Answers `RenditionReportResponse`: the stream, the merged ladder ascending by height, `ladder { finished, flippedToFinished, duration }`, and the catalogue write it caused. |
 
 The merge, one record per `(stream, name)`: the incoming report replaces the
 stored one, **except** that a stored rung which already has an `index` keeps
@@ -326,7 +326,7 @@ learned.
 A rung's topic is derived from the stream's declared topic and the rung name,
 so it does not change between sessions: every report for a rung arrives on the
 feed that rung's recordings already sit on, and an indexless one is that rung
-delivering again — recovered from a crash, or a **new session** above the
+delivering again, recovered from a crash, or a **new session** above the
 previous head. Either way the recording it finished last stays addressable
 until that rung's next final report replaces it, which is what keeps the master
 playlist a viewer seeks a recording with on the entry. Un-finishing a ladder is
@@ -336,21 +336,21 @@ the `live` state report's job: it clears every rung's `manifest_index` and
 Semantics worth stating plainly:
 
 - **Status still comes from the state reports.** A rendition report never moves
-  a stream to `live` or `vod`; it only rewrites the entry. `live` is sent once
+  a stream to `live` or `vod`. It only rewrites the entry. `live` is sent once
   the first master playlist has been written to the declared topic, and `vod`
   once, by the rung whose report came back `flippedToFinished: true`. That flag
   is judged against the entry the report's own write replaced on the catalogue,
   so overlapping final reports flip exactly one of them, and a report whose
   write failed flips on its retry.
-- **`vod.index` for a ladder is the master's feed index**, not a rung's — it is
+- **`vod.index` for a ladder is the master's feed index**, not a rung's. It is
   what a viewer opens. Each rung carries its own `index` inside `renditions`.
 - The entry gains `renditions: Rendition[]` and `group: string` (= the stream's
   `topic`) whenever the stream has at least one rung, and neither otherwise, so
   a single-rendition entry is exactly what it was before.
 - Refused: `404 stream_not_found`, `409 invalid_state` for `draft` (nothing
   announced) and `publishing` (a feed write in flight), `400 validation_error`,
-  `502 publish_failed` when the row was stored but the catalogue write failed —
-  the uploader retries the whole report, and the merge is idempotent.
+  `502 publish_failed` when the row was stored but the catalogue write failed.
+  The uploader retries the whole report, and the merge is idempotent.
 
 Migration 004 adds `stream_renditions`, one row per `(stream_id, name)`.
 `finishUnpublish` deleted them alongside the state columns it cleared until

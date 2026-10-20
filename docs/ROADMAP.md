@@ -27,7 +27,7 @@ under `apps/`), scope `@streaming-monorepo/`.
   console stopped showing it (SPDV-1682).
 - A real stream for a draft: the uploader (swarm-hls-stream `main-v3`) resolves
   the draft by ingest stream id through the admin's internal API, checks the
-  key, publishes under the draft's topic and reports live and vod; the admin
+  key, publishes under the draft's topic and reports live and vod. The admin
   API stays the only writer of the stream list feed. Done on both sides
   (uploader on branch `feat/catalogue-thumbnails` in swarm-hls-stream) and
   run end to end on 2026-09-13: OBS to local SRS to the uploader to Swarm,
@@ -43,7 +43,7 @@ Verified 2026-09-11 with the real backend on Postgres and the real frontend in
 a browser: login, create, edit with tags, publish (feed index 0), republish
 with thumbnail (index 1, reference recorded), rotate key, unpublish (index 2,
 empty list), password change signing out other sessions, logout. The Bee
-gateway ran in `fake` mode; the bee-js integration test is skipped until
+gateway ran in `fake` mode, and the bee-js integration test is skipped until
 `BEE_URL` and `POSTAGE_BATCH_ID` (`ITEST_BEE_URL` and `ITEST_BATCH_ID` since
 phase 7 of stages) point at a real node. Docker image builds were unverified
 on that day. The `web2-admin` workflow now builds both images on every pull
@@ -52,11 +52,11 @@ request that touches the admin.
 Real-Swarm test, same day: a colleague pointed the backend at their Bee node,
 published two streams with thumbnails, and deployed a viewer built for the feed
 owner. Two defects came out of it. Publish reused a thumbnail reference minted
-by the fake gateway, so the real feed pointed at an image the node never had;
-publish now verifies a stored reference on the gateway before reusing it and
+by the fake gateway, so the real feed pointed at an image the node never had.
+Publish now verifies a stored reference on the gateway before reusing it and
 re-uploads a missing one. The viewer ignored the catalogue's `thumbnail` field
 and probed each stream's manifest feed, which does not exist before the first
-segment; fixed on swarm-hls-stream branch `feat/catalogue-thumbnails` off
+segment. That was fixed on swarm-hls-stream branch `feat/catalogue-thumbnails` off
 `main-v3` (cards render the catalogue thumbnail, scheduled streams show
 "Upcoming", the watch page says the stream has not started). The viewer had to be
 rebuilt from that branch at the time. The player link in the console now opens the viewer
@@ -66,23 +66,23 @@ Decided 2026-09-15, ABR ladder in admin mode (spec: the "ABR ladder in admin
 mode" section of docs/architecture/web2-admin-checkpoint-2.md). The declared
 topic becomes the master playlist's feed, so the group id the uploader used to
 mint at random is now the stream's own topic and every existing player link
-keeps working; a rung feed's topic is derived from that topic and the rung
+keeps working. A rung feed's topic is derived from that topic and the rung
 name, so it is the same feed every session. The ladder's merge state
-moves out of the catalogue feed and into the admin's database — migration 004
+moves out of the catalogue feed and into the admin's database (migration 004
 `stream_renditions`, `POST /api/internal/streams/:id/renditions`, one record
-per rung — because in admin mode the uploader writes no catalogue to merge
-into. The admin merges each report — a finished rung keeps its index when it
+per rung), because in admin mode the uploader writes no catalogue to merge
+into. The admin merges each report (a finished rung keeps its index when it
 reports again without one, which is that rung delivering onto the feed it was
 already writing, so the recording it closed last stays addressable until its
 next final report replaces it, while a report naming some other feed is taken
-as it arrived — then writes `renditions` and `group` onto the entry and answers
+as it arrived), then writes `renditions` and `group` onto the entry and answers
 with the merged ladder the uploader builds its master from. A broadcast that
 goes live again un-finishes the row and every rung with it, so an encoder
 reconnecting after a finished broadcast does not leave the master pointing at
 the previous recording. Status is otherwise untouched by these reports: `live`
 and `vod` still come from the state route, and a `vod` for a ladder carries the
 **master's** feed index, not a rung's.
-Admin side done on `feat/web2admin-abr`; the uploader half is the same branch
+Admin side done on `feat/web2admin-abr`, and the uploader half is the same branch
 name in swarm-hls-stream.
 
 ## Operator authentication (2026-09-18)
@@ -116,7 +116,7 @@ Manager-driven deploy is next.
 
 - The grammar is swarm-hls-stream's (`--host`, `--profile`, `--portSlot`,
   services), because the manager already runs that stack's script that way,
-  with standard input closed. `--host` is required; `localhost` deploys on the
+  with standard input closed. `--host` is required, and `localhost` deploys on the
   machine running the script.
 - One checkout per host, one compose project per profile
   (`web2-admin-<profile>`), one env file per profile in `web2-admin/backend/`,
@@ -127,7 +127,7 @@ Manager-driven deploy is next.
   1100x block, so digit 9 there collides with no stack service at any slot.
   Without a slot, `WEB2_ADMIN_WEB_PORT` or 9090.
 - The env file is checked for the keys the API refuses to start without before
-  anything leaves the machine; sample values warn.
+  anything leaves the machine, and sample values warn.
 
 Verified 2026-09-23 with `--host=localhost` on a laptop: build, migrations,
 health through nginx, `user:add`, sign-in through nginx on the slot port, a
@@ -164,19 +164,19 @@ streaming-infra-manager's on 8080. See "Public HTTPS: the host's edge" in
   deploy can never delete or replace the rendered Caddyfile on the host.
 - Caddy's admin API is off, since on the host's network it would listen on the
   host's loopback, and every run recreates the container so the new Caddyfile
-  is read; the certificates survive in the volumes.
+  is read. The certificates survive in the volumes.
 
 Verified locally on 2026-09-24, with no host involved: the Caddyfile for both
 names, for each alone, and from a CRLF env file, all accepted by `caddy
-validate` in the pinned image; `docker compose config`; every refusal before
-ssh; the generated host script's paths (a conflicting container or listener on
+validate` in the pinned image. Also verified: `docker compose config`, every refusal before
+ssh, the generated host script's paths (a conflicting container or listener on
 80/443, a crash-looping Caddy, a console that refuses, times out or drops the
-connection) against stubbed docker, curl and ss; the certificate probe's
-reports against stubbed curl and dig; and deploy.sh's rsync filter in dry runs
+connection) against stubbed docker, curl and ss, the certificate probe's
+reports against stubbed curl and dig, and deploy.sh's rsync filter in dry runs
 with macOS openrsync, GNU rsync 3.5, and the two together. Not yet run against
 a real host, DNS or Let's Encrypt. First real host (2026-09-24): its ports 80
 and 443 already belong to a production nginx, so the console goes behind that
-server as one more name; the README's "A host that already has a web server"
+server as one more name. The README's "A host that already has a web server"
 section is the recipe, and edge.sh stays for hosts with no front door yet.
 
 First real run on a control host: both consoles deployed to loopback (the
@@ -217,13 +217,13 @@ not have.
   with its index, duration and ladder). No database constraint ties those
   columns to a status, so nothing in the schema changed.
 
-## Streams belong to the installation; actor logging and audit log (2026-09-28)
+## Streams belong to the installation, plus actor logging and audit log (2026-09-28)
 
 Decided: a stream is the installation's, not the drafter's:
 every signed-in operator lists, edits, publishes, unpublishes and deletes
 every stream, and `streams.user_id` only records who drafted the row. No
 query in the backend scopes by user any more (sessions aside). Brand
-separation is not this; it stays an open decision below.
+separation is not this, and it stays an open decision below.
 
 With every operator able to act on every stream, who did what has to be
 recorded somewhere else:
@@ -231,28 +231,28 @@ recorded somewhere else:
 - Every mutation logs a line naming the actor first, the way the manager's
   lines do:
   `[Publish] alice published "Opening keynote" (topic …): draft → published at feed index 12 (3 entries)`.
-  Most are info; a reconcile that wrote and the boot repair warn, and failures
+  Most are info, a reconcile that wrote and the boot repair warn, and failures
   are errors. The actor is the signed-in operator, `the uploader` for the
-  internal API (the services say so themselves; the route has no session to
+  internal API (the services say so themselves, since the route has no session to
   name anyone by) or `system (boot)` / `system (cli)`.
 - Migration 007 adds `audit_log`, one row per mutation: actor, dotted action,
   stream id and topic (no foreign key, so a deleted stream keeps its
   history), status before and after, and a JSON `details`. Failed publishes
-  and unpublishes are recorded with the reason; refusals are not. A failed
+  and unpublishes are recorded with the reason, and refusals are not. A failed
   audit write is logged and never fails the operation, which has already
-  happened. Read with `psql` for now; the backend README has the queries.
+  happened. Read with `psql` for now. The backend README has the queries.
 
 Migration 008 follows from the same decision: `streams.user_id` was
 `ON DELETE CASCADE`, so removing a user deleted every stream they had drafted,
 published and live ones included, and left their entries on the catalogue. It
-is nullable now and set to null instead; the `stream.create` audit row keeps
+is nullable now and set to null instead. The `stream.create` audit row keeps
 the drafter's username for every stream created since migration 007. Nothing
 is backfilled for older streams, because the installations start from a
 new database.
 
 Verified 2026-09-28 with the unit and integration suites, nothing deployed:
 each service's audit entries, a failed audit write, the actor on the routes
-(the unit suite checks create, publish, reconcile and the user routes; the
+(the unit suite checks create, publish, reconcile and the user routes, and the
 integration suite's audit query checks the other stream writes), a second
 operator through a whole stream lifecycle, the Postgres audit writer, and a
 removed user's streams kept with `user_id` set to null. Migrations 007 and 008
@@ -275,7 +275,7 @@ manager.
   answers a token only about its own stage's streams.
 - The catalogue has a batch of its own, immutable, on a dedicated catalogue
   node, pinned by id. It never shares a batch a rung stamps segments with.
-- The admin reads stamps and chequebooks; buying batches stays in the
+- The admin reads stamps and chequebooks, and buying batches stays in the
   manager, and funding moved to the admin on 2026-10-05 (below).
 
 Built in nine phases, each a pull request into `feat/stages`: phases 1 to 8
@@ -315,12 +315,12 @@ below, and first ran on a test deployment in the live test round of 2026-10-04
   connection compare with the owner the admin knows for the token's stage.
 - Phase 7, the catalogue node (#61, 2026-09-28): the manager designates a
   Bee-only deployment and an immutable batch on it as the brand's catalogue
-  stamp and guards both; the admin writes the catalogue through them, pins
+  stamp and guards both. The admin writes the catalogue through them, pins
   the batch of its first write and records the exact bytes of every write.
   `BEE_URL` and `POSTAGE_BATCH_ID` leave the admin's env.
 - Phase 8, moving the catalogue to another batch (#63, 2026-09-28): the
   manager designates another batch as a move and keeps guarding the previous
-  one until the operator releases it; the admin stamps every slot again under
+  one until the operator releases it. The admin stamps every slot again under
   the new batch, byte for byte, then every stored thumbnail, then writes with
   it. Decided: `CATALOGUE_MOVE_ENABLED` stays off on every installation until
   the move has been tried on a real node, by the procedure in the spec.
@@ -335,13 +335,13 @@ below, and first ran on a test deployment in the live test round of 2026-10-04
 - Review of the pull request into `main` (#74, 2026-10-02): three reviews and
   a review table, answered in #76 to #81 on `fix/stages--review-fixes`.
   Decided: the admin's deploy script refuses the sample brand key and
-  registrar token unless it is given `--allow-sample-secrets`; a new
+  registrar token unless it is given `--allow-sample-secrets`. A new
   catalogue batch must be depth 18 or more, the batch already pinned and a
-  move back to it excepted, and warnings for a shallow batch come later; a
+  move back to it excepted, and warnings for a shallow batch come later. A
   deploy on the manager's own Linux host binds every empty Bee API bind to the
   Docker bridge address, and the catalogue node card warns when Docker shows
-  the node's API on every address; the manager sends the web2 admin plain
-  http only on its own host, unless `ADMIN_LINK_ALLOW_PLAIN_HTTP=true`; a
+  the node's API on every address. The manager sends the web2 admin plain
+  http only on its own host, unless `ADMIN_LINK_ALLOW_PLAIN_HTTP=true`. A
   removed stage's retirement waits in the table migration 049 adds,
   `pending_stage_retirements`, and is sent again until the admin answers it.
 
@@ -352,7 +352,7 @@ Left open after the nine phases:
 - **The upgrade, scripted.** The rollout below is six manual steps in a fixed
   order. A script with a check after each step comes before an existing
   installation is upgraded.
-- **Pending retirements** show only in the manager's log; the Stages page
+- **Pending retirements** show only in the manager's log, and the Stages page
   could count them.
 - **Top-ups from the admin.** Decided 2026-10-05: a brand wallet in the
   admin, and every funding operation through the manager's funding API, as
@@ -377,7 +377,7 @@ Left open after the nine phases:
 - Manager deploys the stack from `apps/hls-stream` of this repository (it
   deployed swarm-hls-stream's `main-v3` until the move of 2026-09-27).
 - Derive ingest host and ports from a manager profile (`10001 + slot*10`
-  etc.) instead of env; provision and stop through the Manager API. Done as
+  etc.) instead of env, and provision and stop through the Manager API. Done as
   [stages](architecture/stages.md): the manager pushes each stage's public
   ingest address, ports and passphrase, the admin's env carries no stage, and
   a stream's OBS panel comes from its stage. Nothing is provisioned from the
@@ -507,4 +507,4 @@ The ABR ladder muxes the audio into every rung. Splitting it into an `EXT-X-MEDI
 - Brand separation inside one admin: which brand a stage and a stream belong
   to, and a second admin link per manager. (Top-ups from the admin were
   decided on 2026-10-05: [funding.md](architecture/funding.md).)
-- Chat placement (SPA question; only lands here if a websocket wins).
+- Chat placement (SPA question, only lands here if a websocket wins).
