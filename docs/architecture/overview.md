@@ -91,7 +91,9 @@ machines of its own.
 ### A stack deployment
 
 Every stack deployment the manager creates takes a port slot `s`, from 1 to 99, and each of its
-ports is `10000 + 10 × s` plus a fixed last digit, so two deployments on one host never collide.
+ports is `10000 + 10 × s` plus a fixed last digit, so two deployments on one host never collide. The
+manager itself allows slots up to 100 (`MANAGER_SLOT_CAP`), and honours the lower ceiling of 99 that
+the stack's `deploy.sh` declares.
 
 | Port             | Protocol | What it is                                   | Reachable from                              |
 | ---------------- | -------- | -------------------------------------------- | ------------------------------------------- |

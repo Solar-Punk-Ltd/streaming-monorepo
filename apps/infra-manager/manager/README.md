@@ -1088,7 +1088,8 @@ Compose file as a host path.
 ## Limits
 
 - **At most 100 deployments per host.** A port slot is a whole number from 1 to 100, and a stack
-  version may declare a lower ceiling, which the manager honours. A stopped deployment still holds
+  version may declare a lower ceiling, which the manager honours. The stack in this repository
+  declares 99, so a host running it holds at most 99 deployments. A stopped deployment still holds
   its slot.
 - **Some slots are skipped.** The WHATWG fetch standard lists ports that Node's fetch and every
   browser refuse ([port blocking](https://fetch.spec.whatwg.org/#port-blocking)), and a slot's
