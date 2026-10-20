@@ -8,11 +8,14 @@ require_jq
 require_config
 
 usage() {
-  echo "Usage: stop.sh [--profile=<name>] [service...]"
+  echo "Usage: stop.sh [--profile=<name>] [--portSlot=<N>] [--host=<target>] [service...]"
   echo ""
   echo "  stop.sh                       Stop every service on every target"
   echo "  stop.sh srs stream-uploader   Stop only those two"
   echo "  stop.sh --profile=streamer1   Stop the streamer1 instance"
+  echo ""
+  echo "--portSlot=<N> and --host=<target> mean what they mean to deploy.sh: the port slot the"
+  echo "stack runs on, and one target for every enabled service in place of config.json's."
   echo ""
   echo "Services: ${ALL_SERVICES[*]}"
 }

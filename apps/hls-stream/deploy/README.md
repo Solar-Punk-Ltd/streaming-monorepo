@@ -241,7 +241,8 @@ takeover in [engines/README.md](../engines/README.md).
 
 ```bash
 deploy.sh [--profile=<name>] [--portSlot=<N>] [--host=<target>]
-          [--release-label=<label>] [--release-commit=<commit>] [service...]
+          [--release-label=<label>] [--release-commit=<commit>]
+          [--feed-owner=<address>] [--feed-topic=<topic>] [--stamp-id=<batch>] [service...]
 ```
 
 ```bash
@@ -323,6 +324,10 @@ deploy.sh --profile=viewer1 --portSlot=4 --release-label=QA-build-2026-10-07 \
 - Without `--release-label` the overlay shows no release line at all, whatever `--release-commit` says.
 - A version of the stack from before 2026-10-08 has no such flags, and reads either as a service name it does not know, so the deploy stops with `Unknown service`.
 
+#### --feed-owner, --feed-topic and --stamp-id
+
+Each replaces one value of `.env.<profile>` for this deploy. `--feed-owner=<address>` sets `VITE_APP_OWNER`, the owner of the stream list feed the client reads, a 40 character hex address. `--feed-topic=<topic>` sets that feed's topic for both the uploader and the client, `STREAM_LIST_TOPIC` and `VITE_APP_RAW_TOPIC`: letters, digits, dot, underscore or hyphen, at most 64. `--stamp-id=<batch>` sets `STAMP`, the postage batch the uploader stamps with, a 64 character hex id. A `0x` prefix is accepted on the address and the batch id. A value of any other shape is refused before anything is deployed.
+
 Setup for a new profile:
 
 ```bash
@@ -336,7 +341,7 @@ Without `--profile` everything works exactly as before: implicit `default` profi
 ### clean.sh
 
 ```bash
-clean.sh [--profile=<name>] [--volumes] [--all] [--yes] [service...]
+clean.sh [--profile=<name>] [--portSlot=<N>] [--host=<target>] [--volumes] [--all] [--yes|-y] [service...]
 ```
 
 ```bash
@@ -351,11 +356,11 @@ clean.sh --yes                           # skip the confirmation prompt (for scr
 ### stop.sh / health.sh
 
 ```bash
-stop.sh   [--profile=<name>] [service...]   # stop containers, all of them if none is named
-health.sh [--profile=<name>] [service...]   # check service health, all of them if none is named
+stop.sh   [--profile=<name>] [--portSlot=<N>] [--host=<target>] [service...]   # stop containers, all of them if none is named
+health.sh [--profile=<name>] [--portSlot=<N>] [--host=<target>] [service...]   # check service health, all of them if none is named
 ```
 
-Both take the same service names as `clean.sh`. Neither removes data: `stop.sh` stops containers and
+`--portSlot` and `--host` mean what they mean to `deploy.sh`, here and for `clean.sh`. `stop.sh` and `health.sh` take the same service names as `clean.sh`. Neither removes data: `stop.sh` stops containers and
 leaves every volume in place, and `health.sh` only reads.
 
 ### drain-stage.sh
