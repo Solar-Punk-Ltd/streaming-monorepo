@@ -21,7 +21,8 @@ refused until both are cleaned. To see it: set the key in `bundled/.env`, build,
 **The viewer goes blank after the catalogue moves to a catalogue node (P2).** The viewer is built
 with the address of the catalogue feed's owner, and the manager hands it that address only from the
 viewer deployment's own feed owner setting. After the stages upgrade the catalogue is written by the
-catalogue node, so its owner changes, but the upgrade steps in [self-hosting.md](self-hosting.md)
+catalogue node, so its owner changes, but the upgrade steps in
+[self-hosting.md](self-hosting.md#upgrading-an-existing-installation)
 name only the viewer's feed topic. A viewer redeployed without the owner builds with none: the page
 stays empty and the browser console says `Missing env var: VITE_APP_OWNER`. The fix by hand is the
 viewer deployment's **Edit** drawer: the owner the admin publishes at `/api/config` (its

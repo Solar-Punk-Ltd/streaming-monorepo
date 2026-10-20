@@ -369,7 +369,8 @@ Left open after the nine phases:
 - **Rollout**, decided 2026-09-29, for a host that runs the admin and
   manager from before stages: six steps in a fixed order, with an
   intermediate admin that takes both tokens while every stage is rotated.
-  "Upgrading" in [self-hosting.md](self-hosting.md#the-control-host) has
+  "Upgrading an existing installation" in
+  [self-hosting.md](self-hosting.md#upgrading-an-existing-installation) has
   each step. A fresh installation needs none of this.
 
 ## Checkpoint 3: manager integration (done with stages, merged 2026-10-03)

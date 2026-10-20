@@ -357,8 +357,8 @@ a stream of another stage is refused at the gate.
   and `POST /groups`, and a create drops it as any key it does not name.
 
 **Rolling out on a host that runs the admin and manager from before stages.**
-[Upgrading](../self-hosting.md#the-control-host), at the end of the control host in the
-self-hosting guide, has the steps. The order follows from three facts. An intermediate admin takes
+[Upgrading an existing installation](../self-hosting.md#upgrading-an-existing-installation), at
+the end of the self-hosting guide, has the steps. The order follows from three facts. An intermediate admin takes
 both the shared token and a stage's own, so every running uploader keeps working while its stage is
 rotated and redeployed. Without that step, the admin that refuses the shared token answers every
 running uploader 401 until its stage is rotated. A stage on

@@ -110,7 +110,7 @@ attributes only `own` tokens, refuses it.
 creates has a token of its own from its first deploy. A host that runs the
 admin and manager from before stages is upgraded through an intermediate admin
 that takes both the shared token and a stage's own. The steps, in order, are in
-[Upgrading a host that runs the admin and manager from before stages](../../../../docs/self-hosting.md#the-control-host)
+[Upgrading an existing installation](../../../../docs/self-hosting.md#upgrading-an-existing-installation)
 in the repository's self-hosting guide.
 
 **The link is https in production.** Every push carries the stored token, each

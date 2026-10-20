@@ -91,6 +91,27 @@ On your own machine you need bash, ssh, rsync, git and Node 24, which run every 
 the firewall generator of the Bee host. The stack's CLI needs pnpm as well, and `pnpm install` once
 at the repository root.
 
+Clone the repository and check out what you deploy. A release tag, `vX.Y.Z` with no suffix such as
+`-rc.1`, marks a commit that was released in the order [releasing.md](releasing.md) describes. The
+second command below lists the tags newest first. `main` works too and carries changes no release
+has yet. Read this guide from the checkout you deploy, because a step can change between releases.
+
+```sh
+git clone https://github.com/Solar-Punk-Ltd/streaming-monorepo.git && cd streaming-monorepo
+```
+
+```sh
+git tag --list 'v*' --sort=-v:refname
+```
+
+```sh
+git checkout <the newest vX.Y.Z>
+```
+
+```sh
+pnpm install
+```
+
 1. **An ssh alias on your machine**, in `~/.ssh/config`. The forward is the way into the manager
    before the edge serves it, and stays the way in when the edge is down.
    `<control-host>` stands for whatever alias you choose, and the steps below use it.
@@ -177,9 +198,7 @@ at the repository root.
    unless `--allow-sample-secrets` is given for a test install. The admin takes no stage settings:
    no ingest address, port or passphrase, no Bee node and no batch. It learns each stage from the
    manager and writes the catalogue through the catalogue node the manager designates, refusing to
-   publish, saying why, until the manager has. The `INGEST_*` keys, `BEE_URL` and
-   `POSTAGE_BATCH_ID` an older env file carries are no longer read, and the deploy names each one
-   it finds.
+   publish, saying why, until the manager has.
 
    ```sh
    cp backend/.env.sample backend/.env.brand-a
@@ -267,55 +286,8 @@ at the repository root.
        It worked when the stream's page shows **OBS connection details** for that stage, and
        **Open player catalogue** opens the viewer with the stream listed.
 
-**Upgrading a host that runs the admin and manager from before stages.** A fresh installation
-needs none of this. On a running one, in this order:
-
-0. **Create the catalogue node**, by step 6 of the Bee host recipe below: a Bee-only deployment,
-   funded, with one immutable batch of depth 18 or more bought on it. It must be ready before step 2.
-1. **Deploy the manager that pushes stage records**, and designate the catalogue node and its batch
-   on **Manager settings** at once. The admin from before stages has no `/api/internal/stages` or
-   `/api/internal/catalogue-stamp` route, so every stage's push and the catalogue stamp come to
-   `not-admin` ("not a web2 admin") until step 2. That is harmless: that admin stores nothing and
-   keeps writing with its env file's batch, and Test connection on Manager settings still takes the
-   token there. Create no stage and rotate nothing until step 2 is done: an admin from before stages
-   refuses a token of its own.
-2. **Deploy the intermediate admin**, which takes stage records and still accepts the shared
-   token on an uploader's routes: commit `d29616851`, which `main` holds. It takes both the shared
-   token and a stage's own.
-   It refuses every catalogue write, `503`, until it holds a catalogue stamp, so publishing and the
-   uploaders' state reports (which retry) wait from its start until the manager's next push, at
-   most ten seconds after it answers. Note the env file's `POSTAGE_BATCH_ID` and `BEE_URL` before
-   they go: the batch is needed, below.
-3. **Before any rotation, give every stream a stage.** Unpublish every scheduled stream, pick its
-   stage and publish it again, and pick a stage for every draft. A stage on a token of its own is
-   answered only about its own streams, so a stream with no stage is reached by no uploader once
-   its stage is rotated. A stream live at rotation keeps its live state on the catalogue until an
-   operator unpublishes it.
-4. **Rotate and redeploy every stage** (**Rotate the uploader's admin token** on its deployment
-   page, then deploy) until the admin's Stages page reads "Its own token" for all of them.
-5. **Deploy the admin that refuses the shared token.**
-
-Skipping steps 2 to 4 means every running uploader gets 401 from the admin that refuses the shared
-token until its stage is rotated and redeployed. A fresh installation needs none of this: every stage it creates has a
-token of its own from its first deploy.
-
-After the upgrade, give each stage a `STREAM_KEY` of its own in the manager and redeploy it right
-after. A stage from before stages signs with the brand key, which its `STREAM_KEY` had to equal, so
-until then a compromised stage host leaks the brand key. A scheduled stream keeps the owner it was
-published with and is refused at the gate until it is unpublished and published again. A recording
-keeps the key it was made under.
-
-**Until the catalogue is moved, keep the batch from before stages.** On an upgraded host every
-catalogue slot written before step 2 is stamped by the env file's `POSTAGE_BATCH_ID` batch, which
-the admin records as `batch_id NULL`, and the viewer stops at the first slot it cannot find. Until
-the move has been tried on a real node
-([architecture/stages.md](architecture/stages.md#trying-the-move-on-a-real-node)) and run here:
-keep that batch topped up and its node running. Never dilute it, replace it or name it in a pool
-string, since the manager does not know it and guards only the catalogue node's batches. And run
-the move as the first thing after the trial. This is the one remaining way the catalogue can go
-dark.
-
-[architecture/stages.md](architecture/stages.md) has the reasons.
+Upgrading an installation from before stages is a different path, in
+[Upgrading an existing installation](#upgrading-an-existing-installation) at the end of this page.
 
 ## A stage host
 
@@ -558,3 +530,60 @@ each one has a setting that moves it. Once a host runs, keep that setting as it 
 
 The admin's host folder holds `apps/web2-admin` alone, whatever its name: its deploy sends the
 admin's own folder, not the whole repository.
+
+## Upgrading an existing installation
+
+A fresh installation, by the steps above, needs nothing in this section.
+
+An admin env file from before stages carries `INGEST_*` keys, `BEE_URL` and `POSTAGE_BATCH_ID`. The
+admin no longer reads them, and its deploy names each one it finds.
+
+### A host that runs the admin and manager from before stages
+
+In this order:
+
+0. **Create the catalogue node**, by step 6 of [A Bee host](#a-bee-host): a Bee-only deployment,
+   funded, with one immutable batch of depth 18 or more bought on it. It must be ready before step 2.
+1. **Deploy the manager that pushes stage records**, and designate the catalogue node and its batch
+   on **Manager settings** at once. The admin from before stages has no `/api/internal/stages` or
+   `/api/internal/catalogue-stamp` route, so every stage's push and the catalogue stamp come to
+   `not-admin` ("not a web2 admin") until step 2. That is harmless: that admin stores nothing and
+   keeps writing with its env file's batch, and Test connection on Manager settings still takes the
+   token there. Create no stage and rotate nothing until step 2 is done: an admin from before stages
+   refuses a token of its own.
+2. **Deploy the intermediate admin**, which takes stage records and still accepts the shared
+   token on an uploader's routes: commit `d29616851`, which `main` holds. It takes both the shared
+   token and a stage's own.
+   It refuses every catalogue write, `503`, until it holds a catalogue stamp, so publishing and the
+   uploaders' state reports (which retry) wait from its start until the manager's next push, at
+   most ten seconds after it answers. Note the env file's `POSTAGE_BATCH_ID` and `BEE_URL` before
+   they go: the batch is needed, below.
+3. **Before any rotation, give every stream a stage.** Unpublish every scheduled stream, pick its
+   stage and publish it again, and pick a stage for every draft. A stage on a token of its own is
+   answered only about its own streams, so a stream with no stage is reached by no uploader once
+   its stage is rotated. A stream live at rotation keeps its live state on the catalogue until an
+   operator unpublishes it.
+4. **Rotate and redeploy every stage** (**Rotate the uploader's admin token** on its deployment
+   page, then deploy) until the admin's Stages page reads "Its own token" for all of them.
+5. **Deploy the admin that refuses the shared token.**
+
+Skipping steps 2 to 4 means every running uploader gets 401 from the admin that refuses the shared
+token until its stage is rotated and redeployed.
+
+After the upgrade, give each stage a `STREAM_KEY` of its own in the manager and redeploy it right
+after. A stage from before stages signs with the brand key, which its `STREAM_KEY` had to equal, so
+until then a compromised stage host leaks the brand key. A scheduled stream keeps the owner it was
+published with and is refused at the gate until it is unpublished and published again. A recording
+keeps the key it was made under.
+
+**Until the catalogue is moved, keep the batch from before stages.** On an upgraded host every
+catalogue slot written before step 2 is stamped by the env file's `POSTAGE_BATCH_ID` batch, which
+the admin records as `batch_id NULL`, and the viewer stops at the first slot it cannot find. Until
+the move has been tried on a real node
+([architecture/stages.md](architecture/stages.md#trying-the-move-on-a-real-node)) and run here:
+keep that batch topped up and its node running. Never dilute it, replace it or name it in a pool
+string, since the manager does not know it and guards only the catalogue node's batches. And run
+the move as the first thing after the trial. This is the one remaining way the catalogue can go
+dark.
+
+[architecture/stages.md](architecture/stages.md) has the reasons.
