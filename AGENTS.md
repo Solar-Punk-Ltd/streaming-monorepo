@@ -18,15 +18,15 @@ Each `CLAUDE.md` is the one line `@AGENTS.md`, so every tool reads the same text
 `infra/`, shared code under `packages/` when there is any, repository-wide scripts under `tools/`,
 and how the pieces fit under `docs/`. Read it before moving anything.
 
-- `docs/ROADMAP.md` is the plan and the checkpoint log. Update it when a checkpoint closes or a
-  decision lands.
-- `docs/architecture/` holds the design briefs.
-- `docs/self-hosting.md` holds the host roles, the edge, the recipe for each kind of fresh host,
-  and the names on the hosts that never change.
+- `docs/ROADMAP.md` is a short forward-looking page: what the platform does today, then Next and
+  Later. Keep it that way. It holds no dates, checkpoints, pull request numbers or history.
+- `docs/known-issues.md` lists current problems only. Remove an entry in the change that fixes it.
+- `docs/architecture/` holds the concepts pages: `overview.md`, `stages.md`, `funding.md`, and the
+  admin's own pages.
+- `docs/self-hosting.md` is the guide from empty hosts to a first stream: the host roles, the edge,
+  the recipe for each kind of fresh host, and the names on the hosts that never change.
 - `docs/releasing.md` is the release procedure: tag the build with `tools/release/tag.mjs`, then
   deploy. Change it with the deploy scripts and the tag script it describes.
-- `docs/research/` holds condensed reports on the neighbouring systems. Read the relevant one
-  before touching anything that talks to those systems.
 - Another repository reads what this one publishes to Swarm. `docs/architecture/overview.md`,
   "Who reads what we publish", says which formats it copies and must change with ours.
 
