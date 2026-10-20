@@ -19,8 +19,7 @@ test('anything else is not, a retired look and a differently cased one included'
   }
 });
 
-test('both sides read the looks and the route from the package root', () => {
+test('both sides read the looks from the package root', () => {
   assert.equal(common.isAdminThemeName, isAdminThemeName);
   assert.equal(common.ADMIN_THEME_NAMES, ADMIN_THEME_NAMES);
-  assert.equal(common.CONSOLE_DEFAULT_THEME_PATH, '/api/config/default-theme');
 });

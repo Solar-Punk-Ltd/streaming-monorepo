@@ -1,22 +1,16 @@
 /**
- * `GET /api/config` and `PUT /api/config/default-theme` over HTTP: the real routers, session gate, cross-site check and
- * error mapping on a random port, mounted as `src/api/server.ts` mounts them, with the console's settings, the users
- * and the sessions in memory. `pnpm test`.
+ * `GET /api/config` over HTTP: the real routers, session gate, cross-site check and error mapping on a random port,
+ * mounted as `src/api/server.ts` mounts them, with the console's settings, the users and the sessions in memory.
+ * `pnpm test`.
  *
- * Pinned here: the public config names the host's default look, Default with no row and for a stored look the console
- * no longer carries. The change is refused without a session, for a user who is not an admin, from another site and
- * for a name the console does not carry, and an admin's change is stored, answered and audited with the look it
- * replaced.
+ * Pinned here: the public config names the host's default look, Swarm with no row and for a stored look the console
+ * no longer carries. The route that once let an admin change it is gone and answers 404.
  */
 import http from 'node:http';
 import assert from 'node:assert/strict';
 import { after, before, beforeEach, describe, it } from 'node:test';
 
-import {
-  CONSOLE_DEFAULT_THEME_PATH,
-  type PublicConfig,
-  type SetDefaultThemeResponse,
-} from '@streaming-monorepo/web2-admin-common';
+import type { PublicConfig } from '@streaming-monorepo/web2-admin-common';
 import express from 'express';
 
 import { errorHandler } from '../../src/api/middleware/errorHandler.js';
@@ -40,7 +34,6 @@ import { InMemoryConsoleSettingsStore } from './support/consoleSettingsFakes.js'
 import { InMemoryAuditLog } from './support/fakes.js';
 
 const ADMIN = 'alice';
-const PLAIN = 'bob';
 const PASSWORD = 'a-long-enough-password';
 
 const FEED = feedIdentityFrom(`0x${'11'.repeat(32)}`, 'test-catalogue');
@@ -56,13 +49,13 @@ async function startConfigTestApp(): Promise<ConfigTestApp> {
   const audit = new InMemoryAuditLog();
   const authService = new AuthService(users, sessions, new InMemoryCredentialRepository(users, sessions), audit);
   const store = new InMemoryConsoleSettingsStore();
-  const consoleSettings = new ConsoleSettingsService(store, audit);
+  const consoleSettings = new ConsoleSettingsService(store);
   const requireAuth = createRequireAuth(authService);
 
   const app = express();
   app.use(requireSameSite);
   app.use(express.json({ limit: '256kb' }));
-  app.use('/api/config', createConfigRouter({ feed: FEED, viewerBaseUrl: VIEWER, consoleSettings, requireAuth }));
+  app.use('/api/config', createConfigRouter({ feed: FEED, viewerBaseUrl: VIEWER, consoleSettings }));
   app.use('/api/auth', createAuthRouter(authService, requireAuth));
   app.use(notFound);
   app.use(errorHandler);
@@ -85,23 +78,18 @@ async function startConfigTestApp(): Promise<ConfigTestApp> {
 
 let app: ConfigTestApp;
 let adminCookie: string;
-let plainCookie: string;
 
 before(async () => {
   app = await startConfigTestApp();
   await app.authService.addUser(TEST_SETUP, ADMIN, PASSWORD);
-  await app.authService.addUser(TEST_SETUP, PLAIN, PASSWORD, { admin: false });
   adminCookie = (await signIn(app, ADMIN, PASSWORD)).cookie;
-  plainCookie = (await signIn(app, PLAIN, PASSWORD)).cookie;
 });
 
 after(() => app.close());
 
 beforeEach(() => {
   app.store.stored = null;
-  app.store.updatedBy = null;
   app.store.failReads = false;
-  app.audit.entries.length = 0;
 });
 
 const config = async () => {
@@ -144,86 +132,15 @@ describe('GET /api/config', () => {
   });
 });
 
-describe('PUT /api/config/default-theme', () => {
-  it('refuses a request with no session, and stores nothing', async () => {
-    const res = await call(app, 'PUT', CONSOLE_DEFAULT_THEME_PATH, { body: { defaultTheme: 'swarm' } });
-
-    assert.equal(res.status, 401);
-    assert.deepEqual(res.body, { error: 'unauthenticated' });
-    assert.equal(app.store.stored, null);
-  });
-
-  it('refuses a signed-in user who is not an admin', async () => {
-    const res = await call(app, 'PUT', CONSOLE_DEFAULT_THEME_PATH, {
-      cookie: plainCookie,
-      body: { defaultTheme: 'swarm' },
-    });
-
-    assert.equal(res.status, 403);
-    assert.equal((res.body as { error: string }).error, 'admin_required');
-    assert.equal(app.store.stored, null);
-    assert.deepEqual(app.audit.withAction('console.theme.set'), []);
-  });
-
-  it('refuses a write without the header no other site can send', async () => {
-    const res = await call(app, 'PUT', CONSOLE_DEFAULT_THEME_PATH, {
-      cookie: adminCookie,
-      body: { defaultTheme: 'swarm' },
-      requestedWith: false,
-    });
-
-    assert.equal(res.status, 403);
-    assert.equal((res.body as { error: string }).error, 'cross_site_request');
-    assert.equal(app.store.stored, null);
-  });
-
-  it('refuses a look the console does not carry, and a body without one', async () => {
-    for (const body of [
-      { defaultTheme: 'neon' },
-      { defaultTheme: 'default' },
-      { defaultTheme: 'Swarm' },
-      { defaultTheme: 3 },
-      {},
-    ]) {
-      const res = await call(app, 'PUT', CONSOLE_DEFAULT_THEME_PATH, { cookie: adminCookie, body });
-
-      assert.equal(res.status, 400, JSON.stringify(body));
-      assert.equal((res.body as { error: string }).error, 'validation_error');
-    }
-    assert.equal(app.store.stored, null);
-    assert.deepEqual(app.audit.withAction('console.theme.set'), []);
-  });
-
-  it("stores an admin's pick, answers it, and the public config follows", async () => {
-    const res = await call(app, 'PUT', CONSOLE_DEFAULT_THEME_PATH, {
+describe('the retired PUT /api/config/default-theme', () => {
+  it('is no route, even for an admin, and stores nothing', async () => {
+    const res = await call(app, 'PUT', '/api/config/default-theme', {
       cookie: adminCookie,
       body: { defaultTheme: 'web3privacy' },
     });
 
-    assert.equal(res.status, 200);
-    assert.deepEqual(res.body as SetDefaultThemeResponse, { defaultTheme: 'web3privacy' });
-    assert.equal(app.store.stored, 'web3privacy');
-    assert.equal(app.store.updatedBy, ADMIN);
-    assert.equal((await config()).defaultTheme, 'web3privacy');
-  });
-
-  it('audits the change with the look the console wore before and the one it wears now', async () => {
-    await call(app, 'PUT', CONSOLE_DEFAULT_THEME_PATH, { cookie: adminCookie, body: { defaultTheme: 'web3privacy' } });
-    await call(app, 'PUT', CONSOLE_DEFAULT_THEME_PATH, { cookie: adminCookie, body: { defaultTheme: 'swarm' } });
-
-    const rows = app.audit.withAction('console.theme.set');
-    assert.equal(rows.length, 2);
-    assert.deepEqual(rows[0]?.details, { from: 'swarm', to: 'web3privacy' });
-    assert.deepEqual(rows[1]?.details, { from: 'web3privacy', to: 'swarm' });
-    assert.equal(rows[0]?.actor.kind, 'operator');
-    assert.equal(rows[0]?.actor.kind === 'operator' ? rows[0].actor.username : null, ADMIN);
-  });
-
-  it('records a stored look the console no longer carries as the Swarm it was worn as', async () => {
-    app.store.stored = 'retired-look';
-
-    await call(app, 'PUT', CONSOLE_DEFAULT_THEME_PATH, { cookie: adminCookie, body: { defaultTheme: 'web3privacy' } });
-
-    assert.deepEqual(app.audit.withAction('console.theme.set')[0]?.details, { from: 'swarm', to: 'web3privacy' });
+    assert.equal(res.status, 404);
+    assert.equal((res.body as { error: string }).error, 'not_found');
+    assert.equal(app.store.stored, null);
   });
 });

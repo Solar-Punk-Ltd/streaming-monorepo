@@ -1,7 +1,5 @@
 import { type AdminThemeName, DEFAULT_ADMIN_THEME, isAdminThemeName } from '@streaming-monorepo/web2-admin-common';
 
-import type { OperatorActor } from './actor.js';
-import { type AuditLog, recordAudit } from './AuditLog.js';
 import type { ConsoleSettingsStore } from './ConsoleSettingsRepository.js';
 import { Logger } from './Logger.js';
 
@@ -12,12 +10,9 @@ function wornLook(stored: string | null): AdminThemeName {
   return isAdminThemeName(stored) ? stored : DEFAULT_ADMIN_THEME;
 }
 
-/** The console's settings for this host: the look it starts in, read by anyone and set by an admin. */
+/** The console's settings for this host: the look it starts in, read by anyone. */
 export class ConsoleSettingsService {
-  constructor(
-    private readonly store: ConsoleSettingsStore,
-    private readonly audit: AuditLog,
-  ) {}
+  constructor(private readonly store: ConsoleSettingsStore) {}
 
   /**
    * A read that fails answers `DEFAULT_ADMIN_THEME` rather than failing `/api/config`, which also carries the feed and
@@ -30,13 +25,5 @@ export class ConsoleSettingsService {
       logger.warn(`[Console] could not read this host's default look, answering ${DEFAULT_ADMIN_THEME}:`, err);
       return DEFAULT_ADMIN_THEME;
     }
-  }
-
-  /** The route admits admins alone, so this trusts its caller to be one. */
-  async setDefaultTheme(actor: OperatorActor, name: AdminThemeName): Promise<AdminThemeName> {
-    const from = wornLook(await this.store.setDefaultTheme(name, actor.username));
-    logger.info(`[Console] ${actor.username} set this host's default look: ${from} → ${name}`);
-    await recordAudit(this.audit, { actor, action: 'console.theme.set', details: { from, to: name } });
-    return name;
   }
 }
