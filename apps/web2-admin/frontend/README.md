@@ -211,6 +211,14 @@ only in a secure context, so on a console served over plain http Copy falls back
 `document.execCommand('copy')` and, failing that, selects the value for a manual copy. Rotate key
 asks first. Without a stage the panel says to pick one.
 
+Rotate key refuses the old key from the next connection on. It does not end a broadcast that is
+already live on the old key. A stream takes one encoder at a time. Two encoders with the same
+details push each other off every few seconds, because a stage lets an encoder with the right key
+take over a live stream and OBS reconnects by itself. The stream then carries only some of its
+segments and shows as Live throughout. To end such a fight, press Rotate key and put the new details
+into the one encoder that should broadcast. Its next connection takes the stream over, and the
+other encoder's reconnects with the old key are refused.
+
 ### Sessions
 
 Every fetch is relative (`/api/...`) and carries `credentials: 'same-origin'`. Any unexpected 401

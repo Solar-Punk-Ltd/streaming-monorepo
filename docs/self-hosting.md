@@ -543,6 +543,8 @@ and on the host its deploy puts it under the admin's folder as `deploy/edge/`.
 An upgrade is a release deployed over the running hosts, in the order [releasing.md](releasing.md)
 gives: tag the commit, deploy each manager, then deploy each admin. The manager then builds the
 stack version of the new release, and each stage takes it when you deploy it again from the manager.
+A manager page reads the manager's version once, when it loads, so reload every manager page that
+was open through the upgrade.
 
 Read [known-issues.md](known-issues.md) before you upgrade, and keep every host folder, compose
 project and volume name in [the table above](#the-names-that-never-change) as it is.

@@ -1107,6 +1107,10 @@ Compose file as a host path.
   stops when its client goes away.
 - **A target is verified before it is used.** `localhost` is the ordinary case. Another alias is
   refused until the manager has read a Docker daemon identity on it over SSH.
+- **A deployment's status changes only on a deploy, a stop or another action.** An uploader that
+  failed its deploy, for example on a postage batch with less than `STAMP_MIN_TTL_HOURS` (12) left,
+  and then started by itself once the batch was topped up, still shows **Last deploy failed** while
+  it runs healthy. Deploy it again to clear the status.
 - **A remote Bee node's data is outside the manager's reach.** The disk figure and the cleanup on
   removal cover the manager's own host only.
 - **The engines' live status is not read.** The manager does not yet ask SRS or OvenMediaEngine what

@@ -13,7 +13,8 @@ player switches between them as its connection allows), and writes every segment
 Swarm, the decentralised storage network run by Bee nodes. A viewer's browser then plays the stream
 straight from Swarm, either through a Bee node that acts as a gateway or through a light Swarm node
 running inside the browser tab. Once the segments are on Swarm, playback depends on no server of the
-broadcaster's.
+broadcaster's. When a broadcast ends, its recording stays on Swarm for as long as its postage lasts,
+and the viewer plays it from the catalogue.
 
 ## The parts
 

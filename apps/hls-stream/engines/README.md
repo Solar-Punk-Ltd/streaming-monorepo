@@ -231,6 +231,10 @@ uploader refuses is logged at error with the hook URL, the token and the key.
 
 Treat the engine's `docker logs` on a stage host as sensitive as its env file.
 
+SRS also logs `Unlink ts failed` once per segment on each rung. The uploader deletes each segment
+file once it has read and accepted it, and SRS's own HLS cleanup then tries to delete it again. The
+line is harmless, but it fills the log, so filter it out when you look for real warnings.
+
 ## Play is loopback only, by default
 
 SRS lets anyone who reaches one of its listeners play any stream it holds, unless a vhost's `security`

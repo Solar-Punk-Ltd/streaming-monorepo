@@ -236,6 +236,14 @@ bitrate (720p30 needs no more than 3500 to 4000k), and a keyframe interval of 2 
 packet damages the picture until the broadcaster's next keyframe, because the transcoder cannot rebuild
 a picture the source never sent whole.
 
+An uplink narrower than the broadcast's bitrate looks different. SRT drops packets, segments arrive
+slower than real time, and the stream recovers when the link does. The admin does not show the
+broadcaster that the link is too slow. A rung that gets no usable media for longer than
+`ORPHAN_REAP_MS`, 60 seconds by default, is finalized while the lower rungs carry on. When the link
+recovers, those rungs come back as new sessions, and the whole ladder can then run below real time,
+with the rung encoders reconnecting every few seconds. Nothing is lost. Stop the broadcast in the
+encoder and start it again, and every rung runs at full rate.
+
 ### Reading the loss
 
 SRS prints one line per SRT publisher about every ten seconds with the counts for that interval. It is
