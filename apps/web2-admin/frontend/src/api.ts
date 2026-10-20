@@ -295,7 +295,10 @@ export function rotateIngestKey(id: string): Promise<IngestDetails> {
   return sendJson<IngestDetails>('POST', `${API}/streams/${encodeURIComponent(id)}/ingest/rotate-key`);
 }
 
-/** Changes the key of a live or ended stream for good, and answers the stream with its new OBS details. */
+/**
+ * Finalize: changes the key of an ended stream for good, and answers the stream with its new
+ * OBS details. The API refuses a live stream, as `stream_live`.
+ */
 export function finishStream(id: string): Promise<StreamFinishAnswer> {
   return sendJson<StreamFinishAnswer>('POST', `${API}/streams/${encodeURIComponent(id)}/finish`);
 }

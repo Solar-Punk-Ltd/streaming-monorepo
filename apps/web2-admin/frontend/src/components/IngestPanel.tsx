@@ -1,18 +1,15 @@
 import { useId, useState, type ReactNode } from 'react';
 import { Alert, Button, Paper, Stack, Typography } from '@mui/material';
 import AutorenewIcon from '@mui/icons-material/Autorenew';
-import SportsScoreIcon from '@mui/icons-material/SportsScore';
 import {
   buildObsSrtServer,
   OBS_SRT_PASSPHRASE_FIELD_HELP,
   type IngestDetails,
   type IngestSrtDetails,
-  type Stream,
 } from '@streaming-monorepo/web2-admin-common';
 
 import * as api from '../api';
 import { errorMessage } from '../errors';
-import { ApiError } from '../http';
 import { formatDateTime } from '../dateUtil';
 import { ConfirmDialog } from './ConfirmDialog';
 import { useSnackbar } from './Snackbar';
@@ -24,34 +21,6 @@ export const NO_STAGE_NOTE = 'Pick the stage this stream is broadcast on, in its
 /** What the panel says under the details of a stage the manager retired. */
 export const RETIRED_STAGE_NOTE =
   'The manager retired this stage. These are the details it last pushed, and they may no longer answer.';
-
-/** What Finish does, said before it happens. */
-const FINISH_WARNING =
-  'Its key changes now, so no encoder can start it again on the old key. To go live on it later on purpose, copy ' +
-  'the new SRT line.';
-
-/** Added on a live stream: Finish changes the key and drops no encoder that is already pushing. */
-const LIVE_FINISH_WARNING = 'The broadcast carries on until the encoder stops; then it ends for good.';
-
-/** Finish, as the stream page offers it beside Rotate key: on a live or ended stream that is not finished yet. */
-export interface FinishOffer {
-  /** Whether the stream is live now, about which the confirmation says more. */
-  live: boolean;
-  /** Called with the stream as the API answers it once finished. Its new details go to `onRotated`. */
-  onFinished: (stream: Stream) => void;
-  /**
-   * Called when the API refuses the Finish because the stream has moved on
-   * since the page read it: its window ran out and the sweep finished it, or
-   * someone finished or unpublished it elsewhere. The page reads it again, so
-   * it shows the key and the state the API holds, not a stale SRT line.
-   */
-  onRefused: () => void;
-}
-
-/** Finish's two refusals. Either means the stream is no longer where the page showed it. */
-function isFinishRefusal(e: unknown): boolean {
-  return e instanceof ApiError && (e.code === 'stream_not_started' || e.code === 'stream_finished');
-}
 
 /**
  * The SRT Server line carries `key=<publishKey>` and, where it can ride there,
@@ -84,7 +53,7 @@ function ProtocolSection({ title, children }: { title: string; children: ReactNo
 function SrtSettings({ srt }: { srt: IngestSrtDetails }) {
   const { server, passphraseRoute } = buildObsSrtServer(srt.url, srt.passphrase);
   return (
-    <ProtocolSection title="SRT">
+    <ProtocolSection title="SRT Connection">
       <ValueField
         label="SRT Server"
         value={server}
@@ -113,22 +82,14 @@ export function IngestPanel({
   streamId,
   details,
   onRotated,
-  finish = null,
 }: {
   streamId: string;
   details: IngestDetails;
   onRotated: (details: IngestDetails) => void;
-  /** Offers Finish beside Rotate key. Left out, or null, the panel has no Finish. */
-  finish?: FinishOffer | null;
 }) {
   const snackbar = useSnackbar();
   const [confirmOpen, setConfirmOpen] = useState(false);
   const [rotating, setRotating] = useState(false);
-  const [finishOpen, setFinishOpen] = useState(false);
-  const [finishing, setFinishing] = useState(false);
-  // Read when the dialog opens and kept while it closes: a Finish that worked
-  // takes the offer away, and the closing dialog must keep its words.
-  const [finishingLive, setFinishingLive] = useState(false);
 
   const rotate = async () => {
     setRotating(true);
@@ -144,33 +105,6 @@ export function IngestPanel({
     }
   };
 
-  const askToFinish = (offer: FinishOffer) => {
-    setFinishingLive(offer.live);
-    setFinishOpen(true);
-  };
-
-  // Closed on success, and on a refusal, after which the page reads the
-  // stream again: asking again cannot help. After any other failure the
-  // operator can try again or cancel, as with Rotate key.
-  const runFinish = async () => {
-    setFinishing(true);
-    try {
-      const answer = await api.finishStream(streamId);
-      onRotated(answer.ingest);
-      finish?.onFinished(answer.stream);
-      snackbar.success('Stream finished. Its key has changed.');
-      setFinishOpen(false);
-    } catch (e) {
-      snackbar.error(errorMessage(e, 'Failed to finish the stream'));
-      if (isFinishRefusal(e)) {
-        setFinishOpen(false);
-        finish?.onRefused();
-      }
-    } finally {
-      setFinishing(false);
-    }
-  };
-
   return (
     <Paper variant="outlined" sx={{ p: 3 }}>
       <Stack spacing={2}>
@@ -181,11 +115,6 @@ export function IngestPanel({
           <Button size="small" color="warning" startIcon={<AutorenewIcon />} onClick={() => setConfirmOpen(true)}>
             Rotate key
           </Button>
-          {finish ? (
-            <Button size="small" color="warning" startIcon={<SportsScoreIcon />} onClick={() => askToFinish(finish)}>
-              Finish
-            </Button>
-          ) : null}
         </Stack>
 
         {details.stage && details.srt ? (
@@ -217,16 +146,6 @@ export function IngestPanel({
         busy={rotating}
         onConfirm={() => void rotate()}
         onCancel={() => setConfirmOpen(false)}
-      />
-
-      <ConfirmDialog
-        open={finishOpen}
-        title="Finish this stream?"
-        message={finishingLive ? `${FINISH_WARNING} ${LIVE_FINISH_WARNING}` : FINISH_WARNING}
-        confirmText={finishing ? 'Finishing…' : 'Finish'}
-        busy={finishing}
-        onConfirm={() => void runFinish()}
-        onCancel={() => setFinishOpen(false)}
       />
     </Paper>
   );
