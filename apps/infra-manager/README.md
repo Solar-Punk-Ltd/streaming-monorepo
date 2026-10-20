@@ -21,12 +21,15 @@ chequebooks. The new-deployment wizard offers five kinds of deployment, defined 
   The wizard copies the pool's `BEE_PUBLISHERS` string into it.
 - **Custom**: any of the components above, and the OME engine, picked by hand.
 
-An ABR node pool and its uploader together are an ABR stage, and they normally
-run on the manager's own host.
+An ABR node pool and its uploader together are an ABR stage. They can share one
+host, the manager's own included, or run on hosts of their own: the pool on a
+Bee host and the uploader on a stage host, which is the layout
+[docs/self-hosting.md](../../docs/self-hosting.md) sets up.
 
-An uploader on another machine is possible, and it needs two things: a
-`BEE_LOCAL_HOST` naming an address that machine can reach, and a Bee API bind
-that admits it. See [deploy/README.md](deploy/README.md) for the bind.
+When the pool runs on the manager's own host and its uploader on another
+machine, that uploader needs two things: a `BEE_LOCAL_HOST` naming an address
+that machine can reach, and a Bee API bind that admits it. See
+[deploy/README.md](deploy/README.md) for the bind.
 
 See [docs/features/abr-ladder.md](docs/features/abr-ladder.md).
 
