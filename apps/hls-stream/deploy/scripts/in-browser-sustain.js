@@ -13,17 +13,7 @@
  * sittings lost time to that before the cause was named, so the visibility assertion below is the
  * null control for this instrument and must not be removed to "make it work".
  *
- * ⛔ REFUTED 2026-08-15: there is no one-node-per-machine limit. Six, then twelve, separate browser
- * processes each reached 200 peers on one host. See `cdp.mjs` for what almost certainly produced the
- * original numbers, a first node that can sit at 0 peers for over 120 seconds while every later one
- * attaches within 30, and for the harness rule that survives it: record time-to-attach as a curve,
- * and never gate an arm on a peer floor with a short timeout. What this file said until then is kept,
- * as `cdp.mjs` keeps its own:
- *
- *   > ⛔ ONE TAB, and no other weeb-3 tab anywhere. Every tab runs its own libp2p node dialing 160
- *   > bootnodes and they starve each other: measured 2026-08-11, a second tab halved the newer node's
- *   > peers and a third left it at zero connected with no error shown. This probe reports
- *   > `peersAtStart` for exactly that reason. Read it before reading the ratio.
+ * ⛔ Refuted 2026-08-15: there is no limit of one weeb-3 node per machine. See `cdp.mjs`.
  *
  * HOW TO RUN
  *   1. On the machine, from the repo: `node deploy/scripts/serve-sweep-plan.mjs <any-plan.json>`

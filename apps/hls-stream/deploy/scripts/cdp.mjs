@@ -13,16 +13,10 @@
  *
  * Nothing here sends either. What the page reports is what the page got.
  *
- * ⛔⛔ REFUTED 2026-08-15. THE PARAGRAPH BELOW IS WRONG AND IS KEPT BECAUSE ACTING ON IT SHAPED
- * EVERY BROWSER ARM IN BOTH REPOS.
- *
- *   > ⛔ ONE weeb-3 NODE PER MACHINE, and a separate browser process is not an exemption: two nodes
- *   > starve each other's peer table whoever launched them. Measured 1 node 200 peers, 2 nodes 82,
- *   > 3 nodes 0, with no error surfaced anywhere.
- *
- * Six separate Chrome processes on one laptop each reached 200, then twelve did, then twelve penned
- * pens on a lab host each held all 40 nodes they were given, with per-pen CPU and memory flat from 1
- * to 12. There is no starvation between nodes on one machine.
+ * ⛔⛔ Refuted 2026-08-15: the belief that one machine can run only one weeb-3 node, because a second
+ * starves the first's peer table. Six separate Chrome processes on one laptop each reached 200 peers,
+ * then twelve did, then twelve penned pens on a lab host each held all 40 nodes they were given, with
+ * per-pen CPU and memory flat from 1 to 12. There is no starvation between nodes on one machine.
  *
  * ⭐ What almost certainly produced the original numbers: the FIRST weeb-3 node started on a machine
  * can sit at 0 peers for over 120 seconds, and every node after it attaches within 30. A harness that
