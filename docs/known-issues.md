@@ -88,7 +88,7 @@ stream, and compare the rungs' sequences at the same date.
 **A rung rejoining a live ladder can land one segment off (P3).** Which sequence a rejoining rung's first segment
 takes is decided from the gap between a sibling being handed its newest segment and this rung handing over its first,
 divided by the segment length and rounded. A gap of half a segment or more makes it the next segment, a shorter one the
-same. The dev stage ran 2 s segments, so the tipping point there is 1 s. On that stage on 2026-10-15 the time between
+same. The test deployment ran 2 s segments, so the tipping point there is 1 s. On that stage on 2026-10-15 the time between
 the first and last rung closing the same segment was 0.79 s typically, 0.96 s at the 90th percentile and 1.40 s at
 worst, with 1080p last on nearly every segment. A viewer switching quality exactly there sees about one segment skipped or repeated. To see
 it: read the close times from SRS's per-segment log lines for all rungs of one broadcast.
@@ -154,7 +154,7 @@ catalogue feed first lists it as live.
 
 ## Manager
 
-**A pool's quality nodes show "Reading balances" with no figures (P3).** On the dev stage on 2026-10-15 every node of
+**A pool's quality nodes show "Reading balances" with no figures (P3).** On a test deployment on 2026-10-15 every node of
 an ABR pool showed "Reading balances", with funding, chequebook and wallet as a dash, and the pool's card said "Not
 ready yet" while all four nodes ran with usable stamps. The manager reached each node's API, and its balance requests
 answered 304. Cause not found. To see it: open an ABR pool's page in the manager and compare with the nodes'

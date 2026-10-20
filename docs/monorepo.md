@@ -23,13 +23,13 @@ streaming-monorepo/
 │   │   ├── nodes/           Bee node initialisation
 │   │   ├── deploy/          deploy scripts, compose files, Dockerfiles and their tests
 │   │   ├── e2e/             fault-injection suites, the browser and bench harness
-│   │   └── docs/            bench records, reviews, scale notes
+│   │   └── docs/            the team's working records: bench results, reviews, scale notes
 │   └── infra-manager/       the manager
 │       ├── manager/         the API, and the script that builds stack versions
 │       ├── frontend/        the manager console
 │       ├── common/          types shared by its API and console
 │       ├── deploy/          its deploy script and what it sets up on a host
-│       └── docs/            its feature pages, its issue and decision record, its test notes
+│       └── docs/            its feature pages, and the team's working records: issues, decisions, test notes
 ├── infra/                   what hosts need, shared by every project
 │   └── edge/                the front door of a host
 ├── packages/                code shared by two or more apps: contracts, db-migrate, web-auth
